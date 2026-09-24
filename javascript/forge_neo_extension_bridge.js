@@ -393,13 +393,29 @@
   function bindTextareaSync(realTextarea, compatTextarea) {
     if (!realTextarea || !compatTextarea || compatTextarea.__forgeNeoSyncBound) return;
     const syncToReal = () => {
-      if (compatTextarea.__forgeNeoSyncingTextarea) return;
+      if (compatTextarea.__forgeNeoSyncingTextarea || realTextarea.__forgeNeoComposing || compatTextarea.__forgeNeoComposing) return;
       syncTextareaValue(realTextarea, compatTextarea.value, "compat");
     };
-    const syncToCompat = () => {
-      if (realTextarea.__forgeNeoSyncingTextarea) return;
+    const syncToCompat = (event) => {
+      if (realTextarea.__forgeNeoSyncingTextarea || realTextarea.__forgeNeoComposing || (event && event.isComposing)) return;
       syncTextareaValue(compatTextarea, realTextarea.value, "real");
     };
+    realTextarea.addEventListener("compositionstart", () => { realTextarea.__forgeNeoComposing = true; });
+    realTextarea.addEventListener("compositionend", () => {
+      realTextarea.__forgeNeoComposing = false;
+      queueMicrotask(syncToCompat);
+    });
+    realTextarea.addEventListener("input", (event) => {
+      if (realTextarea.__forgeNeoComposing || event.isComposing) {
+        event.stopImmediatePropagation();
+      }
+    }, true);
+    realTextarea.addEventListener("keydown", (event) => {
+      if (!realTextarea.__forgeNeoComposing && !event.isComposing && event.keyCode !== 229) return;
+      if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown" || event.key === "ArrowUp" || event.keyCode === 229) {
+        event.stopImmediatePropagation();
+      }
+    }, true);
     compatTextarea.addEventListener("input", syncToReal);
     compatTextarea.addEventListener("change", syncToReal);
     realTextarea.addEventListener("input", syncToCompat);

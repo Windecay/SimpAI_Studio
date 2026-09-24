@@ -207,8 +207,35 @@ def decode_response(text, session, table, user_message="", assistant_reply=""):
         return rp.parse_director_response(text, session)
     by_ref = {item["ref"]: item for item in table}
     identities = {(item["type"], item["id"]) for item in table}
+    prose_fields = {
+        "action", "appearance", "current_action", "description", "location",
+        "new_state_text", "result", "state_text", "summary", "text", "value",
+    }
+    ref_names = {
+        ref: str(entity.get("name") or ref)
+        for ref, entity in by_ref.items()
+    }
+    ref_pattern = re.compile(
+        r"(?<![A-Za-z0-9_])(?:"
+        + "|".join(re.escape(ref) for ref in sorted(ref_names, key=len, reverse=True))
+        + r")(?![A-Za-z0-9_])"
+    ) if ref_names else None
     evidence = numeric.evidence_catalog(user_message, assistant_reply)
     reference_issues = []
+
+    def replace_prose_refs(value, prose=False):
+        if isinstance(value, str):
+            if not prose or ref_pattern is None:
+                return value
+            return ref_pattern.sub(lambda match: ref_names[match.group(0)], value)
+        if isinstance(value, list):
+            return [replace_prose_refs(item, prose) for item in value]
+        if isinstance(value, dict):
+            return {
+                key: replace_prose_refs(item, prose or key in prose_fields)
+                for key, item in value.items()
+            }
+        return value
 
     def convert(value):
         if isinstance(value, list):
@@ -283,7 +310,7 @@ def decode_response(text, session, table, user_message="", assistant_reply=""):
                 by_ref[ref]["id"] for ref in result["unchanged_entity_ids"]
                 if isinstance(ref, str) and ref in by_ref
             ]
-        return result
+        return replace_prose_refs(result)
 
     decoded = convert(data)
     echo_count = 0

@@ -64,6 +64,7 @@
             resetSelectionState: stateSource,
             resetHistory: stateSource,
             mutate: stateSource,
+            fitAll: stateSource,
             resetGalleryFrostReveals: stateSource,
             sanitizeStoragePart: utilitySource,
             cloneRunValue: utilitySource,
@@ -196,6 +197,17 @@
             let templateProject;
             try {
                 templateProject = await call('loadWorkbenchTemplateData', null, item);
+                if (!templateProject || !Array.isArray(templateProject.nodes) || templateProject.nodes.length === 0) {
+                    throw new Error(t('Template data is invalid or contains no nodes.', '模板数据无效或不含节点。'));
+                }
+                if (!isLatestTemplateWorkbenchCreation(creationToken)) return;
+                applyTemplateWorkbenchProject(templateProject, {
+                    safeId,
+                    item,
+                    storageKey: call('getStorageKey', '', []),
+                    storageScope,
+                    sourceKey: item?.source === 'user' ? `user:${item.id}` : item?.id
+                });
             } catch (err) {
                 restoreTemplateWorkbenchCreation({
                     token: creationToken,
@@ -205,14 +217,6 @@
                 });
                 return;
             }
-            if (!isLatestTemplateWorkbenchCreation(creationToken)) return;
-            applyTemplateWorkbenchProject(templateProject || call('createDefaultProject', {}, []), {
-                safeId,
-                item,
-                storageKey: call('getStorageKey', '', []),
-                storageScope,
-                sourceKey: item?.source === 'user' ? `user:${item.id}` : item?.id
-            });
         }
 
         async function saveCurrentCanvasAsTemplate(parentModal) {
@@ -477,7 +481,10 @@
 
         function applyTemplateWorkbenchProject(templateProject, options) {
             const config = options || {};
-            const projectValue = call('sanitizeProject', templateProject || call('createDefaultProject', {}));
+            const projectValue = call('sanitizeProject', null, templateProject);
+            if (!projectValue || !Array.isArray(projectValue.nodes) || projectValue.nodes.length === 0) {
+                throw new Error(t('Template data is invalid or contains no nodes.', '模板数据无效或不含节点。'));
+            }
             const safeId = String(config.safeId || '');
             const item = config.item || {};
             const now = nowIso();
@@ -497,6 +504,7 @@
             call('resetSelectionState', null);
             call('resetHistory', null);
             call('mutate', null);
+            call('fitAll', null);
             call('resetGalleryFrostReveals', null);
             closeTemplateLibrary();
             call('showToast', null, t('Created workbench from template: {id}', '已从模板新建工作台：{id}').replace('{id}', safeId));

@@ -654,7 +654,7 @@
         return setComponentValue(document.querySelector(rootSelector), value);
     }
 
-    const forgeNeoPresetChoices = ["sd", "xl", "flux", "klein", "qwen", "lumina", "zit", "anima"];
+    const forgeNeoPresetChoices = ["sd", "xl", "flux", "klein", "qwen", "qwen21", "krea2", "lumina", "zit", "anima"];
     let forgeNeoPresetRestoreDone = false;
 
     function normalizeForgeNeoPreset(value) {
@@ -2195,11 +2195,15 @@
         const livePreview = document.createElement("div");
         livePreview.className = "livePreview";
         livePreview.style.display = "none";
+        const previewPlaceholder = document.createElement("span");
+        previewPlaceholder.className = "forge-neo-preview-pending";
+        previewPlaceholder.textContent = t("Generating image...", "正在生成图像…");
+        livePreview.appendChild(previewPlaceholder);
         gallery.insertBefore(livePreview, gallery.firstElementChild);
 
         activeProgressGalleryId = id;
         activeLivePreviewId = -1;
-        activeProgressElements = { galleryId: id, wrapper: wrapper, fill: fill, text: fill, livePreview: livePreview };
+        activeProgressElements = { galleryId: id, wrapper: wrapper, fill: fill, text: fill, livePreview: livePreview, previewPlaceholder: previewPlaceholder };
         return activeProgressElements;
     }
 
@@ -2258,18 +2262,23 @@
         if (elements.wrapper) elements.wrapper.setAttribute("data-status", status);
         const imageSource = progressImageSource(displayPayload || {});
         const previewId = Number((displayPayload && displayPayload.id_live_preview) || 0);
-        if (!imageSource && elements.livePreview && elements.livePreview.childElementCount === 0) {
-            elements.livePreview.style.display = "none";
+        if (elements.livePreview) {
+            elements.livePreview.style.display = "flex";
+            if (elements.previewPlaceholder) {
+                elements.previewPlaceholder.style.display = elements.livePreview.querySelector("img") ? "none" : "";
+            }
         }
         if (imageSource && elements.livePreview && previewId !== activeLivePreviewId) {
             const image = new Image();
             image.alt = "Live preview";
             image.onload = function () {
                 if (!elements.livePreview || !elements.livePreview.isConnected) return;
-                elements.livePreview.style.display = "block";
+                elements.livePreview.style.display = "flex";
+                if (elements.previewPlaceholder) elements.previewPlaceholder.style.display = "none";
                 elements.livePreview.appendChild(image);
-                while (elements.livePreview.childElementCount > 2) {
-                    elements.livePreview.removeChild(elements.livePreview.firstElementChild);
+                const previewImages = elements.livePreview.querySelectorAll("img");
+                for (let index = 0; index < previewImages.length - 2; index += 1) {
+                    previewImages[index].remove();
                 }
             };
             image.src = imageSource;

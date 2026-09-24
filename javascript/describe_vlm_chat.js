@@ -15,6 +15,7 @@
     const MAX_REFERENCE_VIDEOS = 3;
     const MAX_REFERENCE_AUDIOS = 3;
     const MAX_ATTACHMENTS = MAX_REFERENCE_IMAGES + MAX_REFERENCE_VIDEOS + MAX_REFERENCE_AUDIOS;
+    const MAX_QUEUED_CONVERSATION_MESSAGES = 8;
     const MAX_VIDEO_ATTACHMENT_BYTES = 80 * 1024 * 1024;
     const MAX_AUDIO_ATTACHMENT_BYTES = 80 * 1024 * 1024;
     const IMAGE_MESSAGE_PREVIEW_MAX_SIDE = 256;
@@ -53,6 +54,7 @@
     const MAX_HISTORY_TURNS = 18;
     const HISTORY_BUDGET = 6200;
     const FULL_HISTORY_BUDGET = 9000;
+    const CONTEXT_SUMMARY_MAX_CHARS = 2400;
     const CHAT_MAX_TOKENS_MIN = 64;
     const CHAT_MAX_TOKENS_MAX = 8192;
     const CHAT_MAX_TOKEN_CHOICES = Object.freeze([256, 512, 1024, 2048, 3072, 4096, 8192]);
@@ -69,6 +71,7 @@
         roleplay: 1
     });
     const MAX_VLM_SKILL_UPLOAD_BYTES = 100_000;
+    const MAX_VLM_SKILL_PACKAGE_UPLOAD_BYTES = 32 * 1024 * 1024;
     const VLM_VRAM_POLICY_CHOICES = Object.freeze([
         { value: 'relaxed', label: ['Relaxed', '宽松'] },
         { value: 'standard', label: ['Standard', '标准'] },
@@ -3510,7 +3513,24 @@
             messages: visibleMessages,
             archiveMessages,
             archiveVisibleMessageIds: persistedMessageIds(visibleMessages),
+            contextSummary: String(source.contextSummary ?? source.context_summary ?? '').slice(0, CONTEXT_SUMMARY_MAX_CHARS),
+            contextSummaryThroughMessageId: String(
+                source.contextSummaryThroughMessageId ?? source.context_summary_through_message_id ?? ''
+            ).slice(0, 240),
+            contextSummaryBranchId: String(
+                source.contextSummaryBranchId ?? source.context_summary_branch_id ?? ''
+            ).slice(0, 160),
+            contextUsage: normalizeConversationContextUsage(source.contextUsage ?? source.context_usage)
+                || conversationContextUsageFromMessages(visibleMessages, source),
+            contextSummaryAbortController: null,
+            contextSummaryRequestId: '',
+            contextSummaryTimeoutTimer: null,
+            contextSummaryDispatchTimer: null,
             pendingImages: Array.isArray(source.pendingImages) ? source.pendingImages : [],
+            queuedMessages: Array.isArray(source.queuedMessages) ? source.queuedMessages : [],
+            queuedMessageInFlightId: '',
+            queueDraining: false,
+            queuePaused: false,
             lastAutoReferencedDescribeMediaKey: String(source.lastAutoReferencedDescribeMediaKey || ''),
             describeMediaReferencePromise: source.describeMediaReferencePromise || null,
             chatMode: storedChatMode(source),
@@ -3600,6 +3620,9 @@
             runtime?.busy
             || runtime?.activeAbortController
             || runtime?.activeRequestId
+            || runtime?.contextSummaryAbortController
+            || runtime?.queueDraining
+            || runtime?.queuedMessages?.length
             || ['running', 'paused'].includes(autoplayPhase)
         );
         const runtimeHasUnsavedChanges = !!runtime?.persistenceDirty;
@@ -3629,6 +3652,9 @@
     function currentConversationRuntime() {
         return ensureConversationRuntime(ensureConversationId(), {
             messages: state.messages,
+            contextSummary: state.contextSummary,
+            contextSummaryThroughMessageId: state.contextSummaryThroughMessageId,
+            contextSummaryBranchId: state.contextSummaryBranchId,
             pendingImages: state.pendingImages,
             lastAutoReferencedDescribeMediaKey: state.lastAutoReferencedDescribeMediaKey,
             describeMediaReferencePromise: state.describeMediaReferencePromise,
@@ -3778,6 +3804,10 @@
 
     function applyConversationRuntime(runtime) {
         if (!runtime) return false;
+        const previousConversationId = String(state.conversationId || '').trim();
+        if (previousConversationId && previousConversationId !== String(runtime.conversationId || '').trim()) {
+            clearRoleplayPanelFeedback();
+        }
         state.conversationId = runtime.conversationId;
         state.messages = runtime.messages;
         state.pendingImages = runtime.pendingImages;
@@ -3827,6 +3857,11 @@
         element.classList.toggle('is-error', !!isError);
         element.classList.toggle('is-success', !!text && !isError);
         return true;
+    }
+
+    function clearRoleplayPanelFeedback(modal = document.getElementById('describe_vlm_chat_modal')) {
+        const feedback = modal?.querySelector?.('[data-describe-vlm-chat-roleplay-feedback]');
+        if (feedback) setRoleplayFeedbackElement(feedback, '');
     }
 
     function cloneRoleplayDraftValue(value) {
@@ -4508,6 +4543,21 @@
         const canWrite = scopes.length > 0 && !state.vlmSkillCatalogLoading;
         modal?.querySelectorAll?.('[data-describe-vlm-chat-skill-create], [data-describe-vlm-chat-skill-upload]')
             .forEach((control) => { control.hidden = !canWrite; });
+        const packageImport = modal?.querySelector?.('[data-describe-vlm-chat-skill-package-import]');
+        if (packageImport) packageImport.hidden = !canWrite;
+        const packageButton = modal?.querySelector?.('[data-describe-vlm-chat-skill-package-upload]');
+        if (packageButton) packageButton.disabled = !canWrite || vlmSkillFileBusy;
+        const packageFile = modal?.querySelector?.('[data-describe-vlm-chat-skill-package-file]');
+        if (packageFile) packageFile.disabled = !canWrite || vlmSkillFileBusy;
+        const packageScope = modal?.querySelector?.('[data-describe-vlm-chat-skill-package-scope]');
+        if (packageScope) {
+            for (const option of packageScope.options || []) {
+                option.hidden = !scopes.includes(option.value);
+                option.disabled = option.hidden;
+            }
+            if (!scopes.includes(packageScope.value)) packageScope.value = scopes[0] || '';
+            packageScope.disabled = !canWrite || vlmSkillFileBusy;
+        }
         const editor = vlmSkillEditor(modal);
         if (!editor) return;
         for (const key of ['editor-save', 'draft', 'requirements']) {
@@ -4896,8 +4946,86 @@
         }
     }
 
+    function setVlmSkillImportStatus(modal, message, isError = false) {
+        const status = modal?.querySelector?.('[data-describe-vlm-chat-skill-status]');
+        if (!status) return;
+        status.textContent = String(message || '');
+        status.classList.toggle('is-error', !!isError);
+    }
+
+    function vlmSkillPackageImportError(response) {
+        const messages = {
+            skill_forbidden: localText('You cannot import to this location.', '当前账号无权导入到此目录。'),
+            skill_exists: localText('A skill with this name already exists. Nothing was replaced.', '同名技能已存在，原文件未修改。'),
+            skill_package_invalid: localText('The ZIP package is invalid or unreadable.', 'ZIP 技能包无效或无法读取。'),
+            skill_package_too_large: localText('The ZIP package exceeds the 32 MB limit.', 'ZIP 技能包不能超过 32 MB。'),
+            skill_package_skill_file_required: localText('The package must contain one root SKILL.md file.', '技能包中必须包含一个根目录 SKILL.md。'),
+            skill_package_layout_invalid: localText('The package must contain one skill folder or one root SKILL.md.', '技能包只能包含一个技能目录，或以 SKILL.md 为根文件。'),
+            skill_package_path_invalid: localText('The package contains an unsafe file path.', '技能包包含不安全的文件路径。'),
+            skill_package_link_not_allowed: localText('The package contains a link or special file.', '技能包包含链接或特殊文件。'),
+            skill_package_file_limit: localText('The package contains too many files.', '技能包中的文件数量过多。'),
+            skill_package_file_too_large: localText('A file in the package exceeds the size limit.', '技能包中的单个文件过大。'),
+            skill_package_unpacked_too_large: localText('The unpacked package exceeds the size limit.', '技能包解压后的总大小超出限制。'),
+            skill_invalid_name: localText('The skill name in SKILL.md is invalid.', 'SKILL.md 中的技能名称无效。'),
+            skill_invalid_metadata: localText('Check the SKILL.md frontmatter.', '请检查 SKILL.md 的头部格式。')
+        };
+        return messages[String(response?.code || '')]
+            || localText('The skill package could not be imported.', '技能包导入失败。');
+    }
+
+    async function importVlmSkillPackageFile(file, modal) {
+        if (!file || !modal || !vlmSkillWriteScopes().length) return false;
+        if (Number(file.size || 0) > MAX_VLM_SKILL_PACKAGE_UPLOAD_BYTES) {
+            setVlmSkillImportStatus(modal, vlmSkillPackageImportError({ code: 'skill_package_too_large' }), true);
+            return false;
+        }
+        const scope = String(
+            modal.querySelector('[data-describe-vlm-chat-skill-package-scope]')?.value || ''
+        ).trim();
+        if (!vlmSkillWriteScopes().includes(scope)) {
+            setVlmSkillImportStatus(modal, vlmSkillPackageImportError({ code: 'skill_forbidden' }), true);
+            return false;
+        }
+        vlmSkillFileBusy = true;
+        syncVlmSkillPermissions(modal);
+        setVlmSkillImportStatus(modal, localText('Importing skill package...', '正在导入技能包...'));
+        try {
+            const query = new URLSearchParams({
+                scope,
+                filename: String(file.name || '').slice(0, 240)
+            });
+            const response = await fetch(`${VLM_SKILLS_ENDPOINT}/import-package?${query}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/zip' },
+                body: file
+            });
+            let result = null;
+            try {
+                result = await response.json();
+            } catch (error) {}
+            if (!response.ok || !result?.ok) {
+                setVlmSkillImportStatus(modal, vlmSkillPackageImportError(result), true);
+                return false;
+            }
+            await refreshVlmSkillCatalog(true).catch(() => {});
+            const name = String(result.name || result.skill?.name || '').trim();
+            setVlmSkillImportStatus(modal, localText(
+                `Imported ${name || 'skill package'}. Select it in the list to enable it.`,
+                `已导入${name ? `“${name}”` : '技能包'}，可在列表中手动启用。`
+            ));
+            return true;
+        } catch (error) {
+            setVlmSkillImportStatus(modal, localText('The skill package could not be uploaded.', '技能包上传失败。'), true);
+            return false;
+        } finally {
+            vlmSkillFileBusy = false;
+            syncVlmSkillPermissions(modal);
+        }
+    }
+
     function renderVlmSkillInstallGuide(guide, visible) {
         if (!guide) return;
+        visible = visible && state.vlmSkillsExpanded !== false;
         guide.hidden = !visible;
         if (!visible) {
             guide.innerHTML = '';
@@ -12287,7 +12415,7 @@
         modal.innerHTML = `
 <div class="describe-vlm-chat-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(t('VLM/LLM AI chat', 'VLM/LLM AI对话'))}">
   <div class="describe-vlm-chat-head">
-    <strong class="describe-vlm-chat-title"><i class="fa-solid fa-comments"></i><span class="describe-vlm-chat-title-text">${escapeHtml(t('VLM/LLM AI chat', 'VLM/LLM AI对话'))}</span></strong>
+    <strong class="describe-vlm-chat-title"><i class="fa-solid fa-comments"></i><span class="describe-vlm-chat-title-text">${escapeHtml(t('VLM/LLM AI chat', 'VLM/LLM AI对话'))}</span>${window.SimpAIStudioHelp?.button('agent') || ''}</strong>
     <div class="describe-vlm-chat-model-pill" data-describe-vlm-chat-model aria-live="polite">
       <i class="fa-solid fa-microchip"></i>
       <span>${escapeHtml(t('Model', '模型'))}</span>
@@ -12297,7 +12425,6 @@
       <b data-describe-vlm-chat-model-value hidden>${escapeHtml(t('Detecting', '检测中'))}</b>
     </div>
     <span class="describe-vlm-chat-head-actions">
-      ${window.SimpAIStudioHelp?.button('agent') || ''}
       <button type="button" class="describe-vlm-chat-skill-indicator" data-describe-vlm-chat-skill-indicator title="${escapeHtml(localText('No skills are enabled for this conversation. Click to choose skills.', '当前对话未挂载技能。点击选择技能。'))}" aria-label="${escapeHtml(localText('No skills are enabled for this conversation. Click to choose skills.', '当前对话未挂载技能。点击选择技能。'))}" aria-live="polite"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span data-describe-vlm-chat-skill-indicator-label>${escapeHtml(localText('None', '未挂载'))}</span><b data-describe-vlm-chat-skill-indicator-count>0</b><span class="describe-vlm-chat-skill-indicator-names" data-describe-vlm-chat-skill-indicator-names>${escapeHtml(localText('Choose skills', '点击选择'))}</span></button>
       <button type="button" data-describe-vlm-chat-settings-toggle title="${escapeHtml(localText('Open chat settings', '打开对话设置'))}" aria-label="${escapeHtml(localText('Open chat settings', '打开对话设置'))}" aria-expanded="false"><i class="fa-solid fa-sliders"></i></button>
       <button type="button" data-describe-vlm-chat-maximize title="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-label="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-pressed="false"><i class="fa-solid fa-maximize"></i></button>
@@ -12331,6 +12458,11 @@
     <div class="describe-vlm-chat-skills-field" data-describe-vlm-chat-skills>
       <div class="describe-vlm-chat-skills-head"><span><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i>${escapeHtml(localText('Custom skills', '自定义技能'))}</span><span class="describe-vlm-chat-skills-active" data-describe-vlm-chat-skill-active aria-live="polite"></span><span class="describe-vlm-chat-skills-head-actions"><button type="button" data-describe-vlm-chat-skill-create title="${escapeHtml(localText('Create a custom skill', '新建自定义技能'))}" aria-label="${escapeHtml(localText('Create a custom skill', '新建自定义技能'))}"><i class="fa-solid fa-file-circle-plus"></i></button><button type="button" data-describe-vlm-chat-skill-upload title="${escapeHtml(localText('Upload SKILL.md', '上传 SKILL.md'))}" aria-label="${escapeHtml(localText('Upload SKILL.md', '上传 SKILL.md'))}"><i class="fa-solid fa-upload"></i></button><button type="button" data-describe-vlm-chat-skill-toggle aria-expanded="true" title="${escapeHtml(localText('Collapse custom skills', '折叠自定义技能'))}" aria-label="${escapeHtml(localText('Collapse custom skills', '折叠自定义技能'))}"><i class="fa-solid fa-chevron-up"></i></button><button type="button" data-describe-vlm-chat-skill-refresh title="${escapeHtml(localText('Refresh SKILL.md list', '刷新 SKILL.md 列表'))}" aria-label="${escapeHtml(localText('Refresh SKILL.md list', '刷新 SKILL.md 列表'))}"><i class="fa-solid fa-rotate"></i></button></span></div>
       <div class="describe-vlm-chat-skills-body" data-describe-vlm-chat-skill-body>
+        <div class="describe-vlm-chat-skill-package-import" data-describe-vlm-chat-skill-package-import hidden>
+          <label><span>${escapeHtml(localText('Import location', '导入位置'))}</span><select data-describe-vlm-chat-skill-package-scope aria-label="${escapeHtml(localText('Import location', '导入位置'))}"><option value="project">${escapeHtml(localText('Shared project', '项目共享'))}</option><option value="user">${escapeHtml(localText('Personal', '个人'))}</option></select></label>
+          <button type="button" data-describe-vlm-chat-skill-package-upload title="${escapeHtml(localText('Import a complete skill ZIP package', '导入完整技能 ZIP 包'))}"><i class="fa-solid fa-file-zipper" aria-hidden="true"></i><span>${escapeHtml(localText('Import package', '导入技能包'))}</span></button>
+          <input type="file" accept=".zip,application/zip" data-describe-vlm-chat-skill-package-file hidden>
+        </div>
         <small data-describe-vlm-chat-skill-status>${escapeHtml(localText('Waiting for SKILL.md list', '等待读取 SKILL.md'))}</small>
         <div class="describe-vlm-chat-skill-list" data-describe-vlm-chat-skill-list role="group" aria-label="${escapeHtml(localText('Custom skills', '自定义技能'))}"></div>
       </div>
@@ -12578,6 +12710,7 @@
     </div>
     <div class="describe-vlm-chat-attachments" data-describe-vlm-chat-attachments hidden></div>
     <textarea data-describe-vlm-chat-input rows="2" placeholder="${escapeHtml(chatInputPlaceholder(state.chatMode))}"></textarea>
+    <span class="describe-vlm-chat-context-usage" data-describe-vlm-chat-context-usage hidden role="status" aria-live="polite" tabindex="0"><span class="describe-vlm-chat-context-usage-ring" data-describe-vlm-chat-context-usage-ring aria-hidden="true"></span></span>
     <button type="button" class="describe-vlm-chat-thinking-toggle" data-describe-vlm-chat-thinking aria-pressed="${state.thinkingEnabled ? 'true' : 'false'}" title="${escapeHtml(state.thinkingEnabled ? localText('Disable thinking mode', '关闭思考模式') : localText('Enable thinking mode', '开启思考模式'))}" aria-label="${escapeHtml(state.thinkingEnabled ? localText('Disable thinking mode', '关闭思考模式') : localText('Enable thinking mode', '开启思考模式'))}"><i class="fa-solid fa-lightbulb" aria-hidden="true"></i></button>
     <button type="button" data-describe-vlm-chat-stop title="${escapeHtml(t('Stop reply', '停止回答'))}" aria-label="${escapeHtml(t('Stop reply', '停止回答'))}" hidden><i class="fa-solid fa-stop"></i></button>
     <button type="button" data-describe-vlm-chat-send title="${escapeHtml(t('Send', '发送'))}" aria-label="${escapeHtml(t('Send', '发送'))}"><i class="fa-solid fa-paper-plane"></i></button>
@@ -12930,6 +13063,17 @@
         const outputTokens = Math.max(0, Math.round(Number(
             source.output_tokens ?? usage.output_tokens ?? usage.completion_tokens
         ) || 0));
+        const inputTokensValue = source.input_tokens ?? source.prompt_tokens
+            ?? usage.input_tokens ?? usage.prompt_tokens;
+        const inputTokensNumber = Number(inputTokensValue);
+        const inputTokens = inputTokensValue !== undefined && inputTokensValue !== null
+            && Number.isFinite(inputTokensNumber) && inputTokensNumber > 0
+            ? Math.round(inputTokensNumber)
+            : null;
+        const contextWindow = Math.max(0, Math.round(Number(source.context_window) || 0));
+        const contextUsageSource = source.context_usage_source === 'reported'
+            ? 'reported'
+            : source.context_usage_source === 'estimated' ? 'estimated' : '';
         const elapsedSeconds = Math.max(0, Number(source.elapsed_seconds) || 0);
         const tokensPerSecond = Math.max(0, Number(source.tokens_per_second) || (
             outputTokens && elapsedSeconds ? outputTokens / elapsedSeconds : 0
@@ -12938,7 +13082,7 @@
         const reasoningTokens = source.reasoning_tokens ?? usage.output_tokens_details?.reasoning_tokens
             ?? usage.completion_tokens_details?.reasoning_tokens;
         if (!outputLimited && !status && !reason && !outputTokens && !tokensPerSecond && !reasoningText
-            && reasoningTokens == null && source.thinking_requested !== true) return null;
+            && inputTokens == null && reasoningTokens == null && source.thinking_requested !== true) return null;
         return {
             output_limited: outputLimited,
             status,
@@ -12946,6 +13090,9 @@
             finish_reason: finishReason,
             stop_reason: stopReason,
             max_tokens: maxTokens,
+            input_tokens: inputTokens,
+            context_window: contextWindow || null,
+            context_usage_source: contextUsageSource,
             output_tokens: outputTokens,
             elapsed_seconds: elapsedSeconds,
             tokens_per_second: tokensPerSecond,
@@ -12955,6 +13102,164 @@
             reasoning_tokens: Number.isFinite(reasoningTokens) ? Math.max(0, Math.round(reasoningTokens)) : null,
             thinking_requested: source.thinking_requested === true
         };
+    }
+
+    function normalizeConversationContextUsage(value) {
+        if (!value || typeof value !== 'object') return null;
+        const usedTokens = Number(value.used_tokens ?? value.input_tokens);
+        const contextWindow = Number(value.context_window);
+        if (!Number.isFinite(usedTokens) || usedTokens < 0 || !Number.isFinite(contextWindow) || contextWindow <= 0) {
+            return null;
+        }
+        return {
+            used_tokens: Math.round(usedTokens),
+            context_window: Math.round(contextWindow),
+            source: value.source === 'reported' ? 'reported' : 'estimated',
+            model: String(value.model || '').trim().slice(0, 240),
+            media_count: Math.max(0, Math.round(Number(value.media_count) || 0)),
+            updated_at: String(value.updated_at || '').trim().slice(0, 80),
+            message_id: String(value.message_id || '').trim().slice(0, 240),
+            branch_id: String(value.branch_id || '').trim().slice(0, 160)
+        };
+    }
+
+    function conversationContextUsageFromMessages(messages, runtime = null) {
+        const rows = Array.isArray(messages) ? messages : [];
+        for (let index = rows.length - 1; index >= 0; index -= 1) {
+            const message = rows[index];
+            if (!message || message.role !== 'assistant' || message.pending) continue;
+            const variants = Array.isArray(message.variants) ? message.variants : [];
+            const activeIndex = Math.max(0, Math.min(
+                variants.length - 1,
+                Number(message.active_variant_index) || 0
+            ));
+            const completion = normalizeChatCompletion(
+                variants[activeIndex]?.completion || message.completion
+            );
+            if (completion?.input_tokens == null) continue;
+            const contextWindow = Number(completion.context_window) || 0;
+            if (!contextWindow) continue;
+            return normalizeConversationContextUsage({
+                used_tokens: completion.input_tokens,
+                context_window: contextWindow,
+                source: completion.context_usage_source || 'reported',
+                model: message.response_source?.model || '',
+                media_count: Number(message.image_count || message.images?.length || 0),
+                updated_at: message.created_at || '',
+                message_id: message.id || '',
+                branch_id: normalizeChatMode(runtime?.chatMode) === 'roleplay'
+                    ? runtime.roleplaySession?.active_branch_id || 'main'
+                    : ''
+            });
+        }
+        return null;
+    }
+
+    function estimateContextTokensFromText(messages, message = '', currentPrompt = '', systemPromptChars = 0) {
+        const conversationText = (Array.isArray(messages) ? messages : [])
+            .map((item) => `${item?.role || 'user'}: ${String(item?.content || '')}`)
+            .join('\n');
+        const text = `${conversationText}\n${String(message || '')}\n${String(currentPrompt || '')}`;
+        const cjkCount = (text.match(/[\u3400-\u9fff]/g) || []).length;
+        const nonCjkCount = Math.max(0, text.length - cjkCount);
+        return Math.max(0, Math.ceil(
+            cjkCount * 1.4
+            + nonCjkCount / 3.7
+            + Math.max(0, Number(systemPromptChars) || 0) / 3.5
+        ));
+    }
+
+    function estimateConversationContextUsage(runtime, version = readSelectedVlmVersion()) {
+        const target = runtime || currentConversationRuntime();
+        const messages = Array.isArray(target?.messages) ? target.messages : [];
+        if (!messages.some((item) => item && ['user', 'assistant'].includes(item.role) && !item.pending)) return null;
+        const roleplay = normalizeChatMode(target.chatMode) === 'roleplay';
+        const history = buildRollingHistory(
+            roleplay ? 32 : MAX_HISTORY_TURNS,
+            roleplay ? FULL_HISTORY_BUDGET : HISTORY_BUDGET,
+            messages
+        );
+        const contextMessages = attachContextSummaryToHistory(
+            history,
+            target,
+            roleplay ? FULL_HISTORY_BUDGET : HISTORY_BUDGET
+        ).messages;
+        const contextWindow = Math.max(
+            1,
+            Number(currentVlmNctx(version) || vlmContextWindowForVersion(version)) || 8192
+        );
+        const usedTokens = estimateContextTokensFromText(
+            contextMessages,
+            '',
+            '',
+            String(target.customSystemPrompt || '').length
+                + String(target.baseSystemPromptContent || '').length
+                + String(target.userSystemPromptContent || '').length
+        );
+        const mediaCount = messages.reduce(
+            (count, item) => count + Math.max(0, Number(item?.image_count || item?.images?.length || 0)),
+            0
+        );
+        return normalizeConversationContextUsage({
+            used_tokens: usedTokens,
+            context_window: contextWindow,
+            source: 'estimated',
+            model: version,
+            media_count: mediaCount,
+            updated_at: ''
+        });
+    }
+
+    function conversationContextUsage(runtime) {
+        const target = runtime || currentConversationRuntime();
+        const stored = normalizeConversationContextUsage(target?.contextUsage);
+        const latestAssistant = (Array.isArray(target?.messages) ? target.messages : [])
+            .slice().reverse().find((message) => message?.role === 'assistant' && !message.pending);
+        const currentBranch = normalizeChatMode(target?.chatMode) === 'roleplay'
+            ? String(target?.roleplaySession?.active_branch_id || 'main')
+            : '';
+        const storedMatches = stored
+            && (!stored.message_id || stored.message_id === latestAssistant?.id)
+            && (!stored.branch_id || stored.branch_id === currentBranch);
+        return (storedMatches ? stored : null)
+            || conversationContextUsageFromMessages(target?.messages, target)
+            || estimateConversationContextUsage(target);
+    }
+
+    function formatContextUsageTokenCount(value) {
+        const number = Math.max(0, Math.round(Number(value) || 0));
+        if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(2)}M`;
+        if (number >= 100_000) return `${Math.round(number / 1_000)}k`;
+        return number.toLocaleString(
+            String(state.__lang || getUiLang?.(state) || '').toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
+        );
+    }
+
+    function syncConversationContextUsage(modal, runtime = null) {
+        const indicator = modal?.querySelector?.('[data-describe-vlm-chat-context-usage]');
+        if (!indicator) return;
+        const usage = conversationContextUsage(runtime || currentConversationRuntime());
+        if (!usage) {
+            indicator.hidden = true;
+            return;
+        }
+        const percent = Math.max(0, Math.round(usage.used_tokens / usage.context_window * 100));
+        const ring = indicator.querySelector('[data-describe-vlm-chat-context-usage-ring]');
+        const title = usage.source === 'reported'
+            ? localText(
+                `Last request: ${formatContextUsageTokenCount(usage.used_tokens)} of ${formatContextUsageTokenCount(usage.context_window)} tokens (${percent}%).`,
+                `上次请求：已用 ${formatContextUsageTokenCount(usage.used_tokens)} / ${formatContextUsageTokenCount(usage.context_window)} Token（${percent}%）。`
+            )
+            : localText(
+                `Estimated text usage: about ${formatContextUsageTokenCount(usage.used_tokens)} of ${formatContextUsageTokenCount(usage.context_window)} tokens (${percent}%). System prompts, skills, and media may add usage.`,
+                `文字估算：约 ${formatContextUsageTokenCount(usage.used_tokens)} / ${formatContextUsageTokenCount(usage.context_window)} Token（${percent}%）。系统提示词、技能和多媒体可能增加实际用量。`
+            );
+        indicator.hidden = false;
+        ring?.style?.setProperty('--context-usage-progress', `${Math.min(100, percent)}%`);
+        indicator.title = title;
+        indicator.setAttribute('aria-label', title);
+        indicator.classList.toggle('is-warning', percent >= 80);
+        indicator.classList.toggle('is-over-limit', usage.used_tokens > usage.context_window);
     }
 
     function completionReasoningHtml(completion, id = '') {
@@ -13754,6 +14059,10 @@
             title: conversationCatalogTitle(source),
             messages: [message],
             chatMode: normalizeChatMode(source.chatMode),
+            context_summary: String(source.context_summary || '').slice(0, CONTEXT_SUMMARY_MAX_CHARS),
+            context_summary_through_message_id: String(source.context_summary_through_message_id || '').slice(0, 240),
+            context_summary_branch_id: String(source.context_summary_branch_id || '').slice(0, 160),
+            context_usage: normalizeConversationContextUsage(source.context_usage ?? source.contextUsage),
             skill_names: normalizeVlmSkillNames(source.skill_names ?? source.customSkillNames),
             customSystemPrompt: String(source.customSystemPrompt || '').slice(0, 480),
             systemPromptTemplateId: String(source.systemPromptTemplateId || '').slice(0, 160),
@@ -13844,6 +14153,10 @@
             ),
             conversation_id: conversationId,
             chatMode,
+            context_summary: String(target.contextSummary || '').slice(0, CONTEXT_SUMMARY_MAX_CHARS),
+            context_summary_through_message_id: String(target.contextSummaryThroughMessageId || '').slice(0, 240),
+            context_summary_branch_id: String(target.contextSummaryBranchId || '').slice(0, 160),
+            context_usage: normalizeConversationContextUsage(target.contextUsage),
             messages
         };
         if (conversationHasRoleplayData(target, conversationId)) {
@@ -14547,6 +14860,24 @@
                 conversationId,
                 messages: visibleConversationMessages(restoredMessages),
                 archiveMessages: restoredMessages,
+                contextSummary: recoveryApplies
+                    ? String(recovery.context_summary || '')
+                    : String(archiveSource.contextSummary || ''),
+                contextSummaryThroughMessageId: recoveryApplies
+                    ? String(recovery.context_summary_through_message_id || '')
+                    : String(archiveSource.contextSummaryThroughMessageId || ''),
+                contextSummaryBranchId: recoveryApplies
+                    ? String(recovery.context_summary_branch_id || '')
+                    : String(archiveSource.contextSummaryBranchId || ''),
+                contextUsage: normalizeConversationContextUsage(
+                    (recoveryApplies ? recovery.context_usage : null)
+                    || archiveSource.contextUsage
+                    || archiveSource.context_usage
+                    || runtime.contextUsage
+                ) || conversationContextUsageFromMessages(restoredMessages, {
+                    chatMode: settingsSource.chatMode,
+                    roleplaySession: restoredSession
+                }),
                 chatMode: settingsSource.chatMode,
                 roleplaySession: restoredSession,
                 roleplayBranches: archiveSource.roleplayBranches,
@@ -14692,6 +15023,16 @@
             title: conversationCatalogTitle(target),
             messages,
             chatMode: mode,
+            context_summary: String(read('contextSummary', 'context_summary', '') || '').slice(0, CONTEXT_SUMMARY_MAX_CHARS),
+            context_summary_through_message_id: String(
+                read('contextSummaryThroughMessageId', 'context_summary_through_message_id', '') || ''
+            ).slice(0, 240),
+            context_summary_branch_id: String(
+                read('contextSummaryBranchId', 'context_summary_branch_id', '') || ''
+            ).slice(0, 160),
+            context_usage: normalizeConversationContextUsage(
+                read('contextUsage', 'context_usage', null)
+            ),
             skill_names: normalizeVlmSkillNames(read('customSkillNames', 'skill_names', [])),
             customSystemPrompt: String(read('customSystemPrompt', 'custom_system_prompt', '') || '').slice(0, MAX_PERSISTED_TEXT),
             systemPromptTemplateId: selection.systemPromptTemplateId,
@@ -14822,6 +15163,10 @@
             roleplayFormDraftUndo: normalizeRoleplayFormDraftReview(expandedData.roleplay_form_draft_undo),
             roleplayPanelOpen: !!expandedData.roleplay_panel_open,
             roleplayAutoplayState: normalizeRoleplayAutoplayState(expandedData.roleplay_autoplay_state),
+            contextSummary: String(expandedData.context_summary || '').slice(0, CONTEXT_SUMMARY_MAX_CHARS),
+            contextSummaryThroughMessageId: String(expandedData.context_summary_through_message_id || '').slice(0, 240),
+            contextSummaryBranchId: String(expandedData.context_summary_branch_id || '').slice(0, 160),
+            contextUsage: normalizeConversationContextUsage(expandedData.context_usage),
             unloadAfterChat: !!expandedData.unload_after_chat,
             creativePreferenceExpanded: !!expandedData.creative_preference_expanded,
             customSystemPrompt: String(expandedData.customSystemPrompt || '').slice(0, MAX_PERSISTED_TEXT),
@@ -15214,6 +15559,9 @@
             conversationId,
             messages: restored.messages,
             archiveMessages: restored.archiveMessages,
+            contextSummary: restored.contextSummary,
+            contextSummaryThroughMessageId: restored.contextSummaryThroughMessageId,
+            contextSummaryBranchId: restored.contextSummaryBranchId,
             chatMode: restored.chatMode,
             roleplaySession: restored.roleplaySession,
             roleplayBranches: restored.roleplayBranches,
@@ -15491,6 +15839,11 @@
         viewer.unsavedWrite = true;
         const replace = rows => (rows || []).map(item => item.id === edited.id ? edited : item);
         if (viewer.branchId === String(runtime.roleplaySession?.active_branch_id || 'main')) {
+            cancelConversationContextSummary(runtime);
+            runtime.contextSummary = '';
+            runtime.contextSummaryThroughMessageId = '';
+            runtime.contextSummaryBranchId = '';
+            runtime.contextUsage = null;
             runtime.archiveMessages = replace(runtime.archiveMessages);
             runtime.messages = replace(runtime.messages);
         } else {
@@ -15771,6 +16124,7 @@
             setStatus(activeRuntime.busy
                 ? t('Conversation switched. The reply is still running.', '已切换对话，原回复仍在运行。')
                 : t('Conversation switched.', '已切换对话。'));
+            if (activeRuntime.queuedMessages.length) drainConversationMessageQueue(activeRuntime);
         }).catch(() => {
             if (state.activeConversationSwitchToken !== switchToken || state.conversationId !== id) return;
             setStatus(localText(
@@ -16093,6 +16447,7 @@
 
         const isCurrent = id === state.conversationId;
         const runtime = state.conversationRuntimes.get(id);
+        if (runtime) cancelConversationContextSummary(runtime);
         const nextRecord = state.conversationCatalog[index + 1] || state.conversationCatalog[index - 1] || null;
         let requestId = String(runtime?.activeRequestId || '');
         cancelScheduledConversationPersist(runtime);
@@ -16155,6 +16510,8 @@
 
     async function clearConversation() {
         const previousConversationId = state.conversationId;
+        clearRoleplayPanelFeedback();
+        cancelConversationContextSummary(currentConversationRuntime());
         cancelScheduledConversationPersist(currentConversationRuntime());
         stopActiveConversationWork();
         const runtime = currentConversationRuntime();
@@ -16167,6 +16524,13 @@
         runtime.messages = [];
         runtime.archiveMessages = [];
         runtime.archiveVisibleMessageIds = [];
+        runtime.queuedMessages = [];
+        runtime.queuedMessageInFlightId = '';
+        runtime.queuePaused = false;
+        runtime.contextSummary = '';
+        runtime.contextSummaryThroughMessageId = '';
+        runtime.contextSummaryBranchId = '';
+        runtime.contextUsage = null;
         runtime.pendingImages = [];
         runtime.roleplaySession = normalizeRoleplaySession(null, previousConversationId);
         runtime.roleplayBranches = [];
@@ -16298,6 +16662,10 @@
 
     function busyControlLabel(stage = '') {
         const normalized = String(stage || '').trim().toLowerCase();
+        const queuedNote = localText(
+            'New messages will be queued for after this turn.',
+            '新消息会排队，并在当前对话处理完后发送。'
+        );
         if (normalized === 'creative_h3_prompt_started') {
             return roleplayDictionaryText('Preparing H3 prompt...');
         }
@@ -16318,25 +16686,25 @@
         }
         if (normalized === 'roleplay_director_started') {
             return localText(
-                'Updating story state. New messages can be sent when this finishes.',
-                '正在计算剧情状态，完成后才能发送新消息。'
+                `Updating story state. ${queuedNote}`,
+                `正在计算剧情状态。${queuedNote}`
             );
         }
         if (normalized === 'roleplay_resource_update_started') {
             return localText(
-                'Updating memory and story resources. New messages can be sent when this finishes.',
-                '正在更新记忆与故事资料，完成后才能发送新消息。'
+                `Updating memory and story resources. ${queuedNote}`,
+                `正在更新记忆与故事资料。${queuedNote}`
             );
         }
         if (normalized === 'roleplay_state_commit_started') {
             return localText(
-                'Writing story state. New messages can be sent when this finishes.',
-                '正在写入剧情状态，完成后才能发送新消息。'
+                `Writing story state. ${queuedNote}`,
+                `正在写入剧情状态。${queuedNote}`
             );
         }
         return localText(
-            'Generating a reply. New messages can be sent when this finishes.',
-            '正在生成回复，完成后才能发送新消息。'
+            'Generating a reply. New messages will be queued for after this turn.',
+            '正在生成回复，新消息会排队并在当前对话处理完后发送。'
         );
     }
 
@@ -16405,24 +16773,49 @@
     function syncBusyControls(modal, runtime = null) {
         const targetModal = modal || document.getElementById('describe_vlm_chat_modal');
         if (!targetModal) return;
-        const busyStage = String(runtime?.busyStage || state.busyStage || '').trim();
+        const activeRuntime = runtime || currentConversationRuntime();
+        const requestBusy = !!(activeRuntime?.busy || state.busy);
+        const autoplayRunning = normalizeRoleplayAutoplayState(activeRuntime?.roleplayAutoplayState).phase === 'running';
+        const isBusy = requestBusy || autoplayRunning;
+        const queueCount = Array.isArray(activeRuntime?.queuedMessages)
+            ? activeRuntime.queuedMessages.length
+            : 0;
+        const busyStage = String(activeRuntime?.busyStage || state.busyStage || '').trim();
         const busyLabel = busyControlLabel(busyStage);
         const send = targetModal.querySelector('[data-describe-vlm-chat-send]');
         const stop = targetModal.querySelector('[data-describe-vlm-chat-stop]');
         if (send) {
-            send.disabled = !!state.busy;
-            send.classList.toggle('is-busy', !!state.busy);
-            send.setAttribute('aria-disabled', state.busy ? 'true' : 'false');
-            send.setAttribute('aria-busy', state.busy ? 'true' : 'false');
-            send.setAttribute('aria-label', state.busy ? busyLabel : localText('Send', '发送'));
-            send.setAttribute('title', state.busy ? busyLabel : localText('Send', '发送'));
-            if (state.busy && busyStage) send.dataset.busyStage = busyStage;
+            const queueFull = queueCount >= MAX_QUEUED_CONVERSATION_MESSAGES;
+            const queueResume = !isBusy && !!activeRuntime?.queuePaused && queueCount > 0;
+            send.disabled = isBusy && queueFull;
+            send.classList.toggle('is-busy', isBusy);
+            send.setAttribute('aria-disabled', isBusy && queueFull ? 'true' : 'false');
+            send.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+            send.setAttribute(
+                'aria-label',
+                isBusy
+                    ? localText('Queue message', '排队发送')
+                    : queueResume
+                        ? localText('Resume queued messages', '继续发送排队消息')
+                        : localText('Send', '发送')
+            );
+            send.setAttribute(
+                'title',
+                queueFull && isBusy
+                    ? localText('The message queue is full.', '发送队列已满。')
+                    : isBusy
+                        ? `${localText('Queue message', '排队发送')} · ${queueCount}/${MAX_QUEUED_CONVERSATION_MESSAGES}`
+                        : queueResume
+                            ? localText('Resume queued messages', '继续发送排队消息')
+                        : localText('Send', '发送')
+            );
+            if (isBusy && busyStage) send.dataset.busyStage = busyStage;
             else delete send.dataset.busyStage;
         }
         if (stop) {
-            stop.hidden = !state.busy;
-            stop.disabled = !state.busy;
-            stop.setAttribute('aria-hidden', state.busy ? 'false' : 'true');
+            stop.hidden = !requestBusy;
+            stop.disabled = !requestBusy;
+            stop.setAttribute('aria-hidden', requestBusy ? 'false' : 'true');
         }
     }
 
@@ -16539,6 +16932,10 @@
         const conversationId = runtime.conversationId;
         const requestId = runtime.activeRequestId;
         runtime.requestToken += 1;
+        if (runtime.queuedMessages.length) {
+            runtime.queuePaused = true;
+            runtime.queuedMessageInFlightId = '';
+        }
         runtime.busy = false;
         runtime.busyStage = '';
         abortActiveChatRequest(runtime);
@@ -16603,6 +17000,124 @@
             state.pendingImages = runtime.pendingImages;
             renderPendingImages();
         }
+    }
+
+    function enqueueConversationMessage(runtime, modal) {
+        if (!runtime) return false;
+        const input = modal?.querySelector?.('[data-describe-vlm-chat-input]');
+        const inputSnapshot = String(input?.value || '');
+        const content = inputSnapshot.trim();
+        const images = limitReferenceMedia(runtime.pendingImages).slice();
+        if (!content && !images.length) return false;
+        if (!Array.isArray(runtime.queuedMessages)) runtime.queuedMessages = [];
+        if (runtime.queuedMessages.length >= MAX_QUEUED_CONVERSATION_MESSAGES) {
+            setStatus(localText(
+                'The message queue is full. Wait for a queued turn to start before adding another.',
+                '发送队列已满，请等一条排队消息开始后再添加。'
+            ), true);
+            return false;
+        }
+        runtime.queuedMessages.push({
+            id: uid('describe_vlm_chat_queued'),
+            content,
+            images
+        });
+        runtime.queuePaused = false;
+        consumeSentComposerState(input, inputSnapshot, images, runtime);
+        if (isCurrentConversationRuntime(runtime)) {
+            renderMessages();
+            syncBusyControls(modal, runtime);
+        }
+        return true;
+    }
+
+    function renderQueuedConversationMessages(runtime) {
+        const queued = Array.isArray(runtime?.queuedMessages) ? runtime.queuedMessages : [];
+        return queued.map((item, index) => {
+            const id = String(item?.id || '');
+            const isPreparing = id && id === runtime.queuedMessageInFlightId;
+            const status = isPreparing
+                ? localText('Preparing to send', '准备发送')
+                : runtime.queuePaused
+                    ? localText('Paused', '已暂停')
+                    : `${localText('Queued', '排队中')} · ${index + 1}`;
+            const images = Array.isArray(item?.images) ? item.images.map(imageSummary) : [];
+            const removeTitle = isPreparing
+                ? localText('Cancel preparation and remove', '取消准备并移除')
+                : localText('Remove queued message', '移除排队消息');
+            return `<div class="describe-vlm-chat-msg is-user is-queued" data-describe-vlm-chat-queued-message="${escapeHtml(id)}">
+    <div class="describe-vlm-chat-msg-head"><b>${escapeHtml(t('You', '你'))}</b><span class="describe-vlm-chat-queued-status"><i class="fa-solid ${isPreparing ? 'fa-spinner fa-spin' : 'fa-clock'}" aria-hidden="true"></i>${escapeHtml(status)}</span><button type="button" data-describe-vlm-chat-queue-remove="${escapeHtml(id)}" title="${escapeHtml(removeTitle)}" aria-label="${escapeHtml(removeTitle)}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+    ${renderMessageImages(images, [])}
+    ${item?.content ? `<p>${escapeHtml(item.content)}</p>` : ''}
+</div>`;
+        }).join('');
+    }
+
+    async function drainConversationMessageQueue(runtime) {
+        const target = runtime || currentConversationRuntime();
+        if (
+            !target
+            || target.busy
+            || target.queueDraining
+            || target.queuePaused
+            || !isCurrentConversationRuntime(target)
+            || (target.archiveHydrationPending && !target.archiveHydrated)
+            || (target.archiveHydrationFailed && target.archiveHydrationRequired && !target.archiveHydrated)
+            || normalizeRoleplayAutoplayState(target.roleplayAutoplayState).phase === 'running'
+            || !Array.isArray(target.queuedMessages)
+            || !target.queuedMessages.length
+        ) return false;
+
+        target.queueDraining = true;
+        try {
+            while (
+                target.queuedMessages.length
+                && !target.busy
+                && !target.queuePaused
+                && isCurrentConversationRuntime(target)
+                && normalizeRoleplayAutoplayState(target.roleplayAutoplayState).phase !== 'running'
+            ) {
+                const item = target.queuedMessages[0];
+                if (!item?.id) {
+                    target.queuedMessages.shift();
+                    continue;
+                }
+                target.queuedMessageInFlightId = item.id;
+                renderMessages();
+                const result = await _performSendMessage({
+                    runtime: target,
+                    messageOverride: String(item.content || ''),
+                    pendingImagesOverride: Array.isArray(item.images) ? item.images.slice() : [],
+                    queuedMessageId: item.id
+                });
+                const stillQueued = target.queuedMessages.some((queuedItem) => queuedItem?.id === item.id);
+                target.queuedMessageInFlightId = '';
+                if (stillQueued) {
+                    target.queuePaused = true;
+                    break;
+                }
+                if (result?.ok === false) {
+                    target.queuePaused = target.queuedMessages.length > 0;
+                    break;
+                }
+            }
+        } catch (error) {
+            target.queuePaused = target.queuedMessages.length > 0;
+            if (isCurrentConversationRuntime(target)) {
+                setStatus(localText(
+                    'A queued message could not be sent. Review the queue and retry.',
+                    '排队消息发送失败，请检查队列后重试。'
+                ), true);
+            }
+        } finally {
+            target.queuedMessageInFlightId = '';
+            target.queueDraining = false;
+            if (isCurrentConversationRuntime(target)) {
+                renderMessages();
+                syncBusyControls(document.getElementById('describe_vlm_chat_modal'), target);
+            }
+        }
+        return true;
     }
 
     function imageSummary(image) {
@@ -20412,6 +20927,7 @@
         const modal = ensureModal();
         const log = modal.querySelector('[data-describe-vlm-chat-log]');
         if (!log) return;
+        const runtime = currentConversationRuntime();
         const speakerCardStates = captureRoleplaySpeakerCardStates(log);
         const openReasoningIds = new Set(Array.from(
             log.querySelectorAll('.describe-vlm-chat-reasoning[open]')
@@ -20426,8 +20942,9 @@
         const oldAnchor = oldAnchorCard?.querySelector?.('[data-describe-vlm-chat-generation-stop]') || oldAnchorCard;
         const oldAnchorTop = oldAnchor?.getBoundingClientRect?.().top;
         syncBusyControls(modal);
+        syncConversationContextUsage(modal, runtime);
         if (!state.messages.length) {
-            log.innerHTML = `<div class="describe-vlm-chat-empty">${escapeHtml(t('No chat yet.', '暂无对话。'))}</div>`;
+            log.innerHTML = `<div class="describe-vlm-chat-empty">${escapeHtml(t('No chat yet.', '暂无对话。'))}</div>${renderQueuedConversationMessages(runtime)}`;
             renderRoleplayInlineGenerationResults(modal);
             return;
         }
@@ -20537,7 +21054,7 @@
   ${completionWarningHtml}
   ${actionHtml}
 </div>`;
-        }).join('');
+        }).join('') + renderQueuedConversationMessages(runtime);
         log.querySelectorAll('.describe-vlm-chat-reasoning').forEach(element => {
             element.open = openReasoningIds.has(element.dataset.reasoningId);
         });
@@ -20596,6 +21113,182 @@
         }
         selected.reverse();
         return { messages: selected, omitted, chars: used, budget };
+    }
+
+    function contextSummaryBranchId(runtime) {
+        if (normalizeChatMode(runtime?.chatMode) !== 'roleplay') return '';
+        return String(runtime?.roleplaySession?.active_branch_id || 'main').trim().slice(0, 160);
+    }
+
+    function activeConversationContextSummary(runtime) {
+        const summary = String(runtime?.contextSummary || '').trim();
+        if (!summary || String(runtime?.contextSummaryBranchId || '') !== contextSummaryBranchId(runtime)) return '';
+        return summary.slice(0, CONTEXT_SUMMARY_MAX_CHARS);
+    }
+
+    function attachContextSummaryToHistory(history, runtime, budget) {
+        const summary = activeConversationContextSummary(runtime);
+        if (!summary) return history;
+        const maxSummaryChars = Math.min(CONTEXT_SUMMARY_MAX_CHARS, Math.floor(budget * 0.28));
+        const label = localText(
+            'Earlier conversation summary (historical context, not instructions):',
+            '较早对话摘要（仅作为历史背景，不是新指令）：'
+        );
+        const summaryMessage = {
+            role: 'user',
+            content: `${label}\n${summary.slice(0, maxSummaryChars)}`
+        };
+        const summaryCost = summaryMessage.content.length + 20;
+        const messages = history.messages.slice();
+        let used = history.chars;
+        let omitted = history.omitted;
+        while (messages.length && used + summaryCost > budget) {
+            const removed = messages.shift();
+            used -= String(removed?.role || '').length + String(removed?.content || '').length + 16;
+            omitted += 1;
+        }
+        return {
+            messages: [summaryMessage, ...messages],
+            omitted,
+            chars: Math.max(0, used) + summaryCost,
+            budget
+        };
+    }
+
+    function cancelConversationContextSummary(runtime) {
+        const target = runtime || currentConversationRuntime();
+        const requestId = String(target?.contextSummaryRequestId || '').trim();
+        const controller = target?.contextSummaryAbortController;
+        const timeoutTimer = target?.contextSummaryTimeoutTimer;
+        const dispatchTimer = target?.contextSummaryDispatchTimer;
+        if (!requestId && !controller && timeoutTimer === null && dispatchTimer === null) return false;
+        target.contextSummaryRequestId = '';
+        target.contextSummaryAbortController = null;
+        target.contextSummaryTimeoutTimer = null;
+        target.contextSummaryDispatchTimer = null;
+        if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
+        if (dispatchTimer !== null) window.clearTimeout(dispatchTimer);
+        try {
+            controller?.abort?.();
+        } catch (error) {}
+        if (requestId) notifyBackendChatCancel(target.conversationId, requestId).catch(() => {});
+        return true;
+    }
+
+    function contextSummaryBatch(runtime) {
+        const target = runtime || currentConversationRuntime();
+        if (typeof syncConversationArchiveHistory === 'function') {
+            syncConversationArchiveHistory(target);
+        }
+        const source = (Array.isArray(target.archiveMessages) && target.archiveMessages.length
+            ? target.archiveMessages
+            : target.messages).filter((item) => (
+            !item?.pending && ['user', 'assistant'].includes(String(item?.role || '').toLowerCase())
+        ));
+        if (source.length <= MAX_HISTORY_TURNS) return null;
+
+        const branchId = contextSummaryBranchId(target);
+        const existingSummary = String(target.contextSummary || '').trim();
+        let sameBranch = existingSummary
+            && String(target.contextSummaryBranchId || '') === branchId;
+        let start = 0;
+        if (sameBranch && target.contextSummaryThroughMessageId) {
+            const marker = source.findIndex((item) => String(item?.id || '') === target.contextSummaryThroughMessageId);
+            if (marker >= 0) start = marker + 1;
+            else {
+                target.contextSummary = '';
+                target.contextSummaryThroughMessageId = '';
+                target.contextSummaryBranchId = '';
+                sameBranch = false;
+            }
+        }
+        const end = Math.max(0, source.length - MAX_HISTORY_TURNS);
+        if (start >= end) return null;
+        const rows = [];
+        let chars = 0;
+        for (const item of source.slice(start, end).slice(0, 80)) {
+            let content = historyTextForMessage(item);
+            if (!content) continue;
+            const remaining = Math.max(0, 16000 - chars);
+            if (!remaining) break;
+            content = content.slice(0, remaining);
+            chars += content.length;
+            rows.push({
+                id: String(item.id || '').slice(0, 240),
+                role: item.role === 'assistant' ? 'assistant' : 'user',
+                content
+            });
+        }
+        if (rows.length < 2 || chars < 1200) return null;
+        return {
+            summary_messages: rows.map(({ role, content }) => ({ role, content })),
+            through_message_id: rows[rows.length - 1].id,
+            previous_summary: sameBranch ? existingSummary.slice(0, CONTEXT_SUMMARY_MAX_CHARS) : '',
+            branch_id: branchId
+        };
+    }
+
+    function scheduleConversationContextSummary(runtime, options = {}) {
+        const target = runtime || currentConversationRuntime();
+        if (!['chat', 'prompt', 'guide', 'raw'].includes(normalizeChatMode(target.chatMode))) return false;
+        const batch = contextSummaryBatch(target);
+        if (!batch) return false;
+        cancelConversationContextSummary(target);
+        const requestId = uid('describe_vlm_chat_summary');
+        const controller = new AbortController();
+        target.contextSummaryRequestId = requestId;
+        target.contextSummaryAbortController = controller;
+        target.contextSummaryTimeoutTimer = window.setTimeout(() => {
+            if (target.contextSummaryRequestId === requestId) cancelConversationContextSummary(target);
+        }, 60_000);
+        const payload = {
+            request_kind: 'context_summary',
+            conversation_id: target.conversationId,
+            request_id: requestId,
+            summary_messages: batch.summary_messages,
+            previous_summary: batch.previous_summary,
+            context_summary_branch_id: batch.branch_id,
+            version: options.version || readSelectedVlmVersion(),
+            custom_api: options.customApi || readDescribeCustomApi(options.version || readSelectedVlmVersion()),
+            n_ctx: currentVlmNctx(options.version || readSelectedVlmVersion()),
+            context_window: vlmContextWindowForVersion(options.version || readSelectedVlmVersion()),
+            vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
+            kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
+            load_mtp: false,
+            unload_after_chat: !!target.unloadAfterChat,
+            free_after: !!target.unloadAfterChat,
+            __lang: state.__lang,
+            lang: state.__lang
+        };
+        target.contextSummaryDispatchTimer = window.setTimeout(() => {
+            target.contextSummaryDispatchTimer = null;
+            if (target.contextSummaryRequestId !== requestId || controller.signal.aborted) return;
+            postJson('/describe-image/vlm-chat-run', payload, { signal: controller.signal }).then((response) => {
+                if (
+                    !response?.ok
+                    || target.contextSummaryRequestId !== requestId
+                    || target.deleted
+                    || contextSummaryBranchId(target) !== batch.branch_id
+                ) return;
+                const summary = String(response.summary || '').trim().slice(0, CONTEXT_SUMMARY_MAX_CHARS);
+                if (!summary) return;
+                target.contextSummary = summary;
+                target.contextSummaryThroughMessageId = batch.through_message_id;
+                target.contextSummaryBranchId = batch.branch_id;
+                target.persistenceDirty = true;
+                scheduleConversationPersist(target, 'context_summary', 'soon');
+            }).catch(() => {}).finally(() => {
+                if (target.contextSummaryRequestId === requestId) {
+                    target.contextSummaryRequestId = '';
+                    target.contextSummaryAbortController = null;
+                    if (target.contextSummaryTimeoutTimer !== null) {
+                        window.clearTimeout(target.contextSummaryTimeoutTimer);
+                        target.contextSummaryTimeoutTimer = null;
+                    }
+                }
+            });
+        }, 0);
+        return true;
     }
 
     async function addPendingImageFiles(files) {
@@ -21138,11 +21831,17 @@
         syncBusyControls(modal);
     }
 
-    async function sendMessage() {
-        const options = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
+    async function _performSendMessage(options = {}) {
         const runtime = options.runtime || syncCurrentRuntimeFromState();
         const sendStartedAt = vlmChatPerformanceNow();
         if (runtime.busy) return;
+        const queuedMessageStillPending = () => (
+            !options.queuedMessageId
+            || (
+                isCurrentConversationRuntime(runtime)
+                && runtime.queuedMessages.some((item) => item?.id === options.queuedMessageId)
+            )
+        );
         if (runtime.archiveHydrationPending && !runtime.archiveHydrated) {
             setStatus(localText(
                 'Wait for the full conversation archive to finish restoring.',
@@ -21231,12 +21930,14 @@
         const typed = hasMessageOverride ? String(options.messageOverride || '').trim() : inputSnapshot.trim();
         if (runtime.describeMediaReferencePromise?.promise) {
             await runtime.describeMediaReferencePromise.promise;
-            if (requestToken !== runtime.requestToken) return;
+            if (requestToken !== runtime.requestToken || !queuedMessageStillPending()) return;
         }
         const replaySourceMessage = replayExistingUserMessage
             ? messages[messages.length - 1]
             : null;
-        const pendingImages = hasMessageOverride
+        const pendingImages = Array.isArray(options.pendingImagesOverride)
+            ? limitReferenceMedia(options.pendingImagesOverride)
+            : hasMessageOverride
             ? limitReferenceMedia(replaySourceMessage?._image_payloads || [])
             : limitReferenceMedia(runtime.pendingImages);
         if (!typed && !pendingImages.length && !hasMessageOverride) return;
@@ -21258,6 +21959,15 @@
         }
         const version = readSelectedVlmVersion();
         const customApi = readDescribeCustomApi(version);
+        const declaredApiContextWindow = Number(customApi?.context_window || customApi?.contextWindow || 0);
+        const configuredContextWindow = Number(currentVlmNctx(version) || 0);
+        const modelContextWindow = Number(vlmContextWindowForVersion(version) || 0);
+        const requestedContextWindow = Math.max(
+            1,
+            Number(customApi
+                ? declaredApiContextWindow || modelContextWindow || configuredContextWindow
+                : configuredContextWindow || modelContextWindow) || 8192
+        );
         const supportsImageInput = !customApi || customApi.supports_images !== false;
         const canSendImages = isDirectRun || supportsImageInput;
         const requestedPreviousImage = !pendingImages.length && runtime.autoAttachPreviousImage && Boolean(latestConversationImageCandidate(messages));
@@ -21269,13 +21979,14 @@
             ), true);
             return;
         }
+        cancelConversationContextSummary(runtime);
         if (isCurrentConversationRuntime(runtime)) updateAnswerModelIndicator(modal);
         const modelReady = isDirectRun ? true : await ensureSelectedVlmModelReady(version);
-        if (requestToken !== runtime.requestToken) return;
+        if (requestToken !== runtime.requestToken || !queuedMessageStillPending()) return;
         if (!modelReady) return;
         if (selectedMode === 'creative') {
             await ensureCreativePresetCatalog();
-            if (requestToken !== runtime.requestToken) return;
+            if (requestToken !== runtime.requestToken || !queuedMessageStillPending()) return;
             if (runtime.creativePreferenceExpanded) {
                 runtime.creativePreferenceExpanded = false;
                 // Current UI mirror: if (state.creativePreferenceExpanded)
@@ -21299,8 +22010,17 @@
         // visible message empty instead of inventing an analysis request.
         const message = isDirectRun ? directRunPrompt : typed;
         const includeCurrentPrompt = !isDirectRun && shouldSendCurrentPromptToVlm(selectedMode, message);
-        const history = buildRollingHistory(MAX_HISTORY_TURNS, HISTORY_BUDGET, messages);
-        const fullHistory = buildRollingHistory(32, FULL_HISTORY_BUDGET, messages);
+        const currentPromptForRequest = includeCurrentPrompt ? readComponentValue('positive_prompt') : '';
+        const history = attachContextSummaryToHistory(
+            buildRollingHistory(MAX_HISTORY_TURNS, HISTORY_BUDGET, messages),
+            runtime,
+            HISTORY_BUDGET
+        );
+        const fullHistory = attachContextSummaryToHistory(
+            buildRollingHistory(32, FULL_HISTORY_BUDGET, messages),
+            runtime,
+            FULL_HISTORY_BUDGET
+        );
         if (history.omitted > 0) {
             setConversationStatus(runtime, t('Older messages were automatically omitted from context.', '已自动省略较早消息以保护上下文。'));
         }
@@ -21331,7 +22051,7 @@
                 }
             }
         }
-        if (requestToken !== runtime.requestToken) return;
+        if (requestToken !== runtime.requestToken || !queuedMessageStillPending()) return;
         const estimatedUploadBytes = totalImageUploadBytes(images);
         if (images.length) {
             setConversationStatus(runtime, imageUploadStatus(images));
@@ -21372,6 +22092,7 @@
         const creativePreferences = normalizeCreativePreference(runtime.creativePreference);
         const presetCapabilities = selectedMode === 'creative' ? creativePresetCapabilitiesPayload() : [];
         const parameterProfiles = selectedMode === 'creative' ? creativeParameterProfilesPayload() : [];
+        let systemPromptChars = 0;
         if (!isDirectRun) {
             const budgetRequestId = uid('describe_vlm_chat_budget');
             const budgetResponse = await postJson('/describe-image/vlm-chat-run', {
@@ -21379,7 +22100,7 @@
                 conversation_id: runtime.conversationId,
                 request_id: budgetRequestId,
                 message,
-                current_prompt: includeCurrentPrompt ? readComponentValue('positive_prompt') : '',
+                current_prompt: currentPromptForRequest,
                 include_current_prompt: includeCurrentPrompt,
                 history: history.messages,
                 history_full: fullHistory.messages,
@@ -21393,7 +22114,7 @@
                 vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
                 kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
                 n_ctx: currentVlmNctx(version),
-                context_window: vlmContextWindowForVersion(version),
+                context_window: requestedContextWindow,
                 load_mtp: !!state.mtpEnabled,
                 custom_api: customApi,
                 chat_mode: selectedMode,
@@ -21445,7 +22166,7 @@
                 __lang: state.__lang,
                 lang: state.__lang
             });
-            if (requestToken !== runtime.requestToken) {
+            if (requestToken !== runtime.requestToken || !queuedMessageStillPending()) {
                 releaseBudgetCheckBusy(runtime, modal);
                 return;
             }
@@ -21456,6 +22177,7 @@
                 return;
             }
             const budgetReport = budgetResponse.skill_budget || {};
+            systemPromptChars = Math.max(0, Number(budgetReport.system_prompt_chars) || 0);
             if (budgetReport.system_prompt_budget_warning) {
                 setConversationStatus(runtime, systemPromptBudgetNotice(budgetReport));
             }
@@ -21467,11 +22189,22 @@
                 consumeSentComposerState(input, inputSnapshot, sentPendingImages, runtime);
             }
         }
+        if (options.queuedMessageId) {
+            const queuedIndex = runtime.queuedMessages.findIndex(
+                (item) => item?.id === options.queuedMessageId
+            );
+            if (queuedIndex < 0) {
+                releaseBudgetCheckBusy(runtime, modal);
+                return;
+            }
+            runtime.queuedMessages.splice(queuedIndex, 1);
+            runtime.queuedMessageInFlightId = '';
+        }
         let userMessage = {
             id: uid('describe_vlm_chat_user'),
             revision: 1,
             role: 'user',
-            content: isDirectRun ? inputSnapshot : message,
+            content: isDirectRun ? (hasMessageOverride ? typed : inputSnapshot) : message,
             image_count: images.length,
             images: images.map(imageSummary),
             _image_payloads: images.slice(),
@@ -21537,7 +22270,7 @@
             message,
             request_kind: isDirectRun ? 'direct_run' : '',
             direct_prompt: isDirectRun ? message : '',
-            current_prompt: includeCurrentPrompt ? readComponentValue('positive_prompt') : '',
+            current_prompt: currentPromptForRequest,
             include_current_prompt: includeCurrentPrompt,
             conversation_id: runtime.conversationId,
             request_id: requestId,
@@ -21553,7 +22286,7 @@
              vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
              kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
             n_ctx: currentVlmNctx(version),
-            context_window: vlmContextWindowForVersion(version),
+            context_window: requestedContextWindow,
             load_mtp: !!state.mtpEnabled,
             custom_api: customApi,
             chat_mode: selectedMode,
@@ -21665,17 +22398,17 @@
                         ? busyControlLabel(phase)
                         : phase === 'roleplay_director_started'
                         ? localText(
-                            'Updating story state. New messages can be sent when this finishes.',
-                            '正在计算剧情状态，完成前暂时不能发送新消息。'
+                            'Updating story state. New messages will be queued for after this turn.',
+                            '正在计算剧情状态，新消息会排队并在处理完后发送。'
                         )
                         : phase === 'roleplay_resource_update_started'
                             ? localText(
-                                'Updating memory and story resources. New messages can be sent when this finishes.',
-                                '正在更新记忆与故事资料，完成前暂时不能发送新消息。'
+                                'Updating memory and story resources. New messages will be queued for after this turn.',
+                                '正在更新记忆与故事资料，新消息会排队并在处理完后发送。'
                             )
                         : localText(
-                            'Writing story state. New messages can be sent when this finishes.',
-                            '正在写入剧情状态，完成前暂时不能发送新消息。'
+                            'Writing story state. New messages will be queued for after this turn.',
+                            '正在写入剧情状态，新消息会排队并在处理完后发送。'
                         ));
                 }
                 return;
@@ -21756,10 +22489,52 @@
         }
         const pendingIndex = messages.findIndex((item) => item.pending);
         const pendingMessageId = pendingIndex >= 0 ? messages[pendingIndex]?.id : '';
-        const completion = normalizeChatCompletion(
+        let completion = normalizeChatCompletion(
             response?.completion || response?.params?.completion,
             response?.params?.max_tokens
         );
+        if (!isDirectRun) {
+            const inputTokensReported = completion?.input_tokens;
+            const reported = inputTokensReported !== null
+                && Number.isFinite(Number(inputTokensReported));
+            const contextWindow = Math.max(
+                1,
+                Number(
+                    response?.params?.context_window
+                    || response?.params?.n_ctx
+                    || completion?.context_window
+                    || requestedContextWindow
+                ) || requestedContextWindow
+            );
+            const contextInputMessages = selectedMode === 'roleplay'
+                ? fullHistory.messages
+                : history.messages;
+            const usedTokens = reported
+                ? Math.max(0, Math.round(Number(inputTokensReported)))
+                : estimateContextTokensFromText(
+                    contextInputMessages,
+                    message,
+                    currentPromptForRequest,
+                    systemPromptChars
+                );
+            runtime.contextUsage = normalizeConversationContextUsage({
+                used_tokens: usedTokens,
+                context_window: contextWindow,
+                source: reported ? 'reported' : 'estimated',
+                model: version,
+                media_count: images.length,
+                updated_at: new Date().toISOString(),
+                message_id: pendingMessageId,
+                branch_id: selectedMode === 'roleplay'
+                    ? String(runtime.roleplaySession?.active_branch_id || 'main')
+                    : ''
+            });
+            completion = normalizeChatCompletion(Object.assign({}, completion || {}, {
+                input_tokens: usedTokens,
+                context_window: contextWindow,
+                context_usage_source: reported ? 'reported' : 'estimated'
+            }), response?.params?.max_tokens);
+        }
         const reply = response?.ok
             ? visibleReplyFromResponse(response, completion)
             : describeVlmChatFailure(response);
@@ -21967,6 +22742,9 @@
         } else {
             setConversationStatus(runtime, '');
         }
+        if (response?.ok && !completion?.output_limited && !runtime.queuedMessages.length) {
+            scheduleConversationContextSummary(runtime, { version, customApi });
+        }
         if (
             response?.ok
             && selectedMode === 'creative'
@@ -21983,6 +22761,36 @@
             }).catch(() => {});
         }
         return response;
+    }
+
+    async function sendMessage() {
+        const options = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
+        const runtime = options.runtime || syncCurrentRuntimeFromState();
+        const composerRequest = Object.keys(options).length === 0;
+        const autoplayRunning = normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState).phase === 'running';
+        if (runtime.busy || (autoplayRunning && !options.roleplayAutoplay)) {
+            if (!composerRequest) return;
+            const queued = enqueueConversationMessage(runtime, ensureModal());
+            return { ok: queued, queued };
+        }
+        if (composerRequest && (runtime.queuedMessages.length || runtime.queuePaused)) {
+            enqueueConversationMessage(runtime, ensureModal());
+            runtime.queuePaused = false;
+            return drainConversationMessageQueue(runtime);
+        }
+        try {
+            return await _performSendMessage(options);
+        } finally {
+            if (
+                !options.roleplayAutoplay
+                && !runtime.busy
+                && !runtime.queuePaused
+                && runtime.queuedMessages.length
+                && isCurrentConversationRuntime(runtime)
+            ) {
+                drainConversationMessageQueue(runtime);
+            }
+        }
     }
 
     function updateRoleplayAutoplayState(runtime, patch = {}, message = '', options = {}) {
@@ -22073,12 +22881,24 @@
         }
         if (response?.aborted || response?.cancelled || normalizeRoleplayAutoplayState(target.roleplayAutoplayState).phase !== 'running') return '';
         if (!response?.ok) {
+            const failure = describeVlmChatFailure(response);
+            const failureTemplate = 'Player proxy request failed: {failure} (request {request_id}).';
+            const failureMessage = localText(
+                failureTemplate,
+                String(window.localization?.[failureTemplate]
+                    || '玩家代理请求失败：{failure}（请求编号：{request_id}）。')
+            )
+                .replace(/\{failure\}|\{request_id\}/g, (placeholder) => (
+                    placeholder === '{failure}'
+                        ? failure
+                        : String(response?.error_id || requestId).trim().slice(0, 160)
+                ));
             updateRoleplayAutoplayState(target, {
                 phase: 'error',
                 request_id: '',
                 abort_controller: null,
-                error: describeVlmChatFailure(response)
-            }, describeVlmChatFailure(response));
+                error: failureMessage
+            }, failureMessage);
             return '';
         }
         const text = visibleReplyFromResponse(response, normalizeChatCompletion(response?.completion));
@@ -22208,8 +23028,8 @@
                 'Talk with the assistant to name your character before starting autoplay.',
                 '请先通过对话确定角色名字，再开始托管。'
             ), false);
-            return false;
-        }
+        return false;
+    }
         if (!ensureRoleplaySceneReady(target, document.getElementById('describe_vlm_chat_modal'), true)) return false;
         const configuredTarget = Math.max(1, Math.min(100, Math.round(Number(session.autoplay_config.target_turns) || 5)));
         const continuous = !stepOnly && !!session.autoplay_config.continuous;
@@ -22324,6 +23144,7 @@
             updateRoleplayAutoplayState(target, { phase: 'idle', target_turns: targetTurns });
         }
         scheduleConversationPersist(target, 'roleplay_autoplay_complete', 'soon');
+        if (target.queuedMessages.length) drainConversationMessageQueue(target);
         return true;
     }
 
@@ -22431,6 +23252,14 @@
             if (file && modal) handleVlmSkillUpload(file, modal).catch(() => {
                 setVlmSkillEditorStatus(modal, localText('The skill file could not be read.', '无法读取技能文件。'), true);
             });
+            return;
+        }
+        const skillPackageFile = evt.target.closest?.('[data-describe-vlm-chat-skill-package-file]');
+        if (skillPackageFile) {
+            const modal = document.getElementById('describe_vlm_chat_modal');
+            const file = skillPackageFile.files?.[0];
+            skillPackageFile.value = '';
+            if (file && modal) importVlmSkillPackageFile(file, modal).catch(() => {});
             return;
         }
         const skillCheckbox = evt.target.closest?.('[data-describe-vlm-chat-skill]');
@@ -22734,6 +23563,10 @@
         }
         if (evt.target.closest('[data-describe-vlm-chat-skill-upload]')) {
             modal.querySelector('[data-describe-vlm-chat-skill-upload-file]')?.click();
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-package-upload]')) {
+            modal.querySelector('[data-describe-vlm-chat-skill-package-file]')?.click();
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-skill-editor-close]')) {
@@ -23182,6 +24015,36 @@
         }
         if (evt.target.closest('[data-describe-vlm-chat-stop]')) {
             stopCurrentChatReply();
+            return;
+        }
+        const queuedMessageRemove = evt.target.closest('[data-describe-vlm-chat-queue-remove]');
+        if (queuedMessageRemove) {
+            const runtime = syncCurrentRuntimeFromState();
+            const queuedId = String(queuedMessageRemove.getAttribute('data-describe-vlm-chat-queue-remove') || '');
+            const queuedIndex = runtime.queuedMessages.findIndex((item) => item?.id === queuedId);
+            if (queuedIndex >= 0 && queuedId !== runtime.queuedMessageInFlightId) {
+                runtime.queuedMessages.splice(queuedIndex, 1);
+                runtime.queuePaused = false;
+                renderMessages();
+                syncBusyControls(modal, runtime);
+                if (!runtime.busy && runtime.queuedMessages.length) {
+                    drainConversationMessageQueue(runtime);
+                }
+            } else if (queuedIndex >= 0) {
+                runtime.requestToken += 1;
+                runtime.queuedMessageInFlightId = '';
+                runtime.busy = false;
+                runtime.busyStage = '';
+                if (isCurrentConversationRuntime(runtime)) {
+                    state.requestToken = runtime.requestToken;
+                    state.busy = false;
+                    state.busyStage = '';
+                }
+                runtime.queuedMessages.splice(queuedIndex, 1);
+                runtime.queuePaused = false;
+                renderMessages();
+                syncBusyControls(modal, runtime);
+            }
             return;
         }
         const sendButton = evt.target.closest('[data-describe-vlm-chat-send]');

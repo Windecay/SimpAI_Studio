@@ -178,24 +178,37 @@
             return itemsCache;
         }
 
+        function requireWorkbenchTemplateProject(rawProject) {
+            const project = rawProject && typeof rawProject === 'object' && rawProject.project && typeof rawProject.project === 'object'
+                ? rawProject.project
+                : rawProject;
+            if (!project || typeof project !== 'object' || Array.isArray(project)
+                || !Array.isArray(project.nodes) || project.nodes.length === 0) {
+                throw new Error(t('Template data is invalid or contains no nodes.', '模板数据无效或不含节点。'));
+            }
+            return project;
+        }
         async function loadWorkbenchTemplateData(item) {
             if (item?.source === 'user' || String(item?.path || '').startsWith('user:')) {
                 const templateId = String(item?.id || String(item?.path || '').replace(/^user:/, '')).trim();
                 const response = await call(apiSource, 'sendTemplateLoadRequest', null, templateId);
-                if (response?.ok && response.project) return response.project;
+                if (response?.ok && response.project) return requireWorkbenchTemplateProject(response.project);
                 const error = response?.error || 'unknown';
-                call(uiSource, 'showToast', null, t('Failed to load user template: {error}', '读取用户模板失败：{error}').replace('{error}', error));
-                return call(projectSource, 'createFallbackProject', null);
+                throw new Error(t('Failed to load user template: {error}', '读取用户模板失败：{error}').replace('{error}', error));
             }
             if (item?.path) {
                 try {
                     const response = await call(networkSource, 'fetchTemplateProject', null, item.path, { cache: 'no-store' });
-                    if (response?.ok) return await response.json();
+                    if (!response?.ok) {
+                        throw new Error('template request failed (' + (response?.status || 'unknown') + ')');
+                    }
+                    return requireWorkbenchTemplateProject(await response.json());
                 } catch (err) {
-                    warn('[SimpAI Canvas] template fetch failed, using fallback demo:', err);
+                    warn('[SimpAI Canvas] template fetch failed:', err);
+                    throw err;
                 }
             }
-            return call(projectSource, 'createFallbackProject', null);
+            throw new Error(t('Template path is missing.', '模板路径缺失。'));
         }
 
         function invalidateTemplateLibraryItems() {

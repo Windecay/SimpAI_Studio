@@ -140,10 +140,13 @@ class VAE:
         is_wan=False,
         is_flux2=False,
         is_mugen=False,
+        is_qwen_image21=False,
         trace_tensor_stats=False,
     ):
         if no_init:
             return
+        self.input_channels = None
+        self.pad_channel_value = None
 
         if not is_wan:
             self.upscale_ratio = 8
@@ -151,11 +154,18 @@ class VAE:
             self.downscale_ratio = 8
             self.downscale_index_formula = None
             self.latent_dim = 2
-            self.latent_channels = 32 if is_mugen else int(model.config.latent_channels)  # 4 | 16
+            self.latent_channels = int(model.z_dim) if is_qwen_image21 else (32 if is_mugen else int(model.config.latent_channels))  # 4 | 16 | 64
             self.memory_used_encode = lambda shape, dtype: (1767 * shape[2] * shape[3]) * memory_management.dtype_size(dtype)
             self.memory_used_decode = lambda shape, dtype: (2178 * shape[2] * shape[3] * 64) * memory_management.dtype_size(dtype)
 
-            if is_flux2:
+            if is_qwen_image21:
+                self.upscale_ratio = 16
+                self.downscale_ratio = 16
+                self.input_channels = 4
+                self.pad_channel_value = 1.0
+                self.memory_used_encode = lambda shape, dtype: 1200 * shape[2] * shape[3] * memory_management.dtype_size(dtype)
+                self.memory_used_decode = lambda shape, dtype: 1800 * shape[2] * shape[3] * (16 * 16) * memory_management.dtype_size(dtype)
+            elif is_flux2:
                 self.upscale_ratio = 16
                 self.downscale_ratio = 16
                 self.latent_channels = 128
@@ -171,7 +181,7 @@ class VAE:
             self.memory_used_encode = lambda shape, dtype: (1500 if shape[2] <= 4 else 6000) * shape[3] * shape[4] * memory_management.dtype_size(dtype)
             self.memory_used_decode = lambda shape, dtype: (2200 if shape[2] <= 4 else 7000) * shape[3] * shape[4] * (8 * 8) * memory_management.dtype_size(dtype)
 
-        self.output_channels = 3
+        self.output_channels = 4 if is_qwen_image21 else 3
         self.first_stage_model = model.eval()
 
         self.device = device or memory_management.vae_device()
@@ -184,6 +194,7 @@ class VAE:
 
         self.patcher = ModelPatcher(self.first_stage_model, load_device=self.device, offload_device=offload_device)
         self.is_wan = is_wan
+        self.is_qwen_image21 = is_qwen_image21
 
     def clone(self):
         n = VAE(no_init=True)
@@ -191,12 +202,20 @@ class VAE:
         n.memory_used_encode = self.memory_used_encode
         n.memory_used_decode = self.memory_used_decode
         n.downscale_ratio = self.downscale_ratio
+        n.upscale_ratio = self.upscale_ratio
+        n.upscale_index_formula = self.upscale_index_formula
+        n.downscale_index_formula = self.downscale_index_formula
         n.latent_channels = self.latent_channels
+        n.latent_dim = self.latent_dim
+        n.output_channels = self.output_channels
+        n.input_channels = self.input_channels
+        n.pad_channel_value = self.pad_channel_value
         n.first_stage_model = self.first_stage_model
         n.device = self.device
         n.vae_dtype = self.vae_dtype
         n.output_device = self.output_device
         n.is_wan = self.is_wan
+        n.is_qwen_image21 = self.is_qwen_image21
         n.trace_tensor_stats = self.trace_tensor_stats
         return n
 
@@ -365,8 +384,13 @@ class VAE:
         maximum = self.upscale_ratio[0](self.downscale_ratio[0](pixel_samples.shape[2]))
         return self.encode_tiled_3d(pixel_samples[:, :, :maximum], **args)
 
-    @staticmethod
-    def process_input(image: torch.Tensor):
+    def process_input(self, image: torch.Tensor):
+        if self.input_channels is not None and image.shape[1] < self.input_channels:
+            padding = image.new_full(
+                (image.shape[0], self.input_channels - image.shape[1], *image.shape[2:]),
+                self.pad_channel_value,
+            )
+            image = torch.cat((image, padding), dim=1)
         return image * 2.0 - 1.0
 
     @staticmethod

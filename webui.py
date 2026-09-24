@@ -15996,6 +15996,47 @@ async def describe_image_vlm_skills_endpoint(request: Request, payload: dict = B
         )
 
 
+@app.post("/describe-image/vlm-skills/import-package")
+async def describe_image_vlm_skill_package_endpoint(request: Request):
+    maximum = describe_vlm_chat.vlm_skill_runtime.MAX_SKILL_PACKAGE_ARCHIVE_BYTES
+    try:
+        content_length = int(request.headers.get("content-length") or 0)
+    except (TypeError, ValueError):
+        content_length = 0
+    if content_length > maximum:
+        return JSONResponse(
+            {"ok": False, "code": "skill_package_too_large", "max_bytes": maximum},
+            status_code=413,
+        )
+    try:
+        archive = bytearray()
+        async for chunk in request.stream():
+            if len(archive) + len(chunk) > maximum:
+                return JSONResponse(
+                    {"ok": False, "code": "skill_package_too_large", "max_bytes": maximum},
+                    status_code=413,
+                )
+            archive.extend(chunk)
+        access = _vlm_skill_access_for_request(request)
+        result = await run_in_threadpool(
+            describe_vlm_chat.import_vlm_skill_package,
+            bytes(archive),
+            request.query_params.get("filename", ""),
+            request.query_params.get("scope", "project"),
+            access=access,
+        )
+        status = 200 if result.get("ok") else (
+            403 if result.get("code") in {"skill_forbidden", "skill_read_only"} else 400
+        )
+        return JSONResponse(result, status_code=status)
+    except Exception as e:
+        logger.exception("Describe Image VLM skill package import failed")
+        return JSONResponse(
+            {"ok": False, "code": "skill_package_import_failed", "details": str(e)},
+            status_code=500,
+        )
+
+
 @app.post("/describe-image/vlm-tools")
 async def describe_image_vlm_tools_endpoint(request: Request, payload: dict = Body(default={})):
     try:
@@ -17551,7 +17592,15 @@ async def describe_image_vlm_chat_cancel_endpoint(payload: dict = Body(default={
             conversation_id,
             request_id,
         )
-        result["canvas_cancelled"] = bool(canvas_result.get("cancelled"))
+        summary_canvas_result = canvas_vlm_runtime.request_canvas_vlm_cancel(
+            "",
+            "",
+            f"{conversation_id}:context-summary",
+            request_id,
+        )
+        result["canvas_cancelled"] = bool(
+            canvas_result.get("cancelled") or summary_canvas_result.get("cancelled")
+        )
         return JSONResponse(result, status_code=200)
     except Exception as e:
         import traceback

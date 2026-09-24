@@ -564,6 +564,33 @@ class QwenImage(BASE):
             return {"qwen25_7b": "text_encoder"}
 
 
+class QwenImage21(BASE):
+    huggingface_repo = "Qwen/Qwen-Image-2.1"
+
+    unet_config = {
+        "image_model": "qwen_image21",
+    }
+
+    sampling_settings = {
+        "shift": 0.69,
+    }
+
+    memory_usage_factor = 6.0
+
+    unet_extra_config = {}
+    latent_format = latent.QwenImage21
+    supported_inference_dtypes = [torch.bfloat16, torch.float32]
+
+    vae_key_prefix = ["vae."]
+    text_encoder_key_prefix = ["text_encoders."]
+    unet_target = "transformer"
+
+    def clip_target(self, state_dict: dict):
+        return {"qwen3vl_8b.transformer": "text_encoder"}
+
+    def model_type(self, state_dict):
+        return ModelType.FLUX
+
 class Krea2(BASE):
     huggingface_repo = "krea/Krea-2-Turbo"
 
@@ -636,6 +663,7 @@ models = [
     WAN21_T2V,
     WAN21_I2V,
     QwenImage,
+    QwenImage21,
     Krea2,
     ErnieImage,
 ]

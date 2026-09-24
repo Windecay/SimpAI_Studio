@@ -399,6 +399,8 @@ def convert_diffusers_mmdit(state_dict, output_prefix=""):
         n_layers = count_blocks(state_dict, "layers.{}.")
         dim = state_dict["noise_refiner.0.attention.to_k.weight"].shape[0]
         sd_map = z_image_to_diffusers({"n_layers": n_layers, "dim": dim}, output_prefix=output_prefix)
+    elif all(key in state_dict for key in ("txt_in.text_norm.weight", "modulation.1.weight", "img_in.weight")):  # Qwen-Image-2.1
+        return state_dict
     elif "x_embedder.weight" in state_dict:  # Flux
         depth = count_blocks(state_dict, "transformer_blocks.{}.")
         depth_single_blocks = count_blocks(state_dict, "single_transformer_blocks.{}.")

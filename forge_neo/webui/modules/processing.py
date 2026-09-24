@@ -1566,7 +1566,14 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
 
                 save_intermediate(image, i)
 
-                image = images.resize_image(0, image, target_width, target_height, upscaler_name=self.hr_upscaler)
+                image = images.resize_image(
+                    0,
+                    image,
+                    target_width,
+                    target_height,
+                    upscaler_name=self.hr_upscaler,
+                    force_RGBA=args.dynamic_args.qwen_image21,
+                )
                 image = np.array(image).astype(np.float32) / 255.0
                 image = np.moveaxis(image, 2, 0)
                 batch_images.append(image)

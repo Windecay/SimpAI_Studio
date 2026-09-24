@@ -7,9 +7,14 @@ directory and it never accepts a filesystem path from a chat request.
 import hashlib
 import os
 import re
+import shutil
+import stat
 import tempfile
+import zipfile
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
+from pathlib import PurePosixPath
 
 import shared
 from modules import access_mode
@@ -18,6 +23,10 @@ from modules.canvas_workbench_request_identity import resolve_local_workspace_di
 
 SKILL_FILE_NAME = "SKILL.md"
 DEFAULT_MAX_SKILL_BYTES = 100_000
+MAX_SKILL_PACKAGE_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_SKILL_PACKAGE_FILES = 512
+MAX_SKILL_PACKAGE_FILE_BYTES = 32 * 1024 * 1024
+MAX_SKILL_PACKAGE_TOTAL_BYTES = 64 * 1024 * 1024
 MAX_DESCRIPTION_CHARS = 1_024
 MAX_FRONTMATTER_BYTES = 24_000
 MAX_SKILLS = 128
@@ -43,6 +52,7 @@ _SAFE_FRONTMATTER_KEYS = {
     "metadata",
 }
 _SKILL_NAME_RE = re.compile(r"^[^/\\\x00\r\n]{1,96}$")
+_WINDOWS_INVALID_PATH_CHARS = set('<>:"/\\|?*')
 
 
 def studio_root():
@@ -244,6 +254,15 @@ def _parse_frontmatter(frontmatter):
 def _valid_skill_name(name):
     value = str(name or "").strip()
     return bool(_SKILL_NAME_RE.fullmatch(value)) and value not in {".", ".."}
+
+
+def _valid_skill_package_name(name):
+    value = str(name or "").strip()
+    if not _valid_skill_name(value) or value.endswith((".", " ")) or any(
+        char in _WINDOWS_INVALID_PATH_CHARS or ord(char) < 32 for char in value
+    ):
+        return False
+    return not re.match(r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", value, re.I)
 
 
 def _description_from_body(body):
@@ -703,6 +722,203 @@ def save_skill(name, content, project_root=None, scope="project", overwrite=Fals
     if diagnostic:
         result["diagnostic"] = diagnostic
     return result
+
+
+def import_skill_package(archive_bytes, filename="", project_root=None, scope="project", access=None):
+    """Import one complete skill folder without replacing an existing skill."""
+    if not isinstance(archive_bytes, (bytes, bytearray, memoryview)):
+        return {"ok": False, "code": "skill_package_invalid"}
+    archive_bytes = bytes(archive_bytes)
+    if not archive_bytes or len(archive_bytes) > MAX_SKILL_PACKAGE_ARCHIVE_BYTES:
+        return {
+            "ok": False,
+            "code": "skill_package_too_large" if archive_bytes else "skill_package_invalid",
+            "max_bytes": MAX_SKILL_PACKAGE_ARCHIVE_BYTES,
+        }
+
+    normalized_scope = str(scope or "project").strip().lower()
+    if normalized_scope not in {"project", "user"}:
+        return {"ok": False, "code": "skill_invalid_scope"}
+    policy = _access(access)
+    if normalized_scope not in policy.write_scopes:
+        return {"ok": False, "code": "skill_forbidden"}
+    base_root = (
+        Path(project_root or studio_root()).expanduser().absolute() / "skills"
+        if normalized_scope == "project"
+        else policy.user_root
+    )
+    if not base_root or not _normal_path(base_root):
+        return {"ok": False, "code": "skill_root_invalid"}
+
+    temp_root = None
+    try:
+        with zipfile.ZipFile(BytesIO(archive_bytes), "r") as archive:
+            entries = archive.infolist()
+            if not entries or len(entries) > MAX_SKILL_PACKAGE_FILES:
+                return {"ok": False, "code": "skill_package_file_limit"}
+
+            normalized_entries = []
+            seen_paths = set()
+            declared_total = 0
+            skill_paths = []
+            for info in entries:
+                raw_name = str(info.filename or "")
+                if not raw_name or "\\" in raw_name or "\x00" in raw_name:
+                    return {"ok": False, "code": "skill_package_path_invalid"}
+                is_directory = info.is_dir()
+                name = raw_name[:-1] if is_directory and raw_name.endswith("/") else raw_name
+                path = PurePosixPath(name)
+                parts = path.parts
+                if (
+                    path.is_absolute()
+                    or not parts
+                    or any(
+                        part in {"", ".", ".."}
+                        or ":" in part
+                        or part.endswith((".", " "))
+                        or any(char in '<>"|?*' for char in part)
+                        or any(ord(char) < 32 for char in part)
+                        or re.match(r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", part, re.I)
+                        for part in parts
+                    )
+                ):
+                    return {"ok": False, "code": "skill_package_path_invalid"}
+                path_key = "/".join(parts).casefold()
+                if path_key in seen_paths:
+                    return {"ok": False, "code": "skill_package_duplicate_path"}
+                seen_paths.add(path_key)
+                mode = (info.external_attr >> 16) & 0xFFFF
+                file_type = stat.S_IFMT(mode)
+                if file_type == stat.S_IFLNK or file_type not in {0, stat.S_IFREG, stat.S_IFDIR}:
+                    return {"ok": False, "code": "skill_package_link_not_allowed"}
+                if info.flag_bits & 0x1:
+                    return {"ok": False, "code": "skill_package_encrypted"}
+                if info.compress_type not in {
+                    zipfile.ZIP_STORED,
+                    zipfile.ZIP_DEFLATED,
+                    zipfile.ZIP_BZIP2,
+                    zipfile.ZIP_LZMA,
+                }:
+                    return {"ok": False, "code": "skill_package_compression_unsupported"}
+                if not is_directory:
+                    if info.file_size < 0 or info.file_size > MAX_SKILL_PACKAGE_FILE_BYTES:
+                        return {"ok": False, "code": "skill_package_file_too_large"}
+                    declared_total += info.file_size
+                    if declared_total > MAX_SKILL_PACKAGE_TOTAL_BYTES:
+                        return {"ok": False, "code": "skill_package_unpacked_too_large"}
+                    if info.file_size > 1024 * 1024 and (
+                        not info.compress_size or info.file_size / info.compress_size > 500
+                    ):
+                        return {"ok": False, "code": "skill_package_compression_ratio"}
+                    normalized_entries.append((info, parts, False))
+                    if len(parts) and parts[-1].casefold() == SKILL_FILE_NAME.casefold():
+                        skill_paths.append(parts)
+                else:
+                    normalized_entries.append((info, parts, True))
+
+            if len(skill_paths) != 1 or skill_paths[0][-1] != SKILL_FILE_NAME:
+                return {"ok": False, "code": "skill_package_skill_file_required"}
+            skill_parts = skill_paths[0]
+            prefix = skill_parts[0] if len(skill_parts) > 1 else ""
+            if prefix and (
+                len(skill_parts) != 2
+                or any(parts[0] != prefix for _info, parts, _directory in normalized_entries)
+            ):
+                return {"ok": False, "code": "skill_package_layout_invalid"}
+
+            package_files = []
+            actual_total = 0
+            skill_content = None
+            for info, parts, is_directory in normalized_entries:
+                relative_parts = parts[1:] if prefix else parts
+                if not relative_parts:
+                    continue
+                if is_directory:
+                    package_files.append((info, relative_parts, True))
+                    continue
+                relative_path = PurePosixPath(*relative_parts)
+                if relative_path == PurePosixPath(SKILL_FILE_NAME):
+                    if info.file_size > DEFAULT_MAX_SKILL_BYTES:
+                        return {"ok": False, "code": "skill_too_large"}
+                data = bytearray()
+                with archive.open(info, "r") as source:
+                    while True:
+                        chunk = source.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        actual_total += len(chunk)
+                        if actual_total > MAX_SKILL_PACKAGE_TOTAL_BYTES or len(data) + len(chunk) > MAX_SKILL_PACKAGE_FILE_BYTES:
+                            return {"ok": False, "code": "skill_package_unpacked_too_large"}
+                        data.extend(chunk)
+                if len(data) != info.file_size:
+                    return {"ok": False, "code": "skill_package_corrupt"}
+                if relative_path == PurePosixPath(SKILL_FILE_NAME):
+                    try:
+                        skill_content = bytes(data).decode("utf-8")
+                    except UnicodeError:
+                        return {"ok": False, "code": "skill_package_skill_file_encoding"}
+                package_files.append((info, relative_parts, False, bytes(data)))
+
+            if skill_content is None:
+                return {"ok": False, "code": "skill_package_skill_file_required"}
+            frontmatter, _body = _extract_frontmatter(skill_content)
+            if skill_content.lstrip("\ufeff").startswith("---") and frontmatter is None:
+                return {"ok": False, "code": "skill_invalid_metadata"}
+            metadata, _keys = _parse_frontmatter(frontmatter) if frontmatter is not None else ({}, [])
+            fallback_name = PurePosixPath(str(filename or "")).stem if not prefix else prefix
+            skill_name = str(metadata.get("name") or fallback_name or "").strip()
+            if not _valid_skill_package_name(skill_name):
+                return {"ok": False, "code": "skill_invalid_name"}
+            if len(str(metadata.get("description") or "")) > MAX_DESCRIPTION_CHARS:
+                return {"ok": False, "code": "skill_description_too_long"}
+
+            existing_names = {
+                str(item.get("name") or "").casefold()
+                for item in list_skill_summaries(project_root, access=policy)
+            }
+            if skill_name.casefold() in existing_names:
+                return {"ok": False, "code": "skill_exists", "name": skill_name}
+
+            base_root.mkdir(parents=True, exist_ok=True)
+            if not _normal_path(base_root):
+                return {"ok": False, "code": "skill_root_invalid"}
+            target = base_root / skill_name
+            if target.exists():
+                return {"ok": False, "code": "skill_exists", "name": skill_name}
+            temp_root = Path(tempfile.mkdtemp(prefix=".skill-import-", dir=str(base_root)))
+            package_root = temp_root / "package"
+            package_root.mkdir()
+            for entry in package_files:
+                info, relative_parts, is_directory = entry[:3]
+                destination = package_root.joinpath(*relative_parts)
+                if is_directory:
+                    destination.mkdir(parents=True, exist_ok=True)
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with destination.open("xb") as handle:
+                    handle.write(entry[3])
+            if not _normal_path(package_root) or not (package_root / SKILL_FILE_NAME).is_file():
+                return {"ok": False, "code": "skill_package_layout_invalid"}
+            try:
+                os.rename(package_root, target)
+            except FileExistsError:
+                return {"ok": False, "code": "skill_exists", "name": skill_name}
+            root_info = {"path": str(base_root), "scope": normalized_scope, "source": "ui"}
+            summary, diagnostic = _parse_skill_file(target / SKILL_FILE_NAME, root_info)
+            return {
+                "ok": True,
+                "name": skill_name,
+                "scope": normalized_scope,
+                "path": str(target.resolve(strict=False)),
+                "files": sum(1 for _info, _parts, is_dir, *_rest in package_files if not is_dir),
+                "skill": summary,
+                "diagnostic": diagnostic,
+            }
+    except (OSError, zipfile.BadZipFile, RuntimeError, ValueError, NotImplementedError):
+        return {"ok": False, "code": "skill_package_invalid"}
+    finally:
+        if temp_root is not None:
+            shutil.rmtree(temp_root, ignore_errors=True)
 
 
 def build_skill_catalog_text(skills=None, project_root=None, include_user=True, lang="cn", max_chars=6000, access=None):

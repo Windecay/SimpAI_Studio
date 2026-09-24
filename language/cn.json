@@ -1,4 +1,5 @@
 {
+  "Player proxy request failed: {failure} (request {request_id}).": "玩家代理请求失败：{failure}（请求编号：{request_id}）。",
   "Target Face ID": "目标人脸编号",
   "Detect Target Faces": "检测目标人脸",
   "Detecting Target Faces": "正在检测人脸",

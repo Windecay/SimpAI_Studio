@@ -6876,6 +6876,10 @@ def _preset_dcfg_update(preset: str, *, is_img2img: bool = False, is_hires: bool
     )
 
 
+def _preset_img2img_denoising_strength(preset: str) -> float:
+    return 1.0 if str(preset or "").strip().casefold() == "qwen21" else 0.6
+
+
 def _preset_changed(preset: str):
     preset_key = str(preset or "").strip().lower()
     if preset_key in UI_PRESETS:
@@ -6907,6 +6911,7 @@ def _preset_changed(preset: str):
         int(img_defaults["height"]),
         float(img_defaults["cfg_scale"]),
         _preset_dcfg_update(preset, is_img2img=True),
+        _preset_img2img_denoising_strength(preset),
         int(img_defaults["batch_size"]),
         img_defaults["sampler"],
         img_defaults["scheduler"],
@@ -12220,8 +12225,8 @@ def _create_integrated_controls(
         controls["image_stitch_enabled"] = image_stitch_enabled
         gr.Markdown(
             _label(
-                "Anima image editing: enable this section, upload reference images, and use the required Edit LoRA.",
-                "Anima 图像编辑：启用此项后上传参考图，并使用对应的编辑 LoRA。",
+                "Add reference images for multi-image editing. Anima requires its Edit LoRA.",
+                "上传多张参考图进行图像编辑。Anima 还需要对应的编辑 LoRA。",
             ),
             elem_classes=["forge-neo-muted-note"],
         )
@@ -13804,7 +13809,7 @@ def create_app() -> gr.Blocks:
                                     img_denoising_strength = gr.Slider(
                                         0,
                                         1,
-                                        value=0.6,
+                                        value=_preset_img2img_denoising_strength(default_preset),
                                         step=0.01,
                                         label=_label("Denoising Strength", "重绘幅度"),
                                         elem_id="forge_neo_img2img_denoising_strength",
@@ -18255,6 +18260,7 @@ def create_app() -> gr.Blocks:
                 img_height,
                 img_cfg_scale,
                 img_distilled_cfg_scale,
+                img_denoising_strength,
                 img_batch_size,
                 img_sampler,
                 img_scheduler,

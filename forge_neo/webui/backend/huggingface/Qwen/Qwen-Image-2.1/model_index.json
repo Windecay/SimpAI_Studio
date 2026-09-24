@@ -1,0 +1,20 @@
+{
+  "_class_name": "QwenImage21Pipeline",
+  "_diffusers_version": "0.37.0.dev0",
+  "tokenizer": [
+    "transformers",
+    "Qwen2TokenizerFast"
+  ],
+  "text_encoder": [
+    "transformers",
+    "Qwen3VLForConditionalGeneration"
+  ],
+  "transformer": [
+    "diffusers",
+    "QwenImage21Transformer2DModel"
+  ],
+  "vae": [
+    "diffusers",
+    "AutoencoderKLQwenImage21"
+  ]
+}

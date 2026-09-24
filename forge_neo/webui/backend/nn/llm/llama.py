@@ -95,6 +95,15 @@ class Qwen3_8BConfig:
 
 
 @dataclass
+@dataclass
+class Qwen3VL_8BConfig(Qwen3_8BConfig):
+    max_position_embeddings: int = 262144
+    rope_theta: float = 5000000.0
+    rope_dims = [24, 20, 20]
+    interleaved_mrope = True
+    lm_head: bool = False
+
+
 class Qwen25_7BVLI_Config:
     vocab_size: int = 152064
     hidden_size: int = 3584
@@ -434,7 +443,7 @@ class Llama2_(nn.Module):
         else:
             self.norm = None
 
-    def forward(self, x, attention_mask=None, embeds=None, num_tokens=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=None, position_ids=None, embeds_info=[], past_key_values=None):
+    def forward(self, x, attention_mask=None, embeds=None, num_tokens=None, intermediate_output=None, final_layer_norm_intermediate=True, dtype=None, position_ids=None, embeds_info=[], past_key_values=None, visual_pos_masks=None, deepstack=None, deepstack_visual_indexes=None):
         if embeds is not None:
             x = embeds
         else:
@@ -495,6 +504,12 @@ class Llama2_(nn.Module):
                 optimized_attention=attention_function,
                 past_key_value=past_kv,
             )
+
+            if deepstack is not None and i in deepstack_visual_indexes:
+                visual_features = deepstack[deepstack_visual_indexes.index(i)].to(x)
+                for batch_index in range(x.shape[0]):
+                    image_mask = visual_pos_masks[min(batch_index, visual_pos_masks.shape[0] - 1)]
+                    x[batch_index, image_mask] = x[batch_index, image_mask] + visual_features
 
             if current_kv is not None:
                 next_key_values.append(current_kv)
@@ -583,6 +598,79 @@ class Qwen3VL_4B(BaseLlama, nn.Module):
         self.num_layers = config.num_hidden_layers
 
         self.model = Llama2_(config)
+
+
+class Qwen3VL(BaseLlama, nn.Module):
+    def __init__(self, config_dict):
+        super().__init__()
+        from backend.nn.llm.qwen35 import QWEN3VL_VISION, Qwen3VLVisionModel
+
+        model_config = config_dict
+        text_config = config_dict.get("text_config", config_dict)
+        config = Qwen3VL_8BConfig() if text_config.get("hidden_size") == 4096 else Qwen3VL_4BConfig()
+
+        config_values = asdict(config)
+        for key, value in config_values.items():
+            if key in text_config:
+                assert value == text_config[key]
+
+        self.is_qwen3vl_8b = config.hidden_size == 4096
+        self.num_layers = config.num_hidden_layers
+        self.model = Llama2_(config)
+        if "vision_config" in model_config:
+            vision_config = dict(model_config["vision_config"])
+            vision_config["out_hidden_size"] = config.hidden_size
+        elif config.hidden_size == 4096:
+            vision_config = {
+                **QWEN3VL_VISION,
+                "hidden_size": 1152,
+                "intermediate_size": 4304,
+                "depth": 27,
+                "deepstack_visual_indexes": [8, 16, 24],
+                "out_hidden_size": config.hidden_size,
+            }
+        else:
+            vision_config = {**QWEN3VL_VISION, "out_hidden_size": config.hidden_size}
+        self.visual = Qwen3VLVisionModel(vision_config)
+
+    def preprocess_embed(self, embed, device):
+        if embed["type"] == "image":
+            image, grid = qwen_vl.process_qwen2vl_images(embed["data"], patch_size=16, image_mean=[0.5, 0.5, 0.5], image_std=[0.5, 0.5, 0.5])
+            merged, deepstack = self.visual(image.to(device, dtype=torch.float32), grid)
+            return merged, {"grid": grid, "deepstack": deepstack}
+        return None, None
+
+    def build_image_inputs(self, embeds, embeds_info):
+        images = sorted([entry for entry in embeds_info if entry.get("type") == "image"], key=lambda entry: entry["index"])
+        if not images:
+            return None, None, None
+
+        device = embeds.device
+        seq = embeds.shape[1]
+        position_ids = qwen_vl.qwen2vl_mrope_position_ids(embeds_info, seq, device)
+        visual_pos_masks = torch.zeros((1, seq), dtype=torch.bool, device=device)
+        deepstack = None
+        for entry in images:
+            start = entry["index"]
+            end = entry["size"] + start
+            visual_pos_masks[0, start:end] = True
+            features = entry["extra"]["deepstack"]
+            if deepstack is None:
+                deepstack = [feature for feature in features]
+            else:
+                deepstack = [torch.cat([deepstack[i], feature], dim=0) for i, feature in enumerate(features)]
+        return position_ids, visual_pos_masks, deepstack
+
+    def forward(self, input_ids, *args, **kwargs):
+        embeds = kwargs.get("embeds")
+        embeds_info = kwargs.get("embeds_info", [])
+        if self.is_qwen3vl_8b and embeds is not None and embeds_info:
+            position_ids, visual_pos_masks, deepstack = self.build_image_inputs(embeds, embeds_info)
+            kwargs["position_ids"] = position_ids
+            kwargs["visual_pos_masks"] = visual_pos_masks
+            kwargs["deepstack"] = deepstack
+            kwargs["deepstack_visual_indexes"] = self.visual.deepstack_visual_indexes
+        return self.model(input_ids, *args, **kwargs)
 
 
 class Qwen3_8B(BaseLlama, nn.Module):

@@ -2228,6 +2228,31 @@ def _ensure_source_style_grid_script() -> dict[str, Any]:
     return fallback
 
 
+def _ensure_source_image_stitch_script() -> dict[str, Any]:
+    from modules import scripts
+
+    extension_root = _LOCAL_SOURCE_WEBUI_ROOT / "extensions-builtin" / "sd_forge_image_stitch"
+    script_path = extension_root / "scripts" / "image_stitch.py"
+    if not script_path.is_file():
+        extension_root = (_SOURCE_BACKEND_ROOT or _LOCAL_SOURCE_WEBUI_ROOT) / "extensions-builtin" / "sd_forge_image_stitch"
+        script_path = extension_root / "scripts" / "image_stitch.py"
+    if not script_path.is_file():
+        return {"loaded": False, "missing": True, "path": str(script_path)}
+    if _source_script_data_has_path(scripts, script_path):
+        return {"loaded": False, "already_loaded": True, "path": str(script_path)}
+
+    module_name = "_forge_neo_source_adapter_image_stitch"
+    try:
+        module = _import_source_file(module_name, script_path)
+        registered = _register_source_script_classes(module, script_path, extension_root)
+    except Exception as exc:
+        sys.modules.pop(module_name, None)
+        return {"loaded": False, "path": str(script_path), "error": f"{type(exc).__name__}: {exc}"}
+    if registered:
+        _SOURCE_ADAPTER_SCRIPT_IMPORTS.add(_source_path_key(script_path))
+    return {"loaded": bool(registered), "registered": registered, "path": str(script_path)}
+
+
 def _ensure_source_regional_prompter_scripts() -> dict[str, Any]:
     from modules import scripts
 
@@ -2955,6 +2980,8 @@ def _ensure_source_adapter_scripts(requested_names: set[str], runner: object) ->
         adapter_scripts["forge_couple"] = _ensure_source_forge_couple_script()
     if "style grid" in requested_names and not _source_runner_has_requested_scripts(runner, {"style grid"}):
         adapter_scripts["style_grid"] = _ensure_source_style_grid_script()
+    if "imagestitch integrated" in requested_names and not _source_runner_has_requested_scripts(runner, {"imagestitch integrated"}):
+        adapter_scripts["image_stitch"] = _ensure_source_image_stitch_script()
     return adapter_scripts
 
 
@@ -3173,7 +3200,7 @@ def _source_script_api_defaults(script: object) -> list[Any]:
         return [False, 0.25, 6, 0.5, 2, 0.0, 6, 0.9]
     if title == "soft inpainting":
         return [False, 1.0, 0.5, 4.0, 0.0, 0.5, 2.0]
-    if title == "多图拼接参考":
+    if title == "imagestitch integrated":
         return [False, [], 1024]
     if title == "调制引导控制":
         return [False, "None", "", "", 3.0, 0, -1]

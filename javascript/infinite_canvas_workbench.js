@@ -7495,6 +7495,7 @@
                         },
                         resetHistory,
                         mutate,
+                        fitAll,
                         resetGalleryFrostReveals
                     },
                     utilitySource: {

@@ -23,6 +23,7 @@ from backend.diffusion_engine.krea2 import Krea2
 from backend.diffusion_engine.lumina import Lumina2
 from backend.diffusion_engine.mugen import Mugen
 from backend.diffusion_engine.qwen import QwenImage
+from backend.diffusion_engine.qwen_image21 import QwenImage21
 from backend.diffusion_engine.sd15 import StableDiffusion
 from backend.diffusion_engine.sdxl import StableDiffusionXL, StableDiffusionXLRefiner
 from backend.diffusion_engine.zimage import ZImage
@@ -51,6 +52,7 @@ possible_models: tuple["ForgeDiffusionEngine", ...] = (
     Flux,
     Flux2,
     QwenImage,
+    QwenImage21,
     Krea2,
     Lumina2,
     ZImage,
@@ -94,6 +96,9 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
             cls = getattr(importlib.import_module(lib_name), cls_name)
             return cls.from_pretrained(os.path.join(repo_path, component_name))
         if component_name.startswith("tokenizer"):
+            tokenizer_path = os.path.join(repo_path, component_name)
+            if guess.huggingface_repo == "Qwen/Qwen-Image-2.1":
+                tokenizer_path = os.path.join(HF, "Tongyi-MAI", "Z-Image-Turbo", "tokenizer")
             if cls_name == "Qwen2Tokenizer" and _is_krea2_config(guess):
                 from transformers import PreTrainedTokenizerFast
 
@@ -110,9 +115,32 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
                 comp._eventual_warn_about_too_long_sequence = lambda *args, **kwargs: None
                 return comp
             cls = getattr(importlib.import_module(lib_name), cls_name)
-            comp = cls.from_pretrained(os.path.join(repo_path, component_name))
+            comp = cls.from_pretrained(tokenizer_path)
             comp._eventual_warn_about_too_long_sequence = lambda *args, **kwargs: None
             return comp
+        if cls_name == "AutoencoderKLQwenImage21":
+            assert isinstance(state_dict, dict) and len(state_dict) > 16, "You do not have Qwen-Image-2.1 VAE weights!"
+            with open(os.path.join(config_path, "config.json"), "r", encoding="utf-8") as stream:
+                vae_config = json.load(stream)
+            from backend.nn.qwen_image21_vae import QwenImage21VAE
+            model_config = {
+                "dim": vae_config.get("base_dim", 96),
+                "dec_dim": vae_config.get("decoder_base_dim", 144),
+                "z_dim": vae_config.get("z_dim", 64),
+                "dim_mult": vae_config.get("dim_mult", [1, 2, 4, 8, 8]),
+                "num_res_blocks": vae_config.get("num_res_blocks", 2),
+                "attn_scales": vae_config.get("attn_scales", []),
+                "temperal_downsample": vae_config.get("temperal_downsample", [False, True, True, True]),
+                "dropout": vae_config.get("dropout", 0.0),
+                "image_channels": vae_config.get("in_channels", 4),
+                "patch_size": 1,
+                "temporal_kernel": 1,
+            }
+            with no_init_weights():
+                with using_forge_operations(device=memory_management.cpu, dtype=memory_management.vae_dtype(), bnb_dtype="vae"):
+                    model = QwenImage21VAE(**model_config)
+            load_state_dict(model, state_dict)
+            return model
         if cls_name == "AutoencoderKL":
             assert isinstance(state_dict, dict) and len(state_dict) > 16, "You do not have VAE state dict!"
             from backend.nn.vae import IntegratedAutoencoderKL
@@ -277,13 +305,13 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
 
             load_state_dict(model, state_dict, log_name=cls_name)
             return model
-        if cls_name == "Qwen3VLModel":
+        if cls_name in ["Qwen3VLModel", "Qwen3VLForConditionalGeneration"]:
             assert isinstance(state_dict, dict) and len(state_dict) > 16, "You do not have Qwen3-VL state dict!"
 
             config = read_arbitrary_config(config_path)
             text_config = config.get("text_config", config)
 
-            from backend.nn.llm.llama import Qwen3VL_4B as QTE
+            from backend.nn.llm.llama import Qwen3VL as QTE
 
             storage_dtype = memory_management.text_encoder_dtype()
             state_dict_dtype = utils.weight_dtype(state_dict)
@@ -304,14 +332,22 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
             if storage_dtype in ["nf4", "fp4", "gguf"]:
                 with no_init_weights():
                     with using_forge_operations(device=memory_management.cpu, dtype=memory_management.text_encoder_dtype(), manual_cast_enabled=False, bnb_dtype=storage_dtype):
-                        model = QTE(text_config)
+                        model = QTE(config)
             else:
                 with no_init_weights():
                     with using_forge_operations(device=memory_management.cpu, dtype=storage_dtype, manual_cast_enabled=True, bnb_dtype=quant_config):
-                        model = QTE(text_config)
+                        model = QTE(config)
 
-            state_dict = {k: v for k, v in state_dict.items() if not k.startswith(("visual.", "model.visual.", "lm_head.", "model.lm_head."))}
-            load_state_dict(model, state_dict, log_name=cls_name)
+            state_dict = state_dict_prefix_replace(
+                state_dict,
+                {
+                    "model.language_model.": "model.",
+                    "model.visual.": "visual.",
+                    "lm_head.": "model.lm_head.",
+                },
+            )
+            ignore_start = "model.lm_head." if cls_name == "Qwen3VLForConditionalGeneration" else "lm_head."
+            load_state_dict(model, state_dict, log_name=cls_name, ignore_start=ignore_start)
             return model
         if cls_name in ["Qwen3Model", "Qwen3ForCausalLM"]:
             assert isinstance(state_dict, dict) and len(state_dict) > 16, "You do not have Qwen3 state dict!"
@@ -396,7 +432,7 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
 
             load_state_dict(model, state_dict, log_name=cls_name, ignore_errors=["transformer.encoder.embed_tokens.weight", "logit_scale"])
             return model
-        if cls_name in ["UNet2DConditionModel", "FluxTransformer2DModel", "Flux2Transformer2DModel", "ChromaTransformer2DModel", "QwenImageTransformer2DModel", "Krea2Transformer2DModel", "Lumina2Transformer2DModel", "ZImageTransformer2DModel", "CosmosTransformer3DModel"]:
+        if cls_name in ["UNet2DConditionModel", "FluxTransformer2DModel", "Flux2Transformer2DModel", "ChromaTransformer2DModel", "QwenImageTransformer2DModel", "QwenImage21Transformer2DModel", "Krea2Transformer2DModel", "Lumina2Transformer2DModel", "ZImageTransformer2DModel", "CosmosTransformer3DModel"]:
             assert isinstance(state_dict, dict) and len(state_dict) > 16, "You do not have model state dict!"
             pre_func: Callable[[torch.nn.Module], torch.nn.Module] = lambda mdl: mdl
             model_loader = None
@@ -429,6 +465,12 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
                     from backend.nn.qwen import QwenImageTransformer2DModel
 
                     model_loader = lambda c: QwenImageTransformer2DModel(**c)
+            elif cls_name == "QwenImage21Transformer2DModel":
+                from backend.nn.qwen_image21 import QwenImage21Transformer2DModel
+                transformer_config = read_arbitrary_config(config_path)
+                transformer_config.pop("_class_name", None)
+                transformer_config.pop("_diffusers_version", None)
+                model_loader = lambda c: QwenImage21Transformer2DModel(**transformer_config)
             elif cls_name == "Krea2Transformer2DModel":
                 from backend.nn.krea2 import SingleStreamDiT
 
@@ -768,7 +810,7 @@ def replace_state_dict(sd: dict[str, torch.Tensor], asd: dict[str, torch.Tensor]
     elif (
         "model.layers.0.post_attention_layernorm.weight" in asd
         and "model.layers.0.self_attn.q_norm.weight" in asd
-        and any(k.startswith("visual.") for k in asd)
+        and any(k.startswith(("visual.", "model.visual.")) for k in asd)
     ):
         weight: torch.Tensor = asd["model.layers.0.post_attention_layernorm.weight"]
         if weight.shape[0] == 2560:
@@ -920,7 +962,8 @@ def forge_loader(sd: os.PathLike, additional_state_dicts: list[os.PathLike] = No
             estimated_config.huggingface_repo = repo_name
 
     backend.args.dynamic_args.kontext = "kontext" in str(sd).lower()
-    backend.args.dynamic_args.edit = "qwen" in str(sd).lower() and "edit" in str(sd).lower()
+    backend.args.dynamic_args.qwen_image21 = repo_name == "Qwen/Qwen-Image-2.1"
+    backend.args.dynamic_args.edit = ("qwen" in str(sd).lower() and "edit" in str(sd).lower()) or backend.args.dynamic_args.qwen_image21
     backend.args.dynamic_args.nunchaku = getattr(estimated_config, "nunchaku", False)
     backend.args.dynamic_args.klein = "klein" in repo_name
     backend.args.dynamic_args.wan = False

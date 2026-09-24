@@ -22,8 +22,9 @@ class ForgeNeoSettingInfo:
     label_cn: str
 
 
-PRESET_ARCHES: tuple[str, ...] = ("anima", "flux", "klein", "krea2", "lumina", "qwen", "sd", "xl", "zit")
+PRESET_ARCHES: tuple[str, ...] = ("anima", "flux", "klein", "krea2", "lumina", "qwen", "qwen21", "sd", "xl", "zit")
 PRESET_DISPLAY_NAMES: dict[str, str] = {arch: arch.upper() for arch in PRESET_ARCHES}
+PRESET_DISPLAY_NAMES["qwen21"] = "Qwen Image 2.1"
 PRESET_SAMPLERS: dict[str, str] = {
     "sd": "Euler a",
     "xl": "Euler a",
@@ -31,6 +32,7 @@ PRESET_SAMPLERS: dict[str, str] = {
     "klein": "Euler",
     "krea2": "Euler",
     "qwen": "Euler",
+    "qwen21": "Euler",
     "lumina": "Res Multistep",
     "zit": "Euler",
     "anima": "ER SDE",
@@ -42,6 +44,7 @@ PRESET_SCHEDULERS: dict[str, str] = {
     "klein": "Beta",
     "krea2": "Simple",
     "qwen": "Beta",
+    "qwen21": "Simple",
     "lumina": "Simple",
     "zit": "Beta",
     "anima": "Simple",
@@ -53,6 +56,7 @@ PRESET_STEPS: dict[str, int] = {
     "klein": 4,
     "krea2": 8,
     "qwen": 8,
+    "qwen21": 25,
     "lumina": 32,
     "zit": 9,
     "anima": 32,
@@ -64,6 +68,7 @@ PRESET_CFG: dict[str, float] = {
     "klein": 1.0,
     "krea2": 1.0,
     "qwen": 1.0,
+    "qwen21": 1.0,
     "lumina": 4.0,
     "zit": 1.0,
     "anima": 4.0,

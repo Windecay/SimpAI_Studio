@@ -1448,7 +1448,7 @@ def _source_integrated_alwayson_scripts(request: object) -> dict[str, Any]:
     if bool(getattr(request, "image_stitch_enabled", False)):
         references = _source_image_stitch_references(request)
         if references:
-            scripts["多图拼接参考"] = _source_alwayson_args(
+            scripts["ImageStitch Integrated"] = _source_alwayson_args(
                 True,
                 references,
                 _clamped_int(getattr(request, "image_stitch_max_dim", 1024), 1024, minimum=0, maximum=2048),

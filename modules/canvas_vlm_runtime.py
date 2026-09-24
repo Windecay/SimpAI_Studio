@@ -826,7 +826,10 @@ def canvas_custom_llm_models(payload):
         return {"ok": False, "error": "Custom LLM model list failed", "details": str(exc)}
 
 
-def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, mode, stream_callback=None):
+def canvas_custom_llm_run(
+    payload, params, prompt, asset_refs, conversation_id, mode,
+    stream_callback=None, request_id="",
+):
     custom_started = time.monotonic()
     base_url = str(params.get("custom_base_url") or "").strip()
     api_key = str(params.get("custom_api_key") or payload.get("api_key") or "").strip()
@@ -988,6 +991,14 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
                 api_key=api_key,
                 timeout=180,
             ):
+                if is_canvas_vlm_cancelled("", "", conversation_id, request_id):
+                    return {
+                        "ok": False,
+                        "cancelled": True,
+                        "conversation_id": conversation_id,
+                        "request_id": request_id,
+                        "error": "Stopped.",
+                    }
                 if not isinstance(event, dict) or event.get("_done"):
                     continue
                 last_stream_event = event
@@ -1615,6 +1626,7 @@ def canvas_vlm_run(payload, stream_callback=None):
             conversation_id,
             mode,
             stream_callback=stream_callback,
+            request_id=request_id,
         )
         if isinstance(result, dict):
             result_params = result.setdefault("params", {})

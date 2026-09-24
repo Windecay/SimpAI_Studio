@@ -1327,6 +1327,14 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
     width: 100%;
     height: 100%;
     background: var(--background-fill-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#forge_neo_root .forge-neo-preview-pending {
+    color: var(--forge-neo-muted);
+    font-size: 14px;
 }
 
 #forge_neo_root .livePreview img {

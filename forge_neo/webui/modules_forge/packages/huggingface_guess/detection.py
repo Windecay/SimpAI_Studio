@@ -40,6 +40,34 @@ def calculate_transformer_depth(prefix, state_dict_keys, state_dict):
 def detect_unet_config(state_dict: dict, key_prefix: str) -> dict:
     state_dict_keys = list(state_dict.keys())
 
+    qwen21_keys = (
+        "txt_in.text_norm.weight",
+        "modulation.1.weight",
+        "transformer_blocks.0.attn.norm_q.weight",
+        "img_in.weight",
+        "proj_out.weight",
+    )
+    if all(f"{key_prefix}{key}" in state_dict_keys for key in qwen21_keys) and any(
+        f"{key_prefix}transformer_blocks.0.img_mlp.{name}.weight" in state_dict_keys
+        for name in ("gate_up", "proj")
+    ):
+        inner_dim = int(state_dict[f"{key_prefix}img_in.weight"].shape[0])
+        head_dim = int(state_dict[f"{key_prefix}transformer_blocks.0.attn.norm_q.weight"].shape[0])
+        mlp_weight = state_dict.get(f"{key_prefix}transformer_blocks.0.img_mlp.gate_up.weight")
+        mlp_ratio = int(mlp_weight.shape[0] // (2 * inner_dim)) if mlp_weight is not None else 3
+        return {
+            "image_model": "qwen_image21",
+            "in_channels": int(state_dict[f"{key_prefix}img_in.weight"].shape[1]),
+            "out_channels": int(state_dict[f"{key_prefix}proj_out.weight"].shape[0]),
+            "num_layers": count_blocks(state_dict_keys, f"{key_prefix}transformer_blocks.{{}}."),
+            "attention_head_dim": head_dim,
+            "num_attention_heads": inner_dim // head_dim,
+            "context_in_dim": int(state_dict[f"{key_prefix}txt_in.in_layer.weight"].shape[1]),
+            "mlp_ratio": mlp_ratio,
+            "axes_dims_rope": [16, 56, 56],
+            "eps": 1e-6,
+        }
+
     if "{}cap_embedder.1.weight".format(key_prefix) in state_dict_keys and ("{}noise_refiner.0.attention.k_norm.weight".format(key_prefix) in state_dict_keys or "{}layers.0.attention.to_out.0.qweight".format(key_prefix) in state_dict_keys):  # Lumina 2
         dit_config = {}
         dit_config["image_model"] = "lumina2"

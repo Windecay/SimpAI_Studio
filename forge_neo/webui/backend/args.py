@@ -159,6 +159,10 @@ class dynamic_args(metaclass=_DynamicArgsMeta):
     """Flux Kontext"""
     edit: bool = False
     """Qwen-Image-Edit"""
+    qwen_image21: bool = False
+    """Qwen-Image-2.1"""
+    qwen_image21_image_slots: list[int] = []
+    """Reference image insertion points for Qwen-Image-2.1"""
     nunchaku: bool = False
     """Nunchaku (SVDQ) Models"""
     klein: bool = False
@@ -194,6 +198,8 @@ class dynamic_args(metaclass=_DynamicArgsMeta):
             return
 
         cls.ref_latents.clear()
+        cls.qwen_image21 = False
+        cls.qwen_image21_image_slots.clear()
         cls.concat_latent = None
         cls.lq_latent = [None, None]
         cls.context_handler = None
