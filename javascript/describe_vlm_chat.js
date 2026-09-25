@@ -127,7 +127,7 @@
     const MAX_PERSISTED_THUMB_LENGTH = 80000;
     const MAX_PERSISTED_THUMB_TOTAL = 480000;
     const MAX_ROLEPLAY_BRANCH_MESSAGES = 80;
-    const MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES = 12;
+    const MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES = 3;
     let conversationArchiveDbPromise = null;
     let conversationHistoryViewer = null;
     const CONVERSATION_HISTORY_PAGE_SIZE = 20;
@@ -967,10 +967,22 @@
                 turn_id: String(item.turn_id || '').slice(0, 200),
                 required: item.required === true,
                 reason: String(item.reason || '').slice(0, 100),
-                source: String(item.source || '').slice(0, 7000),
-                source_offset: Math.max(0, Math.min(7000, Number(item.source_offset) || 0)),
+                source: String(item.source || '').slice(0, 1000000),
+                source_offset: Math.max(0, Math.min(1000000, Number(item.source_offset) || 0)),
+                attempt_count: Math.max(0, Math.min(3, Number(item.attempt_count) || 0)),
+                source_turn_ids: Array.isArray(item.source_turn_ids) ? item.source_turn_ids.map(value => String(value || '').slice(0, 200)).filter(Boolean).slice(0, 1000) : [],
                 transition: item.transition && typeof item.transition === 'object'
                     ? JSON.parse(JSON.stringify(item.transition)) : {}
+            })) : [],
+            failed: Array.isArray(source.failed) ? source.failed.filter(item => item && typeof item === 'object'
+                && item.id && ['memory', 'world_book', 'chapter'].includes(item.kind)).map(item => ({
+                id: String(item.id).slice(0, 160), kind: item.kind,
+                chapter_id: String(item.chapter_id || '').slice(0, 160),
+                turn_id: String(item.turn_id || '').slice(0, 200),
+                required: item.required === true, reason: String(item.reason || '').slice(0, 100),
+                failure_reason: String(item.failure_reason || '').slice(0, 100),
+                source: String(item.source || '').slice(0, 1000000),
+                attempt_count: Math.max(0, Math.min(3, Number(item.attempt_count) || 0))
             })) : [],
             last_checked_turn_id: String(source.last_checked_turn_id || '').slice(0, 200),
             outcomes: Array.isArray(source.outcomes) ? JSON.parse(JSON.stringify(source.outcomes.slice(0, 12))) : []
@@ -1050,6 +1062,24 @@
         const stores = normalizeRoleplayResourceStores(session, session.story_state, session.active_branch_id);
         const root = modal.querySelector('[data-describe-vlm-chat-roleplay-resources]');
         if (!root) return;
+        let reviewList = root.querySelector('[data-resource-review-list]');
+        if (!reviewList) {
+            reviewList = document.createElement('section');
+            reviewList.setAttribute('data-resource-review-list', '');
+            root.prepend(reviewList);
+        }
+        const failedResources = session.story_state?.resource_review?.failed || [];
+        reviewList.hidden = failedResources.length === 0;
+        reviewList.innerHTML = failedResources.length ? `<h4>${escapeHtml(localText('Needs your review', '待人工确认'))} (${failedResources.length})</h4>${failedResources.map((item) => {
+            const label = ({ memory: localText('Memory', '记忆'), world_book: localText('World book', '世界书'), chapter: localText('Chapter summary', '章节摘要') })[item.kind];
+            const limit = item.kind === 'memory' ? 600 : item.kind === 'world_book' ? 1200 : 6000;
+            const placeholder = item.kind === 'memory'
+                ? localText('Write one concise, confirmed fact (max 600 characters)', '填写一条确认过的简短记忆（最多 600 字）')
+                : item.kind === 'world_book'
+                    ? localText('Write concise reusable lore (max 1200 characters)', '填写简洁、可复用的世界设定（最多 1200 字）')
+                    : localText('Write a concise chapter summary', '填写简洁的章节摘要');
+            return `<article class="describe-vlm-chat-roleplay-resource-row"><strong>${escapeHtml(label)}</strong><small>${escapeHtml(localText(`Reason: ${item.failure_reason || item.reason || 'verification failed'}`, `未写入原因：${item.failure_reason || item.reason || '核对未通过'}`))}</small><details><summary>${escapeHtml(localText('Original source', '查看原文依据'))}</summary><pre>${escapeHtml(item.source.slice(0, 12000))}${item.source.length > 12000 ? `\n\n${escapeHtml(localText('[Source preview truncated; the full source remains in the task record.]', '[原文预览已截短，完整来源仍保留在任务记录中。]'))}` : ''}</pre></details><textarea data-resource-review-content="${escapeHtml(item.id)}" rows="3" maxlength="${limit}" placeholder="${escapeHtml(placeholder)}"></textarea><div><button type="button" data-resource-review-action="confirm" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Confirm and write', '确认并写入'))}</button><button type="button" data-resource-review-action="ignore" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Ignore', '忽略'))}</button></div></article>`;
+        }).join('')}` : '';
         if (stores.world_book.metadata && typeof stores.world_book.metadata === 'object') {
             root.setAttribute('data-roleplay-world-book-metadata', encodeURIComponent(JSON.stringify(stores.world_book.metadata)));
         }
@@ -15106,7 +15136,7 @@
         return conversationRecordFromSource(source, {
             conversationId,
             roleplayHasData: conversationHasRoleplayData(source, conversationId),
-            storageCompactLevel: Number(options.storageCompactLevel) || 0,
+            storageCompactLevel: Number(options.storageCompactLevel) || (fullHistory ? 1 : 0),
             fullHistory,
             savedAt: options.savedAt || source.persistenceSavedAt,
             persistenceRevision: options.persistenceRevision !== undefined
@@ -16711,6 +16741,7 @@
     function roleplayDirectorOutcomeText(director = {}) {
         const status = String(director.status || '').trim().toLowerCase();
         const review = director.resource_review || {};
+        const failedCount = Math.max(0, Number(review.failed_count || review.failed?.length || 0));
         const evidenceCount = Number(director.target_review?.evidence_pending_count || 0);
         const targetCount = Math.max(0, Number(director.target_review?.pending_count || 0) - evidenceCount);
         const targetNote = [targetCount > 0 ? localText(
@@ -16720,6 +16751,14 @@
             `${evidenceCount} state changes lack verified source evidence and were not written. Check the character states.`,
             `${evidenceCount} 项状态变化的原文依据未能通过核对，未写入，请检查角色状态。`
         ) : ''].filter(Boolean).join(' ');
+        if (failedCount > 0) {
+            const failedNote = localText(
+                `${failedCount} story resource task(s) were not saved after three checks. Open Roleplay settings > Story resources > Needs your review to confirm or dismiss them.`,
+                `${failedCount} 项故事资料连续三次未能写入。请打开角色设置 > 故事资源 > 待人工确认，选择确认写入或忽略。`
+            );
+            if (Number(review.pending_count) > 0) return `${failedNote} ${roleplayDictionaryText('Story resource checks pending')}: ${review.pending_count}`;
+            return failedNote;
+        }
         if (Number(review.pending_count) > 0 && ['partial', 'state_update_pending'].includes(status)) {
             const labels = { memory: 'Memory', world_book: 'World book', chapter: 'Chapters' };
             const kinds = [...new Set((review.outcomes || []).filter(item => item.status === 'pending').map(item => item.kind))];
@@ -23698,6 +23737,50 @@
             runtime.roleplayPanelOpen = false;
             state.roleplayPanelOpen = false;
             syncRoleplayControls(modal);
+            return;
+        }
+        const reviewAction = evt.target.closest('[data-resource-review-action]');
+        if (reviewAction) {
+            const runtime = syncCurrentRuntimeFromState();
+            const session = normalizeRoleplaySession(runtime?.roleplaySession, runtime?.conversationId);
+            const review = session.story_state.resource_review;
+            const id = String(reviewAction.getAttribute('data-resource-review-id') || '');
+            const item = review.failed.find((entry) => entry.id === id);
+            if (!item) return;
+            if (reviewAction.getAttribute('data-resource-review-action') === 'confirm') {
+                const stores = normalizeRoleplayResourceStores(session, session.story_state, session.active_branch_id);
+                const editor = reviewAction.closest('[data-resource-review-item]')?.querySelector(`[data-resource-review-content="${CSS.escape(id)}"]`);
+                const content = String(editor?.value || '').trim();
+                const limit = item.kind === 'memory' ? 600 : item.kind === 'world_book' ? 1200 : 6000;
+                const chapter = stores.chapters.items.find((entry) => entry.id === stores.active_chapter_id);
+                if (!content) {
+                    setConversationStatus(runtime, localText('Write the confirmed content in the field before saving.', '请先在文本框填写确认后的内容，再保存。'), true);
+                    return;
+                }
+                if (content.length > limit || (item.kind === 'chapter' && content.length + (chapter?.summary.length || 0) + 2 > 6000)) {
+                    setConversationStatus(runtime, localText(
+                        `This content exceeds the ${limit}-character limit. Shorten it before confirming.`,
+                        `内容超过 ${limit} 字限制，请缩短后再确认。`
+                    ), true);
+                    return;
+                }
+                if (item.kind === 'memory') stores.memory_store.items.push(normalizeRoleplayMemory({ id: uid('memory'), text: content, type: 'event', chapter_id: item.chapter_id, branch_id: session.active_branch_id, turn_id: item.turn_id, source: 'manual_review' }, stores.memory_store.items.length));
+                else if (item.kind === 'world_book') stores.world_book.entries.push(normalizeRoleplayWorldBookEntry({ id: uid('world'), title: content.slice(0, 120), content, source: 'manual_review' }, stores.world_book.entries.length));
+                else if (chapter) chapter.summary = [chapter.summary, content].filter(Boolean).join('\n\n');
+                session.world_book = stores.world_book;
+                session.memory_store = stores.memory_store;
+                session.chapters = stores.chapters;
+            }
+            review.failed = review.failed.filter((entry) => entry.id !== id);
+            session.story_state.resource_review = review;
+            runtime.roleplaySession = normalizeRoleplaySession(session, runtime.conversationId);
+            runtime.persistenceDirty = true;
+            if (isCurrentConversationRuntime(runtime)) state.roleplaySession = runtime.roleplaySession;
+            scheduleConversationPersist(runtime, 'roleplay_resource_manual_review', 'soon');
+            renderRoleplayResourceManager(modal, runtime);
+            setConversationStatus(runtime, reviewAction.getAttribute('data-resource-review-action') === 'confirm'
+                ? localText('Resource confirmed and saved.', '已确认并保存故事资料。')
+                : localText('Resource review dismissed.', '已忽略这项待确认资料。'));
             return;
         }
         const resourceTab = evt.target.closest('[data-resource-tab][role="tab"]');

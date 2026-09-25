@@ -9792,6 +9792,7 @@
                 updateTagCartParam,
                 updateWd14Param,
                 updateWildcardsHelperParam,
+                handleVlmParamFieldChange,
                 updateQwenTtsParam,
                 handleInpaintModeChange,
                 handleUovMethodChange,
