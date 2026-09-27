@@ -123,6 +123,7 @@
         );
         const vlmChatImagePreviewMethod = name => method(vlmChatImagePreview, name);
         const vlmChatInputMethod = name => method(vlmChatInput, name);
+        const vlmChatMethod = name => method(chatController(), name);
 
         return {
             CANVAS_NODE_VIEW_CONTEXT: nodeViewContext,
@@ -150,6 +151,8 @@
             runVlmRegenCommand: vlmChatInputMethod('runVlmRegenCommand'),
             handleVlmChatDrop: vlmChatInputMethod('handleVlmChatDrop'),
             handleVlmChatInputClick: vlmChatInputMethod('handleVlmChatInputClick'),
+            handleVlmAgentActionClick: vlmChatMethod('handleVlmAgentActionClick'),
+            handleVlmChatMessageActionClick: vlmChatMethod('handleVlmChatMessageActionClick'),
             handleVlmChatInputKeyDown: vlmChatInputMethod('handleVlmChatInputKeyDown'),
             bindVlmChatDropEvents: vlmChatInputMethod('bindVlmChatDropEvents'),
             focusVlmChatPromptInput: vlmChatInputMethod('focusVlmChatPromptInput'),

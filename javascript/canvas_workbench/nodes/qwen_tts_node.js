@@ -181,6 +181,13 @@
         return node?.qwen_tts_mode || TYPE_MODES[node?.type] || 'voice_design';
     }
 
+    function modeLabel(mode) {
+        const spec = MODE_SPECS[mode] || {};
+        if (spec.title) return spec.title;
+        const text = String(mode || 'voice_design').replace(/_/g, ' ');
+        return `Qwen TTS ${text.replace(/\b\w/g, ch => ch.toUpperCase())}`;
+    }
+
     function specForMode(mode, context) {
         const spec = MODE_SPECS[mode] || MODE_SPECS.voice_design;
         const ctx = contextOf(context);
@@ -321,6 +328,11 @@
             }));
         }
         return [];
+    }
+
+    function audioInputSlotsForNode(nodeOrMode, context) {
+        const mode = typeof nodeOrMode === 'string' ? nodeOrMode : modeFromNode(nodeOrMode);
+        return audioInputSlots(mode, context);
     }
 
     function isNode(node) {
@@ -583,11 +595,13 @@ ${status ? `<div class="sai-node-foot">${escapeHtmlValue(ctx, status)}</div>` : 
         MODE_TYPES,
         TYPE_MODES,
         audioInputSlots,
+        audioInputSlotsForNode,
         createNode,
         defaultParams,
         isNode,
         isAudioSource,
         modeFromNode,
+        modeLabel,
         stylePresetInstruction,
         renderInspector,
         renderNodeHtml

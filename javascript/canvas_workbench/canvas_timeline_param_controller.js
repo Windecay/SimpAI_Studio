@@ -232,6 +232,26 @@
             return true;
         }
 
+        function bindInspectorTimelineResetEvents(inspector) {
+            if (!inspector || typeof inspector.querySelectorAll !== 'function') return false;
+            inspector.querySelectorAll('[data-timeline-reset]').forEach((button) => {
+                button.addEventListener('click', (evt) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    resetTimelineParam(getNode(getSelectedNodeId()), button.getAttribute('data-timeline-reset'));
+                });
+            });
+            inspector.querySelectorAll('[data-timeline-clip-reset]').forEach((button) => {
+                button.addEventListener('click', (evt) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    const [clipId, key] = String(button.getAttribute('data-timeline-clip-reset') || '').split(':');
+                    resetTimelineClipParam(getNode(getSelectedNodeId()), clipId, key);
+                });
+            });
+            return true;
+        }
+
         return {
             updateTimelineParam,
             updateTimelineClipParam,
@@ -240,7 +260,8 @@
             resetTimelineClipParam,
             handleInspectorTimelineParamChange,
             handleInspectorTimelineClipParamChange,
-            bindInspectorTimelineParamEvents
+            bindInspectorTimelineParamEvents,
+            bindInspectorTimelineResetEvents
         };
     }
 

@@ -45,6 +45,8 @@ import modules.model_loader as model_loader
 from modules.meta_parser import get_welcome_image, describe_prompt_for_scene
 from enhanced.simpleai import comfyd, get_admin_recovery_guide, get_identity_access_status, get_path_in_user_dir, toggle_identity_dialog, sync_intput_reserved, get_identity_mode_text, normalize_ui_lang, update_comfyd_io_paths
 from enhanced.vlm import VLM, vlm
+from enhanced.llamacpp_vlm import llamacpp_vlm
+from modules.llama_cpp_runtime import is_cpu_only_llama_model_loaded
 from simpleai_base.simpleai_base import export_identity_qrcode_svg, import_identity_qrcode, gen_ua_session
 
 def gr_update(**kwargs):
@@ -2950,7 +2952,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
 
         util.log_ui_trace(
             logger,
-            "[UI-TRACE] scene_image_backend_input | preset=%r, theme=%r, task_method=%r, hidden=%s, canvas_present=%s, canvas_shape=%s, input1_present=%s, input1_shape=%s, input2_present=%s, input2_shape=%s, input3_present=%s, input3_shape=%s, input4_present=%s, input4_shape=%s",
+            "[UI-TRACE] scene_image_backend_input | preset=%r, theme=%r, task_method=%r, hidden=%s, canvas_present=%s, canvas_shape=%s, input1_present=%s, input1_shape=%s, input2_present=%s, input2_shape=%s, input3_present=%s, input3_shape=%s, input4_present=%s, input4_shape=%s, input5_present=%s, input5_shape=%s, input6_present=%s, input6_shape=%s, input7_present=%s, input7_shape=%s, input8_present=%s, input8_shape=%s",
             state_params.get("__preset"),
             scene_theme,
             scene_task_method_value,
@@ -2965,6 +2967,14 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             _scene_image_trace_shape(scene_input_image3),
             scene_input_image4 is not None,
             _scene_image_trace_shape(scene_input_image4),
+            scene_input_image5 is not None,
+            _scene_image_trace_shape(scene_input_image5),
+            scene_input_image6 is not None,
+            _scene_image_trace_shape(scene_input_image6),
+            scene_input_image7 is not None,
+            _scene_image_trace_shape(scene_input_image7),
+            scene_input_image8 is not None,
+            _scene_image_trace_shape(scene_input_image8),
         )
 
         scene_audio_present = scene_audio is not None and not (isinstance(scene_audio, str) and not scene_audio.strip())
@@ -3176,7 +3186,8 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         notify_compat_fallback_once(state_params, state_params["__preset"], user_did=user_did)
 
     superprompter.remove_superprompt()
-    vlm.free_model()
+    if not is_cpu_only_llama_model_loaded(llamacpp_vlm):
+        vlm.free_model()
     try:
         import extras.wd14tagger
         extras.wd14tagger.free_model()

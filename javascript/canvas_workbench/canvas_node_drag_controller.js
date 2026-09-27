@@ -11,6 +11,8 @@
         const projectSource = sourceObject('projectSource');
         const domSource = sourceObject('domSource');
         const nodeSource = sourceObject('nodeSource');
+        const selectionSource = sourceObject('selectionSource');
+        const clipboardSource = sourceObject('clipboardSource');
         const runtimeSource = sourceObject('runtimeSource');
         const viewportSource = sourceObject('viewportSource');
         const patchSource = sourceObject('patchSource');
@@ -36,6 +38,7 @@
             : null;
         const getNode = (id) => sourceCall(nodeSource, 'getNode', null, id);
         const getSelectedNodeIds = () => sourceCall(nodeSource, 'getSelectedNodeIds', new Set()) || new Set();
+        const getSelectedNodeIdList = () => sourceCall(selectionSource, 'getSelectedNodeIdList', Array.from(getSelectedNodeIds())) || [];
         const isNodeLocked = (node) => !!sourceCall(nodeSource, 'isNodeLocked', false, node);
         const getPerformanceNow = () => typeof runtimeSource.performanceNow === 'function'
             ? Number(runtimeSource.performanceNow()) || 0
@@ -45,6 +48,8 @@
         const minimapCall = (name, fallback, ...args) => sourceCall(minimapSource, name, fallback, ...args);
         const historyCall = (name, fallback, ...args) => sourceCall(historySource, name, fallback, ...args);
         const persistenceCall = (name, fallback, ...args) => sourceCall(persistenceSource, name, fallback, ...args);
+        const selectionCall = (name, fallback, ...args) => sourceCall(selectionSource, name, fallback, ...args);
+        const clipboardCall = (name, fallback, ...args) => sourceCall(clipboardSource, name, fallback, ...args);
         const applyNodeLayoutPatch = (node, options) => {
             const patch = sourceCall(patchSource, 'buildNodeLayoutPatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
@@ -135,8 +140,49 @@
             minimapCall('flushMinimapRender', undefined);
         }
 
+        function handleNodePointerDown(node, evt) {
+            if (!node || !evt) return false;
+            evt.preventDefault();
+            const selectedNodeIds = getSelectedNodeIds();
+            if (evt.altKey) {
+                const ids = getSelectedNodeIdList();
+                const sourceIds = selectedNodeIds.has(node.id) ? ids : [node.id];
+                if (!selectedNodeIds.has(node.id)) {
+                    selectionCall('setSelectedNodeIds', undefined, new Set([node.id]));
+                    selectionCall('setSelectedNodeId', undefined, node.id);
+                    selectionCall('setSelectedEdgeId', undefined, null);
+                }
+                const sourceIndex = Math.max(0, sourceIds.indexOf(node.id));
+                const pasted = clipboardCall('duplicateSelection', [], { offsetX: 0, offsetY: 0, showToast: false, label: 'Alt-drag copy' }) || [];
+                const dragNode = pasted[sourceIndex] || pasted[0];
+                if (dragNode) {
+                    selectionCall('setSelectedNodeIds', undefined, new Set(pasted.map(item => item.id)));
+                    selectionCall('setSelectedNodeId', undefined, dragNode.id);
+                    selectionCall('setSelectedEdgeId', undefined, null);
+                    renderCall('renderAll', undefined, { inspector: true });
+                    startNodeDrag(dragNode, evt);
+                }
+                return true;
+            }
+            if (evt.ctrlKey || evt.metaKey || evt.shiftKey) {
+                selectionCall('toggleNodeSelectionLight', undefined, node.id);
+            } else if (!selectedNodeIds.has(node.id)) {
+                selectionCall('selectNodeLight', undefined, node.id);
+            } else if (selectionCall('getSelectedNodeId', null) === node.id && selectionCall('getSelectedEdgeId', null) === null) {
+                startNodeDrag(node, evt);
+                return true;
+            } else {
+                selectionCall('setSelectedNodeId', undefined, node.id);
+                selectionCall('setSelectedEdgeId', undefined, null);
+                selectionCall('refreshSelectionUi', undefined);
+            }
+            startNodeDrag(node, evt);
+            return true;
+        }
+
         return {
             startNodeDrag,
+            handleNodePointerDown,
             onNodeDragMove,
             stopNodeDrag,
             isDragging: () => !!dragState,

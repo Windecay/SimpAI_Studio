@@ -11,6 +11,8 @@
         const clipSource = scope.clipSource || {};
         const keyframeSource = scope.keyframeSource || {};
         const commandOperationSource = scope.commandOperationSource || {};
+        const clipboardSource = scope.clipboardSource || {};
+        const consoleSource = scope.consoleSource || {};
         const historySource = scope.historySource || {};
         const persistenceSource = scope.persistenceSource || {};
         const stateSource = scope.stateSource || {};
@@ -58,6 +60,10 @@
             showToast: uiSource,
             openContextMenu: uiSource
         };
+        callbackSources.serializeTimeline = nodeSource;
+        callbackSources.serializeTimelineRenderPayload = nodeSource;
+        callbackSources.writeText = clipboardSource;
+        callbackSources.info = consoleSource;
         const call = (name, fallback, ...args) => {
             const sourceObject = callbackSources[name] || {};
             return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
@@ -78,6 +84,9 @@
         const normalizeTimelineNode = (node) => call('normalizeTimelineNode', undefined, node);
         const mutateTimeline = () => call('mutate', undefined, { inspector: true });
         const toast = (message) => call('showToast', undefined, message);
+        const translate = (english, chinese) => typeof languageSource.t === 'function'
+            ? languageSource.t(english, chinese)
+            : english;
         const buildTimelineParamsPatch = (node, paramsPatch) => call(
             'buildTimelineParamsPatch',
             { params: Object.assign({}, node?.params || {}, paramsPatch || {}) },
@@ -166,6 +175,39 @@
             if (options?.render !== false) call('mutate', undefined, { inspector: true });
             else call('scheduleSave');
             return clip;
+        }
+
+        function copyTimelinePayload(node, renderPayload) {
+            if (!node || node.type !== 'timeline') return;
+            const serialize = renderPayload ? 'serializeTimelineRenderPayload' : 'serializeTimeline';
+            const fallbackSerialize = 'serializeTimeline';
+            const payload = typeof nodeSource[serialize] === 'function'
+                ? nodeSource[serialize](node)
+                : (!renderPayload || typeof nodeSource[fallbackSerialize] !== 'function'
+                    ? node
+                    : nodeSource[fallbackSerialize](node));
+            const text = JSON.stringify(payload, null, 2);
+            const label = renderPayload ? 'Timeline render payload' : 'Timeline JSON';
+            const notify = copied => toast(renderPayload
+                ? translate(copied ? 'Timeline render payload copied.' : 'Timeline render payload written to console.', copied ? 'Timeline 合成 payload 已复制' : 'Timeline 合成 payload 已输出到控制台')
+                : translate(copied ? 'Timeline JSON copied.' : 'Timeline JSON written to console.', copied ? 'Timeline JSON 已复制' : 'Timeline JSON 已输出到控制台'));
+            const writeToConsole = () => {
+                call('info', undefined, `[SimpAI Canvas] ${label}`, payload);
+                notify(false);
+            };
+            if (clipboardSource.hasWriteText?.() && typeof clipboardSource.writeText === 'function') {
+                clipboardSource.writeText(text).then(() => notify(true)).catch(writeToConsole);
+            } else {
+                writeToConsole();
+            }
+        }
+
+        function copyTimelineJson(node) {
+            return copyTimelinePayload(node, false);
+        }
+
+        function copyTimelineRenderPayload(node) {
+            return copyTimelinePayload(node, true);
         }
 
         function moveTimelineTrack(node, trackId, direction) {
@@ -572,6 +614,8 @@
 
         return {
             selectTimelineClip,
+            copyTimelineJson,
+            copyTimelineRenderPayload,
             moveTimelineTrack,
             handleTimelineClick,
             resetTimelineActiveTool,

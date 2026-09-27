@@ -4,6 +4,7 @@
     function createCanvasTextConnectionController(context) {
         const scope = context?.textConnectionSource || context || {};
         const nodeSource = scope.nodeSource || {};
+        const projectSource = scope.projectSource || {};
         const textSource = scope.textSource || {};
         const batchSource = scope.batchSource || {};
         const edgeSource = scope.edgeSource || {};
@@ -12,6 +13,7 @@
         const selectionSource = scope.selectionSource || {};
         const renderSource = scope.renderSource || {};
         const languageSource = scope.languageSource || {};
+        const viewSource = scope.viewSource || {};
         const uiSource = scope.uiSource || {};
         const call = (source, name, fallback, ...args) => typeof source[name] === 'function'
             ? source[name](...args) : fallback;
@@ -108,7 +110,81 @@
             return t('connected to Text input', '已连接到文本输入');
         }
 
-        return { createTextEdge, connectPendingTextSource };
+        function addTextMergeInput(node) {
+            if (!node || node.type !== 'text_merge' || call(nodeSource, 'isNodeLocked', false, node)) return;
+            const slots = textMergeInputSlots(node);
+            if (slots.length >= 16) {
+                showToast(t('A merge node supports up to 16 inputs.', '一个合并节点最多支持 16 个输入。'));
+                return;
+            }
+            call(historySource, 'pushHistory', undefined, 'Add text merge input');
+            const used = new Set(slots);
+            let index = 1;
+            while (used.has(`input_${index}`)) index += 1;
+            const inputSlots = [...slots, `input_${index}`];
+            Object.assign(node, call(patchSource, 'buildTextMergeStatePatch', {}, node, {
+                inputSlots,
+                height: Math.max(Number(node.h || 0), 280 + inputSlots.length * 42)
+            }));
+            call(renderSource, 'mutate', undefined);
+        }
+
+        function removeTextMergeInput(node, slot) {
+            if (!node || node.type !== 'text_merge' || call(nodeSource, 'isNodeLocked', false, node)) return;
+            const slots = textMergeInputSlots(node);
+            if (slots.length <= 2 || !slots.includes(slot)) return;
+            call(historySource, 'pushHistory', undefined, 'Remove text merge input');
+            call(edgeSource, 'filterProjectEdges', undefined,
+                edge => !(edge.type === 'text' && edge.to === node.id && edge.slot === slot));
+            Object.assign(node, call(patchSource, 'buildTextMergeStatePatch', {}, node, {
+                inputSlots: slots.filter(item => item !== slot),
+                deleteTextInputKeys: [slot]
+            }));
+            call(renderSource, 'mutate', undefined);
+        }
+
+        function syncTextMergeOutputDom(node) {
+            if (!node || node.type !== 'text_merge') return;
+            const output = call(textSource, 'getTextMergeOutput', '', node, new Set([node.id]));
+            const nodesLayer = call(viewSource, 'getNodesLayer', null);
+            const inspector = call(viewSource, 'getInspector', null);
+            const selectedNodeId = call(viewSource, 'getSelectedNodeId', null);
+            const escapeNodeId = call(viewSource, 'cssEscape', value => String(value), node.id);
+            const nodeEl = nodesLayer?.querySelector('[data-node-id="' + escapeNodeId + '"]');
+            nodeEl?.querySelectorAll('[data-text-merge-output]').forEach(field => {
+                if (field.value !== output) field.value = output;
+            });
+            if (selectedNodeId === node.id && inspector) {
+                inspector.querySelectorAll('[data-text-merge-output]').forEach(field => {
+                    if (field.value !== output) field.value = output;
+                });
+            }
+        }
+
+        function refreshTextMergeDependents(sourceNodeId, visited) {
+            const seen = visited || new Set();
+            if (!sourceNodeId || seen.has(sourceNodeId)) return;
+            seen.add(sourceNodeId);
+            const project = call(projectSource, 'getProject', null);
+            (project?.nodes || [])
+                .filter(node => node.type === 'text_merge' && (
+                    Object.values(node.text_inputs || {}).includes(sourceNodeId)
+                    || (project.edges || []).some(edge => edge.type === 'text' && edge.from === sourceNodeId && edge.to === node.id)
+                ))
+                .forEach(node => {
+                    syncTextMergeOutputDom(node);
+                    refreshTextMergeDependents(node.id, seen);
+                });
+        }
+
+        return {
+            createTextEdge,
+            connectPendingTextSource,
+            addTextMergeInput,
+            removeTextMergeInput,
+            syncTextMergeOutputDom,
+            refreshTextMergeDependents
+        };
     }
 
     window.SimpAICanvasWorkbenchTextConnection = Object.assign(

@@ -57,6 +57,14 @@
             else refreshNoteDom(nodeId);
         }
 
+        function handleNoteTextEvent(node, evt, eventType) {
+            if (!node || node.type !== 'note' || !evt?.target || !['input', 'change'].includes(eventType)) return false;
+            const field = evt.target.closest?.('[data-note-text]');
+            if (!field) return false;
+            updateNoteText(node.id, field.value, eventType === 'change' ? { render: false } : undefined);
+            return true;
+        }
+
         function updateNoteStyle(nodeId, key, value, inputType) {
             const node = getNode(nodeId);
             if (!node || node.type !== 'note' || isNodeLocked(node) || !key) return;
@@ -149,7 +157,7 @@
             if (getSelectedNodeId() === node.id) renderInspector();
         }
 
-        return { refreshNoteDom, updateNoteText, updateNoteStyle, updateNoteSize, updateNoteTail,
+        return { refreshNoteDom, updateNoteText, handleNoteTextEvent, updateNoteStyle, updateNoteSize, updateNoteTail,
             toggleNoteTail, resetNoteTail };
     }
 

@@ -11,12 +11,16 @@
         const renderSource = scope.renderSource || {};
         const catalogSource = scope.catalogSource || {};
         const diagnosticSource = scope.diagnosticSource || {};
+        const agentSource = scope.agentSource || {};
+        const identitySource = scope.identitySource || {};
+        const uiSource = scope.uiSource || {};
         const call = (source, name, fallback, ...args) => typeof source?.[name] === 'function'
             ? source[name](...args)
             : fallback;
-        const t = typeof languageSource.t === 'function'
-            ? languageSource.t
-            : ((en, cn) => cn || en);
+        const t = (en, cn) => typeof languageSource.t === 'function'
+            ? languageSource.t(en, cn, call(languageSource, 'getLanguageState', {}))
+            : (cn || en);
+        const showToast = message => call(uiSource, 'showToast', undefined, message);
         const escapeHtml = typeof utilitySource.escapeHtml === 'function'
             ? utilitySource.escapeHtml
             : (value => String(value ?? ''));
@@ -306,6 +310,33 @@
             return session.startPromise;
         }
 
+        async function downloadCanvasAgentModel(version) {
+            const modelVersion = String(version || '').trim();
+            if (!modelVersion) return false;
+            const settings = call(agentSource, 'getCanvasAgentSettings', {});
+            const node = {
+                type: 'vlm',
+                id: call(identitySource, 'uid', 'canvas_agent_model_download', 'canvas_agent_model_download'),
+                params: modelVersion === 'Custom'
+                    ? call(agentSource, 'canvasAgentCustomParamsFromSettings', { version: 'Custom' }, settings, true)
+                    : { version: modelVersion }
+            };
+            let response;
+            try {
+                if (typeof startModelDownload === 'function') response = await startModelDownload(node, modelVersion);
+                else response = await call(requestSource, 'sendCanvasVlmModelDownloadsRequest', null, node);
+            } catch (error) {
+                showToast(t('Model download failed: {error}', '模型下载失败：{error}').replace('{error}', error?.message || String(error || 'unknown error')));
+                return false;
+            }
+            if (!response?.ok) {
+                showToast(t('Model download failed: {error}', '模型下载失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
+                return false;
+            }
+            showToast(response.message || t('Model download queued.', '模型下载任务已加入。'));
+            return true;
+        }
+
         async function cancelModelDownload(version, taskId) {
             const modelVersion = cleanVersion(version);
             const session = sessions.get(modelVersion);
@@ -412,6 +443,7 @@
 
         return {
             startModelDownload,
+            downloadCanvasAgentModel,
             cancelModelDownload,
             renderModelNotice,
             getModelDownloadState: version => {

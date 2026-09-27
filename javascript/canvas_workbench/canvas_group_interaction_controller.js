@@ -70,6 +70,10 @@
         const persistenceCall = (name, fallback, ...args) => typeof persistenceSource[name] === 'function'
             ? persistenceSource[name](...args)
             : fallback;
+        const factorySource = sourceObject('factorySource');
+        const factoryCall = (name, fallback, ...args) => typeof factorySource[name] === 'function'
+            ? factorySource[name](...args)
+            : fallback;
         const uiSource = sourceObject('uiSource');
         const uiCall = (name, fallback, ...args) => typeof uiSource[name] === 'function'
             ? uiSource[name](...args)
@@ -95,6 +99,84 @@
             const patch = patchCall('buildGroupFieldPatch', undefined, group, key, value);
             if (patch && typeof patch === 'object') Object.assign(group, patch);
         };
+
+        function setGroupSelection(groupId) {
+            selectionCall('setGroupSelection', undefined, groupId || null);
+        }
+
+        function addAreaGroup(world, options) {
+            const opts = options || {};
+            if (opts.history !== false) historyCall('pushHistory', undefined, 'Add area group');
+            const fromSelection = !opts.ignoreSelection
+                ? groupCall('selectedNodesBounds', null, 44)
+                : null;
+            const center = viewportCall('viewportCenterWorld', null) || { x: 0, y: 0 };
+            const rect = fromSelection || {
+                x: Math.round((world?.x || center.x) - 200),
+                y: Math.round((world?.y || center.y) - 120),
+                w: 400,
+                h: 240
+            };
+            const group = factoryCall('buildAreaGroup', null, rect, opts.group);
+            if (!group) return null;
+            Object.assign(getProject(), projectCall(
+                'buildProjectGroupAppendPatch', {}, getProject(), group
+            ));
+            setGroupSelection(group.id);
+            renderCall('mutate', undefined);
+            showToast(fromSelection
+                ? t('Group created around selected nodes.', '已围绕选中节点创建分组。')
+                : t('Area group added.', '已添加区域分组。'));
+            return group;
+        }
+
+        function focusGroup(group) {
+            if (!group) return;
+            const rect = groupCall('getGroupRect', null, group);
+            if (!rect) return;
+            setGroupSelection(group.id);
+            viewportCall('centerViewportOnWorld', undefined, rect.x + rect.w / 2, rect.y + rect.h / 2);
+        }
+
+        function deleteSelectedGroup() {
+            const group = getGroup(getSelectedGroupId());
+            if (!group) return;
+            historyCall('pushHistory', undefined, 'Delete area group');
+            Object.assign(getProject(), projectCall(
+                'buildProjectGroupDeletePatch', {}, getProject(), group.id
+            ));
+            setGroupSelection(null);
+            renderCall('mutate', undefined);
+        }
+
+        function updateGroupField(groupId, key, value, inputType) {
+            const group = getGroup(groupId);
+            if (!group || !key) return;
+            if (group.locked && ['x', 'y', 'w', 'h'].includes(key)) {
+                showToast(t('Group position is locked.', '分组位置已锁定。'));
+                renderCall('renderInspector', undefined);
+                return;
+            }
+            historyCall('pushHistoryBatch', undefined, `group:${groupId}:${key}`, 'Edit area group');
+            applyGroupFieldPatch(group, key, value);
+            renderCall('renderGroups', undefined);
+            persistenceCall('scheduleSave', undefined);
+        }
+
+        function bindInspectorGroupFieldEvents(inspector) {
+            if (!inspector || typeof inspector.querySelectorAll !== 'function') return false;
+            inspector.querySelectorAll('[data-group-field]').forEach((field) => {
+                const handler = () => updateGroupField(
+                    getSelectedGroupId(),
+                    field.getAttribute('data-group-field'),
+                    field.type === 'checkbox' ? field.checked : field.value,
+                    field.type
+                );
+                field.addEventListener('input', handler);
+                field.addEventListener('change', handler);
+            });
+            return true;
+        }
         const snapCanvasCoord = (value) => viewportCall('snapCanvasCoord', value, value);
         const snapCanvasSizeFromOrigin = (origin, value, min, max) => viewportCall(
             'snapCanvasSizeFromOrigin', value, origin, value, min, max
@@ -107,7 +189,12 @@
         }
 
         function openGroupContextMenu(group, clientX, clientY) {
-            actionCall('openGroupContextMenu', undefined, group, clientX, clientY);
+            selectGroupLight(group.id);
+            uiCall('openContextMenu', undefined, clientX, clientY, [
+                { label: t('Jump to group', '跳转到分组'), icon: 'fa-location-crosshairs', action: () => focusGroup(group) },
+                { label: group.locked ? t('Unlock group position', '解锁分组位置') : t('Lock group position', '锁定分组位置'), icon: group.locked ? 'fa-lock-open' : 'fa-lock', action: () => actionCall('updateGroupField', undefined, group.id, 'locked', !group.locked, 'checkbox') },
+                { label: t('Delete group only', '仅删除分组'), icon: 'fa-trash', danger: true, action: deleteSelectedGroup }
+            ]);
         }
 
         function startGroupDrag(group, evt) {
@@ -298,6 +385,12 @@
 
         return {
             bindGroupLayerEvents,
+            bindInspectorGroupFieldEvents,
+            updateGroupField,
+            addAreaGroup,
+            focusGroup,
+            deleteSelectedGroup,
+            openGroupContextMenu,
             isGroupDragging: () => !!groupDragState,
             isGroupResizing: () => !!groupResizeState
         };

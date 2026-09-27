@@ -18,14 +18,57 @@
             ? !!nodeSource.isDirectorTimelineNode(node)
             : false;
         const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function' ? !!nodeSource.isNodeLocked(node) : false;
-        const directorTimelineClampSeconds = (value, min, max) => {
-            const result = call(timelineSource, 'directorTimelineClampSeconds', value, min, max);
-            return result === undefined ? Math.max(Number(min || 0), Math.min(Number(max || 86400), Number(value || 0))) : result;
-        };
-        const directorTimelineRoundSeconds = (value) => {
-            const result = call(timelineSource, 'directorTimelineRoundSeconds', value);
-            return result === undefined ? Math.round(Number(value || 0) * 10) / 10 : result;
-        };
+        function directorTimelineTotalSeconds(director) {
+            const segments = Array.isArray(director?.segments) ? director.segments : [];
+            const maxEnd = segments.reduce((value, segment) => Math.max(value, Number(segment?.end || 0)), 0);
+            return Math.max(0.1, Number(director?.duration || 10) || 10, maxEnd);
+        }
+
+        function directorTimelineRoundSeconds(value) {
+            const rounded = Math.round(Number(value || 0) * 10) / 10;
+            return Number.isFinite(rounded) ? rounded : 0;
+        }
+
+        function directorTimelineClampSeconds(value, min, max) {
+            const low = Number.isFinite(Number(min)) ? Number(min) : 0;
+            const high = Number.isFinite(Number(max)) ? Number(max) : 86400;
+            if (high < low) return low;
+            return Math.max(low, Math.min(high, Number(value || 0)));
+        }
+
+        function directorTimelineNeighborBounds(director, index) {
+            const bounds = { previousEnd: 0, nextStart: 86400 };
+            const segments = Array.isArray(director?.segments) ? director.segments : [];
+            segments.forEach((segment, segmentIndex) => {
+                if (segmentIndex < index) {
+                    bounds.previousEnd = Math.max(bounds.previousEnd, Number(segment?.end || 0));
+                } else if (segmentIndex > index) {
+                    bounds.nextStart = Math.min(bounds.nextStart, Number(segment?.start || 86400));
+                }
+            });
+            bounds.previousEnd = directorTimelineRoundSeconds(bounds.previousEnd);
+            bounds.nextStart = directorTimelineRoundSeconds(bounds.nextStart);
+            return bounds;
+        }
+
+        function directorTimelineConstrainSegmentTimes(director, index) {
+            const segment = director?.segments?.[index];
+            if (!segment) return;
+            const bounds = directorTimelineNeighborBounds(director, index);
+            const previousEnd = Math.max(0, bounds.previousEnd);
+            const nextStart = Math.min(86400, bounds.nextStart);
+            const availableDuration = Math.max(0, nextStart - previousEnd);
+            const minDuration = availableDuration > 0 ? Math.min(0.1, availableDuration) : 0;
+            const startUpper = Math.max(previousEnd, nextStart - minDuration);
+            const start = directorTimelineClampSeconds(segment.start, previousEnd, startUpper);
+            const endLower = Math.min(nextStart, start + minDuration);
+            let end = directorTimelineClampSeconds(segment.end, endLower, nextStart);
+            if (end < endLower) end = endLower;
+            if (end > nextStart) end = nextStart;
+            segment.start = directorTimelineRoundSeconds(start);
+            segment.end = directorTimelineRoundSeconds(end);
+            segment.unit = 'seconds';
+        }
         let dragState = null;
 
         function startDirectorTimelinePreviewDrag(node, nodeEl, dragTarget, evt) {
@@ -37,7 +80,7 @@
             const rect = track?.getBoundingClientRect?.();
             if (!segment || !rect || rect.width <= 0) return;
             const modeValue = dragTarget.getAttribute?.('data-director-timeline-drag') || 'move';
-            const bounds = call(timelineSource, 'directorTimelineNeighborBounds', director, index) || { previousEnd: 0, nextStart: 86400 };
+            const bounds = directorTimelineNeighborBounds(director, index);
             call(historySource, 'pushHistoryBatch', `director:${node.id}:timeline-preview:${index}`, 'Edit Director shot time');
             dragState = {
                 pointerId: evt.pointerId,
@@ -49,7 +92,7 @@
                 startEnd: Math.max(Number(segment.start || 0) + 0.1, Number(segment.end || 0)),
                 previousEnd: bounds.previousEnd,
                 nextStart: bounds.nextStart,
-                totalSeconds: Math.max(0.1, Number(call(timelineSource, 'directorTimelineTotalSeconds', director) || 10)),
+                totalSeconds: directorTimelineTotalSeconds(director),
                 trackWidth: rect.width,
                 nodeEl
             };
@@ -126,6 +169,11 @@
             startDirectorTimelinePreviewDrag,
             onDirectorTimelinePreviewDragMove,
             stopDirectorTimelinePreviewDrag,
+            directorTimelineTotalSeconds,
+            directorTimelineRoundSeconds,
+            directorTimelineClampSeconds,
+            directorTimelineNeighborBounds,
+            directorTimelineConstrainSegmentTimes,
             isDragging: () => !!dragState,
             getDraggingNodeId: () => dragState?.nodeId || null
         };

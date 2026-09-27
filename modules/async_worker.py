@@ -693,6 +693,8 @@ def worker():
     from enhanced.comfy_task import get_comfy_task
     from enhanced.all_parameters import default as default_params
     from enhanced.vlm import VLM
+    from enhanced.llamacpp_vlm import llamacpp_vlm
+    from modules.llama_cpp_runtime import is_cpu_only_llama_model_loaded
     from modules.native_video_preview import create_native_video_progress_callback
     import logging
     from enhanced.logger import format_name
@@ -2037,7 +2039,7 @@ def worker():
             ))
         
         keep_vlm_model_loaded = getattr(async_task, 'keep_vlm_model_loaded', False)
-        if not keep_vlm_model_loaded:
+        if not keep_vlm_model_loaded and not is_cpu_only_llama_model_loaded(llamacpp_vlm):
             logger.info(
                 '[VLM KeepLoaded] auto free_model before diffusion task_id=%s task_method=%s task_class=%s keep_vlm_model_loaded=%s translated=%s source=async_worker.process_prompt',
                 getattr(async_task, 'task_id', None),
@@ -3184,7 +3186,7 @@ def worker():
                     enhance_prompt = vlm.translate(enhance_prompt, async_task.translation_methods)
                     enhance_negative_prompt = vlm.translate(enhance_negative_prompt, async_task.translation_methods)
                     keep_vlm_model_loaded = getattr(async_task, 'keep_vlm_model_loaded', False)
-                    if not keep_vlm_model_loaded:
+                    if not keep_vlm_model_loaded and not is_cpu_only_llama_model_loaded(llamacpp_vlm):
                         logger.info(
                             '[VLM KeepLoaded] auto free_model after enhance translation task_id=%s task_method=%s task_class=%s keep_vlm_model_loaded=%s source=async_worker.enhance_translate',
                             getattr(async_task, 'task_id', None),

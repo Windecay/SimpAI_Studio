@@ -97,6 +97,22 @@
             return field;
         }
 
+        function bindInspectorTextareaTitleEvents(inspector) {
+            if (!inspector?.querySelectorAll) return false;
+            inspector.querySelectorAll('label').forEach((label) => {
+                const textarea = label.querySelector('textarea');
+                const title = Array.from(label.children || []).find(child => String(child.tagName || '').toLowerCase() === 'span');
+                if (!textarea || !title) return;
+                title.addEventListener('click', (evt) => {
+                    if (evt.target.closest?.('button,input,select,textarea,a,[contenteditable="true"],.sai-translate-wrap')) return;
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    openTextareaEditor(textarea);
+                });
+            });
+            return true;
+        }
+
         function textareaEditorLabel(field) {
             const label = field?.closest?.('label');
             if (!label) return t('Text', '文本');
@@ -335,6 +351,7 @@
 
         return {
             textareaEditorFieldFromTitleClick,
+            bindInspectorTextareaTitleEvents,
             openTextareaEditor,
             closeTextareaEditor,
             syncTextareaEditorToSource,

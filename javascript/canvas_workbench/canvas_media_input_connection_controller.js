@@ -3,6 +3,7 @@
 
     function createCanvasMediaInputConnectionController(context) {
         const scope = context?.mediaInputConnectionSource || context || {};
+        const projectSource = scope.projectSource || {};
         const nodeSource = scope.nodeSource || {};
         const mediaSource = scope.mediaSource || {};
         const slotSource = scope.slotSource || {};
@@ -30,6 +31,25 @@
         const buildQwenTtsStatePatch = (...args) => call(patchSource, 'buildQwenTtsStatePatch', {}, ...args);
         const buildCompareStatePatch = (...args) => call(patchSource, 'buildCompareStatePatch', {}, ...args);
         const mergeCanvasRunStatus = (...args) => call(patchSource, 'mergeCanvasRunStatus', {}, ...args);
+
+        function disconnectVlmImageInput(node, slot) {
+            if (!node || node.type !== 'vlm' || call(nodeSource, 'isNodeLocked', false, node)) return;
+            const slots = call(slotSource, 'getVlmImageSlots', []) || [];
+            const targetSlot = slots.some(item => item.key === slot) ? slot : 'image_1';
+            const project = call(projectSource, 'getProject', {}) || {};
+            const edge = (Array.isArray(project.edges) ? project.edges : [])
+                .find(item => item.type === 'image' && item.to === node.id && item.slot === targetSlot);
+            if (edge) {
+                call(scope.disconnectSource || {}, 'deleteEdge', undefined, edge.id);
+                return;
+            }
+            if (!node.image_inputs?.[targetSlot]) return;
+            call(historySource, 'pushHistory', undefined, 'Disconnect VLM image');
+            Object.assign(node, buildVlmImageInputsPatch(node, {
+                imageInputsPatch: { [targetSlot]: null }
+            }));
+            call(renderSource, 'mutate', undefined, { inspector: true });
+        }
 
         function replaceConnectionEdge(type, edge) {
             call(edgeSource, 'filterProjectEdges', undefined,
@@ -212,6 +232,7 @@
         }
 
         return {
+            disconnectVlmImageInput,
             createWd14ImageEdge, createVlmImageEdge, createMaskImageEdge, createSam3VideoMaskEdge,
             createQwenTtsAudioEdge, createCompareImageEdge,
             connectPendingWd14Source, connectPendingVlmSource, connectPendingQwenSource, connectPendingCompareSource

@@ -73,6 +73,7 @@
     const MAX_VLM_SKILL_UPLOAD_BYTES = 100_000;
     const MAX_VLM_SKILL_PACKAGE_UPLOAD_BYTES = 32 * 1024 * 1024;
     const VLM_VRAM_POLICY_CHOICES = Object.freeze([
+        { value: 'cpu', label: ['CPU only (keep in RAM)', '仅 CPU（驻留内存）'] },
         { value: 'relaxed', label: ['Relaxed', '宽松'] },
         { value: 'standard', label: ['Standard', '标准'] },
         { value: 'extreme', label: ['Extreme', '极限'] }
@@ -4146,7 +4147,12 @@
         const fields = mode === 'visual'
             ? ['image_prompt', 'negative_prompt']
             : ['name', 'appearance', 'identity', 'background', 'personality', 'speech_style', 'behavior_rules', 'first_message', 'example_dialogues', 'image_prompt', 'negative_prompt'];
-        return fields.map((field) => ({ path: field, label: roleplayDraftFieldLabel(field) }));
+        const result = fields.map((field) => ({ path: field, label: roleplayDraftFieldLabel(field) }));
+        if (mode !== 'visual') {
+            result.push({ path: 'import_metadata.tavern.alternate_greetings', label: localText('Alternative openings', '备选开场') });
+            result.push({ path: 'import_metadata.tavern.group_only_greetings', label: localText('Group openings', '群组开场') });
+        }
+        return result;
     }
 
     function visibleRoleplayPanel(modal = document.getElementById('describe_vlm_chat_modal')) {
@@ -6048,6 +6054,7 @@
             }
             workspace.selectedId = '';
             workspace.draft = normalizeRoleplayCharacterLibraryCard(response.character);
+            workspace.openingUndo = {};
             workspace.savedDraftKey = '';
             workspace.dirty = true;
             workspace.agentDraftUndo = null;
@@ -6140,6 +6147,14 @@
             suffix += 1;
         }
         return id;
+    }
+
+    function resolveRoleplayOpeningNames(text, session, card) {
+        const names = {
+            user: String(session?.persona?.name || '').trim() || localText('User', '用户'),
+            char: String(card?.name || '').trim() || localText('Character', '角色')
+        };
+        return String(text || '').replace(/\{\{\s*(user|char)\s*\}\}/gi, (_, key) => names[key.toLowerCase()]);
     }
 
     function roleplayStoryOpenings(card) {
@@ -6318,7 +6333,7 @@
         session.story_origin.opening_message_id = messageId;
         session.active_character_id = characterId;
         session.character = card;
-        const openingText = openings[openingIndex].text;
+        const openingText = resolveRoleplayOpeningNames(openings[openingIndex].text, session, card);
         const openingFields = parseRoleplayInitialStateFields(openingText, true);
         const initialFields = normalizeRoleplayStateFields(card.initial_state_fields);
         const runtimeState = session.story_state.characters?.[characterId];
@@ -6457,6 +6472,11 @@
         if (!Object.prototype.hasOwnProperty.call(workspace, 'agentDraftUndo')) workspace.agentDraftUndo = null;
         if (!Object.prototype.hasOwnProperty.call(workspace, 'savedDraftKey')) workspace.savedDraftKey = '';
         if (!Object.prototype.hasOwnProperty.call(workspace, 'dirty')) workspace.dirty = false;
+        if (!Object.prototype.hasOwnProperty.call(workspace, 'worldBookBatch')) workspace.worldBookBatch = null;
+        if (!Object.prototype.hasOwnProperty.call(workspace, 'openingBatch')) workspace.openingBatch = null;
+        if (!Array.isArray(workspace.openingReviews)) workspace.openingReviews = [];
+        if (!workspace.openingUndo || typeof workspace.openingUndo !== 'object') workspace.openingUndo = {};
+        if (!Number.isInteger(workspace.worldBookEntryIndex)) workspace.worldBookEntryIndex = 0;
         if (!Object.prototype.hasOwnProperty.call(workspace, 'imagePreset')) workspace.imagePreset = '';
         if (!Object.prototype.hasOwnProperty.call(workspace, 'imageParameterProfile')) workspace.imageParameterProfile = '';
         if (!Object.prototype.hasOwnProperty.call(workspace, 'presetLoading')) workspace.presetLoading = false;
@@ -6622,6 +6642,18 @@
         const current = normalizeRoleplayCharacterLibraryCard(base);
         const incoming = normalizeRoleplayCharacterLibraryCard(candidate);
         const next = Object.assign({}, current);
+        if (mode !== 'visual') {
+            const tavern = Object.assign({}, current.import_metadata?.tavern || {});
+            for (const key of ['alternate_greetings', 'group_only_greetings']) {
+                const original = Array.isArray(tavern[key]) ? tavern[key] : [];
+                const result = candidate?.import_metadata?.tavern?.[key];
+                if (Array.isArray(result) && result.length === original.length
+                    && result.every((text) => typeof text === 'string' && text.trim())) {
+                    tavern[key] = result;
+                }
+            }
+            next.import_metadata = Object.assign({}, current.import_metadata, { tavern });
+        }
         const fields = mode === 'visual'
             ? ['image_prompt', 'negative_prompt']
             : ['name', 'appearance', 'identity', 'background', 'personality', 'speech_style', 'first_message', 'image_prompt', 'negative_prompt'];
@@ -6640,6 +6672,20 @@
         return normalizeRoleplayCharacterLibraryCard(next);
     }
 
+    function roleplayCharacterLibraryOpeningDraftWarnings(base, candidate, request = '') {
+        const original = base?.import_metadata?.tavern || {};
+        const result = candidate?.import_metadata?.tavern || {};
+        return ['alternate_greetings', 'group_only_greetings'].filter((key) => {
+            const entries = Array.isArray(original[key]) ? original[key] : [];
+            const next = result[key];
+            const unchangedEnglish = /(翻译|translate|转为中文|转换成中文)/i.test(request)
+                && entries.some((text, index) => /[A-Za-z]{4}/.test(text)
+                    && String(text).trim() === String(next?.[index] || '').trim());
+            return entries.length && (!Array.isArray(next) || next.length !== entries.length
+                || next.some((text) => typeof text !== 'string' || !text.trim()) || unchangedEnglish);
+        });
+    }
+
     function roleplayCharacterLibraryFeedback(modal, message, isError = false) {
         const feedback = modal?.querySelector('[data-roleplay-character-library-feedback]');
         if (!feedback) return;
@@ -6656,12 +6702,42 @@
         feedback.dataset.state = isError ? 'error' : text ? 'info' : '';
     }
 
+    function roleplayCharacterLibraryWorldProgress(modal, message, isError = false) {
+        const progress = modal?.querySelector('[data-roleplay-character-library-world-progress]');
+        if (!progress) return;
+        progress.textContent = String(message || '');
+        progress.hidden = !message;
+        progress.dataset.state = isError ? 'error' : message ? 'info' : '';
+    }
+
+    function roleplayCharacterLibraryOpeningProgress(modal, message, isError = false) {
+        const progress = modal?.querySelector('[data-roleplay-character-library-opening-progress]');
+        if (!progress) return;
+        progress.textContent = String(message || '');
+        progress.hidden = !message;
+        progress.dataset.state = isError ? 'error' : message ? 'info' : '';
+    }
+
     function setRoleplayCharacterLibraryAgentBusy(modal, busy) {
         [
             '[data-roleplay-character-library-agent-generate]',
             '[data-roleplay-character-library-agent-optimize]',
             '[data-roleplay-character-library-agent-optimize-visual]'
         ].forEach((selector) => setRoleplayActionBusy(modal, selector, busy));
+        renderRoleplayCharacterLibraryOpeningActions(modal);
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        const entries = workspace.draft?.world_book?.entries || [];
+        const entry = entries[workspace.worldBookEntryIndex];
+        const worldBatch = modal?.querySelector('[data-roleplay-character-library-world-batch]');
+        setRoleplayActionBusy(modal, '[data-roleplay-character-library-world-batch]', !!workspace.worldBookBatch);
+        if (worldBatch) worldBatch.disabled = workspace.busy || !entries.length;
+        const worldEdit = modal?.querySelector('[data-roleplay-character-library-world-edit-current]');
+        setRoleplayActionBusy(modal, '[data-roleplay-character-library-world-edit-current]', !!workspace.worldBookEditing);
+        if (worldEdit) worldEdit.disabled = workspace.busy || !entry;
+        for (const selector of ['[data-roleplay-character-library-world-title]', '[data-roleplay-character-library-world-content]']) {
+            const field = modal?.querySelector(selector);
+            if (field) field.disabled = workspace.busy || !entry;
+        }
     }
 
     function roleplayCharacterLibraryFormValue(modal, name) {
@@ -6710,6 +6786,13 @@
         const workspace = roleplayCharacterLibraryWorkspaceState();
         if (!workspace.draft || !modal) return workspace.draft;
         const draft = workspace.draft;
+        const tavern = Object.assign({}, draft.import_metadata?.tavern || {});
+        for (const kind of ['alternate_greetings', 'group_only_greetings']) {
+            const list = modal.querySelector(`[data-roleplay-character-library-greetings="${kind}"]`);
+            if (list) tavern[kind] = Array.from(list.querySelectorAll('[data-roleplay-character-library-greeting]'))
+                .map((field) => String(field.value || ''));
+        }
+        draft.import_metadata = Object.assign({}, draft.import_metadata, { tavern });
         draft.name = roleplayCharacterLibraryFormValue(modal, 'name').slice(0, 200);
         draft.appearance = roleplayCharacterLibraryFormValue(modal, 'appearance').slice(0, MAX_PERSISTED_TEXT);
         draft.identity = roleplayCharacterLibraryFormValue(modal, 'identity').slice(0, MAX_PERSISTED_TEXT);
@@ -6724,6 +6807,13 @@
         draft.image_prompt = roleplayCharacterLibraryFormValue(modal, 'image-prompt').slice(0, MAX_PERSISTED_TEXT);
         draft.negative_prompt = roleplayCharacterLibraryFormValue(modal, 'negative-prompt').slice(0, 4000);
         draft.initial_state_fields = parseRoleplayInitialStateFields(roleplayCharacterLibraryFormValue(modal, 'initial-state-fields'));
+        const entry = draft.world_book?.entries?.[workspace.worldBookEntryIndex];
+        const titleField = modal.querySelector('[data-roleplay-character-library-world-title]');
+        const contentField = modal.querySelector('[data-roleplay-character-library-world-content]');
+        if (entry && titleField && contentField) {
+            entry.title = String(titleField.value || '').trim().slice(0, 240);
+            entry.content = String(contentField.value || '');
+        }
         return draft;
     }
 
@@ -6748,6 +6838,8 @@
             state_image_history: Array.isArray(source.state_image_history) ? source.state_image_history : [],
             behavior_rules: Array.isArray(source.behavior_rules) ? source.behavior_rules : [],
             first_message: source.first_message,
+            alternate_greetings: source.import_metadata?.tavern?.alternate_greetings || [],
+            group_only_greetings: source.import_metadata?.tavern?.group_only_greetings || [],
             example_dialogues: Array.isArray(source.example_dialogues) ? source.example_dialogues : [],
             locked_fields: Array.isArray(source.locked_fields) ? source.locked_fields : []
         };
@@ -6773,6 +6865,9 @@
             '[data-roleplay-character-library-speech-style]',
             '[data-roleplay-character-library-behavior]',
             '[data-roleplay-character-library-first-message]',
+            '[data-roleplay-character-library-greeting]',
+            '[data-roleplay-character-library-world-title]',
+            '[data-roleplay-character-library-world-content]',
             '[data-roleplay-character-library-example-dialogues]',
             '[data-roleplay-character-library-image-prompt]',
             '[data-roleplay-character-library-negative-prompt]',
@@ -6814,6 +6909,8 @@
             negative_prompt: source.negative_prompt,
             behavior_rules: source.behavior_rules,
             first_message: source.first_message,
+            alternate_greetings: source.import_metadata?.tavern?.alternate_greetings || [],
+            group_only_greetings: source.import_metadata?.tavern?.group_only_greetings || [],
             initial_state_fields: source.initial_state_fields,
             example_dialogues: source.example_dialogues,
             locked_fields: source.locked_fields
@@ -6834,6 +6931,8 @@
                 personality: source.personality,
                 scenario: source.background,
                 first_mes: source.first_message,
+                alternate_greetings: source.import_metadata?.tavern?.alternate_greetings || [],
+                group_only_greetings: source.import_metadata?.tavern?.group_only_greetings || [],
                 mes_example: examples.map((item) => `<START>\n${item}`).join('\n'),
                 example_dialogues: examples,
                 speech_style: source.speech_style,
@@ -7019,6 +7118,7 @@
         } finally {
             workspace.busy = false;
             setRoleplayActionBusy(modal, selector, false);
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
             syncRoleplayCharacterLibrarySaveState(modal);
         }
     }
@@ -7117,6 +7217,163 @@
         }
     }
 
+    function roleplayCharacterLibraryOpeningUndoAvailable(kind, index, current) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        const history = workspace.openingUndo?.[`${kind}:${index}`];
+        const latest = history?.[history.length - 1];
+        return !!latest && latest.cardId === workspace.draft?.id && latest.after === current;
+    }
+
+    function rememberRoleplayCharacterLibraryOpeningEdit(kind, index, before, after) {
+        if (before === after) return;
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        const key = `${kind}:${index}`;
+        const history = workspace.openingUndo?.[key] || [];
+        const latest = history[history.length - 1];
+        workspace.openingUndo ||= {};
+        workspace.openingUndo[key] = [
+            ...(latest?.cardId === workspace.draft?.id && latest.after === before ? history : []),
+            { cardId: workspace.draft.id, before, after }
+        ].slice(-10);
+    }
+
+    function undoRoleplayCharacterLibraryOpeningEdit(modal, kind, index) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        if (!workspace.draft || workspace.busy) return false;
+        readRoleplayCharacterLibraryForm(modal);
+        const current = kind === 'first' ? workspace.draft.first_message
+            : workspace.draft.import_metadata?.tavern?.[kind]?.[index];
+        if (!roleplayCharacterLibraryOpeningUndoAvailable(kind, index, current)) {
+            roleplayCharacterLibraryOpeningProgress(modal, localText(
+                'This opening changed since the last AI edit; its previous version cannot replace your changes.',
+                '这条开场在上次智能优化后又被修改，旧版本不会覆盖当前内容。'
+            ), true);
+            renderRoleplayCharacterLibraryOpeningActions(modal);
+            return false;
+        }
+        const key = `${kind}:${index}`;
+        const previous = workspace.openingUndo[key].pop().before;
+        if (kind === 'first') {
+            workspace.draft.first_message = previous;
+            const field = modal.querySelector('[data-roleplay-character-library-first-message]');
+            if (field) field.value = previous;
+        } else {
+            const tavern = Object.assign({}, workspace.draft.import_metadata?.tavern);
+            tavern[kind] = tavern[kind].slice();
+            tavern[kind][index] = previous;
+            workspace.draft.import_metadata = Object.assign({}, workspace.draft.import_metadata, { tavern });
+            renderRoleplayCharacterLibraryGreetingList(modal, workspace.draft, kind);
+        }
+        renderRoleplayCharacterLibraryOpeningActions(modal);
+        syncRoleplayCharacterLibrarySaveState(modal);
+        roleplayCharacterLibraryOpeningProgress(modal, localText(
+            'The previous opening was restored. Review it and save the character.',
+            '已恢复上一个开场版本，请检查后保存角色卡。'
+        ));
+        return true;
+    }
+
+    function renderRoleplayCharacterLibraryGreetingList(modal, card, kind) {
+        const list = modal.querySelector(`[data-roleplay-character-library-greetings="${kind}"]`);
+        if (!list) return;
+        const greetings = card.import_metadata?.tavern?.[kind] || [];
+        list.innerHTML = greetings.map((text, index) => `<div class="describe-vlm-chat-character-library-greeting-row">
+            <label><span>${escapeHtml(kind === 'group_only_greetings'
+                ? localText(`Group opening ${index + 1}`, `群组开场 ${index + 1}`)
+                : localText(`Alternative ${index + 1}`, `备选开场 ${index + 1}`))}</span>
+            <textarea rows="4" data-roleplay-character-library-greeting ${roleplayCharacterLibraryWorkspaceState().busy ? 'disabled' : ''}>${escapeHtml(text)}</textarea></label>
+            <button type="button" data-roleplay-character-library-opening-edit="${kind}:${index}" ${roleplayCharacterLibraryWorkspaceState().busy ? 'disabled' : ''}
+                title="${escapeHtml(localText('AI edit this opening', '智能优化此开场'))}" aria-label="${escapeHtml(localText(`AI edit ${kind === 'group_only_greetings' ? 'group opening' : 'alternative'} ${index + 1}`, `智能优化${kind === 'group_only_greetings' ? '群组开场' : '备选开场'} ${index + 1}`))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+            <button type="button" data-roleplay-character-library-opening-undo="${kind}:${index}" ${roleplayCharacterLibraryWorkspaceState().busy || !roleplayCharacterLibraryOpeningUndoAvailable(kind, index, text) ? 'disabled' : ''}
+                title="${escapeHtml(localText('Undo last AI edit', '撤回上一次开场优化'))}" aria-label="${escapeHtml(localText(`Undo last edit of opening ${index + 1}`, `撤回第 ${index + 1} 条开场上一次优化`))}"><i class="fa-solid fa-rotate-left"></i></button>
+            <button type="button" data-roleplay-character-library-greeting-remove="${kind}:${index}" ${roleplayCharacterLibraryWorkspaceState().busy ? 'disabled' : ''}
+                title="${escapeHtml(localText('Remove opening', '删除开场'))}" aria-label="${escapeHtml(localText('Remove opening', '删除开场'))}"><i class="fa-solid fa-trash"></i></button>
+        </div>`).join('');
+    }
+
+    function renderRoleplayCharacterLibraryOpeningActions(modal) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        modal?.querySelectorAll('[data-roleplay-character-library-greeting-add], [data-roleplay-character-library-greeting-remove], [data-roleplay-character-library-opening-edit], [data-roleplay-character-library-greeting]').forEach((button) => {
+            button.disabled = workspace.busy;
+        });
+        const first = modal?.querySelector('[data-roleplay-character-library-first-message]');
+        if (first) first.disabled = workspace.busy;
+        modal?.querySelectorAll('[data-roleplay-character-library-opening-undo]').forEach((button) => {
+            const [kind, index] = button.getAttribute('data-roleplay-character-library-opening-undo').split(':');
+            const current = kind === 'first' ? first?.value : modal.querySelector(`[data-roleplay-character-library-greetings="${kind}"]`)
+                ?.querySelectorAll('[data-roleplay-character-library-greeting]')?.[Number(index)]?.value;
+            button.disabled = workspace.busy || !roleplayCharacterLibraryOpeningUndoAvailable(kind, Number(index), current);
+        });
+        modal?.querySelectorAll('[data-roleplay-character-library-opening-batch]').forEach((button) => {
+            const kind = button.getAttribute('data-roleplay-character-library-opening-batch');
+            button.disabled = workspace.busy || !(workspace.draft?.import_metadata?.tavern?.[kind] || []).some((text) => String(text || '').trim());
+        });
+        const stop = modal?.querySelector('[data-roleplay-character-library-opening-stop]');
+        if (stop) stop.hidden = !workspace.openingBatch;
+    }
+
+    function roleplayOpeningPlaceholderCounts(text) {
+        const counts = { user: 0, char: 0 };
+        for (const match of String(text || '').matchAll(/\{\{\s*(user|char)\s*\}\}/gi)) {
+            counts[match[1].toLowerCase()]++;
+        }
+        return counts;
+    }
+
+    function roleplayOpeningPlaceholderMismatch(source, candidate) {
+        const expected = roleplayOpeningPlaceholderCounts(source);
+        const received = roleplayOpeningPlaceholderCounts(candidate);
+        return expected.user !== received.user || expected.char !== received.char
+            ? { expected, received } : null;
+    }
+
+    function renderRoleplayCharacterLibraryOpeningReviews(modal) {
+        const mount = modal?.querySelector('[data-roleplay-character-library-opening-reviews]');
+        if (!mount) return;
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        mount.querySelectorAll('[data-roleplay-character-library-opening-review-input]').forEach((field) => {
+            const record = workspace.openingReviews.find((item) => item.id === field.getAttribute('data-roleplay-character-library-opening-review-input'));
+            if (record) record.candidate = field.value;
+        });
+        const reviews = workspace.openingReviews.filter((item) => item.cardId === workspace.draft?.id);
+        mount.hidden = !reviews.length;
+        mount.innerHTML = reviews.map((item) => {
+            const label = item.kind === 'first' ? localText('First opening', '默认开场')
+                : item.kind === 'group_only_greetings' ? localText(`Group opening ${item.index + 1}`, `群组开场 ${item.index + 1}`)
+                    : localText(`Alternative ${item.index + 1}`, `备选开场 ${item.index + 1}`);
+            const mismatch = roleplayOpeningPlaceholderMismatch(item.source, item.candidate);
+            const counts = mismatch ? `${localText('Original', '原文')} {{user}} ${mismatch.expected.user}, {{char}} ${mismatch.expected.char}; ${localText('Draft', '返回稿')} {{user}} ${mismatch.received.user}, {{char}} ${mismatch.received.char}. ${localText('Restore the placeholders, or confirm replacement when applying.', '请补齐占位符，或在应用时确认仍要替换原文。')}` : '';
+            return `<div class="describe-vlm-chat-character-library-opening-review" data-roleplay-character-library-opening-review="${escapeHtml(item.id)}">
+                <strong>${escapeHtml(label)}</strong><small>${escapeHtml(counts || localText('Placeholders match; review the text before applying.', '占位符数量已匹配，请检查正文后应用。'))}</small>
+                <textarea rows="6" data-roleplay-character-library-opening-review-input="${escapeHtml(item.id)}" aria-label="${escapeHtml(localText(`Review ${label}`, `检查${label}`))}">${escapeHtml(item.candidate)}</textarea>
+                ${item.error ? `<small class="describe-vlm-chat-character-library-opening-review-error" role="alert">${escapeHtml(item.error)}</small>` : ''}
+                <div class="describe-vlm-chat-character-library-opening-review-actions"><button type="button" data-roleplay-character-library-opening-review-apply="${escapeHtml(item.id)}">${escapeHtml(localText('Apply reviewed text', '应用检查后的开场'))}</button><button type="button" data-roleplay-character-library-opening-review-discard="${escapeHtml(item.id)}">${escapeHtml(localText('Discard draft', '放弃返回稿'))}</button></div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderRoleplayCharacterLibraryWorldBook(modal, card) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        const entries = Array.isArray(card.world_book?.entries) ? card.world_book.entries : [];
+        const select = modal.querySelector('[data-roleplay-character-library-world-select]');
+        const title = modal.querySelector('[data-roleplay-character-library-world-title]');
+        const content = modal.querySelector('[data-roleplay-character-library-world-content]');
+        const batchButton = modal.querySelector('[data-roleplay-character-library-world-batch]');
+        const stopButton = modal.querySelector('[data-roleplay-character-library-world-stop]');
+        if (!select || !title || !content) return;
+        workspace.worldBookEntryIndex = Math.min(Math.max(0, workspace.worldBookEntryIndex), Math.max(0, entries.length - 1));
+        select.innerHTML = entries.length
+            ? entries.map((entry, index) => `<option value="${index}">${escapeHtml(entry.title || entry.id || String(index + 1))}</option>`).join('')
+            : `<option value="">${escapeHtml(localText('No world-book entries', '没有世界书条目'))}</option>`;
+        select.value = entries.length ? String(workspace.worldBookEntryIndex) : '';
+        const entry = entries[workspace.worldBookEntryIndex];
+        title.value = entry?.title || '';
+        content.value = entry?.content || '';
+        title.disabled = content.disabled = !entry || workspace.busy;
+        if (batchButton) batchButton.disabled = !entries.length || workspace.busy;
+        if (stopButton) stopButton.hidden = !workspace.worldBookBatch;
+    }
+
     function renderRoleplayCharacterLibraryEditor(modal) {
         const workspace = roleplayCharacterLibraryWorkspaceState();
         const editor = modal?.querySelector('[data-roleplay-character-library-editor]');
@@ -7143,6 +7400,11 @@
         setValue('speech-style', card.speech_style);
         setValue('behavior', (card.behavior_rules || []).join('\n'));
         setValue('first-message', card.first_message);
+        renderRoleplayCharacterLibraryGreetingList(modal, card, 'alternate_greetings');
+        renderRoleplayCharacterLibraryGreetingList(modal, card, 'group_only_greetings');
+        renderRoleplayCharacterLibraryOpeningActions(modal);
+        renderRoleplayCharacterLibraryOpeningReviews(modal);
+        renderRoleplayCharacterLibraryWorldBook(modal, card);
         setValue('example-dialogues', formatRoleplayCharacterLibraryExampleDialogues(card.example_dialogues));
         setValue('image-prompt', card.image_prompt);
         setValue('negative-prompt', card.negative_prompt);
@@ -7245,8 +7507,24 @@
             <label><span>${escapeHtml(localText('Personality', '性格'))}</span><textarea data-roleplay-character-library-personality rows="3"></textarea></label>
             <label><span>${escapeHtml(localText('Speech style', '说话方式'))}</span><textarea data-roleplay-character-library-speech-style rows="3"></textarea></label>
             <label><span>${escapeHtml(localText('Behavior rules, one per line', '行为规则，每行一条'))}</span><textarea data-roleplay-character-library-behavior rows="3"></textarea></label>
-            <label data-roleplay-character-library-wide><span>${escapeHtml(localText('First message', '开场白'))}</span><textarea data-roleplay-character-library-first-message rows="3"></textarea></label>
+            <div class="describe-vlm-chat-character-library-first-opening" data-roleplay-character-library-wide><label><span>${escapeHtml(localText('First message', '开场白'))}</span><textarea data-roleplay-character-library-first-message rows="3"></textarea></label><button type="button" data-roleplay-character-library-opening-edit="first:0" title="${escapeHtml(localText('AI edit first opening', '智能优化默认开场'))}" aria-label="${escapeHtml(localText('AI edit first opening', '智能优化默认开场'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button><button type="button" data-roleplay-character-library-opening-undo="first:0" title="${escapeHtml(localText('Undo last AI edit', '撤回上一次开场优化'))}" aria-label="${escapeHtml(localText('Undo last edit of the first opening', '撤回默认开场上一次优化'))}" disabled><i class="fa-solid fa-rotate-left"></i></button></div>
+            <div class="describe-vlm-chat-character-library-greetings" data-roleplay-character-library-wide>
+              <div class="describe-vlm-chat-character-library-greetings-head"><strong>${escapeHtml(localText('Alternative openings', '备选开场'))}</strong><div class="describe-vlm-chat-character-library-greeting-tools"><button type="button" data-roleplay-character-library-opening-batch="alternate_greetings" title="${escapeHtml(localText('AI edit all alternative openings', '批量优化备选开场'))}" aria-label="${escapeHtml(localText('AI edit all alternative openings', '批量优化备选开场'))}"><i class="fa-solid fa-list-check"></i></button><button type="button" data-roleplay-character-library-greeting-add="alternate_greetings" title="${escapeHtml(localText('Add alternative opening', '新增备选开场'))}" aria-label="${escapeHtml(localText('Add alternative opening', '新增备选开场'))}"><i class="fa-solid fa-plus"></i></button></div></div>
+              <div data-roleplay-character-library-greetings="alternate_greetings"></div>
+              <div class="describe-vlm-chat-character-library-greetings-head"><strong>${escapeHtml(localText('Group openings', '群组开场'))}</strong><div class="describe-vlm-chat-character-library-greeting-tools"><button type="button" data-roleplay-character-library-opening-batch="group_only_greetings" title="${escapeHtml(localText('AI edit all group openings', '批量优化群组开场'))}" aria-label="${escapeHtml(localText('AI edit all group openings', '批量优化群组开场'))}"><i class="fa-solid fa-list-check"></i></button><button type="button" data-roleplay-character-library-greeting-add="group_only_greetings" title="${escapeHtml(localText('Add group opening', '新增群组开场'))}" aria-label="${escapeHtml(localText('Add group opening', '新增群组开场'))}"><i class="fa-solid fa-plus"></i></button></div></div>
+              <div data-roleplay-character-library-greetings="group_only_greetings"></div>
+              <div class="describe-vlm-chat-character-library-opening-progress"><small data-roleplay-character-library-opening-progress role="status" aria-live="polite" hidden></small><button type="button" data-roleplay-character-library-opening-stop hidden><i class="fa-solid fa-stop"></i><span>${escapeHtml(localText('Stop after this opening', '当前开场完成后停止'))}</span></button></div>
+              <div class="describe-vlm-chat-character-library-opening-reviews" data-roleplay-character-library-opening-reviews hidden></div>
+            </div>
             <label data-roleplay-character-library-wide><span>${escapeHtml(localText('Initial state fields (one label: value per line)', '初始状态字段（每行 标签: 值）'))}</span><textarea data-roleplay-character-library-initial-state-fields rows="5" placeholder="${escapeHtml(localText('Affection: 50/100', '好感度: 50/100'))}"></textarea></label>
+            <div class="describe-vlm-chat-character-library-world-book" data-roleplay-character-library-wide>
+              <div class="describe-vlm-chat-character-library-greetings-head"><strong>${escapeHtml(localText('Character world book', '角色世界书'))}</strong></div>
+              <label><span>${escapeHtml(localText('Entry', '条目'))}</span><select data-roleplay-character-library-world-select></select></label>
+              <div class="describe-vlm-chat-character-library-world-actions"><button type="button" data-roleplay-character-library-world-edit-current><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(localText('Edit selected entry', '优化当前条目'))}</span></button><button type="button" data-roleplay-character-library-world-batch><i class="fa-solid fa-list-check"></i><span>${escapeHtml(localText('Edit from here to end', '从当前条目批量优化'))}</span></button><button type="button" data-roleplay-character-library-world-stop hidden><i class="fa-solid fa-stop"></i><span>${escapeHtml(localText('Stop after this entry', '本条结束后停止'))}</span></button></div>
+              <small class="describe-vlm-chat-character-library-world-progress" data-roleplay-character-library-world-progress role="status" aria-live="polite" hidden></small>
+              <label><span>${escapeHtml(localText('Title', '标题'))}</span><input data-roleplay-character-library-world-title></label>
+              <label><span>${escapeHtml(localText('Content', '正文'))}</span><textarea data-roleplay-character-library-world-content rows="8"></textarea></label>
+            </div>
             <label data-roleplay-character-library-wide><span>${escapeHtml(roleplayDictionaryText('Example dialogues; separate entries with <START>'))}</span><textarea data-roleplay-character-library-example-dialogues rows="6" placeholder="${escapeHtml(roleplayDictionaryText('Use <START> before each example, then write {{user}} and {{char}} dialogue.'))}"></textarea></label>
           </div>
         </section>
@@ -7304,6 +7582,17 @@
     function closeRoleplayCharacterLibrary() {
         const modal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
         if (!modal) return;
+        if (roleplayCharacterLibraryWorkspaceState().openingBatch) {
+            roleplayCharacterLibraryOpeningProgress(modal, localText('Stop the opening batch before closing the character library.', '请先停止开场白批量处理，再关闭角色库。'), true);
+            return;
+        }
+        if (roleplayCharacterLibraryWorkspaceState().worldBookBatch) {
+            roleplayCharacterLibraryWorldProgress(modal, localText(
+                'Stop the world-book batch before closing the character library.',
+                '请先停止世界书批量处理，再关闭角色库。'
+            ), true);
+            return;
+        }
         modal.hidden = true;
         document.documentElement.classList.remove('describe-vlm-chat-character-library-open');
     }
@@ -7393,7 +7682,400 @@
             return false;
         } finally {
             workspace.busy = false;
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
         }
+    }
+
+    function roleplayWorldBookModelLabel(version, requestRouting) {
+        const routing = requestRouting.agent_routing;
+        const route = routing.routes.character_reply;
+        const profile = route.mode === 'api' ? routing.profiles.api_main
+            : route.mode === 'local' ? routing.profiles.local_main : null;
+        const selectedVersion = profile?.type === 'local' ? profile.version
+            : profile?.type === 'api' ? profile.version : version;
+        const customModel = selectedVersion === 'Custom' || profile?.type === 'api' && !selectedVersion
+            ? (profile?.model || requestRouting.agent_routing_api_profile?.model || readDescribeCustomApi('Custom')?.model)
+            : '';
+        const model = customModel || describeVlmModelDisplayLabel(
+            selectedVersion, state.vlmModelLabels?.[selectedVersion] || selectedVersion
+        );
+        const label = route.fallback_enabled && route.mode !== 'auto'
+            ? localText('Preferred model', '首选模型') : localText('Processing model', '处理模型');
+        return `${label}: ${model || localText('Not selected', '未选择')}`;
+    }
+
+    async function requestRoleplayCharacterLibraryWorldEdit(modal, options = {}) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        const batch = !!options.batch;
+        if (!workspace.draft) {
+            roleplayCharacterLibraryAgentFeedback(modal, localText('Select or create a character first.', '\u8bf7\u5148\u9009\u62e9\u6216\u65b0\u5efa\u4e00\u4e2a\u89d2\u8272\u3002'), true);
+            return false;
+        }
+        if (workspace.busy && !batch) {
+            roleplayCharacterLibraryAgentFeedback(modal, localText('Another character task is still running.', '\u53e6\u4e00\u4e2a\u89d2\u8272\u4efb\u52a1\u4ecd\u5728\u8fdb\u884c\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002'), true);
+            return false;
+        }
+        if (batch && !workspace.worldBookBatch) return false;
+        if (!batch) readRoleplayCharacterLibraryForm(modal);
+        const card = normalizeRoleplayCharacterLibraryCard(workspace.draft);
+        const index = batch ? options.index : workspace.worldBookEntryIndex;
+        if (batch) workspace.worldBookEntryIndex = index;
+        const entry = card.world_book?.entries?.[index];
+        if (!entry?.content) {
+            roleplayCharacterLibraryAgentFeedback(modal, localText('Select a world-book entry with content.', '请选择有正文的世界书条目。'), true);
+            return false;
+        }
+        const request = (batch ? options.request : roleplayCharacterLibraryFormValue(modal, 'agent-request')) || localText(
+            'Translate the selected world-book entry into English. Preserve every fact and paragraph.',
+            '将选中的世界书条目翻译成中文，保留完整事实和段落。'
+        );
+        const length = String(entry.title || '').length + entry.content.length;
+        if (length > 8500) {
+            roleplayCharacterLibraryAgentFeedback(modal, localText(
+                'This entry exceeds the single-request budget. Shorten or edit this entry before sending it to the agent.',
+                '该条目超出单次智能体请求预算，请缩短或手动编辑后再提交。'
+            ), true);
+            return false;
+        }
+        const version = readSelectedVlmVersion();
+        const outputTokens = Math.max(1800, Math.min(8192, Math.ceil(length / 1.5) + 1200));
+        const contextLimit = Number(currentVlmNctx(version));
+        if (contextLimit > 0 && Math.ceil(length / 1.5) + outputTokens + 1600 > contextLimit) {
+            roleplayCharacterLibraryAgentFeedback(modal, localText(
+                'This world-book entry exceeds the selected model context budget. Increase the context or edit it manually.',
+                '该世界书条目超出当前模型的上下文预算，请增大上下文或手动编辑。'
+            ), true);
+            return false;
+        }
+        const slimCard = Object.assign({}, card, { first_message: '', world_book: { entries: [] },
+            import_metadata: Object.assign({}, card.import_metadata, {
+                tavern: { alternate_greetings: [], group_only_greetings: [] }, raw: {}
+            }) });
+        const session = roleplayCharacterLibrarySession(slimCard);
+        session.world_book = { entries: [entry] };
+        const agentRouting = roleplayAgentRequestRouting(session);
+        if (!batch) {
+            workspace.worldBookEditing = true;
+            workspace.busy = true;
+            setRoleplayCharacterLibraryAgentBusy(modal, true);
+            roleplayCharacterLibraryWorldProgress(modal, localText(
+                `Processing entry: ${entry.title || entry.id || index + 1}. Keep this page open; review and save the character afterwards.`,
+                `\u6b63\u5728\u5904\u7406\u6761\u76ee\uff1a${entry.title || entry.id || index + 1}\u3002\u8bf7\u4fdd\u6301\u9875\u9762\u6253\u5f00\uff0c\u5b8c\u6210\u540e\u68c0\u67e5\u5e76\u4fdd\u5b58\u89d2\u8272\u3002`
+            ));
+        }
+        if (batch) {
+            renderRoleplayCharacterLibraryWorldBook(modal, workspace.draft);
+            roleplayCharacterLibraryWorldProgress(modal, localText(
+                `Processing entry ${options.ordinal}/${options.total}: ${entry.title || entry.id || index + 1}`,
+                `正在处理第 ${options.ordinal}/${options.total} 条：${entry.title || entry.id || index + 1}`
+            ));
+        }
+        roleplayCharacterLibraryAgentFeedback(modal,
+            `${localText('Editing the selected world-book entry...', '正在处理选中的世界书条目……')} ${roleplayWorldBookModelLabel(version, agentRouting)}`);
+        try {
+            const response = await postJson('/describe-image/vlm-chat-run', {
+                request_kind: 'roleplay_form_draft', request_id: uid('roleplay_world_book_edit'),
+                message: request, conversation_id: `character_library:${card.id}`,
+                chat_mode: 'roleplay', describe_chat_mode: 'roleplay', roleplay_request_kind: 'form_draft',
+                roleplay_form_target: 'world_book_edit', roleplay_form_request: request,
+                roleplay_session: session, ...agentRouting,
+                history: [], history_full: [], version,
+                custom_api: readDescribeCustomApi(version), vram_policy: state.vramPolicy,
+                kv_cache_type: state.kvCacheType, n_ctx: currentVlmNctx(version),
+                load_mtp: !!state.mtpEnabled, enable_thinking: !!state.thinkingEnabled,
+                unload_after_chat: !!state.unloadAfterChat, max_tokens: outputTokens,
+                __lang: state.__lang, lang: state.__lang
+            });
+            const edited = response?.form_draft?.world_book_edit;
+            if (!response?.ok || !response.form_draft?.ok || !edited?.content) {
+                throw new Error(response?.ok === false ? describeVlmChatFailure(response)
+                    : localText('The agent did not return a complete world-book entry.', '智能体没有返回完整的世界书条目。'));
+            }
+            const placeholders = (entry.content.match(/\{\{\s*(?:user|char)\s*\}\}/gi) || []).map((item) => item.toLowerCase()).sort();
+            const returnedPlaceholders = (edited.content.match(/\{\{\s*(?:user|char)\s*\}\}/gi) || []).map((item) => item.toLowerCase()).sort();
+            if (JSON.stringify(placeholders) !== JSON.stringify(returnedPlaceholders)) {
+                throw new Error(localText('The agent changed a character placeholder; the original entry was kept.', '智能体改动了角色占位符，原条目已保留。'));
+            }
+            if (workspace.draft?.id !== card.id || workspace.draft.world_book?.entries?.[index]?.id !== entry.id) {
+                throw new Error(localText('The character or entry changed during processing; the result was not applied.', '处理期间角色或条目发生变化，结果未应用。'));
+            }
+            const current = workspace.draft.world_book.entries[index];
+            workspace.draft.world_book.entries[index] = Object.assign({}, current, {
+                title: edited.title || current.title, content: edited.content
+            });
+            renderRoleplayCharacterLibraryWorldBook(modal, workspace.draft);
+            syncRoleplayCharacterLibrarySaveState(modal);
+            roleplayCharacterLibraryAgentFeedback(modal, localText('World-book draft updated. Review the entry and save the character.', '世界书草稿已更新，请检查条目后保存角色。'));
+            if (!batch) roleplayCharacterLibraryWorldProgress(modal, localText('Entry updated; save the character after review.', '条目已更新，检查后请保存角色。'));
+            return true;
+        } catch (error) {
+            roleplayCharacterLibraryAgentFeedback(modal, String(error?.message || localText('World-book edit failed.', '世界书修改失败。')), true);
+            if (!batch) roleplayCharacterLibraryWorldProgress(modal, String(error?.message || localText('World-book edit failed.', '世界书修改失败。')), true);
+            return false;
+        } finally {
+            if (!batch) {
+                workspace.worldBookEditing = false;
+                workspace.busy = false;
+                setRoleplayCharacterLibraryAgentBusy(modal, false);
+            }
+            renderRoleplayCharacterLibraryWorldBook(modal, workspace.draft || card);
+        }
+    }
+
+    async function requestRoleplayCharacterLibraryWorldBatch(modal) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        if (!workspace.draft || workspace.busy) return false;
+        readRoleplayCharacterLibraryForm(modal);
+        const entries = workspace.draft.world_book?.entries || [];
+        const start = workspace.worldBookEntryIndex;
+        const total = entries.length - start;
+        if (total <= 0) return false;
+        if (!window.confirm(localText(
+            `Edit ${total} world-book entries in sequence, starting with the selected entry? Each entry uses one model request. Keep this page open; review and save the character afterwards.`,
+            `从当前条目开始串行优化 ${total} 条世界书？每条会调用一次模型。处理期间请保持页面打开，完成后检查并保存角色。`
+        ))) return false;
+        const request = roleplayCharacterLibraryFormValue(modal, 'agent-request') || '';
+        const batch = { stopRequested: false, succeeded: 0, failed: [], lastIndex: start - 1 };
+        workspace.worldBookBatch = batch;
+        workspace.busy = true;
+        setRoleplayCharacterLibraryAgentBusy(modal, true);
+        renderRoleplayCharacterLibraryWorldBook(modal, workspace.draft);
+        try {
+            for (let index = start; index < entries.length && !batch.stopRequested; index++) {
+                const title = entries[index].title || entries[index].id || String(index + 1);
+                const ok = await requestRoleplayCharacterLibraryWorldEdit(modal, {
+                    batch: true, index, ordinal: index - start + 1, total, request
+                });
+                if (ok) batch.succeeded++;
+                else batch.failed.push(`${index + 1}: ${title}`);
+                batch.lastIndex = index;
+            }
+        } finally {
+            workspace.busy = false;
+            workspace.worldBookBatch = null;
+            if (batch.stopRequested && batch.lastIndex + 1 < entries.length) {
+                workspace.worldBookEntryIndex = batch.lastIndex + 1;
+            }
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
+            renderRoleplayCharacterLibraryWorldBook(modal, workspace.draft);
+            const summary = localText(
+                `World-book batch ${batch.stopRequested ? 'stopped' : 'finished'}: ${batch.succeeded} updated, ${batch.failed.length} failed. Review and save the character.`,
+                `世界书批量处理${batch.stopRequested ? '已停止' : '已完成'}：成功 ${batch.succeeded} 条，失败 ${batch.failed.length} 条。检查后请保存角色。`
+            );
+            const failed = batch.failed.length ? ` ${localText('Failed entries', '失败条目')}: ${batch.failed.slice(0, 5).join(', ')}${batch.failed.length > 5 ? '…' : ''}` : '';
+            roleplayCharacterLibraryWorldProgress(modal, summary + failed, !!batch.failed.length);
+            roleplayCharacterLibraryAgentFeedback(modal, summary + failed, !!batch.failed.length);
+        }
+        return !batch.stopRequested && !batch.failed.length;
+    }
+
+    async function requestRoleplayCharacterLibraryOpeningEdit(modal, kind, index = 0, options = {}) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        const batch = !!options.batch;
+        if (!workspace.draft || (workspace.busy && !batch) || (batch && !workspace.openingBatch)) return false;
+        if (!batch) readRoleplayCharacterLibraryForm(modal);
+        const card = normalizeRoleplayCharacterLibraryCard(workspace.draft);
+        const text = kind === 'first' ? card.first_message : card.import_metadata?.tavern?.[kind]?.[index];
+        if (!['first', 'alternate_greetings', 'group_only_greetings'].includes(kind) || !String(text || '').trim()) {
+            roleplayCharacterLibraryOpeningProgress(modal, localText('Select an opening with text.', '请选择有正文的开场白。'), true);
+            return false;
+        }
+        if (text.length > 8500) {
+            roleplayCharacterLibraryOpeningProgress(modal, localText('This opening exceeds the single-request budget. Edit it manually or shorten it first.', '该开场白超过单次请求预算，请手动编辑或先缩短。'), true);
+            return false;
+        }
+        const version = readSelectedVlmVersion();
+        const outputTokens = Math.max(1800, Math.min(8192, Math.ceil(text.length / 1.5) + 1200));
+        const contextLimit = Number(currentVlmNctx(version));
+        if (contextLimit > 0 && Math.ceil(text.length / 1.5) + outputTokens + 1600 > contextLimit) {
+            roleplayCharacterLibraryOpeningProgress(modal, localText('This opening exceeds the selected model context budget. Increase context or edit it manually.', '该开场白超过当前模型的上下文预算，请增大上下文或手动编辑。'), true);
+            return false;
+        }
+        const request = (batch ? options.request : roleplayCharacterLibraryFormValue(modal, 'agent-request')) || localText(
+            'Translate this entire opening into English. Preserve the story, dialogue, paragraphs, and placeholders.',
+            '将这条开场白完整翻译成中文，保留剧情、对白、段落和角色占位符。'
+        );
+        const slimCard = Object.assign({}, card, { first_message: text, world_book: { entries: [] },
+            import_metadata: Object.assign({}, card.import_metadata, {
+                tavern: { alternate_greetings: [], group_only_greetings: [] }, raw: {}
+            }) });
+        const session = roleplayCharacterLibrarySession(slimCard);
+        const routing = roleplayAgentRequestRouting(session);
+        const modelLabel = roleplayWorldBookModelLabel(version, routing);
+        if (!batch) {
+            workspace.busy = true;
+            setRoleplayCharacterLibraryAgentBusy(modal, true);
+            renderRoleplayCharacterLibraryOpeningActions(modal);
+            for (const key of ['alternate_greetings', 'group_only_greetings']) renderRoleplayCharacterLibraryGreetingList(modal, workspace.draft, key);
+        }
+        const label = kind === 'first' ? localText('First opening', '默认开场')
+            : kind === 'group_only_greetings' ? localText(`Group opening ${index + 1}`, `群组开场 ${index + 1}`)
+                : localText(`Alternative ${index + 1}`, `备选开场 ${index + 1}`);
+        roleplayCharacterLibraryOpeningProgress(modal, `${batch ? `${options.ordinal}/${options.total} ` : ''}${label}: ${modelLabel}`);
+        roleplayCharacterLibraryAgentFeedback(modal, `${localText('Editing opening...', '正在优化开场白……')} ${modelLabel}`);
+        try {
+            const response = await postJson('/describe-image/vlm-chat-run', {
+                request_kind: 'roleplay_form_draft', request_id: uid('roleplay_opening_edit'),
+                message: request, conversation_id: `character_library:${card.id}`,
+                chat_mode: 'roleplay', describe_chat_mode: 'roleplay', roleplay_request_kind: 'form_draft',
+                roleplay_form_target: 'opening_edit', roleplay_form_request: request,
+                roleplay_session: session, ...routing,
+                history: [], history_full: [], version, custom_api: readDescribeCustomApi(version),
+                vram_policy: state.vramPolicy, kv_cache_type: state.kvCacheType,
+                n_ctx: currentVlmNctx(version), load_mtp: !!state.mtpEnabled,
+                enable_thinking: !!state.thinkingEnabled, unload_after_chat: !!state.unloadAfterChat,
+                max_tokens: outputTokens, __lang: state.__lang, lang: state.__lang
+            });
+            const edited = response?.form_draft?.opening_edit?.text;
+            if (!response?.ok || !response.form_draft?.ok || !edited) {
+                throw new Error(response?.ok === false ? describeVlmChatFailure(response)
+                    : localText('The agent did not return a complete opening.', '智能体没有返回完整开场白。'));
+            }
+            const mismatch = roleplayOpeningPlaceholderMismatch(text, edited);
+            if (mismatch) {
+                workspace.openingReviews = workspace.openingReviews.filter((item) =>
+                    item.cardId !== card.id || item.kind !== kind || item.index !== index);
+                workspace.openingReviews.push({ id: uid('roleplay_opening_review'), cardId: card.id, kind, index, source: text, candidate: edited });
+                renderRoleplayCharacterLibraryOpeningReviews(modal);
+                throw new Error(localText(
+                    `Placeholders differ (original: user ${mismatch.expected.user}, char ${mismatch.expected.char}; draft: user ${mismatch.received.user}, char ${mismatch.received.char}). The original was kept. Review and correct the returned draft below.`,
+                    `占位符数量不符（原文：user ${mismatch.expected.user}、char ${mismatch.expected.char}；返回稿：user ${mismatch.received.user}、char ${mismatch.received.char}）。原文已保留，请在下方检查并修正返回稿。`
+                ));
+            }
+            const current = kind === 'first' ? workspace.draft?.first_message : workspace.draft?.import_metadata?.tavern?.[kind]?.[index];
+            if (workspace.draft?.id !== card.id || current !== text) {
+                throw new Error(localText('The character or opening changed during processing; the result was not applied.', '处理期间角色或开场白发生变化，结果未应用。'));
+            }
+            if (kind === 'first') {
+                rememberRoleplayCharacterLibraryOpeningEdit(kind, index, current, edited);
+                workspace.draft.first_message = edited;
+                const field = modal.querySelector('[data-roleplay-character-library-first-message]');
+                if (field) field.value = edited;
+            } else {
+                rememberRoleplayCharacterLibraryOpeningEdit(kind, index, current, edited);
+                const tavern = Object.assign({}, workspace.draft.import_metadata?.tavern);
+                tavern[kind] = tavern[kind].slice();
+                tavern[kind][index] = edited;
+                workspace.draft.import_metadata = Object.assign({}, workspace.draft.import_metadata, { tavern });
+                renderRoleplayCharacterLibraryGreetingList(modal, workspace.draft, kind);
+            }
+            workspace.openingReviews = workspace.openingReviews.filter((item) =>
+                item.cardId !== card.id || item.kind !== kind || item.index !== index);
+            renderRoleplayCharacterLibraryOpeningReviews(modal);
+            syncRoleplayCharacterLibrarySaveState(modal);
+            if (!batch) {
+                const success = `${label}: ${localText('Review and save the character.', '检查后请保存角色卡。')} ${modelLabel}`;
+                roleplayCharacterLibraryOpeningProgress(modal, success);
+                roleplayCharacterLibraryAgentFeedback(modal, success);
+            }
+            return true;
+        } catch (error) {
+            const failure = String(error?.message || localText('Opening edit failed.', '开场白优化失败。'));
+            roleplayCharacterLibraryAgentFeedback(modal, failure, true);
+            if (!batch) roleplayCharacterLibraryOpeningProgress(modal, failure, true);
+            return false;
+        } finally {
+            if (!batch) {
+                workspace.busy = false;
+                setRoleplayCharacterLibraryAgentBusy(modal, false);
+                renderRoleplayCharacterLibraryOpeningActions(modal);
+                for (const key of ['alternate_greetings', 'group_only_greetings']) renderRoleplayCharacterLibraryGreetingList(modal, workspace.draft, key);
+            }
+        }
+    }
+
+    function applyRoleplayCharacterLibraryOpeningReview(modal, id, field) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        const review = workspace.openingReviews.find((item) => item.id === id);
+        if (!review || workspace.busy || !workspace.draft || workspace.draft.id !== review.cardId) return false;
+        const current = review.kind === 'first' ? workspace.draft.first_message
+            : workspace.draft.import_metadata?.tavern?.[review.kind]?.[review.index];
+        if (current !== review.source) {
+            review.error = localText('The opening changed since this draft was created. Review the current text before applying.', '生成返回稿后原开场白已变化，请核对当前正文。');
+            renderRoleplayCharacterLibraryOpeningReviews(modal);
+            roleplayCharacterLibraryOpeningProgress(modal, review.error, true);
+            return false;
+        }
+        const edited = String(field?.value || '').trim();
+        const mismatch = roleplayOpeningPlaceholderMismatch(review.source, edited);
+        if (!edited) {
+            review.error = localText('The reviewed opening is empty. Enter text before applying.', '检查后的开场白为空，请填写正文后应用。');
+            renderRoleplayCharacterLibraryOpeningReviews(modal);
+            roleplayCharacterLibraryOpeningProgress(modal, review.error, true);
+            return false;
+        }
+        if (mismatch && !window.confirm(localText(
+            `The original has {{user}} ${mismatch.expected.user}, {{char}} ${mismatch.expected.char}; the reviewed text has {{user}} ${mismatch.received.user}, {{char}} ${mismatch.received.char}. Apply it anyway and replace the original opening?`,
+            `原文有 {{user}} ${mismatch.expected.user} 个、{{char}} ${mismatch.expected.char} 个；检查后的正文有 {{user}} ${mismatch.received.user} 个、{{char}} ${mismatch.received.char} 个。仍要替换原开场白吗？`
+        ))) {
+            review.error = localText('Not applied. Restore the placeholders or confirm replacement when applying.', '未应用。请补齐占位符，或在应用时确认仍要替换原文。');
+            renderRoleplayCharacterLibraryOpeningReviews(modal);
+            roleplayCharacterLibraryOpeningProgress(modal, review.error, true);
+            return false;
+        }
+        if (review.kind === 'first') {
+            rememberRoleplayCharacterLibraryOpeningEdit(review.kind, review.index, current, edited);
+            workspace.draft.first_message = edited;
+            const originalField = modal.querySelector('[data-roleplay-character-library-first-message]');
+            if (originalField) originalField.value = edited;
+        } else {
+            rememberRoleplayCharacterLibraryOpeningEdit(review.kind, review.index, current, edited);
+            const tavern = Object.assign({}, workspace.draft.import_metadata?.tavern);
+            tavern[review.kind] = tavern[review.kind].slice();
+            tavern[review.kind][review.index] = edited;
+            workspace.draft.import_metadata = Object.assign({}, workspace.draft.import_metadata, { tavern });
+            renderRoleplayCharacterLibraryGreetingList(modal, workspace.draft, review.kind);
+        }
+        workspace.openingReviews = workspace.openingReviews.filter((item) => item.id !== id);
+        renderRoleplayCharacterLibraryOpeningReviews(modal);
+        syncRoleplayCharacterLibrarySaveState(modal);
+        roleplayCharacterLibraryOpeningProgress(modal, localText('Reviewed opening applied. Check it and save the character.', '检查后的开场白已应用，请核对并保存角色卡。'));
+        return true;
+    }
+
+    async function requestRoleplayCharacterLibraryOpeningBatch(modal, kind) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        if (!workspace.draft || workspace.busy || !['alternate_greetings', 'group_only_greetings'].includes(kind)) return false;
+        readRoleplayCharacterLibraryForm(modal);
+        const entries = workspace.draft.import_metadata?.tavern?.[kind] || [];
+        const indices = entries.map((text, index) => String(text || '').trim() ? index : -1).filter((index) => index >= 0);
+        if (!indices.length) return false;
+        const category = kind === 'alternate_greetings' ? localText('alternative', '备选') : localText('group', '群组');
+        if (!window.confirm(localText(
+            `Edit ${indices.length} ${category} openings in sequence? Each opening uses one model request. Review and save the character afterwards.`,
+            `串行优化 ${indices.length} 条${category}开场？每条会调用一次模型。完成后请检查并保存角色卡。`
+        ))) return false;
+        const request = roleplayCharacterLibraryFormValue(modal, 'agent-request') || '';
+        const batch = { stopRequested: false, succeeded: 0, failed: [] };
+        workspace.openingBatch = batch;
+        workspace.busy = true;
+        setRoleplayCharacterLibraryAgentBusy(modal, true);
+        renderRoleplayCharacterLibraryOpeningActions(modal);
+        for (const key of ['alternate_greetings', 'group_only_greetings']) renderRoleplayCharacterLibraryGreetingList(modal, workspace.draft, key);
+        try {
+            for (const [ordinal, index] of indices.entries()) {
+                if (batch.stopRequested) break;
+                const ok = await requestRoleplayCharacterLibraryOpeningEdit(modal, kind, index, {
+                    batch: true, ordinal: ordinal + 1, total: indices.length, request
+                });
+                if (ok) batch.succeeded++;
+                else batch.failed.push(index + 1);
+            }
+        } finally {
+            workspace.openingBatch = null;
+            workspace.busy = false;
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
+            renderRoleplayCharacterLibraryOpeningActions(modal);
+            for (const key of ['alternate_greetings', 'group_only_greetings']) renderRoleplayCharacterLibraryGreetingList(modal, workspace.draft, key);
+            const summary = localText(
+                `Opening batch ${batch.stopRequested ? 'stopped' : 'finished'}: ${batch.succeeded} updated, ${batch.failed.length} failed. Review and save the character.`,
+                `开场白批量处理${batch.stopRequested ? '已停止' : '已完成'}：成功 ${batch.succeeded} 条，失败 ${batch.failed.length} 条。检查后请保存角色卡。`
+            );
+            const failures = batch.failed.length ? ` ${localText('Failed openings', '失败开场')}: ${batch.failed.join(', ')}` : '';
+            roleplayCharacterLibraryOpeningProgress(modal, summary + failures, !!batch.failed.length);
+            roleplayCharacterLibraryAgentFeedback(modal, summary + failures, !!batch.failed.length);
+        }
+        return !batch.stopRequested && !batch.failed.length;
     }
 
     async function requestRoleplayCharacterLibraryAgent(modal, mode = 'generate') {
@@ -7433,8 +8115,8 @@
                 : localText('The character agent is creating a draft...', '角色智能体正在生成角色草稿……');
         roleplayCharacterLibraryAgentFeedback(modal, progressMessage);
         roleplayCharacterLibraryFeedback(modal, progressMessage);
+        let modelLabel = '';
         try {
-            const session = roleplayCharacterLibrarySession(card);
             const mentionInput = modal.querySelector('[data-roleplay-character-library-agent-request]');
             const references = mode === 'visual'
                 ? []
@@ -7444,17 +8126,62 @@
                     currentConversationRuntime()?.roleplaySession || state.roleplaySession
                 );
             const version = readSelectedVlmVersion();
+            const greetings = card.import_metadata?.tavern || {};
+            const openingLength = [card.first_message,
+                ...(greetings.alternate_greetings || []), ...(greetings.group_only_greetings || [])]
+                .reduce((length, text) => length + String(text || '').length, 0);
+            const contextLimit = Number(currentVlmNctx(version));
+            const fullOutputTokens = Math.max(2200, Math.min(8192, Math.ceil(openingLength / 1.5) + 2200));
+            const fullRequestTooLarge = openingLength > 8500 || (contextLimit > 0
+                && Math.ceil(openingLength / 1.5) + fullOutputTokens + 1800 > contextLimit);
+            const preserveOpenings = mode === 'optimize' && fullRequestTooLarge;
+            if (mode !== 'visual' && !preserveOpenings && openingLength > 8500) {
+                throw new Error(localText('The openings are too long for one character-agent request. Shorten or edit them individually before retrying.',
+                    '开场白总长度超出单次角色智能体请求预算；请缩短或逐条编辑后重试。'));
+            }
+            if (preserveOpenings && contextLimit > 0 && 3200 + 1800 > contextLimit) {
+                throw new Error(localText('Even without openings, this context is too small for the character-agent response. Increase the context limit.',
+                    '即使不发送开场白，当前上下文也不足以容纳角色智能体的返回稿，请增大上下文。'));
+            }
+            if (preserveOpenings && !window.confirm(localText(
+                `The character and openings exceed a single request at ${contextLimit || 'the current'} context tokens. Continue editing only the character details? Every opening will stay unchanged. Increase the context or edit openings individually to include them.`,
+                `当前 ${contextLimit || '模型'} token 上下文不足以在单次请求中完整优化角色卡和开场白。是否仅优化角色设定？所有开场白将保持原样；如需一同优化，请增大上下文或逐条处理开场。`
+            ))) {
+                roleplayCharacterLibraryAgentFeedback(modal, localText('Nothing was changed. Increase the context or edit openings individually.', '已取消，本次没有修改。可增大上下文或逐条优化开场。'));
+                return false;
+            }
+            const agentRequest = preserveOpenings ? `${request}\n\n${localText(
+                'Only improve character details. Do not generate or rewrite first_message, alternate_greetings, or group_only_greetings; the existing openings are preserved separately.',
+                '本次仅优化角色设定，不生成或改写默认开场、备选开场或群组开场；已有开场会单独保留。'
+            )}` : request;
+            const requestCard = preserveOpenings ? Object.assign({}, card, {
+                first_message: '',
+                import_metadata: Object.assign({}, card.import_metadata, {
+                    tavern: { alternate_greetings: [], group_only_greetings: [] }, raw: {}
+                }),
+                world_book: { entries: [] }
+            }) : card;
+            const session = roleplayCharacterLibrarySession(requestCard);
+            const outputTokens = mode === 'visual' ? 2200
+                : preserveOpenings ? 3200 : fullOutputTokens;
+            if (mode !== 'visual' && contextLimit > 0
+                && (preserveOpenings ? 0 : Math.ceil(openingLength / 1.5)) + outputTokens + 1800 > contextLimit) {
+                throw new Error(localText('The character card and openings exceed this model context budget. Use a larger context or edit the openings individually.',
+                    '角色卡和开场白超过当前模型的上下文预算；请增大上下文或逐条编辑开场。'));
+            }
             const agentRouting = roleplayAgentRequestRouting(session);
+            modelLabel = roleplayWorldBookModelLabel(version, agentRouting);
+            roleplayCharacterLibraryAgentFeedback(modal, `${progressMessage} ${preserveOpenings ? localText('Openings will remain unchanged.', '开场白保持原样。') : ''} ${modelLabel}`);
             const response = await postJson('/describe-image/vlm-chat-run', {
                 request_kind: 'roleplay_form_draft',
                 request_id: uid(`roleplay_character_agent_${mode}`),
-                message: request,
+                message: agentRequest,
                 conversation_id: `character_library:${card.id}`,
                 chat_mode: 'roleplay',
                 describe_chat_mode: 'roleplay',
                 roleplay_request_kind: 'form_draft',
                 roleplay_form_target: 'character',
-                roleplay_form_request: request,
+                roleplay_form_request: agentRequest,
                 roleplay_form_references: references,
                 roleplay_session: session,
                 ...agentRouting,
@@ -7468,7 +8195,7 @@
                 load_mtp: !!state.mtpEnabled,
                 enable_thinking: !!state.thinkingEnabled,
                 unload_after_chat: !!state.unloadAfterChat,
-                max_tokens: 2200,
+                max_tokens: outputTokens,
                 __lang: state.__lang,
                 lang: state.__lang
             });
@@ -7484,7 +8211,18 @@
                 roleplayCharacterLibraryFeedback(modal, failureMessage, true);
                 return false;
             }
+            const missingOpenings = mode === 'visual' || preserveOpenings ? [] : roleplayCharacterLibraryOpeningDraftWarnings(card, candidate, request);
             workspace.draft = mergeRoleplayCharacterLibraryAgentDraft(card, candidate, mode === 'visual' ? 'visual' : 'character');
+            if (mode !== 'visual' && !preserveOpenings) workspace.openingUndo = {};
+            if (preserveOpenings) {
+                workspace.draft.first_message = card.first_message;
+                workspace.draft.import_metadata = Object.assign({}, workspace.draft.import_metadata, {
+                    tavern: Object.assign({}, workspace.draft.import_metadata?.tavern, {
+                        alternate_greetings: greetings.alternate_greetings || [],
+                        group_only_greetings: greetings.group_only_greetings || []
+                    })
+                });
+            }
             const reviewMode = mode === 'visual' ? 'visual' : 'character';
             workspace.agentDraftUndo = {
                 id: uid('roleplay_character_agent_review'),
@@ -7497,15 +8235,20 @@
             const successMessage = mode === 'visual'
                 ? localText('The visual prompt was improved. Review it before generating.', '视觉提示词已优化，请确认后再生图。')
                 : localText('The character draft was updated. Review it before saving.', '角色草稿已更新，请检查后保存。');
-            roleplayCharacterLibraryAgentFeedback(modal, successMessage);
-            roleplayCharacterLibraryFeedback(modal, successMessage);
+            const message = preserveOpenings
+                ? `${successMessage} ${localText('The openings were not sent or changed because they exceed one request at the current context; increase the context or edit them separately.', '当前上下文无法在单次请求中处理全部开场白，本次未发送、也未修改开场白；可增大上下文或逐条编辑。')}`
+                : missingOpenings.length
+                ? `${successMessage} ${localText('Some openings were missing, incomplete, or unchanged after translation. Unreturned openings kept their original text. Review every opening before saving.', '部分开场未返回、内容不完整，或翻译后仍与英文原文相同。未返回的开场保留原文，保存前请逐条检查。')}`
+                : successMessage;
+            roleplayCharacterLibraryAgentFeedback(modal, `${message} ${modelLabel}`, !!missingOpenings.length);
+            roleplayCharacterLibraryFeedback(modal, message, !!missingOpenings.length);
             return true;
         } catch (error) {
             const failureMessage = String(error?.message || localText(
                 'The character agent request failed.',
                 '角色智能体请求失败。'
             ));
-            roleplayCharacterLibraryAgentFeedback(modal, failureMessage, true);
+            roleplayCharacterLibraryAgentFeedback(modal, `${failureMessage}${modelLabel ? ` ${modelLabel}` : ''}`, true);
             roleplayCharacterLibraryFeedback(modal, failureMessage, true);
             return false;
         } finally {
@@ -7543,6 +8286,7 @@
             return false;
         } finally {
             workspace.busy = false;
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
         }
     }
 
@@ -7602,6 +8346,7 @@
             return false;
         } finally {
             workspace.busy = false;
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
         }
     }
 
@@ -7678,6 +8423,7 @@
             return false;
         } finally {
             workspace.busy = false;
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
         }
     }
 
@@ -7805,6 +8551,7 @@
         } finally {
             workspace.busy = false;
             workspace.imageGenerationPreparing = false;
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
             if (!workspace.generationTimer) {
                 setRoleplayActionBusy(modal, '[data-roleplay-character-library-generate-image]', false);
             }
@@ -7849,6 +8596,7 @@
             return false;
         } finally {
             workspace.busy = false;
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
         }
     }
 
@@ -7868,6 +8616,10 @@
             const workspace = roleplayCharacterLibraryWorkspaceState();
             workspace.selectedId = id;
             workspace.draft = normalizeRoleplayCharacterLibraryCard(response.character);
+            workspace.openingReviews = [];
+            workspace.openingUndo = {};
+            workspace.worldBookEntryIndex = 0;
+            roleplayCharacterLibraryWorldProgress(modal, '');
             roleplayCharacterMentionCardCache.set(id, workspace.draft);
             setRoleplayCharacterLibrarySavedDraft(workspace.draft);
             workspace.agentDraftUndo = null;
@@ -7901,6 +8653,7 @@
             roleplayCharacterMentionCardCache.delete(id);
             workspace.selectedId = '';
             workspace.draft = null;
+            workspace.openingUndo = {};
             setRoleplayCharacterLibrarySavedDraft(null);
             workspace.agentDraftUndo = null;
             workspace.imagePayload = null;
@@ -7914,6 +8667,7 @@
             return false;
         } finally {
             workspace.busy = false;
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
         }
     }
 
@@ -8515,6 +9269,7 @@
 
     function removeRoleplayCharacter(runtime, modal) {
         const target = runtime || currentConversationRuntime();
+        const selectedId = String(modal?.querySelector('[data-describe-vlm-chat-roleplay-character-select]')?.value || '').trim();
         let session = syncRoleplaySessionFromVisibleFormForSend(modal, target, { includePresence: false })
             || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const ids = Object.keys(session.characters || {});
@@ -8522,8 +9277,14 @@
             setConversationStatus(target, localText('At least one character is required.', '至少需要保留一个角色。'), true);
             return false;
         }
-        const removeId = session.active_character_id;
-        if (!window.confirm(localText('Remove the current character?', '确定删除当前角色吗？'))) return false;
+        if (!selectedId || !session.characters[selectedId]) {
+            setConversationStatus(target, localText('The selected character is no longer available. Select a character again.', '所选角色已不可用，请重新选择角色。'), true);
+            syncRoleplayControls(modal, target);
+            return false;
+        }
+        const removeId = selectedId;
+        const removeName = String(session.characters[removeId].name || removeId).trim();
+        if (!window.confirm(localText(`Remove ${removeName} from this story?`, `确定从当前故事删除“${removeName}”吗？`))) return false;
         delete session.characters[removeId];
         delete session.story_state.characters[removeId];
         if (session.story_origin?.character_id === removeId && !session.story_origin.started) {
@@ -8543,7 +9304,8 @@
             }
         }
         session.story_state.scene.present_character_ids = session.story_state.scene.present_character_ids.filter((id) => id !== removeId);
-        const nextId = Object.keys(session.characters)[0];
+        const nextId = session.characters[session.active_character_id]
+            ? session.active_character_id : Object.keys(session.characters)[0];
         session.active_character_id = nextId;
         session.character = session.characters[nextId];
         target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
@@ -8650,7 +9412,7 @@
         const preview = panel.querySelector('[data-roleplay-story-preview]');
         preview.textContent = originMissing
             ? String(runtime.messages.find((item) => item.id === session.story_origin.opening_message_id)?.content || '')
-            : openings[openingIndex]?.text || '';
+            : resolveRoleplayOpeningNames(openings[openingIndex]?.text, session, card);
         preview.hidden = !preview.textContent;
         const start = panel.querySelector('[data-roleplay-story-start]');
         start.disabled = hasHistory || runtime.busy || !openings.length;
@@ -9598,6 +10360,7 @@
         if (!review?.before) return false;
         workspace.draft = normalizeRoleplayCharacterLibraryCard(review.before);
         workspace.agentDraftUndo = null;
+        workspace.openingUndo = {};
         renderRoleplayCharacterLibraryWorkspace(modal);
         roleplayCharacterLibraryAgentFeedback(modal, localText('The assistant character fill was undone.', '已撤销本次助手角色填充。'));
         roleplayCharacterLibraryFeedback(modal, localText('The character card was restored.', '角色卡已恢复到填充前状态。'));
@@ -23755,6 +24518,17 @@
             syncChatSettingsSummary(document.getElementById('describe_vlm_chat_modal'));
             return;
         }
+        const worldEntrySelect = evt.target.closest?.('[data-roleplay-character-library-world-select]');
+        if (worldEntrySelect) {
+            const modal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
+            const workspace = roleplayCharacterLibraryWorkspaceState();
+            if (workspace.busy || !workspace.draft) return;
+            readRoleplayCharacterLibraryForm(modal);
+            workspace.worldBookEntryIndex = Math.max(0, Number(worldEntrySelect.value) || 0);
+            renderRoleplayCharacterLibraryWorldBook(modal, workspace.draft);
+            syncRoleplayCharacterLibrarySaveState(modal);
+            return;
+        }
         const imageSetting = evt.target.closest?.('[data-roleplay-character-library-image-preset], [data-roleplay-character-library-image-profile]');
         if (imageSetting) {
             const modal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
@@ -23895,6 +24669,9 @@
         if (!characterLibraryModal || characterLibraryModal.hidden || !roleplayCharacterLibraryEditableField(evt.target)) return;
         readRoleplayCharacterLibraryForm(characterLibraryModal);
         syncRoleplayCharacterLibrarySaveState(characterLibraryModal);
+        if (evt.target.matches('[data-roleplay-character-library-first-message], [data-roleplay-character-library-greeting]')) {
+            renderRoleplayCharacterLibraryOpeningActions(characterLibraryModal);
+        }
     });
 
     document.addEventListener('click', (evt) => {
@@ -23932,6 +24709,45 @@
         }
         const characterLibraryModal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
         if (characterLibraryModal && !characterLibraryModal.hidden) {
+            const workspace = roleplayCharacterLibraryWorkspaceState();
+            if (evt.target.closest('[data-roleplay-character-library-opening-stop]') && workspace.openingBatch) {
+                workspace.openingBatch.stopRequested = true;
+                roleplayCharacterLibraryOpeningProgress(characterLibraryModal, localText('Stopping after the current opening finishes...', '当前开场处理完成后停止……'));
+                return;
+            }
+            if (workspace.openingBatch) {
+                roleplayCharacterLibraryOpeningProgress(characterLibraryModal, localText('Opening batch is running. Stop it before changing the character.', '开场白正在批量处理。请停止后再切换角色或操作。'), true);
+                return;
+            }
+            if (evt.target.closest('[data-roleplay-character-library-world-stop]') && workspace.worldBookBatch) {
+                workspace.worldBookBatch.stopRequested = true;
+                roleplayCharacterLibraryWorldProgress(characterLibraryModal, localText(
+                    'Stopping after the current entry finishes...', '当前条目处理完成后停止……'
+                ));
+                return;
+            }
+            if (workspace.worldBookBatch) {
+                roleplayCharacterLibraryWorldProgress(characterLibraryModal, localText(
+                    'World-book batch is running. Stop it before changing the character.',
+                    '世界书正在批量处理。请停止后再切换角色或操作。'
+                ), true);
+                return;
+            }
+            const reviewApply = evt.target.closest('[data-roleplay-character-library-opening-review-apply]');
+            const reviewDiscard = evt.target.closest('[data-roleplay-character-library-opening-review-discard]');
+            if (reviewApply || reviewDiscard) {
+                const id = (reviewApply || reviewDiscard).getAttribute(reviewApply
+                    ? 'data-roleplay-character-library-opening-review-apply' : 'data-roleplay-character-library-opening-review-discard');
+                if (reviewApply) {
+                    const row = reviewApply.closest('[data-roleplay-character-library-opening-review]');
+                    applyRoleplayCharacterLibraryOpeningReview(characterLibraryModal, id,
+                        row?.querySelector('[data-roleplay-character-library-opening-review-input]'));
+                } else {
+                    workspace.openingReviews = workspace.openingReviews.filter((item) => item.id !== id);
+                    renderRoleplayCharacterLibraryOpeningReviews(characterLibraryModal);
+                }
+                return;
+            }
             if (evt.target.closest('[data-roleplay-character-library-refresh-presets]')) {
                 loadRoleplayCharacterLibraryPresets(characterLibraryModal, true);
                 return;
@@ -23944,6 +24760,10 @@
                 const workspace = roleplayCharacterLibraryWorkspaceState();
                 workspace.selectedId = '';
                 workspace.draft = emptyRoleplayCharacterLibraryCard();
+                workspace.openingReviews = [];
+                workspace.openingUndo = {};
+                workspace.worldBookEntryIndex = 0;
+                roleplayCharacterLibraryWorldProgress(characterLibraryModal, '');
                 workspace.savedDraftKey = '';
                 workspace.dirty = true;
                 workspace.agentDraftUndo = null;
@@ -23955,6 +24775,29 @@
             }
             if (evt.target.closest('[data-roleplay-character-library-import]')) {
                 characterLibraryModal.querySelector('[data-roleplay-character-library-import-file]')?.click();
+                return;
+            }
+            const greetingAdd = evt.target.closest('[data-roleplay-character-library-greeting-add]');
+            const greetingRemove = evt.target.closest('[data-roleplay-character-library-greeting-remove]');
+            if (greetingAdd || greetingRemove) {
+                const workspace = roleplayCharacterLibraryWorkspaceState();
+                if (!workspace.draft || workspace.busy) return;
+                readRoleplayCharacterLibraryForm(characterLibraryModal);
+                const key = greetingAdd?.getAttribute('data-roleplay-character-library-greeting-add')
+                    || greetingRemove.getAttribute('data-roleplay-character-library-greeting-remove').split(':')[0];
+                const tavern = Object.assign({}, workspace.draft.import_metadata?.tavern || {});
+                const greetings = Array.isArray(tavern[key]) ? tavern[key].slice() : [];
+                if (greetingAdd) greetings.push('');
+                else greetings.splice(Number(greetingRemove.getAttribute('data-roleplay-character-library-greeting-remove').split(':')[1]), 1);
+                tavern[key] = greetings;
+                workspace.draft.import_metadata = Object.assign({}, workspace.draft.import_metadata, { tavern });
+                for (const historyKey of Object.keys(workspace.openingUndo || {})) {
+                    if (historyKey.startsWith(`${key}:`)) delete workspace.openingUndo[historyKey];
+                }
+                workspace.openingReviews = workspace.openingReviews.filter((item) => item.kind !== key);
+                renderRoleplayCharacterLibraryGreetingList(characterLibraryModal, workspace.draft, key);
+                renderRoleplayCharacterLibraryOpeningReviews(characterLibraryModal);
+                syncRoleplayCharacterLibrarySaveState(characterLibraryModal);
                 return;
             }
             if (evt.target.closest('[data-roleplay-character-library-agent-keep]')) {
@@ -23988,6 +24831,31 @@
             }
             if (evt.target.closest('[data-roleplay-character-library-agent-optimize]')) {
                 requestRoleplayCharacterLibraryAgent(characterLibraryModal, 'optimize');
+                return;
+            }
+            const openingUndo = evt.target.closest('[data-roleplay-character-library-opening-undo]');
+            if (openingUndo) {
+                const [kind, index] = openingUndo.getAttribute('data-roleplay-character-library-opening-undo').split(':');
+                undoRoleplayCharacterLibraryOpeningEdit(characterLibraryModal, kind, Number(index));
+                return;
+            }
+            const openingEdit = evt.target.closest('[data-roleplay-character-library-opening-edit]');
+            if (openingEdit) {
+                const [kind, index] = openingEdit.getAttribute('data-roleplay-character-library-opening-edit').split(':');
+                requestRoleplayCharacterLibraryOpeningEdit(characterLibraryModal, kind, Number(index));
+                return;
+            }
+            const openingBatch = evt.target.closest('[data-roleplay-character-library-opening-batch]');
+            if (openingBatch) {
+                requestRoleplayCharacterLibraryOpeningBatch(characterLibraryModal, openingBatch.getAttribute('data-roleplay-character-library-opening-batch'));
+                return;
+            }
+            if (evt.target.closest('[data-roleplay-character-library-world-batch]')) {
+                requestRoleplayCharacterLibraryWorldBatch(characterLibraryModal);
+                return;
+            }
+            if (evt.target.closest('[data-roleplay-character-library-world-edit-current]')) {
+                requestRoleplayCharacterLibraryWorldEdit(characterLibraryModal);
                 return;
             }
             if (evt.target.closest('[data-roleplay-character-library-agent-optimize-visual]')) {

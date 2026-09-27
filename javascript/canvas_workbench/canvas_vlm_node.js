@@ -39,6 +39,18 @@
         const nodeCall = (name, fallback, ...args) => typeof nodeSource[name] === 'function'
             ? nodeSource[name](...args)
             : fallback;
+        const domSource = scope.domSource && typeof scope.domSource === 'object'
+            ? scope.domSource
+            : {};
+        const domCall = (name, fallback, ...args) => typeof domSource[name] === 'function'
+            ? domSource[name](...args)
+            : fallback;
+        const assetSource = scope.assetSource && typeof scope.assetSource === 'object'
+            ? scope.assetSource
+            : {};
+        const assetCall = (name, fallback, ...args) => typeof assetSource[name] === 'function'
+            ? assetSource[name](...args)
+            : fallback;
         const chatContextSource = scope.chatContextSource && typeof scope.chatContextSource === 'object'
             ? scope.chatContextSource
             : {};
@@ -128,10 +140,19 @@
         const scheduleSave = (...args) => persistenceCall('scheduleSave', undefined, ...args);
         const sendVlmSystemPromptTemplates = (...args) => transportCall('sendVlmSystemPromptTemplates', null, ...args);
         const invalidateVlmSystemPromptTemplateViews = (...args) => renderCall('invalidateVlmSystemPromptTemplateViews', undefined, ...args);
-        const getVlmChatUiAreas = (...args) => {
-            const areas = uiCall('getVlmChatUiAreas', [], ...args);
-            return Array.isArray(areas) ? areas : [];
-        };
+        function getVlmChatUiAreas(node, scope) {
+            if (!node || node.type !== 'vlm') return [];
+            const areas = [];
+            const addArea = area => {
+                if (area?.querySelectorAll && !areas.includes(area)) areas.push(area);
+            };
+            addArea(scope?.closest?.('[data-node-id]') || scope);
+            const escapedId = String(utilityCall('cssEscape', node.id, node.id));
+            const nodeElement = domCall('getNodesLayer', null)?.querySelector?.(`[data-node-id="${escapedId}"]`);
+            addArea(nodeElement);
+            if (domCall('getSelectedNodeId', null) === node.id) addArea(domCall('getInspector', null));
+            return areas;
+        }
 
         function buildVlmNode(world, options) {
             const opts = options || {};
@@ -195,6 +216,13 @@
 
         function isVlmMediaSource(node) {
             return !!node && ['image', 'result', 'video'].includes(node.type);
+        }
+
+        function getVlmSourceAsset(node) {
+            if (!isVlmMediaSource(node)) return null;
+            return node.type === 'result'
+                ? assetCall('getSelectedResultAsset', null, node)
+                : node.asset;
         }
 
         function buildVlmNodeSizePatch(node, options) {
@@ -719,6 +747,7 @@
         return {
             buildVlmNode,
             isVlmMediaSource,
+            getVlmSourceAsset,
             buildVlmNodeSizePatch,
             buildVlmModelUnknownStatus,
             buildVlmModelCheckingStatus,
@@ -741,6 +770,7 @@
             syncVlmSystemPromptTemplateDom,
             autosizeVlmTextarea,
             refreshVlmTextareaDom,
+            getVlmChatUiAreas,
             refreshVlmChatReadabilityDom,
             handleVlmParamFieldChange
         };

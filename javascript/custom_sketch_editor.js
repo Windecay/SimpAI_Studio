@@ -3264,9 +3264,11 @@
     function scanNode(node) {
         if (!node?.querySelectorAll) return;
         if (node.nodeType === Node.ELEMENT_NODE && node.matches?.(`.${SOURCE_CLASS}`)) {
-            initRoot(node);
+            initRoot(node).catch((err) => console.error('[SimpAI Sketch] Editor initialization failed', err));
         }
-        node.querySelectorAll(`.${SOURCE_CLASS}`).forEach(initRoot);
+        node.querySelectorAll(`.${SOURCE_CLASS}`).forEach((root) => {
+            initRoot(root).catch((err) => console.error('[SimpAI Sketch] Editor initialization failed', err));
+        });
     }
 
     function scan() {

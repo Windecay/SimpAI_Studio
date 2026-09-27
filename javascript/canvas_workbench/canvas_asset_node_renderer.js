@@ -18,6 +18,7 @@
             const state = args.length > 2 ? args[2] : getLanguageState();
             return languageCall('t', cn || en, en, cn, state);
         };
+        const tOption = (...args) => languageCall('tOption', String(args[0] ?? ''), ...args);
         const utilitySource = sourceObject('utilitySource');
         const {
             clamp,
@@ -64,6 +65,25 @@
             mediaBrowserItemMeta,
             danbooruPostMediaType
         } = mediaSource;
+        const nodeSource = sourceObject('maskNodeSource');
+        const maskNodeSource = sourceObject('maskSource');
+        const getNode = typeof nodeSource.getNode === 'function' ? nodeSource.getNode : (() => null);
+        const notConnectedText = typeof maskNodeSource.notConnectedText === 'function'
+            ? maskNodeSource.notConnectedText
+            : (() => t('Not connected', '未连接'));
+        const portHintText = typeof maskNodeSource.portHintText === 'function' ? maskNodeSource.portHintText : (() => '');
+        const imagePortTitle = typeof maskNodeSource.imagePortTitle === 'function'
+            ? maskNodeSource.imagePortTitle
+            : (() => t('Image input', '图像输入'));
+        const danbooruAutocompleteAttrs = typeof maskNodeSource.danbooruAutocompleteAttrs === 'function'
+            ? maskNodeSource.danbooruAutocompleteAttrs
+            : (() => '');
+        const localizeMaskStatus = typeof maskNodeSource.localizeMaskStatus === 'function'
+            ? maskNodeSource.localizeMaskStatus
+            : (value => tOption(value));
+        const MASK_MODELS = ['u2net', 'u2netp', 'u2net_human_seg', 'u2net_cloth_seg', 'silueta', 'isnet-general-use', 'isnet-anime', 'sam'];
+        const MASK_CLOTH_CATEGORIES = ['full', 'upper', 'lower'];
+        const MASK_SAM_MODELS = ['vit_b', 'vit_l', 'vit_h'];
 
         const clampValue = typeof clamp === 'function'
             ? clamp
@@ -102,6 +122,62 @@
             : (state => ['queued', 'running', 'waiting', 'task_ready', 'args_ready', 'dry_run_ready', 'cancelling', 'skipping'].includes(String(state || '').toLowerCase()));
         const resultStale = typeof isResultStale === 'function' ? isResultStale : (() => false);
         const resultRefreshing = typeof isResultRefreshing === 'function' ? isResultRefreshing : (() => false);
+
+        function renderMaskNodeHtml(node) {
+            const params = node.params || {};
+            const source = getNode(node.input_node_id);
+            const model = params.mask_model || 'u2net';
+            const image = displaySrc(node.asset);
+            const info = typeof readAssetInfo === 'function' ? readAssetInfo(node.asset || {}) : [];
+            const status = localizeMaskStatus(node.status?.message || '');
+            return `
+<div class="sai-node-head">
+  <span class="sai-node-kind">${escape(t('Mask', '遮罩'))}</span>
+  <span class="sai-node-title">${escape(typeof localizedDefaultTitle === 'function' ? localizedDefaultTitle(node.title, 'Advanced Masking', '高级遮罩') : (node.title || t('Advanced Masking', '高级遮罩')))}</span>
+  ${nodeBadges(node)}
+  <button type="button" data-node-action="run-mask" title="${escape(t('Generate mask', '生成遮罩'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+  <button type="button" data-node-action="edit-mask-asset" title="${escape(t('Edit mask', '编辑遮罩'))}"><i class="fa-solid fa-paintbrush"></i></button>
+  <button type="button" data-node-action="delete" title="${escape(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+</div>
+<div class="sai-text-input-row">
+  <button type="button" class="sai-node-handle sai-node-handle-in" data-mask-source-in title="${escape(imagePortTitle())}"></button>
+  <i class="fa-solid fa-image"></i><span>${escape(t('Source', '来源'))}</span><b>${source ? escape(source.title || source.id) : escape(notConnectedText())}</b><small>${escape(portHintText())}</small>
+</div>
+<label class="sai-node-field"><span>${escape(t('Mask Model', '遮罩模型'))}</span><select data-mask-param="mask_model">${MASK_MODELS.map(item => `<option value="${escape(item)}" ${item === model ? 'selected' : ''}>${escape(item)}</option>`).join('')}</select></label>
+${model === 'u2net_cloth_seg' ? `<label class="sai-node-field"><span>${escape(t('Cloth Category', '服装类别'))}</span><select data-mask-param="cloth_category">${MASK_CLOTH_CATEGORIES.map(item => `<option value="${escape(item)}" ${item === (params.cloth_category || 'full') ? 'selected' : ''}>${escape(item)}</option>`).join('')}</select></label>` : ''}
+${model === 'sam' ? `<label class="sai-node-field"><span>${escape(t('Detection Prompt', '检测提示词'))}</span><input data-mask-param="dino_prompt" type="text"${danbooruAutocompleteAttrs('dino_prompt')} value="${escape(params.dino_prompt || '')}" placeholder="person, hair, clothes..."></label>
+<label class="sai-node-field"><span>${escape(t('SAM Model', 'SAM 模型'))}</span><select data-mask-param="sam_model">${MASK_SAM_MODELS.map(item => `<option value="${escape(item)}" ${item === (params.sam_model || 'vit_b') ? 'selected' : ''}>${escape(item)}</option>`).join('')}</select></label>
+<label class="sai-node-field sai-node-range"><span>${escape(t('Box Threshold', '框阈值'))}</span><div class="sai-range-pair"><input data-mask-param="box_threshold" type="range" min="0" max="1" step="0.05" value="${escape(params.box_threshold ?? 0.3)}"><input data-mask-param="box_threshold" type="number" min="0" max="1" step="0.05" value="${escape(params.box_threshold ?? 0.3)}"></div></label>
+<label class="sai-node-field sai-node-range"><span>${escape(t('Text Threshold', '文本阈值'))}</span><div class="sai-range-pair"><input data-mask-param="text_threshold" type="range" min="0" max="1" step="0.05" value="${escape(params.text_threshold ?? 0.25)}"><input data-mask-param="text_threshold" type="number" min="0" max="1" step="0.05" value="${escape(params.text_threshold ?? 0.25)}"></div></label>
+<label class="sai-node-field sai-node-range"><span>${escape(t('Max Detections', '最大检测数'))}</span><div class="sai-range-pair"><input data-mask-param="sam_max_detections" type="range" min="0" max="10" step="1" value="${escape(params.sam_max_detections ?? 2)}"><input data-mask-param="sam_max_detections" type="number" min="0" max="10" step="1" value="${escape(params.sam_max_detections ?? 2)}"></div></label>` : ''}
+<label class="sai-node-field sai-node-range"><span>${escape(t('Erode / Dilate', '腐蚀 / 膨胀'))}</span><div class="sai-range-pair"><input data-mask-param="dino_erode_or_dilate" type="range" min="-64" max="64" step="1" value="${escape(params.dino_erode_or_dilate ?? 0)}"><input data-mask-param="dino_erode_or_dilate" type="number" min="-64" max="64" step="1" value="${escape(params.dino_erode_or_dilate ?? 0)}"></div></label>
+<div class="sai-node-media sai-mask-node-media"${typeof mediaAspectStyle === 'function' ? mediaAspectStyle(node.asset) : ''}>${image ? `<img src="${escape(image)}" alt="" draggable="false">` : `<div class="sai-node-empty">${escape(t('No mask', '无遮罩'))}</div>`}</div>
+${info.length ? `<div class="sai-node-info">${info.map(bit => `<span>${escape(bit)}</span>`).join('')}</div>` : ''}
+${status ? `<div class="sai-node-foot">${escape(status)}</div>` : ''}
+<button type="button" class="sai-node-primary" data-node-action="run-mask"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escape(t('Generate Mask', '生成遮罩'))}</span></button>
+<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="image" title="${escape(t('Mask output', '遮罩输出'))}"></button>`;
+        }
+
+        function renderMaskInspector(node) {
+            const source = getNode(node.input_node_id);
+            const info = typeof readAssetInfo === 'function' ? readAssetInfo(node.asset || {}) : [];
+            return `
+<div class="sai-inspector-section">
+  <h3>${escape(node.title || t('Advanced Masking', '高级遮罩'))}</h3>
+  <label>${escape(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escape(node.title || '')}"></label>
+  <div class="sai-inspector-kv"><span>${escape(t('Source', '来源'))}</span><b>${escape(source?.title || source?.id || notConnectedText())}</b></div>
+  <div class="sai-inspector-kv"><span>${escape(t('Model', '模型'))}</span><b>${escape(node.params?.mask_model || 'u2net')}</b></div>
+  <div class="sai-inspector-kv"><span>${escape(t('Mask', '遮罩'))}</span><b>${escape(info.join(' / ') || t('No mask generated', '尚未生成遮罩'))}</b></div>
+  <p>${escape(t('The generated black-white image is used as the Advanced Masking input for Inpaint; the backend still merges it with the painted mask on Image 1.', '生成的黑白图会作为 Inpaint 的高级遮罩输入，后端仍会和图 1 涂抹遮罩合并。'))}</p>
+</div>
+<div class="sai-inspector-actions">
+  <button type="button" data-inspector-action="run-mask"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escape(t('Generate', '生成'))}</span></button>
+  <button type="button" data-inspector-action="edit-mask-asset" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-paintbrush"></i><span>${escape(t('Sketch', '绘制'))}</span></button>
+  <button type="button" data-inspector-action="view-image" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escape(t('View', '查看'))}</span></button>
+  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escape(t('Duplicate', '复制'))}</span></button>
+  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escape(t('Delete', '删除'))}</span></button>
+</div>`;
+        }
         const resultDisplayAsset = typeof resultMediaDisplayAsset === 'function'
             ? resultMediaDisplayAsset
             : ((node, selectedAsset) => selectedAsset || node?.asset || null);
@@ -582,6 +658,8 @@ ${metadataParams ? `<code>${escape(metadataParams)}</code>` : ''}`;
         return {
             renderAssetAudioWaveformHtml,
             renderAssetMediaHtml,
+            renderMaskNodeHtml,
+            renderMaskInspector,
             renderBatchAnyItemThumbHtml,
             renderBatchAnyNodeHtml,
             resultPreviewFrameSrc,

@@ -1967,7 +1967,7 @@ def build_roleplay_form_draft_prompt(
         target_key = "character_state"
     if target_key in {"world", "worldbook", "world_book", "lore", "world_entry"}:
         target_key = "world_book"
-    if target_key not in {"character", "scene", "persona", "character_state", "world_book"}:
+    if target_key not in {"character", "scene", "persona", "character_state", "world_book", "world_book_edit", "opening_edit"}:
         target_key = "character"
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     if target_key == "scene":
@@ -1983,6 +1983,15 @@ def build_roleplay_form_draft_prompt(
         }
         current = normalized["story_state"].get("scene", {})
         subject = "scene"
+    elif target_key == "opening_edit":
+        shape = {"opening_edit": {"text": ""}}
+        current = {"text": normalized.get("character", {}).get("first_message", "")}
+        subject = "edit of one character opening"
+    elif target_key == "world_book_edit":
+        shape = {"world_book_edit": {"title": "", "content": ""}}
+        entries = normalized.get("world_book", {}).get("entries", [])
+        current = {"title": entries[0].get("title", ""), "content": entries[0].get("content", "")} if entries else {}
+        subject = "edit of one world-book entry"
     elif target_key == "world_book":
         shape = {
             "world_book": {
@@ -2048,12 +2057,18 @@ def build_roleplay_form_draft_prompt(
                 "speech_style": "",
                 "behavior_rules": [],
                 "first_message": "",
+                "alternate_greetings": [],
+                "group_only_greetings": [],
                 "example_dialogues": [],
                 "image_prompt": "",
                 "negative_prompt": "",
             }
         }
-        current = normalized.get("character", {})
+        card = normalized.get("character", {})
+        current = {key: card.get(key) for key in shape["character"] if key not in {"alternate_greetings", "group_only_greetings"}}
+        tavern = _dict(_dict(card.get("import_metadata")).get("tavern"))
+        current["alternate_greetings"] = _import_tavern_greetings(tavern.get("alternate_greetings"))
+        current["group_only_greetings"] = _import_tavern_greetings(tavern.get("group_only_greetings"))
         subject = "character"
     references = normalize_roleplay_form_references(referenced_characters)
     if target_key == "character":
@@ -2081,6 +2096,18 @@ def build_roleplay_form_draft_prompt(
             "Only add missing details or fields supported by the user's request, the current scene, or explicit story facts. "
             "Do not invent injury, death, numerical changes, emotions, or actions. Keep user-defined field labels unchanged."
         )
+    elif target_key == "opening_edit":
+        target_rule = (
+            "Follow the player's instruction for this one opening only. If asked to translate, translate its entire text. "
+            "Preserve every event, dialogue, paragraph, and placeholder such as {{user}} and {{char}} unless explicitly asked to rewrite them. "
+            "Do not shorten, summarize, or add other openings. Return only text."
+        )
+    elif target_key == "world_book_edit":
+        target_rule = (
+            "Follow the player's instruction for the selected entry only. If asked to translate, translate its title and complete content. "
+            "Unless explicitly asked to rewrite facts, preserve every fact, heading, paragraph, and placeholder such as {{user}} and {{char}}. "
+            "Never change trigger keys or other world-book settings. Return only title and content."
+        )
     elif target_key == "world_book":
         target_rule = (
             "Create exactly one new durable world-book entry. Capture a reusable setting fact, rule, location, faction, item,"
@@ -2089,6 +2116,12 @@ def build_roleplay_form_draft_prompt(
             " existing entry. Use short trigger keys taken from the entry. Use keyword mode by default; use always only when"
             " the user explicitly asks for a permanently active rule. Use public visibility and no chapter restriction unless"
             " the request clearly requires another choice. Keep locked false for a newly generated entry."
+        )
+    elif target_key == "character":
+        target_rule = (
+            "Preserve the opening count and order. Treat first_message, alternate_greetings, and group_only_greetings as separate complete openings. "
+            "If asked to translate or convert the card, translate every opening, not just first_message. "
+            "Keep placeholders such as {{user}} and {{char}} unchanged. Never omit or summarize an opening; return arrays of the same lengths."
         )
     sections = [
             f"You are the roleplay form assistant. Create one reviewable {subject} draft.",
@@ -2288,7 +2321,7 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
         target_key = "character_state"
     if target_key in {"world", "worldbook", "world_book", "lore", "world_entry"}:
         target_key = "world_book"
-    if target_key not in {"character", "scene", "persona", "character_state", "world_book"}:
+    if target_key not in {"character", "scene", "persona", "character_state", "world_book", "world_book_edit", "opening_edit"}:
         target_key = "character"
     data = _extract_json_object(text)
     if not isinstance(data, dict):
@@ -2360,6 +2393,21 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
             "character_state": character_state,
             "warnings": [],
         }
+    if target_key == "opening_edit":
+        text = raw.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return {"ok": False, "target": target_key, "warnings": ["opening_edit_text_empty"]}
+        return {"ok": True, "target": target_key, "opening_edit": {
+            "text": text.replace("\r\n", "\n").replace("\r", "\n").strip(),
+        }, "warnings": []}
+    if target_key == "world_book_edit":
+        content = raw.get("content")
+        if not isinstance(content, str) or not content.strip():
+            return {"ok": False, "target": target_key, "warnings": ["world_book_edit_content_empty"]}
+        return {"ok": True, "target": target_key, "world_book_edit": {
+            "title": _text(raw.get("title"), 240),
+            "content": content.replace("\r\n", "\n").replace("\r", "\n").strip(),
+        }, "warnings": []}
     if target_key == "world_book":
         entry = normalize_world_book_entry(raw, 0)
         if not entry or not entry.get("content"):
@@ -2381,7 +2429,12 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
             "world_book": entry,
             "warnings": warnings,
         }
+    tavern = {}
+    for key in ("alternate_greetings", "group_only_greetings"):
+        if key in raw:
+            tavern[key] = _import_tavern_greetings(raw[key])
     character = default_character_card({
+        "import_metadata": {"tavern": tavern},
         "name": raw.get("name"),
         "appearance": raw.get("appearance"),
         "identity": raw.get("identity"),
@@ -3209,10 +3262,8 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
         warnings.append("Character card has no name.")
     unsupported_fields = [
         field for field in (
-            "alternate_greetings",
             "tags",
             "creator_notes",
-            "group_only_greetings",
         ) if first_value(field)
     ]
     extension_unsupported = [

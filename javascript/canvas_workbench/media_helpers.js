@@ -208,6 +208,105 @@
             });
         }
 
+        function normalizeLayerForgeDataUrl(value) {
+            const text = String(value || '');
+            if (!text) return '';
+            if (text.startsWith('data:')) return text;
+            return 'data:image/png;base64,' + text;
+        }
+
+        async function createAlphaMaskDataUrl(src, alphaThreshold, dilateRadius) {
+            try {
+                const image = await loadImageElementForCanvas(src);
+                const width = image.naturalWidth || image.width || 0;
+                const height = image.naturalHeight || image.height || 0;
+                if (!width || !height) return null;
+                const canvas = createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                if (!ctx) return null;
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(image, 0, 0, width, height);
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+                const threshold = Number(alphaThreshold ?? 10);
+                const base = new Uint8Array(width * height);
+                let hasMask = false;
+                for (let i = 0; i < width * height; i += 1) {
+                    if (data[i * 4 + 3] < threshold) {
+                        base[i] = 1;
+                        hasMask = true;
+                    }
+                }
+                if (!hasMask) return null;
+                let mask = base;
+                const radius = Math.max(0, Math.floor(Number(dilateRadius || 0)));
+                if (radius > 0) {
+                    const expanded = new Uint8Array(width * height);
+                    for (let y = 0; y < height; y += 1) {
+                        for (let x = 0; x < width; x += 1) {
+                            if (!base[y * width + x]) continue;
+                            for (let dy = -radius; dy <= radius; dy += 1) {
+                                const yy = y + dy;
+                                if (yy < 0 || yy >= height) continue;
+                                for (let dx = -radius; dx <= radius; dx += 1) {
+                                    const xx = x + dx;
+                                    if (xx < 0 || xx >= width) continue;
+                                    expanded[yy * width + xx] = 1;
+                                }
+                            }
+                        }
+                    }
+                    mask = expanded;
+                }
+                const out = ctx.createImageData(width, height);
+                for (let i = 0; i < width * height; i += 1) {
+                    if (!mask[i]) continue;
+                    const offset = i * 4;
+                    out.data[offset] = 255;
+                    out.data[offset + 1] = 255;
+                    out.data[offset + 2] = 255;
+                    out.data[offset + 3] = 255;
+                }
+                ctx.clearRect(0, 0, width, height);
+                ctx.putImageData(out, 0, 0);
+                return { data_url: canvas.toDataURL('image/png'), width, height };
+            } catch (err) {
+                console.warn('[SimpAI Canvas] alpha mask extraction failed:', err);
+                return null;
+            }
+        }
+
+        async function mergeMaskDataUrls(maskA, maskB, width, height) {
+            if (!maskA && !maskB) return '';
+            try {
+                const [imageA, imageB] = await Promise.all([
+                    maskA ? loadImageElementForCanvas(maskA) : Promise.resolve(null),
+                    maskB ? loadImageElementForCanvas(maskB) : Promise.resolve(null)
+                ]);
+                const targetWidth = width || imageA?.naturalWidth || imageA?.width || imageB?.naturalWidth || imageB?.width || 0;
+                const targetHeight = height || imageA?.naturalHeight || imageA?.height || imageB?.naturalHeight || imageB?.height || 0;
+                if (!targetWidth || !targetHeight) return maskA || maskB || '';
+                const canvas = createElement('canvas');
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return maskA || maskB || '';
+                ctx.clearRect(0, 0, targetWidth, targetHeight);
+                if (imageA) ctx.drawImage(imageA, 0, 0, targetWidth, targetHeight);
+                if (imageB) {
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.drawImage(imageB, 0, 0, targetWidth, targetHeight);
+                    ctx.globalCompositeOperation = 'source-over';
+                }
+                return canvas.toDataURL('image/png');
+            } catch (err) {
+                console.warn('[SimpAI Canvas] mask merge failed:', err);
+                return maskA || maskB || '';
+            }
+        }
+
         function createThumbnailDataUrl(src, maxSize) {
             return new Promise((resolve) => {
                 if (!src) {
@@ -406,6 +505,9 @@
             readFileAsDataUrl,
             readFileAsText,
             loadImageElementForCanvas,
+            mergeMaskDataUrls,
+            createAlphaMaskDataUrl,
+            normalizeLayerForgeDataUrl,
             getImageDimensions,
             getMediaMetadata,
             createThumbnailDataUrl,
@@ -452,6 +554,9 @@
             readFileAsDataUrl: defaultContext.readFileAsDataUrl,
             readFileAsText: defaultContext.readFileAsText,
             loadImageElementForCanvas: defaultContext.loadImageElementForCanvas,
+            mergeMaskDataUrls: defaultContext.mergeMaskDataUrls,
+            createAlphaMaskDataUrl: defaultContext.createAlphaMaskDataUrl,
+            normalizeLayerForgeDataUrl: defaultContext.normalizeLayerForgeDataUrl,
             getImageDimensions: defaultContext.getImageDimensions,
             getMediaMetadata: defaultContext.getMediaMetadata,
             createThumbnailDataUrl: defaultContext.createThumbnailDataUrl,

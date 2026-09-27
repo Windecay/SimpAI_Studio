@@ -6,6 +6,8 @@
         const domSource = scope.domSource || {};
         const stateSource = scope.stateSource || {};
         const nodeSource = scope.nodeSource || {};
+        const edgeSource = scope.edgeSource || {};
+        const editorSource = scope.editorSource || {};
         const assetSource = scope.assetSource || {};
         const patchSource = scope.patchSource || {};
         const historySource = scope.historySource || {};
@@ -296,6 +298,80 @@
             });
         }
 
+        function handleNodeMediaEditEvent(node, evt, eventType) {
+            if (!node || !evt?.target) return false;
+            const target = evt.target;
+            if (eventType === 'click') {
+                const mediaFullscreen = target.closest('[data-media-fullscreen]');
+                if (!mediaFullscreen) return false;
+                evt.preventDefault();
+                evt.stopPropagation();
+                call(viewerSource, 'openNodeMediaFullscreen', undefined, node);
+                return true;
+            }
+            if (eventType === 'input') {
+                const mediaSeek = target.closest('[data-media-seek]');
+                if (mediaSeek) {
+                    call(mediaSource, 'showVideoScrubPreview', undefined, node, mediaSeek.value);
+                    call(mediaSource, 'seekNodeMediaPlayer', undefined, node.id, mediaSeek.value, { immediate: false });
+                    return true;
+                }
+                const mediaTrimStart = target.closest('[data-media-trim-start]');
+                if (mediaTrimStart) {
+                    updateMediaTrim(node.id, 'start', mediaTrimStart.value, { commit: false });
+                    return true;
+                }
+                const mediaTrimEnd = target.closest('[data-media-trim-end]');
+                if (mediaTrimEnd) {
+                    updateMediaTrim(node.id, 'end', mediaTrimEnd.value, { commit: false });
+                    return true;
+                }
+                return false;
+            }
+            if (eventType !== 'change') return false;
+            const mediaSeek = target.closest('[data-media-seek]');
+            if (mediaSeek) {
+                call(mediaSource, 'seekNodeMediaPlayer', undefined, node.id, mediaSeek.value, { immediate: true });
+                return true;
+            }
+            const mediaTrimStart = target.closest('[data-media-trim-start]');
+            if (mediaTrimStart) {
+                updateMediaTrim(node.id, 'start', mediaTrimStart.value, { commit: true });
+                return true;
+            }
+            const mediaTrimEnd = target.closest('[data-media-trim-end]');
+            if (mediaTrimEnd) {
+                updateMediaTrim(node.id, 'end', mediaTrimEnd.value, { commit: true });
+                return true;
+            }
+            const mediaFullscreen = target.closest('[data-media-fullscreen]');
+            if (mediaFullscreen) {
+                evt.preventDefault();
+                evt.stopPropagation();
+                call(viewerSource, 'openNodeMediaFullscreen', undefined, node);
+                return true;
+            }
+            return false;
+        }
+
+        function bindInspectorMediaEvents(inspector) {
+            if (!inspector?.querySelectorAll) return false;
+            const bindMediaField = (selector) => {
+                inspector.querySelectorAll(selector).forEach((field) => {
+                    field.addEventListener('input', (evt) => {
+                        handleNodeMediaEditEvent(getNode(getSelectedNodeId()), evt, 'input');
+                    });
+                    field.addEventListener('change', (evt) => {
+                        handleNodeMediaEditEvent(getNode(getSelectedNodeId()), evt, 'change');
+                    });
+                });
+            };
+            bindMediaField('[data-media-trim-start]');
+            bindMediaField('[data-media-trim-end]');
+            bindMediaField('[data-media-seek]');
+            return true;
+        }
+
         function mediaDerivedInfoHtml(asset) {
             const range = getMediaEditRange(asset || {});
             const fps = Number(asset?.fps || 0) || 0;
@@ -345,14 +421,270 @@
             }
         }
 
+        function transferOutgoingMediaEdgesToReplacement(sourceNode, replacementNode) {
+            if (!sourceNode || !replacementNode || sourceNode.id === replacementNode.id) return 0;
+            const project = call(edgeSource, 'getProject', {}) || {};
+            const transferableTypes = new Set(['upload', 'image']);
+            const outgoing = project.edges.filter(edge => edge.from === sourceNode.id && transferableTypes.has(edge.type));
+            let moved = 0;
+            outgoing.forEach((edge) => {
+                const target = getNode(edge.to);
+                if (!target || isNodeLocked(target)) return;
+                if (edge.type === 'upload' && ['preset', 'classic'].includes(target.type)) {
+                    if (!call(edgeSource, 'canNodeConnectToUploadSlot', false, replacementNode, edge.slot)) return;
+                    edge.from = replacementNode.id;
+                    call(edgeSource, 'applyPresetUploadSlotPatch', undefined, target, edge.slot, replacementNode.id);
+                    moved += 1;
+                    return;
+                }
+                if (edge.type === 'image' && target.type === 'wd14') {
+                    edge.from = replacementNode.id;
+                    Object.assign(target, call(patchSource, 'buildWd14StatePatch', {}, target, { inputNodeId: replacementNode.id }));
+                    moved += 1;
+                    return;
+                }
+                if (edge.type === 'image' && target.type === 'vlm') {
+                    edge.from = replacementNode.id;
+                    Object.assign(target, call(patchSource, 'buildVlmImageInputsPatch', {}, target, {
+                        imageInputsPatch: { [edge.slot || 'image_1']: replacementNode.id }
+                    }));
+                    moved += 1;
+                }
+            });
+            if (moved) {
+                const seen = new Set();
+                call(edgeSource, 'filterProjectEdges', undefined, (edge) => {
+                    const key = edge.type + ':' + edge.from + ':' + edge.to + ':' + (edge.slot || '');
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+            }
+            return moved;
+        }
+
+        async function createImageNodeFromLayerForgeOutput(sourceNode, imageDataUrl, maskDataUrl, metadata) {
+            const dataUrl = call(fileSource, 'normalizeLayerForgeDataUrl', '', imageDataUrl);
+            if (!dataUrl) {
+                call(uiSource, 'showToast', undefined, 'LayerForge did not return an image.');
+                return null;
+            }
+            const dimensions = await call(fileSource, 'getImageDimensions', {}, dataUrl);
+            const thumb = await call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 720);
+            const mime = dataUrl.match(/^data:([^;]+);/)?.[1] || 'image/png';
+            const titleBase = sourceNode?.title || 'LayerForge';
+            const asset = call(assetSource, 'buildImageOutputAsset', {}, {
+                kind: 'layerforge_output',
+                name: titleBase + '.layerforge.png',
+                mime,
+                width: dimensions.width || null,
+                height: dimensions.height || null,
+                dataUrl,
+                thumb
+            });
+            call(historySource, 'pushHistory', undefined, 'LayerForge edit');
+            const imageNode = call(mediaSource, 'createImageNodeFromAsset', null, asset, {
+                x: (sourceNode?.x || 0) + (sourceNode?.w || 240) + 70,
+                y: (sourceNode?.y || 0) + 40
+            }, titleBase + ' LayerForge');
+            if (!imageNode) return null;
+            const returnedMask = call(fileSource, 'normalizeLayerForgeDataUrl', '', maskDataUrl);
+            const alphaMask = await call(fileSource, 'createAlphaMaskDataUrl', null, dataUrl, 10, 1);
+            const mask = alphaMask?.data_url
+                ? await call(fileSource, 'mergeMaskDataUrls', returnedMask, returnedMask, alphaMask.data_url,
+                    dimensions.width || alphaMask.width, dimensions.height || alphaMask.height)
+                : returnedMask;
+            let outputMask = null;
+            if (mask) {
+                const maskDimensions = await call(fileSource, 'getImageDimensions', {}, mask);
+                outputMask = call(assetSource, 'buildMaskAsset', {}, {
+                    kind: 'layerforge_mask',
+                    name: titleBase + '.layerforge.mask.png',
+                    mime: mask.match(/^data:([^;]+);/)?.[1] || 'image/png',
+                    width: maskDimensions.width || dimensions.width || null,
+                    height: maskDimensions.height || dimensions.height || null,
+                    dataUrl: mask,
+                    thumb: await call(fileSource, 'createThumbnailDataUrl', '', mask, 720)
+                });
+            }
+            if (outputMask) Object.assign(imageNode, buildMediaNodeStatePatch(imageNode, { mask: outputMask }));
+            Object.assign(imageNode, call(patchSource, 'buildMediaNodeSourcePatch', {}, imageNode, {
+                kind: 'layerforge',
+                source_node_id: sourceNode?.id || '',
+                source_node_type: sourceNode?.type || '',
+                layer_count: Number(metadata?.layer_count || 0) || 0
+            }));
+            const movedEdges = transferOutgoingMediaEdgesToReplacement(sourceNode, imageNode);
+            call(stateSource, 'selectReplacedNode', undefined, imageNode.id);
+            call(renderSource, 'mutate', undefined);
+            call(uiSource, 'showToast', undefined, movedEdges
+                ? 'LayerForge output added; moved ' + movedEdges + ' downstream link(s).'
+                : 'LayerForge output added as image node.');
+            return imageNode;
+        }
+
+        async function createImageNodeFromSketchOutput(sourceNode, payload) {
+            const dataUrl = call(fileSource, 'normalizeLayerForgeDataUrl', '', payload?.image || '');
+            if (!dataUrl) {
+                call(uiSource, 'showToast', undefined, 'Sketch did not return an image.');
+                return null;
+            }
+            const dimensions = await call(fileSource, 'getImageDimensions', {}, dataUrl);
+            const titleBase = sourceNode?.title || 'Sketch';
+            const asset = call(assetSource, 'buildImageOutputAsset', {}, {
+                kind: 'sketch_output',
+                name: titleBase + '.sketch.png',
+                mime: dataUrl.match(/^data:([^;]+);/)?.[1] || 'image/png',
+                width: dimensions.width || payload?.width || null,
+                height: dimensions.height || payload?.height || null,
+                dataUrl,
+                thumb: await call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 720)
+            });
+            const maskDataUrl = call(fileSource, 'normalizeLayerForgeDataUrl', '', payload?.mask || '');
+            const applyToCurrent = payload?.mode === 'apply' && ['image', 'mask'].includes(sourceNode?.type);
+            call(historySource, 'pushHistory', undefined, applyToCurrent ? 'Apply Sketch edit' : 'Sketch edit');
+            const imageNode = applyToCurrent ? sourceNode : call(mediaSource, 'createImageNodeFromAsset', null, asset, {
+                x: (sourceNode?.x || 0) + (sourceNode?.w || 240) + 70,
+                y: (sourceNode?.y || 0) + 40
+            }, titleBase + ' Sketch');
+            if (!imageNode) return null;
+            let outputMask = null;
+            if (maskDataUrl) {
+                const maskDimensions = await call(fileSource, 'getImageDimensions', {}, maskDataUrl);
+                outputMask = call(assetSource, 'buildMaskAsset', {}, {
+                    kind: 'sketch_mask',
+                    name: titleBase + '.sketch.mask.png',
+                    mime: maskDataUrl.match(/^data:([^;]+);/)?.[1] || 'image/png',
+                    width: maskDimensions.width || asset.width || null,
+                    height: maskDimensions.height || asset.height || null,
+                    dataUrl: maskDataUrl,
+                    thumb: await call(fileSource, 'createThumbnailDataUrl', '', maskDataUrl, 720)
+                });
+            }
+            const sourcePatch = {
+                kind: 'sketch',
+                source_node_id: sourceNode?.id || '',
+                source_node_type: sourceNode?.type || ''
+            };
+            const stateOptions = {};
+            if (applyToCurrent) stateOptions.asset = asset;
+            if (outputMask) stateOptions.mask = outputMask;
+            else if (applyToCurrent) stateOptions.mask = null;
+            if (imageNode.type === 'mask') {
+                Object.assign(imageNode, call(patchSource, 'buildMaskStatePatch', {}, imageNode, Object.assign({}, stateOptions, {
+                    sourcePatch
+                })));
+            } else {
+                if (Object.keys(stateOptions).length) Object.assign(imageNode, buildMediaNodeStatePatch(imageNode, stateOptions));
+                Object.assign(imageNode, call(patchSource, 'buildMediaNodeSourcePatch', {}, imageNode, sourcePatch));
+            }
+            const movedEdges = applyToCurrent ? 0 : transferOutgoingMediaEdgesToReplacement(sourceNode, imageNode);
+            call(stateSource, 'selectReplacedNode', undefined, imageNode.id);
+            call(renderSource, 'mutate', undefined);
+            call(uiSource, 'showToast', undefined, applyToCurrent
+                ? 'Sketch edit applied.'
+                : (movedEdges ? 'Sketch output added; moved ' + movedEdges + ' downstream link(s).'
+                    : 'Sketch output added as image node.'));
+            return imageNode;
+        }
+
+        function getNodeLayerForgeAsset(node) {
+            if (!node) return null;
+            if (node.type === 'result') return call(assetSource, 'getSelectedResultAsset', null, node) || node.preview || null;
+            return node.asset
+                || (node.type === 'pose_studio' ? node.pose_studio?.output_asset : null)
+                || (node.type === 'gaussian_studio' ? (node.gaussian_studio?.render_asset || node.gaussian_studio?.output_asset) : null)
+                || (node.type === 'liveportrait_expression' ? node.liveportrait_expression?.output_asset : null)
+                || null;
+        }
+
+        async function openSketchForNode(node) {
+            if (!node || !['image', 'result', 'mask', 'pose_studio', 'gaussian_studio', 'liveportrait_expression'].includes(node.type)) return;
+            const getAdapter = () => call(editorSource, 'getCanvasSketchAdapter', {});
+            const ready = await call(editorSource, 'ensureWorkbenchLazyRuntime', false,
+                'customSketch', () => typeof getAdapter()?.open === 'function',
+                'Loading Sketch...', 'Sketch adapter is not ready.');
+            if (!ready) return;
+            const adapter = getAdapter();
+            if (!adapter || typeof adapter.open !== 'function') {
+                call(uiSource, 'showToast', undefined, 'Sketch adapter is not ready.');
+                return;
+            }
+            const asset = getNodeLayerForgeAsset(node);
+            if (call(assetSource, 'assetMediaKind', 'image', asset || {}) !== 'image') {
+                call(uiSource, 'showToast', undefined, 'Sketch only supports image assets.');
+                return;
+            }
+            const image = call(assetSource, 'assetDisplaySrc', '', asset) || call(assetSource, 'getNodeImageSrc', '', node);
+            if (!image) {
+                call(uiSource, 'showToast', undefined, 'No image available for Sketch.');
+                return;
+            }
+            adapter.open({
+                image,
+                mask: node.type === 'image' ? (node.mask?.data_url || '') : '',
+                title: (node.title || 'Image') + ' Sketch',
+                onSave: payload => createImageNodeFromSketchOutput(node, payload),
+                onError: err => call(uiSource, 'showToast', undefined,
+                    'Sketch save failed: ' + (err?.message || err || 'unknown error'))
+            }).catch((err) => {
+                warn('[SimpAI Canvas] Sketch open failed', err);
+                call(uiSource, 'showToast', undefined,
+                    'Sketch failed to open: ' + (err?.message || err || 'unknown error'));
+            });
+        }
+
+        async function openLayerForgeForNode(node) {
+            if (!node || !['image', 'result'].includes(node.type)) return;
+            const getAdapter = () => call(editorSource, 'getLayerForgeAdapter', null);
+            const ready = await call(editorSource, 'ensureWorkbenchLazyRuntime', false,
+                'layerForge', () => typeof getAdapter()?.open === 'function',
+                'Loading LayerForge...', 'LayerForge is not ready.');
+            if (!ready) return;
+            const adapter = getAdapter();
+            if (!adapter || typeof adapter.open !== 'function') {
+                call(uiSource, 'showToast', undefined, 'LayerForge is not ready.');
+                return;
+            }
+            const asset = getNodeLayerForgeAsset(node);
+            if (call(assetSource, 'assetMediaKind', 'image', asset || {}) !== 'image') {
+                call(uiSource, 'showToast', undefined, 'LayerForge only supports image assets.');
+                return;
+            }
+            const image = call(assetSource, 'assetDisplaySrc', '', asset) || call(assetSource, 'getNodeImageSrc', '', node);
+            if (!image) {
+                call(uiSource, 'showToast', undefined, 'No image available for LayerForge.');
+                return;
+            }
+            const doc = call(domSource, 'getDocument', null);
+            const theme = call(utilitySource, 'detectWorkbenchTheme', 'light');
+            adapter.open({
+                image,
+                mask: node.type === 'image' ? (node.mask?.data_url || '') : '',
+                title: node.title || 'LayerForge',
+                mount: call(domSource, 'getRoot', null) || doc?.getElementById('simpai-infinite-canvas-workbench'),
+                mountSelector: '#simpai-infinite-canvas-workbench',
+                modalClassName: 'sai-canvas-layerforge-modal ' + (theme === 'dark' ? 'theme-dark' : 'theme-light'),
+                onSave: ({ image: editedImage, mask, metadata }) =>
+                    createImageNodeFromLayerForgeOutput(node, editedImage, mask, metadata)
+            });
+        }
+
         return {
             applyTransferItemToImageNode,
             applyImageFileToNode,
             applyMediaFileToNode,
+            createImageNodeFromLayerForgeOutput,
+            createImageNodeFromSketchOutput,
+            getNodeLayerForgeAsset,
+            openSketchForNode,
+            openLayerForgeForNode,
             getMediaEditRange,
             formatDuration,
             roundMediaTime,
             updateMediaTrim,
+            handleNodeMediaEditEvent,
+            bindInspectorMediaEvents,
             resetMediaTrim,
             refreshMediaTrimUi,
             mediaDerivedInfoHtml,

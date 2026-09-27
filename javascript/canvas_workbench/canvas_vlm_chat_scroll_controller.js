@@ -198,6 +198,18 @@
             return true;
         }
 
+        function handleVlmChatJumpClick(node, evt) {
+            if (node?.type !== 'vlm') return false;
+            const button = evt?.target?.closest?.('[data-vlm-chat-jump-bottom]');
+            if (!button) return false;
+            evt.preventDefault();
+            evt.stopPropagation();
+            const shell = button.closest?.('.sai-vlm-chat-shell');
+            const log = shell?.querySelector?.('.sai-vlm-chat-log');
+            if (log) scrollVlmChatLogToBottom(log);
+            return true;
+        }
+
         function scrollVlmChatToBottom(nodeId) {
             const nodesLayer = getNodesLayer();
             if (!nodeId || !nodesLayer || typeof timingSource.requestAnimationFrame !== 'function') return;
@@ -312,6 +324,7 @@
             restoreVlmChatScroll,
             scrollVlmChatToBottom,
             scrollVlmChatLogToBottom,
+            handleVlmChatJumpClick,
             rememberVlmChatScrollFromLog,
             vlmChatScrollSnapshot,
             updateVlmChatJumpButton,

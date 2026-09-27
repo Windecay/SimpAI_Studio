@@ -176,8 +176,8 @@
             const scaleX = canvas.width / Math.max(1, rect.width);
             const scaleY = canvas.height / Math.max(1, rect.height);
             return {
-                x: clamp((evt.clientX - rect.left) * scaleX, 0, canvas.width),
-                y: clamp((evt.clientY - rect.top) * scaleY, 0, canvas.height)
+                x: clamp(context, (evt.clientX - rect.left) * scaleX, 0, canvas.width),
+                y: clamp(context, (evt.clientY - rect.top) * scaleY, 0, canvas.height)
             };
         };
         const constrainPoint = (p, evt) => {

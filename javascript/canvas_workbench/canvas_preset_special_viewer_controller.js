@@ -23,6 +23,12 @@
         const getNode = (id) => typeof nodeSource.getNode === 'function'
             ? nodeSource.getNode(id)
             : null;
+        const getSelectedResultAsset = (node) => typeof nodeSource.getSelectedResultAsset === 'function'
+            ? nodeSource.getSelectedResultAsset(node)
+            : null;
+        const safeAssetDisplaySrc = (asset, fallback) => typeof nodeSource.safeAssetDisplaySrc === 'function'
+            ? nodeSource.safeAssetDisplaySrc(asset, fallback)
+            : (fallback || '');
         const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function'
             ? !!nodeSource.isNodeLocked(node)
             : false;
@@ -38,9 +44,24 @@
         const promptFromState = (kind, state) => typeof stateSource.presetSpecialPromptFromState === 'function'
             ? stateSource.presetSpecialPromptFromState(kind, state)
             : '';
-        const inputAssetUrl = (node) => typeof stateSource.presetSpecialInputAssetUrl === 'function'
-            ? stateSource.presetSpecialInputAssetUrl(node)
-            : '';
+        function presetSpecialInputAssetUrl(node) {
+            const slots = node?.upload_slots || {};
+            const preferredSlots = ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4', 'scene_input_image5', 'scene_input_image6', 'scene_input_image7', 'scene_input_image8'];
+            for (const slot of preferredSlots) {
+                const source = getNode(slots[slot]);
+                if (!source) continue;
+                const asset = source.type === 'result' ? getSelectedResultAsset(source) : source.asset;
+                const src = safeAssetDisplaySrc(asset, asset?.thumb || asset?.preview_url || asset?.data_url || '');
+                if (src) return src;
+            }
+            return '';
+        }
+
+        function presetSpecialViewerUrl(kind) {
+            return `/canvas-workbench/special-viewer/${encodeURIComponent(kind)}`;
+        }
+
+        const inputAssetUrl = presetSpecialInputAssetUrl;
         const buildControllerStatePatch = (node, options) => typeof patchSource.buildPresetSpecialControllerStatePatch === 'function'
             ? patchSource.buildPresetSpecialControllerStatePatch(node, options)
             : {};
@@ -160,6 +181,8 @@
         }
 
         return {
+            presetSpecialViewerUrl,
+            presetSpecialInputAssetUrl,
             bindPresetSpecialViewerEvents,
             findPresetSpecialIframeByWindow,
             syncPresetSpecialViewerIframe,

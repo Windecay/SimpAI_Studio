@@ -34,6 +34,33 @@
             && a.y + a.h + pad > b.y;
     }
 
+    function rectContainsRect(outer, inner, tolerance) {
+        if (!outer || !inner) return false;
+        const pad = Number(tolerance || 0);
+        return inner.x >= outer.x - pad
+            && inner.y >= outer.y - pad
+            && inner.x + inner.w <= outer.x + outer.w + pad
+            && inner.y + inner.h <= outer.y + outer.h + pad;
+    }
+
+    function snapCanvasCoord(value, gridSize) {
+        const grid = Number(gridSize || 24);
+        return Math.round(Number(value || 0) / grid) * grid;
+    }
+
+    function snapCanvasSizeFromOrigin(origin, size, minSize, maxSize, gridSize) {
+        const start = Number(origin || 0);
+        const min = Number(minSize || 0);
+        const max = Number(maxSize || min);
+        const grid = Number(gridSize || 24);
+        const minEdge = start + min;
+        const maxEdge = start + max;
+        let edge = snapCanvasCoord(start + Number(size || 0), grid);
+        if (edge < minEdge) edge = Math.ceil(minEdge / grid) * grid;
+        if (edge > maxEdge) edge = Math.floor(maxEdge / grid) * grid;
+        return Math.round(Math.max(min, Math.min(max, edge - start)));
+    }
+
     function findOpenNodePosition(nodes, base, sizeOrType, options) {
         const opts = options || {};
         const size = typeof sizeOrType === 'string' ? defaultNodeSize(sizeOrType, opts) : (sizeOrType || defaultNodeSize('image', opts));
@@ -106,6 +133,26 @@
             w: Math.round(rect.width / zoom),
             h: Math.round(rect.height / zoom)
         };
+    }
+
+    function clientToWorld(viewportEl, viewportState, clientX, clientY) {
+        const rect = viewportEl.getBoundingClientRect();
+        const vp = viewportState || {};
+        const zoom = vp.zoom || 1;
+        return {
+            x: Math.round((clientX - rect.left - vp.x) / zoom),
+            y: Math.round((clientY - rect.top - vp.y) / zoom)
+        };
+    }
+
+    function viewportCenterWorld(viewportEl, viewportState) {
+        const rect = viewportEl.getBoundingClientRect();
+        return clientToWorld(
+            viewportEl,
+            viewportState,
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2
+        );
     }
 
     function getNodeRenderWorldRect(visible, zoom, overscanPx) {
@@ -210,8 +257,13 @@
     window.SimpAICanvasWorkbenchViewport = {
         getNodeRect,
         rectsOverlap,
+        rectContainsRect,
+        snapCanvasCoord,
+        snapCanvasSizeFromOrigin,
         findOpenNodePosition,
         getVisibleWorldRect,
+        clientToWorld,
+        viewportCenterWorld,
         getNodeRenderWorldRect,
         shouldRenderNodeInViewport,
         getMinimapBounds,

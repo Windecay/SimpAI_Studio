@@ -37,14 +37,14 @@
             setStorageScope: storageSource,
             setStorageBaseKey: storageSource,
             setStorageKey: storageSource,
-            initialBrowserStorageKey: storageSource,
-            browserCacheProjectScope: storageSource,
-            setActiveBrowserCacheProject: storageSource,
+            sanitizeStoragePart: storageSource,
             buildProjectStorageInfoPatch: patchSource,
             buildProjectUpdatedAtPatch: patchSource,
             buildProjectStoragePatch: patchSource,
             projectStoreBuildProjectStorageInfo: patchSource,
-            compactProjectForStorage: serializationSource,
+            projectStoreCompactProjectForStorage: serializationSource,
+            cloneRunValue: serializationSource,
+            buildVlmChatStoragePatch: serializationSource,
             sendCanvasProjectSaveRequest: backendSource,
             sendCanvasProjectLoadRequest: backendSource,
             isCanvasBridgeReady: backendSource,
@@ -81,6 +81,92 @@
             };
         let saveTimer = 0;
         let viewportSaveTimer = 0;
+
+        function browserCacheBaseKey(scope) {
+            const targetScope = scope || call('getCurrentStorageScope', null, []) || call('getStorageScope', {}, []);
+            return call('getStorageKey', call('getStorageBaseKey', '', []), targetScope);
+        }
+
+        function browserCacheProjectId(value) {
+            const source = String(value || call('getDefaultProjectId', 'default', []) || 'default');
+            const id = call('sanitizeStoragePart', source, source);
+            return String(id || 'default').replace(/[:]/g, '_') || 'default';
+        }
+
+        function browserCacheActiveProjectIdKey(scope) {
+            return `${browserCacheBaseKey(scope)}:active_project_id`;
+        }
+
+        function browserCacheProjectIndexKey(scope) {
+            return `${browserCacheBaseKey(scope)}:project_index`;
+        }
+
+        function browserCacheProjectKey(projectIdValue, scope) {
+            return `${browserCacheBaseKey(scope)}:project:${browserCacheProjectId(projectIdValue)}`;
+        }
+
+        function browserCacheProjectScope(scope) {
+            const targetScope = scope || call('getCurrentStorageScope', null, []) || call('getStorageScope', {}, []);
+            return Object.assign({}, targetScope, { allowLegacyFallback: false });
+        }
+
+        function browserCacheActiveProjectId(scope) {
+            try {
+                const raw = String(call('getStorage', null, [])?.getItem(browserCacheActiveProjectIdKey(scope)) || '').trim();
+                return raw ? browserCacheProjectId(raw) : '';
+            } catch (err) {
+                return '';
+            }
+        }
+
+        function browserCacheProjectIndex(scope) {
+            try {
+                const parsed = JSON.parse(call('getStorage', null, [])?.getItem(browserCacheProjectIndexKey(scope)) || '{}');
+                return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+            } catch (err) {
+                return {};
+            }
+        }
+
+        function rememberBrowserCacheProject(projectIdValue, key, scope) {
+            const id = browserCacheProjectId(projectIdValue);
+            if (!id || !key) return;
+            try {
+                const index = browserCacheProjectIndex(scope);
+                index[id] = { key, updated_at: call('nowIso', '', []) };
+                call('getStorage', null, [])?.setItem(browserCacheProjectIndexKey(scope), JSON.stringify(index));
+            } catch (err) {
+                warn('[SimpAI Canvas] failed to update browser cache project index:', err);
+            }
+        }
+
+        function setActiveBrowserCacheProject(projectIdValue, scope) {
+            const targetScope = scope || call('getCurrentStorageScope', null, []) || call('getStorageScope', {}, []);
+            const id = browserCacheProjectId(projectIdValue);
+            const baseKey = browserCacheBaseKey(targetScope);
+            const projectKey = browserCacheProjectKey(id, targetScope);
+            call('setStorageBaseKey', null, baseKey);
+            call('setStorageKey', null, projectKey);
+            try {
+                call('getStorage', null, [])?.setItem(browserCacheActiveProjectIdKey(targetScope), id);
+            } catch (err) {
+                warn('[SimpAI Canvas] failed to update active browser cache project:', err);
+            }
+            rememberBrowserCacheProject(id, projectKey, targetScope);
+            return projectKey;
+        }
+
+        function initialBrowserStorageKey(scope) {
+            const baseKey = browserCacheBaseKey(scope);
+            const activeId = browserCacheActiveProjectId(scope);
+            if (activeId) {
+                const activeKey = browserCacheProjectKey(activeId, scope);
+                try {
+                    if (call('getStorage', null, [])?.getItem(activeKey)) return activeKey;
+                } catch (err) {}
+            }
+            return baseKey;
+        }
 
         function scheduleSave() {
             if (saveTimer && typeof runtimeSource.clearTimeout === 'function') {
@@ -239,15 +325,45 @@
             };
         }
 
+        function storageDisplayLocation() {
+            const storage = getProject().storage || {};
+            const storageScope = call('getStorageScope', {}, []);
+            if (storage.kind === 'user_directory') return storage.location || storageScope.location;
+            return call('isCanvasBridgeReady', false, [])
+                ? t('{location} (pending sync, browser cache only)', '{location}（待同步，浏览器仅作缓存）')
+                    .replace('{location}', storageScope.location)
+                : t('Browser localStorage cache (backend bridge not ready)', '浏览器 localStorage 缓存（后端桥未就绪）');
+        }
+
+        function storageDisplayPath() {
+            const project = getProject();
+            const storage = project.storage || {};
+            if (storage.path) return storage.path;
+            if (call('isCanvasBridgeReady', false, [])) {
+                const projectId = project.id || call('getDefaultProjectId', 'default', []);
+                return `${t('User directory', '用户目录')} / canvas_workbench/projects/${projectId}.canvas.json`;
+            }
+            return storage.key || call('getStorageKey', '', []);
+        }
+
         function compactProjectForStorage(source, options) {
-            const result = call('compactProjectForStorage', null, source, options);
-            return result || source || {};
+            const cloneValue = (...args) => call('cloneRunValue', args[0], ...args);
+            const compactOptions = Object.assign({}, options || {}, {
+                cloneValue,
+                projectId: call('getDefaultProjectId', 'default', []),
+                buildVlmChatStoragePatch: (...args) => call('buildVlmChatStoragePatch', undefined, ...args)
+            });
+            if (typeof serializationSource.projectStoreCompactProjectForStorage === 'function') {
+                return call('projectStoreCompactProjectForStorage', null, source, compactOptions);
+            }
+            const createDefaultProject = () => call('createDefaultProject', {}, []);
+            return cloneValue(source || createDefaultProject(), createDefaultProject());
         }
 
         function saveProjectToBrowserCache(context) {
             const currentProject = getProject();
             const storageScope = call('getStorageScope', {}, []);
-            const cacheKey = call('setActiveBrowserCacheProject', call('getStorageKey', '', []), projectId(), storageScope);
+            const cacheKey = setActiveBrowserCacheProject(projectId(), storageScope);
             applyProjectStorage(currentProject, Object.assign(
                 {},
                 currentProject.storage || {},
@@ -390,10 +506,10 @@
 
             call('setStorageScope', null, nextScope);
             call('setStorageBaseKey', null, nextBaseKey);
-            const nextStorageKey = call('initialBrowserStorageKey', nextBaseKey, nextScope);
+            const nextStorageKey = initialBrowserStorageKey(nextScope);
             call('setStorageKey', null, nextStorageKey);
             call('setBackendLoadedStorageKey', null, '');
-            const loaded = call('loadProject', {}, nextStorageKey, call('browserCacheProjectScope', nextScope, nextScope)) || {};
+            const loaded = call('loadProject', {}, nextStorageKey, browserCacheProjectScope(nextScope)) || {};
             call('setProject', null, loaded);
             call('setCanvasProjectAssetRoot', null, '');
             call('resetRenderedProjectDomCache', null, []);
@@ -421,7 +537,7 @@
                 return true;
             }
             call('setProject', null, incoming);
-            call('setActiveBrowserCacheProject', null, incoming.id || projectId(), storageScope);
+            setActiveBrowserCacheProject(incoming.id || projectId(), storageScope);
             call('syncCanvasProjectAssetRoot', null, incoming);
             call('resetRenderedProjectDomCache', null, []);
             saveProjectToBrowserCache({ reason: 'backend_project_load_apply' });
@@ -479,11 +595,20 @@
 
         return {
             browserBackendProjectDecision,
+            browserCacheActiveProjectIdKey,
+            browserCacheProjectIndexKey,
+            browserCacheProjectScope,
+            browserCacheProjectIndex,
+            setActiveBrowserCacheProject,
+            initialBrowserStorageKey,
             scheduleSave,
             scheduleViewportSave,
             saveProject,
             saveProjectToBrowserCache,
             buildProjectStorageInfo,
+            storageDisplayLocation,
+            storageDisplayPath,
+            compactProjectForStorage,
             syncStorageScope,
             loadProjectFromBackend
         };

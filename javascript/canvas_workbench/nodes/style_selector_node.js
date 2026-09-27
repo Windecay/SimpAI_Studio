@@ -25,11 +25,24 @@
             escapeHtml: pick(utilitySource, 'escapeHtml'),
             t: pick(utilitySource, 't'),
             applyStyleSelectorToPreset: pick(scope, 'applyStyleSelectorToPreset'),
+            setSelectedNode: pick(scope, 'setSelectedNode'),
             buildStyleSelectorStatePatch: pick(scope, 'buildStyleSelectorStatePatch'),
             getStyleTransferCatalogItems: delegate(catalogSource, 'getItems') || pick(scope, 'getStyleTransferCatalogItems'),
+            getProject: pick(scope, 'getProject'),
+            isStyleTransferPresetNode: pick(scope, 'isStyleTransferPresetNode'),
+            runPresetNode: pick(scope, 'runPresetNode'),
             defaultNodeSize: pick(scope, 'defaultNodeSize'),
             getNode: pick(scope, 'getNode'),
             isNodeLocked: pick(scope, 'isNodeLocked'),
+            getVisiblePresetParams: pick(scope, 'getVisiblePresetParams'),
+            getPromptTextSourceNode: pick(scope, 'getPromptTextSourceNode'),
+            buildNodeParamsPatch: pick(scope, 'buildNodeParamsPatch'),
+            buildPresetTextInputPatch: pick(scope, 'buildPresetTextInputPatch'),
+            buildPresetStyleTransferPatch: pick(scope, 'buildPresetStyleTransferPatch'),
+            filterProjectEdges: pick(scope, 'filterProjectEdges'),
+            appendProjectEdge: pick(scope, 'appendProjectEdge'),
+            buildCanvasEdge: pick(scope, 'buildCanvasEdge'),
+            linkStyleSelectorToPreset: pick(scope, 'linkStyleSelectorToPreset'),
             mutate: pick(scope, 'mutate'),
             nowIso: pick(scope, 'nowIso'),
             pushHistory: pick(scope, 'pushHistory'),
@@ -146,6 +159,154 @@
     function getNegative(node, context) {
         const style = selectedStyle(node, context);
         return String(style?.negative || selectorState(node, context).negative || '');
+    }
+
+    function findStyleSelectorForPreset(presetNode, context) {
+        if (!presetNode) return null;
+        const project = call(context, 'getProject', null);
+        const nodes = Array.isArray(project?.nodes) ? project.nodes : [];
+        const edges = Array.isArray(project?.edges) ? project.edges : [];
+        return nodes.find(node => node?.type === 'style_selector' && node.style_selector?.target_preset_id === presetNode.id)
+            || (() => {
+                const edge = edges.find(item => item.type === 'text' && item.to === presetNode.id && item.slot === 'prompt'
+                    && call(context, 'getNode', null, item.from)?.type === 'style_selector');
+                return edge ? call(context, 'getNode', null, edge.from) : null;
+            })();
+    }
+
+    function styleSelectorLinkedPreset(selectorNode, context) {
+        if (!selectorNode || selectorNode.type !== 'style_selector') return null;
+        const state = selectorNode.style_selector || {};
+        const project = call(context, 'getProject', null);
+        const edges = Array.isArray(project?.edges) ? project.edges : [];
+        const edgeTarget = edges.find(edge => edge.type === 'text' && edge.from === selectorNode.id && edge.slot === 'prompt');
+        return call(context, 'getNode', null, state.target_preset_id || '')
+            || call(context, 'getNode', null, edgeTarget?.to || '');
+    }
+
+    function linkStyleSelectorToPreset(selectorNode, presetNode, options, context) {
+        const ctx = contextOf(context);
+        if (!selectorNode || selectorNode.type !== 'style_selector' || !presetNode || !['preset', 'classic'].includes(presetNode.type)) return false;
+        const stateFallback = {
+            style_selector: Object.assign({
+                selected_name: '', prompt: '', negative: '', target_preset_id: '', search: ''
+            }, selectorNode.style_selector || {}, { target_preset_id: presetNode.id })
+        };
+        Object.assign(selectorNode, call(ctx, 'buildStyleSelectorStatePatch', stateFallback, selectorNode, {
+            statePatch: { target_preset_id: presetNode.id }
+        }) || stateFallback);
+        call(ctx, 'filterProjectEdges', undefined,
+            edge => !(edge.type === 'text' && edge.to === presetNode.id && edge.slot === 'prompt'));
+        call(ctx, 'appendProjectEdge', undefined, call(ctx, 'buildCanvasEdge', null, 'text', {
+            from: selectorNode.id,
+            to: presetNode.id,
+            slot: 'prompt'
+        }));
+        Object.assign(presetNode, call(ctx, 'buildPresetTextInputPatch', {}, presetNode, {
+            textInputsPatch: { prompt: selectorNode.id },
+            styleTransferSelectorId: selectorNode.id
+        }) || {});
+        if (!options?.silent) call(ctx, 'mutate', undefined, { inspector: true });
+        return true;
+    }
+
+    function applyStyleSelectorToPreset(selectorNode, style, options, context) {
+        const ctx = contextOf(context);
+        if (!selectorNode || selectorNode.type !== 'style_selector') return false;
+        const selected = style || selectedStyle(selectorNode, ctx);
+        if (!selected) {
+            if (!options?.silent) call(ctx, 'showToast', undefined, translateValue(ctx, 'Choose a style first.', '请先选择一个风格。'));
+            return false;
+        }
+        const presetNode = styleSelectorLinkedPreset(selectorNode, ctx);
+        if (!presetNode || !['preset', 'classic'].includes(presetNode.type)) {
+            if (!options?.silent) call(ctx, 'showToast', undefined, translateValue(ctx, 'Link this Style Selector to a Style Transfer+ preset first.', '请先把 Style Selector 连接到 Style Transfer+ preset。'));
+            return false;
+        }
+        if (call(ctx, 'isNodeLocked', false, presetNode)) {
+            if (!options?.silent) call(ctx, 'showToast', undefined, translateValue(ctx, 'Locked preset cannot be edited.', '已锁定 preset 无法编辑。'));
+            return false;
+        }
+        call(ctx, 'linkStyleSelectorToPreset', false, selectorNode, presetNode, { silent: true });
+        const prompt = selected.prompt || '';
+        const paramsPatch = { prompt };
+        const visibleParams = call(ctx, 'getVisiblePresetParams', [], presetNode);
+        const visibleKeys = new Set((Array.isArray(visibleParams) ? visibleParams : []).map(param => param.key));
+        if (visibleKeys.has('scene_additional_prompt') && !visibleKeys.has('prompt')) {
+            paramsPatch.scene_additional_prompt = prompt;
+        }
+        if (selected.negative && !call(ctx, 'getPromptTextSourceNode', null, presetNode, 'negative_prompt')) {
+            paramsPatch.negative_prompt = selected.negative;
+        }
+        Object.assign(presetNode, call(ctx, 'buildNodeParamsPatch', {}, presetNode, { paramsPatch }) || {});
+        Object.assign(presetNode, call(ctx, 'buildPresetTextInputPatch', {}, presetNode, {
+            styleTransferSelectorId: selectorNode.id
+        }) || {});
+        Object.assign(presetNode, call(ctx, 'buildPresetStyleTransferPatch', {}, presetNode, {
+            styleTransferStyle: {
+                name: selected.name || '',
+                description: selected.description || '',
+                updated_at: call(ctx, 'nowIso', '')
+            }
+        }) || {});
+        if (!options?.silent) {
+            call(ctx, 'mutate', undefined, { inspector: true });
+            call(ctx, 'showToast', undefined, translateValue(ctx, 'Style applied to Style Transfer+.', '风格已应用到 Style Transfer+。'));
+        }
+        return true;
+    }
+
+    async function runStyleTransferPresetNode(node, options, context) {
+        const ctx = contextOf(context);
+        if (!node || !['preset', 'classic'].includes(node.type)) return { ok: false, error: 'preset missing' };
+        const selector = findStyleSelectorForPreset(node, context);
+        if (selector) {
+            const style = selectedStyle(selector, context);
+            if (!style) {
+                call(ctx, 'showToast', undefined, translateValue(ctx, 'Choose a style first.', '请先选择一个风格。'));
+                return { ok: false, error: 'style missing' };
+            }
+            if (!applyStyleSelectorToPreset(selector, style, { silent: true }, context)) {
+                return { ok: false, error: 'style apply failed' };
+            }
+        }
+        return call(ctx, 'runPresetNode', null, node,
+            Object.assign({}, options || {}, { skipPromptResolve: true }))
+            ?? { ok: false, error: 'preset run unavailable' };
+    }
+
+    async function runStyleSelectorTargetPreset(selectorNode, options, context) {
+        const ctx = contextOf(context);
+        if (!selectorNode || selectorNode.type !== 'style_selector') {
+            return { ok: false, error: 'style selector missing' };
+        }
+        const presetNode = styleSelectorLinkedPreset(selectorNode, context);
+        if (!presetNode || !['preset', 'classic'].includes(presetNode.type)) {
+            call(ctx, 'showToast', undefined, translateValue(ctx,
+                'Link this Style Selector to a Style Transfer+ preset first.',
+                '请先把 Style Selector 连接到 Style Transfer+ preset。'));
+            return { ok: false, error: 'style transfer preset missing' };
+        }
+        const style = selectedStyle(selectorNode, context);
+        if (!style) {
+            call(ctx, 'showToast', undefined, translateValue(ctx, 'Choose a style first.', '请先选择一个风格。'));
+            return { ok: false, error: 'style missing' };
+        }
+        if (!applyStyleSelectorToPreset(selectorNode, style, { silent: true }, context)) {
+            return { ok: false, error: 'style apply failed' };
+        }
+        call(ctx, 'setSelectedNode', undefined, presetNode.id);
+        call(ctx, 'mutate', undefined, { inspector: true });
+        return runStyleTransferPresetNode(presetNode, options, context);
+    }
+
+    function runPresetNodeFromUi(node, options, context) {
+        const ctx = contextOf(context);
+        if (call(ctx, 'isStyleTransferPresetNode', false, node)) {
+            return runStyleTransferPresetNode(node, options, context);
+        }
+        return call(ctx, 'runPresetNode', null, node, options)
+            ?? { ok: false, error: 'preset run unavailable' };
     }
 
     function setSelectedStyle(node, name, context) {
@@ -272,6 +433,70 @@ ${getNegative(node, context) ? `<div class="sai-inspector-section">
 </div>`;
     }
 
+    function selectStyle(selectorNode, styleName, context) {
+        const ctx = contextOf(context);
+        if (!selectorNode || selectorNode.type !== 'style_selector') return false;
+        if (call(ctx, 'isNodeLocked', false, selectorNode)) {
+            call(ctx, 'showToast', undefined, translateValue(ctx, 'Locked node cannot be edited.', '已锁定节点无法编辑。'));
+            return false;
+        }
+        const foundStyle = styleByName(styleName, ctx);
+        if (!foundStyle) {
+            call(ctx, 'showToast', undefined, translateValue(ctx, 'Style not found.', '未找到该风格。'));
+            return false;
+        }
+        call(ctx, 'pushHistory', undefined, 'Select Style Transfer style');
+        const style = setSelectedStyle(selectorNode, styleName, ctx);
+        if (!style) {
+            call(ctx, 'showToast', undefined, translateValue(ctx, 'Style not found.', '未找到该风格。'));
+            return false;
+        }
+        call(ctx, 'applyStyleSelectorToPreset', undefined, selectorNode, style, { silent: true });
+        call(ctx, 'setSelectedNode', undefined, selectorNode.id);
+        call(ctx, 'mutate', undefined, { inspector: true });
+        return true;
+    }
+
+    function handleCardClick(selectorNode, evt, context) {
+        if (selectorNode?.type !== 'style_selector') return false;
+        const card = evt?.target?.closest?.('[data-style-selector-style]');
+        if (!card) return false;
+        evt.preventDefault();
+        evt.stopPropagation();
+        selectStyle(selectorNode, card.getAttribute('data-style-selector-style') || '', context);
+        return true;
+    }
+
+    function updateSearch(nodeId, value, nodeEl, context) {
+        const ctx = contextOf(context);
+        const node = call(ctx, 'getNode', null, nodeId);
+        if (!node || node.type !== 'style_selector') return false;
+        const search = String(value || '');
+        const currentState = node.style_selector && typeof node.style_selector === 'object'
+            ? node.style_selector
+            : {};
+        const currentText = node.text && typeof node.text === 'object' ? node.text : {};
+        const fallback = {
+            style_selector: Object.assign({
+                selected_name: '', prompt: '', negative: '', target_preset_id: '', search: ''
+            }, currentState, { search }),
+            text: Object.assign({ value: '', updated_at: '' }, currentText)
+        };
+        const patch = call(ctx, 'buildStyleSelectorStatePatch', fallback, node, { statePatch: { search } });
+        Object.assign(node, patch && typeof patch === 'object' && (patch.style_selector || patch.text) ? patch : fallback);
+        filterNodeDom(nodeEl, search);
+        call(ctx, 'scheduleSave');
+        return true;
+    }
+
+    function handleSearchInput(selectorNode, evt, nodeEl, context) {
+        if (selectorNode?.type !== 'style_selector') return false;
+        const input = evt?.target?.closest?.('[data-style-selector-search]');
+        if (!input) return false;
+        updateSearch(selectorNode.id, input.value, nodeEl, context);
+        return true;
+    }
+
     function filterNodeDom(nodeEl, query) {
         const text = String(query || '').trim().toLowerCase();
         nodeEl?.querySelectorAll?.('[data-style-selector-style]').forEach((card) => {
@@ -284,14 +509,25 @@ ${getNegative(node, context) ? `<div class="sai-inspector-section">
         catalogItems,
         createStyleSelectorNodeContext,
         createNode,
+        applyStyleSelectorToPreset,
+        findStyleSelectorForPreset,
         getNegative,
         getPrompt,
+        handleCardClick,
         renderInspector,
         renderNodeHtml,
+        linkStyleSelectorToPreset,
+        runStyleSelectorTargetPreset,
+        runStyleTransferPresetNode,
+        runPresetNodeFromUi,
         selectedStyle,
         setSelectedStyle,
+        selectStyle,
+        styleSelectorLinkedPreset,
+        handleSearchInput,
         styleByName,
         selectorState,
+        updateSearch,
         filterNodeDom
     };
 })();

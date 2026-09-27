@@ -11,6 +11,12 @@
         'cancelling',
         'skipping'
     ]);
+    const TERMINAL_STATES = new Set([
+        'finished',
+        'failed',
+        'canceled',
+        'skipped'
+    ]);
 
     function createCanvasRunStateController(context) {
         const scope = context?.runStateSource || context || {};
@@ -30,6 +36,10 @@
             return ACTIVE_STATES.has(String(state || '').toLowerCase());
         }
 
+        function isTerminalRunState(state) {
+            return TERMINAL_STATES.has(String(state || '').toLowerCase());
+        }
+
         function isNodeVisuallyRunning(node) {
             return !isNodeIgnored(node) && isCanvasRunActiveState(nodeStatusState(node));
         }
@@ -38,6 +48,7 @@
             isNodeIgnored,
             nodeStatusState,
             isCanvasRunActiveState,
+            isTerminalRunState,
             isNodeVisuallyRunning
         };
     }

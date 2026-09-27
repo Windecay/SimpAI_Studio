@@ -8862,6 +8862,240 @@ button.describe-vlm-chat-roleplay-participant-chip {
   grid-column: 1 / -1;
 }
 
+.describe-vlm-chat-character-library-first-opening {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px 30px;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.describe-vlm-chat-character-library-first-opening label {
+  min-width: 0;
+}
+
+.describe-vlm-chat-character-library-greetings {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.describe-vlm-chat-character-library-greetings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.describe-vlm-chat-character-library-greeting-tools,
+.describe-vlm-chat-character-library-opening-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.describe-vlm-chat-character-library-opening-progress {
+  flex-wrap: wrap;
+  color: #93c5fd;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-character-library-opening-progress [hidden] {
+  display: none;
+}
+
+.describe-vlm-chat-character-library-opening-reviews {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  padding-top: 12px;
+}
+
+.describe-vlm-chat-character-library-opening-reviews[hidden] {
+  display: none;
+}
+
+.describe-vlm-chat-character-library-opening-review {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.describe-vlm-chat-character-library-opening-review small {
+  color: #fcd34d;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-character-library-opening-review .describe-vlm-chat-character-library-opening-review-error {
+  color: #fca5a5;
+}
+
+.describe-vlm-chat-character-library-fields .describe-vlm-chat-character-library-opening-review textarea {
+  min-height: 150px;
+  height: 180px;
+}
+
+.describe-vlm-chat-character-library-opening-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.describe-vlm-chat-character-library-opening-review-actions button {
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 5px;
+  background: #30343c;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.describe-vlm-chat-character-library-opening-progress button {
+  min-height: 30px;
+  border: 1px solid rgba(251, 191, 36, 0.58);
+  border-radius: 5px;
+  background: rgba(146, 64, 14, 0.28);
+  color: #fde68a;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.describe-vlm-chat-character-library-greetings-head button,
+.describe-vlm-chat-character-library-greeting-row button,
+.describe-vlm-chat-character-library-first-opening button {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(148, 163, 184, 0.40);
+  border-radius: 5px;
+  background: #30343c;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.describe-vlm-chat-character-library-greeting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px 30px 30px;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.describe-vlm-chat-character-library-greeting-row button:disabled,
+.describe-vlm-chat-character-library-greetings-head button:disabled,
+.describe-vlm-chat-character-library-first-opening button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.describe-vlm-chat-character-library-fields .describe-vlm-chat-character-library-greeting-row textarea {
+  min-height: 104px;
+  height: auto;
+}
+
+.describe-vlm-chat-character-library-world-book {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.describe-vlm-chat-character-library-world-book label {
+  display: grid;
+  min-width: 0;
+}
+
+.describe-vlm-chat-character-library-world-book select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.40);
+  border-radius: 5px;
+  background: #15191f;
+  color: #f8fafc;
+}
+
+.describe-vlm-chat-character-library-world-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.describe-vlm-chat-character-library-world-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid rgba(56, 189, 248, 0.54);
+  border-radius: 5px;
+  background: rgba(14, 116, 144, 0.30);
+  color: #dff7ff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.describe-vlm-chat-character-library-world-actions button:not(:disabled):hover {
+  border-color: #7dd3fc;
+  background: rgba(14, 116, 144, 0.54);
+}
+
+.describe-vlm-chat-character-library-world-actions button:not(:disabled):active {
+  transform: translateY(1px);
+  background: rgba(8, 145, 178, 0.62);
+}
+
+.describe-vlm-chat-character-library-world-actions button:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 2px;
+}
+
+.describe-vlm-chat-character-library-world-actions button.is-busy {
+  opacity: 1;
+  border-color: #7dd3fc;
+  background: rgba(14, 116, 144, 0.48);
+}
+
+.describe-vlm-chat-character-library-world-actions button:disabled:not(.is-busy) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.describe-vlm-chat-character-library-world-actions button[hidden] {
+  display: none;
+}
+
+.describe-vlm-chat-character-library-world-actions [data-roleplay-character-library-world-stop] {
+  border-color: rgba(251, 191, 36, 0.58);
+  background: rgba(146, 64, 14, 0.28);
+  color: #fde68a;
+}
+
+.describe-vlm-chat-character-library-world-progress {
+  color: #93c5fd;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-character-library-fields .describe-vlm-chat-character-library-world-book textarea {
+  min-height: 180px;
+  height: 180px;
+}
+
 .describe-vlm-chat-character-library-fields textarea[data-roleplay-character-library-example-dialogues] {
   min-height: 112px;
   height: 112px;
@@ -24710,6 +24944,8 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 
 .describe-vlm-chat-story-opening > pre {
   padding: 8px;
+  font-size: 13px;
+  line-height: 1.45;
   border-left: 2px solid #4ade80;
   background: rgba(255, 255, 255, 0.04);
 }

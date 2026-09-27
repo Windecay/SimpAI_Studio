@@ -26,6 +26,7 @@
             getClassicEnhanceUovProcessingOrder,
             getClassicEnhanceUovPromptTypes,
             getClassicIpMaxImages,
+            getClassicIpCount,
             getClassicUovMethods, getClassicIpTypes, getClassicInpaintEngines,
             normalizeClassicInpaintMode, getInpaintModeDefaults,
             getClassicEnhanceRegionValues, getClassicEnhanceRegionDefault,
@@ -44,11 +45,13 @@
             getPresetConfigKinds: getPresetConfigKindsFromContext,
             getSlotLabels: getSlotLabelsFromContext,
             getPresetSchema, getPresetTheme, getPresetThemeInfo, presetSpecialViewerUrl,
+            presetModelStatusState,
             isStyleTransferPresetNode, isLivePortraitVideoExpressionPresetNode,
             isLtx23MultiGuidePresetNode, isMiniMaxH3PresetNode
         } = presetSource;
         const {
-            renderPresetModelStatusHtml, renderPresetParamControl,
+            renderPresetParamControl,
+            renderTranslatableTextarea, getTranslationFieldState,
             renderNodeStateBadges, renderRunnableNodeStatusFoot, renderPresetConfigPortRow,
             renderStyleTransferPresetController, renderLivePortraitVideoExpressionPresetController,
             renderLtx23GuidePresetController, renderMiniMaxH3StoryboardPresetController
@@ -74,6 +77,38 @@
             const value = typeof getSlotLabelsFromContext === 'function' ? getSlotLabelsFromContext() : {};
             return value && typeof value === 'object' ? value : {};
         };
+
+        function renderPresetModelStatusHtml(node) {
+            const status = node?.model_status && typeof node.model_status === 'object' ? node.model_status : {};
+            const state = typeof presetModelStatusState === 'function'
+                ? presetModelStatusState(node)
+                : String(status.state || (status.ready ? 'ready' : 'unknown')).toLowerCase();
+            const missingCount = Number(status.missing_count ?? 0);
+            const countText = Number.isFinite(missingCount) && missingCount > 0 ? ` ${missingCount}` : '';
+            const icons = {
+                ready: 'fa-circle-check',
+                missing: 'fa-triangle-exclamation',
+                checking: 'fa-spinner fa-spin',
+                queued: 'fa-cloud-arrow-down',
+                error: 'fa-circle-xmark',
+                unknown: 'fa-circle-question'
+            };
+            const labels = {
+                ready: t('Models ready', '模型已就绪'),
+                missing: `${t('Missing', '缺失')}${countText}`,
+                checking: t('Checking', '检查中'),
+                queued: `${t('Queued', '已排队')}${countText}`,
+                error: t('Check failed', '检查失败'),
+                unknown: t('Check models', '检查模型')
+            };
+            const message = status.message || (state === 'unknown' ? t('Model availability has not been checked.', '尚未检查模型可用性。') : '');
+            return `<div class="sai-preset-model-row" data-model-state="${escapeHtml(state)}">
+  <button type="button" data-node-action="check-models" title="${escapeHtml(t('Check or queue required preset models', '检查或排队下载所需 preset 模型'))}">
+    <i class="fa-solid ${icons[state] || icons.unknown}"></i><span>${escapeHtml(labels[state] || labels.unknown)}</span>
+  </button>
+  <small>${escapeHtml(message)}</small>
+</div>`;
+        }
 
         function getSlotOrderHint(slotKey, node) {
             if (getUploadSlotMediaKind(slotKey) === 'video') return 'video';
@@ -307,6 +342,173 @@
             return key === 'prompt' || key === 'negative_prompt';
         }
 
+        function renderClassicInspector(node) {
+            const modes = CLASSIC_MODES || [];
+            const mode = node.classic_mode || 't2i';
+            const modeInfo = modes.find(m => m.key === mode) || modes[0] || { label: 'T2I', icon: '✏️' };
+            const params = node.params || {};
+            const taskMethod = node.runtime?.task_method || '';
+            const imageNumber = clamp(Number(params.image_number ?? 1), 1, 16);
+            const R_UOV = getClassicUovMethods(node);
+            const R_INPAINT = CLASSIC_INPAINT_METHODS || [];
+            const R_OUTPAINT = CLASSIC_OUTPAINT_DIRS || [];
+            const R_IP_TYPES = getClassicIpTypes(node);
+            const ipCount = getClassicIpCount(node);
+            let modeSpecific = '';
+            if (mode === 'ip') {
+                modeSpecific = `<h3>${escapeHtml(t('Image Prompt Settings', '图像提示设置'))}</h3>
+    ${getClassicIpMaxImages(node) > 1 ? `<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('IP Images', 'IP 图像'))}</span><div class="sai-range-pair"><input data-classic-param="ip_count" type="range" min="1" max="${getClassicIpMaxImages(node)}" step="1" value="${escapeHtml(ipCount)}"><input data-classic-param="ip_count" type="number" min="1" max="${getClassicIpMaxImages(node)}" step="1" value="${escapeHtml(ipCount)}"></div></label>` : ''}
+    ${Array.from({ length: ipCount }, (_, i) => { const ipStopInsp = params[`ip_stop_${i}`] ?? 0.5; const ipWeightInsp = params[`ip_weight_${i}`] ?? 1.0; return `<div class="sai-inspector-grid2">
+      <label><span>${escapeHtml(t('Type', '类型'))} ${i + 1}</span><select data-classic-ip-type="${i}">${R_IP_TYPES.map(t => `<option value="${escapeHtml(t)}" ${t === (params[`ip_type_${i}`] || R_IP_TYPES[0]) ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select></label>
+      <label class="sai-node-range"><span>${escapeHtml(t('Stop', '停止'))} ${i + 1}</span><div class="sai-range-pair"><input data-classic-ip-stop="${i}" type="range" min="0" max="1" step="0.05" value="${escapeHtml(ipStopInsp)}"><input data-classic-ip-stop="${i}" type="number" min="0" max="1" step="0.05" value="${escapeHtml(ipStopInsp)}"></div></label>
+      <label class="sai-node-range"><span>${escapeHtml(t('Weight', '权重'))} ${i + 1}</span><div class="sai-range-pair"><input data-classic-ip-weight="${i}" type="range" min="0" max="2" step="0.05" value="${escapeHtml(ipWeightInsp)}"><input data-classic-ip-weight="${i}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(ipWeightInsp)}"></div></label>
+    </div>`; }).join('')}`;
+            } else if (mode === 'uov') {
+                modeSpecific = `<h3>${escapeHtml(t('Upscale / Vary', '放大 / 变化'))}</h3>
+    <label><span>${escapeHtml(t('Method', '方法'))}</span><select data-node-param="uov_method">${R_UOV.map(m => `<option value="${escapeHtml(m)}" ${m === (params.uov_method || 'Upscale (1.5x)') ? 'selected' : ''}>${escapeHtml(tOption(m))}</option>`).join('')}</select></label>`;
+                const uovMethodInsp = params.uov_method || 'Upscale (1.5x)';
+                if (uovMethodInsp.includes('Vary') || (uovMethodInsp.includes('Upscale') && !uovMethodInsp.includes('Fast'))) {
+                    const denoiseVal = params.uov_denoise_strength ?? (uovMethodInsp.includes('Strong') ? 0.85 : uovMethodInsp.includes('Vary') ? 0.5 : 0.2);
+                    modeSpecific += `\n<label class="sai-node-range"><span>${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-inspector-param="uov_denoise_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(denoiseVal)}"><input data-inspector-param="uov_denoise_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(denoiseVal)}"></div></label>`;
+                }
+            } else if (mode === 'inpaint') {
+                const R_ENGINES = getClassicInpaintEngines(node);
+                const normalizedInpaintMode = normalizeClassicInpaintMode(params.inpaint_mode || R_INPAINT[0]);
+                const imDefaults = getInpaintModeDefaults(normalizedInpaintMode, node);
+                const curEngine = params.inpaint_engine ?? imDefaults.engine;
+                const curDenoise = params.inpaint_denoising_strength ?? imDefaults.denoise;
+                const curRespective = params.inpaint_respective_field ?? imDefaults.respective;
+                const curDisableLatent = params.inpaint_disable_initial_latent ?? imDefaults.disableLatent;
+                const curInvertMask = params.invert_mask ?? false;
+                const curAdditionalPrompt = params.inpaint_additional_prompt ?? '';
+                modeSpecific = `<h3>${escapeHtml(t('Inpaint / Outpaint', '局部重绘 / 扩图'))}</h3>
+    <label><span>${escapeHtml(t('Method', '方法'))}</span><select data-inspector-param="inpaint_mode">${R_INPAINT.map(m => `<option value="${escapeHtml(m)}" ${m === normalizedInpaintMode ? 'selected' : ''}>${escapeHtml(tOption(m))}</option>`).join('')}</select></label>
+    <label><span>${escapeHtml(t('Inpaint Engine', '重绘引擎'))}</span><select data-inspector-param="inpaint_engine">${R_ENGINES.map(e => `<option value="${escapeHtml(e)}" ${e === curEngine ? 'selected' : ''}>${escapeHtml(e)}</option>`).join('')}</select></label>
+    <label class="sai-node-range"><span>${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-inspector-param="inpaint_denoising_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(curDenoise)}"><input data-inspector-param="inpaint_denoising_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(curDenoise)}"></div></label>
+    <label class="sai-node-range"><span>${escapeHtml(t('Respective Field', '作用范围'))}</span><div class="sai-range-pair"><input data-inspector-param="inpaint_respective_field" type="range" min="0" max="1" step="0.05" value="${escapeHtml(curRespective)}"><input data-inspector-param="inpaint_respective_field" type="number" min="0" max="1" step="0.05" value="${escapeHtml(curRespective)}"></div></label>
+    <label class="sai-node-check"><input data-inspector-param="inpaint_disable_initial_latent" type="checkbox" ${curDisableLatent ? 'checked' : ''}><span>${escapeHtml(t('Disable Initial Latent', '禁用初始潜空间'))}</span></label>
+    <label class="sai-node-check"><input data-inspector-param="invert_mask" type="checkbox" ${curInvertMask ? 'checked' : ''}><span>${escapeHtml(t('Invert Mask', '反转遮罩'))}</span></label>
+    ${imDefaults.showOutpaint ? `<h3>${escapeHtml(t('Outpaint', '扩图'))}</h3>
+    ${R_OUTPAINT.map(d => { const isChecked = (() => { if (Array.isArray(params.outpaint_selections) && params.outpaint_selections.includes(d)) return true; return !!params[`outpaint_${d.toLowerCase()}`]; })(); return `<label class="sai-node-check"><input data-inspector-param="outpaint_${d.toLowerCase()}" type="checkbox" ${isChecked ? 'checked' : ''}><span>${escapeHtml(d)}</span></label>`; }).join('')}` : ''}
+    ${imDefaults.showAdditionalPrompt ? `<label><span>${escapeHtml(t('Additional Prompt', '附加提示词'))}</span><textarea data-inspector-param="inpaint_additional_prompt" rows="2"${danbooruAutocompleteAttrs('inpaint_additional_prompt')} placeholder="${escapeHtml(t('Additional prompt...', '附加提示词...'))}">${escapeHtml(curAdditionalPrompt)}</textarea></label>` : ''}`;
+            } else if (mode === 'enhance') {
+                const enhanceUovMethod = params.enhance_uov_method || 'Disabled';
+                const enhanceStrength = params.enhance_uov_strength ?? 0.5;
+                const enhanceOrder = params.enhance_uov_processing_order || 'Before First Enhancement';
+                const enhancePromptType = params.enhance_uov_prompt_type || 'Original Prompts';
+                const orderChoices = CLASSIC_ENHANCE_UOV_PROCESSING_ORDER || ['Before First Enhancement', 'After Last Enhancement'];
+                const promptTypeChoices = CLASSIC_ENHANCE_UOV_PROMPT_TYPES || ['Original Prompts', 'Last Filled Enhancement Prompts'];
+                modeSpecific = `<h3>${escapeHtml(t('Enhance', '增强'))}</h3>
+    <label><span>${escapeHtml(t('Upscale / Variation', '放大 / 变化'))}</span><select data-inspector-param="enhance_uov_method">${R_UOV.map(m => `<option value="${escapeHtml(m)}" ${m === enhanceUovMethod ? 'selected' : ''}>${escapeHtml(tOption(m))}</option>`).join('')}</select></label>
+    ${enhanceUovMethod !== 'Disabled' ? `<label class="sai-node-range"><span>${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-inspector-param="enhance_uov_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(enhanceStrength)}"><input data-inspector-param="enhance_uov_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(enhanceStrength)}"></div></label>
+    <label><span>${escapeHtml(t('Order', '顺序'))}</span><select data-inspector-param="enhance_uov_processing_order">${orderChoices.map(item => `<option value="${escapeHtml(item)}" ${item === enhanceOrder ? 'selected' : ''}>${escapeHtml(tOption(item))}</option>`).join('')}</select></label>
+    ${enhanceOrder === 'After Last Enhancement' ? `<label><span>${escapeHtml(t('Upscale Prompt', '放大提示词'))}</span><select data-inspector-param="enhance_uov_prompt_type">${promptTypeChoices.map(item => `<option value="${escapeHtml(item)}" ${item === enhancePromptType ? 'selected' : ''}>${escapeHtml(tOption(item))}</option>`).join('')}</select></label>` : ''}` : ''}
+    <h3>${escapeHtml(t('Regions', '区域'))}</h3>
+    ${[0, 1, 2].map((index) => {
+                    const region = getClassicEnhanceRegionValues(node, index);
+                    const preset = getClassicEnhanceRegionDefault(index);
+                    const prefix = enhanceRegionKey(index);
+                    return `<label class="sai-node-check"><input data-inspector-param="${escapeHtml(enhanceRegionKey(index))}_enabled" type="checkbox" ${region.enabled ? 'checked' : ''}><span>${escapeHtml(t('Region', '区域'))} #${index + 1} ${escapeHtml(preset.label || '')} / ${escapeHtml(region.dino_prompt || preset.prompt || '')}</span></label>
+    <label class="sai-node-range"><span>${escapeHtml(t('Region', '区域'))} #${index + 1} ${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-inspector-param="${escapeHtml(prefix)}_inpaint_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(region.inpaint_strength ?? 0.5)}"><input data-inspector-param="${escapeHtml(prefix)}_inpaint_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(region.inpaint_strength ?? 0.5)}"></div></label>
+    <label class="sai-node-range"><span>${escapeHtml(t('Region', '区域'))} #${index + 1} ${escapeHtml(t('Field', '作用范围'))}</span><div class="sai-range-pair"><input data-inspector-param="${escapeHtml(prefix)}_inpaint_respective_field" type="range" min="0" max="1" step="0.05" value="${escapeHtml(region.inpaint_respective_field ?? 0.2)}"><input data-inspector-param="${escapeHtml(prefix)}_inpaint_respective_field" type="number" min="0" max="1" step="0.05" value="${escapeHtml(region.inpaint_respective_field ?? 0.2)}"></div></label>
+    <button type="button" class="sai-inline-config-btn" data-inspector-action="detection-config-${index}"><i class="fa-solid fa-crosshairs"></i><span>${escapeHtml(getDetectionConfigLabel(index))}</span></button>`;
+                }).join('')}`;
+            }
+            return `
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Classic Preset Node', 'Classic Preset 节点'))}</h3>
+      <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
+      <div class="sai-inspector-kv"><span>Preset</span><b>${escapeHtml(node.preset?.name || '')}</b></div>
+      <div class="sai-inspector-kv"><span>Backend</span><b>${escapeHtml(node.runtime?.backend_engine || '')}</b></div>
+      <div class="sai-inspector-kv"><span>${escapeHtml(t('Task Method', '任务方式'))}</span><b>${escapeHtml(taskMethod)}</b></div>
+      ${renderPresetModelStatusHtml(node)}
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="check-models"><i class="fa-solid fa-cloud-arrow-down"></i><span>${escapeHtml(t('Check/download models', '检查/下载模型'))}</span></button>
+      <label><span>${escapeHtml(t('Mode', '模式'))}</span><select data-classic-mode>${modes.map(m => `<option value="${escapeHtml(m.key)}" ${m.key === mode ? 'selected' : ''}>${escapeHtml(m.icon)} ${escapeHtml(m.label)}</option>`).join('')}</select></label>
+    </div>
+    <div class="sai-inspector-section">${modeSpecific}</div>
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Parameters', '参数'))}</h3>
+      ${['prompt', 'negative_prompt'].map(key => {
+          const label = key === 'negative_prompt' ? t('Negative Prompt', '负向提示词') : t('Prompt', '提示词');
+          const src = getPromptTextSourceNode(node, key);
+          const val = presetParamValue(node, { key });
+          const dis = src ? 'disabled' : '';
+          const srcLabel = src ? `<small>${escapeHtml(t('from {source}', '来自 {source}').replace('{source}', src.title || src.id))}</small>` : '';
+          return `<label><span>${label}${srcLabel}</span>${renderTranslatableTextarea(`data-inspector-param="${key}" rows="3" ${dis}`, val || '', { target: 'node-param', key, disabled: !!dis, tagCart: !dis, wildcardInsert: !dis, danbooruAutocomplete: true, autocompleteRole: key, state: getTranslationFieldState(node, 'node-param', key, val || '') })}</label>`;
+      }).join('')}
+      <label class="sai-node-check"><input data-inspector-param="seed_random" type="checkbox" ${params.seed_random !== false ? 'checked' : ''}><span>${escapeHtml(t('Random Seed', '随机种子'))}</span></label>
+      ${params.seed_random === false ? `<label>${escapeHtml(t('Seed', '种子'))}<input data-inspector-param="image_seed" type="number" step="1" value="${escapeHtml(params.image_seed ?? 0)}"></label>` : ''}
+      <label class="sai-node-range"><span>${escapeHtml(t('Images', '图片数'))}</span><div class="sai-range-pair"><input data-inspector-param="image_number" type="range" min="1" max="16" step="1" value="${escapeHtml(imageNumber)}"><input data-inspector-param="image_number" type="number" min="1" max="16" step="1" value="${escapeHtml(imageNumber)}"></div></label>
+    </div>
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Models / Styles / Resolution / Advanced Config', '模型 / 风格 / 分辨率 / 高级配置'))}</h3>
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="models-config"><i class="fa-solid fa-cubes"></i><span>${escapeHtml(t('Models Config', '模型配置'))}</span></button>
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="styles-config"><i class="fa-solid fa-palette"></i><span>${escapeHtml(t('Styles Config', '风格配置'))}</span></button>
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="resolution-config"><i class="fa-solid fa-ruler-combined"></i><span>${escapeHtml(t('Resolution Config', '分辨率配置'))}</span></button>
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="advanced-config"><i class="fa-solid fa-sliders"></i><span>${escapeHtml(t('Advanced Config', '高级配置'))}</span></button>
+    </div>
+    <div class="sai-inspector-actions">
+      <button type="button" data-inspector-action="xyz-plot"><i class="fa-solid fa-table-cells-large"></i><span>${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}</span></button>
+      <button type="button" data-inspector-action="run"><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
+      <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
+      <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
+    </div>`;
+        }
+
+        function renderPresetInspector(node) {
+            const schema = getPresetSchema(node);
+            const themes = Array.isArray(schema.themes) ? schema.themes : [];
+            const theme = getPresetTheme(node);
+            const params = getVisiblePresetParams(node);
+            const uploadSlots = getVisibleUploadSlots(node);
+            const taskMethod = getPresetThemeInfo(node).task_method || node.runtime?.task_method || '';
+            return `
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Preset Node', '预设节点'))}</h3>
+      <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
+      <div class="sai-inspector-kv"><span>${escapeHtml(t('Preset', '预设'))}</span><b>${escapeHtml(node.preset?.name || '')}</b></div>
+      <div class="sai-inspector-kv"><span>${escapeHtml(t('Backend', '后端'))}</span><b>${escapeHtml(node.runtime?.backend_engine || '')}</b></div>
+      <div class="sai-inspector-kv"><span>${escapeHtml(t('Task Method', '任务方式'))}</span><b>${escapeHtml(taskMethod || '')}</b></div>
+      ${renderPresetModelStatusHtml(node)}
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="check-models"><i class="fa-solid fa-cloud-arrow-down"></i><span>${escapeHtml(t('Check/download models', '检查/下载模型'))}</span></button>
+      ${themes.length ? `<label>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}<select data-inspector-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(localizeCanvasLabel(item))}</option>`).join('')}</select></label>` : ''}
+    </div>
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Parameters', '参数'))}</h3>
+      <div class="sai-preset-param-list">${params.map(param => renderPresetParamControl(node, param, 'data-inspector-param')).join('')}</div>
+    </div>
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Models Config', '模型配置'))}</h3>
+      <div class="sai-inspector-kv"><span>${escapeHtml(t('Mode', '模式'))}</span><b>${escapeHtml(node.models_config?.mode || 'preset_default')}</b></div>
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="models-config"><i class="fa-solid fa-cubes"></i><span>${escapeHtml(t('Add/select Models Config', '添加/选择模型配置'))}</span></button>
+    </div>
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Styles Config', '风格配置'))}</h3>
+      <div class="sai-inspector-kv"><span>${escapeHtml(t('Mode', '模式'))}</span><b>${escapeHtml(node.styles_config?.mode || 'preset_default')}</b></div>
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="styles-config"><i class="fa-solid fa-palette"></i><span>${escapeHtml(t('Add/select Styles Config', '添加/选择风格配置'))}</span></button>
+    </div>
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Resolution Config', '分辨率配置'))}</h3>
+      <div class="sai-inspector-kv"><span>${escapeHtml(t('Mode', '模式'))}</span><b>${escapeHtml(node.resolution_config?.mode || 'preset_default')}</b></div>
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="resolution-config"><i class="fa-solid fa-ruler-combined"></i><span>${escapeHtml(t('Add/select Resolution Config', '添加/选择分辨率配置'))}</span></button>
+    </div>
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Advanced Config', '高级配置'))}</h3>
+      <div class="sai-inspector-kv"><span>${escapeHtml(t('Mode', '模式'))}</span><b>${escapeHtml(node.generation_config?.mode || 'preset_default')}</b></div>
+      <button type="button" class="sai-inline-config-btn" data-inspector-action="advanced-config"><i class="fa-solid fa-sliders"></i><span>${escapeHtml(t('Add/select Advanced Config', '添加/选择高级配置'))}</span></button>
+    </div>
+    <div class="sai-inspector-section">
+      <h3>${escapeHtml(t('Input Slots', '输入槽'))}</h3>
+      ${uploadSlots.map(slot => `<div class="sai-inspector-kv"><span>${escapeHtml(localizeCanvasLabel(slot.label || getSlotLabels()[slot.key] || slot.key))}</span><b>${escapeHtml(getNode(node.upload_slots?.[slot.key])?.title || notConnectedText())}</b></div>`).join('')}
+    </div>
+    <div class="sai-inspector-actions">
+      <button type="button" data-inspector-action="xyz-plot"><i class="fa-solid fa-table-cells-large"></i><span>${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}</span></button>
+      <button type="button" data-inspector-action="run"><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
+      <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
+      <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
+    </div>`;
+        }
+
         function renderClassicNodeHtml(node) {
             const modes = CLASSIC_MODES || [];
             const mode = node.classic_mode || 't2i';
@@ -518,6 +720,8 @@ ${renderRunnableNodeStatusFoot(node)}
         }
 
         return {
+            renderClassicInspector,
+            renderPresetInspector,
             renderClassicNodeHtml,
             renderPresetNodeHtml,
             getSlotOrderHint,

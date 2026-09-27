@@ -17,6 +17,21 @@
         const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
             ? sourceObject[name](...args)
             : fallback;
+        function mergeCommaPromptText(...values) {
+            const output = [];
+            const seen = new Set();
+            values.forEach((value) => {
+                String(value || '').split(',').forEach((raw) => {
+                    const item = String(raw || '').trim();
+                    if (!item) return;
+                    const key = item.toLowerCase().replace(/\s+/g, '_');
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    output.push(item);
+                });
+            });
+            return output.join(', ');
+        }
         const t = languageSource.t || ((en, cn) => cn || en);
         const uid = (...args) => call(identitySource, 'uid', '', ...args);
         const normalizePresetName = typeof catalogSource.normalizePresetName === 'function'
@@ -61,7 +76,6 @@
         const tagCanvasAgentWorkflowPreset = (...args) => call(nodeSource, 'tagCanvasAgentWorkflowPreset', null, ...args);
         const normalizeCanvasAgentGenerationOptions = (...args) => call(nodeSource, 'normalizeCanvasAgentGenerationOptions', {}, ...args);
         const getPromptTextSourceNode = (...args) => call(targetSource, 'getPromptTextSourceNode', null, ...args);
-        const mergeCommaPromptText = (...args) => call(promptSource, 'mergeCommaPromptText', value => String(value || '').trim(), ...args);
         const prepareCanvasAgentGenerator = (...args) => call(generatorSource, 'prepareCanvasAgentGenerator', false, ...args);
         const getCanvasAgentRewriteModel = (...args) => call(promptSource, 'getCanvasAgentRewriteModel', '', ...args);
         const runPresetNode = (...args) => call(runtimeSource, 'runPresetNode', null, ...args);

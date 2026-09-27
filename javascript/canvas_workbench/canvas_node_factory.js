@@ -350,6 +350,136 @@
             return { generation_config: cloneRunValue(generation, {}) };
         }
 
+        function scenePresetDefinition(entry) {
+            const schema = entry?.schema && typeof entry.schema === 'object' ? cloneRunValue(entry.schema, {}) : {};
+            const themes = Array.isArray(schema.themes) ? schema.themes : [];
+            const theme = schema.default_theme || themes[0] || '';
+            const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
+            const themeInfo = perTheme[theme] || {};
+            return {
+                schema,
+                theme,
+                taskMethod: themeInfo.task_method || entry?.task_method || ''
+            };
+        }
+
+        function refreshScenePresetNodeDefinition(node, entry, options) {
+            if (!node || !entry) return false;
+            const expected = scenePresetDefinition(entry);
+            const expectedScene = !!entry.scene || !!expected.schema.scene_frontend;
+            if (!expectedScene) return false;
+            const schemaMatches = JSON.stringify(node.schema || {}) === JSON.stringify(expected.schema);
+            const taskMatches = String(node.runtime?.task_method || '') === String(expected.taskMethod || '');
+            if (node.type === 'preset' && schemaMatches && taskMatches) return false;
+
+            const previousParams = node.params && typeof node.params === 'object' ? node.params : {};
+            const previousUploads = node.upload_slots && typeof node.upload_slots === 'object' ? node.upload_slots : {};
+            const perTheme = expected.schema.per_theme && typeof expected.schema.per_theme === 'object' ? expected.schema.per_theme : {};
+            const themeInfo = perTheme[expected.theme] || {};
+            const nextParams = {};
+            getVisiblePresetParams({ schema: expected.schema, runtime: { scene_theme: expected.theme }, params: {} }).forEach((param) => {
+                if (Object.prototype.hasOwnProperty.call(previousParams, param.key)) {
+                    nextParams[param.key] = previousParams[param.key];
+                } else if (themeInfo.defaults && Object.prototype.hasOwnProperty.call(themeInfo.defaults, param.key)) {
+                    nextParams[param.key] = themeInfo.defaults[param.key];
+                } else {
+                    nextParams[param.key] = param.default ?? '';
+                }
+            });
+            for (const key of ['scene_additional_prompt', 'scene_additional_prompt_2']) {
+                if (!Object.prototype.hasOwnProperty.call(nextParams, key)
+                    && Object.prototype.hasOwnProperty.call(previousParams, key)) {
+                    nextParams[key] = previousParams[key];
+                }
+            }
+            const nextUploads = {};
+            getVisibleUploadSlots({ schema: expected.schema }).forEach((slot) => {
+                nextUploads[slot.key] = previousUploads[slot.key] || null;
+            });
+            const allowedUploads = new Set(Object.keys(nextUploads));
+            (typeof options?.filterProjectEdges === 'function' ? options.filterProjectEdges : (() => {}))(edge => !(edge.type === 'upload' && edge.to === node.id && !allowedUploads.has(edge.slot)));
+
+            const promptDefaults = getPromptDefaults(entry);
+            const keepOverrides = (value) => value?.overrides && typeof value.overrides === 'object' ? cloneRunValue(value.overrides, {}) : {};
+            const modelList = Array.isArray(entry.model_list) ? cloneRunValue(entry.model_list, []) : [];
+            const cleanName = normalizePresetName(entry.name || entry.display_name || node.preset?.name || node.title || 'preset');
+            applyPresetDefinitionPatch(node, {
+                type: 'preset',
+                title: entry.display_name || cleanName,
+                w: 360,
+                h: 420,
+                schema: expected.schema,
+                uploadSlots: nextUploads,
+                modelRequirements: {
+                    model_list: modelList,
+                    has_model_probe: !!entry.has_model_probe,
+                    source: entry.source || ''
+                }
+            });
+            Object.assign(node, buildPresetSnapshotPatch(node, {
+                preset: {
+                    name: cleanName,
+                    display_name: entry.display_name || cleanName,
+                    snapshot_hash: null,
+                    snapshot: {
+                        default_styles: promptDefaults.styles.slice(),
+                        default_prompt: promptDefaults.prompt || '',
+                        default_prompt_negative: promptDefaults.negative_prompt || ''
+                    }
+                }
+            }));
+            Object.assign(node, buildPresetRuntimePatch(node, {
+                runtime: {
+                    backend_engine: entry.backend_engine || 'Current',
+                    engine_type: entry.engine_type || 'image',
+                    scene_frontend: 'scene',
+                    scene_theme: expected.theme,
+                    task_method: expected.taskMethod
+                }
+            }));
+            Object.assign(node, buildNodeParamsPatch(node, { params: nextParams }));
+            Object.assign(node, buildPresetConfigPatch(node, {
+                configKey: 'models_config',
+                presetConfig: { mode: 'preset_default', defaults: cloneRunValue(entry.models_config || {}, {}), overrides: keepOverrides(node.models_config) }
+            }));
+            Object.assign(node, buildPresetConfigPatch(node, {
+                configKey: 'styles_config',
+                presetConfig: { mode: 'preset_default', defaults: { style_selections: promptDefaults.styles.slice() }, overrides: keepOverrides(node.styles_config) }
+            }));
+            Object.assign(node, buildPresetConfigPatch(node, {
+                configKey: 'resolution_config',
+                presetConfig: { mode: 'preset_default', defaults: cloneRunValue(entry.resolution_config || {}, {}), overrides: keepOverrides(node.resolution_config) }
+            }));
+            Object.assign(node, buildPresetGenerationConfigPatch(node, {
+                generationConfig: {
+                    mode: 'preset_default',
+                    defaults: cloneRunValue(entry.generation_config || {}, {}),
+                    overrides: keepOverrides(node.generation_config)
+                }
+            }));
+            Object.assign(node, buildPresetModelStatusPatch(node, {
+                status: buildPresetModelCatalogStatus(entry, modelList)
+            }));
+            applyPresetDefinitionPatch(node, {
+                deleteKeys: ['classic_mode', 'classic_ip_count', 'enhance_detection_configs']
+            });
+            ensurePresetSpecialControllerState(node);
+            return true;
+        }
+
+        function reconcilePresetNodesWithCatalog(project, entries, options) {
+            if (!project || !Array.isArray(project.nodes) || !Array.isArray(entries)) return 0;
+            const byName = new Map(entries.map(entry => [normalizePresetName(entry.name || ''), entry]));
+            let repaired = 0;
+            project.nodes.forEach((node) => {
+                if (!node || !['preset', 'classic'].includes(node.type)) return;
+                const name = normalizePresetName(node.preset?.name || node.title || '');
+                const entry = byName.get(name);
+                if (entry && refreshScenePresetNodeDefinition(node, entry, options)) repaired += 1;
+            });
+            return repaired;
+        }
+
         function buildClassicNode(entry, world, options) {
             const opts = options || {};
             const source = entry || {};
@@ -667,6 +797,8 @@
             buildClassicNode,
             buildPresetNode,
             buildPresetModelCatalogStatus,
+            refreshScenePresetNodeDefinition,
+            reconcilePresetNodesWithCatalog,
             buildPresetModelCheckingStatus,
             buildPresetModelStatusPatch,
             applyPresetModelStatus

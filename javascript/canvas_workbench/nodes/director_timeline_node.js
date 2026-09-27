@@ -818,7 +818,7 @@ ${renderTimelinePreview(timeline, node, ctx)}
 
     function mediaSourceKind(source, context) {
         if (!source) return '';
-        if (source.type === 'image' || source.type === 'mask' || source.type === 'pose_studio' || source.type === 'gaussian_studio') return 'image';
+        if (source.type === 'image' || source.type === 'mask' || source.type === 'pose_studio' || source.type === 'gaussian_studio' || source.type === 'liveportrait_expression') return 'image';
         if (source.type === 'video' || source.type === 'sam3_video_mask') return 'video';
         if (source.type === 'audio') return 'audio';
         const asset = source.type === 'result'
@@ -830,6 +830,10 @@ ${renderTimelinePreview(timeline, node, ctx)}
         if (mime.startsWith('audio/')) return 'audio';
         if (source.type === 'result') return call(context, 'assetMediaKind', 'image', asset);
         return '';
+    }
+
+    function isNode(node) {
+        return !!node && node.type === 'director_timeline';
     }
 
     function isMediaSourceForSlot(source, slot, context) {
@@ -896,6 +900,7 @@ ${renderTimelinePreview(timeline, node, ctx)}
         MAX_VIDEO_REFS,
         MEDIA_KIND_GROUPS,
         createDirectorTimelineNodeContext,
+        isNode,
         defaultTimeline,
         normalizeTimeline,
         promptOverrideForTimeline,

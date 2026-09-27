@@ -41,7 +41,7 @@ from modules.custom_llm_api import (
     request_stream,
 )
 from modules.model_path_utils import find_model_in_dirs
-from modules.llama_cpp_runtime import normalize_llama_cpp_kv_cache_type, normalize_llama_cpp_n_ctx
+from modules.llama_cpp_runtime import is_cpu_only_llama_model_loaded, normalize_llama_cpp_kv_cache_type, normalize_llama_cpp_n_ctx
 
 logger = logging.getLogger(__name__)
 _CANVAS_VLM_CANCEL_TTL_SECONDS = 1800
@@ -2193,6 +2193,8 @@ def canvas_vlm_run(payload, stream_callback=None):
     free_after = bool(params.get("free_after"))
     if "keep_model_loaded" in params:
         free_after = not bool(params.get("keep_model_loaded"))
+    if VLM.is_llamacpp and is_cpu_only_llama_model_loaded(llamacpp_vlm):
+        free_after = False
     if free_after:
         logger.info(
             "[VLM KeepLoaded] vlm-run free_model node_id=%s conversation_id=%s keep_model_loaded=%s free_after=%s source=webui.canvas_workbench_vlm_run",

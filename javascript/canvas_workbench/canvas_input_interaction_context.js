@@ -123,6 +123,7 @@
             CANVAS_INPUT_HANDLE_CONTROLLER: controllers.inputHandle,
             getConnectionTargetFromHandle: method(controllers.inputHandle, 'getConnectionTargetFromHandle'),
             handleInputHandlePointerDown: method(controllers.inputHandle, 'handleInputHandlePointerDown'),
+            handleInputHandlePointerDownFromEvent: method(controllers.inputHandle, 'handleInputHandlePointerDownFromEvent'),
             CANVAS_NOTE_TAIL_CONTROLLER: controllers.noteTail,
             startNoteTailDrag: method(controllers.noteTail, 'startNoteTailDrag'),
             onNoteTailDragMove: method(controllers.noteTail, 'onNoteTailDragMove'),

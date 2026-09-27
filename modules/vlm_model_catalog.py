@@ -399,6 +399,28 @@ def is_visual_component_filename(filename):
     return bool(re.search(r"(?<![a-z0-9])vision(?![a-z0-9])", name))
 
 
+def is_mtp_component_filename(filename):
+    name = os.path.basename(str(filename or "")).lower()
+    return name.startswith(("mtp-", "mtp_"))
+
+
+def _gguf_model_stem(filename):
+    stem = os.path.splitext(os.path.basename(str(filename or "")))[0].lower()
+    return re.sub(r"[-_.](?:q\d+(?:_[a-z0-9]+)*|(?:b?f|fp)(?:8|16|32))$", "", stem)
+
+
+def _is_paired_mtp_component(filename, entries):
+    if not is_mtp_component_filename(filename):
+        return False
+    base = _gguf_model_stem(os.path.basename(filename)[4:])
+    return any(
+        not is_mtp_component_filename(candidate)
+        and not is_visual_component_filename(candidate)
+        and _gguf_model_stem(candidate) == base
+        for _, _, candidate in entries
+    )
+
+
 def _mmproj_precision_rank(path):
     name = os.path.basename(str(path or "")).lower()
     if re.search(r"(?<![a-z0-9])q8(?:[_-]?[a-z0-9]+)?(?=[._-]|$)", name):
@@ -664,6 +686,7 @@ def _scan_gguf_items(llm_roots, claimed_paths):
         for root, relative_path, absolute_path in entries:
             if (
                 is_visual_component_filename(absolute_path)
+                or _is_paired_mtp_component(absolute_path, entries)
                 or os.path.normcase(absolute_path) in claimed_paths
             ):
                 continue

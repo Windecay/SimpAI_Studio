@@ -1233,6 +1233,9 @@
     function renderNodeHtml(node, context) {
         const escape = (value) => escapeHtmlValue(context, value);
         const translate = (en, cn) => translateValue(context, en, cn);
+        if (node?.type === 'timeline' && Array.isArray(node.clips)) {
+            node.clips.forEach(clip => enforceClipMediaBounds(node, clip, context));
+        }
         normalizeNode(node);
         const params = node.params;
         return `<div class="sai-node-head">

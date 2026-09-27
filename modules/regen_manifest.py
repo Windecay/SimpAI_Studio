@@ -7,7 +7,7 @@ SCHEMA = "simpleai.regen.v1"
 KEY = "simpleai_regen_manifest"
 LABEL = "SimpleAI Regen Manifest"
 VIDEO_DURATION_KEY = "scene_video_duration"
-EXTRA_BACKEND_ARGS = (KEY, VIDEO_DURATION_KEY)
+EXTRA_BACKEND_ARGS = (KEY, VIDEO_DURATION_KEY, *(f"scene_input_image{index}" for index in range(5, 9)))
 _UNSET = object()
 _MODEL_FILE_EXTENSIONS = (
     ".safetensors",

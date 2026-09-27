@@ -33,7 +33,7 @@
         const viewportSource = sourceObject('viewportSource');
         const {
             updateCanvasRenderMode, getNodeRenderWorldRect, getVisibleNodeRecords,
-            isPanning, scheduleMinimapRender, renderMinimap, positionCanvasAgentPanel,
+            rectContainsRect, isPanning, scheduleMinimapRender, renderMinimap, positionCanvasAgentPanel,
             renderEdges
         } = viewportSource;
         const layoutSource = sourceObject('layoutSource');
@@ -44,11 +44,16 @@
         } = layoutSource;
         const nodeSource = sourceObject('nodeSource');
         const {
-            nodeEffectiveRenderMode, isNodeCollapsed, isNodeLocked, isNodeIgnored,
+            isNodeCollapsed, isNodeLocked, isNodeIgnored,
             isImageNodeFrameless, isNodeVisuallyRunning, isNodeSchedulerBlocked,
             isNodeSchedulerWaiting, isResultStale, nodeOverviewRenderSignature,
             nodeRenderSignature
         } = nodeSource;
+        const renderModeSource = sourceObject('renderModeSource');
+        const {
+            getCanvasRenderMode, getConnectingFromId, isDraggingNode,
+            getNodeResizeNodeId, getActiveInlineTagCartNodeId, isResultRefreshing
+        } = renderModeSource;
         const assetSource = sourceObject('assetSource');
         const {
             getSelectedResultAsset, resultPreviewAspectSource, mediaBrowserRuntimeFor,
@@ -132,7 +137,7 @@
                         }
                     }
                 }
-                const renderMode = nodeEffectiveRenderMode(node, renderOptions);
+                const renderMode = getNodeEffectiveRenderMode(node, renderOptions);
                 let nodeEl = renderedNodeElsById.get(node.id);
                 if (!nodeEl || !nodeEl.isConnected || nodeEl.parentElement !== nodesLayer) {
                     nodeEl = document.createElement('div');
@@ -330,8 +335,37 @@
             invalidateNodeSpatialIndex();
         }
 
+        function shouldForceFullNodeRender(node) {
+            if (!node) return false;
+            const selectedNodeIds = typeof getSelectedNodeIds === 'function' ? getSelectedNodeIds() : null;
+            if (node.id === getSelectedNodeId?.()
+                || selectedNodeIds?.has?.(node.id)
+                || (Array.isArray(selectedNodeIds) && selectedNodeIds.includes(node.id))) return true;
+            if (getConnectingFromId?.() === node.id) return true;
+            if (isDraggingNode?.(node.id) || getNodeResizeNodeId?.() === node.id) return true;
+            const inlineTagCartNodeId = getActiveInlineTagCartNodeId?.();
+            if (inlineTagCartNodeId && inlineTagCartNodeId === node.id) return true;
+            return !!isNodeVisuallyRunning?.(node) || !!isResultRefreshing?.(node);
+        }
+
+        function getNodeEffectiveRenderMode(node, options) {
+            const renderMode = typeof getCanvasRenderMode === 'function' ? getCanvasRenderMode() : 'full';
+            if (options?.panPreview && renderMode !== 'overview') {
+                const nodeEl = renderedNodeElsById.get(node?.id || '');
+                const existingMode = nodeEl?.isConnected && nodeEl.parentElement === getNodesLayer()
+                    ? nodeEl.dataset?.renderMode
+                    : '';
+                return existingMode || 'overview';
+            }
+            return renderMode === 'overview' && !shouldForceFullNodeRender(node) ? 'overview' : 'full';
+        }
+
+        function isVisibleWorldRectCoveredByRenderedNodes() {
+            return rectContainsRect(nodeRenderCoverageRect, getNodeRenderWorldRect(), 16);
+        }
+
         function nodeRenderKey(node, options) {
-            const renderMode = nodeEffectiveRenderMode(node, options);
+            const renderMode = getNodeEffectiveRenderMode(node, options);
             const signature = renderMode === 'overview' ? nodeOverviewRenderSignature(node) : nodeRenderSignature(node);
             return `${renderMode}|${signature}|collapsed:${isNodeCollapsed(node) ? '1' : '0'}`;
         }
@@ -341,6 +375,36 @@
             if (!id) return;
             const nodeEl = renderedNodeElsById.get(id) || getNodesLayer()?.querySelector?.(`[data-node-id="${cssEscape(id)}"]`);
             if (nodeEl) nodeEl.__simpaiRenderKey = undefined;
+        }
+
+        function updateNodePositionDom(ids) {
+            const nodesLayer = getNodesLayer();
+            if (!nodesLayer) return;
+            (ids || []).forEach((id) => {
+                const node = getNode(id);
+                const escapedId = typeof cssEscape === 'function' ? cssEscape(id) : String(id);
+                const nodeEl = node ? nodesLayer.querySelector(`[data-node-id="${escapedId}"]`) : null;
+                if (!node || !nodeEl) return;
+                nodeEl.style.left = `${node.x || 0}px`;
+                nodeEl.style.top = `${node.y || 0}px`;
+                nodeEl.style.width = `${node.w || defaultNodeSize(node.type).w}px`;
+                const renderMode = nodeEl.dataset.renderMode || getNodeEffectiveRenderMode(node);
+                const defaultSize = defaultNodeSize(node.type);
+                const storedNodeHeight = node.h || defaultSize.h;
+                const measuredNodeHeight = Number(getNodeLayoutSize(node)?.h || 0);
+                const preserveOverviewLayout = renderMode === 'overview' && !isNodeCollapsed(node);
+                const useCollapsedPromptHeight = supportsCollapsedPromptHeight(node);
+                const nodeLayoutHeight = useCollapsedPromptHeight
+                    ? collapsedPromptNodeHeight(node)
+                    : (preserveOverviewLayout ? Math.max(storedNodeHeight, measuredNodeHeight) : storedNodeHeight);
+                applyNodeCustomColorVars(node, nodeEl);
+                nodeEl.classList.toggle('is-lod-placeholder', preserveOverviewLayout);
+                nodeEl.style.setProperty('--sai-node-expanded-min-height', `${storedNodeHeight}px`);
+                nodeEl.style.minHeight = isNodeCollapsed(node) ? '' : `${nodeLayoutHeight}px`;
+                nodeEl.style.height = useCollapsedPromptHeight || preserveOverviewLayout || shouldFixNodeHeight(node) ? `${nodeLayoutHeight}px` : '';
+                rememberRenderedNodeLayout(node, nodeEl);
+            });
+            positionCanvasAgentPanel();
         }
 
         function rememberRenderedNodeLayout(node, nodeEl) {
@@ -397,7 +461,10 @@
             renderNodes,
             resetRenderedProjectDomCache,
             nodeRenderKey,
+            getNodeEffectiveRenderMode,
+            isVisibleWorldRectCoveredByRenderedNodes,
             invalidateRenderedNode,
+            updateNodePositionDom,
             rememberRenderedNodeLayout,
             refreshNodeLayoutForAgent,
             getRenderedNodeElement: (id) => renderedNodeElsById.get(id),

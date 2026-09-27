@@ -11,6 +11,7 @@
         const catalogSource = scope.catalogSource || {};
         const apiSource = scope.apiSource || {};
         const mutationSource = scope.mutationSource || {};
+        const runtimeSource = scope.runtimeSource || {};
         const viewportSource = scope.viewportSource || {};
         const uiSource = scope.uiSource || {};
         const userSource = scope.userSource || {};
@@ -56,9 +57,29 @@
         const refreshWildcardsCatalog = (...args) => typeof catalogSource.refreshWildcardsCatalog === 'function'
             ? catalogSource.refreshWildcardsCatalog(...args)
             : null;
-        const updateWildcardsHelperParam = (...args) => typeof mutationSource.updateWildcardsHelperParam === 'function'
-            ? mutationSource.updateWildcardsHelperParam(...args)
-            : undefined;
+        function updateWildcardsHelperParam(nodeId, key, value, inputType) {
+            const node = getNode(nodeId);
+            if (!node || node.type !== 'wildcards_helper' || isNodeLocked(node)) return;
+            if (typeof runtimeSource.pushHistoryBatch === 'function') {
+                runtimeSource.pushHistoryBatch('wildcards-helper:' + nodeId + ':' + key, 'Edit wildcards helper');
+            }
+            const paramsPatch = {};
+            if (inputType === 'number') {
+                const parsed = Number(value);
+                paramsPatch[key] = Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : 1;
+            } else {
+                paramsPatch[key] = value;
+            }
+            const nextParams = Object.assign({}, node.params || {}, paramsPatch);
+            Object.assign(node, buildWildcardsHelperStatePatch(node, {
+                paramsPatch,
+                textPatch: {
+                    value: wildcardHelperBuildTag(nextParams),
+                    updated_at: typeof runtimeSource.nowIso === 'function' ? runtimeSource.nowIso() : ''
+                }
+            }));
+            if (typeof runtimeSource.mutate === 'function') runtimeSource.mutate({ inspector: false });
+        }
         const appendWildcardTagToNodeParam = (...args) => typeof mutationSource.appendWildcardTagToNodeParam === 'function'
             ? mutationSource.appendWildcardTagToNodeParam(...args)
             : undefined;
@@ -631,6 +652,7 @@
             openWildcardsInsertMenu,
             promptAndAppendWildcardTag,
             openWildcardsManager,
+            updateWildcardsHelperParam,
             focusWildcardsV2Query
         };
     }

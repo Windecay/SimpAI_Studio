@@ -2,6 +2,26 @@
     'use strict';
 
     const SOURCE_CLASS = 'simpai-custom-sketch-source';
+    let standaloneSketchScriptPromise = null;
+
+    function loadStandaloneSketchEditor(doc) {
+        if (!doc?.createElement || !(doc.head || doc.documentElement)) return Promise.resolve(false);
+        if (standaloneSketchScriptPromise) return standaloneSketchScriptPromise;
+        const path = window.SimpAICanvasWorkbenchUtils?.workbenchStaticFilePath?.(
+            'javascript/custom_sketch_editor.js', doc
+        ) || '/gradio_api/file=javascript/custom_sketch_editor.js';
+        standaloneSketchScriptPromise = new Promise((resolve, reject) => {
+            const script = doc.createElement('script');
+            script.src = `${path}${path.includes('?') ? '&' : '?'}v=${Date.now()}`;
+            script.onload = () => resolve(true);
+            script.onerror = () => reject(new Error('Sketch editor script could not be loaded.'));
+            (doc.head || doc.documentElement).appendChild(script);
+        }).catch((err) => {
+            standaloneSketchScriptPromise = null;
+            throw err;
+        });
+        return standaloneSketchScriptPromise;
+    }
 
     function call(source, name, fallback, ...args) {
         return typeof source?.[name] === 'function' ? source[name](...args) : fallback;
@@ -111,7 +131,8 @@
             const initialPayload = JSON.stringify({ image, mask });
             textarea.value = initialPayload;
             if (!getSketch(source)) {
-                await loadLazyAssetGroup('customSketch');
+                const loaded = await loadLazyAssetGroup('customSketch');
+                if (!loaded && !getSketch(source)) await loadStandaloneSketchEditor(doc);
             }
 
             let closed = false;

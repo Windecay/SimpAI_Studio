@@ -64,6 +64,25 @@
         const getSelectedEdgeId = () => selectionCall('getSelectedEdgeId', null);
         const getSelectedGroupId = () => selectionCall('getSelectedGroupId', null);
         const getNode = (id) => nodeCall('getNode', null, id);
+
+        function renderConfigInspector(node) {
+            const project = getProject();
+            const preset = getNode(node.target_preset_id)
+                || getNode(project.edges.find(edge => edge.type === 'config' && edge.from === node.id)?.to);
+            return `
+<div class="sai-inspector-section">
+  <h3>${escapeHtml(node.title || 'Config')}</h3>
+  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Type', '类型'))}</span><b>${escapeHtml(node.config_kind || '')}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Target Preset', '目标 Preset'))}</span><b>${escapeHtml(preset?.title || preset?.preset?.name || t('Not connected', '未连接'))}</b></div>
+  <p>${escapeHtml(t('This node output overrides the corresponding config on the target preset; disconnecting restores the preset default.', '这个节点的输出会覆盖目标 preset 的对应配置；断开连线后 preset 回到默认配置。'))}</p>
+</div>
+<div class="sai-inspector-actions">
+  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
+  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
+</div>`;
+        }
+
         function renderNodeKind(kind, node) {
             const renderer = rendererCall('getNodeInspectorRenderer', null, kind);
             return typeof renderer === 'function' ? renderer(node) : '';
@@ -73,7 +92,7 @@
             if (!node) return '';
             let html = '';
             if (node.type === 'classic') html = renderNodeKind('classic', node);
-            else if (node.type === 'config') html = renderNodeKind('config', node);
+            else if (node.type === 'config') html = renderConfigInspector(node);
             else if (node.type === 'preset') html = renderNodeKind('preset', node);
             else if (node.type === 'result') html = renderNodeKind('result', node);
             else if (node.type === 'compare') html = renderNodeKind('compare', node);

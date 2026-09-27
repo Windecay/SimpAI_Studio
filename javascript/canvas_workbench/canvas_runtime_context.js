@@ -6,6 +6,8 @@
         presetNodeRenderer: window.SimpAICanvasWorkbenchPresetNodeRenderer || {},
         nodeLayout: window.SimpAICanvasWorkbenchNodeLayout || {},
         viewportRender: window.SimpAICanvasWorkbenchViewportRender || {},
+        viewportFit: window.SimpAICanvasWorkbenchViewportFit || {},
+        viewportZoom: window.SimpAICanvasWorkbenchViewportZoom || {},
         nodeSpatialIndex: window.SimpAICanvasWorkbenchNodeSpatialIndex || {},
         nodeFactory: window.SimpAICanvasWorkbenchNodeFactory || {},
         runtimeService: window.SimpAICanvasWorkbenchRuntimeServiceContext || {},
@@ -51,10 +53,18 @@
             resultPreviewSource
         );
 
+        const resolvedNodeRendererSource = Object.assign({}, nodeRendererSource, {
+            nodeSource: Object.assign({}, nodeRendererSource.nodeSource || {}, {
+                nodeEffectiveRenderMode: (...args) => {
+                    const resolve = controllers.nodeRender?.getNodeEffectiveRenderMode;
+                    return typeof resolve === 'function' ? resolve(...args) : 'full';
+                }
+            })
+        });
         controllers.nodeRenderer = createController(
             window.SimpAICanvasWorkbenchNodeRenderer || {},
             'createCanvasNodeRenderer',
-            nodeRendererSource
+            resolvedNodeRendererSource
         );
 
         controllers.nodeRender = createController(
@@ -71,7 +81,7 @@
             }, {});
         };
         const assetApi = expose('assetNodeRenderer', [
-            'renderAssetAudioWaveformHtml', 'renderAssetMediaHtml', 'renderBatchAnyNodeHtml',
+            'renderAssetAudioWaveformHtml', 'renderAssetMediaHtml', 'renderMaskNodeHtml', 'renderBatchAnyNodeHtml',
             'resultPreviewFrameSrc', 'resultPreviewFrameAspect', 'latestResultPreviewFrame',
             'resultPreviewAspectSource', 'renderResultPreviewStripHtml', 'renderResultMetadataPopover',
             'renderResultMediaHtml', 'renderResultNodeHtml', 'mediaBrowserItemMetadata',
@@ -94,7 +104,8 @@
             'renderRunnableNodeStatusFoot'
         ]);
         const nodeRenderApi = expose('nodeRender', [
-            'renderNodes', 'resetRenderedProjectDomCache', 'nodeRenderKey', 'invalidateRenderedNode',
+            'renderNodes', 'resetRenderedProjectDomCache', 'nodeRenderKey', 'getNodeEffectiveRenderMode', 'invalidateRenderedNode',
+            'isVisibleWorldRectCoveredByRenderedNodes', 'updateNodePositionDom',
             'rememberRenderedNodeLayout', 'refreshNodeLayoutForAgent', 'getRenderedNodeElement', 'getNodeRenderCoverageRect',
             'setNodeRenderCoverageRect', 'getMeasuredNodeLayout', 'getNodeLayoutCacheSize'
         ]);
@@ -223,6 +234,7 @@
             alignSelectedNodes: selectionMethod('alignSelectedNodes'),
             distributeSelectedNodes: selectionMethod('distributeSelectedNodes'),
             selectEdge: selectionMethod('selectEdge'),
+            reconcileSelection: selectionMethod('reconcileSelection'),
             CANVAS_GRAPH_DELETE_CONTROLLER: controllers.graphDelete,
             deleteSelection: method(controllers.graphDelete, 'deleteSelection'),
             deleteEdge: method(controllers.graphDelete, 'deleteEdge'),
@@ -243,6 +255,8 @@
             pasteCanvasClipboard: method(controllers.clipboard, 'pasteCanvasClipboard'),
             CANVAS_GROUP_INTERACTION_CONTROLLER: controllers.groupInteraction,
             bindGroupLayerEvents: groupInteractionMethod('bindGroupLayerEvents'),
+            bindInspectorGroupFieldEvents: groupInteractionMethod('bindInspectorGroupFieldEvents'),
+            updateGroupField: groupInteractionMethod('updateGroupField'),
             isGroupDragging: groupInteractionMethod('isGroupDragging'),
             isGroupResizing: groupInteractionMethod('isGroupResizing'),
             CANVAS_RUN_PANELS_CONTROLLER: controllers.runPanels,
@@ -287,10 +301,13 @@
     function createCanvasWorkbenchRuntimeContext(source) {
         const scope = source?.runtimeSource || source || {};
         const controllers = {};
+        const pointerInteractionSource = scope.pointerInteractionSource || {};
         const statusSource = scope.statusSource || {};
         const presetNodeRendererSource = scope.presetNodeRendererSource || {};
         const nodeLayoutSource = scope.nodeLayoutSource || {};
         const viewportRenderSource = scope.viewportRenderSource || {};
+        const viewportFitSource = scope.viewportFitSource || {};
+        const viewportZoomSource = scope.viewportZoomSource || {};
         const nodeSpatialIndexSource = scope.nodeSpatialIndexSource || {};
         const nodeFactorySource = scope.nodeFactorySource || {};
 
@@ -322,6 +339,17 @@
         );
         const viewportMethod = name => method(controllers.viewportRender, name);
 
+        controllers.viewportFit = createController(
+            modules.viewportFit,
+            'createCanvasViewportFitController',
+            viewportFitSource
+        );
+        controllers.viewportZoom = createController(
+            modules.viewportZoom,
+            'createCanvasViewportZoomController',
+            viewportZoomSource
+        );
+
         controllers.nodeSpatialIndex = createController(
             modules.nodeSpatialIndex,
             'createCanvasNodeSpatialIndexController',
@@ -342,7 +370,31 @@
             ? serviceFactory(scope, controllers)
             : {};
         const interactionContext = createCanvasWorkbenchInteractionContext(scope, controllers);
+        const activePointerInteractionNames = [
+            'isNodeDragging', 'isGroupDragging', 'isNodeResizing', 'isNoteTailDragging',
+            'isGroupResizing', 'isPanning', 'isMinimapDragging', 'isMarqueeSelecting',
+            'isConnecting', 'isComparePositionDragging', 'isTimelineClipDragging',
+            'isTimelinePlayheadDragging', 'isTimelinePreviewDragging',
+            'isDirectorTimelineDragging', 'isTimelineMaskPointerActive',
+            'isTimelineKeyframeDragging'
+        ];
+        const canvasPointerGestureNames = [
+            'isPanning', 'isNodeDragging', 'isGroupDragging', 'isNodeResizing',
+            'isNoteTailDragging', 'isGroupResizing', 'isMarqueeSelecting',
+            'isConnecting', 'isComparePositionDragging', 'isTimelineClipDragging',
+            'isTimelinePlayheadDragging', 'isTimelinePreviewDragging',
+            'isDirectorTimelineDragging', 'isTimelineMaskPointerActive',
+            'isTimelineKeyframeDragging'
+        ];
+        const hasActivePointerInteraction = () => activePointerInteractionNames.some(
+            name => typeof pointerInteractionSource[name] === 'function' && pointerInteractionSource[name]()
+        );
+        const isCanvasPointerGestureActive = () => canvasPointerGestureNames.some(
+            name => typeof pointerInteractionSource[name] === 'function' && pointerInteractionSource[name]()
+        );
         return Object.assign({
+            hasActivePointerInteraction,
+            isCanvasPointerGestureActive,
             CANVAS_STATUS_CONTROLLER: controllers.status,
             renderStatus,
             CANVAS_PRESET_NODE_RENDERER: controllers.presetNodeRenderer,
@@ -362,6 +414,7 @@
             isPromptTextParam: renderPresetMethod('isPromptTextParam'),
             CANVAS_NODE_LAYOUT_CONTROLLER: controllers.nodeLayout,
             defaultResultNodeSize: layoutMethod('defaultResultNodeSize'),
+            presetResultBasePosition: layoutMethod('presetResultBasePosition'),
             boundedImageNodeSizeForAsset: layoutMethod('boundedImageNodeSizeForAsset'),
             fitImageNodeToAssetBounds: layoutMethod('fitImageNodeToAssetBounds'),
             ensureResultNodeReadableSize: layoutMethod('ensureResultNodeReadableSize'),
@@ -379,6 +432,8 @@
             shouldRenderNodeInViewport: viewportMethod('shouldRenderNodeInViewport'),
             shouldRenderEdgeInViewport: viewportMethod('shouldRenderEdgeInViewport'),
             getEdgeSvgBounds: viewportMethod('getEdgeSvgBounds'),
+            CANVAS_VIEWPORT_FIT_CONTROLLER: controllers.viewportFit,
+            CANVAS_VIEWPORT_ZOOM_CONTROLLER: controllers.viewportZoom,
             CANVAS_NODE_SPATIAL_INDEX_CONTROLLER: controllers.nodeSpatialIndex,
             invalidateNodeSpatialIndex: spatialMethod('invalidateNodeSpatialIndex'),
             refreshNodeSpatialIndexRecord: spatialMethod('refreshNodeSpatialIndexRecord'),

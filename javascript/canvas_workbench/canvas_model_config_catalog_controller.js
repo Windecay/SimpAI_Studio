@@ -5,6 +5,7 @@
         const scope = context?.modelConfigCatalogSource || context || {};
         const nodeSource = scope.nodeSource || {};
         const requestSource = scope.requestSource || {};
+        const catalogSource = scope.catalogSource || {};
         const patchSource = scope.patchSource || {};
         const historySource = scope.historySource || {};
         const persistenceSource = scope.persistenceSource || {};
@@ -17,6 +18,37 @@
         const renderAll = () => call(renderSource, 'renderAll', undefined, { inspector: false });
         const warn = (...args) => call(diagnosticSource, 'warn', undefined, ...args);
         const buildConfigStatePatch = (...args) => call(patchSource, 'buildConfigStatePatch', {}, ...args);
+
+        function mergeChoices(items) {
+            const merged = [];
+            (items || []).forEach((item) => {
+                const text = String(item || '').trim();
+                if (text && !merged.includes(text)) merged.push(text);
+            });
+            return merged;
+        }
+
+        function getPresetDefaultLoraModels(defaults) {
+            const loras = Array.isArray(defaults?.loras) ? defaults.loras : [];
+            return loras
+                .map(item => item && item.model ? item.model : '')
+                .filter(item => item && item !== 'None');
+        }
+
+        function getModelChoices(node) {
+            const defaults = node?.config?.defaults || {};
+            const globalCatalog = call(catalogSource, 'getGlobalModelCatalog', {});
+            const catalog = node?.config?.catalog || globalCatalog || {};
+            const presetLoras = getPresetDefaultLoraModels(defaults);
+            return {
+                base_model: mergeChoices([defaults.base_model || '', ...(catalog.model_filenames || [])]),
+                refiner_model: mergeChoices(['None', defaults.refiner_model || '', ...(catalog.refiner_filenames || [])]),
+                clip_model: mergeChoices([defaults.clip_model || 'Default (model)', ...(catalog.clip_filenames || [])]),
+                vae: mergeChoices([defaults.vae || 'Default (model)', ...(catalog.vae_filenames || [])]),
+                upscale_model: mergeChoices([defaults.upscale_model || 'default', ...(catalog.upscale_model_filenames || [])]),
+                lora: mergeChoices(['None', ...presetLoras, ...(catalog.lora_filenames || [])])
+            };
+        }
 
         function modelConfigUsesFilter(node) {
             return !(node?.config && node.config.use_model_filter === false);
@@ -63,7 +95,7 @@
             }
         }
 
-        return { modelConfigUsesFilter, refreshModelConfigCatalog, setModelConfigFilter };
+        return { getModelChoices, modelConfigUsesFilter, refreshModelConfigCatalog, setModelConfigFilter };
     }
 
     window.SimpAICanvasWorkbenchModelConfigCatalog = Object.assign(

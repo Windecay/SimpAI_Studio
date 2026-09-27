@@ -340,6 +340,16 @@
             return params;
         }
 
+        function buildDefaultVlmParamsFromAgentSettings() {
+            const settings = getCanvasAgentSettings();
+            const rewriteModel = String(settings.rewriteModel || getDefaultSettings().rewriteModel || '').trim();
+            const version = rewriteModel || getVersionChoices()[0] || 'Qwen3.5-9B-abliterated-Q4_K_M';
+            if (version === 'Custom') {
+                return Object.assign({ agent_mode: 'persona' }, canvasAgentCustomParamsFromSettings(settings, false));
+            }
+            return { version, agent_mode: 'persona' };
+        }
+
         function getCanvasAgentCustomRuntimeParams() {
             return canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), true);
         }
@@ -573,6 +583,7 @@
             dockCanvasAgentPanelBottomLeft,
             getCanvasAgentRewriteModel,
             canvasAgentCustomParamsFromSettings,
+            buildDefaultVlmParamsFromAgentSettings,
             getCanvasAgentCustomRuntimeParams,
             getCanvasAgentCustomKeyValue,
             getCanvasAgentCustomModelChoices,

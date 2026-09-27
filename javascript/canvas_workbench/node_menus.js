@@ -11,9 +11,12 @@
         const paletteSource = scope.paletteSource || {};
         const viewSource = scope.viewSource || {};
         const uiSource = scope.uiSource || {};
+        const menuSource = scope.menuSource || {};
+        const worldSource = scope.worldSource || {};
         const callbackSources = {
             getPresetCatalog: catalogSource,
             resolvePresetCatalogEntry: catalogSource,
+            refreshPresetCatalog: catalogSource,
             addPresetNode: nodeSource,
             addMediaBrowserNode: nodeSource,
             addBatchAnyNode: nodeSource,
@@ -158,7 +161,24 @@
             return items;
         }
 
-        return { buildAddNodeContextMenuItems };
+        function openAddNodeMenu(x, y, world, includeViewActions, closeDelayMs) {
+            const targetWorld = world || worldSource.lastPointerWorld?.() || worldSource.viewportCenterWorld?.();
+            const items = buildAddNodeContextMenuItems(targetWorld, includeViewActions);
+            menuSource.openContextMenu?.(x, y, items, {
+                closeDelayMs,
+                searchable: true,
+                searchPlaceholder: t('Search nodes / actions...', '搜索节点 / 操作...')
+            });
+            const contextMenu = menuSource.contextMenu;
+            const searchInput = contextMenu?.querySelector('[data-context-menu-search]');
+            call('refreshPresetCatalog', null)?.then(() => {
+                if (!contextMenu || contextMenu.hidden || contextMenu.querySelector('[data-context-menu-search]') !== searchInput) return;
+                items.splice(0, items.length, ...buildAddNodeContextMenuItems(targetWorld, includeViewActions));
+                searchInput?.dispatchEvent(menuSource.createInputEvent?.() || new Event('input'));
+            });
+        }
+
+        return { buildAddNodeContextMenuItems, openAddNodeMenu };
     }
 
     window.SimpAICanvasWorkbenchNodeMenus = Object.assign({}, window.SimpAICanvasWorkbenchNodeMenus || {}, {

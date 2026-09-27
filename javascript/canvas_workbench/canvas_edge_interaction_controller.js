@@ -7,6 +7,7 @@
         const nodeSource = scope.nodeSource || {};
         const edgeSource = scope.edgeSource || {};
         const menuSource = scope.menuSource || {};
+        const languageSource = scope.languageSource || {};
         const noteTailSource = scope.noteTailSource || {};
         const sourceCall = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
             ? sourceObject[name](...args)
@@ -15,7 +16,14 @@
         const getNode = (id) => sourceCall(nodeSource, 'getNode', null, id);
         const edgeCall = (name, fallback, ...args) => sourceCall(edgeSource, name, fallback, ...args);
         const menuCall = (name, fallback, ...args) => sourceCall(menuSource, name, fallback, ...args);
+        const t = typeof languageSource.t === 'function' ? languageSource.t : (en) => en;
         const noteTailCall = (name, fallback, ...args) => sourceCall(noteTailSource, name, fallback, ...args);
+
+        function openEdgeContextMenu(edgeId, x, y) {
+            menuCall('openContextMenu', undefined, x, y, [
+                { label: t('Delete edge', '删除连线'), icon: 'fa-trash', danger: true, action: () => edgeCall('deleteEdge', undefined, edgeId) }
+            ]);
+        }
 
         function edgeElementFromEvent(evt) {
             const edgeEl = evt?.target?.closest?.('[data-edge-id]');
@@ -37,7 +45,7 @@
             evt.stopPropagation();
             const edgeId = edgeEl.getAttribute('data-edge-id');
             edgeCall('selectEdge', undefined, edgeId);
-            menuCall('openEdgeContextMenu', undefined, edgeId, evt.clientX, evt.clientY);
+            openEdgeContextMenu(edgeId, evt.clientX, evt.clientY);
         }
 
         function handleEdgeLayerPointerDown(evt) {
@@ -52,6 +60,7 @@
         }
 
         return {
+            openEdgeContextMenu,
             handleEdgeLayerClick,
             handleEdgeLayerContextMenu,
             handleEdgeLayerPointerDown

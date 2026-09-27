@@ -36,6 +36,10 @@ CANVAS_EXTRA_BACKEND_ARGS = (
     "cloud_model",
     "simpleai_regen_manifest",
     "scene_video_duration",
+    "scene_input_image5",
+    "scene_input_image6",
+    "scene_input_image7",
+    "scene_input_image8",
 )
 
 

@@ -92,6 +92,13 @@
             };
         }
 
+        function presetResultBasePosition(presetNode) {
+            return {
+                x: Math.round((presetNode?.x || 0) + (presetNode?.w || 360) + 140),
+                y: Math.round((presetNode?.y || 0) + 20)
+            };
+        }
+
         function boundedImageNodeSizeForAsset(asset) {
             const minW = 180;
             const minH = 160;
@@ -265,6 +272,7 @@
         return {
             boundedImageNodeSizeForAsset,
             defaultResultNodeSize,
+            presetResultBasePosition,
             ensureResultNodeReadableSize,
             ensureVlmNodeModeSize,
             ensureMediaBrowserNodeReadableSize,

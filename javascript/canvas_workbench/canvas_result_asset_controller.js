@@ -6,6 +6,7 @@
         const resultSource = scope.resultSource || {};
         const serializationSource = scope.serializationSource || {};
         const utilitySource = scope.utilitySource || {};
+        const uiSource = scope.uiSource || {};
         const call = (sourceObject, name, fallback, ...args) => typeof sourceObject?.[name] === 'function'
             ? sourceObject[name](...args)
             : fallback;
@@ -66,6 +67,28 @@
             return getResultAssetAt(node, safeIndex);
         }
 
+        function handleResultMetadataToggle(node, evt) {
+            if (!node || node.type !== 'result' || !evt?.target) return false;
+            const button = evt.target.closest?.('[data-result-metadata-toggle]');
+            if (!button) return false;
+            evt.preventDefault();
+            evt.stopPropagation();
+            const wrap = button.closest?.('[data-result-metadata]');
+            if (wrap) wrap.classList.toggle('is-pinned');
+            return true;
+        }
+
+        function handleResultAssetClick(node, evt) {
+            if (!evt?.target) return false;
+            const button = evt.target.closest?.('[data-result-asset-index]');
+            if (!button) return false;
+            evt.preventDefault();
+            evt.stopPropagation();
+            selectResultAsset(node, Number(button.getAttribute('data-result-asset-index')) || 0);
+            call(uiSource, 'mutate', undefined);
+            return true;
+        }
+
         function resultNodeHasOutput(node) {
             return !!(node && node.type === 'result' && (node.asset || (Array.isArray(node.assets) && node.assets.length)));
         }
@@ -74,7 +97,9 @@
             getSelectedResultAsset,
             getResultAssetAt,
             selectResultAsset,
-            resultNodeHasOutput
+            resultNodeHasOutput,
+            handleResultMetadataToggle,
+            handleResultAssetClick
         };
     }
 

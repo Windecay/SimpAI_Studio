@@ -10,6 +10,7 @@
         clip: window.SimpAICanvasWorkbenchTimelineClip || {},
         mask: window.SimpAICanvasWorkbenchTimelineMask || {},
         directorTimelineDrag: window.SimpAICanvasWorkbenchDirectorTimelineDrag || {},
+        directorTimelineEdit: window.SimpAICanvasWorkbenchDirectorTimelineEdit || {},
         frame: window.SimpAICanvasWorkbenchTimelineFrame || {},
         render: window.SimpAICanvasWorkbenchTimelineRender || {},
         compare: window.SimpAICanvasWorkbenchTimelineCompare || {},
@@ -36,6 +37,7 @@
         const clipSource = scope.clipSource || {};
         const maskSource = scope.maskSource || {};
         const directorTimelineDragSource = scope.directorTimelineDragSource || {};
+        const directorTimelineEditSource = scope.directorTimelineEditSource || {};
         const frameSource = scope.frameSource || {};
         const renderSource = scope.renderSource || {};
         const compareSource = scope.compareSource || {};
@@ -137,8 +139,30 @@
         controllers.command = createController(modules.command, 'createCanvasTimelineCommandController', commandControllerSource);
         const commandMethod = name => method(controllers.command, name);
 
+        const directorTimelineEditControllerSource = Object.assign({}, directorTimelineEditSource, {
+            timelineSource: Object.assign({}, directorTimelineEditSource.timelineSource || {}, {
+                directorTimelineConstrainSegmentTimes: (...args) => directorTimelineDragMethod('directorTimelineConstrainSegmentTimes')?.(...args)
+            })
+        });
+        controllers.directorTimelineEdit = createController(
+            modules.directorTimelineEdit,
+            'createCanvasDirectorTimelineEditController',
+            directorTimelineEditControllerSource
+        );
+        const directorTimelineEditMethod = name => method(controllers.directorTimelineEdit, name);
+
         return {
             CANVAS_TIMELINE_DOM_CONTROLLER: controllers.dom,
+            setTimelineMaskImageStyle: domMethod('setTimelineMaskImageStyle'),
+            refreshTimelineMaskImageOnly: domMethod('refreshTimelineMaskImageOnly'),
+            refreshTimelineFeatherControlDom: domMethod('refreshTimelineFeatherControlDom'),
+            refreshTimelineInlineValue: domMethod('refreshTimelineInlineValue'),
+            refreshTimelinePreviewDom: domMethod('refreshTimelinePreviewDom'),
+            refreshTimelinePreviewClipLayersDom: domMethod('refreshTimelinePreviewClipLayersDom'),
+            refreshTimelineMaskFeatherDom: domMethod('refreshTimelineMaskFeatherDom'),
+            refreshTimelinePenOverlayDom: domMethod('refreshTimelinePenOverlayDom'),
+            applyTimelinePreviewLayerStyle: domMethod('applyTimelinePreviewLayerStyle'),
+            syncTimelinePreviewVideos: domMethod('syncTimelinePreviewVideos'),
             timelineLaneInfoFromTarget: domMethod('timelineLaneInfoFromTarget'),
             refreshTimelineTrackRowsDom: domMethod('refreshTimelineTrackRowsDom'),
             refreshTimelineClipDom: domMethod('refreshTimelineClipDom'),
@@ -164,12 +188,29 @@
             startTimelineClipDrag: clipMethod('startTimelineClipDrag'),
             isTimelineClipDragging: clipMethod('isDragging'),
             CANVAS_TIMELINE_MASK_CONTROLLER: controllers.mask,
+            applyTimelineMaskFeatherToSelectedClip: maskMethod('applyTimelineMaskFeatherToSelectedClip'),
+            remapTimelineClipMaskForGeometryChange: maskMethod('remapTimelineClipMaskForGeometryChange'),
+            timelineMaskLayerGeometry: maskMethod('timelineMaskLayerGeometry'),
+            captureTimelineMaskGeometry: maskMethod('captureTimelineMaskGeometry'),
+            remapTimelineMasksAfterCanvasResize: maskMethod('remapTimelineMasksAfterCanvasResize'),
             startTimelineMaskAnchorDrag: maskMethod('startTimelineMaskAnchorDrag'),
             startTimelineMaskDraw: maskMethod('startTimelineMaskDraw'),
             isTimelineMaskPointerActive: maskMethod('isPointerActive'),
             CANVAS_DIRECTOR_TIMELINE_DRAG_CONTROLLER: controllers.directorTimelineDrag,
             startDirectorTimelinePreviewDrag: directorTimelineDragMethod('startDirectorTimelinePreviewDrag'),
+            directorTimelineConstrainSegmentTimes: directorTimelineDragMethod('directorTimelineConstrainSegmentTimes'),
             isDirectorTimelineDragging: directorTimelineDragMethod('isDragging'),
+            CANVAS_DIRECTOR_TIMELINE_EDIT_CONTROLLER: controllers.directorTimelineEdit,
+            normalizeDirectorTimelineForNode: directorTimelineEditMethod('normalizeDirectorTimelineForNode'),
+            updateDirectorStatus: directorTimelineEditMethod('updateDirectorStatus'),
+            updateDirectorTimelineParam: directorTimelineEditMethod('updateDirectorTimelineParam'),
+            updateDirectorTimelineSegmentParam: directorTimelineEditMethod('updateDirectorTimelineSegmentParam'),
+            addDirectorTimelineSegment: directorTimelineEditMethod('addDirectorTimelineSegment'),
+            removeDirectorTimelineSegment: directorTimelineEditMethod('removeDirectorTimelineSegment'),
+            moveDirectorTimelineSegment: directorTimelineEditMethod('moveDirectorTimelineSegment'),
+            copyDirectorTimelineOutput: directorTimelineEditMethod('copyDirectorTimelineOutput'),
+            handleDirectorTimelineAction: directorTimelineEditMethod('handleDirectorTimelineAction'),
+            bindDirectorTimelineInspectorEvents: directorTimelineEditMethod('bindDirectorTimelineInspectorEvents'),
             CANVAS_TIMELINE_FRAME_CONTROLLER: controllers.frame,
             CANVAS_TIMELINE_RENDER_CONTROLLER: controllers.render,
             CANVAS_TIMELINE_COMPARE_CONTROLLER: controllers.compare,
@@ -184,6 +225,8 @@
             bindInspectorTimelineParamEvents: paramMethod('bindInspectorTimelineParamEvents'),
             CANVAS_TIMELINE_COMMAND_CONTROLLER: controllers.command,
             selectTimelineClip: commandMethod('selectTimelineClip'),
+            copyTimelineJson: commandMethod('copyTimelineJson'),
+            copyTimelineRenderPayload: commandMethod('copyTimelineRenderPayload'),
             moveTimelineTrack: commandMethod('moveTimelineTrack'),
             handleTimelineClick: commandMethod('handleTimelineClick'),
             resetTimelineActiveTool: commandMethod('resetTimelineActiveTool'),

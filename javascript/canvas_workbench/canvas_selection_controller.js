@@ -22,6 +22,10 @@
         const projectCall = (name, fallback, ...args) => typeof projectSource[name] === 'function'
             ? projectSource[name](...args)
             : fallback;
+        const groupSource = sourceObject('groupSource');
+        const groupCall = (name, fallback, ...args) => typeof groupSource[name] === 'function'
+            ? groupSource[name](...args)
+            : fallback;
         const selectionSource = sourceObject('selectionSource');
         const selectionCall = (name, fallback, ...args) => typeof selectionSource[name] === 'function'
             ? selectionSource[name](...args)
@@ -245,6 +249,24 @@
             return Array.from(state.selectedNodeIds).filter(id => getNode(id));
         }
 
+        function reconcileSelection() {
+            const project = getProject();
+            const state = selectionState();
+            const validNodeIds = new Set((Array.isArray(project.nodes) ? project.nodes : []).map(node => node.id));
+            state.selectedNodeIds = new Set(Array.from(state.selectedNodeIds).filter(id => validNodeIds.has(id)));
+            if (state.selectedNodeId && !validNodeIds.has(state.selectedNodeId)) state.selectedNodeId = null;
+            if (state.selectedNodeId && !state.selectedNodeIds.size) state.selectedNodeIds.add(state.selectedNodeId);
+            if (!state.selectedNodeId && state.selectedNodeIds.size) state.selectedNodeId = Array.from(state.selectedNodeIds).at(-1) || null;
+            const groups = groupCall('ensureProjectGroups', Array.isArray(project.groups) ? project.groups : []);
+            const validGroupIds = new Set((Array.isArray(groups) ? groups : []).map(group => group.id));
+            if (state.selectedGroupId && !validGroupIds.has(state.selectedGroupId)) state.selectedGroupId = null;
+            if (state.selectedNodeId || state.selectedEdgeId || state.selectedNodeIds.size) state.selectedGroupId = null;
+            if (state.selectedEdgeId && !(Array.isArray(project.edges) ? project.edges : []).some(edge => edge.id === state.selectedEdgeId)) {
+                state.selectedEdgeId = null;
+            }
+            setSelectionState(state);
+        }
+
         function toggleSelectedNodesFlag(flag) {
             if (!['locked', 'ignored', 'collapsed'].includes(flag)) return;
             const nodes = getSelectedNodeIdList().map(id => getNode(id)).filter(Boolean);
@@ -365,7 +387,8 @@
             getEditableSelectedNodes,
             alignSelectedNodes,
             distributeSelectedNodes,
-            selectEdge
+            selectEdge,
+            reconcileSelection
         };
     }
 

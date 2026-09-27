@@ -34,6 +34,12 @@ LLAMA_CPP_KV_CACHE_TYPES = {
 }
 
 LLAMA_CPP_VRAM_POLICIES = {
+    "cpu": {
+        "gpu_usage_cap": 0.0,
+        "reserve_ratio": 0.0,
+        "min_reserve_gb": 0.0,
+        "reserve_kv_cache": False,
+    },
     "relaxed": {
         "gpu_usage_cap": 0.90,
         "reserve_ratio": 0.15,
@@ -69,6 +75,10 @@ class FixedTemplateArgsChatFormatter:
 def normalize_llama_cpp_vram_policy(policy):
     value = str(policy or "extreme").strip().lower().replace("-", "_")
     return value if value in LLAMA_CPP_VRAM_POLICIES else "extreme"
+
+
+def is_cpu_only_llama_model_loaded(runtime):
+    return runtime.llm is not None and runtime.current_vram_policy == "cpu"
 
 
 def llama_cpp_vram_policy_config(policy="extreme"):

@@ -5,6 +5,7 @@
         const scope = context?.inputHandleSource || context || {};
         const projectSource = scope.projectSource || {};
         const nodeSource = scope.nodeSource || {};
+        const slotSource = scope.slotSource || {};
         const connectionSource = scope.connectionSource || {};
         const renderSource = scope.renderSource || {};
         const languageSource = scope.languageSource || {};
@@ -20,6 +21,92 @@
         const getProject = () => projectCall('getProject', {}) || {};
         const getNode = (id) => nodeCall('getNode', null, id);
         const t = typeof languageSource.t === 'function' ? languageSource.t : (en) => en;
+        const getSlotLabel = (node, slot) => nodeCall('getSlotLabel', slot, node, slot);
+        const notConnectedText = () => uiCall('notConnectedText', '');
+
+        function openInputHandleContextMenu(node, slot, x, y) {
+            const fromId = node.upload_slots?.[slot];
+            uiCall('openContextMenu', x, y, [
+                {
+                    label: fromId ? t('Disconnect {slot}', '断开 {slot}').replace('{slot}', getSlotLabel(node, slot)) : notConnectedText(),
+                    icon: fromId ? 'fa-link-slash' : 'fa-circle',
+                    disabled: !fromId,
+                    action: () => connectionCall('deleteUploadSlot', node.id, slot)
+                }
+            ]);
+        }
+
+        function openConfigHandleContextMenu(node, kind, x, y) {
+            const edge = findEdge(item => item.type === 'config' && item.to === node.id && item.slot === kind);
+            uiCall('openContextMenu', x, y, [
+                { label: edge ? t('Disconnect {kind} config', '断开 {kind} config').replace('{kind}', kind) : notConnectedText(),
+                    icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => connectionCall('deleteEdge', edge.id) }
+            ]);
+        }
+
+        function openTextHandleContextMenu(node, slot, x, y) {
+            const edge = findEdge(item => item.type === 'text' && item.to === node.id && item.slot === slot);
+            const label = slot === 'negative_prompt' ? t('Negative Prompt', '负向提示词') : t('Prompt', '提示词');
+            uiCall('openContextMenu', x, y, [
+                { label: edge ? t('Disconnect {slot}', '断开 {slot}').replace('{slot}', label) : notConnectedText(),
+                    icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => connectionCall('deleteEdge', edge.id) }
+            ]);
+        }
+
+        function openTextNodeInputContextMenu(node, x, y, slot) {
+            const targetSlot = node?.type === 'text_merge' ? (slot || 'input_1') : 'input';
+            const edge = findEdge(item => item.type === 'text' && item.to === node.id && item.slot === targetSlot);
+            const connected = !!edge;
+            const isMerge = node?.type === 'text_merge';
+            uiCall('openContextMenu', x, y, [
+                { label: connected ? t('Disconnect Text input', '断开文本输入') : (isMerge ? notConnectedText() : t('Manual text', '手动文本')),
+                    icon: connected ? 'fa-link-slash' : (isMerge ? 'fa-circle' : 'fa-keyboard'),
+                    disabled: !connected, action: () => connectionCall('deleteEdge', edge.id) }
+            ]);
+        }
+
+        function openWd14ImageInputContextMenu(node, x, y) {
+            const edge = findEdge(item => item.type === 'image' && item.to === node.id && item.slot === 'image');
+            uiCall('openContextMenu', x, y, [
+                { label: edge ? t('Disconnect image input', '断开图片输入') : notConnectedText(),
+                    icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => connectionCall('deleteEdge', edge.id) }
+            ]);
+        }
+
+        function openVlmImageInputContextMenu(node, slot, x, y) {
+            const slots = typeof slotSource.getVlmImageSlots === 'function' ? slotSource.getVlmImageSlots() || [] : [];
+            const targetSlot = slots.some(item => item.key === slot) ? slot : 'image_1';
+            const edge = findEdge(item => item.type === 'image' && item.to === node.id && item.slot === targetSlot);
+            uiCall('openContextMenu', x, y, [
+                { label: edge ? t('Disconnect {slot}', '断开 {slot}').replace('{slot}', targetSlot) : notConnectedText(),
+                    icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => connectionCall('deleteEdge', edge.id) }
+            ]);
+        }
+
+        function openMaskSourceInputContextMenu(node, x, y) {
+            const edge = findEdge(item => item.type === 'image' && item.to === node.id && item.slot === 'source');
+            uiCall('openContextMenu', x, y, [
+                { label: edge ? t('Disconnect source image', '断开源图输入') : notConnectedText(),
+                    icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => connectionCall('deleteEdge', edge.id) }
+            ]);
+        }
+
+        function openPoseStudioReferenceContextMenu(node, x, y) {
+            const edge = findEdge(item => item.type === 'image' && item.to === node.id && item.slot === 'reference');
+            uiCall('openContextMenu', x, y, [
+                { label: edge ? t('Disconnect reference image', '断开参考图输入') : notConnectedText(),
+                    icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => connectionCall('deleteEdge', edge.id) }
+            ]);
+        }
+
+        function openCompareImageInputContextMenu(node, slot, x, y) {
+            const targetSlot = ['a', 'b'].includes(slot) ? slot : 'a';
+            const edge = findEdge(item => item.type === 'compare' && item.to === node.id && item.slot === targetSlot);
+            uiCall('openContextMenu', x, y, [
+                { label: edge ? t('Disconnect Image {slot}', '断开图像 {slot}').replace('{slot}', targetSlot.toUpperCase()) : notConnectedText(),
+                    icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => connectionCall('deleteEdge', edge.id) }
+            ]);
+        }
 
         function getEdges() {
             const project = getProject();
@@ -199,9 +286,51 @@
             }
         }
 
+        function handleInputHandlePointerDownFromEvent(node, evt) {
+            const target = evt?.target;
+            if (!target || typeof target.closest !== 'function') return false;
+            const inputHandles = {
+                inHandle: target.closest('[data-handle-in]'),
+                configInHandle: target.closest('[data-config-in]'),
+                resultInHandle: target.closest('[data-handle-in-result]'),
+                textInHandle: target.closest('[data-text-in]'),
+                textNodeInHandle: target.closest('[data-text-node-in]'),
+                translationTextInHandle: target.closest('[data-translation-text-in]'),
+                tagCartTextInHandle: target.closest('[data-tagcart-text-in]'),
+                wd14ImageInHandle: target.closest('[data-wd14-image-in]'),
+                vlmImageInHandle: target.closest('[data-vlm-image-in]'),
+                maskSourceInHandle: target.closest('[data-mask-source-in]'),
+                sam3VideoInHandle: target.closest('[data-sam3-video-in]'),
+                poseReferenceInHandle: target.closest('[data-pose-studio-reference-in]'),
+                gaussianReferenceInHandle: target.closest('[data-gaussian-studio-reference-in]'),
+                livePortraitSourceInHandle: target.closest('[data-liveportrait-expression-source-in]'),
+                livePortraitReferenceInHandle: target.closest('[data-liveportrait-expression-reference-in]'),
+                qwenTtsAudioInHandle: target.closest('[data-qwen-tts-audio-in]'),
+                directorMediaInHandle: target.closest('[data-director-media-in]'),
+                directorMediaGroupInHandle: target.closest('[data-director-media-group-in]'),
+                compareImageInHandle: target.closest('[data-compare-image-in]'),
+                batchAnyInHandle: target.closest('[data-batch-any-in]'),
+                timelineMediaInHandle: target.closest('[data-timeline-media-in], [data-timeline-track-in]')
+            };
+            if (!Object.values(inputHandles).some(Boolean)) return false;
+            evt.preventDefault();
+            handleInputHandlePointerDown(node, evt, inputHandles);
+            return true;
+        }
+
         return {
             getConnectionTargetFromHandle,
-            handleInputHandlePointerDown
+            handleInputHandlePointerDown,
+            handleInputHandlePointerDownFromEvent,
+            openInputHandleContextMenu,
+            openConfigHandleContextMenu,
+            openTextHandleContextMenu,
+            openTextNodeInputContextMenu,
+            openWd14ImageInputContextMenu,
+            openVlmImageInputContextMenu,
+            openMaskSourceInputContextMenu,
+            openPoseStudioReferenceContextMenu,
+            openCompareImageInputContextMenu
         };
     }
 

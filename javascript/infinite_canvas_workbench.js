@@ -36,12 +36,26 @@
     const WORKBENCH_CANVAS_GROUP_LIST_CONTEXT = window.SimpAICanvasWorkbenchGroupListContext || {};
     const WORKBENCH_CANVAS_ASSET_MANAGER_CONTEXT = window.SimpAICanvasWorkbenchAssetManagerContext || {};
     const WORKBENCH_CANVAS_MASK_EDITOR_CONTEXT = window.SimpAICanvasWorkbenchMaskEditorContext || {};
+    const WORKBENCH_CANVAS_MASK_RUNTIME = window.SimpAICanvasWorkbenchMaskRuntime || {};
+    const WORKBENCH_CANVAS_WD14_RUNTIME = window.SimpAICanvasWorkbenchWd14Runtime || {};
+    const WORKBENCH_CANVAS_LIVEPORTRAIT_VIDEO_EDITOR = window.SimpAICanvasWorkbenchLivePortraitVideoExpressionEditor || {};
+    const WORKBENCH_CANVAS_H3_STORYBOARD_PRESET_DATA = window.SimpAICanvasWorkbenchMiniMaxH3StoryboardPresetData || {};
+    const WORKBENCH_CANVAS_H3_STORYBOARD_PRESET_EDITOR = window.SimpAICanvasWorkbenchMiniMaxH3StoryboardPresetEditor || {};
+    const WORKBENCH_CANVAS_LTX23_GUIDE_EDITOR = window.SimpAICanvasWorkbenchLtx23GuideEditor || {};
     const WORKBENCH_CANVAS_TIMELINE_NODE_CONTEXT = window.SimpAICanvasWorkbenchTimelineNodeContext || {};
     const WORKBENCH_CANVAS_COMPARE_NODE_CONTEXT = window.SimpAICanvasWorkbenchCompareNodeContext || {};
+    const WORKBENCH_CANVAS_COMPARE_CREATION = window.SimpAICanvasWorkbenchCompareCreation || {};
+    const WORKBENCH_CANVAS_COMPARE_STATE = window.SimpAICanvasWorkbenchCompareState || {};
     const WORKBENCH_CANVAS_SPECIAL_NODE_CONTEXT = window.SimpAICanvasWorkbenchSpecialNodeContext || {};
+    const WORKBENCH_CANVAS_SPECIAL_NODE_EDITOR = window.SimpAICanvasWorkbenchSpecialNodeEditor || {};
+    const WORKBENCH_CANVAS_LAZY_ASSET_RUNTIME = window.SimpAICanvasWorkbenchLazyAssetRuntime || {};
     const WORKBENCH_RUN_HISTORY = window.SimpAICanvasWorkbenchRunHistoryPanel || {};
     const WORKBENCH_RUN_QUEUE = window.SimpAICanvasWorkbenchRunQueuePanel || {};
     const WORKBENCH_CANVAS_RUN_STATE = window.SimpAICanvasWorkbenchRunState || {};
+    const WORKBENCH_RUN_VALUE_SERIALIZER = window.SimpAICanvasWorkbenchRunValueSerializer || {};
+    const WORKBENCH_CANVAS_XYZ_MATRIX_EDITOR = window.SimpAICanvasWorkbenchXyzMatrixEditor || {};
+    const WORKBENCH_CANVAS_XYZ_MATRIX_MODAL_RENDERER = window.SimpAICanvasWorkbenchXyzMatrixModalRenderer || {};
+    const WORKBENCH_CANVAS_XYZ_MATRIX_NODE = window.SimpAICanvasWorkbenchXyzMatrixNode || {};
     const WORKBENCH_CANVAS_NODE_STATE = window.SimpAICanvasWorkbenchNodeState || {};
     const WORKBENCH_CANVAS_SCHEDULER_STATE = window.SimpAICanvasWorkbenchSchedulerState || {};
     const WORKBENCH_CANVAS_SCHEDULER_STEP = window.SimpAICanvasWorkbenchSchedulerStep || {};
@@ -49,18 +63,28 @@
     const WORKBENCH_CANVAS_RUN_STATUS = window.SimpAICanvasWorkbenchRunStatus || {};
     const WORKBENCH_CANVAS_RUN_POLLING = window.SimpAICanvasWorkbenchRunPolling || {};
     const WORKBENCH_CANVAS_GALLERY_REFRESH = window.SimpAICanvasWorkbenchGalleryRefresh || {};
+    const WORKBENCH_CANVAS_GALLERY_FROST = window.SimpAICanvasWorkbenchGalleryFrost || {};
     const WORKBENCH_CANVAS_TEXTAREA_EDITOR = window.SimpAICanvasWorkbenchTextareaEditor || {};
+    const WORKBENCH_CANVAS_INTERACTIVE_TARGET = window.SimpAICanvasWorkbenchInteractiveTarget || {};
     const WORKBENCH_CANVAS_MEDIA_SEEK = window.SimpAICanvasWorkbenchMediaSeek || {};
     const WORKBENCH_CANVAS_MEDIA_EDIT = window.SimpAICanvasWorkbenchMediaEdit || {};
+    const WORKBENCH_CANVAS_MEDIA_PLAYBACK = window.SimpAICanvasWorkbenchMediaPlayback || {};
     const WORKBENCH_CANVAS_PRESET_SPECIAL_VIEWER = window.SimpAICanvasWorkbenchPresetSpecialViewer || {};
     const WORKBENCH_CANVAS_PRESET_MODEL_STATUS = window.SimpAICanvasWorkbenchPresetModelStatus || {};
+    const WORKBENCH_CANVAS_MISSING_MODEL_DIALOG = window.SimpAICanvasWorkbenchMissingModelDialog || {};
+    const WORKBENCH_CANVAS_TAG_CART = window.SimpAICanvasWorkbenchTagCart || {};
     const WORKBENCH_CANVAS_TOAST = window.SimpAICanvasWorkbenchToast || {};
     const WORKBENCH_CANVAS_WILDCARDS_V2 = window.SimpAICanvasWorkbenchWildcardsV2 || {};
     const WORKBENCH_CANVAS_MINIMAP = window.SimpAICanvasWorkbenchMinimap || {};
     const WORKBENCH_CANVAS_GROUP_INTERACTION = window.SimpAICanvasWorkbenchGroupInteraction || {};
+    const WORKBENCH_CANVAS_GROUP_RENDERER = window.SimpAICanvasWorkbenchGroupRenderer || {};
+    const WORKBENCH_CANVAS_SHELL_RENDERER = window.SimpAICanvasWorkbenchShellRenderer || {};
     const WORKBENCH_CANVAS_RUN_PANELS = window.SimpAICanvasWorkbenchRunPanels || {};
     const WORKBENCH_CANVAS_NODE_RESIZE = window.SimpAICanvasWorkbenchNodeResize || {};
     const WORKBENCH_CANVAS_NODE_DRAG = window.SimpAICanvasWorkbenchNodeDrag || {};
+    const WORKBENCH_CANVAS_NODE_POINTER = window.SimpAICanvasWorkbenchNodePointer || {};
+    const WORKBENCH_CANVAS_NODE_EVENT = window.SimpAICanvasWorkbenchNodeEvent || {};
+    const WORKBENCH_CANVAS_EVENT = window.SimpAICanvasWorkbenchEvent || {};
     const WORKBENCH_CANVAS_PAN = window.SimpAICanvasWorkbenchPan || {};
     const WORKBENCH_CANVAS_MARQUEE = window.SimpAICanvasWorkbenchMarquee || {};
     const WORKBENCH_CANVAS_VIEWPORT_POINTER = window.SimpAICanvasWorkbenchViewportPointer || {};
@@ -88,6 +112,10 @@
     const WORKBENCH_CANVAS_BATCH_ANY_RUNTIME = window.SimpAICanvasWorkbenchBatchAnyRuntime || {};
     const WORKBENCH_CANVAS_BATCH_ANY_CONNECTION = window.SimpAICanvasWorkbenchBatchAnyConnection || {};
     const WORKBENCH_CANVAS_PRESET_RUN_SERIALIZATION = window.SimpAICanvasWorkbenchPresetRunSerialization || {};
+    const WORKBENCH_CANVAS_DIRECTOR_PRESET_VALIDATION = window.SimpAICanvasWorkbenchDirectorPresetValidation || {};
+    const WORKBENCH_CANVAS_DIRECTOR_SEGMENT_PAYLOAD = window.SimpAICanvasWorkbenchDirectorSegmentPayload || {};
+    const WORKBENCH_CANVAS_DIRECTOR_SEGMENT_TIMELINE = window.SimpAICanvasWorkbenchDirectorSegmentTimeline || {};
+    const WORKBENCH_CANVAS_DIRECTOR_SEGMENT_PROMPT_PREFLIGHT = window.SimpAICanvasWorkbenchDirectorSegmentPromptPreflight || {};
     const WORKBENCH_CANVAS_PRESET_RUN_FINGERPRINT = window.SimpAICanvasWorkbenchPresetRunFingerprint || {};
     const WORKBENCH_CANVAS_RESULT_STALENESS = window.SimpAICanvasWorkbenchResultStaleness || {};
     const WORKBENCH_CANVAS_PRESET_RUN_RUNTIME = window.SimpAICanvasWorkbenchPresetRunRuntime || {};
@@ -101,6 +129,12 @@
     const WORKBENCH_CANVAS_MODEL_CONFIG_CATALOG = window.SimpAICanvasWorkbenchModelConfigCatalog || {};
     const WORKBENCH_CANVAS_CONFIG_EDIT = window.SimpAICanvasWorkbenchConfigEdit || {};
     const WORKBENCH_CANVAS_CONFIG_VALUES = window.SimpAICanvasWorkbenchConfigValues || {};
+    const WORKBENCH_CANVAS_STYLE_CATALOG = window.SimpAICanvasWorkbenchStyleCatalog || {};
+    const WORKBENCH_CANVAS_STYLE_CONFIG_RENDERER = window.SimpAICanvasWorkbenchStyleConfigRenderer || {};
+    const WORKBENCH_CANVAS_DETECTION_CONFIG_RENDERER = window.SimpAICanvasWorkbenchDetectionConfigRenderer || {};
+    const WORKBENCH_CANVAS_ADVANCED_CONFIG_RENDERER = window.SimpAICanvasWorkbenchAdvancedConfigRenderer || {};
+    const WORKBENCH_CANVAS_MODEL_CONFIG_RENDERER = window.SimpAICanvasWorkbenchModelConfigRenderer || {};
+    const WORKBENCH_CANVAS_RESOLUTION_CONFIG_RENDERER = window.SimpAICanvasWorkbenchResolutionConfigRenderer || {};
     const WORKBENCH_CANVAS_CONFIG_CREATION = window.SimpAICanvasWorkbenchConfigCreation || {};
     const WORKBENCH_CANVAS_TEXT_CONNECTION = window.SimpAICanvasWorkbenchTextConnection || {};
     const WORKBENCH_CANVAS_MEDIA_INPUT_CONNECTION = window.SimpAICanvasWorkbenchMediaInputConnection || {};
@@ -131,6 +165,10 @@
     const WORKBENCH_CANVAS_RESULT_METADATA = window.SimpAICanvasWorkbenchResultMetadata || {};
     const WORKBENCH_CANVAS_RESULT_INSPECTOR = window.SimpAICanvasWorkbenchResultInspector || {};
     const WORKBENCH_CANVAS_RESULT_CONTEXT_MENU = window.SimpAICanvasWorkbenchResultContextMenu || {};
+    const WORKBENCH_CANVAS_MEDIA_CONTEXT_MENU = window.SimpAICanvasWorkbenchMediaContextMenu || {};
+    const WORKBENCH_CANVAS_NODE_CONTEXT_MENU = window.SimpAICanvasWorkbenchNodeContextMenu || {};
+    const WORKBENCH_CANVAS_NODE_ACTION = window.SimpAICanvasWorkbenchNodeAction || {};
+    const WORKBENCH_CANVAS_NODE_APPEARANCE = window.SimpAICanvasWorkbenchNodeAppearance || {};
     const WORKBENCH_DIRECTOR_TIMELINE_NODE = window.SimpAICanvasWorkbenchDirectorTimelineNode || {};
     const WORKBENCH_STYLE_SELECTOR_NODE = window.SimpAICanvasWorkbenchStyleSelectorNode || {};
     const WORKBENCH_VLM = window.SimpAICanvasWorkbenchVlm || {};
@@ -139,6 +177,8 @@
     const WORKBENCH_CANVAS_STATUS = window.SimpAICanvasWorkbenchStatus || {};
     const WORKBENCH_CANVAS_RENDER = window.SimpAICanvasWorkbenchRender || {};
     const WORKBENCH_CANVAS_NODE_RENDER = window.SimpAICanvasWorkbenchNodeRender || {};
+    const WORKBENCH_CANVAS_VLM_MODEL_OPTIONS = window.SimpAICanvasWorkbenchVlmModelOptions || {};
+    const WORKBENCH_CANVAS_NODE_RENDER_SIGNATURE = window.SimpAICanvasWorkbenchNodeRenderSignature || {};
     const WORKBENCH_CANVAS_EDGE_RUNTIME = window.SimpAICanvasWorkbenchEdgeRuntime || {};
     const WORKBENCH_CANVAS_VLM_CHAT_SCROLL = window.SimpAICanvasWorkbenchVlmChatScroll || {};
     const WORKBENCH_CANVAS_TRANSLATION = window.SimpAICanvasWorkbenchTranslation || {};
@@ -148,6 +188,8 @@
     const WORKBENCH_CANVAS_WORKSPACE_RECOVERY = window.SimpAICanvasWorkbenchWorkspaceRecovery || {};
     const WORKBENCH_CANVAS_PERFORMANCE_DIAGNOSTICS = window.SimpAICanvasWorkbenchPerformanceDiagnostics || {};
     const WORKBENCH_CANVAS_NODE_RENDERER = window.SimpAICanvasWorkbenchNodeRenderer || {};
+    const WORKBENCH_CANVAS_EDGE_RENDERER = window.SimpAICanvasWorkbenchEdgeRenderer || {};
+    const WORKBENCH_CANVAS_CHAIN_RUN_OVERLAY = window.SimpAICanvasWorkbenchChainRunOverlay || {};
     const WORKBENCH_CANVAS_ASSET_NODE_RENDERER = window.SimpAICanvasWorkbenchAssetNodeRenderer || {};
     const WORKBENCH_CANVAS_RESULT_PREVIEW = window.SimpAICanvasWorkbenchResultPreview || {};
     const WORKBENCH_CANVAS_RESULT_STATUS_DOM = window.SimpAICanvasWorkbenchResultStatusDom || {};
@@ -176,6 +218,7 @@
     const WORKBENCH_CANVAS_HISTORY = window.SimpAICanvasWorkbenchHistory || {};
     const WORKBENCH_CANVAS_BACKEND_CONTEXT = window.SimpAICanvasWorkbenchBackendContext || {};
     const WORKBENCH_VLM_MODEL_DOWNLOAD = window.SimpAICanvasWorkbenchVlmModelDownload || {};
+    const WORKBENCH_CANVAS_VLM_CUSTOM_API_PROFILES = window.SimpAICanvasWorkbenchVlmCustomApiProfiles || {};
     const WORKBENCH_CANVAS_BRIDGE_TRANSPORT = window.SimpAICanvasWorkbenchBridgeTransport || {};
     const WORKBENCH_CANVAS_AGENT_PANEL_CONTROLLER = window.SimpAICanvasWorkbenchPanelController || {};
     const WORKBENCH_CANVAS_SELECTION = window.SimpAICanvasWorkbenchSelection || {};
@@ -209,6 +252,8 @@
     const WORKBENCH_CANVAS_NODE_MENU_CONTEXT = window.SimpAICanvasWorkbenchNodeMenuContext || {};
     const WORKBENCH_PRESET_CATALOG = window.SimpAICanvasWorkbenchPresetCatalog || {};
     const WORKBENCH_CANVAS_PRESET_CONTEXT = window.SimpAICanvasWorkbenchPresetContext || {};
+    const WORKBENCH_CANVAS_PRESET_NODE_CLASSIFIER = window.SimpAICanvasWorkbenchPresetNodeClassifier || {};
+    const WORKBENCH_CANVAS_PRESET_SPECIAL_PANEL_RENDERER = window.SimpAICanvasWorkbenchPresetSpecialPanelRenderer || {};
     let projectPersistenceRuntime = null;
     const scheduleSave = (...args) => projectPersistenceRuntime?.scheduleSave?.(...args);
     const scheduleViewportSave = (...args) => projectPersistenceRuntime?.scheduleViewportSave?.(...args);
@@ -308,6 +353,21 @@
     ];
     const VLM_MODEL_LABELS = vlmModelLabels || registryVlmModelLabels || {};
     const VLM_MODEL_CATALOG = vlmModelCatalog || registryVlmModelCatalog || [];
+    const vlmModelOptionsService = WORKBENCH_CANVAS_VLM_MODEL_OPTIONS.createCanvasVlmModelOptions({
+        languageSource: {
+            t,
+            getLanguageState: () => window.simpleaiTopbarSystemParams || {}
+        },
+        modelSource: {
+            getVersionChoices: () => VLM_VERSION_CHOICES,
+            getModelLabels: () => VLM_MODEL_LABELS,
+            getModelCatalog: () => VLM_MODEL_CATALOG
+        },
+        utilitySource: { escapeHtml: (...args) => escapeHtml(...args) }
+    });
+    const vlmModelChoicesFor = (...args) => vlmModelOptionsService.modelChoicesFor(...args);
+    const vlmModelDisplayLabel = (...args) => vlmModelOptionsService.modelDisplayLabel(...args);
+    const vlmModelOptionsHtml = (...args) => vlmModelOptionsService.modelOptionsHtml(...args);
     const VLM_IMAGE_SLOTS = vlmImageSlots || registryVlmImageSlots || [
         { key: 'image_1', label: t('Image 1', '图像 1') },
         { key: 'image_2', label: t('Image 2', '图像 2') },
@@ -330,32 +390,6 @@
         'Custom': 32768
     };
 
-    function vlmModelChoicesFor(current) {
-        const value = String(current || '').trim();
-        return value && !VLM_VERSION_CHOICES.includes(value)
-            ? [value, ...VLM_VERSION_CHOICES]
-            : VLM_VERSION_CHOICES.slice();
-    }
-
-    function vlmModelDisplayLabel(model, fallback = '') {
-        const value = String(model || '').trim();
-        let label = String(VLM_MODEL_LABELS[value] || fallback || value).trim() || value;
-        const item = VLM_MODEL_CATALOG.find((entry) => String(entry?.id || '').trim() === value);
-        if (item?.vision_status === 'missing') {
-            const notice = t('Missing vision model', '缺少视觉模型', window.simpleaiTopbarSystemParams || {});
-            if (!label.includes(notice)) label = `${label} · ${notice}`;
-        }
-        return label;
-    }
-
-    function vlmModelOptionsHtml(current) {
-        const selected = String(current || '').trim();
-        return vlmModelChoicesFor(selected).map((model) => {
-            const missing = model === selected && !VLM_VERSION_CHOICES.includes(model);
-            const label = vlmModelDisplayLabel(model, missing ? `⚠ ${model}` : model);
-            return `<option value="${escapeHtml(model)}" ${model === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-        }).join('');
-    }
     const VLM_CUSTOM_API_STORAGE_KEY = vlmCustomApiStorageKey || 'simpai.canvas.vlmCustomApiProfiles.v1';
     const VLM_AGENT_MODE_CHOICES = vlmAgentModeChoices || [
         { key: 'raw', label: t('Raw Model', '原始模型') },
@@ -420,6 +454,7 @@
     let CANVAS_TIMELINE_FRAME_CONTROLLER = null;
     let CANVAS_TIMELINE_COMPARE_CONTROLLER = null;
     let CANVAS_PRESET_MODEL_STATUS_CONTROLLER = {};
+    let CANVAS_MISSING_MODEL_DIALOG_CONTROLLER = {};
     let CANVAS_RUN_STATE_CONTROLLER = {};
     let CANVAS_NODE_STATE_CONTROLLER = {};
     let CANVAS_SCHEDULER_STATE_CONTROLLER = {};
@@ -435,6 +470,10 @@
     let CANVAS_BATCH_ANY_RUNTIME_CONTROLLER = {};
     let CANVAS_BATCH_ANY_CONNECTION_CONTROLLER = {};
     let CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER = {};
+    let CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER = {};
+    let CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER = {};
+    let CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER = {};
+    let CANVAS_DIRECTOR_SEGMENT_PROMPT_PREFLIGHT_CONTROLLER = {};
     let CANVAS_PRESET_RUN_FINGERPRINT_CONTROLLER = {};
     let CANVAS_RESULT_STALENESS_CONTROLLER = {};
     let CANVAS_RESULT_RUN_ACTION_CONTROLLER = {};
@@ -442,6 +481,8 @@
     let CANVAS_RESULT_METADATA_CONTROLLER = {};
     let CANVAS_RESULT_INSPECTOR_CONTROLLER = {};
     let CANVAS_RESULT_CONTEXT_MENU_CONTROLLER = {};
+    let CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER = {};
+    let CANVAS_NODE_CONTEXT_MENU_CONTROLLER = {};
     let CANVAS_RESULT_STATUS_DOM_CONTROLLER = {};
     let CANVAS_ASSET_MEDIA_CONTROLLER = {};
     let CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER = {};
@@ -453,15 +494,23 @@
     let CANVAS_MODEL_CONFIG_CATALOG_CONTROLLER = {};
     let CANVAS_CONFIG_EDIT_CONTROLLER = {};
     let CANVAS_CONFIG_VALUES_CONTROLLER = {};
+    let CANVAS_STYLE_CATALOG_CONTROLLER = {};
+    let CANVAS_STYLE_CONFIG_RENDERER = {};
+    let CANVAS_DETECTION_CONFIG_RENDERER = {};
+    let CANVAS_ADVANCED_CONFIG_RENDERER = {};
+    let CANVAS_MODEL_CONFIG_RENDERER = {};
+    let CANVAS_RESOLUTION_CONFIG_RENDERER = {};
     let CANVAS_CONFIG_CREATION_CONTROLLER = {};
     let CANVAS_TEXT_CONNECTION_CONTROLLER = {};
     let CANVAS_MEDIA_INPUT_CONNECTION_CONTROLLER = {};
     let CANVAS_TIMELINE_CONNECTION_CONTROLLER = {};
     let CANVAS_RESULT_CONNECTION_CONTROLLER = {};
     let CANVAS_TIMELINE_CREATION_CONTROLLER = {};
+    let CANVAS_COMPARE_CREATION_CONTROLLER = {};
     let CANVAS_INPUT_CREATION_CONTROLLER = {};
     let CANVAS_MEDIA_IMPORT_CONTROLLER = {};
     let CANVAS_MEDIA_BROWSER_STATE_CONTROLLER = {};
+    let CANVAS_GALLERY_FROST_CONTROLLER = {};
     let CANVAS_MEDIA_BROWSER_DATA_CONTROLLER = {};
     let CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER = {};
     let CANVAS_MEDIA_BROWSER_PANEL_CONTROLLER = {};
@@ -480,8 +529,48 @@
     const scheduleAutoPresetModelChecks = (...args) => CANVAS_PRESET_MODEL_STATUS_CONTROLLER?.scheduleAutoPresetModelChecks?.(...args);
     const schedulePresetModelListRefreshes = (...args) => CANVAS_PRESET_MODEL_STATUS_CONTROLLER?.schedulePresetModelListRefreshes?.(...args);
     const showToast = (...args) => CANVAS_TOAST_CONTROLLER?.showToast?.(...args);
+    let standaloneLayerForgePromise = null;
+    function loadStandaloneLayerForge() {
+        if (standaloneLayerForgePromise) return standaloneLayerForgePromise;
+        standaloneLayerForgePromise = (async () => {
+            for (const path of ['javascript/umd.min.js', 'javascript/layerforge_integration.js']) {
+                const src = WORKBENCH_UTILS.workbenchStaticFilePath(path, document);
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = `${src}${src.includes('?') ? '&' : '?'}v=${Date.now()}`;
+                    script.onload = resolve;
+                    script.onerror = () => {
+                        script.remove();
+                        reject(new Error(`Failed to load LayerForge script: ${path}`));
+                    };
+                    document.head.appendChild(script);
+                });
+            }
+            return true;
+        })().catch((err) => {
+            standaloneLayerForgePromise = null;
+            throw err;
+        });
+        return standaloneLayerForgePromise;
+    }
+    const CANVAS_LAZY_ASSET_RUNTIME_CONTROLLER = typeof WORKBENCH_CANVAS_LAZY_ASSET_RUNTIME.createCanvasLazyAssetRuntimeController === 'function'
+        ? WORKBENCH_CANVAS_LAZY_ASSET_RUNTIME.createCanvasLazyAssetRuntimeController({
+            lazyAssetRuntimeSource: {
+                runtimeSource: {
+                    hasLazyAssetGroupLoader: groupName => typeof window.loadSimpleAILazyAssetGroup === 'function'
+                        || (groupName === 'layerForge' && window.SimpAIInfiniteCanvasStandalone === true),
+                    loadLazyAssetGroup: groupName => typeof window.loadSimpleAILazyAssetGroup === 'function'
+                        ? window.loadSimpleAILazyAssetGroup(groupName)
+                        : loadStandaloneLayerForge(),
+                    warn: (...args) => console.warn(...args),
+                    showToast
+                }
+            }
+        })
+        : {};
     const nodeStatusState = (...args) => CANVAS_RUN_STATE_CONTROLLER?.nodeStatusState?.(...args) || '';
     const isCanvasRunActiveState = (...args) => !!CANVAS_RUN_STATE_CONTROLLER?.isCanvasRunActiveState?.(...args);
+    const isTerminalRunState = (...args) => !!CANVAS_RUN_STATE_CONTROLLER?.isTerminalRunState?.(...args);
     const isNodeVisuallyRunning = (...args) => !!CANVAS_RUN_STATE_CONTROLLER?.isNodeVisuallyRunning?.(...args);
     const ensureVlmNodeModeSize = (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.ensureVlmNodeModeSize?.(...args) || false;
     const getWildcardsV2State = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.getWildcardsV2State?.(...args) || null;
@@ -506,6 +595,13 @@
     const renderTextMergeNodeHtml = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTextMergeNodeHtml?.(...args) || '';
     const renderTranslationNodeHtml = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTranslationNodeHtml?.(...args) || '';
     const renderTagCartNodeHtml = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTagCartNodeHtml?.(...args) || '';
+    const renderTextInspectorFromRenderer = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTextInspector?.(...args) || '';
+    const renderTextMergeInspectorFromRenderer = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTextMergeInspector?.(...args) || '';
+    const renderTranslationInspectorFromRenderer = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTranslationInspector?.(...args) || '';
+    const renderTagCartInspectorFromRenderer = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTagCartInspector?.(...args) || '';
+    const renderWd14InspectorFromRenderer = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderWd14Inspector?.(...args) || '';
+    const renderClassicInspectorFromRenderer = (...args) => CANVAS_PRESET_NODE_RENDERER?.renderClassicInspector?.(...args) || '';
+    const renderPresetInspectorFromRenderer = (...args) => CANVAS_PRESET_NODE_RENDERER?.renderPresetInspector?.(...args) || '';
     const renderWd14NodeHtml = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderWd14NodeHtml?.(...args) || '';
     const buildVlmNode = (...args) => CANVAS_VLM_NODE_CONTROLLER?.buildVlmNode?.(...args) || null;
     const buildVlmModelUnknownStatus = (...args) => CANVAS_VLM_NODE_CONTROLLER?.buildVlmModelUnknownStatus?.(...args) || null;
@@ -533,19 +629,32 @@
     const refreshVlmChatReadabilityDom = (nodeEl, node) => CANVAS_VLM_NODE_CONTROLLER?.refreshVlmChatReadabilityDom?.(node, nodeEl);
     const updateVlmParam = (...args) => CANVAS_VLM_NODE_CONTROLLER?.updateVlmParam?.(...args);
     const handleVlmParamFieldChange = (...args) => CANVAS_VLM_NODE_CONTROLLER?.handleVlmParamFieldChange?.(...args);
+    const handleCanvasRelightLightButtonEvent = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleCanvasRelightLightButtonEvent?.(...args) || false;
+    const setPresetTheme = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.setPresetTheme?.(...args);
+    const bindInspectorThemeEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorThemeEvents?.(...args) || false;
+    const bindInspectorVlmEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorVlmEvents?.(...args) || false;
+    const bindInspectorParamButtonEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorParamButtonEvents?.(...args) || false;
+    const handlePresetThemeChange = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handlePresetThemeChange?.(...args) || false;
     const renderInspector = (...args) => CANVAS_INSPECTOR_CONTROLLER?.renderInspector?.(...args);
     const updateNodeParam = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.updateNodeParam?.(...args);
+    const injectParamResetButtons = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.injectParamResetButtons?.(...args);
     const handleNodeParamFieldChange = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleNodeParamFieldChange?.(...args) || false;
     const handleNodeParamEvent = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleNodeParamEvent?.(...args) || false;
+    const handleVlmParamResetClick = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleVlmParamResetClick?.(...args) || false;
+    const handlePresetParamResetClick = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handlePresetParamResetClick?.(...args) || false;
+    const handleClassicNodeChangeEvent = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleClassicNodeChangeEvent?.(...args) || false;
     const handleInspectorNodeFieldChange = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleInspectorNodeFieldChange?.(...args) || false;
     const bindInspectorNodeFieldEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorNodeFieldEvents?.(...args) || false;
     const bindInspectorParamEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorParamEvents?.(...args) || false;
+    const bindClassicInspectorEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindClassicInspectorEvents?.(...args) || false;
+    const bindTextInspectorEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindTextInspectorEvents?.(...args) || false;
     const updateTimelineParam = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.updateTimelineParam?.(...args);
     const updateTimelineClipParam = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.updateTimelineClipParam?.(...args);
     const handleTimelineNodeParamEvent = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.handleTimelineNodeParamEvent?.(...args) || false;
     const resetTimelineParam = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.resetTimelineParam?.(...args);
     const resetTimelineClipParam = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.resetTimelineClipParam?.(...args);
     const bindInspectorTimelineParamEvents = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.bindInspectorTimelineParamEvents?.(...args) || false;
+    const bindInspectorTimelineResetEvents = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.bindInspectorTimelineResetEvents?.(...args) || false;
     const selectTimelineClip = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.selectTimelineClip?.(...args) || null;
     const moveTimelineTrack = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.moveTimelineTrack?.(...args);
     const handleTimelineClick = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.handleTimelineClick?.(...args) || false;
@@ -605,6 +714,9 @@
     const readFileAsDataUrl = MEDIA_HELPERS_CONTEXT.readFileAsDataUrl;
     const readFileAsText = MEDIA_HELPERS_CONTEXT.readFileAsText;
     const loadImageElementForCanvas = MEDIA_HELPERS_CONTEXT.loadImageElementForCanvas;
+    const normalizeLayerForgeDataUrl = MEDIA_HELPERS_CONTEXT.normalizeLayerForgeDataUrl;
+    const createAlphaMaskDataUrl = MEDIA_HELPERS_CONTEXT.createAlphaMaskDataUrl;
+    const mergeMaskDataUrls = MEDIA_HELPERS_CONTEXT.mergeMaskDataUrls;
     const getImageDimensions = MEDIA_HELPERS_CONTEXT.getImageDimensions;
     const getMediaMetadata = MEDIA_HELPERS_CONTEXT.getMediaMetadata;
     const createThumbnailDataUrl = MEDIA_HELPERS_CONTEXT.createThumbnailDataUrl;
@@ -683,22 +795,104 @@
         : {};
     const getTextareaEditorState = () => TEXTAREA_EDITOR_CONTROLLER.getTextareaEditorState?.() || null;
     const textareaEditorFieldFromTitleClick = (...args) => TEXTAREA_EDITOR_CONTROLLER.textareaEditorFieldFromTitleClick?.(...args) || null;
+    const CANVAS_INTERACTIVE_TARGET_CONTROLLER = typeof WORKBENCH_CANVAS_INTERACTIVE_TARGET.createCanvasInteractiveTargetController === 'function'
+        ? WORKBENCH_CANVAS_INTERACTIVE_TARGET.createCanvasInteractiveTargetController({
+            isTextareaEditorTitleTarget: (target) => !!textareaEditorFieldFromTitleClick(target)
+        })
+        : {};
+    const isInteractiveTarget = (...args) => CANVAS_INTERACTIVE_TARGET_CONTROLLER.isInteractiveTarget?.(...args) || false;
+    const bindInspectorTextareaTitleEvents = (...args) => TEXTAREA_EDITOR_CONTROLLER.bindInspectorTextareaTitleEvents?.(...args) || false;
     const openTextareaEditor = (...args) => TEXTAREA_EDITOR_CONTROLLER.openTextareaEditor?.(...args);
+    const MISSING_MODEL_DIALOG_CONTEXT_SOURCE = {
+        domSource: {
+            getDocument: () => document,
+            getRoot: () => root,
+            detectWorkbenchTheme,
+            ensureWorkbenchFormFieldNames
+        },
+        utilitySource: { escapeHtml: (...args) => escapeHtml(...args) },
+        languageSource: {
+            getLanguageState: () => Object.assign({}, window.simpleaiTopbarSystemParams || {}, { __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        },
+        modelSource: {
+            queuePresetModelDownloads: (...args) => queuePresetModelDownloads(...args),
+            queueVlmModelDownloads: (...args) => queueVlmModelDownloads(...args)
+        }
+    };
+    CANVAS_MISSING_MODEL_DIALOG_CONTROLLER = typeof WORKBENCH_CANVAS_MISSING_MODEL_DIALOG.createCanvasMissingModelDialogController === 'function'
+        ? WORKBENCH_CANVAS_MISSING_MODEL_DIALOG.createCanvasMissingModelDialogController({
+            missingModelDialogSource: MISSING_MODEL_DIALOG_CONTEXT_SOURCE
+        })
+        : {};
+    const TAG_CART_CONTEXT_SOURCE = {
+        nodeSource: {
+            isNodeLocked,
+            getNode,
+            getSelectedNodeId: () => selectedNodeId,
+            getNodeTextOutput: (...args) => getNodeTextOutput(...args),
+            getTextNodeInputSource: (...args) => getTextNodeInputSource(...args),
+            buildTagCartSizePatch: (...args) => buildTagCartSizePatch(...args),
+            buildTagCartStatePatch: (...args) => buildTagCartStatePatch(...args)
+        },
+        adapterSource: { getAdapter: () => window.SimpAITagCartAdapter || null },
+        domSource: {
+            getRoot: () => root,
+            getNodeElement: id => nodesLayer?.querySelector('[data-node-id="' + cssEscape(id) + '"]') || null,
+            getInlineHost: nodeEl => nodeEl?.querySelector('[data-tag-cart-inline-host]') || null,
+            removeInlineReopenButtons: host => host?.querySelectorAll('.sai-tag-cart-inline-reopen').forEach(item => item.remove())
+        },
+        stateSource: {
+            getActiveInlineTagCartNodeId: () => activeInlineTagCartNodeId,
+            setActiveInlineTagCartNodeId: value => { activeInlineTagCartNodeId = value; }
+        },
+        languageSource: {
+            t: (en, cn) => t(en, cn, { __lang: runtimeUiLang() })
+        },
+        runtimeSource: {
+            ensureWorkbenchLazyRuntime,
+            showToast,
+            setTranslatedFieldValue,
+            renderAll: (...args) => renderAll(...args),
+            scheduleSave,
+            renderEdges,
+            renderNodes: (...args) => renderNodes(...args),
+            renderMinimap: (...args) => renderMinimap(...args),
+            renderInspector,
+            renderStatus: (...args) => renderStatus(...args),
+            pushHistoryBatch: (...args) => pushHistoryBatch(...args),
+            nowIso: (...args) => nowIso(...args),
+            syncTextOutputDom,
+            refreshTextMergeDependents,
+            nodeRenderKey: (...args) => nodeRenderKey(...args)
+        }
+    };
+    const CANVAS_TAG_CART_CONTROLLER = typeof WORKBENCH_CANVAS_TAG_CART.createCanvasTagCartController === 'function'
+        ? WORKBENCH_CANVAS_TAG_CART.createCanvasTagCartController({ tagCartSource: TAG_CART_CONTEXT_SOURCE })
+        : {};
+
     const PRESET_MODEL_STATUS_CONTEXT_SOURCE = {
         projectSource: {
             getProject: () => project
         },
         nodeSource: {
             getNode: (...args) => getNode(...args),
-            isNodeIgnored: (...args) => isNodeIgnored(...args),
-            presetGenerationStepValue: (...args) => presetGenerationStepValue(...args)
+            isPresetNode: (node) => !!node && ['preset', 'classic'].includes(node.type)
         },
         modelSource: {
-            shouldAutoCheckPresetModels: (...args) => shouldAutoCheckPresetModels(...args),
-            checkPresetModelStatus: (...args) => checkPresetModelStatus(...args)
+            presetModelStatusState: (...args) => presetModelStatusState(...args),
+            buildPresetModelStatusPatch: (...args) => buildPresetModelStatusPatch(...args),
+            buildPresetModelCheckingStatus: (...args) => buildPresetModelCheckingStatus(...args),
+            sendCanvasPresetModelStatusRequest: (...args) => sendCanvasPresetModelStatusRequest(...args),
+            sendCanvasPresetModelDownloadsRequest: (...args) => sendCanvasPresetModelDownloadsRequest(...args),
+            applyPresetModelStatus: (...args) => applyPresetModelStatus(...args)
         },
         uiSource: {
-            openMainMissingModelListForPreset: (...args) => openMainMissingModelListForPreset(...args)
+            openMainMissingModelListForPreset: (...args) => openMainMissingModelListForPreset(...args),
+            renderAll: (...args) => renderAll(...args),
+            mutate: (...args) => mutate(...args),
+            showToast: (...args) => showToast(...args),
+            translate: (en, cn) => t(en, cn)
         },
         timingSource: {
             setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
@@ -760,9 +954,13 @@
                 : null
         },
         mutationSource: {
-            updateWildcardsHelperParam: (...args) => updateWildcardsHelperParam(...args),
             appendWildcardTagToNodeParam: (...args) => appendWildcardTagToNodeParam(...args),
             addWildcardsHelperNode: (...args) => addWildcardsHelperNode(...args)
+        },
+        runtimeSource: {
+            pushHistoryBatch: (...args) => pushHistoryBatch(...args),
+            nowIso: (...args) => nowIso(...args),
+            mutate
         },
         viewportSource: {
             viewportCenterWorld: (...args) => viewportCenterWorld(...args)
@@ -873,10 +1071,19 @@
     const viewportGetMinimapBounds = WORKBENCH_VIEWPORT.getMinimapBounds;
     const viewportHasCanvasOverflow = WORKBENCH_VIEWPORT.hasCanvasOverflow;
     const viewportGetVisibleWorldRect = WORKBENCH_VIEWPORT.getVisibleWorldRect;
+    const viewportClientToWorld = WORKBENCH_VIEWPORT.clientToWorld;
+    const viewportCenterWorldFromState = WORKBENCH_VIEWPORT.viewportCenterWorld;
     const viewportGetNodeRenderWorldRect = WORKBENCH_VIEWPORT.getNodeRenderWorldRect;
     const viewportShouldRenderNodeInViewport = WORKBENCH_VIEWPORT.shouldRenderNodeInViewport;
     const viewportGetNodeRect = WORKBENCH_VIEWPORT.getNodeRect;
     const viewportRectsOverlap = WORKBENCH_VIEWPORT.rectsOverlap;
+    const viewportRectContainsRect = WORKBENCH_VIEWPORT.rectContainsRect;
+    const viewportSnapCanvasCoord = WORKBENCH_VIEWPORT.snapCanvasCoord;
+    const viewportSnapCanvasSizeFromOrigin = WORKBENCH_VIEWPORT.snapCanvasSizeFromOrigin;
+    const snapCanvasCoord = (value) => viewportSnapCanvasCoord(value, CANVAS_GRID_SIZE);
+    const snapCanvasSizeFromOrigin = (origin, size, min, max) => (
+        viewportSnapCanvasSizeFromOrigin(origin, size, min, max, CANVAS_GRID_SIZE)
+    );
     const viewportFindOpenNodePosition = WORKBENCH_VIEWPORT.findOpenNodePosition;
     const viewportShouldRenderEdgeInViewport = WORKBENCH_VIEWPORT.shouldRenderEdgeInViewport;
     const viewportCurvePath = WORKBENCH_VIEWPORT.curvePath;
@@ -1086,6 +1293,7 @@
     const sam3UpdateParam = WORKBENCH_SAM3_VIDEO_MASK_NODE.updateParam;
     const sam3UploadMaskForNode = WORKBENCH_SAM3_VIDEO_MASK_NODE.uploadMaskForNode;
     const directorTimelineCreateNode = WORKBENCH_DIRECTOR_TIMELINE_NODE.createNode;
+    const directorTimelineIsNode = WORKBENCH_DIRECTOR_TIMELINE_NODE.isNode;
     const directorTimelineMediaSourceKind = WORKBENCH_DIRECTOR_TIMELINE_NODE.mediaSourceKind;
     const directorTimelineMediaSourceForSlot = WORKBENCH_DIRECTOR_TIMELINE_NODE.isMediaSourceForSlot;
     const directorTimelineNormalizeTimeline = WORKBENCH_DIRECTOR_TIMELINE_NODE.normalizeTimeline;
@@ -1118,11 +1326,11 @@
     const livePortraitOpenEditor = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.openEditor;
     const livePortraitRenderInspector = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.renderInspector;
     const livePortraitRenderNodeHtml = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.renderNodeHtml;
-    const qwenTtsModeSpecs = WORKBENCH_QWEN_TTS_NODE.MODE_SPECS;
+    const qwenTtsModeLabelForMode = WORKBENCH_QWEN_TTS_NODE.modeLabel;
     const qwenTtsIsNode = WORKBENCH_QWEN_TTS_NODE.isNode;
     const qwenTtsIsAudioSource = WORKBENCH_QWEN_TTS_NODE.isAudioSource;
     const qwenTtsModeFromNode = WORKBENCH_QWEN_TTS_NODE.modeFromNode;
-    const qwenTtsAudioInputSlotsForMode = WORKBENCH_QWEN_TTS_NODE.audioInputSlots;
+    const qwenTtsAudioInputSlotsForNode = WORKBENCH_QWEN_TTS_NODE.audioInputSlotsForNode;
     const qwenTtsStylePresetInstruction = WORKBENCH_QWEN_TTS_NODE.stylePresetInstruction;
     const qwenTtsCreateNode = WORKBENCH_QWEN_TTS_NODE.createNode;
     const qwenTtsRenderInspector = WORKBENCH_QWEN_TTS_NODE.renderInspector;
@@ -1132,9 +1340,19 @@
     const styleSelectorRenderInspector = WORKBENCH_STYLE_SELECTOR_NODE.renderInspector;
     const styleSelectorRenderNodeHtml = WORKBENCH_STYLE_SELECTOR_NODE.renderNodeHtml;
     const styleSelectorSetSelectedStyle = WORKBENCH_STYLE_SELECTOR_NODE.setSelectedStyle;
+    const styleSelectorRunPresetNodeFromUi = WORKBENCH_STYLE_SELECTOR_NODE.runPresetNodeFromUi;
+    const styleSelectorRunStyleTransferPresetNode = WORKBENCH_STYLE_SELECTOR_NODE.runStyleTransferPresetNode;
+    const styleSelectorRunTargetPreset = WORKBENCH_STYLE_SELECTOR_NODE.runStyleSelectorTargetPreset;
+    const styleSelectorSelectStyle = WORKBENCH_STYLE_SELECTOR_NODE.selectStyle;
+    const styleSelectorApplyToPreset = WORKBENCH_STYLE_SELECTOR_NODE.applyStyleSelectorToPreset;
+    const styleSelectorFindForPreset = WORKBENCH_STYLE_SELECTOR_NODE.findStyleSelectorForPreset;
+    const styleSelectorLinkedPresetForNode = WORKBENCH_STYLE_SELECTOR_NODE.styleSelectorLinkedPreset;
+    const styleSelectorLinkToPreset = WORKBENCH_STYLE_SELECTOR_NODE.linkStyleSelectorToPreset;
+    const styleSelectorHandleCardClick = WORKBENCH_STYLE_SELECTOR_NODE.handleCardClick;
     const styleSelectorStyleByName = WORKBENCH_STYLE_SELECTOR_NODE.styleByName;
     const styleSelectorSelectedStyle = WORKBENCH_STYLE_SELECTOR_NODE.selectedStyle;
     const styleSelectorFilterNodeDom = WORKBENCH_STYLE_SELECTOR_NODE.filterNodeDom;
+    const styleSelectorHandleSearchInput = WORKBENCH_STYLE_SELECTOR_NODE.handleSearchInput;
     const setCanvasAgentRunInfo = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.setCanvasAgentRunInfo?.(...args);
     const clearCanvasAgentRunInfo = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.clearCanvasAgentRunInfo?.(...args);
     const resetCanvasAgentRunInfo = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.resetCanvasAgentRunInfo?.(...args);
@@ -1174,44 +1392,6 @@
     const requestCanvasAgentVlmInstructionPlan = (...args) => CANVAS_AGENT_VLM_INSTRUCTION_CONTROLLER?.requestCanvasAgentVlmInstructionPlan?.(...args)
         || Promise.resolve({ ok: false, error: t('VLM planner is unavailable.', 'VLM 计划模块不可用。') });
     const invokeCanvasAgentPromptRewrite = (...args) => CANVAS_AGENT_PROMPT_REWRITE_CONTROLLER?.rewriteCanvasAgentPromptWithLlm?.(...args);
-    const COMMON_CANVAS_LABELS_CN = {
-        preset: '预设',
-        Preset: '预设',
-        image: '图像',
-        Image: '图像',
-        video: '视频',
-        Video: '视频',
-        audio: '音频',
-        Audio: '音频',
-        scene: '场景',
-        Scene: '场景',
-        Basic: '基础',
-        basic: '基础',
-        workflow: '工作流',
-        Workflow: '工作流',
-        Theme: '主题',
-        theme: '主题',
-        Mode: '模式',
-        mode: '模式',
-        Current: '当前',
-        Mask: '遮罩',
-        mask: '遮罩',
-        'Advanced Masking': '高级遮罩',
-        'Source Image': '源图像',
-        'Image source': '图像来源',
-        'Video source': '视频来源',
-        'No mask generated': '尚未生成遮罩',
-        'Tag Cart': '标签选择器',
-        tag_cart: '标签选择器',
-        Tags: '标签',
-        tags: '标签',
-        'Media Browser': '媒体浏览器',
-        media_browser: '媒体浏览器',
-        Browser: '浏览器',
-        Result: '结果',
-        Output: '输出',
-        Wildcards: '通配符'
-    };
     const WILDCARDS_HELPER_TARGETS = ['Array (batch)', 'Single in prompt'];
     const WILDCARDS_HELPER_METHODS = ['Random Select', 'In order'];
     const WILDCARDS_HELPER_SEED_MODES = ['Fixed seed', 'Random seed'];
@@ -1351,6 +1531,15 @@
         { key: 'ollama_cloud', label: 'Ollama Cloud', baseUrl: 'https://ollama.com/v1', format: 'openai_compatible', supportsImages: true },
         { key: 'custom', label: 'Custom OpenAI API', baseUrl: '', format: 'openai_compatible', supportsImages: true }
     ];
+    const CANVAS_VLM_CUSTOM_API_PROFILES = typeof WORKBENCH_CANVAS_VLM_CUSTOM_API_PROFILES.createCanvasVlmCustomApiProfilesController === 'function'
+        ? WORKBENCH_CANVAS_VLM_CUSTOM_API_PROFILES.createCanvasVlmCustomApiProfilesController({
+            vlmCustomApiProfilesSource: {
+                getProviders: () => VLM_CUSTOM_API_PROVIDERS,
+                getStorage: () => localStorage,
+                getStorageKey: () => VLM_CUSTOM_API_STORAGE_KEY
+            }
+        })
+        : {};
     const DEFAULT_SETTINGS = Object.assign({
         __lang: runtimeUiLang()
     }, projectDefaultSettings || {
@@ -1411,6 +1600,8 @@
     const nowIso = WORKBENCH_UTILS.nowIso;
     const formatLocalTime = WORKBENCH_UTILS.formatLocalTime;
     const clamp = WORKBENCH_UTILS.clamp;
+    const stableStringify = WORKBENCH_UTILS.stableStringify;
+    const stableHash = WORKBENCH_UTILS.stableHash;
     const escapeHtml = WORKBENCH_UTILS.escapeHtml;
     const normalizePresetName = WORKBENCH_UTILS.normalizePresetName;
     const sanitizeStoragePart = WORKBENCH_UTILS.sanitizeStoragePart;
@@ -1510,6 +1701,116 @@
     const getSvgFallbackUntil = (...args) => Number(CANVAS_EDGE_RUNTIME_CONTROLLER?.getSvgFallbackUntil?.(...args)) || 0;
     const getSvgFallbackLock = (...args) => Number(CANVAS_EDGE_RUNTIME_CONTROLLER?.getSvgFallbackLock?.(...args)) || 0;
     const isSvgFallbackActive = (...args) => !!CANVAS_EDGE_RUNTIME_CONTROLLER?.isSvgFallbackActive?.(...args);
+    const EDGE_RENDERER_CONTEXT_SOURCE = {
+        domSource: {
+            getRoot: () => root,
+            getEdgesLayer: () => edgesLayer,
+            getEdgesCanvas: () => edgesCanvas,
+            getNodesLayer: () => nodesLayer
+        },
+        canvasSource: {
+            getComputedStyle: target => typeof window.getComputedStyle === 'function' ? window.getComputedStyle(target) : null
+        },
+        projectSource: { getProject: () => project },
+        geometrySource: {
+            getEdgeSvgBounds: (...args) => getEdgeSvgBounds(...args),
+            getEdgeCanvasBounds,
+            getEdgeRenderWorldRect: (...args) => getEdgeRenderWorldRect(...args),
+            cssEscape,
+            createEdgePointCache,
+            shouldRenderEdgeInViewport: (...args) => shouldRenderEdgeInViewport(...args),
+            getCachedOutputPoint,
+            getCachedInputPoint,
+            curvePath,
+            publishEdgePointCacheStats
+        },
+        nodeSource: {
+            defaultNodeSize: (...args) => defaultNodeSize(...args),
+            getVisibleUploadSlots: (...args) => getVisibleUploadSlots(...args),
+            isQwenTtsNode: (...args) => isQwenTtsNode(...args)
+        },
+        noteSource: { renderNoteTailSvg },
+        edgeIndexSource: { getIncidentEdgeRecordsForNodeIds },
+        renderSource: {
+            shouldUseCanvasEdgeRendering,
+            edgeLabelText,
+            escapeHtml
+        },
+        selectionSource: {
+            getSelectedEdgeId: () => selectedEdgeId,
+            updateSelectionDomClasses: (...args) => updateSelectionDomClasses(...args)
+        },
+        cacheSource: {
+            getEdgeRenderCacheKey: () => edgeRenderCacheKey,
+            setEdgeRenderCacheKey: value => { edgeRenderCacheKey = value; }
+        },
+        timingSource: { performanceNow: () => canvasPerformanceNow() },
+        connectionSource: {
+            isConnecting: (...args) => isConnecting(...args),
+            resetTempEdge: () => { tempEdge = null; },
+            updateTempEdge: (...args) => updateTempEdge(...args),
+            clearTempEdge
+        },
+        perfSource: { getPerfStats: () => perfStats },
+        viewportSource: { clientToWorld }
+    };
+    const CANVAS_EDGE_RENDERER = typeof WORKBENCH_CANVAS_EDGE_RENDERER.createCanvasEdgeRenderer === 'function'
+        ? WORKBENCH_CANVAS_EDGE_RENDERER.createCanvasEdgeRenderer({ edgeRendererSource: EDGE_RENDERER_CONTEXT_SOURCE })
+        : {};
+    const GROUP_RENDERER_CONTEXT_SOURCE = {
+        domSource: {
+            getGroupsLayer: () => groupsLayer,
+            getDocument: () => document,
+            getRenderedNodeElement: id => getRenderedNodeElement(id)
+        },
+        groupSource: {
+            ensureProjectGroups: () => ensureProjectGroups(),
+            getGroup: id => getGroup(id)
+        },
+        projectSource: {
+            getProject: () => project,
+            getNode: id => getNode(id),
+            getSelectedGroupId: () => selectedGroupId
+        },
+        geometrySource: { getNodeRect: node => getNodeRect(node) },
+        selectionSource: { getSelectedNodeIdList: () => getSelectedNodeIdList() },
+        patchSource: {
+            buildGroupIdPatch: (...args) => buildGroupIdPatch(...args),
+            buildGroupFieldPatch: (...args) => buildGroupFieldPatch(...args)
+        },
+        utilitySource: {
+            cssEscape: value => CSS.escape(value),
+            escapeHtml: value => escapeHtml(value),
+            normalizeCanvasColor: (...args) => normalizeCanvasColor(...args),
+            clamp: (...args) => clamp(...args),
+            rectsOverlap: (...args) => rectsOverlap(...args)
+        },
+        languageSource: { t: (...args) => t(...args) }
+    };
+    const CANVAS_GROUP_RENDERER = typeof WORKBENCH_CANVAS_GROUP_RENDERER.createCanvasGroupRenderer === 'function'
+        ? WORKBENCH_CANVAS_GROUP_RENDERER.createCanvasGroupRenderer({ groupRendererSource: GROUP_RENDERER_CONTEXT_SOURCE })
+        : {};
+    const CHAIN_RUN_OVERLAY_RENDERER_CONTEXT_SOURCE = {
+        domSource: { getOverlay: () => chainRunOverlay },
+        selectionSource: {
+            getSelectedNodeIdList: () => getSelectedNodeIdList(),
+            isMarqueeSelecting: () => isMarqueeSelecting()
+        },
+        projectSource: {
+            getProject: () => project,
+            getNode: id => getNode(id),
+            isImageCompareSource: node => isImageCompareSource(node)
+        },
+        geometrySource: { getNodeRect: node => getNodeRect(node) },
+        schedulerSource: { buildPlan: (...args) => typeof schedulerBuildPlan === 'function' ? schedulerBuildPlan(...args) : null },
+        renderSource: { renderIconHtml: (...args) => renderIconHtml(...args) },
+        languageSource: { t: (...args) => t(...args) }
+    };
+    const CANVAS_CHAIN_RUN_OVERLAY_RENDERER = typeof WORKBENCH_CANVAS_CHAIN_RUN_OVERLAY.createCanvasChainRunOverlayRenderer === 'function'
+        ? WORKBENCH_CANVAS_CHAIN_RUN_OVERLAY.createCanvasChainRunOverlayRenderer({
+            overlayRendererSource: CHAIN_RUN_OVERLAY_RENDERER_CONTEXT_SOURCE
+        })
+        : {};
     const VIEWPORT_RENDER_SCHEDULER_CONTEXT_SOURCE = {
         domSource: {
             getRoot: () => root,
@@ -1916,9 +2217,7 @@
                 identitySource: {
                     uid
                 },
-                languageSource: {
-                    t
-                },
+                languageSource: { t },
                 serializationSource: {
                     cloneRunValue
                 },
@@ -2173,6 +2472,7 @@
     const restoreVlmChatScroll = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.restoreVlmChatScroll?.(...args);
     const scrollVlmChatToBottom = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.scrollVlmChatToBottom?.(...args);
     const scrollVlmChatLogToBottom = (...args) => !!CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.scrollVlmChatLogToBottom?.(...args);
+    const handleVlmChatJumpClick = (...args) => !!CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.handleVlmChatJumpClick?.(...args);
     const rememberVlmChatScrollFromLog = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.rememberVlmChatScrollFromLog?.(...args) || null;
     const vlmChatScrollSnapshot = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.vlmChatScrollSnapshot?.(...args) || null;
     const updateVlmChatJumpButton = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.updateVlmChatJumpButton?.(...args);
@@ -2189,10 +2489,48 @@
     const vlmChatScrollDebug = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.vlmChatScrollDebug?.(...args) || null;
     const getVlmRenderDebugLastDiffs = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.getVlmRenderDebugLastDiffs?.(...args) || [];
     const RUNTIME_CONTEXT_SOURCE = {
+            pointerInteractionSource: {
+                isNodeDragging: () => isNodeDragging(),
+                isGroupDragging: () => isGroupDragging(),
+                isNodeResizing: () => isNodeResizing(),
+                isNoteTailDragging: () => isNoteTailDragging(),
+                isGroupResizing: () => isGroupResizing(),
+                isPanning: () => isPanning(),
+                isMinimapDragging: () => isMinimapDragging(),
+                isMarqueeSelecting: () => isMarqueeSelecting(),
+                isConnecting: () => isConnecting(),
+                isComparePositionDragging: () => isComparePositionDragging(),
+                isTimelineClipDragging: () => isTimelineClipDragging(),
+                isTimelinePlayheadDragging: () => isTimelinePlayheadDragging(),
+                isTimelinePreviewDragging: () => isTimelinePreviewDragging(),
+                isDirectorTimelineDragging: () => isDirectorTimelineDragging(),
+                isTimelineMaskPointerActive: () => isTimelineMaskPointerActive(),
+                isTimelineKeyframeDragging: () => isTimelineKeyframeDragging(),
+            },
+            selectionSource: {
+                getSelectionState: () => ({
+                    selectedNodeId,
+                    selectedNodeIds: new Set(selectedNodeIds),
+                    selectedEdgeId,
+                    selectedGroupId,
+                }),
+                setSelectionState: (state) => {
+                    const next = state || {};
+                    selectedNodeId = next.selectedNodeId || null;
+                    selectedNodeIds = next.selectedNodeIds instanceof Set
+                        ? new Set(next.selectedNodeIds)
+                        : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
+                    selectedEdgeId = next.selectedEdgeId || null;
+                    selectedGroupId = next.selectedGroupId || null;
+                },
+            },
+            projectSource: { getProject: () => project },
+            groupSource: { ensureProjectGroups: () => ensureProjectGroups() },
             statusSource: {
                 languageSource: {
                     getLanguageState: () => ({ __lang: runtimeUiLang() }),
                     t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                    tOption: (value, options, state) => tOption(value, options, state || { __lang: runtimeUiLang() }),
                 },
                 domSource: {
                     getRoot: () => root,
@@ -2236,6 +2574,7 @@
                     getClassicEnhanceUovProcessingOrder: () => registryClassicEnhanceUovProcessingOrder,
                     getClassicEnhanceUovPromptTypes: () => registryClassicEnhanceUovPromptTypes,
                     getClassicIpMaxImages,
+                    getClassicIpCount,
                     getClassicUovMethods,
                     getClassicIpTypes,
                     getClassicInpaintEngines,
@@ -2273,14 +2612,16 @@
                     getPresetTheme,
                     getPresetThemeInfo,
                     presetSpecialViewerUrl,
+                    presetModelStatusState,
                     isStyleTransferPresetNode,
                     isLivePortraitVideoExpressionPresetNode,
                     isLtx23MultiGuidePresetNode,
                     isMiniMaxH3PresetNode,
                 },
                 renderSource: {
-                    renderPresetModelStatusHtml,
                     renderPresetParamControl: (...args) => CANVAS_PRESET_PARAM_RENDERER?.renderPresetParamControl?.(...args) || '',
+                    renderTranslatableTextarea: (...args) => CANVAS_PRESET_PARAM_RENDERER?.renderTranslatableTextarea?.(...args) || '',
+                    getTranslationFieldState,
                     renderNodeStateBadges: (...args) => CANVAS_NODE_RENDERER?.renderNodeStateBadges?.(...args) || '',
                     renderRunnableNodeStatusFoot: (...args) => CANVAS_NODE_RENDERER?.renderRunnableNodeStatusFoot?.(...args) || '',
                     renderPresetConfigPortRow: (...args) => CANVAS_NODE_RENDERER?.renderPresetConfigPortRow?.(...args) || '',
@@ -2553,6 +2894,16 @@
                      mediaBrowserItemMeta,
                      danbooruPostMediaType: (...args) => danbooruPostMediaType(...args),
                  },
+                 maskNodeSource: {
+                     getNode,
+                 },
+                 maskSource: {
+                     notConnectedText: (...args) => CANVAS_NODE_RENDERER?.notConnectedText?.(...args) || t('Not connected', '未连接'),
+                     portHintText: (...args) => CANVAS_NODE_RENDERER?.portHintText?.(...args) || '',
+                     imagePortTitle: (...args) => CANVAS_NODE_RENDERER?.imagePortTitle?.(...args) || t('Image input', '图像输入'),
+                     danbooruAutocompleteAttrs: (...args) => DANBOORU_AUTOCOMPLETE_CONTROLLER?.danbooruAutocompleteAttrs?.(...args) || '',
+                     localizeMaskStatus,
+                 },
              },
               resultPreviewSource: {
                  previewSource: {
@@ -2579,9 +2930,9 @@
                  assetSource: {
                      safeAssetFallbackSrc: (...args) => safeAssetFallbackSrc(...args),
                      safeAssetFullDisplaySrc: (...args) => safeAssetFullDisplaySrc(...args),
-                 },
-                 eventSource: {
-                     bindNodeMediaControlEvents: (...args) => bindNodeMediaControlEvents(...args),
+                  },
+                  eventSource: {
+                      bindNodeMediaControlEvents: (...args) => CANVAS_MEDIA_PLAYBACK_CONTROLLER.bindNodeMediaControlEvents(...args),
                  },
                  utilitySource: {
                      escapeHtml,
@@ -2653,6 +3004,66 @@
                       nodeRenderOverscanPx: NODE_RENDER_OVERSCAN_PX,
                       edgeRenderOverscanPx: EDGE_RENDER_OVERSCAN_PX,
                       edgePointCacheMinEdges: EDGE_POINT_CACHE_MIN_EDGES,
+                  },
+              },
+              viewportFitSource: {
+                  projectSource: {
+                      getProject: () => project,
+                      ensureProjectGroups: () => ensureProjectGroups(),
+                      getNode: (id) => getNode(id),
+                      getGroup: (id) => getGroup(id),
+                  },
+                  groupSource: {
+                      getGroupRect: (...args) => getGroupRect(...args),
+                  },
+                  selectionSource: {
+                      getSelectedNodeId: () => selectedNodeId,
+                      getSelectedGroupId: () => selectedGroupId,
+                  },
+                  layoutSource: {
+                      defaultNodeSize: (...args) => defaultNodeSize(...args),
+                  },
+                  viewportSource: {
+                      getViewport: () => viewport,
+                      clamp: (...args) => clamp(...args),
+                      applyProjectViewportPatch: (...args) => applyProjectViewportPatch(...args),
+                  },
+                  actionSource: {
+                      focusGroup: (...args) => focusGroup(...args),
+                  },
+                  renderSource: {
+                      renderAll: (...args) => renderAll(...args),
+                  },
+                  persistenceSource: {
+                      scheduleSave: (...args) => scheduleSave(...args),
+                  },
+              },
+              viewportZoomSource: {
+                  projectSource: {
+                      getProject: () => project,
+                  },
+                  viewportSource: {
+                      getViewport: () => viewport,
+                      clientToWorld: (...args) => clientToWorld(...args),
+                      clamp: (...args) => clamp(...args),
+                      applyProjectViewportPatch: (...args) => applyProjectViewportPatch(...args),
+                  },
+                  interactionSource: {
+                      cancelPanEdgeSettleRender: (...args) => cancelPanEdgeSettleRender(...args),
+                      cancelDragEdgeSettleRender: (...args) => cancelDragEdgeSettleRender(...args),
+                      endDragEdgeLodVisual: (...args) => endDragEdgeLodVisual(...args),
+                      beginWheelPreviewLod: (...args) => beginWheelPreviewLod(...args),
+                  },
+                  renderSource: {
+                      preferSvgEdgesForViewportInteraction: (...args) => preferSvgEdgesForViewportInteraction(...args),
+                      applyViewport: (...args) => applyViewport(...args),
+                      scheduleViewportNodeRender: (...args) => scheduleViewportNodeRender(...args),
+                      scheduleViewportZoomSettleRender: (...args) => scheduleViewportZoomSettleRender(...args),
+                      renderStatus: (...args) => renderStatus(...args),
+                      updateMinimapForViewportInteraction: (...args) => updateMinimapForViewportInteraction(...args),
+                  },
+                  persistenceSource: {
+                      scheduleViewportSave: (...args) => scheduleViewportSave(...args),
                   },
               },
               nodeSpatialIndexSource: {
@@ -2734,7 +3145,6 @@
                      escapeHtml,
                  },
                  nodeSource: {
-                     nodeEffectiveRenderMode,
                      isDirectorTimelineNode,
                      isQwenTtsNode,
                      nodeStatusState,
@@ -2784,7 +3194,7 @@
                      renderTagCartNodeHtml,
                      renderWd14NodeHtml,
                      renderVlmNodeHtml,
-                     renderMaskNodeHtml,
+                     renderMaskNodeHtml: (...args) => CANVAS_ASSET_NODE_RENDERER?.renderMaskNodeHtml?.(...args) || '',
                      renderSam3VideoMaskNodeHtml,
                      renderCameraMotionNodeHtml,
                      renderPoseStudioNodeHtml,
@@ -2844,12 +3254,21 @@
                 },
                 viewportSource: {
                     updateCanvasRenderMode,
+                    rectContainsRect: viewportRectContainsRect,
                     getNodeRenderWorldRect: (...args) => CANVAS_VIEWPORT_RENDER_CONTROLLER?.getNodeRenderWorldRect?.(...args),
                     getVisibleNodeRecords: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.getVisibleNodeRecords?.(...args) || { nodes: [], projectIds: new Set() },
                     isPanning: (...args) => CANVAS_PAN_CONTROLLER?.isPanning?.(...args) || false,
                     scheduleMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.scheduleMinimapRender?.(...args),
                     renderMinimap: (...args) => CANVAS_MINIMAP_CONTROLLER?.renderMinimap?.(...args),
                     positionCanvasAgentPanel,
+                },
+                renderModeSource: {
+                    getCanvasRenderMode: () => getCanvasRenderMode(),
+                    getConnectingFromId: () => getConnectingFromId(),
+                    isDraggingNode: (id) => isDraggingNode(id),
+                    getNodeResizeNodeId: () => getNodeResizeNodeId(),
+                    getActiveInlineTagCartNodeId: () => activeInlineTagCartNodeId,
+                    isResultRefreshing: (node) => isResultRefreshing(node),
                 },
                 layoutSource: {
                     getNodeLayoutSize: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.getNodeLayoutSize?.(...args),
@@ -2862,7 +3281,6 @@
                     shouldFixNodeHeight,
                 },
                 nodeSource: {
-                    nodeEffectiveRenderMode,
                     isNodeCollapsed,
                     isNodeLocked,
                     isNodeIgnored,
@@ -3215,8 +3633,13 @@
                      getLanguageState: () => ({ __lang: runtimeUiLang() }),
                      t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
                  },
+                 factorySource: {
+                     buildAreaGroup: (...args) => buildAreaGroup(...args),
+                 },
                  projectSource: {
                      getProject: () => project,
+                     buildProjectGroupAppendPatch: (...args) => buildProjectGroupAppendPatch(...args),
+                     buildProjectGroupDeletePatch: (...args) => buildProjectGroupDeletePatch(...args),
                  },
                  domSource: {
                      getGroupsLayer: () => groupsLayer,
@@ -3225,6 +3648,8 @@
                  groupSource: {
                      getGroup: (id) => getGroup(id),
                      getNodesInsideGroup: (group) => getNodesInsideGroup(group),
+                     getGroupRect: (...args) => getGroupRect(...args),
+                     selectedNodesBounds: (...args) => selectedNodesBounds(...args),
                      getSelectedGroupId: () => selectedGroupId,
                  },
                  nodeSource: {
@@ -3233,6 +3658,12 @@
                  },
                  selectionSource: {
                      selectGroupLight: (...args) => CANVAS_SELECTION_CONTROLLER?.selectGroupLight?.(...args),
+                     setGroupSelection: (id) => {
+                         selectedGroupId = id || null;
+                         selectedNodeId = null;
+                         selectedNodeIds = new Set();
+                         selectedEdgeId = null;
+                     },
                  },
                  layoutSource: {
                      buildNodeLayoutPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeLayoutPatch?.(...args),
@@ -3243,6 +3674,8 @@
                  viewportSource: {
                      snapCanvasCoord,
                      snapCanvasSizeFromOrigin,
+                     viewportCenterWorld: (...args) => viewportCenterWorld(...args),
+                     centerViewportOnWorld: (...args) => centerViewportOnWorld(...args),
                  },
                  renderSource: {
                      beginDragEdgeLod: (...args) => beginDragEdgeLod(...args),
@@ -3252,7 +3685,9 @@
                      updateGroupPositionDom: (...args) => updateGroupPositionDom(...args),
                      updateNodePositionDom: (...args) => updateNodePositionDom(...args),
                      scheduleInteractiveLinkRender: (...args) => scheduleInteractiveLinkRender(...args),
+                     renderGroups: (...args) => renderGroups(...args),
                      renderInspector: (...args) => renderInspector(...args),
+                     mutate: (...args) => mutate(...args),
                  },
                  minimapSource: {
                      invalidateMinimapStaticCache: (...args) => CANVAS_MINIMAP_CONTROLLER?.invalidateMinimapStaticCache?.(...args),
@@ -3261,17 +3696,19 @@
                      flushMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.flushMinimapRender?.(...args),
                  },
                  actionSource: {
-                     openGroupContextMenu: (...args) => openGroupContextMenu(...args),
+                     updateGroupField: (...args) => updateGroupField(...args),
                  },
                  historySource: {
                      pushHistory: (...args) => CANVAS_HISTORY_CONTROLLER?.pushHistory?.(...args),
+                     pushHistoryBatch: (...args) => pushHistoryBatch(...args),
                  },
                  persistenceSource: {
                      scheduleSave: (...args) => scheduleSave(...args),
                  },
                  uiSource: {
                      showToast,
-                 },
+                     openContextMenu: (...args) => openContextMenu(...args),
+              },
              },
               runPanelsSource: {
                  languageSource: {
@@ -3421,6 +3858,20 @@
                       getSelectedNodeIds: () => selectedNodeIds,
                       isNodeLocked,
                   },
+                  selectionSource: {
+                      getSelectedNodeIdList: (...args) => getSelectedNodeIdList(...args),
+                      getSelectedNodeId: () => selectedNodeId,
+                      getSelectedEdgeId: () => selectedEdgeId,
+                      setSelectedNodeIds: (value) => { selectedNodeIds = value; },
+                      setSelectedNodeId: (value) => { selectedNodeId = value; },
+                      setSelectedEdgeId: (value) => { selectedEdgeId = value; },
+                      toggleNodeSelectionLight: (...args) => toggleNodeSelectionLight(...args),
+                      selectNodeLight: (...args) => selectNodeLight(...args),
+                      refreshSelectionUi: (...args) => refreshSelectionUi(...args),
+                  },
+                  clipboardSource: {
+                      duplicateSelection: (...args) => duplicateSelection(...args),
+                  },
                   runtimeSource: {
                       performanceNow: () => canvasPerformanceNow(),
                   },
@@ -3441,6 +3892,7 @@
                       pushHistory: (...args) => CANVAS_HISTORY_CONTROLLER?.pushHistory?.(...args),
                   },
                   renderSource: {
+                      renderAll: (...args) => renderAll(...args),
                       beginDragEdgeLod: (...args) => beginDragEdgeLod(...args),
                       updateNodePositionDom: (...args) => updateNodePositionDom(...args),
                       scheduleInteractiveLinkRender: (...args) => scheduleInteractiveLinkRender(...args),
@@ -3835,7 +4287,6 @@
             getVisibleUploadSlots,
             getUploadSlotMediaKind,
             collapsedKeepClass,
-            renderPresetModelStatusHtml,
             getPresetSchema,
             getPresetTheme,
             getPresetThemeInfo,
@@ -3956,7 +4407,7 @@
             renderTagCartNodeHtml,
             renderWd14NodeHtml,
             renderVlmNodeHtml,
-            renderMaskNodeHtml,
+            renderMaskNodeHtml: (...args) => CANVAS_ASSET_NODE_RENDERER?.renderMaskNodeHtml?.(...args) || '',
             renderSam3VideoMaskNodeHtml,
             renderCameraMotionNodeHtml,
             renderPoseStudioNodeHtml,
@@ -4220,6 +4671,8 @@
         },
         nodeSource: {
             getNode: (...args) => getNode(...args),
+            getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
+            safeAssetDisplaySrc: (...args) => safeAssetDisplaySrc(...args),
             isNodeLocked: (...args) => isNodeLocked(...args)
         },
         slotSource: {
@@ -4328,6 +4781,9 @@
         })
         : {};
     const TEXT_CONNECTION_CONTEXT_SOURCE = {
+        projectSource: {
+            getProject: () => project
+        },
         nodeSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.nodeSource,
         edgeSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.edgeSource,
         historySource: UPLOAD_CONNECTION_CONTEXT_SOURCE.historySource,
@@ -4338,8 +4794,15 @@
         textSource: {
             isTextOutputNode: (...args) => isTextOutputNode(...args),
             textMergeInputSlots: (...args) => textMergeInputSlots(...args),
+            getTextMergeOutput: (...args) => getTextMergeOutput(...args),
             getTextMergeInputSource: (...args) => getTextMergeInputSource(...args),
             wouldCreateTextCycle: (...args) => wouldCreateTextCycle(...args)
+        },
+        viewSource: {
+            getNodesLayer: () => nodesLayer,
+            getInspector: () => inspector,
+            getSelectedNodeId: () => selectedNodeId,
+            cssEscape: value => cssEscape(value)
         },
         batchSource: {
             batchAnyCanConnectToTextSlot: (...args) => batchAnyCanConnectToTextSlot(...args)
@@ -4359,11 +4822,17 @@
         })
         : {};
     const MEDIA_INPUT_CONNECTION_CONTEXT_SOURCE = {
+        projectSource: {
+            getProject: () => project
+        },
         nodeSource: {
             ...UPLOAD_CONNECTION_CONTEXT_SOURCE.nodeSource,
             isQwenTtsNode: (...args) => isQwenTtsNode(...args)
         },
         edgeSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.edgeSource,
+        disconnectSource: {
+            deleteEdge: (...args) => deleteEdge(...args)
+        },
         historySource: UPLOAD_CONNECTION_CONTEXT_SOURCE.historySource,
         selectionSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.selectionSource,
         languageSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.languageSource,
@@ -4412,7 +4881,7 @@
             isDirectorTimelineNode: (...args) => isDirectorTimelineNode(...args),
             isDirectorMediaSourceForSlot: (...args) => isDirectorMediaSourceForSlot(...args),
             buildDirectorTimelineStatePatch: (...args) => buildDirectorTimelineStatePatch(...args),
-            updateDirectorStatus: (...args) => updateDirectorStatus(...args)
+            updateDirectorStatus: (...args) => CANVAS_TIMELINE_CONTEXT.updateDirectorStatus?.(...args)
         },
         timelineSource: {
             isTimelineSource: (...args) => isTimelineSource(...args),
@@ -4436,7 +4905,14 @@
     const TIMELINE_CREATION_CONTEXT_SOURCE = {
         projectSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.projectSource,
         nodeSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.nodeSource,
+        directorSource: {
+            directorTimelineCreateNode,
+            getDirectorTimelineNodeContext: () => DIRECTOR_TIMELINE_NODE_CONTEXT
+        },
         layoutSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.layoutSource,
+        viewportSource: {
+            viewportCenterWorld: () => viewportCenterWorld()
+        },
         historySource: UPLOAD_CONNECTION_CONTEXT_SOURCE.historySource,
         languageSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.languageSource,
         uiSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.uiSource,
@@ -4457,6 +4933,12 @@
                 selectedNodeId = nodeId;
                 selectedNodeIds = new Set([nodeId]);
                 selectedEdgeId = null;
+            },
+            selectDirectorTimelineNode: (nodeId) => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set([nodeId]);
+                selectedEdgeId = null;
+                selectedGroupId = null;
             }
         }
     };
@@ -4730,6 +5212,35 @@
             noteEditSource: NOTE_EDIT_CONTEXT_SOURCE
         })
         : {};
+    const NODE_APPEARANCE_CONTEXT_SOURCE = {
+        stateSource: { getSelectedNodeId: () => selectedNodeId },
+        nodeSource: { getNode, isNodeLocked, isNodeCollapsed },
+        colorSource: { normalizeCanvasColor, expandCanvasHexColor, applyNodeCustomColorVars },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (...args) => t(...args)
+        },
+        patchSource: {
+            buildNoteStatePatch: (...args) => buildNoteStatePatch(...args),
+            applyNodeStylePatch: (...args) => applyNodeStylePatch(...args)
+        },
+        historySource: { pushHistoryBatch: (...args) => pushHistoryBatch(...args) },
+        domSource: {
+            getDocument: () => document,
+            getNodeElement: nodeId => nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(nodeId || '')}"]`) || null
+        },
+        renderSource: {
+            invalidateMinimapStaticCache: (...args) => CANVAS_MINIMAP_CONTROLLER?.invalidateMinimapStaticCache?.(...args),
+            renderMinimap: (...args) => renderMinimap(...args),
+            scheduleSave,
+            renderInspector
+        }
+    };
+    const CANVAS_NODE_APPEARANCE_CONTROLLER = typeof WORKBENCH_CANVAS_NODE_APPEARANCE.createCanvasNodeAppearanceController === 'function'
+        ? WORKBENCH_CANVAS_NODE_APPEARANCE.createCanvasNodeAppearanceController({
+            nodeAppearanceSource: NODE_APPEARANCE_CONTEXT_SOURCE
+        })
+        : {};
     const NOTE_INSPECTOR_CONTEXT_SOURCE = {
         geometrySource: NOTE_EDIT_CONTEXT_SOURCE.geometrySource,
         editSource: {
@@ -4753,14 +5264,29 @@
         factorySource: {
             buildWildcardsHelperNode: (...args) => buildWildcardsHelperNode(...args),
             buildMediaBrowserNode: (...args) => buildMediaBrowserNode(...args),
-            buildNoteNode: (...args) => buildNoteNode(...args)
+            buildNoteNode: (...args) => buildNoteNode(...args),
+            buildTranslationNode: (...args) => buildTranslationNode(...args),
+            buildTagCartNode: (...args) => buildTagCartNode(...args),
+            buildWd14Node: (...args) => buildWd14Node(...args),
+            buildVlmNode: (...args) => buildVlmNode(...args),
+            buildMaskNode: (...args) => buildMaskNode(...args),
+            buildTextNode: (...args) => buildTextNode(...args),
+            buildTextMergeNode: (...args) => buildTextMergeNode(...args),
+            buildManualOutputNode: (...args) => buildManualOutputNode(...args),
+            buildClassicNode: (...args) => buildClassicNode(...args),
+            buildPresetNode: (...args) => buildPresetNode(...args),
+            buildStyleSelectorNode: (world, options) => styleSelectorCreateNode(world, options, STYLE_SELECTOR_NODE_CONTEXT)
         },
         projectSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.projectSource,
+        nodeSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.nodeSource,
         historySource: UPLOAD_CONNECTION_CONTEXT_SOURCE.historySource,
         languageSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.languageSource,
         layoutSource: {
             placeNodeAvoidingOverlap: (...args) => placeNodeAvoidingOverlap(...args),
-            viewportCenterWorld: (...args) => viewportCenterWorld(...args)
+            buildNodeLayoutPatch: (...args) => buildNodeLayoutPatch(...args),
+            viewportCenterWorld: (...args) => viewportCenterWorld(...args),
+            getNodeRect: (...args) => getNodeRect(...args),
+            defaultNodeSize: (...args) => defaultNodeSize(...args)
         },
         connectionSource: {
             completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args)
@@ -4771,6 +5297,14 @@
                 selectedNodeIds = new Set([nodeId]);
                 selectedEdgeId = null;
                 if (clearGroup) selectedGroupId = null;
+            },
+            selectPresetNode: nodeId => {
+                selectedNodeId = nodeId;
+                selectedEdgeId = null;
+            },
+            selectManualOutputNode: (nodeId) => {
+                selectedNodeId = nodeId;
+                selectedEdgeId = null;
             }
         },
         renderSource: {
@@ -4778,7 +5312,15 @@
         },
         refreshSource: {
             refreshWildcardsCatalog: (...args) => refreshWildcardsCatalog(...args),
-            refreshMediaBrowserNode: (...args) => refreshMediaBrowserNode(...args)
+            refreshMediaBrowserNode: (...args) => refreshMediaBrowserNode(...args),
+            scheduleAutoPresetModelChecks: (...args) => scheduleAutoPresetModelChecks(...args)
+        },
+        actionSource: {
+            openTagCartForNode: (...args) => openTagCartForNode(...args),
+            findStyleSelectorForPreset: (...args) => findStyleSelectorForPreset(...args),
+            setSelectedStyle: (node, name) => typeof styleSelectorSetSelectedStyle === 'function'
+                ? styleSelectorSetSelectedStyle(node, name, STYLE_SELECTOR_NODE_CONTEXT) : undefined,
+            linkStyleSelectorToPreset: (...args) => linkStyleSelectorToPreset(...args)
         },
         uiSource: {
             showToast: (...args) => showToast(...args),
@@ -4881,6 +5423,8 @@
         factorySource: {
             buildImageNodeFromFile: (...args) => buildImageNodeFromFile(...args),
             buildMediaNodeFromFile: (...args) => buildMediaNodeFromFile(...args),
+            buildImageNodeFromAsset: (...args) => buildImageNodeFromAsset(...args),
+            buildMediaNodeFromAsset: (...args) => buildMediaNodeFromAsset(...args),
             buildOutputGalleryMediaNode: (...args) => buildOutputGalleryMediaNode(...args),
             buildImageNodeFromTransferItem: (...args) => buildImageNodeFromTransferItem(...args)
         },
@@ -5243,6 +5787,9 @@
         requestSource: {
             sendCanvasModelCatalogRequest: (...args) => sendCanvasModelCatalogRequest(...args)
         },
+        catalogSource: {
+            getGlobalModelCatalog: () => window.simpleaiTopbarSystemParams?.__canvas_model_catalog || {}
+        },
         patchSource: CONFIG_CONNECTION_CONTEXT_SOURCE.patchSource,
         historySource: {
             pushHistoryBatch: (...args) => pushHistoryBatch(...args)
@@ -5265,10 +5812,25 @@
         : {};
     const CONFIG_EDIT_CONTEXT_SOURCE = {
         nodeSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.nodeSource,
+        domSource: {
+            getDocument: () => document
+        },
         patchSource: CONFIG_CONNECTION_CONTEXT_SOURCE.patchSource,
         historySource: MODEL_CONFIG_CATALOG_CONTEXT_SOURCE.historySource,
         persistenceSource: MODEL_CONFIG_CATALOG_CONTEXT_SOURCE.persistenceSource,
         renderSource: MODEL_CONFIG_CATALOG_CONTEXT_SOURCE.renderSource,
+        modelBrowserSource: {
+            getModelBrowser: () => window.SimpAIModelBrowser || null,
+            getModelCatalog: () => window.simpleaiTopbarSystemParams?.__canvas_model_catalog || {},
+            getRoot: () => root,
+            getDocumentBody: () => document.body,
+            getConfigSelect: (nodeEl, selector) => nodeEl?.querySelector?.(selector) || null,
+            cssEscape: value => cssEscape(value),
+            normalizeInitialConfigLoras: (...args) => normalizeInitialConfigLoras(...args),
+            modelConfigUsesFilter: node => modelConfigUsesFilter(node),
+            serializePresetForRun: (...args) => serializePresetForRun(...args),
+            createOption: value => new Option(value, value)
+        },
         configSource: {
             applyConfigNodeToPreset: (...args) => applyConfigNodeToPreset(...args),
             getConfigTargetPreset: (...args) => getConfigTargetPreset(...args),
@@ -5283,7 +5845,20 @@
             getResolutionChoices: (...args) => getResolutionChoices(...args),
             getResolutionRenderValues: (...args) => getResolutionRenderValues(...args),
             normalizeResolutionTemplateName: (...args) => normalizeResolutionTemplateName(...args),
-            resolveResolutionBaseDims: (...args) => resolveResolutionBaseDims(...args)
+            resolveResolutionBaseDims: (...args) => resolveResolutionBaseDims(...args),
+            getResolutionPreview: (...args) => getResolutionPreview(...args),
+            resolutionManualSizeLabel: (...args) => resolutionManualSizeLabel(...args)
+        },
+        eventSource: {
+            filterStylesConfigList: (...args) => filterStylesConfigList(...args),
+            setModelConfigFilter: (...args) => setModelConfigFilter(...args),
+            syncModelSelectTitle: (...args) => syncModelSelectTitle(...args),
+            syncTwinParamInputs: (...args) => syncTwinParamInputs(...args),
+            showToast: (...args) => showToast(...args)
+        },
+        languageSource: {
+            t: (en, cn) => t(en, cn, { __lang: runtimeUiLang() }),
+            getLanguage: () => runtimeUiLang()
         },
         serializationSource: {
             cloneRunValue: (...args) => cloneRunValue(...args)
@@ -5305,23 +5880,129 @@
             configTextValue: (...args) => configTextValue(...args)
         },
         styleSource: {
-            canvasAgentPresetPromptDefaults: (...args) => canvasAgentPresetPromptDefaults(...args),
-            styleConfigSelectionFromValues: (...args) => styleConfigSelectionFromValues(...args),
-            firstStyleConfigValue: (...args) => firstStyleConfigValue(...args)
+            canvasAgentPresetPromptDefaults: (...args) => canvasAgentPresetPromptDefaults(...args)
         },
         resolutionSource: {
             getResolutionChoices: (...args) => getResolutionChoices(...args),
             normalizeResolutionProfile: (...args) => normalizeResolutionProfile(...args),
             normalizeResolutionTemplateName: (...args) => normalizeResolutionTemplateName(...args),
-            getResolutionSourceSize: (...args) => getResolutionSourceSize(...args),
             resolveResolutionBaseDims: (...args) => resolveResolutionBaseDims(...args)
         },
-        classicSource: CONFIG_CONNECTION_CONTEXT_SOURCE.classicSource,
+        nodeSource: {
+            getNode: (...args) => getNode(...args),
+            isNodeIgnored: (...args) => isNodeIgnored(...args)
+        },
+        classicSource: {
+            getClassicEnhanceRegionDefaults: () => registryClassicEnhanceRegionDefaults,
+            getClassicIpMaxImages: () => registryClassicIpMaxImages,
+            getClassicIpControlTypes: () => registryClassicIpControlTypes,
+            getClassicIpFilters: () => registryClassicIpFilters,
+            getClassicUovMethodsFlux: () => registryClassicUovMethodsFlux,
+            getClassicUovMethods: () => registryClassicUovMethods,
+            getClassicUovMethodsDefault: () => registryClassicUovMethodsDefault,
+            getClassicInpaintEngines: () => registryClassicInpaintEngines,
+            getClassicInpaintMethods: () => registryClassicInpaintMethods
+        },
+        utilitySource: { clamp },
+        patchSource: {
+            buildNodeParamsPatch: (...args) => buildNodeParamsPatch(...args),
+            buildClassicNodeStatePatch: (...args) => buildClassicNodeStatePatch(...args)
+        },
         serializationSource: CONFIG_EDIT_CONTEXT_SOURCE.serializationSource
     };
     CANVAS_CONFIG_VALUES_CONTROLLER = typeof WORKBENCH_CANVAS_CONFIG_VALUES.createCanvasConfigValuesController === 'function'
         ? WORKBENCH_CANVAS_CONFIG_VALUES.createCanvasConfigValuesController({
             configValuesSource: CONFIG_VALUES_CONTEXT_SOURCE
+        })
+        : {};
+    CANVAS_STYLE_CATALOG_CONTROLLER = typeof WORKBENCH_CANVAS_STYLE_CATALOG.createCanvasStyleCatalogController === 'function'
+        ? WORKBENCH_CANVAS_STYLE_CATALOG.createCanvasStyleCatalogController({
+            styleCatalogSource: {
+                getStyleCatalog: () => window.SimpAIStyleCatalog || {},
+                getGradioApp: () => typeof gradioApp === 'function' ? gradioApp() : null,
+                getDocument: () => document,
+                getFallbackChoices: () => STYLE_CHOICES_FALLBACK
+            }
+        })
+        : {};
+    CANVAS_STYLE_CONFIG_RENDERER = typeof WORKBENCH_CANVAS_STYLE_CONFIG_RENDERER.createCanvasStyleConfigRenderer === 'function'
+        ? WORKBENCH_CANVAS_STYLE_CONFIG_RENDERER.createCanvasStyleConfigRenderer({
+            styleConfigRendererSource: {
+                styleValueSource: {
+                    styleConfigSelectionFromValues: (...args) => styleConfigSelectionFromValues(...args)
+                },
+                styleCatalogSource: {
+                    getStyleChoices: (...args) => getStyleChoices(...args),
+                    getStylePreviewCatalogFromDom: (...args) => getStylePreviewCatalogFromDom(...args)
+                },
+                utilitySource: {
+                    escapeHtml: (...args) => escapeHtml(...args),
+                    t: (...args) => t(...args),
+                    displayStyleName: (...args) => displayStyleName(...args),
+                    renderNodeStateBadges: (...args) => renderNodeStateBadges(...args),
+                    hoverPreviewAttrs: (...args) => hoverPreviewAttrs(...args)
+                }
+            }
+        })
+        : {};
+    CANVAS_DETECTION_CONFIG_RENDERER = typeof WORKBENCH_CANVAS_DETECTION_CONFIG_RENDERER.createCanvasDetectionConfigRenderer === 'function'
+        ? WORKBENCH_CANVAS_DETECTION_CONFIG_RENDERER.createCanvasDetectionConfigRenderer({
+            detectionConfigRendererSource: {
+                getDetectionChoices: (...args) => getDetectionChoices(...args),
+                danbooruAutocompleteAttrs: (...args) => danbooruAutocompleteAttrs(...args),
+                optionHtml: (...args) => optionHtml(...args),
+                escapeHtml: (...args) => escapeHtml(...args),
+                t: (...args) => t(...args),
+                renderNodeStateBadges: (...args) => renderNodeStateBadges(...args)
+            }
+        })
+        : {};
+    CANVAS_ADVANCED_CONFIG_RENDERER = typeof WORKBENCH_CANVAS_ADVANCED_CONFIG_RENDERER.createCanvasAdvancedConfigRenderer === 'function'
+        ? WORKBENCH_CANVAS_ADVANCED_CONFIG_RENDERER.createCanvasAdvancedConfigRenderer({
+            advancedConfigRendererSource: {
+                getSceneGenerationConfigPropsForConfigNode: (...args) => getSceneGenerationConfigPropsForConfigNode(...args),
+                getSceneGenerationConfigDefaultForConfigNode: (...args) => getSceneGenerationConfigDefaultForConfigNode(...args),
+                configNumberValue: (...args) => configNumberValue(...args),
+                boundedConfigNumberValue: (...args) => boundedConfigNumberValue(...args),
+                configTextValue: (...args) => configTextValue(...args),
+                mergeChoices: (...args) => mergeChoices(...args),
+                getSelectOptionsFromDom: (...args) => getSelectOptionsFromDom(...args),
+                getSamplerChoices: () => ADVANCED_SAMPLER_CHOICES,
+                getSchedulerChoices: () => ADVANCED_SCHEDULER_CHOICES,
+                optionHtml: (...args) => optionHtml(...args),
+                escapeHtml: (...args) => escapeHtml(...args),
+                t: (...args) => t(...args),
+                renderNodeStateBadges: (...args) => renderNodeStateBadges(...args)
+            }
+        })
+        : {};
+    CANVAS_MODEL_CONFIG_RENDERER = typeof WORKBENCH_CANVAS_MODEL_CONFIG_RENDERER.createCanvasModelConfigRenderer === 'function'
+        ? WORKBENCH_CANVAS_MODEL_CONFIG_RENDERER.createCanvasModelConfigRenderer({
+            modelConfigRendererSource: {
+                getModelChoices: (...args) => getModelChoices(...args),
+                normalizeInitialConfigLoras: (...args) => normalizeInitialConfigLoras(...args),
+                modelConfigUsesFilter: (...args) => modelConfigUsesFilter(...args),
+                renderNodeStateBadges: (...args) => renderNodeStateBadges(...args),
+                escapeHtml: (...args) => escapeHtml(...args),
+                t: (...args) => t(...args),
+                optionHtml: (...args) => optionHtml(...args)
+            }
+        })
+        : {};
+    CANVAS_RESOLUTION_CONFIG_RENDERER = typeof WORKBENCH_CANVAS_RESOLUTION_CONFIG_RENDERER.createCanvasResolutionConfigRenderer === 'function'
+        ? WORKBENCH_CANVAS_RESOLUTION_CONFIG_RENDERER.createCanvasResolutionConfigRenderer({
+            resolutionConfigRendererSource: {
+                getResolutionRenderValues: (...args) => getResolutionRenderValues(...args),
+                getResolutionChoices: (...args) => getResolutionChoices(...args),
+                normalizeResolutionTemplateName: (...args) => normalizeResolutionTemplateName(...args),
+                getResolutionPreview: (...args) => getResolutionPreview(...args),
+                resolutionManualSizeLabel: (...args) => resolutionManualSizeLabel(...args),
+                optionHtml: (...args) => optionHtml(...args),
+                escapeHtml: (...args) => escapeHtml(...args),
+                t: (...args) => t(...args),
+                tOption: (...args) => tOption(...args),
+                renderNodeStateBadges: (...args) => renderNodeStateBadges(...args)
+            }
         })
         : {};
     const CONFIG_CREATION_CONTEXT_SOURCE = {
@@ -5441,6 +6122,10 @@
         minResizableNodeSize,
         placeNodeAvoidingOverlap,
         CANVAS_VIEWPORT_RENDER_CONTROLLER,
+        CANVAS_VIEWPORT_FIT_CONTROLLER,
+        CANVAS_VIEWPORT_ZOOM_CONTROLLER,
+        hasActivePointerInteraction,
+        isCanvasPointerGestureActive,
         getVisibleWorldRect,
         getNodeRenderWorldRect,
         getEdgeRenderWorldRect,
@@ -5648,11 +6333,15 @@
             assetDisplaySrc,
             readAssetSize
         },
+        projectSource: {
+            getProject: () => project
+        },
         nodeSource: {
             defaultNodeSize,
             uid,
-            getCompareSourceAsset,
-            getCompareSourceNode
+            getNode,
+            isImageCompareSource,
+            getSelectedResultAsset: (...args) => getSelectedResultAsset(...args)
         },
         renderSource: {
             renderIconHtml,
@@ -5665,6 +6354,65 @@
         })
         : {};
     COMPARE_NODE_CONTEXT = CANVAS_COMPARE_NODE_CONTEXT.COMPARE_NODE_CONTEXT || {};
+    const COMPARE_CREATION_CONTEXT_SOURCE = {
+        projectSource: {
+            getProject: () => project,
+            buildProjectNodeAppendPatch: (...args) => buildProjectNodeAppendPatch(...args)
+        },
+        factorySource: {
+            createCompareNode: (world, options) => compareNodeCreateNode(world, options, COMPARE_NODE_CONTEXT)
+        },
+        layoutSource: {
+            placeNodeAvoidingOverlap,
+            getNodeRect,
+            defaultNodeSize
+        },
+        connectionSource: {
+            completePendingConnectionToNode,
+            createCompareImageEdge: (...args) => createCompareImageEdge(...args)
+        },
+        historySource: { pushHistory: (...args) => pushHistory(...args) },
+        selectionSource: {
+            selectCompareNode: (nodeId) => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set([nodeId]);
+                selectedEdgeId = null;
+            }
+        },
+        renderSource: { mutate },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        },
+        uiSource: { showToast }
+    };
+    CANVAS_COMPARE_CREATION_CONTROLLER = typeof WORKBENCH_CANVAS_COMPARE_CREATION.createCanvasCompareCreationController === 'function'
+        ? WORKBENCH_CANVAS_COMPARE_CREATION.createCanvasCompareCreationController({
+            compareCreationSource: Object.assign({
+                nodeSource: { isImageCompareSource }
+            }, COMPARE_CREATION_CONTEXT_SOURCE)
+        })
+        : {};
+
+    const COMPARE_STATE_CONTEXT_SOURCE = {
+        nodeSource: {
+            getNode,
+            isNodeLocked,
+            buildCompareStatePatch: (...args) => compareNodeBuildStatePatch(...args)
+        },
+        stateSource: { getSelectedNodeId: () => selectedNodeId },
+        projectSource: { getProject: () => project },
+        utilitySource: { clamp },
+        domSource: {
+            escapeSelector: value => CSS.escape(value),
+            querySelectorAll: selector => document.querySelectorAll(selector)
+        },
+        runtimeSource: { pushHistoryBatch: (...args) => pushHistoryBatch(...args), scheduleSave, mutate }
+    };
+    const CANVAS_COMPARE_STATE_CONTROLLER = typeof WORKBENCH_CANVAS_COMPARE_STATE.createCanvasCompareStateController === 'function'
+        ? WORKBENCH_CANVAS_COMPARE_STATE.createCanvasCompareStateController({ compareStateSource: COMPARE_STATE_CONTEXT_SOURCE })
+        : {};
+
     const STYLE_SELECTOR_NODE_CONTEXT_SOURCE = {
         utilitySource: {
             escapeHtml,
@@ -5674,7 +6422,25 @@
             getItems: () => window.SimpAIStyleTransferCatalog?.items
         },
         applyStyleSelectorToPreset,
+        getProject: () => project,
+        setSelectedNode: nodeId => {
+            selectedNodeId = nodeId;
+            selectedNodeIds = new Set(nodeId ? [nodeId] : []);
+            selectedEdgeId = null;
+            selectedGroupId = null;
+        },
         buildStyleSelectorStatePatch,
+        isStyleTransferPresetNode: (...args) => isStyleTransferPresetNode(...args),
+        runPresetNode: (...args) => runPresetNode(...args),
+        getVisiblePresetParams: (...args) => getVisiblePresetParams(...args),
+        getPromptTextSourceNode: (...args) => getPromptTextSourceNode(...args),
+        buildNodeParamsPatch: (...args) => buildNodeParamsPatch(...args),
+        buildPresetTextInputPatch: (...args) => buildPresetTextInputPatch(...args),
+        buildPresetStyleTransferPatch: (...args) => buildPresetStyleTransferPatch(...args),
+        filterProjectEdges: (...args) => filterProjectEdges(...args),
+        appendProjectEdge: (...args) => appendProjectEdge(...args),
+        buildCanvasEdge: (...args) => buildCanvasEdge(...args),
+        linkStyleSelectorToPreset: (...args) => linkStyleSelectorToPreset(...args),
         defaultNodeSize,
         getNode,
         isNodeLocked,
@@ -5722,7 +6488,10 @@
         renderNodes,
         resetRenderedProjectDomCache,
         nodeRenderKey,
+        getNodeEffectiveRenderMode,
+        isVisibleWorldRectCoveredByRenderedNodes: isVisibleWorldRectCoveredByRenderedNodesFromController,
         invalidateRenderedNode,
+        updateNodePositionDom: updateNodePositionDomFromController,
         rememberRenderedNodeLayout,
         refreshNodeLayoutForAgent,
         getRenderedNodeElement,
@@ -5788,6 +6557,7 @@
         alignSelectedNodes,
         distributeSelectedNodes,
         selectEdge,
+        reconcileSelection: reconcileSelectionFromController,
         CANVAS_GRAPH_DELETE_CONTROLLER,
         deleteSelection,
         deleteEdge,
@@ -5846,6 +6616,119 @@
         updateTempEdge,
         cancelConnection
     } = CANVAS_RUNTIME_CONTEXT;
+    const NODE_POINTER_CONTEXT_SOURCE = {
+        nodePointerSource: {
+            startPan: (...args) => startPan(...args),
+            isCanvasAgentPickingReference: () => !!canvasAgentState.pickReference,
+            addCanvasAgentReferenceFromNode: (...args) => addCanvasAgentReferenceFromNode(...args),
+            setCanvasAgentPickingReference: (value) => { canvasAgentState.pickReference = value; },
+            renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
+            startNodeResize: (...args) => startNodeResize(...args),
+            startResolutionDrag: (...args) => startResolutionDrag(...args),
+            startConnection: (...args) => startConnection(...args),
+            handleInputHandlePointerDownFromEvent: (...args) => handleInputHandlePointerDownFromEvent(...args),
+            startComparePositionDrag: (...args) => startComparePositionDrag(...args),
+            startTimelineKeyframeDrag: (...args) => startTimelineKeyframeDrag(...args),
+            startTimelineMaskAnchorDrag: (...args) => startTimelineMaskAnchorDrag(...args),
+            startTimelinePlayheadDrag: (...args) => startTimelinePlayheadDrag(...args),
+            startTimelineMaskDraw: (...args) => startTimelineMaskDraw(...args),
+            startTimelinePreviewDrag: (...args) => startTimelinePreviewDrag(...args),
+            startTimelineClipDrag: (...args) => startTimelineClipDrag(...args),
+            isDirectorTimelineNode,
+            startDirectorTimelinePreviewDrag: (...args) => startDirectorTimelinePreviewDrag(...args),
+            isInteractiveTarget: (...args) => isInteractiveTarget(...args),
+            handleNodeDragPointerDown: (...args) => CANVAS_NODE_DRAG_CONTROLLER.handleNodePointerDown(...args)
+        }
+    };
+    const CANVAS_NODE_POINTER_CONTROLLER = typeof WORKBENCH_CANVAS_NODE_POINTER.createCanvasNodePointerController === 'function'
+        ? WORKBENCH_CANVAS_NODE_POINTER.createCanvasNodePointerController(NODE_POINTER_CONTEXT_SOURCE)
+        : {};
+    const NODE_EVENT_CONTEXT_SOURCE = {
+        nodeEventSource: {
+            injectParamResetButtons: (...args) => injectParamResetButtons(...args),
+            bindNodeMediaControlEvents: (...args) => CANVAS_MEDIA_PLAYBACK_CONTROLLER.bindNodeMediaControlEvents(...args),
+            bindResultNodePreviewAspect: (...args) => bindResultNodePreviewAspect(...args),
+            bindPresetSpecialViewerEvents: (...args) => bindPresetSpecialViewerEvents(...args),
+            isImageFile: (...args) => isImageFile(...args),
+            clearViewportDropTarget: () => viewport.classList.remove('is-drop-target'),
+            handleImageNodeDrop: (...args) => handleImageNodeDrop(...args),
+            bindVlmChatDropEvents: (...args) => bindVlmChatDropEvents(...args),
+            bindVlmChatScrollControls: (...args) => bindVlmChatScrollControls(...args),
+            bindMediaBrowserNodeDragEvents: (...args) => bindMediaBrowserNodeDragEvents(...args),
+            handleNodePointerDown: (...args) => CANVAS_NODE_POINTER_CONTROLLER.handleNodePointerDown(...args),
+            bindNodeContextMenu: (...args) => CANVAS_NODE_CONTEXT_MENU_CONTROLLER.bindNodeContextMenu(...args),
+            textareaEditorFieldFromTitleClick: (...args) => textareaEditorFieldFromTitleClick(...args),
+            openTextareaEditor: (...args) => openTextareaEditor(...args),
+            handleMediaBrowserNodeClick: (...args) => handleMediaBrowserNodeClick(...args),
+            handleTimelineClick: (...args) => handleTimelineClick(...args),
+            handleResultMetadataToggle: (...args) => handleResultMetadataToggle(...args),
+            handleCanvasRelightLightButtonEvent: (...args) => handleCanvasRelightLightButtonEvent(...args),
+            handlePresetParamResetClick: (...args) => handlePresetParamResetClick(...args),
+            handleResultAssetClick: (...args) => handleResultAssetClick(...args),
+            handleNodeMediaEditEvent: (...args) => handleNodeMediaEditEvent(...args),
+            handleNodeConfigFieldEvent: (...args) => handleNodeConfigFieldEvent(...args),
+            handleStylesConfigActionClick: (...args) => handleStylesConfigActionClick(...args),
+            styleSelectorHandleCardClick: (node, evt) => styleSelectorHandleCardClick(node, evt, STYLE_SELECTOR_NODE_CONTEXT),
+            handleModelBrowserButtonClick: (...args) => handleModelBrowserButtonClick(...args),
+            handleTranslateClick: (...args) => handleTranslateClick(...args),
+            handleTagCartClick: (...args) => handleTagCartClick(...args),
+            handleCompareNodeEvent: (...args) => handleCompareNodeEvent(...args),
+            handleVlmChatJumpClick: (...args) => handleVlmChatJumpClick(...args),
+            handleVlmChatInputClick: (...args) => handleVlmChatInputClick(...args),
+            handleVlmParamResetClick: (...args) => handleVlmParamResetClick(...args),
+            handleVlmChatMessageActionClick: (...args) => handleVlmChatMessageActionClick(...args),
+            handleVlmAgentActionClick: (...args) => handleVlmAgentActionClick(...args),
+            handleNodeActionEvent: (...args) => handleNodeActionEvent(...args),
+            handleMediaBrowserNodeKeydown: (...args) => handleMediaBrowserNodeKeydown(...args),
+            handleVlmChatInputKeyDown: (...args) => handleVlmChatInputKeyDown(...args),
+            handleNodeDoubleClick: (...args) => handleNodeDoubleClick(...args),
+            handleTimelineNodeParamEvent: (...args) => handleTimelineNodeParamEvent(...args),
+            styleSelectorHandleSearchInput: (node, evt, nodeEl) => styleSelectorHandleSearchInput(node, evt, nodeEl, STYLE_SELECTOR_NODE_CONTEXT),
+            handleNoteTextEvent: (...args) => handleNoteTextEvent(...args),
+            handleNodeParamEvent: (...args) => handleNodeParamEvent(...args),
+            handleNodeParamFieldChange: (...args) => handleNodeParamFieldChange(...args),
+            handleMediaBrowserNodeChange: (...args) => handleMediaBrowserNodeChange(...args),
+            handleClassicNodeChangeEvent: (...args) => handleClassicNodeChangeEvent(...args),
+            handlePresetThemeChange: (...args) => handlePresetThemeChange(...args)
+        }
+    };
+    const CANVAS_NODE_EVENT_CONTROLLER = typeof WORKBENCH_CANVAS_NODE_EVENT.createCanvasNodeEventController === 'function'
+        ? WORKBENCH_CANVAS_NODE_EVENT.createCanvasNodeEventController(NODE_EVENT_CONTEXT_SOURCE)
+        : {};
+    const WORKBENCH_EVENT_CONTEXT_SOURCE = {
+        workbenchEventSource: {
+            getRoot: () => root,
+            getViewport: () => viewport,
+            getPalette: () => palette,
+            getMinimap: () => minimapEl,
+            getOutpaintOverlay: () => outpaintOverlayEl,
+            getWindow: () => window,
+            onCanvasWorkbenchClick: (...args) => onCanvasWorkbenchClick(...args),
+            bindCanvasInputEvents: (...args) => bindCanvasInputEvents(...args),
+            onViewportPointerDown: (...args) => onViewportPointerDown(...args),
+            onViewportWheel: (...args) => onViewportWheel(...args),
+            onViewportDragOver: (...args) => onViewportDragOver(...args),
+            onViewportDragLeave: (...args) => onViewportDragLeave(...args),
+            onViewportDrop: (...args) => onViewportDrop(...args),
+            onViewportContextMenu: (...args) => onViewportContextMenu(...args),
+            onViewportDoubleClick: (...args) => onViewportDoubleClick(...args),
+            onVlmChatImagePreviewPointerOver: (...args) => onVlmChatImagePreviewPointerOver(...args),
+            onVlmChatImagePreviewPointerMove: (...args) => onVlmChatImagePreviewPointerMove(...args),
+            onVlmChatImagePreviewPointerOut: (...args) => onVlmChatImagePreviewPointerOut(...args),
+            onMinimapPointerDown: (...args) => onMinimapPointerDown(...args),
+            onOutpaintOverlayPointerDown: (...args) => onOutpaintOverlayPointerDown(...args),
+            handlePresetSpecialViewerMessage: (...args) => handlePresetSpecialViewerMessage(...args),
+            closePresetPalette: (...args) => closePresetPalette(...args),
+            renderPresetPalette: (...args) => renderPresetPalette(...args),
+            handlePresetPaletteClick: (...args) => CANVAS_PRESET_PALETTE.handlePresetPaletteClick(...args),
+            renderAll: (...args) => renderAll(...args),
+            hasDanbooruAutocompleteField: (...args) => hasDanbooruAutocompleteField(...args),
+            positionDanbooruAutocompleteDropdown: (...args) => positionDanbooruAutocompleteDropdown(...args)
+        }
+    };
+    const CANVAS_WORKBENCH_EVENT_CONTROLLER = typeof WORKBENCH_CANVAS_EVENT.createCanvasWorkbenchEventController === 'function'
+        ? WORKBENCH_CANVAS_EVENT.createCanvasWorkbenchEventController(WORKBENCH_EVENT_CONTEXT_SOURCE)
+        : {};
     const SCHEDULER_STATE_CONTEXT_SOURCE = {
         projectSource: {
             getProject: () => project,
@@ -6155,10 +7038,14 @@
                 },
                 nodeSource: {
                     getNode: (id) => getNode(id),
+                    getSlotLabel: (node, slot) => getSlotLabel(node, slot),
                     isQwenTtsNode: (node) => isQwenTtsNode(node),
                     isDirectorTimelineNode: (node) => isDirectorTimelineNode(node),
                     directorMediaSourceKind: (node) => directorMediaSourceKind(node),
                     batchAnyInputEdgeForDrag: (node) => batchAnyInputEdgeForDrag(node),
+                },
+                slotSource: {
+                    getVlmImageSlots: () => VLM_IMAGE_SLOTS,
                 },
                 connectionSource: {
                     startInputConnection: (...args) => startInputConnection(...args),
@@ -6173,6 +7060,8 @@
                     t,
                 },
                 uiSource: {
+                    openContextMenu: (...args) => openContextMenu(...args),
+                    notConnectedText: (...args) => notConnectedText(...args),
                     showToast: (...args) => showToast(...args),
                 },
             },
@@ -6228,9 +7117,13 @@
                 },
                 edgeSource: {
                     selectEdge: (id) => selectEdge(id),
+                    deleteEdge: (id) => deleteEdge(id),
                 },
                 menuSource: {
-                    openEdgeContextMenu: (...args) => openEdgeContextMenu(...args),
+                    openContextMenu: (...args) => openContextMenu(...args),
+                },
+                languageSource: {
+                    t,
                 },
                 noteTailSource: {},
             }
@@ -6456,6 +7349,7 @@
         CANVAS_INPUT_HANDLE_CONTROLLER,
         getConnectionTargetFromHandle,
         handleInputHandlePointerDown,
+        handleInputHandlePointerDownFromEvent,
         CANVAS_NOTE_TAIL_CONTROLLER,
         startNoteTailDrag,
         isNoteTailDragging,
@@ -6531,7 +7425,28 @@
                     : null,
                 timelineNormalizeKeyframes: (clip) => typeof timelineNormalizeKeyframes === 'function'
                     ? timelineNormalizeKeyframes(clip)
-                    : null
+                    : null,
+                timelineClipAtTime: (clip, playhead) => typeof timelineClipAtTime === 'function'
+                    ? timelineClipAtTime(clip, playhead)
+                    : clip,
+                timelineClipLayerGeometry: (...args) => timelineClipLayerGeometry(...args),
+                timelineEffectiveClipIn: (clip, asset) => typeof timelineEffectiveClipIn === 'function'
+                    ? timelineEffectiveClipIn(clip, asset)
+                    : null,
+                selectedVisualClip: (node) => timelineSelectedVisualClip(node),
+                renderTimelinePenOverlay: (clip) => typeof timelineRenderPenOverlay === 'function'
+                    ? timelineRenderPenOverlay(clip)
+                    : ''
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id)
+            },
+            mediaSource: {
+                getTimelineSourceAsset: (node) => getTimelineSourceAsset(node),
+                getMediaEditRange: (asset) => getMediaEditRange(asset)
+            },
+            maskSource: {
+                clipMaskDataUrl: timelineClipMaskDataUrl
             }
         },
         playheadSource: {
@@ -6694,6 +7609,7 @@
         maskSource: {
             domSource: {
                 getDocument: () => document,
+                getDevicePixelRatio: () => window.devicePixelRatio || 1,
                 refreshTimelinePenOverlayDom: (stageEl, clip, options) => refreshTimelinePenOverlayDom(stageEl, clip, options)
             },
             nodeSource: {
@@ -6706,18 +7622,17 @@
                 setSuppressWheelUntil: (value) => { suppressWheelUntil = value; }
             },
             maskOperationSource: {
-                getTimelinePenAnchorTarget: (clip, ref) => getTimelinePenAnchorTarget(clip, ref),
-                closeTimelinePendingPenPath: (node, clip, stageEl) => closeTimelinePendingPenPath(node, clip, stageEl),
                 buildTimelineClipMaskPatch: timelineBuildClipMaskPatch,
                 buildTimelineClipMaskPointPatch: timelineBuildClipMaskPointPatch,
-                timelineMaskPointFromEvent: (stageEl, evt) => timelineMaskPointFromEvent(stageEl, evt),
-                timelineMaskDimensions: (node) => timelineMaskDimensions(node),
-                timelineMaskPointDistancePx: (a, b, stageEl) => timelineMaskPointDistancePx(a, b, stageEl),
-                timelineMaskCloseSnapPx: (stageEl) => timelineMaskCloseSnapPx(stageEl),
-                exportTimelineMaskDataUrl: (node, clip) => exportTimelineMaskDataUrl(node, clip)
+            },
+            maskGeometrySource: {
+                getTimelineSourceAsset: (source) => getTimelineSourceAsset(source),
+                timelineClipAtTime: (clip, playhead) => typeof timelineClipAtTime === 'function' ? timelineClipAtTime(clip, playhead) : clip,
+                timelineClipLayerGeometry: (...args) => timelineClipLayerGeometry(...args)
             },
             clipSource: {
-                selectTimelineClip: (node, clipId, options) => selectTimelineClip(node, clipId, options)
+                selectTimelineClip: (node, clipId, options) => selectTimelineClip(node, clipId, options),
+                selectedVisualClip: (node) => timelineSelectedVisualClip(node)
             },
             mediaSource: {
                 syncTimelinePreviewVideos: (nodeEl, node) => syncTimelinePreviewVideos(nodeEl, node)
@@ -6743,24 +7658,66 @@
                 isNodeLocked: (node) => isNodeLocked(node)
             },
             timelineSource: {
-                normalizeDirectorTimelineForNode: (node) => normalizeDirectorTimelineForNode(node),
-                normalizeTimeline: (director) => typeof directorTimelineNormalizeTimeline === 'function' ? directorTimelineNormalizeTimeline(director) : director,
-                directorTimelineNeighborBounds: (director, index) => directorTimelineNeighborBounds(director, index),
-                directorTimelineTotalSeconds: (director) => directorTimelineTotalSeconds(director),
-                directorTimelineClampSeconds: (value, min, max) => directorTimelineClampSeconds(value, min, max),
-                directorTimelineRoundSeconds: (value) => directorTimelineRoundSeconds(value)
+                normalizeDirectorTimelineForNode: (node) => CANVAS_TIMELINE_CONTEXT.normalizeDirectorTimelineForNode?.(node),
+                normalizeTimeline: (director) => typeof directorTimelineNormalizeTimeline === 'function' ? directorTimelineNormalizeTimeline(director) : director
             },
             historySource: {
                 pushHistoryBatch: (...args) => pushHistoryBatch(...args)
             },
             stateSource: {
                 buildDirectorTimelineStatePatch: (node, options) => buildDirectorTimelineStatePatch(node, options),
-                updateDirectorStatus: (node) => updateDirectorStatus(node),
+                updateDirectorStatus: (node) => CANVAS_TIMELINE_CONTEXT.updateDirectorStatus?.(node),
                 mutate: (...args) => mutate(...args),
                 getSelectedNodeId: () => selectedNodeId
             },
             persistenceSource: {
                 scheduleSave: (...args) => scheduleSave(...args)
+            }
+        },
+        directorTimelineEditSource: {
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isDirectorTimelineNode: (node) => isDirectorTimelineNode(node),
+                isNodeLocked: (node) => isNodeLocked(node)
+            },
+            historySource: {
+                pushHistory: (...args) => pushHistory(...args),
+                pushHistoryBatch: (...args) => pushHistoryBatch(...args)
+            },
+            stateSource: {
+                buildDirectorTimelineStatePatch: (node, options) => buildDirectorTimelineStatePatch(node, options),
+                mergeCanvasRunStatus: (...args) => mergeCanvasRunStatus(...args),
+                mutate: (...args) => mutate(...args),
+                getSelectedNodeId: () => selectedNodeId
+            },
+            valueSource: {
+                cloneRunValue: (value, fallback) => cloneRunValue(value, fallback)
+            },
+            timelineSource: {
+                normalizeTimeline: (director) => typeof directorTimelineNormalizeTimeline === 'function' ? directorTimelineNormalizeTimeline(director) : director
+            },
+            idSource: {
+                uid: (prefix) => uid(prefix)
+            },
+            referenceSource: {
+                previousSegmentImageRef: () => DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF,
+                previousSegmentVideoRef: () => DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF
+            },
+            payloadSource: {
+                directorTimelinePayload: (node) => directorTimelinePayload(node)
+            },
+            clipboardSource: {
+                writeText: (text) => navigator.clipboard?.writeText(text)
+            },
+            notificationSource: {
+                showToast: (...args) => showToast(...args)
+            },
+            inspectorSource: {
+                syncTwinParamInputs: (...args) => syncTwinParamInputs(...args)
+            },
+            languageSource: {
+                getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
             }
         },
         frameSource: {
@@ -6951,7 +7908,18 @@
             nodeSource: {
                 getNode: (id) => getNode(id),
                 isNodeLocked: (node) => isNodeLocked(node),
-                normalizeTimelineNode: (node) => typeof timelineNormalizeNode === 'function' ? timelineNormalizeNode(node) : undefined
+                normalizeTimelineNode: (node) => typeof timelineNormalizeNode === 'function' ? timelineNormalizeNode(node) : undefined,
+                serializeTimeline: (node) => typeof timelineSerializeTimeline === 'function' ? timelineSerializeTimeline(node, TIMELINE_NODE_CONTEXT) : node,
+                serializeTimelineRenderPayload: (node) => typeof timelineSerializeTimelineRenderPayload === 'function'
+                    ? timelineSerializeTimelineRenderPayload(node, TIMELINE_NODE_CONTEXT)
+                    : (typeof timelineSerializeTimeline === 'function' ? timelineSerializeTimeline(node, TIMELINE_NODE_CONTEXT) : node)
+            },
+            clipboardSource: {
+                hasWriteText: () => typeof navigator.clipboard?.writeText === 'function',
+                writeText: (text) => navigator.clipboard.writeText(text)
+            },
+            consoleSource: {
+                info: (...args) => console.info(...args)
             },
             interactionSource: {
                 clamp
@@ -7037,7 +8005,11 @@
         isTimelineKeyframeDragging,
         startTimelineClipDrag,
         isTimelineClipDragging,
+        CANVAS_TIMELINE_MASK_CONTROLLER: timelineMaskController,
         startTimelineMaskAnchorDrag,
+        applyTimelineMaskFeatherToSelectedClip: applyTimelineMaskFeatherController,
+        remapTimelineClipMaskForGeometryChange: remapTimelineClipMaskForGeometryChangeController,
+        remapTimelineMasksAfterCanvasResize: remapTimelineMasksAfterCanvasResizeController,
         startTimelineMaskDraw,
         isTimelineMaskPointerActive,
         startDirectorTimelinePreviewDrag,
@@ -7157,8 +8129,15 @@
                     sendCanvasVlmModelDownloadCancelRequest: (...args) => sendCanvasVlmModelDownloadCancelRequest(...args)
                 },
                 languageSource: {
-                    t
+                    getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                    t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
                 },
+                agentSource: {
+                    getCanvasAgentSettings: (...args) => getCanvasAgentSettings(...args),
+                    canvasAgentCustomParamsFromSettings
+                },
+                identitySource: { uid },
+                uiSource: { showToast },
                 utilitySource: {
                     escapeHtml,
                     formatBytes: WORKBENCH_UTILS.formatBytes
@@ -7194,6 +8173,27 @@
         },
         timeSource: {
             now: () => canvasNow()
+        },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        },
+        runtimeSource: {
+            isNodeLocked,
+            getNode,
+            getSelectedNodeId: () => selectedNodeId,
+            getTextNodeInputSource,
+            getNodeTextOutput,
+            pushHistoryBatch,
+            buildTranslationStatePatch,
+            buildTranslationStatus,
+            updateNodeParam,
+            updateVlmParam,
+            updateTextNodeValue,
+            mutate,
+            showToast,
+            nowIso,
+            renderAll
         }
     };
     const TRANSLATION_CONTROLLER = typeof WORKBENCH_CANVAS_TRANSLATION.createCanvasTranslationController === 'function'
@@ -7203,6 +8203,8 @@
         : {};
     const requestTranslation = (...args) => TRANSLATION_CONTROLLER?.requestTranslation?.(...args)
         || { ok: false, error: 'translation unavailable' };
+    const handleTranslateClick = (...args) => TRANSLATION_CONTROLLER?.handleTranslateClick?.(...args) || false;
+    const bindInspectorTranslateEvents = (...args) => TRANSLATION_CONTROLLER?.bindInspectorTranslateEvents?.(...args) || false;
     const RUN_REFRESH_WAIT_CONTEXT_SOURCE = {
         languageSource: {
             t
@@ -7345,6 +8347,25 @@
                 diagnosticsSource: {
                     warn: (...args) => console.warn(...args)
                 }
+            },
+            presetPaletteSource: {
+                languageSource: { t },
+                utilitySource: { escapeHtml, localizeCanvasLabel },
+                catalogSource: {
+                    getPresetCatalog: (...args) => getPresetCatalog(...args),
+                    getPresetCatalogState: (...args) => getPresetCatalogState(...args),
+                    refreshPresetCatalog: (...args) => refreshPresetCatalog(...args),
+                    resolvePresetCatalogEntry: (...args) => resolvePresetCatalogEntry(...args)
+                },
+                domSource: { getPalette: () => palette },
+                worldSource: {
+                    setLastPointerWorld: world => { lastPointerWorld = world; },
+                    getLastPointerWorld: () => lastPointerWorld,
+                    viewportCenterWorld
+                },
+                nodeSource: { addPresetNode },
+                uiSource: { clearPendingInputTarget: (...args) => clearPendingInputTarget(...args), showToast },
+                runtimeSource: { setTimeout: (...args) => window.setTimeout(...args) }
             }
     };
     const CANVAS_PRESET_CONTEXT = typeof WORKBENCH_CANVAS_PRESET_CONTEXT.createCanvasWorkbenchPresetContext === 'function'
@@ -7352,6 +8373,7 @@
             presetSource: PRESET_CONTEXT_SOURCE
         })
         : {};
+    const CANVAS_PRESET_PALETTE = CANVAS_PRESET_CONTEXT.CANVAS_PRESET_PALETTE || {};
     CANVAS_PRESET_PARAM_RENDERER = CANVAS_PRESET_CONTEXT.CANVAS_PRESET_PARAM_RENDERER || {};
     const renderPresetParamControl = (...args) => CANVAS_PRESET_PARAM_RENDERER?.renderPresetParamControl?.(...args) || '';
     const renderTranslatableTextarea = (...args) => CANVAS_PRESET_PARAM_RENDERER?.renderTranslatableTextarea?.(...args) || '';
@@ -7464,7 +8486,7 @@
                     storageSource: {
                         getStorageScope: () => storageScope,
                         getStorageKey: () => storageKey,
-                        setActiveBrowserCacheProject
+                        setActiveBrowserCacheProject: (...args) => setActiveBrowserCacheProject(...args)
                     },
                     persistenceSource: {
                         saveProject: (...args) => saveProject(...args),
@@ -8042,6 +9064,61 @@
         onCanvasWorkbenchClick
     } = CANVAS_CONTROL_CONTEXT;
     const PROJECT_CONTEXT_SOURCE = {
+        mutationSource: {
+            getProject: () => project,
+            getDefaultProjectSettings: () => DEFAULT_SETTINGS,
+            getCurrentUiLanguage: () => runtimeUiLang(),
+            translate: (...args) => t(...args),
+            sanitizeStoragePart,
+            defaultNodeSize,
+            cloneRunValue,
+            getDefaultProjectId: () => PROJECT_ID,
+            getStorageScopeFromStore: typeof projectStoreGetStorageScope === 'function'
+                ? () => projectStoreGetStorageScope()
+                : null,
+            getStorageKeyFromStore: typeof projectStoreGetStorageKey === 'function'
+                ? scope => projectStoreGetStorageKey(scope)
+                : null,
+            getCanvasTitleFromStore: typeof projectStoreGetCanvasTitle === 'function'
+                ? () => projectStoreGetCanvasTitle()
+                : null,
+            nowIso: () => nowIso(),
+            loadProjectFromStore: typeof projectStoreLoadProject === 'function'
+                ? (key, scope) => projectStoreLoadProject(key, scope, projectStoreOptions())
+                : null,
+            sanitizeProjectFromStore: typeof projectStoreSanitizeProject === 'function'
+                ? raw => projectStoreSanitizeProject(raw, projectStoreOptions())
+                : null,
+            createDefaultProjectFromStore: typeof projectStoreCreateDefaultProject === 'function'
+                ? () => projectStoreCreateDefaultProject(projectStoreOptions())
+                : null,
+            buildProjectDefaultPatch: (...args) => buildProjectDefaultPatch(...args),
+            buildNodeLayoutPatch: (...args) => buildNodeLayoutPatch(...args),
+            buildGroupIdPatch: (...args) => buildGroupIdPatch(...args),
+            buildGroupFieldPatch: (...args) => buildGroupFieldPatch(...args),
+            buildProjectUpdatedAtPatch: (...args) => buildProjectUpdatedAtPatch(...args),
+            buildProjectMetadataPatch: (...args) => buildProjectMetadataPatch(...args),
+            buildProjectCollectionsPatch: (...args) => buildProjectCollectionsPatch(...args),
+            buildProjectNodesPatch: (...args) => buildProjectNodesPatch(...args),
+            buildProjectRunsPatch: (...args) => buildProjectRunsPatch(...args),
+            buildProjectStorageInfoPatch: (...args) => buildProjectStorageInfoPatch(...args),
+            buildProjectStoragePatch: (...args) => buildProjectStoragePatch(...args),
+            buildProjectSettingsPatch: (...args) => buildProjectSettingsPatch(...args),
+            buildCompareStatePatch: (...args) => compareNodeBuildStatePatch(...args),
+            buildBatchAnyStatePatch: (...args) => buildBatchAnyStatePatch(...args),
+            buildBatchAnyLegacyTypePatch: (...args) => buildBatchAnyLegacyTypePatch(...args),
+            buildTextMergeStatePatch: (...args) => buildTextMergeStatePatch(...args),
+            buildNoteStatePatch: (...args) => buildNoteStatePatch(...args),
+            buildBatchJobStatePatch: (...args) => buildBatchJobStatePatch(...args),
+            buildProjectNodeStoragePatch: (...args) => buildProjectNodeStoragePatch(...args),
+            buildRunStoragePatch: (...args) => buildRunStoragePatch(...args),
+            buildVlmChatStoragePatch: (...args) => buildVlmChatStoragePatch(...args),
+            buildProjectGroupsPatch: (...args) => buildProjectGroupsPatch(...args),
+            buildProjectEdgeAppendPatch: (...args) => buildProjectEdgeAppendPatch(...args),
+            buildProjectEdgeFilterPatch: (...args) => buildProjectEdgeFilterPatch(...args),
+            buildProjectSchedulerPatch: (...args) => buildProjectSchedulerPatch(...args),
+            buildProjectViewportPatch: (...args) => buildProjectViewportPatch(...args),
+        },
         persistenceSource: {
             languageSource: {
                 t
@@ -8066,9 +9143,7 @@
                 setStorageScope: (value) => { storageScope = value; },
                 setStorageBaseKey: (value) => { storageBaseKey = value; },
                 setStorageKey: (value) => { storageKey = value; },
-                initialBrowserStorageKey,
-                browserCacheProjectScope,
-                setActiveBrowserCacheProject
+                sanitizeStoragePart
             },
             patchSource: {
                 buildProjectUpdatedAtPatch: (...args) => buildProjectUpdatedAtPatch(...args),
@@ -8081,7 +9156,11 @@
                     : null
             },
             serializationSource: {
-                compactProjectForStorage
+                projectStoreCompactProjectForStorage: typeof projectStoreCompactProjectForStorage === 'function'
+                    ? (...args) => projectStoreCompactProjectForStorage(...args)
+                    : null,
+                cloneRunValue: (...args) => cloneRunValue(...args),
+                buildVlmChatStoragePatch: (...args) => buildVlmChatStoragePatch(...args)
             },
             backendSource: {
                 sendCanvasProjectSaveRequest,
@@ -8202,19 +9281,19 @@
                 getStorageKey: (scope) => getStorageKey(scope),
                 getStorageBaseKey: () => storageBaseKey,
                 getLegacyStorageKey: () => LEGACY_STORAGE_KEY,
-                browserCacheProjectIndex,
-                browserCacheActiveProjectIdKey,
-                browserCacheProjectIndexKey,
-                browserCacheProjectScope,
-                setActiveBrowserCacheProject
+                browserCacheProjectIndex: (...args) => browserCacheProjectIndex(...args),
+                browserCacheActiveProjectIdKey: (...args) => browserCacheActiveProjectIdKey(...args),
+                browserCacheProjectIndexKey: (...args) => browserCacheProjectIndexKey(...args),
+                browserCacheProjectScope: (...args) => browserCacheProjectScope(...args),
+                setActiveBrowserCacheProject: (...args) => setActiveBrowserCacheProject(...args)
             },
             projectSource: {
                 getCurrentProject: () => project,
                 getCurrentProjectId: () => project.id || PROJECT_ID,
                 getDefaultProjectId: () => PROJECT_ID,
+                getDefaultSettings: () => DEFAULT_SETTINGS,
                 isProjectEmpty,
                 ensureProjectGroups,
-                createDemoWorkbenchProject,
                 sanitizeStoragePart,
                 sanitizeProject,
                 createDefaultProject,
@@ -8226,7 +9305,9 @@
             patchSource: {
                 buildProjectCanvasClearPatch: (...args) => buildProjectCanvasClearPatch(...args),
                 buildProjectIdentityPatch: (...args) => buildProjectIdentityPatch(...args),
+                buildProjectSettingsPatch: (...args) => buildProjectSettingsPatch(...args),
                 buildProjectSettingsMergePatch: (...args) => buildProjectSettingsMergePatch(...args),
+                buildProjectDemoPatch: (...args) => buildProjectDemoPatch(...args),
                 buildProjectStoragePatch: (...args) => buildProjectStoragePatch(...args)
             },
             persistenceSource: {},
@@ -8294,11 +9375,37 @@
         : {};
     projectPersistenceRuntime = CANVAS_PROJECT_CONTEXT;
     const {
+        syncProjectLanguage: syncProjectLanguageFromProjectContext,
+        getStorageScope: getStorageScopeFromProjectContext,
+        getStorageKey: getStorageKeyFromProjectContext,
+        getCanvasTitle: getCanvasTitleFromProjectContext,
+        projectStoreOptions: projectStoreOptionsFromProjectContext,
+        createDefaultProject: createDefaultProjectFromProjectContext,
+        sanitizeProject: sanitizeProjectFromProjectContext,
+        isProjectEmpty: isProjectEmptyFromProjectContext,
+        loadProject: loadProjectFromProjectContext,
+        createDemoWorkbenchProject: createDemoWorkbenchProjectFromProjectContext,
+        ensureInitialDemoProject: ensureInitialDemoProjectFromProjectContext,
+        ensureProjectGroups: ensureProjectGroupsFromProjectContext,
+        getGroup: getGroupFromProjectContext,
+        appendProjectEdge: appendProjectEdgeFromProjectContext,
+        filterProjectEdges: filterProjectEdgesFromProjectContext,
+        applyProjectSchedulerPatch: applyProjectSchedulerPatchFromProjectContext,
+        applyProjectViewportPatch: applyProjectViewportPatchFromProjectContext,
         CANVAS_PROJECT_PERSISTENCE_CONTROLLER,
         browserBackendProjectDecision,
+        browserCacheActiveProjectIdKey,
+        browserCacheProjectIndexKey,
+        browserCacheProjectScope,
+        browserCacheProjectIndex,
+        setActiveBrowserCacheProject,
+        initialBrowserStorageKey,
         saveProject,
         saveProjectToBrowserCache,
         buildProjectStorageInfo,
+        compactProjectForStorage: compactProjectForStorageFromPersistenceController,
+        storageDisplayLocation: storageDisplayLocationFromPersistenceController,
+        storageDisplayPath: storageDisplayPathFromPersistenceController,
         syncStorageScope,
         loadProjectFromBackend,
         CANVAS_PROJECT_ASSETS_CONTROLLER,
@@ -8340,8 +9447,7 @@
             getPresetSpecialControllerKind: (...args) => getPresetSpecialControllerKind(...args),
             normalizePresetSpecialState: (...args) => normalizePresetSpecialState(...args),
             presetSpecialControllerState: (...args) => presetSpecialControllerState(...args),
-            presetSpecialPromptFromState: (...args) => presetSpecialPromptFromState(...args),
-            presetSpecialInputAssetUrl: (...args) => presetSpecialInputAssetUrl(...args)
+            presetSpecialPromptFromState: (...args) => presetSpecialPromptFromState(...args)
         },
         patchSource: {
             buildPresetSpecialControllerStatePatch: (...args) => buildPresetSpecialControllerStatePatch(...args),
@@ -8421,6 +9527,7 @@
         },
         domSource: {
             getDocument: () => typeof document !== 'undefined' ? document : null,
+            getRoot: () => root,
             getNodesLayer: () => nodesLayer,
             getInspector: () => inspector
         },
@@ -8438,7 +9545,13 @@
         },
         assetSource: {
             getMediaEditRange: (...args) => getMediaEditRange(...args),
-            formatDuration: (...args) => formatAssetDuration(...args)
+            formatDuration: (...args) => formatAssetDuration(...args),
+            buildImageOutputAsset: (...args) => buildImageOutputAsset(...args),
+            buildMaskAsset: (...args) => buildMaskAsset(...args),
+            getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
+            assetMediaKind: (...args) => assetMediaKind(...args),
+            assetDisplaySrc: (...args) => assetDisplaySrc(...args),
+            getNodeImageSrc: (...args) => getNodeImageSrc(...args)
         },
         patchSource: {
             buildMediaTrimAsset: (...args) => buildMediaTrimAsset(...args),
@@ -8446,6 +9559,9 @@
             buildBrowserImageAsset: (...args) => buildBrowserImageAsset(...args),
             buildBrowserMediaAsset: (...args) => buildBrowserMediaAsset(...args),
             buildMediaNodeSourcePatch: (...args) => buildMediaNodeSourcePatch(...args),
+            buildMaskStatePatch: (...args) => buildMaskStatePatch(...args),
+            buildWd14StatePatch: (...args) => buildWd14StatePatch(...args),
+            buildVlmImageInputsPatch: (...args) => buildVlmImageInputsPatch(...args),
             buildResultAssetPatch: (...args) => buildResultAssetPatch(...args),
             buildResultLayoutPatch: (...args) => buildResultLayoutPatch(...args),
             buildResultManualReplacementPatch: (...args) => buildResultManualReplacementPatch(...args),
@@ -8457,11 +9573,23 @@
             pushHistoryBatch: (...args) => pushHistoryBatch(...args)
         },
         mediaSource: {
+            createImageNodeFromAsset: (...args) => createImageNodeFromAsset(...args),
             showVideoScrubPreview: (...args) => showVideoScrubPreview(...args),
             hideVideoScrubPreview: (...args) => hideVideoScrubPreview(...args),
             seekNodeMediaPlayer: (...args) => seekNodeMediaPlayer(...args),
             pickLocalVideoFile: (...args) => pickLocalVideoFile(...args),
             pickLocalAudioFile: (...args) => pickLocalAudioFile(...args)
+        },
+        editorSource: {
+            ensureWorkbenchLazyRuntime: (...args) => ensureWorkbenchLazyRuntime(...args),
+            getCanvasSketchAdapter: () => getCanvasSketchAdapter(),
+            getLayerForgeAdapter: () => window.SimpAILayerForgeAdapter || null
+        },
+        edgeSource: {
+            getProject: () => project,
+            canNodeConnectToUploadSlot: (...args) => canNodeConnectToUploadSlot(...args),
+            applyPresetUploadSlotPatch: (...args) => applyPresetUploadSlotPatch(...args),
+            filterProjectEdges: (...args) => filterProjectEdges(...args)
         },
         renderSource: {
             scheduleSave: (...args) => scheduleSave(...args),
@@ -8470,12 +9598,14 @@
         },
         viewerSource: {
             openMediaViewer: (...args) => openMediaViewer(...args),
+            openNodeMediaFullscreen: (...args) => openNodeMediaFullscreen(...args),
             syncPresetSpecialViewersForAssetNode: (...args) => syncPresetSpecialViewersForAssetNode(...args)
         },
         utilitySource: {
             clamp: (...args) => clamp(...args),
             escapeHtml: (...args) => escapeHtml(...args),
-            cssEscape: (...args) => cssEscape(...args)
+            cssEscape: (...args) => cssEscape(...args),
+            detectWorkbenchTheme: (...args) => detectWorkbenchTheme(...args)
         }
     };
     const MEDIA_EDIT_CONTROLLER = typeof WORKBENCH_CANVAS_MEDIA_EDIT.createCanvasMediaEditController === 'function'
@@ -8484,6 +9614,8 @@
         })
         : {};
     const updateMediaTrim = (...args) => MEDIA_EDIT_CONTROLLER.updateMediaTrim?.(...args);
+    const handleNodeMediaEditEvent = (...args) => MEDIA_EDIT_CONTROLLER.handleNodeMediaEditEvent?.(...args) || false;
+    const bindInspectorMediaEvents = (...args) => MEDIA_EDIT_CONTROLLER.bindInspectorMediaEvents?.(...args) || false;
     const resetMediaTrim = (...args) => MEDIA_EDIT_CONTROLLER.resetMediaTrim?.(...args);
     const refreshMediaTrimUi = (...args) => MEDIA_EDIT_CONTROLLER.refreshMediaTrimUi?.(...args);
     const mediaDerivedInfoHtml = (...args) => MEDIA_EDIT_CONTROLLER.mediaDerivedInfoHtml?.(...args) || '';
@@ -8499,7 +9631,8 @@
         },
         utilitySource: {
             clamp: (...args) => clamp(...args)
-        }
+        },
+        uiSource: { mutate }
     };
     const CANVAS_RESULT_ASSET_CONTROLLER = typeof WORKBENCH_CANVAS_RESULT_ASSET.createCanvasResultAssetController === 'function'
         ? WORKBENCH_CANVAS_RESULT_ASSET.createCanvasResultAssetController({
@@ -8509,6 +9642,176 @@
     const getSelectedResultAsset = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.getSelectedResultAsset?.(...args) || null;
     const getResultAssetAt = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.getResultAssetAt?.(...args) || null;
     const selectResultAsset = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.selectResultAsset?.(...args) || null;
+    const handleResultMetadataToggle = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.handleResultMetadataToggle?.(...args) || false;
+    const handleResultAssetClick = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.handleResultAssetClick?.(...args) || false;
+    if (typeof WORKBENCH_CANVAS_MEDIA_PLAYBACK.createCanvasMediaPlaybackController !== 'function') {
+        throw new Error('Infinite Canvas media playback controller is not loaded.');
+    }
+    const CANVAS_MEDIA_PLAYBACK_CONTROLLER = WORKBENCH_CANVAS_MEDIA_PLAYBACK.createCanvasMediaPlaybackController({
+        mediaPlaybackSource: {
+            nodeSource: {
+                getNode: (...args) => getNode(...args),
+                isNodeLocked: (...args) => isNodeLocked(...args)
+            },
+            resultAssetSource: { getSelectedResultAsset: (...args) => getSelectedResultAsset(...args) },
+            patchSource: {
+                buildResultSelectedAssetMetadataPatch: (...args) => buildResultSelectedAssetMetadataPatch(...args),
+                buildMediaNodeStatePatch: (...args) => buildMediaNodeStatePatch(...args)
+            },
+            assetSource: { getMediaEditRange: (...args) => getMediaEditRange(...args) },
+            utilitySource: { clamp: (...args) => clamp(...args) },
+            storageSource: { saveProjectToBrowserCache: (...args) => saveProjectToBrowserCache(...args) },
+            renderSource: {
+                renderEdges: (...args) => renderEdges(...args),
+                renderMinimap: (...args) => renderMinimap(...args)
+            },
+            mediaSource: { seekNodeMediaPlayer: (...args) => seekNodeMediaPlayer(...args) },
+            interactionSource: {
+                isPickingCanvasAgentReference: () => !!canvasAgentState.pickReference,
+                addCanvasAgentReferenceFromNode: (...args) => addCanvasAgentReferenceFromNode(...args),
+                finishCanvasAgentReferencePick: () => { canvasAgentState.pickReference = false; },
+                renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
+                selectNodeFromMediaControl: (nodeId) => {
+                    selectedNodeId = nodeId;
+                    selectedNodeIds = new Set([nodeId]);
+                    selectedEdgeId = null;
+                    renderAll();
+                    positionCanvasAgentPanel();
+                }
+            }
+        }
+    });
+    const DIRECTOR_PRESET_VALIDATION_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
+        nodeSource: {
+            getNode: (...args) => getNode(...args),
+            isDirectorTimelineNode: (...args) => isDirectorTimelineNode(...args),
+            isNodeIgnored: (...args) => isNodeIgnored(...args)
+        },
+        presetSource: {
+            getPresetSchema: (...args) => getPresetSchema(...args),
+            getPresetTheme: (...args) => getPresetTheme(...args),
+            getPresetThemeInfo: (...args) => getPresetThemeInfo(...args)
+        },
+        payloadSource: {
+            directorTimelinePromptOverrideForTimeline,
+            directorTimelinePayload: (...args) => directorTimelinePayload(...args)
+        },
+        referenceSource: {
+            previousSegmentVideoRef: () => directorPreviousSegmentVideoRef,
+            previousSegmentImageRef: () => directorPreviousSegmentImageRef
+        },
+        serializationSource: { cloneRunValue: (...args) => cloneRunValue(...args) },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        }
+    };
+    CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER = typeof WORKBENCH_CANVAS_DIRECTOR_PRESET_VALIDATION.createCanvasDirectorPresetValidationController === 'function'
+        ? WORKBENCH_CANVAS_DIRECTOR_PRESET_VALIDATION.createCanvasDirectorPresetValidationController({
+            directorPresetValidationSource: DIRECTOR_PRESET_VALIDATION_CONTEXT_SOURCE
+        })
+        : {};
+    const DIRECTOR_SEGMENT_PAYLOAD_CONTEXT_SOURCE = {
+        assetSource: {
+            serializeAssetSourceForRun: (...args) => serializeAssetSourceForRun(...args),
+            directorMediaSourceHasAsset: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorMediaSourceHasAsset?.(...args) || false
+        },
+        capabilitySource: { resolveDirectorCapabilityForPreset: (...args) => resolveDirectorCapabilityForPreset(...args) },
+        referenceSource: {
+            imageRefUploadSlots: () => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.imageRefUploadSlots?.() || [],
+            previousSegmentVideoRef: () => DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF,
+            previousSegmentImageRef: () => DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF
+        },
+        segmentSource: {
+            directorSegmentMediaRefs: (...args) => directorSegmentMediaRefs(...args),
+            directorSegmentFirstMediaRef: (...args) => directorSegmentFirstMediaRef(...args),
+            directorSegmentPrompt: (...args) => directorSegmentPrompt(...args),
+            directorSegmentSeconds: (...args) => directorSegmentSeconds(...args),
+            directorSegmentGenerationSeconds: (...args) => directorSegmentGenerationSeconds(...args),
+            directorSegmentDurationBounds: (...args) => directorSegmentDurationBounds(...args),
+            directorDurationStrategyValue: (...args) => directorDurationStrategyValue(...args),
+            directorDurationParamValue: (...args) => directorDurationParamValue(...args),
+            directorAudioOutputValue: (...args) => directorAudioOutputValue(...args)
+        },
+        serializationSource: { cloneRunValue: (...args) => cloneRunValue(...args) }
+    };
+    if (typeof WORKBENCH_CANVAS_DIRECTOR_SEGMENT_PAYLOAD.createCanvasDirectorSegmentPayloadController !== 'function') {
+        throw new Error('Required Infinite Canvas module failed to load: canvas_director_segment_payload_controller.js');
+    }
+    CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER = WORKBENCH_CANVAS_DIRECTOR_SEGMENT_PAYLOAD.createCanvasDirectorSegmentPayloadController({
+        directorSegmentPayloadSource: DIRECTOR_SEGMENT_PAYLOAD_CONTEXT_SOURCE
+    });
+    const DIRECTOR_SEGMENT_TIMELINE_CONTEXT_SOURCE = {
+        projectSource: {
+            getProject: () => project,
+            buildProjectNodeAppendPatch: (...args) => buildProjectNodeAppendPatch(...args),
+            filterProjectEdges: (...args) => filterProjectEdges(...args)
+        },
+        nodeSource: { getNode: (...args) => getNode(...args) },
+        resultSource: {
+            buildDirectorSegmentResultNode: (...args) => buildDirectorSegmentResultNode(...args),
+            buildCanvasRunStatus: (...args) => buildCanvasRunStatus(...args)
+        },
+        layoutSource: {
+            presetResultBasePosition: (...args) => presetResultBasePosition(...args),
+            defaultResultNodeSize: (...args) => defaultResultNodeSize(...args),
+            placeNodeAvoidingOverlap: (...args) => placeNodeAvoidingOverlap(...args)
+        },
+        factorySource: {
+            timelineBuildSourcePatch: (...args) => timelineBuildSourcePatch(...args),
+            timelineBuildClipPatch: (...args) => timelineBuildClipPatch(...args),
+            timelineBuildParamsPatch: (...args) => timelineBuildParamsPatch(...args)
+        },
+        edgeSource: { ensureGenerateEdge: (...args) => ensureGenerateEdge(...args) },
+        timelineSource: {
+            addTimelineNode: (...args) => addTimelineNode(...args),
+            addTimelineClipFromSource: (...args) => addTimelineClipFromSource(...args),
+            timelineNormalizeNode: (...args) => typeof timelineNormalizeNode === 'function' ? timelineNormalizeNode(...args) : undefined
+        },
+        segmentSource: { directorSegmentTimelineSeconds: (...args) => directorSegmentTimelineSeconds(...args) },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        }
+    };
+    if (typeof WORKBENCH_CANVAS_DIRECTOR_SEGMENT_TIMELINE.createCanvasDirectorSegmentTimelineController !== 'function') {
+        throw new Error('Required Infinite Canvas module failed to load: canvas_director_segment_timeline_controller.js');
+    }
+    CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER = WORKBENCH_CANVAS_DIRECTOR_SEGMENT_TIMELINE.createCanvasDirectorSegmentTimelineController({
+        directorSegmentTimelineSource: DIRECTOR_SEGMENT_TIMELINE_CONTEXT_SOURCE
+    });
+    const DIRECTOR_SEGMENT_PROMPT_PREFLIGHT_CONTEXT_SOURCE = {
+        targetSource: {
+            canvasAgentPromptTargetFromNode: (...args) => canvasAgentPromptTargetFromNode(...args)
+        },
+        promptSource: {
+            ensureCanvasAgentPromptPreflightAllows: (...args) => ensureCanvasAgentPromptPreflightAllows(...args)
+        },
+        wildcardSource: {
+            buildWildcardPreviewForNode: (...args) => buildWildcardPreviewForNode(...args)
+        },
+        presetSource: {
+            getPresetCatalogEntryForNode: (...args) => getPresetCatalogEntryForNode(...args),
+            canvasAgentPresetPromptDefaults: (...args) => canvasAgentPresetPromptDefaults(...args)
+        },
+        segmentSource: {
+            directorSegmentMediaRefs: (...args) => directorSegmentMediaRefs(...args),
+            directorSegmentFirstMediaRef: (...args) => directorSegmentFirstMediaRef(...args),
+            directorSegmentGenerationSeconds: (...args) => directorSegmentGenerationSeconds(...args),
+            directorSegmentPrompt: (...args) => directorSegmentPrompt(...args)
+        },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        }
+    };
+    if (typeof WORKBENCH_CANVAS_DIRECTOR_SEGMENT_PROMPT_PREFLIGHT.createCanvasDirectorSegmentPromptPreflightController !== 'function') {
+        throw new Error('Required Infinite Canvas module failed to load: canvas_director_segment_prompt_preflight_controller.js');
+    }
+    CANVAS_DIRECTOR_SEGMENT_PROMPT_PREFLIGHT_CONTROLLER = WORKBENCH_CANVAS_DIRECTOR_SEGMENT_PROMPT_PREFLIGHT.createCanvasDirectorSegmentPromptPreflightController({
+        directorSegmentPromptPreflightSource: DIRECTOR_SEGMENT_PROMPT_PREFLIGHT_CONTEXT_SOURCE
+    });
     const PRESET_RUN_SERIALIZATION_CONTEXT_SOURCE = {
         projectSource: {
             getProject: () => project
@@ -8572,10 +9875,10 @@
             serializePresetForRun: (...args) => serializePresetForRun(...args)
         },
         assetSource: {
-            serializeAssetSourceForFingerprint: (...args) => serializeAssetSourceForFingerprint(...args)
+            serializeAssetSourceForRun: (...args) => serializeAssetSourceForRun(...args)
         },
         fingerprintSource: {
-            normalizeRunEdgesForFingerprint: (...args) => normalizeRunEdgesForFingerprint(...args),
+            stableStringify: (...args) => stableStringify(...args),
             stableHash: (...args) => stableHash(...args)
         },
         serializationSource: {
@@ -9326,6 +10629,10 @@
             utilitySource: {
                 escapeHtml,
                 renderIconHtml,
+                cssEscape: (...args) => cssEscape(...args),
+            },
+            domSource: {
+                getNodesLayer: () => nodesLayer,
             },
             nodeSource: {
                 getNode,
@@ -9354,6 +10661,7 @@
             utilitySource: {
                 uid,
                 escapeHtml,
+                cssEscape,
             },
             timeSource: {
                 nowIso,
@@ -9375,6 +10683,14 @@
             nodeSource: {
                 getNode,
                 isNodeLocked,
+            },
+            domSource: {
+                getNodesLayer: () => nodesLayer,
+                getSelectedNodeId: () => selectedNodeId,
+                getInspector: () => inspector,
+            },
+            assetSource: {
+                getSelectedResultAsset,
             },
             chatContextSource: {
                 vlmChatContextBudgetMax: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatContextBudgetMax?.(...args) || VLM_CHAT_DEFAULT_CONTEXT_CHARS,
@@ -9402,7 +10718,6 @@
                 renderAll,
             },
             uiSource: {
-                getVlmChatUiAreas,
                 handleVlmAgentAutoConfirmToggle: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.maybeRunVlmAgentActionFromAutoConfirmToggle?.(...args) || false,
             },
             customApiSource: {
@@ -9603,7 +10918,9 @@
             },
             uiSource: {
                 getVlmChatUiAreas,
+                openContextMenu: (...args) => openContextMenu(...args),
                 focusVlmChatPromptInput: (...args) => focusVlmChatPromptInput(...args),
+                hideVlmChatImagePreview: (...args) => hideVlmChatImagePreview(...args),
             },
             renderSource: {
                 renderAll,
@@ -9719,7 +11036,6 @@
     };
     const NODE_INSPECTOR_RENDERERS = {
         classic: renderClassicInspector,
-        config: renderConfigInspector,
         preset: renderPresetInspector,
         result: renderResultInspector,
         compare: renderCompareInspector,
@@ -9737,7 +11053,7 @@
         tag_cart: renderTagCartInspector,
         wd14: renderWd14Inspector,
         vlm: renderVlmInspector,
-        mask: renderMaskInspector,
+        mask: node => CANVAS_ASSET_NODE_RENDERER?.renderMaskInspector?.(node) || '',
         sam3_video_mask: renderSam3VideoMaskInspector,
         camera_motion: renderCameraMotionInspector,
         pose_studio: node => poseStudioRenderInspector(node, POSE_STUDIO_NODE_CONTEXT),
@@ -9748,7 +11064,16 @@
     };
     const getNodeInspectorRenderer = (kind) => NODE_INSPECTOR_RENDERERS[kind];
     const NODE_INTERACTION_CONTEXT_SOURCE = {
-        nodeParamSource: {
+            nodeParamSource: {
+                domSource: {
+                    getDocument: () => document,
+                },
+                projectSource: {
+                    getProject: () => project,
+                },
+                serializationSource: {
+                    cloneRunValue,
+                },
             languageSource: {
                 getLanguageState: () => ({ __lang: runtimeUiLang() }),
                 t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
@@ -9758,16 +11083,44 @@
                 getInspector: () => inspector,
                 getSelectedNodeId: () => selectedNodeId,
                 isNodeLocked,
+                isTextOutputNode,
+                getTextNodeInputSource,
                 isQwenTtsNode,
                 isDirectorTimelineNode,
+                nodeStatusState,
+                isCanvasRunActiveState,
             },
             configSource: {
                 getClassicOutpaintDirs: () => registryClassicOutpaintDirs,
+                getClassicIpMaxImages,
+                getVisibleClassicUploadSlots,
+                getClassicEnhanceRegionValues,
+                applyClassicEnhanceRegionValues,
+                normalizeClassicInpaintMode,
+                getInpaintModeDefaults,
             },
             patchSource: {
                 buildNodeParamsPatch,
                 buildNodeFieldPatch,
                 buildClassicNodeStatePatch,
+                buildMaskStatePatch,
+                buildMaskStatus,
+                buildTranslationStatePatch,
+                buildTagCartStatePatch,
+                buildWd14StatePatch,
+                buildTextNodeStatePatch,
+                buildTextMergeStatePatch,
+                buildQwenTtsStatePatch,
+                mergeCanvasRunStatus,
+                buildPresetRuntimePatch,
+                buildPresetDefinitionPatch,
+            },
+            presetThemeSource: {
+                getPresetSchema,
+                getPresetTheme,
+                getPresetThemeInfo,
+                getVisiblePresetParams,
+                ensurePresetSpecialControllerState,
             },
             historySource: {
                 pushHistory,
@@ -9776,9 +11129,16 @@
             persistenceSource: {
                 scheduleSave,
             },
+            utilitySource: {
+                nowIso,
+                clamp: (...args) => clamp(...args),
+            },
             renderSource: {
+                requestCanvasFrame,
+                renderAll,
                 renderNodes,
                 renderEdges,
+                renderInspector,
             },
             uiStateSource: {
                 showToast,
@@ -9792,11 +11152,25 @@
                 updateTagCartParam,
                 updateWd14Param,
                 updateWildcardsHelperParam,
+                applyVlmSystemPromptTemplate,
                 handleVlmParamFieldChange,
                 updateQwenTtsParam,
+                deleteEdge: (...args) => deleteEdge(...args),
+                canvasRelightLightValue,
+                vlmDefaultParamValue,
+                updateVlmParam,
+                refreshVlmChatReadabilityDom,
+                qwenTtsStylePresetInstruction: (value) => typeof qwenTtsStylePresetInstruction === 'function'
+                    ? qwenTtsStylePresetInstruction(value, QWEN_TTS_NODE_CONTEXT)
+                    : '',
+                syncTextMergeOutputDom,
+                refreshTextMergeDependents,
+                syncNodeParamControlDom,
+                refreshPresetSpecialNodeDom,
                 handleInpaintModeChange,
                 handleUovMethodChange,
                 handleEnhanceUovParamChange,
+                handleClassicModeChange,
                 syncTwinParamInputs,
             }
         },
@@ -9943,6 +11317,8 @@
         runVlmRegenCommand,
         handleVlmChatDrop,
         handleVlmChatInputClick,
+        handleVlmAgentActionClick,
+        handleVlmChatMessageActionClick,
         handleVlmChatInputKeyDown,
         bindVlmChatDropEvents,
         focusVlmChatPromptInput
@@ -10271,7 +11647,6 @@
             centerViewportOnWorld: (...args) => centerViewportOnWorld(...args),
             presetResultBasePosition: (...args) => presetResultBasePosition(...args),
             defaultResultNodeSize: (...args) => defaultResultNodeSize(...args),
-            centerPresetRunViewport: (...args) => centerPresetRunViewport(...args),
             applyNodeLayoutPatch: (...args) => applyNodeLayoutPatch(...args)
         },
         requestSource: {
@@ -10289,7 +11664,8 @@
         },
         uiSource: {
             showToast: (...args) => showToast(...args),
-            confirm: (...args) => window.confirm(...args)
+            confirm: (...args) => window.confirm(...args),
+            getCanvasAgentPanel: () => canvasAgentPanel
         },
         selectionSource: {
             setSelection: (node) => {
@@ -10297,6 +11673,29 @@
                 selectedNodeIds = node?.id ? new Set([node.id]) : new Set();
                 selectedEdgeId = null;
             }
+        },
+        directorRunCoordinatorSource: {
+            updateStatus: (node, state, message) => {
+                Object.assign(node, buildDirectorTimelineStatePatch(node, {
+                    status: buildCanvasRunStatus(state, message)
+                }));
+            },
+            preflight: (...args) => preflightDirectorSegmentPrompts(...args),
+            createResult: (...args) => createDirectorSegmentResultNode(...args),
+            submitSegment: (...args) => submitDirectorSegmentRun(...args),
+            selectInitialResult: nodeId => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set([nodeId]);
+                selectedEdgeId = null;
+            },
+            clearSchedulerBlockedState: () => clearSchedulerBlockedState(),
+            selectFinalResult: nodeId => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set([nodeId]);
+            },
+            chainOutput: capability => directorCapabilityChainOutput(capability),
+            prepareTimeline: (...args) => prepareDirectorSegmentTimeline(...args),
+            renderTimeline: (...args) => renderTimelineToResult(...args)
         },
         historySource: {
             pushHistory: (...args) => pushHistory(...args)
@@ -10543,6 +11942,167 @@
             resultContextMenuSource: RESULT_CONTEXT_MENU_SOURCE
         })
         : {};
+    const MEDIA_CONTEXT_MENU_SOURCE = {
+        nodeSource: {
+            getNodeImageSrc: (...args) => getNodeImageSrc(...args),
+            isCanvasAgentImageTarget: (...args) => isCanvasAgentImageTarget(...args),
+            getNodeLayerForgeAsset: (...args) => getNodeLayerForgeAsset(...args),
+            isTimelineSource: (...args) => isTimelineSource(...args),
+            isCanvasAgentAudioTarget: (...args) => isCanvasAgentAudioTarget(...args)
+        },
+        agentSource: {
+            canvasAgentQuickTools: (...args) => canvasAgentQuickTools(...args),
+            runCanvasAgentQuickTool: (...args) => runCanvasAgentQuickTool(...args),
+            canvasAgentVideoQuickTools: (...args) => canvasAgentVideoQuickTools(...args),
+            canvasAgentVideoQuickToolSpec: (...args) => canvasAgentVideoQuickToolSpec(...args),
+            runCanvasAgentVideoQuickTool: (...args) => runCanvasAgentVideoQuickTool(...args),
+            canvasAgentAudioQuickTools: (...args) => canvasAgentAudioQuickTools(...args),
+            canvasAgentAudioQuickToolSpec: (...args) => canvasAgentAudioQuickToolSpec(...args),
+            runCanvasAgentAudioQuickTool: (...args) => runCanvasAgentAudioQuickTool(...args),
+            setCanvasAgentAudioBridgeSource: (...args) => setCanvasAgentAudioBridgeSource(...args),
+            runCanvasAgentAudioBridgeFromNode: (...args) => runCanvasAgentAudioBridgeFromNode(...args)
+        },
+        mediaSource: {
+            assetDisplaySrc: (...args) => assetDisplaySrc(...args),
+            openAssetViewer: (...args) => openAssetViewer(...args),
+            openMediaViewer: (...args) => openMediaViewer(...args),
+            openSketchForNode: (...args) => openSketchForNode(...args),
+            openPoseStudioEditor: (...args) => openPoseStudioEditor(...args),
+            openGaussianStudioEditor: (...args) => openGaussianStudioEditor(...args),
+            openLivePortraitExpressionEditor: (...args) => openLivePortraitExpressionEditor(...args)
+        },
+        actionSource: {
+            replaceNodeImage: (...args) => replaceNodeImage(...args),
+            openMaskEditor: (...args) => openMaskEditor(...args),
+            reloadMediaNode: (...args) => reloadMediaNode(...args),
+            createTimelineNodeFromSources: (...args) => createTimelineNodeFromSources(...args)
+        },
+        uiSource: {
+            openContextMenu: (...args) => openContextMenu(...args)
+        },
+        languageSource: { t: (...args) => t(...args) }
+    };
+    CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER = typeof WORKBENCH_CANVAS_MEDIA_CONTEXT_MENU.createCanvasMediaContextMenuController === 'function'
+        ? WORKBENCH_CANVAS_MEDIA_CONTEXT_MENU.createCanvasMediaContextMenuController({
+            mediaContextMenuSource: MEDIA_CONTEXT_MENU_SOURCE
+        })
+        : {};
+    const NODE_CONTEXT_MENU_SOURCE = {
+        nodeSource: {
+            isLivePortraitVideoExpressionPresetNode: (...args) => isLivePortraitVideoExpressionPresetNode(...args),
+            isLtx23MultiGuidePresetNode: (...args) => isLtx23MultiGuidePresetNode(...args),
+            batchAnySelectedItemIds: (...args) => batchAnySelectedItemIds(...args),
+            batchAnyCurrentItem: (...args) => batchAnyCurrentItem(...args),
+            batchAnyTargets: (...args) => batchAnyTargets(...args),
+            isCanvasAgentImageTarget: (...args) => isCanvasAgentImageTarget(...args),
+            isCanvasRunActiveState: (...args) => isCanvasRunActiveState(...args),
+            isImageCompareSource: (...args) => isImageCompareSource(...args),
+            isTimelineSource: (...args) => isTimelineSource(...args),
+            isVlmNodeBusy: (...args) => isVlmNodeBusy(...args),
+            isQwenTtsNode: (...args) => isQwenTtsNode(...args),
+            nodeStatusState: (...args) => nodeStatusState(...args),
+            isNodeLocked: (...args) => isNodeLocked(...args),
+            isNodeIgnored: (...args) => isNodeIgnored(...args),
+            isNodeCollapsed: (...args) => isNodeCollapsed(...args)
+        },
+        projectSource: { getNode: (...args) => getNode(...args) },
+        selectionSource: {
+            selectNode: (...args) => selectNode(...args),
+            getSelectedNodeIdList: (...args) => getSelectedNodeIdList(...args),
+            duplicateSelection: (...args) => duplicateSelection(...args),
+            deleteSelection: (...args) => deleteSelection(...args),
+            toggleSelectedNodesFlag: (...args) => toggleSelectedNodesFlag(...args),
+            alignSelectedNodes: (...args) => alignSelectedNodes(...args),
+            distributeSelectedNodes: (...args) => distributeSelectedNodes(...args)
+        },
+        resultSource: {
+            getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
+            assetMediaKind: (...args) => assetMediaKind(...args),
+            assetMediaIcon: (...args) => assetMediaIcon(...args),
+            controlResultRun: (...args) => controlResultRun(...args),
+            retryResultRun: (...args) => retryResultRun(...args),
+            convertResultToMediaNode: (...args) => convertResultToMediaNode(...args),
+            expandResultAssetsToMediaNodes: (...args) => expandResultAssetsToMediaNodes(...args)
+        },
+        actionSource: {
+            runPresetNodeFromUi: (...args) => runPresetNodeFromUi(...args),
+            openLivePortraitVideoExpressionPresetEditor: (...args) => openLivePortraitVideoExpressionPresetEditor(...args),
+            openLtx23GuidePresetEditor: (...args) => openLtx23GuidePresetEditor(...args),
+            openXyzPlotPanel: (...args) => openXyzPlotPanel(...args),
+            handlePresetModelAction: (...args) => handlePresetModelAction(...args),
+            runNodeChain: (...args) => runNodeChain(...args),
+            ensureConfigNode: (...args) => ensureConfigNode(...args),
+            runTranslationNode: (...args) => runTranslationNode(...args),
+            openTagCartForNode: (...args) => openTagCartForNode(...args),
+            openBatchAnyFilePicker: (...args) => openBatchAnyFilePicker(...args),
+            deleteBatchAnyItems: (...args) => deleteBatchAnyItems(...args),
+            runBatchAnyNode: (...args) => runBatchAnyNode(...args),
+            refreshWildcardsCatalog: (...args) => refreshWildcardsCatalog(...args),
+            openWildcardsManager: (...args) => openWildcardsManager(...args),
+            toggleNoteTail: (...args) => toggleNoteTail(...args),
+            resetNoteTail: (...args) => resetNoteTail(...args),
+            runCameraMotionNode: (...args) => runCameraMotionNode(...args),
+            clearCameraMotionNode: (...args) => clearCameraMotionNode(...args),
+            focusXyzMatrixSource: (...args) => focusXyzMatrixSource(...args),
+            reloadMediaNode: (...args) => reloadMediaNode(...args),
+            replaceNodeImage: (...args) => replaceNodeImage(...args),
+            createCompareNodeFromSources: (...args) => createCompareNodeFromSources(...args),
+            createTimelineNodeFromSources: (...args) => createTimelineNodeFromSources(...args),
+            addSelectedMediaToTimeline: (...args) => addSelectedMediaToTimeline(...args),
+            runWd14Node: (...args) => runWd14Node(...args),
+            stopVlmChatNode: (...args) => stopVlmChatNode(...args),
+            runVlmNode: (...args) => runVlmNode(...args),
+            stopQwenTtsNode: (...args) => stopQwenTtsNode(...args),
+            runQwenTtsNode: (...args) => runQwenTtsNode(...args)
+        },
+        mediaSource: {
+            openPoseStudioEditor: (...args) => openPoseStudioEditor(...args),
+            openMediaViewer: (...args) => openMediaViewer(...args),
+            openGaussianStudioEditor: (...args) => openGaussianStudioEditor(...args),
+            openLivePortraitExpressionEditor: (...args) => openLivePortraitExpressionEditor(...args),
+            openAssetViewer: (...args) => openAssetViewer(...args),
+            openImageViewer: (...args) => openImageViewer(...args),
+            openSketchForNode: (...args) => openSketchForNode(...args)
+        },
+        menuSource: {
+            appendAudioWorkflowBridgeMenuItems: (...args) => CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.appendAudioWorkflowBridgeMenuItems(...args)
+        },
+        eventSource: {
+            selectResultAsset: (...args) => selectResultAsset(...args),
+            openResultAssetContextMenu: (...args) => openResultAssetContextMenu(...args),
+            openImageMediaContextMenu: (...args) => openImageMediaContextMenu(...args),
+            openVideoMediaContextMenu: (...args) => openVideoMediaContextMenu(...args),
+            openAudioMediaContextMenu: (...args) => openAudioMediaContextMenu(...args),
+            getInputPortHandleSelector: () => INPUT_PORT_HANDLE_SELECTOR,
+            getConnectionTargetFromHandle: (...args) => getConnectionTargetFromHandle(...args),
+            openInputPortContextMenu: (...args) => openInputPortContextMenu(...args),
+            openInputHandleContextMenu: (...args) => openInputHandleContextMenu(...args),
+            openConfigHandleContextMenu: (...args) => openConfigHandleContextMenu(...args),
+            openTextHandleContextMenu: (...args) => openTextHandleContextMenu(...args),
+            openTextNodeInputContextMenu: (...args) => openTextNodeInputContextMenu(...args),
+            openResultInputContextMenu: (...args) => openResultInputContextMenu(...args),
+            openCompareImageInputContextMenu: (...args) => openCompareImageInputContextMenu(...args),
+            openWd14ImageInputContextMenu: (...args) => openWd14ImageInputContextMenu(...args),
+            openVlmImageInputContextMenu: (...args) => openVlmImageInputContextMenu(...args),
+            openMaskSourceInputContextMenu: (...args) => openMaskSourceInputContextMenu(...args),
+            openPoseStudioReferenceContextMenu: (...args) => openPoseStudioReferenceContextMenu(...args),
+            openGaussianStudioReferenceContextMenu: (...args) => openGaussianStudioReferenceContextMenu(...args),
+            openBatchAnyInputContextMenu: (...args) => openBatchAnyInputContextMenu(...args),
+            openTimelineKeyframeContextMenu: (...args) => openTimelineKeyframeContextMenu(...args),
+            openTimelineClipContextMenu: (...args) => openTimelineClipContextMenu(...args),
+            openVlmChatMessageContextMenu: (...args) => openVlmChatMessageContextMenu(...args)
+        },
+        uiSource: { openContextMenu: (...args) => openContextMenu(...args) },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        }
+    };
+    CANVAS_NODE_CONTEXT_MENU_CONTROLLER = typeof WORKBENCH_CANVAS_NODE_CONTEXT_MENU.createCanvasNodeContextMenuController === 'function'
+        ? WORKBENCH_CANVAS_NODE_CONTEXT_MENU.createCanvasNodeContextMenuController({
+            nodeContextMenuSource: NODE_CONTEXT_MENU_SOURCE
+        })
+        : {};
     let CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER = {};
     const AGENT_SAM3_WORKFLOW_SOURCE = {
         languageSource: {
@@ -10719,7 +12279,6 @@
                     canvasAgentPresetPromptDefaultsFacts,
                     canvasAgentModelStatusLabel,
                     canvasAgentPromptFromDecision,
-                    mergeCommaPromptText,
                     getCanvasAgentRewriteModel
                 },
                 decisionSource: {
@@ -11602,6 +13161,7 @@
             catalogSource: {
                 getPresetCatalog,
                 resolvePresetCatalogEntry,
+                refreshPresetCatalog,
             },
             nodeSource: {
                 addPresetNode,
@@ -11644,6 +13204,15 @@
             uiSource: {
                 showToast,
             },
+            menuSource: {
+                get contextMenu() { return contextMenu; },
+                openContextMenu,
+                createInputEvent: () => new Event('input'),
+            },
+            worldSource: {
+                lastPointerWorld: () => lastPointerWorld,
+                viewportCenterWorld,
+            },
         }
     };
     const CANVAS_NODE_MENU_CONTEXT = typeof WORKBENCH_CANVAS_NODE_MENU_CONTEXT.createCanvasWorkbenchNodeMenuContext === 'function'
@@ -11655,28 +13224,23 @@
     const buildAddNodeContextMenuItems = NODE_MENU_TOOLS.buildAddNodeContextMenuItems;
 
     function workbenchStaticFilePath(path) {
+        const resolved = WORKBENCH_UTILS.workbenchStaticFilePath?.(path, document);
+        if (resolved !== undefined) return resolved;
         const rel = String(path || '').replace(/^\/+/, '');
-        if (!rel) return '';
-        const script = document.currentScript || document.querySelector('script[src*="javascript/infinite_canvas_workbench.js"]');
-        const src = script?.getAttribute('src') || '';
-        const marker = 'file=';
-        const markerIndex = src.indexOf(marker);
-        if (markerIndex >= 0) {
-            return `${src.slice(0, markerIndex + marker.length)}${rel}`;
-        }
-        return `/${rel}`;
+        return rel ? `/${rel}` : '';
     }
 
     function resolveWorkbenchStaticPath(path) {
+        const resolved = WORKBENCH_UTILS.resolveWorkbenchStaticPath?.(path, document);
+        if (resolved !== undefined) return resolved;
         const value = String(path || '').trim();
         if (!value || /^(https?:|data:|blob:|\/)/i.test(value)) return value;
         return workbenchStaticFilePath(value);
     }
 
     function localizeCanvasLabel(value, cnMap) {
-        const text = String(value ?? '').trim();
-        if (!text) return '';
-        return tOption(text, Object.assign({}, COMMON_CANVAS_LABELS_CN, cnMap || {}));
+        return WORKBENCH_UTILS.localizeCanvasLabel?.(value, cnMap, { __lang: runtimeUiLang() })
+            ?? String(value ?? '').trim();
     }
 
     function displayStyleName(value) {
@@ -11702,69 +13266,42 @@
     }
 
     function localizeMaskStatus(value) {
-        const text = String(value || '').trim();
-        if (!text) return '';
-        return tOption(text, {
-            'Connect a source image, then generate a black/white mask.': '连接源图像后生成黑白遮罩。',
-            'Source image connected.': '源图像已连接。',
-            'Generating mask...': '正在生成遮罩...',
-            'Mask generated.': '遮罩已生成。',
-            'Mask generation failed.': '遮罩生成失败。',
-            'Mask model changed. Generate a new mask.': '遮罩模型已更改，请重新生成遮罩。'
-        });
+        return WORKBENCH_UTILS.localizeMaskStatus?.(value, { __lang: runtimeUiLang() })
+            ?? String(value || '').trim();
     }
 
     function isGalleryFrostEnabled() {
-        if (typeof window.isSimpleAIGalleryFrostEnabled === 'function') {
-            try { return !!window.isSimpleAIGalleryFrostEnabled(); } catch (err) {}
-        }
-        return true;
+        return CANVAS_GALLERY_FROST_CONTROLLER.isGalleryFrostEnabled();
     }
 
     function syncGalleryFrostClass() {
-        try {
-            document.documentElement.classList.toggle('simpai-gallery-frost-enabled', isGalleryFrostEnabled());
-        } catch (err) {}
+        return CANVAS_GALLERY_FROST_CONTROLLER.syncGalleryFrostClass();
     }
 
     function setGalleryFrostEnabled(enabled) {
-        const next = !!enabled;
-        if (typeof window.setSimpleAIGalleryFrostEnabled === 'function') {
-            try {
-                window.setSimpleAIGalleryFrostEnabled(next, { reset: true, source: 'canvas' });
-            } catch (err) {}
-        } else {
-            syncGalleryFrostClass();
-        }
-        syncGalleryFrostClass();
-        if (next) resetGalleryFrostReveals();
+        return CANVAS_GALLERY_FROST_CONTROLLER.setGalleryFrostEnabled(enabled);
     }
 
     function revealGalleryFrostArea(area) {
-        if (!area || !area.querySelector || !isGalleryFrostEnabled()) return false;
-        if (area.getAttribute('data-sai-frost-revealed') === '1') return false;
-        if (!area.querySelector('img, video')) return false;
-        area.setAttribute('data-sai-frost-revealed', '1');
-        return true;
+        return CANVAS_GALLERY_FROST_CONTROLLER.revealGalleryFrostArea(area);
     }
 
     function resetGalleryFrostReveals() {
-        document.querySelectorAll('.sai-media-browser-modal[data-sai-frost-revealed], .sai-media-browser-modal [data-sai-frost-revealed], .sai-media-browser-node[data-sai-frost-revealed], .sai-media-browser-node [data-sai-frost-revealed]').forEach((el) => {
-            el.removeAttribute('data-sai-frost-revealed');
-        });
-        if (typeof mediaBrowserNodeRuntime !== 'undefined' && mediaBrowserNodeRuntime?.forEach) {
-            mediaBrowserNodeRuntime.forEach((runtime) => {
-                if (runtime) runtime.frostRevealed = false;
-            });
-        }
+        return CANVAS_GALLERY_FROST_CONTROLLER.resetGalleryFrostReveals();
     }
 
-    syncGalleryFrostClass();
-    window.addEventListener('simpleai-gallery-frost-change', () => {
-        syncGalleryFrostClass();
-        resetGalleryFrostReveals();
-        if (nodesLayer) renderNodes();
+    CANVAS_GALLERY_FROST_CONTROLLER = WORKBENCH_CANVAS_GALLERY_FROST.createCanvasGalleryFrostController({
+        windowSource: window,
+        documentSource: () => document,
+        mediaBrowserSource: {
+            getMediaBrowserNodeRuntime: () => mediaBrowserNodeRuntime
+        },
+        renderSource: {
+            hasNodesLayer: () => !!nodesLayer,
+            renderNodes: () => renderNodes()
+        }
     });
+    CANVAS_GALLERY_FROST_CONTROLLER.initialize();
 
     let root = null;
     let viewport = null;
@@ -11789,9 +13326,6 @@
     let perfHudEl = null;
     const mediaBrowserNodeRuntime = CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.getMediaBrowserNodeRuntime();
     let edgeRenderCacheKey = '';
-    let edgeCanvasHitRecords = [];
-    let edgeCanvasActive = false;
-    let edgeCanvasDpr = 1;
     const perfStats = {
         fps: 0,
         renderTotalMs: 0,
@@ -11881,333 +13415,100 @@
     let suppressWheelUntil = 0;
     let backendLoadedStorageKey = '';
     let lastPointerWorld = { x: 160, y: 120 };
-    let presetSpecialMessageBound = false;
 
     function projectStoreOptions() {
-        return {
-            projectId: PROJECT_ID,
-            defaultSettings: DEFAULT_SETTINGS,
-            defaultNodeSize,
-            cloneValue: cloneRunValue,
-            buildNodeLayoutPatch: (...args) => buildNodeLayoutPatch(...args),
-            buildGroupIdPatch: (...args) => buildGroupIdPatch(...args),
-            buildGroupFieldPatch: (...args) => buildGroupFieldPatch(...args),
-            buildProjectDefaultPatch: (...args) => buildProjectDefaultPatch(...args),
-            buildProjectUpdatedAtPatch: (...args) => buildProjectUpdatedAtPatch(...args),
-            buildProjectMetadataPatch: (...args) => buildProjectMetadataPatch(...args),
-            buildProjectCollectionsPatch: (...args) => buildProjectCollectionsPatch(...args),
-            buildProjectNodesPatch: (...args) => buildProjectNodesPatch(...args),
-            buildProjectRunsPatch: (...args) => buildProjectRunsPatch(...args),
-            buildProjectStorageInfoPatch: (...args) => buildProjectStorageInfoPatch(...args),
-            buildProjectStoragePatch: (...args) => buildProjectStoragePatch(...args),
-            buildProjectViewportPatch: (...args) => buildProjectViewportPatch(...args),
-            buildProjectSettingsPatch: (...args) => buildProjectSettingsPatch(...args),
-            buildCompareStatePatch: (...args) => compareNodeBuildStatePatch(...args),
-            buildBatchAnyStatePatch: (...args) => buildBatchAnyStatePatch(...args),
-            buildBatchAnyLegacyTypePatch: (...args) => buildBatchAnyLegacyTypePatch(...args),
-            buildTextMergeStatePatch: (...args) => buildTextMergeStatePatch(...args),
-            buildNoteStatePatch: (...args) => buildNoteStatePatch(...args),
-            buildBatchJobStatePatch: (...args) => buildBatchJobStatePatch(...args),
-            buildProjectNodeStoragePatch: (...args) => buildProjectNodeStoragePatch(...args),
-            buildRunStoragePatch: (...args) => buildRunStoragePatch(...args),
-            buildVlmChatStoragePatch: (...args) => buildVlmChatStoragePatch(...args)
-        };
+        return projectStoreOptionsFromProjectContext();
     }
 
     function getCanvasTitle() {
-        return typeof projectStoreGetCanvasTitle === 'function'
-            ? projectStoreGetCanvasTitle()
-            : t('SimpAI Infinite Canvas', 'SimpAI 无限画布');
+        return getCanvasTitleFromProjectContext();
     }
 
     function isStandaloneCanvasWorkbench() {
         return !!window.SimpAIInfiniteCanvasStandalone;
     }
 
-    function syncStandaloneCanvasControls() {
-        if (!root) return;
-        root.classList.toggle('is-standalone-page', isStandaloneCanvasWorkbench());
-        const closeButton = root.querySelector('[data-canvas-action="close"]');
-        if (!closeButton) return;
-        if (isStandaloneCanvasWorkbench()) {
-            closeButton.disabled = false;
-            closeButton.dataset.standaloneClose = 'true';
-            closeButton.setAttribute('aria-disabled', 'true');
-            closeButton.title = t('Standalone page stays open until the browser tab is closed.', '独立页面需要关闭浏览器标签。');
-            closeButton.setAttribute('aria-label', closeButton.title);
-        } else {
-            closeButton.disabled = false;
-            delete closeButton.dataset.standaloneClose;
-            closeButton.removeAttribute('aria-disabled');
-        }
-    }
-
     function getStorageScope() {
-        return typeof projectStoreGetStorageScope === 'function'
-            ? projectStoreGetStorageScope()
-            : { mode: 'local', owner: 'local', label: `${t('Local mode', 'Local 模式')} / ${t('Current browser', '当前浏览器')}`, location: t('User directory', '用户目录'), cacheLocation: t('Browser localStorage cache', '浏览器 localStorage 缓存'), allowLegacyFallback: true };
+        return getStorageScopeFromProjectContext();
     }
 
     function getStorageKey(scope) {
-        return typeof projectStoreGetStorageKey === 'function'
-            ? projectStoreGetStorageKey(scope)
-            : `simpai.infiniteCanvasWorkbench.v1:${sanitizeStoragePart(scope?.mode || 'local')}:${sanitizeStoragePart(scope?.owner || 'local')}`;
-    }
-
-    function browserCacheBaseKey(scope) {
-        return getStorageKey(scope || storageScope || getStorageScope());
-    }
-
-    function browserCacheProjectId(projectId) {
-        return sanitizeStoragePart(String(projectId || PROJECT_ID || 'default')).replace(/[:]/g, '_') || 'default';
-    }
-
-    function browserCacheActiveProjectIdKey(scope) {
-        return `${browserCacheBaseKey(scope)}:active_project_id`;
-    }
-
-    function browserCacheProjectIndexKey(scope) {
-        return `${browserCacheBaseKey(scope)}:project_index`;
-    }
-
-    function browserCacheProjectKey(projectId, scope) {
-        return `${browserCacheBaseKey(scope)}:project:${browserCacheProjectId(projectId)}`;
-    }
-
-    function browserCacheProjectScope(scope) {
-        return Object.assign({}, scope || storageScope || getStorageScope(), { allowLegacyFallback: false });
-    }
-
-    function browserCacheActiveProjectId(scope) {
-        try {
-            const raw = String(localStorage.getItem(browserCacheActiveProjectIdKey(scope)) || '').trim();
-            return raw ? browserCacheProjectId(raw) : '';
-        } catch (err) {
-            return '';
-        }
-    }
-
-    function browserCacheProjectIndex(scope) {
-        try {
-            const parsed = JSON.parse(localStorage.getItem(browserCacheProjectIndexKey(scope)) || '{}');
-            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-        } catch (err) {
-            return {};
-        }
-    }
-
-    function rememberBrowserCacheProject(projectId, key, scope) {
-        const id = browserCacheProjectId(projectId);
-        if (!id || !key) return;
-        try {
-            const index = browserCacheProjectIndex(scope);
-            index[id] = { key, updated_at: nowIso() };
-            localStorage.setItem(browserCacheProjectIndexKey(scope), JSON.stringify(index));
-        } catch (err) {
-            console.warn('[SimpAI Canvas] failed to update browser cache project index:', err);
-        }
-    }
-
-    function setActiveBrowserCacheProject(projectId, scope) {
-        const targetScope = scope || storageScope || getStorageScope();
-        const id = browserCacheProjectId(projectId);
-        storageBaseKey = browserCacheBaseKey(targetScope);
-        storageKey = browserCacheProjectKey(id, targetScope);
-        try {
-            localStorage.setItem(browserCacheActiveProjectIdKey(targetScope), id);
-        } catch (err) {
-            console.warn('[SimpAI Canvas] failed to update active browser cache project:', err);
-        }
-        rememberBrowserCacheProject(id, storageKey, targetScope);
-        return storageKey;
-    }
-
-    function initialBrowserStorageKey(scope) {
-        const baseKey = browserCacheBaseKey(scope);
-        const activeId = browserCacheActiveProjectId(scope);
-        if (activeId) {
-            const activeKey = browserCacheProjectKey(activeId, scope);
-            try {
-                if (localStorage.getItem(activeKey)) return activeKey;
-            } catch (err) {}
-        }
-        return baseKey;
+        return getStorageKeyFromProjectContext(scope);
     }
 
     function createDefaultProject() {
-        const created = typeof projectStoreCreateDefaultProject === 'function'
-            ? projectStoreCreateDefaultProject(projectStoreOptions())
-            : buildProjectDefaultPatch({
-                projectId: PROJECT_ID,
-                schema: 'simpai.canvas.workbench.v1',
-                defaultTitle: 'Untitled Canvas',
-                nowIso,
-                defaultSettings: DEFAULT_SETTINGS
-            });
-        return syncProjectLanguage(created);
+        return createDefaultProjectFromProjectContext();
     }
 
     function syncProjectLanguage(candidate) {
-        if (!candidate || typeof candidate !== 'object') return candidate;
-        candidate.settings = Object.assign({}, DEFAULT_SETTINGS, candidate.settings || {}, { __lang: runtimeUiLang() });
-        return candidate;
+        return syncProjectLanguageFromProjectContext(candidate);
     }
 
     function sanitizeProject(raw) {
-        const next = typeof projectStoreSanitizeProject === 'function'
-            ? projectStoreSanitizeProject(raw, projectStoreOptions())
-            : (raw && typeof raw === 'object' ? raw : createDefaultProject());
-        return syncProjectLanguage(next);
+        return sanitizeProjectFromProjectContext(raw);
     }
 
     function isProjectEmpty(candidate) {
-        const p = candidate || project || {};
-        return !(Array.isArray(p.nodes) && p.nodes.length)
-            && !(Array.isArray(p.edges) && p.edges.length)
-            && !(Array.isArray(p.groups) && p.groups.length)
-            && !(Array.isArray(p.runs) && p.runs.length);
+        return isProjectEmptyFromProjectContext(candidate);
     }
 
     function createDemoWorkbenchProject(options) {
-        const opts = options || {};
-        const now = nowIso();
-        const id = opts.id || project?.id || PROJECT_ID;
-        const storage = opts.storage || project?.storage || buildProjectStorageInfo(storageKey, storageScope);
-        const demoPatch = buildProjectDemoPatch({
-            id,
-            schema: 'simpai.canvas.workbench.v1',
-            nowIso: () => now,
-            t,
-            defaultSettings: DEFAULT_SETTINGS,
-            storage
-        });
-        const demo = demoPatch && typeof demoPatch === 'object' && Object.keys(demoPatch).length
-            ? demoPatch
-            : createDefaultProject();
-        return sanitizeProject(demo);
+        return createDemoWorkbenchProjectFromProjectContext(options);
     }
 
     function ensureInitialDemoProject() {
-        Object.assign(project, buildProjectSettingsPatch(project, { defaultSettings: DEFAULT_SETTINGS }));
-        if (!isProjectEmpty(project) || project.settings.__demo_initialized) return false;
-        const storage = project.storage || buildProjectStorageInfo(storageKey, storageScope);
-        project = createDemoWorkbenchProject({ id: project.id || PROJECT_ID, storage });
-        Object.assign(project, buildProjectStoragePatch(project, storage));
-        saveProjectToBrowserCache({ reason: 'ensure_initial_demo_project' });
-        return true;
+        return ensureInitialDemoProjectFromProjectContext();
     }
 
     function loadProject(key, scope) {
-        const loaded = typeof projectStoreLoadProject === 'function'
-            ? projectStoreLoadProject(key, scope, projectStoreOptions())
-            : createDefaultProject();
-        normalizeProjectAssetReferences(loaded);
-        syncCanvasProjectAssetRoot(loaded);
-        return loaded;
+        return loadProjectFromProjectContext(key, scope);
     }
 
     function compactProjectForStorage(source, options) {
-        const opts = Object.assign({}, options || {}, {
-            cloneValue: cloneRunValue,
-            projectId: PROJECT_ID,
-            buildVlmChatStoragePatch: (...args) => buildVlmChatStoragePatch(...args)
-        });
-        if (typeof projectStoreCompactProjectForStorage === 'function') {
-            return projectStoreCompactProjectForStorage(source, opts);
-        }
-        return cloneRunValue(source || createDefaultProject(), createDefaultProject());
+        return compactProjectForStorageFromPersistenceController(source, options);
     }
 
     function storageDisplayLocation() {
-        const storage = project.storage || {};
-        if (storage.kind === 'user_directory') return storage.location || storageScope.location;
-        return isCanvasBridgeReady()
-            ? t('{location} (pending sync, browser cache only)', '{location}（待同步，浏览器仅作缓存）').replace('{location}', storageScope.location)
-            : t('Browser localStorage cache (backend bridge not ready)', '浏览器 localStorage 缓存（后端桥未就绪）');
+        return storageDisplayLocationFromPersistenceController();
     }
 
     function storageDisplayPath() {
-        const storage = project.storage || {};
-        if (storage.path) return storage.path;
-        return isCanvasBridgeReady()
-            ? `${t('User directory', '用户目录')} / canvas_workbench/projects/${project.id || PROJECT_ID}.canvas.json`
-            : (storage.key || storageKey);
+        return storageDisplayPathFromPersistenceController();
     }
 
     function qwenTtsModeLabel(mode) {
-        const specs = qwenTtsModeSpecs || {};
-        const spec = specs[mode] || {};
-        if (spec.title) return spec.title;
-        const text = String(mode || 'voice_design').replace(/_/g, ' ');
-        return `Qwen TTS ${text.replace(/\b\w/g, ch => ch.toUpperCase())}`;
+        return qwenTtsModeLabelForMode(mode);
     }
 
     function isQwenTtsNode(node) {
-        if (!node) return false;
-        if (typeof qwenTtsIsNode === 'function') return qwenTtsIsNode(node);
-        return String(node.type || '').startsWith('qwen_tts_');
+        return qwenTtsIsNode(node);
     }
 
     function qwenTtsNodeMode(node) {
-        if (typeof qwenTtsModeFromNode === 'function') return qwenTtsModeFromNode(node);
-        return node?.qwen_tts_mode || String(node?.type || '').replace(/^qwen_tts_/, '') || 'voice_design';
+        return qwenTtsModeFromNode(node);
     }
 
     function qwenTtsAudioInputSlots(nodeOrMode) {
-        const mode = typeof nodeOrMode === 'string' ? nodeOrMode : qwenTtsNodeMode(nodeOrMode);
-        if (typeof qwenTtsAudioInputSlotsForMode === 'function') return qwenTtsAudioInputSlotsForMode(mode) || [];
-        if (mode === 'voice_clone') return [{ key: 'ref_audio', label: 'Reference Audio' }];
-        if (mode === 'dialogue') return [1, 2, 3, 4].map(index => ({ key: `role_${index}_audio`, label: `Role ${index} Audio` }));
-        return [];
+        return qwenTtsAudioInputSlotsForNode(nodeOrMode) || [];
     }
 
     function isQwenTtsAudioSource(node) {
-        if (typeof qwenTtsIsAudioSource === 'function') {
-            return !!qwenTtsIsAudioSource(node, QWEN_TTS_NODE_CONTEXT || {
-                getSelectedResultAsset,
-                assetMediaKind
-            });
-        }
-        if (!node) return false;
-        if (node.type === 'audio') return true;
-        if (node.type === 'result') {
-            const asset = getSelectedResultAsset(node);
-            return !!asset && assetMediaKind(asset) === 'audio';
-        }
-        return false;
+        return !!qwenTtsIsAudioSource(node, QWEN_TTS_NODE_CONTEXT || {
+            getSelectedResultAsset,
+            assetMediaKind
+        });
     }
 
     function isDirectorTimelineNode(node) {
-        return !!node && node.type === 'director_timeline';
+        return directorTimelineIsNode(node);
     }
 
     function directorMediaSourceKind(node) {
-        if (!node) return '';
-        if (typeof directorTimelineMediaSourceKind === 'function') {
-            const kind = directorTimelineMediaSourceKind(node, { getSelectedResultAsset, assetMediaKind });
-            if (kind) return kind;
-        }
-        if (node.type === 'result') {
-            const asset = getSelectedResultAsset(node);
-            return assetMediaKind(asset);
-        }
-        if (node.type === 'image' || node.type === 'mask' || node.type === 'pose_studio' || node.type === 'gaussian_studio' || node.type === 'liveportrait_expression') return 'image';
-        if (node.type === 'video' || node.type === 'sam3_video_mask') return 'video';
-        if (node.type === 'audio') return 'audio';
-        return '';
+        return directorTimelineMediaSourceKind(node, { getSelectedResultAsset, assetMediaKind });
     }
 
     function isDirectorMediaSourceForSlot(node, slot) {
-        if (typeof directorTimelineMediaSourceForSlot === 'function') {
-            return !!directorTimelineMediaSourceForSlot(node, slot, { getSelectedResultAsset, assetMediaKind });
-        }
-        const kind = directorMediaSourceKind(node);
-        if (!kind) return false;
-        const slotText = String(slot || '');
-        if (slotText.startsWith('image_')) return kind === 'image';
-        if (slotText.startsWith('audio_')) return kind === 'audio';
-        if (slotText.startsWith('video_')) return kind === 'video';
-        return ['image', 'audio', 'video'].includes(kind);
+        return !!directorTimelineMediaSourceForSlot(node, slot, { getSelectedResultAsset, assetMediaKind });
     }
 
     const DIRECTOR_TIMELINE_NODE_CONTEXT_SOURCE = {
@@ -12246,10 +13547,6 @@
         return directorTimelineSerializeForRun(node, DIRECTOR_TIMELINE_NODE_CONTEXT);
     }
 
-    function hasActivePointerInteraction() {
-        return !!(isNodeDragging() || isGroupDragging() || isNodeResizing() || isNoteTailDragging() || isGroupResizing() || isPanning() || isMinimapDragging() || isMarqueeSelecting() || isConnecting() || isComparePositionDragging() || isTimelineClipDragging() || isTimelinePlayheadDragging() || isTimelinePreviewDragging() || isDirectorTimelineDragging() || isTimelineMaskPointerActive() || isTimelineKeyframeDragging());
-    }
-
     function mutate(options) {
         const opts = options || {};
         const projectUpdatedAtPatch = buildProjectUpdatedAtPatch(project, { nowIso });
@@ -12281,215 +13578,39 @@
         renderRunQueuePanelIfOpen();
     }
 
-    function ensureCanvasRuntimeStyles() {
-        if (document.getElementById('simpai-canvas-runtime-style')) return;
-        const style = document.createElement('style');
-        style.id = 'simpai-canvas-runtime-style';
-        style.textContent = `
-.sai-canvas-viewport.is-panning .sai-canvas-stage,
-.sai-canvas-viewport.is-zooming .sai-canvas-stage { will-change: transform; }
-.sai-canvas-viewport.is-panning .sai-canvas-stage,
-.sai-canvas-viewport.is-panning .sai-canvas-node { text-rendering: optimizeSpeed; }
-.sai-canvas-viewport.is-panning .sai-canvas-node {
-  pointer-events: none;
-  transition: none !important;
-  filter: none !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18) !important;
-}
-.sai-canvas-viewport.is-panning .sai-canvas-node::before,
-.sai-canvas-viewport.is-panning .sai-canvas-node::after { display: none !important; }
-`;
-        document.head.appendChild(style);
-    }
-
     function ensureWorkbench() {
         if (root) return;
-        ensureCanvasRuntimeStyles();
-
-        root = document.createElement('div');
-        root.id = 'simpai-infinite-canvas-workbench';
-        root.className = 'sai-canvas-workbench';
-        root.hidden = true;
-        root.innerHTML = `
-<div class="sai-canvas-topbar">
-  <div class="sai-canvas-topbar-main">
-    <div class="sai-canvas-brand">
-      <div class="sai-canvas-title">${escapeHtml(t('SimpAI Infinite Canvas', 'SimpAI 无限画布'))}</div>
-      <div class="sai-canvas-subtitle" data-canvas-status>${escapeHtml(t('0 nodes', '0 个节点'))}</div>
-    </div>
-    <button type="button" class="sai-canvas-demo-entry" data-canvas-action="load-demo-workbench" title="${escapeHtml(t('Template library', '模板库'))}" aria-label="${escapeHtml(t('Template library', '模板库'))}">
-      <i class="fa-solid fa-route" aria-hidden="true"></i>
-      <span>${escapeHtml(t('Template library', '模板库'))}</span>
-    </button>
-    <div class="sai-canvas-system-info" data-canvas-system-info aria-label="${escapeHtml(t('System status', '系统状态'))}"></div>
-    <button type="button" class="sai-run-queue-widget" data-canvas-action="run-queue" data-run-queue-widget title="${escapeHtml(t('Run queue', '运行队列'))}" aria-label="${escapeHtml(t('Run queue', '运行队列'))}"></button>
-  </div>
-  <div class="sai-canvas-toolbar" aria-label="${escapeHtml(t('Canvas tools', '画布工具'))}">
-    ${toolbarButton('save', 'fa-floppy-disk', t('Save', '保存'))}
-    ${toolbarButton('project-list', 'fa-folder-tree', t('Workbench list', '工作台列表'))}
-    ${toolbarButton('import-project-json', 'fa-file-import', t('Import workbench JSON', '导入工作台 JSON'))}
-    <span class="sai-toolbar-separator" aria-hidden="true"></span>
-    ${toolbarButton('undo', 'fa-rotate-left', t('Undo', '撤销'))}
-    ${toolbarButton('redo', 'fa-rotate-right', t('Redo', '重做'))}
-    <span class="sai-toolbar-separator" aria-hidden="true"></span>
-    ${toolbarButton('delete', 'fa-trash', t('Delete selected items', '删除选中项'))}
-    ${toolbarButton('clear', 'fa-broom', t('Clear canvas', '清空画布'))}
-    <span class="sai-toolbar-separator" aria-hidden="true"></span>
-    ${toolbarButton('settings', 'fa-sliders', t('Settings', '设置'))}
-    ${toolbarButton('close', 'fa-xmark', t('Close', '关闭'))}
-  </div>
-</div>
-<div class="sai-canvas-backend-alert" data-canvas-backend-alert hidden></div>
-<div class="sai-canvas-body">
-  <div class="sai-canvas-leftbar" aria-label="${escapeHtml(t('Canvas utilities', '画布工具栏'))}">
-    ${sideButton('node-search', 'fa-magnifying-glass-location', t('Search / jump to node', '搜索 / 跳转节点'))}
-    <span class="sai-leftbar-separator" aria-hidden="true"></span>
-    ${sideButton('add-preset', 'fa-diagram-project', t('Add preset', '添加预设'))}
-    ${sideButton('add-style-selector', 'fa-palette', t('Add Style Selector node', '添加风格选择器节点'))}
-    ${sideButton('add-text', 'fa-font', t('Add text node', '添加文本节点'))}
-    ${sideButton('add-text-merge', 'fa-code-merge', t('Add multi-text merge node', '添加多文本合并节点'))}
-    ${sideButton('add-wildcards-helper', 'fa-dice', t('Add Wildcards Helper node', '添加通配符小助手节点'))}
-    ${sideButton('add-translation', 'fa-language', t('Add translation node', '添加翻译节点'))}
-    ${sideButton('add-tag-cart', 'sai-tag-cart-glyph', t('Add Tag Cart node', '添加标签选择器节点'))}
-    ${sideButton('add-wd14', 'sai-wd14-glyph', t('Add WD14 node', '添加 WD14 节点'))}
-    ${sideButton('add-vlm', 'sai-vlm-glyph', t('Add VLM node', '添加 VLM 节点'))}
-    ${sideButton('add-qwen-tts', 'fa-microphone-lines', t('Add Qwen TTS node', '添加 Qwen TTS 节点'))}
-    ${sideButton('add-sam3-video-mask', 'fa-wand-magic-sparkles', t('Add SAM3 video mask node', '添加 SAM3 视频遮罩节点'))}
-    ${sideButton('add-camera-motion', 'fa-camera-rotate', t('Add Uni3C Camera Motion node', '添加 Uni3C 运镜节点'))}
-    ${sideButton('add-pose-studio', 'fa-person', t('Add Pose Studio node', '添加 Pose Studio 节点'))}
-    ${sideButton('add-gaussian-studio', 'fa-cube', t('Add Gaussian Studio node', '添加 Gaussian Studio 节点'))}
-    ${sideButton('add-liveportrait-expression', 'fa-face-smile', t('Add LivePortrait Exp node', '添加 LivePortrait Exp 节点'))}
-    ${sideButton('add-compare', 'sai-compare-glyph', t('Add image compare node', '添加图像对比节点'))}
-    ${sideButton('add-timeline', 'fa-clapperboard', t('Add media timeline', '添加媒体时间线'))}
-    ${sideButton('add-output', 'fa-circle-dot', t('Add output node', '添加输出节点'))}
-    <span class="sai-leftbar-separator" aria-hidden="true"></span>
-    ${sideButton('add-note', 'fa-note-sticky', t('Add tip note', '添加提示贴'))}
-    ${sideButton('add-group', 'fa-object-group', t('Add area group', '添加区域分组'))}
-    ${sideButton('group-list', 'fa-list-ul', t('Jump to group', '跳转分组'))}
-    ${sideButton('load-demo-workbench', 'fa-route', t('Template library', '模板库'))}
-    <span class="sai-leftbar-separator" aria-hidden="true"></span>
-    ${sideButton('import-selected', 'fa-images', t('Import transfer station images', '导入中转站图片'))}
-    ${sideButton('media-browser', 'fa-photo-film', t('Media browser', '媒体浏览器'))}
-    <span class="sai-leftbar-separator" data-leftbar-section="utility" aria-hidden="true"></span>
-    ${sideButton('asset-manager', 'fa-box-archive', t('Asset manager', '资产管理'))}
-    ${sideButton('run-history', 'fa-clock-rotate-left', t('Run history', '运行历史'))}
-    ${sideButton('canvas-manual', 'fa-circle-question', t('Canvas manual', '画布说明书'))}
-  </div>
-  <div class="sai-canvas-viewport" tabindex="0">
-    <div class="sai-canvas-stage">
-      <div class="sai-canvas-groups"></div>
-      <canvas class="sai-canvas-edges-canvas" aria-hidden="true"></canvas>
-      <svg class="sai-canvas-edges" aria-hidden="true">
-        <path class="sai-canvas-temp-edge" d="" hidden></path>
-      </svg>
-      <div class="sai-canvas-nodes"></div>
-      <div class="sai-chain-run-overlay" hidden>
-        <button type="button" data-canvas-action="run-selected-chain" title="${escapeHtml(t('Run selected chain', '运行选中链路'))}" aria-label="${escapeHtml(t('Run selected chain', '运行选中链路'))}"><i class="fa-solid fa-play"></i></button>
-      </div>
-      <div class="sai-outpaint-overlay" hidden>
-        <div class="sai-outpaint-outer"></div>
-        <div class="sai-outpaint-inner"></div>
-        <div class="sai-outpaint-edge" data-edge="top"></div>
-        <div class="sai-outpaint-edge" data-edge="bottom"></div>
-        <div class="sai-outpaint-edge" data-edge="left"></div>
-        <div class="sai-outpaint-edge" data-edge="right"></div>
-        <div class="sai-outpaint-label" data-dim="top"></div>
-        <div class="sai-outpaint-label" data-dim="bottom"></div>
-        <div class="sai-outpaint-label" data-dim="left"></div>
-        <div class="sai-outpaint-label" data-dim="right"></div>
-      </div>
-    </div>
-    <section class="sai-canvas-agent-panel" data-canvas-agent-panel aria-label="${escapeHtml(t('Canvas Agent', '画布 Agent'))}"></section>
-  </div>
-  <aside class="sai-canvas-inspector" aria-label="${escapeHtml(t('Inspector', '检查器'))}"></aside>
-  <button type="button" class="sai-inspector-drawer-toggle" data-canvas-action="toggle-inspector" title="${escapeHtml(t('Hide inspector', '隐藏检查器'))}" aria-label="${escapeHtml(t('Hide inspector', '隐藏检查器'))}"><i class="fa-solid fa-chevron-right"></i></button>
-</div>
-<div class="sai-canvas-nav">
-  ${toolbarButton('zoom-out', 'fa-minus', t('Zoom out', '缩小'))}
-  <button class="sai-canvas-zoom-label" type="button" data-canvas-action="zoom-reset" title="${escapeHtml(t('Reset zoom', '重置缩放'))}">100%</button>
-  ${toolbarButton('zoom-in', 'fa-plus', t('Zoom in', '放大'))}
-  ${toolbarButton('fit-all', 'fa-expand', t('Fit all', '适配全部'))}
-  ${toolbarButton('center', 'fa-crosshairs', t('Center', '回中'))}
-</div>
-<div class="sai-canvas-minimap" hidden>
-  <div class="sai-minimap-head"><span>${escapeHtml(t("Bird's-eye", '鸟瞰图'))}</span><button type="button" data-canvas-action="toggle-minimap" title="${escapeHtml(t('Close minimap', '关闭鸟瞰图'))}"><i class="fa-solid fa-xmark"></i></button></div>
-  <svg class="sai-minimap-svg" viewBox="0 0 180 124" aria-hidden="true"></svg>
-</div>
-<div class="sai-canvas-palette" hidden>
-  <div class="sai-canvas-palette-box">
-    <div class="sai-canvas-palette-head">
-      <span>${escapeHtml(t('Add preset', '添加预设'))}</span>
-      <button type="button" data-palette-close aria-label="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-    <input class="sai-canvas-palette-search" type="search" placeholder="${escapeHtml(t('Search preset', '搜索预设'))}" autocomplete="off" />
-    <div class="sai-canvas-palette-list"></div>
-  </div>
-</div>
-<div class="sai-canvas-context-menu" hidden></div>
-<section class="sai-canvas-settings-panel" hidden aria-label="${escapeHtml(t('Canvas Settings', '画布设置'))}"></section>
-<section class="sai-run-queue-panel" hidden aria-label="${escapeHtml(t('Run Queue', '运行队列'))}"></section>
-<section class="sai-run-history-panel" hidden aria-label="${escapeHtml(t('Run History', '运行历史'))}"></section>
-<div class="sai-canvas-perf-hud" data-canvas-perf-hud aria-label="${escapeHtml(t('Canvas performance', '画布性能'))}"></div>
-<div class="sai-canvas-toast" hidden></div>
-`;
-        ensureWorkbenchFormFieldNames(root, 'root');
-        const toolbar = root.querySelector('.sai-canvas-toolbar');
-        if (toolbar) {
-            const runButton = document.createElement('button');
-            runButton.type = 'button';
-            runButton.setAttribute('data-canvas-action', 'run-selected-chain');
-            runButton.title = t('Run selected chain', '运行选中链路');
-            runButton.setAttribute('aria-label', t('Run selected chain', '运行选中链路'));
-            runButton.innerHTML = '<i class="fa-solid fa-forward"></i>';
-            toolbar.insertBefore(runButton, toolbar.querySelector('[data-canvas-action="delete"]'));
+        if (typeof WORKBENCH_CANVAS_SHELL_RENDERER.createCanvasWorkbenchShellRenderer !== 'function') {
+            throw new Error('Infinite Canvas shell renderer is not loaded.');
         }
-        const leftbar = root.querySelector('.sai-canvas-leftbar');
-        if (leftbar) {
-            const importButton = document.createElement('button');
-            importButton.type = 'button';
-            importButton.setAttribute('data-canvas-action', 'import-files');
-            importButton.title = t('Import image / video / audio', '导入图像 / 视频 / 音频');
-            importButton.setAttribute('aria-label', t('Import image / video / audio', '导入图像 / 视频 / 音频'));
-            importButton.innerHTML = '<i class="fa-solid fa-folder-open"></i>';
-            leftbar.insertBefore(importButton, leftbar.querySelector('[data-leftbar-section="utility"]'));
-        }
-
-        document.body.appendChild(root);
-        viewport = root.querySelector('.sai-canvas-viewport');
-        stage = root.querySelector('.sai-canvas-stage');
-        groupsLayer = root.querySelector('.sai-canvas-groups');
-        edgesCanvas = root.querySelector('.sai-canvas-edges-canvas');
-        edgesLayer = root.querySelector('.sai-canvas-edges');
-        tempEdge = root.querySelector('.sai-canvas-temp-edge');
-        nodesLayer = root.querySelector('.sai-canvas-nodes');
-        chainRunOverlay = root.querySelector('.sai-chain-run-overlay');
-        outpaintOverlayEl = root.querySelector('.sai-outpaint-overlay');
-        canvasAgentPanel = root.querySelector('[data-canvas-agent-panel]');
-        inspector = root.querySelector('.sai-canvas-inspector');
-        palette = root.querySelector('.sai-canvas-palette');
-        contextMenu = root.querySelector('.sai-canvas-context-menu');
-        canvasSettingsPanel = root.querySelector('.sai-canvas-settings-panel');
-        runQueuePanel = root.querySelector('.sai-run-queue-panel');
-        runQueueWidget = root.querySelector('[data-run-queue-widget]');
-        runHistoryPanel = root.querySelector('.sai-run-history-panel');
-        minimapEl = root.querySelector('.sai-canvas-minimap');
-        toastEl = root.querySelector('.sai-canvas-toast');
-        systemInfoEl = root.querySelector('[data-canvas-system-info]');
-        backendAlertEl = root.querySelector('[data-canvas-backend-alert]');
-        perfHudEl = root.querySelector('[data-canvas-perf-hud]');
-        zoomLabel = root.querySelector('.sai-canvas-zoom-label');
-        syncStandaloneCanvasControls();
+        const shellRenderer = WORKBENCH_CANVAS_SHELL_RENDERER.createCanvasWorkbenchShellRenderer({
+            t,
+            escapeHtml,
+            renderIconHtml,
+            domSource: { getDocument: () => document },
+            formSource: { ensureWorkbenchFormFieldNames },
+            lifecycleSource: {
+                getRoot: () => root,
+                isStandaloneCanvasWorkbench
+            }
+        });
+        shellRenderer.ensureRuntimeStyles();
+        const elements = shellRenderer.mountWorkbenchShell();
+        if (!elements) return;
+        ({
+            root, viewport, stage, groupsLayer, edgesCanvas, edgesLayer, tempEdge, nodesLayer,
+            chainRunOverlay, outpaintOverlayEl, canvasAgentPanel, inspector, palette, contextMenu,
+            canvasSettingsPanel, runQueuePanel, runQueueWidget, runHistoryPanel, minimapEl, toastEl,
+            systemInfoEl, backendAlertEl, perfHudEl, zoomLabel
+        } = elements);
+        shellRenderer.syncStandaloneCanvasControls();
 
         bindWorkbenchEvents();
         bindGroupLayerEvents();
         edgesLayer.addEventListener('pointerdown', handleEdgeLayerPointerDown);
         edgesLayer.addEventListener('click', handleEdgeLayerClick);
         edgesLayer.addEventListener('contextmenu', handleEdgeLayerContextMenu);
-        nodesLayer.addEventListener('loadedmetadata', handleNodeMediaMetadataLoaded, true);
-        nodesLayer.addEventListener('timeupdate', handleNodeMediaTimeUpdate, true);
-        ['play', 'pause', 'seeked', 'seeking', 'ended', 'durationchange'].forEach((eventName) => {
-            nodesLayer.addEventListener(eventName, handleNodeMediaPlaybackStateChanged, true);
-        });
+        CANVAS_MEDIA_PLAYBACK_CONTROLLER.bindNodeMediaEvents(nodesLayer);
         if (canvasAgentPanel) {
             canvasAgentPanel.addEventListener('pointerdown', CANVAS_AGENT_PANEL_CONTROLLER.onCanvasAgentPointerDown);
             ['pointerdown', 'dblclick', 'contextmenu', 'wheel'].forEach((eventName) => {
@@ -12505,33 +13626,12 @@
         }).catch(() => {});
     }
 
-    function toolbarButton(action, icon, title) {
-        return `<button type="button" data-canvas-action="${action}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${renderIconHtml(icon)}</button>`;
-    }
-
     function ensureWorkbenchFormFieldNames(scope, prefix) {
-        if (!scope || !scope.querySelectorAll) return;
-        const safePrefix = String(prefix || 'canvas').replace(/[^a-z0-9_-]+/gi, '_');
-        scope.querySelectorAll('input,select,textarea').forEach((field, index) => {
-            if (field.id || field.name) return;
-            const key = field.getAttribute('data-node-param')
-                || field.getAttribute('data-config-param')
-                || field.getAttribute('data-inspector-param')
-                || field.getAttribute('data-inspector-node-field')
-                || field.getAttribute('data-config-lora-model')
-                || field.getAttribute('data-config-lora-weight')
-                || field.getAttribute('data-config-lora-enabled')
-                || field.getAttribute('data-mask-size')
-                || field.getAttribute('data-palette-search')
-                || field.type
-                || field.tagName.toLowerCase();
-            field.name = `simpai_${safePrefix}_${String(key).replace(/[^a-z0-9_-]+/gi, '_')}_${index}`;
-        });
-        scope.querySelectorAll('label[for]').forEach((label) => {
-            const target = label.getAttribute('for');
-            if (target && !scope.querySelector(`#${CSS.escape(target)}`) && !document.getElementById(target)) {
-                label.removeAttribute('for');
-            }
+        const normalizeFields = WORKBENCH_CANVAS_SHELL_RENDERER.ensureWorkbenchFormFieldNames;
+        if (typeof normalizeFields !== 'function') return;
+        return normalizeFields(scope, prefix, {
+            getDocument: () => document,
+            cssEscape: value => CSS.escape(value)
         });
     }
 
@@ -12539,36 +13639,9 @@
         return `<button type="button" data-canvas-mode="${nextMode}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><i class="fa-solid ${icon}"></i></button>`;
     }
 
-    function sideButton(action, icon, title) {
-        return `<button type="button" data-canvas-action="${action}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${renderIconHtml(icon)}</button>`;
-    }
-
     function renderIconHtml(icon) {
-        if (icon === 'sai-compare-glyph') return '<span class="sai-compare-glyph" aria-hidden="true"></span>';
-        if (icon === 'sai-tag-cart-glyph') return '<span class="sai-node-glyph sai-tag-cart-glyph" aria-hidden="true"><i class="fa-solid fa-clone"></i></span>';
-        if (icon === 'sai-wd14-glyph') return '<span class="sai-node-glyph sai-wd14-glyph" aria-hidden="true"><i class="fa-solid fa-tags"></i></span>';
-        if (icon === 'sai-vlm-glyph') return '<span class="sai-node-glyph sai-vlm-glyph" aria-hidden="true"><i class="fa-solid fa-comments"></i></span>';
-        return `<i class="fa-solid ${escapeHtml(icon || 'fa-circle')}"></i>`;
-    }
-
-    function isCanvasPointerGestureActive() {
-        return !!(
-            isPanning()
-            || isNodeDragging()
-            || isGroupDragging()
-            || isNodeResizing()
-            || isNoteTailDragging()
-            || isGroupResizing()
-            || isMarqueeSelecting()
-            || isConnecting()
-            || isComparePositionDragging()
-            || isTimelineClipDragging()
-            || isTimelinePlayheadDragging()
-            || isTimelinePreviewDragging()
-            || isDirectorTimelineDragging()
-            || isTimelineMaskPointerActive()
-            || isTimelineKeyframeDragging()
-        );
+        const renderIcon = WORKBENCH_CANVAS_SHELL_RENDERER.renderWorkbenchIconHtml;
+        return typeof renderIcon === 'function' ? renderIcon(icon, escapeHtml) : '';
     }
 
     window.SimpAICanvasWorkbenchHoverPreview = {
@@ -12577,67 +13650,11 @@
     };
 
     function bindWorkbenchEvents() {
-        root.addEventListener('click', onCanvasWorkbenchClick);
-        bindCanvasInputEvents();
-        viewport.addEventListener('pointerdown', onViewportPointerDown);
-        viewport.addEventListener('wheel', onViewportWheel, { passive: false });
-        viewport.addEventListener('dragover', onViewportDragOver);
-        viewport.addEventListener('dragleave', onViewportDragLeave);
-        viewport.addEventListener('drop', onViewportDrop);
-        viewport.addEventListener('contextmenu', onViewportContextMenu);
-        viewport.addEventListener('dblclick', onViewportDoubleClick);
-        viewport.addEventListener('auxclick', (evt) => {
-            if (evt.button === 1) evt.preventDefault();
-        });
-        root.addEventListener('pointerover', onVlmChatImagePreviewPointerOver, true);
-        root.addEventListener('pointermove', onVlmChatImagePreviewPointerMove, true);
-        root.addEventListener('pointerout', onVlmChatImagePreviewPointerOut, true);
-        if (minimapEl) {
-            minimapEl.addEventListener('pointerdown', onMinimapPointerDown);
-        }
-        if (outpaintOverlayEl) {
-            outpaintOverlayEl.addEventListener('pointerdown', onOutpaintOverlayPointerDown);
-        }
-        if (!presetSpecialMessageBound) {
-            presetSpecialMessageBound = true;
-            window.addEventListener('message', handlePresetSpecialViewerMessage);
-        }
-
-        palette.querySelector('[data-palette-close]').addEventListener('click', closePresetPalette);
-        palette.querySelector('.sai-canvas-palette-search').addEventListener('input', renderPresetPalette);
-        palette.addEventListener('click', async (evt) => {
-            if (evt.target === palette) closePresetPalette();
-            const item = evt.target.closest('[data-preset-name]');
-            if (!item) return;
-            const name = item.getAttribute('data-preset-name');
-            item.disabled = true;
-            const entry = await resolvePresetCatalogEntry(name);
-            item.disabled = false;
-            if (!entry) {
-                showToast(t('Preset definition is not ready. Please reopen the preset list.', 'Preset 定义尚未加载，请重新打开 Preset 列表。'));
-                return;
-            }
-            addPresetNode(entry, lastPointerWorld);
-            closePresetPalette();
-        });
-
-        window.addEventListener('resize', () => {
-            if (!root || root.hidden) return;
-            renderAll({ inspector: false });
-            if (hasDanbooruAutocompleteField()) positionDanbooruAutocompleteDropdown();
-        });
+        CANVAS_WORKBENCH_EVENT_CONTROLLER.bindWorkbenchEvents();
     }
 
     function reconcileSelection() {
-        const validIds = new Set(project.nodes.map(node => node.id));
-        selectedNodeIds = new Set(Array.from(selectedNodeIds).filter(id => validIds.has(id)));
-        if (selectedNodeId && !validIds.has(selectedNodeId)) selectedNodeId = null;
-        if (selectedNodeId && !selectedNodeIds.size) selectedNodeIds.add(selectedNodeId);
-        if (!selectedNodeId && selectedNodeIds.size) selectedNodeId = Array.from(selectedNodeIds).at(-1) || null;
-        const validGroupIds = new Set(ensureProjectGroups().map(group => group.id));
-        if (selectedGroupId && !validGroupIds.has(selectedGroupId)) selectedGroupId = null;
-        if (selectedNodeId || selectedEdgeId || selectedNodeIds.size) selectedGroupId = null;
-        if (selectedEdgeId && !project.edges.some(edge => edge.id === selectedEdgeId)) selectedEdgeId = null;
+        return reconcileSelectionFromController?.();
     }
 
     function canvasAgentPrimaryAction(...args) {
@@ -12734,31 +13751,7 @@
 
 
     function presetResultBasePosition(presetNode) {
-        return {
-            x: Math.round((presetNode?.x || 0) + (presetNode?.w || 360) + 140),
-            y: Math.round((presetNode?.y || 0) + 20)
-        };
-    }
-
-    function centerPresetRunViewport(presetNode, resultNode) {
-        const sourceNodes = ['prompt', 'negative_prompt']
-            .map(slot => getPromptTextSourceNode(presetNode, slot))
-            .filter(Boolean);
-        const nodes = [presetNode, resultNode, ...sourceNodes].filter(Boolean);
-        const rects = nodes.map(item => getNodeRect(item)).filter(Boolean);
-        if (!rects.length) return;
-        const left = Math.min(...rects.map(rect => rect.x));
-        const top = Math.min(...rects.map(rect => rect.y));
-        const right = Math.max(...rects.map(rect => rect.x + rect.w));
-        const bottom = Math.max(...rects.map(rect => rect.y + rect.h));
-        const cx = (left + right) / 2;
-        const cy = (top + bottom) / 2;
-        const panelEl = document.querySelector('.sai-canvas-agent-panel');
-        const panelVisible = !!(panelEl && !panelEl.hidden && Number(panelEl.offsetWidth || 0) > 0);
-        const agentOffset = panelVisible
-            ? (panelEl.offsetWidth / 2 + 20) / (project.viewport.zoom || 1)
-            : 0;
-        centerViewportOnWorld(cx + agentOffset, cy);
+        return CANVAS_NODE_LAYOUT_CONTROLLER?.presetResultBasePosition?.(presetNode);
     }
 
     async function handleCanvasAgentAction(...args) {
@@ -12770,368 +13763,126 @@
         const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
             ? window.simpleaiTopbarSystemParams
             : {};
-        const theme = String(params.__theme || document.documentElement.getAttribute('data-theme') || document.body.getAttribute('data-theme') || '').toLowerCase();
-        if (theme.includes('dark')) return 'dark';
-        if (theme.includes('light')) return 'light';
-        if (document.documentElement.classList.contains('dark') || document.body.classList.contains('dark')) return 'dark';
-        return 'light';
+        return WORKBENCH_CANVAS_SHELL_RENDERER.detectWorkbenchTheme({
+            themeParams: params,
+            documentElementTheme: document.documentElement.getAttribute('data-theme'),
+            bodyTheme: document.body.getAttribute('data-theme'),
+            documentElementDark: document.documentElement.classList.contains('dark'),
+            bodyDark: document.body.classList.contains('dark')
+        });
     }
 
     function applyThemeClass() {
         if (!root) return;
-        const theme = detectWorkbenchTheme();
-        root.dataset.canvasTheme = theme;
-        root.classList.toggle('theme-dark', theme === 'dark');
-        root.classList.toggle('theme-light', theme !== 'dark');
-    }
-
-    function shouldForceFullNodeRender(node) {
-        if (!node) return false;
-        if (node.id === selectedNodeId || selectedNodeIds.has(node.id)) return true;
-        if (getConnectingFromId() === node.id) return true;
-        if (isDraggingNode(node.id) || getNodeResizeNodeId() === node.id) return true;
-        if (activeInlineTagCartNodeId && activeInlineTagCartNodeId === node.id) return true;
-        return isNodeVisuallyRunning(node) || isResultRefreshing(node);
+        WORKBENCH_CANVAS_SHELL_RENDERER.applyWorkbenchThemeClass(root, detectWorkbenchTheme());
     }
 
     function nodeEffectiveRenderMode(node, options) {
-        if (options?.panPreview && getCanvasRenderMode() !== 'overview') {
-            const nodeEl = getRenderedNodeElement(node?.id || '');
-            const existingMode = nodeEl?.isConnected && nodeEl.parentElement === nodesLayer ? nodeEl.dataset.renderMode : '';
-            return existingMode || 'overview';
-        }
-        return getCanvasRenderMode() === 'overview' && !shouldForceFullNodeRender(node) ? 'overview' : 'full';
-    }
-
-    function snapCanvasCoord(value) {
-        return Math.round(Number(value || 0) / CANVAS_GRID_SIZE) * CANVAS_GRID_SIZE;
-    }
-
-    function snapCanvasSizeFromOrigin(origin, size, minSize, maxSize) {
-        const start = Number(origin || 0);
-        const min = Number(minSize || 0);
-        const max = Number(maxSize || min);
-        const minEdge = start + min;
-        const maxEdge = start + max;
-        let edge = snapCanvasCoord(start + Number(size || 0));
-        if (edge < minEdge) edge = Math.ceil(minEdge / CANVAS_GRID_SIZE) * CANVAS_GRID_SIZE;
-        if (edge > maxEdge) edge = Math.floor(maxEdge / CANVAS_GRID_SIZE) * CANVAS_GRID_SIZE;
-        return Math.round(clamp(edge - start, min, max));
-    }
-
-    function rectContainsRect(outer, inner, tolerance) {
-        if (!outer || !inner) return false;
-        const pad = Number(tolerance || 0);
-        return inner.x >= outer.x - pad
-            && inner.y >= outer.y - pad
-            && inner.x + inner.w <= outer.x + outer.w + pad
-            && inner.y + inner.h <= outer.y + outer.h + pad;
+        return CANVAS_NODE_RENDER_CONTROLLER?.getNodeEffectiveRenderMode?.(node, options) || 'full';
     }
 
     function isVisibleWorldRectCoveredByRenderedNodes() {
-        return rectContainsRect(getNodeRenderCoverageRect(), getNodeRenderWorldRect(), 16);
+        return isVisibleWorldRectCoveredByRenderedNodesFromController?.() || false;
     }
 
     function ensureProjectGroups() {
-        if (!Array.isArray(project.groups)) Object.assign(project, buildProjectGroupsPatch(project, []));
-        return project.groups;
+        return ensureProjectGroupsFromProjectContext();
     }
 
     function appendProjectEdge(edge) {
-        Object.assign(project, buildProjectEdgeAppendPatch(project, edge));
-        return edge;
+        return appendProjectEdgeFromProjectContext(edge);
     }
 
     function filterProjectEdges(predicate) {
-        Object.assign(project, buildProjectEdgeFilterPatch(project, predicate));
-        return project.edges;
+        return filterProjectEdgesFromProjectContext(predicate);
     }
 
     function applyProjectSchedulerPatch(scheduler, options) {
-        Object.assign(project, buildProjectSchedulerPatch(project, scheduler, options));
-        return project.scheduler;
+        return applyProjectSchedulerPatchFromProjectContext(scheduler, options);
     }
 
     function getGroup(id) {
-        return ensureProjectGroups().find(group => group.id === id) || null;
+        return getGroupFromProjectContext(id);
     }
 
     function getGroupRect(group) {
-        return {
-            x: Math.round(Number(group?.x || 0)),
-            y: Math.round(Number(group?.y || 0)),
-            w: Math.max(180, Math.round(Number(group?.w || 360))),
-            h: Math.max(120, Math.round(Number(group?.h || 240)))
-        };
+        return CANVAS_GROUP_RENDERER?.getGroupRect?.(group) || null;
     }
 
     function normalizeCanvasColor(value, fallback) {
-        const text = String(value || '').trim();
-        if (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(text)) return text;
-        return fallback;
+        return CANVAS_NODE_APPEARANCE_CONTROLLER.normalizeCanvasColor?.(value, fallback) ?? fallback;
     }
 
     function expandCanvasHexColor(value, fallback) {
-        const color = normalizeCanvasColor(value, fallback || '#14b8a6');
-        const text = String(color || fallback || '#14b8a6').trim();
-        const short = text.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
-        if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
-        return /^#[0-9a-f]{6}$/i.test(text) ? text : (fallback || '#14b8a6');
+        return CANVAS_NODE_APPEARANCE_CONTROLLER.expandCanvasHexColor?.(value, fallback) || fallback || '#14b8a6';
     }
 
     function nodeCustomColor(node) {
-        return normalizeCanvasColor(node?.style?.node_color || node?.style?.accent_color || '', '');
+        return CANVAS_NODE_APPEARANCE_CONTROLLER.nodeCustomColor?.(node) || '';
     }
 
     function nodeAccentContrastColor(color) {
-        const hex = expandCanvasHexColor(color, '#14b8a6').replace('#', '');
-        const r = Number.parseInt(hex.slice(0, 2), 16) / 255;
-        const g = Number.parseInt(hex.slice(2, 4), 16) / 255;
-        const b = Number.parseInt(hex.slice(4, 6), 16) / 255;
-        const channel = (value) => value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
-        const luminance = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-        return luminance > 0.48 ? '#111827' : '#f8fafc';
+        return CANVAS_NODE_APPEARANCE_CONTROLLER.nodeAccentContrastColor?.(color) || '#f8fafc';
     }
 
     function applyNodeCustomColorVars(node, nodeEl) {
-        if (!nodeEl) return;
-        const color = nodeCustomColor(node);
-        nodeEl.classList.toggle('has-custom-color', !!color);
-        if (!color) {
-            nodeEl.style.removeProperty('--sai-canvas-accent');
-            nodeEl.style.removeProperty('--sai-canvas-accent-soft');
-            nodeEl.style.removeProperty('--sai-node-accent-contrast');
-            nodeEl.style.removeProperty('--sai-node-custom-color');
-            return;
-        }
-        const hex = expandCanvasHexColor(color, '#14b8a6');
-        nodeEl.style.setProperty('--sai-canvas-accent', hex);
-        nodeEl.style.setProperty('--sai-canvas-accent-soft', `color-mix(in srgb, ${hex} 24%, var(--sai-canvas-panel))`);
-        nodeEl.style.setProperty('--sai-node-accent-contrast', nodeAccentContrastColor(hex));
-        nodeEl.style.setProperty('--sai-node-custom-color', hex);
+        return CANVAS_NODE_APPEARANCE_CONTROLLER.applyNodeCustomColorVars?.(node, nodeEl);
     }
 
     function groupShortcutLabel(group) {
-        const key = String(group?.shortcut || '').trim();
-        return key ? `Alt+${key}` : '';
+        return CANVAS_GROUP_RENDERER?.groupShortcutLabel?.(group) || '';
     }
 
     function renderGroups() {
-        if (!groupsLayer) return;
-        const groups = ensureProjectGroups();
-        const liveIds = new Set(groups.map(group => group.id));
-        groupsLayer.querySelectorAll('[data-group-id]').forEach((groupEl) => {
-            if (!liveIds.has(groupEl.getAttribute('data-group-id'))) groupEl.remove();
-        });
-        groups.forEach((group) => {
-            Object.assign(group, buildGroupIdPatch(group));
-            const rect = getGroupRect(group);
-            Object.assign(group, buildGroupFieldPatch(group, 'x', rect.x));
-            Object.assign(group, buildGroupFieldPatch(group, 'y', rect.y));
-            Object.assign(group, buildGroupFieldPatch(group, 'w', rect.w));
-            Object.assign(group, buildGroupFieldPatch(group, 'h', rect.h));
-            Object.assign(group, buildGroupFieldPatch(group, 'color', normalizeCanvasColor(group.color, '#14b8a6')));
-            Object.assign(group, buildGroupFieldPatch(group, 'alpha', clamp(Number(group.alpha ?? 0.16), 0.04, 0.72)));
-            let groupEl = groupsLayer.querySelector(`[data-group-id="${CSS.escape(group.id)}"]`);
-            if (!groupEl) {
-                groupEl = document.createElement('div');
-                groupEl.dataset.groupId = group.id;
-                groupsLayer.appendChild(groupEl);
-            }
-            const renderKey = JSON.stringify({
-                title: group.title || '',
-                shortcut: group.shortcut || '',
-                locked: !!group.locked
-            });
-            groupEl.className = 'sai-canvas-group';
-            groupEl.classList.toggle('is-selected', group.id === selectedGroupId);
-            groupEl.classList.toggle('is-locked', !!group.locked);
-            groupEl.style.left = `${rect.x}px`;
-            groupEl.style.top = `${rect.y}px`;
-            groupEl.style.width = `${rect.w}px`;
-            groupEl.style.height = `${rect.h}px`;
-            groupEl.style.setProperty('--sai-group-color', group.color);
-            groupEl.style.setProperty('--sai-group-alpha', String(group.alpha));
-            if (groupEl.__simpaiRenderKey !== renderKey) {
-                const shortcut = groupShortcutLabel(group);
-                groupEl.innerHTML = `
-<div class="sai-canvas-group-fill"></div>
-<div class="sai-canvas-group-head" data-group-drag-handle>
-  <span>${escapeHtml(group.title || t('Group', '分组'))}</span>
-  ${shortcut ? `<b>${escapeHtml(shortcut)}</b>` : ''}
-  ${group.locked ? '<i class="fa-solid fa-lock"></i>' : ''}
-</div>
-<button type="button" class="sai-canvas-resize-handle sai-group-resize-handle" data-group-resize-handle title="${escapeHtml(t('Resize group', '调整分组大小'))}" aria-label="${escapeHtml(t('Resize group', '调整分组大小'))}"></button>`;
-                groupEl.__simpaiRenderKey = renderKey;
-            }
-            ensureGroupResizeHandle(groupEl, group);
-        });
-    }
-
-    function ensureGroupResizeHandle(groupEl, group) {
-        if (!groupEl || !group) return;
-        let handle = groupEl.querySelector('[data-group-resize-handle]');
-        if (!handle) {
-            handle = document.createElement('button');
-            handle.type = 'button';
-            handle.className = 'sai-canvas-resize-handle sai-group-resize-handle';
-            handle.setAttribute('data-group-resize-handle', '');
-            groupEl.appendChild(handle);
-        }
-        const label = t('Resize group', '调整分组大小');
-        handle.setAttribute('title', label);
-        handle.setAttribute('aria-label', label);
-        handle.hidden = !!group.locked;
+        return CANVAS_GROUP_RENDERER?.renderGroups?.();
     }
 
     function updateGroupPositionDom(groupId) {
-        const group = getGroup(groupId);
-        const groupEl = groupsLayer?.querySelector(`[data-group-id="${CSS.escape(groupId || '')}"]`);
-        if (!group || !groupEl) return;
-        const rect = getGroupRect(group);
-        groupEl.style.left = `${rect.x}px`;
-        groupEl.style.top = `${rect.y}px`;
-        groupEl.style.width = `${rect.w}px`;
-        groupEl.style.height = `${rect.h}px`;
+        return CANVAS_GROUP_RENDERER?.updateGroupPositionDom?.(groupId);
     }
 
     function getNodeGroupMembershipRect(node) {
-        const nodeRect = getNodeRect(node);
-        const nodeEl = node?.id ? getRenderedNodeElement(node.id) : null;
-        const head = nodeEl?.querySelector?.(':scope > .sai-node-head');
-        const headHeight = Number(head?.offsetHeight || 0);
-        return {
-            x: nodeRect.x,
-            y: nodeRect.y,
-            w: nodeRect.w,
-            h: Math.max(1, Math.min(nodeRect.h, headHeight || 44))
-        };
+        return CANVAS_GROUP_RENDERER?.getNodeGroupMembershipRect?.(node) || null;
     }
 
     function getNodesInsideGroup(group) {
-        if (!group) return [];
-        const rect = getGroupRect(group);
-        return project.nodes.filter((node) => rectsOverlap(getNodeGroupMembershipRect(node), rect, 0));
+        return CANVAS_GROUP_RENDERER?.getNodesInsideGroup?.(group) || [];
     }
 
     function selectedNodesBounds(padding) {
-        const ids = getSelectedNodeIdList();
-        const rects = ids.map(id => getNodeRect(getNode(id))).filter(Boolean);
-        if (!rects.length) return null;
-        const pad = Number(padding ?? 48);
-        const minX = Math.min(...rects.map(rect => rect.x));
-        const minY = Math.min(...rects.map(rect => rect.y));
-        const maxX = Math.max(...rects.map(rect => rect.x + rect.w));
-        const maxY = Math.max(...rects.map(rect => rect.y + rect.h));
-        return {
-            x: Math.round(minX - pad),
-            y: Math.round(minY - pad),
-            w: Math.round(maxX - minX + pad * 2),
-            h: Math.round(maxY - minY + pad * 2)
-        };
+        return CANVAS_GROUP_RENDERER?.selectedNodesBounds?.(padding) || null;
     }
 
     function addAreaGroup(world, options) {
-        const opts = options || {};
-        if (opts.history !== false) pushHistory('Add area group');
-        const fromSelection = !opts.ignoreSelection ? selectedNodesBounds(44) : null;
-        const rect = fromSelection || {
-            x: Math.round((world?.x || viewportCenterWorld().x) - 200),
-            y: Math.round((world?.y || viewportCenterWorld().y) - 120),
-            w: 400,
-            h: 240
-        };
-        const group = buildAreaGroup(rect, opts.group);
-        if (!group) return null;
-        Object.assign(project, buildProjectGroupAppendPatch(project, group));
-        selectedGroupId = group.id;
-        selectedNodeId = null;
-        selectedNodeIds = new Set();
-        selectedEdgeId = null;
-        mutate();
-        showToast(fromSelection ? t('Group created around selected nodes.', '已围绕选中节点创建分组。') : t('Area group added.', '已添加区域分组。'));
-        return group;
+        return CANVAS_GROUP_INTERACTION_CONTROLLER.addAreaGroup?.(world, options) || null;
     }
 
     function updateGroupField(groupId, key, value, inputType) {
-        const group = getGroup(groupId);
-        if (!group || !key) return;
-        if (group.locked && ['x', 'y', 'w', 'h'].includes(key)) {
-            showToast(t('Group position is locked.', '分组位置已锁定。'));
-            renderInspector();
-            return;
-        }
-        pushHistoryBatch(`group:${groupId}:${key}`, 'Edit area group');
-        Object.assign(group, buildGroupFieldPatch(group, key, value));
-        renderGroups();
-        scheduleSave();
+        return CANVAS_GROUP_INTERACTION_CONTROLLER.updateGroupField?.(groupId, key, value, inputType);
+    }
+
+    function bindInspectorGroupFieldEvents(inspector) {
+        return CANVAS_GROUP_INTERACTION_CONTROLLER.bindInspectorGroupFieldEvents?.(inspector) || false;
     }
 
     function focusGroup(group) {
-        if (!group) return;
-        const rect = getGroupRect(group);
-        selectedGroupId = group.id;
-        selectedNodeId = null;
-        selectedNodeIds = new Set();
-        selectedEdgeId = null;
-        centerViewportOnWorld(rect.x + rect.w / 2, rect.y + rect.h / 2);
+        return CANVAS_GROUP_INTERACTION_CONTROLLER.focusGroup?.(group);
     }
 
     function deleteSelectedGroup() {
-        const group = getGroup(selectedGroupId);
-        if (!group) return;
-        pushHistory('Delete area group');
-        Object.assign(project, buildProjectGroupDeletePatch(project, group.id));
-        selectedGroupId = null;
-        mutate();
+        return CANVAS_GROUP_INTERACTION_CONTROLLER.deleteSelectedGroup?.();
     }
 
     function centerViewportOnWorld(worldX, worldY) {
-        const rect = viewport.getBoundingClientRect();
-        const zoom = project.viewport.zoom || 1;
-        applyProjectViewportPatch({
-            x: Math.round(rect.width / 2 - worldX * zoom),
-            y: Math.round(rect.height / 2 - worldY * zoom)
-        });
-        renderAll({ inspector: false });
-        scheduleSave();
+        return CANVAS_VIEWPORT_FIT_CONTROLLER.centerViewportOnWorld?.(worldX, worldY);
     }
 
     function ensureNodeResizeHandle(nodeEl, node) {
-        if (!nodeEl || !node) return;
-        let handle = nodeEl.querySelector(':scope > [data-node-resize-handle]');
-        if (!handle) {
-            handle = document.createElement('button');
-            handle.type = 'button';
-            handle.className = 'sai-canvas-resize-handle sai-node-resize-handle';
-            handle.setAttribute('data-node-resize-handle', '');
-            nodeEl.appendChild(handle);
-        }
-        const label = t('Resize node', '调整节点大小');
-        handle.setAttribute('title', label);
-        handle.setAttribute('aria-label', label);
-        handle.hidden = isNodeLocked(node);
+        return CANVAS_NODE_APPEARANCE_CONTROLLER.ensureNodeResizeHandle?.(nodeEl, node);
     }
 
     function ensureNodeCollapseButton(nodeEl, node) {
-        if (!nodeEl || !node) return;
-        const head = nodeEl.querySelector(':scope > .sai-node-head');
-        if (!head) return;
-        let button = head.querySelector('[data-node-action="toggle-collapse"]');
-        if (!button) {
-            button = document.createElement('button');
-            button.type = 'button';
-            button.setAttribute('data-node-action', 'toggle-collapse');
-            const deleteButton = head.querySelector('[data-node-action="delete"]');
-            if (deleteButton) head.insertBefore(button, deleteButton);
-            else head.appendChild(button);
-        }
-        const collapsed = isNodeCollapsed(node);
-        const label = collapsed ? t('Expand node', '展开节点') : t('Collapse node', '折叠节点');
-        button.className = 'sai-node-collapse-btn';
-        button.setAttribute('title', label);
-        button.setAttribute('aria-label', label);
-        button.innerHTML = `<i class="fa-solid ${collapsed ? 'fa-up-right-and-down-left-from-center' : 'fa-down-left-and-up-right-to-center'}"></i>`;
+        return CANVAS_NODE_APPEARANCE_CONTROLLER.ensureNodeCollapseButton?.(nodeEl, node);
     }
 
     function restoreInlineTagCartAfterRender() {
@@ -13171,186 +13922,34 @@
         return overviewInputPorts(node).map(port => `${port.kind}:${port.slot || ''}`).join('|');
     }
 
+    const nodeRenderSignatureService = WORKBENCH_CANVAS_NODE_RENDER_SIGNATURE.createCanvasNodeRenderSignature({
+        assetSource: {
+            getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
+            inferChatImageRelativePath: (...args) => inferChatImageRelativePath(...args),
+            getAssetRoot: () => window.SimpAICanvasWorkbenchAssetRoot || ''
+        },
+        nodeSource: {
+            nodeStatusState: (...args) => nodeStatusState(...args),
+            compareSourceSignature: (...args) => compareSourceSignature(...args)
+        },
+        projectSource: { getNode: (...args) => getNode(...args) },
+        timelineSource: { getTimelineSourceAsset: (...args) => getTimelineSourceAsset(...args) },
+        mediaBrowserSource: {
+            serializableMediaBrowserState: (...args) => serializableMediaBrowserState(...args),
+            mediaBrowserRuntimeSignature: (...args) => mediaBrowserRuntimeSignature(...args)
+        }
+    });
+
     function mediaAssetRenderRootKey(asset) {
-        return inferChatImageRelativePath(asset) ? String(window.SimpAICanvasWorkbenchAssetRoot || '') : '';
+        return nodeRenderSignatureService.mediaAssetRenderRootKey(asset);
     }
 
     function mediaAssetRenderKey(asset) {
-        if (!asset) return '';
-        return [
-            asset.asset_id || '',
-            asset.path || '',
-            asset.output_path || '',
-            asset.original_output_path || '',
-            asset.preview_url || '',
-            asset.thumb || '',
-            asset.asset_relative_path || '',
-            asset.relative_path || '',
-            asset.asset_root_key || '',
-            mediaAssetRenderRootKey(asset),
-            asset.data_url ? String(asset.data_url).slice(0, 128) : '',
-            asset.mime || '',
-            asset.width || '',
-            asset.height || '',
-            asset.duration || '',
-            asset.size || ''
-        ].join('|');
+        return nodeRenderSignatureService.mediaAssetRenderKey(asset);
     }
 
     function nodeRenderSignature(node) {
-        if (!node) return '';
-        const mediaAsset = node.type === 'result' ? getSelectedResultAsset(node) : node.asset;
-        const mediaKey = mediaAssetRenderKey(mediaAsset);
-        if (['video', 'audio', 'image', 'mask'].includes(node.type)) {
-            return JSON.stringify({
-                type: node.type,
-                title: node.title,
-                mediaKey,
-                displayMode: node.type === 'image' ? (node.display_mode || '') : undefined,
-                mask: node.mask?.thumb || node.mask?.data_url || '',
-                params: node.type === 'mask' ? node.params || {} : undefined,
-                input: node.type === 'mask' ? node.input_node_id || '' : undefined,
-                locked: !!node.locked,
-                ignored: !!node.ignored,
-                status: nodeStatusState(node)
-            });
-        }
-        if (node.type === 'result') {
-            return JSON.stringify({
-                type: node.type,
-                title: node.title,
-                mediaKey,
-                selected: node.selected_asset_index || 0,
-                assetCount: Array.isArray(node.assets) ? node.assets.length : 0,
-                preview: mediaAssetRenderKey(node.preview),
-                previewFrames: Array.isArray(node.preview_frames) ? node.preview_frames.map(frame => mediaAssetRenderKey(frame)) : [],
-                status: node.status || {},
-                sourceKind: node.source?.kind || '',
-                stale: !!(node.source?.stale || node.producer?.stale),
-                refreshing: !!(node.source?.refreshing || node.producer?.refreshing),
-                locked: !!node.locked,
-                ignored: !!node.ignored
-            });
-        }
-        if (node.type === 'compare') {
-            return JSON.stringify({
-                type: node.type,
-                title: node.title,
-                w: node.w,
-                h: node.h,
-                inputs: node.inputs || {},
-                sourceA: compareSourceSignature(node, 'a'),
-                sourceB: compareSourceSignature(node, 'b'),
-                params: node.params || {},
-                locked: !!node.locked,
-                ignored: !!node.ignored
-            });
-        }
-        if (node.type === 'timeline') {
-            return JSON.stringify({
-                type: node.type,
-                title: node.title,
-                w: node.w,
-                h: node.h,
-                params: node.params || {},
-                tracks: node.tracks || [],
-                clips: (node.clips || []).map(clip => {
-                    const source = getNode(clip.source_node_id);
-                    const asset = getTimelineSourceAsset(source);
-                    return Object.assign({}, clip, {
-                        asset_key: mediaAssetRenderKey(asset)
-                    });
-                }),
-                locked: !!node.locked,
-                ignored: !!node.ignored
-            });
-        }
-        if (node.type === 'media_browser') {
-            return JSON.stringify({
-                type: node.type,
-                title: node.title,
-                w: node.w,
-                h: node.h,
-                media_browser: serializableMediaBrowserState(node.media_browser || {}),
-                runtime: mediaBrowserRuntimeSignature(node.id),
-                locked: !!node.locked,
-                ignored: !!node.ignored
-            });
-        }
-        if (node.type === 'vlm') {
-            const chat = node.chat || {};
-            const messageSignature = (message) => {
-                const images = Array.isArray(message?.images) ? message.images : [];
-                return {
-                    role: message?.role || '',
-                    content: message?.content || '',
-                    notice: message?.notice || '',
-                    pending: !!message?.pending,
-                    image_count: message?.image_count || 0,
-                    actions: Array.isArray(message?.actions) ? message.actions.length : 0,
-                    images: images.map(image => [
-                        image?.id || '',
-                        image?.name || '',
-                        image?.thumb || '',
-                        image?.preview_url || '',
-                        image?.path || '',
-                        image?.output_path || '',
-                        image?.original_output_path || '',
-                        image?.asset_relative_path || '',
-                        image?.relative_path || '',
-                        image?.asset_root_key || '',
-                        mediaAssetRenderRootKey(image),
-                        image?.data_url ? String(image.data_url).slice(0, 96) : ''
-                    ])
-                };
-            };
-            return JSON.stringify({
-                type: node.type,
-                title: node.title,
-                w: node.w,
-                h: node.h,
-                params: node.params || {},
-                image_inputs: node.image_inputs || {},
-                chat: {
-                    conversation_id: chat.conversation_id || '',
-                    messages: Array.isArray(chat.messages) ? chat.messages.map(messageSignature) : [],
-                    pending_images: Array.isArray(chat.pending_images) ? chat.pending_images.map(image => [
-                        image?.id || '',
-                        image?.name || '',
-                        image?.mime || '',
-                        image?.thumb || '',
-                        image?.preview_url || '',
-                        image?.path || '',
-                        image?.output_path || '',
-                        image?.original_output_path || '',
-                        image?.asset_relative_path || '',
-                        image?.relative_path || '',
-                        image?.asset_root_key || '',
-                        mediaAssetRenderRootKey(image),
-                        image?.data_url ? String(image.data_url).slice(0, 96) : ''
-                    ]) : []
-                },
-                text: node.text?.value || '',
-                status: node.status || {},
-                vlm_model_status: node.vlm_model_status || {},
-                custom_model_choices: node.custom_model_choices || [],
-                locked: !!node.locked,
-                ignored: !!node.ignored
-            });
-        }
-        if (node.type === 'note') {
-            return JSON.stringify({
-                type: node.type,
-                title: node.title,
-                w: node.w,
-                h: node.h,
-                text: node.text || '',
-                style: node.style || {},
-                locked: !!node.locked,
-                ignored: !!node.ignored
-            });
-        }
-        return JSON.stringify(node);
+        return nodeRenderSignatureService.nodeRenderSignature(node);
     }
 
     function isNodeSchedulerBlocked(node) {
@@ -13370,31 +13969,7 @@
     }
 
     function updateNodePositionDom(ids) {
-        if (!nodesLayer) return;
-        (ids || []).forEach((id) => {
-            const node = getNode(id);
-            const nodeEl = nodesLayer.querySelector(`[data-node-id="${CSS.escape(id)}"]`);
-            if (!node || !nodeEl) return;
-            nodeEl.style.left = `${node.x || 0}px`;
-            nodeEl.style.top = `${node.y || 0}px`;
-            nodeEl.style.width = `${node.w || defaultNodeSize(node.type).w}px`;
-            const renderMode = nodeEl.dataset.renderMode || nodeEffectiveRenderMode(node);
-            const defaultSize = defaultNodeSize(node.type);
-            const storedNodeHeight = node.h || defaultSize.h;
-            const measuredNodeHeight = Number(getNodeLayoutSize(node)?.h || 0);
-            const preserveOverviewLayout = renderMode === 'overview' && !isNodeCollapsed(node);
-            const useCollapsedPromptHeight = supportsCollapsedPromptHeight(node);
-            const nodeLayoutHeight = useCollapsedPromptHeight
-                ? collapsedPromptNodeHeight(node)
-                : (preserveOverviewLayout ? Math.max(storedNodeHeight, measuredNodeHeight) : storedNodeHeight);
-            applyNodeCustomColorVars(node, nodeEl);
-            nodeEl.classList.toggle('is-lod-placeholder', preserveOverviewLayout);
-            nodeEl.style.setProperty('--sai-node-expanded-min-height', `${storedNodeHeight}px`);
-            nodeEl.style.minHeight = isNodeCollapsed(node) ? '' : `${nodeLayoutHeight}px`;
-            nodeEl.style.height = useCollapsedPromptHeight || preserveOverviewLayout || shouldFixNodeHeight(node) ? `${nodeLayoutHeight}px` : '';
-            rememberRenderedNodeLayout(node, nodeEl);
-        });
-        positionCanvasAgentPanel();
+        return updateNodePositionDomFromController?.(ids);
     }
 
     function shouldFixNodeHeight(node) {
@@ -13457,187 +14032,59 @@
     }
 
     function getClassicIpMaxImages(node) {
-        return resolveClassicInpaintTaskMethod(node) === 'krea2_aio_cn' ? 1 : (registryClassicIpMaxImages || 4);
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getClassicIpMaxImages(node);
     }
 
     function getClassicIpCount(node) {
-        return clamp(Number(node?.classic_ip_count || 1), 1, getClassicIpMaxImages(node));
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getClassicIpCount(node);
     }
 
-    /** Resolve allowed IP control types for a classic node, matching main UI logic in topbar.py */
     function getClassicIpTypes(node) {
-        const allTypes = registryClassicIpControlTypes || ['ImagePrompt', 'PyraCanny', 'Depth', 'FaceSwap', 'OpenPose'];
-        const filters = registryClassicIpFilters || {};
-        const engine = String(node?.runtime?.backend_engine || '').toLowerCase();
-        const taskMethod = resolveClassicInpaintTaskMethod(node);
-        if (taskMethod === 'krea2_aio_cn') {
-            return filters.krea2 || ['Depth', 'OpenPose'];
-        }
-        // Z-image, Wan, Qwen → wan_qwen_zimage filter
-        if (['wan', 'qwen', 'z-image'].includes(engine) || engine === 'zimage') {
-            return filters['wan_qwen_zimage'] || allTypes.slice(1, 3).concat(allTypes.slice(-1));
-        }
-        // il_v_pre_aio, chenkin_noob_aio
-        if (['il_v_pre_aio', 'chenkin_noob_aio'].includes(taskMethod)) {
-            return filters['il_v_pre'] || allTypes.slice(0, 3).concat(allTypes.slice(-1));
-        }
-        return filters['default'] || allTypes;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getClassicIpTypes(node);
     }
 
     function getClassicUovMethods(node) {
-        const engine = String(node?.runtime?.backend_engine || '').toLowerCase();
-        if (engine === 'flux') {
-            return registryClassicUovMethodsFlux || registryClassicUovMethods || [];
-        }
-        return registryClassicUovMethodsDefault || registryClassicUovMethods || [];
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getClassicUovMethods(node);
     }
 
     function getClassicInpaintEngines(node) {
-        const engines = registryClassicInpaintEngines || {};
-        const taskMethod = resolveClassicInpaintTaskMethod(node);
-        const choices = engines[taskMethod] || engines['SDXL'] || ['v2.6', 'v2.5', 'None'];
-        return choices;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getClassicInpaintEngines(node);
     }
 
     function resolveClassicInpaintTaskMethod(node) {
-        const engines = registryClassicInpaintEngines || {};
-        const runtime = node?.runtime || {};
-        const preset = node?.preset || {};
-        const candidates = [
-            runtime.task_method,
-            runtime.backend_params?.task_method,
-            preset.task_method,
-            node?.task_method
-        ].map(item => String(item || '').trim()).filter(Boolean);
-        const direct = candidates.find(item => engines[item]);
-        if (direct) return direct;
-        const taskText = candidates.join(' ').toLowerCase();
-        const backend = String(runtime.backend_engine || preset.backend_engine || '').trim().toLowerCase();
-        if (taskText.includes('z_image') || taskText.includes('z-image') || backend === 'z-image' || backend === 'zimage') return 'z_image_turbo_aio_cn';
-        if (taskText.includes('wan') || backend === 'wan') return 'wan_aio_cn';
-        if (taskText.includes('qwen') || backend === 'qwen') return 'qwen_aio_cn';
-        if (taskText.includes('flux') || backend === 'flux') return 'flux_aio';
-        if (backend === 'comfy' || backend === 'sdxl' || backend === 'fooocus') return 'SDXL';
-        return 'SDXL';
+        return CANVAS_CONFIG_VALUES_CONTROLLER.resolveClassicInpaintTaskMethod(node);
     }
 
     function normalizeClassicInpaintMode(mode) {
-        const modes = registryClassicInpaintMethods || [
-            'Inpaint or Outpaint (default)',
-            'Improve Detail (face, hand, eyes, etc.)',
-            'Modify Content (add objects, change background, etc.)'
-        ];
-        const raw = String(mode || modes[0] || '');
-        if (modes.includes(raw)) return raw;
-        if (raw.startsWith('Improve Detail')) return modes.find(m => m.startsWith('Improve Detail')) || raw;
-        if (raw.startsWith('Modify Content')) return modes.find(m => m.startsWith('Modify Content')) || raw;
-        if (raw.startsWith('Inpaint or Outpaint')) return modes.find(m => m.startsWith('Inpaint or Outpaint')) || raw;
-        return modes[0] || raw;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.normalizeClassicInpaintMode(mode);
     }
 
     function getInpaintModeDefaults(mode, node) {
-        const normalizedMode = normalizeClassicInpaintMode(mode);
-        const engines = getClassicInpaintEngines(node);
-        const defaultEngine = engines[0] || 'None';
-        if (normalizedMode.startsWith('Improve Detail')) {
-            return { denoise: 0.5, respective: 0.2, engine: 'None', disableLatent: false, showOutpaint: false, showAdditionalPrompt: true };
-        }
-        if (normalizedMode.startsWith('Modify Content')) {
-            return { denoise: 1.0, respective: 0.2, engine: defaultEngine, disableLatent: true, showOutpaint: false, showAdditionalPrompt: true };
-        }
-        return { denoise: 1.0, respective: 0.618, engine: defaultEngine, disableLatent: false, showOutpaint: true, showAdditionalPrompt: false };
-    }
-
-    function canvasBoolValue(value, fallback) {
-        if (value === undefined || value === null || value === '') return !!fallback;
-        if (value === true || value === 1 || value === '1') return true;
-        if (value === false || value === 0 || value === '0') return false;
-        const text = String(value).trim().toLowerCase();
-        if (['true', 'yes', 'on', 'enabled'].includes(text)) return true;
-        if (['false', 'no', 'off', 'disabled', 'none'].includes(text)) return false;
-        return !!value;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getInpaintModeDefaults(mode, node);
     }
 
     function enhanceRegionKey(index) {
-        return `enhance_region_${Number(index) + 1}`;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.enhanceRegionKey(index);
     }
 
     function detectionSlotForRegion(index) {
-        return `detection_${Number(index)}`;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.detectionSlotForRegion(index);
     }
 
     function parseDetectionSlot(slot) {
-        const match = String(slot || '').match(/^detection_(\d+)$/);
-        if (!match) return -1;
-        const index = Number(match[1]);
-        return Number.isFinite(index) ? index : -1;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.parseDetectionSlot(slot);
     }
 
     function getClassicEnhanceRegionDefault(index) {
-        const defaults = registryClassicEnhanceRegionDefaults || [
-            { label: 'Face', prompt: 'face' },
-            { label: 'Hand', prompt: 'hand' },
-            { label: 'Eye', prompt: 'eye' }
-        ];
-        return defaults[index] || { label: `Region ${index + 1}`, prompt: '' };
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getClassicEnhanceRegionDefault(index);
     }
 
     function getClassicEnhanceRegionValues(node, index, sourceValues) {
-        const params = node?.params || {};
-        const base = sourceValues || {};
-        const preset = getClassicEnhanceRegionDefault(index);
-        const prefix = enhanceRegionKey(index);
-        const read = (key, fallback) => {
-            if (Object.prototype.hasOwnProperty.call(base, key)) return base[key];
-            const fullKey = `${prefix}_${key}`;
-            if (Object.prototype.hasOwnProperty.call(params, fullKey)) return params[fullKey];
-            return fallback;
-        };
-        return {
-            enabled: canvasBoolValue(read('enabled', true), true),
-            dino_prompt: read('dino_prompt', preset.prompt || ''),
-            prompt: read('prompt', ''),
-            negative_prompt: read('negative_prompt', ''),
-            mask_model: read('mask_model', 'sam'),
-            mask_cloth_category: read('mask_cloth_category', 'full'),
-            mask_sam_model: read('mask_sam_model', 'vit_b'),
-            mask_text_threshold: Number(read('mask_text_threshold', 0.25)),
-            mask_box_threshold: Number(read('mask_box_threshold', 0.3)),
-            mask_sam_max_detections: Number(read('mask_sam_max_detections', 0)),
-            inpaint_disable_initial_latent: canvasBoolValue(read('inpaint_disable_initial_latent', false), false),
-            inpaint_engine: read('inpaint_engine', 'None'),
-            inpaint_strength: Number(read('inpaint_strength', 0.5)),
-            inpaint_respective_field: Number(read('inpaint_respective_field', 0.2)),
-            inpaint_erode_or_dilate: Number(read('inpaint_erode_or_dilate', 0)),
-            mask_invert: canvasBoolValue(read('mask_invert', false), false)
-        };
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getClassicEnhanceRegionValues(node, index, sourceValues);
     }
 
     function applyClassicEnhanceRegionValues(node, index, values, sourceNodeId) {
-        if (!node || node.type !== 'classic') return;
-        const prefix = enhanceRegionKey(index);
-        const region = getClassicEnhanceRegionValues(node, index, values);
-        Object.assign(node, buildNodeParamsPatch(node, { paramsPatch: {
-            [`${prefix}_enabled`]: region.enabled,
-            [`${prefix}_dino_prompt`]: region.dino_prompt,
-            [`${prefix}_prompt`]: region.prompt,
-            [`${prefix}_negative_prompt`]: region.negative_prompt,
-            [`${prefix}_mask_model`]: region.mask_model,
-            [`${prefix}_mask_cloth_category`]: region.mask_cloth_category,
-            [`${prefix}_mask_sam_model`]: region.mask_sam_model,
-            [`${prefix}_mask_text_threshold`]: region.mask_text_threshold,
-            [`${prefix}_mask_box_threshold`]: region.mask_box_threshold,
-            [`${prefix}_mask_sam_max_detections`]: region.mask_sam_max_detections,
-            [`${prefix}_inpaint_disable_initial_latent`]: region.inpaint_disable_initial_latent,
-            [`${prefix}_inpaint_engine`]: region.inpaint_engine,
-            [`${prefix}_inpaint_strength`]: region.inpaint_strength,
-            [`${prefix}_inpaint_respective_field`]: region.inpaint_respective_field,
-            [`${prefix}_inpaint_erode_or_dilate`]: region.inpaint_erode_or_dilate,
-            [`${prefix}_mask_invert`]: region.mask_invert
-        } }));
-        Object.assign(node, buildClassicNodeStatePatch(node, {
-            enhanceDetectionConfigsPatch: { [String(index)]: sourceNodeId || null }
-        }));
+        return CANVAS_CONFIG_VALUES_CONTROLLER.applyClassicEnhanceRegionValues(node, index, values, sourceNodeId);
     }
 
     function getDetectionChoices() {
@@ -13649,123 +14096,12 @@
     }
 
     function getDetectionConfigLabel(index) {
-        const preset = getClassicEnhanceRegionDefault(index);
-        return `${preset.label || `Region ${index + 1}`} Detection`;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getDetectionConfigLabel(index);
     }
 
     function renderClassicInspector(node) {
-        const modes = registryClassicModes || [];
-        const mode = node.classic_mode || 't2i';
-        const modeInfo = modes.find(m => m.key === mode) || modes[0] || { label: 'T2I', icon: '✏️' };
-        const params = node.params || {};
-        const taskMethod = node.runtime?.task_method || '';
-        const imageNumber = clamp(Number(params.image_number ?? 1), 1, 16);
-        const R_UOV = getClassicUovMethods(node);
-        const R_INPAINT = registryClassicInpaintMethods || [];
-        const R_OUTPAINT = registryClassicOutpaintDirs || [];
-        const R_IP_TYPES = getClassicIpTypes(node);
-        const ipCount = getClassicIpCount(node);
-        let modeSpecific = '';
-        if (mode === 'ip') {
-            modeSpecific = `<h3>${escapeHtml(t('Image Prompt Settings', '图像提示设置'))}</h3>
-${getClassicIpMaxImages(node) > 1 ? `<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('IP Images', 'IP 图像'))}</span><div class="sai-range-pair"><input data-classic-param="ip_count" type="range" min="1" max="${getClassicIpMaxImages(node)}" step="1" value="${escapeHtml(ipCount)}"><input data-classic-param="ip_count" type="number" min="1" max="${getClassicIpMaxImages(node)}" step="1" value="${escapeHtml(ipCount)}"></div></label>` : ''}
-${Array.from({ length: ipCount }, (_, i) => { const ipStopInsp = params[`ip_stop_${i}`] ?? 0.5; const ipWeightInsp = params[`ip_weight_${i}`] ?? 1.0; return `<div class="sai-inspector-grid2">
-  <label><span>${escapeHtml(t('Type', '类型'))} ${i + 1}</span><select data-classic-ip-type="${i}">${R_IP_TYPES.map(t => `<option value="${escapeHtml(t)}" ${t === (params[`ip_type_${i}`] || R_IP_TYPES[0]) ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select></label>
-  <label class="sai-node-range"><span>${escapeHtml(t('Stop', '停止'))} ${i + 1}</span><div class="sai-range-pair"><input data-classic-ip-stop="${i}" type="range" min="0" max="1" step="0.05" value="${escapeHtml(ipStopInsp)}"><input data-classic-ip-stop="${i}" type="number" min="0" max="1" step="0.05" value="${escapeHtml(ipStopInsp)}"></div></label>
-  <label class="sai-node-range"><span>${escapeHtml(t('Weight', '权重'))} ${i + 1}</span><div class="sai-range-pair"><input data-classic-ip-weight="${i}" type="range" min="0" max="2" step="0.05" value="${escapeHtml(ipWeightInsp)}"><input data-classic-ip-weight="${i}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(ipWeightInsp)}"></div></label>
-</div>`; }).join('')}`;
-        } else if (mode === 'uov') {
-            modeSpecific = `<h3>${escapeHtml(t('Upscale / Vary', '放大 / 变化'))}</h3>
-<label><span>${escapeHtml(t('Method', '方法'))}</span><select data-node-param="uov_method">${R_UOV.map(m => `<option value="${escapeHtml(m)}" ${m === (params.uov_method || 'Upscale (1.5x)') ? 'selected' : ''}>${escapeHtml(tOption(m))}</option>`).join('')}</select></label>`;
-            const uovMethodInsp = params.uov_method || 'Upscale (1.5x)';
-            if (uovMethodInsp.includes('Vary') || (uovMethodInsp.includes('Upscale') && !uovMethodInsp.includes('Fast'))) {
-                const denoiseVal = params.uov_denoise_strength ?? (uovMethodInsp.includes('Strong') ? 0.85 : uovMethodInsp.includes('Vary') ? 0.5 : 0.2);
-                modeSpecific += `\n<label class="sai-node-range"><span>${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-inspector-param="uov_denoise_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(denoiseVal)}"><input data-inspector-param="uov_denoise_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(denoiseVal)}"></div></label>`;
-            }
-        } else if (mode === 'inpaint') {
-            const R_ENGINES = getClassicInpaintEngines(node);
-            const normalizedInpaintMode = normalizeClassicInpaintMode(params.inpaint_mode || R_INPAINT[0]);
-            const imDefaults = getInpaintModeDefaults(normalizedInpaintMode, node);
-            const curEngine = params.inpaint_engine ?? imDefaults.engine;
-            const curDenoise = params.inpaint_denoising_strength ?? imDefaults.denoise;
-            const curRespective = params.inpaint_respective_field ?? imDefaults.respective;
-            const curDisableLatent = params.inpaint_disable_initial_latent ?? imDefaults.disableLatent;
-            const curInvertMask = params.invert_mask ?? false;
-            const curAdditionalPrompt = params.inpaint_additional_prompt ?? '';
-            modeSpecific = `<h3>${escapeHtml(t('Inpaint / Outpaint', '局部重绘 / 扩图'))}</h3>
-<label><span>${escapeHtml(t('Method', '方法'))}</span><select data-inspector-param="inpaint_mode">${R_INPAINT.map(m => `<option value="${escapeHtml(m)}" ${m === normalizedInpaintMode ? 'selected' : ''}>${escapeHtml(tOption(m))}</option>`).join('')}</select></label>
-<label><span>${escapeHtml(t('Inpaint Engine', '重绘引擎'))}</span><select data-inspector-param="inpaint_engine">${R_ENGINES.map(e => `<option value="${escapeHtml(e)}" ${e === curEngine ? 'selected' : ''}>${escapeHtml(e)}</option>`).join('')}</select></label>
-<label class="sai-node-range"><span>${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-inspector-param="inpaint_denoising_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(curDenoise)}"><input data-inspector-param="inpaint_denoising_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(curDenoise)}"></div></label>
-<label class="sai-node-range"><span>${escapeHtml(t('Respective Field', '作用范围'))}</span><div class="sai-range-pair"><input data-inspector-param="inpaint_respective_field" type="range" min="0" max="1" step="0.05" value="${escapeHtml(curRespective)}"><input data-inspector-param="inpaint_respective_field" type="number" min="0" max="1" step="0.05" value="${escapeHtml(curRespective)}"></div></label>
-<label class="sai-node-check"><input data-inspector-param="inpaint_disable_initial_latent" type="checkbox" ${curDisableLatent ? 'checked' : ''}><span>${escapeHtml(t('Disable Initial Latent', '禁用初始潜空间'))}</span></label>
-<label class="sai-node-check"><input data-inspector-param="invert_mask" type="checkbox" ${curInvertMask ? 'checked' : ''}><span>${escapeHtml(t('Invert Mask', '反转遮罩'))}</span></label>
-${imDefaults.showOutpaint ? `<h3>${escapeHtml(t('Outpaint', '扩图'))}</h3>
-${R_OUTPAINT.map(d => { const isChecked = (() => { if (Array.isArray(params.outpaint_selections) && params.outpaint_selections.includes(d)) return true; return !!params[`outpaint_${d.toLowerCase()}`]; })(); return `<label class="sai-node-check"><input data-inspector-param="outpaint_${d.toLowerCase()}" type="checkbox" ${isChecked ? 'checked' : ''}><span>${escapeHtml(d)}</span></label>`; }).join('')}` : ''}
-${imDefaults.showAdditionalPrompt ? `<label><span>${escapeHtml(t('Additional Prompt', '附加提示词'))}</span><textarea data-inspector-param="inpaint_additional_prompt" rows="2"${danbooruAutocompleteAttrs('inpaint_additional_prompt')} placeholder="${escapeHtml(t('Additional prompt...', '附加提示词...'))}">${escapeHtml(curAdditionalPrompt)}</textarea></label>` : ''}`;
-        } else if (mode === 'enhance') {
-            const enhanceUovMethod = params.enhance_uov_method || 'Disabled';
-            const enhanceStrength = params.enhance_uov_strength ?? 0.5;
-            const enhanceOrder = params.enhance_uov_processing_order || 'Before First Enhancement';
-            const enhancePromptType = params.enhance_uov_prompt_type || 'Original Prompts';
-            const orderChoices = registryClassicEnhanceUovProcessingOrder || ['Before First Enhancement', 'After Last Enhancement'];
-            const promptTypeChoices = registryClassicEnhanceUovPromptTypes || ['Original Prompts', 'Last Filled Enhancement Prompts'];
-            modeSpecific = `<h3>${escapeHtml(t('Enhance', '增强'))}</h3>
-<label><span>${escapeHtml(t('Upscale / Variation', '放大 / 变化'))}</span><select data-inspector-param="enhance_uov_method">${R_UOV.map(m => `<option value="${escapeHtml(m)}" ${m === enhanceUovMethod ? 'selected' : ''}>${escapeHtml(tOption(m))}</option>`).join('')}</select></label>
-${enhanceUovMethod !== 'Disabled' ? `<label class="sai-node-range"><span>${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-inspector-param="enhance_uov_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(enhanceStrength)}"><input data-inspector-param="enhance_uov_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(enhanceStrength)}"></div></label>
-<label><span>${escapeHtml(t('Order', '顺序'))}</span><select data-inspector-param="enhance_uov_processing_order">${orderChoices.map(item => `<option value="${escapeHtml(item)}" ${item === enhanceOrder ? 'selected' : ''}>${escapeHtml(tOption(item))}</option>`).join('')}</select></label>
-${enhanceOrder === 'After Last Enhancement' ? `<label><span>${escapeHtml(t('Upscale Prompt', '放大提示词'))}</span><select data-inspector-param="enhance_uov_prompt_type">${promptTypeChoices.map(item => `<option value="${escapeHtml(item)}" ${item === enhancePromptType ? 'selected' : ''}>${escapeHtml(tOption(item))}</option>`).join('')}</select></label>` : ''}` : ''}
-<h3>${escapeHtml(t('Regions', '区域'))}</h3>
-${[0, 1, 2].map((index) => {
-                const region = getClassicEnhanceRegionValues(node, index);
-                const preset = getClassicEnhanceRegionDefault(index);
-                const prefix = enhanceRegionKey(index);
-                return `<label class="sai-node-check"><input data-inspector-param="${escapeHtml(enhanceRegionKey(index))}_enabled" type="checkbox" ${region.enabled ? 'checked' : ''}><span>${escapeHtml(t('Region', '区域'))} #${index + 1} ${escapeHtml(preset.label || '')} / ${escapeHtml(region.dino_prompt || preset.prompt || '')}</span></label>
-<label class="sai-node-range"><span>${escapeHtml(t('Region', '区域'))} #${index + 1} ${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-inspector-param="${escapeHtml(prefix)}_inpaint_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(region.inpaint_strength ?? 0.5)}"><input data-inspector-param="${escapeHtml(prefix)}_inpaint_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(region.inpaint_strength ?? 0.5)}"></div></label>
-<label class="sai-node-range"><span>${escapeHtml(t('Region', '区域'))} #${index + 1} ${escapeHtml(t('Field', '作用范围'))}</span><div class="sai-range-pair"><input data-inspector-param="${escapeHtml(prefix)}_inpaint_respective_field" type="range" min="0" max="1" step="0.05" value="${escapeHtml(region.inpaint_respective_field ?? 0.2)}"><input data-inspector-param="${escapeHtml(prefix)}_inpaint_respective_field" type="number" min="0" max="1" step="0.05" value="${escapeHtml(region.inpaint_respective_field ?? 0.2)}"></div></label>
-<button type="button" class="sai-inline-config-btn" data-inspector-action="detection-config-${index}"><i class="fa-solid fa-crosshairs"></i><span>${escapeHtml(getDetectionConfigLabel(index))}</span></button>`;
-            }).join('')}`;
-        }
-        return `
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Classic Preset Node', 'Classic Preset 节点'))}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>Preset</span><b>${escapeHtml(node.preset?.name || '')}</b></div>
-  <div class="sai-inspector-kv"><span>Backend</span><b>${escapeHtml(node.runtime?.backend_engine || '')}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Task Method', '任务方式'))}</span><b>${escapeHtml(taskMethod)}</b></div>
-  ${renderPresetModelStatusHtml(node)}
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="check-models"><i class="fa-solid fa-cloud-arrow-down"></i><span>${escapeHtml(t('Check/download models', '检查/下载模型'))}</span></button>
-  <label><span>${escapeHtml(t('Mode', '模式'))}</span><select data-classic-mode>${modes.map(m => `<option value="${escapeHtml(m.key)}" ${m.key === mode ? 'selected' : ''}>${escapeHtml(m.icon)} ${escapeHtml(m.label)}</option>`).join('')}</select></label>
-</div>
-<div class="sai-inspector-section">${modeSpecific}</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Parameters', '参数'))}</h3>
-  ${['prompt', 'negative_prompt'].map(key => {
-      const label = key === 'negative_prompt' ? t('Negative Prompt', '负向提示词') : t('Prompt', '提示词');
-      const src = getPromptTextSourceNode(node, key);
-      const val = presetParamValue(node, { key });
-      const dis = src ? 'disabled' : '';
-      const srcLabel = src ? `<small>${escapeHtml(t('from {source}', '来自 {source}').replace('{source}', src.title || src.id))}</small>` : '';
-      return `<label><span>${label}${srcLabel}</span>${renderTranslatableTextarea(`data-inspector-param="${key}" rows="3" ${dis}`, val || '', { target: 'node-param', key, disabled: !!dis, tagCart: !dis, wildcardInsert: !dis, danbooruAutocomplete: true, autocompleteRole: key, state: getTranslationFieldState(node, 'node-param', key, val || '') })}</label>`;
-  }).join('')}
-  <label class="sai-node-check"><input data-inspector-param="seed_random" type="checkbox" ${params.seed_random !== false ? 'checked' : ''}><span>${escapeHtml(t('Random Seed', '随机种子'))}</span></label>
-  ${params.seed_random === false ? `<label>${escapeHtml(t('Seed', '种子'))}<input data-inspector-param="image_seed" type="number" step="1" value="${escapeHtml(params.image_seed ?? 0)}"></label>` : ''}
-  <label class="sai-node-range"><span>${escapeHtml(t('Images', '图片数'))}</span><div class="sai-range-pair"><input data-inspector-param="image_number" type="range" min="1" max="16" step="1" value="${escapeHtml(imageNumber)}"><input data-inspector-param="image_number" type="number" min="1" max="16" step="1" value="${escapeHtml(imageNumber)}"></div></label>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Models / Styles / Resolution / Advanced Config', '模型 / 风格 / 分辨率 / 高级配置'))}</h3>
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="models-config"><i class="fa-solid fa-cubes"></i><span>${escapeHtml(t('Models Config', '模型配置'))}</span></button>
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="styles-config"><i class="fa-solid fa-palette"></i><span>${escapeHtml(t('Styles Config', '风格配置'))}</span></button>
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="resolution-config"><i class="fa-solid fa-ruler-combined"></i><span>${escapeHtml(t('Resolution Config', '分辨率配置'))}</span></button>
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="advanced-config"><i class="fa-solid fa-sliders"></i><span>${escapeHtml(t('Advanced Config', '高级配置'))}</span></button>
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="xyz-plot"><i class="fa-solid fa-table-cells-large"></i><span>${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}</span></button>
-  <button type="button" data-inspector-action="run"><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
+        return renderClassicInspectorFromRenderer(node);
     }
-
     function getVisibleClassicUploadSlots(node) {
         const mode = node?.classic_mode || 't2i';
         const slots = [];
@@ -13793,120 +14129,27 @@ ${[0, 1, 2].map((index) => {
     }
 
     function addClassicNode(entry, world, options) {
-        const opts = options || {};
-        if (opts.history !== false) pushHistory('Add classic node');
-        const node = buildClassicNode(entry, world, opts);
-        if (opts.avoidOverlap === false || opts.source?.kind === 'canvas_agent_created') {
-            Object.assign(node, buildNodeLayoutPatch(node, {
-                x: Math.round(world.x || 0),
-                y: Math.round(world.y || 0)
-            }));
-        } else {
-            placeNodeAvoidingOverlap(node, world);
-        }
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedEdgeId = null;
-        if (opts.render !== false) mutate();
-        scheduleAutoPresetModelChecks();
-        showToast(autoMessage ? t('Added classic node, {message}', '已添加 classic 节点，{message}').replace('{message}', autoMessage) : t('Added classic node', '已添加 classic 节点'));
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addClassicNode(entry, world, options);
     }
 
     function handleClassicModeChange(nodeId, newMode) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'classic' || isNodeLocked(node)) return;
-        pushHistory('Change classic mode');
-        const oldMode = node.classic_mode || 't2i';
-        const nextUploadSlots = cloneRunValue(node.upload_slots || {}, {});
-        // Clear upload slots for old mode
-        const oldSlots = getVisibleClassicUploadSlots(node);
-        oldSlots.forEach(slot => {
-            if (nextUploadSlots[slot.key]) {
-                const edge = project.edges.find(e => e.type === 'upload' && e.to === nodeId && e.slot === slot.key);
-                if (edge) deleteEdge(edge.id, { render: false });
-                delete nextUploadSlots[slot.key];
-            }
-        });
-        const modeProbe = Object.assign({}, node, { classic_mode: newMode, upload_slots: nextUploadSlots });
-        getVisibleClassicUploadSlots(modeProbe).forEach(slot => {
-            if (!nextUploadSlots[slot.key]) nextUploadSlots[slot.key] = null;
-        });
-        Object.assign(node, buildClassicNodeStatePatch(node, {
-            classicMode: newMode,
-            uploadSlots: nextUploadSlots
-        }));
-        if (newMode === 'enhance') {
-            const paramsPatch = {};
-            if (node.params?.enhance_uov_method === undefined) paramsPatch.enhance_uov_method = 'Disabled';
-            if (node.params?.enhance_uov_strength === undefined) paramsPatch.enhance_uov_strength = 0.5;
-            if (node.params?.enhance_uov_processing_order === undefined) paramsPatch.enhance_uov_processing_order = 'Before First Enhancement';
-            if (node.params?.enhance_uov_prompt_type === undefined) paramsPatch.enhance_uov_prompt_type = 'Original Prompts';
-            Object.assign(node, buildNodeParamsPatch(node, { paramsPatch }));
-            [0, 1, 2].forEach((index) => {
-                const region = getClassicEnhanceRegionValues(node, index);
-                applyClassicEnhanceRegionValues(node, index, region, node.enhance_detection_configs?.[String(index)] || null);
-            });
-        }
-        mutate();
+        return CANVAS_NODE_PARAM_CONTROLLER?.handleClassicModeChange?.(nodeId, newMode);
     }
 
     function handleUovMethodChange(nodeId, newMethod) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'classic' || isNodeLocked(node)) return;
-        pushHistory('Change UOV method');
-        const paramsPatch = { uov_method: newMethod };
-        const deleteKeys = [];
-        if (newMethod.includes('Vary') || (newMethod.includes('Upscale') && !newMethod.includes('Fast'))) {
-            if (newMethod.includes('Vary')) {
-                paramsPatch.uov_denoise_strength = newMethod.includes('Strong') ? 0.85 : 0.5;
-            } else {
-                paramsPatch.uov_denoise_strength = 0.2;
-            }
-        } else {
-            deleteKeys.push('uov_denoise_strength');
-        }
-        Object.assign(node, buildNodeParamsPatch(node, { paramsPatch, deleteKeys }));
-        mutate();
+        return CANVAS_NODE_PARAM_CONTROLLER?.handleUovMethodChange?.(nodeId, newMethod);
     }
 
     function handleEnhanceUovParamChange(nodeId, key, value, inputType) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'classic' || isNodeLocked(node)) return;
-        updateNodeParam(nodeId, key, inputType === 'checkbox' ? !!value : (inputType === 'number' || inputType === 'range' ? Number(value) : value), inputType);
-        if (key === 'enhance_uov_method' || key === 'enhance_uov_processing_order') {
-            renderAll({ inspector: true });
-        }
+        return CANVAS_NODE_PARAM_CONTROLLER?.handleEnhanceUovParamChange?.(nodeId, key, value, inputType);
     }
 
     function applyInpaintModeDefaults(node, newMode) {
-        if (!node || node.classic_mode !== 'inpaint') return;
-        const normalizedMode = normalizeClassicInpaintMode(newMode);
-        const imDefaults = getInpaintModeDefaults(normalizedMode, node);
-        const paramsPatch = {
-            inpaint_mode: normalizedMode,
-            inpaint_denoising_strength: imDefaults.denoise,
-            inpaint_respective_field: imDefaults.respective,
-            inpaint_engine: imDefaults.engine,
-            inpaint_disable_initial_latent: imDefaults.disableLatent
-        };
-        if (!imDefaults.showAdditionalPrompt) paramsPatch.inpaint_additional_prompt = '';
-        if (!imDefaults.showOutpaint) {
-            paramsPatch.outpaint_selections = [];
-            (registryClassicOutpaintDirs || []).forEach(d => {
-                paramsPatch[`outpaint_${d.toLowerCase()}`] = false;
-            });
-        }
-        Object.assign(node, buildNodeParamsPatch(node, { paramsPatch }));
-        mutate();
+        return CANVAS_NODE_PARAM_CONTROLLER?.applyInpaintModeDefaults?.(node, newMode);
     }
 
     function handleInpaintModeChange(nodeId, newMode) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'classic' || isNodeLocked(node)) return;
-        pushHistory('Change inpaint mode');
-        applyInpaintModeDefaults(node, newMode);
+        return CANVAS_NODE_PARAM_CONTROLLER?.handleInpaintModeChange?.(nodeId, newMode);
     }
 
     function serializeClassicNodeForRun(node) {
@@ -13929,192 +14172,20 @@ ${[0, 1, 2].map((index) => {
         return perTheme[theme] || {};
     }
 
-    function getPresetThemeDefaults(node, theme) {
-        const schema = getPresetSchema(node);
-        const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
-        const themeInfo = theme ? (perTheme[theme] || {}) : getPresetThemeInfo(node);
-        return themeInfo.defaults && typeof themeInfo.defaults === 'object' ? themeInfo.defaults : {};
-    }
-
-    function presetDefaultValuesEqual(value, defaultValue) {
-        if (defaultValue === undefined) return false;
-        return value === defaultValue || String(value) === String(defaultValue);
-    }
-
-    function shouldApplyPresetThemeDefault(current, param, previousDefaults) {
-        if (current === undefined || current === null || current === '') return true;
-        if (presetDefaultValuesEqual(current, param?.default)) return true;
-        if (previousDefaults && Object.prototype.hasOwnProperty.call(previousDefaults, param.key)) {
-            return presetDefaultValuesEqual(current, previousDefaults[param.key]);
-        }
-        return false;
-    }
-
-    function getPresetSceneFrontend(node) {
-        const schema = getPresetSchema(node);
-        const candidates = [
-            node?.runtime?.scene_frontend,
-            node?.params?.scene_frontend,
-            schema.scene_frontend,
-            schema.default_engine?.scene_frontend,
-            node?.runtime?.__preset_prepared?.engine?.scene_frontend
-        ];
-        for (const candidate of candidates) {
-            if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) return candidate;
-        }
-        return {};
-    }
-
-    const DIRECTOR_CAPABILITY_IMAGE_POLICIES = new Set(['optional', 'required', 'forbidden']);
-    const DIRECTOR_CAPABILITY_MEDIA_POLICIES = new Set(['optional', 'required', 'forbidden']);
-
-    function directorPresetThemeValue(value, node, fallback) {
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-            const theme = getPresetTheme(node);
-            if (theme && Object.prototype.hasOwnProperty.call(value, theme)) return value[theme];
-            if (Object.prototype.hasOwnProperty.call(value, 'default')) return value.default;
-            const first = Object.values(value)[0];
-            return first === undefined ? fallback : first;
-        }
-        return value === undefined || value === null ? fallback : value;
-    }
-
-    function directorCapabilityCandidate(value, node) {
-        if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-        const knownKeys = ['image_policy', 'audio_policy', 'video_policy', 'max_images', 'max_audios', 'max_videos', 'min_images', 'image_modes', 'video_modes', 'chain_output', 'requires_sequential', 'mixed_segments', 'director_supported', 'segment_duration_param', 'duration_strategy', 'audio_output', 'min_segment_duration', 'max_segment_duration'];
-        if (knownKeys.some((key) => Object.prototype.hasOwnProperty.call(value, key))) return value;
-        const theme = getPresetTheme(node);
-        if (theme && value[theme] && typeof value[theme] === 'object') return value[theme];
-        if (value.default && typeof value.default === 'object') return value.default;
-        return {};
-    }
-
-    function directorExplicitCapabilityForPreset(node) {
-        const schema = getPresetSchema(node);
-        const themeInfo = getPresetThemeInfo(node);
-        const candidates = [
-            node?.runtime?.director_capability,
-            node?.params?.director_capability,
-            schema.director_capability,
-            themeInfo.director_capability
-        ];
-        for (const candidate of candidates) {
-            const capability = directorCapabilityCandidate(candidate, node);
-            if (capability && Object.keys(capability).length) return capability;
-        }
-        return {};
-    }
-
-    function directorPolicyValue(value, allowed, fallback) {
-        const policy = String(value || '').trim().toLowerCase();
-        return allowed.has(policy) ? policy : fallback;
-    }
-
-    function directorIntCapabilityValue(value, fallback, min, max) {
-        const parsed = Number(value);
-        const base = Number.isFinite(parsed) ? Math.round(parsed) : fallback;
-        return Math.max(min, Math.min(max, base));
-    }
-
-    function directorNumberCapabilityValue(value, fallback, min, max) {
-        const parsed = Number(value);
-        const base = Number.isFinite(parsed) ? parsed : fallback;
-        return Math.max(min, Math.min(max, base));
+    function resolveDirectorCapabilityForPreset(node) {
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.resolveDirectorCapabilityForPreset?.(node) || {};
     }
 
     function directorDurationParamValue(value, fallback = 'scene_video_duration') {
-        const text = String(value || fallback || '').trim();
-        if (!text) return '';
-        return /^[A-Za-z_][A-Za-z0-9_]*$/.test(text) ? text : fallback;
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorDurationParamValue?.(value, fallback) ?? fallback;
     }
 
     function directorDurationStrategyValue(value, fallback = 'shot') {
-        const text = String(value || fallback || 'shot').trim().toLowerCase().replace(/-/g, '_');
-        return ['shot', 'audio_min', 'video_min'].includes(text) ? text : 'shot';
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorDurationStrategyValue?.(value, fallback) ?? 'shot';
     }
 
     function directorAudioOutputValue(value, fallback = 'silent') {
-        const text = String(value || fallback || 'silent').trim().toLowerCase().replace(/-/g, '_');
-        return ['silent', 'generated', 'input_audio', 'source_audio'].includes(text) ? text : 'silent';
-    }
-
-    function directorInferImagePolicyForPreset(node) {
-        const schema = getPresetSchema(node);
-        const engineType = String(node?.runtime?.engine_type || schema.engine_type || '').trim().toLowerCase();
-        if (engineType && engineType !== 'video') return 'forbidden';
-        const taskMethod = String(
-            getPresetThemeInfo(node).task_method
-            || node?.runtime?.task_method
-            || directorPresetThemeValue(schema.task_method, node, '')
-            || ''
-        ).trim().toLowerCase();
-        if (taskMethod.includes('t2v')) return 'forbidden';
-        if (taskMethod.includes('i2v') || taskMethod.includes('ia2v') || taskMethod === 'wan2.2_cn' || taskMethod === 'wan2.2') return 'required';
-        const hidden = new Set(Array.isArray(schema.disvisible) ? schema.disvisible.map(String) : []);
-        if (hidden.has('scene_canvas_image') && hidden.has('scene_input_image1')) return 'forbidden';
-        return 'optional';
-    }
-
-    function directorVisibleImageSlotCountForPreset(node) {
-        const schema = getPresetSchema(node);
-        const slots = Array.isArray(schema.upload_slots) ? schema.upload_slots : [];
-        if (!slots.length) return DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.length;
-        return slots.filter((slot) => {
-            const key = String(slot?.key || '');
-            return DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.includes(key) && slot.visible !== false;
-        }).length;
-    }
-
-    function resolveDirectorCapabilityForPreset(node) {
-        const explicit = directorExplicitCapabilityForPreset(node);
-        const sceneFrontend = getPresetSceneFrontend(node);
-        const imagePolicy = directorPolicyValue(explicit.image_policy, DIRECTOR_CAPABILITY_IMAGE_POLICIES, directorInferImagePolicyForPreset(node));
-        const audioPolicy = directorPolicyValue(explicit.audio_policy, DIRECTOR_CAPABILITY_MEDIA_POLICIES, 'optional');
-        const videoPolicy = directorPolicyValue(explicit.video_policy, DIRECTOR_CAPABILITY_MEDIA_POLICIES, 'optional');
-        const defaultMaxImages = imagePolicy === 'forbidden' ? 0 : Math.max(1, directorVisibleImageSlotCountForPreset(node) || DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.length);
-        const maxImages = imagePolicy === 'forbidden' ? 0 : directorIntCapabilityValue(explicit.max_images, defaultMaxImages, 0, DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.length);
-        const maxAudios = audioPolicy === 'forbidden' ? 0 : directorIntCapabilityValue(explicit.max_audios, 1, 0, 3);
-        const maxVideos = videoPolicy === 'forbidden' ? 0 : directorIntCapabilityValue(explicit.max_videos, 1, 0, 3);
-        const minImages = directorIntCapabilityValue(explicit.min_images, imagePolicy === 'required' ? 1 : 0, 0, Math.max(0, maxImages));
-        const imageModes = Array.isArray(explicit.image_modes) && explicit.image_modes.length
-            ? explicit.image_modes.map((item) => String(item))
-            : (imagePolicy === 'forbidden' ? ['none'] : ['none', 'first_frame', 'first_last', 'reference_set']);
-        const videoModes = Array.isArray(explicit.video_modes) && explicit.video_modes.length
-            ? explicit.video_modes.map((item) => String(item))
-            : (videoPolicy === 'forbidden' ? ['none'] : ['explicit']);
-        const chainOutputValue = String(explicit.chain_output || '').trim();
-        const chainOutput = ['timeline', 'last_result'].includes(chainOutputValue) ? chainOutputValue : 'timeline';
-        const requiresSequential = explicit.requires_sequential === undefined
-            ? chainOutput === 'last_result'
-            : !!explicit.requires_sequential;
-        const defaultDurationParam = directorDurationParamValue(directorPresetThemeValue(sceneFrontend.director_segment_duration_param, node, 'scene_video_duration'));
-        const durationStrategy = directorDurationStrategyValue(explicit.duration_strategy, 'shot');
-        const minDurationFloor = durationStrategy === 'audio_min' || durationStrategy === 'video_min' ? 0 : 0.05;
-        const defaultMinSegmentDuration = directorNumberCapabilityValue(directorPresetThemeValue(sceneFrontend.video_duration_min ?? sceneFrontend.var_number_min, node, 0.1), 0.1, minDurationFloor, 86400);
-        const defaultMaxSegmentDuration = directorNumberCapabilityValue(directorPresetThemeValue(sceneFrontend.video_duration_max ?? sceneFrontend.var_number_max, node, 10), 10, defaultMinSegmentDuration, 86400);
-        const minSegmentDuration = directorNumberCapabilityValue(explicit.min_segment_duration, defaultMinSegmentDuration, minDurationFloor, 86400);
-        const maxSegmentDuration = directorNumberCapabilityValue(explicit.max_segment_duration, defaultMaxSegmentDuration, minSegmentDuration, 86400);
-        return {
-            image_policy: imagePolicy,
-            audio_policy: audioPolicy,
-            video_policy: videoPolicy,
-            max_images: maxImages,
-            max_audios: maxAudios,
-            max_videos: maxVideos,
-            min_images: minImages,
-            image_modes: imageModes,
-            video_modes: videoModes,
-            chain_output: chainOutput,
-            requires_sequential: requiresSequential,
-            mixed_segments: explicit.mixed_segments === undefined ? imagePolicy === 'optional' : !!explicit.mixed_segments,
-            director_supported: explicit.director_supported === undefined ? true : !!explicit.director_supported,
-            segment_duration_param: directorDurationParamValue(explicit.segment_duration_param, defaultDurationParam),
-            duration_strategy: durationStrategy,
-            audio_output: directorAudioOutputValue(explicit.audio_output, 'silent'),
-            min_segment_duration: minSegmentDuration,
-            max_segment_duration: maxSegmentDuration,
-            source: Object.keys(explicit).length ? 'explicit' : 'inferred'
-        };
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorAudioOutputValue?.(value, fallback) ?? 'silent';
     }
 
     function getVisibleUploadSlots(node) {
@@ -14168,34 +14239,11 @@ ${[0, 1, 2].map((index) => {
     }
 
     function resultExpectedMediaKind(node) {
-        const controller = CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.resultExpectedMediaKind;
-        if (typeof controller === 'function') return controller(node);
-        if (!node || node.type !== 'result') return '';
-        const asset = getSelectedResultAsset(node);
-        if (asset) return assetMediaKind(asset);
-        const sourceKind = String(node.source?.kind || '').toLowerCase();
-        const explicit = String(node.source?.expected_media_kind || node.producer?.expected_media_kind || '').toLowerCase();
-        if (['image', 'video', 'audio'].includes(explicit)) return explicit;
-        if (node.producer?.qwen_tts_node_id) return 'audio';
-        if (node.producer?.timeline_node_id) return 'video';
-        const presetId = node.producer?.preset_node_id
-            || project.edges.find(edge => edge.type === 'generate' && edge.to === node.id)?.from
-            || '';
-        const preset = getNode(presetId);
-        if (preset) return presetOutputMediaKind(preset);
-        if (sourceKind === 'manual_output' || sourceKind === 'auto_bridge') return 'image';
-        return '';
+        return CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.resultExpectedMediaKind?.(node) || '';
     }
 
     function isResultImageReferenceSource(node) {
-        const controller = CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isResultImageReferenceSource;
-        if (typeof controller === 'function') return !!controller(node);
-        if (!node || node.type !== 'result') return false;
-        const asset = getSelectedResultAsset(node);
-        if (asset) return assetMediaKind(asset) === 'image';
-        const expectedKind = resultExpectedMediaKind(node);
-        if (expectedKind) return expectedKind === 'image';
-        return !(node.producer?.qwen_tts_node_id || node.producer?.timeline_node_id);
+        return !!CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isResultImageReferenceSource?.(node);
     }
 
     function isPresetConfigKind(kind) {
@@ -14307,24 +14355,15 @@ ${[0, 1, 2].map((index) => {
     }
 
     function getTranslationCacheBucket(node, target, key) {
-        const cacheKey = getTranslateCacheKey(target, key);
-        const bucket = node?.translation_cache?.[cacheKey];
-        if (!bucket) return null;
-        if (Array.isArray(bucket.entries)) return bucket;
-        if (bucket.before || bucket.after) return { entries: [bucket] };
-        return null;
+        return TRANSLATION_CONTROLLER?.getTranslationCacheBucket?.(node, target, key) || null;
     }
 
     function getTranslationCacheEntry(node, target, key, text) {
-        const bucket = getTranslationCacheBucket(node, target, key);
-        const entries = Array.isArray(bucket?.entries) ? bucket.entries : [];
-        return entries.find(entry => entry && (entry.before === text || entry.after === text)) || null;
+        return TRANSLATION_CONTROLLER?.getTranslationCacheEntry?.(node, target, key, text) || null;
     }
 
     function getTranslationFieldState(node, target, key, value) {
-        const entry = getTranslationCacheEntry(node, target, key, String(value || ''));
-        if (!entry) return 'idle';
-        return entry.after === String(value || '') ? 'translated' : 'original';
+        return TRANSLATION_CONTROLLER?.getTranslationFieldState?.(node, target, key, value) || 'idle';
     }
 
     function canvasOverlayHost() {
@@ -14347,134 +14386,6 @@ ${[0, 1, 2].map((index) => {
         if (kind === 'video') return 'fa-film';
         if (kind === 'audio') return 'fa-wave-square';
         return 'fa-image';
-    }
-
-    function bindNodeMediaControlEvents(scope) {
-        if (!scope || !scope.querySelectorAll) return;
-        scope.querySelectorAll('.sai-node-media video, .sai-node-media audio').forEach((media) => {
-            if (media.__simpaiCanvasMediaControlsBound) return;
-            media.__simpaiCanvasMediaControlsBound = true;
-            ['pointerdown', 'pointerup', 'click', 'dblclick'].forEach((eventName) => {
-                media.addEventListener(eventName, (evt) => {
-                    if (eventName === 'pointerdown') {
-                        const nodeEl = media.closest('[data-node-id]');
-                        const node = nodeEl ? getNode(nodeEl.getAttribute('data-node-id')) : null;
-                        if (node && canvasAgentState.pickReference) {
-                            evt.preventDefault();
-                            evt.stopPropagation();
-                            if (addCanvasAgentReferenceFromNode(node)) {
-                                canvasAgentState.pickReference = false;
-                                renderCanvasAgentPanel();
-                            }
-                            return;
-                        }
-                        if (node && evt.button === 0 && !isNodeLocked(node)) {
-                            selectedNodeId = node.id;
-                            selectedNodeIds = new Set([node.id]);
-                            selectedEdgeId = null;
-                            renderAll();
-                            positionCanvasAgentPanel();
-                        }
-                    }
-                    evt.stopPropagation();
-                }, true);
-            });
-        });
-    }
-
-    function handleNodeMediaMetadataLoaded(evt) {
-        const media = evt.target;
-        if (!media || !['VIDEO', 'AUDIO'].includes(media.tagName)) return;
-        const nodeEl = media.closest('[data-node-id]');
-        const node = nodeEl ? getNode(nodeEl.getAttribute('data-node-id')) : null;
-        if (!node) return;
-        const asset = node.type === 'result' ? getSelectedResultAsset(node) : node.asset;
-        if (!asset || typeof asset !== 'object') return;
-        const metadataPatch = {};
-        if (media.tagName === 'VIDEO') {
-            const width = media.videoWidth || 0;
-            const height = media.videoHeight || 0;
-            if (width && height && (!asset.width || !asset.height)) {
-                metadataPatch.width = width;
-                metadataPatch.height = height;
-            }
-        }
-        const mediaDuration = Number.isFinite(media.duration) && media.duration > 0
-            ? Math.round(media.duration * 100) / 100
-            : 0;
-        if (mediaDuration && !asset.duration) {
-            metadataPatch.duration = mediaDuration;
-        }
-        const effectiveDuration = Number(asset.duration || metadataPatch.duration || 0);
-        if (media.tagName === 'VIDEO' && asset.fps && effectiveDuration && !asset.frame_count) {
-            metadataPatch.frame_count = Math.max(1, Math.round(effectiveDuration * Number(asset.fps)));
-        }
-        if (Number.isFinite(media.duration) && media.duration > 0 && media.hasAttribute('data-media-player')) {
-            const range = getMediaEditRange(asset);
-            if (range.start > 0 && Math.abs((media.currentTime || 0) - range.start) > 0.25) {
-                try {
-                    media.currentTime = range.start;
-                } catch (err) {
-                    // Some browsers reject early seeks before enough metadata is buffered.
-                }
-            }
-        }
-        if (!Object.keys(metadataPatch).length) return;
-        if (node.type === 'result') {
-            Object.assign(node, buildResultSelectedAssetMetadataPatch(node, { metadata: metadataPatch }));
-        } else {
-            Object.assign(node, buildMediaNodeStatePatch(node, { assetPatch: metadataPatch }));
-        }
-        const updatedAsset = node.type === 'result' ? getSelectedResultAsset(node) : node.asset;
-        const box = media.closest('.sai-node-media');
-        if (box && updatedAsset?.width && updatedAsset?.height) {
-            const aspect = clamp(Number(updatedAsset.width) / Math.max(1, Number(updatedAsset.height)), 0.25, 4);
-            box.style.setProperty('--sai-media-aspect', aspect.toFixed(5));
-            box.setAttribute('data-aspect', 'true');
-        }
-        if (media.tagName === 'AUDIO') {
-            updateAudioWaveformPlayhead(media);
-        }
-        saveProjectToBrowserCache();
-        renderEdges();
-        renderMinimap();
-    }
-
-    function handleNodeMediaTimeUpdate(evt) {
-        const media = evt.target;
-        if (!media || !media.hasAttribute('data-media-player')) return;
-        const nodeEl = media.closest('[data-node-id]');
-        const node = nodeEl ? getNode(nodeEl.getAttribute('data-node-id')) : null;
-        if (!node || !['video', 'audio'].includes(node.type)) return;
-        updateAudioWaveformPlayhead(media);
-        const range = getMediaEditRange(node.asset || {});
-        if (!range.duration || !range.clipped) return;
-        if (media.paused) return;
-        if ((media.currentTime || 0) >= range.end) {
-            media.pause();
-            seekNodeMediaPlayer(node.id, range.start, { immediate: true });
-        }
-    }
-
-    function updateAudioWaveformPlayhead(media) {
-        if (!media || media.tagName !== 'AUDIO') return;
-        const nodeEl = media.closest('[data-node-id]');
-        if (!nodeEl) return;
-        const duration = Number.isFinite(media.duration) && media.duration > 0 ? media.duration : 0;
-        const current = Math.max(0, Number(media.currentTime || 0) || 0);
-        const playhead = duration > 0 ? clamp((current / duration) * 100, 0, 100) : 0;
-        const isPlaying = !media.paused && !media.ended && duration > 0;
-        nodeEl.querySelectorAll('.sai-audio-waveform').forEach((track) => {
-            track.style.setProperty('--playhead', `${playhead.toFixed(3)}%`);
-            track.classList.toggle('has-playhead', duration > 0);
-            track.classList.toggle('is-playing', isPlaying);
-        });
-    }
-
-    function handleNodeMediaPlaybackStateChanged(evt) {
-        const media = evt.target;
-        if (!media || !media.hasAttribute('data-media-player')) return;
-        updateAudioWaveformPlayhead(media);
     }
 
     function isNodeLocked(node) {
@@ -14502,36 +14413,6 @@ ${[0, 1, 2].map((index) => {
     function presetModelStatusState(node) {
         const status = node?.model_status && typeof node.model_status === 'object' ? node.model_status : {};
         return String(status.state || (status.ready ? 'ready' : 'unknown')).toLowerCase();
-    }
-
-    function renderPresetModelStatusHtml(node) {
-        const status = node?.model_status && typeof node.model_status === 'object' ? node.model_status : {};
-        const state = presetModelStatusState(node);
-        const missingCount = Number(status.missing_count ?? 0);
-        const countText = Number.isFinite(missingCount) && missingCount > 0 ? ` ${missingCount}` : '';
-        const icons = {
-            ready: 'fa-circle-check',
-            missing: 'fa-triangle-exclamation',
-            checking: 'fa-spinner fa-spin',
-            queued: 'fa-cloud-arrow-down',
-            error: 'fa-circle-xmark',
-            unknown: 'fa-circle-question'
-        };
-        const labels = {
-            ready: t('Models ready', '模型已就绪'),
-            missing: `${t('Missing', '缺失')}${countText}`,
-            checking: t('Checking', '检查中'),
-            queued: `${t('Queued', '已排队')}${countText}`,
-            error: t('Check failed', '检查失败'),
-            unknown: t('Check models', '检查模型')
-        };
-        const message = status.message || (state === 'unknown' ? t('Model availability has not been checked.', '尚未检查模型可用性。') : '');
-        return `<div class="sai-preset-model-row" data-model-state="${escapeHtml(state)}">
-  <button type="button" data-node-action="check-models" title="${escapeHtml(t('Check or queue required preset models', '检查或排队下载所需 preset 模型'))}">
-    <i class="fa-solid ${icons[state] || icons.unknown}"></i><span>${escapeHtml(labels[state] || labels.unknown)}</span>
-  </button>
-  <small>${escapeHtml(message)}</small>
-</div>`;
     }
 
     function renderImageNodeHtml(node) {
@@ -14668,11 +14549,7 @@ ${[0, 1, 2].map((index) => {
     }
 
     function getTimelineSourceAsset(source) {
-        if (!source) return null;
-        if (typeof timelineGetTimelineSourceAsset === 'function') {
-            return timelineGetTimelineSourceAsset(source, { getSelectedResultAsset }) || null;
-        }
-        return source.type === 'result' ? getSelectedResultAsset(source) : source.asset;
+        return timelineGetTimelineSourceAsset(source, { getSelectedResultAsset }) || null;
     }
 
     function isTimelineSource(node) {
@@ -14680,9 +14557,6 @@ ${[0, 1, 2].map((index) => {
     }
 
     function renderTimelineNodeHtml(node) {
-        if (node?.type === 'timeline' && Array.isArray(node.clips)) {
-            node.clips.forEach(clip => enforceTimelineClipMediaBounds(node, clip));
-        }
         return timelineRenderNodeHtml(node, TIMELINE_NODE_CONTEXT);
     }
 
@@ -14727,153 +14601,57 @@ ${[0, 1, 2].map((index) => {
     }
 
     function isVlmMediaSource(node) {
-        const controller = CANVAS_VLM_NODE_CONTROLLER?.isVlmMediaSource;
-        if (typeof controller === 'function') return !!controller(node);
-        return !!node && ['image', 'result', 'video'].includes(node.type);
+        return !!CANVAS_VLM_NODE_CONTROLLER?.isVlmMediaSource?.(node);
     }
 
     function getVlmSourceAsset(node) {
-        if (!isVlmMediaSource(node)) return null;
-        return node.type === 'result' ? getSelectedResultAsset(node) : node.asset;
+        const getAsset = CANVAS_VLM_NODE_CONTROLLER?.getVlmSourceAsset;
+        return typeof getAsset === 'function' ? getAsset(node) : null;
     }
 
     function getVlmCustomProvider(key) {
-        return VLM_CUSTOM_API_PROVIDERS.find(item => item.key === key) || VLM_CUSTOM_API_PROVIDERS[0];
+        return CANVAS_VLM_CUSTOM_API_PROFILES.getVlmCustomProvider(key);
     }
 
     function getVlmCustomProfileKey(params) {
-        const name = String(params?.custom_api_name || '').trim();
-        if (name) return name;
-        return String(params?.custom_provider || 'openai').trim() || 'openai';
+        return CANVAS_VLM_CUSTOM_API_PROFILES.getVlmCustomProfileKey(params);
     }
 
     function readVlmCustomApiProfiles() {
-        try {
-            const data = JSON.parse(localStorage.getItem(VLM_CUSTOM_API_STORAGE_KEY) || '{}');
-            return data && typeof data === 'object' ? data : {};
-        } catch (err) {
-            return {};
-        }
+        return CANVAS_VLM_CUSTOM_API_PROFILES.readVlmCustomApiProfiles();
     }
 
     function writeVlmCustomApiProfiles(profiles) {
-        localStorage.setItem(VLM_CUSTOM_API_STORAGE_KEY, JSON.stringify(profiles || {}));
+        return CANVAS_VLM_CUSTOM_API_PROFILES.writeVlmCustomApiProfiles(profiles);
     }
 
     function getVlmCustomApiProfile(params) {
-        const profiles = readVlmCustomApiProfiles();
-        return profiles[getVlmCustomProfileKey(params)] || null;
+        return CANVAS_VLM_CUSTOM_API_PROFILES.getVlmCustomApiProfile(params);
     }
 
-    function getVlmChatUiAreas(node, scope) {
-        if (!node || node.type !== 'vlm') return [];
-        const areas = [];
-        const addArea = (area) => {
-            if (area?.querySelectorAll && !areas.includes(area)) areas.push(area);
-        };
-        addArea(scope?.closest?.('[data-node-id]') || scope);
-        const nodeEl = nodesLayer?.querySelector?.(`[data-node-id="${cssEscape(node.id)}"]`);
-        addArea(nodeEl);
-        if (selectedNodeId === node.id) addArea(inspector);
-        return areas;
+    function getVlmChatUiAreas(...args) {
+        return CANVAS_VLM_NODE_CONTROLLER?.getVlmChatUiAreas?.(...args) || [];
     }
 
     function buildDefaultVlmParamsFromAgentSettings() {
-        const settings = getCanvasAgentSettings();
-        const rewriteModel = String(settings.rewriteModel || CANVAS_AGENT_DEFAULT_SETTINGS.rewriteModel || '').trim();
-        const version = rewriteModel || VLM_VERSION_CHOICES[0] || 'Qwen3.5-9B-abliterated-Q4_K_M';
-        if (version === 'Custom') {
-            return Object.assign({ agent_mode: 'persona' }, canvasAgentCustomParamsFromSettings(settings, false));
-        }
-        return {
-            version,
-            agent_mode: 'persona'
-        };
+        return CANVAS_AGENT_SETTINGS_CONTROLLER?.buildDefaultVlmParamsFromAgentSettings?.() || {};
     }
 
-    const MASK_MODELS = ['u2net', 'u2netp', 'u2net_human_seg', 'u2net_cloth_seg', 'silueta', 'isnet-general-use', 'isnet-anime', 'sam'];
-    const MASK_CLOTH_CATEGORIES = ['full', 'upper', 'lower'];
-    const MASK_SAM_MODELS = ['vit_b', 'vit_l', 'vit_h'];
-
-    function renderMaskNodeHtml(node) {
-        const params = node.params || {};
-        const source = getNode(node.input_node_id);
-        const model = params.mask_model || 'u2net';
-        const image = assetDisplaySrc(node.asset);
-        const info = readAssetInfo(node.asset || {});
-        const status = localizeMaskStatus(node.status?.message || '');
-        return `
-<div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Mask', '遮罩'))}</span>
-  <span class="sai-node-title">${escapeHtml(localizedDefaultTitle(node.title, 'Advanced Masking', '高级遮罩'))}</span>
-  ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="run-mask" title="${escapeHtml(t('Generate mask', '生成遮罩'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
-  <button type="button" data-node-action="edit-mask-asset" title="${escapeHtml(t('Edit mask', '编辑遮罩'))}"><i class="fa-solid fa-paintbrush"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
-</div>
-<div class="sai-text-input-row">
-  <button type="button" class="sai-node-handle sai-node-handle-in" data-mask-source-in title="${escapeHtml(imagePortTitle())}"></button>
-  <i class="fa-solid fa-image"></i><span>${escapeHtml(t('Source', '来源'))}</span><b>${source ? escapeHtml(source.title || source.id) : escapeHtml(notConnectedText())}</b><small>${escapeHtml(portHintText())}</small>
-</div>
-<label class="sai-node-field"><span>${escapeHtml(t('Mask Model', '遮罩模型'))}</span><select data-mask-param="mask_model">${MASK_MODELS.map(item => `<option value="${escapeHtml(item)}" ${item === model ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}</select></label>
-${model === 'u2net_cloth_seg' ? `<label class="sai-node-field"><span>${escapeHtml(t('Cloth Category', '服装类别'))}</span><select data-mask-param="cloth_category">${MASK_CLOTH_CATEGORIES.map(item => `<option value="${escapeHtml(item)}" ${item === (params.cloth_category || 'full') ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}</select></label>` : ''}
-${model === 'sam' ? `<label class="sai-node-field"><span>${escapeHtml(t('Detection Prompt', '检测提示词'))}</span><input data-mask-param="dino_prompt" type="text"${danbooruAutocompleteAttrs('dino_prompt')} value="${escapeHtml(params.dino_prompt || '')}" placeholder="person, hair, clothes..."></label>
-<label class="sai-node-field"><span>${escapeHtml(t('SAM Model', 'SAM 模型'))}</span><select data-mask-param="sam_model">${MASK_SAM_MODELS.map(item => `<option value="${escapeHtml(item)}" ${item === (params.sam_model || 'vit_b') ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}</select></label>
-<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Box Threshold', '框阈值'))}</span><div class="sai-range-pair"><input data-mask-param="box_threshold" type="range" min="0" max="1" step="0.05" value="${escapeHtml(params.box_threshold ?? 0.3)}"><input data-mask-param="box_threshold" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.box_threshold ?? 0.3)}"></div></label>
-<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Text Threshold', '文本阈值'))}</span><div class="sai-range-pair"><input data-mask-param="text_threshold" type="range" min="0" max="1" step="0.05" value="${escapeHtml(params.text_threshold ?? 0.25)}"><input data-mask-param="text_threshold" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.text_threshold ?? 0.25)}"></div></label>
-<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Max Detections', '最大检测数'))}</span><div class="sai-range-pair"><input data-mask-param="sam_max_detections" type="range" min="0" max="10" step="1" value="${escapeHtml(params.sam_max_detections ?? 2)}"><input data-mask-param="sam_max_detections" type="number" min="0" max="10" step="1" value="${escapeHtml(params.sam_max_detections ?? 2)}"></div></label>` : ''}
-<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Erode / Dilate', '腐蚀 / 膨胀'))}</span><div class="sai-range-pair"><input data-mask-param="dino_erode_or_dilate" type="range" min="-64" max="64" step="1" value="${escapeHtml(params.dino_erode_or_dilate ?? 0)}"><input data-mask-param="dino_erode_or_dilate" type="number" min="-64" max="64" step="1" value="${escapeHtml(params.dino_erode_or_dilate ?? 0)}"></div></label>
-<div class="sai-node-media sai-mask-node-media"${mediaAspectStyle(node.asset)}>${image ? `<img src="${escapeHtml(image)}" alt="" draggable="false">` : `<div class="sai-node-empty">${escapeHtml(t('No mask', '无遮罩'))}</div>`}</div>
-${info.length ? `<div class="sai-node-info">${info.map(bit => `<span>${escapeHtml(bit)}</span>`).join('')}</div>` : ''}
-${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
-<button type="button" class="sai-node-primary" data-node-action="run-mask"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Generate Mask', '生成遮罩'))}</span></button>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="image" title="${escapeHtml(t('Mask output', '遮罩输出'))}"></button>`;
-    }
 
     function isSam3VideoMaskSource(node) {
         return sam3IsSource(node, SAM3_VIDEO_MASK_NODE_CONTEXT);
     }
 
     function isPoseStudioImageSource(node) {
-        const controller = CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isPoseStudioImageSource;
-        if (typeof controller === 'function') return !!controller(node);
-        if (!node || isNodeIgnored(node)) return false;
-        if (node.type === 'image') return true;
-        if (node.type === 'pose_studio') return !!poseStudioIsSource?.(node, POSE_STUDIO_NODE_CONTEXT);
-        if (node.type === 'result') {
-            return isResultImageReferenceSource(node);
-        }
-        return false;
+        return !!CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isPoseStudioImageSource?.(node);
     }
 
     function isGaussianStudioImageSource(node) {
-        const controller = CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isGaussianStudioImageSource;
-        if (typeof controller === 'function') return !!controller(node);
-        if (!node || isNodeIgnored(node)) return false;
-        if (node.type === 'image') return true;
-        if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
-        if (node.type === 'gaussian_studio') return !!gaussianStudioIsSource?.(node, GAUSSIAN_STUDIO_NODE_CONTEXT);
-        if (node.type === 'liveportrait_expression') return isLivePortraitExpressionImageSource(node);
-        if (node.type === 'result') {
-            const asset = getSelectedResultAsset(node);
-            return !!asset && assetMediaKind(asset) === 'image';
-        }
-        return false;
+        return !!CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isGaussianStudioImageSource?.(node);
     }
 
     function isLivePortraitExpressionImageSource(node) {
-        const controller = CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isLivePortraitExpressionImageSource;
-        if (typeof controller === 'function') return !!controller(node);
-        if (!node || isNodeIgnored(node)) return false;
-        if (node.type === 'image') return true;
-        if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
-        if (node.type === 'gaussian_studio') return isGaussianStudioImageSource(node);
-        if (node.type === 'liveportrait_expression') return !!livePortraitIsSource?.(node, LIVEPORTRAIT_EXPRESSION_NODE_CONTEXT);
-        if (node.type === 'result') {
-            const asset = getSelectedResultAsset(node);
-            return !!asset && assetMediaKind(asset) === 'image';
-        }
-        return false;
+        return !!CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isLivePortraitExpressionImageSource?.(node);
     }
 
     const SAM3_VIDEO_MASK_NODE_CONTEXT_SOURCE = {
@@ -15170,6 +14948,23 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     STYLE_SELECTOR_NODE_CONTEXT = CANVAS_SPECIAL_NODE_CONTEXT.STYLE_SELECTOR_NODE_CONTEXT || {};
     DIRECTOR_TIMELINE_NODE_CONTEXT = CANVAS_SPECIAL_NODE_CONTEXT.DIRECTOR_TIMELINE_NODE_CONTEXT || {};
 
+    const CANVAS_SPECIAL_NODE_EDITOR_CONTROLLER = typeof WORKBENCH_CANVAS_SPECIAL_NODE_EDITOR.createCanvasSpecialNodeEditorController === 'function'
+        ? WORKBENCH_CANVAS_SPECIAL_NODE_EDITOR.createCanvasSpecialNodeEditorController({
+            specialNodeEditorSource: {
+                runtimeSource: { ensureWorkbenchLazyRuntime },
+                languageSource: { t: (en, cn) => t(en, cn) },
+                editorSource: {
+                    isPoseStudioLoaded: () => typeof window.SimpAIPoseStudioEditor?.open === 'function',
+                    openPoseStudioEditor: node => poseStudioOpenEditor(node, POSE_STUDIO_NODE_CONTEXT),
+                    isGaussianStudioLoaded: () => typeof window.SimpAIGaussianStudioEditor?.open === 'function',
+                    openGaussianStudioEditor: node => gaussianStudioOpenEditor(node, GAUSSIAN_STUDIO_NODE_CONTEXT),
+                    isLivePortraitExpressionLoaded: () => typeof window.SimpAILivePortraitExpressionEditor?.open === 'function',
+                    openLivePortraitExpressionEditor: node => livePortraitOpenEditor(node, LIVEPORTRAIT_EXPRESSION_NODE_CONTEXT)
+                }
+            }
+        })
+        : {};
+
     function renderLivePortraitExpressionNodeHtml(node) {
         return livePortraitRenderNodeHtml(node, LIVEPORTRAIT_EXPRESSION_NODE_CONTEXT);
     }
@@ -15187,453 +14982,140 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function presetSpecialViewerUrl(kind) {
-        return `/canvas-workbench/special-viewer/${encodeURIComponent(kind)}`;
+        return PRESET_SPECIAL_VIEWER_CONTROLLER.presetSpecialViewerUrl?.(kind) || '';
     }
 
     function presetSpecialInputAssetUrl(node) {
-        const slots = node?.upload_slots || {};
-        const preferredSlots = ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4', 'scene_input_image5', 'scene_input_image6', 'scene_input_image7', 'scene_input_image8'];
-        for (const slot of preferredSlots) {
-            const source = getNode(slots[slot]);
-            if (!source) continue;
-            const asset = source.type === 'result' ? getSelectedResultAsset(source) : source.asset;
-            const src = safeAssetDisplaySrc(asset, asset?.thumb || asset?.preview_url || asset?.data_url || '');
-            if (src) return src;
-        }
-        return '';
+        return PRESET_SPECIAL_VIEWER_CONTROLLER.presetSpecialInputAssetUrl?.(node) || '';
     }
 
+    const CANVAS_PRESET_NODE_CLASSIFIER = typeof WORKBENCH_CANVAS_PRESET_NODE_CLASSIFIER.createCanvasPresetNodeClassifier === 'function'
+        ? WORKBENCH_CANVAS_PRESET_NODE_CLASSIFIER.createCanvasPresetNodeClassifier({ getPresetSchema, getPresetTheme, getPresetThemeInfo })
+        : {};
+
     function isStyleTransferPresetNode(node) {
-        if (!node || node.type !== 'preset') return false;
-        const text = [
-            node.title,
-            node.preset?.name,
-            node.preset?.display_name,
-            node.runtime?.task_method,
-            node.runtime?.scene_theme,
-            getPresetTheme(node)
-        ].filter(Boolean).join(' ').toLowerCase();
-        const compact = text.replace(/[^a-z0-9]+/g, '');
-        return compact.includes('styletransfer') || text.includes('style_transfer') || text.includes('flux2_styletransfer');
+        return CANVAS_PRESET_NODE_CLASSIFIER.isStyleTransferPresetNode?.(node) || false;
     }
 
     function isLivePortraitVideoExpressionPresetNode(node) {
-        if (!node || node.type !== 'preset') return false;
-        const taskMethod = String(getPresetThemeInfo(node).task_method || node.runtime?.task_method || '').toLowerCase();
-        if (taskMethod.includes('liveportrait_video_expression')) return true;
-        const text = [
-            node.title,
-            node.preset?.name,
-            node.preset?.display_name,
-            node.runtime?.scene_theme,
-            getPresetTheme(node)
-        ].filter(Boolean).join(' ').toLowerCase();
-        return text.includes('liveportrait') && text.includes('video');
+        return CANVAS_PRESET_NODE_CLASSIFIER.isLivePortraitVideoExpressionPresetNode?.(node) || false;
     }
 
     function isLtx23MultiGuidePresetNode(node) {
-        if (!node || node.type !== 'preset') return false;
-        const taskMethod = String(getPresetThemeInfo(node).task_method || node.runtime?.task_method || '').toLowerCase();
-        if (taskMethod.includes('ltx_i2v') || taskMethod.includes('ltx_ia2v') || taskMethod.includes('ltx_extent')) return true;
-        const text = [
-            node.title,
-            node.preset?.name,
-            node.preset?.display_name,
-            node.runtime?.scene_theme,
-            getPresetTheme(node)
-        ].filter(Boolean).join(' ').toLowerCase();
-        return /ltx2\.3\s*\((i2v|ia2v|extent)\)/.test(text);
+        return CANVAS_PRESET_NODE_CLASSIFIER.isLtx23MultiGuidePresetNode?.(node) || false;
     }
 
     function isMiniMaxH3PresetNode(node) {
-        if (!node || node.type !== 'preset') return false;
-        const schema = getPresetSchema(node);
-        const hidden = Array.isArray(schema.disvisible) ? schema.disvisible : String(schema.disvisible || '').split(',').map((item) => item.trim());
-        if (hidden.includes('minimax_h3_storyboard_control')) return false;
-        if (String(node.runtime?.engine_type || schema.engine_type || '').toLowerCase() === 'image') return false;
-        const taskMethod = String(getPresetThemeInfo(node).task_method || node.runtime?.task_method || '').toLowerCase();
-        if (/minimax_h3_(?:r2i|upscale|region)(?:_|$)/.test(taskMethod)) return false;
-        if (taskMethod.includes('minimax_h3')) return true;
-        const text = [
-            node.title,
-            node.preset?.name,
-            node.preset?.display_name,
-            node.runtime?.scene_theme,
-            getPresetTheme(node)
-        ].filter(Boolean).join(' ').toLowerCase();
-        return /minimax[-_\s]*h3/.test(text);
+        return CANVAS_PRESET_NODE_CLASSIFIER.isMiniMaxH3PresetNode?.(node) || false;
     }
 
+    const CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE = typeof WORKBENCH_CANVAS_H3_STORYBOARD_PRESET_DATA.createCanvasMiniMaxH3StoryboardPresetData === 'function'
+        ? WORKBENCH_CANVAS_H3_STORYBOARD_PRESET_DATA.createCanvasMiniMaxH3StoryboardPresetData({
+            nodeSource: {
+                getSlotOrder: () => SLOT_ORDER,
+                getPresetUploadRunEdges,
+                getUploadSlotMediaKind,
+                getNode,
+                getSelectedResultAsset,
+                canvasAgentPromptCompilerContext,
+                safeAssetFullDisplaySrc: (...args) => safeAssetFullDisplaySrc(...args),
+                canvasAgentPromptTargetFromNode,
+                getPresetThemeInfo
+            },
+            editorSource: { getStoryboardEditor: () => window.SimpAIH3StoryboardEditor || null },
+            stateSource: {
+                getLanguageState: () => window.simpleaiTopbarSystemParams || { __lang: document.documentElement.lang || 'en' }
+            },
+            runtimeSource: { runtimeUiLang }
+        })
+        : {};
+
     function h3StoryboardVlmReferencesForPreset(node) {
-        const counts = { image: 0, video: 0, audio: 0 };
-        const tokenNames = { image: 'Picture', video: 'Video', audio: 'Audio' };
-        return getPresetUploadRunEdges(node)
-            .slice()
-            .sort((left, right) => SLOT_ORDER.indexOf(left?.slot || '') - SLOT_ORDER.indexOf(right?.slot || ''))
-            .map((edge) => {
-                const kind = getUploadSlotMediaKind(edge?.slot || '');
-                const sourceNode = getNode(edge?.from);
-                const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset;
-                if (!sourceNode || !asset || !tokenNames[kind]) return null;
-                counts[kind] += 1;
-                return {
-                    kind,
-                    token: `<${tokenNames[kind]} ${counts[kind]}>`,
-                    slot: edge?.slot || '',
-                    node: sourceNode,
-                    asset,
-                    label: String(sourceNode?.title || sourceNode?.name || edge?.slot || '').trim()
-                };
-            })
-            .filter(Boolean);
+        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardVlmReferencesForPreset(node);
     }
 
     function h3StoryboardVlmReferenceSummary(references, language, motionReferenceSlot) {
-        const isEnglish = String(language || runtimeUiLang() || '').toLowerCase() === 'en';
-        const motionSlot = String(motionReferenceSlot || 'scene_reference_video').trim();
-        return (Array.isArray(references) ? references : []).map((reference) => {
-            const asset = reference.asset || {};
-            const details = [
-                reference.label,
-                reference.slot,
-                asset.width && asset.height ? `${asset.width}x${asset.height}` : '',
-                asset.duration ? `${Math.round(Number(asset.duration) * 1000) / 1000}s` : '',
-                asset.fps ? `${Math.round(Number(asset.fps) * 1000) / 1000}fps` : ''
-            ].filter(Boolean).join(' / ');
-            if (reference.kind === 'audio') {
-                const availability = isEnglish
-                    ? 'connected audio metadata only; audio content is not decoded during prompt optimization'
-                    : '仅连接音频元数据；提示词优化不会解码音频内容';
-                return `${reference.token}: ${availability}${details ? ` / ${details}` : ''}`;
-            }
-            if (reference.kind === 'video' && reference.slot === motionSlot) {
-                const role = isEnglish
-                    ? 'motion/timing reference; apply its visible pose, action, timing, and compatible camera trajectory to the Picture subject, without copying the video actor identity'
-                    : '运动与时序参考；把视频中的姿态、动作、节奏和兼容的镜头轨迹应用到图片角色，不复制视频人物身份';
-                return `${reference.token}: ${role}${details ? ` / ${details}` : ''}`;
-            }
-            if (reference.kind === 'video') {
-                const role = isEnglish
-                    ? 'scene/composition video reference; use its setting and framing unless another video is explicitly assigned motion'
-                    : '场景与构图视频参考；使用其场景和取景，除非另一个视频被明确指定为动作来源';
-                return `${reference.token}: ${role}${details ? ` / ${details}` : ''}`;
-            }
-            const availability = isEnglish ? `attached ${reference.kind} reference` : `已连接${reference.kind === 'image' ? '图片' : '视频'}参考`;
-            return `${reference.token}: ${availability}${details ? ` / ${details}` : ''}`;
-        }).join('\n');
+        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardVlmReferenceSummary(references, language, motionReferenceSlot);
     }
 
     function h3StoryboardMotionPictureIndex(prompt, motionReferenceToken, pictureCount) {
-        const text = String(prompt || '');
-        const token = String(motionReferenceToken || '').trim();
-        const explicitPictureNumbers = [...text.matchAll(/<Picture\s+(\d+)>/gi)]
-            .map((match) => Number(match[1] || 0))
-            .filter((number) => number > 0);
-        const uniquePictureNumbers = [...new Set(explicitPictureNumbers)];
-        const availablePictureCount = Number.isFinite(Number(pictureCount)) && Number(pictureCount) > 0
-            ? Number(pictureCount)
-            : uniquePictureNumbers.length;
-        if (!text || !token) return availablePictureCount === 1 ? (uniquePictureNumbers[0] || 1) : 0;
-        const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const shotBodies = text.match(/\[Shot\s+\d+\][\s\S]*?(?=\[Shot\s+\d+\]|$)/gi) || [];
-        for (const body of shotBodies) {
-            if (!new RegExp(escapedToken, 'i').test(body)) continue;
-            const shotPictures = [...body.matchAll(/<Picture\s+(\d+)>/gi)]
-                .map((match) => Number(match[1] || 0))
-                .filter((number) => number > 0);
-            const uniqueShotPictures = [...new Set(shotPictures)];
-            if (uniqueShotPictures.length === 1) return uniqueShotPictures[0];
-            if (uniqueShotPictures.length > 1) return 0;
-        }
-        return availablePictureCount === 1 ? (uniquePictureNumbers[0] || 1) : 0;
+        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardMotionPictureIndex(prompt, motionReferenceToken, pictureCount);
     }
 
     function h3StoryboardInventoryForPreset(node) {
-        const context = canvasAgentPromptCompilerContext(node);
-        const refs = { image: [], video: [], audio: [] };
-        getPresetUploadRunEdges(node)
-            .slice()
-            .sort((left, right) => SLOT_ORDER.indexOf(left?.slot || '') - SLOT_ORDER.indexOf(right?.slot || ''))
-            .forEach((edge) => {
-                const kind = getUploadSlotMediaKind(edge?.slot || '');
-                if (!refs[kind]) return;
-                const sourceNode = getNode(edge.from);
-                const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset;
-                const preview = kind === 'image'
-                    ? safeAssetFullDisplaySrc(asset || {}, asset?.preview_url || asset?.thumb || asset?.data_url || asset?.url || '')
-                    : (asset?.preview_url || asset?.data_url || asset?.url || '');
-                const label = String(sourceNode?.title || sourceNode?.name || edge?.slot || `${kind} ${refs[kind].length + 1}`).trim();
-                refs[kind].push({
-                    slot: edge?.slot || '',
-                    asset_id: asset?.asset_id || '',
-                    source_id: sourceNode?.id || '',
-                    label_en: label,
-                    label_cn: label,
-                    preview
-                });
-            });
-        return {
-            image_count: Math.max(0, Number(context?.image_count || 0)),
-            video_count: Math.max(0, Number(context?.video_count || 0)),
-            audio_count: Math.max(0, Number(context?.audio_count || 0)),
-            image_refs: refs.image,
-            video_refs: refs.video,
-            audio_refs: refs.audio
-        };
+        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardInventoryForPreset(node);
     }
 
     function h3StoryboardModeForPreset(node) {
-        const inventory = h3StoryboardInventoryForPreset(node);
-        const target = canvasAgentPromptTargetFromNode(node, 'video');
-        const modeHint = target?.prompt_compiler
-            || getPresetThemeInfo(node).task_method
-            || node.runtime?.task_method
-            || node.preset?.name
-            || '';
-        if (window.SimpAIH3StoryboardEditor?.normalizeMode) {
-            return window.SimpAIH3StoryboardEditor.normalizeMode(modeHint, { inventory });
-        }
-        const compiler = typeof modeHint === 'string' ? modeHint : JSON.stringify(modeHint);
-        const compact = String(compiler || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-        if (compact.includes('ref2va') || compact.includes('reference') || compact.includes('ref2v') || compact.includes('r2v') || compact.includes('r2c') || compact.includes('minimaxh3avatar')) return 'Ref2VA';
-        if (compact.includes('fl2va') || compact.includes('firstlast')) return 'FL2VA';
-        if (compact.includes('l2va') || compact.includes('lastframe')) return 'L2VA';
-        if (compact.includes('frameanchor')) return inventory.image_count >= 2 ? 'FL2VA' : 'I2VA';
-        if (compact.includes('i2va')) return 'I2VA';
-        if (compact.includes('i2v')) return inventory.image_count >= 2 ? 'FL2VA' : 'I2VA';
-        return 'T2VA';
+        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardModeForPreset(node);
     }
 
     async function attachCharacterMediaToPreset(nodeId, card) {
-        const target = getNode(nodeId);
-        if (!target || isNodeLocked(target)) throw new Error(t('Node is locked or missing.', '节点已锁定或不存在。'));
-        const api = window.SimpAIVisualPromptEditor;
-        const mode = h3StoryboardModeForPreset(target);
-        const limits = mode === 'T2VA' ? { image: 0, audio: 0 }
-            : mode === 'Ref2VA' ? { image: 9, audio: 3 }
-                : { image: mode === 'FL2VA' ? 2 : 1, audio: 0 };
-        const slots = getVisibleUploadSlots(target)
-            .slice().sort((a, b) => SLOT_ORDER.indexOf(a.key) - SLOT_ORDER.indexOf(b.key))
-            .map(slot => ({ key: slot.key, kind: getUploadSlotMediaKind(slot.key), occupied: !!target.upload_slots?.[slot.key] }));
-        const allowed = ['image', 'audio'].flatMap(kind => slots.filter(slot => slot.kind === kind).slice(0, limits[kind]));
-        const plan = api.planMediaAttachments(card.media, h3StoryboardInventoryForPreset(target), allowed);
-        if (!plan.assignments.length) return { inventory: h3StoryboardInventoryForPreset(target), skipped: plan.skipped };
-        const response = await api.request('resolve', { asset_ids: plan.assignments.map(item => item.asset_id) }, window.simpleaiTopbarSystemParams || {});
-        const current = getNode(nodeId);
-        if (!current || isNodeLocked(current)) throw new Error(t('Node is locked or missing.', '节点已锁定或不存在。'));
-        const stillVisible = new Set(getVisibleUploadSlots(current).map(slot => slot.key));
-        if (h3StoryboardModeForPreset(current) !== mode || plan.assignments.some(item =>
-            !stillVisible.has(item.slot) || current.upload_slots?.[item.slot]
-                || project.edges.some(edge => edge.type === 'upload' && edge.to === nodeId && edge.slot === item.slot))) {
-            throw new Error('media_slot_occupied');
-        }
-        const mediaNodes = plan.assignments.map((item, index) => {
-            const asset = response.assets.find(ref => ref.asset_id === item.asset_id);
-            const world = { x: current.x - 320, y: current.y + index * 220 };
-            const node = asset && buildMediaNodeFromAsset(asset, world, `${card.name} - ${asset.name || item.slot}`);
-            if (!node || !canNodeConnectToUploadSlot(node, item.slot)) throw new Error('media_kind_mismatch');
-            return { node, slot: item.slot, world };
-        });
-        pushHistory('Add character reference media');
-        for (const item of mediaNodes) {
-            placeNodeAvoidingOverlap(item.node, item.world);
-            Object.assign(project, buildProjectNodeAppendPatch(project, item.node));
-            createUploadEdge(item.node.id, nodeId, item.slot, { silent: true });
-        }
-        mutate({ inspector: true });
-        return { inventory: h3StoryboardInventoryForPreset(current), skipped: plan.skipped };
+        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_EDITOR_CONTROLLER.attachCharacterMediaToPreset(nodeId, card);
     }
-
     function h3StoryboardOptionsForPreset(node) {
-        return {
-            mode: h3StoryboardModeForPreset(node),
-            duration: Math.max(0.3, Number(node?.params?.scene_video_duration || 5)),
-            inventory: h3StoryboardInventoryForPreset(node),
-            langState: window.simpleaiTopbarSystemParams || { __lang: document.documentElement.lang || 'en' }
-        };
+        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardOptionsForPreset(node);
     }
 
     function h3StoryboardStateForPreset(node) {
-        const options = h3StoryboardOptionsForPreset(node);
-        const source = node?.h3_storyboard || node?.params?.prompt || '';
-        if (window.SimpAIH3StoryboardEditor?.normalize) {
-            return window.SimpAIH3StoryboardEditor.normalize(source, options);
-        }
-        let stored = source && typeof source === 'object' ? source : {};
-        if (typeof source === 'string' && source.trim().startsWith('{')) {
-            try { stored = JSON.parse(source); } catch (error) { stored = {}; }
-        }
-        const shotMatches = String(node?.params?.prompt || '').match(/\[Shot\s+\d+\]/gi) || [];
-        return {
-            mode: options.mode,
-            optimize: !!stored.optimize,
-            shots: Array.isArray(stored.shots) && stored.shots.length
-                ? stored.shots
-                : Array.from({ length: Math.max(1, shotMatches.length || 3) }, () => ({}))
-        };
+        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardStateForPreset(node);
     }
-
     function ltx23GuideModeForPreset(node) {
-        const taskMethod = String(getPresetThemeInfo(node).task_method || node?.runtime?.task_method || '').toLowerCase();
-        const text = [
-            node?.title,
-            node?.preset?.name,
-            node?.preset?.display_name,
-            node?.runtime?.scene_theme,
-            getPresetTheme(node)
-        ].filter(Boolean).join(' ').toLowerCase();
-        return taskMethod.includes('ltx_extent') || /ltx2\.3\s*\(extent\)/.test(text)
-            ? 'video_extent'
-            : 'keyframes';
+        return CANVAS_LTX23_GUIDE_EDITOR_CONTROLLER.ltx23GuideModeForPreset?.(node) || 'keyframes';
     }
 
     function presetUploadSourceForSlot(node, slot) {
-        if (!node || !slot) return null;
-        const sourceId = node.upload_slots?.[slot]
-            || project.edges.find(edge => edge.type === 'upload' && edge.to === node.id && edge.slot === slot)?.from
-            || '';
-        return sourceId ? getNode(sourceId) : null;
+        return CANVAS_LIVEPORTRAIT_VIDEO_EXPRESSION_EDITOR_CONTROLLER.presetUploadSourceForSlot?.(node, slot) || null;
     }
 
     function livePortraitVideoExpressionSourceInfo(node) {
-        const sourceNode = presetUploadSourceForSlot(node, 'scene_video');
-        const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset || null;
-        const src = safeAssetFullDisplaySrc(asset || {}, asset?.preview_url || asset?.thumb || asset?.data_url || asset?.url || '');
-        return { sourceNode, asset, src };
+        return CANVAS_LIVEPORTRAIT_VIDEO_EXPRESSION_EDITOR_CONTROLLER.livePortraitVideoExpressionSourceInfo?.(node)
+            || { sourceNode: null, asset: null, src: '' };
     }
 
     function findStyleSelectorForPreset(presetNode) {
-        if (!presetNode) return null;
-        return project.nodes.find(node => node?.type === 'style_selector' && node.style_selector?.target_preset_id === presetNode.id)
-            || (() => {
-                const edge = project.edges.find(item => item.type === 'text' && item.to === presetNode.id && item.slot === 'prompt' && getNode(item.from)?.type === 'style_selector');
-                return edge ? getNode(edge.from) : null;
-            })();
+        return styleSelectorFindForPreset?.(presetNode, STYLE_SELECTOR_NODE_CONTEXT) || null;
     }
 
     function styleSelectorLinkedPreset(selectorNode) {
-        if (!selectorNode || selectorNode.type !== 'style_selector') return null;
-        const state = selectorNode.style_selector || {};
-        const edgeTarget = project.edges.find(edge => edge.type === 'text' && edge.from === selectorNode.id && edge.slot === 'prompt');
-        return getNode(state.target_preset_id || '') || getNode(edgeTarget?.to || '');
+        return styleSelectorLinkedPresetForNode?.(selectorNode, STYLE_SELECTOR_NODE_CONTEXT) || null;
     }
 
+    const CANVAS_PRESET_SPECIAL_PANEL_RENDERER = typeof WORKBENCH_CANVAS_PRESET_SPECIAL_PANEL_RENDERER.createCanvasPresetSpecialPanelRenderer === 'function'
+        ? WORKBENCH_CANVAS_PRESET_SPECIAL_PANEL_RENDERER.createCanvasPresetSpecialPanelRenderer({
+            t,
+            escapeHtml,
+            isStyleTransferPresetNode,
+            findStyleSelectorForPreset,
+            isLivePortraitVideoExpressionPresetNode,
+            livePortraitVideoExpressionSourceInfo,
+            isLtx23MultiGuidePresetNode,
+            ltx23GuideConfigForPreset,
+            isMiniMaxH3PresetNode,
+            h3StoryboardOptionsForPreset,
+            h3StoryboardStateForPreset,
+            getH3StoryboardEditor: () => window.SimpAIH3StoryboardEditor
+        })
+        : {};
+
     function renderStyleTransferPresetController(node) {
-        if (!isStyleTransferPresetNode(node)) return '';
-        const selector = findStyleSelectorForPreset(node);
-        const selectedStyle = selector?.style_selector?.selected_name || '';
-        return `<div class="sai-style-transfer-link-panel">
-  <i class="fa-solid fa-palette"></i>
-  <span><b>${escapeHtml(selector ? (selectedStyle || t('Style Selector linked', '已连接 Style Selector')) : t('Style Selector', '风格选择器'))}</b><span>${escapeHtml(selector ? t('Double-click this preset or use the button to focus it.', '双击此 preset 或用按钮定位。') : t('Create a linked style selector node for Style Transfer+.', '为 Style Transfer+ 创建已连接的风格选择器节点。'))}</span></span>
-  <button type="button" data-node-action="add-style-selector"><i class="fa-solid ${selector ? 'fa-location-crosshairs' : 'fa-plus'}"></i><span>${escapeHtml(selector ? t('Focus', '定位') : t('Add', '添加'))}</span></button>
-</div>`;
+        return CANVAS_PRESET_SPECIAL_PANEL_RENDERER.renderStyleTransferPresetController?.(node) || '';
     }
 
     function renderLivePortraitVideoExpressionPresetController(node) {
-        if (!isLivePortraitVideoExpressionPresetNode(node)) return '';
-        const sourceInfo = livePortraitVideoExpressionSourceInfo(node);
-        const sourceTitle = sourceInfo.sourceNode?.title || sourceInfo.asset?.filename || sourceInfo.asset?.name || '';
-        const hasParams = !!String(node.params?.scene_additional_prompt_2 || '').trim();
-        const message = sourceInfo.sourceNode
-            ? (hasParams
-                ? t('Expression params saved. Edit from the source video first frame.', '表情参数已保存，可用源视频首帧继续编辑。')
-                : t('Edit using the source video first frame.', '使用源视频首帧编辑。'))
-            : t('Connect a video to Scene Video first.', '请先连接场景视频。');
-        return `<div class="sai-style-transfer-link-panel sai-liveportrait-video-expression-panel">
-  <i class="fa-solid fa-face-smile"></i>
-  <span><b>${escapeHtml(sourceTitle || t('LivePortrait Video', 'LivePortrait 视频表情'))}</b><span>${escapeHtml(message)}</span></span>
-  <button type="button" data-node-action="edit-liveportrait-video-expression"><i class="fa-solid fa-sliders"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
-</div>`;
+        return CANVAS_PRESET_SPECIAL_PANEL_RENDERER.renderLivePortraitVideoExpressionPresetController?.(node) || '';
     }
 
     function ltx23GuideConfigForPreset(node) {
-        const value = node?.params?.scene_additional_prompt || '';
-        const mode = ltx23GuideModeForPreset(node);
-        if (window.SimpAILTXGuideEditor?.normalize) return window.SimpAILTXGuideEditor.normalize(value, mode);
-        let source = {};
-        try {
-            source = typeof value === 'string' && value.trim() ? JSON.parse(value) : (value || {});
-        } catch (error) {
-            source = {};
-        }
-        if (!source || typeof source !== 'object' || Array.isArray(source)) source = {};
-        const middleSource = Array.isArray(source.middle) ? source.middle : [];
-        const bounded = (number, fallback, minimum, maximum) => {
-            const parsed = Number(number);
-            return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
-        };
-        if (mode === 'video_extent') {
-            const guideSource = Array.isArray(source.guides) ? source.guides : [];
-            const requestedContext = Math.round(bounded(source.context_frames, 17, 1, 257));
-            return {
-                version: 1,
-                mode: 'video_extent',
-                context_frames: Math.min(257, Math.max(1, Math.round((requestedContext - 1) / 8) * 8 + 1)),
-                source_strength: bounded(source.source_strength, 1, 0, 10),
-                guides: [0, 1, 2, 3, 4].map(index => ({
-                    frame_idx: Math.round(bounded(guideSource[index]?.frame_idx, 0, 0, 9999)),
-                    strength: bounded(guideSource[index]?.strength, 0.7, 0, 10)
-                }))
-            };
-        }
-        return {
-            version: 1,
-            first_strength: bounded(source.first_strength, 1, 0, 10),
-            last_strength: bounded(source.last_strength, 1, 0, 10),
-            middle: [0, 1, 2].map(index => ({
-                frame_idx: Math.round(bounded(middleSource[index]?.frame_idx, 0, 0, 9999)),
-                strength: bounded(middleSource[index]?.strength, 0.7, 0, 10)
-            }))
-        };
+        return CANVAS_LTX23_GUIDE_EDITOR_CONTROLLER.ltx23GuideConfigForPreset?.(node) || {};
     }
 
     function renderLtx23GuidePresetController(node) {
-        if (!isLtx23MultiGuidePresetNode(node)) return '';
-        const config = ltx23GuideConfigForPreset(node);
-        if (config.mode === 'video_extent') {
-            const guides = config.guides.map((item, index) => {
-                const frame = Number(item.frame_idx) === 0 ? t('Auto', '自动') : String(item.frame_idx);
-                const strength = Number(item.strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-                return `${t(`G${index + 1}`, `图${index + 1}`)} ${frame}/${strength}`;
-            }).join(' · ');
-            const source = Number(config.source_strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-            const summary = t(
-                `Context ${config.context_frames}/${source} | ${guides}`,
-                `上下文 ${config.context_frames}/${source} | ${guides}`
-            );
-            return `<div class="sai-style-transfer-link-panel sai-ltx23-guide-panel">
-  <i class="fa-solid fa-sliders"></i>
-  <span><b>${escapeHtml(t('LTX Extent Guides', 'LTX 续写引导'))}</b><span>${escapeHtml(summary)}</span></span>
-  <button type="button" data-node-action="edit-ltx23-guides"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
-</div>`;
-        }
-        const middle = config.middle.map((item, index) => {
-            const frame = Number(item.frame_idx) === 0 ? t('Auto', '自动') : String(item.frame_idx);
-            const strength = Number(item.strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-            return `${t(`M${index + 1}`, `中${index + 1}`)} ${frame}/${strength}`;
-        }).join(' · ');
-        const first = Number(config.first_strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-        const last = Number(config.last_strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-        const summary = t(`First ${first} | ${middle} | Last ${last}`, `首帧 ${first} | ${middle} | 尾帧 ${last}`);
-        return `<div class="sai-style-transfer-link-panel sai-ltx23-guide-panel">
-  <i class="fa-solid fa-sliders"></i>
-  <span><b>${escapeHtml(t('LTX Keyframe Guides', 'LTX 关键帧引导'))}</b><span>${escapeHtml(summary)}</span></span>
-  <button type="button" data-node-action="edit-ltx23-guides"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
-</div>`;
+        return CANVAS_PRESET_SPECIAL_PANEL_RENDERER.renderLtx23GuidePresetController?.(node) || '';
     }
 
     function renderMiniMaxH3StoryboardPresetController(node) {
-        if (!isMiniMaxH3PresetNode(node)) return '';
-        const options = h3StoryboardOptionsForPreset(node);
-        const state = h3StoryboardStateForPreset(node);
-        const summary = window.SimpAIH3StoryboardEditor?.statusText
-            ? window.SimpAIH3StoryboardEditor.statusText(state, options, options.langState)
-            : `${options.mode} · ${Math.max(1, state.shots?.length || 3)} ${t('shots', '镜头')} · ${options.duration.toFixed(1)}s · ${state.optimize ? t('LLM optimize', 'LLM 优化') : t('Direct', '直接写入')}`;
-        return `<div class="sai-style-transfer-link-panel sai-h3-storyboard-panel">
-  <i class="fa-solid fa-table-list"></i>
-  <span><b>${escapeHtml(t('MiniMax H3 Storyboard', 'MiniMax H3 分镜表'))}</b><span>${escapeHtml(summary)}</span></span>
-  <button type="button" data-node-action="edit-h3-storyboard"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
-</div>`;
+        return CANVAS_PRESET_SPECIAL_PANEL_RENDERER.renderMiniMaxH3StoryboardPresetController?.(node) || '';
     }
 
     function refreshPresetSpecialControllerDom(nodeId) {
@@ -15735,17 +15217,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function getModelChoices(node) {
-        const defaults = node.config?.defaults || {};
-        const catalog = node.config?.catalog || window.simpleaiTopbarSystemParams?.__canvas_model_catalog || {};
-        const presetLoras = getPresetDefaultLoraModels(defaults);
-        return {
-            base_model: mergeChoices([defaults.base_model || '', ...(catalog.model_filenames || [])]),
-            refiner_model: mergeChoices(['None', defaults.refiner_model || '', ...(catalog.refiner_filenames || [])]),
-            clip_model: mergeChoices([defaults.clip_model || 'Default (model)', ...(catalog.clip_filenames || [])]),
-            vae: mergeChoices([defaults.vae || 'Default (model)', ...(catalog.vae_filenames || [])]),
-            upscale_model: mergeChoices([defaults.upscale_model || 'default', ...(catalog.upscale_model_filenames || [])]),
-            lora: mergeChoices(['None', ...presetLoras, ...(catalog.lora_filenames || [])])
-        };
+        return CANVAS_MODEL_CONFIG_CATALOG_CONTROLLER.getModelChoices(node);
     }
 
     function modelConfigUsesFilter(node) {
@@ -15759,13 +15231,6 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             if (text && !merged.includes(text)) merged.push(text);
         });
         return merged;
-    }
-
-    function getPresetDefaultLoraModels(defaults) {
-        const loras = Array.isArray(defaults?.loras) ? defaults.loras : [];
-        return loras
-            .map(item => item && item.model ? item.model : '')
-            .filter(item => item && item !== 'None');
     }
 
     function configAliasValue(source, keys) {
@@ -15802,54 +15267,23 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function normalizeStyleSelections(value) {
-        if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
-        const text = String(value || '').trim();
-        if (!text) return [];
-        try {
-            const parsed = JSON.parse(text.replace(/'/g, '"'));
-            if (Array.isArray(parsed)) return normalizeStyleSelections(parsed);
-        } catch (err) {}
-        return text
-            .split(',')
-            .map(item => item.trim().replace(/^[\[\]'"]+|[\]\]'"]+$/g, ''))
-            .filter(Boolean);
+        return CANVAS_CONFIG_VALUES_CONTROLLER.normalizeStyleSelections(value);
     }
 
     function firstStyleConfigValue(source) {
-        const data = source && typeof source === 'object' ? source : {};
-        for (const key of ['style_selections', 'styles', 'default_styles']) {
-            if (Object.prototype.hasOwnProperty.call(data, key)) return data[key];
-        }
-        return undefined;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.firstStyleConfigValue(source);
     }
 
     function getConfigTargetPresetNode(configNode) {
         return CANVAS_CONFIG_CONNECTION_CONTROLLER.getConfigTargetPresetNode(configNode);
     }
 
-    function getSceneThemeInfoForPresetNode(preset) {
-        if (!preset || preset.type !== 'preset') return {};
-        const schema = preset.schema && typeof preset.schema === 'object' ? preset.schema : {};
-        const themes = Array.isArray(schema.themes) ? schema.themes : [];
-        const theme = preset.runtime?.scene_theme || schema.default_theme || themes[0] || '';
-        const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
-        return perTheme[theme] && typeof perTheme[theme] === 'object' ? perTheme[theme] : {};
-    }
-
     function getSceneGenerationConfigPropsForPresetNode(preset, key) {
-        const themeInfo = getSceneThemeInfoForPresetNode(preset);
-        const props = themeInfo.generation_config_props && typeof themeInfo.generation_config_props === 'object'
-            ? themeInfo.generation_config_props[key]
-            : null;
-        return props && typeof props === 'object' ? props : null;
+        return CANVAS_NODE_PARAM_CONTROLLER?.getSceneGenerationConfigPropsForPresetNode?.(preset, key) ?? null;
     }
 
     function getSceneGenerationConfigDefaultForPresetNode(preset, key) {
-        const themeInfo = getSceneThemeInfoForPresetNode(preset);
-        const defaults = themeInfo.defaults && typeof themeInfo.defaults === 'object' ? themeInfo.defaults : {};
-        if (Object.prototype.hasOwnProperty.call(defaults, key)) return defaults[key];
-        if (key === 'overwrite_step' && Object.prototype.hasOwnProperty.call(defaults, 'scene_steps')) return defaults.scene_steps;
-        return undefined;
+        return CANVAS_NODE_PARAM_CONTROLLER?.getSceneGenerationConfigDefaultForPresetNode?.(preset, key);
     }
 
     function getSceneGenerationConfigPropsForConfigNode(configNode, key) {
@@ -15861,88 +15295,28 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function generationConfigValueForPresetSchema(preset, key, value) {
-        if (key !== 'overwrite_step') return value;
-        const props = getSceneGenerationConfigPropsForPresetNode(preset, key);
-        if (!props || props.interactive !== false) return value;
-        const fixedValue = props.value ?? getSceneGenerationConfigDefaultForPresetNode(preset, key);
-        return fixedValue === undefined ? value : fixedValue;
+        const resolveValue = CANVAS_NODE_PARAM_CONTROLLER?.generationConfigValueForPresetSchema;
+        return typeof resolveValue === 'function' ? resolveValue(preset, key, value) : value;
     }
 
     function styleConfigSelectionFromValues(values, fallback) {
-        const raw = firstStyleConfigValue(values);
-        return raw === undefined ? normalizeStyleSelections(fallback) : normalizeStyleSelections(raw);
+        return CANVAS_CONFIG_VALUES_CONTROLLER.styleConfigSelectionFromValues(values, fallback);
     }
 
     function getStyleCatalogEntries() {
-        const source = window.SimpAIStyleCatalog || {};
-        const rawEntries = Array.isArray(source.entries)
-            ? source.entries
-            : (Array.isArray(source.styles) ? source.styles : []);
-        const rawNames = Array.isArray(source.names) ? source.names : [];
-        const entries = [];
-        const seen = new Set();
-        const add = (item) => {
-            const data = typeof item === 'string' ? { name: item } : (item && typeof item === 'object' ? item : {});
-            const name = String(data.name || data.style || '').trim();
-            if (!name || seen.has(name)) return;
-            seen.add(name);
-            entries.push({
-                name,
-                prompt: data.prompt || '',
-                negative_prompt: data.negative_prompt || data.negative || ''
-            });
-        };
-        rawEntries.forEach(add);
-        rawNames.forEach(add);
-        return entries;
+        return CANVAS_STYLE_CATALOG_CONTROLLER.getStyleCatalogEntries();
     }
 
     function getStyleChoicesFromCatalog() {
-        return getStyleCatalogEntries().map(item => item.name);
+        return CANVAS_STYLE_CATALOG_CONTROLLER.getStyleChoicesFromCatalog();
     }
 
     function getStyleChoicesFromDom() {
-        const roots = [];
-        const appRoot = typeof gradioApp === 'function' ? gradioApp() : null;
-        if (appRoot) roots.push(appRoot);
-        if (!roots.includes(document)) roots.push(document);
-        const found = [];
-        const add = (value) => {
-            const text = String(value || '').trim();
-            if (text && text !== 'on' && !found.includes(text)) found.push(text);
-        };
-        roots.forEach((root) => {
-            if (!root || !root.querySelectorAll) return;
-            root.querySelectorAll('.style-button[data-style-name]').forEach(button => add(button.getAttribute('data-style-name') || button.textContent));
-            root.querySelectorAll('.style_selections input[type="checkbox"]').forEach(input => add(input.value));
-            root.querySelectorAll('.style_selections label').forEach(label => add(label.textContent));
-        });
-        return found;
+        return CANVAS_STYLE_CATALOG_CONTROLLER.getStyleChoicesFromDom();
     }
 
     function getStylePreviewCatalogFromDom() {
-        const roots = [];
-        const appRoot = typeof gradioApp === 'function' ? gradioApp() : null;
-        if (appRoot) roots.push(appRoot);
-        if (!roots.includes(document)) roots.push(document);
-        const catalog = new Map();
-        getStyleCatalogEntries().forEach((data) => {
-            const name = String(data?.name || '').trim();
-            if (name && !catalog.has(name)) catalog.set(name, data);
-        });
-        roots.forEach((rootEl) => {
-            if (!rootEl || !rootEl.querySelectorAll) return;
-            rootEl.querySelectorAll('.style-tooltip-target[data-style-data]').forEach((item) => {
-                const raw = item.getAttribute('data-style-data') || '';
-                if (!raw) return;
-                try {
-                    const data = JSON.parse(raw);
-                    const name = String(data?.name || item.querySelector?.('.style-button')?.getAttribute('data-style-name') || '').trim();
-                    if (name && !catalog.has(name)) catalog.set(name, data);
-                } catch (err) {}
-            });
-        });
-        return catalog;
+        return CANVAS_STYLE_CATALOG_CONTROLLER.getStylePreviewCatalogFromDom();
     }
 
     function hoverPreviewAttrs(payload) {
@@ -15953,28 +15327,11 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function getStyleChoices(node, selected, defaults) {
-        return mergeChoices([
-            ...(selected || []),
-            ...(defaults || []),
-            ...getStyleChoicesFromCatalog(),
-            ...getStyleChoicesFromDom(),
-            ...STYLE_CHOICES_FALLBACK,
-            ...(node.config?.catalog?.styles || [])
-        ]);
+        return CANVAS_STYLE_CATALOG_CONTROLLER.getStyleChoices(node, selected, defaults);
     }
 
     function normalizeInitialConfigLoras(defaults, overrides) {
         return CANVAS_CONFIG_VALUES_CONTROLLER.normalizeInitialConfigLoras(defaults, overrides);
-    }
-
-    function modelSelectionIsPlaceholder(value) {
-        const text = String(value || '').trim().toLowerCase();
-        return !text || ['none', 'default', 'default (model)'].includes(text);
-    }
-
-    function modelSelectTitleAttr(value) {
-        const text = String(value || '').trim();
-        return text ? ` title="${escapeHtml(text)}"` : '';
     }
 
     function syncModelSelectTitle(select) {
@@ -15984,250 +15341,20 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         else select.removeAttribute('title');
     }
 
-    function currentModelBrowserNames(node, isLora, select, key) {
-        if (isLora) {
-            const loras = normalizeInitialConfigLoras(node.config?.defaults || {}, node.config?.values || {});
-            return loras
-                .filter(lora => lora.enabled && !modelSelectionIsPlaceholder(lora.model))
-                .map(lora => String(lora.model || '').trim())
-                .filter(Boolean);
-        }
-        const value = String(select?.value || node.config?.values?.[key] || '').trim();
-        return modelSelectionIsPlaceholder(value) ? [] : [value];
-    }
-
-    function modelBrowserTypeForConfigKey(key) {
-        if (key === 'refiner_model') return 'refiner';
-        if (key === 'clip_model') return 'clip';
-        if (key === 'vae') return 'vae';
-        if (key === 'upscale_model') return 'upscale';
-        return 'base';
-    }
-
-    function renderModelBrowserButton(attr, value, title) {
-        return `<button type="button" class="sai-model-config-browser-btn" ${attr}="${escapeHtml(value)}" title="${escapeHtml(title || t('Browse models', '浏览模型'))}" aria-label="${escapeHtml(title || t('Browse models', '浏览模型'))}"><i class="fa-solid fa-magnifying-glass"></i></button>`;
-    }
-
-    function renderModelConfigField(label, key, choices, value, preview = true, extraClass = '') {
-        const attrs = preview ? ` data-hover-preview-kind="model" data-model-preview-param="${escapeHtml(key)}"` : '';
-        const className = `sai-node-field${extraClass ? ` ${extraClass}` : ''}`;
-        return `<label class="${className}"><span>${escapeHtml(label)}</span><div class="sai-model-config-select-row"><select data-config-param="${escapeHtml(key)}"${attrs}${modelSelectTitleAttr(value)}>${optionHtml(choices, value)}</select>${renderModelBrowserButton('data-model-browser-param', key)}</div></label>`;
-    }
-
     function renderModelsConfigNodeHtml(node) {
-        const values = node.config?.values || {};
-        const choices = getModelChoices(node);
-        const loras = normalizeInitialConfigLoras(node.config?.defaults || {}, values);
-        const useModelFilter = modelConfigUsesFilter(node);
-        return `
-<div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Models', '模型'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || t('Models Config', '模型配置'))}</span>
-  ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
-</div>
-<div class="sai-config-node-body">
-  <label class="sai-node-check sai-model-config-filter"><input data-config-model-filter type="checkbox" ${useModelFilter ? 'checked' : ''}><span>${escapeHtml(t('Use model filter', '使用模型过滤'))}</span></label>
-  ${renderModelConfigField(t('Base Model', '基础模型'), 'base_model', choices.base_model, values.base_model, true, 'sai-collapsed-keep')}
-  ${renderModelConfigField(t('Refiner', '精修模型'), 'refiner_model', choices.refiner_model, values.refiner_model)}
-  ${renderModelConfigField('CLIP', 'clip_model', choices.clip_model, values.clip_model, false)}
-  ${renderModelConfigField('VAE', 'vae', choices.vae, values.vae, false)}
-  ${renderModelConfigField(t('Upscale Model', '放大模型'), 'upscale_model', choices.upscale_model, values.upscale_model || 'default')}
-  <div class="sai-lora-config-list">
-    ${loras.map((lora, index) => `<div class="sai-lora-config-row">
-      <input data-config-lora-enabled="${index}" type="checkbox" ${lora.enabled ? 'checked' : ''} title="${escapeHtml(t('Enable LoRA {index}', '启用 LoRA {index}').replace('{index}', index + 1))}">
-      <div class="sai-model-config-select-row"><select data-config-lora-model="${index}" data-hover-preview-kind="lora" data-model-preview-lora-index="${index}"${modelSelectTitleAttr(lora.model || 'None')}>${optionHtml(choices.lora, lora.model || 'None')}</select>${renderModelBrowserButton('data-model-browser-lora-index', index, t('Browse LoRA models', '浏览 LoRA 模型'))}</div>
-      <input data-config-lora-weight="${index}" type="number" min="-4" max="4" step="0.05" value="${escapeHtml(lora.weight ?? 1)}">
-    </div>`).join('')}
-  </div>
-</div>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="config" title="${escapeHtml(t('Config output', '配置输出'))}"></button>`;
-    }
-
-    function openModelBrowserForConfigField(node, trigger, nodeEl) {
-        if (!node || node.type !== 'config' || node.config_kind !== 'models') return false;
-        if (!window.SimpAIModelBrowser?.open) {
-            showToast(t('Model Browser is not loaded yet.', 'Model Browser 尚未加载完成。'));
-            return true;
-        }
-        const loraIndexRaw = trigger.getAttribute('data-model-browser-lora-index');
-        const isLora = loraIndexRaw !== null;
-        const index = Number(loraIndexRaw);
-        const key = isLora ? '' : (trigger.getAttribute('data-model-browser-param') || '');
-        const selector = isLora
-            ? `[data-config-lora-model="${index}"]`
-            : `[data-config-param="${cssEscape(key)}"]`;
-        const select = nodeEl?.querySelector?.(selector);
-        const choices = Array.from(select?.options || [])
-            .map(option => option.value || option.textContent || '')
-            .filter(Boolean);
-        const type = isLora ? 'lora' : modelBrowserTypeForConfigKey(key);
-        const labelByKey = {
-            base_model: t('Base Model', '基础模型'),
-            refiner_model: t('Refiner', '精修模型'),
-            clip_model: 'CLIP',
-            vae: 'VAE',
-            upscale_model: t('Upscale Model', '放大模型')
-        };
-        const title = isLora
-            ? t('Browse LoRA models', '浏览 LoRA 模型')
-            : t('Browse {label}', '浏览 {label}').replace('{label}', labelByKey[key] || key || t('Model', '模型'));
-        const catalog = node.config?.catalog || window.simpleaiTopbarSystemParams?.__canvas_model_catalog || {};
-        const targetPreset = getConfigTargetPreset(node);
-        const currentModelNames = currentModelBrowserNames(node, isLora, select, key);
-        window.SimpAIModelBrowser.open({
-            type,
-            title,
-            container: root || document.body,
-            context: {
-                __lang: runtimeUiLang(),
-                catalog,
-                choices,
-                use_model_filter: modelConfigUsesFilter(node),
-                current_model_names: currentModelNames,
-                engine: catalog.engine || undefined,
-                task_method: catalog.task_method || undefined,
-                preset_node: targetPreset ? serializePresetForRun(targetPreset) : undefined
-            },
-            onSelect: (item) => {
-                const value = item?.name || '';
-                if (!value) return;
-                if (select && !Array.from(select.options || []).some(option => option.value === value)) {
-                    select.add(new Option(value, value));
-                }
-                if (select) {
-                    select.value = value;
-                    syncModelSelectTitle(select);
-                }
-                if (isLora) {
-                    updateConfigLora(node.id, index, 'model', value);
-                } else {
-                    updateConfigParam(node.id, key, value, 'text', { render: false });
-                }
-                showToast(t('Model selected.', '已选择模型。'));
-            }
-        });
-        return true;
+        return CANVAS_MODEL_CONFIG_RENDERER.renderModelsConfigNodeHtml(node);
     }
 
     function renderStylesConfigNodeHtml(node) {
-        const values = node.config?.values || {};
-        const defaults = node.config?.defaults || {};
-        const defaultSelected = styleConfigSelectionFromValues(defaults, []);
-        const selected = styleConfigSelectionFromValues(values, defaultSelected);
-        const choices = getStyleChoices(node, selected, defaultSelected);
-        const previewCatalog = getStylePreviewCatalogFromDom();
-        const selectedSet = new Set(selected);
-        const chips = selected.length
-            ? selected.slice(0, 8).map(style => `<span>${escapeHtml(displayStyleName(style) || style)}</span>`).join('') + (selected.length > 8 ? `<small>+${selected.length - 8}</small>` : '')
-            : `<em>${escapeHtml(t('No styles selected', '未选择风格'))}</em>`;
-        const styleListKeepClass = selected.length ? ' sai-collapsed-keep' : '';
-        return `
-<div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Styles', '风格'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || t('Styles Config', '风格配置'))}</span>
-  ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
-</div>
-<div class="sai-config-node-body sai-styles-config-body">
-  <label class="sai-node-field"><span>${escapeHtml(t('Search Styles', '搜索风格'))}</span><input data-style-config-search type="search" placeholder="${escapeHtml(t('Filter style names', '筛选风格名称'))}" autocomplete="off"></label>
-  <div class="sai-styles-config-summary sai-collapsed-keep">
-    <b>${escapeHtml(String(selected.length))}</b><span>${escapeHtml(t('selected', '已选'))}</span>
-    <button type="button" data-style-config-action="reset"><i class="fa-solid fa-rotate-left"></i><span>${escapeHtml(t('Reset', '重置'))}</span></button>
-    <button type="button" data-style-config-action="clear"><i class="fa-solid fa-xmark"></i><span>${escapeHtml(t('Clear', '清空'))}</span></button>
-  </div>
-  <div class="sai-styles-config-chips sai-collapsed-keep">${chips}</div>
-  <div class="sai-styles-config-list${styleListKeepClass}">
-    ${choices.length ? choices.map((style) => {
-        const data = previewCatalog.get(style) || { name: style };
-        const display = displayStyleName(style) || style;
-        const attrs = hoverPreviewAttrs({
-            kind: 'style',
-            title: display,
-            style,
-            prompt: data.prompt || '',
-            negative: data.negative_prompt || ''
-        });
-        return `<label class="sai-style-config-item" ${attrs} data-style-config-item="${escapeHtml(`${style} ${display}`.toLowerCase())}"><input data-config-style="${escapeHtml(style)}" type="checkbox" ${selectedSet.has(style) ? 'checked' : ''}><span>${escapeHtml(display)}</span></label>`;
-    }).join('') : `<p>${escapeHtml(t('No styles found in the main UI yet.', '主界面暂未读取到风格。'))}</p>`}
-  </div>
-</div>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="config" title="${escapeHtml(t('Config output', '配置输出'))}"></button>`;
+        return CANVAS_STYLE_CONFIG_RENDERER.renderStylesConfigNodeHtml(node);
     }
 
     function renderAdvancedConfigNodeHtml(node) {
-        const values = node.config?.values || {};
-        const overwriteStepProps = getSceneGenerationConfigPropsForConfigNode(node, 'overwrite_step') || {};
-        const overwriteStepBounds = {
-            min: Number.isFinite(Number(overwriteStepProps.min)) ? Number(overwriteStepProps.min) : -1,
-            max: Number.isFinite(Number(overwriteStepProps.max)) ? Number(overwriteStepProps.max) : 200,
-            step: Number.isFinite(Number(overwriteStepProps.step)) ? Number(overwriteStepProps.step) : 1,
-        };
-        const overwriteStepReadonly = overwriteStepProps.interactive === false;
-        const overwriteStepFixedValue = overwriteStepReadonly
-            ? (overwriteStepProps.value ?? getSceneGenerationConfigDefaultForConfigNode(node, 'overwrite_step'))
-            : undefined;
-        const overwriteStepValues = overwriteStepReadonly && overwriteStepFixedValue !== undefined
-            ? { overwrite_step: overwriteStepFixedValue }
-            : values;
-        const overwriteStepDisabled = overwriteStepReadonly ? ' disabled aria-disabled="true"' : '';
-        const guidance = configNumberValue(values, ['guidance_scale', 'cfg_scale'], 4);
-        const overwriteStep = boundedConfigNumberValue(overwriteStepValues, ['overwrite_step', 'steps'], -1, overwriteStepBounds);
-        const sampler = configTextValue(values, ['sampler_name', 'sampler'], 'dpmpp_2m_sde_gpu');
-        const scheduler = configTextValue(values, ['scheduler_name', 'scheduler'], 'karras');
-        const samplerChoices = mergeChoices([sampler, ...getSelectOptionsFromDom('sampler_name', ADVANCED_SAMPLER_CHOICES)]);
-        const schedulerChoices = mergeChoices([scheduler, ...getSelectOptionsFromDom('scheduler_name', ADVANCED_SCHEDULER_CHOICES)]);
-        return `
-<div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Advanced', '高级'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || t('Advanced Config', '高级配置'))}</span>
-  ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
-</div>
-<div class="sai-config-node-body sai-advanced-config-body">
-  <label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Guidance Scale', '引导强度'))}</span><div class="sai-range-pair"><input data-config-param="guidance_scale" type="range" min="0.01" max="100" step="0.01" value="${escapeHtml(guidance)}"><input data-config-param="guidance_scale" type="number" min="0.01" max="100" step="0.01" value="${escapeHtml(guidance)}"></div></label>
-  <label class="sai-node-field sai-node-range sai-collapsed-keep"><span>${escapeHtml(t('Forced Sampling Steps', '强制采样步数'))}</span><div class="sai-range-pair"><input data-config-param="overwrite_step" type="range" min="${escapeHtml(overwriteStepBounds.min)}" max="${escapeHtml(overwriteStepBounds.max)}" step="${escapeHtml(overwriteStepBounds.step)}" value="${escapeHtml(overwriteStep)}"${overwriteStepDisabled}><input data-config-param="overwrite_step" type="number" min="${escapeHtml(overwriteStepBounds.min)}" max="${escapeHtml(overwriteStepBounds.max)}" step="${escapeHtml(overwriteStepBounds.step)}" value="${escapeHtml(overwriteStep)}"${overwriteStepDisabled}></div></label>
-  <div class="sai-inspector-grid2">
-    <label class="sai-node-field"><span>${escapeHtml(t('Sampler', '采样器'))}</span><select data-config-param="sampler_name">${optionHtml(samplerChoices, sampler)}</select></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('Scheduler', '调度器'))}</span><select data-config-param="scheduler_name">${optionHtml(schedulerChoices, scheduler)}</select></label>
-  </div>
-</div>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="config" title="${escapeHtml(t('Config output', '配置输出'))}"></button>`;
+        return CANVAS_ADVANCED_CONFIG_RENDERER.renderAdvancedConfigNodeHtml(node);
     }
 
     function renderDetectionConfigNodeHtml(node) {
-        const values = node.config?.values || {};
-        const choices = getDetectionChoices();
-        const maskModel = values.mask_model || 'sam';
-        return `
-<div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Detection', '检测'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || t('Detection Config', '检测配置'))}</span>
-  ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
-</div>
-<div class="sai-config-node-body sai-detection-config-body">
-  <label class="sai-node-field sai-collapsed-keep"><span>${escapeHtml(t('Detection Prompt', '检测提示词'))}</span><input data-config-param="dino_prompt"${danbooruAutocompleteAttrs('dino_prompt')} value="${escapeHtml(values.dino_prompt || '')}"></label>
-  <label class="sai-node-field sai-collapsed-keep"><span>${escapeHtml(t('Mask Model', '遮罩模型'))}</span><select data-config-param="mask_model">${optionHtml(choices.maskModels, maskModel)}</select></label>
-  ${maskModel === 'u2net_cloth_seg' ? `<label class="sai-node-field"><span>${escapeHtml(t('Cloth Category', '服装类别'))}</span><select data-config-param="mask_cloth_category">${optionHtml(choices.clothCategories, values.mask_cloth_category || 'full')}</select></label>` : ''}
-  ${maskModel === 'sam' ? `<div class="sai-inspector-grid2">
-    <label class="sai-node-field"><span>${escapeHtml(t('SAM Model', 'SAM 模型'))}</span><select data-config-param="mask_sam_model">${optionHtml(choices.samModels, values.mask_sam_model || 'vit_b')}</select></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('Max Detect', '最大检测'))}</span><input data-config-param="mask_sam_max_detections" type="number" min="0" max="10" step="1" value="${escapeHtml(values.mask_sam_max_detections ?? 0)}"></label>
-  </div>
-  <div class="sai-inspector-grid2">
-    <label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Text Threshold', '文本阈值'))}</span><div class="sai-range-pair"><input data-config-param="mask_text_threshold" type="range" min="0" max="1" step="0.05" value="${escapeHtml(values.mask_text_threshold ?? 0.25)}"><input data-config-param="mask_text_threshold" type="number" min="0" max="1" step="0.05" value="${escapeHtml(values.mask_text_threshold ?? 0.25)}"></div></label>
-    <label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Box Threshold', '框阈值'))}</span><div class="sai-range-pair"><input data-config-param="mask_box_threshold" type="range" min="0" max="1" step="0.05" value="${escapeHtml(values.mask_box_threshold ?? 0.3)}"><input data-config-param="mask_box_threshold" type="number" min="0" max="1" step="0.05" value="${escapeHtml(values.mask_box_threshold ?? 0.3)}"></div></label>
-  </div>` : ''}
-  <label class="sai-node-field"><span>${escapeHtml(t('Enhance Prompt', '增强提示词'))}</span><textarea data-config-param="prompt" rows="2"${danbooruAutocompleteAttrs('prompt')} placeholder="${escapeHtml(t('Uses original prompt if empty.', '留空则使用原提示词。'))}">${escapeHtml(values.prompt || '')}</textarea></label>
-  <label class="sai-node-field"><span>${escapeHtml(t('Negative Prompt', '负向提示词'))}</span><textarea data-config-param="negative_prompt" rows="2"${danbooruAutocompleteAttrs('negative_prompt')} placeholder="${escapeHtml(t('Uses original negative prompt if empty.', '留空则使用原负向提示词。'))}">${escapeHtml(values.negative_prompt || '')}</textarea></label>
-  <div class="sai-inspector-grid2">
-    <label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-config-param="inpaint_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(values.inpaint_strength ?? 0.5)}"><input data-config-param="inpaint_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(values.inpaint_strength ?? 0.5)}"></div></label>
-    <label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Field', '作用范围'))}</span><div class="sai-range-pair"><input data-config-param="inpaint_respective_field" type="range" min="0" max="1" step="0.05" value="${escapeHtml(values.inpaint_respective_field ?? 0.2)}"><input data-config-param="inpaint_respective_field" type="number" min="0" max="1" step="0.05" value="${escapeHtml(values.inpaint_respective_field ?? 0.2)}"></div></label>
-  </div>
-  <label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Erode / Dilate', '腐蚀 / 膨胀'))}</span><div class="sai-range-pair"><input data-config-param="inpaint_erode_or_dilate" type="range" min="-64" max="64" step="1" value="${escapeHtml(values.inpaint_erode_or_dilate ?? 0)}"><input data-config-param="inpaint_erode_or_dilate" type="number" min="-64" max="64" step="1" value="${escapeHtml(values.inpaint_erode_or_dilate ?? 0)}"></div></label>
-  <label class="sai-node-check"><input data-config-param="mask_invert" type="checkbox" ${values.mask_invert ? 'checked' : ''}><span>${escapeHtml(t('Invert Mask', '反转遮罩'))}</span></label>
-</div>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="config" title="${escapeHtml(t('Config output', '配置输出'))}"></button>`;
+        return CANVAS_DETECTION_CONFIG_RENDERER.renderDetectionConfigNodeHtml(node);
     }
 
     function getResolutionChoices() {
@@ -16279,22 +15406,6 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const height = Math.round(Number(preview?.height || values.height) || 0);
         if (width <= 0 || height <= 0) return '';
         return `Custom ${width}×${height} | ${resolutionRatioLabel(width, height)}`;
-    }
-
-    function resolutionAspectOptionsHtml(ratios, selected, values, preview) {
-        const choices = Array.isArray(ratios) && ratios.length ? ratios : ['1024*1024'];
-        const current = String(selected || choices[0] || '');
-        const customLabel = resolutionManualSizeLabel(values, preview);
-        const options = [];
-        if (customLabel) {
-            options.push(`<option data-resolution-custom-size="true" value="${escapeHtml(current)}" selected>${escapeHtml(customLabel)}</option>`);
-            choices.forEach((choice) => {
-                const value = String(choice || '');
-                options.push(`<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`);
-            });
-            return options.join('');
-        }
-        return optionHtml(choices, current);
     }
 
     function normalizeResolutionTemplateName(value, choices) {
@@ -16356,58 +15467,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function renderResolutionConfigNodeHtml(node) {
-        const values = getResolutionRenderValues(node);
-        const choices = getResolutionChoices();
-        const template = normalizeResolutionTemplateName(values.template || values.default_template || values.available_aspect_ratios_selection, choices);
-        const profileRatios = Array.isArray(values.profile?.aspect_ratios) ? values.profile.aspect_ratios : [];
-        const usesProfileRatios = template === 'Preset' && profileRatios.length;
-        const ratios = usesProfileRatios ? profileRatios : (choices.ratios[template] || choices.flatRatios);
-        const templates = profileRatios.length ? ['Preset', ...choices.templates.filter(item => item !== 'Preset')] : choices.templates;
-        const preview = getResolutionPreview(values, ratios);
-        const disabled = values.profile && values.profile.interactive === false;
-        const randomAspect = !!(values.random_aspect_ratio || values.random_aspect_ratio_checkbox);
-        const sizeControlsDisabled = disabled || randomAspect;
-        const randomSummary = randomAspect ? ` / ${escapeHtml(t('random size from template', '从模板随机尺寸'))}` : '';
-        const aspectValue = values.aspect_ratio || ratios[0] || '';
-        const editModeLabels = { proportional: t('Proportional', '等比'), crop: t('Crop', '裁剪'), scale: t('Scale', '缩放'), pad: t('Pad', '填充') };
-        return `
-<div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Resolution', '分辨率'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || t('Resolution Config', '分辨率配置'))}</span>
-  ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
-</div>
-<div class="sai-config-node-body sai-resolution-config-panel">
-  <div class="sai-resolution-top-grid">
-    <label class="sai-node-field"><span>${escapeHtml(t('Template', '模板'))}</span><select data-config-param="template" ${disabled ? 'disabled' : ''}>${optionHtml(templates, template)}</select></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('Image Size', '图片尺寸'))}</span><select data-config-param="aspect_ratio" data-resolution-aspect-select ${sizeControlsDisabled ? 'disabled' : ''}>${resolutionAspectOptionsHtml(ratios, aspectValue, values, preview)}</select></label>
-  </div>
-  <div class="sai-resolution-size-grid sai-collapsed-keep">
-    <label class="sai-node-field sai-collapsed-keep"><span>${escapeHtml(t('Width', '宽度'))}</span><input data-config-param="width" data-resolution-live-param="width" type="number" min="-1" max="4096" step="1" value="${escapeHtml(values.width ?? -1)}" ${sizeControlsDisabled ? 'disabled' : ''}></label>
-    <label class="sai-node-field sai-collapsed-keep"><span>${escapeHtml(t('Height', '高度'))}</span><input data-config-param="height" data-resolution-live-param="height" type="number" min="-1" max="4096" step="1" value="${escapeHtml(values.height ?? -1)}" ${sizeControlsDisabled ? 'disabled' : ''}></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('Normalize', '规整'))}</span><select data-config-param="quantize" ${disabled ? 'disabled' : ''}>${optionHtml(choices.quantizeSteps, values.quantize || 8)}</select></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('Scale', '缩放'))} <b data-resolution-multiplier-label>${escapeHtml(Number(values.multiplier ?? 1).toFixed(1))}x</b></span><input data-config-param="multiplier" type="range" min="1" max="2" step="0.1" value="${escapeHtml(values.multiplier ?? 1)}" ${disabled ? 'disabled' : ''}></label>
-  </div>
-  <div class="sai-resolution-mode-row">
-    ${choices.editModes.map(mode => `<button type="button" data-config-mode="${escapeHtml(mode)}" class="${String(values.edit_mode || 'proportional') === String(mode) ? 'is-active' : ''}" ${disabled ? 'disabled' : ''}>${escapeHtml(editModeLabels[mode] || tOption(mode, { proportional: '等比', crop: '裁剪', scale: '缩放', pad: '填充' }))}</button>`).join('')}
-  </div>
-  <div class="sai-resolution-option-row">
-    <label class="sai-node-check"><input data-config-param="random_aspect_ratio" type="checkbox" ${randomAspect ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span>${escapeHtml(t('Random Size', '随机尺寸'))}</span></label>
-  </div>
-  <div class="sai-resolution-ratio-grid">
-    <label class="sai-node-check"><input data-config-param="ratio_lock" type="checkbox" ${values.ratio_lock ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span>${escapeHtml(t('Ratio Lock', '比例锁定'))}</span></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('Locked Ratio', '锁定比例值'))}</span><select data-config-param="ratio_lock_value" ${disabled ? 'disabled' : ''}>${optionHtml(['current', '1:1', '9:16', '3:4', '4:3', '16:9', 'custom'], values.ratio_lock_value || 'current')}</select></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('Custom Ratio', '自定义比例'))}</span><input data-config-param="ratio_lock_custom" value="${escapeHtml(values.ratio_lock_custom || '1:1')}" ${disabled ? 'disabled' : ''}></label>
-  </div>
-  <div class="sai-resolution-summary">${escapeHtml(preview.baseLabel)} ${escapeHtml(t('base', '基础'))} -> ${escapeHtml(preview.label)} ${escapeHtml(t('effective', '生效'))}${randomSummary}${disabled ? ` / ${escapeHtml(t('preset locked', '预设锁定'))}` : ''}</div>
-  <div class="sai-resolution-drag-area" data-resolution-drag-area title="${escapeHtml(t('Drag to adjust width and height', '拖动调整宽高'))}">
-    <div class="sai-resolution-preview-box" style="width:${preview.boxW}%;height:${preview.boxH}%">
-      <span>${escapeHtml(preview.label)}</span>
-      <i data-resolution-drag-handle></i>
-    </div>
-  </div>
-</div>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="config" title="${escapeHtml(t('Config output', '配置输出'))}"></button>`;
+        return CANVAS_RESOLUTION_CONFIG_RENDERER.renderResolutionConfigNodeHtml(node);
     }
 
     function parseResolutionRatio(value) {
@@ -16464,49 +15524,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function getResolutionSourceSize(presetNode, profile) {
-        if (!presetNode || presetNode.type !== 'preset') return null;
-        const aliases = {
-            scene_canvas: ['scene_canvas_image'],
-            scene_canvas_image: ['scene_canvas_image'],
-            scene_input_image1: ['scene_input_image1'],
-            scene_input_image2: ['scene_input_image2'],
-            scene_input_image3: ['scene_input_image3'],
-            scene_input_image4: ['scene_input_image4'],
-            scene_input_image5: ['scene_input_image5'],
-            scene_input_image6: ['scene_input_image6'],
-            scene_input_image7: ['scene_input_image7'],
-            scene_input_image8: ['scene_input_image8'],
-            image_1: ['scene_canvas_image'],
-            image_2: ['scene_input_image1'],
-            image_3: ['scene_input_image2'],
-            image_4: ['scene_input_image3'],
-            image_5: ['scene_input_image4'],
-            image_6: ['scene_input_image5'],
-            image_7: ['scene_input_image6'],
-            image_8: ['scene_input_image7'],
-            image_9: ['scene_input_image8']
-        };
-        const source = String(profile?.source || '').trim();
-        const slots = aliases[source] || [source, 'scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4', 'scene_input_image5', 'scene_input_image6', 'scene_input_image7', 'scene_input_image8'];
-        for (const slot of slots) {
-            const sourceId = presetNode.upload_slots?.[slot];
-            const node = sourceId ? getNode(sourceId) : null;
-            if (!node || isNodeIgnored(node)) continue;
-            const asset = getPrimaryNodeAsset(node);
-            const width = Number(asset?.width || node.asset?.width || node.preview?.width || 0);
-            const height = Number(asset?.height || node.asset?.height || node.preview?.height || 0);
-            if (width > 0 && height > 0) return { width, height, slot };
-        }
-        return null;
-    }
-
-    function getPrimaryNodeAsset(node) {
-        if (!node || typeof node !== 'object') return null;
-        if (Array.isArray(node.assets) && node.assets.length) {
-            const index = clamp(Number(node.selected_asset_index || 0), 0, node.assets.length - 1);
-            return node.assets[index] || node.assets[0] || null;
-        }
-        return node.asset || null;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getResolutionSourceSize(presetNode, profile);
     }
 
     function projectKeepInputArea(sourceSize, baseWidth, baseHeight, step) {
@@ -16587,29 +15605,15 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function isImageCompareSource(node) {
-        const controller = CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isImageCompareSource;
-        if (typeof controller === 'function') return !!controller(node);
-        if (!node || isNodeIgnored(node)) return false;
-        if (node.type === 'image') return true;
-        if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
-        if (node.type === 'gaussian_studio') return isGaussianStudioImageSource(node);
-        if (node.type === 'liveportrait_expression') return isLivePortraitExpressionImageSource(node);
-        if (node.type === 'result') {
-            const asset = getSelectedResultAsset(node);
-            return !!asset && assetMediaKind(asset) === 'image';
-        }
-        return false;
+        return !!CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isImageCompareSource?.(node);
     }
 
     function getCompareSourceNode(node, slot) {
-        const sourceId = node?.inputs?.[slot] || project.edges.find(edge => edge.type === 'compare' && edge.to === node?.id && edge.slot === slot)?.from;
-        const source = sourceId ? getNode(sourceId) : null;
-        return isImageCompareSource(source) ? source : null;
+        return COMPARE_NODE_CONTEXT.getCompareSourceNode?.(node, slot) || null;
     }
 
     function getCompareSourceAsset(source) {
-        if (!source) return null;
-        return source.type === 'result' ? getSelectedResultAsset(source) : source.asset;
+        return COMPARE_NODE_CONTEXT.getCompareSourceAsset?.(source);
     }
 
     function compareSourceSignature(node, slot) {
@@ -16628,14 +15632,19 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return compareNodeRenderNodeHtml(node, COMPARE_NODE_CONTEXT);
     }
 
+    const CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER = typeof WORKBENCH_CANVAS_XYZ_MATRIX_EDITOR.createCanvasXyzMatrixEditorController === 'function'
+        ? WORKBENCH_CANVAS_XYZ_MATRIX_EDITOR.createCanvasXyzMatrixEditorController({
+            xyzMatrixEditorSource: {
+                nodeSource: { getNode },
+                presetSource: { getPresetThemeInfo },
+                serializationSource: { serializeClassicNodeForRun, serializePresetForRun },
+                scriptSource: { script: XYZ_PLOT_SCRIPT_NAME }
+            }
+        })
+        : {};
+
     function xyzModeForNode(node) {
-        if (!node) return 'txt2img';
-        if (node.type === 'classic') {
-            const mode = String(node.classic_mode || 't2i').toLowerCase();
-            return mode === 't2i' || mode === 'txt2img' ? 'txt2img' : 'img2img';
-        }
-        const task = String(getPresetThemeInfo(node).task_method || node.runtime?.task_method || node.runtime?.engine_type || node.schema?.engine_type || '').toLowerCase();
-        return task.includes('img2img') || task.includes('inpaint') || task.includes('upscale') ? 'img2img' : 'txt2img';
+        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.xyzModeForNode(node);
     }
 
     function visibleXyzAxisOptions(options, mode) {
@@ -16653,189 +15662,44 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function xyzCsvJoin(values) {
-        return (Array.isArray(values) ? values : []).map((value) => {
-            const text = String(value ?? '');
-            return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-        }).join(', ');
+        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.xyzCsvJoin(values);
     }
 
     function defaultXyzPlotState(node) {
-        return {
-            axes: {
-                x: { axis: 'x', type: 'Seed', values_text: '-1', values: [] },
-                y: { axis: 'y', type: 'Nothing', values_text: '', values: [] },
-                z: { axis: 'z', type: 'Nothing', values_text: '', values: [] }
-            },
-            options: {
-                draw_legend: true,
-                include_sub_images: false,
-                include_sub_grids: false,
-                keep_minus_one: false,
-                vary_seeds_x: false,
-                vary_seeds_y: false,
-                vary_seeds_z: false,
-                row_count: 0,
-                margin_size: 0,
-                csv_mode: false
-            },
-            mode: xyzModeForNode(node)
-        };
+        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.defaultXyzPlotState(node);
     }
 
     function collectXyzModalState(modal) {
-        if (!modal) return null;
-        const state = modal.__xyzState || defaultXyzPlotState(getNode(modal.__sourceNodeId));
-        ['x', 'y', 'z'].forEach((axisName) => {
-            const typeField = modal.querySelector(`[data-xyz-axis-type="${axisName}"]`);
-            const textField = modal.querySelector(`[data-xyz-axis-values="${axisName}"]`);
-            const choiceField = modal.querySelector(`[data-xyz-axis-choices="${axisName}"]`);
-            const axis = Object.assign({ axis: axisName }, state.axes?.[axisName] || {});
-            if (typeField) axis.type = typeField.value || 'Nothing';
-            if (choiceField && !state.options.csv_mode) {
-                axis.values = Array.from(choiceField.selectedOptions || []).map(option => option.value);
-                axis.values_text = xyzCsvJoin(axis.values);
-            } else if (textField) {
-                axis.values_text = textField.value || '';
-                axis.values = [];
-            }
-            state.axes[axisName] = axis;
-        });
-        modal.querySelectorAll('[data-xyz-option]').forEach((field) => {
-            const key = field.getAttribute('data-xyz-option');
-            if (!key) return;
-            if (field.type === 'checkbox') state.options[key] = !!field.checked;
-            else if (field.type === 'number' || field.type === 'range') state.options[key] = Number(field.value || 0);
-            else state.options[key] = field.value;
-        });
-        modal.__xyzState = state;
-        return state;
+        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.collectXyzModalState(modal);
     }
 
     function serializeXyzSourceNode(node) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return {};
-        return node.type === 'classic' ? serializeClassicNodeForRun(node) : serializePresetForRun(node);
+        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.serializeXyzSourceNode(node);
     }
 
     function buildXyzJobFromModal(modal) {
-        const source = getNode(modal?.__sourceNodeId);
-        const state = collectXyzModalState(modal) || defaultXyzPlotState(source);
-        return {
-            script: XYZ_PLOT_SCRIPT_NAME,
-            source_node_id: source?.id || '',
-            source_node: serializeXyzSourceNode(source),
-            mode: state.mode || xyzModeForNode(source),
-            axes: ['x', 'y', 'z'].map(axisName => Object.assign({ axis: axisName }, state.axes[axisName] || {})),
-            options: Object.assign({}, state.options || {})
-        };
+        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.buildXyzJobFromModal(modal);
     }
 
-    function renderXyzAxisValuesControl(state, axisName, option) {
-        const axis = state.axes?.[axisName] || {};
-        const choices = Array.isArray(option?.choices) ? option.choices.filter(Boolean) : [];
-        if (choices.length && !state.options.csv_mode) {
-            const selected = new Set(Array.isArray(axis.values) && axis.values.length ? axis.values.map(String) : xyzCsvValues(axis.values_text));
-            return `<select data-xyz-axis-choices="${axisName}" multiple size="5">${choices.map(choice => `<option value="${escapeHtml(choice)}" ${selected.has(String(choice)) ? 'selected' : ''}>${escapeHtml(choice)}</option>`).join('')}</select>`;
-        }
-        return `<textarea data-xyz-axis-values="${axisName}" rows="3" placeholder="${escapeHtml(t('CSV values, ranges, or prompt file directory', 'CSV 值、范围或提示词文件目录'))}">${escapeHtml(axis.values_text || '')}</textarea>`;
-    }
-
-    function xyzCsvValues(text) {
-        return String(text || '')
-            .split(',')
-            .map(item => item.trim().replace(/^"|"$/g, ''))
-            .filter(Boolean);
-    }
-
-    function renderXyzAxisRow(modal, axisName) {
-        const state = modal.__xyzState || defaultXyzPlotState(getNode(modal.__sourceNodeId));
-        const options = visibleXyzAxisOptions(modal.__xyzAxisOptions, state.mode);
-        const axis = state.axes?.[axisName] || {};
-        const option = getXyzAxisOption(options, axis.type || 'Nothing', state.mode);
-        const label = axisName.toUpperCase();
-        return `
-<div class="sai-xyz-axis-row" data-xyz-axis-row="${axisName}">
-  <label><span>${escapeHtml(`${label} ${t('type', '类型')}`)}</span><select data-xyz-axis-type="${axisName}">
-    ${options.map(item => `<option value="${escapeHtml(item.label)}" ${item.label === option.label ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
-  </select></label>
-  <label><span>${escapeHtml(`${label} ${t('values', '取值')}`)}</span>${renderXyzAxisValuesControl(state, axisName, option)}</label>
-  <button type="button" data-xyz-fill-choices="${axisName}" ${Array.isArray(option.choices) && option.choices.length ? '' : 'disabled'} title="${escapeHtml(t('Fill all available choices', '填入全部可选项'))}"><i class="fa-solid fa-list-check"></i></button>
-</div>`;
-    }
-
-    function renderXyzPreviewHtml(preview) {
-        if (!preview) {
-            return `<div class="sai-xyz-preview-empty">${escapeHtml(t('Preview expands axes and checks grid size before creating the matrix.', '预览会展开轴取值，并在创建矩阵前检查 grid 大小。'))}</div>`;
-        }
-        if (!preview.ok) {
-            const details = [
-                preview.error || t('Preview failed', '预览失败'),
-                preview.details || '',
-                Array.isArray(preview.errors) ? preview.errors.map(item => item?.error || item?.message || item).filter(Boolean).join('; ') : ''
-            ].filter(Boolean).join('\n');
-            return `<div class="sai-xyz-preview-error"><b>${escapeHtml(preview.error || t('Preview failed', '预览失败'))}</b>${details ? `<pre>${escapeHtml(details)}</pre>` : ''}</div>`;
-        }
-        const grid = preview.grid || {};
-        const variants = Array.isArray(preview.variants) ? preview.variants.slice(0, 8) : [];
-        return `
-<div class="sai-xyz-preview-summary">
-  <span>${escapeHtml(t('Variants', '变体'))}<b>${Number(grid.variant_count || 0)}</b></span>
-  <span>X<b>${Number(grid.x_count || 0)}</b></span>
-  <span>Y<b>${Number(grid.y_count || 0)}</b></span>
-  <span>Z<b>${Number(grid.z_count || 0)}</b></span>
-  <span>MP<b>${Number(grid.megapixels || 0)}</b></span>
-  <span>${escapeHtml(t('Cost order', '成本顺序'))}<b>${escapeHtml((preview.processing_order || []).join(' > '))}</b></span>
-</div>
-<div class="sai-xyz-preview-list">
-  ${variants.map(variant => `<div><b>${escapeHtml(variant.id)}</b><span>${escapeHtml(Object.values(variant.axis_labels || {}).filter(Boolean).join(' / ') || t('default', '默认'))}</span><code>seed ${escapeHtml(variant.resolved_seed)}</code></div>`).join('')}
-</div>`;
-    }
+    const CANVAS_XYZ_MATRIX_MODAL_RENDERER = typeof WORKBENCH_CANVAS_XYZ_MATRIX_MODAL_RENDERER.createCanvasXyzMatrixModalRenderer === 'function'
+        ? WORKBENCH_CANVAS_XYZ_MATRIX_MODAL_RENDERER.createCanvasXyzMatrixModalRenderer({
+            xyzMatrixModalRendererSource: {
+                languageSource: { t },
+                utilitySource: { escapeHtml },
+                nodeSource: { getNode },
+                stateSource: { defaultXyzPlotState },
+                axisSource: { visibleXyzAxisOptions, getXyzAxisOption },
+                scriptSource: { script: XYZ_PLOT_SCRIPT_NAME }
+            }
+        })
+        : {};
+    const XYZ_MATRIX_NODE_CONTEXT = { t, escapeHtml, getNode, renderNodeStateBadges, notConnectedText };
 
     function renderXyzPlotModal(modal) {
         const source = getNode(modal.__sourceNodeId);
         const state = modal.__xyzState || defaultXyzPlotState(source);
         modal.__xyzState = state;
-        modal.innerHTML = `
-<div class="sai-canvas-modal-panel sai-xyz-plot-panel">
-  <div class="sai-canvas-modal-head">
-    <span><i class="fa-solid fa-table-cells-large"></i>${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}</span>
-    <button type="button" data-modal-close title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
-  </div>
-  <div class="sai-xyz-plot-body">
-    <div class="sai-xyz-source-line">
-      <span>${escapeHtml(t('Source', '来源'))}</span>
-      <b>${escapeHtml(source?.title || source?.preset?.name || source?.id || '')}</b>
-      <code>${escapeHtml(state.mode || 'txt2img')}</code>
-    </div>
-    <div class="sai-xyz-script-line">
-      <label><span>${escapeHtml(t('Script', '脚本'))}</span><input value="${escapeHtml(XYZ_PLOT_SCRIPT_NAME)}" readonly></label>
-    </div>
-    <div class="sai-xyz-axis-table">
-      ${['x', 'y', 'z'].map(axisName => renderXyzAxisRow(modal, axisName)).join('')}
-    </div>
-    <div class="sai-xyz-swap-row">
-      <button type="button" data-xyz-swap="x:y"><i class="fa-solid fa-right-left"></i><span>${escapeHtml(t('Swap X/Y axes', '交换 X/Y 轴'))}</span></button>
-      <button type="button" data-xyz-swap="y:z"><i class="fa-solid fa-right-left"></i><span>${escapeHtml(t('Swap Y/Z axes', '交换 Y/Z 轴'))}</span></button>
-      <button type="button" data-xyz-swap="x:z"><i class="fa-solid fa-right-left"></i><span>${escapeHtml(t('Swap X/Z axes', '交换 X/Z 轴'))}</span></button>
-    </div>
-    <div class="sai-xyz-options-grid">
-      <label><span>${escapeHtml(t('Row Count', '行数'))}</span><input data-xyz-option="row_count" type="number" min="0" step="1" value="${escapeHtml(state.options.row_count || 0)}"></label>
-      <label><span>${escapeHtml(t('Grid Margins', '网格间距'))}</span><input data-xyz-option="margin_size" type="number" min="0" step="1" value="${escapeHtml(state.options.margin_size || 0)}"></label>
-      <label class="sai-node-check"><input data-xyz-option="draw_legend" type="checkbox" ${state.options.draw_legend ? 'checked' : ''}><span>${escapeHtml(t('Draw legend', '绘制图例'))}</span></label>
-      <label class="sai-node-check"><input data-xyz-option="include_sub_images" type="checkbox" ${state.options.include_sub_images ? 'checked' : ''}><span>${escapeHtml(t('Include Sub Images', '保留单格结果'))}</span></label>
-      <label class="sai-node-check"><input data-xyz-option="include_sub_grids" type="checkbox" ${state.options.include_sub_grids ? 'checked' : ''}><span>${escapeHtml(t('Include Sub Grids', '保留 Z 子网格'))}</span></label>
-      <label class="sai-node-check"><input data-xyz-option="keep_minus_one" type="checkbox" ${state.options.keep_minus_one ? 'checked' : ''}><span>${escapeHtml(t('Keep -1 for seeds', '保留 -1 seed'))}</span></label>
-      <label class="sai-node-check"><input data-xyz-option="vary_seeds_x" type="checkbox" ${state.options.vary_seeds_x ? 'checked' : ''}><span>${escapeHtml(t('Vary seeds for X', '按 X 递增 seed'))}</span></label>
-      <label class="sai-node-check"><input data-xyz-option="vary_seeds_y" type="checkbox" ${state.options.vary_seeds_y ? 'checked' : ''}><span>${escapeHtml(t('Vary seeds for Y', '按 Y 递增 seed'))}</span></label>
-      <label class="sai-node-check"><input data-xyz-option="vary_seeds_z" type="checkbox" ${state.options.vary_seeds_z ? 'checked' : ''}><span>${escapeHtml(t('Vary seeds for Z', '按 Z 递增 seed'))}</span></label>
-      <label class="sai-node-check"><input data-xyz-option="csv_mode" type="checkbox" ${state.options.csv_mode ? 'checked' : ''}><span>${escapeHtml(t('Use text inputs instead of dropdowns', '使用文本输入代替下拉选项'))}</span></label>
-    </div>
-    <div class="sai-xyz-preview" data-xyz-preview>${renderXyzPreviewHtml(modal.__xyzPreview)}</div>
-  </div>
-  <div class="sai-canvas-modal-foot sai-xyz-plot-foot">
-    <button type="button" data-xyz-action="preview"><i class="fa-solid fa-eye"></i><span>${escapeHtml(t('Preview', '预览'))}</span></button>
-    <button type="button" data-xyz-action="create"><i class="fa-solid fa-table-cells-large"></i><span>${escapeHtml(t('Create Matrix', '创建矩阵'))}</span></button>
-  </div>
-</div>`;
+        modal.innerHTML = CANVAS_XYZ_MATRIX_MODAL_RENDERER.renderXyzPlotModalHtml(modal, source, state);
         bindXyzPlotModal(modal);
     }
 
@@ -16967,89 +15831,12 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return matrixNode;
     }
 
-    function renderXyzMatrixCells(node, zIndex) {
-        const xyz = node.xyz || {};
-        const grid = xyz.grid || {};
-        const xCount = Math.max(1, Number(grid.x_count || 1));
-        const variants = (Array.isArray(xyz.variants) ? xyz.variants : []).filter(variant => Number(variant.z_index || 0) === zIndex);
-        const selected = new Set(Array.isArray(xyz.selected_variant_ids) ? xyz.selected_variant_ids : []);
-        const visible = variants.slice(0, 240);
-        const more = variants.length - visible.length;
-        return `
-<div class="sai-xyz-subgrid-cells" style="--xyz-cols:${xCount}">
-  ${visible.map((variant) => {
-            const labels = variant.axis_labels || {};
-            const title = Object.values(labels).filter(Boolean).join(' / ') || variant.id;
-            return `<button type="button" class="${selected.has(variant.id) ? 'is-selected' : ''}" data-node-action="xyz-cell:${escapeHtml(variant.id)}" title="${escapeHtml(title)}">
-      <b>${escapeHtml(String(Number(variant.x_index || 0) + 1))},${escapeHtml(String(Number(variant.y_index || 0) + 1))}</b>
-      <span>${escapeHtml([labels.x, labels.y].filter(Boolean).join(' / ') || t('default', '默认'))}</span>
-      <code>${escapeHtml(String(variant.resolved_seed ?? ''))}</code>
-    </button>`;
-        }).join('')}
-  ${more > 0 ? `<div class="sai-xyz-more">${escapeHtml(t('{count} more', '还有 {count} 项').replace('{count}', more))}</div>` : ''}
-</div>`;
-    }
-
     function renderXyzMatrixNodeHtml(node) {
-        const xyz = node.xyz || {};
-        const grid = xyz.grid || {};
-        const zCount = Math.max(1, Number(grid.z_count || 1));
-        const axes = Array.isArray(xyz.axes) ? xyz.axes : [];
-        return `
-<div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(node.type === 'xyz_matrix' ? t('XYZ Matrix', 'XYZ 矩阵') : t('XY Matrix', 'XY 矩阵'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || 'X/Y/Z Matrix')}</span>
-  ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="xyz-locate-source" title="${escapeHtml(t('Locate source', '定位来源'))}"><i class="fa-solid fa-location-crosshairs"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
-</div>
-<div class="sai-xyz-matrix-meta">
-  <span>${escapeHtml(t('Variants', '变体'))}<b>${escapeHtml(String(grid.variant_count || 0))}</b></span>
-  <span>X<b>${escapeHtml(String(grid.x_count || 0))}</b></span>
-  <span>Y<b>${escapeHtml(String(grid.y_count || 0))}</b></span>
-  <span>Z<b>${escapeHtml(String(grid.z_count || 0))}</b></span>
-</div>
-<div class="sai-xyz-axis-tags">
-  ${axes.map(axis => `<span>${escapeHtml(String(axis.axis || '').toUpperCase())}: ${escapeHtml(axis.type || '')}</span>`).join('')}
-</div>
-<div class="sai-xyz-matrix-scroll">
-  ${Array.from({ length: zCount }, (_, zIndex) => {
-            const zAxis = axes.find(axis => axis.axis === 'z') || {};
-            const zLabel = Array.isArray(zAxis.labels) ? zAxis.labels[zIndex] : '';
-            return `<section class="sai-xyz-subgrid">
-      <h4>${escapeHtml(zCount > 1 ? (zLabel || `Z ${zIndex + 1}`) : t('Grid', '网格'))}</h4>
-      ${renderXyzMatrixCells(node, zIndex)}
-    </section>`;
-        }).join('')}
-</div>`;
+        return WORKBENCH_CANVAS_XYZ_MATRIX_NODE.renderNodeHtml?.(node, XYZ_MATRIX_NODE_CONTEXT) || '';
     }
 
     function renderXyzMatrixInspector(node) {
-        const xyz = node.xyz || {};
-        const grid = xyz.grid || {};
-        const source = getNode(node.source_node_id || xyz.source_node_id || '');
-        const options = xyz.options || {};
-        return `
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(node.type === 'xyz_matrix' ? t('XYZ Matrix', 'XYZ 矩阵') : t('XY Matrix', 'XY 矩阵'))}</h3>
-  <div class="sai-inspector-kv"><span>Batch Job</span><b>${escapeHtml(node.batch_job_id || '')}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Source', '来源'))}</span><b>${escapeHtml(source?.title || source?.preset?.name || source?.id || notConnectedText())}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Variants', '变体'))}</span><b>${escapeHtml(String(grid.variant_count || 0))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Grid', '网格'))}</span><b>${escapeHtml(`X ${grid.x_count || 0} / Y ${grid.y_count || 0} / Z ${grid.z_count || 0}`)}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Cost order', '成本顺序'))}</span><b>${escapeHtml((xyz.processing_order || []).join(' > '))}</b></div>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Options', '选项'))}</h3>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Legend', '图例'))}</span><b>${escapeHtml(options.draw_legend ? t('On', '开启') : t('Off', '关闭'))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Sub Images', '单格结果'))}</span><b>${escapeHtml(options.include_sub_images ? t('Keep', '保留') : t('Skip', '不保留'))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Sub Grids', 'Z 子网格'))}</span><b>${escapeHtml(options.include_sub_grids ? t('Keep', '保留') : t('Skip', '不保留'))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Row Count', '行数'))}</span><b>${escapeHtml(String(options.row_count || 0))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Grid Margins', '网格间距'))}</span><b>${escapeHtml(String(options.margin_size || 0))}</b></div>
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="xyz-locate-source"><i class="fa-solid fa-location-crosshairs"></i><span>${escapeHtml(t('Locate source', '定位来源'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
+        return WORKBENCH_CANVAS_XYZ_MATRIX_NODE.renderInspector?.(node, XYZ_MATRIX_NODE_CONTEXT) || '';
     }
 
     function focusXyzMatrixSource(node) {
@@ -17096,1479 +15883,75 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function refreshTimelinePreviewDom(nodeEl, node) {
-        if (!nodeEl || !node) return;
-        const playhead = Number(node.params?.playhead || 0);
-        let activeCount = 0;
-        nodeEl.querySelectorAll('[data-preview-clip]').forEach((layer) => {
-            const clipId = layer.getAttribute('data-preview-clip');
-            const clip = (node.clips || []).find(item => item.id === clipId);
-            if (!clip) return;
-            const start = Number(clip.start || 0);
-            const end = start + Number(clip.duration || 0);
-            const active = playhead >= start && playhead <= end;
-            layer.classList.toggle('is-active', active);
-            layer.classList.toggle('is-selected', clip.id === node.params?.selected_clip_id);
-            if (active) activeCount += 1;
-            applyTimelinePreviewLayerStyle(layer, clip, node);
-        });
-        const stage = nodeEl.querySelector('.sai-timeline-preview-stage');
-        if (stage) {
-            const width = Math.max(16, Number(node.params?.width || 1280));
-            const height = Math.max(16, Number(node.params?.height || 720));
-            stage.classList.toggle('has-active', activeCount > 0);
-            stage.classList.toggle('show-guides', node.params?.guides_enabled !== false);
-            stage.style.setProperty('--timeline-aspect', `${width}/${height}`);
-            stage.style.setProperty('--timeline-aspect-value', `${Math.max(0.05, width / Math.max(1, height))}`);
-            if (node.params?.background) stage.style.background = node.params.background;
-            (node.clips || []).forEach((clip) => {
-                if (clip?.mask) refreshTimelineMaskImageOnly(stage, clip);
-            });
-        }
-        syncTimelinePreviewVideos(nodeEl, node);
+        return CANVAS_TIMELINE_CONTEXT.refreshTimelinePreviewDom?.(nodeEl, node);
     }
 
     function refreshTimelinePreviewClipLayersDom(nodeEl, node, clip) {
-        if (!nodeEl || !node || !clip) return;
-        const selector = timelineClipCssSelector(clip.id);
-        nodeEl.querySelectorAll(`[data-preview-clip="${selector}"]`).forEach((layer) => {
-            applyTimelinePreviewLayerStyle(layer, clip, node);
-            layer.classList.toggle('is-selected', clip.id === node.params?.selected_clip_id);
-        });
-        const stage = nodeEl.querySelector('.sai-timeline-preview-stage');
-        if (stage && clip.mask) refreshTimelineMaskImageOnly(stage, clip);
-        syncTimelinePreviewVideos(nodeEl, node);
+        return CANVAS_TIMELINE_CONTEXT.refreshTimelinePreviewClipLayersDom?.(nodeEl, node, clip);
     }
 
     function refreshTimelineFeatherControlDom(scopeEl, value) {
-        if (!scopeEl) return;
-        const feather = Math.round(clamp(Number(value || 0), 0, 120));
-        scopeEl.querySelectorAll('[data-timeline-param="mask_feather"]').forEach((field) => {
-            if (String(field.value) !== String(feather)) field.value = String(feather);
-            const label = field.closest('.sai-timeline-feather-control, label');
-            const valueEl = label?.querySelector?.('b');
-            if (valueEl) valueEl.textContent = String(feather);
-        });
-    }
-
-    function timelineClipCssSelector(clipId) {
-        return typeof CSS !== 'undefined' && CSS.escape
-            ? CSS.escape(String(clipId || ''))
-            : String(clipId || '').replace(/["\\]/g, '\\$&');
+        return CANVAS_TIMELINE_CONTEXT.refreshTimelineFeatherControlDom?.(scopeEl, value);
     }
 
     function setTimelineMaskImageStyle(el, maskSrc) {
-        if (!el) return;
-        el.style.setProperty('--timeline-mask-image', `url("${String(maskSrc || '').replace(/"/g, '%22')}")`);
+        return CANVAS_TIMELINE_CONTEXT.setTimelineMaskImageStyle?.(el, maskSrc);
     }
 
     function refreshTimelineMaskImageOnly(stageEl, clip) {
-        if (!stageEl || !clip) return false;
-        const maskSrc = typeof timelineClipMaskDataUrl === 'function'
-            ? timelineClipMaskDataUrl(clip)
-            : (clip.mask?.data_url || clip.mask_data_url || '');
-        const clipSelector = timelineClipCssSelector(clip.id);
-        const cutout = stageEl.querySelector(`.sai-timeline-mask-cutout[data-mask-cutout-clip="${clipSelector}"]`)
-            || Array.from(stageEl.querySelectorAll('.sai-timeline-mask-cutout')).find(el =>
-                el.querySelector?.(`.sai-timeline-preview-layer[data-preview-clip="${clipSelector}"]`));
-        const maskPreview = stageEl.querySelector('.sai-timeline-mask-preview');
-        if (!maskSrc || !cutout) return false;
-        setTimelineMaskImageStyle(cutout, maskSrc);
-        if (maskPreview && stageEl.getAttribute('data-timeline-tool-state') === 'mask') {
-            setTimelineMaskImageStyle(maskPreview, maskSrc);
-        }
-        const sourceLayer = Array.from(stageEl.children).find(el =>
-            el.classList?.contains('sai-timeline-preview-layer') && el.getAttribute('data-preview-clip') === clip.id);
-        if (sourceLayer) sourceLayer.classList.add('has-mask');
-        stageEl.classList.add('has-mask-cutout');
-        return true;
+        return CANVAS_TIMELINE_CONTEXT.refreshTimelineMaskImageOnly?.(stageEl, clip) || false;
     }
 
     function refreshTimelineMaskFeatherDom(nodeEl, node) {
-        if (!nodeEl || !node || node.type !== 'timeline') return;
-        const clip = timelineSelectedVisualClip(node);
-        refreshTimelineFeatherControlDom(nodeEl, node.params?.mask_feather || 0);
-        const stage = nodeEl.querySelector('.sai-timeline-preview-stage');
-        if (stage && clip) {
-            if (!refreshTimelineMaskImageOnly(stage, clip)) refreshTimelinePenOverlayDom(stage, clip);
-            syncTimelinePreviewVideos(nodeEl, node);
-        }
+        return CANVAS_TIMELINE_CONTEXT.refreshTimelineMaskFeatherDom?.(nodeEl, node);
     }
 
     function applyTimelinePreviewLayerStyle(layer, clip, node) {
-        if (!layer || !clip) return;
-        const width = Math.max(16, Math.round(Number(node?.params?.width || 1280)));
-        const height = Math.max(16, Math.round(Number(node?.params?.height || 720)));
-        const source = getNode(clip?.source_node_id);
-        const asset = getTimelineSourceAsset(source) || {};
-        const playhead = Number(node?.params?.playhead || 0);
-        const effectiveClip = typeof timelineClipAtTime === 'function' ? timelineClipAtTime(clip, playhead) : clip;
-        const geometry = timelineClipLayerGeometry(width, height, asset.width, asset.height, effectiveClip);
-        layer.style.setProperty('--clip-x', `${((geometry.centerX / Math.max(1, width)) - 0.5) * 100}%`);
-        layer.style.setProperty('--clip-y', `${((geometry.centerY / Math.max(1, height)) - 0.5) * 100}%`);
-        layer.style.setProperty('--clip-fit-width', `${(geometry.fitW / Math.max(1, width)) * 100}%`);
-        layer.style.setProperty('--clip-fit-height', `${(geometry.fitH / Math.max(1, height)) * 100}%`);
-        layer.style.setProperty('--clip-scale', '1');
-        layer.style.setProperty('--clip-opacity', `${clamp(Number(effectiveClip.opacity ?? 1), 0, 1)}`);
-        layer.style.setProperty('--clip-rotate', `${Number(effectiveClip.rotate || 0)}deg`);
-        const top = clamp(Number(clip.crop_top || 0), 0, 95);
-        const right = clamp(Number(clip.crop_right || 0), 0, 95);
-        const bottom = clamp(Number(clip.crop_bottom || 0), 0, 95);
-        const left = clamp(Number(clip.crop_left || 0), 0, 95);
-        layer.style.setProperty('--clip-crop', `inset(${top}% ${right}% ${bottom}% ${left}%)`);
-        const cropBox = layer.querySelector('.sai-timeline-crop-box');
-        if (cropBox) {
-            cropBox.style.left = `${left}%`;
-            cropBox.style.right = `${right}%`;
-            cropBox.style.top = `${top}%`;
-            cropBox.style.bottom = `${bottom}%`;
-        }
+        return CANVAS_TIMELINE_CONTEXT.applyTimelinePreviewLayerStyle?.(layer, clip, node);
     }
 
     function syncTimelinePreviewVideos(nodeEl, node) {
-        if (!nodeEl || !node) return;
-        const playhead = Number(node.params?.playhead || 0);
-        const playing = !!node.params?.preview_playing;
-        nodeEl.querySelectorAll('[data-preview-clip]').forEach((layer) => {
-            const video = layer.querySelector('video[data-timeline-preview-video]');
-            if (!video) return;
-            const clip = (node.clips || []).find(item => item.id === layer.getAttribute('data-preview-clip'));
-            const active = clip && playhead >= Number(clip.start || 0) && playhead <= Number(clip.start || 0) + Number(clip.duration || 0);
-            if (!active) {
-                video.pause();
-                return;
-            }
-            const source = getNode(clip.source_node_id);
-            const asset = getTimelineSourceAsset(source) || {};
-            const effectiveIn = typeof timelineEffectiveClipIn === 'function'
-                ? timelineEffectiveClipIn(clip, asset)
-                : Math.max(0, Number(clip.in || 0), Number(getMediaEditRange(asset).start || 0));
-            const target = Math.max(0, effectiveIn + playhead - Number(clip.start || 0));
-            video.dataset.timelineTargetTime = String(target);
-            if (video.readyState < 1 || !Number.isFinite(video.duration)) {
-                if (!video.__simpaiTimelineEverSynced) video.classList.remove('is-timeline-synced');
-                if (!video.__simpaiTimelineMetadataSyncBound) {
-                    video.__simpaiTimelineMetadataSyncBound = true;
-                    video.addEventListener('loadedmetadata', () => {
-                        video.__simpaiTimelineMetadataSyncBound = false;
-                        syncTimelinePreviewVideos(nodeEl, node);
-                    }, { once: true });
-                }
-                return;
-            }
-            const seekThreshold = playing ? 0.55 : 0.08;
-            if (Number.isFinite(video.duration) && Math.abs((video.currentTime || 0) - target) > seekThreshold) {
-                if (!video.__simpaiTimelineEverSynced) video.classList.remove('is-timeline-synced');
-                if (!video.__simpaiTimelineSeekSyncBound) {
-                    video.__simpaiTimelineSeekSyncBound = true;
-                    video.addEventListener('seeked', () => {
-                        video.__simpaiTimelineSeekSyncBound = false;
-                        const expected = Number(video.dataset.timelineTargetTime || target);
-                        if (Math.abs((video.currentTime || 0) - expected) < 0.12) {
-                            video.__simpaiTimelineEverSynced = true;
-                            video.classList.add('is-timeline-synced');
-                        }
-                    }, { once: true });
-                }
-                try { video.currentTime = Math.min(Math.max(0, target), Math.max(0, video.duration - 0.03)); } catch (err) {}
-            } else {
-                video.__simpaiTimelineEverSynced = true;
-                video.classList.add('is-timeline-synced');
-            }
-            if (playing && video.paused) video.play().catch(() => {});
-            if (!playing && !video.paused) video.pause();
-        });
+        return CANVAS_TIMELINE_CONTEXT.syncTimelinePreviewVideos?.(nodeEl, node);
     }
 
     function refreshTimelineInlineValue(input, key, clip) {
-        const label = input?.closest?.('label');
-        const valueEl = label?.querySelector?.('b');
-        if (!valueEl || !clip) return;
-        if (key === 'start' || key === 'duration') valueEl.textContent = formatAssetDuration(clip[key]);
-        else if (key === 'opacity' || key === 'volume') valueEl.textContent = `${Math.round(Number(clip[key] ?? 1) * 100)}%`;
-        else if (key === 'scale') valueEl.textContent = Number(clip.scale ?? 1).toFixed(2);
-        else valueEl.textContent = String(clip[key] ?? '');
+        return CANVAS_TIMELINE_CONTEXT.refreshTimelineInlineValue?.(input, key, clip);
     }
 
-    function timelineMaskDimensions(node) {
-        return {
-            width: Math.max(16, Math.round(Number(node?.params?.width || 1280))),
-            height: Math.max(16, Math.round(Number(node?.params?.height || 720)))
-        };
-    }
-
-    function timelineMaskPointFromEvent(stageEl, evt) {
-        const rect = stageEl.getBoundingClientRect();
-        return {
-            x: clamp((evt.clientX - rect.left) / Math.max(1, rect.width), 0, 1),
-            y: clamp((evt.clientY - rect.top) / Math.max(1, rect.height), 0, 1)
-        };
-    }
-
-    function timelineMaskPointDistancePx(a, b, stageEl) {
-        const rect = stageEl?.getBoundingClientRect?.() || { width: 1, height: 1 };
-        const dx = (Number(a?.x || 0) - Number(b?.x || 0)) * Math.max(1, rect.width);
-        const dy = (Number(a?.y || 0) - Number(b?.y || 0)) * Math.max(1, rect.height);
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    function timelineMaskCloseSnapPx(stageEl) {
-        const rect = stageEl?.getBoundingClientRect?.() || { width: 1, height: 1 };
-        return clamp(Math.min(rect.width, rect.height) * 0.045, 12, 24);
-    }
 
     function timelineMaskLayerGeometry(node, clip, paramsOverride) {
-        if (!node || !clip) return null;
-        const params = Object.assign({}, node.params || {}, paramsOverride || {});
-        const width = Math.max(16, Math.round(Number(params.width || 1280)));
-        const height = Math.max(16, Math.round(Number(params.height || 720)));
-        const source = getNode(clip.source_node_id);
-        const asset = getTimelineSourceAsset(source) || {};
-        const playhead = Number(params.playhead || node.params?.playhead || 0);
-        const effectiveClip = typeof timelineClipAtTime === 'function'
-            ? timelineClipAtTime(clip, playhead)
-            : clip;
-        const geometry = timelineClipLayerGeometry(width, height, asset.width, asset.height, effectiveClip);
-        return Object.assign({}, geometry, {
-            canvasWidth: width,
-            canvasHeight: height,
-            rotate: Number(effectiveClip?.rotate || 0)
-        });
+        return CANVAS_TIMELINE_CONTEXT.timelineMaskLayerGeometry?.(node, clip, paramsOverride) || null;
     }
 
     function captureTimelineMaskGeometry(node) {
-        if (!node || node.type !== 'timeline') return null;
-        const width = Math.max(16, Math.round(Number(node.params?.width || 1280)));
-        const height = Math.max(16, Math.round(Number(node.params?.height || 720)));
-        const clips = {};
-        (node.clips || []).forEach((clip) => {
-            if (!clip?.mask || clip.kind === 'audio') return;
-            clips[clip.id] = timelineMaskLayerGeometry(node, clip, { width, height });
-        });
-        return { width, height, clips };
+        return CANVAS_TIMELINE_CONTEXT.captureTimelineMaskGeometry?.(node) || null;
     }
 
-    function rotateTimelineMaskPoint(x, y, cx, cy, degrees) {
-        const radians = Number(degrees || 0) * Math.PI / 180;
-        if (Math.abs(radians) < 0.000001) return { x, y };
-        const cos = Math.cos(radians);
-        const sin = Math.sin(radians);
-        const dx = x - cx;
-        const dy = y - cy;
-        return {
-            x: cx + dx * cos - dy * sin,
-            y: cy + dx * sin + dy * cos
-        };
-    }
-
-    function remapTimelineMaskPoint(point, oldGeometry, newGeometry) {
-        if (!point || !oldGeometry || !newGeometry || !oldGeometry.fitW || !oldGeometry.fitH || !newGeometry.fitW || !newGeometry.fitH) {
-            return point;
-        }
-        const oldX = clamp(Number(point.x || 0), 0, 1) * oldGeometry.canvasWidth;
-        const oldY = clamp(Number(point.y || 0), 0, 1) * oldGeometry.canvasHeight;
-        const unrotated = rotateTimelineMaskPoint(oldX, oldY, oldGeometry.centerX, oldGeometry.centerY, -Number(oldGeometry.rotate || 0));
-        const localX = (unrotated.x - oldGeometry.left) / Math.max(1, oldGeometry.fitW);
-        const localY = (unrotated.y - oldGeometry.top) / Math.max(1, oldGeometry.fitH);
-        const nextUnrotatedX = newGeometry.left + localX * newGeometry.fitW;
-        const nextUnrotatedY = newGeometry.top + localY * newGeometry.fitH;
-        const rotated = rotateTimelineMaskPoint(nextUnrotatedX, nextUnrotatedY, newGeometry.centerX, newGeometry.centerY, Number(newGeometry.rotate || 0));
-        return Object.assign({}, point, {
-            x: clamp(rotated.x / Math.max(1, newGeometry.canvasWidth), 0, 1),
-            y: clamp(rotated.y / Math.max(1, newGeometry.canvasHeight), 0, 1)
-        });
-    }
-
-    function remapTimelineMaskPoints(points, oldGeometry, newGeometry) {
-        return Array.isArray(points)
-            ? points.map(point => remapTimelineMaskPoint(point, oldGeometry, newGeometry))
-            : points;
-    }
 
     function remapTimelineMasksAfterCanvasResize(node, oldSnapshot) {
-        if (!node || node.type !== 'timeline' || !oldSnapshot) return;
-        const newWidth = Math.max(16, Math.round(Number(node.params?.width || 1280)));
-        const newHeight = Math.max(16, Math.round(Number(node.params?.height || 720)));
-        if (newWidth === oldSnapshot.width && newHeight === oldSnapshot.height) return;
-        (node.clips || []).forEach((clip) => {
-            const oldGeometry = oldSnapshot.clips?.[clip.id];
-            if (!clip?.mask || !oldGeometry || clip.kind === 'audio') return;
-            const newGeometry = timelineMaskLayerGeometry(node, clip, { width: newWidth, height: newHeight });
-            const strokes = Array.isArray(clip.mask.strokes) ? clip.mask.strokes : [];
-            const pending = clip.mask.pending_pen && Array.isArray(clip.mask.pending_pen.points)
-                ? Object.assign({}, clip.mask.pending_pen, {
-                    points: remapTimelineMaskPoints(clip.mask.pending_pen.points, oldGeometry, newGeometry)
-                })
-                : clip.mask.pending_pen;
-            Object.assign(clip, timelineBuildClipMaskPatch(clip, {
-                maskPatch: {
-                space: 'canvas',
-                width: newWidth,
-                height: newHeight,
-                strokes: strokes.map(stroke => Object.assign({}, stroke, {
-                    points: remapTimelineMaskPoints(stroke.points, oldGeometry, newGeometry)
-                })),
-                pending_pen: pending
-                }
-            }));
-            const dataUrl = exportTimelineMaskDataUrl(node, clip);
-            if (dataUrl) {
-                Object.assign(clip, timelineBuildClipMaskPatch(clip, {
-                    dataUrl,
-                    width: newWidth,
-                    height: newHeight
-                }));
-            }
-        });
+        return remapTimelineMasksAfterCanvasResizeController?.(node, oldSnapshot);
     }
 
     function remapTimelineClipMaskForGeometryChange(node, clip, oldGeometry) {
-        if (!node || !clip?.mask || !oldGeometry || clip.kind === 'audio') return false;
-        const newGeometry = timelineMaskLayerGeometry(node, clip);
-        if (!newGeometry) return false;
-        const sameGeometry = ['left', 'top', 'fitW', 'fitH', 'centerX', 'centerY', 'rotate', 'canvasWidth', 'canvasHeight']
-            .every(key => Math.abs(Number(oldGeometry[key] || 0) - Number(newGeometry[key] || 0)) < 0.0001);
-        if (sameGeometry) return false;
-        const strokes = Array.isArray(clip.mask.strokes) ? clip.mask.strokes : [];
-        const pending = clip.mask.pending_pen && Array.isArray(clip.mask.pending_pen.points)
-            ? Object.assign({}, clip.mask.pending_pen, {
-                points: remapTimelineMaskPoints(clip.mask.pending_pen.points, oldGeometry, newGeometry)
-            })
-            : clip.mask.pending_pen;
-        Object.assign(clip, timelineBuildClipMaskPatch(clip, {
-            maskPatch: {
-            space: 'canvas',
-            width: newGeometry.canvasWidth,
-            height: newGeometry.canvasHeight,
-            strokes: strokes.map(stroke => Object.assign({}, stroke, {
-                points: remapTimelineMaskPoints(stroke.points, oldGeometry, newGeometry)
-            })),
-            pending_pen: pending
-            }
-        }));
-        const dataUrl = exportTimelineMaskDataUrl(node, clip);
-        if (dataUrl) {
-            Object.assign(clip, timelineBuildClipMaskPatch(clip, {
-                dataUrl,
-                width: newGeometry.canvasWidth,
-                height: newGeometry.canvasHeight
-            }));
-        }
-        return true;
+        return remapTimelineClipMaskForGeometryChangeController?.(node, clip, oldGeometry) || false;
     }
 
     function drawTimelineMaskStrokes(ctx, width, height, strokes, options) {
-        if (!ctx) return;
-        const opts = options || {};
-        if (opts.clear !== false) ctx.clearRect(0, 0, width, height);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        const drawOneStroke = (targetCtx, stroke, featherPx) => {
-            const points = Array.isArray(stroke?.points) ? stroke.points : [];
-            if (!points.length) return false;
-            const isPen = stroke.kind === 'pen' || stroke.closed === true;
-            targetCtx.save();
-            targetCtx.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over';
-            targetCtx.strokeStyle = 'rgba(255,255,255,1)';
-            targetCtx.fillStyle = 'rgba(255,255,255,1)';
-            targetCtx.lineWidth = isPen ? Math.max(1, featherPx ? 1 : 2) : Math.max(2, Number(stroke.size || 0.035) * Math.min(width, height));
-            targetCtx.lineCap = 'round';
-            targetCtx.lineJoin = 'round';
-            targetCtx.beginPath();
-            points.forEach((point, index) => {
-                const x = clamp(Number(point.x || 0), 0, 1) * width;
-                const y = clamp(Number(point.y || 0), 0, 1) * height;
-                if (index === 0) targetCtx.moveTo(x, y);
-                else targetCtx.lineTo(x, y);
-            });
-            if (isPen) {
-                if (stroke.closed !== false && points.length >= 3) {
-                    targetCtx.closePath();
-                    targetCtx.fill();
-                } else {
-                    targetCtx.setLineDash([6, 5]);
-                    targetCtx.stroke();
-                }
-            } else if (points.length === 1) {
-                const p = points[0];
-                targetCtx.arc(clamp(Number(p.x || 0), 0, 1) * width, clamp(Number(p.y || 0), 0, 1) * height, targetCtx.lineWidth / 2, 0, Math.PI * 2);
-                targetCtx.fill();
-            } else {
-                targetCtx.stroke();
-            }
-            targetCtx.restore();
-            return true;
-        };
-        (Array.isArray(strokes) ? strokes : []).forEach((stroke) => {
-            const feather = Math.max(0, Number(stroke?.feather || 0));
-            if (!feather || stroke?.erase) {
-                drawOneStroke(ctx, stroke, 0);
-                return;
-            }
-            const buffer = document.createElement('canvas');
-            buffer.width = width;
-            buffer.height = height;
-            const bufferCtx = buffer.getContext('2d');
-            if (!bufferCtx || !drawOneStroke(bufferCtx, stroke, feather)) return;
-            ctx.save();
-            ctx.filter = `blur(${feather}px)`;
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.drawImage(buffer, 0, 0);
-            ctx.restore();
-        });
+        return timelineMaskController?.drawTimelineMaskStrokes(ctx, width, height, strokes, options);
     }
 
     function ensureTimelineMaskCanvas(stageEl, node, clip) {
-        let canvas = stageEl.querySelector('canvas[data-timeline-mask-canvas]');
-        if (!canvas) {
-            canvas = document.createElement('canvas');
-            canvas.className = 'sai-timeline-mask-canvas';
-            canvas.setAttribute('data-timeline-mask-canvas', 'true');
-            stageEl.appendChild(canvas);
-        }
-        const rect = stageEl.getBoundingClientRect();
-        const ratio = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-        const width = Math.max(1, Math.round(rect.width * ratio));
-        const height = Math.max(1, Math.round(rect.height * ratio));
-        if (canvas.width !== width || canvas.height !== height) {
-            canvas.width = width;
-            canvas.height = height;
-        }
-        const ctx = canvas.getContext('2d');
-        const strokes = (clip?.mask?.strokes || []).concat(clip?.mask?.pending_pen ? [clip.mask.pending_pen] : []);
-        drawTimelineMaskStrokes(ctx, width, height, strokes);
-        return canvas;
+        return timelineMaskController?.ensureTimelineMaskCanvas(stageEl, node, clip) || null;
     }
 
-    function exportTimelineMaskDataUrl(node, clip) {
-        const size = timelineMaskDimensions(node);
-        const canvas = document.createElement('canvas');
-        canvas.width = size.width;
-        canvas.height = size.height;
-        drawTimelineMaskStrokes(canvas.getContext('2d'), size.width, size.height, clip?.mask?.strokes || []);
-        try {
-            return canvas.toDataURL('image/png');
-        } catch (err) {
-            console.warn('[SimpAI Canvas] timeline mask export failed:', err);
-            return '';
-        }
-    }
 
     function refreshTimelinePenOverlayDom(stageEl, clip, options) {
-        if (!stageEl || !clip) return;
-        const oldPen = stageEl.querySelector('.sai-timeline-pen-overlay');
-        if (oldPen) oldPen.remove();
-        const updateMask = options?.mask !== false;
-        const showPenOverlay = stageEl.getAttribute('data-timeline-tool-state') === 'mask';
-        const clipSelector = timelineClipCssSelector(clip.id);
-        const oldCutout = stageEl.querySelector(`.sai-timeline-mask-cutout[data-mask-cutout-clip="${clipSelector}"]`)
-            || Array.from(stageEl.querySelectorAll('.sai-timeline-mask-cutout')).find(el =>
-                el.querySelector?.(`.sai-timeline-preview-layer[data-preview-clip="${clipSelector}"]`));
-        if (oldCutout && updateMask) oldCutout.remove();
-        const penHtml = typeof timelineRenderPenOverlay === 'function'
-            ? timelineRenderPenOverlay(clip)
-            : '';
-        if (penHtml && showPenOverlay) {
-            const template = document.createElement('template');
-            template.innerHTML = penHtml.trim();
-            const overlay = template.content.firstElementChild;
-            if (overlay) stageEl.insertBefore(overlay, stageEl.querySelector('.sai-timeline-preview-guides'));
-        }
-        const maskSrc = typeof timelineClipMaskDataUrl === 'function'
-            ? timelineClipMaskDataUrl(clip)
-            : (clip.mask?.data_url || clip.mask_data_url || '');
-        if (!updateMask) return;
-        const showMaskPreview = stageEl.getAttribute('data-timeline-tool-state') === 'mask';
-        let mask = stageEl.querySelector('.sai-timeline-mask-preview');
-        if (maskSrc) {
-            stageEl.classList.add('has-mask-cutout');
-            const sourceLayer = Array.from(stageEl.children).find(el =>
-                el.classList?.contains('sai-timeline-preview-layer') && el.getAttribute('data-preview-clip') === clip.id);
-            if (sourceLayer) {
-                sourceLayer.classList.add('has-mask');
-                const cutout = document.createElement('div');
-                cutout.className = 'sai-timeline-mask-cutout';
-                cutout.setAttribute('data-mask-cutout-clip', clip.id);
-                cutout.setAttribute('aria-hidden', 'true');
-                setTimelineMaskImageStyle(cutout, maskSrc);
-                cutout.appendChild(sourceLayer.cloneNode(true));
-                stageEl.insertBefore(cutout, stageEl.querySelector('.sai-timeline-mask-preview') || stageEl.querySelector('.sai-timeline-pen-overlay') || stageEl.querySelector('.sai-timeline-preview-guides'));
-            }
-            if (!showMaskPreview) {
-                if (mask) mask.remove();
-                return;
-            }
-            if (!mask) {
-                mask = document.createElement('div');
-                mask.className = 'sai-timeline-mask-preview';
-                mask.setAttribute('aria-hidden', 'true');
-                stageEl.insertBefore(mask, stageEl.querySelector('.sai-timeline-pen-overlay') || stageEl.querySelector('.sai-timeline-preview-guides'));
-            }
-            setTimelineMaskImageStyle(mask, maskSrc);
-        } else if (mask) {
-            mask.remove();
-            const sourceLayer = Array.from(stageEl.children).find(el =>
-                el.classList?.contains('sai-timeline-preview-layer') && el.getAttribute('data-preview-clip') === clip.id);
-            if (sourceLayer) sourceLayer.classList.remove('has-mask');
-            if (!stageEl.querySelector('.sai-timeline-mask-cutout')) stageEl.classList.remove('has-mask-cutout');
-        } else {
-            const sourceLayer = Array.from(stageEl.children).find(el =>
-                el.classList?.contains('sai-timeline-preview-layer') && el.getAttribute('data-preview-clip') === clip.id);
-            if (sourceLayer) sourceLayer.classList.remove('has-mask');
-            if (!stageEl.querySelector('.sai-timeline-mask-cutout')) stageEl.classList.remove('has-mask-cutout');
-        }
+        return CANVAS_TIMELINE_CONTEXT.refreshTimelinePenOverlayDom?.(stageEl, clip, options);
     }
 
-    function getTimelinePenAnchorTarget(clip, rawRef) {
-        const ref = String(rawRef || '');
-        const mask = clip?.mask && typeof clip.mask === 'object' ? clip.mask : null;
-        if (!mask) return null;
-        const [left, right] = ref.split(':');
-        if (left === 'pending') {
-            const points = Array.isArray(mask.pending_pen?.points) ? mask.pending_pen.points : [];
-            const pointIndex = Number(right);
-            return points[pointIndex] ? { kind: 'pending', points, pointIndex } : null;
-        }
-        const strokeIndex = Number(left);
-        const pointIndex = Number(right);
-        const strokes = Array.isArray(mask.strokes) ? mask.strokes : [];
-        const stroke = strokes[strokeIndex];
-        const points = Array.isArray(stroke?.points) ? stroke.points : [];
-        return points[pointIndex] ? { kind: 'stroke', stroke, strokeIndex, points, pointIndex } : null;
-    }
-
-    function closeTimelinePendingPenPath(node, clip, stageEl) {
-        const pending = clip?.mask?.pending_pen;
-        const points = Array.isArray(pending?.points) ? pending.points : [];
-        if (!node || !clip || points.length < 3) return false;
-        const size = timelineMaskDimensions(node);
-        const strokes = Array.isArray(clip.mask?.strokes) ? clip.mask.strokes : [];
-        const closed = Object.assign({}, pending, {
-            kind: 'pen',
-            closed: true,
-            pending: false,
-            points: points.slice()
-        });
-        Object.assign(clip, timelineBuildClipMaskPatch(clip, {
-            maskPatch: {
-                kind: 'pen_alpha',
-                space: 'canvas',
-                width: size.width,
-                height: size.height,
-                strokes: strokes.concat(closed),
-                pending_pen: null
-            }
-        }));
-        const dataUrl = exportTimelineMaskDataUrl(node, clip);
-        if (dataUrl) {
-            Object.assign(clip, timelineBuildClipMaskPatch(clip, {
-                dataUrl,
-                width: size.width,
-                height: size.height
-            }));
-        }
-        refreshTimelinePenOverlayDom(stageEl, clip);
-        scheduleSave();
-        if (selectedNodeId === node.id) renderInspector();
-        return true;
-    }
-
-    function handleCanvasRelightLightButtonClick(node, button, attrName) {
-        if (!node || !button || isNodeLocked(node)) return false;
-        const key = button.getAttribute(attrName);
-        if (!key) return false;
-        const value = Number(canvasRelightLightValue(button.getAttribute('data-relight-light-value') || button.value));
-        updateNodeParam(node.id, key, value, 'number');
-        mutate({ inspector: true });
-        return true;
-    }
 
     function bindNodeEvents(nodeEl, node) {
-        if (nodeEl.__simpaiNodeEventsBound) {
-            injectParamResetButtons(nodeEl);
-            bindNodeMediaControlEvents(nodeEl);
-            bindResultNodePreviewAspect(nodeEl, node);
-            bindPresetSpecialViewerEvents(nodeEl, node);
-            return;
-        }
-        nodeEl.__simpaiNodeEventsBound = true;
-        if (node.type === 'image') bindImageNodeDropEvents(nodeEl, node);
-        if (node.type === 'vlm') bindVlmChatDropEvents(nodeEl, node);
-        if (node.type === 'vlm') bindVlmChatScrollControls(nodeEl);
-        if (node.type === 'media_browser') bindMediaBrowserNodeDragEvents(nodeEl, node);
-        injectParamResetButtons(nodeEl);
-        bindNodeMediaControlEvents(nodeEl);
-        bindResultNodePreviewAspect(nodeEl, node);
-        bindPresetSpecialViewerEvents(nodeEl, node);
-
-        nodeEl.classList.remove('is-collapse-expanded');
-
-        nodeEl.addEventListener('pointerdown', (evt) => {
-            if (evt.button === 1) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                startPan(evt);
-                return;
-            }
-            if (evt.button !== 0) return;
-            if (canvasAgentState.pickReference) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                if (addCanvasAgentReferenceFromNode(node)) {
-                    canvasAgentState.pickReference = false;
-                    renderCanvasAgentPanel();
-                }
-                return;
-            }
-            const nodeResizeHandle = evt.target.closest('[data-node-resize-handle]');
-            if (nodeResizeHandle) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                startNodeResize(node, evt);
-                return;
-            }
-            const resolutionDrag = evt.target.closest('[data-resolution-drag-area],[data-resolution-drag-handle]');
-            if (resolutionDrag && node.type === 'config' && node.config_kind === 'resolution') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                startResolutionDrag(node, evt);
-                return;
-            }
-            const outHandle = evt.target.closest('[data-handle-out]');
-            if (outHandle) {
-                evt.preventDefault();
-                startConnection(node, evt);
-                return;
-            }
-            const inHandle = evt.target.closest('[data-handle-in]');
-            const configInHandle = evt.target.closest('[data-config-in]');
-            const resultInHandle = evt.target.closest('[data-handle-in-result]');
-            const textInHandle = evt.target.closest('[data-text-in]');
-            const textNodeInHandle = evt.target.closest('[data-text-node-in]');
-            const translationTextInHandle = evt.target.closest('[data-translation-text-in]');
-            const tagCartTextInHandle = evt.target.closest('[data-tagcart-text-in]');
-            const wd14ImageInHandle = evt.target.closest('[data-wd14-image-in]');
-            const vlmImageInHandle = evt.target.closest('[data-vlm-image-in]');
-            const maskSourceInHandle = evt.target.closest('[data-mask-source-in]');
-            const sam3VideoInHandle = evt.target.closest('[data-sam3-video-in]');
-            const poseReferenceInHandle = evt.target.closest('[data-pose-studio-reference-in]');
-            const gaussianReferenceInHandle = evt.target.closest('[data-gaussian-studio-reference-in]');
-            const livePortraitSourceInHandle = evt.target.closest('[data-liveportrait-expression-source-in]');
-            const livePortraitReferenceInHandle = evt.target.closest('[data-liveportrait-expression-reference-in]');
-            const qwenTtsAudioInHandle = evt.target.closest('[data-qwen-tts-audio-in]');
-            const directorMediaInHandle = evt.target.closest('[data-director-media-in]');
-            const directorMediaGroupInHandle = evt.target.closest('[data-director-media-group-in]');
-            const compareImageInHandle = evt.target.closest('[data-compare-image-in]');
-            const batchAnyInHandle = evt.target.closest('[data-batch-any-in]');
-            const timelineMediaInHandle = evt.target.closest('[data-timeline-media-in], [data-timeline-track-in]');
-            if (inHandle || configInHandle || resultInHandle || textInHandle || textNodeInHandle || translationTextInHandle || tagCartTextInHandle || wd14ImageInHandle || vlmImageInHandle || maskSourceInHandle || sam3VideoInHandle || poseReferenceInHandle || gaussianReferenceInHandle || livePortraitSourceInHandle || livePortraitReferenceInHandle || qwenTtsAudioInHandle || directorMediaInHandle || directorMediaGroupInHandle || compareImageInHandle || batchAnyInHandle || timelineMediaInHandle) {
-                evt.preventDefault();
-                handleInputHandlePointerDown(node, evt, {
-                    inHandle,
-                    configInHandle,
-                    resultInHandle,
-                    textInHandle,
-                    textNodeInHandle,
-                    translationTextInHandle,
-                    tagCartTextInHandle,
-                    wd14ImageInHandle,
-                    vlmImageInHandle,
-                    maskSourceInHandle,
-                    sam3VideoInHandle,
-                    poseReferenceInHandle,
-                    gaussianReferenceInHandle,
-                    livePortraitSourceInHandle,
-                    livePortraitReferenceInHandle,
-                    qwenTtsAudioInHandle,
-                    directorMediaInHandle,
-                    directorMediaGroupInHandle,
-                    compareImageInHandle,
-                    batchAnyInHandle,
-                    timelineMediaInHandle
-                });
-                return;
-            }
-            const compareStage = evt.target.closest('.sai-compare-stage');
-            if (compareStage && node.type === 'compare') {
-                startComparePositionDrag(node, compareStage, evt);
-                return;
-            }
-            const timelineKeyframeJump = evt.target.closest('[data-timeline-keyframe-jump]');
-            if (timelineKeyframeJump && node.type === 'timeline') {
-                startTimelineKeyframeDrag(node, timelineKeyframeJump, evt);
-                return;
-            }
-            const timelinePenAnchor = evt.target.closest('[data-timeline-pen-anchor]');
-            if (timelinePenAnchor && node.type === 'timeline') {
-                startTimelineMaskAnchorDrag(node, timelinePenAnchor, evt);
-                return;
-            }
-            const timelinePlayheadLane = evt.target.closest('[data-timeline-playhead-lane]');
-            if (timelinePlayheadLane && node.type === 'timeline') {
-                startTimelinePlayheadDrag(node, evt);
-                return;
-            }
-            const timelinePreviewClip = evt.target.closest('[data-preview-clip]');
-            const timelinePreviewStage = evt.target.closest('.sai-timeline-preview-stage');
-            if (timelinePreviewStage && node.type === 'timeline' && (node.params?.preview_tool || 'transform') === 'mask') {
-                const clipId = timelinePreviewClip?.getAttribute('data-preview-clip') || node.params?.selected_clip_id || '';
-                startTimelineMaskDraw(node, clipId, evt);
-                return;
-            }
-            if (timelinePreviewClip && node.type === 'timeline') {
-                const tool = node.params?.preview_tool || 'transform';
-                if (tool === 'mask' && !evt.target.closest('[data-preview-transform]')) {
-                    startTimelineMaskDraw(node, timelinePreviewClip.getAttribute('data-preview-clip'), evt);
-                    return;
-                }
-                const cropMode = tool === 'crop' ? evt.target.closest('[data-preview-crop]')?.getAttribute('data-preview-crop') : '';
-                const transformMode = tool === 'transform' ? evt.target.closest('[data-preview-transform]')?.getAttribute('data-preview-transform') : '';
-                startTimelinePreviewDrag(node, timelinePreviewClip.getAttribute('data-preview-clip'), evt, cropMode || transformMode || 'move');
-                return;
-            }
-            const timelineClip = evt.target.closest('[data-timeline-clip-id]');
-            if (timelineClip && node.type === 'timeline') {
-                const trimHandle = evt.target.closest('[data-timeline-trim]');
-                const modeName = trimHandle ? `trim-${trimHandle.getAttribute('data-timeline-trim') || 'end'}` : 'move';
-                startTimelineClipDrag(node, timelineClip.getAttribute('data-timeline-clip-id'), modeName, evt);
-                return;
-            }
-            const directorTimelineDrag = evt.target.closest('[data-director-timeline-drag]');
-            if (directorTimelineDrag && isDirectorTimelineNode(node)) {
-                startDirectorTimelinePreviewDrag(node, nodeEl, directorTimelineDrag, evt);
-                return;
-            }
-            if (isInteractiveTarget(evt.target)) return;
-            evt.preventDefault();
-            if (evt.altKey) {
-                const ids = getSelectedNodeIdList();
-                const sourceIds = selectedNodeIds.has(node.id) ? ids : [node.id];
-                if (!selectedNodeIds.has(node.id)) {
-                    selectedNodeIds = new Set([node.id]);
-                    selectedNodeId = node.id;
-                    selectedEdgeId = null;
-                }
-                const sourceIndex = Math.max(0, sourceIds.indexOf(node.id));
-                const pasted = duplicateSelection({ offsetX: 0, offsetY: 0, showToast: false, label: 'Alt-drag copy' });
-                const dragNode = pasted[sourceIndex] || pasted[0];
-                if (dragNode) {
-                    selectedNodeIds = new Set(pasted.map(item => item.id));
-                    selectedNodeId = dragNode.id;
-                    selectedEdgeId = null;
-                    renderAll({ inspector: true });
-                    startNodeDrag(dragNode, evt);
-                }
-                return;
-            }
-            if (evt.ctrlKey || evt.metaKey || evt.shiftKey) {
-                toggleNodeSelectionLight(node.id);
-            } else if (!selectedNodeIds.has(node.id)) {
-                selectNodeLight(node.id);
-            } else {
-                if (selectedNodeId === node.id && selectedEdgeId === null) {
-                    startNodeDrag(node, evt);
-                    return;
-                }
-                selectedNodeId = node.id;
-                selectedEdgeId = null;
-                refreshSelectionUi();
-            }
-            startNodeDrag(node, evt);
-        });
-
-        nodeEl.addEventListener('click', (evt) => {
-            const textareaFromTitle = textareaEditorFieldFromTitleClick(evt.target);
-            if (textareaFromTitle) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                openTextareaEditor(textareaFromTitle);
-                return;
-            }
-            if (handleMediaBrowserNodeClick(node, evt, nodeEl)) return;
-            if (handleTimelineClick(nodeEl, node, evt)) return;
-            const metadataToggle = evt.target.closest('[data-result-metadata-toggle]');
-            if (metadataToggle && node.type === 'result') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const wrap = metadataToggle.closest('[data-result-metadata]');
-                if (wrap) wrap.classList.toggle('is-pinned');
-                return;
-            }
-            const relightLightButton = evt.target.closest('.sai-canvas-relight-light-button[data-node-param]');
-            if (relightLightButton) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                handleCanvasRelightLightButtonClick(node, relightLightButton, 'data-node-param');
-                return;
-            }
-            const paramReset = evt.target.closest('[data-param-reset]');
-            if (paramReset) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                resetPresetNodeParam(node, paramReset.getAttribute('data-param-reset'));
-                return;
-            }
-            const resultAsset = evt.target.closest('[data-result-asset-index]');
-            if (resultAsset) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                selectResultAsset(node, Number(resultAsset.getAttribute('data-result-asset-index')) || 0);
-                mutate();
-                return;
-            }
-            const mediaFullscreen = evt.target.closest('[data-media-fullscreen]');
-            if (mediaFullscreen) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                openNodeMediaFullscreen(node);
-                return;
-            }
-            const configMode = evt.target.closest('[data-config-mode]');
-            if (configMode) {
-                evt.preventDefault();
-                updateConfigParam(node.id, 'edit_mode', configMode.getAttribute('data-config-mode'), 'text');
-                return;
-            }
-            const styleConfigAction = evt.target.closest('[data-style-config-action]');
-            if (styleConfigAction && node.type === 'config' && node.config_kind === 'styles') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                if (handleStylesConfigAction(node, styleConfigAction.getAttribute('data-style-config-action'))) return;
-            }
-            const styleSelectorCard = evt.target.closest('[data-style-selector-style]');
-            if (styleSelectorCard && node.type === 'style_selector') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                selectStyleSelectorStyle(node, styleSelectorCard.getAttribute('data-style-selector-style') || '');
-                return;
-            }
-            const modelBrowserButton = evt.target.closest('[data-model-browser-param],[data-model-browser-lora-index]');
-            if (modelBrowserButton && node.type === 'config' && node.config_kind === 'models') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                if (openModelBrowserForConfigField(node, modelBrowserButton, nodeEl)) return;
-            }
-            const translateButton = evt.target.closest('[data-translate-action]');
-            if (translateButton) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                handleTranslateButton(node, translateButton);
-                return;
-            }
-            const tagCartButton = evt.target.closest('[data-tag-cart-action]');
-            if (tagCartButton) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                openTagCartForField(node, tagCartButton);
-                return;
-            }
-            const compareMode = evt.target.closest('[data-compare-mode]');
-            if (compareMode && node.type === 'compare') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                updateCompareParam(node.id, 'mode', compareMode.getAttribute('data-compare-mode'), 'text', { render: true });
-                return;
-            }
-            const vlmChatJump = evt.target.closest('[data-vlm-chat-jump-bottom]');
-            if (vlmChatJump && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const shell = vlmChatJump.closest('.sai-vlm-chat-shell');
-                const log = shell?.querySelector?.('.sai-vlm-chat-log');
-                if (log) {
-                    scrollVlmChatLogToBottom(log);
-                }
-                return;
-            }
-            if (handleVlmChatInputClick(node, evt)) return;
-            const vlmParamReset = evt.target.closest('[data-vlm-param-reset]');
-            if (vlmParamReset && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                resetVlmParamToDefault(node, vlmParamReset.getAttribute('data-vlm-param-reset') || '', nodeEl);
-                return;
-            }
-            const vlmChatImage = evt.target.closest('[data-vlm-chat-image]');
-            if (vlmChatImage && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                hideVlmChatImagePreview();
-                const [messageIndex, imageIndex] = String(vlmChatImage.getAttribute('data-vlm-chat-image') || '').split(':').map(Number);
-                openVlmChatImage(node, messageIndex, imageIndex);
-                return;
-            }
-            const vlmChatCopy = evt.target.closest('[data-vlm-chat-copy]');
-            if (vlmChatCopy && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                copyVlmChatMessage(node, Number(vlmChatCopy.getAttribute('data-vlm-chat-copy')) || 0);
-                return;
-            }
-            const vlmChatQuote = evt.target.closest('[data-vlm-chat-quote]');
-            if (vlmChatQuote && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                quoteVlmChatMessage(node, Number(vlmChatQuote.getAttribute('data-vlm-chat-quote')) || 0);
-                return;
-            }
-            const vlmChatRollback = evt.target.closest('[data-vlm-chat-rollback]');
-            if (vlmChatRollback && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                rollbackVlmChatToMessage(node, Number(vlmChatRollback.getAttribute('data-vlm-chat-rollback')) || 0);
-                return;
-            }
-            const vlmChatDelete = evt.target.closest('[data-vlm-chat-delete]');
-            if (vlmChatDelete && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                deleteVlmChatMessage(node, Number(vlmChatDelete.getAttribute('data-vlm-chat-delete')) || 0);
-                return;
-            }
-            const vlmAgentRun = evt.target.closest('[data-vlm-agent-action-run]');
-            if (vlmAgentRun && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const [messageIndex, actionIndex] = String(vlmAgentRun.getAttribute('data-vlm-agent-action-run') || '').split(':').map(Number);
-                const actionToRun = getVlmAgentAction(node, messageIndex, actionIndex);
-                const promptReview = actionToRun?.prompt_review && typeof actionToRun.prompt_review === 'object' ? actionToRun.prompt_review : null;
-                if (String(promptReview?.state || '').toLowerCase() === 'reject' || String(actionToRun?._prompt_review_rejected || '').toLowerCase() === 'true') {
-                    const issueText = Array.isArray(promptReview?.issues)
-                        ? promptReview.issues.slice(0, 3).map(item => String(item?.message || item?.code || item || '').trim()).filter(Boolean).join('; ')
-                        : '';
-                    const message = issueText
-                        ? t('Prompt review rejected this action: {issues}', '提示词审查已拒绝该动作：{issues}').replace('{issues}', issueText)
-                        : t('Prompt review rejected this action.', '提示词审查已拒绝该动作。');
-                    setVlmAgentActionExecution(node, messageIndex, actionIndex, { state: 'blocked', message, prompt_review: promptReview });
-                    showToast(message);
-                    return;
-                }
-                const card = vlmAgentRun.closest('[data-vlm-agent-action-card]');
-                const rememberAutoConfirm = !!card?.querySelector?.('[data-vlm-agent-action-auto-confirm]')?.checked;
-                markVlmAgentActionCardBusy(card, t('Queued...', '已入队...'));
-                setVlmAgentActionExecution(node, messageIndex, actionIndex, {
-                    state: 'queued',
-                    message: t('Queued; preparing generation...', '已入队，正在准备生成...')
-                });
-                executeVlmAgentAction(node, messageIndex, actionIndex, { rememberAutoConfirm });
-                return;
-            }
-            const vlmAgentIgnore = evt.target.closest('[data-vlm-agent-action-ignore]');
-            if (vlmAgentIgnore && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const [messageIndex, actionIndex] = String(vlmAgentIgnore.getAttribute('data-vlm-agent-action-ignore') || '').split(':').map(Number);
-                ignoreVlmAgentAction(node, messageIndex, actionIndex);
-                return;
-            }
-            const vlmAgentRetry = evt.target.closest('[data-vlm-agent-action-retry]');
-            if (vlmAgentRetry && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const [messageIndex, actionIndex] = String(vlmAgentRetry.getAttribute('data-vlm-agent-action-retry') || '').split(':').map(Number);
-                retryVlmAgentAction(node, messageIndex, actionIndex);
-                return;
-            }
-            const vlmAgentAllow = evt.target.closest('[data-vlm-agent-action-allow]');
-            if (vlmAgentAllow && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const [messageIndex, actionIndex] = String(vlmAgentAllow.getAttribute('data-vlm-agent-action-allow') || '').split(':').map(Number);
-                const card = vlmAgentAllow.closest('[data-vlm-agent-action-card]');
-                markVlmAgentActionCardBusy(card, t('Queued with review bypass...', '已放行入队...'));
-                allowRejectedVlmAgentAction(node, messageIndex, actionIndex);
-                return;
-            }
-            const action = evt.target.closest('[data-node-action]');
-            if (action) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                handleNodeAction(node, action.getAttribute('data-node-action'), action, evt);
-                return;
-            }
-        });
-
-        nodeEl.addEventListener('keydown', (evt) => {
-            if (handleMediaBrowserNodeKeydown(node, evt, nodeEl)) return;
-            handleVlmChatInputKeyDown(node, evt);
-        });
-
-        nodeEl.addEventListener('dblclick', (evt) => {
-            const resultAsset = evt.target.closest('[data-result-asset-index]');
-            if (resultAsset && node.type === 'result') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const index = Number(resultAsset.getAttribute('data-result-asset-index')) || 0;
-                selectResultAsset(node, index);
-                createMediaNodeFromResultAsset(node, index);
-                return;
-            }
-            const inputPortHandle = evt.target.closest(INPUT_PORT_HANDLE_SELECTOR);
-            if (inputPortHandle) {
-                const target = getConnectionTargetFromHandle(inputPortHandle);
-                if (target) {
-                    evt.preventDefault();
-                    evt.stopPropagation();
-                    const edges = inputTargetEdges(target);
-                    if (edges.length && !inputTargetAcceptsMultiple(target)) {
-                        const source = getNode(edges[0].from);
-                        if (source) focusNode(source);
-                        else showToast(t('Connected source is missing.', '已连接的来源节点不存在。'));
-                    } else {
-                        createDefaultInputSource(target);
-                    }
-                    return;
-                }
-            }
-            const uploadRow = evt.target.closest('[data-slot-row]');
-            const uploadHandle = evt.target.closest('[data-handle-in]');
-            if ((uploadRow || uploadHandle) && ['preset', 'classic'].includes(node.type)) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const slot = uploadHandle?.getAttribute('data-handle-in') || uploadRow?.getAttribute('data-slot-row') || '';
-                const handle = uploadHandle || uploadRow?.querySelector?.('[data-handle-in]') || uploadRow;
-                if (node.type === 'classic' && slot === 'inpaint_mask') createAdvancedMaskNodeForClassicInput(node, handle);
-                else createNodeForUploadInput(node, slot, handle);
-                return;
-            }
-            if (node.type === 'preset' && isStyleTransferPresetNode(node) && !isInteractiveTarget(evt.target)) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                ensureStyleSelectorForPreset(node, { select: true });
-                return;
-            }
-            const sam3VideoRow = evt.target.closest('[data-sam3-video-row]');
-            const sam3VideoHandle = evt.target.closest('[data-sam3-video-in]');
-            if ((sam3VideoRow || sam3VideoHandle) && node.type === 'sam3_video_mask') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                uploadSourceVideoForSam3Node(node, sam3VideoHandle || sam3VideoRow);
-                return;
-            }
-            const poseReferenceHandle = evt.target.closest('[data-pose-studio-reference-in]');
-            if (poseReferenceHandle && node.type === 'pose_studio') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                createImageNodeForImageInput(node, 'pose_studio', 'reference', poseReferenceHandle);
-                return;
-            }
-            const gaussianReferenceHandle = evt.target.closest('[data-gaussian-studio-reference-in]');
-            if (gaussianReferenceHandle && node.type === 'gaussian_studio') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                createImageNodeForImageInput(node, 'gaussian_studio', 'reference', gaussianReferenceHandle);
-                return;
-            }
-            const livePortraitSourceHandle = evt.target.closest('[data-liveportrait-expression-source-in]');
-            if (livePortraitSourceHandle && node.type === 'liveportrait_expression') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                createImageNodeForImageInput(node, 'liveportrait_expression_source', 'source', livePortraitSourceHandle);
-                return;
-            }
-            const livePortraitReferenceHandle = evt.target.closest('[data-liveportrait-expression-reference-in]');
-            if (livePortraitReferenceHandle && node.type === 'liveportrait_expression') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                createImageNodeForImageInput(node, 'liveportrait_expression_reference', 'reference', livePortraitReferenceHandle);
-                return;
-            }
-            if (node.type === 'pose_studio' && !isInteractiveTarget(evt.target)) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                openPoseStudioEditor(node);
-                return;
-            }
-            if (node.type === 'gaussian_studio' && !isInteractiveTarget(evt.target)) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                openGaussianStudioEditor(node);
-                return;
-            }
-            if (node.type === 'liveportrait_expression' && !isInteractiveTarget(evt.target)) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                openLivePortraitExpressionEditor(node);
-                return;
-            }
-            const wd14ImageHandle = evt.target.closest('[data-wd14-image-in]');
-            if (wd14ImageHandle && node.type === 'wd14') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                createImageNodeForImageInput(node, 'wd14', 'image', wd14ImageHandle);
-                return;
-            }
-            const vlmImageHandle = evt.target.closest('[data-vlm-image-in]');
-            if (vlmImageHandle && node.type === 'vlm') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                createImageNodeForImageInput(node, 'vlm', vlmImageHandle.getAttribute('data-vlm-image-in') || 'image_1', vlmImageHandle);
-                return;
-            }
-            const maskSourceHandle = evt.target.closest('[data-mask-source-in]');
-            if (maskSourceHandle && node.type === 'mask') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                createImageNodeForImageInput(node, 'mask_source', 'source', maskSourceHandle);
-                return;
-            }
-            const compareImageHandle = evt.target.closest('[data-compare-image-in]');
-            if (compareImageHandle && node.type === 'compare') {
-                evt.preventDefault();
-                evt.stopPropagation();
-                createImageNodeForImageInput(node, 'compare', compareImageHandle.getAttribute('data-compare-image-in') || 'a', compareImageHandle);
-                return;
-            }
-            const configInterface = evt.target.closest('[data-config-interface]');
-            if (!configInterface || !['preset', 'classic'].includes(node.type)) return;
-            evt.preventDefault();
-            evt.stopPropagation();
-            ensureConfigNode(node, configInterface.getAttribute('data-config-interface'));
-        });
-
-        nodeEl.addEventListener('input', (evt) => {
-            const comparePosition = evt.target.closest('[data-compare-position]');
-            if (comparePosition && node.type === 'compare') {
-                updateCompareParam(node.id, 'position', Number(comparePosition.value), 'number', { render: false });
-                refreshCompareDom(node.id);
-                return;
-            }
-            if (handleTimelineNodeParamEvent(nodeEl, node, evt, 'input')) return;
-            const mediaSeek = evt.target.closest('[data-media-seek]');
-            if (mediaSeek) {
-                showVideoScrubPreview(node, mediaSeek.value);
-                seekNodeMediaPlayer(node.id, mediaSeek.value, { immediate: false });
-                return;
-            }
-            const mediaTrimStart = evt.target.closest('[data-media-trim-start]');
-            if (mediaTrimStart) {
-                updateMediaTrim(node.id, 'start', mediaTrimStart.value, { commit: false });
-                return;
-            }
-            const mediaTrimEnd = evt.target.closest('[data-media-trim-end]');
-            if (mediaTrimEnd) {
-                updateMediaTrim(node.id, 'end', mediaTrimEnd.value, { commit: false });
-                return;
-            }
-            const styleSearch = evt.target.closest('[data-style-config-search]');
-            if (styleSearch && node.type === 'config' && node.config_kind === 'styles') {
-                filterStylesConfigList(nodeEl, styleSearch.value);
-                return;
-            }
-            const styleSelectorSearch = evt.target.closest('[data-style-selector-search]');
-            if (styleSelectorSearch && node.type === 'style_selector') {
-                updateStyleSelectorSearch(node.id, styleSelectorSearch.value, nodeEl);
-                return;
-            }
-            const styleToggle = evt.target.closest('[data-config-style]');
-            if (styleToggle && node.type === 'config' && node.config_kind === 'styles') {
-                updateStylesConfigSelection(node.id, styleToggle.getAttribute('data-config-style'), styleToggle.checked);
-                return;
-            }
-            const modelFilterToggle = evt.target.closest('[data-config-model-filter]');
-            if (modelFilterToggle && node.type === 'config' && node.config_kind === 'models') {
-                setModelConfigFilter(node.id, modelFilterToggle.checked);
-                return;
-            }
-            const configParam = evt.target.closest('[data-config-param]');
-            if (configParam) {
-                if (configParam.disabled) return;
-                syncModelSelectTitle(configParam);
-                syncTwinParamInputs(configParam, '[data-config-param]');
-                const key = configParam.getAttribute('data-config-param');
-                const liveResolutionParam = node.type === 'config' && node.config_kind === 'resolution' && ['width', 'height', 'multiplier'].includes(key);
-                updateConfigParam(node.id, key, configParam.type === 'checkbox' ? configParam.checked : configParam.value, configParam.type, liveResolutionParam ? { render: false } : undefined);
-                if (liveResolutionParam) refreshResolutionConfigNodeDom(nodeEl, getNode(node.id) || node);
-                return;
-            }
-            const loraModel = evt.target.closest('[data-config-lora-model]');
-            if (loraModel) {
-                syncModelSelectTitle(loraModel);
-                updateConfigLora(node.id, Number(loraModel.getAttribute('data-config-lora-model')), 'model', loraModel.value);
-                return;
-            }
-            const loraWeight = evt.target.closest('[data-config-lora-weight]');
-            if (loraWeight) {
-                updateConfigLora(node.id, Number(loraWeight.getAttribute('data-config-lora-weight')), 'weight', Number(loraWeight.value));
-                return;
-            }
-            const loraEnabled = evt.target.closest('[data-config-lora-enabled]');
-            if (loraEnabled) {
-                updateConfigLora(node.id, Number(loraEnabled.getAttribute('data-config-lora-enabled')), 'enabled', loraEnabled.checked);
-                return;
-            }
-            if (handleNodeParamEvent(nodeEl, node, evt, 'input')) return;
-            const param = evt.target.closest('[data-node-param]');
-            if (param) handleNodeParamFieldChange(node, param, { scheduleOutpaint: false });
-        });
-
-        nodeEl.addEventListener('change', (evt) => {
-            if (handleMediaBrowserNodeChange(node, evt, nodeEl)) return;
-            const noteText = evt.target.closest('[data-note-text]');
-            if (noteText && node.type === 'note') {
-                updateNoteText(node.id, noteText.value, { render: false });
-                return;
-            }
-            const compareMode = evt.target.closest('[data-compare-mode]');
-            if (compareMode && node.type === 'compare') {
-                updateCompareParam(node.id, 'mode', compareMode.getAttribute('data-compare-mode'), 'text', { render: true });
-                return;
-            }
-            const comparePosition = evt.target.closest('[data-compare-position]');
-            if (comparePosition && node.type === 'compare') {
-                updateCompareParam(node.id, 'position', Number(comparePosition.value), 'number', { render: true });
-                return;
-            }
-            if (handleTimelineNodeParamEvent(nodeEl, node, evt, 'change')) return;
-            const mediaSeek = evt.target.closest('[data-media-seek]');
-            if (mediaSeek) {
-                seekNodeMediaPlayer(node.id, mediaSeek.value, { immediate: true });
-                return;
-            }
-            const mediaTrimStart = evt.target.closest('[data-media-trim-start]');
-            if (mediaTrimStart) {
-                updateMediaTrim(node.id, 'start', mediaTrimStart.value, { commit: true });
-                return;
-            }
-            const mediaTrimEnd = evt.target.closest('[data-media-trim-end]');
-            if (mediaTrimEnd) {
-                updateMediaTrim(node.id, 'end', mediaTrimEnd.value, { commit: true });
-                return;
-            }
-            const mediaFullscreen = evt.target.closest('[data-media-fullscreen]');
-            if (mediaFullscreen) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                openNodeMediaFullscreen(node);
-                return;
-            }
-            const configMode = evt.target.closest('[data-config-mode]');
-            if (configMode) {
-                updateConfigParam(node.id, 'edit_mode', configMode.getAttribute('data-config-mode'), 'text');
-                return;
-            }
-            const styleSearch = evt.target.closest('[data-style-config-search]');
-            if (styleSearch && node.type === 'config' && node.config_kind === 'styles') {
-                filterStylesConfigList(nodeEl, styleSearch.value);
-                return;
-            }
-            const styleToggle = evt.target.closest('[data-config-style]');
-            if (styleToggle && node.type === 'config' && node.config_kind === 'styles') {
-                updateStylesConfigSelection(node.id, styleToggle.getAttribute('data-config-style'), styleToggle.checked);
-                return;
-            }
-            const modelFilterToggle = evt.target.closest('[data-config-model-filter]');
-            if (modelFilterToggle && node.type === 'config' && node.config_kind === 'models') {
-                setModelConfigFilter(node.id, modelFilterToggle.checked);
-                return;
-            }
-            const configParam = evt.target.closest('[data-config-param]');
-            if (configParam) {
-                if (configParam.disabled) return;
-                syncModelSelectTitle(configParam);
-                syncTwinParamInputs(configParam, '[data-config-param]');
-                const key = configParam.getAttribute('data-config-param');
-                const liveResolutionParam = node.type === 'config' && node.config_kind === 'resolution' && ['width', 'height', 'multiplier'].includes(key);
-                updateConfigParam(node.id, key, configParam.type === 'checkbox' ? configParam.checked : configParam.value, configParam.type, liveResolutionParam ? { render: false } : undefined);
-                if (liveResolutionParam) refreshResolutionConfigNodeDom(nodeEl, getNode(node.id) || node);
-                return;
-            }
-            const loraModel = evt.target.closest('[data-config-lora-model]');
-            if (loraModel) {
-                syncModelSelectTitle(loraModel);
-                updateConfigLora(node.id, Number(loraModel.getAttribute('data-config-lora-model')), 'model', loraModel.value);
-                return;
-            }
-            const loraWeight = evt.target.closest('[data-config-lora-weight]');
-            if (loraWeight) {
-                updateConfigLora(node.id, Number(loraWeight.getAttribute('data-config-lora-weight')), 'weight', Number(loraWeight.value));
-                return;
-            }
-            const loraEnabled = evt.target.closest('[data-config-lora-enabled]');
-            if (loraEnabled) {
-                updateConfigLora(node.id, Number(loraEnabled.getAttribute('data-config-lora-enabled')), 'enabled', loraEnabled.checked);
-                return;
-            }
-            const classicMode = evt.target.closest('[data-classic-mode]');
-            if (classicMode) {
-                handleClassicModeChange(node.id, classicMode.value);
-                return;
-            }
-            const uovMethodSelect = evt.target.closest('[data-node-param="uov_method"]');
-            if (uovMethodSelect && node.type === 'classic') {
-                handleUovMethodChange(node.id, uovMethodSelect.value);
-                return;
-            }
-            const inpaintModeSelect = evt.target.closest('[data-node-param="inpaint_mode"]');
-            if (inpaintModeSelect && node.type === 'classic') {
-                handleInpaintModeChange(node.id, inpaintModeSelect.value);
-                return;
-            }
-            const enhanceUovSelect = evt.target.closest('[data-node-param="enhance_uov_method"],[data-node-param="enhance_uov_processing_order"]');
-            if (enhanceUovSelect && node.type === 'classic') {
-                handleEnhanceUovParamChange(node.id, enhanceUovSelect.getAttribute('data-node-param'), enhanceUovSelect.value, enhanceUovSelect.type);
-                return;
-            }
-            const classicIpType = evt.target.closest('[data-classic-ip-type]');
-            if (classicIpType) {
-                updateNodeParam(node.id, `ip_type_${classicIpType.getAttribute('data-classic-ip-type')}`, classicIpType.value, 'text');
-                return;
-            }
-            const classicIpStop = evt.target.closest('[data-classic-ip-stop]');
-            if (classicIpStop) {
-                syncTwinParamInputs(classicIpStop, '[data-classic-ip-stop]');
-                updateNodeParam(node.id, `ip_stop_${classicIpStop.getAttribute('data-classic-ip-stop')}`, Number(classicIpStop.value), 'number');
-                return;
-            }
-            const classicIpWeight = evt.target.closest('[data-classic-ip-weight]');
-            if (classicIpWeight) {
-                syncTwinParamInputs(classicIpWeight, '[data-classic-ip-weight]');
-                updateNodeParam(node.id, `ip_weight_${classicIpWeight.getAttribute('data-classic-ip-weight')}`, Number(classicIpWeight.value), 'number');
-                return;
-            }
-            const classicParam = evt.target.closest('[data-classic-param]');
-            if (classicParam) {
-                const key = classicParam.getAttribute('data-classic-param');
-                syncTwinParamInputs(classicParam, '[data-classic-param]');
-                if (key === 'ip_count') {
-                    pushHistory('Change classic IP count');
-                    Object.assign(node, buildClassicNodeStatePatch(node, {
-                        classicIpCount: clamp(Number(classicParam.value) || 1, 1, getClassicIpMaxImages(node))
-                    }));
-                    mutate();
-                }
-                return;
-            }
-            const theme = evt.target.closest('[data-node-theme]');
-            if (theme) {
-                setPresetTheme(node.id, theme.value);
-                return;
-            }
-            if (handleNodeParamEvent(nodeEl, node, evt, 'change')) return;
-            const param = evt.target.closest('[data-node-param]');
-            if (param) handleNodeParamFieldChange(node, param);
-        });
-
-        nodeEl.addEventListener('contextmenu', (evt) => {
-            evt.preventDefault();
-            evt.stopPropagation();
-            if (!selectedNodeIds.has(node.id)) selectNode(node.id);
-            const resultAsset = evt.target.closest('[data-result-asset-index]');
-            if (resultAsset && node.type === 'result') {
-                const index = Number(resultAsset.getAttribute('data-result-asset-index')) || 0;
-                selectResultAsset(node, index);
-                openResultAssetContextMenu(node, index, evt.clientX, evt.clientY);
-                return;
-            }
-            const imageMedia = evt.target.closest('.sai-image-node-media,[data-image-drop-zone],.sai-result-media,.sai-pose-studio-media,.sai-gaussian-studio-media,.sai-liveportrait-expression-media');
-            if (imageMedia && (node.type === 'image' || ['pose_studio', 'gaussian_studio', 'liveportrait_expression'].includes(node.type) || isCanvasAgentImageTarget(node)) && !evt.target.closest('.sai-node-head')) {
-                openImageMediaContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const videoMedia = evt.target.closest('.sai-node-video-media,.sai-media-storyboard');
-            if (videoMedia && node.type === 'video' && !evt.target.closest('.sai-node-head')) {
-                openVideoMediaContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const audioMedia = evt.target.closest('.sai-node-audio-media,.sai-audio-waveform');
-            if (audioMedia && node.type === 'audio' && !evt.target.closest('.sai-node-head')) {
-                openAudioMediaContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const inputPortHandle = evt.target.closest(INPUT_PORT_HANDLE_SELECTOR);
-            if (inputPortHandle) {
-                const target = getConnectionTargetFromHandle(inputPortHandle);
-                if (target) {
-                    openInputPortContextMenu(target, evt.clientX, evt.clientY);
-                    return;
-                }
-            }
-            const inHandle = evt.target.closest('[data-handle-in]');
-            if (inHandle) {
-                openInputHandleContextMenu(node, inHandle.getAttribute('data-handle-in'), evt.clientX, evt.clientY);
-                return;
-            }
-            const configInHandle = evt.target.closest('[data-config-in]');
-            if (configInHandle) {
-                openConfigHandleContextMenu(node, configInHandle.getAttribute('data-config-in'), evt.clientX, evt.clientY);
-                return;
-            }
-            const textInHandle = evt.target.closest('[data-text-in]');
-            if (textInHandle) {
-                openTextHandleContextMenu(node, textInHandle.getAttribute('data-text-in'), evt.clientX, evt.clientY);
-                return;
-            }
-            const textNodeInHandle = evt.target.closest('[data-text-node-in]');
-            if (textNodeInHandle) {
-                openTextNodeInputContextMenu(node, evt.clientX, evt.clientY, textNodeInHandle.getAttribute('data-text-node-in') || 'input');
-                return;
-            }
-            const translationTextInHandle = evt.target.closest('[data-translation-text-in]');
-            if (translationTextInHandle) {
-                openTextNodeInputContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const tagCartTextInHandle = evt.target.closest('[data-tagcart-text-in]');
-            if (tagCartTextInHandle) {
-                openTextNodeInputContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const resultInHandle = evt.target.closest('[data-handle-in-result]');
-            if (resultInHandle) {
-                openResultInputContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const compareImageInHandle = evt.target.closest('[data-compare-image-in]');
-            if (compareImageInHandle) {
-                openCompareImageInputContextMenu(node, compareImageInHandle.getAttribute('data-compare-image-in'), evt.clientX, evt.clientY);
-                return;
-            }
-            const wd14ImageInHandle = evt.target.closest('[data-wd14-image-in]');
-            if (wd14ImageInHandle) {
-                openWd14ImageInputContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const vlmImageInHandle = evt.target.closest('[data-vlm-image-in]');
-            if (vlmImageInHandle) {
-                openVlmImageInputContextMenu(node, vlmImageInHandle.getAttribute('data-vlm-image-in'), evt.clientX, evt.clientY);
-                return;
-            }
-            const maskSourceInHandle = evt.target.closest('[data-mask-source-in]');
-            if (maskSourceInHandle) {
-                openMaskSourceInputContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const poseReferenceInHandle = evt.target.closest('[data-pose-studio-reference-in]');
-            if (poseReferenceInHandle) {
-                openPoseStudioReferenceContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const gaussianReferenceInHandle = evt.target.closest('[data-gaussian-studio-reference-in]');
-            if (gaussianReferenceInHandle) {
-                openGaussianStudioReferenceContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const batchAnyInHandle = evt.target.closest('[data-batch-any-in]');
-            if (batchAnyInHandle && node.type === 'batch_any') {
-                openBatchAnyInputContextMenu(node, evt.clientX, evt.clientY);
-                return;
-            }
-            const timelineKeyframe = evt.target.closest('[data-timeline-keyframe-jump]');
-            if (timelineKeyframe && node.type === 'timeline') {
-                openTimelineKeyframeContextMenu(node, timelineKeyframe, evt.clientX, evt.clientY);
-                return;
-            }
-            const timelineClip = evt.target.closest('[data-timeline-clip-id]');
-            if (timelineClip && node.type === 'timeline') {
-                openTimelineClipContextMenu(node, timelineClip.getAttribute('data-timeline-clip-id'), evt.clientX, evt.clientY);
-                return;
-            }
-            const vlmChatMessage = evt.target.closest('[data-vlm-chat-message]');
-            if (vlmChatMessage && node.type === 'vlm') {
-                openVlmChatMessageContextMenu(node, Number(vlmChatMessage.getAttribute('data-vlm-chat-message')) || 0, evt.clientX, evt.clientY);
-                return;
-            }
-            openNodeContextMenu(node, evt.clientX, evt.clientY);
-        });
+        CANVAS_NODE_EVENT_CONTROLLER.bindNodeEvents(nodeEl, node);
     }
 
     function noteTailState(node) {
@@ -18611,150 +15994,8 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return 'generate';
     }
 
-    function edgeCurveControlPoints(from, to) {
-        const dx = Math.max(80, Math.abs(to.x - from.x) * 0.45);
-        return {
-            c1x: from.x + dx,
-            c1y: from.y,
-            c2x: to.x - dx,
-            c2y: to.y
-        };
-    }
-
-    function appendCanvasEdgeCurve(ctx, from, to) {
-        const c = edgeCurveControlPoints(from, to);
-        ctx.moveTo(from.x, from.y);
-        ctx.bezierCurveTo(c.c1x, c.c1y, c.c2x, c.c2y, to.x, to.y);
-    }
-
-    function createEdgeCanvasRecord(edge, from, to) {
-        const c = edgeCurveControlPoints(from, to);
-        const pad = edge.id === selectedEdgeId ? 12 : 10;
-        return {
-            id: edge.id,
-            type: edge.type || 'edge',
-            from,
-            to,
-            c,
-            bounds: {
-                x: Math.min(from.x, to.x, c.c1x, c.c2x) - pad,
-                y: Math.min(from.y, to.y, c.c1y, c.c2y) - pad,
-                w: Math.max(from.x, to.x, c.c1x, c.c2x) - Math.min(from.x, to.x, c.c1x, c.c2x) + pad * 2,
-                h: Math.max(from.y, to.y, c.c1y, c.c2y) - Math.min(from.y, to.y, c.c1y, c.c2y) + pad * 2
-            }
-        };
-    }
-
-    function edgeCanvasCssVar(name, fallback) {
-        if (!root || !window.getComputedStyle) return fallback;
-        return window.getComputedStyle(root).getPropertyValue(name).trim() || fallback;
-    }
-
-    function edgeCanvasStrokeGroupKey(record) {
-        if (record.id === selectedEdgeId) return 'selected';
-        if (record.type === 'batch_input') return 'batch_input';
-        if (record.type === 'generate') return 'generate';
-        if (record.type === 'text') return 'text';
-        if (record.type === 'image') return 'image';
-        if (record.type === 'compare') return 'compare';
-        if (record.type === 'timeline') return 'timeline';
-        return 'edge';
-    }
-
-    function createEdgeCanvasStrokeGroup(key, vars) {
-        const style = (() => {
-            if (key === 'selected') return { color: vars.warn, width: 4, alpha: 1 };
-            if (key === 'batch_input') return { color: '#22c55e', width: 3, alpha: 1 };
-            if (key === 'generate') return { color: '#737373', width: 3, alpha: 1 };
-            if (key === 'text') return { color: '#16a34a', width: 3, alpha: 1 };
-            if (key === 'image') return { color: '#14b8a6', width: 3, alpha: 1 };
-            if (key === 'compare') return { color: '#0ea5e9', width: 3, alpha: 1 };
-            if (key === 'timeline') return { color: '#f59e0b', width: 2.4, alpha: 0.78 };
-            return { color: vars.accent, width: 3, alpha: 1 };
-        })();
-        return { key, style, records: [] };
-    }
-
-    function getEdgeCanvasStrokeGroups(records, vars) {
-        const groups = [];
-        const groupsByKey = Object.create(null);
-        let selectedGroup = null;
-        (Array.isArray(records) ? records : []).forEach((record) => {
-            const key = edgeCanvasStrokeGroupKey(record);
-            if (key === 'selected') {
-                if (!selectedGroup) selectedGroup = createEdgeCanvasStrokeGroup(key, vars);
-                selectedGroup.records.push(record);
-                return;
-            }
-            if (!groupsByKey[key]) {
-                groupsByKey[key] = createEdgeCanvasStrokeGroup(key, vars);
-                groups.push(groupsByKey[key]);
-            }
-            groupsByKey[key].records.push(record);
-        });
-        if (selectedGroup?.records?.length) groups.push(selectedGroup);
-        return groups;
-    }
-
     function clearEdgeCanvas() {
-        edgeCanvasHitRecords = [];
-        edgeCanvasActive = false;
-        perfStats.edgeCanvasBatches = 0;
-        if (!edgesCanvas) return;
-        edgesCanvas.hidden = true;
-        edgesCanvas.width = 0;
-        edgesCanvas.height = 0;
-        edgesCanvas.style.width = '0px';
-        edgesCanvas.style.height = '0px';
-    }
-
-    function drawEdgeCanvas(bounds, records) {
-        edgeCanvasHitRecords = Array.isArray(records) ? records : [];
-        if (!shouldUseCanvasEdgeRendering() || !bounds) {
-            clearEdgeCanvas();
-            return false;
-        }
-        const ctx = edgesCanvas.getContext('2d');
-        if (!ctx) {
-            clearEdgeCanvas();
-            return false;
-        }
-        const width = Math.max(1, Math.ceil(bounds.w));
-        const height = Math.max(1, Math.ceil(bounds.h));
-        edgeCanvasDpr = 1;
-        edgesCanvas.hidden = false;
-        edgesCanvas.style.left = `${bounds.x}px`;
-        edgesCanvas.style.top = `${bounds.y}px`;
-        edgesCanvas.style.width = `${width}px`;
-        edgesCanvas.style.height = `${height}px`;
-        const nextWidth = Math.max(1, Math.ceil(width * edgeCanvasDpr));
-        const nextHeight = Math.max(1, Math.ceil(height * edgeCanvasDpr));
-        if (edgesCanvas.width !== nextWidth) edgesCanvas.width = nextWidth;
-        if (edgesCanvas.height !== nextHeight) edgesCanvas.height = nextHeight;
-        ctx.setTransform(edgeCanvasDpr, 0, 0, edgeCanvasDpr, 0, 0);
-        ctx.clearRect(0, 0, width, height);
-        ctx.translate(-bounds.x, -bounds.y);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        const vars = {
-            accent: edgeCanvasCssVar('--sai-canvas-accent', '#1f8f7a'),
-            warn: edgeCanvasCssVar('--sai-canvas-warn', '#f97316')
-        };
-        const groups = getEdgeCanvasStrokeGroups(edgeCanvasHitRecords, vars);
-        perfStats.edgeCanvasBatches = groups.length;
-        for (const group of groups) {
-            const style = group.style;
-            ctx.globalAlpha = style.alpha;
-            ctx.strokeStyle = style.color;
-            ctx.lineWidth = style.width;
-            ctx.beginPath();
-            group.records.forEach((record) => appendCanvasEdgeCurve(ctx, record.from, record.to));
-            ctx.stroke();
-        }
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.globalAlpha = 1;
-        edgeCanvasActive = true;
-        return true;
+        return CANVAS_EDGE_RENDERER.clearEdgeCanvas?.();
     }
 
     function createEdgePointCache() {
@@ -18793,244 +16034,20 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return point;
     }
 
-    function cubicPointAt(record, tValue) {
-        const t1 = 1 - tValue;
-        const t12 = t1 * t1;
-        const t2 = tValue * tValue;
-        return {
-            x: t12 * t1 * record.from.x
-                + 3 * t12 * tValue * record.c.c1x
-                + 3 * t1 * t2 * record.c.c2x
-                + t2 * tValue * record.to.x,
-            y: t12 * t1 * record.from.y
-                + 3 * t12 * tValue * record.c.c1y
-                + 3 * t1 * t2 * record.c.c2y
-                + t2 * tValue * record.to.y
-        };
-    }
-
-    function distancePointToSegmentSq(point, a, b) {
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) {
-            const px = point.x - a.x;
-            const py = point.y - a.y;
-            return px * px + py * py;
-        }
-        const tValue = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy), 0, 1);
-        const x = a.x + dx * tValue;
-        const y = a.y + dy * tValue;
-        const px = point.x - x;
-        const py = point.y - y;
-        return px * px + py * py;
-    }
-
-    function edgeRecordDistanceSq(record, point) {
-        let best = Infinity;
-        let previous = record.from;
-        for (let i = 1; i <= 18; i += 1) {
-            const current = cubicPointAt(record, i / 18);
-            best = Math.min(best, distancePointToSegmentSq(point, previous, current));
-            previous = current;
-        }
-        return best;
-    }
-
     function findCanvasEdgeAtClient(clientX, clientY) {
-        if (!edgeCanvasActive || !edgeCanvasHitRecords.length || !root || root.hidden) return null;
-        const point = clientToWorld(clientX, clientY);
-        const zoom = Math.max(0.05, Number(project?.viewport?.zoom || 1) || 1);
-        const tolerance = Math.max(5, 8 / zoom);
-        const toleranceSq = tolerance * tolerance;
-        let best = null;
-        let bestDistance = toleranceSq;
-        for (let i = edgeCanvasHitRecords.length - 1; i >= 0; i -= 1) {
-            const record = edgeCanvasHitRecords[i];
-            const bounds = record.bounds;
-            if (!bounds || point.x < bounds.x - tolerance || point.y < bounds.y - tolerance
-                || point.x > bounds.x + bounds.w + tolerance || point.y > bounds.y + bounds.h + tolerance) {
-                continue;
-            }
-            const distance = edgeRecordDistanceSq(record, point);
-            if (distance <= bestDistance) {
-                bestDistance = distance;
-                best = record;
-            }
-        }
-        return best;
+        return CANVAS_EDGE_RENDERER.findCanvasEdgeAtClient?.(clientX, clientY) || null;
     }
 
     function updateInteractiveEdgeDom(nodeIds) {
-        if (!edgesLayer || isConnecting() || project.settings.edgeLabels) return false;
-        if (!Array.isArray(nodeIds) || !nodeIds.length) return false;
-        const idSet = new Set(nodeIds.filter(Boolean));
-        if (!idSet.size) return false;
-        const startedAt = canvasPerformanceNow();
-        const renderWindow = getEdgeRenderWorldRect();
-        const nodesById = new Map((Array.isArray(project.nodes) ? project.nodes : [])
-            .filter(node => node && node.id)
-            .map(node => [node.id, node]));
-        const pointCache = createEdgePointCache();
-        const incidentQuery = getIncidentEdgeRecordsForNodeIds(idSet);
-        perfStats.edgeIncidentIndexHit = incidentQuery.indexed ? 1 : 0;
-        perfStats.edgeIncidentCandidates = incidentQuery.indexed ? incidentQuery.records.length : 0;
-        let updated = 0;
-        let missingVisibleEdge = false;
-        for (const record of incidentQuery.records) {
-            const edge = record.edge;
-            if (!incidentQuery.indexed && !idSet.has(edge.from) && !idSet.has(edge.to)) continue;
-            const fromNode = nodesById.get(edge.from);
-            const toNode = nodesById.get(edge.to);
-            if (!fromNode || !toNode) continue;
-            const path = edgesLayer.querySelector(`[data-edge-id="${cssEscape(edge.id)}"]`);
-            const visible = shouldRenderEdgeInViewport(edge, fromNode, toNode, renderWindow);
-            if (!visible) {
-                if (path) path.remove();
-                continue;
-            }
-            if (!path) {
-                missingVisibleEdge = true;
-                break;
-            }
-            const from = getCachedOutputPoint(fromNode, pointCache);
-            const to = getCachedInputPoint(toNode, edge.slot, edge.type, pointCache);
-            path.setAttribute('d', curvePath(from, to));
-            updated += 1;
-        }
-        publishEdgePointCacheStats(pointCache);
-        if (missingVisibleEdge) return false;
-        perfStats.renderEdgesMs = canvasPerformanceNow() - startedAt;
-        return updated > 0 || (incidentQuery.indexed && incidentQuery.records.length === 0);
+        return CANVAS_EDGE_RENDERER.updateInteractiveEdgeDom?.(nodeIds) || false;
     }
 
     function renderEdges() {
-        const startedAt = canvasPerformanceNow();
-        const paths = [];
-        const keyParts = [];
-        const canvasEdgeRecords = [];
-        const useCanvasEdges = shouldUseCanvasEdgeRendering();
-        let visibleEdgeCount = 0;
-        const bounds = getEdgeSvgBounds();
-        const canvasBounds = useCanvasEdges ? getEdgeCanvasBounds() : null;
-        const renderWindow = getEdgeRenderWorldRect();
-        const nodesById = new Map((Array.isArray(project.nodes) ? project.nodes : [])
-            .filter(node => node && node.id)
-            .map(node => [node.id, node]));
-        const pointCache = createEdgePointCache();
-        renderNoteTailSvg(paths, keyParts, renderWindow);
-        for (const edge of project.edges) {
-            const fromNode = nodesById.get(edge.from);
-            const toNode = nodesById.get(edge.to);
-            if (!fromNode || !toNode) continue;
-            if (!shouldRenderEdgeInViewport(edge, fromNode, toNode, renderWindow)) continue;
-            visibleEdgeCount += 1;
-            const from = getCachedOutputPoint(fromNode, pointCache);
-            const to = getCachedInputPoint(toNode, edge.slot, edge.type, pointCache);
-            if (useCanvasEdges) {
-                canvasEdgeRecords.push(createEdgeCanvasRecord(edge, from, to));
-            }
-            const shouldRenderSvgPath = !useCanvasEdges || edge.id === selectedEdgeId;
-            if (shouldRenderSvgPath) {
-                const d = curvePath(from, to);
-                const label = edgeLabelText(edge, toNode);
-                keyParts.push([
-                    edge.id,
-                    edge.type || '',
-                    edge.slot || '',
-                    from.x,
-                    from.y,
-                    to.x,
-                    to.y,
-                    label,
-                    edge.id === selectedEdgeId ? 1 : 0
-                ].join(':'));
-                paths.push(`<path class="sai-canvas-edge-hit" data-edge-id="${escapeHtml(edge.id)}" d="${escapeHtml(d)}"></path>`);
-                paths.push(`<path class="sai-canvas-edge sai-canvas-edge-${escapeHtml(edge.type || 'edge')} ${edge.id === selectedEdgeId ? 'is-selected' : ''}" data-edge-id="${escapeHtml(edge.id)}" d="${escapeHtml(d)}"></path>`);
-            }
-            if (!useCanvasEdges && project.settings.edgeLabels) {
-                const label = edgeLabelText(edge, toNode);
-                const midX = (from.x + to.x) / 2;
-                const midY = (from.y + to.y) / 2;
-                paths.push(`<text class="sai-canvas-edge-label" x="${midX}" y="${midY - 6}">${escapeHtml(label)}</text>`);
-            }
-        }
-        if (useCanvasEdges) drawEdgeCanvas(canvasBounds, canvasEdgeRecords);
-        else clearEdgeCanvas();
-        const nextCacheKey = [
-            useCanvasEdges ? 'canvas' : 'svg',
-            bounds.x,
-            bounds.y,
-            bounds.w,
-            bounds.h,
-            project.settings.edgeLabels ? 1 : 0,
-            keyParts.join('|')
-        ].join(';');
-        edgesLayer.setAttribute('viewBox', `${bounds.x} ${bounds.y} ${bounds.w} ${bounds.h}`);
-        edgesLayer.style.left = `${bounds.x}px`;
-        edgesLayer.style.top = `${bounds.y}px`;
-        edgesLayer.style.width = `${bounds.w}px`;
-        edgesLayer.style.height = `${bounds.h}px`;
-        if (edgeRenderCacheKey !== nextCacheKey) {
-            edgesLayer.innerHTML = paths.join('');
-            edgeRenderCacheKey = nextCacheKey;
-        } else {
-            updateSelectionDomClasses();
-        }
-        if (isConnecting()) {
-            tempEdge = null;
-            updateTempEdge();
-        } else {
-            clearTempEdge();
-        }
-        perfStats.renderEdgesMs = canvasPerformanceNow() - startedAt;
-        publishEdgePointCacheStats(pointCache);
-        perfStats.renderedEdges = visibleEdgeCount;
-        perfStats.totalEdges = project.edges.length;
+        return CANVAS_EDGE_RENDERER.renderEdges?.();
     }
 
     function renderSelectedChainOverlay() {
-        if (!chainRunOverlay) return;
-        const ids = getSelectedNodeIdList().filter(id => getNode(id));
-        if (ids.length < 2 || isMarqueeSelecting()) {
-            chainRunOverlay.hidden = true;
-            return;
-        }
-        const compareSources = ids.map(id => getNode(id)).filter(isImageCompareSource);
-        const canCompare = ids.length === 2 && compareSources.length === 2;
-        const plan = typeof schedulerBuildPlan === 'function'
-            ? schedulerBuildPlan(project, { mode: 'selected', nodeIds: ids })
-            : null;
-        const runnable = !!plan?.steps?.length && !plan.steps.some(step => Array.isArray(step.missing_inputs) && step.missing_inputs.length);
-        const canRun = runnable && project.scheduler?.state !== 'running';
-        if (!canCompare && !canRun) {
-            chainRunOverlay.hidden = true;
-            return;
-        }
-        const rects = ids.map(id => getNodeRect(getNode(id))).filter(Boolean);
-        if (!rects.length) {
-            chainRunOverlay.hidden = true;
-            return;
-        }
-        const minX = Math.min(...rects.map(rect => rect.x));
-        const minY = Math.min(...rects.map(rect => rect.y));
-        const maxX = Math.max(...rects.map(rect => rect.x + rect.w));
-        const maxY = Math.max(...rects.map(rect => rect.y + rect.h));
-        const pad = 18;
-        chainRunOverlay.style.left = `${Math.round(minX - pad)}px`;
-        chainRunOverlay.style.top = `${Math.round(minY - pad)}px`;
-        chainRunOverlay.style.width = `${Math.round(maxX - minX + pad * 2)}px`;
-        chainRunOverlay.style.height = `${Math.round(maxY - minY + pad * 2)}px`;
-        chainRunOverlay.classList.toggle('is-compare', canCompare);
-        const button = chainRunOverlay.querySelector('button');
-        if (button) {
-            const action = canCompare ? 'compare-selected-nodes' : 'run-selected-chain';
-            const title = canCompare ? 'Create image compare node' : 'Run selected chain';
-            button.setAttribute('data-canvas-action', action);
-            button.title = title;
-            button.setAttribute('aria-label', title);
-            button.innerHTML = canCompare ? renderIconHtml('sai-compare-glyph') : renderIconHtml('fa-play');
-        }
-        chainRunOverlay.hidden = false;
+        return CANVAS_CHAIN_RUN_OVERLAY_RENDERER?.renderSelectedChainOverlay?.();
     }
 
    function ensureTempEdge() {
@@ -19049,113 +16066,11 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function getOutputPoint(node) {
-        const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-handle-out]`);
-        if (measured) return measured;
-        return {
-            x: (node.x || 0) + (node.w || defaultNodeSize(node.type).w),
-            y: (node.y || 0) + 54
-        };
+        return CANVAS_EDGE_RENDERER.getOutputPoint(node);
     }
 
     function getInputPoint(node, slot, edgeType) {
-        if ((node.type === 'preset' || node.type === 'classic') && edgeType === 'upload') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-handle-in="${cssEscape(slot)}"]`);
-            if (measured) return measured;
-        }
-        if ((node.type === 'preset' || node.type === 'classic') && edgeType === 'config') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-config-in="${cssEscape(slot || '')}"]`);
-            if (measured) return measured;
-        }
-        if ((node.type === 'preset' || node.type === 'classic') && edgeType === 'text') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-text-in="${cssEscape(slot || '')}"]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'text' && edgeType === 'text') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-text-node-in]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'text_merge' && edgeType === 'text') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-text-node-in="${cssEscape(slot || '')}"]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'translation' && edgeType === 'text') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-translation-text-in]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'tag_cart' && edgeType === 'text') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-tagcart-text-in]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'result' && edgeType === 'generate') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-handle-in-result]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'wd14' && edgeType === 'image') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-wd14-image-in]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'vlm' && edgeType === 'image') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-vlm-image-in="${cssEscape(slot || '')}"]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'mask' && edgeType === 'image') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-mask-source-in]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'pose_studio' && edgeType === 'image') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-pose-studio-reference-in]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'gaussian_studio' && edgeType === 'image') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-gaussian-studio-reference-in]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'liveportrait_expression' && edgeType === 'image') {
-            const liveSlot = slot === 'reference' ? 'reference' : 'source';
-            const selector = liveSlot === 'reference' ? 'data-liveportrait-expression-reference-in' : 'data-liveportrait-expression-source-in';
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [${selector}]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'sam3_video_mask' && edgeType === 'media') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-sam3-video-in]`);
-            if (measured) return measured;
-        }
-        if (isQwenTtsNode(node) && edgeType === 'media') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-qwen-tts-audio-in="${cssEscape(slot || '')}"]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'compare' && edgeType === 'compare') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-compare-image-in="${cssEscape(slot || '')}"]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'timeline' && edgeType === 'timeline') {
-            const clip = (node.clips || []).find(item => item.id === slot);
-            const trackPoint = getTimelineTrackInputWorldPoint(node.id, clip?.track_id || slot);
-            if (trackPoint) return trackPoint;
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-timeline-media-in]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'batch_any' && edgeType === 'batch_input') {
-            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-batch-any-in]`);
-            if (measured) return measured;
-        }
-        if (node.type === 'preset' && edgeType === 'upload') {
-            const index = Math.max(0, getVisibleUploadSlots(node).findIndex(item => item.key === slot));
-            return {
-                x: node.x || 0,
-                y: (node.y || 0) + 96 + index * 34
-            };
-        }
-        if (node.type === 'result' && edgeType === 'generate') {
-            return {
-                x: node.x || 0,
-                y: (node.y || 0) + 54
-            };
-        }
-        return {
-            x: node.x || 0,
-            y: (node.y || 0) + 54
-        };
+        return CANVAS_EDGE_RENDERER.getInputPoint(node, slot, edgeType);
     }
 
     function cssEscape(value) {
@@ -19163,19 +16078,6 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return String(value || '').replace(/["\\]/g, '\\$&');
     }
 
-    function getHandleWorldPoint(selector) {
-        if (!nodesLayer || !viewport) return null;
-        const handle = nodesLayer.querySelector(selector);
-        if (!handle) return null;
-        const rect = handle.getBoundingClientRect();
-        if (!rect.width && !rect.height) return null;
-        return clientToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    }
-
-    function getTimelineTrackInputWorldPoint(nodeId, trackId) {
-        if (!nodesLayer || !viewport || !trackId) return null;
-        return getHandleWorldPoint(`[data-node-id="${cssEscape(nodeId)}"] [data-timeline-track-in="${cssEscape(trackId)}"]`);
-    }
 
     function curvePath(from, to) {
         return typeof viewportCurvePath === 'function'
@@ -19203,27 +16105,6 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return CANVAS_NOTE_INSPECTOR_CONTROLLER.renderNoteInspector(node);
     }
 
-    function renderMaskInspector(node) {
-        const source = getNode(node.input_node_id);
-        const info = readAssetInfo(node.asset || {});
-        return `
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(advancedMaskingLabel())}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Source', '来源'))}</span><b>${escapeHtml(source?.title || source?.id || notConnectedText())}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Model', '模型'))}</span><b>${escapeHtml(node.params?.mask_model || 'u2net')}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Mask', '遮罩'))}</span><b>${escapeHtml(info.join(' / ') || t('No mask generated', '尚未生成遮罩'))}</b></div>
-  <p>${escapeHtml(t('The generated black-white image is used as the Advanced Masking input for Inpaint; the backend still merges it with the painted mask on Image 1.', '生成的黑白图会作为 Inpaint 的高级遮罩输入，后端仍会和图 1 涂抹遮罩合并。'))}</p>
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="run-mask"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Generate', '生成'))}</span></button>
-  <button type="button" data-inspector-action="edit-mask-asset" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-paintbrush"></i><span>${escapeHtml(t('Sketch', '绘制'))}</span></button>
-  <button type="button" data-inspector-action="view-image" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escapeHtml(t('View', '查看'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
-    }
-
     function renderSam3VideoMaskInspector(node) {
         return sam3RenderInspector(node, SAM3_VIDEO_MASK_NODE_CONTEXT);
     }
@@ -19249,188 +16130,27 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function renderTextInspector(node) {
-        const source = getTextNodeInputSource(node);
-        const value = getNodeTextOutput(node);
-        return `
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Text Node', '文本节点'))}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Input', '输入'))}</span><b>${escapeHtml(source?.title || t('Manual', '手动'))}</b></div>
-  <label>${escapeHtml(t('Output', '输出'))}${renderTranslatableTextarea(`data-inspector-text-value rows="10" ${source ? 'readonly' : ''}`, value, { target: 'text-value', disabled: !!source, tagCart: !source, state: getTranslationFieldState(node, 'text-value', '', value) })}</label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Characters', '字符数'))}</span><b>${escapeHtml(String(value.length))}</b></div>
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
+        return renderTextInspectorFromRenderer(node);
     }
 
     function renderTextMergeInspector(node) {
-        const slots = textMergeInputSlots(node);
-        const output = getTextMergeOutput(node, new Set([node.id]));
-        const connected = slots.filter(slot => getTextMergeInputSource(node, slot)).length;
-        return `
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Multi-text Merge Node', '多文本合并节点'))}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Inputs', '输入'))}</span><b>${escapeHtml(`${connected} / ${slots.length}`)}</b></div>
-  <label>${escapeHtml(t('Separator (optional)', '分隔符（可选）'))}<input data-text-merge-separator value="${escapeHtml(node.params?.separator || '')}" placeholder="${escapeHtml(t('Empty, comma, space, or \\n', '留空、逗号、空格或 \\n'))}"></label>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Merged output', '合并输出'))}</h3>
-  <label>${escapeHtml(t('Text', '文本'))}<textarea data-text-merge-output rows="10" readonly>${escapeHtml(output)}</textarea></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Characters', '字符数'))}</span><b>${escapeHtml(String(output.length))}</b></div>
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="text-merge-add-input"><i class="fa-solid fa-plus"></i><span>${escapeHtml(t('Add input', '添加输入'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
+        return renderTextMergeInspectorFromRenderer(node);
     }
 
     function renderTranslationInspector(node) {
-        const source = getTextNodeInputSource(node);
-        const input = source ? getNodeTextOutput(source) : (node.input_text || '');
-        const value = String(node.text?.value || '');
-        const state = node.status?.state || 'idle';
-        const direction = node.params?.direction || 'toggle';
-        return `
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Translation Node', '翻译节点'))}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Input', '输入'))}</span><b>${escapeHtml(source?.title || t('Manual', '手动'))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Status', '状态'))}</span><b>${escapeHtml(state)}</b></div>
-  ${node.status?.message ? `<p>${escapeHtml(node.status.message)}</p>` : ''}
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Translate', '翻译'))}</h3>
-  <label>${escapeHtml(t('Source', '来源'))}<textarea data-translation-input rows="6" ${source ? 'readonly' : ''}>${escapeHtml(input)}</textarea></label>
-  <label>${escapeHtml(t('Direction', '方向'))}<select data-translation-param="direction">
-    ${['toggle', 'zh_to_en', 'en_to_zh'].map(item => `<option value="${escapeHtml(item)}" ${item === direction ? 'selected' : ''}>${escapeHtml(translationDirectionLabel(item))}</option>`).join('')}
-  </select></label>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Output', '输出'))}</h3>
-  <label>${escapeHtml(t('Text', '文本'))}${renderTranslatableTextarea('data-inspector-text-value rows="10"', value, { target: 'text-value', state: getTranslationFieldState(node, 'text-value', '', value) })}</label>
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="run-translation"><i class="fa-solid fa-language"></i><span>${escapeHtml(t('Translate', '翻译'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
+        return renderTranslationInspectorFromRenderer(node);
     }
 
     function renderTagCartInspector(node) {
-        const source = getTextNodeInputSource(node);
-        const value = String(node.text?.value || (source ? getNodeTextOutput(source) : ''));
-        const params = node.params || {};
-        const targetKind = params.target_kind === 'negative' ? 'negative' : 'positive';
-        const action = params.action === 'replace' ? 'replace' : 'append';
-        return `
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Tag Cart Node', '标签选择器节点'))}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Base', '基础'))}</span><b>${escapeHtml(source?.title || t('Manual', '手动'))}</b></div>
-  <label>${escapeHtml(t('Target', '目标'))}<select data-tagcart-param="target_kind">
-    ${['positive', 'negative'].map(item => `<option value="${item}" ${item === targetKind ? 'selected' : ''}>${escapeHtml(tOption(item, { positive: '正向', negative: '负向' }))}</option>`).join('')}
-  </select></label>
-  <label>${escapeHtml(t('Write', '写入'))}<select data-tagcart-param="action">
-    ${['append', 'replace'].map(item => `<option value="${item}" ${item === action ? 'selected' : ''}>${escapeHtml(tOption(item, { append: '追加', replace: '替换' }))}</option>`).join('')}
-  </select></label>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Output', '输出'))}</h3>
-  <label>${escapeHtml(t('Text', '文本'))}${renderTranslatableTextarea('data-inspector-text-value rows="10"', value, { target: 'text-value', state: getTranslationFieldState(node, 'text-value', '', value) })}</label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Characters', '字符数'))}</span><b>${escapeHtml(String(value.length))}</b></div>
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="open-tag-cart"><i class="fa-solid fa-clone"></i><span>${escapeHtml(tagCartLabel())}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
+        return renderTagCartInspectorFromRenderer(node);
     }
 
     function renderWd14Inspector(node) {
-        const inputNode = node.input_node_id ? getNode(node.input_node_id) : null;
-        const params = node.params || {};
-        const state = node.status?.state || 'idle';
-        return `
-<div class="sai-inspector-section">
-  <h3>WD14 Tagger</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Input', '输入'))}</span><b>${escapeHtml(inputNode?.title || notConnectedText())}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Status', '状态'))}</span><b>${escapeHtml(state)}</b></div>
-  ${node.status?.message ? `<p>${escapeHtml(node.status.message)}</p>` : ''}
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Parameters', '参数'))}</h3>
-  <label>${escapeHtml(t('General Threshold', '通用阈值'))}<input data-wd14-param="threshold" type="number" min="0" max="1" step="0.01" value="${escapeHtml(params.threshold ?? 0.35)}"></label>
-  <label>${escapeHtml(t('Character Threshold', '角色阈值'))}<input data-wd14-param="character_threshold" type="number" min="0" max="1" step="0.01" value="${escapeHtml(params.character_threshold ?? 0.85)}"></label>
-  <label>${escapeHtml(t('Exclude Tags', '排除标签'))}<input data-wd14-param="exclude_tags"${danbooruAutocompleteAttrs('exclude_tags')} value="${escapeHtml(params.exclude_tags || '')}"></label>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Output', '输出'))}</h3>
-  <label>${escapeHtml(t('Tags', '标签'))}${renderTranslatableTextarea('data-inspector-text-value rows="10"', node.text?.value || '', { target: 'text-value', state: getTranslationFieldState(node, 'text-value', '', node.text?.value || '') })}</label>
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="run-wd14"><i class="fa-solid fa-tags"></i><span>${escapeHtml(t('Tag Image', '标记图像'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
+        return renderWd14InspectorFromRenderer(node);
     }
 
     function renderPresetInspector(node) {
-        const schema = getPresetSchema(node);
-        const themes = Array.isArray(schema.themes) ? schema.themes : [];
-        const theme = getPresetTheme(node);
-        const params = getVisiblePresetParams(node);
-        const uploadSlots = getVisibleUploadSlots(node);
-        const taskMethod = getPresetThemeInfo(node).task_method || node.runtime?.task_method || '';
-        return `
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Preset Node', '预设节点'))}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Preset', '预设'))}</span><b>${escapeHtml(node.preset?.name || '')}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Backend', '后端'))}</span><b>${escapeHtml(node.runtime?.backend_engine || '')}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Task Method', '任务方式'))}</span><b>${escapeHtml(taskMethod || '')}</b></div>
-  ${renderPresetModelStatusHtml(node)}
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="check-models"><i class="fa-solid fa-cloud-arrow-down"></i><span>${escapeHtml(t('Check/download models', '检查/下载模型'))}</span></button>
-  ${themes.length ? `<label>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}<select data-inspector-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(localizeCanvasLabel(item))}</option>`).join('')}</select></label>` : ''}
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Parameters', '参数'))}</h3>
-  <div class="sai-preset-param-list">${params.map(param => renderPresetParamControl(node, param, 'data-inspector-param')).join('')}</div>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Models Config', '模型配置'))}</h3>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Mode', '模式'))}</span><b>${escapeHtml(node.models_config?.mode || 'preset_default')}</b></div>
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="models-config"><i class="fa-solid fa-cubes"></i><span>${escapeHtml(t('Add/select Models Config', '添加/选择模型配置'))}</span></button>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Styles Config', '风格配置'))}</h3>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Mode', '模式'))}</span><b>${escapeHtml(node.styles_config?.mode || 'preset_default')}</b></div>
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="styles-config"><i class="fa-solid fa-palette"></i><span>${escapeHtml(t('Add/select Styles Config', '添加/选择风格配置'))}</span></button>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Resolution Config', '分辨率配置'))}</h3>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Mode', '模式'))}</span><b>${escapeHtml(node.resolution_config?.mode || 'preset_default')}</b></div>
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="resolution-config"><i class="fa-solid fa-ruler-combined"></i><span>${escapeHtml(t('Add/select Resolution Config', '添加/选择分辨率配置'))}</span></button>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Advanced Config', '高级配置'))}</h3>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Mode', '模式'))}</span><b>${escapeHtml(node.generation_config?.mode || 'preset_default')}</b></div>
-  <button type="button" class="sai-inline-config-btn" data-inspector-action="advanced-config"><i class="fa-solid fa-sliders"></i><span>${escapeHtml(t('Add/select Advanced Config', '添加/选择高级配置'))}</span></button>
-</div>
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Input Slots', '输入槽'))}</h3>
-  ${uploadSlots.map(slot => `<div class="sai-inspector-kv"><span>${escapeHtml(localizeCanvasLabel(slot.label || SLOT_LABELS[slot.key] || slot.key))}</span><b>${escapeHtml(getNode(node.upload_slots?.[slot.key])?.title || notConnectedText())}</b></div>`).join('')}
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="xyz-plot"><i class="fa-solid fa-table-cells-large"></i><span>${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}</span></button>
-  <button type="button" data-inspector-action="run"><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
+        return renderPresetInspectorFromRenderer(node);
     }
 
     function renderResultInspector(node) {
@@ -19449,426 +16169,39 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return !!CANVAS_RESULT_INSPECTOR_CONTROLLER.refreshActiveResultInspector?.();
     }
 
-    function renderConfigInspector(node) {
-        const preset = getNode(node.target_preset_id) || getNode(project.edges.find(edge => edge.type === 'config' && edge.from === node.id)?.to);
-        return `
-<div class="sai-inspector-section">
-  <h3>${escapeHtml(node.title || 'Config')}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Type', '类型'))}</span><b>${escapeHtml(node.config_kind || '')}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Target Preset', '目标 Preset'))}</span><b>${escapeHtml(preset?.title || preset?.preset?.name || notConnectedText())}</b></div>
-  <p>${escapeHtml(t('This node output overrides the corresponding config on the target preset; disconnecting restores the preset default.', '这个节点的输出会覆盖目标 preset 的对应配置；断开连线后 preset 回到默认配置。'))}</p>
-</div>
-<div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
-</div>`;
-    }
-
     function bindInspectorEvents() {
         injectParamResetButtons(inspector);
-        inspector.querySelectorAll('[data-param-reset]').forEach((button) => {
-            button.addEventListener('click', (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                resetPresetNodeParam(getNode(selectedNodeId), button.getAttribute('data-param-reset'));
-            });
-        });
-        inspector.querySelectorAll('.sai-canvas-relight-light-button[data-inspector-param]').forEach((button) => {
-            button.addEventListener('click', (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                handleCanvasRelightLightButtonClick(getNode(selectedNodeId), button, 'data-inspector-param');
-            });
-        });
-        inspector.querySelectorAll('[data-timeline-reset]').forEach((button) => {
-            button.addEventListener('click', (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                resetTimelineParam(getNode(selectedNodeId), button.getAttribute('data-timeline-reset'));
-            });
-        });
-        inspector.querySelectorAll('[data-timeline-clip-reset]').forEach((button) => {
-            button.addEventListener('click', (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const [clipId, key] = String(button.getAttribute('data-timeline-clip-reset') || '').split(':');
-                resetTimelineClipParam(getNode(selectedNodeId), clipId, key);
-            });
-        });
-        inspector.querySelectorAll('[data-media-trim-start]').forEach((field) => {
-            field.addEventListener('input', () => updateMediaTrim(selectedNodeId, 'start', field.value, { commit: false }));
-            field.addEventListener('change', () => updateMediaTrim(selectedNodeId, 'start', field.value, { commit: true }));
-        });
-        inspector.querySelectorAll('[data-media-trim-end]').forEach((field) => {
-            field.addEventListener('input', () => updateMediaTrim(selectedNodeId, 'end', field.value, { commit: false }));
-            field.addEventListener('change', () => updateMediaTrim(selectedNodeId, 'end', field.value, { commit: true }));
-        });
-        inspector.querySelectorAll('[data-media-seek]').forEach((field) => {
-            field.addEventListener('input', () => {
-                const node = getNode(selectedNodeId);
-                showVideoScrubPreview(node, field.value);
-                seekNodeMediaPlayer(selectedNodeId, field.value, { immediate: false });
-            });
-            field.addEventListener('change', () => seekNodeMediaPlayer(selectedNodeId, field.value, { immediate: true }));
-        });
-        inspector.querySelectorAll('[data-compare-position]').forEach((field) => {
-            field.addEventListener('input', () => {
-                updateCompareParam(selectedNodeId, 'position', Number(field.value), 'number', { render: false });
-                refreshCompareDom(selectedNodeId);
-            });
-            field.addEventListener('change', () => updateCompareParam(selectedNodeId, 'position', Number(field.value), 'number', { render: true }));
-        });
-        inspector.querySelectorAll('[data-compare-mode-select]').forEach((field) => {
-            field.addEventListener('change', () => updateCompareParam(selectedNodeId, 'mode', field.value, 'text', { render: true }));
-        });
+        bindInspectorParamButtonEvents(inspector);
+        bindInspectorTimelineResetEvents(inspector);
+        bindInspectorMediaEvents(inspector);
+        bindInspectorCompareEvents(inspector);
         bindInspectorTimelineParamEvents(inspector, selectedNodeId);
         bindInspectorNodeFieldEvents();
-        inspector.querySelectorAll('[data-inspector-node-color-enabled]').forEach((field) => {
-            field.addEventListener('change', () => {
-                const input = inspector.querySelector('[data-inspector-node-color]');
-                const enabled = !!field.checked;
-                if (input) input.disabled = !enabled;
-                updateNodeCustomColor(selectedNodeId, enabled ? (input?.value || '#14b8a6') : '');
-            });
-        });
-        inspector.querySelectorAll('[data-inspector-node-color]').forEach((field) => {
-            const handler = () => {
-                if (field.disabled) return;
-                updateNodeCustomColor(selectedNodeId, field.value);
-            };
-            field.addEventListener('input', handler);
-            field.addEventListener('change', handler);
-        });
-        inspector.querySelectorAll('[data-inspector-node-color-reset]').forEach((button) => {
-            button.addEventListener('click', (evt) => {
-                evt.preventDefault();
-                updateNodeCustomColor(selectedNodeId, '', { renderInspector: true });
-            });
-        });
+        bindInspectorNodeColorEvents(inspector);
         CANVAS_NOTE_INSPECTOR_CONTROLLER.bindNoteInspectorEvents(inspector);
-        inspector.querySelectorAll('[data-group-field]').forEach((field) => {
-            const handler = () => updateGroupField(selectedGroupId, field.getAttribute('data-group-field'), field.type === 'checkbox' ? field.checked : field.value, field.type);
-            field.addEventListener('input', handler);
-            field.addEventListener('change', handler);
-        });
-        inspector.querySelectorAll('[data-inspector-theme]').forEach((field) => {
-            field.addEventListener('change', () => setPresetTheme(selectedNodeId, field.value));
-        });
-        inspector.querySelectorAll('[data-inspector-director-param]').forEach((field) => {
-            const handler = () => {
-                syncTwinParamInputs(field, '[data-inspector-director-param]');
-                updateDirectorTimelineParam(selectedNodeId, field.getAttribute('data-inspector-director-param'), field.value, field.type);
-            };
-            field.addEventListener('input', handler);
-            field.addEventListener('change', handler);
-        });
-        inspector.querySelectorAll('[data-inspector-director-segment-param]').forEach((field) => {
-            const handler = () => {
-                syncTwinParamInputs(field, '[data-inspector-director-segment-param]');
-                updateDirectorTimelineSegmentParam(
-                    selectedNodeId,
-                    Number(field.getAttribute('data-director-segment-index') || 0),
-                    field.getAttribute('data-inspector-director-segment-param'),
-                    field.type === 'checkbox' ? field.checked : field.value,
-                    field.type
-                );
-            };
-            field.addEventListener('input', handler);
-            field.addEventListener('change', handler);
-        });
+        bindInspectorGroupFieldEvents(inspector);
+        bindInspectorThemeEvents(inspector);
+        CANVAS_TIMELINE_CONTEXT.bindDirectorTimelineInspectorEvents?.(inspector);
         bindInspectorParamEvents();
-        inspector.querySelectorAll('[data-inspector-text-value]').forEach((field) => {
-            field.addEventListener('input', () => updateTextNodeValue(selectedNodeId, field.value));
-            field.addEventListener('change', () => updateTextNodeValue(selectedNodeId, field.value));
-        });
-        inspector.querySelectorAll('[data-text-merge-separator]').forEach((field) => {
-            field.addEventListener('input', () => updateTextMergeSeparator(selectedNodeId, field.value));
-            field.addEventListener('change', () => updateTextMergeSeparator(selectedNodeId, field.value));
-        });
-        inspector.querySelectorAll('[data-translation-input]').forEach((field) => {
-            field.addEventListener('input', () => updateTranslationInput(selectedNodeId, field.value));
-            field.addEventListener('change', () => updateTranslationInput(selectedNodeId, field.value));
-        });
-        inspector.querySelectorAll('[data-translation-param]').forEach((field) => {
-            field.addEventListener('input', () => updateTranslationParam(selectedNodeId, field.getAttribute('data-translation-param'), field.value));
-            field.addEventListener('change', () => updateTranslationParam(selectedNodeId, field.getAttribute('data-translation-param'), field.value));
-        });
-        inspector.querySelectorAll('[data-tagcart-param]').forEach((field) => {
-            field.addEventListener('input', () => updateTagCartParam(selectedNodeId, field.getAttribute('data-tagcart-param'), field.value));
-            field.addEventListener('change', () => updateTagCartParam(selectedNodeId, field.getAttribute('data-tagcart-param'), field.value));
-        });
+        bindTextInspectorEvents(inspector);
         CANVAS_BATCH_ANY_INSPECTOR_CONTROLLER.bindBatchAnyInspectorEvents(inspector);
-        inspector.querySelectorAll('[data-wd14-param]').forEach((field) => {
-            field.addEventListener('input', () => updateWd14Param(selectedNodeId, field.getAttribute('data-wd14-param'), field.value, field.type));
-            field.addEventListener('change', () => updateWd14Param(selectedNodeId, field.getAttribute('data-wd14-param'), field.value, field.type));
-        });
-        inspector.querySelectorAll('[data-vlm-system-template]').forEach((field) => {
-            field.addEventListener('change', () => {
-                const node = getNode(selectedNodeId);
-                if (node?.type === 'vlm') applyVlmSystemPromptTemplate(node, field.value, inspector);
-            });
-        });
-        inspector.querySelectorAll('[data-vlm-param]').forEach((field) => {
-            const handler = () => {
-                const key = field.getAttribute('data-vlm-param');
-                handleVlmParamFieldChange(selectedNodeId, key, field.type === 'checkbox' ? field.checked : field.value, field.type, inspector, field);
-            };
-            field.addEventListener('input', handler);
-            field.addEventListener('change', handler);
-        });
-        inspector.querySelectorAll('[data-classic-ip-type]').forEach((field) => {
-            const handler = () => updateNodeParam(selectedNodeId, `ip_type_${field.getAttribute('data-classic-ip-type')}`, field.value, 'text');
-            field.addEventListener('input', handler);
-            field.addEventListener('change', handler);
-        });
-        inspector.querySelectorAll('[data-classic-ip-stop]').forEach((field) => {
-            const handler = () => {
-                syncTwinParamInputs(field, '[data-classic-ip-stop]');
-                updateNodeParam(selectedNodeId, `ip_stop_${field.getAttribute('data-classic-ip-stop')}`, Number(field.value), 'number');
-            };
-            field.addEventListener('input', handler);
-            field.addEventListener('change', handler);
-        });
-        inspector.querySelectorAll('[data-classic-ip-weight]').forEach((field) => {
-            const handler = () => {
-                syncTwinParamInputs(field, '[data-classic-ip-weight]');
-                updateNodeParam(selectedNodeId, `ip_weight_${field.getAttribute('data-classic-ip-weight')}`, Number(field.value), 'number');
-            };
-            field.addEventListener('input', handler);
-            field.addEventListener('change', handler);
-        });
-        inspector.querySelectorAll('[data-classic-param]').forEach((field) => {
-            field.addEventListener('input', () => {
-                syncTwinParamInputs(field, '[data-classic-param]');
-            });
-            field.addEventListener('change', () => {
-                const key = field.getAttribute('data-classic-param');
-                if (key === 'ip_count') {
-                    const node = getNode(selectedNodeId);
-                    if (node) {
-                        pushHistory('Change classic IP count');
-                        Object.assign(node, buildClassicNodeStatePatch(node, {
-                            classicIpCount: clamp(Number(field.value) || 1, 1, getClassicIpMaxImages(node))
-                        }));
-                        mutate();
-                    }
-                }
-            });
-        });
-        inspector.querySelectorAll('[data-translate-action]').forEach((button) => {
-            button.addEventListener('click', (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const node = getNode(selectedNodeId);
-                if (node) handleTranslateButton(node, button);
-            });
-        });
-        inspector.querySelectorAll('[data-tag-cart-action]').forEach((button) => {
-            button.addEventListener('click', (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const node = getNode(selectedNodeId);
-                if (node) openTagCartForField(node, button);
-            });
-        });
-        inspector.querySelectorAll('label').forEach((label) => {
-            const textarea = label.querySelector('textarea');
-            const title = Array.from(label.children || []).find(child => String(child.tagName || '').toLowerCase() === 'span');
-            if (!textarea || !title) return;
-            title.addEventListener('click', (evt) => {
-                if (evt.target.closest?.('button,input,select,textarea,a,[contenteditable="true"],.sai-translate-wrap')) return;
-                evt.preventDefault();
-                evt.stopPropagation();
-                openTextareaEditor(textarea);
-            });
-        });
-        inspector.querySelectorAll('[data-inspector-action]').forEach((button) => {
-            button.addEventListener('click', (evt) => {
-                const action = button.getAttribute('data-inspector-action');
-                if (handleTimelineAction(action, getNode(selectedNodeId), button)) return;
-                if (action === 'delete-edge') deleteEdge(selectedEdgeId);
-                else if (action === 'delete-group') deleteSelectedGroup();
-                else if (action === 'jump-group') focusGroup(getGroup(selectedGroupId));
-                else if (action === 'delete') deleteSelection();
-                else if (action === 'duplicate') duplicateSelection();
-                else if (action === 'toggle-lock') toggleSelectedNodesFlag('locked');
-                else if (action === 'toggle-ignore') toggleSelectedNodesFlag('ignored');
-                else if (action === 'toggle-collapse') toggleSelectedNodesFlag('collapsed');
-                else if (action === 'compare-selected') createCompareNodeFromSources(getSelectedNodeIdList().map(id => getNode(id)).filter(isImageCompareSource).slice(0, 2));
-                else if (action === 'timeline-selected') createTimelineNodeFromSources(getSelectedNodeIdList().map(id => getNode(id)).filter(isTimelineSource));
-                else if (action.startsWith('align-')) alignSelectedNodes(action.replace('align-', ''));
-                else if (action.startsWith('distribute-')) distributeSelectedNodes(action.replace('distribute-', ''));
-                else if (action === 'view-image') openImageViewer(getNode(selectedNodeId));
-                else if (action === 'view-media') openMediaViewer(getNode(selectedNodeId));
-                else if (action === 'media-reload') reloadMediaNode(getNode(selectedNodeId));
-                else if (action === 'compare-fullscreen') openCompareFullscreen(getNode(selectedNodeId));
-                else if (action === 'compare-swap') swapCompareInputs(getNode(selectedNodeId));
-                else if (action === 'timeline-add-selected') addSelectedMediaToTimeline(getNode(selectedNodeId));
-                else if (action === 'timeline-render-result') renderTimelineToResult(getNode(selectedNodeId));
-                else if (action === 'media-reset-trim') resetMediaTrim(getNode(selectedNodeId));
-                else if (action === 'replace-image') replaceNodeImage(getNode(selectedNodeId));
-                else if (action === 'edit-mask') openMaskEditor(getNode(selectedNodeId));
-                else if (action === 'metadata-copy-prompt') copyNodeGenerationMetadataPrompt(getNode(selectedNodeId));
-                else if (action === 'metadata-to-generator') applyNodeGenerationMetadataToPromptTarget(getNode(selectedNodeId));
-                else if (action === 'models-config') ensureConfigNode(getNode(selectedNodeId), 'models');
-                else if (action === 'styles-config') ensureConfigNode(getNode(selectedNodeId), 'styles');
-                else if (action === 'resolution-config') ensureConfigNode(getNode(selectedNodeId), 'resolution');
-                else if (action === 'advanced-config') ensureConfigNode(getNode(selectedNodeId), 'advanced');
-                else if (action.startsWith('detection-config-')) ensureConfigNode(getNode(selectedNodeId), detectionSlotForRegion(Number(action.replace('detection-config-', '')) || 0));
-                else if (action === 'check-models') {
-                    const node = getNode(selectedNodeId);
-                    if (node && ['preset', 'classic'].includes(node.type)) handlePresetModelAction(node);
-                }
-                else if (action === 'run') {
-                    const node = getNode(selectedNodeId);
-                    if (node && ['preset', 'classic'].includes(node.type)) runPresetNodeFromUi(node);
-                } else {
-                    const node = getNode(selectedNodeId);
-                    if (node) handleNodeAction(node, action, button, evt);
-                }
-            });
-        });
-        inspector.querySelectorAll('[data-node-action]').forEach((button) => {
-            button.addEventListener('click', (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                const node = getNode(selectedNodeId);
-                if (node) handleNodeAction(node, button.getAttribute('data-node-action'), button, evt);
-            });
-        });
+        bindInspectorVlmEvents(inspector);
+        bindClassicInspectorEvents(inspector);
+        bindInspectorTranslateEvents(inspector);
+        bindInspectorTagCartEvents(inspector);
+        bindInspectorTextareaTitleEvents(inspector);
+        bindInspectorActionEvents(inspector);
+        bindInspectorNodeActionEvents(inspector);
     }
 
-    function isInteractiveTarget(target) {
-        if (textareaEditorFieldFromTitleClick(target)) return true;
-        return !!(target && target.closest && target.closest('button,input,textarea,select,option,audio,video,[contenteditable="true"],.sai-vlm-chat-log,.sai-vlm-compose,.sai-vlm-compose-images,.sai-media-browser-grid,.sai-media-browser-detail,.sai-media-browser-controls,.sai-media-browser-tabs,.sai-media-browser-foot,.sai-preset-special-controller,[data-hover-preview-kind],[data-model-preview-param],[data-model-preview-lora-index],[data-model-browser-param],[data-model-browser-lora-index],[data-compare-position],[data-compare-mode],[data-compare-mode-select],[data-timeline-param],[data-timeline-clip-param],[data-media-seek],[data-media-trim-start],[data-media-trim-end],[data-media-player],[data-node-param],[data-text-value],[data-inspector-text-value],[data-text-merge-separator],[data-translation-input],[data-translation-param],[data-tagcart-param],[data-wd14-param],[data-vlm-param],[data-mask-param],[data-sam3-video-param],[data-camera-motion-param],[data-config-param],[data-config-model-filter],[data-config-style],[data-style-config-search],[data-style-config-action],[data-config-lora-model],[data-config-lora-weight],[data-config-lora-enabled],[data-config-interface],[data-slot-row],[data-sam3-video-row],[data-classic-mode],[data-classic-ip-type],[data-classic-ip-stop],[data-classic-ip-weight],[data-classic-param]'));
-    }
-
-    function syncTwinParamInputs(field, selector) {
-        if (!selector) return;
-        const attrName = selector.slice(1, -1);
-        const key = field.getAttribute(attrName);
-        if (key == null) return;
-        const wrap = field.closest('.sai-range-pair');
-        if (!wrap) return;
-        wrap.querySelectorAll(selector).forEach((other) => {
-            if (other !== field && other.getAttribute(attrName) === key) other.value = field.value;
-        });
+    function syncTwinParamInputs(...args) {
+        return CANVAS_NODE_PARAM_CONTROLLER?.syncTwinParamInputs?.(...args);
     }
 
     function bindImageNodeDropEvents(nodeEl, node) {
-        const supportsImageDrop = (dataTransfer) => {
-            if (!dataTransfer) return false;
-            const files = Array.from(dataTransfer.files || []);
-            if (files.some(isImageFile)) return true;
-            const items = Array.from(dataTransfer.items || []);
-            if (items.some(item => item.kind === 'file' && item.type && item.type.startsWith('image/'))) return true;
-            const types = dataTransfer.types ? Array.from(dataTransfer.types) : [];
-            if (types.includes('application/x-simpleai-transfer-id')) return true;
-            return types.includes('Files');
-        };
-        const setActive = (active) => {
-            nodeEl.classList.toggle('is-image-drop-target', !!active);
-        };
-        const isImageDropZoneEvent = (evt) => {
-            if (!evt?.target?.closest) return false;
-            return !!evt.target.closest('[data-image-drop-zone],.sai-canvas-node-image');
-        };
-        nodeEl.addEventListener('dragenter', (evt) => {
-            if (!isImageDropZoneEvent(evt)) return;
-            if (!supportsImageDrop(evt.dataTransfer)) return;
-            evt.preventDefault();
-            evt.stopPropagation();
-            setActive(true);
-        }, true);
-        nodeEl.addEventListener('dragover', (evt) => {
-            if (!isImageDropZoneEvent(evt)) return;
-            if (!supportsImageDrop(evt.dataTransfer)) return;
-            evt.preventDefault();
-            evt.stopPropagation();
-            evt.dataTransfer.dropEffect = 'copy';
-            setActive(true);
-        }, true);
-        nodeEl.addEventListener('dragleave', (evt) => {
-            if (evt.relatedTarget && nodeEl.contains(evt.relatedTarget)) return;
-            setActive(false);
-        }, true);
-        nodeEl.addEventListener('drop', async (evt) => {
-            if (!isImageDropZoneEvent(evt)) return;
-            if (!supportsImageDrop(evt.dataTransfer)) return;
-            evt.preventDefault();
-            evt.stopPropagation();
-            setActive(false);
-            viewport.classList.remove('is-drop-target');
-            await handleImageNodeDrop(node, evt.dataTransfer);
-        }, true);
+        return CANVAS_NODE_EVENT_CONTROLLER?.bindImageNodeDropEvents?.(nodeEl, node);
     }
 
-    function resetVlmParamToDefault(node, key, nodeEl) {
-        if (!node || node.type !== 'vlm' || isNodeLocked(node)) return;
-        const nextValue = vlmDefaultParamValue(key, node);
-        if (nextValue === undefined) return;
-        updateVlmParam(node.id, key, nextValue, 'number');
-        const current = getNode(node.id) || node;
-        refreshVlmChatReadabilityDom(nodeEl, current);
-        scheduleSave();
-    }
-
-    function refreshResolutionConfigNodeDom(nodeEl, node) {
-        if (!nodeEl || !node || node.type !== 'config' || node.config_kind !== 'resolution') return;
-        const values = getResolutionRenderValues(node);
-        const choices = getResolutionChoices();
-        const template = normalizeResolutionTemplateName(values.template || values.default_template || values.available_aspect_ratios_selection || choices.firstTemplate, choices);
-        const profileRatios = Array.isArray(values.profile?.aspect_ratios) ? values.profile.aspect_ratios : [];
-        const ratios = template === 'Preset' && profileRatios.length ? profileRatios : (choices.ratios[template] || choices.flatRatios);
-        const preview = getResolutionPreview(values, ratios);
-        const scale = Number(values.multiplier || 1).toFixed(1);
-        ['width', 'height'].forEach((key) => {
-            nodeEl.querySelectorAll(`[data-config-param="${key}"]`).forEach((input) => {
-                if (input === document.activeElement) return;
-                input.value = String(values[key] ?? -1);
-            });
-        });
-        nodeEl.querySelectorAll('[data-resolution-multiplier-label]').forEach(label => {
-            label.textContent = `${scale}x`;
-        });
-        nodeEl.querySelectorAll('[data-config-param="multiplier"]').forEach(input => {
-            if (input === document.activeElement) return;
-            input.value = scale;
-        });
-        const summary = nodeEl.querySelector('.sai-resolution-summary');
-        if (summary) {
-            const locked = values.profile && values.profile.interactive === false;
-            const random = values.random_aspect_ratio || values.random_aspect_ratio_checkbox;
-            summary.textContent = `${preview.baseLabel} ${t('base', '基础')} -> ${preview.label} ${t('effective', '生效')}${random ? ` / ${t('random size from template', '从模板随机尺寸')}` : ''}${locked ? ` / ${t('preset locked', '预设锁定')}` : ''}`;
-        }
-        const aspectSelect = nodeEl.querySelector('[data-resolution-aspect-select]');
-        if (aspectSelect && aspectSelect !== document.activeElement) {
-            const selected = String(values.aspect_ratio || ratios[0] || '');
-            const customLabel = resolutionManualSizeLabel(values, preview);
-            let customOption = aspectSelect.querySelector('option[data-resolution-custom-size]');
-            if (customLabel) {
-                if (!customOption) {
-                    customOption = document.createElement('option');
-                    customOption.setAttribute('data-resolution-custom-size', 'true');
-                    aspectSelect.insertBefore(customOption, aspectSelect.firstChild);
-                }
-                customOption.value = selected;
-                customOption.textContent = customLabel;
-                customOption.selected = true;
-            } else {
-                if (customOption) customOption.remove();
-                aspectSelect.value = selected;
-            }
-        }
-        const box = nodeEl.querySelector('.sai-resolution-preview-box');
-        if (box) {
-            box.style.width = `${preview.boxW}%`;
-            box.style.height = `${preview.boxH}%`;
-            const label = box.querySelector('span');
-            if (label) label.textContent = preview.label;
-        }
-    }
 
     function inputTargetAcceptsMultiple(target) {
         return CANVAS_CONNECTION_CONTROLLER.inputTargetAcceptsMultiple(target);
@@ -19945,142 +16278,27 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function openAddNodeMenu(x, y, world, includeViewActions, closeDelayMs) {
-        const targetWorld = world || lastPointerWorld || viewportCenterWorld();
-        const items = buildAddNodeContextMenuItems(targetWorld, includeViewActions);
-        openContextMenu(x, y, items, {
-            closeDelayMs,
-            searchable: true,
-            searchPlaceholder: t('Search nodes / actions...', '搜索节点 / 操作...')
-        });
-        const searchInput = contextMenu.querySelector('[data-context-menu-search]');
-        refreshPresetCatalog().then(() => {
-            if (contextMenu.hidden || contextMenu.querySelector('[data-context-menu-search]') !== searchInput) return;
-            items.splice(0, items.length, ...buildAddNodeContextMenuItems(targetWorld, includeViewActions));
-            searchInput?.dispatchEvent(new Event('input'));
-        });
-        return;
-        openContextMenu(x, y, [
-            { label: t('Add Media Browser node', '添加媒体浏览器节点'), icon: 'fa-photo-film', action: () => addMediaBrowserNode(targetWorld) },
-            { label: t('Add Batch Any node', '添加 Batch Any 节点'), icon: 'fa-layer-group', action: () => addBatchAnyNode(targetWorld) },
-            { label: t('Import all transfer-station images', '导入中转站全部图片'), icon: 'fa-images', action: () => importSelectedTransferAt(targetWorld) },
-            { label: t('Import image / video / audio', '导入图片 / 视频 / 音频'), icon: 'fa-folder-open', action: () => openImageFilePicker(targetWorld) },
-            { label: t('Add preset node', '添加预设节点'), icon: 'fa-square-plus', action: () => openPresetPalette(targetWorld) },
-            { label: t('Add tip note', '添加提示贴'), icon: 'fa-note-sticky', action: () => addNoteNode(targetWorld) },
-            { label: t('Add area group', '添加区域分组'), icon: 'fa-object-group', action: () => addAreaGroup(targetWorld, { ignoreSelection: true }) },
-            { label: t('Add text node', '添加文本节点'), icon: 'fa-font', action: () => addTextNode(targetWorld) },
-            { label: t('Add multi-text merge node', '添加多文本合并节点'), icon: 'fa-code-merge', action: () => addTextMergeNode(targetWorld) },
-            { label: t('Add Wildcards Helper node', '添加通配符小助手节点'), icon: 'fa-dice', action: () => addWildcardsHelperNode(targetWorld) },
-            { label: t('Add translation node', '添加翻译节点'), icon: 'fa-language', action: () => addTranslationNode(targetWorld) },
-            { label: t('Add Tag Cart node', '添加标签选择器节点'), icon: 'sai-tag-cart-glyph', action: () => addTagCartNode(targetWorld) },
-            { label: t('Add WD14 node', '添加 WD14 节点'), icon: 'sai-wd14-glyph', action: () => addWd14Node(targetWorld) },
-            { label: t('Add VLM node', '添加 VLM 节点'), icon: 'sai-vlm-glyph', action: () => addVlmNode(targetWorld) },
-            { label: t('Add Advanced Masking node', '添加高级遮罩节点'), icon: 'fa-wand-magic-sparkles', action: () => addMaskNode(targetWorld) },
-            { label: t('Add SAM3 Video Mask node', '添加 SAM3 视频遮罩节点'), icon: 'fa-film', action: () => addSam3VideoMaskNode(targetWorld) },
-            { label: t('Add image compare node', '添加图像对比节点'), icon: 'sai-compare-glyph', action: () => addCompareNode(targetWorld) },
-            { label: t('Add Director Timeline', '添加导演时间轴'), icon: 'fa-timeline', action: () => addDirectorTimelineNode(targetWorld) },
-            { label: t('Add media timeline', '添加媒体时间线'), icon: 'fa-clapperboard', action: () => addTimelineNode(targetWorld) },
-            { label: t('Add output node', '添加输出节点'), icon: 'fa-circle-dot', action: () => addManualOutputNode(targetWorld) },
-            { label: t('Add Qwen TTS Voice Design', '添加 Qwen TTS 音色设计'), icon: 'fa-microphone-lines', action: () => addQwenTtsNode('voice_design', targetWorld) },
-            { label: t('Add Qwen TTS Voice Clone', '添加 Qwen TTS 音色克隆'), icon: 'fa-wave-square', action: () => addQwenTtsNode('voice_clone', targetWorld) },
-            { label: t('Add Qwen TTS Custom Voice', '添加 Qwen TTS 自定义音色'), icon: 'fa-user', action: () => addQwenTtsNode('custom_voice', targetWorld) },
-            { label: t('Add Qwen TTS Dialogue', '添加 Qwen TTS 对话'), icon: 'fa-comments', action: () => addQwenTtsNode('dialogue', targetWorld) },
-            ...(includeViewActions ? [
-                { label: t('Center', '回中'), icon: 'fa-crosshairs', action: centerCanvas },
-                { label: t('Fit all', '适配全部'), icon: 'fa-expand', action: fitAll },
-                { label: t('Clear canvas', '清空画布'), icon: 'fa-broom', danger: true, action: clearCanvasWithConfirm }
-            ] : [])
-        ], closeDelayMs);
+        return NODE_MENU_TOOLS.openAddNodeMenu(x, y, world, includeViewActions, closeDelayMs);
     }
 
     function openGroupContextMenu(group, x, y) {
-        selectGroupLight(group.id);
-        openContextMenu(x, y, [
-            { label: t('Jump to group', '跳转到分组'), icon: 'fa-location-crosshairs', action: () => focusGroup(group) },
-            { label: group.locked ? t('Unlock group position', '解锁分组位置') : t('Lock group position', '锁定分组位置'), icon: group.locked ? 'fa-lock-open' : 'fa-lock', action: () => updateGroupField(group.id, 'locked', !group.locked, 'checkbox') },
-            { label: t('Delete group only', '仅删除分组'), icon: 'fa-trash', danger: true, action: deleteSelectedGroup }
-        ]);
+        return CANVAS_GROUP_INTERACTION_CONTROLLER.openGroupContextMenu(group, x, y);
     }
 
     function appendAudioWorkflowBridgeMenuItems(items, node) {
-        if (!isCanvasAgentAudioTarget(node)) return;
-        items.push({ label: t('Attach audio to Agent', '挂载音频到 Agent'), icon: 'fa-paperclip', action: () => setCanvasAgentAudioBridgeSource(node) });
-        items.push({ label: t('Agent audio edit', 'Agent 音频编辑'), icon: 'fa-wave-square', action: () => runCanvasAgentAudioBridgeFromNode(node, 'audio_edit') });
-        items.push({ label: t('Agent audio to video', 'Agent 音频转视频'), icon: 'fa-film', action: () => runCanvasAgentAudioBridgeFromNode(node, 'audio_to_video') });
+        return CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.appendAudioWorkflowBridgeMenuItems(items, node);
     }
 
     function openImageMediaContextMenu(node, x, y) {
-        const hasImage = node?.type === 'image' ? !!getNodeImageSrc(node) : isCanvasAgentImageTarget(node);
-        const quickTools = canvasAgentQuickTools().map(tool => ({
-            label: tool.label,
-            icon: tool.icon,
-            action: () => runCanvasAgentQuickTool(tool.key, { targetNodeId: node.id }),
-            disabled: !hasImage
-        }));
-        const items = [
-            ...quickTools,
-            { separator: true },
-            { label: t('View image', '查看图像'), icon: 'fa-magnifying-glass-plus', action: () => openAssetViewer(getNodeLayerForgeAsset(node), node?.title || 'Image'), disabled: !hasImage },
-            { label: t('Edit in Sketch', 'Sketch 编辑'), icon: 'fa-pen-ruler', action: () => openSketchForNode(node), disabled: !hasImage }
-        ];
-        if (node?.type === 'pose_studio') {
-            items.push({ label: t('Open Pose Studio', '打开 Pose Studio'), icon: 'fa-person', action: () => openPoseStudioEditor(node) });
-        }
-        if (node?.type === 'gaussian_studio') {
-            items.push({ label: t('Open Gaussian Studio', '打开 Gaussian Studio'), icon: 'fa-cube', action: () => openGaussianStudioEditor(node) });
-        }
-        if (node?.type === 'liveportrait_expression') {
-            items.push({ label: t('Open LivePortrait Exp', '打开 LivePortrait Exp'), icon: 'fa-face-smile', action: () => openLivePortraitExpressionEditor(node) });
-        }
-        if (['image', 'result'].includes(node?.type)) {
-            items.push({ label: t('Replace image', '替换图片'), icon: 'fa-arrows-rotate', action: () => replaceNodeImage(node) });
-        }
-        if (node?.type === 'image') {
-            items.push({ label: t('Paint Mask', '绘制遮罩'), icon: 'fa-paintbrush', action: () => openMaskEditor(node), disabled: !hasImage });
-        }
-        openContextMenu(x, y, items);
+        return CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.openImageMediaContextMenu(node, x, y);
     }
 
     function openVideoMediaContextMenu(node, x, y) {
-        const hasVideo = !!assetDisplaySrc(node?.asset || {});
-        const quickTools = canvasAgentVideoQuickTools().map(tool => {
-            const key = String(tool.key || '').slice('video_'.length);
-            const spec = canvasAgentVideoQuickToolSpec(key);
-            return {
-                label: spec?.label || tool.label,
-                icon: spec?.icon || tool.icon,
-                action: () => runCanvasAgentVideoQuickTool(key, { targetNodeId: node.id }),
-                disabled: !hasVideo
-            };
-        });
-        openContextMenu(x, y, [
-            ...quickTools,
-            { separator: true },
-            { label: t('View video', '查看视频'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !hasVideo },
-            { label: t('Re-upload video asset', '重新上传视频资产'), icon: 'fa-rotate', action: () => reloadMediaNode(node) },
-            { label: t('Create media timeline', '创建媒体时间线'), icon: 'fa-clapperboard', action: () => createTimelineNodeFromSources([node]), disabled: !isTimelineSource(node) }
-        ]);
+        return CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.openVideoMediaContextMenu(node, x, y);
     }
 
     function openAudioMediaContextMenu(node, x, y) {
-        const hasAudio = !!assetDisplaySrc(node?.asset || {});
-        const quickTools = canvasAgentAudioQuickTools().map(tool => {
-            const key = String(tool.key || '').slice('audio_'.length);
-            const spec = canvasAgentAudioQuickToolSpec(key);
-            return {
-                label: spec?.label || tool.label,
-                icon: spec?.icon || tool.icon,
-                action: () => runCanvasAgentAudioQuickTool(key, { targetNodeId: node.id }),
-                disabled: key === 'edit' && !hasAudio
-            };
-        });
-        openContextMenu(x, y, [
-            ...quickTools,
-            { label: t('Audio to Video', '音频转视频'), icon: 'fa-film', action: () => runCanvasAgentAudioBridgeFromNode(node, 'audio_to_video'), disabled: !hasAudio },
-            { separator: true },
-            { label: t('Open audio', '打开音频'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !hasAudio },
-            { label: t('Re-upload audio asset', '重新上传音频资产'), icon: 'fa-rotate', action: () => reloadMediaNode(node) },
-            { label: t('Create media timeline', '创建媒体时间线'), icon: 'fa-clapperboard', action: () => createTimelineNodeFromSources([node]), disabled: !isTimelineSource(node) }
-        ]);
+        return CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.openAudioMediaContextMenu(node, x, y);
     }
 
     function appendWildcardTagToNodeParam(node, slot, tag) {
@@ -20092,158 +16310,8 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function openNodeContextMenu(node, x, y) {
-        const items = [];
-        if (node.type === 'preset' || node.type === 'classic') {
-            items.push({ label: t('Run', '运行'), icon: 'fa-play', action: () => runPresetNodeFromUi(node) });
-            if (isLivePortraitVideoExpressionPresetNode(node)) {
-                items.push({ label: t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'), icon: 'fa-face-smile', action: () => openLivePortraitVideoExpressionPresetEditor(node) });
-            }
-            if (isLtx23MultiGuidePresetNode(node)) {
-                items.push({ label: t('Edit LTX keyframe guides', '编辑 LTX 关键帧引导'), icon: 'fa-sliders', action: () => openLtx23GuidePresetEditor(node) });
-            }
-            items.push({ label: t('X/Y/Z Plot', 'X/Y/Z 对比生成'), icon: 'fa-table-cells-large', action: () => openXyzPlotPanel(node) });
-            items.push({ label: t('Check/download models', '检查/下载模型'), icon: 'fa-cloud-arrow-down', action: () => handlePresetModelAction(node) });
-            items.push({ label: t('Run upstream to here', '运行上游到这里'), icon: 'fa-arrow-turn-down', action: () => runNodeChain(node, 'to-here') });
-            items.push({ label: t('Run downstream from here', '从这里运行下游'), icon: 'fa-arrow-turn-up', action: () => runNodeChain(node, 'from-here') });
-            items.push({ label: t('Add Models Config', '添加模型配置'), icon: 'fa-cubes', action: () => ensureConfigNode(node, 'models') });
-            items.push({ label: t('Add Styles Config', '添加风格配置'), icon: 'fa-palette', action: () => ensureConfigNode(node, 'styles') });
-            items.push({ label: t('Add Resolution Config', '添加分辨率配置'), icon: 'fa-ruler-combined', action: () => ensureConfigNode(node, 'resolution') });
-            items.push({ label: t('Add Advanced Config', '添加高级配置'), icon: 'fa-sliders', action: () => ensureConfigNode(node, 'advanced') });
-        }
-        if (node.type === 'translation') {
-            items.push({ label: t('Translate', '翻译'), icon: 'fa-language', action: () => runTranslationNode(node) });
-            items.push({ label: t('Run upstream to here', '运行上游到这里'), icon: 'fa-arrow-turn-down', action: () => runNodeChain(node, 'to-here') });
-            items.push({ label: t('Run downstream from here', '从这里运行下游'), icon: 'fa-arrow-turn-up', action: () => runNodeChain(node, 'from-here') });
-        }
-        if (node.type === 'tag_cart') {
-            items.push({ label: t('Open Tag Cart', '打开标签选择器'), icon: 'sai-tag-cart-glyph', action: () => openTagCartForNode(node) });
-        }
-        if (node.type === 'batch_any') {
-            const selectedBatchItems = batchAnySelectedItemIds(node);
-            items.push({ label: t('Import files', '导入文件'), icon: 'fa-folder-open', action: () => openBatchAnyFilePicker(node) });
-            items.push({ label: t('Delete selected items', '删除选中素材'), icon: 'fa-trash', danger: true, action: () => deleteBatchAnyItems(node, selectedBatchItems), disabled: !selectedBatchItems.length });
-            items.push({ label: t('Run current item', '运行当前素材'), icon: 'fa-play', action: () => runBatchAnyNode(node, { currentOnly: true }), disabled: !batchAnyCurrentItem(node) || !batchAnyTargets(node).length });
-            items.push({ label: t('Run all items', '运行全部素材'), icon: 'fa-forward', action: () => runBatchAnyNode(node), disabled: !(Array.isArray(node.items) && node.items.length) || !batchAnyTargets(node).length });
-        }
-        if (node.type === 'wildcards_helper') {
-            items.push({ label: t('Refresh wildcards', '刷新通配符'), icon: 'fa-arrows-rotate', action: () => refreshWildcardsCatalog(node, { force: true }) });
-            items.push({ label: t('Wildcards Manager', '通配符管理'), icon: 'fa-folder-tree', action: () => openWildcardsManager(node) });
-        }
-        if (node.type === 'note') {
-            items.push({
-                label: node.tail?.enabled ? t('Hide pointer tail', '隐藏指引尾巴') : t('Show pointer tail', '显示指引尾巴'),
-                icon: 'fa-location-dot',
-                action: () => toggleNoteTail(node)
-            });
-            items.push({
-                label: t('Reset pointer target', '重置指向位置'),
-                icon: 'fa-location-crosshairs',
-                action: () => resetNoteTail(node)
-            });
-        }
-        if (node.type === 'pose_studio') {
-            items.push({ label: t('Open Pose Studio', '打开 Pose Studio'), icon: 'fa-person', action: () => openPoseStudioEditor(node) });
-            items.push({ label: t('View media', '查看媒体'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
-        }
-        if (node.type === 'gaussian_studio') {
-            items.push({ label: t('Open Gaussian Studio', '打开 Gaussian Studio'), icon: 'fa-cube', action: () => openGaussianStudioEditor(node) });
-            items.push({ label: t('View media', '查看媒体'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
-        }
-        if (node.type === 'liveportrait_expression') {
-            items.push({ label: t('Open LivePortrait Exp', '打开 LivePortrait Exp'), icon: 'fa-face-smile', action: () => openLivePortraitExpressionEditor(node) });
-            items.push({ label: t('View media', '查看媒体'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
-        }
-        if (node.type === 'camera_motion') {
-            items.push({ label: t('Generate reference video', '生成参考视频'), icon: 'fa-camera-rotate', action: () => runCameraMotionNode(node) });
-            items.push({ label: t('Clear reference video', '清除参考视频'), icon: 'fa-eraser', action: () => clearCameraMotionNode(node), disabled: !node.asset });
-            items.push({ label: t('View video', '查看视频'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
-        }
-        if (node.type === 'result') {
-            items.push({ label: t('View media', '查看媒体'), icon: 'fa-magnifying-glass-plus', action: () => node.type === 'result' ? openAssetViewer(getSelectedResultAsset(node), node.title || 'Result') : openImageViewer(node), disabled: !(node.type === 'result' ? getSelectedResultAsset(node) : node.asset) });
-            if (isCanvasAgentImageTarget(node)) {
-                items.push({ label: t('Edit in Sketch', 'Sketch 编辑'), icon: 'fa-pen-ruler', action: () => openSketchForNode(node), disabled: !(node.type === 'result' ? getSelectedResultAsset(node) : node.asset) });
-                items.push({ label: t('Replace image', '替换图片'), icon: 'fa-arrows-rotate', action: () => replaceNodeImage(node) });
-            }
-        }
-        if (node.type === 'result') {
-            const state = String(node.status?.state || '').toLowerCase();
-            const active = isCanvasRunActiveState(state);
-            const isQwenResult = !!node.producer?.qwen_tts_node_id;
-            if (active) {
-                items.push({ label: t('Stop run', '停止运行'), icon: 'fa-stop', action: () => controlResultRun(node, 'stop') });
-                if (!isQwenResult) items.push({ label: t('Skip run', '跳过运行'), icon: 'fa-forward-step', action: () => controlResultRun(node, 'skip') });
-            }
-            items.push({ label: t('Retry run', '重试运行'), icon: 'fa-rotate-right', action: () => retryResultRun(node), disabled: !(node.producer?.preset_node_id || node.producer?.qwen_tts_node_id) });
-            const asset = getSelectedResultAsset(node);
-            const kind = assetMediaKind(asset || {});
-            const label = kind === 'video' ? t('Create video node', '转为视频节点') : (kind === 'audio' ? t('Create audio node', '转为音频节点') : t('Create image node', '转为图像节点'));
-            const icon = assetMediaIcon(asset || {});
-            items.push({ label, icon, action: () => convertResultToMediaNode(node), disabled: !asset });
-            appendAudioWorkflowBridgeMenuItems(items, node);
-            items.push({ label: t('Expand outputs', '展开全部输出'), icon: 'fa-table-cells-large', action: () => expandResultAssetsToMediaNodes(node), disabled: !(Array.isArray(node.assets) && node.assets.length > 1) });
-        }
-        if (node.type === 'xy_matrix' || node.type === 'xyz_matrix') {
-            items.push({ label: t('Locate source', '定位来源'), icon: 'fa-location-crosshairs', action: () => focusXyzMatrixSource(node) });
-        }
-        if (node.type === 'video') {
-            items.push({ label: t('Re-upload video asset', '重新上传视频资产'), icon: 'fa-rotate', action: () => reloadMediaNode(node) });
-            items.push({ label: t('View video', '查看视频'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
-        }
-        if (node.type === 'audio') {
-            items.push({ label: t('Re-upload audio asset', '重新上传音频资产'), icon: 'fa-rotate', action: () => reloadMediaNode(node) });
-            items.push({ label: t('Open audio', '打开音频'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
-            appendAudioWorkflowBridgeMenuItems(items, node);
-        }
-        const compareSources = getSelectedNodeIdList().map(id => getNode(id)).filter(isImageCompareSource);
-        if (compareSources.length >= 2) {
-            items.push({ label: t('Create compare node', '创建对比节点'), icon: 'sai-compare-glyph', action: () => createCompareNodeFromSources(compareSources.slice(0, 2)) });
-        }
-        const timelineSources = getSelectedNodeIdList().map(id => getNode(id)).filter(isTimelineSource);
-        if (timelineSources.length) {
-            items.push({ label: t('Create media timeline', '创建媒体时间线'), icon: 'fa-clapperboard', action: () => createTimelineNodeFromSources(timelineSources) });
-        }
-        if (node.type === 'timeline') {
-            items.push({ label: t('Add selected media to timeline', '添加选中媒体到 Timeline'), icon: 'fa-plus', action: () => addSelectedMediaToTimeline(node) });
-        }
-        if (node.type === 'wd14') {
-            items.push({ label: t('Run WD14', '运行 WD14'), icon: 'fa-tags', action: () => runWd14Node(node) });
-            items.push({ label: t('Run upstream to here', '运行上游到这里'), icon: 'fa-arrow-turn-down', action: () => runNodeChain(node, 'to-here') });
-            items.push({ label: t('Run downstream from here', '从这里运行下游'), icon: 'fa-arrow-turn-up', action: () => runNodeChain(node, 'from-here') });
-        }
-        if (node.type === 'vlm') {
-            const chatBusy = (node.params?.mode || 'single') === 'chat' && isVlmNodeBusy(node);
-            items.push({
-                label: chatBusy ? t('Stop reply', '停止回答') : t('Run VLM', '运行 VLM'),
-                icon: chatBusy ? 'fa-stop' : 'sai-vlm-glyph',
-                action: () => chatBusy ? stopVlmChatNode(node) : runVlmNode(node)
-            });
-            items.push({ label: t('Run upstream to here', '运行上游到这里'), icon: 'fa-arrow-turn-down', action: () => runNodeChain(node, 'to-here') });
-            items.push({ label: t('Run downstream from here', '从这里运行下游'), icon: 'fa-arrow-turn-up', action: () => runNodeChain(node, 'from-here') });
-        }
-        if (isQwenTtsNode(node)) {
-            const running = isCanvasRunActiveState(nodeStatusState(node));
-            items.push({ label: running ? 'Stop Qwen TTS' : 'Run Qwen TTS', icon: running ? 'fa-stop' : 'fa-play', action: () => running ? stopQwenTtsNode(node) : runQwenTtsNode(node) });
-            items.push({ label: t('Run upstream to here', '运行上游到这里'), icon: 'fa-arrow-turn-down', action: () => runNodeChain(node, 'to-here') });
-            items.push({ label: t('Run downstream from here', '从这里运行下游'), icon: 'fa-arrow-turn-up', action: () => runNodeChain(node, 'from-here') });
-        }
-        items.push({ label: t('Duplicate', '复制'), icon: 'fa-copy', action: duplicateSelection });
-        items.push({ label: t('Delete nodes', '删除节点'), icon: 'fa-trash', danger: true, action: deleteSelection });
-        const selectedNodes = getSelectedNodeIdList().map(id => getNode(id)).filter(Boolean);
-        const allLocked = selectedNodes.length > 0 && selectedNodes.every(isNodeLocked);
-        const allIgnored = selectedNodes.length > 0 && selectedNodes.every(isNodeIgnored);
-        const allCollapsed = selectedNodes.length > 0 && selectedNodes.every(isNodeCollapsed);
-        items.splice(Math.max(0, items.length - 2), 0,
-            { label: allLocked ? t('Unlock selected', '解锁选中节点') : t('Lock selected', '锁定选中节点'), icon: allLocked ? 'fa-lock-open' : 'fa-lock', action: () => toggleSelectedNodesFlag('locked') },
-            { label: allIgnored ? t('Enable selected', '启用选中节点') : t('Skip selected', '跳过选中节点'), icon: 'fa-forward-step', action: () => toggleSelectedNodesFlag('ignored') },
-            { label: allCollapsed ? t('Expand selected', '展开选中节点') : t('Collapse selected', '折叠选中节点'), icon: allCollapsed ? 'fa-up-right-and-down-left-from-center' : 'fa-down-left-and-up-right-to-center', action: () => toggleSelectedNodesFlag('collapsed') },
-            { label: t('Align left', '左对齐'), icon: 'fa-align-left', action: () => alignSelectedNodes('left'), disabled: selectedNodes.length < 2 },
-            { label: t('Align top', '顶对齐'), icon: 'fa-align-left', action: () => alignSelectedNodes('top'), disabled: selectedNodes.length < 2 },
-            { label: t('Distribute horizontal', '水平分布'), icon: 'fa-arrows-left-right-to-line', action: () => distributeSelectedNodes('x'), disabled: selectedNodes.length < 3 },
-            { label: t('Distribute vertical', '垂直分布'), icon: 'fa-arrows-up-down-to-line', action: () => distributeSelectedNodes('y'), disabled: selectedNodes.length < 3 }
-        );
-        openContextMenu(x, y, items);
+        return CANVAS_NODE_CONTEXT_MENU_CONTROLLER.openNodeContextMenu(node, x, y);
     }
-
     function openResultAssetContextMenu(node, index, x, y) {
         return CANVAS_RESULT_CONTEXT_MENU_CONTROLLER.openResultAssetContextMenu?.(node, index, x, y);
     }
@@ -20289,95 +16357,52 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function openInputHandleContextMenu(node, slot, x, y) {
-        const fromId = node.upload_slots?.[slot];
-        openContextMenu(x, y, [
-            { label: fromId ? t('Disconnect {slot}', '断开 {slot}').replace('{slot}', getSlotLabel(node, slot)) : notConnectedText(), icon: fromId ? 'fa-link-slash' : 'fa-circle', disabled: !fromId, action: () => deleteUploadSlot(node.id, slot) }
-        ]);
+        return CANVAS_INPUT_HANDLE_CONTROLLER.openInputHandleContextMenu(node, slot, x, y);
     }
 
     function openConfigHandleContextMenu(node, kind, x, y) {
-        const edge = project.edges.find(item => item.type === 'config' && item.to === node.id && item.slot === kind);
-        openContextMenu(x, y, [
-            { label: edge ? t('Disconnect {kind} config', '断开 {kind} config').replace('{kind}', kind) : notConnectedText(), icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => deleteEdge(edge.id) }
-        ]);
+        return CANVAS_INPUT_HANDLE_CONTROLLER.openConfigHandleContextMenu(node, kind, x, y);
     }
 
     function openTextHandleContextMenu(node, slot, x, y) {
-        const edge = project.edges.find(item => item.type === 'text' && item.to === node.id && item.slot === slot);
-        openContextMenu(x, y, [
-            { label: edge ? t('Disconnect {slot}', '断开 {slot}').replace('{slot}', slot === 'negative_prompt' ? t('Negative Prompt', '负向提示词') : t('Prompt', '提示词')) : notConnectedText(), icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => deleteEdge(edge.id) }
-        ]);
+        return CANVAS_INPUT_HANDLE_CONTROLLER.openTextHandleContextMenu(node, slot, x, y);
     }
 
     function openTextNodeInputContextMenu(node, x, y, slot) {
-        const targetSlot = node?.type === 'text_merge' ? (slot || 'input_1') : 'input';
-        const edge = project.edges.find(item => item.type === 'text' && item.to === node.id && item.slot === targetSlot);
-        openContextMenu(x, y, [
-            { label: edge ? t('Disconnect Text input', '断开文本输入') : (node?.type === 'text_merge' ? notConnectedText() : t('Manual text', '手动文本')), icon: edge ? 'fa-link-slash' : (node?.type === 'text_merge' ? 'fa-circle' : 'fa-keyboard'), disabled: !edge, action: () => deleteEdge(edge.id) }
-        ]);
+        return CANVAS_INPUT_HANDLE_CONTROLLER.openTextNodeInputContextMenu(node, x, y, slot);
     }
-
     function openResultInputContextMenu(node, x, y) {
         return CANVAS_RESULT_CONTEXT_MENU_CONTROLLER.openResultInputContextMenu?.(node, x, y);
     }
 
     function openWd14ImageInputContextMenu(node, x, y) {
-        const edge = project.edges.find(item => item.type === 'image' && item.to === node.id && item.slot === 'image');
-        openContextMenu(x, y, [
-            { label: edge ? t('Disconnect image input', '断开图片输入') : notConnectedText(), icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => deleteEdge(edge.id) }
-        ]);
+        return CANVAS_INPUT_HANDLE_CONTROLLER.openWd14ImageInputContextMenu(node, x, y);
     }
 
     function openVlmImageInputContextMenu(node, slot, x, y) {
-        const targetSlot = VLM_IMAGE_SLOTS.some(item => item.key === slot) ? slot : 'image_1';
-        const edge = project.edges.find(item => item.type === 'image' && item.to === node.id && item.slot === targetSlot);
-        openContextMenu(x, y, [
-            { label: edge ? t('Disconnect {slot}', '断开 {slot}').replace('{slot}', targetSlot) : notConnectedText(), icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => deleteEdge(edge.id) }
-        ]);
+        return CANVAS_INPUT_HANDLE_CONTROLLER.openVlmImageInputContextMenu(node, slot, x, y);
     }
-
     function openVlmChatMessageContextMenu(node, messageIndex, x, y) {
-        const message = getVlmChatMessage(node, messageIndex);
-        const hasImages = Array.isArray(message?.images) && message.images.length > 0;
-        openContextMenu(x, y, [
-            { label: t('Copy message', '复制消息'), icon: 'fa-copy', action: () => copyVlmChatMessage(node, messageIndex), disabled: !message },
-            { label: t('Quote to input', '引用到输入'), icon: 'fa-reply', action: () => quoteVlmChatMessage(node, messageIndex), disabled: !message },
-            { label: t('Move back to input', '放回输入框'), icon: 'fa-clock-rotate-left', action: () => rollbackVlmChatToMessage(node, messageIndex), disabled: !message },
-            { label: t('Delete from context', '从上下文删除'), icon: 'fa-trash', danger: true, action: () => deleteVlmChatMessage(node, messageIndex), disabled: !message },
-            { label: t('Preview first image', '预览第一张图'), icon: 'fa-image', action: () => openVlmChatImage(node, messageIndex, 0), disabled: !hasImages }
-        ]);
+        return CANVAS_VLM_CHAT_CONTROLLER?.openVlmChatMessageContextMenu?.(node, messageIndex, x, y);
     }
 
     function openMaskSourceInputContextMenu(node, x, y) {
-        const edge = project.edges.find(item => item.type === 'image' && item.to === node.id && item.slot === 'source');
-        openContextMenu(x, y, [
-            { label: edge ? t('Disconnect source image', '断开源图输入') : notConnectedText(), icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => deleteEdge(edge.id) }
-        ]);
+        return CANVAS_INPUT_HANDLE_CONTROLLER.openMaskSourceInputContextMenu(node, x, y);
     }
 
     function openPoseStudioReferenceContextMenu(node, x, y) {
-        const edge = project.edges.find(item => item.type === 'image' && item.to === node.id && item.slot === 'reference');
-        openContextMenu(x, y, [
-            { label: edge ? t('Disconnect reference image', '断开参考图输入') : notConnectedText(), icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => deleteEdge(edge.id) }
-        ]);
+        return CANVAS_INPUT_HANDLE_CONTROLLER.openPoseStudioReferenceContextMenu(node, x, y);
     }
 
     function openCompareImageInputContextMenu(node, slot, x, y) {
-        const targetSlot = ['a', 'b'].includes(slot) ? slot : 'a';
-        const edge = project.edges.find(item => item.type === 'compare' && item.to === node.id && item.slot === targetSlot);
-        openContextMenu(x, y, [
-            { label: edge ? t('Disconnect Image {slot}', '断开图像 {slot}').replace('{slot}', targetSlot.toUpperCase()) : notConnectedText(), icon: edge ? 'fa-link-slash' : 'fa-circle', disabled: !edge, action: () => deleteEdge(edge.id) }
-        ]);
+        return CANVAS_INPUT_HANDLE_CONTROLLER.openCompareImageInputContextMenu(node, slot, x, y);
     }
-
     function openBatchAnyInputContextMenu(node, x, y) {
         return CANVAS_BATCH_ANY_EDIT_CONTROLLER.openBatchAnyInputContextMenu(node, x, y);
     }
 
     function openEdgeContextMenu(edgeId, x, y) {
-        openContextMenu(x, y, [
-            { label: t('Delete edge', '删除连线'), icon: 'fa-trash', danger: true, action: () => deleteEdge(edgeId) }
-        ]);
+        return EDGE_INTERACTION_CONTROLLER.openEdgeContextMenu(edgeId, x, y);
     }
 
     function canvasAgentReadyPresetEntries() {
@@ -20474,144 +16499,39 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function clientToWorld(clientX, clientY) {
-        const rect = viewport.getBoundingClientRect();
-        const z = project.viewport.zoom || 1;
-        return {
-            x: Math.round((clientX - rect.left - project.viewport.x) / z),
-            y: Math.round((clientY - rect.top - project.viewport.y) / z)
-        };
+        return viewportClientToWorld(viewport, project.viewport, clientX, clientY);
     }
 
     function viewportCenterWorld() {
-        const rect = viewport.getBoundingClientRect();
-        return clientToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return viewportCenterWorldFromState(viewport, project.viewport);
     }
 
     function applyProjectViewportPatch(viewportPatch, options) {
-        const patch = buildProjectViewportPatch(project, Object.assign({}, options || {}, { viewportPatch }));
-        if (patch && typeof patch === 'object'
-            && patch.viewport
-            && typeof patch.viewport === 'object'
-            && !Array.isArray(patch.viewport)) {
-            Object.assign(project, patch);
-            return;
-        }
-        const currentViewport = project?.viewport
-            && typeof project.viewport === 'object'
-            && !Array.isArray(project.viewport)
-            ? project.viewport
-            : {};
-        Object.assign(project, { viewport: Object.assign({}, currentViewport, viewportPatch || {}) });
+        return applyProjectViewportPatchFromProjectContext(viewportPatch, options);
     }
 
     function zoomAtViewportCenter(factor) {
-        const rect = viewport.getBoundingClientRect();
-        zoomAtClient(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+        return CANVAS_VIEWPORT_ZOOM_CONTROLLER.zoomAtViewportCenter?.(factor);
     }
 
     function zoomAtClient(clientX, clientY, factor) {
-        const before = clientToWorld(clientX, clientY);
-        const oldZoom = project.viewport.zoom || 1;
-        const nextZoom = clamp(oldZoom * factor, 0.15, 3);
-        if (Math.abs(nextZoom - oldZoom) < 0.0001) return;
-        const rect = viewport.getBoundingClientRect();
-        cancelPanEdgeSettleRender();
-        cancelDragEdgeSettleRender();
-        endDragEdgeLodVisual();
-        beginWheelPreviewLod(oldZoom, nextZoom);
-        applyProjectViewportPatch({
-            zoom: nextZoom,
-            x: Math.round(clientX - rect.left - before.x * nextZoom),
-            y: Math.round(clientY - rect.top - before.y * nextZoom)
-        });
-        preferSvgEdgesForViewportInteraction(5000);
-        applyViewport();
-        scheduleViewportNodeRender();
-        scheduleViewportZoomSettleRender();
-        renderStatus();
-        updateMinimapForViewportInteraction();
-        scheduleViewportSave();
+        return CANVAS_VIEWPORT_ZOOM_CONTROLLER.zoomAtClient?.(clientX, clientY, factor);
     }
 
     function fitAll() {
-        if (!project.nodes.length && !ensureProjectGroups().length) {
-            centerCanvas();
-            return;
-        }
-        const bounds = getNodesBounds();
-        const rect = viewport.getBoundingClientRect();
-        const width = Math.max(1, bounds.maxX - bounds.minX);
-        const height = Math.max(1, bounds.maxY - bounds.minY);
-        const zoom = clamp(Math.min((rect.width - 180) / width, (rect.height - 140) / height), 0.15, 1.5);
-        applyProjectViewportPatch({
-            zoom,
-            x: Math.round(rect.width / 2 - (bounds.minX + width / 2) * zoom),
-            y: Math.round(rect.height / 2 - (bounds.minY + height / 2) * zoom)
-        });
-        renderAll({ inspector: false });
-        scheduleSave();
+        return CANVAS_VIEWPORT_FIT_CONTROLLER.fitAll?.();
     }
 
     function fitSelection() {
-        if (selectedGroupId) {
-            focusGroup(getGroup(selectedGroupId));
-            return;
-        }
-        const node = getNode(selectedNodeId);
-        if (!node) {
-            fitAll();
-            return;
-        }
-        const rect = viewport.getBoundingClientRect();
-        const size = defaultNodeSize(node.type);
-        const w = node.w || size.w;
-        const h = node.h || size.h;
-        const zoom = clamp(Math.min((rect.width - 180) / Math.max(1, w), (rect.height - 140) / Math.max(1, h)), 0.3, 1.6);
-        applyProjectViewportPatch({
-            zoom,
-            x: Math.round(rect.width / 2 - ((node.x || 0) + w / 2) * zoom),
-            y: Math.round(rect.height / 2 - ((node.y || 0) + h / 2) * zoom)
-        });
-        renderAll({ inspector: false });
-        scheduleSave();
+        return CANVAS_VIEWPORT_FIT_CONTROLLER.fitSelection?.();
     }
 
     function centerCanvas() {
-        const rect = viewport.getBoundingClientRect();
-        applyProjectViewportPatch({
-            x: Math.round(rect.width / 2),
-            y: Math.round(rect.height / 2),
-            zoom: 1
-        });
-        renderAll({ inspector: false });
-        scheduleSave();
+        return CANVAS_VIEWPORT_FIT_CONTROLLER.centerCanvas?.();
     }
 
     function getNodesBounds() {
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-        for (const node of project.nodes) {
-            const size = defaultNodeSize(node.type);
-            const x = node.x || 0;
-            const y = node.y || 0;
-            const w = node.w || size.w;
-            const h = node.h || size.h;
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x + w);
-            maxY = Math.max(maxY, y + h);
-        }
-        for (const group of ensureProjectGroups()) {
-            const rect = getGroupRect(group);
-            minX = Math.min(minX, rect.x);
-            minY = Math.min(minY, rect.y);
-            maxX = Math.max(maxX, rect.x + rect.w);
-            maxY = Math.max(maxY, rect.y + rect.h);
-        }
-        if (!Number.isFinite(minX)) return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-        return { minX, minY, maxX, maxY };
+        return CANVAS_VIEWPORT_FIT_CONTROLLER.getNodesBounds?.() || { minX: 0, minY: 0, maxX: 1, maxY: 1 };
     }
 
     async function importSelectedTransferAt(world) {
@@ -20848,20 +16768,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function disconnectVlmImageInput(node, slot) {
-        if (!node || node.type !== 'vlm' || isNodeLocked(node)) return;
-        const targetSlot = VLM_IMAGE_SLOTS.some(item => item.key === slot) ? slot : 'image_1';
-        const edge = project.edges.find(item => item.type === 'image' && item.to === node.id && item.slot === targetSlot);
-        if (edge) {
-            deleteEdge(edge.id);
-            return;
-        }
-        if (node.image_inputs?.[targetSlot]) {
-            pushHistory('Disconnect VLM image');
-            Object.assign(node, buildVlmImageInputsPatch(node, {
-                imageInputsPatch: { [targetSlot]: null }
-            }));
-            mutate({ inspector: true });
-        }
+        return CANVAS_MEDIA_INPUT_CONNECTION_CONTROLLER.disconnectVlmImageInput(node, slot);
     }
 
     async function addImageNodeFromFile(file, world) {
@@ -21275,7 +17182,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         },
         mediaSource: {
             Image: typeof Image !== 'undefined' ? Image : null,
-            setTimeout: typeof setTimeout === 'function' ? setTimeout : null
+            setTimeout: typeof setTimeout === 'function' ? (...args) => window.setTimeout(...args) : null
         },
         nodeSource: {
             applyImageFileToNode,
@@ -21303,6 +17210,245 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         })
         : {};
     MASK_EDITOR_CONTEXT = CANVAS_MASK_EDITOR_CONTEXT.MASK_EDITOR_CONTEXT || {};
+    const MINIMAX_H3_STORYBOARD_PRESET_EDITOR_SOURCE = {
+        nodeSource: {
+            isMiniMaxH3PresetNode,
+            isNodeLocked,
+            getNode,
+            h3StoryboardOptionsForPreset,
+            h3StoryboardInventoryForPreset,
+            h3StoryboardStateForPreset,
+            getVisibleUploadSlots,
+            getUploadSlotMediaKind,
+            canNodeConnectToUploadSlot,
+            getSlotOrder: () => SLOT_ORDER,
+            h3StoryboardVlmReferencesForPreset,
+            h3StoryboardVlmReferenceSummary,
+            h3StoryboardMotionPictureIndex,
+            canvasAgentPromptTargetFromNode,
+            canvasAgentPresetPromptDefaults
+        },
+        editorSource: {
+            isLoaded: () => typeof window.SimpAIH3StoryboardEditor?.open === 'function',
+            open: (options) => window.SimpAIH3StoryboardEditor.open(options),
+            preferredStoryboardVideoSlot: (...args) => window.SimpAIH3StoryboardEditor?.preferredStoryboardVideoSlot?.(...args) || '',
+            openVisualPrompt: options => window.SimpAIVisualPromptEditor?.open(options),
+            getVisualPromptApi: () => window.SimpAIVisualPromptEditor || null,
+            getVisualPromptEditor: () => window.SimpAIVisualPromptEditor || null,
+            getStoryboardEditor: () => window.SimpAIH3StoryboardEditor || null
+        },
+        stateSource: {
+            getSystemParams: () => window.simpleaiTopbarSystemParams || {},
+            buildNodeParamsPatch,
+            buildH3StoryboardStatePatch,
+            buildSpecialNodeStatusPatch,
+            mergeCanvasRunStatus
+        },
+        projectSource: {
+            getProject: () => project,
+            buildProjectNodeAppendPatch
+        },
+        mediaSource: { buildMediaNodeFromAsset },
+        historySource: { pushHistory },
+        domSource: { canvasOverlayHost },
+        runtimeSource: {
+            ensureWorkbenchLazyRuntime,
+            loadLazyGroup: group => window.SimpAILazyAssetLoader?.loadGroup(group),
+            alert: message => window.alert(message),
+            showToast,
+            rewriteCanvasAgentPromptWithLlm,
+            runtimeUiLang,
+            pushHistory,
+            nowIso,
+            placeNodeAvoidingOverlap,
+            createUploadEdge,
+            mutate
+        },
+        selectionSource: {
+            selectNode: (nodeId) => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set([nodeId]);
+                selectedEdgeId = null;
+                selectedGroupId = null;
+            }
+        },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        }
+    };
+    const CANVAS_MINIMAX_H3_STORYBOARD_PRESET_EDITOR_CONTROLLER = typeof WORKBENCH_CANVAS_H3_STORYBOARD_PRESET_EDITOR.createCanvasMiniMaxH3StoryboardPresetEditorController === 'function'
+        ? WORKBENCH_CANVAS_H3_STORYBOARD_PRESET_EDITOR.createCanvasMiniMaxH3StoryboardPresetEditorController({
+            miniMaxH3StoryboardPresetEditorSource: MINIMAX_H3_STORYBOARD_PRESET_EDITOR_SOURCE
+        })
+        : {};
+
+    const LTX23_GUIDE_EDITOR_SOURCE = {
+        nodeSource: { isLtx23MultiGuidePresetNode, isNodeLocked, getPresetThemeInfo, getPresetTheme, getNode },
+        editorSource: {
+            isLoaded: () => typeof window.SimpAILTXGuideEditor?.open === 'function',
+            open: options => window.SimpAILTXGuideEditor.open(options),
+            getGuideEditor: () => window.SimpAILTXGuideEditor
+        },
+        domSource: { canvasOverlayHost },
+        stateSource: { buildNodeParamsPatch, buildLtx23GuidesStatePatch, buildSpecialNodeStatusPatch, mergeCanvasRunStatus },
+        runtimeSource: { ensureWorkbenchLazyRuntime, pushHistory, nowIso, mutate, showToast },
+        selectionSource: {
+            selectNode: nodeId => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set([nodeId]);
+                selectedEdgeId = null;
+                selectedGroupId = null;
+            }
+        },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            getEditorLanguageState: () => window.simpleaiTopbarSystemParams || { __lang: document.documentElement.lang || 'en' },
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        }
+    };
+    const CANVAS_LTX23_GUIDE_EDITOR_CONTROLLER = typeof WORKBENCH_CANVAS_LTX23_GUIDE_EDITOR.createCanvasLtx23GuideEditorController === 'function'
+        ? WORKBENCH_CANVAS_LTX23_GUIDE_EDITOR.createCanvasLtx23GuideEditorController({ ltx23GuideEditorSource: LTX23_GUIDE_EDITOR_SOURCE })
+        : {};
+
+    const LIVEPORTRAIT_VIDEO_EXPRESSION_EDITOR_SOURCE = {
+        nodeSource: {
+            isLivePortraitVideoExpressionPresetNode,
+            isNodeLocked,
+            getNode,
+            getSelectedResultAsset,
+            safeAssetFullDisplaySrc,
+            extractVideoFirstFrameDataUrl
+        },
+        projectSource: {
+            getProject: () => project,
+            getProjectId: () => PROJECT_ID
+        },
+        editorSource: {
+            isLoaded: () => typeof window.SimpAILivePortraitExpressionEditor?.open === 'function',
+            open: (options) => window.SimpAILivePortraitExpressionEditor.open(options)
+        },
+        stateSource: {
+            buildLivePortraitVideoExpressionStatePatch,
+            buildNodeParamsPatch,
+            buildSpecialNodeStatusPatch,
+            mergeCanvasRunStatus
+        },
+        serializationSource: { serializeAssetSourceForRun },
+        domSource: { canvasOverlayHost, detectWorkbenchTheme, ensureWorkbenchFormFieldNames },
+        runtimeSource: {
+            ensureWorkbenchLazyRuntime,
+            pushHistory,
+            nowIso,
+            mutate,
+            showToast
+        },
+        selectionSource: {
+            selectNode: (nodeId) => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set([nodeId]);
+                selectedEdgeId = null;
+                selectedGroupId = null;
+            }
+        },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        }
+    };
+    const CANVAS_LIVEPORTRAIT_VIDEO_EXPRESSION_EDITOR_CONTROLLER = typeof WORKBENCH_CANVAS_LIVEPORTRAIT_VIDEO_EDITOR.createCanvasLivePortraitVideoExpressionEditorController === 'function'
+        ? WORKBENCH_CANVAS_LIVEPORTRAIT_VIDEO_EDITOR.createCanvasLivePortraitVideoExpressionEditorController({
+            livePortraitVideoExpressionEditorSource: LIVEPORTRAIT_VIDEO_EXPRESSION_EDITOR_SOURCE
+        })
+        : {};
+
+    const MASK_RUNTIME_CONTEXT_SOURCE = {
+        projectSource: {
+            getProject: () => project,
+            getProjectId: () => PROJECT_ID
+        },
+        nodeSource: {
+            isNodeIgnored,
+            getNode,
+            getSelectedResultAsset
+        },
+        stateSource: {
+            buildMaskStatePatch,
+            buildMaskStatus
+        },
+        assetSource: {
+            buildGeneratedMaskAsset
+        },
+        serializationSource: {
+            serializeAssetSourceForRun,
+            cloneRunValue
+        },
+        requestSource: {
+            sendCanvasGenerateMaskRequest
+        },
+        selectionSource: {
+            selectMaskNode: (nodeId) => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set([nodeId]);
+            }
+        },
+        runtimeSource: {
+            pushHistory,
+            mutate,
+            showToast
+        },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        },
+        localizeSource: {
+            localizeMaskStatus
+        }
+    };
+    const CANVAS_MASK_RUNTIME_CONTROLLER = typeof WORKBENCH_CANVAS_MASK_RUNTIME.createCanvasMaskRuntimeController === 'function'
+        ? WORKBENCH_CANVAS_MASK_RUNTIME.createCanvasMaskRuntimeController({
+            maskRuntimeSource: MASK_RUNTIME_CONTEXT_SOURCE
+        })
+        : {};
+
+    const WD14_RUNTIME_CONTEXT_SOURCE = {
+        projectSource: {
+            getProject: () => project,
+            getProjectId: () => PROJECT_ID
+        },
+        nodeSource: {
+            isNodeIgnored,
+            getNode,
+            getSelectedResultAsset
+        },
+        stateSource: {
+            buildWd14StatePatch,
+            buildWd14Status
+        },
+        serializationSource: {
+            serializeAssetSourceForRun,
+            cloneRunValue
+        },
+        requestSource: {
+            sendCanvasWd14TagRequest
+        },
+        runtimeSource: {
+            pushHistory,
+            mutate,
+            showToast,
+            nowIso
+        },
+        languageSource: {
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
+        }
+    };
+    const CANVAS_WD14_RUNTIME_CONTROLLER = typeof WORKBENCH_CANVAS_WD14_RUNTIME.createCanvasWd14RuntimeController === 'function'
+        ? WORKBENCH_CANVAS_WD14_RUNTIME.createCanvasWd14RuntimeController({
+            wd14RuntimeSource: WD14_RUNTIME_CONTEXT_SOURCE
+        })
+        : {};
+
 
     async function replaceNodeImage(node) {
         return maskEditorReplaceNodeImage(node, MASK_EDITOR_CONTEXT);
@@ -21313,246 +17459,23 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function openPresetPalette(world) {
-        lastPointerWorld = world || viewportCenterWorld();
-        renderPresetPalette();
-        palette.hidden = false;
-        const input = palette.querySelector('.sai-canvas-palette-search');
-        input.value = '';
-        renderPresetPalette();
-        refreshPresetCatalog().catch(() => {});
-        setTimeout(() => input.focus(), 0);
+        return CANVAS_PRESET_PALETTE.openPresetPalette(world);
     }
 
     function closePresetPalette() {
-        if (palette) palette.hidden = true;
-        clearPendingInputTarget();
+        return CANVAS_PRESET_PALETTE.closePresetPalette();
     }
 
     function renderPresetPalette() {
-        if (!palette) return;
-        const query = String(palette.querySelector('.sai-canvas-palette-search').value || '').trim().toLowerCase();
-        const list = palette.querySelector('.sai-canvas-palette-list');
-        const entryKindLabel = (entry) => {
-            if (entry?.scene) {
-                const themes = Array.isArray(entry.themes)
-                    ? entry.themes.map(item => localizeCanvasLabel(item)).filter(Boolean)
-                    : [];
-                return themes.join(' / ') || localizeCanvasLabel('scene');
-            }
-            return localizeCanvasLabel(entry?.engine_type || 'image');
-        };
-        const entrySearchText = (entry) => [
-            entry.name,
-            entry.display_name,
-            entry.backend_engine,
-            entry.task_method,
-            entry.engine_type,
-            entryKindLabel(entry)
-        ].filter(Boolean).join(' ').toLowerCase();
-        const entries = getPresetCatalog().filter((entry) => {
-            if (!query) return true;
-            return entrySearchText(entry).includes(query);
-        }).slice(0, 120);
-        list.innerHTML = entries.map((entry) => `
-<button type="button" data-preset-name="${escapeHtml(entry.name)}">
-  <span>${escapeHtml(entry.display_name || entry.name)}</span>
-  <b>${escapeHtml(entry.backend_engine || 'Backend')}</b>
-  <small>${escapeHtml(entryKindLabel(entry))}</small>
-</button>`).join('') || `<div class="sai-canvas-palette-empty">${escapeHtml(getPresetCatalogState() === 'loading' ? t('Loading preset definitions...', '正在加载 Preset 定义…') : t('No matching presets', '没有匹配的预设'))}</div>`;
+        return CANVAS_PRESET_PALETTE.renderPresetPalette();
     }
 
     function addPresetNode(entry, world, options) {
-        const opts = options || {};
-        // Route non-scene presets to classic node
-        const isScene = !!entry.scene || !!(entry.schema && typeof entry.schema === 'object' && entry.schema.scene_frontend);
-        if (!isScene) {
-            return addClassicNode(entry, world, opts);
-        }
-        if (opts.history !== false) pushHistory('Add preset node');
-        const node = buildPresetNode(entry, world, opts);
-        if (opts.avoidOverlap === false || opts.source?.kind === 'canvas_agent_created') {
-            Object.assign(node, buildNodeLayoutPatch(node, {
-                x: Math.round(world.x || 0),
-                y: Math.round(world.y || 0)
-            }));
-        } else {
-            placeNodeAvoidingOverlap(node, world);
-        }
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedEdgeId = null;
-        if (opts.render !== false) mutate();
-        scheduleAutoPresetModelChecks();
-        showToast(autoMessage ? t('Added preset node, {message}', '已添加预设节点，{message}').replace('{message}', autoMessage) : t('Added preset node', '已添加预设节点'));
-        return node;
-    }
-
-    function scenePresetDefinition(entry) {
-        const schema = entry?.schema && typeof entry.schema === 'object' ? cloneRunValue(entry.schema, {}) : {};
-        const themes = Array.isArray(schema.themes) ? schema.themes : [];
-        const theme = schema.default_theme || themes[0] || '';
-        const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
-        const themeInfo = perTheme[theme] || {};
-        return {
-            schema,
-            theme,
-            taskMethod: themeInfo.task_method || entry?.task_method || ''
-        };
-    }
-
-    function refreshScenePresetNodeDefinition(node, entry) {
-        if (!node || !entry) return false;
-        const expected = scenePresetDefinition(entry);
-        const expectedScene = !!entry.scene || !!expected.schema.scene_frontend;
-        if (!expectedScene) return false;
-        const schemaMatches = JSON.stringify(node.schema || {}) === JSON.stringify(expected.schema);
-        const taskMatches = String(node.runtime?.task_method || '') === String(expected.taskMethod || '');
-        if (node.type === 'preset' && schemaMatches && taskMatches) return false;
-
-        const previousParams = node.params && typeof node.params === 'object' ? node.params : {};
-        const previousUploads = node.upload_slots && typeof node.upload_slots === 'object' ? node.upload_slots : {};
-        const perTheme = expected.schema.per_theme && typeof expected.schema.per_theme === 'object' ? expected.schema.per_theme : {};
-        const themeInfo = perTheme[expected.theme] || {};
-        const nextParams = {};
-        getVisiblePresetParams({ schema: expected.schema, runtime: { scene_theme: expected.theme }, params: {} }).forEach((param) => {
-            if (Object.prototype.hasOwnProperty.call(previousParams, param.key)) {
-                nextParams[param.key] = previousParams[param.key];
-            } else if (themeInfo.defaults && Object.prototype.hasOwnProperty.call(themeInfo.defaults, param.key)) {
-                nextParams[param.key] = themeInfo.defaults[param.key];
-            } else {
-                nextParams[param.key] = param.default ?? '';
-            }
-        });
-        for (const key of ['scene_additional_prompt', 'scene_additional_prompt_2']) {
-            if (!Object.prototype.hasOwnProperty.call(nextParams, key)
-                && Object.prototype.hasOwnProperty.call(previousParams, key)) {
-                nextParams[key] = previousParams[key];
-            }
-        }
-        const nextUploads = {};
-        getVisibleUploadSlots({ schema: expected.schema }).forEach((slot) => {
-            nextUploads[slot.key] = previousUploads[slot.key] || null;
-        });
-        const allowedUploads = new Set(Object.keys(nextUploads));
-        filterProjectEdges(edge => !(edge.type === 'upload' && edge.to === node.id && !allowedUploads.has(edge.slot)));
-
-        const promptDefaults = canvasAgentPresetPromptDefaults(entry);
-        const keepOverrides = (value) => value?.overrides && typeof value.overrides === 'object' ? cloneRunValue(value.overrides, {}) : {};
-        const modelList = Array.isArray(entry.model_list) ? cloneRunValue(entry.model_list, []) : [];
-        const cleanName = normalizePresetName(entry.name || entry.display_name || node.preset?.name || node.title || 'preset');
-        applyPresetDefinitionPatch(node, {
-            type: 'preset',
-            title: entry.display_name || cleanName,
-            w: 360,
-            h: 420,
-            schema: expected.schema,
-            uploadSlots: nextUploads,
-            modelRequirements: {
-                model_list: modelList,
-                has_model_probe: !!entry.has_model_probe,
-                source: entry.source || ''
-            }
-        });
-        Object.assign(node, buildPresetSnapshotPatch(node, {
-            preset: {
-                name: cleanName,
-                display_name: entry.display_name || cleanName,
-                snapshot_hash: null,
-                snapshot: {
-                    default_styles: promptDefaults.styles.slice(),
-                    default_prompt: promptDefaults.prompt || '',
-                    default_prompt_negative: promptDefaults.negative_prompt || ''
-                }
-            }
-        }));
-        Object.assign(node, buildPresetRuntimePatch(node, {
-            runtime: {
-                backend_engine: entry.backend_engine || 'Current',
-                engine_type: entry.engine_type || 'image',
-                scene_frontend: 'scene',
-                scene_theme: expected.theme,
-                task_method: expected.taskMethod
-            }
-        }));
-        Object.assign(node, buildNodeParamsPatch(node, { params: nextParams }));
-        Object.assign(node, buildPresetConfigPatch(node, {
-            configKey: 'models_config',
-            presetConfig: { mode: 'preset_default', defaults: cloneRunValue(entry.models_config || {}, {}), overrides: keepOverrides(node.models_config) }
-        }));
-        Object.assign(node, buildPresetConfigPatch(node, {
-            configKey: 'styles_config',
-            presetConfig: { mode: 'preset_default', defaults: { style_selections: promptDefaults.styles.slice() }, overrides: keepOverrides(node.styles_config) }
-        }));
-        Object.assign(node, buildPresetConfigPatch(node, {
-            configKey: 'resolution_config',
-            presetConfig: { mode: 'preset_default', defaults: cloneRunValue(entry.resolution_config || {}, {}), overrides: keepOverrides(node.resolution_config) }
-        }));
-        Object.assign(node, buildPresetGenerationConfigPatch(node, {
-            generationConfig: {
-                mode: 'preset_default',
-                defaults: cloneRunValue(entry.generation_config || {}, {}),
-                overrides: keepOverrides(node.generation_config)
-            }
-        }));
-        Object.assign(node, buildPresetModelStatusPatch(node, {
-            status: buildPresetModelCatalogStatus(entry, modelList)
-        }));
-        applyPresetDefinitionPatch(node, {
-            deleteKeys: ['classic_mode', 'classic_ip_count', 'enhance_detection_configs']
-        });
-        ensurePresetSpecialControllerState(node);
-        return true;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addPresetNode(entry, world, options);
     }
 
     function reconcilePresetNodesWithCatalog(entries) {
-        if (!project || !Array.isArray(project.nodes) || !Array.isArray(entries)) return 0;
-        const byName = new Map(entries.map(entry => [normalizePresetName(entry.name || ''), entry]));
-        let repaired = 0;
-        project.nodes.forEach((node) => {
-            if (!node || !['preset', 'classic'].includes(node.type)) return;
-            const name = normalizePresetName(node.preset?.name || node.title || '');
-            const entry = byName.get(name);
-            if (entry && refreshScenePresetNodeDefinition(node, entry)) repaired += 1;
-        });
-        return repaired;
-    }
-
-    function setPresetTheme(nodeId, theme) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'preset') return;
-        if (isNodeLocked(node)) {
-            showToast('Locked node cannot be edited');
-            return;
-        }
-        const previousTheme = getPresetTheme(node);
-        const previousDefaults = getPresetThemeDefaults(node, previousTheme);
-        pushHistory('Change preset theme');
-        const themeInfo = getPresetThemeInfo(node);
-        Object.assign(node, buildPresetRuntimePatch(node, {
-            runtimePatch: Object.assign(
-                { scene_theme: theme },
-                themeInfo.task_method ? { task_method: themeInfo.task_method } : {}
-            )
-        }));
-        const defaults = getPresetThemeDefaults(node, theme);
-        const paramsPatch = {};
-        getVisiblePresetParams(node).forEach((param) => {
-            if (!Object.prototype.hasOwnProperty.call(defaults, param.key)) return;
-            const current = node.params[param.key];
-            if (shouldApplyPresetThemeDefault(current, param, previousDefaults)) {
-                paramsPatch[param.key] = defaults[param.key];
-            }
-        });
-        Object.assign(node, buildNodeParamsPatch(node, { paramsPatch }));
-        const specialKind = ensurePresetSpecialControllerState(node);
-        if (specialKind) {
-            Object.assign(node, buildPresetDefinitionPatch(node, {
-                w: Math.max(node.w || 0, 430),
-                h: Math.max(node.h || 0, 720)
-            }));
-        }
-        mutate();
+        return CANVAS_NODE_FACTORY_CONTROLLER.reconcilePresetNodesWithCatalog(project, entries, { filterProjectEdges });
     }
 
     function ensureConfigNode(presetNode, kind) {
@@ -21583,6 +17506,14 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return CANVAS_CONFIG_EDIT_CONTROLLER.handleStylesConfigAction(node, action);
     }
 
+    function handleStylesConfigActionClick(node, evt) {
+        return CANVAS_CONFIG_EDIT_CONTROLLER.handleStylesConfigActionClick(node, evt);
+    }
+
+    function handleModelBrowserButtonClick(node, nodeEl, evt) {
+        return CANVAS_CONFIG_EDIT_CONTROLLER.handleModelBrowserButtonClick(node, nodeEl, evt);
+    }
+
     function filterStylesConfigList(nodeEl, query) {
         const q = String(query || '').trim().toLowerCase();
         nodeEl?.querySelectorAll?.('[data-style-config-item]').forEach((item) => {
@@ -21611,6 +17542,10 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return CANVAS_CONFIG_EDIT_CONTROLLER.updateConfigLora(nodeId, index, key, value);
     }
 
+    function handleNodeConfigFieldEvent(nodeEl, node, evt, eventType) {
+        return CANVAS_CONFIG_EDIT_CONTROLLER.handleNodeConfigFieldEvent(nodeEl, node, evt, eventType);
+    }
+
     function applyConfigNodeToPreset(configNode) {
         return CANVAS_CONFIG_CONNECTION_CONTROLLER.applyConfigNodeToPreset(configNode);
     }
@@ -21620,323 +17555,62 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function addStyleSelectorNode(world, options) {
-        const opts = options || {};
-        if (opts.history !== false) pushHistory('Add Style Selector node');
-        const node = styleSelectorCreateNode(world, opts, STYLE_SELECTOR_NODE_CONTEXT);
-        if (opts.selectedName && typeof styleSelectorSetSelectedStyle === 'function') {
-            styleSelectorSetSelectedStyle(node, opts.selectedName, STYLE_SELECTOR_NODE_CONTEXT);
-        }
-        if (opts.avoidOverlap === false) {
-            Object.assign(node, buildNodeLayoutPatch(node, {
-                x: Math.round(world?.x || 0),
-                y: Math.round(world?.y || 0)
-            }));
-        } else {
-            placeNodeAvoidingOverlap(node, world || viewportCenterWorld());
-        }
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        if (opts.targetPresetId) linkStyleSelectorToPreset(node, getNode(opts.targetPresetId), { silent: true });
-        completePendingConnectionToNode(node);
-        if (opts.select !== false) {
-            selectedNodeId = node.id;
-            selectedNodeIds = new Set([node.id]);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        }
-        if (opts.render !== false) mutate({ inspector: true });
-        if (opts.toast !== false) showToast(t('Style Selector node added.', '已添加 Style Selector 节点。'));
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addStyleSelectorNode(world, options);
     }
 
     function linkStyleSelectorToPreset(selectorNode, presetNode, options) {
-        if (!selectorNode || selectorNode.type !== 'style_selector' || !presetNode || !['preset', 'classic'].includes(presetNode.type)) return false;
-        Object.assign(selectorNode, buildStyleSelectorStatePatch(selectorNode, {
-            statePatch: { target_preset_id: presetNode.id }
-        }));
-        filterProjectEdges(edge => !(edge.type === 'text' && edge.to === presetNode.id && edge.slot === 'prompt'));
-        appendProjectEdge(buildCanvasEdge('text', {
-            from: selectorNode.id,
-            to: presetNode.id,
-            slot: 'prompt'
-        }));
-        Object.assign(presetNode, buildPresetTextInputPatch(presetNode, {
-            textInputsPatch: { prompt: selectorNode.id },
-            styleTransferSelectorId: selectorNode.id
-        }));
-        if (!options?.silent) mutate({ inspector: true });
-        return true;
+        return styleSelectorLinkToPreset?.(selectorNode, presetNode, options, STYLE_SELECTOR_NODE_CONTEXT) ?? false;
     }
 
     function ensureStyleSelectorForPreset(presetNode, options) {
-        if (!presetNode || presetNode.type !== 'preset') return null;
-        if (isNodeLocked(presetNode)) {
-            showToast(t('Locked preset cannot change Style Selector links.', '已锁定的 preset 无法修改 Style Selector 连接。'));
-            return null;
-        }
-        const opts = options || {};
-        let selector = findStyleSelectorForPreset(presetNode);
-        if (!selector) {
-            const presetRect = getNodeRect(presetNode);
-            const size = defaultNodeSize('style_selector');
-            const world = {
-                x: Math.round(presetRect.x - size.w - 90),
-                y: Math.round(presetRect.y)
-            };
-            selector = addStyleSelectorNode(world, {
-                targetPresetId: presetNode.id,
-                history: opts.history,
-                render: false,
-                toast: false,
-                select: false,
-                avoidOverlap: opts.avoidOverlap
-            });
-        } else {
-            linkStyleSelectorToPreset(selector, presetNode, { silent: true });
-        }
-        if (opts.select !== false && selector) {
-            selectedNodeId = selector.id;
-            selectedNodeIds = new Set([selector.id]);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        }
-        if (opts.render !== false) mutate({ inspector: true });
-        if (opts.toast !== false) {
-            showToast(selector ? t('Style Selector linked to Style Transfer+.', 'Style Selector 已连接到 Style Transfer+。') : t('Style Selector could not be created.', '无法创建 Style Selector。'));
-        }
-        return selector;
-    }
-
-    function selectStyleSelectorStyle(selectorNode, styleName) {
-        if (!selectorNode || selectorNode.type !== 'style_selector') return;
-        if (isNodeLocked(selectorNode)) {
-            showToast(t('Locked node cannot be edited.', '已锁定节点无法编辑。'));
-            return;
-        }
-        const foundStyle = styleSelectorStyleByName?.(styleName, STYLE_SELECTOR_NODE_CONTEXT);
-        if (!foundStyle) {
-            showToast(t('Style not found.', '未找到该风格。'));
-            return;
-        }
-        pushHistory('Select Style Transfer style');
-        const style = styleSelectorSetSelectedStyle?.(selectorNode, styleName, STYLE_SELECTOR_NODE_CONTEXT);
-        if (!style) {
-            showToast(t('Style not found.', '未找到该风格。'));
-            return;
-        }
-        applyStyleSelectorToPreset(selectorNode, style, { silent: true });
-        selectedNodeId = selectorNode.id;
-        selectedNodeIds = new Set([selectorNode.id]);
-        selectedEdgeId = null;
-        selectedGroupId = null;
-        mutate({ inspector: true });
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.ensureStyleSelectorForPreset(presetNode, options);
     }
 
     function applyStyleSelectorToPreset(selectorNode, style, options) {
-        if (!selectorNode || selectorNode.type !== 'style_selector') return false;
-        const selectedStyle = style || styleSelectorSelectedStyle?.(
-            selectorNode,
-            STYLE_SELECTOR_NODE_CONTEXT
-        );
-        if (!selectedStyle) {
-            if (!options?.silent) showToast(t('Choose a style first.', '请先选择一个风格。'));
-            return false;
-        }
-        const presetNode = styleSelectorLinkedPreset(selectorNode);
-        if (!presetNode || !['preset', 'classic'].includes(presetNode.type)) {
-            if (!options?.silent) showToast(t('Link this Style Selector to a Style Transfer+ preset first.', '请先把 Style Selector 连接到 Style Transfer+ preset。'));
-            return false;
-        }
-        if (isNodeLocked(presetNode)) {
-            if (!options?.silent) showToast(t('Locked preset cannot be edited.', '已锁定 preset 无法编辑。'));
-            return false;
-        }
-        linkStyleSelectorToPreset(selectorNode, presetNode, { silent: true });
-        const paramsPatch = { prompt: selectedStyle.prompt || '' };
-        const visibleKeys = new Set(getVisiblePresetParams(presetNode).map(param => param.key));
-        if (visibleKeys.has('scene_additional_prompt') && !visibleKeys.has('prompt')) {
-            paramsPatch.scene_additional_prompt = selectedStyle.prompt || '';
-        }
-        if (selectedStyle.negative && !getPromptTextSourceNode(presetNode, 'negative_prompt')) {
-            paramsPatch.negative_prompt = selectedStyle.negative;
-        }
-        Object.assign(presetNode, buildNodeParamsPatch(presetNode, { paramsPatch }));
-        Object.assign(presetNode, buildPresetTextInputPatch(presetNode, {
-            styleTransferSelectorId: selectorNode.id
-        }));
-        Object.assign(presetNode, buildPresetStyleTransferPatch(presetNode, {
-            styleTransferStyle: {
-                name: selectedStyle.name || '',
-                description: selectedStyle.description || '',
-                updated_at: nowIso()
-            }
-        }));
-        if (!options?.silent) {
-            mutate({ inspector: true });
-            showToast(t('Style applied to Style Transfer+.', '风格已应用到 Style Transfer+。'));
-        }
-        return true;
+        return styleSelectorApplyToPreset?.(selectorNode, style, options, STYLE_SELECTOR_NODE_CONTEXT) ?? false;
     }
 
     async function runStyleTransferPresetNode(node, options) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return { ok: false, error: 'preset missing' };
-        const selector = findStyleSelectorForPreset(node);
-        if (selector) {
-            const style = styleSelectorSelectedStyle?.(
-                selector,
-                STYLE_SELECTOR_NODE_CONTEXT
-            );
-            if (!style) {
-                showToast(t('Choose a style first.', '请先选择一个风格。'));
-                return { ok: false, error: 'style missing' };
-            }
-            if (!applyStyleSelectorToPreset(selector, style, { silent: true })) {
-                return { ok: false, error: 'style apply failed' };
-            }
-        }
-        return runPresetNode(node, Object.assign({}, options || {}, { skipPromptResolve: true }));
+        return styleSelectorRunStyleTransferPresetNode?.(node, options, STYLE_SELECTOR_NODE_CONTEXT)
+            ?? { ok: false, error: 'style selector runtime unavailable' };
     }
 
     async function runStyleSelectorTargetPreset(selectorNode, options) {
-        if (!selectorNode || selectorNode.type !== 'style_selector') return { ok: false, error: 'style selector missing' };
-        const presetNode = styleSelectorLinkedPreset(selectorNode);
-        if (!presetNode || !['preset', 'classic'].includes(presetNode.type)) {
-            showToast(t('Link this Style Selector to a Style Transfer+ preset first.', '请先把 Style Selector 连接到 Style Transfer+ preset。'));
-            return { ok: false, error: 'style transfer preset missing' };
-        }
-        const style = styleSelectorSelectedStyle?.(
-            selectorNode,
-            STYLE_SELECTOR_NODE_CONTEXT
-        );
-        if (!style) {
-            showToast(t('Choose a style first.', '请先选择一个风格。'));
-            return { ok: false, error: 'style missing' };
-        }
-        if (!applyStyleSelectorToPreset(selectorNode, style, { silent: true })) {
-            return { ok: false, error: 'style apply failed' };
-        }
-        selectedNodeId = presetNode.id;
-        selectedNodeIds = new Set([presetNode.id]);
-        selectedEdgeId = null;
-        selectedGroupId = null;
-        mutate({ inspector: true });
-        return runStyleTransferPresetNode(presetNode, options);
+        return styleSelectorRunTargetPreset?.(selectorNode, options, STYLE_SELECTOR_NODE_CONTEXT)
+            ?? { ok: false, error: 'style selector runtime unavailable' };
     }
 
     function runPresetNodeFromUi(node, options) {
-        if (isStyleTransferPresetNode(node)) return runStyleTransferPresetNode(node, options);
-        return runPresetNode(node, options);
-    }
-
-    function updateStyleSelectorSearch(nodeId, value, nodeEl) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'style_selector') return;
-        Object.assign(node, buildStyleSelectorStatePatch(node, {
-            statePatch: { search: String(value || '') }
-        }));
-        styleSelectorFilterNodeDom?.(nodeEl, value);
-        scheduleSave();
+        return styleSelectorRunPresetNodeFromUi?.(node, options, STYLE_SELECTOR_NODE_CONTEXT)
+            ?? { ok: false, error: 'preset run unavailable' };
     }
 
     function addTextNode(world, options) {
-        if (!options || options.history !== false) pushHistory('Add text node');
-        const node = buildTextNode(world, options);
-        placeNodeAvoidingOverlap(node, world);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        mutate();
-        showToast(autoMessage ? `Text node added, ${autoMessage}` : 'Text node added');
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addTextNode(world, options);
     }
 
     function addTextMergeNode(world, options) {
-        const opts = options || {};
-        if (opts.history !== false) pushHistory('Add multi-text merge node');
-        const node = buildTextMergeNode(world, opts);
-        placeNodeAvoidingOverlap(node, world);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        mutate();
-        showToast(autoMessage || t('Multi-text Merge node added.', '已添加多文本合并节点。'));
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addTextMergeNode(world, options);
     }
 
     function addTextMergeInput(node) {
-        if (!node || node.type !== 'text_merge' || isNodeLocked(node)) return;
-        const slots = textMergeInputSlots(node);
-        if (slots.length >= 16) {
-            showToast(t('A merge node supports up to 16 inputs.', '一个合并节点最多支持 16 个输入。'));
-            return;
-        }
-        pushHistory('Add text merge input');
-        const used = new Set(slots);
-        let index = 1;
-        while (used.has(`input_${index}`)) index += 1;
-        const inputSlots = [...slots, `input_${index}`];
-        Object.assign(node, buildTextMergeStatePatch(node, {
-            inputSlots,
-            height: Math.max(Number(node.h || 0), 280 + inputSlots.length * 42)
-        }));
-        mutate();
+        return CANVAS_TEXT_CONNECTION_CONTROLLER.addTextMergeInput(node);
     }
 
     function removeTextMergeInput(node, slot) {
-        if (!node || node.type !== 'text_merge' || isNodeLocked(node)) return;
-        const slots = textMergeInputSlots(node);
-        if (slots.length <= 2 || !slots.includes(slot)) return;
-        pushHistory('Remove text merge input');
-                filterProjectEdges(edge => !(edge.type === 'text' && edge.to === node.id && edge.slot === slot));
-        Object.assign(node, buildTextMergeStatePatch(node, {
-            inputSlots: slots.filter(item => item !== slot),
-            deleteTextInputKeys: [slot]
-        }));
-        mutate();
+        return CANVAS_TEXT_CONNECTION_CONTROLLER.removeTextMergeInput(node, slot);
     }
 
     function syncTextMergeOutputDom(node) {
-        if (!node || node.type !== 'text_merge') return;
-        const output = getTextMergeOutput(node, new Set([node.id]));
-        const nodeEl = nodesLayer?.querySelector(`[data-node-id="${cssEscape(node.id)}"]`);
-        nodeEl?.querySelectorAll('[data-text-merge-output]').forEach(field => {
-            if (field.value !== output) field.value = output;
-        });
-        if (selectedNodeId === node.id && inspector) {
-            inspector.querySelectorAll('[data-text-merge-output]').forEach(field => {
-                if (field.value !== output) field.value = output;
-            });
-        }
+        return CANVAS_TEXT_CONNECTION_CONTROLLER.syncTextMergeOutputDom(node);
     }
 
     function refreshTextMergeDependents(sourceNodeId, visited) {
-        const seen = visited || new Set();
-        if (!sourceNodeId || seen.has(sourceNodeId)) return;
-        seen.add(sourceNodeId);
-        project.nodes
-            .filter(node => node.type === 'text_merge' && (
-                Object.values(node.text_inputs || {}).includes(sourceNodeId)
-                || project.edges.some(edge => edge.type === 'text' && edge.from === sourceNodeId && edge.to === node.id)
-            ))
-            .forEach(node => {
-                syncTextMergeOutputDom(node);
-                refreshTextMergeDependents(node.id, seen);
-            });
+        return CANVAS_TEXT_CONNECTION_CONTROLLER.refreshTextMergeDependents(sourceNodeId, visited);
     }
 
     function updateTextMergeSeparator(nodeId, value) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'text_merge' || isNodeLocked(node)) return;
-        pushHistoryBatch(`text-merge:${nodeId}:separator`, 'Edit text merge separator');
-        Object.assign(node, buildTextMergeStatePatch(node, {
-            paramsPatch: { separator: String(value ?? '') }
-        }));
-        scheduleSave();
-        syncTextMergeOutputDom(node);
-        refreshTextMergeDependents(node.id);
+        return CANVAS_NODE_PARAM_CONTROLLER?.updateTextMergeSeparator?.(nodeId, value);
     }
 
     function addWildcardsHelperNode(world, options) {
@@ -21952,37 +17626,11 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function addTranslationNode(world, options) {
-        if (!options || options.history !== false) pushHistory('Add translation node');
-        const node = buildTranslationNode(world, options);
-        placeNodeAvoidingOverlap(node, world);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        mutate();
-        showToast(autoMessage ? `Translation node added, ${autoMessage}` : 'Translation node added');
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addTranslationNode(world, options);
     }
 
     function updateTextNodeValue(nodeId, value) {
-        const node = getNode(nodeId);
-        if (!node || !isTextOutputNode(node)) return;
-        if (isNodeLocked(node)) return;
-        if (['text', 'translation', 'tag_cart'].includes(node.type) && getTextNodeInputSource(node) && node.type === 'text') return;
-        pushHistoryBatch(`text:${nodeId}:value`, node.type === 'wd14' ? 'Edit WD14 output' : (node.type === 'vlm' ? 'Edit VLM output' : (node.type === 'translation' ? 'Edit translation output' : (node.type === 'tag_cart' ? 'Edit Tag Cart output' : 'Edit text node'))));
-        const textPatch = { value: String(value || ''), updated_at: nowIso() };
-        if (node.type === 'translation') {
-            Object.assign(node, buildTranslationStatePatch(node, { textPatch }));
-        } else if (node.type === 'tag_cart') {
-            Object.assign(node, buildTagCartStatePatch(node, { textPatch }));
-        } else if (node.type === 'wd14') {
-            Object.assign(node, buildWd14StatePatch(node, { textPatch }));
-        } else {
-            Object.assign(node, buildTextNodeStatePatch(node, { textPatch }));
-        }
-        scheduleSave();
-        refreshTextMergeDependents(node.id);
+        return CANVAS_NODE_PARAM_CONTROLLER?.updateTextNodeValue?.(nodeId, value);
     }
 
     function refreshNoteDom(nodeId) {
@@ -21993,36 +17641,20 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return CANVAS_NOTE_EDIT_CONTROLLER.updateNoteText(nodeId, value, options);
     }
 
+    function handleNoteTextEvent(node, evt, eventType) {
+        return CANVAS_NOTE_EDIT_CONTROLLER.handleNoteTextEvent(node, evt, eventType);
+    }
+
     function updateNoteStyle(nodeId, key, value, inputType) {
         return CANVAS_NOTE_EDIT_CONTROLLER.updateNoteStyle(nodeId, key, value, inputType);
     }
 
     function updateNodeCustomColor(nodeId, value, options) {
-        const node = getNode(nodeId);
-        if (!node || isNodeLocked(node)) return;
-        const color = normalizeCanvasColor(value, '');
-        pushHistoryBatch(`node:${nodeId}:custom-color`, 'Edit node color');
-        if (node.type === 'note') {
-            Object.assign(node, buildNoteStatePatch(node, color
-                ? {
-                    stylePatch: { node_color: expandCanvasHexColor(color, '#14b8a6') },
-                    deleteStyleKeys: ['accent_color']
-                }
-                : { deleteStyleKeys: ['node_color', 'accent_color'] }));
-        } else {
-            applyNodeStylePatch(node, color
-                ? {
-                    stylePatch: { node_color: expandCanvasHexColor(color, '#14b8a6') },
-                    deleteStyleKeys: ['accent_color']
-                }
-                : { deleteStyleKeys: ['node_color', 'accent_color'] });
-        }
-        const nodeEl = nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(nodeId || '')}"]`);
-        if (nodeEl) applyNodeCustomColorVars(node, nodeEl);
-        invalidateMinimapStaticCache();
-        renderMinimap();
-        scheduleSave();
-        if (options?.renderInspector) renderInspector();
+        return CANVAS_NODE_APPEARANCE_CONTROLLER.updateNodeCustomColor?.(nodeId, value, options);
+    }
+
+    function bindInspectorNodeColorEvents(inspector) {
+        return CANVAS_NODE_APPEARANCE_CONTROLLER.bindInspectorNodeColorEvents?.(inspector) || false;
     }
 
     function updateNoteSize(nodeId, key, value) {
@@ -22042,117 +17674,35 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function updateTranslationInput(nodeId, value) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'translation' || isNodeLocked(node) || getTextNodeInputSource(node)) return;
-        pushHistoryBatch(`translation:${nodeId}:input`, 'Edit translation input');
-        Object.assign(node, buildTranslationStatePatch(node, { inputText: String(value || '') }));
-        scheduleSave();
+        return CANVAS_NODE_PARAM_CONTROLLER?.updateTranslationInput?.(nodeId, value);
     }
 
     function updateTranslationParam(nodeId, key, value) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'translation' || !key || isNodeLocked(node)) return;
-        pushHistoryBatch(`translation:${nodeId}:${key}`, 'Edit translation parameter');
-        Object.assign(node, buildTranslationStatePatch(node, { paramsPatch: { [key]: value } }));
-        scheduleSave();
+        return CANVAS_NODE_PARAM_CONTROLLER?.updateTranslationParam?.(nodeId, key, value);
     }
 
     function addTagCartNode(world, options) {
-        if (!options || options.history !== false) pushHistory('Add Tag Cart node');
-        const node = buildTagCartNode(world, options);
-        placeNodeAvoidingOverlap(node, world);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        mutate();
-        openTagCartForNode(node);
-        showToast(autoMessage ? `${t('Tag Cart node added', '已添加标签选择器节点')}${t(', ', '，')}${autoMessage}` : t('Tag Cart node added', '已添加标签选择器节点'));
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addTagCartNode(world, options);
     }
 
     function updateTagCartParam(nodeId, key, value) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'tag_cart' || !key || isNodeLocked(node)) return;
-        pushHistoryBatch(`tag-cart:${nodeId}:${key}`, 'Edit Tag Cart parameter');
-        Object.assign(node, buildTagCartStatePatch(node, { paramsPatch: { [key]: value } }));
-        scheduleSave();
+        return CANVAS_NODE_PARAM_CONTROLLER?.updateTagCartParam?.(nodeId, key, value);
     }
 
     function addWd14Node(world, options) {
-        if (!options || options.history !== false) pushHistory('Add WD14 node');
-        const node = buildWd14Node(world, options);
-        placeNodeAvoidingOverlap(node, world);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        mutate();
-        showToast(autoMessage ? `WD14 node added, ${autoMessage}` : 'WD14 node added');
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addWd14Node(world, options);
     }
 
     function updateWd14Param(nodeId, key, value, inputType) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'wd14' || !key) return;
-        if (isNodeLocked(node)) return;
-        pushHistoryBatch(`wd14:${nodeId}:${key}`, 'Edit WD14 parameter');
-        let nextValue = value;
-        if (inputType === 'number') {
-            const parsed = Number(value);
-            nextValue = Number.isFinite(parsed) ? clamp(parsed, 0, 1) : value;
-        }
-        Object.assign(node, buildWd14StatePatch(node, { paramsPatch: { [key]: nextValue } }));
-        if (key === 'seed_random') {
-            mutate({ inspector: true });
-            return;
-        }
-        syncNodeParamControlDom(nodeId, key, node.params[key]);
-        refreshPresetSpecialNodeDom(node, { syncViewer: false });
-        scheduleSave();
+        return CANVAS_NODE_PARAM_CONTROLLER?.updateWd14Param?.(nodeId, key, value, inputType);
     }
 
     function addVlmNode(world, options) {
-        if (!options || options.history !== false) pushHistory('Add VLM node');
-        const node = buildVlmNode(world, options);
-        placeNodeAvoidingOverlap(node, world);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        mutate();
-        showToast(autoMessage ? `VLM node added, ${autoMessage}` : 'VLM node added');
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addVlmNode(world, options);
     }
 
     function updateMaskParam(nodeId, key, value, inputType) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'mask' || !key) return;
-        if (isNodeLocked(node)) return;
-        pushHistoryBatch(`mask:${nodeId}:${key}`, 'Edit mask parameter');
-        const paramsPatch = {};
-        if (inputType === 'checkbox') {
-            paramsPatch[key] = !!value;
-        } else if (inputType === 'number' || ['box_threshold', 'text_threshold', 'sam_max_detections', 'dino_erode_or_dilate'].includes(key)) {
-            const parsed = Number(value);
-            paramsPatch[key] = Number.isFinite(parsed) ? parsed : value;
-        } else {
-            paramsPatch[key] = value;
-        }
-        if (key === 'mask_model') {
-            Object.assign(node, buildMaskStatePatch(node, {
-                paramsPatch,
-                asset: null,
-                status: buildMaskStatus('idle', 'Mask model changed. Generate a new mask.')
-            }));
-            mutate();
-            return;
-        }
-        Object.assign(node, buildMaskStatePatch(node, { paramsPatch }));
-        scheduleSave();
+        return CANVAS_NODE_PARAM_CONTROLLER?.updateMaskParam?.(nodeId, key, value, inputType);
     }
 
     function updateSam3VideoMaskParam(nodeId, key, value, inputType) {
@@ -22164,287 +17714,47 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function updateQwenTtsParam(nodeId, key, value, inputType) {
-        const node = getNode(nodeId);
-        if (!isQwenTtsNode(node) || !key || isNodeLocked(node)) return;
-        pushHistoryBatch(`qwen-tts:${nodeId}:${key}`, 'Edit Qwen TTS parameter');
-        const paramsPatch = {};
-        if (inputType === 'checkbox') {
-            paramsPatch[key] = !!value;
-        } else if (inputType === 'number' || inputType === 'range') {
-            const parsed = Number(value);
-            paramsPatch[key] = Number.isFinite(parsed) ? parsed : value;
-        } else {
-            paramsPatch[key] = value;
-        }
-        if (key === 'style_preset') {
-            const instruction = typeof qwenTtsStylePresetInstruction === 'function'
-                ? qwenTtsStylePresetInstruction(value, QWEN_TTS_NODE_CONTEXT)
-                : '';
-            paramsPatch.instruct = String(value || '').trim() ? instruction : '';
-            if (!isCanvasRunActiveState(nodeStatusState(node))) {
-                Object.assign(node, buildQwenTtsStatePatch(node, {
-                    paramsPatch,
-                    status: mergeCanvasRunStatus(
-                        node.status,
-                        'idle',
-                        'Qwen TTS character preset applied. Ready to generate audio.'
-                    )
-                }));
-            } else {
-                Object.assign(node, buildQwenTtsStatePatch(node, { paramsPatch }));
-            }
-            mutate({ inspector: true });
-            return;
-        }
-        const patchOptions = { paramsPatch };
-        if (!isCanvasRunActiveState(nodeStatusState(node))) {
-            patchOptions.status = mergeCanvasRunStatus(
-                node.status,
-                'idle',
-                'Qwen TTS parameters changed. Ready to generate audio.'
-            );
-        }
-        Object.assign(node, buildQwenTtsStatePatch(node, patchOptions));
-        if (key === 'seed_random') {
-            mutate({ inspector: true });
-            return;
-        }
-        scheduleSave();
+        return CANVAS_NODE_PARAM_CONTROLLER?.updateQwenTtsParam?.(nodeId, key, value, inputType);
     }
 
     function normalizeDirectorTimelineForNode(node) {
-        if (!node || !isDirectorTimelineNode(node)) return null;
-        const normalizer = directorTimelineNormalizeTimeline;
-        const current = cloneRunValue(node.director || {}, {});
-        const normalized = typeof normalizer === 'function' ? normalizer(current) : Object.assign({}, current);
-        Object.assign(node, buildDirectorTimelineStatePatch(node, { directorPatch: normalized }));
-        return cloneRunValue(node.director || normalized, {});
+        return CANVAS_TIMELINE_CONTEXT.normalizeDirectorTimelineForNode?.(node) ?? null;
     }
 
     function updateDirectorStatus(node) {
-        if (!node || !isDirectorTimelineNode(node)) return;
-        const payload = directorTimelinePayload(node);
-        const status = mergeCanvasRunStatus(
-            node.status,
-            'ready',
-            payload?.prompt_override ? 'prompt_override ready.' : 'Director timeline is empty.'
-        );
-        Object.assign(node, buildDirectorTimelineStatePatch(node, { status }));
-    }
-
-    function directorTimelineTotalSeconds(director) {
-        const segments = Array.isArray(director?.segments) ? director.segments : [];
-        const maxEnd = segments.reduce((value, segment) => Math.max(value, Number(segment?.end || 0)), 0);
-        return Math.max(0.1, Number(director?.duration || 10) || 10, maxEnd);
-    }
-
-    function directorTimelineRoundSeconds(value) {
-        const rounded = Math.round(Number(value || 0) * 10) / 10;
-        return Number.isFinite(rounded) ? rounded : 0;
-    }
-
-    function directorTimelineClampSeconds(value, min, max) {
-        const low = Number.isFinite(Number(min)) ? Number(min) : 0;
-        const high = Number.isFinite(Number(max)) ? Number(max) : 86400;
-        if (high < low) return low;
-        return Math.max(low, Math.min(high, Number(value || 0)));
-    }
-
-    function directorTimelineNeighborBounds(director, index) {
-        const bounds = { previousEnd: 0, nextStart: 86400 };
-        const segments = Array.isArray(director?.segments) ? director.segments : [];
-        segments.forEach((segment, segmentIndex) => {
-            if (segmentIndex < index) {
-                bounds.previousEnd = Math.max(bounds.previousEnd, Number(segment?.end || 0));
-            } else if (segmentIndex > index) {
-                bounds.nextStart = Math.min(bounds.nextStart, Number(segment?.start || 86400));
-            }
-        });
-        bounds.previousEnd = directorTimelineRoundSeconds(bounds.previousEnd);
-        bounds.nextStart = directorTimelineRoundSeconds(bounds.nextStart);
-        return bounds;
+        return CANVAS_TIMELINE_CONTEXT.updateDirectorStatus?.(node);
     }
 
     function directorTimelineConstrainSegmentTimes(director, index) {
-        const segment = director?.segments?.[index];
-        if (!segment) return;
-        const bounds = directorTimelineNeighborBounds(director, index);
-        const previousEnd = Math.max(0, bounds.previousEnd);
-        const nextStart = Math.min(86400, bounds.nextStart);
-        const availableDuration = Math.max(0, nextStart - previousEnd);
-        const minDuration = availableDuration > 0 ? Math.min(0.1, availableDuration) : 0;
-        const startUpper = Math.max(previousEnd, nextStart - minDuration);
-        let start = directorTimelineClampSeconds(segment.start, previousEnd, startUpper);
-        const endLower = Math.min(nextStart, start + minDuration);
-        let end = directorTimelineClampSeconds(segment.end, endLower, nextStart);
-        if (end < endLower) end = endLower;
-        if (end > nextStart) end = nextStart;
-        segment.start = directorTimelineRoundSeconds(start);
-        segment.end = directorTimelineRoundSeconds(end);
-        segment.unit = 'seconds';
+        return CANVAS_TIMELINE_CONTEXT.directorTimelineConstrainSegmentTimes?.(director, index);
     }
 
     function updateDirectorTimelineParam(nodeId, key, value, inputType) {
-        const node = getNode(nodeId);
-        if (!isDirectorTimelineNode(node) || !key || isNodeLocked(node)) return;
-        pushHistoryBatch(`director:${nodeId}:${key}`, 'Edit Director Timeline');
-        const director = normalizeDirectorTimelineForNode(node);
-        if (!director) return;
-        if (inputType === 'number' || ['width', 'height', 'fps', 'duration'].includes(key)) {
-            const parsed = Number(value);
-            director[key] = Number.isFinite(parsed) ? parsed : value;
-        } else {
-            director[key] = value;
-        }
-        Object.assign(node, buildDirectorTimelineStatePatch(node, {
-            directorPatch: directorTimelineNormalizeTimeline(director)
-        }));
-        updateDirectorStatus(node);
-        mutate({ inspector: selectedNodeId === nodeId });
+        return CANVAS_TIMELINE_CONTEXT.updateDirectorTimelineParam?.(nodeId, key, value, inputType);
     }
 
     function updateDirectorTimelineSegmentParam(nodeId, index, key, value, inputType) {
-        const node = getNode(nodeId);
-        if (!isDirectorTimelineNode(node) || !key || isNodeLocked(node)) return;
-        const director = normalizeDirectorTimelineForNode(node);
-        if (!director || !Array.isArray(director.segments) || !director.segments[index]) return;
-        pushHistoryBatch(`director:${nodeId}:segment:${index}:${key}`, 'Edit Director shot');
-        const segment = Object.assign({}, director.segments[index]);
-        if (['start', 'end'].includes(key) || inputType === 'number') {
-            const parsed = Number(value);
-            segment[key] = Number.isFinite(parsed) ? parsed : value;
-        } else if (key === 'inherit_previous_tail') {
-            const images = Array.isArray(segment.images) ? segment.images.slice(0, 9).map(item => Object.assign({}, item)) : [];
-            const explicitImages = images.filter(item => item.source_ref !== DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
-            if (value && segment.type === 'flf' && explicitImages.length) segment.type = 'fmlf';
-            if (!value && segment.type === 'fmlf' && explicitImages.length <= 1) segment.type = 'flf';
-            segment.images = value
-                ? [{ source_ref: DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF, role: 'first_frame' }, ...explicitImages]
-                : explicitImages;
-        } else if (key === 'image_ref' || /^image_ref_[1-9]$/.test(key)) {
-            const currentImages = Array.isArray(segment.images) ? segment.images.slice(0, 9).map(item => Object.assign({}, item)) : [];
-            const inherited = currentImages.some(item => item.source_ref === DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
-            const images = currentImages.filter(item => item.source_ref !== DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
-            const slotIndex = key === 'image_ref'
-                ? 0
-                : Math.max(0, Math.min(8, Number(String(key).split('_').pop() || 1) - 1));
-            const roleForIndex = (imageIndex) => {
-                if (segment.type === 'fmlf') return imageIndex === 1 ? 'last_frame' : 'first_frame';
-                if (segment.type === 'ref') return 'reference';
-                return 'first_frame';
-            };
-            while (images.length <= slotIndex) images.push({ source_ref: '', role: roleForIndex(images.length) });
-            images[slotIndex] = Object.assign({}, images[slotIndex], {
-                source_ref: value || '',
-                role: roleForIndex(slotIndex)
-            });
-            const explicitImages = images.filter(item => item.source_ref);
-            segment.images = inherited
-                ? [{ source_ref: DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF, role: 'first_frame' }, ...explicitImages]
-                : explicitImages;
-            ['image_ref', 'image_ref_1', 'image_ref_2', 'image_ref_3', 'image_ref_4', 'image_ref_5', 'image_ref_6', 'image_ref_7', 'image_ref_8', 'image_ref_9'].forEach((refKey) => {
-                delete segment[refKey];
-            });
-        } else if (key === 'audio_ref') {
-            segment.audio = value ? [{ source_ref: value, role: 'voice' }] : [];
-        } else if (key === 'video_ref') {
-            segment.video = value ? [{
-                source_ref: value,
-                role: value === DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF ? 'previous_result' : 'reference'
-            }] : [];
-        } else {
-            segment[key] = value;
-        }
-        director.segments[index] = segment;
-        if (key === 'start' || key === 'end') directorTimelineConstrainSegmentTimes(director, index);
-        Object.assign(node, buildDirectorTimelineStatePatch(node, {
-            directorPatch: directorTimelineNormalizeTimeline(director)
-        }));
-        updateDirectorStatus(node);
-        mutate({ inspector: selectedNodeId === nodeId });
+        return CANVAS_TIMELINE_CONTEXT.updateDirectorTimelineSegmentParam?.(nodeId, index, key, value, inputType);
     }
 
     function addDirectorTimelineSegment(node) {
-        if (!isDirectorTimelineNode(node) || isNodeLocked(node)) return;
-        pushHistory('Add Director shot');
-        const director = normalizeDirectorTimelineForNode(node);
-        const segments = Array.isArray(director.segments) ? director.segments : [];
-        const last = segments[segments.length - 1] || { end: 0 };
-        const start = Number(last.end || 0);
-        const end = Math.max(start + 2, start + 0.1);
-        segments.push({
-            id: uid('shot'),
-            start,
-            end,
-            unit: 'seconds',
-            type: 't2v',
-            prompt: '',
-            images: [],
-            audio: [],
-            video: []
-        });
-        director.segments = segments;
-        Object.assign(node, buildDirectorTimelineStatePatch(node, {
-            directorPatch: directorTimelineNormalizeTimeline(director)
-        }));
-        updateDirectorStatus(node);
-        mutate({ inspector: selectedNodeId === node.id });
+        return CANVAS_TIMELINE_CONTEXT.addDirectorTimelineSegment?.(node);
     }
 
     function removeDirectorTimelineSegment(node, index) {
-        if (!isDirectorTimelineNode(node) || isNodeLocked(node)) return;
-        const director = normalizeDirectorTimelineForNode(node);
-        if (!director || !Array.isArray(director.segments) || director.segments.length <= 1) return;
-        pushHistory('Delete Director shot');
-        director.segments.splice(index, 1);
-        Object.assign(node, buildDirectorTimelineStatePatch(node, {
-            directorPatch: directorTimelineNormalizeTimeline(director)
-        }));
-        updateDirectorStatus(node);
-        mutate({ inspector: selectedNodeId === node.id });
+        return CANVAS_TIMELINE_CONTEXT.removeDirectorTimelineSegment?.(node, index);
     }
 
     function moveDirectorTimelineSegment(node, index, delta) {
-        if (!isDirectorTimelineNode(node) || isNodeLocked(node)) return;
-        const director = normalizeDirectorTimelineForNode(node);
-        if (!director || !Array.isArray(director.segments)) return;
-        const nextIndex = index + delta;
-        if (index < 0 || nextIndex < 0 || index >= director.segments.length || nextIndex >= director.segments.length) return;
-        pushHistory('Move Director shot');
-        const [segment] = director.segments.splice(index, 1);
-        director.segments.splice(nextIndex, 0, segment);
-        Object.assign(node, buildDirectorTimelineStatePatch(node, {
-            directorPatch: directorTimelineNormalizeTimeline(director)
-        }));
-        updateDirectorStatus(node);
-        mutate({ inspector: selectedNodeId === node.id });
+        return CANVAS_TIMELINE_CONTEXT.moveDirectorTimelineSegment?.(node, index, delta);
     }
 
     function copyDirectorTimelineOutput(node) {
-        const payload = directorTimelinePayload(node);
-        const text = payload?.prompt_override || '';
-        if (!text) {
-            showToast('Director output is empty.');
-            return;
-        }
-        navigator.clipboard?.writeText(text).then(() => {
-            showToast('Director prompt_override copied.');
-        }).catch(() => {
-            showToast(text);
-        });
+        return CANVAS_TIMELINE_CONTEXT.copyDirectorTimelineOutput?.(node);
     }
 
     function addMaskNode(world, options) {
-        if (!options || options.history !== false) pushHistory('Add advanced masking node');
-        const node = buildMaskNode(world, options);
-        placeNodeAvoidingOverlap(node, world);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        mutate();
-        showToast(t('Advanced Masking node added', '已添加高级遮罩节点'));
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addMaskNode(world, options);
     }
 
     function addSam3VideoMaskNode(world, options) {
@@ -22541,371 +17851,59 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function addDirectorTimelineNode(world, options) {
-        if (typeof directorTimelineCreateNode !== 'function') {
-            showToast('Director Timeline canvas node is not loaded.');
-            return null;
-        }
-        const opts = options || {};
-        const node = directorTimelineCreateNode(world || viewportCenterWorld(), Object.assign({}, opts, {
-            render: false,
-            toast: false
-        }), DIRECTOR_TIMELINE_NODE_CONTEXT);
-        if (!node) return null;
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        selectedGroupId = null;
-        if (opts.render !== false) mutate();
-        if (opts.toast !== false) showToast(autoMessage ? `${node.title || 'Director Timeline'} node added, ${autoMessage}` : t('Director Timeline node added', '已添加导演时间轴节点'));
-        return node;
+        return CANVAS_TIMELINE_CREATION_CONTROLLER.addDirectorTimelineNode(world, options);
     }
 
     function getTranslateCacheKey(target, key) {
-        return `${target || 'text'}:${key || ''}`;
+        return TRANSLATION_CONTROLLER?.getTranslateCacheKey?.(target, key) || `${target || 'text'}:${key || ''}`;
     }
 
     function rememberTranslation(node, target, key, entry) {
-        if (!node || !entry) return;
-        const cacheKey = getTranslateCacheKey(target, key);
-        const bucket = getTranslationCacheBucket(node, target, key) || { entries: [] };
-        const entries = Array.isArray(bucket.entries) ? bucket.entries.slice() : [];
-        const existingIndex = entries.findIndex(item => item && item.before === entry.before);
-        if (existingIndex >= 0) entries.splice(existingIndex, 1);
-        entries.unshift(entry);
-        Object.assign(node, buildTranslationStatePatch(node, {
-            translationCachePatch: {
-                [cacheKey]: {
-                    entries: entries.slice(0, 24),
-                    updated_at: nowIso()
-                }
-            }
-        }));
+        return TRANSLATION_CONTROLLER?.rememberTranslation?.(node, target, key, entry);
     }
 
     function setTranslatedFieldValue(node, target, key, value, field) {
-        if (!node) return false;
-        if (target === 'node-param') {
-            updateNodeParam(node.id, key, value, 'textarea');
-        } else if (target === 'vlm-param') {
-            updateVlmParam(node.id, key || 'prompt', value, 'textarea');
-        } else {
-            updateTextNodeValue(node.id, value);
-        }
-        if (field) field.value = value;
-        return true;
+        return TRANSLATION_CONTROLLER?.setTranslatedFieldValue?.(node, target, key, value, field) || false;
     }
 
-    function readTagCartFieldValue(node, target, key, field) {
-        if (!node) return String(field?.value || '');
-        if (target === 'node-param') {
-            return String(node.params?.[key] ?? field?.value ?? '');
-        }
-        if (target === 'vlm-param') {
-            return String(node.params?.[key || 'prompt'] ?? field?.value ?? '');
-        }
-        return String(getNodeTextOutput(node) || field?.value || '');
+    function readTagCartFieldValue(...args) {
+        return CANVAS_TAG_CART_CONTROLLER.readTagCartFieldValue(...args);
     }
 
-    async function openTagCartForField(node, button, options) {
-        if (!node || !button || button.disabled || isNodeLocked(node)) return;
-        const wrap = button.closest('.sai-translate-wrap');
-        const field = options?.field || (wrap ? wrap.querySelector('textarea') : null);
-        if (!field || field.readOnly || field.disabled) return;
-        const ready = await ensureWorkbenchLazyRuntime(
-            'tagCart',
-            () => typeof window.SimpAITagCartAdapter?.open === 'function',
-            t('Loading Tag Cart...', '正在加载标签选择器...'),
-            t('Tag Cart is not ready.', '标签选择器还未就绪。')
-        );
-        if (!ready) return;
-        const adapter = window.SimpAITagCartAdapter;
-        if (!adapter || typeof adapter.open !== 'function') {
-            showToast(t('Tag Cart is not ready.', '标签选择器还未就绪。'));
-            return;
-        }
-        const target = button.getAttribute('data-translate-target') || 'text-value';
-        const key = button.getAttribute('data-translate-key') || '';
-        const targetKind = key === 'negative_prompt' ? 'negative' : 'positive';
-        const baseText = readTagCartFieldValue(getNode(node.id) || node, target, key, field);
-        adapter.open({
-            action: 'append',
-            targetKind,
-            anchor: options?.anchor || button.getBoundingClientRect(),
-            baseText,
-            container: root,
-            target: {
-                getBaseText: () => baseText,
-                getText: () => readTagCartFieldValue(getNode(node.id) || node, target, key, field),
-                setText: (nextValue, meta) => {
-                    const latest = getNode(node.id) || node;
-                    if (!latest) return false;
-                    const ok = setTranslatedFieldValue(latest, target, key, nextValue, field);
-                    renderAll({ inspector: false });
-                    if (!meta?.auto) showToast(t('Tags inserted.', '标签已发送到提示词。'));
-                    return ok;
-                }
-            }
-        });
+    async function openTagCartForField(...args) {
+        return CANVAS_TAG_CART_CONTROLLER.openTagCartForField(...args);
     }
 
-    async function openTagCartForNode(node, button, options) {
-        if (!node || node.type !== 'tag_cart' || isNodeLocked(node)) return;
-        const ready = await ensureWorkbenchLazyRuntime(
-            'tagCart',
-            () => typeof window.SimpAITagCartAdapter?.open === 'function',
-            t('Loading Tag Cart...', '正在加载标签选择器...'),
-            t('Tag Cart is not ready.', '标签选择器还未就绪。')
-        );
-        if (!ready) return;
-        const adapter = window.SimpAITagCartAdapter;
-        if (!adapter || typeof adapter.open !== 'function') {
-            showToast(t('Tag Cart is not ready.', '标签选择器还未就绪。'));
-            return;
-        }
-        const params = node.params || {};
-        const source = getTextNodeInputSource(node);
-        const baseText = source ? String(getNodeTextOutput(source) || '') : '';
-        const nodeEl = nodesLayer?.querySelector(`[data-node-id="${cssEscape(node.id)}"]`);
-        const inlineHost = nodeEl?.querySelector('[data-tag-cart-inline-host]') || null;
-        inlineHost?.querySelectorAll('.sai-tag-cart-inline-reopen').forEach(item => item.remove());
-        const sizePatch = buildTagCartSizePatch(node);
-        if (Object.keys(sizePatch).length) {
-            Object.assign(node, sizePatch);
-            if (nodeEl) {
-                nodeEl.style.width = `${node.w}px`;
-                nodeEl.style.minHeight = `${node.h}px`;
-            }
-            scheduleSave();
-            renderEdges();
-        }
-        const readCurrent = () => {
-            const latest = getNode(node.id) || node;
-            const current = String(latest.text?.value || '');
-            if (current) return current;
-            const latestSource = getTextNodeInputSource(latest);
-            return latestSource ? String(getNodeTextOutput(latestSource) || '') : '';
-        };
-        const ok = adapter.open({
-            action: params.action === 'replace' ? 'replace' : 'append',
-            targetKind: 'positive',
-            anchor: button?.getBoundingClientRect ? button.getBoundingClientRect() : null,
-            inlineContainer: inlineHost,
-            inlineHeight: 520,
-            onClose: () => {
-                if (activeInlineTagCartNodeId === node.id) activeInlineTagCartNodeId = '';
-                const latestEl = nodesLayer?.querySelector(`[data-node-id="${cssEscape(node.id)}"]`);
-                if (latestEl) {
-                    latestEl.__simpaiRenderKey = undefined;
-                    renderNodes();
-                    renderEdges();
-                    renderMinimap();
-                }
-            },
-            baseText,
-            target: {
-                getBaseText: () => {
-                    const latest = getNode(node.id) || node;
-                    const latestSource = getTextNodeInputSource(latest);
-                    return latestSource ? String(getNodeTextOutput(latestSource) || '') : baseText;
-                },
-                getText: readCurrent,
-                setText: (nextValue, meta) => {
-                    const latest = getNode(node.id) || node;
-                    if (!latest || isNodeLocked(latest)) return false;
-                    pushHistoryBatch(`tag-cart:${latest.id}:text`, 'Edit Tag Cart output');
-                    Object.assign(latest, buildTagCartStatePatch(latest, {
-                        textPatch: {
-                            value: String(nextValue || ''),
-                            updated_at: nowIso()
-                        },
-                        paramsPatch: {
-                            action: meta?.action || latest.params?.action || 'append',
-                            target_kind: 'positive'
-                        }
-                    }));
-                    scheduleSave();
-                    syncTextOutputDom(latest.id, String(nextValue || ''));
-                    refreshTextMergeDependents(latest.id);
-                    if (nodesLayer) {
-                        const latestEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(latest.id)}"]`);
-                        if (latestEl) latestEl.__simpaiRenderKey = nodeRenderKey(latest);
-                    }
-                    renderEdges();
-                    renderInspector();
-                    renderStatus();
-                    renderMinimap();
-                    showToast(source ? t('Tags inserted into Tag Cart node output.', '标签已写入标签选择器节点输出。') : t('Tags inserted.', '标签已插入。'));
-                    return true;
-                }
-            }
-        });
-        if (ok && inlineHost) activeInlineTagCartNodeId = node.id;
-        if (!options?.restore && ok) renderEdges();
+    async function openTagCartForNode(...args) {
+        return CANVAS_TAG_CART_CONTROLLER.openTagCartForNode(...args);
+    }
+
+    function handleTagCartClick(...args) {
+        return CANVAS_TAG_CART_CONTROLLER.handleTagCartClick(...args);
+    }
+
+    function bindInspectorTagCartEvents(...args) {
+        return CANVAS_TAG_CART_CONTROLLER.bindInspectorTagCartEvents?.(...args) || false;
     }
 
     function syncTextOutputDom(nodeId, value) {
-        const nodeEl = nodesLayer?.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
-        if (!nodeEl) return;
-        const field = nodeEl.querySelector('[data-text-value]');
-        if (field && field.value !== String(value || '')) field.value = String(value || '');
+        return CANVAS_TEXT_NODE_RENDERER?.syncTextOutputDom?.(nodeId, value);
     }
 
     async function runTranslationNode(node) {
-        if (!node || node.type !== 'translation' || isNodeLocked(node)) return { ok: false, error: 'translation node is unavailable' };
-        const source = getTextNodeInputSource(node);
-        const text = String(source ? getNodeTextOutput(source) : (node.input_text || '')).trim();
-        if (!text) {
-            showToast('Translation node has no input text.');
-            return { ok: false, error: 'Translation node has no input text.' };
-        }
-        pushHistoryBatch(`translation:${node.id}:run`, 'Run translation node');
-        Object.assign(node, buildTranslationStatePatch(node, {
-            status: buildTranslationStatus('running', 'Translating...')
-        }));
-        mutate();
-        try {
-            const result = await requestTranslation(text, {
-                direction: node.params?.direction || 'toggle',
-                method: node.params?.method || ''
-            });
-            if (!result?.ok || result.state === 'failed') {
-                Object.assign(node, buildTranslationStatePatch(node, {
-                    status: buildTranslationStatus('failed', result?.details || result?.error || 'Translation failed.')
-                }));
-                showToast(`Translation failed: ${node.status.message}`);
-                mutate();
-                return { ok: false, error: node.status.message };
-            }
-            const translated = String(result.translated_text || '').trim();
-            const translatedAt = nowIso();
-            Object.assign(node, buildTranslationStatePatch(node, {
-                textPatch: { value: translated, updated_at: translatedAt },
-                status: buildTranslationStatus('finished', `Translated${result.method ? ` with ${result.method}` : ''}.`)
-            }));
-            rememberTranslation(node, 'text-value', '', {
-                before: text,
-                after: translated,
-                method: result.method || '',
-                direction: result.direction || node.params?.direction || 'toggle',
-                translated_at: translatedAt
-            });
-            mutate();
-            return { ok: true, text: translated };
-        } catch (err) {
-            Object.assign(node, buildTranslationStatePatch(node, {
-                status: buildTranslationStatus('failed', err?.message || String(err))
-            }));
-            showToast(`Translation failed: ${node.status.message}`);
-            mutate();
-            return { ok: false, error: node.status.message };
-        }
+        return TRANSLATION_CONTROLLER?.runTranslationNode?.(node) || { ok: false, error: 'translation unavailable' };
     }
 
     async function handleTranslateButton(node, button) {
-        if (!node || !button || button.disabled || isNodeLocked(node)) return;
-        const wrap = button.closest('.sai-translate-wrap');
-        const field = wrap ? wrap.querySelector('textarea') : null;
-        if (!field || field.readOnly || field.disabled) return;
-        const target = button.getAttribute('data-translate-target') || 'text-value';
-        const key = button.getAttribute('data-translate-key') || '';
-        const text = String(field.value || '');
-        if (!text.trim()) {
-            showToast(t('No text to translate.', '没有可翻译的文本'));
-            return;
-        }
-        const cacheKey = getTranslateCacheKey(target, key);
-        const cached = getTranslationCacheEntry(node, target, key, text);
-        if (cached && text === cached.after) {
-            pushHistoryBatch(`translate:${node.id}:${cacheKey}`, 'Restore source text');
-            setTranslatedFieldValue(node, target, key, cached.before || '', field);
-            showToast('Restored source text');
-            renderAll({ inspector: false });
-            return;
-        }
-        if (cached && text === cached.before) {
-            pushHistoryBatch(`translate:${node.id}:${cacheKey}`, 'Apply cached translation');
-            setTranslatedFieldValue(node, target, key, cached.after || '', field);
-            showToast(`Applied cached translation${cached.method ? ` (${cached.method})` : ''}`);
-            renderAll({ inspector: false });
-            return;
-        }
-        const cache = node.translation_cache?.[cacheKey];
-        if (cache && text === cache.after) {
-            pushHistoryBatch(`translate:${node.id}:${cacheKey}`, 'Restore translated text');
-            setTranslatedFieldValue(node, target, key, cache.before || '', field);
-            showToast(t('Restored pre-translation text.', '已回退到翻译前文本'));
-            renderAll({ inspector: false });
-            return;
-        }
-        button.disabled = true;
-        button.classList.add('is-busy');
-        try {
-            const result = await requestTranslation(text, { direction: 'toggle' });
-            if (!result?.ok || result.state === 'failed') {
-                showToast(t('Translation failed: {error}', '翻译失败：{error}').replace('{error}', result?.details || result?.error || 'unknown error'));
-                return;
-            }
-            const translated = String(result.translated_text || '').trim();
-            if (!translated) {
-                showToast(t('Translation result is empty.', '翻译结果为空'));
-                return;
-            }
-            pushHistoryBatch(`translate:${node.id}:${cacheKey}`, 'Translate text');
-            rememberTranslation(node, target, key, {
-                before: text,
-                after: translated,
-                method: result.method || '',
-                direction: result.direction || 'toggle',
-                translated_at: nowIso()
-            });
-            setTranslatedFieldValue(node, target, key, translated, field);
-            showToast(t('Translated and replaced{method}', '已翻译并替换{method}').replace('{method}', result.method ? ` (${result.method})` : ''));
-            renderAll({ inspector: false });
-        } finally {
-            button.disabled = false;
-            button.classList.remove('is-busy');
-        }
+        return TRANSLATION_CONTROLLER?.handleTranslateButton?.(node, button);
     }
 
     function addCompareNode(world, options) {
-        const opts = options || {};
-        if (opts.history !== false) pushHistory('Add compare node');
-        const node = compareNodeCreateNode(world, opts, COMPARE_NODE_CONTEXT);
-        placeNodeAvoidingOverlap(node, world, opts);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        if (opts.render !== false) mutate();
-        if (opts.toast !== false) showToast(autoMessage ? t('Compare node added, {message}', 'Compare 节点已添加，{message}').replace('{message}', autoMessage) : t('Compare node added', 'Compare 节点已添加'));
-        return node;
+        return CANVAS_COMPARE_CREATION_CONTROLLER.addCompareNode(world, options);
     }
 
     function createCompareNodeFromSources(sources) {
-        const pair = (sources || []).filter(isImageCompareSource).slice(0, 2);
-        if (pair.length < 2) {
-            showToast('Select two Image or image Result nodes first.');
-            return null;
-        }
-        const rectA = getNodeRect(pair[0]);
-        const rectB = getNodeRect(pair[1]);
-        const size = defaultNodeSize('compare');
-        const base = {
-            x: Math.round(Math.max(rectA.x + rectA.w, rectB.x + rectB.w) + 80),
-            y: Math.round((Math.min(rectA.y, rectB.y) + Math.max(rectA.y + rectA.h, rectB.y + rectB.h)) / 2 - size.h / 2)
-        };
-        pushHistory('Create compare node');
-        const node = addCompareNode(base, { history: false, render: false, toast: false, title: `${pair[0].title || 'Image A'} / ${pair[1].title || 'Image B'}` });
-        createCompareImageEdge(pair[0].id, node.id, 'a', { silent: true });
-        createCompareImageEdge(pair[1].id, node.id, 'b', { silent: true });
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        mutate();
-        showToast(t('Compare node created from selected images.', 'Compare 节点已从选中图片创建'));
-        return node;
+        return CANVAS_COMPARE_CREATION_CONTROLLER.createCompareNodeFromSources(sources);
     }
 
     function addTimelineNode(world, options) {
@@ -22929,16 +17927,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function addManualOutputNode(world) {
-        pushHistory('Add output node');
-        const node = buildManualOutputNode(world);
-        placeNodeAvoidingOverlap(node, world);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedEdgeId = null;
-        mutate();
-        showToast(autoMessage ? t('Manual output node added, {message}', '已添加手动输出节点，{message}').replace('{message}', autoMessage) : t('Manual output node added', '已添加手动输出节点'));
-        return node;
+        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addManualOutputNode(world);
     }
 
     function createUploadEdge(fromId, toId, slot, options) {
@@ -23018,293 +18007,43 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function openWorkbenchMissingModelModal(node) {
-        const status = node?.model_status || {};
-        const rows = Array.isArray(status.missing_models) ? status.missing_models : [];
-        const presetName = status.checked_preset || node?.preset?.name || node?.title || 'Preset';
-        const canDownload = status.can_download !== false;
-        const existing = document.querySelector('.sai-workbench-missing-model-modal');
-        if (existing) existing.remove();
-        const emptyLabel = t('No missing model rows were returned.', '没有返回缺失模型条目。');
-        const modal = document.createElement('div');
-        modal.className = 'sai-canvas-modal sai-workbench-missing-model-modal';
-        modal.classList.toggle('theme-dark', detectWorkbenchTheme() === 'dark');
-        modal.innerHTML = `
-<div class="sai-canvas-modal-panel sai-workbench-missing-model-panel">
-  <div class="sai-canvas-modal-head">
-    <span>${escapeHtml(t('Missing Models', '缺失模型'))} - ${escapeHtml(presetName)}</span>
-    <button type="button" data-modal-close title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
-  </div>
-  <div class="sai-workbench-missing-model-body">
-    <div class="sai-inspector-note">${escapeHtml(status.message || t('{count} required model file(s) are missing.', '缺少 {count} 个所需模型文件。').replace('{count}', rows.length))}</div>
-    <div class="sai-workbench-missing-model-list">${rows.length ? rows.map((item, index) => renderWorkbenchMissingModelRow(item, index, canDownload)).join('') : `<p>${escapeHtml(emptyLabel)}</p>`}</div>
-  </div>
-  <div class="sai-canvas-modal-foot">
-    <button type="button" data-modal-close>${escapeHtml(t('Close', '关闭'))}</button>
-    <button type="button" data-download-all ${canDownload && rows.length ? '' : 'disabled'}><i class="fa-solid fa-cloud-arrow-down"></i><span>${escapeHtml(t('Download All', '全部下载'))}</span></button>
-  </div>
-</div>`;
-        ensureWorkbenchFormFieldNames(modal, 'workbench_missing_models');
-        (root || document.body).appendChild(modal);
-        modal.addEventListener('click', async (evt) => {
-            if (evt.target === modal || evt.target.closest('[data-modal-close]')) {
-                modal.remove();
-                return;
-            }
-            const one = evt.target.closest('[data-download-one]');
-            if (one) {
-                const item = rows[Number(one.getAttribute('data-download-one')) || 0];
-                if (item) await queuePresetModelDownloads(node, { missingModel: item });
-                return;
-            }
-            if (evt.target.closest('[data-download-all]')) {
-                await queuePresetModelDownloads(node);
-            }
-        });
-        return true;
+        return CANVAS_MISSING_MODEL_DIALOG_CONTROLLER.openWorkbenchMissingModelModal(node);
     }
 
     function renderWorkbenchMissingModelRow(item, index, canDownload) {
-        const status = item.download_status || {};
-        const statusText = status.state || status.status || '';
-        const path = [item.cata, item.path_file].filter(Boolean).join(' / ');
-        const roleLabel = modelStatusRoleLabel(item.role || '');
-        return `
-<div class="sai-workbench-missing-model-row">
-  <div>
-    <b>${escapeHtml(item.path_file || 'model')}</b>
-    <code>${escapeHtml(path)}</code>
-    <small>${escapeHtml([roleLabel, item.human_size, statusText].filter(Boolean).join(' · '))}</small>
-  </div>
-  <button type="button" data-download-one="${index}" ${canDownload ? '' : 'disabled'} title="${escapeHtml(t('Download this model', '下载这个模型'))}"><i class="fa-solid fa-download"></i><span>${escapeHtml(t('Download', '下载'))}</span></button>
-</div>`;
+        return CANVAS_MISSING_MODEL_DIALOG_CONTROLLER.renderWorkbenchMissingModelRow(item, index, canDownload);
     }
 
     function modelStatusRoleLabel(role) {
-        const key = String(role || '').trim();
-        if (key === 'Base Model') return t('Base Model', '基础模型');
-        if (key === 'Refiner') return t('Refiner', '细化模型');
-        if (key === 'Upscale Model') return t('Upscale Model', '放大模型');
-        if (key === 'LoRA') return 'LoRA';
-        if (key === 'CLIP' || key === 'VAE') return key;
-        return key;
+        return CANVAS_MISSING_MODEL_DIALOG_CONTROLLER.modelStatusRoleLabel(role);
     }
 
     async function checkPresetModelStatus(node) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return { ok: false, error: 'preset node is unavailable' };
-        Object.assign(node, buildPresetModelStatusPatch(node, {
-            statusPatch: buildPresetModelCheckingStatus(t('Checking required model files...', '正在检查所需模型文件...'))
-        }));
-        renderAll({ inspector: false });
-        const response = await sendCanvasPresetModelStatusRequest(node);
-        const current = getNode(node.id);
-        if (current) {
-            applyPresetModelStatus(current, response);
-            mutate({ inspector: false });
-        }
-        return response;
+        return CANVAS_PRESET_MODEL_STATUS_CONTROLLER.checkPresetModelStatus(node);
     }
 
     function shouldAutoCheckPresetModels(node) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return false;
-        const state = presetModelStatusState(node);
-        if (!['unknown', 'error'].includes(state)) return false;
-        const requirements = node.model_requirements || {};
-        const hasList = Array.isArray(requirements.model_list) && requirements.model_list.length > 0;
-        return hasList || !!requirements.has_model_probe;
+        return CANVAS_PRESET_MODEL_STATUS_CONTROLLER.shouldAutoCheckPresetModels(node);
     }
 
     async function queuePresetModelDownloads(node, options) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return { ok: false, error: 'preset node is unavailable' };
-        Object.assign(node, buildPresetModelStatusPatch(node, {
-            statusPatch: buildPresetModelCheckingStatus(t('Queuing missing model downloads...', '正在加入缺失模型下载任务...'))
-        }));
-        renderAll({ inspector: false });
-        const response = await sendCanvasPresetModelDownloadsRequest(node, options || {});
-        const current = getNode(node.id);
-        if (current) {
-            applyPresetModelStatus(current, response);
-            if (response?.ok && response.state === 'queued') {
-                Object.assign(current, buildPresetModelStatusPatch(current, {
-                    statusPatch: {
-                        state: 'queued',
-                        message: response.message || t('Queued {count} model download task(s).', '已加入 {count} 个模型下载任务。').replace('{count}', response.queued_count || 0)
-                    }
-                }));
-            }
-            mutate({ inspector: false });
-        }
-        if (response?.ok) {
-            const latest = getNode(node.id) || node;
-            showToast(response.message || t('Model downloads queued.', '模型下载任务已加入。'));
-            openMainMissingModelListForPreset(latest);
-            schedulePresetModelListRefreshes(node.id, latest);
-        } else {
-            showToast(t('Model download queue failed: {error}', '模型下载任务加入失败：{error}').replace('{error}', response?.error || response?.details || 'unknown error'));
-        }
-        return response;
+        return CANVAS_PRESET_MODEL_STATUS_CONTROLLER.queuePresetModelDownloads(node, options);
     }
 
     async function handlePresetModelAction(node) {
-        if (node?.source?.kind === 'onboarding_model_status_example') {
-            const state = presetModelStatusState(node);
-            showToast(t(
-                'Teaching example: this shows the {state} model state without contacting the backend.',
-                '教学示例：这里展示 {state} 模型状态，不会联系后端。'
-            ).replace('{state}', state || 'unknown'), 3200);
-            return { ok: true, ready: state === 'ready', state, teaching: true };
-        }
-        const status = await checkPresetModelStatus(node);
-        if (!status?.ok) {
-            showToast(t('Model check failed: {error}', '模型检查失败：{error}').replace('{error}', status?.error || status?.details || 'unknown error'));
-            return status;
-        }
-        if (status.ready) {
-            showToast(status.model_config_gate
-                ? t('Selected Models Config files are available.', '已选择的 Models Config 模型文件可用。')
-                : t('Preset models are ready.', 'Preset 所需模型已可用。'));
-            return status;
-        }
-        openMainMissingModelListForPreset(getNode(node.id) || node);
-        const count = Number(status.missing_count || 0);
-        showToast(t('Preset is missing {count} model file(s). Use the model list to download one or all.', 'Preset 缺少 {count} 个模型文件，可在模型列表中下载。').replace('{count}', count));
-        return status;
+        return CANVAS_PRESET_MODEL_STATUS_CONTROLLER.handlePresetModelAction(node);
     }
 
     function openVlmMissingModelModal(node) {
-        const status = node?.vlm_model_status || {};
-        const rows = Array.isArray(status.missing_models) ? status.missing_models : [];
-        const title = status.version || node?.params?.version || 'VLM';
-        const canDownload = status.can_download !== false;
-        const existing = document.querySelector('.sai-workbench-missing-model-modal');
-        if (existing) existing.remove();
-        const modal = document.createElement('div');
-        modal.className = 'sai-canvas-modal sai-workbench-missing-model-modal';
-        modal.classList.toggle('theme-dark', detectWorkbenchTheme() === 'dark');
-        modal.innerHTML = `
-<div class="sai-canvas-modal-panel sai-workbench-missing-model-panel">
-  <div class="sai-canvas-modal-head">
-    <span>VLM Missing Models - ${escapeHtml(title)}</span>
-    <button type="button" data-modal-close title="Close"><i class="fa-solid fa-xmark"></i></button>
-  </div>
-  <div class="sai-workbench-missing-model-body">
-    <div class="sai-inspector-note">${escapeHtml(status.message || `${rows.length} VLM model file(s) are missing.`)}</div>
-    <div class="sai-workbench-missing-model-list">${rows.length ? rows.map((item, index) => renderWorkbenchMissingModelRow(item, index, canDownload)).join('') : '<p>No missing model rows were returned.</p>'}</div>
-  </div>
-  <div class="sai-canvas-modal-foot">
-    <button type="button" data-modal-close>Close</button>
-    <button type="button" data-download-all ${canDownload && rows.length ? '' : 'disabled'}><i class="fa-solid fa-cloud-arrow-down"></i><span>Download All</span></button>
-  </div>
-</div>`;
-        ensureWorkbenchFormFieldNames(modal, 'workbench_vlm_missing_models');
-        document.body.appendChild(modal);
-        modal.addEventListener('click', async (evt) => {
-            if (evt.target === modal || evt.target.closest('[data-modal-close]')) {
-                modal.remove();
-                return;
-            }
-            const one = evt.target.closest('[data-download-one]');
-            if (one) {
-                const item = rows[Number(one.getAttribute('data-download-one')) || 0];
-                if (item) await queueVlmModelDownloads(node, { missingModel: item });
-                return;
-            }
-            if (evt.target.closest('[data-download-all]')) {
-                await queueVlmModelDownloads(node);
-            }
-        });
+        return CANVAS_MISSING_MODEL_DIALOG_CONTROLLER.openVlmMissingModelModal(node);
     }
 
     async function downloadCanvasAgentModel(version) {
-        const modelVersion = String(version || '').trim();
-        if (!modelVersion) return false;
-        const settings = getCanvasAgentSettings();
-        const node = {
-            type: 'vlm',
-            id: uid('canvas_agent_model_download'),
-            params: modelVersion === 'Custom'
-                ? canvasAgentCustomParamsFromSettings(settings, true)
-                : { version: modelVersion }
-        };
-        let response;
-        try {
-            if (typeof CANVAS_VLM_MODEL_DOWNLOAD_CONTROLLER.startModelDownload === 'function') {
-                response = await CANVAS_VLM_MODEL_DOWNLOAD_CONTROLLER.startModelDownload(node, modelVersion);
-            } else {
-                response = await sendCanvasVlmModelDownloadsRequest(node);
-            }
-        } catch (error) {
-            showToast(t('Model download failed: {error}', '模型下载失败：{error}').replace('{error}', error?.message || String(error || 'unknown error')));
-            return false;
-        }
-        if (!response?.ok) {
-            showToast(t('Model download failed: {error}', '模型下载失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
-            return false;
-        }
-        showToast(response.message || t('Model download queued.', '模型下载任务已加入。'));
-        return true;
+        return CANVAS_VLM_MODEL_DOWNLOAD_CONTROLLER.downloadCanvasAgentModel(version);
     }
 
     async function runMaskNode(node) {
-        if (!node || node.type !== 'mask') return { ok: false, error: 'Advanced Masking node is unavailable' };
-        if (isNodeIgnored(node)) {
-            showToast(t('This Advanced Masking node is marked as skipped.', '这个高级遮罩节点已标记为跳过。'));
-            return { ok: false, error: 'mask node is skipped' };
-        }
-        const edge = project.edges.find(item => item.type === 'image' && item.to === node.id && item.slot === 'source');
-        const source = getNode(node.input_node_id) || getNode(edge?.from);
-        if (!source || !['image', 'result'].includes(source.type)) {
-            showToast(t('Connect a source image/result node first.', '请先连接源图像 / 结果节点。'));
-            return { ok: false, error: 'Connect a source image/result node first.' };
-        }
-        const asset = source.type === 'result' ? getSelectedResultAsset(source) : source.asset;
-        if (!asset) {
-            showToast(t('The connected source has no image asset.', '已连接来源没有图像资源。'));
-            return { ok: false, error: 'The connected source has no image asset.' };
-        }
-        pushHistory('Generate advanced mask');
-        Object.assign(node, buildMaskStatePatch(node, {
-            inputNodeId: source.id,
-            status: buildMaskStatus('running', 'Generating mask...')
-        }));
-        mutate();
-        const response = await sendCanvasGenerateMaskRequest({
-            project_id: project.id || PROJECT_ID,
-            node_id: node.id,
-            asset_source: serializeAssetSourceForRun(source),
-            params: cloneRunValue(node.params || {}, {})
-        });
-        const current = getNode(node.id);
-        if (!current) return response || { ok: false, error: 'mask node was removed' };
-        if (response?.ok) {
-            const generatedAsset = buildGeneratedMaskAsset({
-                assetRef: response.mask || response.asset_ref || {},
-                kind: 'generated_mask',
-                mime: response.mask?.mime || response.asset_ref?.mime || 'image/png',
-                width: response.mask?.width || response.asset_ref?.width || null,
-                height: response.mask?.height || response.asset_ref?.height || null,
-                path: response.mask?.path || response.asset_ref?.path || '',
-                previewUrl: response.mask?.preview_url || response.asset_ref?.preview_url || ''
-            });
-            Object.assign(current, buildMaskStatePatch(current, {
-                asset: generatedAsset,
-                sourcePatch: {
-                    source_node_id: source.id,
-                    mask_model: current.params?.mask_model || ''
-                },
-                status: buildMaskStatus('finished', 'Mask generated.')
-            }));
-            selectedNodeId = current.id;
-            selectedNodeIds = new Set([current.id]);
-            mutate();
-            showToast(t('Mask generated', '遮罩已生成'));
-        } else {
-            Object.assign(current, buildMaskStatePatch(current, {
-                status: buildMaskStatus('failed', response?.details || response?.error || 'Mask generation failed.')
-            }));
-            mutate();
-            showToast(`${t('Mask failed', '遮罩失败')}：${localizeMaskStatus(current.status.message)}`);
-        }
-        return response;
+        return CANVAS_MASK_RUNTIME_CONTROLLER.runMaskNode(node);
     }
 
     function openSam3PointEditor(node) {
@@ -23336,1148 +18075,172 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     async function ensureWorkbenchLazyRuntime(groupName, isReady, loadingMessage, failureMessage) {
-        if (typeof isReady === 'function' && isReady()) return true;
-        if (typeof window.loadSimpleAILazyAssetGroup === 'function') {
-            if (loadingMessage) showToast(loadingMessage);
-            try {
-                await window.loadSimpleAILazyAssetGroup(groupName);
-            } catch (err) {
-                console.warn(`[SimpAI Canvas] Lazy asset group failed: ${groupName}`, err);
-            }
-        }
-        if (typeof isReady === 'function' && isReady()) return true;
-        if (failureMessage) showToast(failureMessage);
-        return false;
+        return CANVAS_LAZY_ASSET_RUNTIME_CONTROLLER.ensureWorkbenchLazyRuntime?.(
+            groupName,
+            isReady,
+            loadingMessage,
+            failureMessage
+        ) ?? false;
     }
 
     async function openPoseStudioEditor(node) {
-        const ready = await ensureWorkbenchLazyRuntime(
-            'poseStudio',
-            () => typeof window.SimpAIPoseStudioEditor?.open === 'function',
-            t('Loading Pose Studio...', '正在加载 Pose Studio...'),
-            t('Pose Studio editor is not loaded.', 'Pose Studio 编辑器尚未加载。')
-        );
-        if (!ready) return null;
-        return poseStudioOpenEditor(node, POSE_STUDIO_NODE_CONTEXT);
+        return CANVAS_SPECIAL_NODE_EDITOR_CONTROLLER.openPoseStudioEditor?.(node) ?? null;
     }
 
     async function openGaussianStudioEditor(node) {
-        const ready = await ensureWorkbenchLazyRuntime(
-            'gaussianStudio',
-            () => typeof window.SimpAIGaussianStudioEditor?.open === 'function',
-            t('Loading Gaussian Studio...', '正在加载 Gaussian Studio...'),
-            t('Gaussian Studio editor is not loaded.', 'Gaussian Studio 编辑器尚未加载。')
-        );
-        if (!ready) return null;
-        return gaussianStudioOpenEditor(node, GAUSSIAN_STUDIO_NODE_CONTEXT);
+        return CANVAS_SPECIAL_NODE_EDITOR_CONTROLLER.openGaussianStudioEditor?.(node) ?? null;
     }
 
     async function openLivePortraitExpressionEditor(node) {
-        const ready = await ensureWorkbenchLazyRuntime(
-            'livePortraitExpression',
-            () => typeof window.SimpAILivePortraitExpressionEditor?.open === 'function',
-            t('Loading LivePortrait Exp...', '正在加载 LivePortrait Exp...'),
-            t('LivePortrait Exp editor is not loaded.', 'LivePortrait Exp 编辑器尚未加载。')
-        );
-        if (!ready) return null;
-        return livePortraitOpenEditor(node, LIVEPORTRAIT_EXPRESSION_NODE_CONTEXT);
+        return CANVAS_SPECIAL_NODE_EDITOR_CONTROLLER.openLivePortraitExpressionEditor?.(node) ?? null;
     }
 
     async function openLivePortraitVideoExpressionPresetEditor(node) {
-        if (!isLivePortraitVideoExpressionPresetNode(node)) return null;
-        if (isNodeLocked(node)) {
-            showToast(t('Node is locked.', '节点已锁定。'));
-            return null;
-        }
-        const ready = await ensureWorkbenchLazyRuntime(
-            'livePortraitExpression',
-            () => typeof window.SimpAILivePortraitExpressionEditor?.open === 'function',
-            t('Loading LivePortrait Video...', '正在加载 LivePortrait Video...'),
-            t('LivePortrait Exp editor is not loaded.', 'LivePortrait Exp 编辑器尚未加载。')
-        );
-        if (!ready) return null;
-        const sourceInfo = livePortraitVideoExpressionSourceInfo(node);
-        if (!sourceInfo.sourceNode || !sourceInfo.src) {
-            showToast(t('Connect a source video first.', '请先连接源视频。'));
-            return null;
-        }
-        const frame = await extractVideoFirstFrameDataUrl(sourceInfo.src);
-        if (!frame?.dataUrl) {
-            showToast(t('Could not read the first frame from this video.', '无法读取这个视频的首帧。'));
-            return null;
-        }
-        const stored = node.liveportrait_video_expression || {};
-        const expressionState = String(node.params?.scene_additional_prompt_2 || stored.expression_state || stored.expression_state_draft || '');
-        const sourceFrameAsset = Object.assign({}, sourceInfo.asset || {}, {
-            kind: 'liveportrait_video_first_frame',
-            mime: 'image/png',
-            width: frame.width,
-            height: frame.height,
-            source_video_node_id: sourceInfo.sourceNode.id
-        });
-        return window.SimpAILivePortraitExpressionEditor.open({
-            title: t('LivePortrait Video', 'LivePortrait 视频表情'),
-            context: 'canvas',
-            exportMode: 'params',
-            projectId: project.id || PROJECT_ID,
-            node,
-            nodeId: node.id,
-            params: stored.params || {},
-            expressionState,
-            sourceDataUrl: frame.dataUrl,
-            sourceSrc: frame.dataUrl,
-            sourceAsset: sourceFrameAsset,
-            sourceAssetSource: serializeAssetSourceForRun(sourceInfo.sourceNode),
-            sourceSize: { width: frame.width, height: frame.height },
-            referenceDataUrl: '',
-            referenceSrc: '',
-            referenceAsset: null,
-            referenceSize: { width: 0, height: 0 },
-            modalMount: canvasOverlayHost(),
-            mountSelector: '#simpai-infinite-canvas-workbench',
-            detectTheme: detectWorkbenchTheme,
-            ensureFormNames: ensureWorkbenchFormFieldNames,
-            onStateChange: (cache) => {
-                const current = getNode(node.id) || node;
-                Object.assign(current, buildLivePortraitVideoExpressionStatePatch(current, {
-                    statePatch: {
-                        params: cache?.params || {},
-                        expression_state_draft: cache?.expression_state || '',
-                        source_node_id: sourceInfo.sourceNode.id,
-                        source_asset: sourceInfo.asset || null,
-                        source_frame_size: { width: frame.width, height: frame.height },
-                        face_selection: cache?.face_selection || {}
-                    },
-                    updatedAt: cache?.updated_at || nowIso()
-                }));
-            },
-            onConfirm: (response) => {
-                pushHistory('Update LivePortrait Video expression params');
-                const current = getNode(node.id) || node;
-                const expression = response?.expression_state || expressionState || '';
-                Object.assign(current, buildNodeParamsPatch(current, {
-                    paramsPatch: { scene_additional_prompt_2: expression }
-                }));
-                Object.assign(current, buildLivePortraitVideoExpressionStatePatch(current, {
-                    statePatch: {
-                        params: response?.params || {},
-                        expression_state: expression,
-                        expression_state_draft: '',
-                        source_node_id: sourceInfo.sourceNode.id,
-                        source_asset: sourceInfo.asset || null,
-                        source_frame_size: { width: frame.width, height: frame.height },
-                        source_face_bbox: response?.source_face_bbox || '',
-                        reference_face_bbox: response?.reference_face_bbox || ''
-                    },
-                    updatedAt: response?.exported_at || nowIso()
-                }));
-                Object.assign(current, buildSpecialNodeStatusPatch(current, {
-                    status: mergeCanvasRunStatus(
-                        current.status,
-                        'ready',
-                        t('Expression params saved.', '表情参数已保存。')
-                    )
-                }));
-                selectedNodeId = current.id;
-                selectedNodeIds = new Set([current.id]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-                mutate({ inspector: true });
-                showToast(t('Expression params saved.', '表情参数已保存。'));
-            }
-        });
+        return CANVAS_LIVEPORTRAIT_VIDEO_EXPRESSION_EDITOR_CONTROLLER.openLivePortraitVideoExpressionPresetEditor(node);
     }
 
     async function openLtx23GuidePresetEditor(node) {
-        if (!isLtx23MultiGuidePresetNode(node)) return null;
-        if (isNodeLocked(node)) {
-            showToast(t('Node is locked.', '节点已锁定。'));
-            return null;
-        }
-        const ready = await ensureWorkbenchLazyRuntime(
-            'ltxGuideEditor',
-            () => typeof window.SimpAILTXGuideEditor?.open === 'function',
-            t('Loading keyframe guides...', '正在加载关键帧引导...'),
-            t('Keyframe guide editor is not loaded.', '关键帧引导编辑器尚未加载。')
-        );
-        if (!ready) return null;
-        const mode = ltx23GuideModeForPreset(node);
-        return window.SimpAILTXGuideEditor.open({
-            title: mode === 'video_extent'
-                ? t('LTX Extent Guides', 'LTX 续写引导')
-                : t('LTX Keyframe Guides', 'LTX 关键帧引导'),
-            context: 'canvas',
-            mode,
-            guideConfig: node.params?.scene_additional_prompt || '',
-            langState: window.simpleaiTopbarSystemParams || { __lang: document.documentElement.lang || 'en' },
-            modalMount: canvasOverlayHost(),
-            onConfirm: (response) => {
-                pushHistory('Update LTX keyframe guides');
-                const current = getNode(node.id) || node;
-                Object.assign(current, buildNodeParamsPatch(current, {
-                    paramsPatch: { scene_additional_prompt: response?.guide_config || '' }
-                }));
-                Object.assign(current, buildLtx23GuidesStatePatch(current, {
-                    statePatch: response?.config || {},
-                    updatedAt: nowIso()
-                }));
-                Object.assign(current, buildSpecialNodeStatusPatch(current, {
-                    status: mergeCanvasRunStatus(
-                        current.status,
-                        'ready',
-                        t('Keyframe guides saved.', '关键帧引导已保存。')
-                    )
-                }));
-                selectedNodeId = current.id;
-                selectedNodeIds = new Set([current.id]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-                mutate({ inspector: true });
-                showToast(t('Keyframe guides saved.', '关键帧引导已保存。'));
-            }
-        });
+        return CANVAS_LTX23_GUIDE_EDITOR_CONTROLLER.openLtx23GuidePresetEditor(node);
     }
 
     async function openMiniMaxH3StoryboardPresetEditor(node) {
-        if (!isMiniMaxH3PresetNode(node)) return null;
-        if (isNodeLocked(node)) {
-            showToast(t('Node is locked.', '节点已锁定。'));
-            return null;
-        }
-        const ready = await ensureWorkbenchLazyRuntime(
-            'h3StoryboardEditor',
-            () => typeof window.SimpAIH3StoryboardEditor?.open === 'function',
-            t('Loading H3 storyboard...', '正在加载 H3 分镜表...'),
-            t('H3 storyboard editor is not loaded.', 'H3 分镜表编辑器尚未加载。')
-        );
-        if (!ready) return null;
-        const options = h3StoryboardOptionsForPreset(node);
-        return window.SimpAIH3StoryboardEditor.open(Object.assign({}, options, {
-            title: t('MiniMax H3 Storyboard', 'MiniMax H3 分镜表'),
-            context: 'canvas',
-            getInventory: () => h3StoryboardInventoryForPreset(getNode(node.id) || node),
-            onAttachMedia: async card => {
-                const result = await attachCharacterMediaToPreset(node.id, card);
-                options.inventory = result.inventory;
-                return result;
-            },
-            prompt: node.params?.prompt || '',
-            storyboardState: h3StoryboardStateForPreset(node),
-            modalMount: canvasOverlayHost(),
-            onRequestMedia: () => {
-                const current = getNode(node.id) || node;
-                selectedNodeId = current.id;
-                selectedNodeIds = new Set([current.id]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-                mutate({ inspector: true });
-                showToast(t('Connect image, video, or audio nodes to the H3 preset.', '\u8bf7\u5c06\u56fe\u7247\u3001\u89c6\u9891\u6216\u97f3\u9891\u8282\u70b9\u8fde\u63a5\u5230 H3 Preset\u3002'));
-            },
-            onOptimize: async (response) => {
-                const current = getNode(node.id) || node;
-                const h3References = h3StoryboardVlmReferencesForPreset(current);
-                const requestedMotionSlot = window.SimpAIH3StoryboardEditor?.preferredStoryboardVideoSlot
-                    ? window.SimpAIH3StoryboardEditor.preferredStoryboardVideoSlot(response?.state, options.inventory)
-                    : '';
-                const motionReference = h3References.find((reference) => reference.kind === 'video' && reference.slot === requestedMotionSlot)
-                    || h3References.find((reference) => reference.kind === 'video' && reference.slot === 'scene_reference_video2')
-                    || h3References.find((reference) => reference.kind === 'video' && reference.slot === 'scene_reference_video')
-                    || h3References.find((reference) => reference.kind === 'video')
-                    || null;
-                const h3ReferenceOptions = {
-                    referenceNodes: h3References
-                        .filter(reference => ['image', 'video'].includes(reference.kind))
-                        .map(reference => reference.node),
-                    referenceEntries: h3References
-                        .filter(reference => ['image', 'video'].includes(reference.kind)),
-                    referenceDescriptors: h3References,
-                    preserveReferenceDuplicates: true,
-                    includeCanvasAgentReferences: false,
-                    referenceImagesOnly: false,
-                    maxReferenceSources: 12,
-                    referenceSummary: h3StoryboardVlmReferenceSummary(h3References, runtimeUiLang(), motionReference?.slot || ''),
-                    motionReferenceToken: motionReference?.token || '',
-                    motionReferenceSlot: motionReference?.slot || ''
-                };
-                if (response?.kind === 'cell') {
-                    const input = String(response?.input || '').trim();
-                    if (!input) return { ok: false, error: t('Selected field context is empty.', '\u5f53\u524d\u683c\u6ca1\u6709\u53ef\u7528\u4e0a\u4e0b\u6587\u3002') };
-                    showToast(t('Editing selected H3 field with LLM...', '\u6b63\u5728\u4fee\u6539 H3 \u5f53\u524d\u683c...'));
-                    const rewritten = await rewriteCanvasAgentPromptWithLlm(input, 'h3 storyboard cell', Object.assign({}, h3ReferenceOptions, {
-                        h3StoryboardCell: true,
-                        cellInstruction: response?.instruction || '',
-                        presetName: current.preset?.name || current.title || '',
-                        userPrompt: response?.user_instruction || input
-                    }));
-                    const cell = String(rewritten?.prompt || '').trim();
-                    if (!rewritten?.ok || !cell) {
-                        const error = rewritten?.error || 'unknown';
-                        showToast(t('H3 field edit failed: {error}', 'H3 \u683c\u5b50\u4fee\u6539\u5931\u8d25\uff1a{error}').replace('{error}', error));
-                        return { ok: false, error };
-                    }
-                    return { ok: true, cell, warning: rewritten?.warning || '' };
-                }
-                const prompt = String(response?.prompt || '').trim();
-                if (!prompt) {
-                    return {
-                        ok: false,
-                        error: t('H3 storyboard prompt is empty.', 'H3 分镜提示词为空。')
-                    };
-                }
-                showToast(t('Optimizing H3 storyboard with LLM...', '正在通过 LLM 优化 H3 分镜表...'));
-                const promptTarget = canvasAgentPromptTargetFromNode(current, 'video');
-                const motionReferenceIndex = Number((String(motionReference?.token || '').match(/\d+/) || [])[0] || 0);
-                if (promptTarget?.prompt_compiler_context && motionReference) {
-                    const compilerContext = Object.assign({}, promptTarget.prompt_compiler_context, {
-                        video_reference_index: motionReferenceIndex,
-                        motion_picture_index: h3StoryboardMotionPictureIndex(
-                            prompt,
-                            motionReference?.token || '',
-                            h3References.filter((reference) => reference.kind === 'image').length,
-                        ),
-                        video_requested: true,
-                        video_used: true,
-                        video_source: motionReference.slot === 'scene_reference_video2'
-                            ? 'reference_video2'
-                            : (motionReference.slot === 'scene_reference_video' ? 'reference_video' : 'main_video'),
-                        reference_video_content_available: motionReference.slot === 'scene_reference_video' || motionReference.slot === 'scene_reference_video2'
-                    });
-                    if (Array.isArray(compilerContext.video_descriptors)) {
-                        compilerContext.video_descriptors = compilerContext.video_descriptors.map((descriptor) => ({
-                            ...descriptor,
-                            role: descriptor.slot === motionReference.slot
-                                ? 'motion/timing reference video'
-                                : 'scene/composition video reference'
-                        }));
-                    }
-                    promptTarget.prompt_compiler_context = compilerContext;
-                }
-                const rewritten = await rewriteCanvasAgentPromptWithLlm(prompt, 'video refine', Object.assign({}, h3ReferenceOptions, {
-                    promptTarget,
-                    presetName: current.preset?.name || current.title || '',
-                    presetDefaults: canvasAgentPresetPromptDefaults(current),
-                    userPrompt: prompt
-                }));
-                const optimizedPrompt = String(rewritten?.prompt || '').trim();
-                if (!rewritten?.ok || !optimizedPrompt) {
-                    const error = rewritten?.error || 'unknown';
-                    showToast(t('H3 storyboard optimization failed: {error}', 'H3 分镜表优化失败：{error}')
-                        .replace('{error}', error));
-                    return { ok: false, error };
-                }
-                return { ok: true, prompt: optimizedPrompt, warning: rewritten?.warning || '' };
-            },
-            onConfirm: (response) => {
-                const current = getNode(node.id) || node;
-                const prompt = String(response?.prompt || '').trim();
-                pushHistory('Update MiniMax H3 storyboard');
-                Object.assign(current, buildNodeParamsPatch(current, { paramsPatch: { prompt } }));
-                Object.assign(current, buildH3StoryboardStatePatch(current, {
-                    statePatch: Object.assign({}, response?.state || {}, { prompt_snapshot: prompt }),
-                    updatedAt: nowIso()
-                }));
-                Object.assign(current, buildSpecialNodeStatusPatch(current, {
-                    status: mergeCanvasRunStatus(
-                        current.status,
-                        'ready',
-                        t('H3 storyboard applied.', 'H3 分镜表已写入 Prompt。')
-                    )
-                }));
-                selectedNodeId = current.id;
-                selectedNodeIds = new Set([current.id]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-                mutate({ inspector: true });
-                showToast(current.status.message);
-                return true;
-            }
-        }));
+        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_EDITOR_CONTROLLER.openMiniMaxH3StoryboardPresetEditor(node);
     }
 
     async function runWd14Node(node) {
-        if (!node || node.type !== 'wd14') return { ok: false, error: 'WD14 node is unavailable' };
-        if (isNodeIgnored(node)) {
-            showToast('This WD14 node is marked as skipped.');
-            return { ok: false, error: 'WD14 node is skipped' };
-        }
-        const edge = project.edges.find(item => item.type === 'image' && item.to === node.id && item.slot === 'image');
-        const source = getNode(node.input_node_id) || getNode(edge?.from);
-        if (!source || !['image', 'result'].includes(source.type)) {
-            showToast('Connect an image/result node to WD14 first.');
-            return { ok: false, error: 'Connect an image/result node to WD14 first.' };
-        }
-        const asset = source.type === 'result' ? getSelectedResultAsset(source) : source.asset;
-        if (!asset) {
-            showToast('The connected node has no image asset.');
-            return { ok: false, error: 'The connected node has no image asset.' };
-        }
-        pushHistory('Run WD14 node');
-        Object.assign(node, buildWd14StatePatch(node, {
-            inputNodeId: source.id,
-            status: buildWd14Status('running', 'Running extras.wd14tagger...')
-        }));
-        mutate();
-        const response = await sendCanvasWd14TagRequest({
-            project_id: project.id || PROJECT_ID,
-            node_id: node.id,
-            asset_source: serializeAssetSourceForRun(source),
-            params: cloneRunValue(node.params || {}, {})
-        });
-        const current = getNode(node.id);
-        if (!current) return;
-        if (response?.ok) {
-            Object.assign(current, buildWd14StatePatch(current, {
-                textPatch: {
-                    value: response.text || '',
-                    updated_at: nowIso()
-                },
-                status: buildWd14Status('finished', response.text ? 'Tags generated.' : 'WD14 finished with empty tags.'),
-                lastResponse: response
-            }));
-            showToast('WD14 tags generated');
-            mutate();
-            return { ok: true, text: current.text.value };
-        } else {
-            Object.assign(current, buildWd14StatePatch(current, {
-                status: buildWd14Status('failed', response?.details || response?.error || 'WD14 failed'),
-                lastResponse: response || {}
-            }));
-            showToast(`WD14 failed: ${response?.error || 'unknown error'}`);
-            mutate();
-            return { ok: false, error: current.status.message };
-        }
+        return CANVAS_WD14_RUNTIME_CONTROLLER.runWd14Node(node);
     }
 
     function applyDirectorCapabilityToPayload(payload, capability) {
-        if (!payload || typeof payload !== 'object') return payload;
-        const next = cloneRunValue(payload, {});
-        const imagePolicy = String(capability?.image_policy || 'optional').toLowerCase();
-        const audioPolicy = String(capability?.audio_policy || 'optional').toLowerCase();
-        const videoPolicy = String(capability?.video_policy || 'optional').toLowerCase();
-        next.director_capability = cloneRunValue(capability || {}, {});
-        if (imagePolicy === 'forbidden' || audioPolicy === 'forbidden' || videoPolicy === 'forbidden') {
-            (Array.isArray(next.segments) ? next.segments : []).forEach((segment) => {
-                if (!segment || typeof segment !== 'object') return;
-                if (imagePolicy === 'forbidden') segment.images = [];
-                if (audioPolicy === 'forbidden') segment.audio = [];
-                if (videoPolicy === 'forbidden') segment.video = [];
-                if (
-                    imagePolicy === 'forbidden'
-                    && videoPolicy === 'forbidden'
-                    && ['flf', 'fmlf', 'ref'].includes(String(segment.type || '').toLowerCase())
-                ) {
-                    segment.type = 't2v';
-                }
-            });
-        }
-        if (typeof directorTimelinePromptOverrideForTimeline === 'function') {
-            next.prompt_override = directorTimelinePromptOverrideForTimeline(next);
-        }
-        return next;
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.applyDirectorCapabilityToPayload?.(payload, capability) ?? payload;
     }
 
     function applyDirectorCapabilityToPayloadForPreset(node, payload) {
-        return applyDirectorCapabilityToPayload(payload, resolveDirectorCapabilityForPreset(node));
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.applyDirectorCapabilityToPayloadForPreset?.(node, payload) ?? payload;
     }
-
     const DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF = directorPreviousSegmentVideoRef || 'previous_segment';
     const DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF = directorPreviousSegmentImageRef || 'previous_segment_last_frame';
 
-    const DIRECTOR_IMAGE_REF_UPLOAD_SLOTS = [
-        'scene_canvas_image',
-        'scene_input_image1',
-        'scene_input_image2',
-        'scene_input_image3',
-        'scene_input_image4',
-        'scene_input_image5',
-        'scene_input_image6',
-        'scene_input_image7',
-        'scene_input_image8'
-    ];
-
-    function directorCapabilityVideoModes(capability) {
-        const modes = Array.isArray(capability?.video_modes) ? capability.video_modes.map(item => String(item)) : [];
-        if (modes.length) return modes;
-        const policy = String(capability?.video_policy || 'optional').toLowerCase();
-        return policy === 'forbidden' ? ['none'] : ['explicit'];
-    }
-
-    function directorAllowsPreviousSegmentVideo(capability) {
-        return directorCapabilityVideoModes(capability).includes(DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF);
-    }
-
-    function directorAllowsPreviousSegmentImage(capability) {
-        const policy = String(capability?.image_policy || 'optional').toLowerCase();
-        if (policy === 'forbidden') return false;
-        const modes = Array.isArray(capability?.image_modes)
-            ? capability.image_modes.map(item => String(item).toLowerCase())
-            : [];
-        if (!modes.length) return true;
-        return modes.some(mode => ['first_frame', 'first_last', 'ordered_keyframes'].includes(mode));
-    }
-
-    function directorCapabilityChainOutput(capability) {
-        const value = String(capability?.chain_output || '').trim();
-        return value === 'last_result' ? 'last_result' : 'timeline';
-    }
-
-    function directorPayloadMediaSource(payload, ref) {
-        const mediaSources = payload?.media_sources && typeof payload.media_sources === 'object' ? payload.media_sources : {};
-        const source = mediaSources[ref];
-        return source && typeof source === 'object' ? source : null;
-    }
-
-    function directorMediaSourceHasAsset(source) {
-        if (!source) return false;
-        const asset = source.asset && typeof source.asset === 'object' ? source.asset : {};
-        return !!String(
-            asset.data_url
-            || asset.src
-            || asset.preview_url
-            || asset.thumb
-            || asset.path
-            || asset.output_path
-            || asset.original_output_path
-            || source.data_url
-            || source.src
-            || source.path
-            || source.output_path
-            || source.original_output_path
-            || ''
-        ).trim();
-    }
-
-    function directorPayloadHasMediaAsset(payload, ref) {
-        return directorMediaSourceHasAsset(directorPayloadMediaSource(payload, ref));
-    }
-
     function validateDirectorPayloadForPreset(node, payload) {
-        const capability = resolveDirectorCapabilityForPreset(node);
-        const imagePolicy = String(capability.image_policy || 'optional').toLowerCase();
-        const videoPolicy = String(capability.video_policy || 'optional').toLowerCase();
-        const minImages = Math.max(0, Number(capability.min_images === undefined ? (imagePolicy === 'required' ? 1 : 0) : capability.min_images));
-        const maxImages = Math.max(0, Number(capability.max_images === undefined ? (imagePolicy === 'forbidden' ? 0 : DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.length) : capability.max_images));
-        const allowPreviousVideo = directorAllowsPreviousSegmentVideo(capability);
-        const allowPreviousImage = directorAllowsPreviousSegmentImage(capability);
-        const requiresSequentialVideo = !!capability.requires_sequential || directorCapabilityChainOutput(capability) === 'last_result';
-        const errors = [];
-        const warnings = [];
-        const segments = Array.isArray(payload?.segments) ? payload.segments : [];
-        segments.forEach((segment, index) => {
-            const shotIndex = String(index + 1);
-            const rawDuration = directorSegmentRawSeconds(segment, { payload, capability });
-            const [minSegmentDuration, maxSegmentDuration] = directorSegmentDurationBounds(capability);
-            if (rawDuration < minSegmentDuration - 0.0001) {
-                errors.push(t('Director shot {index} is {duration}s, but this preset requires at least {min}s per shot.', '分镜 {index} 时长为 {duration} 秒，当前 preset 单段至少 {min} 秒。')
-                    .replace('{index}', shotIndex)
-                    .replace('{duration}', directorCompactSeconds(rawDuration))
-                    .replace('{min}', directorCompactSeconds(minSegmentDuration)));
-            }
-            if (rawDuration > maxSegmentDuration + 0.0001) {
-                errors.push(t('Director shot {index} is {duration}s, but this preset accepts up to {max}s per shot.', '分镜 {index} 时长为 {duration} 秒，当前 preset 单段最多 {max} 秒。')
-                    .replace('{index}', shotIndex)
-                    .replace('{duration}', directorCompactSeconds(rawDuration))
-                    .replace('{max}', directorCompactSeconds(maxSegmentDuration)));
-            }
-            const refs = directorSegmentMediaRefs(segment, 'images');
-            const usesPreviousImage = refs.includes(DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
-            if (imagePolicy === 'required' && refs.length < minImages) {
-                errors.push(t('Director shot {index} requires a first-frame image.', '分镜 {index} 需要首帧图片。').replace('{index}', shotIndex));
-                return;
-            }
-            if (maxImages >= 0 && refs.length > maxImages) {
-                errors.push(t('Director shot {index} uses too many image refs.', '分镜 {index} 的图片引用数量超出当前 preset 支持范围。').replace('{index}', shotIndex));
-            }
-            if (imagePolicy === 'forbidden' && refs.length) {
-                warnings.push(t('Director shot {index} image refs are ignored by this preset.', '当前 preset 不使用分镜 {index} 的图片引用。').replace('{index}', shotIndex));
-            }
-            if (usesPreviousImage && index === 0) {
-                errors.push(t('Director shot 1 cannot inherit a previous-shot last frame.', '分镜 1 不能继承上一段尾帧。'));
-            }
-            if (usesPreviousImage && !allowPreviousImage) {
-                errors.push(t('The current preset does not support inheriting the previous-shot last frame.', '当前 preset 不支持继承上一段尾帧。'));
-            }
-            if (imagePolicy === 'required') {
-                refs.forEach((ref) => {
-                    if (ref !== DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF && !directorPayloadHasMediaAsset(payload, ref)) {
-                        errors.push(t('Director shot {index} uses {ref}, but no image source is connected.', '分镜 {index} 选择了 {ref}，但这个素材位没有图片来源。')
-                            .replace('{index}', shotIndex)
-                            .replace('{ref}', ref));
-                    }
-                });
-            }
-            const videoRef = directorSegmentFirstMediaRef(segment, 'video');
-            const usesPreviousVideo = videoRef === DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF;
-            if (videoPolicy === 'required' && !videoRef) {
-                errors.push(t('Director shot {index} requires a source video.', '分镜 {index} 需要源视频。').replace('{index}', shotIndex));
-            }
-            if (videoPolicy === 'forbidden' && videoRef) {
-                warnings.push(t('Director shot {index} video refs are ignored by this preset.', '当前 preset 不使用分镜 {index} 的视频引用。').replace('{index}', shotIndex));
-            }
-            if (usesPreviousVideo) {
-                if (index === 0) {
-                    errors.push(t('Director shot 1 cannot use the previous shot result.', '分镜 1 不能使用上一段结果。'));
-                }
-                if (!allowPreviousVideo) {
-                    errors.push(t('The current preset does not support previous-shot video chaining.', '当前 preset 不支持使用上一段结果作为视频输入。'));
-                }
-            } else if (requiresSequentialVideo && index > 0 && videoRef) {
-                errors.push(t('Director shot {index} must use the previous shot result for this extend preset.', '当前延长 preset 的分镜 {index} 必须使用上一段结果。').replace('{index}', shotIndex));
-            } else if (videoPolicy === 'required' && videoRef && !directorPayloadHasMediaAsset(payload, videoRef)) {
-                errors.push(t('Director shot {index} uses {ref}, but no video source is connected.', '分镜 {index} 选择了 {ref}，但这个素材位没有视频来源。')
-                    .replace('{index}', shotIndex)
-                    .replace('{ref}', videoRef));
-            }
-        });
-        return { ok: !errors.length, errors, warnings, capability };
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.validateDirectorPayloadForPreset?.(node, payload);
     }
 
     function directorRunContextForPreset(node) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return null;
-        const edge = project.edges.find(item => item.type === 'text' && item.to === node.id && (item.slot || 'prompt') === 'prompt' && isDirectorTimelineNode(getNode(item.from)) && !isNodeIgnored(getNode(item.from)));
-        const director = edge ? getNode(edge.from) : null;
-        if (!director) return null;
-        const engineType = String(node.runtime?.engine_type || node.schema?.engine_type || '').toLowerCase();
-        if (engineType && engineType !== 'video') return null;
-        const capability = resolveDirectorCapabilityForPreset(node);
-        if (capability.director_supported === false) return null;
-        const payload = applyDirectorCapabilityToPayload(directorTimelinePayload(director), capability);
-        const segments = Array.isArray(payload?.segments) ? payload.segments.filter(item => item && typeof item === 'object') : [];
-        const validation = validateDirectorPayloadForPreset(node, payload);
-        return { director, payload, segments, capability, validation };
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorRunContextForPreset?.(node) || null;
     }
 
     function directorRunPlanForPreset(node) {
-        const context = directorRunContextForPreset(node);
-        if (!context) return null;
-        const segments = Array.isArray(context.segments) ? context.segments : [];
-        if (segments.length < 2) return null;
-        return context;
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorRunPlanForPreset?.(node) || null;
     }
 
     function directorCompactSeconds(value) {
-        const number = Math.round(Number(value || 0) * 1000) / 1000;
-        return Number.isFinite(number) ? String(Number(number.toPrecision(12))) : String(value);
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorCompactSeconds?.(value) ?? String(value);
     }
 
     function directorSegmentDurationBounds(capability) {
-        const strategy = directorDurationStrategyValue(capability?.duration_strategy, 'shot');
-        const minFloor = strategy === 'audio_min' || strategy === 'video_min' ? 0 : 0.05;
-        const minValue = Number(capability?.min_segment_duration);
-        const minDuration = Number.isFinite(minValue) ? Math.max(minFloor, Math.min(86400, minValue)) : (minFloor === 0 ? 0 : 1);
-        const maxValue = Number(capability?.max_segment_duration);
-        const maxDuration = Number.isFinite(maxValue) ? Math.max(minDuration, Math.min(86400, maxValue)) : Math.max(minDuration, 10);
-        return [minDuration, maxDuration];
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentDurationBounds?.(capability) || [0, Infinity];
     }
 
     function directorSegmentRawSeconds(segment, plan) {
-        const fps = Math.max(1, Number(plan?.payload?.fps || 24));
-        const start = Number(segment?.start || 0);
-        const end = Number(segment?.end || start + 1);
-        const span = Math.max(0.05, end - start);
-        return segment?.unit === 'frames' ? span / fps : span;
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentRawSeconds?.(segment, plan) ?? 0;
     }
 
     function directorSegmentSeconds(segment, plan) {
-        const rawDuration = directorSegmentRawSeconds(segment, plan);
-        const [minDuration, maxDuration] = directorSegmentDurationBounds(plan?.capability || plan?.payload?.director_capability);
-        return Math.max(minDuration, Math.min(maxDuration, rawDuration));
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentSeconds?.(segment, plan) ?? 0;
     }
 
     function directorSegmentDurationStrategy(plan) {
-        return directorDurationStrategyValue((plan?.capability || plan?.payload?.director_capability || {}).duration_strategy, 'shot');
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentDurationStrategy?.(plan) || 'shot';
     }
 
     function directorSegmentGenerationSeconds(segment, plan) {
-        const strategy = directorSegmentDurationStrategy(plan);
-        if (strategy === 'audio_min' || strategy === 'video_min') {
-            const rawDuration = directorSegmentRawSeconds(segment, plan);
-            const [, maxDuration] = directorSegmentDurationBounds(plan?.capability || plan?.payload?.director_capability);
-            return Math.max(0, Math.min(maxDuration, rawDuration));
-        }
-        return directorSegmentSeconds(segment, plan);
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentGenerationSeconds?.(segment, plan) ?? 0;
     }
 
     function directorResultDuration(result) {
-        const direct = Number(result?.asset?.duration ?? result?.duration);
-        if (Number.isFinite(direct) && direct > 0) return Math.min(86400, direct);
-        const source = result?.source && typeof result.source === 'object' ? result.source : {};
-        const sourceDuration = Number(source.duration);
-        return Number.isFinite(sourceDuration) && sourceDuration > 0 ? Math.min(86400, sourceDuration) : 0;
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorResultDuration?.(result) ?? 0;
     }
 
     function directorSegmentTimelineSeconds(segment, plan, result) {
-        const strategy = directorSegmentDurationStrategy(plan);
-        if (strategy === 'audio_min' || strategy === 'video_min') {
-            const assetDuration = directorResultDuration(result);
-            if (assetDuration > 0) return assetDuration;
-            return directorSegmentRawSeconds(segment, plan);
-        }
-        return directorSegmentSeconds(segment, plan);
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentTimelineSeconds?.(segment, plan, result) ?? 0;
     }
 
     function directorSegmentPrompt(segment, fallback) {
-        const prompt = String(segment?.prompt || '').trim();
-        return prompt || String(fallback || '').trim();
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentPrompt?.(segment, fallback) || '';
     }
 
     function directorSegmentMediaRefs(segment, key) {
-        const refs = [];
-        const items = Array.isArray(segment?.[key]) ? segment[key] : [];
-        items.forEach((item) => {
-            const ref = String(item?.source_ref || item?.source_node_id || '').trim();
-            if (ref && !refs.includes(ref)) refs.push(ref);
-        });
-        return refs;
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentMediaRefs?.(segment, key) || [];
     }
 
     function directorSegmentFirstMediaRef(segment, key) {
-        return directorSegmentMediaRefs(segment, key)[0] || '';
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentFirstMediaRef?.(segment, key) || '';
     }
 
     function directorSegmentUsesPreviousVideo(segment) {
-        return directorSegmentFirstMediaRef(segment, 'video') === DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF;
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentUsesPreviousVideo?.(segment) || false;
     }
 
     function directorSegmentUsesPreviousImage(segment) {
-        return directorSegmentMediaRefs(segment, 'images').includes(DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
+        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentUsesPreviousImage?.(segment) || false;
     }
 
     function directorResultAssetSource(resultNode) {
-        if (!resultNode) return null;
-        const source = serializeAssetSourceForRun(resultNode);
-        return directorMediaSourceHasAsset(source) ? source : null;
+        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.directorResultAssetSource?.(resultNode) || null;
     }
 
     function directorTimelineMediaRefs(payload, key) {
-        const refs = [];
-        const segments = Array.isArray(payload?.segments) ? payload.segments : [];
-        segments.forEach((segment) => {
-            directorSegmentMediaRefs(segment, key).forEach((ref) => {
-                if (ref && !refs.includes(ref)) refs.push(ref);
-            });
-        });
-        return refs;
+        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.directorTimelineMediaRefs?.(payload, key) || [];
     }
 
     function directorTimelineFirstMediaRef(payload, key) {
-        return directorTimelineMediaRefs(payload, key)[0] || '';
+        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.directorTimelineFirstMediaRef?.(payload, key) || '';
     }
 
     function applyDirectorMediaRefsToPresetPayload(next, mediaSources, imageRefs, audioRef, videoRef, capability) {
-        if (!next || !mediaSources || typeof mediaSources !== 'object') return next;
-        const uploadSources = cloneRunValue(next.upload_slot_sources || {}, {});
-        const uploadSlots = cloneRunValue(next.upload_slots || {}, {});
-        const resolvedCapability = capability || next?.params?.director_timeline?.director_capability || resolveDirectorCapabilityForPreset({
-            runtime: next?.runtime || {},
-            schema: next?.schema || {},
-            params: next?.params || {},
-            upload_slots: next?.upload_slots || {}
-        });
-        const imagePolicy = String(resolvedCapability?.image_policy || 'optional').toLowerCase();
-        const bindRefToSlot = (ref, slot) => {
-            if (!ref || !slot || !mediaSources[ref]) return;
-            uploadSources[slot] = cloneRunValue(mediaSources[ref], {});
-            const nodeId = String(mediaSources[ref]?.node_id || '').trim();
-            if (nodeId) uploadSlots[slot] = nodeId;
-        };
-
-        if (imagePolicy !== 'forbidden') {
-            const maxImages = Number(resolvedCapability?.max_images);
-            const imageLimit = Number.isFinite(maxImages)
-                ? Math.max(0, Math.min(DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.length, Math.round(maxImages)))
-                : DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.length;
-            (Array.isArray(imageRefs) ? imageRefs : []).slice(0, imageLimit).forEach((ref, index) => {
-                bindRefToSlot(ref, DIRECTOR_IMAGE_REF_UPLOAD_SLOTS[index]);
-            });
-        }
-        bindRefToSlot(audioRef, 'scene_audio');
-        bindRefToSlot(videoRef, 'scene_video');
-
-        next.upload_slot_sources = uploadSources;
-        next.upload_slots = uploadSlots;
-        return next;
+        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorMediaRefsToPresetPayload?.(next, mediaSources, imageRefs, audioRef, videoRef, capability) ?? next;
     }
 
     function clearDirectorSegmentMediaSlots(next) {
-        if (!next || typeof next !== 'object') return next;
-        const uploadSources = cloneRunValue(next.upload_slot_sources || {}, {});
-        const uploadSlots = cloneRunValue(next.upload_slots || {}, {});
-        DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.concat(['scene_audio', 'scene_audio2', 'scene_audio3', 'scene_video', 'scene_reference_video', 'scene_reference_video2']).forEach((slot) => {
-            delete uploadSources[slot];
-            delete uploadSlots[slot];
-        });
-        next.upload_slot_sources = uploadSources;
-        next.upload_slots = uploadSlots;
-        return next;
+        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.clearDirectorSegmentMediaSlots?.(next) ?? next;
     }
 
     function applyDirectorTimelineMediaToPresetPayload(next) {
-        const payload = next?.params?.director_timeline;
-        if (!payload || typeof payload !== 'object') return next;
-        const mediaSources = payload.media_sources && typeof payload.media_sources === 'object' ? payload.media_sources : {};
-        return applyDirectorMediaRefsToPresetPayload(
-            next,
-            mediaSources,
-            directorTimelineMediaRefs(payload, 'images'),
-            directorTimelineFirstMediaRef(payload, 'audio'),
-            directorTimelineFirstMediaRef(payload, 'video'),
-            payload.director_capability
-        );
+        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorTimelineMediaToPresetPayload?.(next) ?? next;
     }
 
     function applyDirectorSegmentMediaToPresetPayload(next, plan, segment, previousResultNode) {
-        if (!next || !plan?.payload || !segment) return next;
-        clearDirectorSegmentMediaSlots(next);
-        const mediaSources = cloneRunValue(
-            plan.payload.media_sources && typeof plan.payload.media_sources === 'object' ? plan.payload.media_sources : {},
-            {}
-        );
-        const videoRef = directorSegmentFirstMediaRef(segment, 'video');
-        const imageRefs = directorSegmentMediaRefs(segment, 'images');
-        if (imageRefs.includes(DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF)) {
-            const previousSource = directorResultAssetSource(previousResultNode);
-            if (previousSource) {
-                previousSource.transform = { kind: 'video_last_frame' };
-                mediaSources[DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF] = previousSource;
-            }
-        }
-        if (videoRef === DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF) {
-            const previousSource = directorResultAssetSource(previousResultNode);
-            if (previousSource) mediaSources[DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF] = previousSource;
-        }
-        return applyDirectorMediaRefsToPresetPayload(
-            next,
-            mediaSources,
-            imageRefs,
-            directorSegmentFirstMediaRef(segment, 'audio'),
-            videoRef,
-            plan.capability || plan.payload.director_capability
-        );
+        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorSegmentMediaToPresetPayload?.(next, plan, segment, previousResultNode) ?? next;
     }
 
     function applyDirectorSegmentToPresetPayload(presetPayload, plan, segment, index, previousResultNode) {
-        const next = cloneRunValue(presetPayload || {}, {});
-        const params = cloneRunValue(next.params || {}, {});
-        delete params.director_timeline;
-        delete params.prompt_override;
-        delete params.director_prompt_override;
-        const prompt = directorSegmentPrompt(segment, params.prompt || plan?.payload?.prompt_override || '');
-        params.prompt = prompt;
-        const capability = plan?.capability || plan?.payload?.director_capability || {};
-        const durationStrategy = directorDurationStrategyValue(capability.duration_strategy, 'shot');
-        const shotDuration = directorSegmentSeconds(segment, plan);
-        const duration = directorSegmentGenerationSeconds(segment, plan);
-        const durationParam = directorDurationParamValue(capability.segment_duration_param, 'scene_video_duration');
-        if (durationParam && Number.isFinite(duration)) {
-            const minMax = directorSegmentDurationBounds(capability);
-            const minDuration = durationStrategy === 'shot' ? minMax[0] : 0;
-            const maxDuration = minMax[1];
-            const roundedDuration = Math.round(duration * 10) / 10;
-            params[durationParam] = Math.max(minDuration, Math.min(maxDuration, roundedDuration));
-        }
-        params.director_segment = {
-            schema: 'simpai.director_segment.v1',
-            director_node_id: plan?.director?.id || '',
-            segment_index: index,
-            segment_id: segment?.id || `shot_${index + 1}`,
-            start: segment?.start ?? 0,
-            end: segment?.end ?? shotDuration,
-            duration: Number.isFinite(duration) ? Math.max(0, Math.round(duration * 1000) / 1000) : duration,
-            shot_duration: Number.isFinite(shotDuration) ? Math.max(0.05, Math.round(shotDuration * 1000) / 1000) : shotDuration,
-            duration_strategy: durationStrategy,
-            audio_output: directorAudioOutputValue(capability.audio_output, 'silent'),
-            duration_param: durationParam,
-            unit: segment?.unit || 'seconds',
-            type: segment?.type || 't2v',
-            task_method: next.runtime?.task_method || '',
-            prompt
-        };
-        next.params = params;
-        return applyDirectorSegmentMediaToPresetPayload(next, plan, segment, previousResultNode);
+        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorSegmentToPresetPayload?.(presetPayload, plan, segment, index, previousResultNode) ?? presetPayload;
     }
-
     function createDirectorSegmentResultNode(presetNode, plan, segment, index, runId, runToken) {
-        const basePosition = presetResultBasePosition(presetNode);
-        const size = defaultResultNodeSize();
-        const total = plan.segments.length;
-        const node = buildDirectorSegmentResultNode({
-            position: {
-                x: basePosition.x,
-                y: basePosition.y + index * (size.h + 42)
-            },
-            size,
-            title: `${presetNode.title || 'Preset'} ${t('Shot {index}', '分镜 {index}').replace('{index}', String(index + 1))}`,
-            producer: {
-                preset_node_id: presetNode.id,
-                run_id: runId,
-                run_token: runToken,
-                task_id: null,
-                fingerprint: '',
-                pending_fingerprint: '',
-                pending_run_token: runToken,
-                refreshing: true,
-                stale: false
-            },
-            status: buildCanvasRunStatus(
-                'queued',
-                t('Director segment {index}/{total} queued.', 'Director 分镜 {index}/{total} 已进入队列。')
-                    .replace('{index}', String(index + 1))
-                    .replace('{total}', String(total)),
-                { queuePosition: null, step: index + 1, totalSteps: total, percent: 0 }
-            ),
-            source: {
-                kind: 'director_segment_result',
-                director_node_id: plan.director.id,
-                preset_node_id: presetNode.id,
-                segment_index: index,
-                segment_id: segment?.id || `shot_${index + 1}`,
-                refreshing: true
-            }
-        });
-        if (!node) return null;
-        placeNodeAvoidingOverlap(node, { x: node.x, y: node.y }, { maxAttempts: 8 });
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        ensureGenerateEdge(presetNode.id, node.id);
-        return node;
+        return CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER.createDirectorSegmentResultNode?.(presetNode, plan, segment, index, runId, runToken) || null;
     }
 
     function findDirectorSegmentTimelineNode(presetNode) {
-        const resultIds = new Set(project.edges.filter(edge => edge.type === 'generate' && edge.from === presetNode.id).map(edge => edge.to));
-        for (const edge of project.edges) {
-            if (edge.type !== 'timeline' || !resultIds.has(edge.from)) continue;
-            const timeline = getNode(edge.to);
-            if (timeline?.type === 'timeline') return timeline;
-        }
-        return project.nodes.find(item => item?.type === 'timeline' && item.source?.kind === 'director_segment_timeline' && item.source?.preset_node_id === presetNode.id) || null;
+        return CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER.findDirectorSegmentTimelineNode?.(presetNode) || null;
     }
 
     function clearDirectorPresetClipsFromTimeline(timelineNode, presetNodeId) {
-        if (!timelineNode || timelineNode.type !== 'timeline') return;
-        const removedClipIds = new Set();
-        timelineNode.clips = (Array.isArray(timelineNode.clips) ? timelineNode.clips : []).filter((clip) => {
-            const source = getNode(clip?.source_node_id);
-            const samePreset = source?.type === 'result' && source.producer?.preset_node_id === presetNodeId;
-            const directorOwned = source?.source?.kind === 'director_segment_result' || source?.source?.kind === 'template_result_placeholder';
-            if (samePreset && directorOwned) {
-                removedClipIds.add(clip.id);
-                return false;
-            }
-            return true;
-        });
-        if (removedClipIds.size) {
-            filterProjectEdges(edge => !(edge.type === 'timeline' && edge.to === timelineNode.id && removedClipIds.has(edge.slot)));
-        }
+        return CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER.clearDirectorPresetClipsFromTimeline?.(timelineNode, presetNodeId);
     }
 
     function prepareDirectorSegmentTimeline(presetNode, plan, segmentResults) {
-        let timeline = findDirectorSegmentTimelineNode(presetNode);
-        if (!timeline) {
-            const base = presetResultBasePosition(presetNode);
-            timeline = addTimelineNode({ x: base.x, y: base.y + (segmentResults.length + 1) * (defaultResultNodeSize().h + 42) }, {
-                history: false,
-                render: false,
-                toast: false,
-                title: t('Director Segment Timeline', 'Director 分镜 Timeline')
-            });
-        }
-        Object.assign(timeline, timelineBuildSourcePatch(timeline, {
-            kind: 'director_segment_timeline',
-            director_node_id: plan.director.id,
-            preset_node_id: presetNode.id
-        }));
-        const width = Math.max(16, Math.round(Number(plan.payload?.width || timeline.params.width || 1280)));
-        const height = Math.max(16, Math.round(Number(plan.payload?.height || timeline.params.height || 720)));
-        const fps = Math.max(1, Math.min(120, Number(plan.payload?.fps || timeline.params.fps || 24)));
-        clearDirectorPresetClipsFromTimeline(timeline, presetNode.id);
-        let cursor = 0;
-        segmentResults.forEach((result, index) => {
-            const segment = plan.segments[index] || {};
-            const duration = directorSegmentTimelineSeconds(segment, plan, result);
-            const clip = addTimelineClipFromSource(timeline, result, { history: false, render: false, edge: true, start: cursor, track_id: 'v1' });
-            if (clip) {
-                Object.assign(clip, timelineBuildClipPatch({
-                    title: `${result.title || 'Shot'} ${index + 1}`,
-                    start: cursor,
-                    duration: Math.max(0.05, duration),
-                    in: 0,
-                    out: Math.max(0.05, duration),
-                    fit: 'contain'
-                }));
-            }
-            cursor += Math.max(0.05, duration);
-        });
-        Object.assign(timeline, timelineBuildParamsPatch(timeline, {
-            width,
-            height,
-            aspect: `${width}:${height}`,
-            size_preset: `${width}x${height}`,
-            fps,
-            fps_preset: String(fps),
-            duration: Math.max(0.05, cursor, Number(plan.payload?.duration || 0)),
-            playhead: 0
-        }));
-        if (typeof timelineNormalizeNode === 'function') timelineNormalizeNode(timeline);
-        return timeline;
+        return CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER.prepareDirectorSegmentTimeline?.(presetNode, plan, segmentResults) || null;
     }
-
     function directorSegmentPromptCompilerTarget(node, plan, segment) {
-        const target = typeof canvasAgentPromptTargetFromNode === 'function'
-            ? canvasAgentPromptTargetFromNode(node, 'text-to-video')
-            : null;
-        if (!target?.prompt_compiler) return target;
-        const imageCount = directorSegmentMediaRefs(segment, 'images').length;
-        const videoCount = directorSegmentFirstMediaRef(segment, 'video') ? 1 : 0;
-        const audioCount = directorSegmentFirstMediaRef(segment, 'audio') ? 1 : 0;
-        return Object.assign({}, target, {
-            prompt_compiler_context: Object.assign({}, target.prompt_compiler_context || {}, {
-                image_count: imageCount,
-                video_count: videoCount,
-                audio_count: audioCount,
-                duration_seconds: directorSegmentGenerationSeconds(segment, plan),
-                inventory_known: true
-            })
-        });
+        return CANVAS_DIRECTOR_SEGMENT_PROMPT_PREFLIGHT_CONTROLLER.directorSegmentPromptCompilerTarget(node, plan, segment);
     }
 
     async function preflightDirectorSegmentPrompts(node, plan, options) {
-        const segments = Array.isArray(plan?.segments) ? plan.segments : [];
-        const baseTarget = directorSegmentPromptCompilerTarget(node, plan, segments[0] || {});
-        if (!baseTarget?.prompt_compiler) return { ok: true, plan };
-        const wildcardPreview = await buildWildcardPreviewForNode(node);
-        const entry = getPresetCatalogEntryForNode(node);
-        const presetDefaults = canvasAgentPresetPromptDefaults(node);
-        const preparedSegments = [];
-        for (let index = 0; index < segments.length; index += 1) {
-            const segment = segments[index];
-            const prompt = directorSegmentPrompt(segment, '');
-            const promptTarget = directorSegmentPromptCompilerTarget(node, plan, segment);
-            const result = await ensureCanvasAgentPromptPreflightAllows(prompt, promptTarget, 'text-to-video', {
-                node,
-                entry,
-                wildcardPreview,
-                presetDefaults,
-                promptTarget,
-                userPrompt: prompt,
-                allowEditOnBlock: true,
-                autoStart: !!options?.autoStart
-            });
-            if (!result.ok) {
-                return {
-                    ok: false,
-                    error: result.error || t('Director shot prompt preflight was cancelled.', 'Director 分镜提示词预检查已取消。'),
-                    preflight: result.preflight,
-                    segment_index: index
-                };
-            }
-            preparedSegments.push(Object.assign({}, segment, {
-                prompt: String(result.prompt || prompt).trim()
-            }));
-        }
-        return {
-            ok: true,
-            plan: Object.assign({}, plan, {
-                segments: preparedSegments,
-                payload: Object.assign({}, plan?.payload || {}, { segments: preparedSegments })
-            })
-        };
+        return CANVAS_DIRECTOR_SEGMENT_PROMPT_PREFLIGHT_CONTROLLER.preflightDirectorSegmentPrompts(node, plan, options);
     }
 
     async function runDirectorSegmentedPresetNode(node, plan, opts) {
-        Object.assign(node, buildDirectorTimelineStatePatch(node, {
-            status: buildCanvasRunStatus('waiting', t('Preparing Director segmented run...', '正在准备 Director 分镜运行...'))
-        }));
-        mutate({ inspector: true });
-        const promptGate = await preflightDirectorSegmentPrompts(node, plan, opts);
-        if (!promptGate?.ok) {
-            Object.assign(node, buildDirectorTimelineStatePatch(node, {
-                status: buildCanvasRunStatus(
-                    'failed',
-                    promptGate?.error || t('Director prompt preflight failed.', 'Director 提示词预检查失败。')
-                )
-            }));
-            mutate({ inspector: true });
-            return promptGate;
-        }
-        plan = promptGate.plan || plan;
-        const modelGate = await ensurePresetModelsBeforeRun(node);
-        if (!modelGate?.ok) return modelGate;
-        pushHistory('Run Director segmented preset');
-        const segmentResults = [];
-        for (let index = 0; index < plan.segments.length; index += 1) {
-            const segment = plan.segments[index];
-            const resultNode = createDirectorSegmentResultNode(node, plan, segment, index, uid('run'), uid('rt'));
-            segmentResults.push(resultNode);
-        }
-        selectedNodeId = segmentResults[0]?.id || node.id;
-        selectedNodeIds = new Set([selectedNodeId]);
-        selectedEdgeId = null;
-        clearSchedulerBlockedState();
-        mutate();
-        let previousResultNode = null;
-        for (let index = 0; index < plan.segments.length; index += 1) {
-            const resultNode = segmentResults[index];
-            Object.assign(node, buildDirectorTimelineStatePatch(node, {
-                status: buildCanvasRunStatus(
-                    'running',
-                    t('Running Director segment {index}/{total}...', '正在运行 Director 分镜 {index}/{total}...')
-                        .replace('{index}', String(index + 1))
-                        .replace('{total}', String(plan.segments.length))
-                )
-            }));
-            mutate({ inspector: true });
-            const outcome = await submitDirectorSegmentRun(node, resultNode, plan, plan.segments[index], index, previousResultNode);
-            if (!outcome?.ok) {
-                Object.assign(node, buildDirectorTimelineStatePatch(node, {
-                    status: buildCanvasRunStatus('failed', outcome?.error || t('Director segment run failed.', 'Director 分镜运行失败。'))
-                }));
-                mutate({ inspector: true });
-                return Object.assign({ ok: false, segmented: true, failed_segment_index: index }, outcome || {});
-            }
-            previousResultNode = getNode(resultNode.id) || resultNode;
-        }
-        const finalResultNode = segmentResults.length
-            ? (getNode(segmentResults[segmentResults.length - 1].id) || segmentResults[segmentResults.length - 1])
-            : null;
-        if (directorCapabilityChainOutput(plan.capability) === 'last_result') {
-            Object.assign(node, buildDirectorTimelineStatePatch(node, {
-                status: buildCanvasRunStatus('finished', t('Director chained video finished.', 'Director 串联视频已完成。'))
-            }));
-            if (finalResultNode?.id) {
-                selectedNodeId = finalResultNode.id;
-                selectedNodeIds = new Set([finalResultNode.id]);
-            }
-            mutate({ inspector: true });
-            return {
-                ok: true,
-                segmented: true,
-                chain_output: 'last_result',
-                segment_result_node_ids: segmentResults.map(item => item.id),
-                final_result_node_id: finalResultNode?.id || ''
-            };
-        }
-        const timeline = prepareDirectorSegmentTimeline(node, plan, segmentResults.map(item => getNode(item.id)).filter(Boolean));
-        Object.assign(node, buildDirectorTimelineStatePatch(node, {
-            status: buildCanvasRunStatus('running', t('Rendering Director Timeline...', '正在合成 Director Timeline...'))
-        }));
-        mutate({ inspector: true });
-        const renderOutcome = await renderTimelineToResult(timeline);
-        Object.assign(node, buildDirectorTimelineStatePatch(node, {
-            status: buildCanvasRunStatus(
-                renderOutcome?.ok ? 'finished' : 'failed',
-                renderOutcome?.ok
-                    ? t('Director segmented video finished.', 'Director 分镜视频已完成。')
-                    : (renderOutcome?.error || t('Director timeline render failed.', 'Director 时间轴合成失败。'))
-            )
-        }));
-        mutate({ inspector: true });
-        return {
-            ok: !!renderOutcome?.ok,
-            segmented: true,
-            segment_result_node_ids: segmentResults.map(item => item.id),
-            timeline_node_id: timeline?.id || '',
-            render_result: renderOutcome
-        };
+        return CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.runDirectorSegmentedPresetNode(node, plan, opts);
     }
 
     function ensureGenerateEdge(fromId, toId) {
@@ -24543,57 +18306,15 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function cloneRunValue(value, fallback) {
-        try {
-            return JSON.parse(JSON.stringify(value ?? fallback));
-        } catch (err) {
-            return fallback;
-        }
-    }
-
-    function stableStringify(value) {
-        if (value === null || value === undefined) return JSON.stringify(value);
-        if (Array.isArray(value)) return `[${value.map(item => stableStringify(item)).join(',')}]`;
-        if (typeof value === 'object') {
-            return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
-        }
-        return JSON.stringify(value);
-    }
-
-    function stableHash(value) {
-        const text = typeof value === 'string' ? value : stableStringify(value);
-        let hash = 2166136261;
-        for (let index = 0; index < text.length; index += 1) {
-            hash ^= text.charCodeAt(index);
-            hash = Math.imul(hash, 16777619);
-        }
-        return `fnv1a:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+        return WORKBENCH_RUN_VALUE_SERIALIZER.cloneRunValue(value, fallback);
     }
 
     function normalizeRunEdgesForFingerprint(edges) {
-        return cloneRunValue(edges || [], [])
-            .map(edge => ({
-                type: edge.type || '',
-                from: edge.from || '',
-                to: edge.to || '',
-                slot: edge.slot || '',
-                config_kind: edge.config_kind || ''
-            }))
-            .sort((a, b) => stableStringify(a).localeCompare(stableStringify(b)));
+        return CANVAS_PRESET_RUN_FINGERPRINT_CONTROLLER.normalizeRunEdgesForFingerprint?.(edges) || [];
     }
 
     function serializeAssetSourceForFingerprint(node) {
-        const next = serializeAssetSourceForRun(node);
-        if (!next) return null;
-        if (next.source && typeof next.source === 'object') {
-            next.source = {
-                kind: next.source.kind || '',
-                output_path: next.source.output_path || '',
-                source_node_id: next.source.source_node_id || '',
-                timeline_node_id: next.source.timeline_node_id || '',
-                input_fingerprint: next.source.input_fingerprint || node?.producer?.fingerprint || ''
-            };
-        }
-        return next;
+        return CANVAS_PRESET_RUN_FINGERPRINT_CONTROLLER.serializeAssetSourceForFingerprint?.(node) || null;
     }
 
     function serializeAssetSourceForRun(node) {
@@ -24601,22 +18322,6 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             getSelectedResultAsset,
             cloneValue: cloneRunValue
         });
-    }
-
-    function mergeCommaPromptText(...values) {
-        const output = [];
-        const seen = new Set();
-        values.forEach(value => {
-            String(value || '').split(',').forEach(raw => {
-                const item = String(raw || '').trim();
-                if (!item) return;
-                const key = item.toLowerCase().replace(/\s+/g, '_');
-                if (seen.has(key)) return;
-                seen.add(key);
-                output.push(item);
-            });
-        });
-        return output.join(', ');
     }
 
     function serializePresetConfigForRun(config) {
@@ -24627,364 +18332,31 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetForRun?.(node) || {};
     }
     function createImageNodeFromAsset(asset, world, title, options) {
-        const node = buildImageNodeFromAsset(asset, world, title, options);
-        if (!node) return null;
-        fitImageNodeToAssetBounds(node, node.asset, { preserveCenter: false });
-        placeNodeAvoidingOverlap(node, world, options);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        return node;
+        return CANVAS_MEDIA_IMPORT_CONTROLLER.createImageNodeFromAsset(asset, world, title, options);
     }
 
     function createMediaNodeFromAsset(asset, world, title, options) {
-        const node = buildMediaNodeFromAsset(asset, world, title, options);
-        if (!node) return null;
-        placeNodeAvoidingOverlap(node, world, options);
-        Object.assign(project, buildProjectNodeAppendPatch(project, node));
-        return node;
-    }
-
-    function normalizeLayerForgeDataUrl(value) {
-        const text = String(value || '');
-        if (!text) return '';
-        if (text.startsWith('data:')) return text;
-        return `data:image/png;base64,${text}`;
-    }
-
-    async function createAlphaMaskDataUrl(src, alphaThreshold, dilateRadius) {
-        try {
-            const image = await loadImageElementForCanvas(src);
-            const width = image.naturalWidth || image.width || 0;
-            const height = image.naturalHeight || image.height || 0;
-            if (!width || !height) return null;
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            if (!ctx) return null;
-            ctx.clearRect(0, 0, width, height);
-            ctx.drawImage(image, 0, 0, width, height);
-            const imageData = ctx.getImageData(0, 0, width, height);
-            const data = imageData.data;
-            const threshold = Number(alphaThreshold ?? 10);
-            const base = new Uint8Array(width * height);
-            let hasMask = false;
-            for (let i = 0; i < width * height; i += 1) {
-                if (data[i * 4 + 3] < threshold) {
-                    base[i] = 1;
-                    hasMask = true;
-                }
-            }
-            if (!hasMask) return null;
-            let mask = base;
-            const radius = Math.max(0, Math.floor(Number(dilateRadius || 0)));
-            if (radius > 0) {
-                const expanded = new Uint8Array(width * height);
-                for (let y = 0; y < height; y += 1) {
-                    for (let x = 0; x < width; x += 1) {
-                        if (!base[y * width + x]) continue;
-                        for (let dy = -radius; dy <= radius; dy += 1) {
-                            const yy = y + dy;
-                            if (yy < 0 || yy >= height) continue;
-                            for (let dx = -radius; dx <= radius; dx += 1) {
-                                const xx = x + dx;
-                                if (xx < 0 || xx >= width) continue;
-                                expanded[yy * width + xx] = 1;
-                            }
-                        }
-                    }
-                }
-                mask = expanded;
-            }
-            const out = ctx.createImageData(width, height);
-            for (let i = 0; i < width * height; i += 1) {
-                if (!mask[i]) continue;
-                const offset = i * 4;
-                out.data[offset] = 255;
-                out.data[offset + 1] = 255;
-                out.data[offset + 2] = 255;
-                out.data[offset + 3] = 255;
-            }
-            ctx.clearRect(0, 0, width, height);
-            ctx.putImageData(out, 0, 0);
-            return { data_url: canvas.toDataURL('image/png'), width, height };
-        } catch (err) {
-            console.warn('[SimpAI Canvas] alpha mask extraction failed:', err);
-            return null;
-        }
-    }
-
-    async function mergeMaskDataUrls(maskA, maskB, width, height) {
-        if (!maskA && !maskB) return '';
-        try {
-            const [imageA, imageB] = await Promise.all([
-                maskA ? loadImageElementForCanvas(maskA) : Promise.resolve(null),
-                maskB ? loadImageElementForCanvas(maskB) : Promise.resolve(null)
-            ]);
-            const targetWidth = width || imageA?.naturalWidth || imageA?.width || imageB?.naturalWidth || imageB?.width || 0;
-            const targetHeight = height || imageA?.naturalHeight || imageA?.height || imageB?.naturalHeight || imageB?.height || 0;
-            if (!targetWidth || !targetHeight) return maskA || maskB || '';
-            const canvas = document.createElement('canvas');
-            canvas.width = targetWidth;
-            canvas.height = targetHeight;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return maskA || maskB || '';
-            ctx.clearRect(0, 0, targetWidth, targetHeight);
-            if (imageA) ctx.drawImage(imageA, 0, 0, targetWidth, targetHeight);
-            if (imageB) {
-                ctx.globalCompositeOperation = 'lighter';
-                ctx.drawImage(imageB, 0, 0, targetWidth, targetHeight);
-                ctx.globalCompositeOperation = 'source-over';
-            }
-            return canvas.toDataURL('image/png');
-        } catch (err) {
-            console.warn('[SimpAI Canvas] mask merge failed:', err);
-            return maskA || maskB || '';
-        }
+        return CANVAS_MEDIA_IMPORT_CONTROLLER.createMediaNodeFromAsset(asset, world, title, options);
     }
 
     function getNodeLayerForgeAsset(node) {
-        if (!node) return null;
-        if (node.type === 'result') return getSelectedResultAsset(node) || node.preview || null;
-        return node.asset
-            || (node.type === 'pose_studio' ? node.pose_studio?.output_asset : null)
-            || (node.type === 'gaussian_studio' ? (node.gaussian_studio?.render_asset || node.gaussian_studio?.output_asset) : null)
-            || (node.type === 'liveportrait_expression' ? node.liveportrait_expression?.output_asset : null)
-            || null;
-    }
-
-    function transferOutgoingMediaEdgesToReplacement(sourceNode, replacementNode) {
-        if (!sourceNode || !replacementNode || sourceNode.id === replacementNode.id) return 0;
-        const transferableTypes = new Set(['upload', 'image']);
-        const outgoing = project.edges.filter(edge => edge.from === sourceNode.id && transferableTypes.has(edge.type));
-        let moved = 0;
-        outgoing.forEach((edge) => {
-            const target = getNode(edge.to);
-            if (!target || isNodeLocked(target)) return;
-            if (edge.type === 'upload' && ['preset', 'classic'].includes(target.type)) {
-                if (!canNodeConnectToUploadSlot(replacementNode, edge.slot)) return;
-                edge.from = replacementNode.id;
-                applyPresetUploadSlotPatch(target, edge.slot, replacementNode.id);
-                moved += 1;
-                return;
-            }
-            if (edge.type === 'image' && target.type === 'wd14') {
-                edge.from = replacementNode.id;
-                Object.assign(target, buildWd14StatePatch(target, { inputNodeId: replacementNode.id }));
-                moved += 1;
-                return;
-            }
-            if (edge.type === 'image' && target.type === 'vlm') {
-                edge.from = replacementNode.id;
-                Object.assign(target, buildVlmImageInputsPatch(target, {
-                    imageInputsPatch: { [edge.slot || 'image_1']: replacementNode.id }
-                }));
-                moved += 1;
-            }
-        });
-        if (moved) {
-            const seen = new Set();
-            filterProjectEdges((edge) => {
-                const key = `${edge.type}:${edge.from}:${edge.to}:${edge.slot || ''}`;
-                if (seen.has(key)) return false;
-                seen.add(key);
-                return true;
-            });
-        }
-        return moved;
+        return MEDIA_EDIT_CONTROLLER.getNodeLayerForgeAsset?.(node) || null;
     }
 
     async function createImageNodeFromLayerForgeOutput(sourceNode, imageDataUrl, maskDataUrl, metadata) {
-        const dataUrl = normalizeLayerForgeDataUrl(imageDataUrl);
-        if (!dataUrl) {
-            showToast('LayerForge did not return an image.');
-            return null;
-        }
-        const dimensions = await getImageDimensions(dataUrl);
-        const thumb = await createThumbnailDataUrl(dataUrl, 720);
-        const mime = dataUrl.match(/^data:([^;]+);/)?.[1] || 'image/png';
-        const titleBase = sourceNode?.title || 'LayerForge';
-        const asset = buildImageOutputAsset({
-            kind: 'layerforge_output',
-            name: `${titleBase}.layerforge.png`,
-            mime,
-            width: dimensions.width || null,
-            height: dimensions.height || null,
-            dataUrl,
-            thumb
-        });
-        pushHistory('LayerForge edit');
-        const imageNode = createImageNodeFromAsset(asset, {
-            x: (sourceNode?.x || 0) + (sourceNode?.w || 240) + 70,
-            y: (sourceNode?.y || 0) + 40
-        }, `${titleBase} LayerForge`);
-        if (!imageNode) return null;
-        const returnedMask = normalizeLayerForgeDataUrl(maskDataUrl);
-        const alphaMask = await createAlphaMaskDataUrl(dataUrl, 10, 1);
-        const mask = alphaMask?.data_url
-            ? await mergeMaskDataUrls(returnedMask, alphaMask.data_url, dimensions.width || alphaMask.width, dimensions.height || alphaMask.height)
-            : returnedMask;
-        let outputMask = null;
-        if (mask) {
-            const maskDimensions = await getImageDimensions(mask);
-            outputMask = buildMaskAsset({
-                kind: 'layerforge_mask',
-                name: `${titleBase}.layerforge.mask.png`,
-                mime: mask.match(/^data:([^;]+);/)?.[1] || 'image/png',
-                width: maskDimensions.width || dimensions.width || null,
-                height: maskDimensions.height || dimensions.height || null,
-                dataUrl: mask,
-                thumb: await createThumbnailDataUrl(mask, 720)
-            });
-        }
-        if (outputMask) Object.assign(imageNode, buildMediaNodeStatePatch(imageNode, { mask: outputMask }));
-        Object.assign(imageNode, buildMediaNodeSourcePatch(imageNode, {
-            kind: 'layerforge',
-            source_node_id: sourceNode?.id || '',
-            source_node_type: sourceNode?.type || '',
-            layer_count: Number(metadata?.layer_count || 0) || 0
-        }));
-        const movedEdges = transferOutgoingMediaEdgesToReplacement(sourceNode, imageNode);
-        selectedNodeId = imageNode.id;
-        selectedNodeIds = new Set([imageNode.id]);
-        selectedEdgeId = null;
-        mutate();
-        showToast(movedEdges ? `LayerForge output added; moved ${movedEdges} downstream link(s).` : 'LayerForge output added as image node.');
-        return imageNode;
+        return MEDIA_EDIT_CONTROLLER.createImageNodeFromLayerForgeOutput(sourceNode, imageDataUrl, maskDataUrl, metadata);
     }
 
     async function createImageNodeFromSketchOutput(sourceNode, payload) {
-        const dataUrl = normalizeLayerForgeDataUrl(payload?.image || '');
-        if (!dataUrl) {
-            showToast('Sketch did not return an image.');
-            return null;
-        }
-        const dimensions = await getImageDimensions(dataUrl);
-        const titleBase = sourceNode?.title || 'Sketch';
-        const asset = buildImageOutputAsset({
-            kind: 'sketch_output',
-            name: `${titleBase}.sketch.png`,
-            mime: dataUrl.match(/^data:([^;]+);/)?.[1] || 'image/png',
-            width: dimensions.width || payload?.width || null,
-            height: dimensions.height || payload?.height || null,
-            dataUrl,
-            thumb: await createThumbnailDataUrl(dataUrl, 720)
-        });
-        const maskDataUrl = normalizeLayerForgeDataUrl(payload?.mask || '');
-        const applyToCurrent = payload?.mode === 'apply' && ['image', 'mask'].includes(sourceNode?.type);
-        pushHistory(applyToCurrent ? 'Apply Sketch edit' : 'Sketch edit');
-        const imageNode = applyToCurrent ? sourceNode : createImageNodeFromAsset(asset, {
-            x: (sourceNode?.x || 0) + (sourceNode?.w || 240) + 70,
-            y: (sourceNode?.y || 0) + 40
-        }, `${titleBase} Sketch`);
-        if (!imageNode) return null;
-        let outputMask = null;
-        if (maskDataUrl) {
-            const maskDimensions = await getImageDimensions(maskDataUrl);
-            outputMask = buildMaskAsset({
-                kind: 'sketch_mask',
-                name: `${titleBase}.sketch.mask.png`,
-                mime: maskDataUrl.match(/^data:([^;]+);/)?.[1] || 'image/png',
-                width: maskDimensions.width || asset.width || null,
-                height: maskDimensions.height || asset.height || null,
-                dataUrl: maskDataUrl,
-                thumb: await createThumbnailDataUrl(maskDataUrl, 720)
-            });
-        }
-        const sourcePatch = {
-            kind: 'sketch',
-            source_node_id: sourceNode?.id || '',
-            source_node_type: sourceNode?.type || ''
-        };
-        const stateOptions = {};
-        if (applyToCurrent) stateOptions.asset = asset;
-        if (outputMask) stateOptions.mask = outputMask;
-        else if (applyToCurrent) stateOptions.mask = null;
-        if (imageNode.type === 'mask') {
-            Object.assign(imageNode, buildMaskStatePatch(imageNode, Object.assign({}, stateOptions, {
-                sourcePatch
-            })));
-        } else {
-            if (Object.keys(stateOptions).length) Object.assign(imageNode, buildMediaNodeStatePatch(imageNode, stateOptions));
-            Object.assign(imageNode, buildMediaNodeSourcePatch(imageNode, sourcePatch));
-        }
-        const movedEdges = applyToCurrent ? 0 : transferOutgoingMediaEdgesToReplacement(sourceNode, imageNode);
-        selectedNodeId = imageNode.id;
-        selectedNodeIds = new Set([imageNode.id]);
-        selectedEdgeId = null;
-        mutate();
-        showToast(applyToCurrent ? 'Sketch edit applied.' : (movedEdges ? `Sketch output added; moved ${movedEdges} downstream link(s).` : 'Sketch output added as image node.'));
-        return imageNode;
+        return MEDIA_EDIT_CONTROLLER.createImageNodeFromSketchOutput(sourceNode, payload);
     }
 
     async function openSketchForNode(node) {
-        if (!node || !['image', 'result', 'mask', 'pose_studio', 'gaussian_studio', 'liveportrait_expression'].includes(node.type)) return;
-        const ready = await ensureWorkbenchLazyRuntime(
-            'customSketch',
-            () => typeof getCanvasSketchAdapter()?.open === 'function',
-            'Loading Sketch...',
-            'Sketch adapter is not ready.'
-        );
-        if (!ready) return;
-        const adapter = getCanvasSketchAdapter();
-        if (!adapter || typeof adapter.open !== 'function') {
-            showToast('Sketch adapter is not ready.');
-            return;
-        }
-        const asset = getNodeLayerForgeAsset(node);
-        if (assetMediaKind(asset || {}) !== 'image') {
-            showToast('Sketch only supports image assets.');
-            return;
-        }
-        const image = assetDisplaySrc(asset) || getNodeImageSrc(node);
-        if (!image) {
-            showToast('No image available for Sketch.');
-            return;
-        }
-        adapter.open({
-            image,
-            mask: node.type === 'image' ? (node.mask?.data_url || '') : '',
-            title: `${node.title || 'Image'} Sketch`,
-            onSave: (payload) => createImageNodeFromSketchOutput(node, payload),
-            onError: (err) => showToast(`Sketch save failed: ${err?.message || err || 'unknown error'}`)
-        }).catch((err) => {
-            console.warn('[SimpAI Canvas] Sketch open failed', err);
-            showToast(`Sketch failed to open: ${err?.message || err || 'unknown error'}`);
-        });
+        return MEDIA_EDIT_CONTROLLER.openSketchForNode(node);
     }
 
     async function openLayerForgeForNode(node) {
-        if (!node || !['image', 'result'].includes(node.type)) return;
-        const ready = await ensureWorkbenchLazyRuntime(
-            'layerForge',
-            () => typeof window.SimpAILayerForgeAdapter?.open === 'function',
-            'Loading LayerForge...',
-            'LayerForge is not ready.'
-        );
-        if (!ready) return;
-        const adapter = window.SimpAILayerForgeAdapter;
-        if (!adapter || typeof adapter.open !== 'function') {
-            showToast('LayerForge is not ready.');
-            return;
-        }
-        const asset = getNodeLayerForgeAsset(node);
-        if (assetMediaKind(asset || {}) !== 'image') {
-            showToast('LayerForge only supports image assets.');
-            return;
-        }
-        const image = assetDisplaySrc(asset) || getNodeImageSrc(node);
-        if (!image) {
-            showToast('No image available for LayerForge.');
-            return;
-        }
-        adapter.open({
-            image,
-            mask: node.type === 'image' ? (node.mask?.data_url || '') : '',
-            title: node.title || 'LayerForge',
-            mount: root || document.getElementById('simpai-infinite-canvas-workbench'),
-            mountSelector: '#simpai-infinite-canvas-workbench',
-            modalClassName: `sai-canvas-layerforge-modal ${detectWorkbenchTheme() === 'dark' ? 'theme-dark' : 'theme-light'}`,
-            onSave: ({ image: editedImage, mask, metadata }) => createImageNodeFromLayerForgeOutput(node, editedImage, mask, metadata)
-        });
+        return MEDIA_EDIT_CONTROLLER.openLayerForgeForNode(node);
     }
 
     function convertResultToMediaNode(node) {
@@ -25015,371 +18387,195 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return CANVAS_RESULT_RUN_ACTION_CONTROLLER.retryResultRun?.(node);
     }
 
+    const NODE_ACTION_SOURCE = {
+        actionSource: {
+            handleResultInspectorAction,
+            handleTimelineAction,
+            deleteEdge,
+            deleteSelectedGroup,
+            focusGroup,
+            getGroup,
+            duplicateSelection,
+            getSelectedNodeIdList,
+            toggleSelectedNodesFlag,
+            createCompareNodeFromSources,
+            isImageCompareSource,
+            createTimelineNodeFromSources,
+            isTimelineSource,
+            alignSelectedNodes,
+            distributeSelectedNodes,
+            swapCompareInputs,
+            copyNodeGenerationMetadataPrompt,
+            applyNodeGenerationMetadataToPromptTarget,
+            detectionSlotForRegion,
+            toggleNoteTail,
+            resetNoteTail,
+            addTextMergeInput,
+            removeTextMergeInput,
+            deleteSelection,
+            runPresetNodeFromUi,
+            handleBatchAnyInspectorAction: (...args) => CANVAS_BATCH_ANY_INSPECTOR_CONTROLLER.handleBatchAnyInspectorAction(...args),
+            openXyzPlotPanel,
+            ensureStyleSelectorForPreset,
+            openLivePortraitVideoExpressionPresetEditor,
+            openLtx23GuidePresetEditor,
+            openVisualPromptEditor: (...args) => CANVAS_MINIMAX_H3_STORYBOARD_PRESET_EDITOR_CONTROLLER.openVisualPromptEditor(...args),
+            openMiniMaxH3StoryboardPresetEditor,
+            runStyleSelectorTargetPreset,
+            handlePresetModelAction,
+            handleVlmModelAction,
+            runWd14Node,
+            runTranslationNode,
+            openTagCartForNode,
+            refreshWildcardsCatalog,
+            openWildcardsV2Panel,
+            openWildcardsManager,
+            openWildcardsInsertMenu,
+            runVlmNode,
+            stopVlmChatNode,
+            isQwenTtsNode,
+            runQwenTtsNode,
+            stopQwenTtsNode,
+            handleDirectorTimelineAction: (...args) => CANVAS_TIMELINE_CONTEXT.handleDirectorTimelineAction?.(...args),
+            clearVlmChat,
+            attachVlmImages,
+            saveVlmCustomSecret,
+            loadVlmCustomSecret,
+            deleteVlmCustomSecret,
+            fetchVlmCustomModels,
+            toggleVlmCustomApi,
+            testVlmCustomApi,
+            syncVlmCustomFromAgent,
+            syncVlmCustomToAgent,
+            unloadVlmModel,
+            runMaskNode,
+            runSam3VideoMaskNode,
+            stopSam3VideoMaskNode,
+            openSam3PointEditor,
+            uploadSam3MaskForNode,
+            unloadSam3MaskForNode,
+            runCameraMotionNode,
+            clearCameraMotionNode,
+            openPoseStudioEditor,
+            openGaussianStudioEditor,
+            openLivePortraitExpressionEditor,
+            openSketchForNode,
+            openImageViewer,
+            openMediaViewer,
+            reloadMediaNode,
+            openCompareFullscreen,
+            addSelectedMediaToTimeline,
+            renderTimelineToResult,
+            toggleTimelinePreviewPlayback,
+            playTimelineFromStart,
+            playMediaSelection,
+            resetMediaTrim,
+            replaceNodeImage,
+            isImageNodeFrameless,
+            pushHistory,
+            buildMediaNodeStatePatch,
+            mutate,
+            openMaskEditor,
+            openLayerForgeForNode,
+            ensureConfigNode,
+            focusXyzMatrixSource,
+            selectXyzMatrixCell
+        },
+        selectionSource: {
+            getSelectedNodeIds: () => selectedNodeIds,
+            getSelectedNodeId: () => selectedNodeId,
+            getSelectedEdgeId: () => selectedEdgeId,
+            getSelectedGroupId: () => selectedGroupId,
+            setSelectedNodeId: value => { selectedNodeId = value; },
+            setSelectedNodeIds: values => { selectedNodeIds = new Set(values || []); },
+            setSelectedEdgeId: value => { selectedEdgeId = value; },
+            setSelectedGroupId: value => { selectedGroupId = value; }
+        },
+        nodeSource: {
+            getNode: (...args) => getNode(...args)
+        },
+        doubleClickSource: {
+            getInputPortHandleSelector: () => INPUT_PORT_HANDLE_SELECTOR,
+            getConnectionTargetFromHandle: (...args) => getConnectionTargetFromHandle(...args),
+            inputTargetEdges: (...args) => inputTargetEdges(...args),
+            inputTargetAcceptsMultiple: (...args) => inputTargetAcceptsMultiple(...args),
+            getNode: (...args) => getNode(...args),
+            focusNode: (...args) => focusNode(...args),
+            notifyMissingInputSource: () => showToast(t('Connected source is missing.', '已连接的来源节点不存在。')),
+            createDefaultInputSource: (...args) => createDefaultInputSource(...args),
+            createAdvancedMaskNodeForClassicInput: (...args) => createAdvancedMaskNodeForClassicInput(...args),
+            createNodeForUploadInput: (...args) => createNodeForUploadInput(...args),
+            isStyleTransferPresetNode: (...args) => isStyleTransferPresetNode(...args),
+            isInteractiveTarget: (...args) => isInteractiveTarget(...args),
+            ensureStyleSelectorForPreset: (...args) => ensureStyleSelectorForPreset(...args),
+            uploadSourceVideoForSam3Node: (...args) => uploadSourceVideoForSam3Node(...args),
+            createImageNodeForImageInput: (...args) => createImageNodeForImageInput(...args),
+            openPoseStudioEditor: (...args) => openPoseStudioEditor(...args),
+            openGaussianStudioEditor: (...args) => openGaussianStudioEditor(...args),
+            openLivePortraitExpressionEditor: (...args) => openLivePortraitExpressionEditor(...args),
+            ensureConfigNode: (...args) => ensureConfigNode(...args),
+            selectResultAsset: (...args) => selectResultAsset(...args),
+            createMediaNodeFromResultAsset: (...args) => createMediaNodeFromResultAsset(...args)
+        }
+    };
+    const CANVAS_NODE_ACTION_CONTROLLER = typeof WORKBENCH_CANVAS_NODE_ACTION.createCanvasNodeActionController === 'function'
+        ? WORKBENCH_CANVAS_NODE_ACTION.createCanvasNodeActionController(NODE_ACTION_SOURCE)
+        : {};
+
     function handleNodeAction(node, action, actionElement, evt) {
-        if (node?.type === 'result' && handleResultInspectorAction(node, action, actionElement, evt)) {
-            return;
-        }
-        if (handleTimelineAction(action, node, actionElement)) {
-            return;
-        }
-        if (action === 'toggle-collapse') {
-            const targetIds = selectedNodeIds.has(node.id) ? getSelectedNodeIdList() : [node.id];
-            selectedNodeId = node.id;
-            selectedNodeIds = new Set(targetIds);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-            toggleSelectedNodesFlag('collapsed');
-        } else if (action === 'toggle-note-tail' && node.type === 'note') {
-            toggleNoteTail(node);
-        } else if (action === 'reset-note-tail' && node.type === 'note') {
-            resetNoteTail(node);
-        } else if (action === 'text-merge-add-input' && node.type === 'text_merge') {
-            addTextMergeInput(node);
-        } else if (String(action || '').startsWith('text-merge-remove-input:') && node.type === 'text_merge') {
-            removeTextMergeInput(node, String(action || '').slice('text-merge-remove-input:'.length));
-        } else if (action === 'delete' && node.type !== 'result') {
-            selectedNodeId = node.id;
-            selectedNodeIds = new Set([node.id]);
-            selectedEdgeId = null;
-            deleteSelection({ forceNode: true });
-        } else if (action === 'run' && (node.type === 'preset' || node.type === 'classic')) {
-            runPresetNodeFromUi(node);
-        } else if (node?.type === 'batch_any' && CANVAS_BATCH_ANY_INSPECTOR_CONTROLLER.handleBatchAnyInspectorAction(node, action, evt)) {
-            return;
-        } else if (action === 'xyz-plot' && (node.type === 'preset' || node.type === 'classic')) {
-            openXyzPlotPanel(node);
-        } else if (action === 'add-style-selector' && node.type === 'preset') {
-            ensureStyleSelectorForPreset(node, { select: true });
-        } else if (action === 'edit-liveportrait-video-expression' && node.type === 'preset') {
-            openLivePortraitVideoExpressionPresetEditor(node);
-        } else if (action === 'edit-ltx23-guides' && node.type === 'preset') {
-            openLtx23GuidePresetEditor(node);
-        } else if (action === 'edit-visual-prompt' && node.type === 'preset') {
-            const openVisualPrompt = () => window.SimpAIVisualPromptEditor?.open({
-                value: node.params?.prompt || '',
-                definitionTarget: h3StoryboardOptionsForPreset(node).mode === 'Ref2VA' ? 'prompt' : '',
-                langState: window.simpleaiTopbarSystemParams || {},
-                inventory: h3StoryboardInventoryForPreset(node),
-                getInventory: () => h3StoryboardInventoryForPreset(getNode(node.id) || node),
-                onAttachMedia: card => attachCharacterMediaToPreset(node.id, card),
-                bindings: node.h3_storyboard?.character_bindings || [],
-                onApply: async result => {
-                    const current = getNode(node.id);
-                    if (!current) return false;
-                    if (!window.SimpAIH3StoryboardEditor) {
-                        await window.SimpAILazyAssetLoader?.loadGroup('h3StoryboardEditor');
-                    }
-                    if (!window.SimpAIH3StoryboardEditor) {
-                        throw new Error(t('H3 storyboard editor is not loaded.', 'H3 分镜表编辑器尚未加载。'));
-                    }
-                    const nextStoryboard = window.SimpAIH3StoryboardEditor.parsePrompt(
-                        result.value, h3StoryboardOptionsForPreset(current)
-                    );
-                    pushHistory('Update visual prompt');
-                    Object.assign(current, buildNodeParamsPatch(current, { paramsPatch: { prompt: result.value } }));
-                    Object.assign(current, buildH3StoryboardStatePatch(current, {
-                        statePatch: Object.assign({}, nextStoryboard, {
-                            character_bindings: result.bindings,
-                            prompt_snapshot: result.value
-                        }), updatedAt: nowIso()
-                    }));
-                    mutate({ inspector: true });
-                    return true;
-                }
-            });
-            if (window.SimpAIH3StoryboardEditor) openVisualPrompt();
-            else Promise.resolve(window.SimpAILazyAssetLoader?.loadGroup('h3StoryboardEditor'))
-                .then(openVisualPrompt)
-                .catch(error => window.alert(error?.message || t('Prompt editor could not be opened.', '无法打开提示词编辑器。')));
-        } else if (action === 'edit-h3-storyboard' && node.type === 'preset') {
-            openMiniMaxH3StoryboardPresetEditor(node);
-        } else if (action === 'apply-style-selector' && node.type === 'style_selector') {
-            runStyleSelectorTargetPreset(node);
-        } else if (action === 'check-models' && ['preset', 'classic'].includes(node.type)) {
-            handlePresetModelAction(node);
-        } else if (action === 'check-vlm-model' && node.type === 'vlm') {
-            handleVlmModelAction(node);
-        } else if (action === 'run-wd14' && node.type === 'wd14') {
-            runWd14Node(node);
-        } else if (action === 'run-translation' && node.type === 'translation') {
-            runTranslationNode(node);
-        } else if (action === 'open-tag-cart' && node.type === 'tag_cart') {
-            openTagCartForNode(node, actionElement);
-        } else if (action === 'refresh-wildcards-helper' && node.type === 'wildcards_helper') {
-            refreshWildcardsCatalog(node, { force: true });
-        } else if (action === 'open-wildcards-helper-picker' && node.type === 'wildcards_helper') {
-            openWildcardsV2Panel(node, 'prompt', { tab: 'insert', name: node.params?.name || '' });
-        } else if (action === 'open-wildcards-manager') {
-            openWildcardsManager(node);
-        } else if (String(action || '').startsWith('open-wildcards-insert:') && ['preset', 'classic'].includes(node.type)) {
-            openWildcardsInsertMenu(node, String(action || '').split(':')[1] || 'prompt', actionElement);
-        } else if (action === 'run-vlm' && node.type === 'vlm') {
-            runVlmNode(node);
-        } else if (action === 'stop-vlm-chat' && node.type === 'vlm') {
-            stopVlmChatNode(node);
-        } else if (action === 'run-qwen-tts' && isQwenTtsNode(node)) {
-            runQwenTtsNode(node);
-        } else if (action === 'stop-qwen-tts' && isQwenTtsNode(node)) {
-            stopQwenTtsNode(node);
-        } else if (action === 'director-add-segment' && isDirectorTimelineNode(node)) {
-            addDirectorTimelineSegment(node);
-        } else if (action === 'director-copy-output' && isDirectorTimelineNode(node)) {
-            copyDirectorTimelineOutput(node);
-        } else if (String(action || '').startsWith('director-remove-segment:') && isDirectorTimelineNode(node)) {
-            removeDirectorTimelineSegment(node, Number(String(action || '').slice('director-remove-segment:'.length)) || 0);
-        } else if (String(action || '').startsWith('director-move-segment-up:') && isDirectorTimelineNode(node)) {
-            moveDirectorTimelineSegment(node, Number(String(action || '').slice('director-move-segment-up:'.length)) || 0, -1);
-        } else if (String(action || '').startsWith('director-move-segment-down:') && isDirectorTimelineNode(node)) {
-            moveDirectorTimelineSegment(node, Number(String(action || '').slice('director-move-segment-down:'.length)) || 0, 1);
-        } else if (action === 'clear-vlm-chat' && node.type === 'vlm') {
-            clearVlmChat(node);
-        } else if (action === 'attach-vlm-image' && node.type === 'vlm') {
-            attachVlmImages(node);
-        } else if (action === 'save-vlm-custom-secret' && node.type === 'vlm') {
-            saveVlmCustomSecret(node);
-        } else if (action === 'load-vlm-custom-secret' && node.type === 'vlm') {
-            loadVlmCustomSecret(node);
-        } else if (action === 'delete-vlm-custom-secret' && node.type === 'vlm') {
-            deleteVlmCustomSecret(node);
-        } else if (action === 'fetch-vlm-custom-models' && node.type === 'vlm') {
-            fetchVlmCustomModels(node);
-        } else if (action === 'toggle-vlm-custom-api' && node.type === 'vlm') {
-            toggleVlmCustomApi(node);
-        } else if (action === 'test-vlm-custom-api' && node.type === 'vlm') {
-            testVlmCustomApi(node);
-        } else if (action === 'sync-vlm-custom-from-agent' && node.type === 'vlm') {
-            syncVlmCustomFromAgent(node);
-        } else if (action === 'sync-vlm-custom-to-agent' && node.type === 'vlm') {
-            syncVlmCustomToAgent(node);
-        } else if (action === 'unload-vlm-model' && node.type === 'vlm') {
-            unloadVlmModel(node);
-        } else if (action === 'run-mask' && node.type === 'mask') {
-            runMaskNode(node);
-        } else if (action === 'run-sam3-video-mask' && node.type === 'sam3_video_mask') {
-            runSam3VideoMaskNode(node);
-        } else if (action === 'stop-sam3-video-mask' && node.type === 'sam3_video_mask') {
-            stopSam3VideoMaskNode(node);
-        } else if (action === 'edit-sam3-points' && node.type === 'sam3_video_mask') {
-            openSam3PointEditor(node);
-        } else if (action === 'upload-sam3-mask' && node.type === 'sam3_video_mask') {
-            uploadSam3MaskForNode(node);
-        } else if (action === 'unload-sam3-mask' && node.type === 'sam3_video_mask') {
-            unloadSam3MaskForNode(node);
-        } else if (action === 'generate-camera-motion-reference' && node.type === 'camera_motion') {
-            runCameraMotionNode(node);
-        } else if (action === 'clear-camera-motion-reference' && node.type === 'camera_motion') {
-            clearCameraMotionNode(node);
-        } else if (action === 'edit-pose-studio' && node.type === 'pose_studio') {
-            openPoseStudioEditor(node);
-        } else if (action === 'edit-gaussian-studio' && node.type === 'gaussian_studio') {
-            openGaussianStudioEditor(node);
-        } else if (action === 'edit-liveportrait-expression' && node.type === 'liveportrait_expression') {
-            openLivePortraitExpressionEditor(node);
-        } else if (action === 'edit-mask-asset' && node.type === 'mask') {
-            openSketchForNode(node);
-        } else if (action === 'view-image') {
-            openImageViewer(node);
-        } else if (action === 'view-media') {
-            openMediaViewer(node);
-        } else if (action === 'media-reload') {
-            reloadMediaNode(node);
-        } else if (action === 'compare-fullscreen') {
-            openCompareFullscreen(node);
-        } else if (action === 'timeline-add-selected') {
-            addSelectedMediaToTimeline(node);
-        } else if (action === 'timeline-render-result') {
-            renderTimelineToResult(node);
-        } else if (action === 'timeline-preview-play') {
-            toggleTimelinePreviewPlayback(node);
-        } else if (action === 'timeline-preview-play-full') {
-            playTimelineFromStart(node);
-        } else if (action === 'media-play-toggle') {
-            playMediaSelection(node);
-        } else if (action === 'media-reset-trim') {
-            resetMediaTrim(node);
-        } else if (action === 'replace-image' && node.type !== 'result') {
-            replaceNodeImage(node);
-        } else if (action === 'toggle-image-frameless' && node.type === 'image') {
-            pushHistory(isImageNodeFrameless(node) ? 'Show image frame' : 'Hide image frame');
-            Object.assign(node, buildMediaNodeStatePatch(node, {
-                displayMode: isImageNodeFrameless(node) ? 'card' : 'frameless'
-            }));
-            mutate({ inspector: selectedNodeId === node.id });
-        } else if (action === 'edit-mask') {
-            openMaskEditor(node);
-        } else if (action === 'sketch-edit') {
-            openSketchForNode(node);
-        } else if (action === 'layerforge-edit' && node.type !== 'result') {
-            openLayerForgeForNode(node);
-        } else if (action === 'models-config') {
-            ensureConfigNode(node, 'models');
-        } else if (action === 'styles-config') {
-            ensureConfigNode(node, 'styles');
-        } else if (action === 'resolution-config') {
-            ensureConfigNode(node, 'resolution');
-        } else if (action === 'advanced-config') {
-            ensureConfigNode(node, 'advanced');
-        } else if (action === 'xyz-locate-source' && (node.type === 'xy_matrix' || node.type === 'xyz_matrix')) {
-            focusXyzMatrixSource(node);
-        } else if (String(action || '').startsWith('xyz-cell:') && (node.type === 'xy_matrix' || node.type === 'xyz_matrix')) {
-            selectXyzMatrixCell(node, String(action || '').slice('xyz-cell:'.length));
-        }
+        return CANVAS_NODE_ACTION_CONTROLLER.handleNodeAction?.(node, action, actionElement, evt);
     }
 
-    function updateWildcardsHelperParam(nodeId, key, value, inputType) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'wildcards_helper' || isNodeLocked(node)) return;
-        pushHistoryBatch(`wildcards-helper:${nodeId}:${key}`, 'Edit wildcards helper');
-        const paramsPatch = {};
-        if (inputType === 'number') {
-            const parsed = Number(value);
-            paramsPatch[key] = Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : 1;
-        } else {
-            paramsPatch[key] = value;
-        }
-        const nextParams = Object.assign({}, node.params || {}, paramsPatch);
-        Object.assign(node, buildWildcardsHelperStatePatch(node, {
-            paramsPatch,
-            textPatch: { value: wildcardHelperBuildTag(nextParams), updated_at: nowIso() }
-        }));
-        mutate({ inspector: false });
+    function handleNodeActionEvent(node, evt) {
+        return CANVAS_NODE_ACTION_CONTROLLER.handleNodeActionEvent?.(node, evt);
     }
 
-    function updateCompareParam(nodeId, key, value, inputType, options) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'compare' || isNodeLocked(node)) return;
-        pushHistoryBatch(`compare-param:${nodeId}:${key}`, 'Edit compare node');
-        let nextValue = inputType === 'number' ? Number(value) : value;
-        if (key === 'position') nextValue = clamp(Number(value) || 0, 0, 100);
-        else if (key === 'mode') nextValue = value === 'pixel' ? 'pixel' : 'fit';
-        Object.assign(node, compareNodeBuildStatePatch(node, {
-            paramsPatch: { [key]: nextValue }
-        }));
-        if (options?.render === false) {
-            scheduleSave();
-        } else {
-            mutate({ inspector: true });
-        }
+    function bindInspectorActionEvents(...args) {
+        return CANVAS_NODE_ACTION_CONTROLLER.bindInspectorActionEvents?.(...args) || false;
     }
 
-    function refreshCompareDom(nodeId) {
-        const node = getNode(nodeId);
-        if (!node || node.type !== 'compare') return;
-        const pos = `${clamp(Number(node.params?.position ?? 50), 0, 100)}%`;
-        document.querySelectorAll(`[data-node-id="${CSS.escape(nodeId)}"] .sai-compare-stage, .sai-compare-fullscreen[data-compare-node-id="${CSS.escape(nodeId)}"] .sai-compare-stage`).forEach((stageEl) => {
-            stageEl.style.setProperty('--compare-pos', pos);
-        });
-        document.querySelectorAll(`[data-node-id="${CSS.escape(nodeId)}"] [data-compare-position], .sai-compare-fullscreen[data-compare-node-id="${CSS.escape(nodeId)}"] [data-compare-position]`).forEach((field) => {
-            field.value = String(clamp(Number(node.params?.position ?? 50), 0, 100));
-        });
+    function bindInspectorNodeActionEvents(...args) {
+        return CANVAS_NODE_ACTION_CONTROLLER.bindInspectorNodeActionEvents?.(...args) || false;
     }
 
-    function swapCompareInputs(node) {
-        if (!node || node.type !== 'compare' || isNodeLocked(node)) return;
-        pushHistory('Swap compare inputs');
-        const oldA = node.inputs?.a || null;
-        const oldB = node.inputs?.b || null;
-        Object.assign(node, compareNodeBuildStatePatch(node, {
-            inputsPatch: { a: oldB, b: oldA }
-        }));
-        project.edges.forEach((edge) => {
-            if (edge.type !== 'compare' || edge.to !== node.id) return;
-            if (edge.slot === 'a') edge.slot = 'b';
-            else if (edge.slot === 'b') edge.slot = 'a';
-        });
-        mutate();
+    function handleNodeDoubleClick(node, evt) {
+        return CANVAS_NODE_ACTION_CONTROLLER.handleNodeDoubleClick?.(node, evt);
+    }
+
+    function updateWildcardsHelperParam(...args) {
+        return CANVAS_WILDCARDS_V2_CONTROLLER.updateWildcardsHelperParam(...args);
+    }
+
+    function updateCompareParam(...args) {
+        return CANVAS_COMPARE_STATE_CONTROLLER.updateCompareParam(...args);
+    }
+
+    function handleCompareNodeEvent(...args) {
+        return CANVAS_COMPARE_STATE_CONTROLLER.handleCompareNodeEvent(...args);
+    }
+
+    function bindInspectorCompareEvents(...args) {
+        return CANVAS_COMPARE_STATE_CONTROLLER.bindInspectorCompareEvents?.(...args) || false;
+    }
+
+    function refreshCompareDom(...args) {
+        return CANVAS_COMPARE_STATE_CONTROLLER.refreshCompareDom(...args);
+    }
+
+    function swapCompareInputs(...args) {
+        return CANVAS_COMPARE_STATE_CONTROLLER.swapCompareInputs(...args);
     }
 
     function copyTimelineJson(node) {
-        if (!node || node.type !== 'timeline') return;
-        const payload = typeof timelineSerializeTimeline === 'function'
-            ? timelineSerializeTimeline(node, TIMELINE_NODE_CONTEXT)
-            : node;
-        const text = JSON.stringify(payload, null, 2);
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-            navigator.clipboard.writeText(text).then(() => showToast(t('Timeline JSON copied.', 'Timeline JSON 已复制'))).catch(() => {
-                console.info('[SimpAI Canvas] Timeline JSON', payload);
-                showToast(t('Timeline JSON written to console.', 'Timeline JSON 已输出到控制台'));
-            });
-        } else {
-            console.info('[SimpAI Canvas] Timeline JSON', payload);
-            showToast(t('Timeline JSON written to console.', 'Timeline JSON 已输出到控制台'));
-        }
+        return CANVAS_TIMELINE_CONTEXT.copyTimelineJson(node);
     }
 
     function copyTimelineRenderPayload(node) {
-        if (!node || node.type !== 'timeline') return;
-        const payload = typeof timelineSerializeTimelineRenderPayload === 'function'
-            ? timelineSerializeTimelineRenderPayload(node, TIMELINE_NODE_CONTEXT)
-            : (typeof timelineSerializeTimeline === 'function' ? timelineSerializeTimeline(node, TIMELINE_NODE_CONTEXT) : node);
-        const text = JSON.stringify(payload, null, 2);
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-            navigator.clipboard.writeText(text).then(() => showToast(t('Timeline render payload copied.', 'Timeline 合成 payload 已复制'))).catch(() => {
-                console.info('[SimpAI Canvas] Timeline render payload', payload);
-                showToast(t('Timeline render payload written to console.', 'Timeline 合成 payload 已输出到控制台'));
-            });
-        } else {
-            console.info('[SimpAI Canvas] Timeline render payload', payload);
-            showToast(t('Timeline render payload written to console.', 'Timeline 合成 payload 已输出到控制台'));
-        }
+        return CANVAS_TIMELINE_CONTEXT.copyTimelineRenderPayload(node);
     }
 
     function applyTimelineMaskFeatherToSelectedClip(node) {
-        const clip = timelineSelectedVisualClip(node);
-        if (!node || !clip?.mask) return;
-        const feather = clamp(Number(node.params?.mask_feather || 0), 0, 120);
-        const strokes = Array.isArray(clip.mask.strokes) ? clip.mask.strokes : [];
-        Object.assign(clip, timelineBuildClipMaskPatch(clip, {
-            maskPatch: {
-                strokes: strokes.map(stroke => (stroke?.kind === 'pen' || stroke?.closed === true)
-                    ? Object.assign({}, stroke, { feather })
-                    : stroke),
-                pending_pen: clip.mask.pending_pen ? Object.assign({}, clip.mask.pending_pen, { feather }) : clip.mask.pending_pen
-            }
-        }));
-        if (strokes.some(stroke => stroke?.kind === 'pen' || stroke?.closed === true)) {
-            const dataUrl = exportTimelineMaskDataUrl(node, clip);
-            if (dataUrl) {
-                Object.assign(clip, timelineBuildClipMaskPatch(clip, { dataUrl }));
-            }
-        }
-    }
-
-    function resetPresetNodeParam(node, key) {
-        if (!node || !key || isNodeLocked(node)) return;
-        pushHistoryBatch(`preset-param-reset:${node.id}:${key}`, 'Reset parameter');
-        Object.assign(node, buildNodeParamsPatch(node, {
-            paramsPatch: key === 'seed_random' ? { seed_random: true } : {},
-            deleteKeys: [key]
-        }));
-        mutate({ inspector: true });
-        requestCanvasFrame(() => {
-            const latest = getNode(node.id);
-            if (!latest) return;
-            renderNodes();
-            renderEdges();
-            if (selectedNodeId === latest.id) renderInspector();
-        });
-    }
-
-    function injectParamResetButtons(scope) {
-        if (!scope || !scope.querySelectorAll) return;
-        scope.querySelectorAll('label').forEach((label) => {
-            if (label.querySelector('.sai-param-reset,[data-timeline-reset],[data-timeline-clip-reset]')) return;
-            const field = label.querySelector('[data-node-param],[data-inspector-param]');
-            if (!field || field.disabled) return;
-            const key = field.getAttribute('data-node-param') || field.getAttribute('data-inspector-param') || '';
-            if (!key) return;
-            const labelText = label.querySelector(':scope > span') || label.querySelector('span');
-            if (!labelText) return;
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'sai-param-reset';
-            button.setAttribute('data-param-reset', key);
-            button.title = 'Reset to default';
-            button.innerHTML = '<i class="fa-solid fa-rotate-left"></i>';
-            labelText.appendChild(button);
-        });
+        return applyTimelineMaskFeatherController?.(node);
     }
 
     function getNode(id) {
@@ -25390,19 +18586,15 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return utilsFormatBytes(bytes);
     }
 
-    function isTerminalRunState(state) {
-        return ['finished', 'failed', 'canceled', 'skipped'].includes(String(state || '').toLowerCase());
-    }
-
     function connectUploadEdgeApi(fromId, toId, slot, options) {
         return CANVAS_CONNECTION_CONTROLLER.connectUploadEdgeApi(fromId, toId, slot, options);
     }
 
     const PERFORMANCE_DIAGNOSTICS_CONTEXT_SOURCE = {
         stateSource: {
-            getEdgeCanvasActive: () => edgeCanvasActive,
-            getEdgeCanvasHitRecords: () => edgeCanvasHitRecords,
-            getEdgeCanvasDpr: () => edgeCanvasDpr,
+            getEdgeCanvasActive: () => !!CANVAS_EDGE_RENDERER.getEdgeCanvasActive?.(),
+            getEdgeCanvasHitRecords: () => CANVAS_EDGE_RENDERER.getEdgeCanvasHitRecords?.() || [],
+            getEdgeCanvasDpr: () => Number(CANVAS_EDGE_RENDERER.getEdgeCanvasDpr?.()) || 1,
             getEdgeRenderCacheKey: () => edgeRenderCacheKey,
             setEdgeRenderCacheKey: (value) => { edgeRenderCacheKey = value; }
         },

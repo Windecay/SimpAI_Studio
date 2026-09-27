@@ -1241,6 +1241,91 @@
             });
         }
 
+        function handleVlmAgentActionClick(node, evt) {
+            if (!node || node.type !== 'vlm' || !evt?.target) return false;
+            const target = evt.target;
+            const run = target.closest?.('[data-vlm-agent-action-run]');
+            if (run) {
+                evt.preventDefault();
+                evt.stopPropagation();
+                const [messageIndex, actionIndex] = String(run.getAttribute('data-vlm-agent-action-run') || '').split(':').map(Number);
+                const action = getVlmAgentAction(node, messageIndex, actionIndex);
+                const promptReview = action?.prompt_review && typeof action.prompt_review === 'object' ? action.prompt_review : null;
+                if (String(promptReview?.state || '').toLowerCase() === 'reject' || String(action?._prompt_review_rejected || '').toLowerCase() === 'true') {
+                    const issueText = Array.isArray(promptReview?.issues)
+                        ? promptReview.issues.slice(0, 3).map(item => String(item?.message || item?.code || item || '').trim()).filter(Boolean).join('; ')
+                        : '';
+                    const message = issueText
+                        ? t('Prompt review rejected this action: {issues}', '提示词审查已拒绝该动作：{issues}').replace('{issues}', issueText)
+                        : t('Prompt review rejected this action.', '提示词审查已拒绝该动作。');
+                    setVlmAgentActionExecution(node, messageIndex, actionIndex, { state: 'blocked', message, prompt_review: promptReview });
+                    showToast(message);
+                    return true;
+                }
+                const card = run.closest?.('[data-vlm-agent-action-card]');
+                const rememberAutoConfirm = !!card?.querySelector?.('[data-vlm-agent-action-auto-confirm]')?.checked;
+                markVlmAgentActionCardBusy(card, t('Queued...', '已入队...'));
+                setVlmAgentActionExecution(node, messageIndex, actionIndex, {
+                    state: 'queued',
+                    message: t('Queued; preparing generation...', '已入队，正在准备生成...')
+                });
+                executeVlmAgentAction(node, messageIndex, actionIndex, { rememberAutoConfirm });
+                return true;
+            }
+            const ignore = target.closest?.('[data-vlm-agent-action-ignore]');
+            if (ignore) {
+                evt.preventDefault();
+                evt.stopPropagation();
+                const [messageIndex, actionIndex] = String(ignore.getAttribute('data-vlm-agent-action-ignore') || '').split(':').map(Number);
+                ignoreVlmAgentAction(node, messageIndex, actionIndex);
+                return true;
+            }
+            const retry = target.closest?.('[data-vlm-agent-action-retry]');
+            if (retry) {
+                evt.preventDefault();
+                evt.stopPropagation();
+                const [messageIndex, actionIndex] = String(retry.getAttribute('data-vlm-agent-action-retry') || '').split(':').map(Number);
+                retryVlmAgentAction(node, messageIndex, actionIndex);
+                return true;
+            }
+            const allow = target.closest?.('[data-vlm-agent-action-allow]');
+            if (allow) {
+                evt.preventDefault();
+                evt.stopPropagation();
+                const [messageIndex, actionIndex] = String(allow.getAttribute('data-vlm-agent-action-allow') || '').split(':').map(Number);
+                const card = allow.closest?.('[data-vlm-agent-action-card]');
+                markVlmAgentActionCardBusy(card, t('Queued with review bypass...', '已放行入队...'));
+                allowRejectedVlmAgentAction(node, messageIndex, actionIndex);
+                return true;
+            }
+            return false;
+        }
+
+        function handleVlmChatMessageActionClick(node, evt) {
+            if (!node || node.type !== 'vlm' || !evt?.target) return false;
+            const target = evt.target;
+            const actions = [
+                ['[data-vlm-chat-image]', button => {
+                    uiCall('hideVlmChatImagePreview');
+                    const [messageIndex, imageIndex] = String(button.getAttribute('data-vlm-chat-image') || '').split(':').map(Number);
+                    openVlmChatImage(node, messageIndex, imageIndex);
+                }],
+                ['[data-vlm-chat-copy]', button => copyVlmChatMessage(node, Number(button.getAttribute('data-vlm-chat-copy')) || 0)],
+                ['[data-vlm-chat-quote]', button => quoteVlmChatMessage(node, Number(button.getAttribute('data-vlm-chat-quote')) || 0)],
+                ['[data-vlm-chat-rollback]', button => rollbackVlmChatToMessage(node, Number(button.getAttribute('data-vlm-chat-rollback')) || 0)],
+                ['[data-vlm-chat-delete]', button => deleteVlmChatMessage(node, Number(button.getAttribute('data-vlm-chat-delete')) || 0)]
+            ];
+            for (const [selector, action] of actions) {
+                const button = target.closest?.(selector);
+                if (!button) continue;
+                evt.preventDefault();
+                evt.stopPropagation();
+                action(button);
+                return true;
+            }
+            return false;
+        }
+
         function ignoreVlmAgentAction(node, messageIndex, actionIndex) {
             const action = getVlmAgentAction(node, messageIndex, actionIndex);
             if (!action) {
@@ -3260,6 +3345,18 @@
             return messages[Number(messageIndex)] || null;
         }
 
+        function openVlmChatMessageContextMenu(node, messageIndex, x, y) {
+            const message = getVlmChatMessage(node, messageIndex);
+            const hasImages = Array.isArray(message?.images) && message.images.length > 0;
+            uiCall('openContextMenu', undefined, x, y, [
+                { label: t('Copy message', '复制消息'), icon: 'fa-copy', action: () => copyVlmChatMessage(node, messageIndex), disabled: !message },
+                { label: t('Quote to input', '引用到输入'), icon: 'fa-reply', action: () => quoteVlmChatMessage(node, messageIndex), disabled: !message },
+                { label: t('Move back to input', '放回输入框'), icon: 'fa-clock-rotate-left', action: () => rollbackVlmChatToMessage(node, messageIndex), disabled: !message },
+                { label: t('Delete from context', '从上下文删除'), icon: 'fa-trash', danger: true, action: () => deleteVlmChatMessage(node, messageIndex), disabled: !message },
+                { label: t('Preview first image', '预览第一张图'), icon: 'fa-image', action: () => openVlmChatImage(node, messageIndex, 0), disabled: !hasImages }
+            ]);
+        }
+
         function getVlmChatToolState(node) {
             return node?.chat?.agent_tool_state && typeof node.chat.agent_tool_state === 'object'
                 ? node.chat.agent_tool_state
@@ -3818,6 +3915,7 @@
             vlmAgentActionPrompt,
             vlmAgentActionTargetId,
             markVlmAgentActionCardBusy,
+            handleVlmAgentActionClick,
             ignoreVlmAgentAction,
             retryVlmAgentAction,
             allowRejectedVlmAgentAction,
@@ -3891,6 +3989,8 @@
             removeVlmPendingImage,
             serializeVlmPendingImageSource,
             getVlmChatMessage,
+            openVlmChatMessageContextMenu,
+            handleVlmChatMessageActionClick,
             getVlmChatToolState,
             lastVlmAssistantText,
             pendingVlmChatMessages,

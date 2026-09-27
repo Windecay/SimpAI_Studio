@@ -38,6 +38,24 @@
             return node;
         }
 
+        function createImageNodeFromAsset(asset, world, title, options) {
+            const node = call(factorySource, 'buildImageNodeFromAsset', null, asset, world, title, options);
+            if (!node) return null;
+            call(layoutSource, 'fitImageNodeToAssetBounds', undefined, node, node.asset, { preserveCenter: false });
+            call(layoutSource, 'placeNodeAvoidingOverlap', undefined, node, world, options);
+            const project = call(projectSource, 'getProject', {}) || {};
+            Object.assign(project, call(projectSource, 'buildProjectNodeAppendPatch', {}, project, node));
+            return node;
+        }
+
+        function createMediaNodeFromAsset(asset, world, title, options) {
+            const node = call(factorySource, 'buildMediaNodeFromAsset', null, asset, world, title, options);
+            if (!node) return null;
+            call(layoutSource, 'placeNodeAvoidingOverlap', undefined, node, world, options);
+            const project = call(projectSource, 'getProject', {}) || {};
+            Object.assign(project, call(projectSource, 'buildProjectNodeAppendPatch', {}, project, node));
+            return node;
+        }
         async function addImageNodeFromFile(file, world) {
             const dataUrl = await call(fileSource, 'readFileAsDataUrl', '', file);
             const dimensions = await call(fileSource, 'getImageDimensions', {}, dataUrl);
@@ -208,6 +226,7 @@
         }
 
         return {
+            createImageNodeFromAsset, createMediaNodeFromAsset,
             addImageNodeFromFile, addMediaNodeFromFile, addOutputGalleryMediaNode, addImageNodeFromTransferItem,
             importSelectedTransferAt, importTransferItemAt, openImageFilePicker,
             importSelectedMediaBrowserItem, addMediaBrowserItemToCanvas, addMediaBrowserPayloadToCanvas

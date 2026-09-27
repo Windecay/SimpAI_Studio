@@ -36,6 +36,7 @@
         const utilitySource = scope.utilitySource || {};
         const identitySource = scope.identitySource || {};
         const timeSource = scope.timeSource || {};
+        const directorRunCoordinatorSource = scope.directorRunCoordinatorSource || {};
 
         const call = (sourceObject, name, fallback, ...args) => typeof sourceObject?.[name] === 'function'
             ? sourceObject[name](...args)
@@ -421,9 +422,29 @@
         const pushHistory = (...args) => call(historySource, 'pushHistory', undefined, ...args);
         const getNodeRect = (...args) => call(layoutSource, 'getNodeRect', null, ...args);
         const centerViewportOnWorld = (...args) => call(layoutSource, 'centerViewportOnWorld', undefined, ...args);
+        function centerPresetRunViewport(presetNode, resultNode) {
+            const sourceNodes = ['prompt', 'negative_prompt']
+                .map(slot => getPromptTextSourceNode(presetNode, slot))
+                .filter(Boolean);
+            const rects = [presetNode, resultNode, ...sourceNodes]
+                .map(item => getNodeRect(item))
+                .filter(Boolean);
+            if (!rects.length) return;
+            const left = Math.min(...rects.map(rect => rect.x));
+            const top = Math.min(...rects.map(rect => rect.y));
+            const right = Math.max(...rects.map(rect => rect.x + rect.w));
+            const bottom = Math.max(...rects.map(rect => rect.y + rect.h));
+            const cx = (left + right) / 2;
+            const cy = (top + bottom) / 2;
+            const panelEl = call(uiSource, 'getCanvasAgentPanel', null);
+            const panelVisible = !!(panelEl && !panelEl.hidden && Number(panelEl.offsetWidth || 0) > 0);
+            const agentOffset = panelVisible
+                ? (panelEl.offsetWidth / 2 + 20) / (getProject().viewport.zoom || 1)
+                : 0;
+            centerViewportOnWorld(cx + agentOffset, cy);
+        }
         const presetResultBasePosition = (...args) => call(layoutSource, 'presetResultBasePosition', { x: 0, y: 0 }, ...args);
         const defaultResultNodeSize = (...args) => call(layoutSource, 'defaultResultNodeSize', { w: 240, h: 260 }, ...args);
-        const centerPresetRunViewport = (...args) => call(layoutSource, 'centerPresetRunViewport', undefined, ...args);
         const applyNodeLayoutPatch = (...args) => call(layoutSource, 'applyNodeLayoutPatch', undefined, ...args);
         const ensureGenerateEdge = (...args) => call(workflowSource, 'ensureGenerateEdge', null, ...args);
         const dockCanvasAgentPanelBottomLeft = (...args) => call(workflowSource, 'dockCanvasAgentPanelBottomLeft', undefined, ...args);
@@ -669,6 +690,146 @@
                 return { ok: true, warning: error };
             }
             return { ok: false, error };
+        }
+
+        async function executeDirectorSegmentedRun(node, plan, options) {
+            const updateStatus = (state, message) => call(
+                directorRunCoordinatorSource,
+                'updateStatus',
+                undefined,
+                node,
+                state,
+                message
+            );
+            updateStatus('waiting', t('Preparing Director segmented run...', '正在准备 Director 分镜运行...'));
+            mutate({ inspector: true });
+
+            const promptGate = await call(
+                directorRunCoordinatorSource,
+                'preflight',
+                Promise.resolve({ ok: false, error: 'Director prompt preflight unavailable' }),
+                node,
+                plan,
+                options
+            );
+            if (!promptGate?.ok) {
+                updateStatus(
+                    'failed',
+                    promptGate?.error || t('Director prompt preflight failed.', 'Director 提示词预检查失败。')
+                );
+                mutate({ inspector: true });
+                return promptGate;
+            }
+            plan = promptGate.plan || plan;
+
+            const modelGate = await ensurePresetModelsBeforeRun(node);
+            if (!modelGate?.ok) return modelGate;
+
+            call(historySource, 'pushHistory', undefined, 'Run Director segmented preset');
+            const segmentResults = [];
+            for (let index = 0; index < plan.segments.length; index += 1) {
+                segmentResults.push(call(
+                    directorRunCoordinatorSource,
+                    'createResult',
+                    null,
+                    node,
+                    plan,
+                    plan.segments[index],
+                    index,
+                    uid('run'),
+                    uid('rt')
+                ));
+            }
+
+            call(
+                directorRunCoordinatorSource,
+                'selectInitialResult',
+                undefined,
+                segmentResults[0]?.id || node.id
+            );
+            call(schedulerSource, 'clearSchedulerBlockedState', undefined);
+            mutate();
+
+            let previousResultNode = null;
+            for (let index = 0; index < plan.segments.length; index += 1) {
+                const resultNode = segmentResults[index];
+                const message = t(
+                    'Running Director segment {index}/{total}...',
+                    '正在运行 Director 分镜 {index}/{total}...'
+                ).replace('{index}', String(index + 1)).replace('{total}', String(plan.segments.length));
+                updateStatus('running', message);
+                mutate({ inspector: true });
+
+                const outcome = await call(
+                    directorRunCoordinatorSource,
+                    'submitSegment',
+                    Promise.resolve({ ok: false, error: 'Director segment submission unavailable' }),
+                    node,
+                    resultNode,
+                    plan,
+                    plan.segments[index],
+                    index,
+                    previousResultNode
+                );
+                if (!outcome?.ok) {
+                    updateStatus(
+                        'failed',
+                        outcome?.error || t('Director segment run failed.', 'Director 分镜运行失败。')
+                    );
+                    mutate({ inspector: true });
+                    return Object.assign({ ok: false, segmented: true, failed_segment_index: index }, outcome || {});
+                }
+                previousResultNode = getNode(resultNode.id) || resultNode;
+            }
+
+            const finalResultNode = segmentResults.length
+                ? (getNode(segmentResults[segmentResults.length - 1].id) || segmentResults[segmentResults.length - 1])
+                : null;
+            if (call(directorRunCoordinatorSource, 'chainOutput', '', plan.capability) === 'last_result') {
+                updateStatus('finished', t('Director chained video finished.', 'Director 串联视频已完成。'));
+                if (finalResultNode?.id) {
+                    call(directorRunCoordinatorSource, 'selectFinalResult', undefined, finalResultNode.id);
+                }
+                mutate({ inspector: true });
+                return {
+                    ok: true,
+                    segmented: true,
+                    chain_output: 'last_result',
+                    segment_result_node_ids: segmentResults.map(item => item.id),
+                    final_result_node_id: finalResultNode?.id || ''
+                };
+            }
+
+            const timeline = call(
+                directorRunCoordinatorSource,
+                'prepareTimeline',
+                null,
+                node,
+                plan,
+                segmentResults.map(item => getNode(item.id)).filter(Boolean)
+            );
+            updateStatus('running', t('Rendering Director Timeline...', '正在合成 Director Timeline...'));
+            mutate({ inspector: true });
+            const renderOutcome = await call(
+                directorRunCoordinatorSource,
+                'renderTimeline',
+                Promise.resolve({ ok: false, error: 'Director timeline render unavailable' }),
+                timeline
+            );
+            updateStatus(
+                renderOutcome?.ok ? 'finished' : 'failed',
+                renderOutcome?.ok
+                    ? t('Director segmented video finished.', 'Director 分镜视频已完成。')
+                    : (renderOutcome?.error || t('Director timeline render failed.', 'Director 时间轴合成失败。'))
+            );
+            mutate({ inspector: true });
+            return {
+                ok: !!renderOutcome?.ok,
+                segmented: true,
+                segment_result_node_ids: segmentResults.map(item => item.id),
+                timeline_node_id: timeline?.id || '',
+                render_result: renderOutcome
+            };
         }
 
         function buildPresetAssetSourcesFromUploadEdges(uploadEdges, serializer) {
@@ -1178,6 +1339,7 @@
 
         return {
             runPresetNode,
+            runDirectorSegmentedPresetNode: executeDirectorSegmentedRun,
             preflightDirectPresetRun,
             ensurePresetModelsBeforeRun,
             applyRunDryRunResult,

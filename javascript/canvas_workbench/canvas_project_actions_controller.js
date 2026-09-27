@@ -33,9 +33,9 @@
             getCurrentProject: projectSource,
             getCurrentProjectId: projectSource,
             getDefaultProjectId: projectSource,
+            getDefaultSettings: projectSource,
             isProjectEmpty: projectSource,
             ensureProjectGroups: projectSource,
-            createDemoWorkbenchProject: projectSource,
             sanitizeStoragePart: projectSource,
             sanitizeProject: projectSource,
             createDefaultProject: projectSource,
@@ -45,7 +45,9 @@
             loadProject: projectSource,
             buildProjectCanvasClearPatch: patchSource,
             buildProjectIdentityPatch: patchSource,
+            buildProjectSettingsPatch: patchSource,
             buildProjectSettingsMergePatch: patchSource,
+            buildProjectDemoPatch: patchSource,
             buildProjectStoragePatch: patchSource,
             buildProjectStorageInfo: persistenceSource,
             saveProjectToBrowserCache: persistenceSource,
@@ -89,6 +91,58 @@
 
         function applyProjectStoragePatch(project, storage) {
             Object.assign(project, call('buildProjectStoragePatch', { storage }, project, storage));
+        }
+
+        function createDemoWorkbenchProject(options) {
+            const opts = options || {};
+            const currentProject = call('getCurrentProject', {}, []) || {};
+            const now = call('nowIso', '', []);
+            const id = opts.id || currentProject.id || call('getDefaultProjectId', 'default', []);
+            const storage = opts.storage || currentProject.storage || call(
+                'buildProjectStorageInfo',
+                {},
+                call('getStorageKey', '', []),
+                call('getStorageScope', {}, [])
+            );
+            const demoPatch = call('buildProjectDemoPatch', undefined, {
+                id,
+                schema: 'simpai.canvas.workbench.v1',
+                nowIso: () => now,
+                t,
+                defaultSettings: call('getDefaultSettings', {}, []),
+                storage
+            });
+            const demo = demoPatch && typeof demoPatch === 'object' && Object.keys(demoPatch).length
+                ? demoPatch
+                : call('createDefaultProject', {});
+            return call('sanitizeProject', demo, demo);
+        }
+
+        function ensureInitialDemoProject() {
+            const currentProject = call('getCurrentProject', {}, []) || {};
+            Object.assign(currentProject, call(
+                'buildProjectSettingsPatch',
+                {},
+                currentProject,
+                { defaultSettings: call('getDefaultSettings', {}, []) }
+            ));
+            if (!call('isProjectEmpty', false, currentProject) || currentProject.settings.__demo_initialized) return false;
+
+            const storage = currentProject.storage || call(
+                'buildProjectStorageInfo',
+                {},
+                call('getStorageKey', '', []),
+                call('getStorageScope', {}, [])
+            );
+            const demo = createDemoWorkbenchProject({
+                id: currentProject.id || call('getDefaultProjectId', 'default', []),
+                storage
+            });
+            call('setProject', null, demo);
+            const nextProject = call('getCurrentProject', {}, []) || demo;
+            applyProjectStoragePatch(nextProject, storage);
+            call('saveProjectToBrowserCache', null, { reason: 'ensure_initial_demo_project' });
+            return true;
         }
 
         function applyProjectIdentityPatch(project, id, title) {
@@ -157,7 +211,7 @@
             const storageScope = call('getStorageScope', {}, []);
             const storageKey = call('getStorageKey', '', []);
             const storage = currentProject.storage || call('buildProjectStorageInfo', {}, storageKey, storageScope);
-            const demo = call('createDemoWorkbenchProject', {}, {
+            const demo = createDemoWorkbenchProject({
                 id: currentProject.id || call('getDefaultProjectId', 'default', []),
                 storage
             }) || {};
@@ -403,6 +457,8 @@
         }
 
         return {
+            createDemoWorkbenchProject,
+            ensureInitialDemoProject,
             clearBrowserCache,
             clearProjectFileWithConfirm,
             loadDemoWorkbenchWithConfirm,

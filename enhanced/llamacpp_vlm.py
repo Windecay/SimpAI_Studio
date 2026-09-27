@@ -448,7 +448,7 @@ class LlamaCppVLM:
         }
         return handlers.get(name)
 
-    def _create_chat_handler(self, handler_class, mmproj_path, chat_handler_name, image_min_tokens=0, image_max_tokens=0):
+    def _create_chat_handler(self, handler_class, mmproj_path, chat_handler_name, image_min_tokens=0, image_max_tokens=0, use_gpu=True):
         if handler_class is None:
             return None
 
@@ -497,6 +497,10 @@ class LlamaCppVLM:
         if is_mtmd_handler:
             kwargs["image_max_tokens"] = int(image_max_tokens or 0)
             kwargs["image_min_tokens"] = int(image_min_tokens or 0)
+        if mmproj_path and not use_gpu:
+            if not is_mtmd_handler and "use_gpu" not in parameters:
+                raise RuntimeError("This vision handler cannot guarantee CPU-only mmproj loading")
+            kwargs["use_gpu"] = False
 
         try:
             return handler_class(**kwargs)
@@ -830,7 +834,7 @@ class LlamaCppVLM:
             logger.warning("Multiple mmproj files found beside %s; select one in the model catalog.", model_path)
         return None
 
-    def _prepare_chat_handler(self, handler_class, mmproj_path, model_path, chat_handler_name, image_min_tokens=0, image_max_tokens=0):
+    def _prepare_chat_handler(self, handler_class, mmproj_path, model_path, chat_handler_name, image_min_tokens=0, image_max_tokens=0, use_gpu=True):
         if not handler_class:
             self.chat_handler = None
             return None
@@ -844,6 +848,7 @@ class LlamaCppVLM:
                 chat_handler_name=chat_handler_name,
                 image_min_tokens=image_min_tokens,
                 image_max_tokens=image_max_tokens,
+                use_gpu=use_gpu,
             )
         else:
             logger.warning(
@@ -1077,6 +1082,9 @@ class LlamaCppVLM:
         with self.lock:
             n_ctx = normalize_llama_cpp_n_ctx(n_ctx, default=8192)
             vram_policy = normalize_llama_cpp_vram_policy(vram_policy)
+            cpu_only = vram_policy == "cpu"
+            if cpu_only:
+                n_gpu_layers = 0
             requested_kv_cache_type = normalize_llama_cpp_kv_cache_type(kv_cache_type)
             requested_mtp = bool(load_mtp)
             mtp_binding_supported = self._supports_mtp_speculative()
@@ -1269,7 +1277,10 @@ class LlamaCppVLM:
                     else:
                         return
 
-            self._prepare_gpu_memory_for_reload(reload_reason)
+            if cpu_only:
+                self.free_model(clear_gpu_cache=False)
+            else:
+                self._prepare_gpu_memory_for_reload(reload_reason)
 
             if auto_n_gpu_layers:
                 try:
@@ -1298,6 +1309,8 @@ class LlamaCppVLM:
                     }
 
             target_n_gpu_layers = n_gpu_layers
+            if cpu_only:
+                auto_estimate = {"offload_kqv": False, "target_n_gpu_layers": 0}
 
             logger.info(f"Loading Main LLM from: {model_path}")
             if mtp_attempt_allowed:
@@ -1315,10 +1328,11 @@ class LlamaCppVLM:
                 chat_handler_name=chat_handler_name,
                 image_min_tokens=image_min_tokens,
                 image_max_tokens=image_max_tokens,
+                use_gpu=not cpu_only,
             )
 
             total_layers = auto_estimate.get("total_layers") or self._get_layer_count(model_path)
-            offload_kqv = bool(auto_estimate.get("offload_kqv", True))
+            offload_kqv = False if cpu_only else bool(auto_estimate.get("offload_kqv", True))
             load_attempts = [
                 (layer_count, offload_kqv)
                 for layer_count in llama_cpp_gpu_layer_attempts(
@@ -1352,6 +1366,8 @@ class LlamaCppVLM:
                             "offload_kqv": attempt_offload_kqv,
                             "verbose": False,
                         }
+                        if cpu_only:
+                            llama_kwargs["op_offload"] = False
                         if qwen_hybrid_vision:
                             llama_kwargs["ctx_checkpoints"] = QWEN_HYBRID_CTX_CHECKPOINTS
                         if attempt_kv_cache_type != "f16":
@@ -1395,10 +1411,12 @@ class LlamaCppVLM:
                                     chat_handler_name=chat_handler_name,
                                     image_min_tokens=image_min_tokens,
                                     image_max_tokens=image_max_tokens,
+                                    use_gpu=not cpu_only,
                                 )
                                 llama_kwargs["chat_handler"] = self.chat_handler
                                 mtp_kwargs.clear()
-                                ldm_patched.modules.model_management.soft_empty_cache(True)
+                                if not cpu_only:
+                                    ldm_patched.modules.model_management.soft_empty_cache(True)
                                 logger.info(
                                     "llama.cpp MTP fallback cleanup completed; loading standard decoding "
                                     "with n_gpu_layers=%s, offload_kqv=%s, kv_cache_type=%s, n_ctx=%s",
@@ -1438,7 +1456,8 @@ class LlamaCppVLM:
                                 next_offload_kqv,
                             )
                             gc.collect()
-                            ldm_patched.modules.model_management.soft_empty_cache(True)
+                            if not cpu_only:
+                                ldm_patched.modules.model_management.soft_empty_cache(True)
                             continue
                         if attempt_kv_cache_type != "f16" and kv_type_index + 1 < len(kv_cache_load_types):
                             logger.warning(
@@ -1448,7 +1467,8 @@ class LlamaCppVLM:
                             )
                             quantization_fallback = True
                             gc.collect()
-                            ldm_patched.modules.model_management.soft_empty_cache(True)
+                            if not cpu_only:
+                                ldm_patched.modules.model_management.soft_empty_cache(True)
                             break
                         raise
                 if self.llm is not None:
@@ -1537,7 +1557,7 @@ class LlamaCppVLM:
             self.current_kv_cache_gb = auto_estimate.get("kv_cache_gb")
             self.current_mmproj_size_gb = auto_estimate.get("mmproj_size_gb")
             self.current_offload_kqv = loaded_offload_kqv
-            post_load_vram_snapshot = self._current_vram_snapshot()
+            post_load_vram_snapshot = {} if cpu_only else self._current_vram_snapshot()
             self.current_post_load_free_vram_gb = post_load_vram_snapshot.get("free_vram_gb")
             self.current_post_load_external_vram_gb = post_load_vram_snapshot.get("external_vram_gb")
             self.current_post_load_external_process_count = post_load_vram_snapshot.get("external_process_count")
@@ -1574,7 +1594,8 @@ class LlamaCppVLM:
             self.current_vram_estimate["mtp_supported"] = self.current_mtp_supported
             self.current_vram_estimate["mtp_failure"] = mtp_failure
             self.runtime_unhealthy = False
-            ldm_patched.modules.model_management.print_memory_info("after load llama.cpp model")
+            if not cpu_only:
+                ldm_patched.modules.model_management.print_memory_info("after load llama.cpp model")
 
     def _runtime_context_summary(self, messages=None, max_tokens=None):
         llm = self.llm
@@ -1622,8 +1643,10 @@ class LlamaCppVLM:
         self.free_model(clear_conversations=False)
         self.runtime_unhealthy = True
 
-    def free_model(self, clear_conversations=False):
+    def free_model(self, clear_conversations=False, clear_gpu_cache=None):
         with self.lock:
+            if clear_gpu_cache is None:
+                clear_gpu_cache = self.current_vram_policy != "cpu" or bool(self.current_n_gpu_layers)
             if self.llm:
                 self.llm.close()
                 self.llm = None
@@ -1668,7 +1691,7 @@ class LlamaCppVLM:
             if clear_conversations:
                 self.clear_conversation()
             gc.collect()
-            if torch.cuda.is_available():
+            if clear_gpu_cache and torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
     def get_runtime_status(self, vram_policy=None, kv_cache_type=None, n_ctx=None, load_mtp=None):

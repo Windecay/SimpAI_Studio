@@ -41,16 +41,35 @@
         const utilitySource = scope.utilitySource || {};
         const assetSource = scope.assetSource || {};
         const nodeSource = scope.nodeSource || {};
+        const projectSource = scope.projectSource || {};
         const renderSource = scope.renderSource || {};
         const pick = (group, name) => delegate(group, name) || delegate(scope, name);
+        const getProject = pick(projectSource, 'getProject');
+        const getNode = pick(nodeSource, 'getNode');
+        const isImageCompareSource = pick(nodeSource, 'isImageCompareSource');
+        const getSelectedResultAsset = pick(nodeSource, 'getSelectedResultAsset');
+        const resolveCompareSourceNode = getProject && getNode && isImageCompareSource
+            ? (node, slot) => {
+                const edge = (getProject()?.edges || []).find(item => item.type === 'compare' && item.to === node?.id && item.slot === slot);
+                const sourceId = node?.inputs?.[slot] || edge?.from;
+                const source = sourceId ? getNode(sourceId) : null;
+                return isImageCompareSource(source) ? source : null;
+            }
+            : undefined;
+        const resolveCompareSourceAsset = getSelectedResultAsset
+            ? source => {
+                if (!source) return null;
+                return source.type === 'result' ? getSelectedResultAsset(source) : source.asset;
+            }
+            : undefined;
         return {
             assetDisplaySrc: pick(assetSource, 'assetDisplaySrc'),
             defaultNodeSize: pick(nodeSource, 'defaultNodeSize'),
             escapeHtml: pick(utilitySource, 'escapeHtml'),
             t: pick(utilitySource, 't'),
             clamp: pick(utilitySource, 'clamp'),
-            getCompareSourceAsset: pick(nodeSource, 'getCompareSourceAsset'),
-            getCompareSourceNode: pick(nodeSource, 'getCompareSourceNode'),
+            getCompareSourceAsset: pick(nodeSource, 'getCompareSourceAsset') || resolveCompareSourceAsset,
+            getCompareSourceNode: pick(nodeSource, 'getCompareSourceNode') || resolveCompareSourceNode,
             readAssetSize: pick(assetSource, 'readAssetSize'),
             renderIconHtml: pick(renderSource, 'renderIconHtml'),
             renderNodeStateBadges: pick(renderSource, 'renderNodeStateBadges'),
