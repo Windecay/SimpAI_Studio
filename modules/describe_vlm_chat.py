@@ -2840,6 +2840,11 @@ def _build_roleplay_resource_runtime_payload(
         n_ctx=roleplay_context_n_ctx,
         resource_plan=resource_plan,
     )
+    task_token_budgets = {"memory": 1100, "world_book": 1750, "chapter": 1150}
+    resource_tasks = resource_plan.get("tasks", []) if isinstance(resource_plan, dict) else []
+    resource_max_tokens = min(2400, max(500, 256 + sum(
+        task_token_budgets.get(task.get("kind"), 0) for task in resource_tasks if isinstance(task, dict)
+    ) + (450 if resource_signals.get("visual") else 0)))
     params = {
         **_thinking_runtime_params(payload, force_disabled=True),
         "mode": "chat",
@@ -2865,7 +2870,7 @@ def _build_roleplay_resource_runtime_payload(
         "save_context": False,
         "max_history": 2,
         "context_chars": 14000,
-        "max_tokens": 2400,
+        "max_tokens": resource_max_tokens,
         "temperature": 0.15,
         "top_p": 0.75,
         "top_k": 20,
@@ -6270,7 +6275,7 @@ def _run_standalone_vlm_runtime(runtime_payload, payload, stream_callback=None, 
 
 
 def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None, stream_callback=None):
-    """Run one roleplay agent with configured primary/fallback profiles."""
+    """Use the interface model for auto routes and configured profiles for explicit routes."""
     runtime_payload = runtime_payload if isinstance(runtime_payload, dict) else {}
     payload = payload if isinstance(payload, dict) else {}
     params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
@@ -6333,6 +6338,7 @@ def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None, str
         api_profile=api_profile,
         include_secret=True,
     )
+    route_mode = routing["routes"].get(role, {}).get("mode", "auto")
     attempts = vlm_agent_router.route_attempts(
         routing,
         role,
@@ -6348,15 +6354,32 @@ def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None, str
         )
 
     if not attempts:
+        if route_mode != "auto":
+            return {
+                "ok": False,
+                "error": "roleplay_route_unavailable",
+                "agent_route": {
+                    "role": role,
+                    "profile_id": "",
+                    "profile_type": route_mode,
+                    "fallback_used": False,
+                    "attempts": [],
+                },
+            }
         try:
             result = run_candidate(runtime_payload)
         except Exception as exc:
             result = {"ok": False, "error": str(exc), "details": "runtime_exception"}
         if isinstance(result, dict):
+            selected_version = str(params.get("version") or payload.get("version") or "").strip()
+            selected_type = (
+                "api" if selected_version == "Custom" or vlm_api_profiles.is_profile_version(selected_version)
+                else "local"
+            )
             result.setdefault("agent_route", {
                 "role": role,
-                "profile_id": "runtime_default",
-                "profile_type": "runtime_default",
+                "profile_id": "interface_selected",
+                "profile_type": selected_type,
                 "fallback_used": False,
                 "attempts": [],
             })

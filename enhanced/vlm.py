@@ -56,8 +56,10 @@ from modules.util import HWC3, resize_image, is_chinese
 from enhanced.simpleai import comfyd, p2p_task
 from modules.custom_llm_api import (
     OPENAI_CHAT_COMPLETIONS,
+    apply_thinking_settings,
     api_format_supported,
     custom_llm_url,
+    extract_response_metadata,
     extract_response_text,
     models_url,
     prepare_completion_request,
@@ -65,6 +67,10 @@ from modules.custom_llm_api import (
 )
 
 DEFAULT_VLM_VERSION = "Qwen3.5-9B-abliterated-Q4_K_M"
+
+
+class PromptActionOutputLimitError(RuntimeError):
+    pass
 CUSTOM_VLM_IMAGE_MAX_SIDE = 1688
 CUSTOM_VLM_IMAGE_JPEG_QUALITY = 85
 HUIHUI_QWEN35_MODEL_DIR = "Huihui-Qwen3.5-9B-abliterated"
@@ -1411,7 +1417,7 @@ class VLM:
             return {"ok": False, "error": "Custom LLM model list failed", "details": str(exc)}
 
     def inference_custom(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, seed=-1,
-                         system_prompt=None, enable_thinking=None):
+                         system_prompt=None, enable_thinking=None, reject_truncated=False):
         missing = VLM.get_custom_missing_settings()
         if missing:
             raise RuntimeError(f"Custom VLM settings incomplete: {', '.join(missing)}")
@@ -1445,8 +1451,10 @@ class VLM:
             "max_tokens": int(max_tokens),
             "stream": False,
         }
-        if enable_thinking is False:
-            request_payload["chat_template_kwargs"] = {"enable_thinking": False}
+        request_payload = apply_thinking_settings(
+            request_payload, enable_thinking, base_url=settings["base_url"],
+            api_format=settings["api_format"], provider=settings.get("provider") or "",
+        )
         try:
             seed_value = int(seed)
         except Exception:
@@ -1465,10 +1473,13 @@ class VLM:
             method="POST",
             timeout=180,
         )
+        if reject_truncated and extract_response_metadata(response)["output_limited"]:
+            raise PromptActionOutputLimitError("The model reached its output token limit.")
         return _extract_openai_compatible_text(response).strip()
 
     def inference(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100,
-                  repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None):
+                  repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None,
+                  reject_truncated=False):
         # 设置为处理中状态
         VLM.set_processing_status(True)
         logger.debug("Starting VLM local inference...")
@@ -1483,6 +1494,7 @@ class VLM:
                     seed=seed,
                     system_prompt=system_prompt,
                     enable_thinking=enable_thinking,
+                    reject_truncated=reject_truncated,
                 )
             if system_prompt is None and ads.get_admin_default('p2p_active_checkbox') and ads.get_admin_default('p2p_remote_process').lower()=='out':
                 if isinstance(image, (list, tuple)):
@@ -1952,15 +1964,19 @@ class VLM:
             result = self.inference(
                 _superprompt_image_input(input_images),
                 user_prompt,
-                max_tokens=1800 if compiler_mode == minimax_h3_prompt_compiler.MODE_REF2VA else (1200 if compiler else 1024),
+                max_tokens=1800 if compiler_mode == minimax_h3_prompt_compiler.MODE_REF2VA else (1200 if compiler else 2048),
                 temperature=0.65,
                 top_p=0.85,
                 top_k=40,
                 repetition_penalty=1.05,
                 seed=-1,
                 system_prompt=system_prompt,
+                enable_thinking=False,
+                reject_truncated=True,
             )
             return _superprompt_clean_output(result, fallback="" if compiler else input_text)
+        except PromptActionOutputLimitError:
+            raise
         except Exception as exc:
             logger.warning("VLM prompt action failed; falling back to legacy prompt expansion: %s", exc)
             return None
@@ -2003,7 +2019,10 @@ class VLM:
                 logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for scene extended prompt")
                 media_note = prompt_actions.prompt_action_media_note(media_context)
                 legacy_prompt = "\n\n".join(part for part in (prompt_prompt, media_note, input_text) if str(part or "").strip())
-                return self.interrogate(_superprompt_image_input(input_images), prompt=legacy_prompt)
+                return self.inference(
+                    _superprompt_image_input(input_images), prompt=legacy_prompt,
+                    enable_thinking=False, reject_truncated=True,
+                )
 
         if not VLM.get_enable() or not self.model_exists():
             return superprompter.answer(input_text=translator.convert(f'{prompt}{input_text}', translation_methods))
@@ -2011,7 +2030,10 @@ class VLM:
         logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for standard extended prompt")
         media_note = prompt_actions.prompt_action_media_note(media_context)
         fallback_prompt = "\n\n".join(part for part in (media_note, f'{VLM.prompt_extend}{input_text}') if str(part or "").strip())
-        result = self.inference(_superprompt_image_input(input_images), prompt=fallback_prompt)
+        result = self.inference(
+            _superprompt_image_input(input_images), prompt=fallback_prompt,
+            enable_thinking=False, reject_truncated=True,
+        )
         return _superprompt_clean_output(result, fallback=input_text)
 
     def run_prompt_action(
@@ -2028,18 +2050,29 @@ class VLM:
         scene_resources=None,
     ):
         service_info = self.prompt_action_service_info(action_id, state)
-        result = self._run_prompt_action(
-            action_id,
-            input_text,
-            prompt_prefix,
-            input_images,
-            state,
-            translation_methods,
-            options=options,
-            video_path=video_path,
-            video_first_frame_path=video_first_frame_path,
-            scene_resources=scene_resources,
-        )
+        try:
+            result = self._run_prompt_action(
+                action_id,
+                input_text,
+                prompt_prefix,
+                input_images,
+                state,
+                translation_methods,
+                options=options,
+                video_path=video_path,
+                video_first_frame_path=video_first_frame_path,
+                scene_resources=scene_resources,
+            )
+        except PromptActionOutputLimitError:
+            language = str((state or {}).get("__lang") or "cn").lower() if isinstance(state, dict) else "cn"
+            result = {
+                "ok": False, "text": str(input_text or ""), "action_id": action_id,
+                "error": (
+                    "Model output reached its token limit. The original prompt was preserved."
+                    if language.startswith("en") else
+                    "模型输出达到 token 上限，已保留原提示词。"
+                ),
+            }
         if not isinstance(result, dict):
             return result
         result = dict(result)
@@ -2115,9 +2148,15 @@ class VLM:
             if direction == "auto":
                 direction = "to_en" if is_chinese(original) else "to_cn"
             if direction == "to_en":
-                output = self.inference(None, prompt=f'{VLM.prompt_translator}{original}')
+                output = self.inference(
+                    None, prompt=f'{VLM.prompt_translator}{original}',
+                    enable_thinking=False, reject_truncated=True,
+                )
             elif direction == "to_cn":
-                output = self.inference(None, prompt=f'{VLM.prompt_translator_cn}{original}')
+                output = self.inference(
+                    None, prompt=f'{VLM.prompt_translator_cn}{original}',
+                    enable_thinking=False, reject_truncated=True,
+                )
             else:
                 return {"ok": False, "text": original, "action_id": action["id"], "error": "Unsupported translation direction."}
             translated = str(output or "").strip()
@@ -2335,6 +2374,8 @@ class VLM:
                         media_context=media_meta,
                         options=action_options,
                     )
+                except PromptActionOutputLimitError:
+                    raise
                 except Exception as exc:
                     logger.warning("MiniMax H3 structured prompt optimization failed: %s", exc)
                     return {

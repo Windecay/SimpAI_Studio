@@ -34,11 +34,11 @@ PROFILE_API = "api"
 PROFILE_MODES = {"auto", PROFILE_LOCAL, PROFILE_API}
 
 _DEFAULT_ROUTE_ORDER = {
-    ROLE_CHARACTER_REPLY: ("api_main", "local_main"),
+    ROLE_CHARACTER_REPLY: ("local_main", "api_main"),
     ROLE_PLAYER_PROXY: ("local_main", "api_main"),
-    ROLE_DIRECTOR_STATE: ("api_main", "local_main"),
+    ROLE_DIRECTOR_STATE: ("local_main", "api_main"),
     ROLE_STATE_SUMMARY: ("local_main", "api_main"),
-    ROLE_VISUAL_DIRECTOR: ("api_main", "local_main"),
+    ROLE_VISUAL_DIRECTOR: ("local_main", "api_main"),
 }
 
 
@@ -128,7 +128,7 @@ def default_agent_routing(
             "mode": "auto",
             "primary": primary,
             "fallback": fallback,
-            "fallback_enabled": True,
+            "fallback_enabled": False,
         }
     return {
         "schema": ROUTER_SCHEMA,
@@ -150,7 +150,7 @@ def _normalize_route(value: Any, role: str) -> dict[str, Any]:
         "mode": mode,
         "primary": primary,
         "fallback": fallback,
-        "fallback_enabled": _truthy(source.get("fallback_enabled"), True),
+        "fallback_enabled": _truthy(source.get("fallback_enabled"), False),
     }
 
 
@@ -224,18 +224,24 @@ def route_attempts(
     )
     route = normalized["routes"].get(role) or _normalize_route({}, role)
     profiles = normalized["profiles"]
+    if route["mode"] == "auto":
+        return []
     if route["mode"] == PROFILE_API:
         profile_ids = ["api_main"]
         if route["fallback_enabled"]:
-            profile_ids.append(route["fallback"] or "local_main")
-    elif route["mode"] == PROFILE_LOCAL:
+            fallback_id = route["fallback"]
+            profile_ids.append(
+                fallback_id if _profile_type((profiles.get(fallback_id) or {}).get("type")) == PROFILE_LOCAL
+                else "local_main"
+            )
+    else:
         profile_ids = ["local_main"]
         if route["fallback_enabled"]:
-            profile_ids.append(route["fallback"] or "api_main")
-    else:
-        profile_ids = [route["primary"]]
-        if route["fallback_enabled"]:
-            profile_ids.append(route["fallback"])
+            fallback_id = route["fallback"]
+            if _profile_type((profiles.get(fallback_id) or {}).get("type")) == PROFILE_LOCAL:
+                profile_ids.append(fallback_id)
+    if not _profile_ready(profiles.get(profile_ids[0])):
+        return []
     attempts = []
     seen = set()
     for index, profile_id in enumerate(profile_ids):

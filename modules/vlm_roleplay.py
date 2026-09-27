@@ -272,6 +272,25 @@ def _clean_state_fields(
     return result
 
 
+_STATUS_BLOCK_RE = re.compile(r"<StatusBlock\b[^>]*>(.*?)</StatusBlock>", re.IGNORECASE | re.DOTALL)
+
+
+def _initial_state_fields_from_status_block(value: Any) -> list[dict[str, str]]:
+    """Read labeled character fields from a greeting without changing its original text."""
+    fields: list[dict[str, str]] = []
+    for match in _STATUS_BLOCK_RE.finditer(_text(value)):
+        lines = match.group(1).splitlines()
+        headings = [index for index, line in enumerate(lines) if line.lstrip().startswith("# ")]
+        for line in lines[headings[0] + 1:] if headings else lines:
+            label, separator, field_value = line.partition(":")
+            if not separator:
+                label, separator, field_value = line.partition("：")
+            label = re.sub(r"^[^\w]+", "", label).strip()
+            if separator and label and field_value.strip():
+                fields.append({"label": label, "value": field_value.strip()})
+    return _clean_state_fields(fields)
+
+
 _NUMERIC_STATE_RATIO_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*/\s*(-?\d+(?:\.\d+)?)\s*$")
 _NUMERIC_STATE_PERCENT_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*%\s*$")
 _NUMERIC_STATE_NUMBER_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*$")
@@ -1700,6 +1719,11 @@ def default_character_card(value: Any = None) -> dict[str, Any]:
         "speech_style": _text(source.get("speech_style")),
         "image_prompt": _text(source.get("image_prompt") or source.get("visual_prompt"), 12000),
         "negative_prompt": _text(source.get("negative_prompt"), 4000),
+        "initial_state_fields": _clean_state_fields(
+            source["initial_state_fields"] if "initial_state_fields" in source
+            else _initial_state_fields_from_status_block(source.get("first_message")),
+            preserve_empty_values=True,
+        ),
         "world_book": normalize_world_book(source.get("world_book")) if source.get("world_book") else {
             "schema": WORLD_BOOK_SCHEMA,
             "version": 1,
@@ -1753,6 +1777,8 @@ def _merge_character_card_layers(base: Any, overlay: Any) -> dict[str, Any]:
         if incoming or not existing:
             merged[field] = copy.deepcopy(incoming or [])
     incoming_world_book = _dict(overlay_card.get("world_book"))
+    if overlay_card.get("initial_state_fields") or not base_card.get("initial_state_fields"):
+        merged["initial_state_fields"] = copy.deepcopy(overlay_card["initial_state_fields"])
     existing_world_book = _dict(base_card.get("world_book"))
     if incoming_world_book.get("entries") or not existing_world_book.get("entries"):
         merged["world_book"] = copy.deepcopy(incoming_world_book)
@@ -3233,6 +3259,12 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
         "raw": _bounded_json_value(raw),
     }
     first_message = first_value("first_message", "first_mes") or (alternate_greetings[0] if alternate_greetings else "")
+    if "initial_state_fields" in source:
+        initial_state_fields = source["initial_state_fields"]
+    elif "initial_state_fields" in simpai_extension:
+        initial_state_fields = simpai_extension["initial_state_fields"]
+    else:
+        initial_state_fields = _initial_state_fields_from_status_block(first_message)
     card = default_character_card({
         "id": _id(first_value("id") or simpai_extension.get("id") or name, "character"),
         "name": name,
@@ -3246,6 +3278,7 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
         "image_prompt": image_prompt,
         "negative_prompt": negative_prompt,
         "first_message": first_message,
+        "initial_state_fields": initial_state_fields,
         "example_dialogues": _import_example_dialogues(
             first_value("example_dialogues", "mes_example") or simpai_extension.get("example_dialogues")
         ),
@@ -3499,6 +3532,22 @@ def normalize_story_state(value: Any = None) -> dict[str, Any]:
     return state
 
 
+def _normalize_story_origin(value: Any) -> dict[str, Any]:
+    source = _dict(value)
+    try:
+        opening_index = max(0, min(40, int(source.get("opening_index") or 0)))
+    except (TypeError, ValueError):
+        opening_index = 0
+    return {
+        "character_id": _text(source.get("character_id"), 160),
+        "character_name": _text(source.get("character_name"), 200),
+        "opening_index": opening_index,
+        "started": bool(source.get("started", False)),
+        "opening_message_id": _text(source.get("opening_message_id"), 160),
+        "world_book_entry_ids": _clean_string_list(source.get("world_book_entry_ids"), MAX_WORLD_BOOK_ENTRIES),
+    }
+
+
 def default_roleplay_session(value: Any = None) -> dict[str, Any]:
     source = _dict(value)
     primary_character = default_character_card(source.get("character") or source.get("character_card"))
@@ -3517,7 +3566,8 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
         state["scene"]["present_character_ids"] = [active_character_id]
     for character_id in characters:
         state["characters"].setdefault(character_id, _normalize_character_runtime(
-            source.get("character_runtime") if character_id == primary_character["id"] else None
+            source.get("character_runtime") if character_id == primary_character["id"] and source.get("character_runtime") is not None
+            else {"state_fields": characters[character_id].get("initial_state_fields", [])}
         ))
     branch_id = _branch_id(source.get("active_branch_id"))
     session = {
@@ -3531,6 +3581,7 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
         "active_character_id": active_character_id,
         "persona": persona,
         "story_state": state,
+        "story_origin": _normalize_story_origin(source.get("story_origin")),
         "active_branch_id": branch_id,
         "active_turn_id": _text(source.get("active_turn_id"), 200),
         "state_version": max(0, int(source.get("state_version") or state.get("state_version") or 0)),
@@ -3795,6 +3846,7 @@ def query_roleplay_memories(
     actor_id = _text(speaker_id, 160)
     active_chapter_id = _text(normalized.get("active_chapter_id"), 160)
     search_text = _roleplay_context_query(normalized, query)
+    requested_memory_ids = set(re.findall(r"@(?:记忆|memory)\[([^\]\r\n]{1,160})\]", _text(query, 5000), re.I))
     rows: list[tuple[float, dict[str, Any]]] = []
     for memory in normalized.get("memory_store", {}).get("items", []):
         if not memory.get("enabled") or not memory.get("text"):
@@ -3806,10 +3858,17 @@ def query_roleplay_memories(
             continue
         text_hits = _resource_key_hits(search_text, [memory.get("text")])
         keyword_hits = _resource_key_hits(search_text, memory.get("keywords"))
+        manually_requested = memory.get("id") in requested_memory_ids
+        question_text = _text(query, 5000).casefold()
+        question_hits = sum(
+            keyword.casefold() in question_text
+            for keyword in _clean_string_list(memory.get("keywords"), 24)
+            if len(keyword) >= 2
+        )
         importance = _bounded_float(memory.get("importance"), 0.5)
-        if not text_hits and not keyword_hits and not memory.get("pinned") and importance < 0.8:
+        if not manually_requested and not text_hits and not keyword_hits and not memory.get("pinned") and importance < 0.8:
             continue
-        score = importance * 10 + text_hits * 2 + keyword_hits * 5
+        score = importance * 10 + text_hits * 2 + keyword_hits * 5 + question_hits * 40 + (1000 if manually_requested else 0)
         if memory.get("pinned"):
             score += 20
         if chapter_id and chapter_id == active_chapter_id:
@@ -4620,6 +4679,7 @@ def build_roleplay_context(
         world_limit=MAX_WORLD_BOOK_ENTRIES,
         memory_limit=max(1, limits["memories"]),
     )
+    requested_memory_ids = set(re.findall(r"@(?:记忆|memory)\[([^\]\r\n]{1,160})\]", _text(query, 5000), re.I))
     history_pack = _context_history(history, limits)
     scene_payload = {
         "scene": {
@@ -4719,7 +4779,15 @@ def build_roleplay_context(
         required_specs.append(("present_characters", character_rows, len(character_rows)))
 
     system_budget = limits["system_chars"]
-    blocks = _fit_required_context_blocks(required_specs, system_budget)
+    has_keyword_memory = audience_key in {"character", "player_proxy"} and any(
+        item.get("keywords") or item.get("id") in requested_memory_ids
+        for item in resources.get("memories") or []
+    )
+    memory_reserve = min(900, max(500, system_budget // 5)) if has_keyword_memory else 0
+    chapter_reserve = min(260, system_budget // 8) if has_keyword_memory else 0
+    blocks = _fit_required_context_blocks(
+        required_specs, system_budget - memory_reserve - chapter_reserve,
+    )
     used_system_chars = sum(block["chars"] for block in blocks)
 
     def add_optional_list(block_id: str, rows: list[Any], total_items: int, *, keep_tail: bool = False) -> None:
@@ -4743,14 +4811,6 @@ def build_roleplay_context(
             else:
                 selected.pop()
 
-    all_facts = [
-        _context_turn_fact(item)
-        for item in _list(state.get("recent_turn_facts"), MAX_RECENT_TURN_FACTS)
-        if isinstance(item, dict)
-    ]
-    selected_facts = all_facts[-limits["turn_facts"]:]
-    add_optional_list("turn_facts", selected_facts, len(all_facts), keep_tail=True)
-
     chapter = resources.get("chapter") if isinstance(resources.get("chapter"), dict) else {}
     chapter_payload = {
         "id": _text(chapter.get("id"), 160),
@@ -4764,15 +4824,42 @@ def build_roleplay_context(
         "open_threads": [_context_text(item, 420) for item in _clean_string_list(chapter.get("open_threads"), 16)],
     }
     chapter_payload = {key: value for key, value in chapter_payload.items() if value not in ("", [], {})}
+    memory_rows = [
+        ({
+            "id": _text(item.get("id"), 80),
+            "text": _context_text(item.get("text"), 360 if system_budget <= 2200 else 600),
+        } if has_keyword_memory else {
+            "id": _text(item.get("id"), 160),
+            "text": _context_text(item.get("text"), 760),
+            "importance": _bounded_float(item.get("importance"), 0.5),
+            "keywords": _clean_string_list(item.get("keywords"), 12),
+        })
+        for item in _list(resources.get("memories"), limits["memories"])
+        if isinstance(item, dict)
+    ]
+    all_facts = [
+        _context_turn_fact(item)
+        for item in _list(state.get("recent_turn_facts"), MAX_RECENT_TURN_FACTS)
+        if isinstance(item, dict)
+    ]
+    selected_facts = all_facts[-limits["turn_facts"]:]
+    if has_keyword_memory:
+        add_optional_list("memories", memory_rows, len(resources.get("memories") or []))
+    else:
+        add_optional_list("turn_facts", selected_facts, len(all_facts), keep_tail=True)
+
     if chapter_payload:
         chapter_block = _context_block("chapter", chapter_payload)
         if used_system_chars + chapter_block["chars"] <= system_budget:
             blocks.append(chapter_block)
             used_system_chars += chapter_block["chars"]
 
+    if has_keyword_memory:
+        add_optional_list("turn_facts", selected_facts, len(all_facts), keep_tail=True)
+
     world_candidates = resources.get("world_book") or []
     world_budget = max(0, system_budget - used_system_chars)
-    if resources.get("memories"):
+    if not has_keyword_memory and resources.get("memories"):
         world_budget -= min(900, world_budget // 4)
     world_block = _fit_world_book_context(world_candidates, world_budget)
     if world_block["items"]:
@@ -4781,18 +4868,8 @@ def build_roleplay_context(
     elif world_candidates:
         world_block["transport"] = "report"
         blocks.append(world_block)
-
-    memory_rows = [
-        {
-            "id": _text(item.get("id"), 160),
-            "text": _context_text(item.get("text"), 760),
-            "importance": _bounded_float(item.get("importance"), 0.5),
-            "keywords": _clean_string_list(item.get("keywords"), 12),
-        }
-        for item in _list(resources.get("memories"), limits["memories"])
-        if isinstance(item, dict)
-    ]
-    add_optional_list("memories", memory_rows, len(resources.get("memories") or []))
+    if not has_keyword_memory:
+        add_optional_list("memories", memory_rows, len(resources.get("memories") or []))
 
     history_text = "\n".join(
         f"{item.get('role')}: {item.get('content')}"
@@ -4806,6 +4883,11 @@ def build_roleplay_context(
         transport="chat_messages",
     ))
     system_chars = sum(block["chars"] for block in blocks if block.get("transport") == "system")
+    selected_memory_ids = []
+    for block in blocks:
+        if block.get("id") == "memories" and block.get("transport") == "system":
+            selected_memory_ids = [item.get("id") for item in json.loads(block["content"]) if item.get("id")]
+            break
     return {
         "schema": CONTEXT_SCHEMA,
         "version": 1,
@@ -4818,6 +4900,10 @@ def build_roleplay_context(
         "history_chars": history_pack["chars"],
         "history_budget_chars": history_pack["budget"],
         "history_omitted": history_pack["omitted"],
+        "memory_selection": {
+            "manual_ids": [item for item in selected_memory_ids if item in requested_memory_ids],
+            "automatic_ids": [item for item in selected_memory_ids if item not in requested_memory_ids],
+        },
         "world_book_selection": {
             "matched": len(world_candidates),
             "selected": world_block["items"],
