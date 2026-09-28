@@ -2,13 +2,14 @@ import platform
 import sys
 
 
-LLAMA_CPP_RUNTIME_VERSION = "0.3.48"
+LLAMA_CPP_RUNTIME_VERSION = "0.4.1"
 # Keep a small Windows/allocator margin while allowing 24 GB cards to reach
 # roughly 22 GB of llama.cpp allocations when the rest of the GPU is free.
 LLAMA_CPP_GPU_USAGE_CAP = 0.99
 LLAMA_CPP_VRAM_RESERVE_RATIO = 0.05
 LLAMA_CPP_MIN_VRAM_RESERVE_GB = 1.0
 LLAMA_CPP_UNKNOWN_KV_GB_AT_16K = 4.0
+LLAMA_CPP_GEMMA4_N_UBATCH = 512
 LLAMA_CPP_N_CTX_MIN = 512
 LLAMA_CPP_N_CTX_MAX = 131072
 _GIB = float(1024 ** 3)
@@ -123,14 +124,14 @@ LLAMA_CPP_MODELSCOPE_BASE = (
 
 
 _WHEEL_HASHES = {
-    ("Linux", 11): "82ac1a9a13e52dc248ad2ea9874bd671b38757773d881cf54cc0071dfd4db217",
-    ("Linux", 12): "8bc6610d7ac019c76a87073569982a3672ebff4b8d72a825d53bb620e1187df8",
-    ("Linux", 13): "ca362581e68432ce579c41da1dc46237adfcadba93ed5344acfcd79b96c54eb3",
-    ("Linux", 14): "4552899ba09479a7c8cb263c4b3b4acd902cccc047783cf6775b1cb53f5620b1",
-    ("Windows", 11): "b7595014dc1e9a4ebde53b1eacab191f7d716bb736e2ae428488dcb1b72737c5",
-    ("Windows", 12): "bac2025303766a5bcfff0153195d1360cf71a19862208d7c34906079e747f6e1",
-    ("Windows", 13): "8d137fcf4aa0fcdd5cdad5861a5abcecb9bda1e1201963d38af0c945fd0058a9",
-    ("Windows", 14): "5350360cc97a55327131c08bc91d316ba7598a184961750a4cad5138e5333e9a",
+    ("Linux", 11): "9869fb47b96f0311a358111d62efc991d9817f96b6ed70b924c1167ae0104246",
+    ("Linux", 12): "cae7e9082e12ddf377ccbd2d19a9d3c14b86fafb9b9d702d0bd846563c0d1ca9",
+    ("Linux", 13): "df9bd40a7003d3ac1695d97e87519cc5abf61fe6f7ba07c06e2ab0ecc443b6b5",
+    ("Linux", 14): "cedfbbf18c05e261042d2bbe1c73ac6902ab4f4b258b4a2af147e6a7f05ab25d",
+    ("Windows", 11): "944c894a9d6f1e5b194996a5339c9fecb90cebb0b469e338fe3253ef3e45d9be",
+    ("Windows", 12): "57d56a41ba2431643ae3cd18536b68569e57eb85a7bb6c1afaed7243e665fdee",
+    ("Windows", 13): "f4ca2859d7507c710683ef404d81da944082d3b27344b84dd079eb46e4d65b58",
+    ("Windows", 14): "5a91e6cc1b4fa73aad279a96e087769e05940de3e8b14519148bd5eee9e5cbdb",
 }
 
 
@@ -172,11 +173,47 @@ def estimate_llama_cpp_kv_cache_gb(
     head_count,
     head_count_kv,
     kv_cache_type="f16",
+    gemma4_hparams=None,
 ):
     _, kv_type_config = llama_cpp_kv_cache_type_config(kv_cache_type)
     try:
         context_tokens = max(1, int(n_ctx))
         layer_count = max(1, int(total_layers))
+        if gemma4_hparams:
+            try:
+                pattern = gemma4_hparams["sliding_window_pattern"]
+                if (
+                    not isinstance(pattern, (list, tuple))
+                    or not isinstance(head_count_kv, (list, tuple))
+                    or len(pattern) != layer_count
+                    or len(head_count_kv) != layer_count
+                    or any(int(value) not in (0, 1) for value in pattern)
+                ):
+                    raise ValueError
+                window = int(gemma4_hparams["sliding_window"])
+                key_length = int(gemma4_hparams["key_length"])
+                value_length = int(gemma4_hparams["value_length"])
+                key_length_swa = int(gemma4_hparams["key_length_swa"])
+                value_length_swa = int(gemma4_hparams["value_length_swa"])
+                if min(window, key_length, value_length, key_length_swa, value_length_swa) <= 0:
+                    raise ValueError
+                # Global layers keep the full context; bounded SWA adds a microbatch and pads to 256 tokens.
+                full_tokens = ((context_tokens + 31) // 32) * 32
+                swa_tokens = ((min(full_tokens, window + LLAMA_CPP_GEMMA4_N_UBATCH) + 255) // 256) * 256
+                kv_elements = 0
+                for is_swa, heads in zip(pattern, head_count_kv):
+                    heads = int(heads)
+                    if heads <= 0:
+                        raise ValueError
+                    kv_elements += heads * (
+                        swa_tokens * (key_length_swa + value_length_swa)
+                        if int(is_swa)
+                        else full_tokens * (key_length + value_length)
+                    )
+                return kv_elements * kv_type_config["bytes_per_element"] / _GIB * 1.2, True
+            except (KeyError, TypeError, ValueError, OverflowError):
+                pass
+
         embedding_length = int(embedding_length)
         head_count = int(head_count)
         if embedding_length <= 0 or head_count <= 0:

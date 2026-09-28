@@ -167,6 +167,9 @@ GENERATION_TASK_ALIASES = {
 }
 PRESET_FAMILY_ALIASES = {
     "krea": ("Krea2-Turbo", "Krea2-ImageEdit", "Krea2-A2R"),
+    "qwen2.1": ("Qwen2.1-Edit",),
+    "qwen image 2.1": ("Qwen2.1-Edit",),
+    "qwen-image-2.1": ("Qwen2.1-Edit",),
     "h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2C)", "MiniMax-H3(R2I)", "MiniMax-H3(Upscale)"),
     "minimax-h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2C)", "MiniMax-H3(R2I)", "MiniMax-H3(Upscale)"),
     "minimax h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2C)", "MiniMax-H3(R2I)", "MiniMax-H3(Upscale)"),
@@ -387,12 +390,13 @@ SimpAI UI guide skill:
   - Flux2-Klein is a fast, resource-light, 4-step distilled model with slightly lower precision. If it does not follow the instruction once, suggest trying again or using a more stable editor.
   - Krea2-Turbo is the Krea 2 Turbo AIO preset: text-to-image, single-image Depth or OpenPose control, image variation, tiled upscale, AnyPaint inpaint/outpaint, and original-model detail enhancement. Control images cannot be combined with variation/upscale or inpaint/outpaint. Style transfer and identity reference are not supported here; instruction editing still uses Krea2-ImageEdit, and anime-to-real uses Krea2-A2R.
   - Bernini-ImageEdit is the Bernini-R still-image editing route for instruction edits, style conversion, replacement, inpainting, and color matching on an input image.
-  - QwenEdit+ is heavier, slower, and more stable for image editing, with stronger reference consistency.
+  - Qwen2.1-Edit accepts up to nine ordered reference images for instruction-based editing and compositing without a painted mask. Use image 1 as the target and image 2 as the identity or item reference when the user requests a transfer.
+  - QwenEdit+ is heavier, slower, and more stable for image editing, with stronger reference consistency and optional painted-mask control.
   - Nun/Nunchaku presets (NunFlux, NunQwenEdit+, NunSwap, including fp4/int4 variants) are retired. Their files are archived under presets/deprecated; do not recommend them, offer their packages, or select them from saved candidates. Use available Flux/Qwen/H3 presets according to task capabilities.
   - Directional Klein and Qwen presets are built for specific subjects or operations and usually include purpose-specific LoRAs.
   - QwenNSFW is a community-merged single-checkpoint route for direct text-to-image and restricted editing cases that the original QwenEdit may filter.
 - Image editing / retouching:
-  - For instruction-based image editing, object add/remove/replace, text editing, style conversion, inpainting, or optional mask editing, recommend QwenEdit+ / Qwen-Edit-2511 first.
+  - For instruction-based image editing, object add/remove/replace, text editing, style conversion, and multi-reference compositing without a painted mask, recommend Qwen2.1-Edit. For optional painted-mask editing, recommend QwenEdit+ / Qwen-Edit-2511.
   - For image object transfer / item migration (图像物品迁移 / 物品替换 / 把一个物体迁移到另一张图), recommend Swap+ when the user wants strong painted-mask control. Swap+ uses the Flux1.Fill model and is suited for brush-mask-directed object migration or replacement. Flux2-Klein and QwenEdit are multimodal editors that can take multiple input images and replace objects by instruction, with optional brush masks; their mask function is useful but weaker than Swap+ for precise masked transfer.
   - For broad one-click commercial/product retouching, recommend OneKeyKontext. Rough submode guidance: product repair / 3C / home appliances / jewelry / metal for commercial product polish; face / body for portrait or figure cleanup; clothing / clothing extraction / take clothes for garment workflows; angle edit / IP 3-View / depth reference for view, structure, and multi-view control; remove anything / object insertion / clear background / composite / scene / pattern for local replacement, background, and layout work.
   - For manual detail repair of hands, faces, or eyes (修手 / 修脸 / 修眼 / 精修细节), recommend the inpaint/outpaint mode inside the relevant text-to-image model family: choose the detail-improvement option (提升细节), write the extra/additional prompt for the area, then tune redraw/denoise strength (重绘幅度) and feathering (羽化).
@@ -401,7 +405,7 @@ SimpAI UI guide skill:
   - For relighting or matching foreground/background lighting, recommend Relight or Flux2-AngleLight.
   - For anime-to-real or stylized-to-real character conversion, recommend Flux2-A2R or Krea2-A2R. Krea2-A2R uses the required trigger 'transform the image to realistic photograph'; preserve it when rewriting prompts.
   - For style transfer, recommend StyleTransfer+ with its 110 prompt-style presets. Do not recommend the older SDXL style-transfer preset route.
-  - For erasing unwanted areas or cleanup, recommend Eraser or QwenEdit+ with a mask.
+  - For erasing unwanted areas or cleanup, recommend Qwen2.1-Edit for an instruction-only edit, or Eraser / QwenEdit+ when a painted mask is needed.
   - For seamless outpainting / image-edge expansion (无缝扩图 / 边缘拓展), recommend OneKey-Outpaint first. It uses the Flux1.Fill model for general-purpose image boundary extension across subjects, and is often used to change composition, change aspect ratio, or add missing surrounding elements.
 - Face, body, pose, and camera:
   - For face swap on still images, recommend QwenFaceSwap first. It uses exactly two images in target/base then source-identity order and detects the target face without requiring a painted mask. Use Swapface as an alternative when its models are the available ready route.
@@ -4502,29 +4506,29 @@ GENERATION_PRESET_PRIORITIES = {
     "image_audio_to_video": ("MiniMax-H3(R2V)", "LTX(IA2V)"),
     "video_audio_to_video": ("MiniMax-H3(R2V)",),
     "image_upscale": ("Z-TTP", "Wan-TTP"),
-    "image_restore": ("Imagerepair+", "OneKeyKontext"),
-    "image_edit": ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
-    "multi_image_edit": ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
+    "image_restore": ("Imagerepair+", "Qwen2.1-Edit", "OneKeyKontext"),
+    "image_edit": ("MiniMax-H3(R2I)", "Qwen2.1-Edit", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
+    "multi_image_edit": ("MiniMax-H3(R2I)", "Qwen2.1-Edit", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
     "image_detail_enhance": ("Z-imageT", "Anima", "Flux2-Klein", "Qwen2512", "Wan(T2I)", "Flux1-dev", "Illustrious(OB)", "Illustrious(MiaoKa)", "ChenkinXL", "SD1.5"),
     "image_background_removal": ("Removebg", "OneKeyKontext"),
-    "image_object_removal": ("Flux2-KleinEdit", "Krea2-ImageEdit", "OneKeyKontext", "Eraser"),
-    "image_object_transfer": ("QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "Bernini-ImageEdit", "MiniMax-H3(R2I)", "OneKeyKontext", "Swap+"),
+    "image_object_removal": ("Qwen2.1-Edit", "Flux2-KleinEdit", "Krea2-ImageEdit", "OneKeyKontext", "Eraser"),
+    "image_object_transfer": ("Qwen2.1-Edit", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "Bernini-ImageEdit", "MiniMax-H3(R2I)", "OneKeyKontext", "Swap+"),
     "image_outpaint": ("OneKey-Outpaint",),
-    "image_relight": ("Relight", "Flux2-AngleLight", "OneKeyKontext"),
-    "image_style_transfer": ("StyleTransfer+",),
-    "image_face_swap": ("QwenFaceSwap", "Swapface"),
-    "image_pose_transfer": ("MiniMax-H3(Pose)", "QwenPose"),
+    "image_relight": ("Relight", "Flux2-AngleLight", "Qwen2.1-Edit", "OneKeyKontext"),
+    "image_style_transfer": ("StyleTransfer+", "Qwen2.1-Edit"),
+    "image_face_swap": ("QwenFaceSwap", "Qwen2.1-Edit", "Swapface"),
+    "image_pose_transfer": ("MiniMax-H3(Pose)", "QwenPose", "Qwen2.1-Edit"),
     "image_pose_extraction": ("OneKeyPose",),
-    "image_anime_to_real": ("Flux2-A2R", "Krea2-A2R", "QwenA2R"),
-    "image_view_synthesis": ("QwenMultiAngle", "OneKeyKontext"),
+    "image_anime_to_real": ("Flux2-A2R", "Krea2-A2R", "QwenA2R", "Qwen2.1-Edit"),
+    "image_view_synthesis": ("QwenMultiAngle", "Qwen2.1-Edit", "OneKeyKontext"),
     "image_depth_estimation": ("Depthstatue", "OneKeyKontext"),
-    "image_expression_transfer": ("LivePortrait Exp",),
+    "image_expression_transfer": ("LivePortrait Exp", "Qwen2.1-Edit"),
 }
 
 
 def _generation_preset_priorities(task):
     return GENERATION_PRESET_PRIORITIES.get(task) or (
-        ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext")
+        ("MiniMax-H3(R2I)", "Qwen2.1-Edit", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext")
         if task in {"image_edit", "multi_image_edit"}
         else ("Z-imageT", "Anima")
     )

@@ -27,6 +27,7 @@ from modules.llama_cpp_runtime import (
     normalize_llama_cpp_vram_policy,
 )
 from modules.vlm_model_catalog import (
+    gguf_split_paths,
     gguf_vision_expected,
     gguf_vision_status,
     infer_gguf_handler,
@@ -608,7 +609,10 @@ class VLM:
             base_version = version[:-len("-Thinking")]
             if base_version in cls.VERSIONS:
                 return base_version
-        if version.startswith((_DYNAMIC_LLAMACPP_VERSION_PREFIX, _DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX)):
+        if version.startswith(_DYNAMIC_LLAMACPP_VERSION_PREFIX):
+            relative_path = version[len(_DYNAMIC_LLAMACPP_VERSION_PREFIX):].replace("\\", "/").lstrip("/")
+            return _DYNAMIC_LLAMACPP_VERSION_PREFIX + gguf_split_paths(relative_path)[0].replace("\\", "/")
+        if version.startswith(_DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX):
             return version
         try:
             item = cls.get_version_catalog_item(version)
@@ -635,6 +639,7 @@ class VLM:
         version = str(version or "").strip()
         if version.startswith(_DYNAMIC_LLAMACPP_VERSION_PREFIX):
             relative_path = version[len(_DYNAMIC_LLAMACPP_VERSION_PREFIX):].replace("\\", "/").lstrip("/")
+            relative_path = gguf_split_paths(relative_path)[0].replace("\\", "/")
             if not relative_path:
                 return None
             model_dir, separator, file_name = relative_path.rpartition("/")
@@ -1158,8 +1163,15 @@ class VLM:
         else:
             rel_path = os.path.join(model_name, model_file_name) if model_file_name else os.path.join(model_name, model_name)
         search_dirs = config.paths_LLM if backend == "llamacpp" else config.paths_llms
-        if not find_model_in_dirs(search_dirs, rel_path):
+        model_path = find_model_in_dirs(search_dirs, rel_path)
+        if not model_path:
             missing.append(rel_path.replace("\\", "/"))
+        elif backend == "llamacpp":
+            for shard in gguf_split_paths(model_path)[1:]:
+                if not os.path.isfile(shard):
+                    missing.append(
+                        os.path.join(os.path.dirname(rel_path), os.path.basename(shard)).replace("\\", "/")
+                    )
         mmproj_file = str(config_data.get("mmproj_file") or "").strip()
         if backend == "llamacpp" and mmproj_file and not find_model_in_dirs(search_dirs, mmproj_file):
             missing.append(mmproj_file.replace("\\", "/"))
@@ -1307,7 +1319,9 @@ class VLM:
                         continue
                     directory_ggufs = [
                         f for f in os.listdir(candidate)
-                        if f.endswith('.gguf') and not is_visual_component_filename(f)
+                        if f.lower().endswith('.gguf')
+                        and not is_visual_component_filename(f)
+                        and gguf_split_paths(f)[0] == f
                     ]
                     if directory_ggufs:
                         model_dir = candidate
@@ -1324,7 +1338,9 @@ class VLM:
 
             gguf_files = [
                 f for f in os.listdir(model_dir)
-                if f.endswith('.gguf') and not is_visual_component_filename(f)
+                if f.lower().endswith('.gguf')
+                and not is_visual_component_filename(f)
+                and gguf_split_paths(f)[0] == f
             ]
             if not gguf_files:
                 logger.error(f"No .gguf file found in {model_dir}")

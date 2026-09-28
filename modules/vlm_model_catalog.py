@@ -56,6 +56,7 @@ GGUF_ARRAY_TYPE = 9
 GGUF_MAX_KEY_BYTES = 1024 * 1024
 GGUF_MAX_CAPTURED_STRING_BYTES = 8 * 1024 * 1024
 GGUF_MAX_METADATA_ENTRIES = 1_000_000
+_GGUF_SPLIT_RE = re.compile(r"^(.*)-(\d{5})-of-(\d{5})(\.gguf)$", re.IGNORECASE)
 _CACHE_LOCK = threading.RLock()
 _BUILD_LOCK = threading.Lock()
 _CACHE = {"key": None, "expires_at": 0.0, "payload": None}
@@ -404,6 +405,21 @@ def is_mtp_component_filename(filename):
     return name.startswith(("mtp-", "mtp_"))
 
 
+def gguf_split_paths(path):
+    path = os.fspath(path)
+    match = _GGUF_SPLIT_RE.fullmatch(os.path.basename(path))
+    if not match:
+        return [path]
+    index, count = int(match.group(2)), int(match.group(3))
+    if count < 2 or not 1 <= index <= count:
+        return [path]
+    stem, extension = match.group(1), match.group(4)
+    return [
+        os.path.join(os.path.dirname(path), f"{stem}-{part:05d}-of-{count:05d}{extension}")
+        for part in range(1, count + 1)
+    ]
+
+
 def _gguf_model_stem(filename):
     stem = os.path.splitext(os.path.basename(str(filename or "")))[0].lower()
     return re.sub(r"[-_.](?:q\d+(?:_[a-z0-9]+)*|(?:b?f|fp)(?:8|16|32))$", "", stem)
@@ -684,10 +700,12 @@ def _scan_gguf_items(llm_roots, claimed_paths):
             projectors_by_root.setdefault(root_key, []).append(absolute_path)
     for directory, entries in grouped.items():
         for root, relative_path, absolute_path in entries:
+            shard_paths = gguf_split_paths(absolute_path)
             if (
                 is_visual_component_filename(absolute_path)
                 or _is_paired_mtp_component(absolute_path, entries)
                 or os.path.normcase(absolute_path) in claimed_paths
+                or os.path.normcase(shard_paths[0]) != os.path.normcase(absolute_path)
             ):
                 continue
             filename = os.path.basename(absolute_path)
@@ -721,6 +739,9 @@ def _scan_gguf_items(llm_roots, claimed_paths):
             if model_dir == ".":
                 model_dir = ""
             version_id = f"llamacpp:LLM:{relative_path}"
+            shard_relative_paths = [
+                os.path.relpath(path, root).replace("\\", "/") for path in shard_paths
+            ]
             capabilities = ["text", "image"] if mmproj_path else ["text"]
             group = "VLM/GGUF" if mmproj_path else "LLM/GGUF"
             vision_expected = gguf_vision_expected(detected["handler"])
@@ -762,16 +783,18 @@ def _scan_gguf_items(llm_roots, claimed_paths):
                 "architecture": detected["handler"],
                 "capabilities": capabilities,
                 "context_window": context_window,
-                "installed": True,
+                "installed": all(os.path.isfile(path) for path in shard_paths),
                 "downloadable": False,
                 "recommended": False,
                 "vision_expected": vision_expected,
                 "vision_available": vision_available,
                 "vision_status": vision_status,
-                "expected_files": [relative_path] + ([mmproj_relative] if mmproj_relative else []),
+                "expected_files": shard_relative_paths + ([mmproj_relative] if mmproj_relative else []),
                 "runtime_config": config,
-                "aliases": [],
-                "resolved_files": [os.path.normcase(absolute_path)] + ([os.path.normcase(mmproj_path)] if mmproj_path else []),
+                "aliases": [f"llamacpp:LLM:{path}" for path in shard_relative_paths[1:]],
+                "resolved_files": [
+                    os.path.normcase(path) for path in shard_paths if os.path.isfile(path)
+                ] + ([os.path.normcase(mmproj_path)] if mmproj_path else []),
             })
     return rows
 

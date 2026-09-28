@@ -240,6 +240,7 @@ import modules.config as config
 from modules.custom_llm_api import strip_reasoning_text
 from modules.llama_cpp_runtime import (
     FixedTemplateArgsChatFormatter,
+    LLAMA_CPP_GEMMA4_N_UBATCH,
     estimate_llama_cpp_kv_cache_gb,
     is_llama_cpp_memory_error,
     llama_cpp_gpu_budget,
@@ -260,7 +261,7 @@ from modules.llama_cpp_multimodal import (
     should_merge_qwen_hybrid_images,
 )
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
-from modules.vlm_model_catalog import gguf_int_values, is_visual_component_filename
+from modules.vlm_model_catalog import gguf_int_values, gguf_split_paths, is_visual_component_filename
 import ldm_patched.modules.model_management
 
 class LlamaCppVLM:
@@ -786,6 +787,7 @@ class LlamaCppVLM:
             embedding_length = None
             head_count = None
             head_count_kv = None
+            gemma4_hparams = {}
 
             for key in reader.fields.keys():
                 k = key.lower()
@@ -798,11 +800,22 @@ class LlamaCppVLM:
                 elif k.endswith(".head_count_kv") or k == "head_count_kv":
                     values = gguf_int_values(reader.get_field(key))
                     head_count_kv = values if len(values) > 1 else (values[0] if values else None)
+                if k.startswith("gemma4."):
+                    gemma4_hparams["architecture"] = "gemma4"
+                    field = k.removeprefix("gemma4.attention.")
+                    if field in {
+                        "sliding_window", "sliding_window_pattern",
+                        "key_length", "value_length", "key_length_swa", "value_length_swa",
+                    }:
+                        values = gguf_int_values(reader.get_field(key))
+                        if values:
+                            gemma4_hparams[field] = values if len(values) > 1 else values[0]
 
             return {
                 "embedding_length": embedding_length,
                 "head_count": head_count,
                 "head_count_kv": head_count_kv,
+                **gemma4_hparams,
             }
         except Exception:
             return {}
@@ -985,6 +998,7 @@ class LlamaCppVLM:
                 n_head,
                 n_kv_heads,
                 kv_cache_type=kv_cache_type,
+                gemma4_hparams=hparams if hparams.get("architecture") == "gemma4" else None,
             )
         _, kv_type_config = llama_cpp_kv_cache_type_config(kv_cache_type)
         offload_kqv = kv_cache_gb <= budget["gpu_budget_gb"]
@@ -1048,7 +1062,8 @@ class LlamaCppVLM:
             logger.warning("No VRAM remains for model layers after the llama.cpp reserve. Using CPU layers.")
             return 0, estimate
 
-        gguf_size_gb = os.path.getsize(model_path) * weight_overhead / (1024 ** 3)
+        gguf_size_gb = sum(os.path.getsize(path) for path in gguf_split_paths(model_path))
+        gguf_size_gb *= weight_overhead / (1024 ** 3)
         layer_size_gb = gguf_size_gb / total_layers
         estimate["layer_size_gb"] = layer_size_gb
 
@@ -1368,6 +1383,9 @@ class LlamaCppVLM:
                         }
                         if cpu_only:
                             llama_kwargs["op_offload"] = False
+                        if chat_handler_name == "Gemma4":
+                            llama_kwargs["swa_full"] = False
+                            llama_kwargs["n_ubatch"] = LLAMA_CPP_GEMMA4_N_UBATCH
                         if qwen_hybrid_vision:
                             llama_kwargs["ctx_checkpoints"] = QWEN_HYBRID_CTX_CHECKPOINTS
                         if attempt_kv_cache_type != "f16":
@@ -1518,6 +1536,7 @@ class LlamaCppVLM:
                         hparams.get("head_count"),
                         hparams.get("head_count_kv") or hparams.get("head_count"),
                         kv_cache_type=loaded_kv_cache_type,
+                        gemma4_hparams=hparams if hparams.get("architecture") == "gemma4" else None,
                     )
                     auto_estimate["kv_cache_gb"] = fallback_kv_cache_gb
                     auto_estimate["kv_cache_from_metadata"] = fallback_from_metadata

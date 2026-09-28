@@ -1,5 +1,10 @@
 {
-  "supported_tasks": ["text_to_image", "image_edit", "multi_image_edit", "image_object_transfer"],
+  "supported_tasks": [
+    "text_to_image", "image_edit", "multi_image_edit", "image_restore",
+    "image_object_removal", "image_object_transfer", "image_relight",
+    "image_style_transfer", "image_face_swap", "image_pose_transfer",
+    "image_anime_to_real", "image_view_synthesis", "image_expression_transfer"
+  ],
   "prompt_agent_required": true,
   "default_engine": {
     "backend_engine": "Qwen",

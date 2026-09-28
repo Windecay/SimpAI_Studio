@@ -19990,25 +19990,25 @@
             image_audio_to_video: ['MiniMax-H3(R2V)', 'LTX(IA2V)'],
             video_audio_to_video: ['MiniMax-H3(R2V)'],
             image_upscale: ['Z-TTP', 'Wan-TTP'],
-            image_restore: ['Imagerepair+'],
-            image_edit: ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext'],
-            multi_image_edit: ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext'],
+            image_restore: ['Imagerepair+', 'Qwen2.1-Edit', 'OneKeyKontext'],
+            image_edit: ['MiniMax-H3(R2I)', 'Qwen2.1-Edit', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext'],
+            multi_image_edit: ['MiniMax-H3(R2I)', 'Qwen2.1-Edit', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext'],
             image_detail_enhance: ['Z-imageT', 'Anima', 'Flux2-Klein', 'Qwen2512', 'Wan(T2I)', 'Flux1-dev', 'Illustrious(OB)', 'Illustrious(MiaoKa)', 'ChenkinXL', 'SD1.5'],
             image_background_removal: ['Removebg'],
-            image_object_removal: ['Flux2-KleinEdit', 'Krea2-ImageEdit', 'Eraser'],
-            image_object_transfer: ['QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'Bernini-ImageEdit', 'MiniMax-H3(R2I)', 'OneKeyKontext', 'Swap+'],
+            image_object_removal: ['Qwen2.1-Edit', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'OneKeyKontext', 'Eraser'],
+            image_object_transfer: ['Qwen2.1-Edit', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'Bernini-ImageEdit', 'MiniMax-H3(R2I)', 'OneKeyKontext', 'Swap+'],
             image_outpaint: ['OneKey-Outpaint'],
-            image_relight: ['Relight', 'Flux2-AngleLight'],
-            image_style_transfer: ['StyleTransfer+'],
-            image_face_swap: ['QwenFaceSwap', 'Swapface'],
-            image_pose_transfer: ['MiniMax-H3(Pose)', 'QwenPose'],
+            image_relight: ['Relight', 'Flux2-AngleLight', 'Qwen2.1-Edit', 'OneKeyKontext'],
+            image_style_transfer: ['StyleTransfer+', 'Qwen2.1-Edit'],
+            image_face_swap: ['QwenFaceSwap', 'Qwen2.1-Edit', 'Swapface'],
+            image_pose_transfer: ['MiniMax-H3(Pose)', 'QwenPose', 'Qwen2.1-Edit'],
             image_pose_extraction: ['OneKeyPose'],
-            image_anime_to_real: ['Flux2-A2R', 'QwenA2R'],
-            image_view_synthesis: ['QwenMultiAngle'],
+            image_anime_to_real: ['Flux2-A2R', 'Krea2-A2R', 'QwenA2R', 'Qwen2.1-Edit'],
+            image_view_synthesis: ['QwenMultiAngle', 'Qwen2.1-Edit', 'OneKeyKontext'],
             image_depth_estimation: ['Depthstatue'],
-            image_expression_transfer: ['LivePortrait Exp']
+            image_expression_transfer: ['LivePortrait Exp', 'Qwen2.1-Edit']
         };
-        const priorities = (taskPriorities[task] || ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext']).slice();
+        const priorities = (taskPriorities[task] || ['MiniMax-H3(R2I)', 'Qwen2.1-Edit', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext']).slice();
         if (task === 'text_to_image') priorities.splice(0, priorities.length, 'MiniMax-H3(R2I)', 'QwenNSFW', CREATIVE_DEFAULT_PRESET, 'Anima');
         const readinessRank = { ready: 0, unknown: 1, missing: 2 };
         return candidates.slice().sort((left, right) => {
