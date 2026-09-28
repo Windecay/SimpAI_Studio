@@ -254,8 +254,58 @@
     "_meta": {"title": "Select clip loader"}
   },
   "55": {
-    "inputs": {"model": ["50", 0], "attention": "comfy kitchen attention"},
+    "inputs": {"model": ["65", 0], "attention": "comfy kitchen attention"},
     "class_type": "ModelAttentionBackend",
     "_meta": {"title": "Qwen Image 2.1 Kitchen Attention"}
+  },
+  "56": {
+    "inputs": {"model": ["50", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_1"}
+  },
+  "57": {
+    "inputs": {"model": ["56", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_2"}
+  },
+  "58": {
+    "inputs": {"model": ["57", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_3"}
+  },
+  "59": {
+    "inputs": {"model": ["58", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_4"}
+  },
+  "60": {
+    "inputs": {"model": ["59", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_5"}
+  },
+  "61": {
+    "inputs": {"model": ["60", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_6"}
+  },
+  "62": {
+    "inputs": {"model": ["61", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_7"}
+  },
+  "63": {
+    "inputs": {"model": ["62", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_8"}
+  },
+  "64": {
+    "inputs": {"model": ["63", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_9"}
+  },
+  "65": {
+    "inputs": {"model": ["64", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_10"}
   }
 }

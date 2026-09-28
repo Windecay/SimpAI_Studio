@@ -57,6 +57,10 @@ GGUF_MAX_KEY_BYTES = 1024 * 1024
 GGUF_MAX_CAPTURED_STRING_BYTES = 8 * 1024 * 1024
 GGUF_MAX_METADATA_ENTRIES = 1_000_000
 _GGUF_SPLIT_RE = re.compile(r"^(.*)-(\d{5})-of-(\d{5})(\.gguf)$", re.IGNORECASE)
+_MTP_SUFFIX_RE = re.compile(
+    r"^(.+)[-_.]mtp[-_.](?:q\d+(?:_[a-z0-9]+)*|(?:b?f|fp)(?:8|16|32))$",
+    re.IGNORECASE,
+)
 _CACHE_LOCK = threading.RLock()
 _BUILD_LOCK = threading.Lock()
 _CACHE = {"key": None, "expires_at": 0.0, "payload": None}
@@ -402,7 +406,9 @@ def is_visual_component_filename(filename):
 
 def is_mtp_component_filename(filename):
     name = os.path.basename(str(filename or "")).lower()
-    return name.startswith(("mtp-", "mtp_"))
+    return name.startswith(("mtp-", "mtp_")) or bool(
+        _MTP_SUFFIX_RE.fullmatch(os.path.splitext(name)[0])
+    )
 
 
 def gguf_split_paths(path):
@@ -421,20 +427,49 @@ def gguf_split_paths(path):
 
 
 def _gguf_model_stem(filename):
-    stem = os.path.splitext(os.path.basename(str(filename or "")))[0].lower()
+    stem = os.path.basename(str(filename or "")).lower()
+    if stem.endswith(".gguf"):
+        stem = stem[:-5]
+    stem = re.sub(r"-\d{5}-of-\d{5}$", "", stem)
     return re.sub(r"[-_.](?:q\d+(?:_[a-z0-9]+)*|(?:b?f|fp)(?:8|16|32))$", "", stem)
 
 
-def _is_paired_mtp_component(filename, entries):
-    if not is_mtp_component_filename(filename):
-        return False
-    base = _gguf_model_stem(os.path.basename(filename)[4:])
-    return any(
-        not is_mtp_component_filename(candidate)
-        and not is_visual_component_filename(candidate)
-        and _gguf_model_stem(candidate) == base
-        for _, _, candidate in entries
-    )
+def _mtp_component_base(filename):
+    stem = os.path.splitext(os.path.basename(str(filename or "")))[0]
+    if stem.lower().startswith(("mtp-", "mtp_")):
+        return _gguf_model_stem(stem[4:])
+    match = _MTP_SUFFIX_RE.fullmatch(stem)
+    return _gguf_model_stem(match.group(1)) if match else ""
+
+
+def select_mtp_for_model(model_path, candidates):
+    model_path = os.path.abspath(os.fspath(model_path))
+    directory = os.path.dirname(model_path)
+    paths = sorted({
+        os.path.abspath(os.fspath(path))
+        for path in candidates
+        if os.path.dirname(os.path.abspath(os.fspath(path))) == directory
+        and str(path).lower().endswith(".gguf")
+    }, key=str.lower)
+    main_paths = [
+        path for path in paths
+        if not is_visual_component_filename(path)
+        and not is_mtp_component_filename(path)
+        and os.path.normcase(gguf_split_paths(path)[0]) == os.path.normcase(path)
+    ]
+    if os.path.normcase(model_path) not in {os.path.normcase(path) for path in main_paths}:
+        return None
+    sidecars = [path for path in paths if is_mtp_component_filename(path)]
+    exact = [path for path in sidecars if _mtp_component_base(path) == _gguf_model_stem(model_path)]
+    if len(exact) == 1:
+        return exact[0]
+    if exact or len(main_paths) != 1:
+        return None
+    directory_matches = [
+        path for path in sidecars
+        if _mtp_component_base(path) == _gguf_model_stem(os.path.basename(directory))
+    ]
+    return directory_matches[0] if len(directory_matches) == 1 else None
 
 
 def _mmproj_precision_rank(path):
@@ -699,11 +734,22 @@ def _scan_gguf_items(llm_roots, claimed_paths):
             root_key = os.path.normcase(os.path.abspath(root))
             projectors_by_root.setdefault(root_key, []).append(absolute_path)
     for directory, entries in grouped.items():
+        entry_paths = [absolute for _, _, absolute in entries]
+        mtp_by_model = {
+            os.path.normcase(path): select_mtp_for_model(path, entry_paths)
+            for path in entry_paths
+            if not is_visual_component_filename(path)
+            and not is_mtp_component_filename(path)
+            and os.path.normcase(gguf_split_paths(path)[0]) == os.path.normcase(path)
+        }
+        paired_mtp_paths = {
+            os.path.normcase(path) for path in mtp_by_model.values() if path
+        }
         for root, relative_path, absolute_path in entries:
             shard_paths = gguf_split_paths(absolute_path)
             if (
                 is_visual_component_filename(absolute_path)
-                or _is_paired_mtp_component(absolute_path, entries)
+                or os.path.normcase(absolute_path) in paired_mtp_paths
                 or os.path.normcase(absolute_path) in claimed_paths
                 or os.path.normcase(shard_paths[0]) != os.path.normcase(absolute_path)
             ):
@@ -734,6 +780,8 @@ def _scan_gguf_items(llm_roots, claimed_paths):
                 ]
             mmproj_path = select_mmproj_for_model(absolute_path, projectors)
             mmproj_relative = os.path.relpath(mmproj_path, root).replace("\\", "/") if mmproj_path else ""
+            mtp_path = mtp_by_model.get(os.path.normcase(absolute_path))
+            mtp_relative = os.path.relpath(mtp_path, root).replace("\\", "/") if mtp_path else ""
             context_window = _gguf_context_window(metadata)
             model_dir = os.path.dirname(relative_path).replace("\\", "/")
             if model_dir == ".":
@@ -759,6 +807,7 @@ def _scan_gguf_items(llm_roots, claimed_paths):
                 "gguf_file": os.path.basename(relative_path),
                 "model_file": relative_path,
                 "mmproj_file": mmproj_relative,
+                "mtp_file": mtp_relative,
                 "n_ctx": min(context_window, GGUF_RUNTIME_CONTEXT_DEFAULT),
                 "context_window": context_window,
                 "image_min_tokens": (

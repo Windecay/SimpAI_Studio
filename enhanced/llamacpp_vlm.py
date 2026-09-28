@@ -261,7 +261,12 @@ from modules.llama_cpp_multimodal import (
     should_merge_qwen_hybrid_images,
 )
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
-from modules.vlm_model_catalog import gguf_int_values, gguf_split_paths, is_visual_component_filename
+from modules.vlm_model_catalog import (
+    gguf_int_values,
+    gguf_split_paths,
+    is_visual_component_filename,
+    select_mtp_for_model,
+)
 import ldm_patched.modules.model_management
 
 class LlamaCppVLM:
@@ -285,6 +290,7 @@ class LlamaCppVLM:
         self.current_mtp_enabled = False
         self.current_mtp_supported = None
         self.current_mtp_failure = ""
+        self.current_mtp_path = None
         self.current_ctx_checkpoints = None
         self.current_target_n_gpu_layers = None
         self.current_n_gpu_layers = None
@@ -784,6 +790,11 @@ class LlamaCppVLM:
             from gguf import GGUFReader
             reader = GGUFReader(path)
 
+            architecture_field = reader.fields.get("general.architecture")
+            gguf_architecture = (
+                str(architecture_field.contents()).strip().lower()
+                if architecture_field is not None else None
+            )
             embedding_length = None
             head_count = None
             head_count_kv = None
@@ -812,6 +823,7 @@ class LlamaCppVLM:
                             gemma4_hparams[field] = values if len(values) > 1 else values[0]
 
             return {
+                "gguf_architecture": gguf_architecture,
                 "embedding_length": embedding_length,
                 "head_count": head_count,
                 "head_count_kv": head_count_kv,
@@ -819,6 +831,37 @@ class LlamaCppVLM:
             }
         except Exception:
             return {}
+
+    def _get_qwen4exp_block_weight_bytes(self, model_path, total_layers):
+        from gguf import GGUFReader
+
+        block_bytes = [0] * total_layers
+        ple_bytes = 0
+        other_gpu_bytes = 0
+        for path in gguf_split_paths(model_path):
+            reader = GGUFReader(path)
+            for tensor in reader.tensors:
+                size = int(tensor.n_bytes)
+                if size <= 0:
+                    raise ValueError("Invalid GGUF tensor size")
+                if tensor.name == "per_layer_token_embd.weight":
+                    ple_bytes += size
+                elif tensor.name.startswith("blk."):
+                    parts = tensor.name.split(".", 2)
+                    if len(parts) == 3 and parts[1].isdigit():
+                        index = int(parts[1])
+                        if index >= total_layers:
+                            raise ValueError("GGUF block index exceeds layer count")
+                        block_bytes[index] += size
+                elif tensor.name != "token_embd.weight":
+                    other_gpu_bytes += size
+            if reader.tensors:
+                del tensor
+            del reader
+
+        if not ple_bytes or not all(block_bytes):
+            raise ValueError("Qwen4Exp PLE or block tensors are missing")
+        return block_bytes, ple_bytes, other_gpu_bytes
 
     def _resolve_mmproj_path(self, model_path, mmproj_name=None):
         model_dir = os.path.dirname(model_path)
@@ -846,6 +889,17 @@ class LlamaCppVLM:
         if len(candidates) > 1:
             logger.warning("Multiple mmproj files found beside %s; select one in the model catalog.", model_path)
         return None
+
+    def _resolve_mtp_path(self, model_path):
+        model_dir = os.path.dirname(model_path)
+        if not os.path.isdir(model_dir):
+            return None
+        candidates = [
+            os.path.join(model_dir, name)
+            for name in os.listdir(model_dir)
+            if name.lower().endswith(".gguf")
+        ]
+        return select_mtp_for_model(model_path, candidates)
 
     def _prepare_chat_handler(self, handler_class, mmproj_path, model_path, chat_handler_name, image_min_tokens=0, image_max_tokens=0, use_gpu=True):
         if not handler_class:
@@ -933,7 +987,17 @@ class LlamaCppVLM:
             return 0.0
         credit_gb = 0.0
         try:
-            if self.current_gpu_layer_size_gb and self.current_n_gpu_layers not in (None, -1):
+            block_bytes = self.current_vram_estimate.get("block_weight_bytes")
+            loaded_layers = self.current_n_gpu_layers
+            if block_bytes and loaded_layers not in (None, -1) and int(loaded_layers) > 0:
+                # Count one fewer block so either native output-layer convention
+                # cannot overstate the amount reclaimed by unloading the model.
+                credited_blocks = max(0, int(loaded_layers) - 1)
+                credit_gb += (
+                    (sum(block_bytes[-credited_blocks:]) if credited_blocks else 0)
+                    * self.current_vram_estimate["weight_overhead"] / (1024 ** 3)
+                )
+            elif self.current_gpu_layer_size_gb and loaded_layers not in (None, -1):
                 credit_gb += max(0.0, float(self.current_n_gpu_layers) * float(self.current_gpu_layer_size_gb))
             if self.current_offload_kqv and self.current_kv_cache_gb:
                 credit_gb += max(0.0, float(self.current_kv_cache_gb))
@@ -985,9 +1049,17 @@ class LlamaCppVLM:
             total_layers = self.current_total_layers
             kv_cache_gb = self.current_kv_cache_gb
             kv_cache_from_metadata = self.current_vram_estimate.get("kv_cache_from_metadata", False)
+            gguf_architecture = self.current_vram_estimate.get("gguf_architecture")
+            block_weight_bytes = self.current_vram_estimate.get("block_weight_bytes")
+            ple_bytes = self.current_vram_estimate.get("ple_bytes", 0)
+            other_gpu_bytes = self.current_vram_estimate.get("other_gpu_bytes", 0)
         else:
             total_layers = self._get_layer_count(model_path)
             hparams = self._get_gguf_hparams(model_path)
+            gguf_architecture = hparams.get("gguf_architecture")
+            block_weight_bytes = None
+            ple_bytes = 0
+            other_gpu_bytes = 0
             n_embd = hparams.get("embedding_length")
             n_head = hparams.get("head_count")
             n_kv_heads = hparams.get("head_count_kv") or n_head
@@ -1037,6 +1109,7 @@ class LlamaCppVLM:
             "total_layers": total_layers,
             "layer_size_gb": None,
             "weight_overhead": weight_overhead,
+            "gguf_architecture": gguf_architecture,
         }
         logger.info(
             "llama.cpp VRAM budget: free=%.2fGB, total=%.2fGB, reserve=%.2fGB, "
@@ -1062,15 +1135,49 @@ class LlamaCppVLM:
             logger.warning("No VRAM remains for model layers after the llama.cpp reserve. Using CPU layers.")
             return 0, estimate
 
-        gguf_size_gb = sum(os.path.getsize(path) for path in gguf_split_paths(model_path))
-        gguf_size_gb *= weight_overhead / (1024 ** 3)
-        layer_size_gb = gguf_size_gb / total_layers
-        estimate["layer_size_gb"] = layer_size_gb
+        gguf_size_gb = sum(os.path.getsize(path) for path in gguf_split_paths(model_path)) / (1024 ** 3)
+        if gguf_architecture == "qwen4exp" and block_weight_bytes is None:
+            try:
+                block_weight_bytes, ple_bytes, other_gpu_bytes = (
+                    self._get_qwen4exp_block_weight_bytes(model_path, total_layers)
+                )
+            except Exception as e:
+                logger.warning("Qwen4Exp GGUF tensor estimate unavailable; using file sizes: %s", e)
+                block_weight_bytes = []
+        if gguf_architecture == "qwen4exp":
+            estimate["block_weight_bytes"] = block_weight_bytes
+            estimate["ple_bytes"] = ple_bytes
+            estimate["other_gpu_bytes"] = other_gpu_bytes
 
-        if mmproj_size_gb:
-            n_gpu_layers = max(0, int((available_vram_gb - mmproj_size_gb) / layer_size_gb))
+        if block_weight_bytes and len(block_weight_bytes) == total_layers:
+            layer_size_gb = (
+                sum(block_weight_bytes) * weight_overhead / (1024 ** 3) / total_layers
+            )
+            other_gpu_gb = other_gpu_bytes * weight_overhead / (1024 ** 3)
+            layer_budget_gb = max(0.0, available_vram_gb - mmproj_size_gb - other_gpu_gb)
+            n_gpu_layers = 0
+            offloaded_bytes = 0
+            for block_size in reversed(block_weight_bytes):
+                if (offloaded_bytes + block_size) * weight_overhead / (1024 ** 3) > layer_budget_gb:
+                    break
+                offloaded_bytes += block_size
+                n_gpu_layers += 1
+            logger.info(
+                "Qwen4Exp GPU layer weights: files=%.2fGB, PLE=%.2fGB, blocks=%.2fGB, "
+                "other_reserved=%.2fGB, "
+                "offloaded_blocks=%.2fGB",
+                gguf_size_gb,
+                ple_bytes / (1024 ** 3),
+                sum(block_weight_bytes) / (1024 ** 3),
+                other_gpu_gb,
+                offloaded_bytes / (1024 ** 3),
+            )
         else:
-            n_gpu_layers = max(0, int(available_vram_gb / layer_size_gb))
+            layer_size_gb = gguf_size_gb * weight_overhead / total_layers
+            n_gpu_layers = max(
+                0, int(max(0.0, available_vram_gb - mmproj_size_gb) / layer_size_gb)
+            )
+        estimate["layer_size_gb"] = layer_size_gb
 
         n_gpu_layers = min(n_gpu_layers, total_layers)
         estimate["target_n_gpu_layers"] = n_gpu_layers
@@ -1122,6 +1229,7 @@ class LlamaCppVLM:
             model_path = find_model_in_dirs(config.paths_LLM, model_name) or os.path.join(first_model_dir(config.paths_LLM), model_name)
             handler_class = self.get_chat_handler_class(chat_handler_name)
             mmproj_path = self._resolve_mmproj_path(model_path, mmproj_name=mmproj_name) if handler_class else None
+            mtp_path = self._resolve_mtp_path(model_path) if requested_mtp else None
             qwen_hybrid_vision = bool(mmproj_path) and is_qwen_hybrid_vision_handler(chat_handler_name)
             logger.info(
                 "llama.cpp VLM runtime wiring: handler_name=%s handler_class=%s mmproj=%s vision_enabled=%s image_min_tokens=%s image_max_tokens=%s mtp_requested=%s",
@@ -1142,6 +1250,7 @@ class LlamaCppVLM:
                 and self.current_image_min_tokens == int(image_min_tokens or 0)
                 and self.current_image_max_tokens == int(image_max_tokens or 0)
                 and self.current_mtp_requested == requested_mtp
+                and self.current_mtp_path == mtp_path
             )
             same_loaded_model = (
                 same_model_identity
@@ -1330,8 +1439,9 @@ class LlamaCppVLM:
             logger.info(f"Loading Main LLM from: {model_path}")
             if mtp_attempt_allowed:
                 logger.info(
-                    "llama.cpp MTP speculative decoding requested: model=%s, draft_n_max=2, draft_p_min=0.0",
+                    "llama.cpp MTP speculative decoding requested: model=%s, draft_model=%s, draft_n_max=2, draft_p_min=0.0",
                     os.path.basename(model_path),
+                    mtp_path or "(embedded)",
                 )
 
             self._non_thinking_template_active = False
@@ -1399,6 +1509,7 @@ class LlamaCppVLM:
                                 spec_type=SpeculativeType.DRAFT_MTP,
                                 draft_n_max=2,
                                 draft_p_min=0.0,
+                                draft_model_path=mtp_path,
                             )
                             try:
                                 self.llm = Llama(**mtp_kwargs)
@@ -1408,7 +1519,9 @@ class LlamaCppVLM:
                                 mtp_attempt_allowed = False
                                 mtp_failure = str(mtp_error).strip()[:500] or type(mtp_error).__name__
                                 logger.warning(
-                                    "llama.cpp MTP initialization failed; retrying this load with standard decoding: %s",
+                                    "llama.cpp MTP initialization failed (draft_model=%s); "
+                                    "retrying this load with standard decoding: %s",
+                                    mtp_path or "(embedded)",
                                     mtp_failure,
                                 )
                             if not attempt_loaded_mtp:
@@ -1497,8 +1610,9 @@ class LlamaCppVLM:
 
             if loaded_mtp:
                 logger.info(
-                    "llama.cpp MTP speculative decoding enabled: model=%s, draft_n_max=2, draft_p_min=0.0",
+                    "llama.cpp MTP speculative decoding enabled: model=%s, draft_model=%s, draft_n_max=2, draft_p_min=0.0",
                     os.path.basename(model_path),
+                    mtp_path or "(embedded)",
                 )
 
             logger.info(
@@ -1566,6 +1680,7 @@ class LlamaCppVLM:
                 mtp_binding_supported and (not requested_mtp or loaded_mtp)
             )
             self.current_mtp_failure = mtp_failure
+            self.current_mtp_path = mtp_path
             self.current_ctx_checkpoints = (
                 QWEN_HYBRID_CTX_CHECKPOINTS if qwen_hybrid_vision else None
             )
@@ -1690,6 +1805,7 @@ class LlamaCppVLM:
             self.current_mtp_enabled = False
             self.current_mtp_supported = None
             self.current_mtp_failure = ""
+            self.current_mtp_path = None
             self.current_ctx_checkpoints = None
             self.current_n_gpu_layers = None
             self.current_total_layers = None

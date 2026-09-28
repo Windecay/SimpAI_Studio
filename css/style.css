@@ -24774,6 +24774,22 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   white-space: nowrap;
 }
 
+.describe-vlm-chat-roleplay-character-section > .describe-vlm-chat-roleplay-section-head > strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #fb923c;
+}
+
+.describe-vlm-chat-roleplay-character-section > .describe-vlm-chat-roleplay-section-head > strong::before {
+  content: "";
+  width: 3px;
+  height: 15px;
+  flex: 0 0 3px;
+  border-radius: 2px;
+  background: #fb923c;
+}
+
 .describe-vlm-chat-roleplay-section-head button {
   display: inline-flex;
   align-items: center;
@@ -25029,6 +25045,17 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 
 .describe-vlm-chat-roleplay-character-library-actions button:hover {
   background: var(--describe-chat-button-hover, #4c4f5a);
+}
+
+.describe-vlm-chat-roleplay-character-library-actions button[data-roleplay-character-library-open] {
+  border-color: rgba(251, 146, 60, 0.82);
+  background: rgba(251, 146, 60, 0.18);
+  color: #fdba74;
+}
+
+.describe-vlm-chat-roleplay-character-library-actions button[data-roleplay-character-library-open]:hover {
+  background: rgba(251, 146, 60, 0.32);
+  color: #ffedd5;
 }
 
 .describe-vlm-chat-roleplay-character-library-actions button:disabled {
