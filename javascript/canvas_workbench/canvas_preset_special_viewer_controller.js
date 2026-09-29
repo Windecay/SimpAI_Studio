@@ -23,6 +23,15 @@
         const getNode = (id) => typeof nodeSource.getNode === 'function'
             ? nodeSource.getNode(id)
             : null;
+        const getProject = () => typeof nodeSource.getProject === 'function'
+            ? nodeSource.getProject()
+            : null;
+        const getVisibleClassicUploadSlots = (node) => typeof nodeSource.getVisibleClassicUploadSlots === 'function'
+            ? nodeSource.getVisibleClassicUploadSlots(node)
+            : [];
+        const getVisibleUploadSlots = (node) => typeof nodeSource.getVisibleUploadSlots === 'function'
+            ? nodeSource.getVisibleUploadSlots(node)
+            : [];
         const getSelectedResultAsset = (node) => typeof nodeSource.getSelectedResultAsset === 'function'
             ? nodeSource.getSelectedResultAsset(node)
             : null;
@@ -68,12 +77,29 @@
         const buildNodeParamsPatch = (node, options) => typeof patchSource.buildNodeParamsPatch === 'function'
             ? patchSource.buildNodeParamsPatch(node, options)
             : {};
-        const refreshControllerDom = (nodeId) => typeof renderSource.refreshPresetSpecialControllerDom === 'function'
-            ? renderSource.refreshPresetSpecialControllerDom(nodeId)
+        function ensurePresetSpecialControllerState(node, kind) {
+            const controllerKind = kind || getControllerKind(node);
+            if (!controllerKind || !node) return '';
+            const state = getControllerState(node, controllerKind);
+            const statePatch = Object.assign({}, state, { kind: controllerKind });
+            const patch = buildControllerStatePatch(node, {
+                statePatch,
+                updatedAt: node.special_ui?.updated_at || nowIso()
+            });
+            if (patch && typeof patch === 'object') Object.assign(node, patch);
+            Object.assign(node, buildNodeParamsPatch(node, {
+                paramsPatch: {
+                    scene_additional_prompt_2: promptFromState(controllerKind, state)
+                }
+            }));
+            return controllerKind;
+        }
+        const nodeRenderKey = (node) => typeof renderSource.nodeRenderKey === 'function'
+            ? renderSource.nodeRenderKey(node)
             : undefined;
-        const refreshNodeDom = (node, options) => typeof renderSource.refreshPresetSpecialNodeDom === 'function'
-            ? renderSource.refreshPresetSpecialNodeDom(node, options)
-            : undefined;
+        const notConnectedText = () => typeof renderSource.notConnectedText === 'function'
+            ? renderSource.notConnectedText()
+            : '';
         const nowIso = () => typeof persistenceSource.nowIso === 'function'
             ? persistenceSource.nowIso()
             : '';
@@ -86,6 +112,68 @@
         const cssEscape = typeof utilitySource.cssEscape === 'function'
             ? utilitySource.cssEscape
             : (value) => String(value ?? '').replace(/["\\]/g, '\\$&');
+
+        function refreshPresetSpecialControllerDom(nodeId) {
+            const nodesLayer = getNodesLayer();
+            if (!nodeId || !nodesLayer) return;
+            const node = getNode(nodeId);
+            const kind = getControllerKind(node);
+            if (!node || !kind) return;
+            const state = getControllerState(node, kind);
+            const nodeEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
+            if (!nodeEl) return;
+            const values = nodeEl.querySelector('[data-preset-special-values]');
+            if (values) values.textContent = `${state.horizontal}° / ${state.vertical}° / ${state.zoom.toFixed(1)}${kind === 'flux-anglelight' ? ` / ${state.lightColor}` : ''}`;
+            const prompt = nodeEl.querySelector('[data-preset-special-prompt]');
+            if (prompt) prompt.textContent = promptFromState(kind, state);
+        }
+
+        function refreshPresetUploadSlotsDom(nodeId) {
+            const nodesLayer = getNodesLayer();
+            if (!nodeId || !nodesLayer) return;
+            const node = getNode(nodeId);
+            if (!node || !['preset', 'classic'].includes(node.type)) return;
+            const nodeEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
+            if (!nodeEl) return;
+            const slots = node.type === 'classic' ? getVisibleClassicUploadSlots(node) : getVisibleUploadSlots(node);
+            slots.forEach((slotInfo) => {
+                const slot = slotInfo.key;
+                const row = nodeEl.querySelector(`[data-slot-row="${cssEscape(slot)}"]`);
+                if (!row) return;
+                const boundNode = node.upload_slots?.[slot] ? getNode(node.upload_slots[slot]) : null;
+                const label = row.querySelector('b');
+                if (label) label.textContent = boundNode ? (boundNode.title || boundNode.id) : notConnectedText();
+            });
+        }
+
+        function syncPresetSpecialViewersForNode(nodeId) {
+            const nodeEl = getNodesLayer()?.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
+            if (!nodeEl) return;
+            nodeEl.querySelectorAll('[data-preset-special-viewer]').forEach((iframe) => syncPresetSpecialViewerIframe(iframe));
+        }
+
+        function refreshPresetSpecialNodeDom(node, options) {
+            const kind = getControllerKind(node);
+            const nodesLayer = getNodesLayer();
+            if (!node || !kind || !nodesLayer) return;
+            refreshPresetUploadSlotsDom(node.id);
+            refreshPresetSpecialControllerDom(node.id);
+            if (options?.syncViewer) syncPresetSpecialViewersForNode(node.id);
+            const nodeEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(node.id)}"]`);
+            if (nodeEl && options?.renderKey !== false) nodeEl.__simpaiRenderKey = nodeRenderKey(node);
+        }
+
+        function syncPresetSpecialViewersForAssetNode(sourceNodeId) {
+            if (!sourceNodeId) return;
+            (getProject()?.edges || [])
+                .filter(edge => edge.type === 'upload' && edge.from === sourceNodeId)
+                .forEach((edge) => {
+                    const preset = getNode(edge.to);
+                    if (getControllerKind(preset)) {
+                        refreshPresetSpecialNodeDom(preset, { syncViewer: true });
+                    }
+                });
+        }
 
         function bindPresetSpecialViewerEvents(nodeEl, node) {
             if (!node || node.type !== 'preset') return;
@@ -125,7 +213,7 @@
                 type: 'UPDATE_IMAGE',
                 imageUrl: inputAssetUrl(node)
             }, '*');
-            refreshControllerDom(node.id);
+            refreshPresetSpecialControllerDom(node.id);
         }
 
         function handlePresetSpecialViewerMessage(evt) {
@@ -156,7 +244,7 @@
                     updatedAt: nowIso()
                 });
                 if (patch && typeof patch === 'object') Object.assign(node, patch);
-                refreshNodeDom(node, { syncViewer: false });
+                refreshPresetSpecialNodeDom(node, { syncViewer: false });
                 scheduleSave();
                 return;
             }
@@ -176,15 +264,18 @@
                     scene_additional_prompt_2: promptFromState(kind, state)
                 }
             }));
-            refreshNodeDom(node, { syncViewer: false });
+            refreshPresetSpecialNodeDom(node, { syncViewer: false });
             scheduleSave();
         }
 
         return {
+            ensurePresetSpecialControllerState,
             presetSpecialViewerUrl,
             presetSpecialInputAssetUrl,
             bindPresetSpecialViewerEvents,
             findPresetSpecialIframeByWindow,
+            refreshPresetSpecialNodeDom,
+            syncPresetSpecialViewersForAssetNode,
             syncPresetSpecialViewerIframe,
             handlePresetSpecialViewerMessage
         };

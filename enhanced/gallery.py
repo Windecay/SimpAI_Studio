@@ -50,6 +50,7 @@ _gallery_media_switch_request_lock = threading.Lock()
 _gallery_media_switch_latest = {}
 _main_gallery_browser_request_lock = threading.Lock()
 _main_gallery_browser_invalidated_after = {}
+_main_gallery_browser_latest = OrderedDict()
 GALLERY_DISPLAY_PREVIEW_PREFIX = "simpai_gprev__"
 GALLERY_DISPLAY_PREVIEW_ROUTE = "/simpleai/gallery-preview"
 GALLERY_ORIGINAL_DOWNLOAD_PREFIX = "simpai_gdownload__"
@@ -487,7 +488,7 @@ def _gallery_ensure_display_preview(media_path, user_did=None):
 def _gallery_lazy_display_preview_name(media_path, user_did=None):
     if not _gallery_display_preview_is_under_outputs(media_path, user_did):
         return ""
-    if not _gallery_media_needs_display_preview(media_path):
+    if os.path.splitext(str(media_path or ""))[1].lower() not in image_types + video_types:
         return ""
     return _gallery_display_preview_name(media_path)
 
@@ -505,7 +506,7 @@ def get_gallery_display_preview_response(preview_name):
     if _gallery_display_preview_name(media_path) != str(preview_name or ""):
         return None
     if not _gallery_media_needs_display_preview(media_path):
-        return None
+        return {"path": media_path}
     return _gallery_get_or_create_display_preview(preview_name, media_path)
 
 
@@ -528,6 +529,43 @@ def gallery_display_paths_for_progress(media_paths, engine_type="image", user_di
     if engine_type not in ("image", "video"):
         return media_paths
     return [gallery_display_path_for_progress(path, engine_type, user_did, state_params) for path in (media_paths or [])]
+
+
+def post_generation_image_dimensions(media_paths):
+    dimensions = {}
+    for path in media_paths or []:
+        try:
+            with Image.open(path) as image:
+                width, height = image.size
+            if width > 0 and height > 0:
+                dimensions[str(path)] = {"width": width, "height": height, "media_type": "image"}
+        except (OSError, TypeError, ValueError):
+            continue
+    return dimensions
+
+
+def post_generation_result_payload(state_params):
+    state_params = state_params or {}
+    keys = (
+        "gallery_state",
+        "gallery_preview_open",
+        "engine_type",
+        "__gallery_engine_type",
+        "__image_tools_enabled",
+        "__selected_gallery_media_path",
+        "__post_generation_has_output",
+        "__post_generation_gallery_output",
+        "__post_generation_video_output",
+        "__post_generation_image_url",
+        "__post_generation_image_paths",
+        "__post_generation_image_dimensions",
+        "__post_generation_compare_input_ok",
+        "__post_generation_compare_visible",
+        "__post_generation_compare_ready",
+        "__post_generation_compare_cleared",
+        "__post_generation_compare_choice",
+    )
+    return {key: state_params.get(key) for key in keys}
 
 
 def _gallery_media_switch_noop_response():
@@ -579,10 +617,25 @@ def invalidate_main_gallery_browser_requests(state_params, reason="preset_switch
     return invalidated_at
 
 
-def _main_gallery_browser_request_context(state_params):
+def _main_gallery_browser_request_context(state_params, payload=None):
+    payload = payload or {}
+    user_key = _main_gallery_browser_user_key(state_params)
+    started_at = time.monotonic()
+    client_id = str(payload.get("client_id") or "")[:100]
+    request_id = payload.get("request_id")
+    request_key = (user_key, client_id) if client_id and isinstance(request_id, int) and request_id > 0 else None
+    if request_key:
+        with _main_gallery_browser_request_lock:
+            latest = _main_gallery_browser_latest.get(request_key, 0)
+            _main_gallery_browser_latest[request_key] = max(latest, request_id)
+            _main_gallery_browser_latest.move_to_end(request_key)
+            while len(_main_gallery_browser_latest) > 256:
+                _main_gallery_browser_latest.popitem(last=False)
     return {
-        "user_key": _main_gallery_browser_user_key(state_params),
-        "started_at": time.monotonic(),
+        "user_key": user_key,
+        "started_at": started_at,
+        "request_key": request_key,
+        "request_id": request_id,
     }
 
 
@@ -595,7 +648,12 @@ def _main_gallery_browser_request_is_stale(context):
         return False
     with _main_gallery_browser_request_lock:
         invalidated_at = _main_gallery_browser_invalidated_after.get(user_key)
-    return bool(invalidated_at and invalidated_at > started_at)
+        request_key = context.get("request_key")
+        latest = _main_gallery_browser_latest.get(request_key, 0) if request_key else 0
+    return bool(
+        (invalidated_at and invalidated_at > started_at)
+        or (request_key and latest > context.get("request_id", 0))
+    )
 
 
 def _gallery_browser_stale_state_json(payload=None):
@@ -617,7 +675,7 @@ def _gallery_browser_load_stale_response(payload=None, state_params=None):
         state_params.get("__preset") if isinstance(state_params, dict) else None,
         (payload or {}).get("request_id"),
     )
-    return [_gallery_browser_stale_state_json(payload)] + [skip_update() for _ in range(10)]
+    return [_gallery_browser_stale_state_json(payload)] + [skip_update() for _ in range(11)]
 
 
 def _gallery_browser_native_stale_response(state_params=None, request_name="gallery_browser_native"):
@@ -737,6 +795,7 @@ def clear_post_generation_output_state(state_params):
         "__post_generation_gallery_output",
         "__post_generation_video_output",
         "__post_generation_image_paths",
+        "__post_generation_image_dimensions",
     ):
         state_params.pop(key, None)
     return state_params
@@ -1691,7 +1750,8 @@ def switch_gallery_engine_type(target_engine_type, *args):
                 "folder": folder,
                 "offset": 0,
                 "limit": 36,
-                "include_dimensions": target_engine_type == "image",
+                "include_dimensions": True,
+                "include_video_dimensions": target_engine_type == "video",
                 "include_metadata": False,
                 "max_seconds": 3.0,
             },
@@ -1713,7 +1773,8 @@ def switch_gallery_engine_type(target_engine_type, *args):
                         "folder": folder,
                         "offset": 0,
                         "limit": 36,
-                        "include_dimensions": target_engine_type == "image",
+                        "include_dimensions": True,
+                        "include_video_dimensions": target_engine_type == "video",
                         "include_metadata": False,
                         "max_seconds": 3.0,
                     },
@@ -1754,7 +1815,7 @@ def switch_gallery_engine_type(target_engine_type, *args):
         prompt_meta = read_embedded_metadata_from_file(selected_path, target_engine_type) if selected_path else None
         prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
         label = _gallery_media_label(target_engine_type, state_params)
-        progress_window_update = gr_update(visible=False) if media_paths else _empty_gallery_welcome_update(state_params)
+        progress_window_update = gr_update(visible=False, value=None)
         display_paths = gallery_display_paths_for_progress(media_paths, target_engine_type, user_did, state_params)
         toolbox_update = _hide_image_toolbox_for_gallery_grid(state_params, "media_switch.main_browser")
 
@@ -1985,9 +2046,13 @@ def _parse_main_gallery_browser_payload(payload_json):
     if folder and not folder.startswith("20"):
         folder = _folder_from_catalog_choice(folder)
     query = str(payload.get("query") or "").strip()
-    request_id = payload.get("request_id")
+    try:
+        request_id = max(0, int(payload.get("request_id") or 0))
+    except (TypeError, ValueError):
+        request_id = 0
     reset = bool(payload.get("reset", True))
     return {
+        "client_id": str(payload.get("client_id") or "")[:100],
         "media_type": media_type,
         "folder": folder,
         "query": query,
@@ -2060,7 +2125,6 @@ def get_main_gallery_browser_selected_metadata(state_params, selected=None):
 
 def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_params):
     state_params = state_params or {}
-    request_context = _main_gallery_browser_request_context(state_params)
     payload_text = "" if isinstance(payload_json, dict) else str(payload_json or "").strip()
     payload = _parse_main_gallery_browser_payload(payload_json)
     state_payload_json = state_params.get("__main_gallery_browser_bridge_payload") if isinstance(state_params, dict) else None
@@ -2078,6 +2142,9 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
             payload = state_payload
     if isinstance(state_params, dict):
         state_params["__main_gallery_browser_bridge_payload"] = ""
+    request_context = _main_gallery_browser_request_context(state_params, payload)
+    if _main_gallery_browser_request_is_stale(request_context):
+        return _gallery_browser_load_stale_response(payload, state_params)
     media_type = payload["media_type"]
 
     folder = payload["folder"]
@@ -2111,7 +2178,8 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
             "query": payload["query"],
             "offset": payload["offset"],
             "limit": payload["limit"],
-            "include_dimensions": media_type == "image",
+            "include_dimensions": True,
+            "include_video_dimensions": media_type == "video",
             "include_metadata": False,
             "max_seconds": 3.0,
         },
@@ -2119,6 +2187,18 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
     )
     if _main_gallery_browser_request_is_stale(request_context):
         return _gallery_browser_load_stale_response(payload, state_params)
+    if folder and result.get("folder") != folder:
+        return [
+            _main_gallery_browser_state_json(
+                ok=False,
+                media_type=media_type,
+                folder=folder,
+                folders=result.get("folders") or folders,
+                request_id=payload.get("request_id"),
+                error="Could not load this date",
+            ),
+            *[skip_update() for _ in range(11)],
+        ]
 
     clear_post_generation_result_state(state_params)
     state_params["__gallery_engine_type"] = media_type
@@ -2128,6 +2208,8 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
         finished_nums_pages = refresh_finished_nums_pages_for_browser(state_params, media_type)
     else:
         finished_nums_pages = state_params.get("__finished_nums_pages", "0,0")
+    if _main_gallery_browser_request_is_stale(request_context):
+        return _gallery_browser_load_stale_response(payload, state_params)
     if not result.get("ok"):
         state_json = _main_gallery_browser_state_json(
             ok=False,
@@ -2151,6 +2233,7 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
             skip_update(),
             state_params,
             finished_nums_pages,
+            skip_update(),
         ]
 
     folders = result.get("folders") or folders
@@ -2210,7 +2293,7 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
         truncated=bool(result.get("truncated")),
         query=payload["query"],
     )
-    progress_window_update = gr_update(visible=False) if media_paths else _empty_gallery_welcome_update(state_params)
+    progress_window_update = gr_update(visible=False, value=None)
     display_paths = gallery_display_paths_for_progress(media_paths, media_type, _user_did_from_state(state_params), state_params)
     return [
         state_json,
@@ -2224,6 +2307,7 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
         gr_update(visible=infobox_state),
         state_params,
         state_params.get("__finished_nums_pages", finished_nums_pages),
+        dropdown_update(choices=folders, value=folder or None),
     ]
 
 
@@ -2249,7 +2333,8 @@ def _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params
             "folder": folder,
             "offset": offset,
             "limit": limit,
-            "include_dimensions": media_type == "image",
+            "include_dimensions": True,
+            "include_video_dimensions": media_type == "video",
             "include_metadata": False,
             "max_seconds": 3.0,
         },
@@ -2300,7 +2385,8 @@ def _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params
                 "folder": folder,
                 "offset": 0,
                 "limit": limit,
-                "include_dimensions": media_type == "image",
+                "include_dimensions": True,
+                "include_video_dimensions": media_type == "video",
                 "include_metadata": False,
                 "max_seconds": 3.0,
             },
@@ -2353,7 +2439,7 @@ def _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params
     prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
     label = _gallery_media_label(media_type, state_params)
     status = _gallery_browser_count_status(len(media_paths), media_type, state_params)
-    progress_window_update = gr_update(visible=False) if media_paths else _empty_gallery_welcome_update(state_params)
+    progress_window_update = gr_update(visible=False, value=None)
     display_paths = gallery_display_paths_for_progress(media_paths, media_type, _user_did_from_state(state_params), state_params)
 
     return [

@@ -17599,6 +17599,46 @@ button.style-button.primary::after {
   white-space: nowrap !important;
 }
 
+#gallery_browser_empty_state {
+  display: none !important;
+}
+
+html.simpai-generation-awaiting-result #finished_gallery,
+html.simpai-generation-awaiting-result #final_gallery,
+html.simpai-generation-awaiting-result #comparison_box,
+html.simpai-generation-awaiting-result #video_player {
+  display: none !important;
+}
+
+html.simpai-gallery-browser-empty-open #gallery_browser_empty_state {
+  display: flex !important;
+  flex: 1 1 100%;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: clamp(320px, calc(100dvh - 260px), 768px);
+  color: var(--body-text-color-subdued);
+}
+
+html.simpai-gallery-browser-empty-open #preview_generating,
+html.simpai-gallery-browser-empty-open #simpleai_gallery_welcome_guard_placeholder,
+html.simpai-gallery-browser-empty-open #finished_gallery,
+html.simpai-gallery-browser-empty-open #final_gallery,
+html.simpai-gallery-browser-empty-open #progress_video,
+html.simpai-gallery-browser-empty-open #video_player,
+html.simpai-gallery-browser-empty-open #comparison_box,
+html.simpai-gallery-browser-empty-open .preview_column .row:has(#gallery_browser_empty_state) > .form:has(#preview_generating),
+html.simpai-gallery-browser-empty-open .preview_column .row:has(#gallery_browser_empty_state) > .block:has(#preview_generating) {
+  display: none !important;
+}
+
+.simpleai-gallery-browser-empty-message {
+  padding: 24px;
+  text-align: center;
+  font-size: 14px;
+}
+
 #finished_images_catalog[data-simpleai-finished-catalog-hitbox-collapsed="1"] > :not(button.label-wrap),
 #finished_images_catalog.simpai-finished-catalog-hitbox-collapsed > :not(button.label-wrap),
 #finished_images_catalog:not(:has(> button.label-wrap.open)):not(:has(> button.label-wrap[aria-expanded="true"])) > :not(button.label-wrap) {

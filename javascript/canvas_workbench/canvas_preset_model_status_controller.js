@@ -19,9 +19,10 @@
         const isPresetNode = (node) => typeof nodeSource.isPresetNode === 'function'
             ? !!nodeSource.isPresetNode(node)
             : !!node && ['preset', 'classic'].includes(node.type);
-        const getStatusState = (node) => typeof modelSource.presetModelStatusState === 'function'
-            ? modelSource.presetModelStatusState(node)
-            : '';
+        function getStatusState(node) {
+            const status = node?.model_status && typeof node.model_status === 'object' ? node.model_status : {};
+            return String(status.state || (status.ready ? 'ready' : 'unknown')).toLowerCase();
+        }
         const translate = (en, cn) => typeof uiSource.translate === 'function' ? uiSource.translate(en, cn) : en;
         const applyStatusPatch = (node, statusPatch) => typeof modelSource.buildPresetModelStatusPatch === 'function'
             ? modelSource.buildPresetModelStatusPatch(node, { statusPatch })
@@ -167,6 +168,7 @@
 
         return {
             getAutoModelCheckQueued: () => autoCheckQueued,
+            getStatusState,
             shouldAutoCheckPresetModels,
             checkPresetModelStatus,
             queuePresetModelDownloads,

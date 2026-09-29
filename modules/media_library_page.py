@@ -50,6 +50,19 @@ def _icon_font_css(font_url: str) -> str:
         "film": "\\f008",
         "music": "\\f001",
         "image": "\\f03e",
+        "filter": "\\f0b0",
+        "folder": "\\f07b",
+        "folder-open": "\\f07c",
+        "folder-plus": "\\f65e",
+        "arrows-left-right": "\\f07e",
+        "link": "\\f0c1",
+        "plus": "\\f067",
+        "clone": "\\f24d",
+        "play": "\\f04b",
+        "pause": "\\f04c",
+        "volume-high": "\\f028",
+        "volume-xmark": "\\f6a9",
+        "sliders": "\\f1de",
     }
     mapping = "\n".join(
         f'.fa-{name}::before {{ content: "{code}"; }}' for name, code in icons.items()
@@ -133,8 +146,14 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
           <option value="newest" data-i18n="Newest">Newest</option>
           <option value="oldest" data-i18n="Oldest">Oldest</option>
         </select>
+        <button class="icon-button" id="filter-toggle" type="button" title="Filters" aria-label="Filters" aria-expanded="false">
+          <i class="fa fa-filter"></i>
+        </button>
         <button class="icon-button" id="favorite-filter" type="button" title="Favorites" aria-label="Favorites">
           <i class="fa fa-star"></i>
+        </button>
+        <button class="icon-button" id="autoplay-toggle" type="button" title="Video autoplay" aria-label="Video autoplay" aria-pressed="true">
+          <i class="fa fa-play"></i>
         </button>
         <button class="icon-button" id="trash-view" type="button" title="Trash" aria-label="Trash" aria-pressed="false">
           <i class="fa fa-trash"></i>
@@ -146,10 +165,48 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
           <i class="fa fa-rotate"></i>
         </button>
       </div>
+      <div class="media-filter-panel" id="media-filter-panel" hidden>
+        <div class="filter-panel-title" data-i18n="Filters">Filters</div>
+        <label for="filter-tag" data-i18n="Tag">Tag</label>
+        <input id="filter-tag" type="search" autocomplete="off">
+        <label for="filter-model" data-i18n="Model">Model</label>
+        <input id="filter-model" type="search" autocomplete="off">
+        <label for="filter-rating" data-i18n="Minimum rating">Minimum rating</label>
+        <select id="filter-rating">
+          <option value="" data-i18n="Any rating">Any rating</option>
+          <option value="1">★</option><option value="2">★★</option><option value="3">★★★</option>
+          <option value="4">★★★★</option><option value="5">★★★★★</option>
+        </select>
+        <label for="filter-orientation" data-i18n="Orientation">Orientation</label>
+        <select id="filter-orientation">
+          <option value="" data-i18n="Any orientation">Any orientation</option>
+          <option value="landscape" data-i18n="Horizontal">Horizontal</option>
+          <option value="portrait" data-i18n="Vertical">Vertical</option>
+          <option value="square" data-i18n="Square">Square</option>
+        </select>
+        <div class="filter-panel-actions">
+          <button class="text-button" id="filter-clear" type="button" data-i18n="Clear filters">Clear filters</button>
+          <button class="primary-button" id="filter-apply" type="button" data-i18n="Apply">Apply</button>
+        </div>
+        <div class="filter-save-row">
+          <input id="view-name" type="text" maxlength="100" data-i18n-placeholder="View name" placeholder="View name">
+          <button class="icon-button" id="view-save" type="button" title="Save view" aria-label="Save view"><i class="fa fa-floppy-disk"></i></button>
+        </div>
+      </div>
     </header>
 
     <div class="media-library-layout" id="media-library-layout">
       <aside class="date-sidebar" id="date-sidebar" aria-label="Dates">
+        <div class="sidebar-heading"><span data-i18n="Collections">Collections</span>
+          <button class="icon-button subtle" id="collection-create-toggle" type="button" title="New collection" aria-label="New collection"><i class="fa fa-plus"></i></button>
+        </div>
+        <form class="sidebar-create" id="collection-create-form" hidden>
+          <input id="collection-name" type="text" maxlength="100" data-i18n-placeholder="Collection name" placeholder="Collection name">
+          <button class="icon-button subtle" type="submit" title="Create" aria-label="Create"><i class="fa fa-check"></i></button>
+        </form>
+        <div class="organizer-list" id="collection-list"></div>
+        <div class="sidebar-heading"><span data-i18n="Saved views">Saved views</span></div>
+        <div class="organizer-list" id="view-list"></div>
         <div class="sidebar-heading">
           <span data-i18n="Dates">Dates</span>
           <button class="icon-button subtle" id="clear-date" type="button" title="All dates" aria-label="All dates">
@@ -166,6 +223,11 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
             <span class="selection-count" id="selection-count" hidden></span>
           </div>
           <div class="feed-toolbar-actions">
+            <button class="text-button" id="selection-compare" type="button" hidden><i class="fa fa-clone"></i><span data-i18n="Compare">Compare</span></button>
+            <button class="text-button" id="selection-edit" type="button" hidden><i class="fa fa-sliders"></i><span data-i18n="Edit selected">Edit selected</span></button>
+            <select id="selection-collection" class="compact-select" aria-label="Collection" hidden></select>
+            <button class="icon-button" id="selection-add-collection" type="button" title="Add to collection" aria-label="Add to collection" hidden><i class="fa fa-folder-plus"></i></button>
+            <button class="icon-button" id="selection-remove-collection" type="button" title="Remove from collection" aria-label="Remove from collection" hidden><i class="fa fa-minus"></i></button>
             <button class="icon-button subtle" id="selection-clear" type="button" title="Clear selection" aria-label="Clear selection" hidden>
               <i class="fa fa-xmark"></i>
             </button>
@@ -184,6 +246,14 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
             <button class="text-button" id="purge-trash" type="button" hidden>
               <i class="fa fa-trash"></i><span data-i18n="Empty trash">Empty trash</span>
             </button>
+          </div>
+          <div class="batch-editor" id="batch-editor" hidden>
+            <label for="batch-tags" data-i18n="Add tags">Add tags</label><input id="batch-tags" type="text" maxlength="640">
+            <label for="batch-rating" data-i18n="Rating">Rating</label>
+            <select id="batch-rating"><option value="" data-i18n="Keep unchanged">Keep unchanged</option><option value="0" data-i18n="Unrated">Unrated</option><option value="1">★</option><option value="2">★★</option><option value="3">★★★</option><option value="4">★★★★</option><option value="5">★★★★★</option></select>
+            <label for="batch-favorite" data-i18n="Favorites">Favorites</label>
+            <select id="batch-favorite"><option value="" data-i18n="Keep unchanged">Keep unchanged</option><option value="1" data-i18n="Favorite">Favorite</option><option value="0" data-i18n="Unfavorite">Unfavorite</option></select>
+            <div class="filter-panel-actions"><button class="primary-button" id="batch-save" type="button" data-i18n="Save">Save</button></div>
           </div>
         </div>
         <section class="media-feed-scroll" id="media-feed-scroll" aria-label="Media">
@@ -233,6 +303,34 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
           <a class="icon-button" id="viewer-download" href="#" download title="Download" aria-label="Download"><i class="fa fa-download"></i></a>
         </div>
       </div>
+    </div>
+  </div>
+  <div class="media-compare" id="media-compare" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Compare">
+    <div class="compare-header"><h2 data-i18n="Compare">Compare</h2>
+      <div class="compare-controls">
+        <div class="compare-modes" role="group" aria-label="Compare mode">
+          <button type="button" id="compare-side" aria-pressed="true" title="Side by side"><i class="fa fa-clone"></i><span data-i18n="Side by side">Side by side</span></button>
+          <button type="button" id="compare-wipe" aria-pressed="false" title="Wipe"><i class="fa fa-arrows-left-right"></i><span data-i18n="Wipe">Wipe</span></button>
+        </div>
+        <button class="compare-sync-toggle" id="compare-sync" type="button" aria-pressed="true" hidden><i class="fa fa-link"></i><span data-i18n="Sync playback">Sync playback</span></button>
+        <label for="compare-match" data-i18n="Match mode">Match mode</label>
+        <select id="compare-match"><option value="fit" data-i18n="Fit">Fit</option><option value="width" data-i18n="Match width">Match width</option><option value="height" data-i18n="Match height">Match height</option><option value="pixel" data-i18n="Actual pixels">Actual pixels</option></select>
+        <label for="compare-zoom" data-i18n="Zoom">Zoom</label><input id="compare-zoom" type="range" min="25" max="400" value="100" step="5"><output id="compare-zoom-value" for="compare-zoom">100%</output>
+        <label class="compare-offset">X <input id="compare-x" type="number" value="0" step="1"></label>
+        <label class="compare-offset">Y <input id="compare-y" type="number" value="0" step="1"></label>
+        <button class="icon-button" id="compare-align" type="button" title="Reset alignment" aria-label="Reset alignment"><i class="fa fa-link"></i></button>
+        <label class="compare-split-control" id="compare-split-control" hidden><span data-i18n="Divider">Divider</span><input id="compare-split" type="range" min="0" max="100" value="50"></label>
+        <button class="icon-button" id="compare-close" type="button" title="Close" aria-label="Close"><i class="fa fa-xmark"></i></button>
+      </div>
+    </div>
+    <div class="compare-grid" id="compare-grid"></div>
+    <div class="compare-transport" id="compare-transport" hidden>
+      <button class="icon-button" id="compare-play" type="button" title="Play" aria-label="Play" disabled><i class="fa fa-play"></i></button>
+      <input id="compare-time" type="range" min="0" max="1" value="0" step="0.01" aria-label="Playback position" disabled>
+      <output id="compare-clock" for="compare-time">0:00 / 0:00</output>
+      <button class="icon-button" id="compare-mute" type="button" title="Mute" aria-label="Mute" aria-pressed="false"><i class="fa fa-volume-high"></i></button>
+      <label for="compare-rate" data-i18n="Playback speed">Playback speed</label>
+      <select id="compare-rate" aria-label="Playback speed"><option value="0.5">0.5&times;</option><option value="1" selected>1&times;</option><option value="1.5">1.5&times;</option><option value="2">2&times;</option></select>
     </div>
   </div>
   <div class="media-toast" id="media-toast" role="status" aria-live="polite"></div>

@@ -3,6 +3,7 @@
 
     function createCanvasMediaPlaybackController(context) {
         const scope = context?.mediaPlaybackSource || context || {};
+        const domSource = scope.domSource || {};
         const nodeSource = scope.nodeSource || {};
         const resultAssetSource = scope.resultAssetSource || {};
         const patchSource = scope.patchSource || {};
@@ -164,9 +165,21 @@
             return true;
         }
 
+        function toggleSelectedResultMediaPlayback(node) {
+            const nodesLayer = call(domSource, 'getNodesLayer', null);
+            if (!nodesLayer) return false;
+            const selector = `[data-node-id="${call(utilitySource, 'cssEscape', '', node.id)}"]`;
+            const media = nodesLayer.querySelector(`${selector} video, ${selector} audio`);
+            if (!media) return false;
+            if (media.paused) media.play().catch(() => {});
+            else media.pause();
+            return true;
+        }
+
         return {
             bindNodeMediaControlEvents,
             bindNodeMediaEvents,
+            toggleSelectedResultMediaPlayback,
             handleNodeMediaMetadataLoaded,
             handleNodeMediaTimeUpdate,
             handleNodeMediaPlaybackStateChanged,

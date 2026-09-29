@@ -36,6 +36,8 @@ def _user_did(state_params=None):
             did = user.get_did()
             if did:
                 return did
+        if isinstance(state_params, dict) and state_params.get("user_did"):
+            return state_params["user_did"]
     except Exception:
         pass
     try:
@@ -133,12 +135,20 @@ def _read_image_size(path):
 
 def _read_video_size(path, mime=None):
     try:
+        stat = os.stat(path)
+        cache_key = ("video", os.path.abspath(path))
+        cached = _MEDIA_DIMENSION_CACHE.get(cache_key)
+        if cached and cached[:2] == (stat.st_mtime_ns, stat.st_size):
+            return cached[2], cached[3]
         from modules import canvas_workbench_assets
 
         metadata = canvas_workbench_assets._probe_media_metadata(path, mime or "video/mp4")
         width = int(metadata.get("width") or 0)
         height = int(metadata.get("height") or 0)
         if width > 0 and height > 0:
+            if len(_MEDIA_DIMENSION_CACHE) >= MEDIA_DIMENSION_CACHE_MAX:
+                _MEDIA_DIMENSION_CACHE.clear()
+            _MEDIA_DIMENSION_CACHE[cache_key] = (stat.st_mtime_ns, stat.st_size, width, height)
             return width, height
     except Exception:
         pass

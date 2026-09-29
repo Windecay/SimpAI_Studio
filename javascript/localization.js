@@ -1163,6 +1163,20 @@ function refresh_finished_images_catalog_label(value, type, options) {
             activeGalleryType = getFinishedGalleryBrowserMode(requestedType || undefined);
         }
     } catch (e) {}
+    try {
+        var browserParams = window.simpleaiTopbarSystemParams || {};
+        var mainBrowserOpen = is_finished_images_catalog_open()
+            && (browserParams.gallery_state === "main_browser" || galleryBrowserBusy);
+        if (mainBrowserOpen && activeGalleryType) {
+            requestedType = activeGalleryType;
+            var totals = finishedGalleryBrowserState.totalByMode || {};
+            if (Object.prototype.hasOwnProperty.call(totals, requestedType)) {
+                value = String(totals[requestedType]) + ",0";
+            } else if (galleryBrowserBusy) {
+                return;
+            }
+        }
+    } catch (e) {}
     if (activeGalleryType == "video" && (galleryBrowserBusy || is_finished_images_catalog_open())) {
         requestedType = "video";
     } else if (!requestedType && activeGalleryType) {
@@ -1234,10 +1248,8 @@ function refresh_finished_images_catalog_label(value, type, options) {
                 || document.documentElement.classList.contains("simpai-video-result-preview");
         } catch (e) {}
         var catalogOpen = is_finished_images_catalog_open();
-        var shouldRefresh = !skipRefresh && !suppressSwitchRefresh && (
-            !!(options && options.refresh === true)
-            || (!(options && options.refresh === false) && !resultSurfaceActive && catalogOpen)
-        );
+        var shouldRefresh = !skipRefresh && !suppressSwitchRefresh && !resultSurfaceActive
+            && catalogOpen && !!(options && options.refresh === true);
         var shouldSyncSwitch = !(options && options.syncSwitch === false) && (
             galleryBrowserBusy
             || shouldRefresh

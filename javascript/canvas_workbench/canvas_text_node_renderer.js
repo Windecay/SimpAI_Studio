@@ -10,6 +10,7 @@
         const translationSource = scope.translationSource || {};
         const renderSource = scope.renderSource || {};
         const autocompleteSource = scope.autocompleteSource || {};
+        const wildcardsSource = scope.wildcardsSource || {};
         const callbackSources = {
             getNode: nodeSource,
             getNodeTextOutput: nodeSource,
@@ -18,7 +19,6 @@
             getTextMergeInputSource: nodeSource,
             getTextMergeOutput: nodeSource,
             getNodesLayer: domSource,
-            translationDirectionLabel: languageSource,
             tagCartLabel: languageSource,
             localizedDefaultTitle: languageSource,
             notConnectedText: languageSource,
@@ -46,7 +46,12 @@
         const textMergeInputSlots = (...args) => call('textMergeInputSlots', [], ...args);
         const getTextMergeInputSource = (...args) => call('getTextMergeInputSource', null, ...args);
         const getTextMergeOutput = (...args) => call('getTextMergeOutput', '', ...args);
-        const translationDirectionLabel = (...args) => call('translationDirectionLabel', '', ...args);
+        function translationDirectionLabel(value) {
+            const key = String(value || '');
+            if (key === 'zh_to_en') return t('Chinese to English', '中文到英文');
+            if (key === 'en_to_zh') return t('English to Chinese', '英文到中文');
+            return t('Auto / toggle', '自动 / 切换');
+        }
         const tagCartLabel = (...args) => call('tagCartLabel', t('Tag Cart', '标签选择器'), ...args);
         const localizedDefaultTitle = (...args) => call('localizedDefaultTitle', args[0] || args[1] || '', ...args);
         const renderIconHtml = (...args) => call('renderIconHtml', '<i class="fa-solid fa-tags"></i>', ...args);
@@ -74,6 +79,45 @@
 </div>
 <label class="sai-node-field sai-text-node-field"><span>${escapeHtml(t('Output', '输出'))} ${source ? `<small>${escapeHtml(t('linked', '已连接'))}</small>` : ''}</span>${renderTranslatableTextarea(`data-text-value rows="7" ${source ? 'readonly' : ''}`, value, { target: 'text-value', disabled: !!source, tagCart: !source, state: getTranslationFieldState(node, 'text-value', '', value) })}</label>
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="text" title="${escapeHtml(t('Text output', '文本输出'))}"></button>`;
+        }
+
+        function renderWildcardsHelperNodeHtml(node) {
+            const params = Object.assign({
+                target: 'Array (batch)',
+                method: 'Random Select',
+                seed_mode: 'Fixed seed',
+                name: '',
+                count: 1,
+                start: 1,
+                group_size: 1
+            }, node.params || {});
+            const state = typeof languageSource.getLanguageState === 'function' ? languageSource.getLanguageState() : {};
+            const translate = (en, cn) => t(en, cn, state);
+            const tag = typeof wildcardsSource.wildcardHelperBuildTag === 'function'
+                ? wildcardsSource.wildcardHelperBuildTag(params) : '';
+            const optionsHtml = (items, value) => items.map(item => `<option value="${escapeHtml(item)}" ${String(item) === String(value) ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('');
+            const nameControl = `<div class="sai-wildcards-helper-name-row"><input data-wildcards-helper-param="name" value="${escapeHtml(params.name || '')}" placeholder="color / style / character"><button type="button" data-node-action="open-wildcards-helper-picker" title="${escapeHtml(translate('Browse wildcards', '浏览通配符'))}"><i class="fa-solid fa-magnifying-glass"></i></button></div>`;
+            return `
+<div class="sai-node-head">
+  <span class="sai-node-kind">${escapeHtml(translate('Wildcards', '通配符'))}</span>
+  <span class="sai-node-title">${escapeHtml(node.title || translate('Wildcards Helper', '通配符小助手'))}</span>
+  ${renderNodeStateBadges(node)}
+  <button type="button" data-node-action="refresh-wildcards-helper" title="${escapeHtml(translate('Refresh wildcards', '刷新通配符'))}"><i class="fa-solid fa-arrows-rotate"></i></button>
+  <button type="button" data-node-action="open-wildcards-manager" title="${escapeHtml(translate('Wildcards Manager', '通配符管理'))}"><i class="fa-solid fa-folder-tree"></i></button>
+  <button type="button" data-node-action="delete" title="${escapeHtml(translate('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+</div>
+<label class="sai-node-field"><span>${escapeHtml(translate('Target', '目标'))}</span><select data-wildcards-helper-param="target">${optionsHtml(wildcardsSource.getTargets(), params.target)}</select></label>
+<label class="sai-node-field"><span>${escapeHtml(translate('Method', '方法'))}</span><select data-wildcards-helper-param="method">${optionsHtml(wildcardsSource.getMethods(), params.method)}</select></label>
+<label class="sai-node-field"><span>${escapeHtml(translate('Seed mode', '种子模式'))}</span><select data-wildcards-helper-param="seed_mode">${optionsHtml(wildcardsSource.getSeedModes(), params.seed_mode)}</select></label>
+<label class="sai-node-field"><span>${escapeHtml(translate('Wildcard', '通配符'))}</span>${nameControl}</label>
+<div class="sai-node-field-row">
+  <label><span>${escapeHtml(translate('Count', '数量'))}</span><input data-wildcards-helper-param="count" type="number" min="1" step="1" value="${escapeHtml(params.count || 1)}"></label>
+  <label><span>${escapeHtml(translate('Start', '起始'))}</span><input data-wildcards-helper-param="start" type="number" min="1" step="1" value="${escapeHtml(params.start || 1)}"></label>
+  <label><span>${escapeHtml(translate('Group', '组大小'))}</span><input data-wildcards-helper-param="group_size" type="number" min="1" step="1" value="${escapeHtml(params.group_size || 1)}"></label>
+</div>
+<label class="sai-node-field sai-text-node-field"><span>${escapeHtml(translate('Output', '输出'))}</span><textarea data-wildcards-helper-output rows="3" readonly>${escapeHtml(tag)}</textarea></label>
+<button type="button" class="sai-node-primary" data-node-action="refresh-wildcards-helper"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(translate('Refresh', '刷新'))}</span></button>
+<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="text" title="${escapeHtml(translate('Text output', '文本输出'))}"></button>`;
         }
 
         function syncTextOutputDom(nodeId, value) {
@@ -332,6 +376,7 @@
         return {
             syncTextOutputDom,
             renderTextNodeHtml,
+            renderWildcardsHelperNodeHtml,
             renderTextMergeNodeHtml,
             renderTranslationNodeHtml,
             renderTagCartNodeHtml,

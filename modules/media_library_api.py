@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import os
+import platform
+import socket
+import subprocess
 import threading
 import time
 from typing import Any
 from urllib.parse import quote, unquote
 
+import psutil
 import shared
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -171,6 +176,57 @@ def _item_urls(
     return item
 
 
+def _local_interface_addresses() -> set[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    addresses = set()
+    try:
+        for entries in psutil.net_if_addrs().values():
+            for entry in entries:
+                if entry.family not in (socket.AF_INET, socket.AF_INET6):
+                    continue
+                try:
+                    addresses.add(ipaddress.ip_address(entry.address.split("%", 1)[0]))
+                except ValueError:
+                    continue
+    except OSError:
+        return set()
+    return addresses
+
+
+def _is_local_browser_request(request: Request) -> bool:
+    host = (request.url.hostname or "").rstrip(".").lower()
+    client = request.client.host if request.client else ""
+    try:
+        client_ip = ipaddress.ip_address(client)
+    except ValueError:
+        return False
+    if host == "localhost":
+        return client_ip.is_loopback
+    try:
+        host_ip = ipaddress.ip_address(host)
+    except ValueError:
+        if host != socket.gethostname().lower():
+            return False
+        host_ip = None
+    if host_ip is not None and host_ip.is_loopback:
+        return client_ip.is_loopback
+    if host_ip is not None and host_ip != client_ip:
+        return False
+    return client_ip in _local_interface_addresses()
+
+
+def _open_media_location(folder: str, selected_file: str = "") -> None:
+    system = platform.system()
+    if system == "Windows":
+        if selected_file:
+            subprocess.Popen(["explorer.exe", "/select,", selected_file])
+        else:
+            os.startfile(folder)
+    elif system == "Darwin":
+        subprocess.Popen(["open", "-R", selected_file] if selected_file else ["open", folder])
+    else:
+        subprocess.Popen(["xdg-open", folder])
+
+
 async def _run_scan(library: media_library.MediaLibrary, *, max_seconds: float | None = 120.0) -> dict[str, Any]:
     return await run_in_threadpool(lambda: library.scan(max_seconds=max_seconds))
 
@@ -219,6 +275,13 @@ def _bool_query(value: Any) -> bool | None:
     return None
 
 
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 @router.get("/simpleai/gallery/app")
 async def media_library_app(request: Request):
     query = request.query_params
@@ -262,6 +325,11 @@ async def media_library_items(request: Request):
             media_type=query.get("type") or None,
             query=query.get("q") or None,
             favorite=favorite,
+            tag=query.get("tag") or None,
+            rating_min=_optional_int(query.get("rating_min")),
+            model_query=query.get("model") or None,
+            orientation=query.get("orientation") or None,
+            collection_id=query.get("collection") or None,
             cursor=query.get("cursor") or None,
             limit=limit,
             sort=query.get("sort") or "newest",
@@ -271,6 +339,139 @@ async def media_library_items(request: Request):
     )
     result["items"] = [_item_urls(request, item, library) for item in result.get("items") or []]
     return result
+
+
+@router.get("/simpleai/gallery/api/collections")
+async def media_library_collections(request: Request):
+    library = _library_for_request(request=request)
+    return {"ok": True, "collections": await run_in_threadpool(library.list_collections)}
+
+
+@router.post("/simpleai/gallery/api/collections")
+async def media_library_create_collection(request: Request, payload: dict = Body(default={})):  # noqa: B008
+    library = _library_for_request(request=request)
+    try:
+        collection = await run_in_threadpool(lambda: library.create_collection(payload.get("title", "")))
+    except (AttributeError, ValueError) as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    return {"ok": True, "collection": collection}
+
+
+@router.delete("/simpleai/gallery/api/collections/{collection_id}")
+async def media_library_delete_collection(request: Request, collection_id: str):
+    library = _library_for_request(request=request)
+    deleted = await run_in_threadpool(lambda: library.delete_collection(collection_id))
+    return JSONResponse({"ok": deleted}, status_code=200 if deleted else 404)
+
+
+@router.post("/simpleai/gallery/api/collections/{collection_id}/items")
+async def media_library_collection_items(
+    request: Request, collection_id: str, payload: dict = Body(default={})
+):  # noqa: B008
+    ids = payload.get("ids") if isinstance(payload, dict) else None
+    if not isinstance(ids, list):
+        return JSONResponse({"ok": False, "error": "ids must be a list."}, status_code=400)
+    library = _library_for_request(request=request)
+    try:
+        result = await run_in_threadpool(
+            lambda: library.update_collection_items(collection_id, ids, remove=bool(payload.get("remove")))
+        )
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=404)
+    return result
+
+
+@router.get("/simpleai/gallery/api/views")
+async def media_library_views(request: Request):
+    library = _library_for_request(request=request)
+    return {"ok": True, "views": await run_in_threadpool(library.list_saved_views)}
+
+
+@router.post("/simpleai/gallery/api/views")
+async def media_library_create_view(request: Request, payload: dict = Body(default={})):  # noqa: B008
+    library = _library_for_request(request=request)
+    try:
+        view = await run_in_threadpool(
+            lambda: library.create_saved_view(payload.get("title", ""), payload.get("filters", {}))
+        )
+    except (AttributeError, ValueError) as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    return {"ok": True, "view": view}
+
+
+@router.delete("/simpleai/gallery/api/views/{view_id}")
+async def media_library_delete_view(request: Request, view_id: str):
+    library = _library_for_request(request=request)
+    deleted = await run_in_threadpool(lambda: library.delete_saved_view(view_id))
+    return JSONResponse({"ok": deleted}, status_code=200 if deleted else 404)
+
+
+@router.post("/simpleai/gallery/api/items/batch")
+async def media_library_batch_update(request: Request, payload: dict = Body(default={})):  # noqa: B008
+    ids = payload.get("ids") if isinstance(payload, dict) else None
+    if not isinstance(ids, list) or not isinstance(payload.get("add_tags", []), list):
+        return JSONResponse({"ok": False, "error": "ids and add_tags must be lists."}, status_code=400)
+    library = _library_for_request(request=request)
+    try:
+        result = await run_in_threadpool(
+            lambda: library.batch_update_user_metadata(
+                ids, add_tags=payload.get("add_tags"), rating=_optional_int(payload.get("rating")),
+                favorite=payload.get("favorite") if isinstance(payload.get("favorite"), bool) else None,
+            )
+        )
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    return result
+
+
+@router.get("/simpleai/gallery/api/items/{media_id}/related")
+async def media_library_related_items(request: Request, media_id: str):
+    library = _library_for_request(request=request)
+    items = await run_in_threadpool(lambda: library.related_items(media_id))
+    return {"ok": True, "items": [_item_urls(request, item, library) for item in items]}
+
+
+@router.get("/simpleai/gallery/api/items/{media_id}/canvas")
+async def media_library_canvas_item(request: Request, media_id: str):
+    library = _library_for_request(request=request)
+    item = await run_in_threadpool(lambda: library.get_item(media_id))
+    if not item or item.get("media_type") not in {"image", "video"}:
+        return JSONResponse({"ok": False, "error": "Media item not found."}, status_code=404)
+    path = await run_in_threadpool(lambda: library.media_path(media_id))
+    if not path:
+        return JSONResponse({"ok": False, "error": "Media file not found."}, status_code=404)
+    _item_urls(request, item, library)
+    item["path"] = path
+    item["thumb"] = item.get("thumbnail_url") or ""
+    item["preview_url"] = item["media_url"]
+    item["folder"] = str(item.get("relative_path") or "").rsplit("/", 1)[0]
+    return JSONResponse({"ok": True, "item": item}, headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/simpleai/gallery/api/items/{media_id}/open-folder")
+async def media_library_open_folder(request: Request, media_id: str):
+    if not _is_local_browser_request(request):
+        return JSONResponse({"ok": False, "error": "Available only on the local machine."}, status_code=403)
+    library = _library_for_request(request=request)
+    item = await run_in_threadpool(lambda: library.get_item(media_id, include_trashed=True, include_generation_metadata=False))
+    if not item:
+        return JSONResponse({"ok": False, "error": "Media item not found."}, status_code=404)
+    root = library.gallery_root if item.get("is_trashed") else library.outputs_root
+    relative = item.get("trash_path") if item.get("is_trashed") else item.get("relative_path")
+    path = media_library._path_under(root, relative or "")
+    if not path:
+        return JSONResponse({"ok": False, "error": "Media path is invalid."}, status_code=400)
+    exists = os.path.isfile(path)
+    folder = os.path.dirname(path)
+    while not os.path.isdir(folder) and folder != root:
+        folder = os.path.dirname(folder)
+    if not os.path.isdir(folder):
+        return JSONResponse({"ok": False, "error": "Output folder not found."}, status_code=404)
+    try:
+        await run_in_threadpool(lambda: _open_media_location(folder, path if exists else ""))
+    except OSError:
+        return JSONResponse({"ok": False, "error": "Unable to open folder."}, status_code=500)
+    return {"ok": True, "file_exists": exists}
 
 
 @router.get("/simpleai/gallery/api/items/{media_id}")
@@ -290,7 +491,7 @@ async def media_library_update_item(request: Request, media_id: str, payload: di
     allowed = {key: payload[key] for key in ("title", "tags", "rating", "favorite", "notes") if key in payload}
     if "tags" in allowed and isinstance(allowed["tags"], str):
         allowed["tags"] = [value.strip() for value in allowed["tags"].split(",")]
-    library = _library_for_request(payload, request=request)
+    library = _library_for_request(request=request)
     item = await run_in_threadpool(lambda: library.update_user_metadata(media_id, **allowed))
     if not item:
         return JSONResponse({"ok": False, "error": "Media item not found."}, status_code=404)
@@ -302,7 +503,7 @@ async def media_library_trash(request: Request, payload: dict = Body(default={})
     ids = payload.get("ids") if isinstance(payload, dict) else []
     if not isinstance(ids, list):
         return JSONResponse({"ok": False, "error": "ids must be a list."}, status_code=400)
-    result = await run_in_threadpool(lambda: _library_for_request(payload, request=request).trash_items(ids))
+    result = await run_in_threadpool(lambda: _library_for_request(request=request).trash_items(ids))
     return JSONResponse(result, status_code=200 if result.get("ok") else 400)
 
 
@@ -311,7 +512,7 @@ async def media_library_restore(request: Request, payload: dict = Body(default={
     ids = payload.get("ids") if isinstance(payload, dict) else []
     if not isinstance(ids, list):
         return JSONResponse({"ok": False, "error": "ids must be a list."}, status_code=400)
-    result = await run_in_threadpool(lambda: _library_for_request(payload, request=request).restore_items(ids))
+    result = await run_in_threadpool(lambda: _library_for_request(request=request).restore_items(ids))
     return JSONResponse(result, status_code=200 if result.get("ok") else 400)
 
 
@@ -320,13 +521,13 @@ async def media_library_purge(request: Request, payload: dict = Body(default={})
     ids = payload.get("ids") if isinstance(payload, dict) else []
     if ids is not None and not isinstance(ids, list):
         return JSONResponse({"ok": False, "error": "ids must be a list."}, status_code=400)
-    result = await run_in_threadpool(lambda: _library_for_request(payload, request=request).purge_trash(ids or None))
+    result = await run_in_threadpool(lambda: _library_for_request(request=request).purge_trash(ids or None))
     return JSONResponse(result, status_code=200 if result.get("ok") else 400)
 
 
 @router.post("/simpleai/gallery/api/rescan")
 async def media_library_rescan(request: Request, payload: dict = Body(default={})):  # noqa: B008
-    library = _library_for_request(payload, request=request)
+    library = _library_for_request(request=request)
     started = _schedule_scan(library, force=True)
     return {"ok": True, "started": started, "running": not started}
 

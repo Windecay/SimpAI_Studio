@@ -8,6 +8,7 @@
         const projectSource = scope.projectSource || {};
         const timelineSource = scope.timelineSource || {};
         const mediaBrowserSource = scope.mediaBrowserSource || {};
+        const overviewSource = scope.overviewSource || {};
         const getSelectedResultAsset = (...args) => assetSource.getSelectedResultAsset?.(...args) || null;
         const inferChatImageRelativePath = (...args) => assetSource.inferChatImageRelativePath?.(...args) || '';
         const getAssetRoot = () => String(assetSource.getAssetRoot?.() || '');
@@ -42,6 +43,26 @@
                 asset.duration || '',
                 asset.size || ''
             ].join('|');
+        }
+
+        function nodeOverviewRenderSignature(node) {
+            if (!node) return '';
+            const asset = overviewSource.overviewNodeAsset?.(node);
+            const ports = overviewSource.overviewInputPorts?.(node) || [];
+            return JSON.stringify({
+                type: node.type,
+                title: node.title || '',
+                kind: overviewSource.overviewNodeKindLabel?.(node),
+                state: nodeStatusState(node) || node.status?.state || '',
+                message: node.status?.message || '',
+                selected: !!overviewSource.isNodeSelected?.(node),
+                locked: !!node.locked,
+                ignored: !!node.ignored,
+                stale: !!(overviewSource.isResultStale?.(node) || node.source?.stale || node.producer?.stale),
+                asset: mediaAssetRenderKey(asset),
+                inputs: ports.map(port => String(port.kind) + ':' + (port.slot || '')).join('|'),
+                output: overviewSource.overviewOutputKind?.(node)
+            });
         }
 
         function nodeRenderSignature(node) {
@@ -200,7 +221,7 @@
             return JSON.stringify(node);
         }
 
-        return { mediaAssetRenderRootKey, mediaAssetRenderKey, nodeRenderSignature };
+        return { mediaAssetRenderRootKey, mediaAssetRenderKey, nodeOverviewRenderSignature, nodeRenderSignature };
     }
 
     window.SimpAICanvasWorkbenchNodeRenderSignature = Object.assign({}, window.SimpAICanvasWorkbenchNodeRenderSignature || {}, {

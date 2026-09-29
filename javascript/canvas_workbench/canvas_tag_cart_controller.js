@@ -167,7 +167,22 @@
             if (!options?.restore && ok) call(runtimeSource, 'renderEdges', undefined);
         }
 
-        return { readTagCartFieldValue, openTagCartForField, openTagCartForNode, handleTagCartClick, bindInspectorTagCartEvents };
+        function restoreInlineTagCartAfterRender() {
+            const activeId = call(stateSource, 'getActiveInlineTagCartNodeId', '');
+            if (!activeId || !call(domSource, 'hasNodesLayer', false)) return;
+            const node = call(nodeSource, 'getNode', null, activeId);
+            if (!node || node.type !== 'tag_cart') {
+                call(stateSource, 'setActiveInlineTagCartNodeId', undefined, '');
+                return;
+            }
+            const nodeEl = call(domSource, 'getNodeElement', null, node.id);
+            const inlineHost = call(domSource, 'getInlineHost', null, nodeEl);
+            if (!inlineHost || inlineHost.querySelector('#app-root.tagcart-inline-root')) return;
+            return openTagCartForNode(node, null, { restore: true });
+        }
+
+        return { readTagCartFieldValue, openTagCartForField, openTagCartForNode,
+            restoreInlineTagCartAfterRender, handleTagCartClick, bindInspectorTagCartEvents };
     }
 
     window.SimpAICanvasWorkbenchTagCart = Object.assign(

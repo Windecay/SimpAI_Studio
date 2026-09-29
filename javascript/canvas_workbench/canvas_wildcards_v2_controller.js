@@ -80,9 +80,15 @@
             }));
             if (typeof runtimeSource.mutate === 'function') runtimeSource.mutate({ inspector: false });
         }
-        const appendWildcardTagToNodeParam = (...args) => typeof mutationSource.appendWildcardTagToNodeParam === 'function'
-            ? mutationSource.appendWildcardTagToNodeParam(...args)
-            : undefined;
+        function appendWildcardTagToNodeParam(node, slot, tag) {
+            if (!node || !tag || isNodeLocked(node)) return;
+            const key = slot === 'negative_prompt' ? 'negative_prompt' : 'prompt';
+            const value = String(node.params?.[key] || '').trim();
+            if (typeof mutationSource.updateNodeParam === 'function') {
+                mutationSource.updateNodeParam(node.id, key, value ? `${value} ${tag}` : tag, 'textarea');
+            }
+            if (typeof runtimeSource.mutate === 'function') runtimeSource.mutate({ inspector: true });
+        }
         const addWildcardsHelperNode = (...args) => typeof mutationSource.addWildcardsHelperNode === 'function'
             ? mutationSource.addWildcardsHelperNode(...args)
             : undefined;
@@ -653,6 +659,7 @@
             promptAndAppendWildcardTag,
             openWildcardsManager,
             updateWildcardsHelperParam,
+            appendWildcardTagToNodeParam,
             focusWildcardsV2Query
         };
     }

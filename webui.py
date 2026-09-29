@@ -3190,6 +3190,7 @@ with shared.gradio_root:
     state_topbar = gr.State({})
     cached_input_image = gr.State(None)
     comparison_output_paths = gr.State([])
+    post_generation_result_data = gr.JSON(value={}, visible=False)
     params_backend = gr.State(get_initial_params_backend())
     model_params_state = gr.State(get_initial_model_params_state())
     system_params = gr.JSON({}, visible=False)
@@ -4586,6 +4587,10 @@ with shared.gradio_root:
                                         elem_classes=['resizable_area', 'main_view', 'final_gallery', 'image_gallery'],
                                         elem_id='final_gallery', allow_preview=True, preview=True, selected_index=None,
                                         columns=4, interactive=False, fit_columns=False )
+                            gr.HTML(
+                                '<div class="simpleai-gallery-browser-empty-message" data-gallery-browser-empty-label role="status"></div>',
+                                elem_id='gallery_browser_empty_state',
+                            )
                         welcome_media_target = gr.Textbox(
                             value=welcome_media.TITLE_KIND,
                             visible="hidden",
@@ -4708,9 +4713,9 @@ with shared.gradio_root:
                             with gr.Row(elem_id="gallery_browser_toolbar", elem_classes=["simpleai-main-gallery-browser"]):
                                 with gr.Row(elem_id="gallery_browser_left", elem_classes=["simpleai-main-gallery-browser-left"]):
                                     with gr.Row(elem_id="gallery_browser_folder_group", elem_classes=["gallery-browser-folder-group"]):
-                                        gallery_browser_prev_folder_btn = gr.Button("▲", size="sm", elem_id="gallery_browser_prev_folder_btn", elem_classes=["gallery-browser-folder-step"], min_width=28, scale=0, interactive=False)
+                                        gallery_browser_prev_folder_btn = gr.Button("▲", size="sm", elem_id="gallery_browser_prev_folder_btn", elem_classes=["gallery-browser-folder-step"], min_width=28, scale=0)
                                         gallery_browser_folder = gr.Dropdown(choices=[], value=None, show_label=False, elem_id="gallery_browser_folder", elem_classes=["gallery-browser-folder-control"], min_width=156, scale=0)
-                                        gallery_browser_next_folder_btn = gr.Button("▼", size="sm", elem_id="gallery_browser_next_folder_btn", elem_classes=["gallery-browser-folder-step"], min_width=28, scale=0, interactive=False)
+                                        gallery_browser_next_folder_btn = gr.Button("▼", size="sm", elem_id="gallery_browser_next_folder_btn", elem_classes=["gallery-browser-folder-step"], min_width=28, scale=0)
                                     gallery_browser_status = gr.Markdown("", elem_id="gallery_browser_status", elem_classes=["gallery-browser-status"])
                                     gallery_browser_refresh_btn = gr.Button("Refresh", size="sm", elem_id="gallery_browser_refresh_btn")
                                 with gr.Row(elem_id="gallery_browser_switch", elem_classes=["simpleai-main-gallery-browser-switch"]):
@@ -4719,7 +4724,7 @@ with shared.gradio_root:
                                         gallery_videos_btn = gr.Button("Videos", size="sm", elem_id="gallery_videos_btn")
                                         canvas_gallery_refresh_btn = gr.Button("Canvas gallery refresh", size="sm", visible="hidden", elem_id="canvas_gallery_refresh_btn", elem_classes=["sai-gradio-hidden-bridge"])
                                 with gr.Row(elem_id="gallery_browser_right", elem_classes=["simpleai-main-gallery-browser-right"]):
-                                    gallery_browser_more_btn = gr.Button("Load more", size="sm", elem_id="gallery_browser_more_btn", interactive=False)
+                                    gallery_browser_more_btn = gr.Button("Load more", size="sm", elem_id="gallery_browser_more_btn")
                             gallery_browser_payload = gr.Textbox(value="", visible=True, elem_id="gallery_browser_payload", elem_classes=["sai-gradio-hidden-bridge"])
                             gallery_browser_state = gr.Textbox(value="", visible=True, elem_id="gallery_browser_state", elem_classes=["sai-gradio-hidden-bridge"])
                             gallery_media_switch_request = gr.Textbox(value="", visible=True, elem_id="gallery_media_switch_request", elem_classes=["sai-gradio-hidden-bridge"])
@@ -10287,22 +10292,14 @@ with shared.gradio_root:
             gallery_images_btn.click(lambda request, tools, state: gallery_util.switch_gallery_engine_type("image", request, tools, state), inputs=[gallery_media_switch_request, image_tools_checkbox, state_topbar], outputs=[gallery_index, index_radio, progress_gallery, progress_window, gallery, progress_video, image_toolbox, prompt_info_box, prompt_info_close_btn, prompt_info_container, gallery_browser_state, state_topbar, gallery_index_stat], queue=False, show_progress=False, js='(request,tools,state)=>{let marker=request||""; try{clearSimpleAICompareReadyState("gallery_media_switch.image"); marker=(typeof beginGalleryMediaSwitchRequest==="function")?beginGalleryMediaSwitchRequest("image",1500):`${Date.now()}:0:image`; if(typeof beginGalleryMediaSwitchRequest!=="function") syncGalleryMediaSwitch("image",1500);}catch(e){} return [marker,tools,state];}') \
                 .then(lambda browser_state, x, state: None, inputs=[gallery_browser_state, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(browserState,x,state)=>{if(typeof isGalleryMediaSwitchModeCurrent==="function"&&!isGalleryMediaSwitchModeCurrent("image")) return; syncGalleryMediaSwitch("image", 1200); try{if(state&&typeof state==="object"){state=(typeof mergeSimpleAITopbarSystemParamsForGallery==="function")?mergeSimpleAITopbarSystemParamsForGallery(state,"gallery_media_switch.image"):state; if(typeof mergeSimpleAITopbarSystemParamsForGallery!=="function"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;}} if(typeof syncPostGenerationResultControls==="function"){syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80); setTimeout(()=>syncPostGenerationResultControls(state),220);}}catch(e){} refresh_finished_images_catalog_label(x, "image", {refresh:false}); try{const nums=String((state&&state.__finished_nums_pages)||x||""); if(typeof syncFinishedGalleryBrowserAfterMediaSwitch==="function") syncFinishedGalleryBrowserAfterMediaSwitch(browserState,x,"image",state,"gallery_media_switch.image"); else if(/^0(?:,|$)/.test(nums)&&typeof restoreWelcomePreviewForEmptyGalleryBrowser==="function") restoreWelcomePreviewForEmptyGalleryBrowser("gallery_media_switch.image.empty"); if(typeof scheduleFinishedGalleryBrowserStatusSyncFromRenderedGallery==="function") scheduleFinishedGalleryBrowserStatusSyncFromRenderedGallery("image", "gallery_media_switch.image");}catch(e){}}')
             canvas_gallery_refresh_btn.click(gallery_util.canvas_refresh_after_run, inputs=[image_tools_checkbox, state_topbar], outputs=[gallery_index, index_radio, progress_gallery, progress_window, gallery, progress_video, image_toolbox, prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar, gallery_index_stat], queue=False, show_progress=False, js='()=>{try{clearSimpleAICompareReadyState("canvas_gallery_refresh"); const mode=(typeof getFinishedGalleryBrowserMode==="function"?getFinishedGalleryBrowserMode():null)||((window.simpleaiTopbarSystemParams||{}).__gallery_engine_type)||((window.simpleaiTopbarSystemParams||{}).engine_type); if(mode) syncGalleryMediaSwitch(mode, 1500);}catch(e){}}') \
-                .then(lambda x, state: None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{const mode=(state && (state.__gallery_engine_type || state.engine_type)) || (typeof getFinishedGalleryBrowserMode==="function"?getFinishedGalleryBrowserMode():null) || "image"; syncGalleryMediaSwitch(mode, 1200); refresh_finished_images_catalog_label(x, mode); try{traceResultPanelStateSoon("canvas_gallery_refresh.after");}catch(e){console.warn("[UI-TRACE] canvas_gallery_refresh.dom_trace_failed", e);}}')
+                .then(lambda x, state: None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{const mode=(state && (state.__gallery_engine_type || state.engine_type)) || (typeof getFinishedGalleryBrowserMode==="function"?getFinishedGalleryBrowserMode():null) || "image"; syncGalleryMediaSwitch(mode, 1200); refresh_finished_images_catalog_label(x, mode, {refresh:true}); try{traceResultPanelStateSoon("canvas_gallery_refresh.after");}catch(e){console.warn("[UI-TRACE] canvas_gallery_refresh.dom_trace_failed", e);}}')
             gallery_videos_btn.click(lambda request, tools, state: gallery_util.switch_gallery_engine_type("video", request, tools, state), inputs=[gallery_media_switch_request, image_tools_checkbox, state_topbar], outputs=[gallery_index, index_radio, progress_gallery, progress_window, gallery, progress_video, image_toolbox, prompt_info_box, prompt_info_close_btn, prompt_info_container, gallery_browser_state, state_topbar, gallery_index_stat], queue=False, show_progress=False, js='(request,tools,state)=>{let marker=request||""; try{clearSimpleAICompareReadyState("gallery_media_switch.video"); marker=(typeof beginGalleryMediaSwitchRequest==="function")?beginGalleryMediaSwitchRequest("video",1500):`${Date.now()}:0:video`; if(typeof beginGalleryMediaSwitchRequest!=="function") syncGalleryMediaSwitch("video",1500);}catch(e){} return [marker,tools,state];}') \
                 .then(lambda browser_state, x, state: None, inputs=[gallery_browser_state, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(browserState,x,state)=>{if(typeof isGalleryMediaSwitchModeCurrent==="function"&&!isGalleryMediaSwitchModeCurrent("video")) return; syncGalleryMediaSwitch("video", 1200); try{if(state&&typeof state==="object"){state=(typeof mergeSimpleAITopbarSystemParamsForGallery==="function")?mergeSimpleAITopbarSystemParamsForGallery(state,"gallery_media_switch.video"):state; if(typeof mergeSimpleAITopbarSystemParamsForGallery!=="function"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;}} if(typeof syncPostGenerationResultControls==="function"){syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80); setTimeout(()=>syncPostGenerationResultControls(state),220);}}catch(e){} refresh_finished_images_catalog_label(x, "video", {refresh:false}); try{const nums=String((state&&state.__finished_nums_pages)||x||""); if(typeof syncFinishedGalleryBrowserAfterMediaSwitch==="function") syncFinishedGalleryBrowserAfterMediaSwitch(browserState,x,"video",state,"gallery_media_switch.video"); else if(/^0(?:,|$)/.test(nums)&&typeof restoreWelcomePreviewForEmptyGalleryBrowser==="function") restoreWelcomePreviewForEmptyGalleryBrowser("gallery_media_switch.video.empty"); if(typeof scheduleFinishedGalleryBrowserStatusSyncFromRenderedGallery==="function") scheduleFinishedGalleryBrowserStatusSyncFromRenderedGallery("video", "gallery_media_switch.video");}catch(e){}}')
-            gallery_browser_load_evt = gallery_browser_load_btn.click(gallery_util.load_main_gallery_browser_page, inputs=[gallery_browser_payload, image_tools_checkbox, state_topbar], outputs=[gallery_browser_state, progress_gallery, progress_window, gallery, progress_video, image_toolbox, prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar, gallery_index_stat], queue=False, show_progress=False, js='(payload,tools,state)=>{try{const pending=(typeof getFinishedGalleryBrowserPendingPayloadText==="function")?getFinishedGalleryBrowserPendingPayloadText():payload; if(pending) payload=pending; let shouldClearCompare=true; try{const parsed=JSON.parse(payload||"{}"); shouldClearCompare=!(parsed&&parsed.clear_compare===false);}catch(_e){} if(shouldClearCompare&&typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("gallery_browser.load"); if(state&&typeof state==="object") state.__main_gallery_browser_bridge_payload=payload; markFinishedGalleryBrowserLoading();}catch(e){} return [payload,tools,state];}')
+            gallery_browser_load_evt = gallery_browser_load_btn.click(gallery_util.load_main_gallery_browser_page, inputs=[gallery_browser_payload, image_tools_checkbox, state_topbar], outputs=[gallery_browser_state, progress_gallery, progress_window, gallery, progress_video, image_toolbox, prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar, gallery_index_stat, gallery_browser_folder], queue=False, show_progress=False, js='(payload,tools,state)=>{try{const pending=(typeof getFinishedGalleryBrowserPendingPayloadText==="function")?getFinishedGalleryBrowserPendingPayloadText():payload; if(pending) payload=pending; let shouldClearCompare=true; try{const parsed=JSON.parse(payload||"{}"); shouldClearCompare=!(parsed&&parsed.clear_compare===false);}catch(_e){} if(shouldClearCompare&&typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("gallery_browser.load"); if(state&&typeof state==="object") state.__main_gallery_browser_bridge_payload=payload; markFinishedGalleryBrowserLoading();}catch(e){} return [payload,tools,state];}')
             gallery_browser_load_evt.then(lambda x, stat, state: None, inputs=[gallery_browser_state, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,stat,state)=>{try{const applied=(typeof syncFinishedGalleryBrowserAfterLoad==="function")?syncFinishedGalleryBrowserAfterLoad(x):true; if(applied===false) return; if(state&&typeof state==="object"){state=(typeof mergeSimpleAITopbarSystemParamsForGallery==="function")?mergeSimpleAITopbarSystemParamsForGallery(state,"gallery_browser.load"):state; if(typeof mergeSimpleAITopbarSystemParamsForGallery!=="function"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;}} const mode=(state && (state.__gallery_engine_type || state.engine_type)) || (typeof getFinishedGalleryBrowserMode==="function"?getFinishedGalleryBrowserMode():null); refresh_finished_images_catalog_label(stat, mode, {refresh:false}); traceResultPanelStateSoon("gallery_browser.load.after");}catch(e){console.warn("[UI-TRACE] gallery_browser_load.dom_trace_failed", e);}}')
-            gallery_browser_outputs = [gallery_browser_folder, gallery_browser_prev_folder_btn, gallery_browser_next_folder_btn, gallery_browser_status, gallery_browser_more_btn, progress_gallery, progress_window, gallery, progress_video, image_toolbox, prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar, gallery_index_stat]
-            gallery_browser_folder.change(gallery_util.load_main_gallery_browser_folder, inputs=[gallery_browser_folder, image_tools_checkbox, state_topbar], outputs=gallery_browser_outputs, queue=False, show_progress=False, js='(folder,tools,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.folder.change"); state=(typeof beginFinishedGalleryBrowserNativeRequest==="function")?beginFinishedGalleryBrowserNativeRequest("gallery_browser.folder.change",folder,state):state;}catch(e){} return [folder,tools,state];}') \
-                .then(lambda status, x, state: None, inputs=[gallery_browser_status, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(status,x,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.folder.change"); const applied=(typeof syncFinishedGalleryBrowserAfterNativeLoad==="function")?syncFinishedGalleryBrowserAfterNativeLoad(status,state,"gallery_browser.folder.change"):true; if(applied===false) return; const mode=state && (state.__gallery_engine_type || state.engine_type); syncGalleryMediaSwitch(mode); refresh_finished_images_catalog_label(x, mode, {refresh:false}); traceResultPanelStateSoon("gallery_browser.folder.change");}catch(e){console.warn("[UI-TRACE] gallery_browser_folder.dom_trace_failed", e);}}')
-            gallery_browser_prev_folder_btn.click(gallery_util.previous_main_gallery_browser_folder, inputs=[gallery_browser_folder, image_tools_checkbox, state_topbar], outputs=gallery_browser_outputs, queue=False, show_progress=False, js='(folder,tools,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.folder.prev"); state=(typeof beginFinishedGalleryBrowserNativeRequest==="function")?beginFinishedGalleryBrowserNativeRequest("gallery_browser.folder.prev",folder,state):state;}catch(e){} return [folder,tools,state];}') \
-                .then(lambda status, x, state: None, inputs=[gallery_browser_status, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(status,x,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.folder.prev"); const applied=(typeof syncFinishedGalleryBrowserAfterNativeLoad==="function")?syncFinishedGalleryBrowserAfterNativeLoad(status,state,"gallery_browser.folder.prev"):true; if(applied===false) return; const mode=state && (state.__gallery_engine_type || state.engine_type); syncGalleryMediaSwitch(mode); refresh_finished_images_catalog_label(x, mode, {refresh:false}); traceResultPanelStateSoon("gallery_browser.folder.prev");}catch(e){console.warn("[UI-TRACE] gallery_browser_folder_prev.dom_trace_failed", e);}}')
-            gallery_browser_next_folder_btn.click(gallery_util.next_main_gallery_browser_folder, inputs=[gallery_browser_folder, image_tools_checkbox, state_topbar], outputs=gallery_browser_outputs, queue=False, show_progress=False, js='(folder,tools,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.folder.next"); state=(typeof beginFinishedGalleryBrowserNativeRequest==="function")?beginFinishedGalleryBrowserNativeRequest("gallery_browser.folder.next",folder,state):state;}catch(e){} return [folder,tools,state];}') \
-                .then(lambda status, x, state: None, inputs=[gallery_browser_status, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(status,x,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.folder.next"); const applied=(typeof syncFinishedGalleryBrowserAfterNativeLoad==="function")?syncFinishedGalleryBrowserAfterNativeLoad(status,state,"gallery_browser.folder.next"):true; if(applied===false) return; const mode=state && (state.__gallery_engine_type || state.engine_type); syncGalleryMediaSwitch(mode); refresh_finished_images_catalog_label(x, mode, {refresh:false}); traceResultPanelStateSoon("gallery_browser.folder.next");}catch(e){console.warn("[UI-TRACE] gallery_browser_folder_next.dom_trace_failed", e);}}')
-            gallery_browser_refresh_btn.click(gallery_util.refresh_main_gallery_browser, inputs=[gallery_browser_folder, image_tools_checkbox, state_topbar], outputs=gallery_browser_outputs, queue=False, show_progress=False, js='(folder,tools,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.refresh"); state=(typeof beginFinishedGalleryBrowserNativeRequest==="function")?beginFinishedGalleryBrowserNativeRequest("gallery_browser.refresh",folder,state):state;}catch(e){} return [folder,tools,state];}') \
-                .then(lambda status, x, state: None, inputs=[gallery_browser_status, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(status,x,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.refresh"); const applied=(typeof syncFinishedGalleryBrowserAfterNativeLoad==="function")?syncFinishedGalleryBrowserAfterNativeLoad(status,state,"gallery_browser.refresh"):true; if(applied===false) return; const mode=state && (state.__gallery_engine_type || state.engine_type); syncGalleryMediaSwitch(mode); refresh_finished_images_catalog_label(x, mode, {refresh:false}); traceResultPanelStateSoon("gallery_browser.refresh");}catch(e){console.warn("[UI-TRACE] gallery_browser_refresh.dom_trace_failed", e);}}')
-            gallery_browser_more_btn.click(gallery_util.load_more_main_gallery_browser, inputs=[gallery_browser_folder, image_tools_checkbox, state_topbar], outputs=gallery_browser_outputs, queue=False, show_progress=False, js='(folder,tools,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.more"); state=(typeof beginFinishedGalleryBrowserNativeRequest==="function")?beginFinishedGalleryBrowserNativeRequest("gallery_browser.more",folder,state):state;}catch(e){} return [folder,tools,state];}') \
-                .then(lambda status, x, state: None, inputs=[gallery_browser_status, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(status,x,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.more"); const applied=(typeof syncFinishedGalleryBrowserAfterNativeLoad==="function")?syncFinishedGalleryBrowserAfterNativeLoad(status,state,"gallery_browser.more"):true; if(applied===false) return; const mode=state && (state.__gallery_engine_type || state.engine_type); syncGalleryMediaSwitch(mode); refresh_finished_images_catalog_label(x, mode, {refresh:false}); traceResultPanelStateSoon("gallery_browser.more");}catch(e){console.warn("[UI-TRACE] gallery_browser_more.dom_trace_failed", e);}}')
+            index_radio.expand(fn=None, queue=False, show_progress=False, js='()=>{if(typeof onFinishedGalleryCatalogExpand==="function") onFinishedGalleryCatalogExpand();}')
+            index_radio.collapse(fn=None, queue=False, show_progress=False, js='()=>{if(typeof onFinishedGalleryCatalogCollapse==="function") onFinishedGalleryCatalogCollapse();}')
+            gallery_browser_folder.input(fn=None, inputs=[gallery_browser_folder], queue=False, show_progress=False, js='(folder)=>{try{window.requestFinishedGalleryBrowserFolderInput?.(folder);}catch(e){console.warn("[UI-TRACE] gallery_browser_folder.input_failed",e);}}')
             gallery.select(gallery_util.select_gallery, inputs=[gallery_index, image_tools_checkbox, state_topbar, backfill_prompt], outputs=[prompt_info_box, prompt_info_close_btn, prompt_info_container, prompt, negative_prompt, params_note_info, params_note_close_button, params_note_input_name, params_note_delete_button, params_note_regen_button, params_note_preset_button, params_note_box, image_toolbox, state_topbar], show_progress=False) \
                 .then(gallery_util.close_comparison_view_for_gallery_selection, outputs=[comparison_state, comparison_box], queue=False, show_progress=False) \
                 .then(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){state=(typeof mergeSimpleAITopbarSystemParamsForGallery==="function")?mergeSimpleAITopbarSystemParamsForGallery(state,"gallery.select"):state; if(typeof mergeSimpleAITopbarSystemParamsForGallery!=="function"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;}} syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80);}catch(e){console.warn("[UI-TRACE] gallery_select_compare_sync_failed", e);}}')
@@ -10779,6 +10776,7 @@ with shared.gradio_root:
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
             }
             if (sketchFlushOk === false) {
+                try { window.finishSimpleAIGenerationStartSurface?.(); } catch (e) {}
                 const messageKey = "Canvas data could not be restored. Reload the source image and try again.";
                 const message = window.SimpAII18n?.localize
                     ? window.SimpAII18n.localize(messageKey, messageKey, generationState || {})
@@ -11537,6 +11535,7 @@ with shared.gradio_root:
             if preview_url and not video_has_output:
                 state_topbar["__post_generation_image_url"] = preview_url
                 state_topbar["__post_generation_image_paths"] = post_generation_image_paths
+                state_topbar["__post_generation_image_dimensions"] = gallery_util.post_generation_image_dimensions(post_generation_image_paths)
                 gallery_util.set_selected_gallery_media_path(
                     state_topbar,
                     post_generation_image_paths[0] if post_generation_image_paths else None,
@@ -11544,12 +11543,19 @@ with shared.gradio_root:
             else:
                 state_topbar.pop("__post_generation_image_url", None)
                 state_topbar.pop("__post_generation_image_paths", None)
+                state_topbar.pop("__post_generation_image_dimensions", None)
             if not has_output:
                 state_topbar["gallery_preview_open"] = False
                 state_topbar["__post_generation_compare_visible"] = False
                 state_topbar["__post_generation_compare_ready"] = False
                 state_topbar["__post_generation_compare_cleared"] = True
-                return compare_button_gr_update(visible=False, ready=False), gr_update(visible=False), state_topbar, []
+                return (
+                    compare_button_gr_update(visible=False, ready=False),
+                    gr_update(visible=False),
+                    state_topbar,
+                    [],
+                    gallery_util.post_generation_result_payload(state_topbar),
+                )
 
             latest_choice = output_list[0] if output_list else None
             state_topbar["gallery_preview_open"] = True
@@ -11588,7 +11594,13 @@ with shared.gradio_root:
                 compare_ready,
             )
             compare_update = compare_button_gr_update(visible=toolbox_visible, ready=compare_ready)
-            return compare_update, gr_update(visible=toolbox_visible), state_topbar, post_generation_image_paths
+            return (
+                compare_update,
+                gr_update(visible=toolbox_visible),
+                state_topbar,
+                post_generation_image_paths,
+                gallery_util.post_generation_result_payload(state_topbar),
+            )
 
         compare_btn.click(toggle_comparison, inputs=[comparison_state, cached_input_image, comparison_output_paths, state_topbar, scene_input_image1, scene_canvas_image], outputs=[comparison_state, comparison_box, progress_gallery, gallery, progress_window, progress_video, compare_btn, image_toolbox, state_topbar], show_progress=False, js='(isComp,input,resultPaths,state,scene1,sceneCanvas)=>{try{window.__simpleAIComparisonOpeningUntil=isComp?0:(Date.now()+2500); if(!isComp&&typeof preparePostGenerationComparisonSurfaceState==="function"){const prepared=preparePostGenerationComparisonSurfaceState(state,"comparison_click_before"); if(prepared&&typeof prepared==="object") state=prepared;}}catch(e){console.warn("[UI-TRACE] comparison_click_prepare_failed", e);} return [isComp,input,resultPaths,state,scene1,sceneCanvas];}') \
             .then(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} if(state&&state.__post_generation_compare_cleared){if(typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("comparison_click_cleared"); syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80); return;} if(typeof suppressFinishedGalleryWelcomeGuardForComparison==="function") suppressFinishedGalleryWelcomeGuardForComparison("comparison_click"); syncPostGenerationResultControls(state); setTimeout(()=>{if(typeof suppressFinishedGalleryWelcomeGuardForComparison==="function") suppressFinishedGalleryWelcomeGuardForComparison("comparison_click+60"); syncPostGenerationResultControls(state);},60); setTimeout(()=>syncPostGenerationResultControls(state),180); setTimeout(()=>syncPostGenerationResultControls(state),420);}catch(e){console.warn("[UI-TRACE] comparison_preview_sync_failed", e);}}')
@@ -11735,13 +11747,14 @@ with shared.gradio_root:
         generation_failure_outputs = [generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link]
 
         def bind_generation_failure_cleanup(event):
-            event.failure(
+            cleanup_event = event.failure(
                 generation_failure_cleanup,
                 inputs=[state_topbar],
                 outputs=generation_failure_outputs,
                 show_progress=False,
                 queue=False,
             )
+            cleanup_event.then(fn=None, queue=False, show_progress=False, js='()=>{window.finishSimpleAIGenerationStartSurface?.();}')
             return event
 
         generation_sync_groups = {
@@ -11916,16 +11929,16 @@ with shared.gradio_root:
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
         generate_event.success(fn=update_prompt_history, inputs=[currentTask, state_prompt_history, prompt], outputs=[state_prompt_history, history_prompts, prompt_history_data], show_progress=False)
         generate_event = bind_generation_failure_cleanup(generate_event.success(topbar.process_after_generation, inputs=[state_topbar, currentTask], outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(check_comparison_visibility, inputs=[cached_input_image, currentTask, state_topbar, image_tools_checkbox, scene_input_image1, scene_canvas_image], outputs=[compare_btn, image_toolbox, state_topbar, comparison_output_paths], show_progress=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80);}catch(e){console.warn("[UI-TRACE] compare_ready_sync_failed", e);}}'))
+        generate_event = bind_generation_failure_cleanup(generate_event.success(check_comparison_visibility, inputs=[cached_input_image, currentTask, state_topbar, image_tools_checkbox, scene_input_image1, scene_canvas_image], outputs=[compare_btn, image_toolbox, state_topbar, comparison_output_paths, post_generation_result_data], show_progress=False))
+        generate_event.success(fn=None, inputs=[post_generation_result_data], queue=False, show_progress=False, js='(payload)=>{try{const state=applySimpleAIPostGenerationResultPayload(payload); syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80);}catch(e){console.warn("[UI-TRACE] compare_ready_sync_failed", e);}}')
         generate_event = bind_generation_failure_cleanup(generate_event.success(finalize_generation_gallery_surface, inputs=[currentTask], outputs=[progress_window, progress_gallery, progress_video, gallery], show_progress=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(_restore_scene_media_after_generation, inputs=[state_topbar, scene_video_backup, scene_audio_backup, scene_original_video_backup], outputs=[scene_video, scene_audio, scene_original_video_path, scene_video_placeholder, scene_audio_placeholder], show_progress=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} if(typeof scheduleSimpleAIPresetGalleryClear==="function") scheduleSimpleAIPresetGalleryClear("generation_done"); else if(typeof clearSimpleAIPresetSwitchGalleryHidden==="function") clearSimpleAIPresetSwitchGalleryHidden("generation_done");}catch(e){} refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh: false, syncSwitch:false}); try{if(typeof traceResultPanelStateSoon==="function") traceResultPanelStateSoon("generation_done.label");}catch(e){}}'))
+        generate_event.success(fn=None, inputs=[gallery_index_stat, post_generation_result_data], queue=False, show_progress=False, js='(x,payload)=>{try{const state=applySimpleAIPostGenerationResultPayload(payload); if(typeof scheduleSimpleAIPresetGalleryClear==="function") scheduleSimpleAIPresetGalleryClear("generation_done"); else if(typeof clearSimpleAIPresetSwitchGalleryHidden==="function") clearSimpleAIPresetSwitchGalleryHidden("generation_done"); refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh: false, syncSwitch:false}); if(typeof traceResultPanelStateSoon==="function") traceResultPanelStateSoon("generation_done.label");}catch(e){console.warn("[UI-TRACE] generation_done_label_failed",e);}}')
         generate_event = bind_generation_failure_cleanup(generate_event.success(topbar.refresh_finished_catalog_stat_after_generation, inputs=state_topbar, outputs=gallery_index_stat, show_progress=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{try{refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh: false, syncSwitch:false}); if(typeof traceResultPanelStateSoon==="function") traceResultPanelStateSoon("generation_done.delayed_label");}catch(e){console.warn("[UI-TRACE] generation_done_delayed_label_failed", e);}}'))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(typeof markPostGenerationResultSurfaceWindow==="function") markPostGenerationResultSurfaceWindow(state,"generation_done"); syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),120); setTimeout(()=>syncPostGenerationResultControls(state),420); setTimeout(()=>syncPostGenerationResultControls(state),1200); if(typeof traceResultPanelStateSoon==="function") traceResultPanelStateSoon("generation_done.sync");}catch(e){console.warn("[UI-TRACE] post_generation_result_controls_failed", e);}}'))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=None, queue=False, show_progress=False, js='playNotification'))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=None, queue=False, show_progress=False, js='refresh_grid_delayed'))
+        generate_event.success(fn=None, inputs=[gallery_index_stat, post_generation_result_data], queue=False, show_progress=False, js='(x,payload)=>{try{const state=applySimpleAIPostGenerationResultPayload(payload); refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh: false, syncSwitch:false}); if(typeof traceResultPanelStateSoon==="function") traceResultPanelStateSoon("generation_done.delayed_label");}catch(e){console.warn("[UI-TRACE] generation_done_delayed_label_failed", e);}}')
+        generate_event.success(fn=None, inputs=[post_generation_result_data], queue=False, show_progress=False, js='(payload)=>{try{const state=applySimpleAIPostGenerationResultPayload(payload); window.completeSimpleAIGenerationStartSurface?.(state); if(typeof markPostGenerationResultSurfaceWindow==="function") markPostGenerationResultSurfaceWindow(state,"generation_done"); syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),120); setTimeout(()=>syncPostGenerationResultControls(state),420); setTimeout(()=>syncPostGenerationResultControls(state),1200); if(typeof traceResultPanelStateSoon==="function") traceResultPanelStateSoon("generation_done.sync");}catch(e){console.warn("[UI-TRACE] post_generation_result_controls_failed", e);}}')
+        generate_event.success(fn=None, queue=False, show_progress=False, js='playNotification')
+        generate_event.success(fn=None, queue=False, show_progress=False, js='refresh_grid_delayed')
 
         debug_true_state = gr.State(value=True)
         ctrls_preview = [debug_true_state if c == debugging_cn_preprocessor else c for c in ctrls]
@@ -11947,11 +11960,11 @@ with shared.gradio_root:
         preview_event = bind_generation_failure_cleanup(preview_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls_preview + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(fn=generate_clicked, inputs=[currentTask, state_topbar], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(topbar.process_after_generation, inputs=[state_topbar, currentTask], outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False))
-        preview_event = bind_generation_failure_cleanup(preview_event.success(check_comparison_visibility, inputs=[cached_input_image, currentTask, state_topbar, image_tools_checkbox, scene_input_image1, scene_canvas_image], outputs=[compare_btn, image_toolbox, state_topbar, comparison_output_paths], show_progress=False))
-        preview_event = bind_generation_failure_cleanup(preview_event.success(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80);}catch(e){console.warn("[UI-TRACE] compare_ready_sync_failed", e);}}'))
+        preview_event = bind_generation_failure_cleanup(preview_event.success(check_comparison_visibility, inputs=[cached_input_image, currentTask, state_topbar, image_tools_checkbox, scene_input_image1, scene_canvas_image], outputs=[compare_btn, image_toolbox, state_topbar, comparison_output_paths, post_generation_result_data], show_progress=False))
+        preview_event.success(fn=None, inputs=[post_generation_result_data], queue=False, show_progress=False, js='(payload)=>{try{const state=applySimpleAIPostGenerationResultPayload(payload); syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80);}catch(e){console.warn("[UI-TRACE] compare_ready_sync_failed", e);}}')
         preview_event = bind_generation_failure_cleanup(preview_event.success(finalize_generation_gallery_surface, inputs=[currentTask], outputs=[progress_window, progress_gallery, progress_video, gallery], show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(_restore_scene_media_after_generation, inputs=[state_topbar, scene_video_backup, scene_audio_backup, scene_original_video_backup], outputs=[scene_video, scene_audio, scene_original_video_path, scene_video_placeholder, scene_audio_placeholder], show_progress=False))
-        bind_generation_failure_cleanup(preview_event.success(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} if(typeof scheduleSimpleAIPresetGalleryClear==="function") scheduleSimpleAIPresetGalleryClear("generation_done_preview"); else if(typeof clearSimpleAIPresetSwitchGalleryHidden==="function") clearSimpleAIPresetSwitchGalleryHidden("generation_done_preview"); if(typeof markPostGenerationResultSurfaceWindow==="function") markPostGenerationResultSurfaceWindow(state,"generation_done_preview"); syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),120); setTimeout(()=>syncPostGenerationResultControls(state),420); setTimeout(()=>syncPostGenerationResultControls(state),1200); if(typeof traceResultPanelStateSoon==="function") traceResultPanelStateSoon("generation_done_preview.sync");}catch(e){console.warn("[UI-TRACE] post_generation_result_controls_failed", e);}}'))
+        bind_generation_failure_cleanup(preview_event.success(fn=None, inputs=[post_generation_result_data], queue=False, show_progress=False, js='(payload)=>{try{const state=applySimpleAIPostGenerationResultPayload(payload); window.completeSimpleAIGenerationStartSurface?.(state); if(typeof scheduleSimpleAIPresetGalleryClear==="function") scheduleSimpleAIPresetGalleryClear("generation_done_preview"); else if(typeof clearSimpleAIPresetSwitchGalleryHidden==="function") clearSimpleAIPresetSwitchGalleryHidden("generation_done_preview"); if(typeof markPostGenerationResultSurfaceWindow==="function") markPostGenerationResultSurfaceWindow(state,"generation_done_preview"); syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),120); setTimeout(()=>syncPostGenerationResultControls(state),420); setTimeout(()=>syncPostGenerationResultControls(state),1200); if(typeof traceResultPanelStateSoon==="function") traceResultPanelStateSoon("generation_done_preview.sync");}catch(e){console.warn("[UI-TRACE] post_generation_result_controls_failed", e);}}'))
 
         for notification_file in ['notification.ogg', 'notification.mp3']:
             if os.path.exists(notification_file):
@@ -12631,7 +12644,7 @@ with shared.gradio_root:
     prompt_delete_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{showToolboxNoteOverlayFromSource("delete");}catch(e){console.warn("[UI-TRACE] toolbox_note.delete_overlay_failed", e);}}')
     params_note_delete_button.click(toolbox.delete_image, inputs=[state_topbar, gallery_delete_target], outputs=[gallery, progress_gallery, progress_window, gallery_index, params_note_delete_button, params_note_box, gallery_index_stat], show_progress=False, js=gallery_delete_capture_js) \
             .then(toolbox.close_note_box, inputs=state_topbar, outputs=note_box_outputs, show_progress=False) \
-            .then(lambda x, state: None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type)); try{traceResultPanelStateSoon("delete_image.after_refresh");}catch(e){console.warn("[UI-TRACE] delete_image.dom_trace_failed", e);}}')
+            .then(lambda x, state: None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh:true}); try{traceResultPanelStateSoon("delete_image.after_refresh");}catch(e){console.warn("[UI-TRACE] delete_image.dom_trace_failed", e);}}')
 
     prompt_regen_evt = prompt_regen_button.click(toolbox.toggle_note_box_regen, inputs=model_check + [state_topbar], outputs=note_box_outputs, show_progress=False, js='(...args)=>{try{const index=args.length-1;if(index>=0&&typeof simpleaiSyncGallerySelectionIntoState==="function")args[index]=simpleaiSyncGallerySelectionIntoState(args[index]);}catch(e){console.warn("[UI-TRACE] gallery_regen.selection_sync_failed",e);}return args;}')
     prompt_regen_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{showToolboxNoteOverlayFromSource("regen");}catch(e){console.warn("[UI-TRACE] toolbox_note.regen_overlay_failed", e);}}')
@@ -14125,6 +14138,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_preset_model_status_controller.js"),
         webpath("javascript/canvas_workbench/canvas_missing_model_dialog_controller.js"),
         webpath("javascript/canvas_workbench/canvas_toast_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_wildcards_runtime_controller.js"),
         webpath("javascript/canvas_workbench/canvas_wildcards_v2_controller.js"),
         webpath("javascript/canvas_workbench/canvas_viewport_render_scheduler_controller.js"),
         webpath("javascript/infinite_canvas_workbench.js"),
@@ -14282,6 +14296,15 @@ async def simpleai_gallery_preview(preview_name: str):
         payload = await run_in_threadpool(lambda: gallery_util.get_gallery_display_preview_response(preview_name))
         if not payload:
             return JSONResponse({"ok": False, "error": "Gallery preview not found"}, status_code=404)
+        if payload.get("path"):
+            return FileResponse(
+                payload["path"],
+                content_disposition_type="inline",
+                headers={
+                    "Cache-Control": "private, max-age=31536000, immutable",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
         return Response(
             content=payload.get("data") or b"",
             media_type=payload.get("mime") or "image/jpeg",
@@ -16240,7 +16263,7 @@ async def canvas_workbench_list_assets_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/media-gallery")
-async def canvas_workbench_media_gallery_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_media_gallery_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16248,8 +16271,10 @@ async def canvas_workbench_media_gallery_endpoint(payload: dict = Body(...)):
                 status_code=400,
             )
 
+        did = _canvas_workbench_standalone_system_params(request)["user_did"]
+
         def safe_process():
-            return canvas_workbench_media_gallery.list_output_media(payload, {})
+            return canvas_workbench_media_gallery.list_output_media(payload, {"user_did": did})
 
         result = await run_in_threadpool(safe_process)
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
@@ -16266,7 +16291,7 @@ async def canvas_workbench_media_gallery_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/media-gallery/delete")
-async def canvas_workbench_media_gallery_delete_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_media_gallery_delete_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16274,8 +16299,10 @@ async def canvas_workbench_media_gallery_delete_endpoint(payload: dict = Body(..
                 status_code=400,
             )
 
+        did = _canvas_workbench_standalone_system_params(request)["user_did"]
+
         def safe_process():
-            return canvas_workbench_media_gallery.delete_output_media(payload, {})
+            return canvas_workbench_media_gallery.delete_output_media(payload, {"user_did": did})
 
         result = await run_in_threadpool(safe_process)
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)

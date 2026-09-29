@@ -20,6 +20,16 @@
         return 'light';
     }
 
+    function detectWorkbenchThemeFromDocument(windowRef, documentRef) {
+        return detectWorkbenchTheme({
+            themeParams: windowRef?.simpleaiTopbarSystemParams,
+            documentElementTheme: documentRef.documentElement.getAttribute('data-theme'),
+            bodyTheme: documentRef.body.getAttribute('data-theme'),
+            documentElementDark: documentRef.documentElement.classList.contains('dark'),
+            bodyDark: documentRef.body.classList.contains('dark')
+        });
+    }
+
     function applyWorkbenchThemeClass(root, theme) {
         if (!root) return;
         root.dataset.canvasTheme = theme;
@@ -275,6 +285,7 @@
             mountWorkbenchShell,
             syncStandaloneCanvasControls,
             detectWorkbenchTheme,
+            detectWorkbenchThemeFromDocument,
             applyWorkbenchThemeClass
         };
     }
@@ -283,6 +294,7 @@
         createCanvasWorkbenchShellRenderer,
         renderWorkbenchIconHtml,
         detectWorkbenchTheme,
+        detectWorkbenchThemeFromDocument,
         applyWorkbenchThemeClass,
         ensureWorkbenchFormFieldNames
     });

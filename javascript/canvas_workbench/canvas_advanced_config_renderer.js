@@ -10,6 +10,21 @@
         const translate = (...args) => call('t', args[1] || args[0] || '', ...args);
         const optionHtml = (...args) => call('optionHtml', '', ...args);
 
+        function getSelectOptionsFromDom(id, fallback) {
+            const document = call('getDocument', null);
+            const appRoot = call('getGradioApp', null) || document;
+            const rootEl = (appRoot && appRoot.getElementById ? appRoot.getElementById(id) : null)
+                || document?.getElementById?.(id);
+            const select = rootEl && rootEl.querySelector ? rootEl.querySelector('select') : null;
+            const options = select ? Array.from(select.options).map(option => option.value || option.textContent || '').filter(Boolean) : [];
+            const merged = [];
+            [...(fallback || []), ...options].forEach((item) => {
+                const text = String(item || '').trim();
+                if (text && !merged.includes(text)) merged.push(text);
+            });
+            return merged;
+        }
+
         function renderAdvancedConfigNodeHtml(node) {
             const values = node.config?.values || {};
             const overwriteStepProps = call('getSceneGenerationConfigPropsForConfigNode', {}, node, 'overwrite_step') || {};
@@ -32,11 +47,11 @@
             const scheduler = call('configTextValue', 'karras', values, ['scheduler_name', 'scheduler'], 'karras');
             const samplerChoices = call('mergeChoices', [sampler], [
                 sampler,
-                ...call('getSelectOptionsFromDom', [], 'sampler_name', call('getSamplerChoices', []))
+                ...getSelectOptionsFromDom('sampler_name', call('getSamplerChoices', []))
             ]);
             const schedulerChoices = call('mergeChoices', [scheduler], [
                 scheduler,
-                ...call('getSelectOptionsFromDom', [], 'scheduler_name', call('getSchedulerChoices', []))
+                ...getSelectOptionsFromDom('scheduler_name', call('getSchedulerChoices', []))
             ]);
             const nodeBadges = call('renderNodeStateBadges', '', node);
 

@@ -3,19 +3,18 @@
 
     function createCanvasConnectionMediaController(context) {
         const scope = context?.connectionMediaSource || context || {};
-        const slotSource = scope.slotSource || {};
         const batchSource = scope.batchSource || {};
         const resultSource = scope.resultSource || {};
 
         const call = (sourceObject, name, fallback, ...args) => typeof sourceObject?.[name] === 'function'
             ? sourceObject[name](...args)
             : fallback;
-        const getUploadSlotMediaKind = (slotKey) => String(call(
-            slotSource,
-            'getUploadSlotMediaKind',
-            'image',
-            slotKey
-        ) || 'image').toLowerCase();
+        function getUploadSlotMediaKind(slotKey) {
+            const key = String(slotKey || '').toLowerCase();
+            if (key.includes('audio')) return 'audio';
+            if (key.includes('video')) return 'video';
+            return 'image';
+        }
         const batchAnyCanConnectToSlot = (node, slotKey) => !!call(
             batchSource,
             'batchAnyCanConnectToSlot',
@@ -84,6 +83,7 @@
         }
 
         return {
+            getUploadSlotMediaKind,
             canNodeConnectToUploadSlot,
             canPresetOutputConnectToUploadSlot,
             presetOutputMediaKind,

@@ -15,6 +15,7 @@
         const renderSource = scope.renderSource || {};
         const storageSource = scope.storageSource || {};
         const metadataSource = scope.metadataSource || {};
+        const networkSource = scope.networkSource || {};
         const languageSource = scope.languageSource || {};
         const uiSource = scope.uiSource || {};
         let importFileInput = null;
@@ -225,11 +226,29 @@
                 world || call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 }));
         }
 
+        async function importLibraryMediaById(mediaId) {
+            if (!mediaId) return null;
+            try {
+                const response = await call(networkSource, 'fetchLibraryMediaItem', null, mediaId);
+                const item = response?.item;
+                if (!item?.path || !['image', 'video'].includes(item.media_type)) {
+                    throw new Error('Library media is unavailable');
+                }
+                return addMediaBrowserItemToCanvas(item, { tab: 'outputs' },
+                    call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 }));
+            } catch (err) {
+                warn('[CanvasWorkbench] library media import failed', err);
+                call(uiSource, 'showToast', undefined, t('Media import failed.', '媒体导入失败。'));
+                return null;
+            }
+        }
+
         return {
             createImageNodeFromAsset, createMediaNodeFromAsset,
             addImageNodeFromFile, addMediaNodeFromFile, addOutputGalleryMediaNode, addImageNodeFromTransferItem,
             importSelectedTransferAt, importTransferItemAt, openImageFilePicker,
-            importSelectedMediaBrowserItem, addMediaBrowserItemToCanvas, addMediaBrowserPayloadToCanvas
+            importSelectedMediaBrowserItem, addMediaBrowserItemToCanvas, addMediaBrowserPayloadToCanvas,
+            importLibraryMediaById
         };
     }
 

@@ -23,20 +23,14 @@
         const buildVlmNodeSizePatch = typeof nodeSource.buildVlmNodeSizePatch === 'function'
             ? nodeSource.buildVlmNodeSizePatch
             : () => ({});
-        const supportsCollapsedPromptHeight = (node) => !!sourceCall(
-            nodeSource,
-            'supportsCollapsedPromptHeight',
-            false,
-            node
-        );
-        const collapsedPromptNodeHeight = (node) => sourceCall(
-            nodeSource,
-            'collapsedPromptNodeHeight',
-            0,
-            node
-        );
+        const isNodeCollapsed = node => !!sourceCall(nodeSource, 'isNodeCollapsed', false, node);
+        const collapsedPromptDefaultHeight = Number(nodeSource.collapsedPromptDefaultHeight || 280);
+        const collapsedPromptMaxHeight = Number(nodeSource.collapsedPromptMaxHeight || 520);
+        const collapsedPromptPortRowHeight = Number(nodeSource.collapsedPromptPortRowHeight || 32);
+        const collapsedPromptTextBlockHeight = Number(nodeSource.collapsedPromptTextBlockHeight || 150);
         const getMeasuredNodeLayout = (id) => sourceCall(nodeSource, 'getMeasuredNodeLayout', null, id);
         const getProjectNodes = () => sourceCall(projectSource, 'getProjectNodes', [],) || [];
+        const getProjectEdges = () => sourceCall(projectSource, 'getProjectEdges', []) || [];
         const getVisibleWorldRect = () => sourceCall(viewportSource, 'getVisibleWorldRect', null);
         const viewportGetNodeRect = typeof viewportSource.viewportGetNodeRect === 'function'
             ? viewportSource.viewportGetNodeRect
@@ -57,6 +51,63 @@
             ? utilitySource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
         const collapsedPromptMinHeight = Math.max(1, Number(nodeSource.collapsedPromptMinHeight || 220));
+
+        function shouldFixNodeHeight(node) {
+            return !!(node && !isNodeCollapsed(node) && ((node.type === 'vlm' && (node.params?.mode || 'single') === 'chat')
+                || node.type === 'media_browser' || node.type === 'director_timeline'));
+        }
+
+        function supportsCollapsedPromptHeight(node) {
+            return !!(node && isNodeCollapsed(node) && (node.type === 'preset' || node.type === 'classic'));
+        }
+
+        function hasIncomingEdge(node, edgeType, slot) {
+            if (!node || !edgeType) return false;
+            return getProjectEdges().some(edge => edge.to === node.id && edge.type === edgeType
+                && String(edge.slot || '') === String(slot || ''));
+        }
+
+        function collapsedKeepClass(node, edgeType, slot) {
+            return hasIncomingEdge(node, edgeType, slot) ? ' sai-collapsed-keep sai-collapsed-connected-port' : '';
+        }
+
+        function collapsedPromptConnectedPortRows(node) {
+            if (!node || !sourceCall(projectSource, 'hasProject', false)) return 0;
+            let rows = 0;
+            if (node.type === 'preset' || node.type === 'classic') {
+                const slots = node.type === 'preset'
+                    ? sourceCall(nodeSource, 'getVisibleUploadSlots', [], node)
+                    : sourceCall(nodeSource, 'getVisibleClassicUploadSlots', [], node);
+                rows += slots.filter(slot => hasIncomingEdge(node, 'upload', slot.key)).length;
+                const configKinds = sourceCall(nodeSource, 'getPresetConfigKinds', []);
+                rows += configKinds.filter(kind => hasIncomingEdge(node, 'config', kind)).length;
+            }
+            return clamp(rows, 0, 10);
+        }
+
+        function collapsedPromptHasPromptEditor(node) {
+            if (!node) return false;
+            if (node.type === 'classic') return true;
+            if (node.type !== 'preset') return false;
+            return sourceCall(nodeSource, 'getVisiblePresetParams', [], node)
+                .some(param => param?.key === 'prompt' && param.type === 'textarea');
+        }
+
+        function collapsedPromptNodeRequiredHeight(node) {
+            if (!supportsCollapsedPromptHeight(node)) return collapsedPromptMinHeight;
+            const headerHeight = 36;
+            const nodeFramePadding = 18;
+            const connectedRows = collapsedPromptConnectedPortRows(node);
+            const promptHeight = collapsedPromptHasPromptEditor(node) ? collapsedPromptTextBlockHeight : 0;
+            return headerHeight + nodeFramePadding + connectedRows * collapsedPromptPortRowHeight + promptHeight;
+        }
+
+        function collapsedPromptNodeHeight(node) {
+            const raw = Number(node?.collapsed_h);
+            const value = Number.isFinite(raw) && raw > 0 ? raw : collapsedPromptDefaultHeight;
+            const required = collapsedPromptNodeRequiredHeight(node);
+            return Math.round(clamp(Math.max(value, required), collapsedPromptMinHeight, collapsedPromptMaxHeight));
+        }
 
         function applyNodeLayoutPatch(node, options) {
             const patch = buildNodeLayoutPatch(node, options || {});
@@ -270,6 +321,14 @@
         }
 
         return {
+            hasIncomingEdge,
+            collapsedKeepClass,
+            shouldFixNodeHeight,
+            supportsCollapsedPromptHeight,
+            collapsedPromptNodeHeight,
+            collapsedPromptNodeRequiredHeight,
+            collapsedPromptConnectedPortRows,
+            collapsedPromptHasPromptEditor,
             boundedImageNodeSizeForAsset,
             defaultResultNodeSize,
             presetResultBasePosition,

@@ -118,6 +118,25 @@
             return state;
         }
 
+        function selectCanvasAgentNode(nodeId) {
+            setSelectionState(Object.assign({}, getSelectionState(), {
+                selectedNodeId: nodeId,
+                selectedNodeIds: new Set([nodeId]),
+                selectedEdgeId: null
+            }));
+        }
+
+        function setCanvasAgentSelection(nodeId, nodeIds, groupId, options) {
+            const next = Object.assign({}, getSelectionState(), {
+                selectedNodeId: nodeId,
+                selectedNodeIds: new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : [])),
+                selectedEdgeId: null
+            });
+            if (options?.clearGroup) next.selectedGroupId = null;
+            else if (groupId !== undefined && (groupId || options?.clearEmptyGroup)) next.selectedGroupId = groupId || null;
+            setSelectionState(next);
+        }
+
         function selectedNodeIds(state) {
             return state?.selectedNodeIds instanceof Set
                 ? new Set(state.selectedNodeIds)
@@ -377,6 +396,8 @@
         return {
             updateSelectionDomClasses,
             refreshSelectionUi,
+            selectCanvasAgentNode,
+            setCanvasAgentSelection,
             selectNodeLight,
             toggleNodeSelectionLight,
             selectGroupLight,

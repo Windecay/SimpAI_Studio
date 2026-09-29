@@ -16,6 +16,7 @@
         const viewerSource = scope.viewerSource || {};
         const utilitySource = scope.utilitySource || {};
         const fileSource = scope.fileSource || {};
+        const transferSource = scope.transferSource || {};
         const layoutSource = scope.layoutSource || {};
         const storageSource = scope.storageSource || {};
         const languageSource = scope.languageSource || {};
@@ -157,6 +158,31 @@
                 }
             }
             return finishImageReplacement(node, () => t('Image replaced.', '图片已替换'), 'image');
+        }
+
+        async function handleImageNodeDrop(node, dataTransfer) {
+            if (!node || node.type !== 'image') return;
+            if (isNodeLocked(node)) {
+                call(uiSource, 'showToast', undefined, t('Locked node cannot be edited', '锁定节点无法编辑'));
+                return;
+            }
+            const transferId = dataTransfer?.getData('application/x-simpleai-transfer-id');
+            const station = transferId ? call(transferSource, 'getTransferStation', null) : null;
+            if (transferId && station && typeof station.getItem === 'function') {
+                const item = await station.getItem(transferId, { dataUrl: true, file: false });
+                if (item) {
+                    await applyTransferItemToImageNode(node, item, { history: 'Drop image into node' });
+                    return;
+                }
+            }
+            const files = Array.from(dataTransfer?.files || []).filter(file => call(fileSource, 'isImageFile', false, file));
+            if (!files.length) {
+                call(uiSource, 'showToast', undefined, t('Drop an image file onto the Image node.', '请拖放图片文件到图像节点'));
+                return;
+            }
+            await applyImageFileToNode(node, files[0], {
+                history: 'Drop image into node', sourceKind: 'dropped_into_image_node'
+            });
         }
 
         async function applyMediaFileToNode(node, file, options) {
@@ -639,11 +665,12 @@
             const getAdapter = () => call(editorSource, 'getLayerForgeAdapter', null);
             const ready = await call(editorSource, 'ensureWorkbenchLazyRuntime', false,
                 'layerForge', () => typeof getAdapter()?.open === 'function',
-                'Loading LayerForge...', 'LayerForge is not ready.');
+                t('Loading LayerForge...', '正在加载 LayerForge...'),
+                t('LayerForge is not ready.', 'LayerForge 尚未就绪。'));
             if (!ready) return;
             const adapter = getAdapter();
             if (!adapter || typeof adapter.open !== 'function') {
-                call(uiSource, 'showToast', undefined, 'LayerForge is not ready.');
+                call(uiSource, 'showToast', undefined, t('LayerForge is not ready.', 'LayerForge 尚未就绪。'));
                 return;
             }
             const asset = getNodeLayerForgeAsset(node);
@@ -673,6 +700,7 @@
         return {
             applyTransferItemToImageNode,
             applyImageFileToNode,
+            handleImageNodeDrop,
             applyMediaFileToNode,
             createImageNodeFromLayerForgeOutput,
             createImageNodeFromSketchOutput,

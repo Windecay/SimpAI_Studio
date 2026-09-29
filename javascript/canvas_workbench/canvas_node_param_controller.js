@@ -179,6 +179,24 @@
             persistenceCall('scheduleSave');
         }
 
+        function syncNodeParamControlDom(nodeId, key, value) {
+            const nodesLayer = domSource.getNodesLayer?.();
+            if (!nodeId || !key || !nodesLayer) return;
+            const cssEscape = typeof domSource.cssEscape === 'function'
+                ? domSource.cssEscape
+                : text => String(text);
+            const nodeEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
+            if (!nodeEl) return;
+            nodeEl.querySelectorAll(`[data-node-param="${cssEscape(key)}"]`).forEach((field) => {
+                if (!field) return;
+                if (field.type === 'checkbox') {
+                    field.checked = value === true || value === 'true' || value === 1 || value === '1';
+                } else if ('value' in field && field.value !== String(value ?? '')) {
+                    field.value = String(value ?? '');
+                }
+            });
+        }
+
         function updateWd14Param(nodeId, key, value, inputType) {
             const node = getNode(nodeId);
             if (!node || node.type !== 'wd14' || !key || nodeCall('isNodeLocked', false, node)) return;
@@ -193,7 +211,7 @@
                 uiStateCall('mutate', undefined, { inspector: true });
                 return;
             }
-            actionCall('syncNodeParamControlDom', undefined, nodeId, key, node.params[key]);
+            syncNodeParamControlDom(nodeId, key, node.params[key]);
             actionCall('refreshPresetSpecialNodeDom', undefined, node, { syncViewer: false });
             persistenceCall('scheduleSave');
         }

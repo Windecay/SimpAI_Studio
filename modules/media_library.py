@@ -19,6 +19,7 @@ import logging
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import sqlite3
 import threading
@@ -32,7 +33,7 @@ import shared
 
 
 DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov", ".mkv"})
@@ -529,10 +530,11 @@ class MediaLibrary:
         tables = {
             str(row[0])
             for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('library_meta', 'media')"
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN "
+                "('library_meta', 'media', 'collections', 'collection_items', 'saved_views')"
             ).fetchall()
         }
-        if tables != {"library_meta", "media"}:
+        if tables != {"library_meta", "media", "collections", "collection_items", "saved_views"}:
             return False
         rows = connection.execute(
             "SELECT key, value FROM library_meta WHERE key IN ('schema_version', 'index_revision')"
@@ -596,6 +598,24 @@ class MediaLibrary:
                                 ON media(trashed_at, missing_at, created_at DESC, media_id DESC);
                             CREATE INDEX IF NOT EXISTS idx_media_generation_text
                                 ON media(generation_text);
+                            CREATE TABLE IF NOT EXISTS collections (
+                                collection_id TEXT PRIMARY KEY,
+                                title TEXT NOT NULL,
+                                created_at REAL NOT NULL
+                            );
+                            CREATE TABLE IF NOT EXISTS collection_items (
+                                collection_id TEXT NOT NULL REFERENCES collections(collection_id) ON DELETE CASCADE,
+                                media_id TEXT NOT NULL REFERENCES media(media_id) ON DELETE CASCADE,
+                                PRIMARY KEY (collection_id, media_id)
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_collection_items_media
+                                ON collection_items(media_id);
+                            CREATE TABLE IF NOT EXISTS saved_views (
+                                view_id TEXT PRIMARY KEY,
+                                title TEXT NOT NULL,
+                                filters_json TEXT NOT NULL,
+                                created_at REAL NOT NULL
+                            );
                             """
                         )
                         connection.execute(
@@ -1129,6 +1149,11 @@ class MediaLibrary:
         media_type: str | None = None,
         query: str | None = None,
         favorite: bool | None = None,
+        tag: str | None = None,
+        rating_min: int | None = None,
+        model_query: str | None = None,
+        orientation: str | None = None,
+        collection_id: str | None = None,
         cursor: str | None = None,
         limit: int = 48,
         sort: str = "newest",
@@ -1153,6 +1178,31 @@ class MediaLibrary:
         if favorite is not None:
             clauses.append("favorite = ?")
             params.append(1 if favorite else 0)
+        if tag:
+            clauses.append("EXISTS (SELECT 1 FROM json_each(media.tags_json) AS tag WHERE lower(tag.value) = lower(?))")
+            params.append(_safe_text(tag, 80).strip())
+        if rating_min is not None:
+            clauses.append("rating >= ?")
+            params.append(max(0, min(int(rating_min), 5)))
+        if model_query:
+            clauses.append(
+                "EXISTS (SELECT 1 FROM json_each(media.generation_metadata_json, '$.parameters') AS param "
+                "WHERE lower(param.key) IN ('model', 'base_model', 'model name', 'checkpoint', 'checkpoint name') "
+                "AND CAST(param.value AS TEXT) LIKE ? ESCAPE '\\')"
+            )
+            params.append(f"%{_escape_like(_safe_text(model_query, 120).strip())}%")
+        if orientation == "landscape":
+            clauses.append("width > height")
+        elif orientation == "portrait":
+            clauses.append("height > width")
+        elif orientation == "square":
+            clauses.append("width = height AND width IS NOT NULL")
+        if collection_id:
+            clauses.append(
+                "EXISTS (SELECT 1 FROM collection_items AS membership "
+                "WHERE membership.media_id = media.media_id AND membership.collection_id = ?)"
+            )
+            params.append(str(collection_id)[:80])
         if query:
             pattern = f"%{_escape_like(str(query).strip())[:200]}%"
             clauses.append("(name LIKE ? ESCAPE '\\' OR relative_path LIKE ? ESCAPE '\\' OR generation_text LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' OR tags_json LIKE ? ESCAPE '\\')")
@@ -1187,6 +1237,159 @@ class MediaLibrary:
             "trash": bool(include_trashed),
         }
 
+    def list_collections(self) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT c.collection_id, c.title, c.created_at, "
+                "COUNT(CASE WHEN m.trashed_at IS NULL AND m.missing_at IS NULL THEN 1 END) AS item_count "
+                "FROM collections c LEFT JOIN collection_items ci ON ci.collection_id = c.collection_id "
+                "LEFT JOIN media m ON m.media_id = ci.media_id "
+                "GROUP BY c.collection_id ORDER BY c.created_at, c.collection_id"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    @_serialize_media_write
+    def create_collection(self, title: str) -> dict[str, Any]:
+        self.initialize()
+        clean_title = _safe_text(title, 100).strip()
+        if not clean_title:
+            raise ValueError("Collection name is required.")
+        collection = {
+            "collection_id": f"collection_{secrets.token_hex(12)}",
+            "title": clean_title,
+            "created_at": time.time(),
+            "item_count": 0,
+        }
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO collections(collection_id, title, created_at) VALUES(?, ?, ?)",
+                (collection["collection_id"], clean_title, collection["created_at"]),
+            )
+        return collection
+
+    @_serialize_media_write
+    def delete_collection(self, collection_id: str) -> bool:
+        self.initialize()
+        with self._connect() as connection:
+            result = connection.execute(
+                "DELETE FROM collections WHERE collection_id = ?", (str(collection_id),)
+            )
+        return result.rowcount > 0
+
+    @_serialize_media_write
+    def update_collection_items(self, collection_id: str, media_ids: Iterable[Any], *, remove: bool = False) -> dict[str, Any]:
+        self.initialize()
+        ids = list(dict.fromkeys(str(value or "") for value in media_ids if value))[:120]
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if not connection.execute(
+                "SELECT 1 FROM collections WHERE collection_id = ?", (str(collection_id),)
+            ).fetchone():
+                raise ValueError("Collection not found.")
+            changed = 0
+            for media_id in ids:
+                if remove:
+                    result = connection.execute(
+                        "DELETE FROM collection_items WHERE collection_id = ? AND media_id = ?",
+                        (collection_id, media_id),
+                    )
+                else:
+                    result = connection.execute(
+                        "INSERT OR IGNORE INTO collection_items(collection_id, media_id) "
+                        "SELECT ?, media_id FROM media WHERE media_id = ? AND trashed_at IS NULL AND missing_at IS NULL",
+                        (collection_id, media_id),
+                    )
+                changed += result.rowcount
+        return {"ok": True, "changed": changed}
+
+    def list_saved_views(self) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT view_id, title, filters_json, created_at FROM saved_views ORDER BY created_at, view_id"
+            ).fetchall()
+        return [
+            {"view_id": row["view_id"], "title": row["title"],
+             "filters": _json_loads(row["filters_json"], {}), "created_at": row["created_at"]}
+            for row in rows
+        ]
+
+    @_serialize_media_write
+    def create_saved_view(self, title: str, filters: dict[str, Any]) -> dict[str, Any]:
+        self.initialize()
+        clean_title = _safe_text(title, 100).strip()
+        if not clean_title:
+            raise ValueError("View name is required.")
+        if not isinstance(filters, dict):
+            raise ValueError("Filters must be an object.")
+        allowed = {"date", "type", "q", "favorite", "sort", "tag", "rating_min", "model", "orientation", "collection"}
+        clean_filters = {key: value for key, value in filters.items()
+                         if key in allowed and isinstance(value, (str, int, bool)) and len(str(value)) <= 200}
+        view = {
+            "view_id": f"view_{secrets.token_hex(12)}",
+            "title": clean_title,
+            "filters": clean_filters,
+            "created_at": time.time(),
+        }
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO saved_views(view_id, title, filters_json, created_at) VALUES(?, ?, ?, ?)",
+                (view["view_id"], clean_title, _json_dumps(clean_filters), view["created_at"]),
+            )
+        return view
+
+    @_serialize_media_write
+    def delete_saved_view(self, view_id: str) -> bool:
+        self.initialize()
+        with self._connect() as connection:
+            result = connection.execute("DELETE FROM saved_views WHERE view_id = ?", (str(view_id),))
+        return result.rowcount > 0
+
+    @_serialize_media_write
+    def batch_update_user_metadata(
+        self, media_ids: Iterable[Any], *, add_tags: Iterable[Any] | None = None,
+        rating: int | None = None, favorite: bool | None = None,
+    ) -> dict[str, Any]:
+        self.initialize()
+        ids = list(dict.fromkeys(str(value or "") for value in media_ids if value))[:120]
+        tags = [_safe_text(value, 80).strip() for value in (add_tags or [])]
+        tags = [value for value in tags if value][:80]
+        if not tags and rating is None and favorite is None:
+            raise ValueError("No metadata changes supplied.")
+        updated: list[str] = []
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for media_id in ids:
+                row = connection.execute(
+                    "SELECT tags_json FROM media WHERE media_id = ? AND trashed_at IS NULL AND missing_at IS NULL",
+                    (media_id,),
+                ).fetchone()
+                if not row:
+                    continue
+                fields: list[str] = []
+                values: list[Any] = []
+                if tags:
+                    existing = _json_loads(row["tags_json"], [])
+                    by_name = {str(value).casefold() for value in existing}
+                    for tag in tags:
+                        if tag.casefold() not in by_name:
+                            existing.append(tag)
+                            by_name.add(tag.casefold())
+                    fields.append("tags_json = ?")
+                    values.append(_json_dumps(existing[:80]))
+                if rating is not None:
+                    fields.append("rating = ?")
+                    values.append(max(0, min(int(rating), 5)))
+                if favorite is not None:
+                    fields.append("favorite = ?")
+                    values.append(1 if favorite else 0)
+                connection.execute(
+                    f"UPDATE media SET {', '.join(fields)} WHERE media_id = ?", (*values, media_id)
+                )
+                updated.append(media_id)
+        return {"ok": True, "updated": updated}
+
     def get_item(
         self,
         media_id: str,
@@ -1207,6 +1410,22 @@ class MediaLibrary:
         if include_generation_metadata:
             item = self._refresh_stale_embedded_metadata(row, item)
         return item
+
+    def related_items(self, media_id: str, limit: int = 12) -> list[dict[str, Any]]:
+        self.initialize()
+        source = self.get_item(media_id)
+        metadata = source.get("generation_metadata") if source else None
+        prompt = str(metadata.get("prompt") or "").strip() if isinstance(metadata, dict) else ""
+        if not prompt:
+            return []
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM media WHERE media_id != ? AND trashed_at IS NULL AND missing_at IS NULL "
+                "AND json_extract(generation_metadata_json, '$.prompt') = ? "
+                "ORDER BY created_at DESC, media_id DESC LIMIT ?",
+                (str(media_id), prompt, max(1, min(int(limit), 24))),
+            ).fetchall()
+        return [self._row_to_item(row, include_generation_metadata=False) for row in rows]
 
     @_serialize_media_write
     def update_user_metadata(
@@ -1255,6 +1474,7 @@ class MediaLibrary:
     def trash_items(self, media_ids: Iterable[Any]) -> dict[str, Any]:
         self.initialize()
         deleted: list[str] = []
+        removed_missing: list[str] = []
         errors: list[dict[str, str]] = []
         now = time.time()
         ids = list(dict.fromkeys(str(value or "") for value in media_ids))[:120]
@@ -1267,8 +1487,33 @@ class MediaLibrary:
                     errors.append({"id": media_id, "error": "Media item not found."})
                     continue
                 source = _path_under(self.outputs_root, row["relative_path"])
-                if not source or not os.path.isfile(source):
-                    errors.append({"id": media_id, "error": "Media file is missing."})
+                if not source:
+                    errors.append({"id": media_id, "error": "Media path is invalid."})
+                    continue
+                try:
+                    os.stat(source)
+                except FileNotFoundError:
+                    if os.path.lexists(source):
+                        errors.append({"id": media_id, "error": "Media path is not a regular file."})
+                        continue
+                    connection.execute("DELETE FROM media WHERE media_id = ?", (media_id,))
+                    removed_missing.append(media_id)
+                    summary_changed = True
+                    try:
+                        for entry in os.scandir(os.path.join(self.gallery_root, "thumbnails")):
+                            if entry.is_file() and entry.name.startswith(f"{media_id}_") and entry.name.lower().endswith(".jpg"):
+                                try:
+                                    os.remove(entry.path)
+                                except OSError:
+                                    pass
+                    except OSError:
+                        pass
+                    continue
+                except OSError as exc:
+                    errors.append({"id": media_id, "error": str(exc)})
+                    continue
+                if not os.path.isfile(source):
+                    errors.append({"id": media_id, "error": "Media path is not a regular file."})
                     continue
                 trash_name = f"{int(now * 1000)}_{media_id}_{os.path.basename(source)}"
                 trash_path = os.path.join(self.trash_root, trash_name)
@@ -1289,7 +1534,7 @@ class MediaLibrary:
         if summary_changed:
             self._clear_summary_cache()
             invalidate_legacy_gallery_cache(self.user_did)
-        return {"ok": bool(deleted) and not errors, "trashed": deleted, "errors": errors}
+        return {"ok": bool(deleted or removed_missing) and not errors, "trashed": deleted, "removed_missing": removed_missing, "errors": errors}
 
     @_serialize_media_write
     def restore_items(self, media_ids: Iterable[Any]) -> dict[str, Any]:

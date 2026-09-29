@@ -36,7 +36,7 @@
                     output_path: item.path || '',
                     original_output_path: item.path || '',
                     preview_url: item.preview_url || '',
-                    thumb: mediaType === 'image' ? (item.preview_url || '') : '',
+                    thumb: item.thumb || (mediaType === 'image' ? (item.preview_url || '') : ''),
                     generation_metadata: generationMetadata,
                     edit: mediaType === 'video' ? { trim_start: 0, trim_end: item.duration || 0, enabled: false } : null
                 },

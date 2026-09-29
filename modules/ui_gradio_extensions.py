@@ -347,6 +347,7 @@ def javascript_html():
     canvas_workbench_canvas_missing_model_dialog_path = webpath('javascript/canvas_workbench/canvas_missing_model_dialog_controller.js')
     canvas_workbench_canvas_tag_cart_path = webpath('javascript/canvas_workbench/canvas_tag_cart_controller.js')
     canvas_workbench_canvas_toast_path = webpath('javascript/canvas_workbench/canvas_toast_controller.js')
+    canvas_workbench_canvas_wildcards_runtime_path = webpath('javascript/canvas_workbench/canvas_wildcards_runtime_controller.js')
     canvas_workbench_canvas_wildcards_v2_path = webpath('javascript/canvas_workbench/canvas_wildcards_v2_controller.js')
     canvas_workbench_canvas_vlm_node_path = webpath('javascript/canvas_workbench/canvas_vlm_node.js')
     canvas_workbench_canvas_vlm_custom_api_profiles_path = webpath('javascript/canvas_workbench/canvas_vlm_custom_api_profiles.js')
@@ -816,6 +817,7 @@ def javascript_html():
             canvas_workbench_canvas_missing_model_dialog_path,
             canvas_workbench_canvas_tag_cart_path,
             canvas_workbench_canvas_toast_path,
+            canvas_workbench_canvas_wildcards_runtime_path,
             canvas_workbench_canvas_wildcards_v2_path,
             canvas_workbench_project_store_path,
             canvas_workbench_viewport_path,

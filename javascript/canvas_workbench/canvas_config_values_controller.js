@@ -19,9 +19,182 @@
             : (value, fallback) => JSON.parse(JSON.stringify(value ?? fallback));
         const normalizePresetName = name => call(catalogSource, 'normalizePresetName', '', name);
         const canvasAgentPresetPromptDefaults = node => call(styleSource, 'canvasAgentPresetPromptDefaults', { styles: [] }, node);
-        const configNumberValue = (values, keys, fallback) => call(configSource, 'configNumberValue', fallback, values, keys, fallback);
-        const configTextValue = (values, keys, fallback) => call(configSource, 'configTextValue', fallback, values, keys, fallback);
         const clampValue = (value, min, max) => call(utilitySource, 'clamp', Math.max(min, Math.min(max, value)), value, min, max);
+        const slotOrder = Array.isArray(configSource.slotOrder) ? configSource.slotOrder : [];
+        const slotLabels = configSource.slotLabels && typeof configSource.slotLabels === 'object' ? configSource.slotLabels : {};
+        const presetConfigKinds = Array.isArray(configSource.presetConfigKinds) ? configSource.presetConfigKinds : [];
+
+        function isPresetConfigKind(kind) {
+            return presetConfigKinds.includes(String(kind || ''));
+        }
+
+        function configKeyForKind(kind) {
+            if (kind === 'styles') return 'styles_config';
+            if (kind === 'resolution') return 'resolution_config';
+            if (kind === 'advanced') return 'generation_config';
+            return 'models_config';
+        }
+
+        function getPresetSchema(node) {
+            return (node && node.schema && typeof node.schema === 'object') ? node.schema : {};
+        }
+
+        function getPresetTheme(node) {
+            const schema = getPresetSchema(node);
+            const themes = Array.isArray(schema.themes) ? schema.themes : [];
+            return node?.runtime?.scene_theme || schema.default_theme || themes[0] || '';
+        }
+
+        function getPresetThemeInfo(node) {
+            const schema = getPresetSchema(node);
+            const theme = getPresetTheme(node);
+            const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
+            return perTheme[theme] || {};
+        }
+
+        function getVisibleUploadSlots(node) {
+            const schema = getPresetSchema(node);
+            const slots = Array.isArray(schema.upload_slots) && schema.upload_slots.length
+                ? schema.upload_slots
+                : slotOrder.map(key => ({ key, label: slotLabels[key], visible: true, interactive: true }));
+            return slots
+                .filter(slot => slot && slot.visible !== false)
+                .sort((a, b) => {
+                    const ai = slotOrder.indexOf(a.key);
+                    const bi = slotOrder.indexOf(b.key);
+                    return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+                });
+        }
+
+        function getSlotLabel(node, slotKey) {
+            const visible = node?.type === 'classic' ? getVisibleClassicUploadSlots(node) : getVisibleUploadSlots(node);
+            const slot = visible.find(item => item.key === slotKey);
+            return slot?.label || slotLabels[slotKey] || slotKey || 'upload';
+        }
+
+        function configAliasValue(source, keys) {
+            const data = source && typeof source === 'object' ? source : {};
+            for (const key of keys || []) {
+                if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
+                const value = data[key];
+                if (value === undefined || value === null) continue;
+                if (typeof value === 'string' && !value.trim()) continue;
+                return value;
+            }
+            return undefined;
+        }
+
+        function configNumberValue(source, keys, fallback) {
+            const value = configAliasValue(source, keys);
+            const number = Number(value);
+            return Number.isFinite(number) ? number : fallback;
+        }
+
+        function boundedConfigNumberValue(source, keys, fallback, bounds) {
+            const value = configNumberValue(source, keys, fallback);
+            const min = Number(bounds?.min);
+            const max = Number(bounds?.max);
+            let next = value;
+            if (Number.isFinite(min) && next < min) next = min;
+            if (Number.isFinite(max) && next > max) next = max;
+            return next;
+        }
+
+        function configTextValue(source, keys, fallback) {
+            const value = configAliasValue(source, keys);
+            return value === undefined ? fallback : String(value);
+        }
+
+        function mergeChoices(items) {
+            const merged = [];
+            (items || []).forEach((item) => {
+                const text = String(item || '').trim();
+                if (text && !merged.includes(text)) merged.push(text);
+            });
+            return merged;
+        }
+
+        function getResolutionPayload() {
+            const widget = call(resolutionSource, 'getDocument', null)
+                ?.querySelector?.('.simpai-resolution-control script[data-role="resolution-data"]');
+            if (!widget) return {};
+            try {
+                return JSON.parse(widget.textContent || '{}') || {};
+            } catch (err) {
+                return {};
+            }
+        }
+
+        function getResolutionChoices() {
+            const payload = getResolutionPayload();
+            const payloadRatios = payload.ratios && typeof payload.ratios === 'object' ? payload.ratios : {};
+            const fallbacks = resolutionSource.ratioFallbacks || {};
+            const ratios = Object.keys(payloadRatios).length ? payloadRatios : fallbacks;
+            const templates = Object.keys(ratios);
+            const defaultTemplate = String(payload.defaultTemplate || '').trim();
+            const firstTemplate = (defaultTemplate && templates.includes(defaultTemplate)) ? defaultTemplate : (templates.includes('SDXL') ? 'SDXL' : (templates[0] || 'SDXL'));
+            const flatRatios = [];
+            Object.values(ratios).forEach((items) => {
+                if (Array.isArray(items)) items.forEach(item => { if (!flatRatios.includes(item)) flatRatios.push(item); });
+            });
+            return {
+                templates: templates.length ? templates : Object.keys(fallbacks),
+                ratios,
+                firstTemplate,
+                flatRatios: flatRatios.length ? flatRatios : ['1024*1024', '832*1216', '1216*832'],
+                quantizeSteps: Array.isArray(payload.quantizeSteps) ? payload.quantizeSteps : [1, 8, 16, 32, 64],
+                editModes: mergeChoices(['proportional', 'crop', 'scale', 'pad', ...(Array.isArray(payload.editModes) ? payload.editModes : [])])
+            };
+        }
+
+        function normalizeResolutionTemplateName(value, choices) {
+            const text = String(value || '').trim();
+            if (text.toLowerCase() === 'preset') return 'Preset';
+            const templates = choices && Array.isArray(choices.templates) ? choices.templates : Object.keys(resolutionSource.ratioFallbacks || {});
+            if (text && templates.includes(text)) return text;
+            const lower = text.toLowerCase();
+            const matched = templates.find(item => String(item || '').toLowerCase() === lower);
+            if (matched) return matched;
+            return choices?.firstTemplate || (templates.includes('SDXL') ? 'SDXL' : (templates[0] || 'SDXL'));
+        }
+
+        function getResolutionTargetPreset(configNode) {
+            if (!configNode || configNode.type !== 'config' || configNode.config_kind !== 'resolution') return null;
+            const project = call(nodeSource, 'getProject', { edges: [] });
+            const edge = project.edges.find(item => item.type === 'config' && item.from === configNode.id && item.slot === 'resolution');
+            return edge ? call(nodeSource, 'getNode', null, edge.to) : call(nodeSource, 'getNode', null, configNode.target_preset_id);
+        }
+
+        function getResolutionRenderValues(configNode) {
+            const raw = cloneRunValue(configNode?.config?.values || {}, {});
+            const preset = getResolutionTargetPreset(configNode);
+            const sourceConfig = preset ? getPresetConfigSource(preset, 'resolution') : null;
+            const defaults = sourceConfig?.defaults && Object.keys(sourceConfig.defaults).length
+                ? cloneRunValue(sourceConfig.defaults, {})
+                : cloneRunValue(configNode?.config?.defaults || {}, {});
+            const profile = normalizeResolutionProfile(defaults);
+            const sourceSize = getResolutionSourceSize(preset, profile);
+            raw.profile = profile;
+            raw.defaults = defaults;
+            if (!raw.template) {
+                raw.template = profile.mode
+                    ? 'Preset'
+                    : normalizeResolutionTemplateName(defaults.template || defaults.default_template || defaults.available_aspect_ratios_selection, getResolutionChoices());
+            }
+            if (sourceSize) raw.source_size = sourceSize;
+            if (!raw.aspect_ratio) {
+                const choices = getResolutionChoices();
+                const template = normalizeResolutionTemplateName(
+                    raw.template || defaults.template || defaults.default_template || defaults.available_aspect_ratios_selection,
+                    choices
+                );
+                const templateRatios = template === 'Preset'
+                    ? (Array.isArray(profile.aspect_ratios) ? profile.aspect_ratios : [])
+                    : (choices.ratios[template] || choices.flatRatios || []);
+                if (Array.isArray(templateRatios) && templateRatios.length) raw.aspect_ratio = templateRatios[0];
+            }
+            return raw;
+        }
 
         function resolveClassicInpaintTaskMethod(node) {
             const engines = call(classicSource, 'getClassicInpaintEngines', {}) || {};
@@ -52,6 +225,25 @@
 
         function getClassicIpCount(node) {
             return clampValue(Number(node?.classic_ip_count || 1), 1, getClassicIpMaxImages(node));
+        }
+
+        function getVisibleClassicUploadSlots(node) {
+            const mode = node?.classic_mode || 't2i';
+            const slots = [];
+            if (mode === 'ip') {
+                const count = getClassicIpCount(node);
+                for (let i = 0; i < count; i++) {
+                    slots.push({ key: `ip_image_${i}`, label: `IP Image ${i + 1}` });
+                }
+            } else if (mode === 'uov') {
+                slots.push({ key: 'uov_image', label: 'Source Image' });
+            } else if (mode === 'inpaint') {
+                slots.push({ key: 'inpaint_image', label: 'Source Image' });
+                slots.push({ key: 'inpaint_mask', label: 'Mask' });
+            } else if (mode === 'enhance') {
+                slots.push({ key: 'enhance_image', label: 'Source Image' });
+            }
+            return slots;
         }
 
         function getClassicIpTypes(node) {
@@ -241,7 +433,7 @@
         }
 
         function getPresetConfigSource(presetNode, kind) {
-            const configKey = call(configSource, 'configKeyForKind', '', kind);
+            const configKey = configKeyForKind(kind);
             const existing = presetNode?.[configKey] && typeof presetNode[configKey] === 'object'
                 ? cloneRunValue(presetNode[configKey], {})
                 : { defaults: {}, overrides: {} };
@@ -271,6 +463,141 @@
                 const model = source.model || 'None';
                 return { enabled: source.enabled !== undefined ? !!source.enabled : true, model, weight: source.weight ?? 1 };
             });
+        }
+
+        function resolutionGcd(a, b) {
+            let x = Math.abs(Math.round(Number(a) || 0));
+            let y = Math.abs(Math.round(Number(b) || 0));
+            while (y) {
+                const next = x % y;
+                x = y;
+                y = next;
+            }
+            return x || 1;
+        }
+
+        function resolutionRatioLabel(width, height) {
+            const w = Math.max(1, Math.round(Number(width) || 1));
+            const h = Math.max(1, Math.round(Number(height) || 1));
+            const divisor = resolutionGcd(w, h);
+            return `${Math.round(w / divisor)}:${Math.round(h / divisor)}`;
+        }
+
+        function resolutionUsesManualSize(values) {
+            return values && values.manual !== false && Number(values.width) > 0 && Number(values.height) > 0;
+        }
+
+        function resolutionManualSizeLabel(values, preview) {
+            if (!resolutionUsesManualSize(values)) return '';
+            const width = Math.round(Number(preview?.width || values.width) || 0);
+            const height = Math.round(Number(preview?.height || values.height) || 0);
+            if (width <= 0 || height <= 0) return '';
+            return `Custom ${width}×${height} | ${resolutionRatioLabel(width, height)}`;
+        }
+
+        function parseResolutionRatio(value) {
+            const text = String(value || '').trim();
+            const pipeHead = text.split('|', 1)[0].trim();
+            const pipeKind = pipeHead.toLowerCase().replace(/[\s-]+/g, '_');
+            if (['origin', 'original', 'source', 'no_resize', 'noresize'].includes(pipeKind)) {
+                return { w: 0, h: 0, origin: true };
+            }
+            const size = pipeHead.match(/(\d+)\s*[*x×]\s*(\d+)/i) || text.match(/(\d+)\s*[*x×]\s*(\d+)/i);
+            if (size) {
+                const w = Number(size[1]);
+                const h = Number(size[2]);
+                if (w > 0 && h > 0) return { w, h };
+            }
+            const area = /^\d+$/.test(pipeHead) ? Number.parseInt(pipeHead, 10) : 0;
+            if (area > 0 && text.includes('|')) {
+                return { w: area, h: area, area };
+            }
+            const ratio = text.match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
+            if (ratio) {
+                const w = Number(ratio[1]);
+                const h = Number(ratio[2]);
+                if (w > 0 && h > 0) return { w, h };
+            }
+            return { w: 1, h: 1 };
+        }
+
+        function quantizeResolutionValue(value, step) {
+            const q = Math.max(1, Number(step) || 1);
+            return Math.max(q, Math.round((Number(value) || 0) / q) * q);
+        }
+
+        function normalizeResolutionProfile(defaults) {
+            const source = defaults && typeof defaults === 'object' ? defaults : {};
+            const profile = source.mode
+                ? cloneRunValue(source, {})
+                : source.resolution_control && typeof source.resolution_control === 'object'
+                ? cloneRunValue(source.resolution_control, {})
+                : {};
+            const aspectRatios = Array.isArray(profile.aspect_ratios) && profile.aspect_ratios.length
+                ? profile.aspect_ratios
+                : (Array.isArray(source.aspect_ratios) ? source.aspect_ratios : []);
+            if (aspectRatios.length) profile.aspect_ratios = aspectRatios.map(item => String(item));
+            profile.mode = String(profile.mode || '').trim();
+            profile.source = profile.source || 'scene_canvas_image';
+            const defaultWidth = Number(source.default_overwrite_width || 0) > 0 ? Number(source.default_overwrite_width) : 0;
+            const defaultHeight = Number(source.default_overwrite_height || 0) > 0 ? Number(source.default_overwrite_height) : 0;
+            profile.base_width = Math.max(1, Number(profile.base_width || 0) || defaultWidth || 1024);
+            profile.base_height = Math.max(1, Number(profile.base_height || 0) || defaultHeight || 1024);
+            profile.quantize = Math.max(1, Number(profile.quantize || source.default_resolution_quantize_step || 8) || 8);
+            profile.interactive = profile.interactive !== false;
+            return profile;
+        }
+
+        function projectKeepInputArea(sourceSize, baseWidth, baseHeight, step) {
+            const srcW = Math.max(1, Number(sourceSize?.width) || 1);
+            const srcH = Math.max(1, Number(sourceSize?.height) || 1);
+            const area = Math.max(1, Number(baseWidth || 640) * Number(baseHeight || 640));
+            const ratio = srcW / srcH;
+            return {
+                width: quantizeResolutionValue(Math.sqrt(area * ratio), step),
+                height: quantizeResolutionValue(Math.sqrt(area / ratio), step)
+            };
+        }
+
+        function resolveResolutionBaseDims(values, ratios) {
+            const profile = normalizeResolutionProfile(values?.profile || values?.defaults || {});
+            const selected = values.aspect_ratio || (Array.isArray(ratios) ? ratios[0] : '') || values.default_aspect_ratio || '1024*1024';
+            const parsed = parseResolutionRatio(selected);
+            const sourceSize = values.source_size || null;
+            if (parsed.origin && sourceSize?.width > 0 && sourceSize?.height > 0) {
+                return { width: sourceSize.width, height: sourceSize.height };
+            }
+            if (['image_keep_input_area', 'video_keep_input_area'].includes(profile.mode)) {
+                const base = parsed.area ? { width: parsed.w, height: parsed.h } : { width: profile.base_width, height: profile.base_height };
+                return sourceSize
+                    ? projectKeepInputArea(sourceSize, base.width, base.height, values.quantize || profile.quantize || 8)
+                    : { width: base.width, height: base.height };
+            }
+            if (values.manual !== false && Number(values.width) > 0 && Number(values.height) > 0) {
+                return { width: Number(values.width), height: Number(values.height) };
+            }
+            return { width: parsed.w || profile.base_width || 1024, height: parsed.h || profile.base_height || 1024 };
+        }
+
+        function getResolutionPreview(values, ratios) {
+            const dims = resolveResolutionBaseDims(values || {}, ratios);
+            const multiplier = clampValue(Number(values.multiplier || 1) || 1, 1, 2);
+            const step = Math.max(1, Number(values.quantize || 8) || 8);
+            const width = Math.max(1, Number(dims.width) || 1);
+            const height = Math.max(1, Number(dims.height) || 1);
+            const effectiveW = quantizeResolutionValue(width * multiplier, step);
+            const effectiveH = quantizeResolutionValue(height * multiplier, step);
+            const scale = Math.min(1, 140 / Math.max(effectiveW, effectiveH));
+            return {
+                boxW: clampValue((effectiveW * scale / 140) * 88, 12, 88),
+                boxH: clampValue((effectiveH * scale / 140) * 88, 12, 88),
+                label: `${Math.round(effectiveW)}×${Math.round(effectiveH)}`,
+                baseLabel: `${Math.round(width)}×${Math.round(height)}`,
+                effectiveW,
+                effectiveH,
+                width,
+                height
+            };
         }
 
         function getResolutionSourceSize(presetNode, profile) {
@@ -323,12 +650,12 @@
             const defaults = sourceConfig.defaults || {};
             const overrides = sourceConfig.overrides || {};
             if (kind === 'resolution') {
-                const choices = call(resolutionSource, 'getResolutionChoices', { ratios: {} });
-                const profile = call(resolutionSource, 'normalizeResolutionProfile', {}, defaults);
+                const choices = getResolutionChoices();
+                const profile = normalizeResolutionProfile(defaults);
                 const profileRatios = Array.isArray(profile.aspect_ratios) ? profile.aspect_ratios : [];
                 const template = profile.mode
                     ? 'Preset'
-                    : call(resolutionSource, 'normalizeResolutionTemplateName', '',
+                    : normalizeResolutionTemplateName(
                         overrides.template || defaults.template || defaults.default_template || defaults.available_aspect_ratios_selection,
                         choices);
                 const templateRatios = template === 'Preset'
@@ -345,7 +672,7 @@
                     multiplier: Number(overrides.multiplier || defaults.multiplier || defaults.default_resolution_multiplier || 1),
                     edit_mode: overrides.edit_mode || defaults.edit_mode || defaults.default_resolution_edit_mode || 'scale'
                 };
-                const baseDims = call(resolutionSource, 'resolveResolutionBaseDims', {}, baseValues, templateRatios);
+                const baseDims = resolveResolutionBaseDims(baseValues, templateRatios);
                 return Object.assign({
                     template,
                     aspect_ratio: aspectRatio,
@@ -392,13 +719,19 @@
         }
 
         return {
+            isPresetConfigKind, configKeyForKind,
+            getPresetSchema, getPresetTheme, getPresetThemeInfo, getVisibleUploadSlots, getSlotLabel,
             getPresetCatalogEntryForNode, getPresetConfigSource, normalizeInitialConfigLoras, buildInitialConfigValues,
-            getResolutionSourceSize,
+            configNumberValue, boundedConfigNumberValue, configTextValue, mergeChoices,
+            getResolutionChoices, normalizeResolutionTemplateName, getResolutionRenderValues,
+            getResolutionSourceSize, resolutionManualSizeLabel, quantizeResolutionValue,
+            normalizeResolutionProfile, resolveResolutionBaseDims, getResolutionPreview,
             normalizeStyleSelections, firstStyleConfigValue, styleConfigSelectionFromValues,
             canvasBoolValue, enhanceRegionKey, detectionSlotForRegion, parseDetectionSlot,
             getClassicEnhanceRegionDefault, getClassicEnhanceRegionValues,
             applyClassicEnhanceRegionValues, getDetectionConfigLabel,
-            getClassicIpMaxImages, getClassicIpCount, getClassicIpTypes, getClassicUovMethods,
+            getClassicIpMaxImages, getClassicIpCount, getVisibleClassicUploadSlots,
+            getClassicIpTypes, getClassicUovMethods,
             getClassicInpaintEngines, resolveClassicInpaintTaskMethod, normalizeClassicInpaintMode,
             getInpaintModeDefaults
         };

@@ -538,7 +538,9 @@
         const stripCanvasAgentPresetFromPrompt = (...args) => promptCall('stripCanvasAgentPresetFromPrompt', String(args[0] ?? ''), ...args);
         const findCanvasAgentPresetEntryByAlias = (...args) => promptCall('findCanvasAgentPresetEntryByAlias', null, ...args);
         const canvasAgentPromptNeedsTargetRewrite = (...args) => !!promptCall('canvasAgentPromptNeedsTargetRewrite', false, ...args);
-        const vlmAgentDanbooruPromptNeedsForcedCanonicalRepair = (...args) => !!promptCall('vlmAgentDanbooruPromptNeedsForcedCanonicalRepair', false, ...args);
+        const canvasAgentPromptLooksDanbooru = (...args) => !!promptCall('canvasAgentPromptLooksDanbooru', false, ...args);
+        const canvasAgentCanonicalDanbooruTagsFromPrompt = (...args) => promptCall('canvasAgentCanonicalDanbooruTagsFromPrompt', [], ...args);
+        const canvasAgentRepairMultiCharacterDanbooruTags = (...args) => promptCall('canvasAgentRepairMultiCharacterDanbooruTags', [], ...args);
         const canvasAgentDanbooruFallbackRewrite = (...args) => promptCall('canvasAgentDanbooruFallbackRewrite', '', ...args);
         const canvasAgentMergeDanbooruPromptWithContext = (...args) => promptCall('canvasAgentMergeDanbooruPromptWithContext', String(args[0] ?? ''), ...args);
         const canvasAgentCanonicalizeDanbooruPrompt = (...args) => promptCall('canvasAgentCanonicalizeDanbooruPrompt', String(args[0] ?? ''), ...args);
@@ -551,8 +553,40 @@
         const canvasAgentPromptPreflightFacts = (...args) => promptCall('canvasAgentPromptPreflightFacts', [], ...args);
         const canvasAgentPromptPreflight = (...args) => promptCall('canvasAgentPromptPreflight', null, ...args);
         const ensureCanvasAgentPromptMatchesTarget = (...args) => promptCall('ensureCanvasAgentPromptMatchesTarget', { ok: false }, ...args);
-        const vlmAgentPreparedPromptFastPath = (...args) => !!promptCall('vlmAgentPreparedPromptFastPath', false, ...args);
-        const vlmAgentLocalPromptPreflightPass = (...args) => promptCall('vlmAgentLocalPromptPreflightPass', null, ...args);
+        function vlmAgentDanbooruPromptNeedsForcedCanonicalRepair(prompt, userPrompt, subjectCounts) {
+            const text = String(prompt || '').trim();
+            if (!text) return true;
+            if (/[\u3400-\u9fff]/.test(text)) return true;
+            if (!canvasAgentPromptLooksDanbooru(text)) return true;
+            const tags = canvasAgentCanonicalDanbooruTagsFromPrompt(text);
+            const repaired = canvasAgentRepairMultiCharacterDanbooruTags(tags, userPrompt || text, subjectCounts || null);
+            return repaired.join(',') !== tags.join(',');
+        }
+
+        function vlmAgentPreparedPromptFastPath(prompt, target) {
+            const text = String(prompt || '').trim();
+            const key = String(target?.key || '');
+            if (!text || !key) return false;
+            if (key === 'sdxl_danbooru') return canvasAgentPromptLooksDanbooru(text);
+            if (key === 'flux_t5_en') return !/[\u3400-\u9fff]/.test(text);
+            return false;
+        }
+
+        function vlmAgentLocalPromptPreflightPass(prompt, target, action, purpose) {
+            return {
+                ok: true,
+                state: 'pass',
+                summary: 'Prompt accepted by local fast path.',
+                checks: [{ level: 'pass', code: 'vlm_fast_path', message: 'Prepared prompt matches the target format locally.' }],
+                matches: [],
+                unmatched_terms: [],
+                preset_defaults: { styles: [], negative_prompt: '' },
+                prompt_target: target || {},
+                wildcard_preview: null,
+                action: action || '',
+                purpose: purpose || ''
+            };
+        }
         const getWorkbenchUserContext = (...args) => backendContextCall('getWorkbenchUserContext', {}, ...args);
         const wildcardsPreview = (...args) => wildcardCall('wildcardsPreview', null, ...args);
         const prepareVlmAgentImageActionStart = (...args) => agentActionCall('prepareVlmAgentImageActionStart', undefined, ...args);
@@ -3887,6 +3921,9 @@
             cleanVlmToolPrompt,
             extractVlmPreparedImagePrompt,
             vlmAgentCleanActionPrompt,
+            vlmAgentDanbooruPromptNeedsForcedCanonicalRepair,
+            vlmAgentPreparedPromptFastPath,
+            vlmAgentLocalPromptPreflightPass,
             vlmAgentActionExecutionState,
             vlmAgentActionNeedsVisibleControls,
             shouldCollapseVlmChatActionDetails,

@@ -75,6 +75,7 @@
     const WORKBENCH_CANVAS_TAG_CART = window.SimpAICanvasWorkbenchTagCart || {};
     const WORKBENCH_CANVAS_TOAST = window.SimpAICanvasWorkbenchToast || {};
     const WORKBENCH_CANVAS_WILDCARDS_V2 = window.SimpAICanvasWorkbenchWildcardsV2 || {};
+    const WORKBENCH_CANVAS_WILDCARDS_RUNTIME = window.SimpAICanvasWorkbenchWildcardsRuntime || {};
     const WORKBENCH_CANVAS_MINIMAP = window.SimpAICanvasWorkbenchMinimap || {};
     const WORKBENCH_CANVAS_GROUP_INTERACTION = window.SimpAICanvasWorkbenchGroupInteraction || {};
     const WORKBENCH_CANVAS_GROUP_RENDERER = window.SimpAICanvasWorkbenchGroupRenderer || {};
@@ -529,39 +530,14 @@
     const scheduleAutoPresetModelChecks = (...args) => CANVAS_PRESET_MODEL_STATUS_CONTROLLER?.scheduleAutoPresetModelChecks?.(...args);
     const schedulePresetModelListRefreshes = (...args) => CANVAS_PRESET_MODEL_STATUS_CONTROLLER?.schedulePresetModelListRefreshes?.(...args);
     const showToast = (...args) => CANVAS_TOAST_CONTROLLER?.showToast?.(...args);
-    let standaloneLayerForgePromise = null;
-    function loadStandaloneLayerForge() {
-        if (standaloneLayerForgePromise) return standaloneLayerForgePromise;
-        standaloneLayerForgePromise = (async () => {
-            for (const path of ['javascript/umd.min.js', 'javascript/layerforge_integration.js']) {
-                const src = WORKBENCH_UTILS.workbenchStaticFilePath(path, document);
-                await new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.src = `${src}${src.includes('?') ? '&' : '?'}v=${Date.now()}`;
-                    script.onload = resolve;
-                    script.onerror = () => {
-                        script.remove();
-                        reject(new Error(`Failed to load LayerForge script: ${path}`));
-                    };
-                    document.head.appendChild(script);
-                });
-            }
-            return true;
-        })().catch((err) => {
-            standaloneLayerForgePromise = null;
-            throw err;
-        });
-        return standaloneLayerForgePromise;
-    }
     const CANVAS_LAZY_ASSET_RUNTIME_CONTROLLER = typeof WORKBENCH_CANVAS_LAZY_ASSET_RUNTIME.createCanvasLazyAssetRuntimeController === 'function'
         ? WORKBENCH_CANVAS_LAZY_ASSET_RUNTIME.createCanvasLazyAssetRuntimeController({
             lazyAssetRuntimeSource: {
                 runtimeSource: {
-                    hasLazyAssetGroupLoader: groupName => typeof window.loadSimpleAILazyAssetGroup === 'function'
-                        || (groupName === 'layerForge' && window.SimpAIInfiniteCanvasStandalone === true),
-                    loadLazyAssetGroup: groupName => typeof window.loadSimpleAILazyAssetGroup === 'function'
-                        ? window.loadSimpleAILazyAssetGroup(groupName)
-                        : loadStandaloneLayerForge(),
+                    getLazyAssetGroupLoader: () => window.loadSimpleAILazyAssetGroup,
+                    getLayerForgeAdapter: () => window.SimpAILayerForgeAdapter,
+                    getDocument: () => document,
+                    workbenchStaticFilePath: path => WORKBENCH_UTILS.workbenchStaticFilePath(path, document),
                     warn: (...args) => console.warn(...args),
                     showToast
                 }
@@ -603,6 +579,7 @@
     const renderClassicInspectorFromRenderer = (...args) => CANVAS_PRESET_NODE_RENDERER?.renderClassicInspector?.(...args) || '';
     const renderPresetInspectorFromRenderer = (...args) => CANVAS_PRESET_NODE_RENDERER?.renderPresetInspector?.(...args) || '';
     const renderWd14NodeHtml = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderWd14NodeHtml?.(...args) || '';
+    const renderWildcardsHelperNodeHtml = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderWildcardsHelperNodeHtml?.(...args) || '';
     const buildVlmNode = (...args) => CANVAS_VLM_NODE_CONTROLLER?.buildVlmNode?.(...args) || null;
     const buildVlmModelUnknownStatus = (...args) => CANVAS_VLM_NODE_CONTROLLER?.buildVlmModelUnknownStatus?.(...args) || null;
     const buildVlmModelCheckingStatus = (...args) => CANVAS_VLM_NODE_CONTROLLER?.buildVlmModelCheckingStatus?.(...args) || null;
@@ -838,6 +815,7 @@
         adapterSource: { getAdapter: () => window.SimpAITagCartAdapter || null },
         domSource: {
             getRoot: () => root,
+            hasNodesLayer: () => !!nodesLayer,
             getNodeElement: id => nodesLayer?.querySelector('[data-node-id="' + cssEscape(id) + '"]') || null,
             getInlineHost: nodeEl => nodeEl?.querySelector('[data-tag-cart-inline-host]') || null,
             removeInlineReopenButtons: host => host?.querySelectorAll('.sai-tag-cart-inline-reopen').forEach(item => item.remove())
@@ -880,7 +858,6 @@
             isPresetNode: (node) => !!node && ['preset', 'classic'].includes(node.type)
         },
         modelSource: {
-            presetModelStatusState: (...args) => presetModelStatusState(...args),
             buildPresetModelStatusPatch: (...args) => buildPresetModelStatusPatch(...args),
             buildPresetModelCheckingStatus: (...args) => buildPresetModelCheckingStatus(...args),
             sendCanvasPresetModelStatusRequest: (...args) => sendCanvasPresetModelStatusRequest(...args),
@@ -954,7 +931,7 @@
                 : null
         },
         mutationSource: {
-            appendWildcardTagToNodeParam: (...args) => appendWildcardTagToNodeParam(...args),
+            updateNodeParam: (...args) => updateNodeParam(...args),
             addWildcardsHelperNode: (...args) => addWildcardsHelperNode(...args)
         },
         runtimeSource: {
@@ -1704,6 +1681,7 @@
     const EDGE_RENDERER_CONTEXT_SOURCE = {
         domSource: {
             getRoot: () => root,
+            getDocument: () => document,
             getEdgesLayer: () => edgesLayer,
             getEdgesCanvas: () => edgesCanvas,
             getNodesLayer: () => nodesLayer
@@ -1714,15 +1692,11 @@
         projectSource: { getProject: () => project },
         geometrySource: {
             getEdgeSvgBounds: (...args) => getEdgeSvgBounds(...args),
-            getEdgeCanvasBounds,
+            getVisibleWorldRect: (...args) => getVisibleWorldRect(...args),
             getEdgeRenderWorldRect: (...args) => getEdgeRenderWorldRect(...args),
             cssEscape,
-            createEdgePointCache,
             shouldRenderEdgeInViewport: (...args) => shouldRenderEdgeInViewport(...args),
-            getCachedOutputPoint,
-            getCachedInputPoint,
-            curvePath,
-            publishEdgePointCacheStats
+            curvePath
         },
         nodeSource: {
             defaultNodeSize: (...args) => defaultNodeSize(...args),
@@ -1733,9 +1707,10 @@
         edgeIndexSource: { getIncidentEdgeRecordsForNodeIds },
         renderSource: {
             shouldUseCanvasEdgeRendering,
-            edgeLabelText,
+            getSlotLabel: (...args) => getSlotLabel(...args),
             escapeHtml
         },
+        configSource: { edgePointCacheMinEdges: () => EDGE_POINT_CACHE_MIN_EDGES },
         selectionSource: {
             getSelectedEdgeId: () => selectedEdgeId,
             updateSelectionDomClasses: (...args) => updateSelectionDomClasses(...args)
@@ -1747,9 +1722,7 @@
         timingSource: { performanceNow: () => canvasPerformanceNow() },
         connectionSource: {
             isConnecting: (...args) => isConnecting(...args),
-            resetTempEdge: () => { tempEdge = null; },
-            updateTempEdge: (...args) => updateTempEdge(...args),
-            clearTempEdge
+            updateTempEdge: (...args) => updateTempEdge(...args)
         },
         perfSource: { getPerfStats: () => perfStats },
         viewportSource: { clientToWorld }
@@ -1757,6 +1730,7 @@
     const CANVAS_EDGE_RENDERER = typeof WORKBENCH_CANVAS_EDGE_RENDERER.createCanvasEdgeRenderer === 'function'
         ? WORKBENCH_CANVAS_EDGE_RENDERER.createCanvasEdgeRenderer({ edgeRendererSource: EDGE_RENDERER_CONTEXT_SOURCE })
         : {};
+    const renderTempEdge = state => CANVAS_EDGE_RENDERER.renderTempEdge(state);
     const GROUP_RENDERER_CONTEXT_SOURCE = {
         domSource: {
             getGroupsLayer: () => groupsLayer,
@@ -2861,6 +2835,7 @@
                     mediaAspectStyle,
                     inferChatImageRelativePath: (...args) => inferChatImageRelativePath(...args),
                     localizedDefaultTitle,
+                    formatBytes: WORKBENCH_UTILS.formatBytes,
                 },
                 renderSource: {
                     renderNodeStateBadges: (...args) => CANVAS_NODE_RENDERER?.renderNodeStateBadges?.(...args) || '',
@@ -2891,7 +2866,6 @@
                      mediaBrowserRuntimeFor,
                      isGalleryFrostEnabled,
                      selectedMediaBrowserItemFrom,
-                     mediaBrowserItemMeta,
                      danbooruPostMediaType: (...args) => danbooruPostMediaType(...args),
                  },
                  maskNodeSource: {
@@ -2950,15 +2924,24 @@
                       clamp,
                   },
                   nodeSource: {
+                      collapsedPromptDefaultHeight: COLLAPSED_PROMPT_NODE_DEFAULT_HEIGHT,
                       collapsedPromptMinHeight: COLLAPSED_PROMPT_NODE_MIN_HEIGHT,
-                      collapsedPromptNodeHeight: (node) => collapsedPromptNodeHeight(node),
+                      collapsedPromptMaxHeight: COLLAPSED_PROMPT_NODE_MAX_HEIGHT,
+                      collapsedPromptPortRowHeight: COLLAPSED_PROMPT_PORT_ROW_HEIGHT,
+                      collapsedPromptTextBlockHeight: COLLAPSED_PROMPT_TEXT_BLOCK_HEIGHT,
                       defaultNodeSize,
                       buildVlmNodeSizePatch,
-                      supportsCollapsedPromptHeight: (node) => supportsCollapsedPromptHeight(node),
+                      isNodeCollapsed: (node) => isNodeCollapsed(node),
+                      getVisibleUploadSlots: (node) => getVisibleUploadSlots(node),
+                      getVisibleClassicUploadSlots: (node) => getVisibleClassicUploadSlots(node),
+                      getPresetConfigKinds: () => PRESET_CONFIG_KINDS,
+                      getVisiblePresetParams: (node) => getVisiblePresetParams(node),
                       getMeasuredNodeLayout: (...args) => CANVAS_NODE_RENDER_CONTROLLER?.getMeasuredNodeLayout?.(...args) || null,
                   },
                   projectSource: {
+                      hasProject: () => !!project,
                       getProjectNodes: () => project?.nodes || [],
+                      getProjectEdges: () => project?.edges || [],
                   },
                   viewportSource: {
                       getVisibleWorldRect: (...args) => CANVAS_VIEWPORT_RENDER_CONTROLLER?.getVisibleWorldRect?.(...args) || {},
@@ -4219,14 +4202,7 @@
                       createGenerateEdge: (...args) => createGenerateEdge(...args),
                   },
                   renderSource: {
-                      renderTempEdge: (state) => {
-                          if (!state) {
-                              clearTempEdge();
-                              return;
-                          }
-                          const path = ensureTempEdge();
-                          path.setAttribute('d', curvePath(state.fromPoint, state.currentPoint));
-                      },
+                      renderTempEdge,
                       renderAll: (...args) => CANVAS_RENDER_CONTROLLER?.renderAll?.(...args),
                   },
                   actionSource: {
@@ -4386,7 +4362,7 @@
             syncGalleryFrostClass,
             localizedDefaultTitle,
             selectedMediaBrowserItemFrom,
-            mediaBrowserItemMeta,
+            mediaBrowserItemMeta: item => CANVAS_ASSET_NODE_RENDERER.mediaBrowserItemMeta(item),
             danbooruPostMediaType: (...args) => danbooruPostMediaType(...args),
             getNodeElement: (id) => nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(id)}"]`),
             nodeStatusState,
@@ -4627,23 +4603,13 @@
             connectSourceToTarget: (...args) => connectSourceToTarget(...args),
             setPendingConnection: (...args) => setPendingConnection(...args),
             openInputPortCreateMenu: (...args) => openInputPortCreateMenu(...args),
-            renderTempEdge: (state) => {
-                if (!state) {
-                    clearTempEdge();
-                    return;
-                }
-                const path = ensureTempEdge();
-                path.setAttribute('d', curvePath(state.fromPoint, state.currentPoint));
-            }
+            renderTempEdge
     };
     const RUN_STATE_CONTEXT_SOURCE = {};
     CANVAS_ASSET_MEDIA_CONTROLLER = typeof WORKBENCH_CANVAS_ASSET_MEDIA.createCanvasAssetMediaController === 'function'
         ? WORKBENCH_CANVAS_ASSET_MEDIA.createCanvasAssetMediaController()
         : {};
     const CONNECTION_MEDIA_SOURCE_CONTEXT = {
-        slotSource: {
-            getUploadSlotMediaKind: (...args) => getUploadSlotMediaKind(...args)
-        },
         batchSource: {
             batchAnyCanConnectToSlot: (...args) => batchAnyCanConnectToSlot(...args)
         },
@@ -5436,6 +5402,16 @@
         metadataSource: {
             mediaBrowserItemMetadata: (...args) => mediaBrowserItemMetadata(...args)
         },
+        networkSource: {
+            fetchLibraryMediaItem: async (mediaId) => {
+                const base = window.location.pathname.replace(/\/canvas-workbench\/app\/?$/, '');
+                const response = await window.fetch(`${base}/simpleai/gallery/api/items/${encodeURIComponent(mediaId)}/canvas`, {
+                    credentials: 'same-origin'
+                });
+                if (!response.ok) throw new Error(`Gallery media request failed: ${response.status}`);
+                return response.json();
+            }
+        },
         projectSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.projectSource,
         historySource: UPLOAD_CONNECTION_CONTEXT_SOURCE.historySource,
         languageSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.languageSource,
@@ -5875,20 +5851,19 @@
             normalizePresetName: (...args) => normalizePresetName(...args)
         },
         configSource: {
-            configKeyForKind: (...args) => configKeyForKind(...args),
-            configNumberValue: (...args) => configNumberValue(...args),
-            configTextValue: (...args) => configTextValue(...args)
+            presetConfigKinds: PRESET_CONFIG_KINDS,
+            slotOrder: SLOT_ORDER,
+            slotLabels: SLOT_LABELS
         },
         styleSource: {
             canvasAgentPresetPromptDefaults: (...args) => canvasAgentPresetPromptDefaults(...args)
         },
         resolutionSource: {
-            getResolutionChoices: (...args) => getResolutionChoices(...args),
-            normalizeResolutionProfile: (...args) => normalizeResolutionProfile(...args),
-            normalizeResolutionTemplateName: (...args) => normalizeResolutionTemplateName(...args),
-            resolveResolutionBaseDims: (...args) => resolveResolutionBaseDims(...args)
+            getDocument: () => document,
+            ratioFallbacks: WORKBENCH_RESOLUTION_RATIO_FALLBACKS
         },
         nodeSource: {
+            getProject: () => project,
             getNode: (...args) => getNode(...args),
             isNodeIgnored: (...args) => isNodeIgnored(...args)
         },
@@ -5966,7 +5941,8 @@
                 boundedConfigNumberValue: (...args) => boundedConfigNumberValue(...args),
                 configTextValue: (...args) => configTextValue(...args),
                 mergeChoices: (...args) => mergeChoices(...args),
-                getSelectOptionsFromDom: (...args) => getSelectOptionsFromDom(...args),
+                getDocument: () => document,
+                getGradioApp: () => typeof gradioApp === 'function' ? gradioApp() : null,
                 getSamplerChoices: () => ADVANCED_SAMPLER_CHOICES,
                 getSchedulerChoices: () => ADVANCED_SCHEDULER_CHOICES,
                 optionHtml: (...args) => optionHtml(...args),
@@ -6463,13 +6439,13 @@
             t
         },
         getProject: () => project,
+        getNode: (...args) => getNode(...args),
         getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
         assetMediaKind,
         uid,
         defaultNodeSize,
         buildQwenTtsStatePatch,
         buildProjectNodeAppendPatch,
-        getQwenTtsAudioInputLabel,
         getQwenTtsStylePresets: () => getQwenTtsStylePresetEntries(),
         mutate,
         placeNodeAvoidingOverlap,
@@ -6999,13 +6975,7 @@
                     runPresetNodeFromUi: (node) => runPresetNodeFromUi(node),
                     toggleTimelinePreviewPlayback: (node) => toggleTimelinePreviewPlayback(node),
                     playMediaSelection: (node) => playMediaSelection(node),
-                    toggleSelectedResultMediaPlayback: (node) => {
-                        const media = nodesLayer?.querySelector(`[data-node-id="${cssEscape(node.id)}"] video, [data-node-id="${cssEscape(node.id)}"] audio`);
-                        if (!media) return false;
-                        if (media.paused) media.play().catch(() => {});
-                        else media.pause();
-                        return true;
-                    },
+                    toggleSelectedResultMediaPlayback: (node) => CANVAS_MEDIA_PLAYBACK_CONTROLLER.toggleSelectedResultMediaPlayback(node),
                 },
                 selectionSource: {
                     deleteSelection: () => deleteSelection(),
@@ -8697,6 +8667,17 @@
                 }
             },
             settingsSource: {
+                languageSource: {
+                    getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                    t: (en, cn, state) => t(en, cn, state)
+                },
+                projectSource: {
+                    getProject: () => project,
+                    buildProjectSettingsMergePatch: (...args) => buildProjectSettingsMergePatch(...args)
+                },
+                historySource: {
+                    pushHistory: (...args) => pushHistory(...args)
+                },
                 panelSource: {
                     getCanvasSettingsPanel: () => canvasSettingsPanel,
                     getCanvasSettingsTab: () => canvasSettingsState.tab,
@@ -8705,7 +8686,8 @@
                 renderSource: {
                     renderCanvasSettingsPanel: (...args) => renderCanvasSettingsPanel(...args),
                     isCanvasAgentPresetScanIdle: () => getCanvasAgentPresetScanState().state === 'idle',
-                    refreshCanvasAgentAvailablePresets: (...args) => refreshCanvasAgentAvailablePresets(...args)
+                    refreshCanvasAgentAvailablePresets: (...args) => refreshCanvasAgentAvailablePresets(...args),
+                    mutate: (...args) => mutate(...args)
                 },
                 agentSettingsSource: {
                     getCanvasAgentSettings: (...args) => getCanvasAgentSettings(...args),
@@ -8721,11 +8703,11 @@
                     saveCurrentCanvasAsTemplate
                 },
                 generalSource: {
-                    toggleSetting: (...args) => toggleSetting(...args),
                     clearBrowserCache: (...args) => clearBrowserCache(...args),
                     clearProjectFileWithConfirm: (...args) => clearProjectFileWithConfirm(...args)
                 },
                 siblingPanelSource: {
+                    openContextMenu: (...args) => openContextMenu(...args),
                     closeContextMenu: (...args) => closeContextMenu(...args),
                     closeRunQueuePanel: (...args) => closeRunQueuePanel(...args),
                     closeRunHistoryPanel: (...args) => closeRunHistoryPanel(...args)
@@ -8868,7 +8850,8 @@
                 domSource: {
                     getRoot: () => root,
                     getViewport: () => viewport,
-                    getWindow: () => window
+                    getWindow: () => window,
+                    getDocument: () => document
                 },
                 projectSource: {
                     getProject: () => project,
@@ -8880,7 +8863,12 @@
                 renderSource: {
                     applyThemeClass: (...args) => applyThemeClass(...args),
                     resetGalleryFrostReveals: (...args) => resetGalleryFrostReveals(...args),
-                    renderAll: (...args) => renderAll(...args)
+                    renderAll: (...args) => renderAll(...args),
+                    renderSystemInfo: (...args) => renderSystemInfo(...args),
+                    renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
+                    hasSelectedNode: () => !!selectedNodeId,
+                    renderInspector: (...args) => renderInspector(...args),
+                    setCanvasBackendAlert: (...args) => setCanvasBackendAlert(...args)
                 },
                 presetSource: {
                     refreshPresetCatalog: (...args) => refreshPresetCatalog(...args),
@@ -8910,7 +8898,18 @@
                 },
                 timerSource: {
                     setTimeout: (...args) => window.setTimeout(...args)
-                }
+                },
+                galleryImportSource: {
+                    getPendingMediaId: () => new URLSearchParams(window.location.search).get('gallery_media_id') || '',
+                    importMediaById: (mediaId) => CANVAS_MEDIA_IMPORT_CONTROLLER.importLibraryMediaById(mediaId),
+                    clearPendingMediaId: (mediaId) => {
+                        const url = new URL(window.location.href);
+                        if (url.searchParams.get('gallery_media_id') !== mediaId) return;
+                        url.searchParams.delete('gallery_media_id');
+                        window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+                    }
+                },
+                languageSource: { t }
             }
         })
         : {};
@@ -9188,7 +9187,9 @@
             renderSource: {
                 resetRenderedProjectDomCache,
                 renderAll,
-                resetGalleryFrostReveals
+                resetGalleryFrostReveals,
+                invalidateMinimapStaticCache,
+                invalidateNodeSpatialIndex
             },
             domSource: {
                 getRoot: () => root
@@ -9441,6 +9442,9 @@
         },
         nodeSource: {
             getNode: (...args) => getNode(...args),
+            getProject: () => project,
+            getVisibleClassicUploadSlots: (...args) => getVisibleClassicUploadSlots(...args),
+            getVisibleUploadSlots: (...args) => getVisibleUploadSlots(...args),
             isNodeLocked: (...args) => isNodeLocked(...args)
         },
         stateSource: {
@@ -9454,8 +9458,8 @@
             buildNodeParamsPatch: (...args) => buildNodeParamsPatch(...args)
         },
         renderSource: {
-            refreshPresetSpecialControllerDom: (...args) => refreshPresetSpecialControllerDom(...args),
-            refreshPresetSpecialNodeDom: (...args) => refreshPresetSpecialNodeDom(...args)
+            nodeRenderKey: (...args) => nodeRenderKey(...args),
+            notConnectedText: (...args) => notConnectedText(...args)
         },
         persistenceSource: {
             nowIso: (...args) => nowIso(...args),
@@ -9511,6 +9515,9 @@
     const normalizeVideoSeekTarget = (...args) => MEDIA_SEEK_CONTROLLER.normalizeVideoSeekTarget?.(...args) ?? args[1];
     const MEDIA_EDIT_CONTEXT_SOURCE = {
         fileSource: MEDIA_HELPERS_CONTEXT,
+        transferSource: {
+            getTransferStation: () => window.SimpAITransferStation
+        },
         timeSource: {
             nowIso: (...args) => nowIso(...args)
         },
@@ -9649,6 +9656,7 @@
     }
     const CANVAS_MEDIA_PLAYBACK_CONTROLLER = WORKBENCH_CANVAS_MEDIA_PLAYBACK.createCanvasMediaPlaybackController({
         mediaPlaybackSource: {
+            domSource: { getNodesLayer: () => nodesLayer },
             nodeSource: {
                 getNode: (...args) => getNode(...args),
                 isNodeLocked: (...args) => isNodeLocked(...args)
@@ -9659,7 +9667,10 @@
                 buildMediaNodeStatePatch: (...args) => buildMediaNodeStatePatch(...args)
             },
             assetSource: { getMediaEditRange: (...args) => getMediaEditRange(...args) },
-            utilitySource: { clamp: (...args) => clamp(...args) },
+            utilitySource: {
+                clamp: (...args) => clamp(...args),
+                cssEscape: (...args) => cssEscape(...args)
+            },
             storageSource: { saveProjectToBrowserCache: (...args) => saveProjectToBrowserCache(...args) },
             renderSource: {
                 renderEdges: (...args) => renderEdges(...args),
@@ -10500,13 +10511,7 @@
                 getAgentState: () => canvasAgentState,
                 renderCanvasAgentPanel,
                 dockCanvasAgentPanelBottomLeft,
-                setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-                    selectedNodeId = nodeId;
-                    selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-                    selectedEdgeId = null;
-                    if (options?.clearGroup) selectedGroupId = null;
-                    else if (groupId !== undefined && groupId) selectedGroupId = groupId;
-                },
+                setCanvasAgentSelection: (...args) => CANVAS_SELECTION_CONTROLLER.setCanvasAgentSelection(...args),
                 mutate,
             }
     };
@@ -10621,7 +10626,7 @@
             languageSource: {
                 t,
                 tOption,
-                translationDirectionLabel,
+                getLanguageState: () => ({ __lang: runtimeUiLang() }),
                 tagCartLabel,
                 localizedDefaultTitle,
                 notConnectedText: (...args) => CANVAS_NODE_RENDERER?.notConnectedText?.(...args) || t('Not connected', '未连接')
@@ -10651,6 +10656,12 @@
             },
             autocompleteSource: {
                 danbooruAutocompleteAttrs,
+            },
+            wildcardsSource: {
+                getTargets: () => WILDCARDS_HELPER_TARGETS,
+                getMethods: () => WILDCARDS_HELPER_METHODS,
+                getSeedModes: () => WILDCARDS_HELPER_SEED_MODES,
+                wildcardHelperBuildTag: (...args) => wildcardHelperBuildTag(...args),
             }
         },
         vlmNodeSource: {
@@ -10862,7 +10873,9 @@
                 stripCanvasAgentPresetFromPrompt: (...args) => stripCanvasAgentPresetFromPrompt(...args),
                 findCanvasAgentPresetEntryByAlias,
                 canvasAgentPromptNeedsTargetRewrite,
-                vlmAgentDanbooruPromptNeedsForcedCanonicalRepair,
+                canvasAgentPromptLooksDanbooru,
+                canvasAgentCanonicalDanbooruTagsFromPrompt,
+                canvasAgentRepairMultiCharacterDanbooruTags,
                 canvasAgentDanbooruFallbackRewrite,
                 canvasAgentMergeDanbooruPromptWithContext,
                 canvasAgentCanonicalizeDanbooruPrompt,
@@ -10874,8 +10887,6 @@
                 canvasAgentPromptPreflightFacts,
                 canvasAgentPromptPreflight,
                 ensureCanvasAgentPromptMatchesTarget,
-                vlmAgentPreparedPromptFastPath,
-                vlmAgentLocalPromptPreflightPass,
             },
             agentActionSource: {
                 prepareVlmAgentImageActionStart: (...args) => CANVAS_AGENT_CONTEXT?.prepareVlmAgentImageActionStart?.(...args),
@@ -11067,6 +11078,8 @@
             nodeParamSource: {
                 domSource: {
                     getDocument: () => document,
+                    getNodesLayer: () => nodesLayer,
+                    cssEscape: (value) => cssEscape(value),
                 },
                 projectSource: {
                     getProject: () => project,
@@ -11154,6 +11167,10 @@
                 updateWildcardsHelperParam,
                 applyVlmSystemPromptTemplate,
                 handleVlmParamFieldChange,
+                updateSam3VideoMaskParam: (nodeId, key, value, inputType) =>
+                    sam3UpdateParam(nodeId, key, value, inputType, SAM3_VIDEO_MASK_NODE_CONTEXT),
+                updateCameraMotionParam: (nodeId, key, value, inputType) =>
+                    cameraMotionUpdateParam(nodeId, key, value, inputType, CAMERA_MOTION_NODE_CONTEXT),
                 updateQwenTtsParam,
                 deleteEdge: (...args) => deleteEdge(...args),
                 canvasRelightLightValue,
@@ -11165,7 +11182,6 @@
                     : '',
                 syncTextMergeOutputDom,
                 refreshTextMergeDependents,
-                syncNodeParamControlDom,
                 refreshPresetSpecialNodeDom,
                 handleInpaintModeChange,
                 handleUovMethodChange,
@@ -11439,13 +11455,7 @@
             showToast,
             clearCanvasAgentRunInfo,
             setCanvasAgentRunInfo,
-            setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-                selectedEdgeId = null;
-                if (options?.clearGroup) selectedGroupId = null;
-                else if (groupId !== undefined && groupId) selectedGroupId = groupId;
-            }
+            setCanvasAgentSelection: (...args) => CANVAS_SELECTION_CONTROLLER.setCanvasAgentSelection(...args)
         },
         runtimeSource: {
             ensureWorkbenchLazyRuntime,
@@ -11724,11 +11734,25 @@
         })
         : {};
     const RESULT_STATUS_DOM_CONTEXT_SOURCE = {
+        projectSource: {
+            getProject: () => project
+        },
+        domSource: {
+            getRoot: () => root,
+            getNodesLayer: () => nodesLayer
+        },
         stateSource: {
             isNodeVisuallyRunning: (...args) => isNodeVisuallyRunning(...args)
         },
+        renderSource: {
+            refreshResultNodePreviewDom: (...args) => refreshResultNodePreviewDom(...args),
+            refreshActiveResultInspector: (...args) => refreshActiveResultInspector(...args),
+            renderStatus: (...args) => renderStatus(...args),
+            renderRunQueuePanelIfOpen: (...args) => renderRunQueuePanelIfOpen(...args)
+        },
         utilitySource: {
-            clamp: (...args) => clamp(...args)
+            clamp: (...args) => clamp(...args),
+            escapeNodeId: (id) => CSS.escape(id)
         }
     };
     CANVAS_RESULT_STATUS_DOM_CONTROLLER = typeof WORKBENCH_CANVAS_RESULT_STATUS_DOM.createCanvasResultStatusDomController === 'function'
@@ -12167,13 +12191,7 @@
             runPresetNode,
             showToast,
             setCanvasAgentMessage,
-            setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-                selectedEdgeId = null;
-                if (options?.clearGroup) selectedGroupId = null;
-                else if (groupId !== undefined && groupId) selectedGroupId = groupId;
-            }
+            setCanvasAgentSelection: (...args) => CANVAS_SELECTION_CONTROLLER.setCanvasAgentSelection(...args)
         },
         patchSource: {
             buildResultSourcePatch,
@@ -12315,11 +12333,7 @@
                     mutate,
                     setCanvasAgentRunInfo,
                     clearCanvasAgentRunInfo,
-                    setCanvasAgentSelection: (nodeId) => {
-                        selectedNodeId = nodeId;
-                        selectedNodeIds = new Set([nodeId]);
-                        selectedEdgeId = null;
-                    }
+                    setCanvasAgentSelection: (nodeId) => CANVAS_SELECTION_CONTROLLER.selectCanvasAgentNode(nodeId)
                 },
                 runtimeSource: {
                     runPresetNode
@@ -12457,13 +12471,7 @@
                     setCanvasAgentMessage,
                     renderCanvasAgentPanel,
                     revealCanvasAgentPanelForToolCard,
-                    setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-                        selectedNodeId = nodeId;
-                        selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-                        selectedEdgeId = null;
-                        if (options?.clearGroup) selectedGroupId = null;
-                        else if (groupId !== undefined && groupId) selectedGroupId = groupId;
-                    }
+                    setCanvasAgentSelection: (...args) => CANVAS_SELECTION_CONTROLLER.setCanvasAgentSelection(...args)
                 },
                 decisionSource: {
                     askCanvasAgentDecision,
@@ -12567,13 +12575,10 @@
                     revealCanvasAgentPanelForToolCard,
                     showOutpaintOverlay,
                     hideOutpaintOverlay,
-                    setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-                        selectedNodeId = nodeId;
-                        selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-                        selectedEdgeId = null;
-                        if (options?.clearGroup) selectedGroupId = null;
-                        else if (groupId !== undefined) selectedGroupId = groupId || null;
-                    }
+                    setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) =>
+                        CANVAS_SELECTION_CONTROLLER.setCanvasAgentSelection(
+                            nodeId, nodeIds, groupId, Object.assign({}, options, { clearEmptyGroup: true })
+                        )
                 },
                 decisionSource: {
                     askCanvasAgentDecision,
@@ -12698,11 +12703,7 @@
                     showToast,
                     setCanvasAgentMessage,
                     renderCanvasAgentPanel,
-                    setCanvasAgentSelection: (nodeId) => {
-                        selectedNodeId = nodeId;
-                        selectedNodeIds = new Set([nodeId]);
-                        selectedEdgeId = null;
-                    }
+                    setCanvasAgentSelection: (nodeId) => CANVAS_SELECTION_CONTROLLER.selectCanvasAgentNode(nodeId)
                 },
                 referenceSource: {
                     normalizeCanvasAgentReferences,
@@ -13224,18 +13225,11 @@
     const buildAddNodeContextMenuItems = NODE_MENU_TOOLS.buildAddNodeContextMenuItems;
 
     function workbenchStaticFilePath(path) {
-        const resolved = WORKBENCH_UTILS.workbenchStaticFilePath?.(path, document);
-        if (resolved !== undefined) return resolved;
-        const rel = String(path || '').replace(/^\/+/, '');
-        return rel ? `/${rel}` : '';
+        return WORKBENCH_UTILS.workbenchStaticFilePath(path, document);
     }
 
     function resolveWorkbenchStaticPath(path) {
-        const resolved = WORKBENCH_UTILS.resolveWorkbenchStaticPath?.(path, document);
-        if (resolved !== undefined) return resolved;
-        const value = String(path || '').trim();
-        if (!value || /^(https?:|data:|blob:|\/)/i.test(value)) return value;
-        return workbenchStaticFilePath(value);
+        return WORKBENCH_UTILS.resolveWorkbenchStaticPath(path, document);
     }
 
     function localizeCanvasLabel(value, cnMap) {
@@ -13308,7 +13302,6 @@
     let stage = null;
     let edgesLayer = null;
     let edgesCanvas = null;
-    let tempEdge = null;
     let groupsLayer = null;
     let nodesLayer = null;
     let inspector = null;
@@ -13548,34 +13541,11 @@
     }
 
     function mutate(options) {
-        const opts = options || {};
-        const projectUpdatedAtPatch = buildProjectUpdatedAtPatch(project, { nowIso });
-        Object.assign(
-            project,
-            projectUpdatedAtPatch && typeof projectUpdatedAtPatch === 'object' && Object.keys(projectUpdatedAtPatch).length
-                ? projectUpdatedAtPatch
-                : { updated_at: nowIso() }
-        );
-        invalidateMinimapStaticCache();
-        invalidateNodeSpatialIndex();
-        scheduleSave();
-        renderAll(opts);
+        CANVAS_PROJECT_PERSISTENCE_CONTROLLER.mutate(options);
     }
 
-    /** Lightweight update for polling: only refresh status text/progress/asset on result nodes */
     function pollUpdate() {
-        if (!root || root.hidden) return;
-        project.nodes.forEach((node) => {
-            if (node.type !== 'result') return;
-            const nodeEl = nodesLayer?.querySelector(`[data-node-id="${CSS.escape(node.id)}"]`);
-            if (!nodeEl) return;
-            refreshResultStatusDom(node, nodeEl);
-            // Update preview image and asset media if HTML wasn't re-rendered
-            refreshResultNodePreviewDom(node, nodeEl);
-        });
-        refreshActiveResultInspector();
-        renderStatus();
-        renderRunQueuePanelIfOpen();
+        CANVAS_RESULT_STATUS_DOM_CONTROLLER.pollUpdate();
     }
 
     function ensureWorkbench() {
@@ -13598,7 +13568,7 @@
         const elements = shellRenderer.mountWorkbenchShell();
         if (!elements) return;
         ({
-            root, viewport, stage, groupsLayer, edgesCanvas, edgesLayer, tempEdge, nodesLayer,
+            root, viewport, stage, groupsLayer, edgesCanvas, edgesLayer, nodesLayer,
             chainRunOverlay, outpaintOverlayEl, canvasAgentPanel, inspector, palette, contextMenu,
             canvasSettingsPanel, runQueuePanel, runQueueWidget, runHistoryPanel, minimapEl, toastEl,
             systemInfoEl, backendAlertEl, perfHudEl, zoomLabel
@@ -13633,10 +13603,6 @@
             getDocument: () => document,
             cssEscape: value => CSS.escape(value)
         });
-    }
-
-    function modeButton(nextMode, icon, title) {
-        return `<button type="button" data-canvas-mode="${nextMode}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><i class="fa-solid ${icon}"></i></button>`;
     }
 
     function renderIconHtml(icon) {
@@ -13760,16 +13726,7 @@
 
 
     function detectWorkbenchTheme() {
-        const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
-            ? window.simpleaiTopbarSystemParams
-            : {};
-        return WORKBENCH_CANVAS_SHELL_RENDERER.detectWorkbenchTheme({
-            themeParams: params,
-            documentElementTheme: document.documentElement.getAttribute('data-theme'),
-            bodyTheme: document.body.getAttribute('data-theme'),
-            documentElementDark: document.documentElement.classList.contains('dark'),
-            bodyDark: document.body.classList.contains('dark')
-        });
+        return WORKBENCH_CANVAS_SHELL_RENDERER.detectWorkbenchThemeFromDocument(window, document);
     }
 
     function applyThemeClass() {
@@ -13886,40 +13843,11 @@
     }
 
     function restoreInlineTagCartAfterRender() {
-        if (!activeInlineTagCartNodeId || !nodesLayer) return;
-        const node = getNode(activeInlineTagCartNodeId);
-        if (!node || node.type !== 'tag_cart') {
-            activeInlineTagCartNodeId = '';
-            return;
-        }
-        const nodeEl = nodesLayer.querySelector(`[data-node-id="${CSS.escape(node.id)}"]`);
-        const inlineHost = nodeEl?.querySelector('[data-tag-cart-inline-host]');
-        if (!inlineHost) return;
-        if (inlineHost.querySelector('#app-root.tagcart-inline-root')) return;
-        openTagCartForNode(node, null, { restore: true });
+        return CANVAS_TAG_CART_CONTROLLER.restoreInlineTagCartAfterRender?.();
     }
 
     function nodeOverviewRenderSignature(node) {
-        if (!node) return '';
-        const asset = overviewNodeAsset(node);
-        return JSON.stringify({
-            type: node.type,
-            title: node.title || '',
-            kind: overviewNodeKindLabel(node),
-            state: nodeStatusState(node) || node.status?.state || '',
-            message: node.status?.message || '',
-            selected: node.id === selectedNodeId || selectedNodeIds.has(node.id),
-            locked: !!node.locked,
-            ignored: !!node.ignored,
-            stale: !!(isResultStale(node) || node.source?.stale || node.producer?.stale),
-            asset: mediaAssetRenderKey(asset),
-            inputs: overviewInputPortSignature(node),
-            output: overviewOutputKind(node)
-        });
-    }
-
-    function overviewInputPortSignature(node) {
-        return overviewInputPorts(node).map(port => `${port.kind}:${port.slot || ''}`).join('|');
+        return nodeRenderSignatureService.nodeOverviewRenderSignature(node);
     }
 
     const nodeRenderSignatureService = WORKBENCH_CANVAS_NODE_RENDER_SIGNATURE.createCanvasNodeRenderSignature({
@@ -13937,6 +13865,14 @@
         mediaBrowserSource: {
             serializableMediaBrowserState: (...args) => serializableMediaBrowserState(...args),
             mediaBrowserRuntimeSignature: (...args) => mediaBrowserRuntimeSignature(...args)
+        },
+        overviewSource: {
+            overviewNodeAsset: (...args) => overviewNodeAsset(...args),
+            overviewNodeKindLabel: (...args) => overviewNodeKindLabel(...args),
+            overviewInputPorts: (...args) => overviewInputPorts(...args),
+            overviewOutputKind: (...args) => overviewOutputKind(...args),
+            isNodeSelected: node => node.id === selectedNodeId || selectedNodeIds.has(node.id),
+            isResultStale: (...args) => isResultStale(...args)
         }
     });
 
@@ -13973,62 +13909,23 @@
     }
 
     function shouldFixNodeHeight(node) {
-        return !!(node && !isNodeCollapsed(node) && ((node.type === 'vlm' && (node.params?.mode || 'single') === 'chat') || node.type === 'media_browser' || node.type === 'director_timeline'));
+        return !!CANVAS_NODE_LAYOUT_CONTROLLER?.shouldFixNodeHeight?.(node);
     }
 
     function supportsCollapsedPromptHeight(node) {
-        return !!(node && isNodeCollapsed(node) && (node.type === 'preset' || node.type === 'classic'));
+        return !!CANVAS_NODE_LAYOUT_CONTROLLER?.supportsCollapsedPromptHeight?.(node);
     }
 
     function collapsedPromptNodeHeight(node) {
-        const raw = Number(node?.collapsed_h);
-        const value = Number.isFinite(raw) && raw > 0 ? raw : COLLAPSED_PROMPT_NODE_DEFAULT_HEIGHT;
-        const required = collapsedPromptNodeRequiredHeight(node);
-        return Math.round(clamp(Math.max(value, required), COLLAPSED_PROMPT_NODE_MIN_HEIGHT, COLLAPSED_PROMPT_NODE_MAX_HEIGHT));
-    }
-
-    function collapsedPromptNodeRequiredHeight(node) {
-        if (!supportsCollapsedPromptHeight(node)) return COLLAPSED_PROMPT_NODE_MIN_HEIGHT;
-        const headerHeight = 36;
-        const nodeFramePadding = 18;
-        const connectedRows = collapsedPromptConnectedPortRows(node);
-        const promptHeight = collapsedPromptHasPromptEditor(node) ? COLLAPSED_PROMPT_TEXT_BLOCK_HEIGHT : 0;
-        return headerHeight + nodeFramePadding + connectedRows * COLLAPSED_PROMPT_PORT_ROW_HEIGHT + promptHeight;
-    }
-
-    function collapsedPromptConnectedPortRows(node) {
-        if (!node || !project) return 0;
-        let rows = 0;
-        if (node.type === 'preset') {
-            rows += getVisibleUploadSlots(node).filter(slot => hasIncomingEdge(node, 'upload', slot.key)).length;
-            rows += PRESET_CONFIG_KINDS.filter(kind => hasIncomingEdge(node, 'config', kind)).length;
-        } else if (node.type === 'classic') {
-            rows += getVisibleClassicUploadSlots(node).filter(slot => hasIncomingEdge(node, 'upload', slot.key)).length;
-            rows += PRESET_CONFIG_KINDS.filter(kind => hasIncomingEdge(node, 'config', kind)).length;
-        }
-        return clamp(rows, 0, 10);
-    }
-
-    function collapsedPromptHasPromptEditor(node) {
-        if (!node) return false;
-        if (node.type === 'classic') return true;
-        if (node.type !== 'preset') return false;
-        return getVisiblePresetParams(node).some(param => param?.key === 'prompt' && param.type === 'textarea');
+        return CANVAS_NODE_LAYOUT_CONTROLLER?.collapsedPromptNodeHeight?.(node) || 0;
     }
 
     function defaultNodeSize(type) {
-        if (typeof registryDefaultNodeSize === 'function') {
-            return registryDefaultNodeSize(type);
-        }
-        if (type === 'image') return { w: 264, h: 300 };
-        if (type === 'note') return { w: 280, h: 180 };
-        return { w: 220, h: 250 };
+        return registryDefaultNodeSize(type);
     }
 
     function rectsOverlap(a, b, padding) {
-        return typeof viewportRectsOverlap === 'function'
-            ? viewportRectsOverlap(a, b, padding)
-            : false;
+        return viewportRectsOverlap(a, b, padding);
     }
 
     function getClassicIpMaxImages(node) {
@@ -14103,22 +14000,7 @@
         return renderClassicInspectorFromRenderer(node);
     }
     function getVisibleClassicUploadSlots(node) {
-        const mode = node?.classic_mode || 't2i';
-        const slots = [];
-        if (mode === 'ip') {
-            const count = getClassicIpCount(node);
-            for (let i = 0; i < count; i++) {
-                slots.push({ key: `ip_image_${i}`, label: `IP Image ${i + 1}` });
-            }
-        } else if (mode === 'uov') {
-            slots.push({ key: 'uov_image', label: 'Source Image' });
-        } else if (mode === 'inpaint') {
-            slots.push({ key: 'inpaint_image', label: 'Source Image' });
-            slots.push({ key: 'inpaint_mask', label: 'Mask' });
-        } else if (mode === 'enhance') {
-            slots.push({ key: 'enhance_image', label: 'Source Image' });
-        }
-        return slots;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getVisibleClassicUploadSlots(node);
     }
 
     function applyPresetUploadSlotPatch(node, slot, sourceId) {
@@ -14156,20 +14038,15 @@
         return CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializeClassicNodeForRun?.(node) || {};
     }
     function getPresetSchema(node) {
-        return (node && node.schema && typeof node.schema === 'object') ? node.schema : {};
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getPresetSchema(node);
     }
 
     function getPresetTheme(node) {
-        const schema = getPresetSchema(node);
-        const themes = Array.isArray(schema.themes) ? schema.themes : [];
-        return node?.runtime?.scene_theme || schema.default_theme || themes[0] || '';
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getPresetTheme(node);
     }
 
     function getPresetThemeInfo(node) {
-        const schema = getPresetSchema(node);
-        const theme = getPresetTheme(node);
-        const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
-        return perTheme[theme] || {};
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getPresetThemeInfo(node);
     }
 
     function resolveDirectorCapabilityForPreset(node) {
@@ -14189,37 +14066,15 @@
     }
 
     function getVisibleUploadSlots(node) {
-        const schema = getPresetSchema(node);
-        const slots = Array.isArray(schema.upload_slots) && schema.upload_slots.length
-            ? schema.upload_slots
-            : SLOT_ORDER.map(key => ({ key, label: SLOT_LABELS[key], visible: true, interactive: true }));
-        return slots
-            .filter(slot => slot && slot.visible !== false)
-            .sort((a, b) => {
-                const ai = SLOT_ORDER.indexOf(a.key);
-                const bi = SLOT_ORDER.indexOf(b.key);
-                return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
-            });
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getVisibleUploadSlots(node);
     }
 
     function getSlotLabel(node, slotKey) {
-        const visible = node?.type === 'classic' ? getVisibleClassicUploadSlots(node) : getVisibleUploadSlots(node);
-        const slot = visible.find(item => item.key === slotKey);
-        return slot?.label || SLOT_LABELS[slotKey] || slotKey || 'upload';
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getSlotLabel(node, slotKey);
     }
 
     function getUploadSlotMediaKind(slotKey) {
-        const key = String(slotKey || '').toLowerCase();
-        if (key.includes('audio')) return 'audio';
-        if (key.includes('video')) return 'video';
-        return 'image';
-    }
-
-    function getUploadSlotIcon(slotKey) {
-        const kind = getUploadSlotMediaKind(slotKey);
-        if (kind === 'audio') return 'fa-wave-square';
-        if (kind === 'video') return 'fa-film';
-        return 'fa-image';
+        return CANVAS_CONNECTION_MEDIA_CONTROLLER.getUploadSlotMediaKind?.(slotKey) || 'image';
     }
 
     function canNodeConnectToUploadSlot(node, slotKey) {
@@ -14247,111 +14102,63 @@
     }
 
     function isPresetConfigKind(kind) {
-        return PRESET_CONFIG_KINDS.includes(String(kind || ''));
+        return CANVAS_CONFIG_VALUES_CONTROLLER.isPresetConfigKind(kind);
     }
 
     function configKeyForKind(kind) {
-        if (kind === 'styles') return 'styles_config';
-        if (kind === 'resolution') return 'resolution_config';
-        if (kind === 'advanced') return 'generation_config';
-        return 'models_config';
-    }
-
-    function translationDirectionLabel(value) {
-        const key = String(value || '');
-        if (key === 'zh_to_en') return t('Chinese to English', '中文到英文');
-        if (key === 'en_to_zh') return t('English to Chinese', '英文到中文');
-        return t('Auto / toggle', '自动 / 切换');
+        return CANVAS_CONFIG_VALUES_CONTROLLER.configKeyForKind(kind);
     }
 
     function ensurePresetSpecialControllerState(node, kind) {
-        const controllerKind = kind || getPresetSpecialControllerKind(node);
-        if (!controllerKind || !node) return '';
-        const state = presetSpecialControllerState(node, controllerKind);
-        const statePatch = Object.assign({}, state, { kind: controllerKind });
-        const patch = buildPresetSpecialControllerStatePatch(node, {
-            statePatch,
-            updatedAt: node.special_ui?.updated_at || nowIso()
-        });
-        if (patch && typeof patch === 'object') Object.assign(node, patch);
-        Object.assign(node, buildNodeParamsPatch(node, {
-            paramsPatch: {
-                scene_additional_prompt_2: presetSpecialPromptFromState(controllerKind, state)
-            }
-        }));
-        return controllerKind;
-    }
-
-    function hasIncomingEdge(node, edgeType, slot) {
-        if (!node || !edgeType) return false;
-        return project.edges.some(edge => edge.to === node.id && edge.type === edgeType && String(edge.slot || '') === String(slot || ''));
+        return PRESET_SPECIAL_VIEWER_CONTROLLER.ensurePresetSpecialControllerState?.(node, kind) || '';
     }
 
     function collapsedKeepClass(node, edgeType, slot) {
-        return hasIncomingEdge(node, edgeType, slot) ? ' sai-collapsed-keep sai-collapsed-connected-port' : '';
+        return CANVAS_NODE_LAYOUT_CONTROLLER?.collapsedKeepClass?.(node, edgeType, slot) || '';
     }
 
-    function wildcardsCatalogNames(node) {
-        const names = Array.isArray(node?.wildcards_catalog?.flat_names) ? node.wildcards_catalog.flat_names : [];
-        return names.filter(Boolean);
-    }
+    const WILDCARDS_RUNTIME_CONTEXT_SOURCE = {
+        nodeSource: {
+            isNodeLocked: (...args) => isNodeLocked(...args)
+        },
+        apiSource: {
+            getWildcardsCatalog: () => apiWildcardsCatalog,
+            getWildcardsPreview: () => apiWildcardsPreview
+        },
+        projectSource: {
+            getProject: () => project
+        },
+        runtimeSource: {
+            getWorkbenchUserContext: (...args) => getWorkbenchUserContext(...args),
+            showToast: (...args) => showToast(...args),
+            nowIso: (...args) => nowIso(...args),
+            mutate: (...args) => mutate(...args),
+            scheduleSave: (...args) => scheduleSave(...args)
+        },
+        serializationSource: {
+            serializeClassicNodeForRun: (...args) => serializeClassicNodeForRun(...args),
+            serializePresetForRun: (...args) => serializePresetForRun(...args),
+            presetGenerationImageNumberValue: (...args) => presetGenerationImageNumberValue(...args)
+        },
+        patchSource: {
+            buildWildcardsHelperStatePatch: (...args) => buildWildcardsHelperStatePatch(...args),
+            buildPresetWildcardPreviewPatch: (...args) => buildPresetWildcardPreviewPatch(...args)
+        }
+    };
+    const CANVAS_WILDCARDS_RUNTIME_CONTROLLER = WORKBENCH_CANVAS_WILDCARDS_RUNTIME.createCanvasWildcardsRuntimeController({
+        wildcardsRuntimeSource: WILDCARDS_RUNTIME_CONTEXT_SOURCE
+    });
 
     async function refreshWildcardsCatalog(node, options) {
-        const opts = options || {};
-        if (!node || isNodeLocked(node)) return null;
-        if (!opts.force && Array.isArray(node.wildcards_catalog?.flat_names) && node.wildcards_catalog.flat_names.length) {
-            return node.wildcards_catalog;
-        }
-        const response = typeof apiWildcardsCatalog === 'function'
-            ? await apiWildcardsCatalog({ user_context: getWorkbenchUserContext(), path: 'root', trans: false })
-            : null;
-        if (!response?.ok) {
-            showToast(response?.error || 'Wildcards catalog failed');
-            return null;
-        }
-        const catalog = {
-            flat_names: Array.isArray(response.flat_names) ? response.flat_names : [],
-            names: Array.isArray(response.names) ? response.names : [],
-            words: Array.isArray(response.words) ? response.words : [],
-            access: response.access || {},
-            updated_at: nowIso()
-        };
-        const paramsPatch = node.type === 'wildcards_helper'
-            && !node.params?.name
-            && catalog.flat_names.length
-            ? { name: catalog.flat_names[0] }
-            : undefined;
-        Object.assign(node, buildWildcardsHelperStatePatch(node, {
-            wildcardsCatalog: catalog,
-            paramsPatch
-        }));
-        if (opts.render !== false) mutate({ inspector: true });
-        else if (project.nodes.includes(node)) scheduleSave();
-        return node.wildcards_catalog;
+        return CANVAS_WILDCARDS_RUNTIME_CONTROLLER.refreshWildcardsCatalog(node, options);
     }
 
     async function buildWildcardPreviewForNode(node) {
-        if (!node || !['preset', 'classic'].includes(node.type) || typeof apiWildcardsPreview !== 'function') return null;
-        const params = node.type === 'classic' ? serializeClassicNodeForRun(node).params : serializePresetForRun(node).params;
-        const seedRandom = params.seed_random !== false && params.seed_random !== 'false';
-        const seed = seedRandom ? -1 : (params.image_seed ?? params.seed ?? -1);
-        const response = await apiWildcardsPreview({
-            user_context: getWorkbenchUserContext(),
-            prompt: canvasRunPromptParamText(params.prompt),
-            negative_prompt: canvasRunPromptParamText(params.negative_prompt),
-            seed,
-            image_number: params.image_number || presetGenerationImageNumberValue(node) || params.scene_image_number || 1,
-            max_samples: 3
-        });
-        if (response?.ok) {
-            Object.assign(node, buildPresetWildcardPreviewPatch(node, { preview: response }));
-            return response;
-        }
-        return null;
+        return CANVAS_WILDCARDS_RUNTIME_CONTROLLER.buildWildcardPreviewForNode(node);
     }
 
     function canvasRunPromptParamText(value) {
-        return value == null ? '' : String(value);
+        return CANVAS_WILDCARDS_RUNTIME_CONTROLLER.canvasRunPromptParamText(value);
     }
 
     function getTranslationCacheBucket(node, target, key) {
@@ -14371,48 +14178,31 @@
     }
 
     function assetMediaKind(asset) {
-        const controller = CANVAS_ASSET_MEDIA_CONTROLLER.assetMediaKind;
-        if (typeof controller === 'function') return controller(asset);
-        const mime = String(asset?.mime || '').toLowerCase();
-        if (mime.startsWith('video/')) return 'video';
-        if (mime.startsWith('audio/')) return 'audio';
-        return 'image';
+        return CANVAS_ASSET_MEDIA_CONTROLLER.assetMediaKind(asset);
     }
 
     function assetMediaIcon(asset) {
-        const controller = CANVAS_ASSET_MEDIA_CONTROLLER.assetMediaIcon;
-        if (typeof controller === 'function') return controller(asset);
-        const kind = assetMediaKind(asset);
-        if (kind === 'video') return 'fa-film';
-        if (kind === 'audio') return 'fa-wave-square';
-        return 'fa-image';
+        return CANVAS_ASSET_MEDIA_CONTROLLER.assetMediaIcon(asset);
     }
 
     function isNodeLocked(node) {
-        const controller = CANVAS_NODE_STATE_CONTROLLER.isNodeLocked;
-        return typeof controller === 'function' ? !!controller(node) : !!node?.locked;
+        return CANVAS_NODE_STATE_CONTROLLER.isNodeLocked(node);
     }
 
     function isNodeIgnored(node) {
-        const controller = CANVAS_RUN_STATE_CONTROLLER.isNodeIgnored;
-        return typeof controller === 'function' ? !!controller(node) : !!node?.ignored;
+        return CANVAS_RUN_STATE_CONTROLLER.isNodeIgnored(node);
     }
 
     function isNodeCollapsed(node) {
-        const controller = CANVAS_NODE_STATE_CONTROLLER.isNodeCollapsed;
-        return typeof controller === 'function' ? !!controller(node) : !!node?.collapsed;
+        return CANVAS_NODE_STATE_CONTROLLER.isNodeCollapsed(node);
     }
 
     function isImageNodeFrameless(node) {
-        const controller = CANVAS_NODE_STATE_CONTROLLER.isImageNodeFrameless;
-        if (typeof controller === 'function') return !!controller(node);
-        if (!node || node.type !== 'image') return false;
-        return String(node.display_mode || node.image_display_mode || '').toLowerCase() !== 'card';
+        return CANVAS_NODE_STATE_CONTROLLER.isImageNodeFrameless(node);
     }
 
     function presetModelStatusState(node) {
-        const status = node?.model_status && typeof node.model_status === 'object' ? node.model_status : {};
-        return String(status.state || (status.ready ? 'ready' : 'unknown')).toLowerCase();
+        return CANVAS_PRESET_MODEL_STATUS_CONTROLLER.getStatusState(node);
     }
 
     function renderImageNodeHtml(node) {
@@ -14540,14 +14330,6 @@
         return CANVAS_BATCH_ANY_INSPECTOR_CONTROLLER.renderBatchAnyInspector(node);
     }
 
-    function getQwenTtsAudioInputLabel(node, slot) {
-        const sourceId = node?.audio_inputs?.[slot]
-            || project.edges.find(edge => edge.type === 'media' && edge.to === node?.id && edge.slot === slot)?.from
-            || '';
-        const source = sourceId ? getNode(sourceId) : null;
-        return source ? (source.title || source.id) : notConnectedText();
-    }
-
     function getTimelineSourceAsset(source) {
         return timelineGetTimelineSourceAsset(source, { getSelectedResultAsset }) || null;
     }
@@ -14558,42 +14340,6 @@
 
     function renderTimelineNodeHtml(node) {
         return timelineRenderNodeHtml(node, TIMELINE_NODE_CONTEXT);
-    }
-
-    function renderWildcardsHelperNodeHtml(node) {
-        const params = Object.assign({
-            target: 'Array (batch)',
-            method: 'Random Select',
-            seed_mode: 'Fixed seed',
-            name: '',
-            count: 1,
-            start: 1,
-            group_size: 1
-        }, node.params || {});
-        const tag = wildcardHelperBuildTag(params);
-        const optionsHtml = (items, value) => items.map(item => `<option value="${escapeHtml(item)}" ${String(item) === String(value) ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('');
-        const nameControl = `<div class="sai-wildcards-helper-name-row"><input data-wildcards-helper-param="name" value="${escapeHtml(params.name || '')}" placeholder="color / style / character"><button type="button" data-node-action="open-wildcards-helper-picker" title="${escapeHtml(t('Browse wildcards', '浏览通配符'))}"><i class="fa-solid fa-magnifying-glass"></i></button></div>`;
-        return `
-<div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Wildcards', '通配符'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || t('Wildcards Helper', '通配符小助手'))}</span>
-  ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="refresh-wildcards-helper" title="${escapeHtml(t('Refresh wildcards', '刷新通配符'))}"><i class="fa-solid fa-arrows-rotate"></i></button>
-  <button type="button" data-node-action="open-wildcards-manager" title="${escapeHtml(t('Wildcards Manager', '通配符管理'))}"><i class="fa-solid fa-folder-tree"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
-</div>
-<label class="sai-node-field"><span>${escapeHtml(t('Target', '目标'))}</span><select data-wildcards-helper-param="target">${optionsHtml(WILDCARDS_HELPER_TARGETS, params.target)}</select></label>
-<label class="sai-node-field"><span>${escapeHtml(t('Method', '方法'))}</span><select data-wildcards-helper-param="method">${optionsHtml(WILDCARDS_HELPER_METHODS, params.method)}</select></label>
-<label class="sai-node-field"><span>${escapeHtml(t('Seed mode', '种子模式'))}</span><select data-wildcards-helper-param="seed_mode">${optionsHtml(WILDCARDS_HELPER_SEED_MODES, params.seed_mode)}</select></label>
-<label class="sai-node-field"><span>${escapeHtml(t('Wildcard', '通配符'))}</span>${nameControl}</label>
-<div class="sai-node-field-row">
-  <label><span>${escapeHtml(t('Count', '数量'))}</span><input data-wildcards-helper-param="count" type="number" min="1" step="1" value="${escapeHtml(params.count || 1)}"></label>
-  <label><span>${escapeHtml(t('Start', '起始'))}</span><input data-wildcards-helper-param="start" type="number" min="1" step="1" value="${escapeHtml(params.start || 1)}"></label>
-  <label><span>${escapeHtml(t('Group', '组大小'))}</span><input data-wildcards-helper-param="group_size" type="number" min="1" step="1" value="${escapeHtml(params.group_size || 1)}"></label>
-</div>
-<label class="sai-node-field sai-text-node-field"><span>${escapeHtml(t('Output', '输出'))}</span><textarea data-wildcards-helper-output rows="3" readonly>${escapeHtml(tag)}</textarea></label>
-<button type="button" class="sai-node-primary" data-node-action="refresh-wildcards-helper"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(t('Refresh', '刷新'))}</span></button>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="text" title="${escapeHtml(t('Text output', '文本输出'))}"></button>`;
     }
 
     function renderNoteNodeHtml(node) {
@@ -15118,77 +14864,12 @@
         return CANVAS_PRESET_SPECIAL_PANEL_RENDERER.renderMiniMaxH3StoryboardPresetController?.(node) || '';
     }
 
-    function refreshPresetSpecialControllerDom(nodeId) {
-        if (!nodeId || !nodesLayer) return;
-        const node = getNode(nodeId);
-        const kind = getPresetSpecialControllerKind(node);
-        if (!node || !kind) return;
-        const state = presetSpecialControllerState(node, kind);
-        const nodeEl = nodesLayer.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`);
-        if (!nodeEl) return;
-        const values = nodeEl.querySelector('[data-preset-special-values]');
-        if (values) values.textContent = `${state.horizontal}° / ${state.vertical}° / ${state.zoom.toFixed(1)}${kind === 'flux-anglelight' ? ` / ${state.lightColor}` : ''}`;
-        const prompt = nodeEl.querySelector('[data-preset-special-prompt]');
-        if (prompt) prompt.textContent = presetSpecialPromptFromState(kind, state);
-    }
-
-    function refreshPresetUploadSlotsDom(nodeId) {
-        if (!nodeId || !nodesLayer) return;
-        const node = getNode(nodeId);
-        if (!node || !['preset', 'classic'].includes(node.type)) return;
-        const nodeEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
-        if (!nodeEl) return;
-        const slots = node.type === 'classic' ? getVisibleClassicUploadSlots(node) : getVisibleUploadSlots(node);
-        slots.forEach((slotInfo) => {
-            const slot = slotInfo.key;
-            const row = nodeEl.querySelector(`[data-slot-row="${cssEscape(slot)}"]`);
-            if (!row) return;
-            const boundNode = node.upload_slots?.[slot] ? getNode(node.upload_slots[slot]) : null;
-            const label = row.querySelector('b');
-            if (label) label.textContent = boundNode ? (boundNode.title || boundNode.id) : notConnectedText();
-        });
-    }
-
-    function syncNodeParamControlDom(nodeId, key, value) {
-        if (!nodeId || !key || !nodesLayer) return;
-        const nodeEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
-        if (!nodeEl) return;
-        nodeEl.querySelectorAll(`[data-node-param="${cssEscape(key)}"]`).forEach((field) => {
-            if (!field) return;
-            if (field.type === 'checkbox') {
-                field.checked = value === true || value === 'true' || value === 1 || value === '1';
-            } else if ('value' in field && field.value !== String(value ?? '')) {
-                field.value = String(value ?? '');
-            }
-        });
-    }
-
-    function syncPresetSpecialViewersForNode(nodeId) {
-        const nodeEl = nodesLayer?.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
-        if (!nodeEl) return;
-        nodeEl.querySelectorAll('[data-preset-special-viewer]').forEach((iframe) => syncPresetSpecialViewerIframe(iframe));
-    }
-
     function refreshPresetSpecialNodeDom(node, options) {
-        const kind = getPresetSpecialControllerKind(node);
-        if (!node || !kind || !nodesLayer) return;
-        refreshPresetUploadSlotsDom(node.id);
-        refreshPresetSpecialControllerDom(node.id);
-        if (options?.syncViewer) syncPresetSpecialViewersForNode(node.id);
-        const nodeEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(node.id)}"]`);
-        if (nodeEl && options?.renderKey !== false) nodeEl.__simpaiRenderKey = nodeRenderKey(node);
+        return PRESET_SPECIAL_VIEWER_CONTROLLER.refreshPresetSpecialNodeDom(node, options);
     }
 
     function syncPresetSpecialViewersForAssetNode(sourceNodeId) {
-        if (!sourceNodeId) return;
-        project.edges
-            .filter(edge => edge.type === 'upload' && edge.from === sourceNodeId)
-            .forEach((edge) => {
-                const preset = getNode(edge.to);
-                if (getPresetSpecialControllerKind(preset)) {
-                    refreshPresetSpecialNodeDom(preset, { syncViewer: true });
-                }
-            });
+        return PRESET_SPECIAL_VIEWER_CONTROLLER.syncPresetSpecialViewersForAssetNode(sourceNodeId);
     }
 
     function renderConfigNodeHtml(node) {
@@ -15203,19 +14884,6 @@
         return (choices || []).map(choice => `<option value="${escapeHtml(choice)}" ${String(choice) === String(value || '') ? 'selected' : ''}>${escapeHtml(choice)}</option>`).join('');
     }
 
-    function getSelectOptionsFromDom(id, fallback) {
-        const appRoot = typeof gradioApp === 'function' ? gradioApp() : document;
-        const rootEl = (appRoot && appRoot.getElementById ? appRoot.getElementById(id) : null) || document.getElementById(id);
-        const select = rootEl && rootEl.querySelector ? rootEl.querySelector('select') : null;
-        const options = select ? Array.from(select.options).map(option => option.value || option.textContent || '').filter(Boolean) : [];
-        const merged = [];
-        [...(fallback || []), ...options].forEach((item) => {
-            const text = String(item || '').trim();
-            if (text && !merged.includes(text)) merged.push(text);
-        });
-        return merged;
-    }
-
     function getModelChoices(node) {
         return CANVAS_MODEL_CONFIG_CATALOG_CONTROLLER.getModelChoices(node);
     }
@@ -15225,45 +14893,19 @@
     }
 
     function mergeChoices(items) {
-        const merged = [];
-        (items || []).forEach((item) => {
-            const text = String(item || '').trim();
-            if (text && !merged.includes(text)) merged.push(text);
-        });
-        return merged;
-    }
-
-    function configAliasValue(source, keys) {
-        const data = source && typeof source === 'object' ? source : {};
-        for (const key of keys || []) {
-            if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
-            const value = data[key];
-            if (value === undefined || value === null) continue;
-            if (typeof value === 'string' && !value.trim()) continue;
-            return value;
-        }
-        return undefined;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.mergeChoices(items);
     }
 
     function configNumberValue(source, keys, fallback) {
-        const value = configAliasValue(source, keys);
-        const number = Number(value);
-        return Number.isFinite(number) ? number : fallback;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.configNumberValue(source, keys, fallback);
     }
 
     function boundedConfigNumberValue(source, keys, fallback, bounds) {
-        const value = configNumberValue(source, keys, fallback);
-        const min = Number(bounds?.min);
-        const max = Number(bounds?.max);
-        let next = value;
-        if (Number.isFinite(min) && next < min) next = min;
-        if (Number.isFinite(max) && next > max) next = max;
-        return next;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.boundedConfigNumberValue(source, keys, fallback, bounds);
     }
 
     function configTextValue(source, keys, fallback) {
-        const value = configAliasValue(source, keys);
-        return value === undefined ? fallback : String(value);
+        return CANVAS_CONFIG_VALUES_CONTROLLER.configTextValue(source, keys, fallback);
     }
 
     function normalizeStyleSelections(value) {
@@ -15320,10 +14962,7 @@
     }
 
     function hoverPreviewAttrs(payload) {
-        return Object.entries(payload || {})
-            .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
-            .map(([key, value]) => `data-hover-preview-${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}="${escapeHtml(value)}"`)
-            .join(' ');
+        return CANVAS_HOVER_PREVIEW_CONTROLLER.hoverPreviewAttrs(payload);
     }
 
     function getStyleChoices(node, selected, defaults) {
@@ -15358,225 +14997,43 @@
     }
 
     function getResolutionChoices() {
-        const payload = getResolutionPayload();
-        const payloadRatios = payload.ratios && typeof payload.ratios === 'object' ? payload.ratios : {};
-        const ratios = Object.keys(payloadRatios).length ? payloadRatios : WORKBENCH_RESOLUTION_RATIO_FALLBACKS;
-        const templates = Object.keys(ratios);
-        const defaultTemplate = String(payload.defaultTemplate || '').trim();
-        const firstTemplate = (defaultTemplate && templates.includes(defaultTemplate)) ? defaultTemplate : (templates.includes('SDXL') ? 'SDXL' : (templates[0] || 'SDXL'));
-        const flatRatios = [];
-        Object.values(ratios).forEach((items) => {
-            if (Array.isArray(items)) items.forEach(item => { if (!flatRatios.includes(item)) flatRatios.push(item); });
-        });
-        return {
-            templates: templates.length ? templates : Object.keys(WORKBENCH_RESOLUTION_RATIO_FALLBACKS),
-            ratios,
-            firstTemplate,
-            flatRatios: flatRatios.length ? flatRatios : ['1024*1024', '832*1216', '1216*832'],
-            quantizeSteps: Array.isArray(payload.quantizeSteps) ? payload.quantizeSteps : [1, 8, 16, 32, 64],
-            editModes: mergeChoices(['proportional', 'crop', 'scale', 'pad', ...(Array.isArray(payload.editModes) ? payload.editModes : [])])
-        };
-    }
-
-    function resolutionGcd(a, b) {
-        let x = Math.abs(Math.round(Number(a) || 0));
-        let y = Math.abs(Math.round(Number(b) || 0));
-        while (y) {
-            const next = x % y;
-            x = y;
-            y = next;
-        }
-        return x || 1;
-    }
-
-    function resolutionRatioLabel(width, height) {
-        const w = Math.max(1, Math.round(Number(width) || 1));
-        const h = Math.max(1, Math.round(Number(height) || 1));
-        const divisor = resolutionGcd(w, h);
-        return `${Math.round(w / divisor)}:${Math.round(h / divisor)}`;
-    }
-
-    function resolutionUsesManualSize(values) {
-        return values && values.manual !== false && Number(values.width) > 0 && Number(values.height) > 0;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getResolutionChoices();
     }
 
     function resolutionManualSizeLabel(values, preview) {
-        if (!resolutionUsesManualSize(values)) return '';
-        const width = Math.round(Number(preview?.width || values.width) || 0);
-        const height = Math.round(Number(preview?.height || values.height) || 0);
-        if (width <= 0 || height <= 0) return '';
-        return `Custom ${width}×${height} | ${resolutionRatioLabel(width, height)}`;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.resolutionManualSizeLabel(values, preview);
     }
 
     function normalizeResolutionTemplateName(value, choices) {
-        const text = String(value || '').trim();
-        if (text.toLowerCase() === 'preset') return 'Preset';
-        const templates = choices && Array.isArray(choices.templates) ? choices.templates : Object.keys(WORKBENCH_RESOLUTION_RATIO_FALLBACKS);
-        if (text && templates.includes(text)) return text;
-        const lower = text.toLowerCase();
-        const matched = templates.find(item => String(item || '').toLowerCase() === lower);
-        if (matched) return matched;
-        return choices?.firstTemplate || (templates.includes('SDXL') ? 'SDXL' : (templates[0] || 'SDXL'));
-    }
-
-    function getResolutionPayload() {
-        const widget = document.querySelector('.simpai-resolution-control script[data-role="resolution-data"]');
-        if (!widget) return {};
-        try {
-            return JSON.parse(widget.textContent || '{}') || {};
-        } catch (err) {
-            return {};
-        }
-    }
-
-    function getResolutionTargetPreset(configNode) {
-        if (!configNode || configNode.type !== 'config' || configNode.config_kind !== 'resolution') return null;
-        const edge = project.edges.find(item => item.type === 'config' && item.from === configNode.id && item.slot === 'resolution');
-        return edge ? getNode(edge.to) : getNode(configNode.target_preset_id);
+        return CANVAS_CONFIG_VALUES_CONTROLLER.normalizeResolutionTemplateName(value, choices);
     }
 
     function getResolutionRenderValues(configNode) {
-        const raw = cloneRunValue(configNode?.config?.values || {}, {});
-        const preset = getResolutionTargetPreset(configNode);
-        const sourceConfig = preset ? getPresetConfigSource(preset, 'resolution') : null;
-        const defaults = sourceConfig?.defaults && Object.keys(sourceConfig.defaults).length
-            ? cloneRunValue(sourceConfig.defaults, {})
-            : cloneRunValue(configNode?.config?.defaults || {}, {});
-        const profile = normalizeResolutionProfile(defaults);
-        const sourceSize = getResolutionSourceSize(preset, profile);
-        raw.profile = profile;
-        raw.defaults = defaults;
-        if (!raw.template) {
-            raw.template = profile.mode
-                ? 'Preset'
-                : normalizeResolutionTemplateName(defaults.template || defaults.default_template || defaults.available_aspect_ratios_selection, getResolutionChoices());
-        }
-        if (sourceSize) raw.source_size = sourceSize;
-        if (!raw.aspect_ratio) {
-            const choices = getResolutionChoices();
-            const template = normalizeResolutionTemplateName(
-                raw.template || defaults.template || defaults.default_template || defaults.available_aspect_ratios_selection,
-                choices
-            );
-            const templateRatios = template === 'Preset'
-                ? (Array.isArray(profile.aspect_ratios) ? profile.aspect_ratios : [])
-                : (choices.ratios[template] || choices.flatRatios || []);
-            if (Array.isArray(templateRatios) && templateRatios.length) raw.aspect_ratio = templateRatios[0];
-        }
-        return raw;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getResolutionRenderValues(configNode);
     }
 
     function renderResolutionConfigNodeHtml(node) {
         return CANVAS_RESOLUTION_CONFIG_RENDERER.renderResolutionConfigNodeHtml(node);
     }
 
-    function parseResolutionRatio(value) {
-        const text = String(value || '').trim();
-        const pipeHead = text.split('|', 1)[0].trim();
-        const pipeKind = pipeHead.toLowerCase().replace(/[\s-]+/g, '_');
-        if (['origin', 'original', 'source', 'no_resize', 'noresize'].includes(pipeKind)) {
-            return { w: 0, h: 0, origin: true };
-        }
-        const size = pipeHead.match(/(\d+)\s*[*x×]\s*(\d+)/i) || text.match(/(\d+)\s*[*x×]\s*(\d+)/i);
-        if (size) {
-            const w = Number(size[1]);
-            const h = Number(size[2]);
-            if (w > 0 && h > 0) return { w, h };
-        }
-        const area = /^\d+$/.test(pipeHead) ? Number.parseInt(pipeHead, 10) : 0;
-        if (area > 0 && text.includes('|')) {
-            return { w: area, h: area, area };
-        }
-        const ratio = text.match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
-        if (ratio) {
-            const w = Number(ratio[1]);
-            const h = Number(ratio[2]);
-            if (w > 0 && h > 0) return { w, h };
-        }
-        return { w: 1, h: 1 };
-    }
-
     function quantizeResolutionValue(value, step) {
-        const q = Math.max(1, Number(step) || 1);
-        return Math.max(q, Math.round((Number(value) || 0) / q) * q);
+        return CANVAS_CONFIG_VALUES_CONTROLLER.quantizeResolutionValue(value, step);
     }
 
     function normalizeResolutionProfile(defaults) {
-        const source = defaults && typeof defaults === 'object' ? defaults : {};
-        const profile = source.mode
-            ? cloneRunValue(source, {})
-            : source.resolution_control && typeof source.resolution_control === 'object'
-            ? cloneRunValue(source.resolution_control, {})
-            : {};
-        const aspectRatios = Array.isArray(profile.aspect_ratios) && profile.aspect_ratios.length
-            ? profile.aspect_ratios
-            : (Array.isArray(source.aspect_ratios) ? source.aspect_ratios : []);
-        if (aspectRatios.length) profile.aspect_ratios = aspectRatios.map(item => String(item));
-        profile.mode = String(profile.mode || '').trim();
-        profile.source = profile.source || 'scene_canvas_image';
-        const defaultWidth = Number(source.default_overwrite_width || 0) > 0 ? Number(source.default_overwrite_width) : 0;
-        const defaultHeight = Number(source.default_overwrite_height || 0) > 0 ? Number(source.default_overwrite_height) : 0;
-        profile.base_width = Math.max(1, Number(profile.base_width || 0) || defaultWidth || 1024);
-        profile.base_height = Math.max(1, Number(profile.base_height || 0) || defaultHeight || 1024);
-        profile.quantize = Math.max(1, Number(profile.quantize || source.default_resolution_quantize_step || 8) || 8);
-        profile.interactive = profile.interactive !== false;
-        return profile;
+        return CANVAS_CONFIG_VALUES_CONTROLLER.normalizeResolutionProfile(defaults);
     }
 
     function getResolutionSourceSize(presetNode, profile) {
         return CANVAS_CONFIG_VALUES_CONTROLLER.getResolutionSourceSize(presetNode, profile);
     }
 
-    function projectKeepInputArea(sourceSize, baseWidth, baseHeight, step) {
-        const srcW = Math.max(1, Number(sourceSize?.width) || 1);
-        const srcH = Math.max(1, Number(sourceSize?.height) || 1);
-        const area = Math.max(1, Number(baseWidth || 640) * Number(baseHeight || 640));
-        const ratio = srcW / srcH;
-        return {
-            width: quantizeResolutionValue(Math.sqrt(area * ratio), step),
-            height: quantizeResolutionValue(Math.sqrt(area / ratio), step)
-        };
-    }
-
     function resolveResolutionBaseDims(values, ratios) {
-        const profile = normalizeResolutionProfile(values?.profile || values?.defaults || {});
-        const selected = values.aspect_ratio || (Array.isArray(ratios) ? ratios[0] : '') || values.default_aspect_ratio || '1024*1024';
-        const parsed = parseResolutionRatio(selected);
-        const sourceSize = values.source_size || null;
-        if (parsed.origin && sourceSize?.width > 0 && sourceSize?.height > 0) {
-            return { width: sourceSize.width, height: sourceSize.height };
-        }
-        if (['image_keep_input_area', 'video_keep_input_area'].includes(profile.mode)) {
-            const base = parsed.area ? { width: parsed.w, height: parsed.h } : { width: profile.base_width, height: profile.base_height };
-            return sourceSize
-                ? projectKeepInputArea(sourceSize, base.width, base.height, values.quantize || profile.quantize || 8)
-                : { width: base.width, height: base.height };
-        }
-        if (values.manual !== false && Number(values.width) > 0 && Number(values.height) > 0) {
-            return { width: Number(values.width), height: Number(values.height) };
-        }
-        return { width: parsed.w || profile.base_width || 1024, height: parsed.h || profile.base_height || 1024 };
+        return CANVAS_CONFIG_VALUES_CONTROLLER.resolveResolutionBaseDims(values, ratios);
     }
 
     function getResolutionPreview(values, ratios) {
-        const dims = resolveResolutionBaseDims(values || {}, ratios);
-        const multiplier = clamp(Number(values.multiplier || 1) || 1, 1, 2);
-        const step = Math.max(1, Number(values.quantize || 8) || 8);
-        const width = Math.max(1, Number(dims.width) || 1);
-        const height = Math.max(1, Number(dims.height) || 1);
-        const effectiveW = quantizeResolutionValue(width * multiplier, step);
-        const effectiveH = quantizeResolutionValue(height * multiplier, step);
-        const scale = Math.min(1, 140 / Math.max(effectiveW, effectiveH));
-        return {
-            boxW: clamp((effectiveW * scale / 140) * 88, 12, 88),
-            boxH: clamp((effectiveH * scale / 140) * 88, 12, 88),
-            label: `${Math.round(effectiveW)}×${Math.round(effectiveH)}`,
-            baseLabel: `${Math.round(width)}×${Math.round(height)}`,
-            effectiveW,
-            effectiveH,
-            width,
-            height
-        };
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getResolutionPreview(values, ratios);
     }
 
     function resultMediaDisplayAsset(node, selectedAsset) {
@@ -15635,51 +15092,43 @@
     const CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER = typeof WORKBENCH_CANVAS_XYZ_MATRIX_EDITOR.createCanvasXyzMatrixEditorController === 'function'
         ? WORKBENCH_CANVAS_XYZ_MATRIX_EDITOR.createCanvasXyzMatrixEditorController({
             xyzMatrixEditorSource: {
-                nodeSource: { getNode },
+                nodeSource: { getNode, buildXyzMatrixNode, buildXyzMatrixStatePatch, selectResultAsset },
                 presetSource: { getPresetThemeInfo },
                 serializationSource: { serializeClassicNodeForRun, serializePresetForRun },
-                scriptSource: { script: XYZ_PLOT_SCRIPT_NAME }
+                scriptSource: { script: XYZ_PLOT_SCRIPT_NAME },
+                axisSource: { fallbackOptions: XYZ_AXIS_FALLBACKS },
+                projectSource: {
+                    getProject: () => project,
+                    buildProjectNodeAppendPatch,
+                    buildProjectBatchJobAppendPatch,
+                    buildXyzBatchJob
+                },
+                layoutSource: { getNodeRect, defaultNodeSize, placeNodeAvoidingOverlap, centerViewportOnWorld },
+                historySource: { pushHistory, mutate, scheduleSave },
+                selectionSource: {
+                    selectSingleNode: id => {
+                        selectedNodeId = id;
+                        selectedNodeIds = new Set([id]);
+                        selectedEdgeId = null;
+                    }
+                },
+                renderSource: { renderAll, renderNodes, renderInspector },
+                modalSource: {
+                    document,
+                    getRoot: () => root,
+                    detectWorkbenchTheme,
+                    renderXyzPlotModalHtml: (...args) => CANVAS_XYZ_MATRIX_MODAL_RENDERER.renderXyzPlotModalHtml(...args),
+                    showToast
+                },
+                apiSource: {
+                    xyzAxisOptions: typeof apiXyzAxisOptions === 'function' ? apiXyzAxisOptions : null,
+                    xyzPreview: typeof apiXyzPreview === 'function' ? apiXyzPreview : null,
+                    getWorkbenchUserContext
+                },
+                languageSource: { t }
             }
         })
         : {};
-
-    function xyzModeForNode(node) {
-        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.xyzModeForNode(node);
-    }
-
-    function visibleXyzAxisOptions(options, mode) {
-        const list = Array.isArray(options) && options.length ? options : XYZ_AXIS_FALLBACKS;
-        const normalizedMode = String(mode || 'txt2img').toLowerCase();
-        return list.filter((option) => {
-            const axisMode = String(option?.mode || 'both').toLowerCase();
-            return axisMode === 'both' || axisMode === normalizedMode;
-        });
-    }
-
-    function getXyzAxisOption(options, label, mode) {
-        const list = visibleXyzAxisOptions(options, mode);
-        return list.find(option => option.label === label) || list[0] || XYZ_AXIS_FALLBACKS[0];
-    }
-
-    function xyzCsvJoin(values) {
-        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.xyzCsvJoin(values);
-    }
-
-    function defaultXyzPlotState(node) {
-        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.defaultXyzPlotState(node);
-    }
-
-    function collectXyzModalState(modal) {
-        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.collectXyzModalState(modal);
-    }
-
-    function serializeXyzSourceNode(node) {
-        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.serializeXyzSourceNode(node);
-    }
-
-    function buildXyzJobFromModal(modal) {
-        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.buildXyzJobFromModal(modal);
-    }
 
     const CANVAS_XYZ_MATRIX_MODAL_RENDERER = typeof WORKBENCH_CANVAS_XYZ_MATRIX_MODAL_RENDERER.createCanvasXyzMatrixModalRenderer === 'function'
         ? WORKBENCH_CANVAS_XYZ_MATRIX_MODAL_RENDERER.createCanvasXyzMatrixModalRenderer({
@@ -15687,148 +15136,19 @@
                 languageSource: { t },
                 utilitySource: { escapeHtml },
                 nodeSource: { getNode },
-                stateSource: { defaultXyzPlotState },
-                axisSource: { visibleXyzAxisOptions, getXyzAxisOption },
+                stateSource: { defaultXyzPlotState: CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.defaultXyzPlotState },
+                axisSource: {
+                    visibleXyzAxisOptions: CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.visibleXyzAxisOptions,
+                    getXyzAxisOption: CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.getXyzAxisOption
+                },
                 scriptSource: { script: XYZ_PLOT_SCRIPT_NAME }
             }
         })
         : {};
     const XYZ_MATRIX_NODE_CONTEXT = { t, escapeHtml, getNode, renderNodeStateBadges, notConnectedText };
 
-    function renderXyzPlotModal(modal) {
-        const source = getNode(modal.__sourceNodeId);
-        const state = modal.__xyzState || defaultXyzPlotState(source);
-        modal.__xyzState = state;
-        modal.innerHTML = CANVAS_XYZ_MATRIX_MODAL_RENDERER.renderXyzPlotModalHtml(modal, source, state);
-        bindXyzPlotModal(modal);
-    }
-
-    function bindXyzPlotModal(modal) {
-        modal.querySelector('[data-modal-close]')?.addEventListener('click', () => modal.remove());
-        modal.addEventListener('click', (evt) => {
-            if (evt.target === modal) modal.remove();
-        });
-        modal.querySelectorAll('[data-xyz-axis-type], [data-xyz-axis-values], [data-xyz-axis-choices], [data-xyz-option]').forEach((field) => {
-            const handler = () => {
-                collectXyzModalState(modal);
-                if (field.getAttribute('data-xyz-option') === 'csv_mode' || field.hasAttribute('data-xyz-axis-type')) {
-                    modal.__xyzPreview = null;
-                    renderXyzPlotModal(modal);
-                }
-            };
-            field.addEventListener('input', handler);
-            field.addEventListener('change', handler);
-        });
-        modal.querySelectorAll('[data-xyz-fill-choices]').forEach((button) => {
-            button.addEventListener('click', () => {
-                const axisName = button.getAttribute('data-xyz-fill-choices');
-                const state = collectXyzModalState(modal);
-                const option = getXyzAxisOption(modal.__xyzAxisOptions, state.axes?.[axisName]?.type, state.mode);
-                const choices = Array.isArray(option?.choices) ? option.choices.filter(Boolean) : [];
-                state.axes[axisName].values = choices;
-                state.axes[axisName].values_text = xyzCsvJoin(choices);
-                modal.__xyzPreview = null;
-                renderXyzPlotModal(modal);
-            });
-        });
-        modal.querySelectorAll('[data-xyz-swap]').forEach((button) => {
-            button.addEventListener('click', () => {
-                const state = collectXyzModalState(modal);
-                const [left, right] = String(button.getAttribute('data-xyz-swap') || '').split(':');
-                if (!left || !right) return;
-                const leftAxis = Object.assign({}, state.axes[left] || {}, { axis: right });
-                const rightAxis = Object.assign({}, state.axes[right] || {}, { axis: left });
-                state.axes[left] = rightAxis;
-                state.axes[right] = leftAxis;
-                modal.__xyzPreview = null;
-                renderXyzPlotModal(modal);
-            });
-        });
-        modal.querySelector('[data-xyz-action="preview"]')?.addEventListener('click', () => previewXyzPlotFromModal(modal, false));
-        modal.querySelector('[data-xyz-action="create"]')?.addEventListener('click', () => previewXyzPlotFromModal(modal, true));
-    }
-
     async function openXyzPlotPanel(node) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return;
-        document.querySelector('.sai-xyz-plot-modal')?.remove();
-        const modal = document.createElement('div');
-        modal.className = `sai-canvas-modal sai-xyz-plot-modal ${detectWorkbenchTheme() === 'dark' ? 'theme-dark' : ''}`;
-        modal.__sourceNodeId = node.id;
-        modal.__xyzState = defaultXyzPlotState(node);
-        modal.__xyzAxisOptions = XYZ_AXIS_FALLBACKS;
-        modal.__xyzPreview = null;
-        (root || document.body).appendChild(modal);
-        renderXyzPlotModal(modal);
-        if (typeof apiXyzAxisOptions === 'function') {
-            const response = await apiXyzAxisOptions({
-                mode: modal.__xyzState.mode,
-                source_node: serializeXyzSourceNode(node),
-                include_choices: true
-            });
-            if (response?.ok && Array.isArray(response.options) && response.options.length && document.body.contains(modal)) {
-                modal.__xyzAxisOptions = response.options;
-                renderXyzPlotModal(modal);
-            }
-        }
-    }
-
-    async function previewXyzPlotFromModal(modal, createMatrix) {
-        const source = getNode(modal?.__sourceNodeId);
-        if (!source) return;
-        const payload = {
-            job: buildXyzJobFromModal(modal),
-            user_context: getWorkbenchUserContext()
-        };
-        if (typeof apiXyzPreview !== 'function') {
-            modal.__xyzPreview = { ok: false, error: 'X/Y/Z preview API is not loaded.' };
-            renderXyzPlotModal(modal);
-            return;
-        }
-        modal.classList.add('is-busy');
-        const response = await apiXyzPreview(payload);
-        modal.classList.remove('is-busy');
-        modal.__xyzPreview = response;
-        if (!response?.ok) {
-            renderXyzPlotModal(modal);
-            showToast(response?.error || t('X/Y/Z preview failed', 'X/Y/Z 预览失败'));
-            return;
-        }
-        if (createMatrix) {
-            createXyzMatrixFromPreview(source, response, payload.job);
-            modal.remove();
-            return;
-        }
-        renderXyzPlotModal(modal);
-    }
-
-    function createXyzMatrixFromPreview(source, preview, rawJob) {
-        if (!source || !preview?.ok) return null;
-        const sourceRect = getNodeRect(source);
-        const base = {
-            x: Math.round(sourceRect.x + sourceRect.w + 80),
-            y: Math.round(sourceRect.y)
-        };
-        const matrixNode = buildXyzMatrixNode({ source, preview, position: base });
-        if (!matrixNode) return null;
-        const jobId = matrixNode.batch_job_id;
-        pushHistory('Create X/Y/Z matrix');
-        placeNodeAvoidingOverlap(matrixNode, base, {});
-        Object.assign(project, buildProjectNodeAppendPatch(project, matrixNode));
-        Object.assign(project, buildProjectBatchJobAppendPatch(project, buildXyzBatchJob({
-            jobId,
-            sourceNodeId: source.id,
-            axes: preview.axes,
-            options: preview.options,
-            variants: preview.variants,
-            matrixNodeId: matrixNode.id,
-            jobPayload: rawJob
-        })));
-        selectedNodeId = matrixNode.id;
-        selectedNodeIds = new Set([matrixNode.id]);
-        selectedEdgeId = null;
-        mutate({ inspector: true });
-        showToast(t('X/Y/Z Matrix created.', 'X/Y/Z 矩阵已创建'));
-        return matrixNode;
+        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.openXyzPlotPanel(node);
     }
 
     function renderXyzMatrixNodeHtml(node) {
@@ -15840,46 +15160,11 @@
     }
 
     function focusXyzMatrixSource(node) {
-        const source = getNode(node?.source_node_id || node?.xyz?.source_node_id || '');
-        if (!source) {
-            showToast(t('Source node is missing.', '来源节点不存在'));
-            return;
-        }
-        selectedNodeId = source.id;
-        selectedNodeIds = new Set([source.id]);
-        selectedEdgeId = null;
-        centerViewportOnWorld((source.x || 0) + (source.w || defaultNodeSize(source.type).w) / 2, (source.y || 0) + (source.h || defaultNodeSize(source.type).h) / 2);
-        renderAll({ inspector: true });
+        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.focusXyzMatrixSource(node);
     }
 
     function selectXyzMatrixCell(node, variantId) {
-        const xyz = node?.xyz || {};
-        const variant = (Array.isArray(xyz.variants) ? xyz.variants : []).find(item => item.id === variantId);
-        if (!variant) return;
-        const resultNode = getNode(variant.result_node_id || variant.node_id || '');
-        if (resultNode) {
-            if (Number.isFinite(Number(variant.asset_index))) {
-                selectResultAsset(resultNode, Number(variant.asset_index));
-            }
-            selectedNodeId = resultNode.id;
-            selectedNodeIds = new Set([resultNode.id]);
-            selectedEdgeId = null;
-            centerViewportOnWorld((resultNode.x || 0) + (resultNode.w || defaultNodeSize(resultNode.type).w) / 2, (resultNode.y || 0) + (resultNode.h || defaultNodeSize(resultNode.type).h) / 2);
-            renderAll({ inspector: true });
-            return;
-        }
-        const selectedVariantIds = Array.isArray(xyz.selected_variant_ids) ? xyz.selected_variant_ids.filter(Boolean) : [];
-        let nextSelectedVariantIds = selectedVariantIds;
-        if (selectedVariantIds.includes(variant.id)) {
-            nextSelectedVariantIds = selectedVariantIds.filter(id => id !== variant.id);
-        } else {
-            nextSelectedVariantIds = selectedVariantIds.concat([variant.id]).slice(-2);
-        }
-        Object.assign(node, buildXyzMatrixStatePatch(node, { selectedVariantIds: nextSelectedVariantIds }));
-        scheduleSave();
-        renderNodes();
-        renderInspector();
-        showToast(t('Matrix cell selected. Generated Result nodes can be compared after live runs are available.', '已选中矩阵单格；真实 Result 生成后可继续创建 Compare。'));
+        return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.selectXyzMatrixCell(node, variantId);
     }
 
     function refreshTimelinePreviewDom(nodeEl, node) {
@@ -15970,68 +15255,8 @@
         return CANVAS_NOTE_RENDERER_CONTROLLER.renderNoteTailSvg(paths, keyParts, renderWindow);
     }
 
-    function getEdgeCanvasBounds() {
-        const visible = getVisibleWorldRect();
-        const zoom = Math.max(0.05, Number(project?.viewport?.zoom || 1) || 1);
-        const pad = Math.max(96, Math.ceil(32 / zoom));
-        return {
-            x: Math.floor(visible.x - pad),
-            y: Math.floor(visible.y - pad),
-            w: Math.max(1, Math.ceil(visible.w + pad * 2)),
-            h: Math.max(1, Math.ceil(visible.h + pad * 2))
-        };
-    }
-
-    function edgeLabelText(edge, toNode) {
-        if (edge.type === 'upload') return getSlotLabel(toNode, edge.slot);
-        if (edge.type === 'batch_input') return 'batch item';
-        if (edge.type === 'config') return `${edge.slot || ''} config`;
-        if (edge.type === 'text') return `${edge.slot || 'prompt'} text`;
-        if (edge.type === 'timeline') return 'timeline clip';
-        if (edge.type === 'compare') return `compare ${String(edge.slot || '').toUpperCase()}`;
-        if (edge.type === 'media') return `${edge.slot || 'media'}`;
-        if (edge.type === 'image') return `${edge.slot || 'image'}`;
-        return 'generate';
-    }
-
     function clearEdgeCanvas() {
         return CANVAS_EDGE_RENDERER.clearEdgeCanvas?.();
-    }
-
-    function createEdgePointCache() {
-        if (!Array.isArray(project?.edges) || project.edges.length < EDGE_POINT_CACHE_MIN_EDGES) return null;
-        return { outputs: new Map(), inputs: new Map(), hits: 0, misses: 0 };
-    }
-
-    function publishEdgePointCacheStats(cache) {
-        perfStats.edgePointCacheHits = Number(cache?.hits || 0);
-        perfStats.edgePointCacheMisses = Number(cache?.misses || 0);
-    }
-
-    function getCachedOutputPoint(node, cache) {
-        if (!cache || !node?.id) return getOutputPoint(node);
-        const key = node.id;
-        if (cache.outputs.has(key)) {
-            cache.hits += 1;
-            return cache.outputs.get(key);
-        }
-        cache.misses += 1;
-        const point = getOutputPoint(node);
-        cache.outputs.set(key, point);
-        return point;
-    }
-
-    function getCachedInputPoint(node, slot, edgeType, cache) {
-        if (!cache || !node?.id) return getInputPoint(node, slot, edgeType);
-        const key = `${node.id}|${edgeType || ''}|${slot || ''}`;
-        if (cache.inputs.has(key)) {
-            cache.hits += 1;
-            return cache.inputs.get(key);
-        }
-        cache.misses += 1;
-        const point = getInputPoint(node, slot, edgeType);
-        cache.inputs.set(key, point);
-        return point;
     }
 
     function findCanvasEdgeAtClient(clientX, clientY) {
@@ -16050,19 +15275,8 @@
         return CANVAS_CHAIN_RUN_OVERLAY_RENDERER?.renderSelectedChainOverlay?.();
     }
 
-   function ensureTempEdge() {
-        if (tempEdge && tempEdge.isConnected) return tempEdge;
-        tempEdge = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        tempEdge.setAttribute('class', 'sai-canvas-temp-edge');
-        edgesLayer.appendChild(tempEdge);
-        return tempEdge;
-    }
-
     function clearTempEdge() {
-        if (tempEdge && tempEdge.parentNode) {
-            tempEdge.parentNode.removeChild(tempEdge);
-        }
-        tempEdge = null;
+        return CANVAS_EDGE_RENDERER.clearTempEdge();
     }
 
     function getOutputPoint(node) {
@@ -16256,25 +15470,7 @@
     }
 
     async function handleImageNodeDrop(node, dataTransfer) {
-        if (!node || node.type !== 'image') return;
-        if (isNodeLocked(node)) {
-            showToast(t('Locked node cannot be edited', '锁定节点无法编辑'));
-            return;
-        }
-        const transferId = dataTransfer?.getData('application/x-simpleai-transfer-id');
-        if (transferId && window.SimpAITransferStation && typeof window.SimpAITransferStation.getItem === 'function') {
-            const item = await window.SimpAITransferStation.getItem(transferId, { dataUrl: true, file: false });
-            if (item) {
-                await applyTransferItemToImageNode(node, item, { history: 'Drop image into node' });
-                return;
-            }
-        }
-        const files = Array.from(dataTransfer?.files || []).filter(isImageFile);
-        if (!files.length) {
-            showToast(t('Drop an image file onto the Image node.', '请拖放图片文件到图像节点'));
-            return;
-        }
-        await applyImageFileToNode(node, files[0], { history: 'Drop image into node', sourceKind: 'dropped_into_image_node' });
+        return MEDIA_EDIT_CONTROLLER.handleImageNodeDrop(node, dataTransfer);
     }
 
     function openAddNodeMenu(x, y, world, includeViewActions, closeDelayMs) {
@@ -16299,14 +15495,6 @@
 
     function openAudioMediaContextMenu(node, x, y) {
         return CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.openAudioMediaContextMenu(node, x, y);
-    }
-
-    function appendWildcardTagToNodeParam(node, slot, tag) {
-        if (!node || !tag || isNodeLocked(node)) return;
-        const key = slot === 'negative_prompt' ? 'negative_prompt' : 'prompt';
-        const value = String(node.params?.[key] || '').trim();
-        updateNodeParam(node.id, key, value ? `${value} ${tag}` : tag, 'textarea');
-        mutate({ inspector: true });
     }
 
     function openNodeContextMenu(node, x, y) {
@@ -16448,33 +15636,11 @@
     }
 
     function openSettingsMenu(anchor) {
-        const rect = anchor.getBoundingClientRect();
-        openContextMenu(rect.left, rect.bottom + 6, [
-            { label: t('Open settings page', '打开设置页'), icon: 'fa-sliders', action: () => openCanvasSettingsPanel('agent') },
-            { label: project.settings.grid ? t('Hide grid', '隐藏网格') : t('Show grid', '显示网格'), icon: 'fa-border-all', action: () => toggleSetting('grid') },
-            { label: project.settings.snap ? t('Disable snapping', '关闭吸附') : t('Enable snapping', '开启吸附'), icon: 'fa-magnet', action: () => toggleSetting('snap') },
-            { label: project.settings.minimap ? t('Hide minimap', '隐藏鸟瞰图') : t('Show minimap', '显示鸟瞰图'), icon: 'fa-map', action: () => toggleSetting('minimap') },
-            { label: project.settings.edgeLabels ? t('Hide edge labels', '隐藏连线标签') : t('Show edge labels', '显示连线标签'), icon: 'fa-tag', action: () => toggleSetting('edgeLabels') },
-            { label: project.settings.reducedMotion ? t('Restore motion', '恢复动画') : t('Reduce motion', '减少动画'), icon: 'fa-person-running', action: () => toggleSetting('reducedMotion') },
-            { label: t('Template library', '模板库'), icon: 'fa-route', action: openTemplateLibrary },
-            { label: t('Save current as template', '保存当前为模板'), icon: 'fa-floppy-disk', action: () => saveCurrentCanvasAsTemplate() },
-            { label: t('Clear browser cache', '清空浏览器缓存'), icon: 'fa-eraser', action: clearBrowserCache },
-            { label: t('Clear current project file', '清空当前项目文件'), icon: 'fa-file-circle-xmark', danger: true, action: clearProjectFileWithConfirm }
-        ]);
+        return CANVAS_SETTINGS_CONTROLLER?.openSettingsMenu?.(anchor);
     }
 
     function toggleSetting(key) {
-        pushHistory('Change canvas setting');
-        const nextValue = !project.settings[key];
-        const patch = buildProjectSettingsMergePatch(project, { [key]: nextValue });
-        if (patch && patch.settings && typeof patch.settings === 'object' && !Array.isArray(patch.settings)) {
-            Object.assign(project, patch);
-        } else {
-            Object.assign(project, {
-                settings: Object.assign({}, project.settings || {}, { [key]: nextValue })
-            });
-        }
-        mutate();
+        return CANVAS_SETTINGS_CONTROLLER?.toggleSetting?.(key);
     }
 
     function consumeWorkbenchShortcut(evt) {
@@ -16487,11 +15653,6 @@
     function isEditableElement(target) {
         if (!target || !target.closest) return false;
         return !!target.closest('input,textarea,select,[contenteditable="true"]');
-    }
-
-    function nodeHasActiveEditable(nodeEl) {
-        const active = document.activeElement;
-        return !!(nodeEl && active && active !== document.body && nodeEl.contains(active) && isEditableElement(active));
     }
 
     function openGroupListPanel() {
@@ -16640,15 +15801,6 @@
 
     function selectedMediaBrowserItem(modal) {
         return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserItem(modal);
-    }
-
-    function mediaBrowserItemMeta(item) {
-        const bits = [];
-        if (item.width && item.height) bits.push(`${item.width} x ${item.height}`);
-        if (item.rating) bits.push(String(item.rating).toUpperCase());
-        if (item.size) bits.push(formatBytes(item.size));
-        if (item.updated_at_iso) bits.push(String(item.updated_at_iso).replace('T', ' '));
-        return bits.filter(Boolean).join(' · ');
     }
 
     async function importSelectedMediaBrowserItem(modal) {
@@ -16910,41 +16062,6 @@
 
     function openAssetViewer(asset, title) {
         return mediaViewerOpenAsset(asset, title, MEDIA_VIEWER_CONTEXT);
-    }
-
-    function vlmAgentDanbooruPromptNeedsForcedCanonicalRepair(prompt, userPrompt, subjectCounts) {
-        const text = String(prompt || '').trim();
-        if (!text) return true;
-        if (/[\u3400-\u9fff]/.test(text)) return true;
-        if (!canvasAgentPromptLooksDanbooru(text)) return true;
-        const tags = canvasAgentCanonicalDanbooruTagsFromPrompt(text);
-        const repaired = canvasAgentRepairMultiCharacterDanbooruTags(tags, userPrompt || text, subjectCounts || null);
-        return repaired.join(',') !== tags.join(',');
-    }
-
-    function vlmAgentPreparedPromptFastPath(prompt, target) {
-        const text = String(prompt || '').trim();
-        const key = String(target?.key || '');
-        if (!text || !key) return false;
-        if (key === 'sdxl_danbooru') return canvasAgentPromptLooksDanbooru(text);
-        if (key === 'flux_t5_en') return !/[\u3400-\u9fff]/.test(text);
-        return false;
-    }
-
-    function vlmAgentLocalPromptPreflightPass(prompt, target, action, purpose) {
-        return {
-            ok: true,
-            state: 'pass',
-            summary: 'Prompt accepted by local fast path.',
-            checks: [{ level: 'pass', code: 'vlm_fast_path', message: 'Prepared prompt matches the target format locally.' }],
-            matches: [],
-            unmatched_terms: [],
-            preset_defaults: { styles: [], negative_prompt: '' },
-            prompt_target: target || {},
-            wildcard_preview: null,
-            action: action || '',
-            purpose: purpose || ''
-        };
     }
 
     function openNodeMediaFullscreen(node) {
@@ -17703,14 +16820,6 @@
 
     function updateMaskParam(nodeId, key, value, inputType) {
         return CANVAS_NODE_PARAM_CONTROLLER?.updateMaskParam?.(nodeId, key, value, inputType);
-    }
-
-    function updateSam3VideoMaskParam(nodeId, key, value, inputType) {
-        sam3UpdateParam(nodeId, key, value, inputType, SAM3_VIDEO_MASK_NODE_CONTEXT);
-    }
-
-    function updateCameraMotionParam(nodeId, key, value, inputType) {
-        cameraMotionUpdateParam(nodeId, key, value, inputType, CAMERA_MOTION_NODE_CONTEXT);
     }
 
     function updateQwenTtsParam(nodeId, key, value, inputType) {
@@ -18755,36 +17864,5 @@
         __perfResetStats: () => resetCanvasPerfStats()
     };
 
-    window.addEventListener('simpai:open-infinite-canvas', () => openWorkbench());
-    window.addEventListener('simpai:system-params-updated', () => {
-        if (!root) return;
-        const changed = syncStorageScope({ silent: true });
-        applyThemeClass();
-        if (changed || !root.hidden) renderAll();
-        refreshPresetCatalog({ force: true }).catch(() => {});
-    });
-    window.addEventListener('simpai:status-monitor-updated', () => {
-        if (!root || root.hidden) return;
-        renderSystemInfo();
-    });
-    window.addEventListener('simpai:vlm-model-catalog', () => {
-        if (!root || root.hidden) return;
-        renderCanvasAgentPanel();
-        if (selectedNodeId) renderInspector();
-    });
-    window.addEventListener('simpai:backend-request-failed', (evt) => {
-        if (!root || root.hidden) return;
-        const detail = evt?.detail || {};
-        setCanvasBackendAlert(
-            'disconnected',
-            t('Backend request failed. The server may have crashed or disconnected; generation and VLM chat will not continue until it is restored.', '后端请求失败。服务器可能已崩溃或断开；恢复前生成和 VLM 聊天无法继续。'),
-            { endpoint: detail.endpoint || detail.error || '' }
-        );
-    });
-
-    if (document.readyState === 'complete') {
-        ensureWorkbench();
-    } else {
-        window.addEventListener('load', ensureWorkbench);
-    }
+    CANVAS_LIFECYCLE_CONTROLLER.bindWorkbenchRuntimeEvents();
 })();

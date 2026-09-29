@@ -58,6 +58,8 @@
             resetRenderedProjectDomCache: renderSource,
             renderAll: renderSource,
             resetGalleryFrostReveals: renderSource,
+            invalidateMinimapStaticCache: renderSource,
+            invalidateNodeSpatialIndex: renderSource,
             getRoot: domSource,
             scheduleAutoPresetModelChecks: modelSource,
             renderStatus: uiSource,
@@ -216,8 +218,17 @@
             const patch = call('buildProjectUpdatedAtPatch', { updated_at: timestamp }, project, {
                 nowIso: () => timestamp
             });
-            if (patch && typeof patch === 'object') Object.assign(project, patch);
+            Object.assign(project, patch && typeof patch === 'object' && Object.keys(patch).length
+                ? patch : { updated_at: timestamp });
             return project;
+        }
+
+        function mutate(options) {
+            touchProject(getProject());
+            call('invalidateMinimapStaticCache', null, []);
+            call('invalidateNodeSpatialIndex', null, []);
+            scheduleSave();
+            call('renderAll', null, options || {});
         }
 
         function applyProjectStorage(project, storage, options) {
@@ -603,6 +614,7 @@
             initialBrowserStorageKey,
             scheduleSave,
             scheduleViewportSave,
+            mutate,
             saveProject,
             saveProjectToBrowserCache,
             buildProjectStorageInfo,

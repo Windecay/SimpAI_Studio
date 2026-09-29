@@ -115,13 +115,13 @@
             escapeHtml: pick(utilitySource, 'escapeHtml'),
             t: pick(utilitySource, 't'),
             getProject: pick(scope, 'getProject'),
+            getNode: pick(scope, 'getNode'),
             getSelectedResultAsset: pick(scope, 'getSelectedResultAsset'),
             assetMediaKind: pick(scope, 'assetMediaKind'),
             uid: pick(scope, 'uid'),
             defaultNodeSize: pick(scope, 'defaultNodeSize'),
             buildQwenTtsStatePatch: pick(scope, 'buildQwenTtsStatePatch'),
             buildProjectNodeAppendPatch: pick(scope, 'buildProjectNodeAppendPatch'),
-            getQwenTtsAudioInputLabel: pick(scope, 'getQwenTtsAudioInputLabel'),
             qwenTtsStylePresets: scope.qwenTtsStylePresets,
             mutate: pick(scope, 'mutate'),
             placeNodeAvoidingOverlap: pick(scope, 'placeNodeAvoidingOverlap'),
@@ -354,7 +354,12 @@
 
     function inputLabel(context, node, slot) {
         const ctx = contextOf(context);
-        return call(ctx, 'getQwenTtsAudioInputLabel', translateValue(ctx, 'Not connected', '未连接'), node, slot);
+        const project = call(ctx, 'getProject', null);
+        const sourceId = node?.audio_inputs?.[slot]
+            || project?.edges?.find(edge => edge.type === 'media' && edge.to === node?.id && edge.slot === slot)?.from
+            || '';
+        const source = sourceId ? call(ctx, 'getNode', null, sourceId) : null;
+        return source ? (source.title || source.id) : translateValue(ctx, 'Not connected', '未连接');
     }
 
     function renderAudioInputRow(node, slot, context) {

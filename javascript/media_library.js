@@ -10,6 +10,9 @@
     const MAX_RENDERED = 180;
     const WINDOW_BUFFER_PX = 2400;
     const PAGE_SIZE = 48;
+    const AUTOPLAY_STORAGE_KEY = 'simpai.mediaLibrary.videoAutoplay';
+    const MAX_AUTOPLAY_BYTES = 256 * 1024 * 1024;
+    const MAX_AUTOPLAY_EDGE = 3840;
 
     const state = {
         __lang: config.lang,
@@ -24,9 +27,36 @@
         mediaType: 'all',
         sort: 'newest',
         favorite: null,
+        tag: '',
+        ratingMin: '',
+        modelQuery: '',
+        orientation: '',
+        collectionId: '',
+        collections: [],
+        savedViews: [],
+        activeViewId: '',
+        autoplayEnabled: true,
+        autoplayTimer: 0,
+        failedPreviews: new Set(),
+        compareIds: [],
+        compareMode: 'side',
+        compareMatch: 'fit',
+        compareZoom: 1,
+        comparePan: { x: 0, y: 0 },
+        compareSplit: 50,
+        compareDrag: null,
+        compareSync: true,
+        compareMuted: false,
+        comparePlaying: false,
+        compareTime: 0,
+        compareDuration: 0,
+        compareRate: 1,
+        compareTimer: 0,
+        compareSession: 0,
         trashMode: false,
         selectionMode: false,
         selectedIds: new Set(),
+        selectionAnchorId: '',
         selectedId: '',
         viewerId: '',
         viewerZoom: 1,
@@ -157,6 +187,23 @@
         });
         document.documentElement.lang = config.lang === 'cn' ? 'zh-CN' : 'en';
         document.title = t('Media Library');
+        [
+            ['filter-toggle', 'Filters'], ['collection-create-toggle', 'New collection'],
+            ['view-save', 'Save view'], ['selection-add-collection', 'Add to collection'],
+            ['selection-remove-collection', 'Remove from collection'],
+            ['collection-create-form button', 'Create'],
+            ['compare-close', 'Close'], ['compare-align', 'Reset alignment'],
+            ['compare-side', 'Side by side'], ['compare-wipe', 'Wipe'],
+            ['compare-sync', 'Sync playback'], ['compare-time', 'Playback position'],
+            ['compare-rate', 'Playback speed']
+        ].forEach(([id, label]) => {
+            const button = id.includes(' ') ? document.querySelector(`#${id}`) : document.getElementById(id);
+            if (button) {
+                button.title = t(label);
+                button.setAttribute('aria-label', t(label));
+            }
+        });
+        document.querySelector('.compare-modes')?.setAttribute('aria-label', t('Compare mode'));
     }
 
     async function loadLocale() {
@@ -184,6 +231,88 @@
             fragment.appendChild(button);
         });
         refs.dateList.replaceChildren(fragment);
+    }
+
+    function renderOrganizers() {
+        if (refs.collectionList) {
+            refs.collectionList.innerHTML = state.collections.map((collection) =>
+                `<div class="organizer-item${state.collectionId === collection.collection_id ? ' is-active' : ''}" data-collection="${escapeHtml(collection.collection_id)}">` +
+                `<button type="button" data-organizer-open="collection" title="${escapeHtml(collection.title)}"><i class="fa fa-folder"></i><span class="organizer-name">${escapeHtml(collection.title)}</span><span class="organizer-count">${Number(collection.item_count || 0)}</span></button>` +
+                `<button class="icon-button" type="button" data-organizer-delete="collection" title="${escapeHtml(t('Delete collection'))}" aria-label="${escapeHtml(t('Delete collection'))}"><i class="fa fa-xmark"></i></button></div>`
+            ).join('');
+        }
+        if (refs.viewList) {
+            refs.viewList.innerHTML = state.savedViews.map((view) =>
+                `<div class="organizer-item${state.activeViewId === view.view_id ? ' is-active' : ''}" data-view="${escapeHtml(view.view_id)}">` +
+                `<button type="button" data-organizer-open="view" title="${escapeHtml(view.title)}"><i class="fa fa-filter"></i><span class="organizer-name">${escapeHtml(view.title)}</span></button>` +
+                `<button class="icon-button" type="button" data-organizer-delete="view" title="${escapeHtml(t('Delete view'))}" aria-label="${escapeHtml(t('Delete view'))}"><i class="fa fa-xmark"></i></button></div>`
+            ).join('');
+        }
+        if (refs.selectionCollection) {
+            const previous = refs.selectionCollection.value;
+            refs.selectionCollection.innerHTML = `<option value="">${escapeHtml(t('Collection'))}</option>` +
+                state.collections.map((collection) =>
+                    `<option value="${escapeHtml(collection.collection_id)}">${escapeHtml(collection.title)}</option>`
+                ).join('');
+            refs.selectionCollection.value = state.collections.some((entry) => entry.collection_id === previous) ? previous : '';
+        }
+    }
+
+    async function loadOrganizers() {
+        try {
+            const [collections, views] = await Promise.all([
+                request('/api/collections'), request('/api/views')
+            ]);
+            state.collections = Array.isArray(collections.collections) ? collections.collections : [];
+            state.savedViews = Array.isArray(views.views) ? views.views : [];
+            renderOrganizers();
+        } catch (err) {
+            showToast(t('Unable to load collections'), true);
+        }
+    }
+
+    function currentFilters() {
+        return {
+            date: state.date, type: state.mediaType, q: state.query,
+            favorite: state.favorite === true, sort: state.sort, tag: state.tag,
+            rating_min: state.ratingMin, model: state.modelQuery,
+            orientation: state.orientation, collection: state.collectionId
+        };
+    }
+
+    function syncFilterFields() {
+        if (refs.search) refs.search.value = state.query;
+        if (refs.type) refs.type.value = state.mediaType;
+        if (refs.sort) refs.sort.value = state.sort;
+        if (refs.filterTag) refs.filterTag.value = state.tag;
+        if (refs.filterModel) refs.filterModel.value = state.modelQuery;
+        if (refs.filterRating) refs.filterRating.value = state.ratingMin;
+        if (refs.filterOrientation) refs.filterOrientation.value = state.orientation;
+        if (refs.favoriteFilter) refs.favoriteFilter.setAttribute('aria-pressed', state.favorite === true ? 'true' : 'false');
+        if (refs.filterToggle) {
+            const active = !!(state.tag || state.modelQuery || state.ratingMin || state.orientation);
+            refs.filterToggle.setAttribute('aria-pressed', active ? 'true' : 'false');
+        }
+        renderDates();
+        renderOrganizers();
+    }
+
+    function applySavedFilters(filters) {
+        const value = filters && typeof filters === 'object' ? filters : {};
+        state.date = String(value.date || '');
+        state.mediaType = ['image', 'video', 'audio'].includes(value.type) ? value.type : 'all';
+        state.query = String(value.q || '');
+        state.favorite = value.favorite === true ? true : null;
+        state.sort = value.sort === 'oldest' ? 'oldest' : 'newest';
+        state.tag = String(value.tag || '');
+        state.ratingMin = value.rating_min ? String(value.rating_min) : '';
+        state.modelQuery = String(value.model || '');
+        state.orientation = ['landscape', 'portrait', 'square'].includes(value.orientation) ? value.orientation : '';
+        state.collectionId = String(value.collection || '');
+        clearSelectionForQueryChange();
+        syncFilterFields();
+        refs.feedScroll.scrollTop = 0;
+        loadPage(true);
     }
 
     function dateSummarySignature(dates) {
@@ -253,6 +382,11 @@
         if (state.mediaType !== 'all') params.set('type', state.mediaType);
         if (state.query) params.set('q', state.query);
         if (state.favorite === true) params.set('favorite', '1');
+        if (state.tag) params.set('tag', state.tag);
+        if (state.ratingMin) params.set('rating_min', state.ratingMin);
+        if (state.modelQuery) params.set('model', state.modelQuery);
+        if (state.orientation) params.set('orientation', state.orientation);
+        if (state.collectionId) params.set('collection', state.collectionId);
         if (state.trashMode) params.set('trash', '1');
         params.set('sort', state.sort);
         params.set('summary', '0');
@@ -305,6 +439,111 @@
         }
         const icon = item.media_type === 'video' ? 'fa-film' : item.media_type === 'audio' ? 'fa-music' : 'fa-image';
         return `<span class="media-placeholder"><i class="fa ${icon}"></i></span>`;
+    }
+
+    function videoAutoplayEligible(item) {
+        if (!item || item.media_type !== 'video' || item.is_trashed || !item.media_url) return false;
+        const width = Number(item.width);
+        const height = Number(item.height);
+        const size = Number(item.size);
+        return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+            && Math.max(width, height) < MAX_AUTOPLAY_EDGE
+            && Number.isFinite(size) && size > 0 && size < MAX_AUTOPLAY_BYTES;
+    }
+
+    function stopVideoPreview(card) {
+        const preview = card?.querySelector?.('.media-card-preview');
+        const video = preview?.querySelector?.('video[data-auto-preview]');
+        if (!video) return;
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        video.remove();
+        preview.classList.remove('is-playing');
+    }
+
+    function stopAllVideoPreviews() {
+        refs.feed?.querySelectorAll('.media-card').forEach(stopVideoPreview);
+    }
+
+    function videoAutoplayAllowed() {
+        return state.autoplayEnabled && !state.trashMode && !document.hidden
+            && refs.viewer?.getAttribute('aria-hidden') !== 'false'
+            && refs.compare?.getAttribute('aria-hidden') !== 'false'
+            && refs.drawer?.getAttribute('aria-hidden') !== 'false'
+            && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+            && !navigator.connection?.saveData;
+    }
+
+    function previewVisible(card) {
+        const preview = card.querySelector('.media-card-preview');
+        const viewport = refs.feedScroll?.getBoundingClientRect();
+        if (!preview || !viewport) return false;
+        const rect = preview.getBoundingClientRect();
+        const visibleWidth = Math.max(0, Math.min(rect.right, viewport.right) - Math.max(rect.left, viewport.left));
+        const visibleHeight = Math.max(0, Math.min(rect.bottom, viewport.bottom) - Math.max(rect.top, viewport.top));
+        const comparableArea = Math.min(rect.width, viewport.width) * Math.min(rect.height, viewport.height);
+        return comparableArea > 0 && visibleWidth * visibleHeight / comparableArea >= 0.55;
+    }
+
+    function startVideoPreview(card, item) {
+        const preview = card.querySelector('.media-card-preview');
+        if (!preview || preview.querySelector('video[data-auto-preview]')) return;
+        const video = document.createElement('video');
+        video.dataset.autoPreview = '';
+        video.muted = true;
+        video.defaultMuted = true;
+        video.playsInline = true;
+        video.loop = true;
+        video.preload = 'none';
+        video.setAttribute('aria-hidden', 'true');
+        video.addEventListener('playing', () => {
+            if (video.isConnected) preview.classList.add('is-playing');
+        });
+        video.addEventListener('error', () => {
+            state.failedPreviews.add(item.media_id);
+            stopVideoPreview(card);
+        });
+        preview.insertBefore(video, preview.querySelector('.media-kind'));
+        video.src = item.media_url;
+        const pending = video.play();
+        if (pending && typeof pending.catch === 'function') {
+            pending.catch(() => {
+                state.failedPreviews.add(item.media_id);
+                if (video.isConnected) stopVideoPreview(card);
+            });
+        }
+    }
+
+    function syncVideoAutoplay() {
+        if (!videoAutoplayAllowed()) {
+            stopAllVideoPreviews();
+            return;
+        }
+        refs.feed?.querySelectorAll('.media-card').forEach((card) => {
+            const item = state.itemById.get(card.dataset.id);
+            if (videoAutoplayEligible(item) && !state.failedPreviews.has(item.media_id) && previewVisible(card)) {
+                startVideoPreview(card, item);
+            } else {
+                stopVideoPreview(card);
+            }
+        });
+    }
+
+    function scheduleVideoAutoplay() {
+        window.clearTimeout(state.autoplayTimer);
+        if (!videoAutoplayAllowed()) {
+            stopAllVideoPreviews();
+            return;
+        }
+        state.autoplayTimer = window.setTimeout(syncVideoAutoplay, 180);
+    }
+
+    function updateAutoplayControl() {
+        if (!refs.autoplayToggle) return;
+        refs.autoplayToggle.setAttribute('aria-pressed', state.autoplayEnabled ? 'true' : 'false');
+        refs.autoplayToggle.title = t('Video autoplay');
+        refs.autoplayToggle.setAttribute('aria-label', t('Video autoplay'));
     }
 
     function mediaRatio(item) {
@@ -523,7 +762,11 @@
             wrappers.push(wrapper);
             refs.feed.appendChild(wrapper);
         }
-        while (wrappers.length > count) wrappers.pop().remove();
+        while (wrappers.length > count) {
+            const wrapper = wrappers.pop();
+            wrapper.querySelectorAll('.media-card').forEach(stopVideoPreview);
+            wrapper.remove();
+        }
         wrappers.forEach((wrapper, index) => { wrapper.dataset.column = String(index); });
         return wrappers;
     }
@@ -532,7 +775,10 @@
         const wanted = new Set(positions.map((position) => position.item.media_id));
         const existing = new Map(Array.from(refs.feed.querySelectorAll('.media-card')).map((card) => [card.dataset.id, card]));
         refs.feed.querySelectorAll('.media-card').forEach((card) => {
-            if (!wanted.has(card.dataset.id)) card.remove();
+            if (!wanted.has(card.dataset.id)) {
+                stopVideoPreview(card);
+                card.remove();
+            }
         });
         const wrappers = ensureMasonryColumns(layout.count);
         const activeColumns = Array.from({ length: layout.count }, () => []);
@@ -571,7 +817,9 @@
             Array.from(wrapper.children).forEach((child) => {
                 if (!allowed.has(child)) child.remove();
             });
-            sequence.forEach((child) => wrapper.appendChild(child));
+            sequence.forEach((child, index) => {
+                if (wrapper.children[index] !== child) wrapper.insertBefore(child, wrapper.children[index] || null);
+            });
         });
         refs.feed.style.removeProperty('height');
         refs.topSpacer.style.height = '0px';
@@ -596,6 +844,7 @@
         state.renderedKey = renderedKey;
         renderMasonry(positions, layout);
         updateActiveDateFromViewport();
+        scheduleVideoAutoplay();
     }
 
     function updateViewControls() {
@@ -627,6 +876,18 @@
         if (refs.selectionTrash) refs.selectionTrash.hidden = !state.selectionMode || count === 0 || state.trashMode;
         if (refs.selectionRestore) refs.selectionRestore.hidden = !state.selectionMode || count === 0 || !state.trashMode;
         if (refs.selectionPurge) refs.selectionPurge.hidden = !state.selectionMode || count === 0 || !state.trashMode;
+        if (refs.selectionCompare) {
+            refs.selectionCompare.hidden = !state.selectionMode || state.trashMode;
+            refs.selectionCompare.disabled = count < 2;
+            refs.selectionCompare.title = t('Select 2 to 4 media');
+        }
+        if (refs.selectionEdit) refs.selectionEdit.hidden = !state.selectionMode || count === 0 || state.trashMode;
+        if (refs.selectionCollection) refs.selectionCollection.hidden = !state.selectionMode || count === 0 || state.trashMode || !state.collections.length;
+        if (refs.selectionAddCollection) refs.selectionAddCollection.hidden = !state.selectionMode || count === 0 || state.trashMode || !state.collections.length;
+        if (refs.selectionRemoveCollection) refs.selectionRemoveCollection.hidden = !state.selectionMode || count === 0 || state.trashMode || !state.collectionId;
+        if (!state.selectionMode || count === 0) {
+            if (refs.batchEditor) refs.batchEditor.hidden = true;
+        }
     }
 
     function viewerItem() {
@@ -668,6 +929,7 @@
         state.viewerId = candidate.media_id;
         state.viewerZoom = 1;
         refs.viewer.setAttribute('aria-hidden', 'false');
+        stopAllVideoPreviews();
         updateViewer();
     }
 
@@ -676,6 +938,7 @@
         state.viewerZoom = 1;
         refs.viewer.setAttribute('aria-hidden', 'true');
         refs.viewerMedia.replaceChildren();
+        scheduleVideoAutoplay();
     }
 
     async function moveViewer(delta) {
@@ -751,6 +1014,43 @@
         return candidates.find((value) => typeof value === 'string' && value.trim())?.trim() || '';
     }
 
+    function generationSettings(item) {
+        const metadata = item?.generation_metadata;
+        if (!metadata || typeof metadata !== 'object') return {};
+        const parameters = metadata.parameters && typeof metadata.parameters === 'object' ? metadata.parameters : {};
+        const settings = {};
+        const prompt = promptText(item);
+        if (prompt) settings.prompt = prompt;
+        const negative = metadata.negative_prompt || parameters.negative_prompt;
+        if (typeof negative === 'string' && negative.trim()) settings.negative_prompt = negative.trim();
+        const simpleParameters = Object.fromEntries(Object.entries(parameters).filter(([, value]) =>
+            typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+        ));
+        if (Object.keys(simpleParameters).length) settings.parameters = simpleParameters;
+        return settings;
+    }
+
+    function generationFields(item) {
+        const settings = generationSettings(item);
+        const metadata = item?.generation_metadata || {};
+        const labels = {
+            model: 'Model', base_model: 'Model', seed: 'Seed', steps: 'Steps',
+            sampler: 'Sampler', scheduler: 'Scheduler', cfg_scale: 'Guidance',
+            guidance_scale: 'Guidance', width: 'Width', height: 'Height'
+        };
+        const entries = [];
+        if (settings.prompt) entries.push([t('Prompt'), settings.prompt]);
+        if (settings.negative_prompt) entries.push([t('Negative prompt'), settings.negative_prompt]);
+        if (metadata.source) entries.push([t('Source'), metadata.source]);
+        Object.entries(settings.parameters || {}).forEach(([key, value]) => {
+            if (key !== 'prompt' && key !== 'negative_prompt') entries.push([t(labels[key] || key), value]);
+        });
+        return `<dl class="generation-fields">${entries.map(([label, value]) =>
+            `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`
+        ).join('')}</dl><details class="generation-raw"><summary>${escapeHtml(t('Raw metadata'))}</summary>` +
+            `<div class="metadata-block">${escapeHtml(JSON.stringify(metadata, null, 2))}</div></details>`;
+    }
+
     async function copyText(text) {
         if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
             try {
@@ -787,6 +1087,39 @@
         showToast(t(copied ? 'Prompt copied' : 'Unable to copy prompt'), !copied);
     }
 
+    async function copySettings(item) {
+        const settings = generationSettings(item);
+        if (!Object.keys(settings).length) {
+            showToast(t('No settings available'), true);
+            return;
+        }
+        const copied = await copyText(JSON.stringify(settings, null, 2));
+        showToast(t(copied ? 'Settings copied' : 'Unable to copy settings'), !copied);
+    }
+
+    async function loadRelated(item) {
+        const container = refs.detail?.querySelector('#detail-related');
+        if (!container) return;
+        try {
+            const payload = await request(`/api/items/${encodeURIComponent(item.media_id)}/related`);
+            if (state.selectedId !== item.media_id || !container.isConnected) return;
+            const items = Array.isArray(payload.items) ? payload.items : [];
+            container.hidden = !items.length;
+            if (!items.length) return;
+            container.innerHTML = `<h3>${escapeHtml(t('Related results'))}</h3><div class="related-list">` +
+                items.map((related) =>
+                    `<button type="button" data-related-id="${escapeHtml(related.media_id)}" title="${escapeHtml(related.title || related.name || '')}">` +
+                    (related.thumbnail_url ? `<img src="${escapeHtml(related.thumbnail_url)}" alt="" loading="lazy">` : `<i class="fa fa-film"></i>`) +
+                    `<span>${escapeHtml(related.title || related.name || '')}</span></button>`
+                ).join('') + '</div>';
+            container.querySelectorAll('[data-related-id]').forEach((button) => {
+                button.addEventListener('click', () => openDetail(button.dataset.relatedId));
+            });
+        } catch (err) {
+            container.hidden = true;
+        }
+    }
+
     function syncDetailLayout() {
         const open = !!refs.drawer && refs.drawer.getAttribute('aria-hidden') === 'false';
         if (refs.layout) refs.layout.classList.remove('has-detail');
@@ -814,6 +1147,7 @@
         const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
         state.selectedId = String(mediaId || '');
         refs.drawer.setAttribute('aria-hidden', 'false');
+        stopAllVideoPreviews();
         syncDetailLayout();
         renderWindow(true);
         if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
@@ -842,11 +1176,18 @@
         const tags = Array.isArray(item.tags) ? item.tags.join(', ') : '';
         const copyPromptLabel = t('Copy prompt');
         const trashed = !!item.is_trashed || state.trashMode;
+        const canvasParams = new URLSearchParams({
+            __theme: config.theme, __lang: state.__lang || config.lang,
+            gallery_media_id: item.media_id
+        });
+        const canvasHref = `${config.assetBase || ''}/canvas-workbench/app?${canvasParams}`;
         const lifecycleActions = trashed
             ? `<button class="primary-button" type="button" id="detail-viewer"><i class="fa fa-expand"></i> ${escapeHtml(t('View full screen'))}</button><button class="primary-button" type="button" id="detail-restore"><i class="fa fa-rotate-left"></i> ${escapeHtml(t('Restore media'))}</button><button class="danger-button" type="button" id="detail-purge"><i class="fa fa-trash"></i> ${escapeHtml(t('Delete permanently'))}</button>`
-            : `<button class="primary-button" type="button" id="detail-viewer"><i class="fa fa-expand"></i> ${escapeHtml(t('View full screen'))}</button><a class="primary-button" href="${escapeHtml(item.download_url || item.media_url || '#')}" download><i class="fa fa-download"></i> ${escapeHtml(t('Download'))}</a><button class="danger-button" type="button" id="detail-trash"><i class="fa fa-trash"></i> ${escapeHtml(t('Delete'))}</button>`;
+            : `<button class="primary-button" type="button" id="detail-viewer"><i class="fa fa-expand"></i> ${escapeHtml(t('View full screen'))}</button>${item.media_type !== 'audio' ? `<a class="secondary-button" id="detail-open-canvas" href="${escapeHtml(canvasHref)}" target="_blank" rel="noopener"><i class="fa fa-layer-group"></i> ${escapeHtml(t('Open in Canvas'))}</a>` : ''}<a class="secondary-button" href="${escapeHtml(item.download_url || item.media_url || '#')}" download><i class="fa fa-download"></i> ${escapeHtml(t('Download'))}</a><button class="danger-button" type="button" id="detail-trash"><i class="fa fa-trash"></i> ${escapeHtml(t('Delete'))}</button>`;
+        const folderAction = `<button class="secondary-button" type="button" id="detail-open-folder" title="${escapeHtml(t('Open containing folder'))}"><i class="fa fa-folder-open"></i> ${escapeHtml(t('Open containing folder'))}</button>`;
         refs.detail.innerHTML = `<div class="detail-preview">${detailPreview(item)}</div>
-            <div class="detail-actions">${lifecycleActions}</div>
+            <p class="detail-file-status" id="detail-file-status" hidden></p>
+            <div class="detail-actions">${lifecycleActions}${folderAction}</div>
             <section class="detail-section"><h3>${escapeHtml(t('Library metadata'))}</h3><div class="detail-form">
                 <label for="detail-title">${escapeHtml(t('Title'))}</label><input id="detail-title" value="${escapeHtml(item.title || '')}" maxlength="240">
                 <label for="detail-tags">${escapeHtml(t('Tags'))}</label><input id="detail-tags" value="${escapeHtml(tags)}" maxlength="640">
@@ -855,14 +1196,36 @@
                 <div class="detail-actions"><button class="primary-button" type="button" id="detail-save"><i class="fa fa-floppy-disk"></i> ${escapeHtml(t('Save'))}</button><button class="secondary-button" type="button" id="detail-favorite"><i class="fa fa-star"></i> ${escapeHtml(item.favorite ? t('Unfavorite') : t('Favorite'))}</button></div>
             </div></section>
             <section class="detail-section"><h3>${escapeHtml(t('File'))}</h3><dl class="detail-grid"><dt>${escapeHtml(t('Name'))}</dt><dd>${escapeHtml(item.name || '')}</dd><dt>${escapeHtml(t('Date'))}</dt><dd>${escapeHtml(formatDate(item.date_key))}</dd><dt>${escapeHtml(t('Size'))}</dt><dd>${escapeHtml(formatBytes(item.size))}</dd><dt>${escapeHtml(t('Dimensions'))}</dt><dd>${item.width && item.height ? `${item.width} × ${item.height}` : '-'}</dd></dl></section>
-            <section class="detail-section"><div class="detail-section-heading"><h3>${escapeHtml(t('Generation metadata'))}</h3><button class="secondary-button copy-prompt-button" type="button" id="detail-copy-prompt" title="${escapeHtml(copyPromptLabel)}" aria-label="${escapeHtml(copyPromptLabel)}"><i class="fa fa-copy"></i><span>${escapeHtml(copyPromptLabel)}</span></button></div><div class="metadata-block">${escapeHtml(JSON.stringify(metadata, null, 2))}</div></section>`;
+            <section class="detail-section"><div class="detail-section-heading"><h3>${escapeHtml(t('Generation metadata'))}</h3><div class="detail-actions"><button class="secondary-button copy-prompt-button" type="button" id="detail-copy-prompt" title="${escapeHtml(copyPromptLabel)}" aria-label="${escapeHtml(copyPromptLabel)}"><i class="fa fa-copy"></i><span>${escapeHtml(copyPromptLabel)}</span></button><button class="secondary-button copy-prompt-button" type="button" id="detail-copy-settings"><i class="fa fa-copy"></i><span>${escapeHtml(t('Copy settings'))}</span></button></div></div>${generationFields(item)}</section>
+            <section class="detail-section" id="detail-related" hidden></section>`;
         refs.detail.querySelector('#detail-save').addEventListener('click', () => saveDetail(item));
         refs.detail.querySelector('#detail-favorite').addEventListener('click', () => saveDetail(item, { favorite: !item.favorite }));
         refs.detail.querySelector('#detail-trash')?.addEventListener('click', () => trashItem(item.media_id));
         refs.detail.querySelector('#detail-restore')?.addEventListener('click', () => restoreItem(item.media_id));
         refs.detail.querySelector('#detail-purge')?.addEventListener('click', () => purgeItem(item.media_id));
         refs.detail.querySelector('#detail-viewer')?.addEventListener('click', () => openViewer(item));
+        refs.detail.querySelector('#detail-open-folder')?.addEventListener('click', () => openContainingFolder(item.media_id));
         refs.detail.querySelector('#detail-copy-prompt')?.addEventListener('click', () => copyPrompt(item));
+        refs.detail.querySelector('#detail-copy-settings')?.addEventListener('click', () => copySettings(item));
+        const canvasLink = refs.detail.querySelector('#detail-open-canvas');
+        if (canvasLink) {
+            const href = canvasLink.href;
+            canvasLink.removeAttribute('href');
+            canvasLink.setAttribute('aria-disabled', 'true');
+            request(`/api/items/${encodeURIComponent(item.media_id)}/canvas`).then(() => {
+                if (!canvasLink.isConnected || state.selectedId !== item.media_id) return;
+                canvasLink.href = href;
+                canvasLink.removeAttribute('aria-disabled');
+            }).catch((err) => {
+                if (!canvasLink.isConnected || state.selectedId !== item.media_id) return;
+                const message = t(err?.payload?.error === 'Media file not found.' ? 'Media file not found.' : 'Media unavailable in Canvas');
+                canvasLink.title = message;
+                const status = refs.detail.querySelector('#detail-file-status');
+                status.textContent = message;
+                status.hidden = false;
+            });
+        }
+        loadRelated(item);
     }
 
     async function saveDetail(item, override) {
@@ -887,14 +1250,29 @@
     async function trashItem(mediaId) {
         if (!window.confirm(t('Move this media to the trash?'))) return;
         try {
-            await request('/api/items/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [mediaId] }) });
+            const result = await request('/api/items/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [mediaId] }) });
             removeItemFromState(mediaId);
             updateSelectionControls();
             await loadPage(true);
             loadDates();
-            showToast(t('Moved to trash'));
+            showToast(t(result.removed_missing?.length ? 'Missing record removed' : 'Moved to trash'));
         } catch (err) {
-            showToast(t('Unable to delete media'), true);
+            showToast(actionError(err, 'Unable to delete media'), true);
+        }
+    }
+
+    function actionError(err, fallback) {
+        const detail = err?.payload?.errors?.[0]?.error || err?.payload?.error;
+        return detail && (state.__lang !== 'cn' || t(detail) !== detail)
+            ? `${t(fallback)}: ${t(detail)}` : t(fallback);
+    }
+
+    async function openContainingFolder(mediaId) {
+        try {
+            const result = await request(`/api/items/${encodeURIComponent(mediaId)}/open-folder`, { method: 'POST' });
+            showToast(t(result.file_exists ? 'Opened containing folder' : 'File missing; opened output folder'));
+        } catch (err) {
+            showToast(actionError(err, 'Unable to open folder'), true);
         }
     }
 
@@ -902,6 +1280,7 @@
         state.items = state.items.filter((item) => item.media_id !== mediaId);
         state.itemById.delete(mediaId);
         state.selectedIds.delete(mediaId);
+        if (state.selectionAnchorId === mediaId) state.selectionAnchorId = '';
         state.selectedId = '';
         state.layout = null;
         state.renderedStart = -1;
@@ -911,26 +1290,57 @@
         syncDetailLayout();
     }
 
+    function renderSelection() {
+        const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
+        updateSelectionControls();
+        renderWindow(true);
+        if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
+    }
+
     function toggleItemSelection(mediaId) {
         const id = String(mediaId || '');
         if (!id) return;
-        const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
+        state.selectionMode = true;
+        state.selectionAnchorId = id;
         if (state.selectedIds.has(id)) state.selectedIds.delete(id);
         else state.selectedIds.add(id);
-        updateSelectionControls();
-        renderWindow(true);
-        if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
+        renderSelection();
+    }
+
+    function selectOnlyItem(mediaId) {
+        const id = String(mediaId || '');
+        if (!id) return;
+        state.selectionAnchorId = id;
+        state.selectedIds.clear();
+        state.selectedIds.add(id);
+        renderSelection();
+    }
+
+    function selectItemRange(mediaId, additive) {
+        const id = String(mediaId || '');
+        const target = state.items.findIndex((item) => item.media_id === id);
+        if (target < 0) return;
+        let anchor = state.items.findIndex((item) => item.media_id === state.selectionAnchorId);
+        if (anchor < 0) {
+            anchor = target;
+            state.selectionAnchorId = id;
+        }
+        state.selectionMode = true;
+        if (!additive) state.selectedIds.clear();
+        for (let index = Math.min(anchor, target); index <= Math.max(anchor, target); index += 1) {
+            state.selectedIds.add(state.items[index].media_id);
+        }
+        renderSelection();
     }
 
     function clearSelection() {
-        const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
         state.selectedIds.clear();
-        updateSelectionControls();
-        renderWindow(true);
-        if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
+        state.selectionAnchorId = '';
+        renderSelection();
     }
 
     function clearSelectionForQueryChange() {
+        state.selectionAnchorId = '';
         if (!state.selectedIds.size) return;
         state.selectedIds.clear();
         updateSelectionControls();
@@ -938,8 +1348,12 @@
 
     function toggleSelectionMode() {
         const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
+        clearCardClickTimer();
         state.selectionMode = !state.selectionMode;
-        if (!state.selectionMode) state.selectedIds.clear();
+        if (!state.selectionMode) {
+            state.selectedIds.clear();
+            state.selectionAnchorId = '';
+        }
         updateSelectionControls();
         renderWindow(true);
         if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
@@ -967,7 +1381,7 @@
         }[action];
         if (!actionConfig || !window.confirm(actionConfig.confirm)) return;
         try {
-            await request(actionConfig.path, {
+            const result = await request(actionConfig.path, {
                 method: actionConfig.method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ids })
@@ -977,9 +1391,11 @@
             updateSelectionControls();
             await loadPage(true);
             loadDates();
-            showToast(actionConfig.success);
+            showToast(t(action === 'trash' && result.removed_missing?.length && !result.trashed?.length ? 'Missing records removed' : actionConfig.success));
         } catch (err) {
-            showToast(actionConfig.error, true);
+            await loadPage(true);
+            loadDates();
+            showToast(actionError(err, actionConfig.error), true);
         }
     }
 
@@ -1036,13 +1452,17 @@
         state.trashMode = !state.trashMode;
         state.date = '';
         state.favorite = null;
+        state.collectionId = '';
+        state.activeViewId = '';
         state.selectedIds.clear();
+        state.selectionAnchorId = '';
         state.selectedId = '';
         refs.drawer.setAttribute('aria-hidden', 'true');
         syncDetailLayout();
         updateViewControls();
         refs.feedScroll.scrollTop = 0;
         await loadPage(true);
+        renderOrganizers();
     }
 
     function closeDetail() {
@@ -1052,6 +1472,7 @@
         syncDetailLayout();
         renderWindow(true);
         if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
+        scheduleVideoAutoplay();
     }
 
     async function toggleFavorite(item) {
@@ -1065,6 +1486,445 @@
         }
     }
 
+    async function createCollection(event) {
+        event.preventDefault();
+        const title = refs.collectionName?.value.trim() || '';
+        if (!title) return;
+        try {
+            const response = await request('/api/collections', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title })
+            });
+            await loadOrganizers();
+            state.collectionId = response.collection.collection_id;
+            state.activeViewId = '';
+            refs.collectionName.value = '';
+            refs.collectionCreateForm.hidden = true;
+            syncFilterFields();
+            loadPage(true);
+        } catch (err) {
+            showToast(t('Unable to create collection'), true);
+        }
+    }
+
+    async function saveCurrentView() {
+        const title = refs.viewName?.value.trim() || '';
+        if (!title) return;
+        try {
+            const response = await request('/api/views', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, filters: currentFilters() })
+            });
+            refs.viewName.value = '';
+            state.activeViewId = response.view.view_id;
+            refs.filterPanel.hidden = true;
+            refs.filterToggle.setAttribute('aria-expanded', 'false');
+            await loadOrganizers();
+        } catch (err) {
+            showToast(t('Unable to save view'), true);
+        }
+    }
+
+    async function handleOrganizerClick(event) {
+        const row = event.target.closest('.organizer-item');
+        if (!row) return;
+        const deleting = event.target.closest('[data-organizer-delete]');
+        const kind = deleting?.dataset.organizerDelete || event.target.closest('[data-organizer-open]')?.dataset.organizerOpen;
+        if (kind === 'collection') {
+            const id = row.dataset.collection;
+            if (deleting) {
+                if (!window.confirm(t('Delete this collection?'))) return;
+                try {
+                    await request(`/api/collections/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                    if (state.collectionId === id) {
+                        state.collectionId = '';
+                        loadPage(true);
+                    }
+                    await loadOrganizers();
+                } catch (err) { showToast(t('Unable to delete collection'), true); }
+            } else {
+                state.collectionId = state.collectionId === id ? '' : id;
+                state.activeViewId = '';
+                clearSelectionForQueryChange();
+                syncFilterFields();
+                refs.feedScroll.scrollTop = 0;
+                loadPage(true);
+                refs.dateSidebar.classList.remove('is-open');
+            }
+        } else if (kind === 'view') {
+            const id = row.dataset.view;
+            if (deleting) {
+                if (!window.confirm(t('Delete this view?'))) return;
+                try {
+                    await request(`/api/views/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                    if (state.activeViewId === id) state.activeViewId = '';
+                    await loadOrganizers();
+                } catch (err) { showToast(t('Unable to delete view'), true); }
+            } else {
+                const view = state.savedViews.find((entry) => entry.view_id === id);
+                if (!view) return;
+                state.activeViewId = id;
+                applySavedFilters(view.filters);
+                refs.dateSidebar.classList.remove('is-open');
+            }
+        }
+    }
+
+    async function applyBatchMetadata() {
+        const ids = Array.from(state.selectedIds);
+        const addTags = (refs.batchTags?.value || '').split(',').map((value) => value.trim()).filter(Boolean);
+        const rating = refs.batchRating?.value;
+        const favorite = refs.batchFavorite?.value;
+        if (!ids.length || (!addTags.length && rating === '' && favorite === '')) return;
+        const payload = { ids, add_tags: addTags };
+        if (rating !== '') payload.rating = Number(rating);
+        if (favorite !== '') payload.favorite = favorite === '1';
+        try {
+            await request('/api/items/batch', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            refs.batchEditor.hidden = true;
+            refs.batchTags.value = '';
+            refs.batchRating.value = '';
+            refs.batchFavorite.value = '';
+            await loadPage(true);
+            showToast(t('Selected media updated'));
+        } catch (err) { showToast(t('Unable to update selected media'), true); }
+    }
+
+    async function addSelectionToCollection() {
+        const id = refs.selectionCollection?.value;
+        if (!id || !state.selectedIds.size) return;
+        try {
+            await request(`/api/collections/${encodeURIComponent(id)}/items`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: Array.from(state.selectedIds) })
+            });
+            await loadOrganizers();
+            showToast(t('Added to collection'));
+        } catch (err) { showToast(t('Unable to add to collection'), true); }
+    }
+
+    async function removeSelectionFromCollection() {
+        const id = state.collectionId;
+        if (!id || !state.selectedIds.size) return;
+        try {
+            await request(`/api/collections/${encodeURIComponent(id)}/items`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: Array.from(state.selectedIds), remove: true })
+            });
+            state.selectedIds.clear();
+            updateSelectionControls();
+            await Promise.all([loadPage(true), loadOrganizers()]);
+            showToast(t('Removed from collection'));
+        } catch (err) { showToast(t('Unable to remove from collection'), true); }
+    }
+
+    function closeCompare() {
+        stopComparePlayback();
+        state.compareIds = [];
+        state.compareDrag = null;
+        refs.compare?.setAttribute('aria-hidden', 'true');
+        refs.compareGrid?.replaceChildren();
+        scheduleVideoAutoplay();
+    }
+
+    function compareItems() {
+        return state.compareIds.map((id) => state.itemById.get(id)).filter(Boolean);
+    }
+
+    function compareVideos() {
+        return Array.from(refs.compareGrid?.querySelectorAll('.compare-item video') || []);
+    }
+
+    function formatCompareTime(seconds) {
+        const total = Math.floor(Math.max(0, Number(seconds) || 0));
+        const minutes = Math.floor(total / 60);
+        const clock = `${minutes % 60}:${String(total % 60).padStart(2, '0')}`;
+        return minutes >= 60 ? `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}` : clock;
+    }
+
+    function updateCompareClock() {
+        if (refs.compareTime) refs.compareTime.value = String(Math.min(state.compareTime, state.compareDuration || 0));
+        if (refs.compareClock) refs.compareClock.value =
+            `${formatCompareTime(state.compareTime)} / ${formatCompareTime(state.compareDuration)}`;
+    }
+
+    function updateComparePlaybackButtons() {
+        const playLabel = t(state.comparePlaying ? 'Pause' : 'Play');
+        refs.comparePlay?.setAttribute('title', playLabel);
+        refs.comparePlay?.setAttribute('aria-label', playLabel);
+        if (refs.comparePlay) refs.comparePlay.querySelector('i').className = `fa fa-${state.comparePlaying ? 'pause' : 'play'}`;
+        const muteLabel = t(state.compareMuted ? 'Unmute' : 'Mute');
+        refs.compareMute?.setAttribute('title', muteLabel);
+        refs.compareMute?.setAttribute('aria-label', muteLabel);
+        refs.compareMute?.setAttribute('aria-pressed', state.compareMuted ? 'true' : 'false');
+        if (refs.compareMute) refs.compareMute.querySelector('i').className =
+            `fa fa-volume-${state.compareMuted ? 'xmark' : 'high'}`;
+    }
+
+    function updateCompareTransport() {
+        const videos = compareVideos();
+        const available = videos.length >= 2;
+        const durations = videos.map((video) => video.duration);
+        state.compareDuration = available && durations.every((duration) => Number.isFinite(duration) && duration > 0)
+            ? Math.min(...durations) : 0;
+        state.compareTime = Math.min(state.compareTime, state.compareDuration);
+        if (refs.compareSync) {
+            refs.compareSync.hidden = !available;
+            refs.compareSync.setAttribute('aria-pressed', state.compareSync ? 'true' : 'false');
+        }
+        if (refs.compareTransport) refs.compareTransport.hidden = !available || !state.compareSync;
+        if (refs.comparePlay) refs.comparePlay.disabled = !state.compareDuration;
+        if (refs.compareTime) {
+            refs.compareTime.disabled = !state.compareDuration;
+            refs.compareTime.max = String(state.compareDuration || 1);
+        }
+        if (refs.compareRate) refs.compareRate.value = String(state.compareRate);
+        videos.forEach((video, index) => {
+            video.controls = !available || !state.compareSync;
+            video.muted = available && state.compareSync && (index > 0 || state.compareMuted);
+            video.playbackRate = state.compareRate;
+        });
+        updateComparePlaybackButtons();
+        updateCompareClock();
+    }
+
+    function stopComparePlayback() {
+        state.compareSession += 1;
+        window.clearInterval(state.compareTimer);
+        state.compareTimer = 0;
+        state.comparePlaying = false;
+        compareVideos().forEach((video) => video.pause());
+        updateComparePlaybackButtons();
+    }
+
+    function seekCompareVideos(seconds) {
+        if (!state.compareDuration) return;
+        state.compareTime = Math.max(0, Math.min(state.compareDuration, Number(seconds) || 0));
+        compareVideos().forEach((video) => {
+            if (video.readyState >= 1 && Math.abs(video.currentTime - state.compareTime) > .01) {
+                video.currentTime = state.compareTime;
+            }
+        });
+        updateCompareClock();
+    }
+
+    function failComparePlayback(session) {
+        if (session !== state.compareSession || !state.comparePlaying) return;
+        stopComparePlayback();
+        showToast(t('Unable to play video'), true);
+    }
+
+    function syncComparePlayback() {
+        if (!state.comparePlaying || !state.compareSync || refs.compare?.getAttribute('aria-hidden') !== 'false') return;
+        const videos = compareVideos();
+        const leader = videos[0];
+        if (videos.length < 2 || videos.some((video) => video.error)) {
+            failComparePlayback(state.compareSession);
+            return;
+        }
+        if (leader.currentTime >= state.compareDuration - .03 || videos.some((video) => video.ended)) {
+            seekCompareVideos(state.compareDuration);
+            stopComparePlayback();
+            return;
+        }
+        if (videos.some((video) => video.readyState < 3)) {
+            videos.forEach((video) => video.pause());
+            return;
+        }
+        videos.slice(1).forEach((video) => {
+            if (Math.abs(video.currentTime - leader.currentTime) > .18) video.currentTime = leader.currentTime;
+        });
+        const session = state.compareSession;
+        videos.forEach((video) => {
+            if (video.paused && !video.dataset.compareResuming) {
+                video.dataset.compareResuming = '1';
+                Promise.resolve(video.play()).catch(() => failComparePlayback(session))
+                    .finally(() => { delete video.dataset.compareResuming; });
+            }
+        });
+        state.compareTime = Math.min(leader.currentTime, state.compareDuration);
+        updateCompareClock();
+    }
+
+    function startComparePlayback() {
+        const videos = compareVideos();
+        if (!state.compareSync || videos.length < 2 || !state.compareDuration) return;
+        if (state.compareTime >= state.compareDuration - .03) seekCompareVideos(0);
+        else seekCompareVideos(state.compareTime);
+        state.comparePlaying = true;
+        const session = ++state.compareSession;
+        updateComparePlaybackButtons();
+        try {
+            Promise.all(videos.map((video) => Promise.resolve(video.play())))
+                .then(() => {
+                    if (session !== state.compareSession || !state.comparePlaying) return;
+                    syncComparePlayback();
+                    if (session === state.compareSession && state.comparePlaying) {
+                        state.compareTimer = window.setInterval(syncComparePlayback, 120);
+                    }
+                })
+                .catch(() => failComparePlayback(session));
+        } catch (err) {
+            failComparePlayback(session);
+        }
+    }
+
+    function updateCompareTransforms() {
+        if (!refs.compareGrid) return;
+        const images = Array.from(refs.compareGrid.querySelectorAll('.compare-media img'));
+        if (!images.length) return;
+        const first = images[0];
+        const firstStage = first.closest('.compare-media');
+        const firstRect = firstStage.getBoundingClientRect();
+        const firstWidth = first.naturalWidth || Number(first.dataset.width) || 1;
+        const firstHeight = first.naturalHeight || Number(first.dataset.height) || 1;
+        const referenceFit = Math.min(Math.max(1, firstRect.width - 24) / firstWidth, Math.max(1, firstRect.height - 24) / firstHeight);
+        images.forEach((image) => {
+            const rect = image.closest('.compare-media').getBoundingClientRect();
+            const width = image.naturalWidth || Number(image.dataset.width) || 1;
+            const height = image.naturalHeight || Number(image.dataset.height) || 1;
+            let scale;
+            if (state.compareMatch === 'width') scale = firstWidth * referenceFit / width;
+            else if (state.compareMatch === 'height') scale = firstHeight * referenceFit / height;
+            else if (state.compareMatch === 'pixel') scale = 1;
+            else scale = Math.min(Math.max(1, rect.width - 24) / width, Math.max(1, rect.height - 24) / height);
+            image.style.width = `${width * scale * state.compareZoom}px`;
+            image.style.height = `${height * scale * state.compareZoom}px`;
+            image.style.transform = `translate(-50%, -50%) translate(${state.comparePan.x}px, ${state.comparePan.y}px)`;
+        });
+    }
+
+    function updateCompareControls() {
+        const canWipe = compareItems().length === 2 && compareItems().every((item) => item.media_type === 'image');
+        if (!canWipe) state.compareMode = 'side';
+        refs.compareSide?.setAttribute('aria-pressed', state.compareMode === 'side' ? 'true' : 'false');
+        refs.compareWipe?.setAttribute('aria-pressed', state.compareMode === 'wipe' ? 'true' : 'false');
+        if (refs.compareWipe) refs.compareWipe.disabled = !canWipe;
+        if (refs.compareSplitControl) refs.compareSplitControl.hidden = state.compareMode !== 'wipe';
+        if (refs.compareZoom) refs.compareZoom.value = String(Math.round(state.compareZoom * 100));
+        if (refs.compareZoomValue) refs.compareZoomValue.value = `${Math.round(state.compareZoom * 100)}%`;
+        if (refs.compareMatch) refs.compareMatch.value = state.compareMatch;
+        if (refs.compareX) refs.compareX.value = String(state.comparePan.x);
+        if (refs.compareY) refs.compareY.value = String(state.comparePan.y);
+        if (refs.compareSplit) refs.compareSplit.value = String(state.compareSplit);
+        refs.compareGrid?.style.setProperty('--compare-split', `${state.compareSplit}%`);
+    }
+
+    function compareImage(item, index) {
+        return `<img src="${escapeHtml(item.media_url || item.thumbnail_url || '')}" alt="${escapeHtml(item.title || item.name || '')}" draggable="false" data-width="${Number(item.width) || 0}" data-height="${Number(item.height) || 0}" data-compare-index="${index}">`;
+    }
+
+    function renderCompare() {
+        const items = compareItems();
+        if (!items.length || !refs.compareGrid) return;
+        stopComparePlayback();
+        updateCompareControls();
+        refs.compareGrid.style.setProperty('--compare-count', String(items.length));
+        refs.compareGrid.classList.toggle('is-wipe', state.compareMode === 'wipe');
+        if (state.compareMode === 'wipe') {
+            refs.compareGrid.innerHTML = `<div class="compare-wipe">
+                <div class="compare-media">${compareImage(items[0], 0)}</div>
+                <div class="compare-wipe-reveal"><div class="compare-media">${compareImage(items[1], 1)}</div></div>
+                <div class="compare-divider" role="separator" aria-label="${escapeHtml(t('Divider'))}" aria-valuenow="${state.compareSplit}"><span></span></div>
+                <div class="compare-wipe-labels"><span>${escapeHtml(items[0].title || items[0].name || '')}</span><span>${escapeHtml(items[1].title || items[1].name || '')}</span></div>
+            </div>`;
+        } else {
+            refs.compareGrid.innerHTML = items.map((item, index) => {
+                const source = escapeHtml(item.media_url || item.thumbnail_url || '');
+                const media = item.media_type === 'image' ? compareImage(item, index)
+                    : item.media_type === 'video' ? `<video src="${source}" controls playsinline preload="metadata"></video>`
+                        : `<audio src="${source}" controls preload="metadata"></audio>`;
+                return `<div class="compare-item"><div class="compare-media">${media}</div><div class="compare-caption" title="${escapeHtml(item.title || item.name || '')}">${escapeHtml(item.title || item.name || '')}</div></div>`;
+            }).join('');
+        }
+        compareVideos().forEach((video) => {
+            video.addEventListener('loadedmetadata', updateCompareTransport);
+            video.addEventListener('durationchange', updateCompareTransport);
+            video.addEventListener('ended', () => {
+                if (state.comparePlaying) {
+                    seekCompareVideos(state.compareDuration);
+                    stopComparePlayback();
+                }
+            });
+            video.addEventListener('error', () => {
+                if (state.comparePlaying) failComparePlayback(state.compareSession);
+                updateCompareTransport();
+            });
+        });
+        updateCompareTransport();
+        refs.compareGrid.querySelectorAll('img').forEach((image) => image.addEventListener('load', updateCompareTransforms, { once: true }));
+        window.requestAnimationFrame(updateCompareTransforms);
+    }
+
+    function openCompare() {
+        if (!refs.compare) return;
+        const count = state.selectedIds.size;
+        if (count < 2 || count > 4) {
+            showToast(t('Select 2 to 4 media'), true);
+            return;
+        }
+        const items = state.items.filter((item) => state.selectedIds.has(item.media_id));
+        if (items.length !== count) {
+            showToast(t('Unable to load media'), true);
+            return;
+        }
+        state.compareIds = items.map((item) => item.media_id);
+        state.compareMode = 'side';
+        state.compareMatch = 'fit';
+        state.compareZoom = 1;
+        state.comparePan = { x: 0, y: 0 };
+        state.compareSplit = 50;
+        state.compareSync = true;
+        state.compareMuted = false;
+        state.compareTime = 0;
+        state.compareDuration = 0;
+        state.compareRate = 1;
+        stopAllVideoPreviews();
+        refs.compare.setAttribute('aria-hidden', 'false');
+        renderCompare();
+    }
+
+    function resetCompareAlignment() {
+        state.compareZoom = 1;
+        state.comparePan = { x: 0, y: 0 };
+        state.compareSplit = 50;
+        updateCompareControls();
+        updateCompareTransforms();
+    }
+
+    function startCompareDrag(event) {
+        if (event.button !== 0) return;
+        const divider = event.target.closest('.compare-divider');
+        const stage = event.target.closest('.compare-media');
+        if (!divider && (!stage || event.target.closest('video, audio'))) return;
+        state.compareDrag = {
+            type: divider ? 'split' : 'pan', x: event.clientX, y: event.clientY,
+            panX: state.comparePan.x, panY: state.comparePan.y
+        };
+        refs.compareGrid.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+    }
+
+    function moveCompareDrag(event) {
+        const drag = state.compareDrag;
+        if (!drag) return;
+        if (drag.type === 'split') {
+            const rect = refs.compareGrid.querySelector('.compare-wipe')?.getBoundingClientRect();
+            if (!rect?.width) return;
+            state.compareSplit = Math.max(0, Math.min(100, Math.round((event.clientX - rect.left) / rect.width * 100)));
+            refs.compareGrid.style.setProperty('--compare-split', `${state.compareSplit}%`);
+            const divider = refs.compareGrid.querySelector('.compare-divider');
+            divider?.setAttribute('aria-valuenow', String(state.compareSplit));
+        } else {
+            state.comparePan = { x: Math.round(drag.panX + event.clientX - drag.x), y: Math.round(drag.panY + event.clientY - drag.y) };
+            updateCompareTransforms();
+        }
+        updateCompareControls();
+    }
+
     function bindEvents() {
         refs.feed.addEventListener('click', (event) => {
             const selectButton = event.target.closest('.card-select');
@@ -1072,7 +1932,12 @@
                 clearCardClickTimer();
                 event.stopPropagation();
                 const card = selectButton.closest('.media-card');
-                if (card) toggleItemSelection(card.dataset.id);
+                if (card) {
+                    if (event.shiftKey) {
+                        event.preventDefault();
+                        selectItemRange(card.dataset.id, event.ctrlKey);
+                    } else toggleItemSelection(card.dataset.id);
+                }
                 return;
             }
             const favoriteButton = event.target.closest('.card-favorite');
@@ -1086,8 +1951,15 @@
             }
             const card = event.target.closest('.media-card');
             if (card) {
-                if (state.selectionMode) toggleItemSelection(card.dataset.id);
-                else {
+                if (event.shiftKey || event.ctrlKey) {
+                    event.preventDefault();
+                    clearCardClickTimer();
+                    if (event.shiftKey) selectItemRange(card.dataset.id, event.ctrlKey);
+                    else toggleItemSelection(card.dataset.id);
+                } else if (state.selectionMode) {
+                    selectOnlyItem(card.dataset.id);
+                } else {
+                    state.selectionAnchorId = card.dataset.id;
                     clearCardClickTimer();
                     state.cardClickTimer = window.setTimeout(() => {
                         state.cardClickTimer = 0;
@@ -1109,6 +1981,7 @@
             if (!button) return;
             const nextDate = button.dataset.date || '';
             state.date = state.date === nextDate ? '' : nextDate;
+            state.activeViewId = '';
             clearSelectionForQueryChange();
             renderDates();
             refs.dateSidebar.classList.remove('is-open');
@@ -1117,16 +1990,18 @@
         });
         refs.clearDate.addEventListener('click', () => {
             state.date = '';
+            state.activeViewId = '';
             clearSelectionForQueryChange();
             renderDates();
             loadPage(true);
         });
         refs.closeDetail.addEventListener('click', closeDetail);
         refs.detailBackdrop?.addEventListener('click', closeDetail);
-        refs.type.addEventListener('change', () => { state.mediaType = refs.type.value; clearSelectionForQueryChange(); loadPage(true); });
-        refs.sort.addEventListener('change', () => { state.sort = refs.sort.value; clearSelectionForQueryChange(); loadPage(true); });
+        refs.type.addEventListener('change', () => { state.mediaType = refs.type.value; state.activeViewId = ''; clearSelectionForQueryChange(); loadPage(true); });
+        refs.sort.addEventListener('change', () => { state.sort = refs.sort.value; state.activeViewId = ''; clearSelectionForQueryChange(); loadPage(true); });
         refs.favoriteFilter.addEventListener('click', () => {
             state.favorite = state.favorite === true ? null : true;
+            state.activeViewId = '';
             clearSelectionForQueryChange();
             refs.favoriteFilter.setAttribute('aria-pressed', state.favorite === true ? 'true' : 'false');
             loadPage(true);
@@ -1137,15 +2012,74 @@
         refs.selectionTrash?.addEventListener('click', () => applySelectionAction('trash'));
         refs.selectionRestore?.addEventListener('click', () => applySelectionAction('restore'));
         refs.selectionPurge?.addEventListener('click', () => applySelectionAction('purge'));
+        refs.selectionCompare?.addEventListener('click', openCompare);
+        refs.selectionEdit?.addEventListener('click', () => {
+            refs.batchEditor.hidden = !refs.batchEditor.hidden;
+        });
+        refs.batchSave?.addEventListener('click', applyBatchMetadata);
+        refs.selectionAddCollection?.addEventListener('click', addSelectionToCollection);
+        refs.selectionRemoveCollection?.addEventListener('click', removeSelectionFromCollection);
+        refs.collectionCreateToggle?.addEventListener('click', () => {
+            refs.collectionCreateForm.hidden = !refs.collectionCreateForm.hidden;
+            if (!refs.collectionCreateForm.hidden) refs.collectionName.focus();
+        });
+        refs.collectionCreateForm?.addEventListener('submit', createCollection);
+        refs.collectionList?.addEventListener('click', handleOrganizerClick);
+        refs.viewList?.addEventListener('click', handleOrganizerClick);
+        refs.filterToggle?.addEventListener('click', () => {
+            refs.filterPanel.hidden = !refs.filterPanel.hidden;
+            refs.filterToggle.setAttribute('aria-expanded', refs.filterPanel.hidden ? 'false' : 'true');
+            if (!refs.filterPanel.hidden) refs.dateSidebar.classList.remove('is-open');
+        });
+        refs.filterApply?.addEventListener('click', () => {
+            state.tag = refs.filterTag.value.trim();
+            state.modelQuery = refs.filterModel.value.trim();
+            state.ratingMin = refs.filterRating.value;
+            state.orientation = refs.filterOrientation.value;
+            state.activeViewId = '';
+            refs.filterPanel.hidden = true;
+            refs.filterToggle.setAttribute('aria-expanded', 'false');
+            clearSelectionForQueryChange();
+            syncFilterFields();
+            refs.feedScroll.scrollTop = 0;
+            loadPage(true);
+        });
+        refs.filterClear?.addEventListener('click', () => {
+            state.tag = '';
+            state.modelQuery = '';
+            state.ratingMin = '';
+            state.orientation = '';
+            state.activeViewId = '';
+            clearSelectionForQueryChange();
+            syncFilterFields();
+            loadPage(true);
+        });
+        refs.viewSave?.addEventListener('click', saveCurrentView);
+        refs.viewName?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); saveCurrentView(); }
+        });
+        refs.autoplayToggle?.addEventListener('click', () => {
+            state.autoplayEnabled = !state.autoplayEnabled;
+            state.failedPreviews.clear();
+            try { window.localStorage.setItem(AUTOPLAY_STORAGE_KEY, state.autoplayEnabled ? '1' : '0'); } catch (err) {}
+            updateAutoplayControl();
+            scheduleVideoAutoplay();
+        });
         refs.purgeTrash?.addEventListener('click', () => emptyTrash());
         let searchTimer = 0;
         refs.search.addEventListener('input', () => {
             window.clearTimeout(searchTimer);
-            searchTimer = window.setTimeout(() => { state.query = refs.search.value.trim(); clearSelectionForQueryChange(); loadPage(true); }, 240);
+            searchTimer = window.setTimeout(() => { state.query = refs.search.value.trim(); state.activeViewId = ''; clearSelectionForQueryChange(); loadPage(true); }, 240);
         });
         refs.refresh.addEventListener('click', refreshLibrary);
         refs.rescan.addEventListener('click', refreshLibrary);
-        refs.datesToggle.addEventListener('click', () => refs.dateSidebar.classList.toggle('is-open'));
+        refs.datesToggle.addEventListener('click', () => {
+            refs.dateSidebar.classList.toggle('is-open');
+            if (refs.filterPanel && !refs.filterPanel.hidden) {
+                refs.filterPanel.hidden = true;
+                refs.filterToggle.setAttribute('aria-expanded', 'false');
+            }
+        });
         refs.viewerClose.addEventListener('click', closeViewer);
         refs.viewerBackdrop.addEventListener('click', closeViewer);
         refs.viewerPrev.addEventListener('click', () => moveViewer(-1));
@@ -1154,15 +2088,79 @@
         refs.viewerZoomIn.addEventListener('click', () => adjustViewerZoom(.25));
         refs.viewerZoomReset.addEventListener('click', () => { state.viewerZoom = 1; updateViewer(); });
         refs.viewerStage?.addEventListener('wheel', handleViewerWheel, { passive: false });
+        refs.compareClose?.addEventListener('click', closeCompare);
+        refs.compareZoom?.addEventListener('input', () => {
+            state.compareZoom = Number(refs.compareZoom.value || 100) / 100;
+            updateCompareControls();
+            updateCompareTransforms();
+        });
+        refs.compareMatch?.addEventListener('change', () => {
+            state.compareMatch = refs.compareMatch.value;
+            updateCompareTransforms();
+        });
+        refs.compareSide?.addEventListener('click', () => {
+            if (state.compareMode !== 'side') { state.compareMode = 'side'; renderCompare(); }
+        });
+        refs.compareWipe?.addEventListener('click', () => { state.compareMode = 'wipe'; renderCompare(); });
+        refs.compareSync?.addEventListener('click', () => {
+            const videos = compareVideos();
+            const time = videos[0]?.currentTime || 0;
+            stopComparePlayback();
+            state.compareSync = !state.compareSync;
+            updateCompareTransport();
+            if (state.compareSync) seekCompareVideos(time);
+        });
+        refs.comparePlay?.addEventListener('click', () => {
+            if (state.comparePlaying) stopComparePlayback();
+            else startComparePlayback();
+        });
+        refs.compareTime?.addEventListener('input', () => seekCompareVideos(refs.compareTime.value));
+        refs.compareMute?.addEventListener('click', () => {
+            state.compareMuted = !state.compareMuted;
+            updateCompareTransport();
+        });
+        refs.compareRate?.addEventListener('change', () => {
+            state.compareRate = Number(refs.compareRate.value) || 1;
+            updateCompareTransport();
+        });
+        refs.compareAlign?.addEventListener('click', resetCompareAlignment);
+        [refs.compareX, refs.compareY].forEach((input) => input?.addEventListener('input', () => {
+            state.comparePan = { x: Number(refs.compareX.value) || 0, y: Number(refs.compareY.value) || 0 };
+            updateCompareTransforms();
+        }));
+        refs.compareSplit?.addEventListener('input', () => {
+            state.compareSplit = Number(refs.compareSplit.value);
+            updateCompareControls();
+        });
+        refs.compareGrid?.addEventListener('pointerdown', startCompareDrag);
+        refs.compareGrid?.addEventListener('pointermove', moveCompareDrag);
+        refs.compareGrid?.addEventListener('pointerup', () => { state.compareDrag = null; });
+        refs.compareGrid?.addEventListener('pointercancel', () => { state.compareDrag = null; });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && refs.compare?.getAttribute('aria-hidden') === 'false') closeCompare();
+            else if (event.key === 'Escape' && refs.filterPanel && !refs.filterPanel.hidden) {
+                refs.filterPanel.hidden = true;
+                refs.filterToggle.setAttribute('aria-expanded', 'false');
+            }
+        });
         document.addEventListener('keydown', handleViewerKeydown);
         refs.feedScroll.addEventListener('scroll', () => {
             window.requestAnimationFrame(() => {
                 if (state.items.length > MAX_RENDERED) renderWindow(false);
                 updateActiveDateFromViewport();
                 maybeLoadMore();
+                refs.feed?.querySelectorAll('video[data-auto-preview]').forEach((video) => {
+                    if (!previewVisible(video.closest('.media-card'))) stopVideoPreview(video.closest('.media-card'));
+                });
+                scheduleVideoAutoplay();
             });
         }, { passive: true });
-        window.addEventListener('resize', () => window.requestAnimationFrame(() => renderWindow(true)), { passive: true });
+        window.addEventListener('resize', () => window.requestAnimationFrame(() => {
+            renderWindow(true);
+            scheduleVideoAutoplay();
+            updateCompareTransforms();
+        }), { passive: true });
+        document.addEventListener('visibilitychange', scheduleVideoAutoplay);
         const observer = new IntersectionObserver((entries) => {
             if (entries.some((entry) => entry.isIntersecting)) maybeLoadMore();
         }, { root: refs.feedScroll, rootMargin: '900px 0px', threshold: 0 });
@@ -1193,6 +2191,22 @@
         refs.type = document.getElementById('media-type');
         refs.sort = document.getElementById('media-sort');
         refs.favoriteFilter = document.getElementById('favorite-filter');
+        refs.filterToggle = document.getElementById('filter-toggle');
+        refs.filterPanel = document.getElementById('media-filter-panel');
+        refs.filterTag = document.getElementById('filter-tag');
+        refs.filterModel = document.getElementById('filter-model');
+        refs.filterRating = document.getElementById('filter-rating');
+        refs.filterOrientation = document.getElementById('filter-orientation');
+        refs.filterApply = document.getElementById('filter-apply');
+        refs.filterClear = document.getElementById('filter-clear');
+        refs.viewName = document.getElementById('view-name');
+        refs.viewSave = document.getElementById('view-save');
+        refs.collectionList = document.getElementById('collection-list');
+        refs.viewList = document.getElementById('view-list');
+        refs.collectionCreateToggle = document.getElementById('collection-create-toggle');
+        refs.collectionCreateForm = document.getElementById('collection-create-form');
+        refs.collectionName = document.getElementById('collection-name');
+        refs.autoplayToggle = document.getElementById('autoplay-toggle');
         refs.trashView = document.getElementById('trash-view');
         refs.selectionMode = document.getElementById('selection-mode');
         refs.refresh = document.getElementById('refresh-library');
@@ -1203,6 +2217,16 @@
         refs.selectionTrash = document.getElementById('selection-trash');
         refs.selectionRestore = document.getElementById('selection-restore');
         refs.selectionPurge = document.getElementById('selection-purge');
+        refs.selectionCompare = document.getElementById('selection-compare');
+        refs.selectionEdit = document.getElementById('selection-edit');
+        refs.selectionCollection = document.getElementById('selection-collection');
+        refs.selectionAddCollection = document.getElementById('selection-add-collection');
+        refs.selectionRemoveCollection = document.getElementById('selection-remove-collection');
+        refs.batchEditor = document.getElementById('batch-editor');
+        refs.batchTags = document.getElementById('batch-tags');
+        refs.batchRating = document.getElementById('batch-rating');
+        refs.batchFavorite = document.getElementById('batch-favorite');
+        refs.batchSave = document.getElementById('batch-save');
         refs.datesToggle = document.getElementById('dates-toggle');
         refs.emptyTitle = document.querySelector('#empty-state h2');
         refs.emptyDescription = document.querySelector('#empty-state p');
@@ -1219,17 +2243,39 @@
         refs.viewerZoomReset = document.getElementById('viewer-zoom-reset');
         refs.viewerZoomIn = document.getElementById('viewer-zoom-in');
         refs.viewerDownload = document.getElementById('viewer-download');
+        refs.compare = document.getElementById('media-compare');
+        refs.compareGrid = document.getElementById('compare-grid');
+        refs.compareZoom = document.getElementById('compare-zoom');
+        refs.compareZoomValue = document.getElementById('compare-zoom-value');
+        refs.compareClose = document.getElementById('compare-close');
+        refs.compareSide = document.getElementById('compare-side');
+        refs.compareWipe = document.getElementById('compare-wipe');
+        refs.compareMatch = document.getElementById('compare-match');
+        refs.compareX = document.getElementById('compare-x');
+        refs.compareY = document.getElementById('compare-y');
+        refs.compareAlign = document.getElementById('compare-align');
+        refs.compareSplit = document.getElementById('compare-split');
+        refs.compareSplitControl = document.getElementById('compare-split-control');
+        refs.compareSync = document.getElementById('compare-sync');
+        refs.compareTransport = document.getElementById('compare-transport');
+        refs.comparePlay = document.getElementById('compare-play');
+        refs.compareTime = document.getElementById('compare-time');
+        refs.compareClock = document.getElementById('compare-clock');
+        refs.compareMute = document.getElementById('compare-mute');
+        refs.compareRate = document.getElementById('compare-rate');
+        try { state.autoplayEnabled = window.localStorage.getItem(AUTOPLAY_STORAGE_KEY) !== '0'; } catch (err) {}
         await loadLocale();
         updateStaticTranslations();
+        updateAutoplayControl();
         updateViewControls();
         bindEvents();
-        await loadDates();
+        await Promise.all([loadDates(), loadOrganizers()]);
         await loadPage(true);
     }
 
     window.MediaLibraryPage = {
         state, init, loadPage, loadDates, renderWindow, openViewer, closeViewer,
-        toggleSelectionMode, toggleItemSelection, clearSelection
+        toggleSelectionMode, toggleItemSelection, clearSelection, videoAutoplayEligible, syncVideoAutoplay
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
     else init();

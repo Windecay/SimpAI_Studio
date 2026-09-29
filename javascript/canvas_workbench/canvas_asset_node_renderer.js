@@ -31,7 +31,8 @@
             readAssetInfo,
             mediaAspectStyle,
             inferChatImageRelativePath,
-            localizedDefaultTitle
+            localizedDefaultTitle,
+            formatBytes
         } = utilitySource;
         const renderSource = sourceObject('renderSource');
         const { renderNodeStateBadges, collapsedKeepClass, syncGalleryFrostClass } = renderSource;
@@ -62,7 +63,6 @@
             mediaBrowserRuntimeFor,
             isGalleryFrostEnabled,
             selectedMediaBrowserItemFrom,
-            mediaBrowserItemMeta,
             danbooruPostMediaType
         } = mediaSource;
         const nodeSource = sourceObject('maskNodeSource');
@@ -204,7 +204,6 @@ ${status ? `<div class="sai-node-foot">${escape(status)}</div>` : ''}
         const browserNodeState = typeof mediaBrowserNodeState === 'function' ? mediaBrowserNodeState : (node => node?.media_browser || {});
         const browserRuntime = typeof mediaBrowserRuntimeFor === 'function' ? mediaBrowserRuntimeFor : (() => ({}));
         const galleryFrostEnabled = typeof isGalleryFrostEnabled === 'function' ? isGalleryFrostEnabled : (() => true);
-        const browserItemMeta = typeof mediaBrowserItemMeta === 'function' ? mediaBrowserItemMeta : (() => '');
         const postMediaType = typeof danbooruPostMediaType === 'function' ? danbooruPostMediaType : (() => 'image');
         const selectedBrowserItem = typeof selectedMediaBrowserItemFrom === 'function'
             ? selectedMediaBrowserItemFrom
@@ -489,6 +488,15 @@ ${actions}
 </div>`;
         }
 
+        function mediaBrowserItemMeta(item) {
+            const bits = [];
+            if (item.width && item.height) bits.push(`${item.width} x ${item.height}`);
+            if (item.rating) bits.push(String(item.rating).toUpperCase());
+            if (item.size) bits.push(formatBytes(item.size));
+            if (item.updated_at_iso) bits.push(String(item.updated_at_iso).replace('T', ' '));
+            return bits.filter(Boolean).join(' · ');
+        }
+
         function renderMediaBrowserItems(items, selectedId, isDanbooru, data) {
             if (data?.ok === false) {
                 const message = data.load_more_error || data.error || translate('Load failed.', '加载失败。');
@@ -507,7 +515,7 @@ ${actions}
                 const mediaType = item.media_type || (isDanbooru ? postMediaType(item.raw || item) : 'image');
                 const preview = item.preview_url || item.thumb || '';
                 const title = item.name || item.title || id;
-                const meta = browserItemMeta(item);
+                const meta = mediaBrowserItemMeta(item);
                 const imageLoading = index < 36 ? 'eager' : 'lazy';
                 const imagePriority = index < 12 ? 'high' : 'auto';
                 const body = mediaType === 'video'
@@ -549,7 +557,7 @@ ${actions}
             : (preview ? `<img src="${escape(preview)}" alt="">` : '<i class="fa-solid fa-image"></i>')}
 </div>
 <h4>${escape(title)}</h4>
-<p>${escape(browserItemMeta(item))}</p>
+<p>${escape(mediaBrowserItemMeta(item))}</p>
 ${source ? `<code>${escape(source)}</code>` : ''}
 ${metadataSource ? `<p>${escape(metadataSource)}</p>` : ''}
 ${prompt ? `<textarea readonly>${escape(prompt)}</textarea>` : ''}
@@ -673,6 +681,7 @@ ${metadataParams ? `<code>${escape(metadataParams)}</code>` : ''}`;
             mediaBrowserItemMetadata,
             mediaBrowserItemPrompt,
             mediaBrowserItemNegativePrompt,
+            mediaBrowserItemMeta,
             renderMediaBrowserPanelHtml,
             renderMediaBrowserNodeHtml,
             renderMediaBrowserLoadingCards,

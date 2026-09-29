@@ -17,12 +17,108 @@
         const perfSource = scope.perfSource || {};
         const viewportSource = scope.viewportSource || {};
         const nodeSource = scope.nodeSource || {};
+        const configSource = scope.configSource || {};
         let edgeCanvasHitRecords = [];
         let edgeCanvasActive = false;
         let edgeCanvasDpr = 1;
+        let tempEdge = null;
 
         function call(source, name, fallback, ...args) {
             return typeof source?.[name] === 'function' ? source[name](...args) : fallback;
+        }
+
+        function getTempEdge() {
+            const edgesLayer = call(domSource, 'getEdgesLayer', null);
+            if (tempEdge?.isConnected && tempEdge.parentNode === edgesLayer) return tempEdge;
+            tempEdge = edgesLayer?.querySelector?.('.sai-canvas-temp-edge') || null;
+            return tempEdge;
+        }
+
+        function ensureTempEdge() {
+            const existing = getTempEdge();
+            if (existing?.isConnected) return existing;
+            const edgesLayer = call(domSource, 'getEdgesLayer', null);
+            const document = call(domSource, 'getDocument', null);
+            tempEdge = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            tempEdge.setAttribute('class', 'sai-canvas-temp-edge');
+            edgesLayer.appendChild(tempEdge);
+            return tempEdge;
+        }
+
+        function clearTempEdge() {
+            const path = getTempEdge();
+            if (path?.parentNode) path.parentNode.removeChild(path);
+            tempEdge = null;
+        }
+
+        function renderTempEdge(state) {
+            if (!state) {
+                clearTempEdge();
+                return;
+            }
+            ensureTempEdge().setAttribute('d', call(geometrySource, 'curvePath', '', state.fromPoint, state.currentPoint));
+        }
+
+        function getEdgeCanvasBounds() {
+            const visible = call(geometrySource, 'getVisibleWorldRect', { x: 0, y: 0, w: 1, h: 1 });
+            const zoom = Math.max(0.05, Number(call(projectSource, 'getProject', {})?.viewport?.zoom || 1) || 1);
+            const pad = Math.max(96, Math.ceil(32 / zoom));
+            return {
+                x: Math.floor(visible.x - pad),
+                y: Math.floor(visible.y - pad),
+                w: Math.max(1, Math.ceil(visible.w + pad * 2)),
+                h: Math.max(1, Math.ceil(visible.h + pad * 2))
+            };
+        }
+
+        function edgeLabelText(edge, toNode) {
+            if (edge.type === 'upload') return call(renderSource, 'getSlotLabel', '', toNode, edge.slot);
+            if (edge.type === 'batch_input') return 'batch item';
+            if (edge.type === 'config') return `${edge.slot || ''} config`;
+            if (edge.type === 'text') return `${edge.slot || 'prompt'} text`;
+            if (edge.type === 'timeline') return 'timeline clip';
+            if (edge.type === 'compare') return `compare ${String(edge.slot || '').toUpperCase()}`;
+            if (edge.type === 'media') return `${edge.slot || 'media'}`;
+            if (edge.type === 'image') return `${edge.slot || 'image'}`;
+            return 'generate';
+        }
+
+        function createEdgePointCache() {
+            const edges = call(projectSource, 'getProject', {})?.edges;
+            if (!Array.isArray(edges) || edges.length < call(configSource, 'edgePointCacheMinEdges', 900)) return null;
+            return { outputs: new Map(), inputs: new Map(), hits: 0, misses: 0 };
+        }
+
+        function publishEdgePointCacheStats(cache) {
+            const perfStats = call(perfSource, 'getPerfStats', {});
+            perfStats.edgePointCacheHits = Number(cache?.hits || 0);
+            perfStats.edgePointCacheMisses = Number(cache?.misses || 0);
+        }
+
+        function getCachedOutputPoint(node, cache) {
+            if (!cache || !node?.id) return getOutputPoint(node);
+            const key = node.id;
+            if (cache.outputs.has(key)) {
+                cache.hits += 1;
+                return cache.outputs.get(key);
+            }
+            cache.misses += 1;
+            const point = getOutputPoint(node);
+            cache.outputs.set(key, point);
+            return point;
+        }
+
+        function getCachedInputPoint(node, slot, edgeType, cache) {
+            if (!cache || !node?.id) return getInputPoint(node, slot, edgeType);
+            const key = `${node.id}|${edgeType || ''}|${slot || ''}`;
+            if (cache.inputs.has(key)) {
+                cache.hits += 1;
+                return cache.inputs.get(key);
+            }
+            cache.misses += 1;
+            const point = getInputPoint(node, slot, edgeType);
+            cache.inputs.set(key, point);
+            return point;
         }
 
         function escapeSelectorValue(value) {
@@ -348,14 +444,12 @@
             const edgesLayer = call(domSource, 'getEdgesLayer', null);
             const escapeHtml = (value) => call(renderSource, 'escapeHtml', String(value), value);
             const bounds = call(geometrySource, 'getEdgeSvgBounds', { x: 0, y: 0, w: 1, h: 1 });
-            const canvasBounds = useCanvasEdges
-                ? call(geometrySource, 'getEdgeCanvasBounds', null)
-                : null;
+            const canvasBounds = useCanvasEdges ? getEdgeCanvasBounds() : null;
             const renderWindow = call(geometrySource, 'getEdgeRenderWorldRect', null);
             const nodesById = new Map((Array.isArray(project.nodes) ? project.nodes : [])
                 .filter(node => node && node.id)
                 .map(node => [node.id, node]));
-            const pointCache = call(geometrySource, 'createEdgePointCache', {});
+            const pointCache = createEdgePointCache();
             call(noteSource, 'renderNoteTailSvg', null, paths, keyParts, renderWindow);
             for (const edge of project.edges) {
                 const fromNode = nodesById.get(edge.from);
@@ -363,8 +457,8 @@
                 if (!fromNode || !toNode) continue;
                 if (!call(geometrySource, 'shouldRenderEdgeInViewport', false, edge, fromNode, toNode, renderWindow)) continue;
                 visibleEdgeCount += 1;
-                const from = call(geometrySource, 'getCachedOutputPoint', null, fromNode, pointCache);
-                const to = call(geometrySource, 'getCachedInputPoint', null, toNode, edge.slot, edge.type, pointCache);
+                const from = getCachedOutputPoint(fromNode, pointCache);
+                const to = getCachedInputPoint(toNode, edge.slot, edge.type, pointCache);
                 if (useCanvasEdges) {
                     canvasEdgeRecords.push(createEdgeCanvasRecord(edge, from, to));
                 }
@@ -372,7 +466,7 @@
                 const shouldRenderSvgPath = !useCanvasEdges || edge.id === selectedEdgeId;
                 if (shouldRenderSvgPath) {
                     const d = call(geometrySource, 'curvePath', '', from, to);
-                    const label = call(renderSource, 'edgeLabelText', '', edge, toNode);
+                    const label = edgeLabelText(edge, toNode);
                     keyParts.push([
                         edge.id,
                         edge.type || '',
@@ -388,7 +482,7 @@
                     paths.push(`<path class="sai-canvas-edge sai-canvas-edge-${escapeHtml(edge.type || 'edge')} ${edge.id === selectedEdgeId ? 'is-selected' : ''}" data-edge-id="${escapeHtml(edge.id)}" d="${escapeHtml(d)}"></path>`);
                 }
                 if (!useCanvasEdges && project.settings.edgeLabels) {
-                    const label = call(renderSource, 'edgeLabelText', '', edge, toNode);
+                    const label = edgeLabelText(edge, toNode);
                     const midX = (from.x + to.x) / 2;
                     const midY = (from.y + to.y) / 2;
                     paths.push(`<text class="sai-canvas-edge-label" x="${midX}" y="${midY - 6}">${escapeHtml(label)}</text>`);
@@ -417,13 +511,13 @@
                 call(selectionSource, 'updateSelectionDomClasses', null);
             }
             if (call(connectionSource, 'isConnecting', false)) {
-                call(connectionSource, 'resetTempEdge', null);
+                tempEdge = null;
                 call(connectionSource, 'updateTempEdge', null);
             } else {
-                call(connectionSource, 'clearTempEdge', null);
+                clearTempEdge();
             }
             perfStats.renderEdgesMs = call(timingSource, 'performanceNow', startedAt) - startedAt;
-            call(geometrySource, 'publishEdgePointCacheStats', null, pointCache);
+            publishEdgePointCacheStats(pointCache);
             perfStats.renderedEdges = visibleEdgeCount;
             perfStats.totalEdges = project.edges.length;
         }
@@ -440,7 +534,7 @@
             const nodesById = new Map((Array.isArray(project.nodes) ? project.nodes : [])
                 .filter(node => node && node.id)
                 .map(node => [node.id, node]));
-            const pointCache = call(geometrySource, 'createEdgePointCache', {});
+            const pointCache = createEdgePointCache();
             const incidentQuery = call(edgeIndexSource, 'getIncidentEdgeRecordsForNodeIds', { indexed: false, records: [] }, idSet);
             const perfStats = call(perfSource, 'getPerfStats', {});
             perfStats.edgeIncidentIndexHit = incidentQuery.indexed ? 1 : 0;
@@ -467,12 +561,12 @@
                     missingVisibleEdge = true;
                     break;
                 }
-                const from = call(geometrySource, 'getCachedOutputPoint', null, fromNode, pointCache);
-                const to = call(geometrySource, 'getCachedInputPoint', null, toNode, edge.slot, edge.type, pointCache);
+                const from = getCachedOutputPoint(fromNode, pointCache);
+                const to = getCachedInputPoint(toNode, edge.slot, edge.type, pointCache);
                 path.setAttribute('d', call(geometrySource, 'curvePath', '', from, to));
                 updated += 1;
             }
-            call(geometrySource, 'publishEdgePointCacheStats', null, pointCache);
+            publishEdgePointCacheStats(pointCache);
             if (missingVisibleEdge) return false;
             perfStats.renderEdgesMs = call(timingSource, 'performanceNow', startedAt) - startedAt;
             return updated > 0 || (incidentQuery.indexed && incidentQuery.records.length === 0);
@@ -480,8 +574,16 @@
 
         return {
             renderEdges,
+            renderTempEdge,
+            clearTempEdge,
             getOutputPoint,
             getInputPoint,
+            getEdgeCanvasBounds,
+            edgeLabelText,
+            createEdgePointCache,
+            publishEdgePointCacheStats,
+            getCachedOutputPoint,
+            getCachedInputPoint,
             updateInteractiveEdgeDom,
             drawEdgeCanvas,
             clearEdgeCanvas,

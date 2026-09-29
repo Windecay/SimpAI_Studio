@@ -40,6 +40,13 @@
         const hoverPreviewImageCache = new Map();
         const hoverPreviewModelCache = new Map();
 
+        function hoverPreviewAttrs(payload) {
+            return Object.entries(payload || {})
+                .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+                .map(([key, value]) => `data-hover-preview-${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}="${escapeHtml(value)}"`)
+                .join(' ');
+        }
+
         function metaContent(name) {
             if (!name) return '';
             const doc = getDocument();
@@ -539,6 +546,7 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         }
 
         return {
+            hoverPreviewAttrs,
             metaContent,
             splitMetaPathList,
             uniqueStrings,
