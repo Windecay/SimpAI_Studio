@@ -52,28 +52,14 @@
         }
 
         function addDirectorTimelineNode(world, options) {
-            if (typeof directorSource.directorTimelineCreateNode !== 'function') {
+            if (typeof directorSource.directorTimelineAddNode !== 'function') {
                 showToast(t('Director Timeline canvas node is not loaded.', '导演时间轴节点模块尚未加载。'));
                 return null;
             }
             const opts = options || {};
             const position = world || call(viewportSource, 'viewportCenterWorld', { x: 0, y: 0 });
-            const node = call(directorSource, 'directorTimelineCreateNode', null, position,
-                Object.assign({}, opts, { render: false, toast: false }),
+            return call(directorSource, 'directorTimelineAddNode', null, position, opts,
                 call(directorSource, 'getDirectorTimelineNodeContext', {}));
-            if (!node) return null;
-            const autoMessage = call(connectionSource, 'completePendingConnectionToNode', '', node);
-            call(selectionSource, 'selectDirectorTimelineNode', undefined, node.id);
-            if (opts.render !== false) call(renderSource, 'mutate', undefined);
-            if (opts.toast !== false) {
-                const message = autoMessage
-                    ? t('{title} node added, {message}', '{title} 节点已添加，{message}')
-                        .replace('{title}', node.title || t('Director Timeline', '导演时间轴'))
-                        .replace('{message}', autoMessage)
-                    : t('Director Timeline node added', '已添加导演时间轴节点');
-                showToast(message);
-            }
-            return node;
         }
 
         function addSelectedMediaToTimeline(timelineNode) {

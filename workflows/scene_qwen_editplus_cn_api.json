@@ -98,7 +98,7 @@
     "inputs": {
       "shift": 3.1,
       "model": [
-        "193",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -1220,6 +1220,20 @@
     "class_type": "ComfyMathExpression",
     "_meta": {
       "title": "Math Expression"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "193",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

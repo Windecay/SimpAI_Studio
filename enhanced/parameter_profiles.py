@@ -461,6 +461,7 @@ def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
         "sampler": values.get("sampler_name"),
         "scheduler": values.get("scheduler_name"),
         "clip_model": _model_value(values, "clip_model"),
+        "pe_model": _model_value(values, "pe_model") or "None",
         "vae": _model_value(values, "vae_name", "vae"),
         "upscale_model": _model_value(values, "upscale_model"),
         "seed_random": _as_bool(values.get("seed_random", True)),
@@ -496,6 +497,8 @@ def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
         metadata[f"lora_combined_{index}"] = entry
 
     metadata.update(scene_values)
+    metadata["lora_stack"] = regen_manifest.json_safe(_model_value(values, "lora_stack") or [])
+    metadata["lora_stack_target"] = _model_value(values, "lora_stack_target") or "auto"
 
     manifest_ui_values = {
         "engine": backend_engine,
@@ -509,6 +512,9 @@ def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
         for key, value in backend_params.items()
         if key not in skipped_backend_keys
     }
+    backend_snapshot["lora_stack"] = metadata["lora_stack"]
+    backend_snapshot["lora_stack_target"] = metadata["lora_stack_target"]
+    backend_snapshot["pe_model"] = metadata["pe_model"]
     manifest = regen_manifest.make_manifest(
         preset_name=preset_name,
         preset_json=preset_json,
@@ -1092,8 +1098,11 @@ def apply_profile_to_canvas_node(preset_node: Any, context: Any = None) -> dict[
         "base_model": "base_model",
         "refiner_model": "refiner_model",
         "clip_model": "clip_model",
+        "pe_model": "pe_model",
         "vae": "vae",
         "upscale_model": "upscale_model",
+        "lora_stack": "lora_stack",
+        "lora_stack_target": "lora_stack_target",
     }
     for source, target in model_aliases.items():
         if metadata.get(source) not in (None, ""):

@@ -18,6 +18,7 @@ from ldm_patched.contrib.external import VAEDecode, EmptyLatentImage, VAEEncode,
 from ldm_patched.contrib.external_freelunch import FreeU_V2
 from ldm_patched.modules.sample import prepare_mask
 from modules.lora import match_lora
+from modules.lora_stack import active_stack_items
 from modules.util import get_file_from_folder_list
 from ldm_patched.modules.lora import model_lora_keys_unet, model_lora_keys_clip
 from modules.config import paths_embeddings
@@ -35,6 +36,26 @@ opControlNetApplyAdvanced = ControlNetApplyAdvanced()
 opFreeU = FreeU_V2()
 opModelSamplingDiscrete = ModelSamplingDiscrete()
 opModelSamplingContinuousEDM = ModelSamplingContinuousEDM()
+
+
+def _resolve_stack_lora_file(name):
+    if name.startswith(("/", "\\")) or os.path.isabs(name) or ":" in name or ".." in name.replace("\\", "/").split("/"):
+        raise ValueError("LoRA stack requires a relative path inside the registered LoRA folders.")
+    folders = modules.config.paths_loras
+    if not isinstance(folders, list):
+        folders = [folders]
+    for folder in folders:
+        path = get_file_from_folder_list(name, [folder])
+        root = os.path.normcase(os.path.realpath(folder))
+        candidate = os.path.normcase(os.path.realpath(path))
+        try:
+            if os.path.commonpath((root, candidate)) != root:
+                continue
+        except ValueError:
+            continue
+        if os.path.isfile(path):
+            return path
+    return None
 
 
 class StableDiffusionModel:
@@ -62,13 +83,15 @@ class StableDiffusionModel:
 
     @torch.no_grad()
     @torch.inference_mode()
-    def refresh_loras(self, loras):
+    def refresh_loras(self, loras, lora_stack=None):
         assert isinstance(loras, list)
+        stack = active_stack_items(lora_stack)
+        signature = str((loras, stack))
 
-        if self.visited_loras == str(loras):
+        if self.visited_loras == signature:
             return
 
-        self.visited_loras = str(loras)
+        self.visited_loras = ''
 
         if self.unet is None:
             return
@@ -90,12 +113,19 @@ class StableDiffusionModel:
                 logger.info(f'Lora file not found: {lora_filename}')
                 continue
 
-            loras_to_load.append((lora_filename, weight))
+            loras_to_load.append((lora_filename, weight, weight))
+
+        for item in stack:
+            lora_filename = _resolve_stack_lora_file(item["model"])
+            if lora_filename is None:
+                logger.info(f'Lora file not found: {item["model"]}')
+                continue
+            loras_to_load.append((lora_filename, item["strength_model"], item["strength_clip"]))
 
         self.unet_with_lora = self.unet.clone() if self.unet is not None else None
         self.clip_with_lora = self.clip.clone() if self.clip is not None else None
 
-        for lora_filename, weight in loras_to_load:
+        for lora_filename, strength_model, strength_clip in loras_to_load:
             lora_unmatch = ldm_patched.modules.utils.load_torch_file(lora_filename, safe_load=False)
             lora_unet, lora_unmatch = match_lora(lora_unmatch, self.lora_key_map_unet)
             lora_clip, lora_unmatch = match_lora(lora_unmatch, self.lora_key_map_clip)
@@ -108,21 +138,23 @@ class StableDiffusionModel:
                 logger.info(f'Loaded LoRA [{lora_filename}] for model [{self.filename}] '
                       f'with unmatched keys {list(lora_unmatch.keys())}')
 
-            if self.unet_with_lora is not None and len(lora_unet) > 0:
-                loaded_keys = self.unet_with_lora.add_patches(lora_unet, weight)
+            if self.unet_with_lora is not None and len(lora_unet) > 0 and strength_model != 0:
+                loaded_keys = self.unet_with_lora.add_patches(lora_unet, strength_model)
                 logger.info(f'Loaded LoRA [{lora_filename}] for UNet [{self.filename}] '
-                      f'with {len(loaded_keys)} keys at weight {weight}.')
+                      f'with {len(loaded_keys)} keys at weight {strength_model}.')
                 for item in lora_unet:
                     if item not in loaded_keys:
                         logger.info("UNet LoRA key skipped: ", item)
 
-            if self.clip_with_lora is not None and len(lora_clip) > 0:
-                loaded_keys = self.clip_with_lora.add_patches(lora_clip, weight)
+            if self.clip_with_lora is not None and len(lora_clip) > 0 and strength_clip != 0:
+                loaded_keys = self.clip_with_lora.add_patches(lora_clip, strength_clip)
                 logger.info(f'Loaded LoRA [{lora_filename}] for CLIP [{self.filename}] '
-                      f'with {len(loaded_keys)} keys at weight {weight}.')
+                      f'with {len(loaded_keys)} keys at weight {strength_clip}.')
                 for item in lora_clip:
                     if item not in loaded_keys:
                         logger.info("CLIP LoRA key skipped: ", item)
+
+        self.visited_loras = signature
 
 
 @torch.no_grad()

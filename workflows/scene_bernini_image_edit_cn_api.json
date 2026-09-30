@@ -263,7 +263,7 @@
     "inputs": {
       "enable_fp16_accumulation": true,
       "model": [
-        "192",
+        "simpai_lora_stack_high",
         0
       ]
     },
@@ -1001,7 +1001,7 @@
     "inputs": {
       "enable_fp16_accumulation": true,
       "model": [
-        "193",
+        "simpai_lora_stack_low",
         0
       ]
     },
@@ -1309,6 +1309,34 @@
     "class_type": "DifferentialDiffusion",
     "_meta": {
       "title": "Differential Diffusion"
+    }
+  },
+  "simpai_lora_stack_high": {
+    "inputs": {
+      "model": [
+        "192",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "high"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_high"
+    }
+  },
+  "simpai_lora_stack_low": {
+    "inputs": {
+      "model": [
+        "193",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "low"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_low"
     }
   }
 }

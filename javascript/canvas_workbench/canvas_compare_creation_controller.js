@@ -3,7 +3,6 @@
 
     function createCanvasCompareCreationController(context) {
         const scope = context?.compareCreationSource || context || {};
-        const projectSource = scope.projectSource || {};
         const factorySource = scope.factorySource || {};
         const layoutSource = scope.layoutSource || {};
         const connectionSource = scope.connectionSource || {};
@@ -24,19 +23,7 @@
 
         function addCompareNode(world, options) {
             const opts = options || {};
-            if (opts.history !== false) call(historySource, 'pushHistory', undefined, 'Add compare node');
-            const node = call(factorySource, 'createCompareNode', null, world, opts);
-            if (!node) return null;
-            call(layoutSource, 'placeNodeAvoidingOverlap', undefined, node, world, opts);
-            const project = call(projectSource, 'getProject', {}) || {};
-            Object.assign(project, call(projectSource, 'buildProjectNodeAppendPatch', {}, project, node));
-            const autoMessage = call(connectionSource, 'completePendingConnectionToNode', '', node);
-            selectCompareNode(node.id);
-            if (opts.render !== false) call(renderSource, 'mutate', undefined);
-            if (opts.toast !== false) showToast(autoMessage
-                ? t('Compare node added, {message}', 'Compare 节点已添加，{message}').replace('{message}', autoMessage)
-                : t('Compare node added', 'Compare 节点已添加'));
-            return node;
+            return call(factorySource, 'addCompareNode', null, world, opts);
         }
 
         function createCompareNodeFromSources(sources) {

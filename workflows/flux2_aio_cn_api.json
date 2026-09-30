@@ -440,7 +440,7 @@
       "nag_alpha": 0.5,
       "nag_tau": 1.5,
       "model": [
-        "804",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -471,7 +471,7 @@
         0
       ],
       "on_true": [
-        "804",
+        "simpai_lora_stack_main",
         0
       ],
       "on_false": [
@@ -1228,13 +1228,27 @@
         0
       ],
       "on_false": [
-        "804",
+        "simpai_lora_stack_main",
         0
       ]
     },
     "class_type": "easy ifElse",
     "_meta": {
       "title": "AIO Automatic NAG"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "804",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

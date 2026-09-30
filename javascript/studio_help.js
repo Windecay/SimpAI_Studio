@@ -56,8 +56,18 @@
 
     function sectionsHtml(topic) {
         return (topic.sections || []).map(([title, items]) =>
-            `<section><h3>${escape(content.text(title, state()))}</h3><ol>${items.map(item =>
-                `<li>${escape(content.text(item, state()))}</li>`).join('')}</ol></section>`).join('');
+            `<section><h3>${escape(content.text(title, state()))}</h3><ol>${items.map(item => {
+                const text = escape(content.text(item, state()));
+                if (item?.href) {
+                    try {
+                        const url = new URL(item.href);
+                        if (url.protocol === 'https:' && !url.username && !url.password) {
+                            return `<li><a href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">${text}</a></li>`;
+                        }
+                    } catch (_) {}
+                }
+                return `<li>${text}</li>`;
+            }).join('')}</ol></section>`).join('');
     }
 
     function currentPreset() {
@@ -296,7 +306,7 @@ ${topic.actions?.includes('settings') ? `<footer><button type="button" data-help
 
     function syncGenerationHelp() {
         document.querySelectorAll('[data-simpai-models-js-root] [data-simpai-model-card]').forEach(field => {
-            const topics = { base: 'models', refiner: 'refiner', clip: 'clip', vae: 'vae', upscale: 'upscale', refiner_switch: 'refiner' };
+            const topics = { base: 'models', refiner: 'refiner', clip: 'clip', pe: 'pe', vae: 'vae', upscale: 'upscale', refiner_switch: 'refiner' };
             const topic = topics[field.dataset.simpaiModelCard];
             if (!topic || field.parentElement.classList.contains('sai-help-model-field')) return;
             // Keep help outside the label and its disabled-control synchronization.

@@ -143,7 +143,7 @@
       ],
       "return_with_leftover_noise": "enable",
       "model": [
-        "41",
+        "simpai_lora_stack_high",
         0
       ],
       "positive": [
@@ -643,7 +643,7 @@
       "end_at_step": 10000,
       "return_with_leftover_noise": "disable",
       "model": [
-        "215",
+        "simpai_lora_stack_low",
         0
       ],
       "positive": [
@@ -1316,7 +1316,7 @@
       ],
       "return_with_leftover_noise": "enable",
       "model": [
-        "41",
+        "simpai_lora_stack_high",
         0
       ],
       "positive": [
@@ -1364,7 +1364,7 @@
       "end_at_step": 10000,
       "return_with_leftover_noise": "disable",
       "model": [
-        "215",
+        "simpai_lora_stack_low",
         0
       ],
       "positive": [
@@ -1782,6 +1782,34 @@
     "class_type": "SimpAIVideoFrameAlign",
     "_meta": {
       "title": "SimpAI Video Frame Align"
+    }
+  },
+  "simpai_lora_stack_high": {
+    "inputs": {
+      "model": [
+        "41",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "high"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_high"
+    }
+  },
+  "simpai_lora_stack_low": {
+    "inputs": {
+      "model": [
+        "215",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "low"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_low"
     }
   }
 }

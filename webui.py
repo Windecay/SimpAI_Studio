@@ -25,6 +25,7 @@ except Exception:
 from extras.media_normalize import normalize_imageslider_pair
 import shared
 import modules.config
+import modules.lora_stack
 import modules.canvas_workbench_project as canvas_workbench_project
 import modules.html
 import modules.async_worker as worker
@@ -866,6 +867,8 @@ def _apply_model_params_state_to_task_args(args, model_state):
             params["upscale_model"] = existing_upscale_model
         else:
             params["upscale_model"] = state_upscale_model or "default"
+        params["lora_stack"] = modules.lora_stack.normalize_stack(model_state.get("lora_stack"))
+        params["lora_stack_target"] = model_state.get("lora_stack_target", "auto")
         args[params_index] = params
     return args
 
@@ -2537,7 +2540,7 @@ def _normalize_lora_triplets(raw_loras=None):
         loras.append([bool(enabled), str(model or "None"), weight])
     return loras
 
-def _model_params_state_payload(base_model=None, refiner_model=None, refiner_switch=None, clip_model=None, vae_name=None, upscale_model=None, loras=None):
+def _model_params_state_payload(base_model=None, refiner_model=None, refiner_switch=None, clip_model=None, vae_name=None, upscale_model=None, loras=None, lora_stack=None, lora_stack_target="auto", pe_model="None"):
     try:
         refiner_switch = float(refiner_switch)
     except Exception:
@@ -2551,9 +2554,16 @@ def _model_params_state_payload(base_model=None, refiner_model=None, refiner_swi
         "vae_name": vae_name or modules.config.default_vae,
         "upscale_model": upscale_model or modules.config.default_upscale_model or "default",
         "loras": _normalize_lora_triplets(loras if loras is not None else modules.config.default_loras),
+        "lora_stack": modules.lora_stack.normalize_stack(lora_stack),
+        "lora_stack_target": lora_stack_target or "auto",
+        "pe_model": pe_model or "None",
     }
 
 def get_initial_model_params_state():
+    default_engine = getattr(modules.config, "default_engine", {})
+    backend_params = default_engine.get("backend_params", {}) if isinstance(default_engine, dict) else {}
+    if not isinstance(backend_params, dict):
+        backend_params = {}
     return _model_params_state_payload(
         modules.config.default_base_model_name,
         modules.config.default_refiner_model_name,
@@ -2562,6 +2572,9 @@ def get_initial_model_params_state():
         modules.config.default_vae,
         modules.config.default_upscale_model,
         modules.config.default_loras,
+        backend_params.get("lora_stack"),
+        backend_params.get("lora_stack_target", "auto"),
+        backend_params.get("pe_model", "None"),
     )
 
 
@@ -2767,6 +2780,9 @@ def _model_params_state_from_state_params(state_params, fallback_state=None):
         vae_name,
         upscale_model,
         loras,
+        preset_prepared.get("lora_stack", preset_backend_params.get("lora_stack", state_params.get("lora_stack", []))),
+        preset_prepared.get("lora_stack_target", preset_backend_params.get("lora_stack_target", state_params.get("lora_stack_target", "auto"))),
+        preset_prepared.get("pe_model", preset_backend_params.get("pe_model", "None")),
     ), state_params=state_params)
 
 
@@ -2814,6 +2830,9 @@ def _model_params_state_for_scene_theme(state_params, current_model_params_state
         current_state.get("vae_name"),
         current_state.get("upscale_model"),
         current_loras,
+        current_state.get("lora_stack"),
+        current_state.get("lora_stack_target", "auto"),
+        current_state.get("pe_model", "None"),
     ), state_params=state_params)
 
 
@@ -2862,6 +2881,9 @@ def _model_params_state_from_models_payload(payload, fallback_state=None):
         pick("vae_name"),
         pick("upscale_model"),
         loras,
+        data.get("lora_stack", fallback.get("lora_stack")),
+        data.get("lora_stack_target", fallback.get("lora_stack_target", "auto")),
+        pick("pe_model"),
     ), fallback_state=fallback)
 
 
@@ -2878,6 +2900,9 @@ def _apply_model_params_state_to_backend_params(backend_params, model_state):
 
     upscale_value = _normalize_model_bridge_value(model_state.get("upscale_model"), "default")
     params["upscale_model"] = upscale_value or "default"
+    params["lora_stack"] = modules.lora_stack.normalize_stack(model_state.get("lora_stack"))
+    params["lora_stack_target"] = model_state.get("lora_stack_target", "auto")
+    params["pe_model"] = model_state.get("pe_model", "None")
     return params
 
 
@@ -2916,17 +2941,19 @@ def _render_models_js_panel(current_model_params_state=None):
         ]
         return " ".join(attrs)
 
-    def model_field(key, target, label_en, label_cn):
+    def model_field(key, target, label_en, label_cn, pe=False):
         value = esc(model_state.get(key))
         browse_attrs = browser_button_attrs(f"Browse {label_en}", f"浏览{label_cn}")
+        extra_attrs = ' data-simpai-pe-field="1" hidden' if pe else ""
+        browse = "" if pe else f'<button type="button" class="simpai-models-js-browse simpai-models-js-iconbtn" {browse_attrs} data-simpai-model-browser="{esc(target)}">...</button>'
         return (
-            f'<label class="simpai-models-js-field" data-simpai-model-card="{esc(target)}">'
+            f'<label class="simpai-models-js-field" data-simpai-model-card="{esc(target)}"{extra_attrs}>'
             f'{i18n_span(label_en, label_cn)}'
             '<div class="simpai-models-js-inputrow">'
             f'<select class="simpai-models-js-select" data-simpai-model-field="{esc(key)}" data-simpai-browser-target="{esc(target)}" data-simpai-select-type="{esc(target)}">'
             f'<option value="{value}" selected>{value}</option>'
             '</select>'
-            f'<button type="button" class="simpai-models-js-browse simpai-models-js-iconbtn" {browse_attrs} data-simpai-model-browser="{esc(target)}">...</button>'
+            f'{browse}'
             '</div>'
             '</label>'
         )
@@ -2975,6 +3002,7 @@ def _render_models_js_panel(current_model_params_state=None):
         f'{model_field("base_model", "base", "Base Model", "基础模型")}'
         f'{model_field("refiner_model", "refiner", "Refiner", "精修模型")}'
         f'{model_field("clip_model", "clip", "CLIP / Text Encoder", "CLIP / 文本编码器")}'
+        f'{model_field("pe_model", "pe", "PE Model", "PE 模型", pe=True)}'
         f'{model_field("vae_name", "vae", "VAE", "VAE")}'
         f'{model_field("upscale_model", "upscale", "Upscale Model", "放大模型")}'
         f'{slider_field("refiner_switch", "refiner_switch", "Refiner Switch", "精修切换点", model_state.get("refiner_switch"), "0.1", "1.0", "0.0001")}'
@@ -2983,6 +3011,9 @@ def _render_models_js_panel(current_model_params_state=None):
         '<div class="simpai-models-js-subhead">LoRA</div>'
         f'{"".join(lora_rows)}'
         '</div>'
+        f'<div data-simpai-lora-stack="1" data-items="{esc(json.dumps(model_state.get("lora_stack", []), ensure_ascii=False))}" '
+        f'data-target="{esc(model_state.get("lora_stack_target", "auto"))}" '
+        f'data-models="{esc(json.dumps(modules.config.lora_filenames, ensure_ascii=False))}"></div>'
         '</section>'
     )
 
@@ -3246,17 +3277,6 @@ with shared.gradio_root:
                 bar_buttons = topbar_layout.bar_buttons
                 preset_store = topbar_layout.preset_store
                 preset_store_list = topbar_layout.preset_store_list
-
-                canvas_workbench_request = gr.Textbox(value="", visible="hidden", elem_id="canvas_workbench_request", elem_classes=["sai-gradio-hidden-bridge"])
-                canvas_workbench_response = gr.Textbox(value="", visible="hidden", elem_id="canvas_workbench_response", elem_classes=["sai-gradio-hidden-bridge"])
-                canvas_workbench_bridge_btn = gr.Button("Canvas workbench bridge", visible="hidden", elem_id="canvas_workbench_bridge_btn", elem_classes=["sai-gradio-hidden-bridge"])
-                canvas_workbench_bridge_btn.click(
-                    canvas_workbench_project.handle_bridge_request,
-                    inputs=[canvas_workbench_request, state_topbar],
-                    outputs=[canvas_workbench_response],
-                    queue=False,
-                    show_progress=False,
-                )
 
                 missing_model_modal = floating_shell(
                     visible=False,
@@ -8836,6 +8856,9 @@ with shared.gradio_root:
                                 current_vae_name or fallback.get("vae_name"),
                                 current_upscale_model or fallback.get("upscale_model"),
                                 loras,
+                                fallback.get("lora_stack"),
+                                fallback.get("lora_stack_target", "auto"),
+                                fallback.get("pe_model", "None"),
                             )
                             return _model_params_state_with_scene_context(model_state, fallback_state=fallback)
 
@@ -12908,6 +12931,9 @@ with shared.gradio_root:
                 pick("vae_name", "vae_name"),
                 pick("upscale_model", "upscale_model"),
                 loras,
+                fallback.get("lora_stack"),
+                fallback.get("lora_stack_target", "auto"),
+                fallback.get("pe_model", "None"),
             ),
             state_params=state_params,
             fallback_state=fallback,
@@ -13972,7 +13998,6 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_qwen_tts_runtime_controller.js"),
         webpath("javascript/canvas_workbench/canvas_backend_context.js"),
         webpath("javascript/canvas_workbench/canvas_project_persistence_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_bridge_transport.js"),
         webpath("javascript/canvas_workbench/canvas_project_context.js"),
         webpath("javascript/canvas_workbench/canvas_tooltip_controller.js"),
          webpath("javascript/canvas_workbench/canvas_hover_preview_controller.js"),

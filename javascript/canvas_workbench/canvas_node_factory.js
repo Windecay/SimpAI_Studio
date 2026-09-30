@@ -137,6 +137,13 @@
             return { upload_slots: cloneRunValue(uploadSlots, {}) };
         }
 
+        function applyPresetUploadSlotPatch(node, slot, sourceId) {
+            if (!node || !['preset', 'classic'].includes(node.type) || !slot) return;
+            Object.assign(node, buildPresetUploadSlotPatch(node, {
+                uploadSlotsPatch: { [slot]: sourceId }
+            }));
+        }
+
         function buildClassicNodeStatePatch(node, options) {
             if (!node || node.type !== 'classic') return {};
             const config = options || {};
@@ -783,6 +790,7 @@
             buildNodeFlagPatch,
             buildNodeFieldPatch,
             buildPresetUploadSlotPatch,
+            applyPresetUploadSlotPatch,
             buildClassicNodeStatePatch,
             buildPresetTextInputPatch,
             buildPresetStyleTransferPatch,

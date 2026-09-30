@@ -1292,7 +1292,7 @@
     "inputs": {
       "shift": 1.5,
       "model": [
-        "248",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -1396,6 +1396,20 @@
     "class_type": "TTP_Image_Assy",
     "_meta": {
       "title": "TTP_Image_Assy"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "248",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

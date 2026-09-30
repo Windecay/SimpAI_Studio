@@ -127,6 +127,14 @@
                 { defaultSettings: call('getDefaultSettings', {}, []) }
             ));
             if (!call('isProjectEmpty', false, currentProject) || currentProject.settings.__demo_initialized) return false;
+            try {
+                const storage = call('getStorage', null, []);
+                const cacheKey = currentProject.storage?.key || call('getStorageKey', '', []);
+                const cachedProject = JSON.parse(storage?.getItem(cacheKey) || 'null');
+                if (currentProject.id && cachedProject?.id === currentProject.id && Array.isArray(cachedProject.nodes)) {
+                    return false;
+                }
+            } catch (err) {}
 
             const storage = currentProject.storage || call(
                 'buildProjectStorageInfo',

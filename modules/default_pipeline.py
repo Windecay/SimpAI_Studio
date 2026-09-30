@@ -133,14 +133,14 @@ def synthesize_refiner_model():
 
 @torch.no_grad()
 @torch.inference_mode()
-def refresh_loras(loras, base_model_additional_loras=None):
+def refresh_loras(loras, base_model_additional_loras=None, lora_stack=None):
     global model_base, model_refiner
 
     if not isinstance(base_model_additional_loras, list):
         base_model_additional_loras = []
 
-    model_base.refresh_loras(loras + base_model_additional_loras)
-    model_refiner.refresh_loras(loras)
+    model_base.refresh_loras(loras + base_model_additional_loras, lora_stack=lora_stack)
+    model_refiner.refresh_loras(loras, lora_stack=lora_stack)
 
     return
 
@@ -238,7 +238,8 @@ def prepare_text_encoder(async_call=True):
 @torch.no_grad()
 @torch.inference_mode()
 def refresh_everything(refiner_model_name, base_model_name, loras,
-                       base_model_additional_loras=None, use_synthetic_refiner=False, vae_name=None, use_expansion=False):
+                       base_model_additional_loras=None, use_synthetic_refiner=False, vae_name=None, use_expansion=False,
+                       lora_stack=None):
     global final_unet, final_clip, final_vae, final_refiner_unet, final_refiner_vae, final_expansion
 
     final_unet = None
@@ -255,7 +256,7 @@ def refresh_everything(refiner_model_name, base_model_name, loras,
         refresh_refiner_model(refiner_model_name)
         refresh_base_model(base_model_name, vae_name)
 
-    refresh_loras(loras, base_model_additional_loras=base_model_additional_loras)
+    refresh_loras(loras, base_model_additional_loras=base_model_additional_loras, lora_stack=lora_stack)
     assert_model_integrity()
 
     final_unet = model_base.unet_with_lora

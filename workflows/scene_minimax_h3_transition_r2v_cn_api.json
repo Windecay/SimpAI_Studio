@@ -111,7 +111,7 @@
   "66": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_8"}, "inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["65", 0]}},
   "67": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_9"}, "inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["66", 0]}},
   "68": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_10"}, "inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["67", 0]}},
-  "69": {"class_type": "MiniMaxH3SigmaShift", "_meta": {"title": "ModelSamplingMiniMaxH3"}, "inputs": {"shift_video": ["1", 12], "shift_audio": ["1", 13], "model": ["68", 0]}},
+  "69": {"class_type": "MiniMaxH3SigmaShift", "_meta": {"title": "ModelSamplingMiniMaxH3"}, "inputs": {"shift_video": ["1", 12], "shift_audio": ["1", 13], "model": ["simpai_lora_stack_main", 0]}},
   "70": {
     "class_type": "SimpAIH3TransitionSource", "_meta": {"title": "H3 Transition Sources"},
     "inputs": {"video": "", "next_video": "", "duration": ["1", 32], "overlap": ["1", 14], "width": ["1", 6], "height": ["1", 7]}
@@ -123,5 +123,19 @@
   "72": {
     "class_type": "SimpAIH3TransitionOutput", "_meta": {"title": "H3 Transition Output"},
     "inputs": {"transition": ["70", 0], "images": ["14", 0], "audio": ["15", 0], "append_original": ["1", 20]}
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "68",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
+    }
   }
 }

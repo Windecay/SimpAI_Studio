@@ -185,7 +185,7 @@
       "end": 0.9,
       "max_consecutive_cache_hits": 2,
       "model": [
-        "16",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -285,6 +285,20 @@
     "class_type": "easy boolean",
     "_meta": {
       "title": "is_custom_vae"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "16",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

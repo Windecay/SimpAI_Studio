@@ -81,9 +81,23 @@
   "66": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["65", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_8"}},
   "67": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["66", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_9"}},
   "68": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["67", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_10"}},
-  "69": {"inputs": {"shift_video": ["1", 12], "shift_audio": ["1", 13], "model": ["68", 0]}, "class_type": "MiniMaxH3SigmaShift", "_meta": {"title": "ModelSamplingMiniMaxH3"}},
+  "69": {"inputs": {"shift_video": ["1", 12], "shift_audio": ["1", 13], "model": ["simpai_lora_stack_main", 0]}, "class_type": "MiniMaxH3SigmaShift", "_meta": {"title": "ModelSamplingMiniMaxH3"}},
   "70": {"inputs": {"expression": "ceil(a / 32) * 32", "values.a": ["1", 6]}, "class_type": "ComfyMathExpression", "_meta": {"title": "H3 Internal Width"}},
   "71": {"inputs": {"expression": "ceil(a / 32) * 32", "values.a": ["1", 7]}, "class_type": "ComfyMathExpression", "_meta": {"title": "H3 Internal Height"}},
   "75": {"inputs": {"expression": "max(1, round(a * 24))", "values.a": ["53", 0]}, "class_type": "ComfyMathExpression", "_meta": {"title": "H3 Output Audio Frames"}},
-  "76": {"inputs": {"image": ["14", 0], "batch_index": 0, "length": ["75", 1]}, "class_type": "ImageFromBatch", "_meta": {"title": "H3 Trim Video to Source Audio"}}
+  "76": {"inputs": {"image": ["14", 0], "batch_index": 0, "length": ["75", 1]}, "class_type": "ImageFromBatch", "_meta": {"title": "H3 Trim Video to Source Audio"}},
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "68",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
+    }
+  }
 }

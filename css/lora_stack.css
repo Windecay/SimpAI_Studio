@@ -1,0 +1,157 @@
+[data-simpai-lora-stack] {
+    container-type: inline-size;
+    min-width: 0;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color-primary, #7775);
+    font-size: 12px;
+    letter-spacing: 0;
+}
+[data-simpai-lora-stack] *,
+.simpai-stack-menu { box-sizing: border-box; }
+[data-simpai-lora-stack][data-canvas="1"] {
+    --input-background-fill: var(--sai-canvas-surface);
+    --body-text-color: var(--sai-canvas-text);
+    --body-text-color-subdued: var(--sai-canvas-muted);
+    --border-color-primary: var(--sai-canvas-border);
+    --button-primary-background-fill: var(--sai-canvas-accent);
+    --button-secondary-background-fill: var(--sai-canvas-panel);
+    --button-secondary-text-color: var(--sai-canvas-text);
+}
+[data-simpai-lora-stack] [hidden] { display: none !important; }
+[data-simpai-lora-stack] .simpai-stack-model-picker input[type="text"],
+[data-simpai-lora-stack] .simpai-stack-weight input[type="number"] {
+    min-width: 0 !important;
+    width: 100% !important;
+    height: 28px !important;
+    padding: 0 7px !important;
+    color: inherit !important;
+    background: var(--input-background-fill, transparent) !important;
+    border: 1px solid var(--border-color-primary, #7775) !important;
+    border-radius: 4px !important;
+    font: inherit !important;
+    line-height: 26px !important;
+}
+[data-simpai-lora-stack] input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--button-primary-background-fill, #ff7a18);
+}
+.simpai-stack-header, .simpai-stack-actions, .simpai-stack-target, .simpai-stack-tag {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+}
+.simpai-stack-header { margin-bottom: 4px; flex-wrap: wrap; }
+.simpai-stack-header strong { font-size: 13px; }
+.simpai-stack-header > button:first-of-type { margin-left: auto; }
+.simpai-stack-row {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    gap: 5px 6px;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border-color-primary, #7773);
+}
+.simpai-stack-row:last-child { border-bottom: 0; }
+.simpai-stack-row.is-disabled > .simpai-stack-model-picker,
+.simpai-stack-row.is-disabled > .simpai-stack-fields { opacity: .55; }
+.simpai-stack-actions { gap: 3px; }
+.simpai-stack-fields {
+    grid-column: 2 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(90px, 1fr);
+    gap: 6px;
+    align-items: center;
+}
+.simpai-stack-weight { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.simpai-stack-weight > span { flex: 0 0 auto; font-size: 11px; color: var(--body-text-color-subdued, inherit); }
+.simpai-stack-note { font-size: 12px; color: var(--body-text-color-subdued, inherit); overflow-wrap: anywhere; }
+[data-simpai-lora-stack] .simpai-stack-button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px;
+    min-height: 28px !important;
+    height: 28px !important;
+    min-width: 0 !important;
+    padding: 0 7px !important;
+    border: 1px solid var(--border-color-primary, #7775) !important;
+    border-radius: 4px !important;
+    background: var(--button-secondary-background-fill, transparent) !important;
+    color: var(--button-secondary-text-color, inherit) !important;
+    font: inherit !important;
+    line-height: 1 !important;
+    cursor: pointer;
+}
+[data-simpai-lora-stack] .simpai-stack-icon-button {
+    width: 24px !important;
+    min-height: 24px !important;
+    height: 24px !important;
+    padding: 0 !important;
+    flex: 0 0 24px;
+}
+[data-simpai-lora-stack] .simpai-stack-button:hover:not(:disabled) {
+    border-color: var(--button-primary-background-fill, #ff7a18) !important;
+    background: color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 12%, var(--input-background-fill, #242428)) !important;
+}
+[data-simpai-lora-stack] .simpai-stack-button:disabled { opacity: .3; cursor: default; }
+[data-simpai-lora-stack] :is(button, input):focus-visible {
+    outline: 2px solid var(--button-primary-background-fill, #ff7a18);
+    outline-offset: 1px;
+}
+.simpai-stack-model-picker { position: relative; min-width: 0; }
+[data-simpai-lora-stack] .simpai-stack-model-picker input.simpai-stack-model { padding-right: 27px !important; text-overflow: ellipsis; }
+[data-simpai-lora-stack] .simpai-stack-model-toggle {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    border: 0 !important;
+    background: transparent !important;
+}
+.simpai-stack-select { min-width: 0; }
+[data-simpai-lora-stack] .simpai-stack-select-trigger {
+    width: 100%;
+    justify-content: space-between !important;
+    background: var(--input-background-fill, transparent) !important;
+    color: inherit !important;
+}
+.simpai-stack-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.simpai-stack-select-trigger > i { flex: 0 0 auto; font-size: 10px; }
+.simpai-stack-target { justify-content: space-between; margin-top: 6px; flex-wrap: wrap; }
+.simpai-stack-target > .simpai-stack-select { width: 120px; }
+.simpai-stack-tag { padding-top: 4px; }
+.simpai-stack-tag > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.simpai-stack-tag > span:not(:first-child) { flex: 0 0 auto; }
+.simpai-stack-menu {
+    position: fixed;
+    z-index: 2147483400;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 4px;
+    border: 1px solid var(--border-color-primary, #7775);
+    border-radius: 4px;
+    background: var(--input-background-fill, #242428);
+    color: var(--body-text-color, #f2f2f2);
+    box-shadow: 0 8px 20px #0004;
+    font: 12px/1.4 var(--font, sans-serif);
+    letter-spacing: 0;
+}
+.simpai-stack-option {
+    min-height: 28px;
+    padding: 6px 8px;
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+.simpai-stack-option:hover, .simpai-stack-option.is-active, .simpai-stack-option[aria-selected="true"] {
+    background: color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 18%, var(--input-background-fill, #242428));
+}
+.simpai-stack-option.is-active { outline: 1px solid var(--button-primary-background-fill, #ff7a18); outline-offset: -1px; }
+.simpai-stack-menu > .simpai-stack-note { padding: 6px 8px; }
+@container (max-width: 340px) {
+    .simpai-stack-weight { flex-direction: column; align-items: stretch; gap: 2px; }
+    .simpai-stack-fields { align-items: end; }
+}

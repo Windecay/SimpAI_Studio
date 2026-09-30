@@ -29,6 +29,7 @@ import psutil
 from enhanced.logger import format_name
 from ui.update_helpers import gr_update
 from modules.access_mode import is_local_mode
+from modules.lora_stack import apply_stack_inputs
 logger = logging.getLogger(format_name(__name__))
 
 def is_advanced_logs_enabled():
@@ -259,6 +260,9 @@ class ComfyTaskParams(_NativeComfyTaskParams):
         self._user_did = user_did
 
     def convert2comfy(self, flow_name):
+        return apply_stack_inputs(self._convert2comfy(flow_name), self.get_params())
+
+    def _convert2comfy(self, flow_name):
         native_error = None
         try:
             converted = super().convert2comfy(flow_name)

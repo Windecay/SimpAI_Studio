@@ -220,7 +220,6 @@
     const WORKBENCH_CANVAS_BACKEND_CONTEXT = window.SimpAICanvasWorkbenchBackendContext || {};
     const WORKBENCH_VLM_MODEL_DOWNLOAD = window.SimpAICanvasWorkbenchVlmModelDownload || {};
     const WORKBENCH_CANVAS_VLM_CUSTOM_API_PROFILES = window.SimpAICanvasWorkbenchVlmCustomApiProfiles || {};
-    const WORKBENCH_CANVAS_BRIDGE_TRANSPORT = window.SimpAICanvasWorkbenchBridgeTransport || {};
     const WORKBENCH_CANVAS_AGENT_PANEL_CONTROLLER = window.SimpAICanvasWorkbenchPanelController || {};
     const WORKBENCH_CANVAS_SELECTION = window.SimpAICanvasWorkbenchSelection || {};
     const WORKBENCH_CANVAS_GRAPH_DELETE = window.SimpAICanvasWorkbenchGraphDelete || {};
@@ -707,7 +706,7 @@
             setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
         },
         renderSource: {
-            renderMediaBrowserPanel: (...args) => renderMediaBrowserPanel(...args),
+            renderMediaBrowserPanel: (...args) => CANVAS_MEDIA_BROWSER_PANEL_CONTROLLER.renderMediaBrowserPanel(...args),
             findMediaBrowserNodeElement: (nodeId) => {
                 if (!nodeId || !nodesLayer) return null;
                 return nodesLayer.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`);
@@ -1050,6 +1049,7 @@
     const viewportGetVisibleWorldRect = WORKBENCH_VIEWPORT.getVisibleWorldRect;
     const viewportClientToWorld = WORKBENCH_VIEWPORT.clientToWorld;
     const viewportCenterWorldFromState = WORKBENCH_VIEWPORT.viewportCenterWorld;
+    const viewportGetHandleCenterWorldPoint = WORKBENCH_VIEWPORT.getHandleCenterWorldPoint;
     const viewportGetNodeRenderWorldRect = WORKBENCH_VIEWPORT.getNodeRenderWorldRect;
     const viewportShouldRenderNodeInViewport = WORKBENCH_VIEWPORT.shouldRenderNodeInViewport;
     const viewportGetNodeRect = WORKBENCH_VIEWPORT.getNodeRect;
@@ -1252,14 +1252,14 @@
         translateRun: apiTranslateRun,
         translatePoll: apiTranslatePoll
     };
-    const compareNodeCreateNode = WORKBENCH_COMPARE_NODE.createNode;
+    const compareNodeAddNode = WORKBENCH_COMPARE_NODE.addNode;
     const compareNodeBuildStatePatch = WORKBENCH_COMPARE_NODE.buildCompareStatePatch;
     const compareNodeSourceSignature = WORKBENCH_COMPARE_NODE.sourceSignature;
     const compareNodeRenderStageHtml = WORKBENCH_COMPARE_NODE.renderStageHtml;
     const compareNodeRenderControls = WORKBENCH_COMPARE_NODE.renderControls;
     const compareNodeRenderNodeHtml = WORKBENCH_COMPARE_NODE.renderNodeHtml;
     const compareNodeRenderInspector = WORKBENCH_COMPARE_NODE.renderInspector;
-    const sam3CreateNode = WORKBENCH_SAM3_VIDEO_MASK_NODE.createNode;
+    const sam3AddNode = WORKBENCH_SAM3_VIDEO_MASK_NODE.addNode;
     const sam3IsSource = WORKBENCH_SAM3_VIDEO_MASK_NODE.isSource;
     const sam3OpenPointEditor = WORKBENCH_SAM3_VIDEO_MASK_NODE.openPointEditor;
     const sam3RenderInspector = WORKBENCH_SAM3_VIDEO_MASK_NODE.renderInspector;
@@ -1269,7 +1269,7 @@
     const sam3UnloadMaskForNode = WORKBENCH_SAM3_VIDEO_MASK_NODE.unloadMaskForNode;
     const sam3UpdateParam = WORKBENCH_SAM3_VIDEO_MASK_NODE.updateParam;
     const sam3UploadMaskForNode = WORKBENCH_SAM3_VIDEO_MASK_NODE.uploadMaskForNode;
-    const directorTimelineCreateNode = WORKBENCH_DIRECTOR_TIMELINE_NODE.createNode;
+    const directorTimelineAddNode = WORKBENCH_DIRECTOR_TIMELINE_NODE.addNode;
     const directorTimelineIsNode = WORKBENCH_DIRECTOR_TIMELINE_NODE.isNode;
     const directorTimelineMediaSourceKind = WORKBENCH_DIRECTOR_TIMELINE_NODE.mediaSourceKind;
     const directorTimelineMediaSourceForSlot = WORKBENCH_DIRECTOR_TIMELINE_NODE.isMediaSourceForSlot;
@@ -1282,23 +1282,23 @@
     const directorTimelineMediaKindGroups = WORKBENCH_DIRECTOR_TIMELINE_NODE.MEDIA_KIND_GROUPS;
     const directorPreviousSegmentVideoRef = WORKBENCH_DIRECTOR_TIMELINE_NODE.PREVIOUS_SEGMENT_VIDEO_REF;
     const directorPreviousSegmentImageRef = WORKBENCH_DIRECTOR_TIMELINE_NODE.PREVIOUS_SEGMENT_IMAGE_REF;
-    const cameraMotionCreateNode = WORKBENCH_CAMERA_MOTION_NODE.createNode;
+    const cameraMotionAddNode = WORKBENCH_CAMERA_MOTION_NODE.addNode;
     const cameraMotionRenderInspector = WORKBENCH_CAMERA_MOTION_NODE.renderInspector;
     const cameraMotionRenderNodeHtml = WORKBENCH_CAMERA_MOTION_NODE.renderNodeHtml;
     const cameraMotionRunNode = WORKBENCH_CAMERA_MOTION_NODE.runNode;
     const cameraMotionUpdateParam = WORKBENCH_CAMERA_MOTION_NODE.updateParam;
     const cameraMotionClearNode = WORKBENCH_CAMERA_MOTION_NODE.clearNode;
-    const poseStudioCreateNode = WORKBENCH_POSE_STUDIO_NODE.createNode;
+    const poseStudioAddNode = WORKBENCH_POSE_STUDIO_NODE.addNode;
     const poseStudioIsSource = WORKBENCH_POSE_STUDIO_NODE.isSource;
     const poseStudioOpenEditor = WORKBENCH_POSE_STUDIO_NODE.openEditor;
     const poseStudioRenderInspector = WORKBENCH_POSE_STUDIO_NODE.renderInspector;
     const poseStudioRenderNodeHtml = WORKBENCH_POSE_STUDIO_NODE.renderNodeHtml;
-    const gaussianStudioCreateNode = WORKBENCH_GAUSSIAN_STUDIO_NODE.createNode;
+    const gaussianStudioAddNode = WORKBENCH_GAUSSIAN_STUDIO_NODE.addNode;
     const gaussianStudioIsSource = WORKBENCH_GAUSSIAN_STUDIO_NODE.isSource;
     const gaussianStudioOpenEditor = WORKBENCH_GAUSSIAN_STUDIO_NODE.openEditor;
     const gaussianStudioRenderInspector = WORKBENCH_GAUSSIAN_STUDIO_NODE.renderInspector;
     const gaussianStudioRenderNodeHtml = WORKBENCH_GAUSSIAN_STUDIO_NODE.renderNodeHtml;
-    const livePortraitCreateNode = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.createNode;
+    const livePortraitAddNode = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.addNode;
     const livePortraitIsSource = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.isSource;
     const livePortraitOpenEditor = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.openEditor;
     const livePortraitRenderInspector = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.renderInspector;
@@ -1309,10 +1309,10 @@
     const qwenTtsModeFromNode = WORKBENCH_QWEN_TTS_NODE.modeFromNode;
     const qwenTtsAudioInputSlotsForNode = WORKBENCH_QWEN_TTS_NODE.audioInputSlotsForNode;
     const qwenTtsStylePresetInstruction = WORKBENCH_QWEN_TTS_NODE.stylePresetInstruction;
-    const qwenTtsCreateNode = WORKBENCH_QWEN_TTS_NODE.createNode;
+    const qwenTtsAddNode = WORKBENCH_QWEN_TTS_NODE.addNode;
     const qwenTtsRenderInspector = WORKBENCH_QWEN_TTS_NODE.renderInspector;
     const qwenTtsRenderNodeHtml = WORKBENCH_QWEN_TTS_NODE.renderNodeHtml;
-    const styleSelectorCreateNode = WORKBENCH_STYLE_SELECTOR_NODE.createNode;
+    const styleSelectorAddNode = WORKBENCH_STYLE_SELECTOR_NODE.addNode;
     const styleSelectorGetPrompt = WORKBENCH_STYLE_SELECTOR_NODE.getPrompt;
     const styleSelectorRenderInspector = WORKBENCH_STYLE_SELECTOR_NODE.renderInspector;
     const styleSelectorRenderNodeHtml = WORKBENCH_STYLE_SELECTOR_NODE.renderNodeHtml;
@@ -2158,8 +2158,8 @@
                     cloneRunValue
                 },
                 mediaBrowserSource: {
-                    mediaBrowserInitialState,
-                    serializableMediaBrowserState
+                    mediaBrowserInitialState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserInitialState(...args),
+                    serializableMediaBrowserState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.serializableMediaBrowserState(...args)
                 },
                 viewportSource: {
                     getViewportCenterWorld: () => viewportCenterWorld()
@@ -2739,27 +2739,6 @@
                         scheduleViewportSave,
                     },
                 },
-                bridgeSource: {
-                    domSource: {
-                        getDocument: () => document,
-                    },
-                    transportSource: {
-                        setGradioTextboxValue: typeof window.setGradioTextboxValue === 'function'
-                            ? (...args) => window.setGradioTextboxValue(...args)
-                            : null,
-                        clickGradioButton: typeof window.clickGradioButton === 'function'
-                            ? (...args) => window.clickGradioButton(...args)
-                            : null,
-                    },
-                    runtimeSource: {
-                        now: () => canvasNow(),
-                        setTimeout: (...args) => window.setTimeout(...args),
-                        clearTimeout: (...args) => window.clearTimeout(...args),
-                    },
-                    utilitySource: {
-                        uid,
-                    },
-                },
                 historySource: {
                     languageSource: {
                         t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
@@ -2840,7 +2819,7 @@
                 renderSource: {
                     renderNodeStateBadges: (...args) => CANVAS_NODE_RENDERER?.renderNodeStateBadges?.(...args) || '',
                     collapsedKeepClass,
-                    syncGalleryFrostClass,
+                    syncGalleryFrostClass: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.syncGalleryFrostClass(...args),
                 },
                 statusSource: {
                     isCanvasRunActiveState,
@@ -2861,11 +2840,11 @@
                     batchAnyTargetLabel,
                     batchAnyTextFromItem,
                 },
-                 mediaSource: {
-                     mediaBrowserNodeState,
-                     mediaBrowserRuntimeFor,
-                     isGalleryFrostEnabled,
-                     selectedMediaBrowserItemFrom,
+                  mediaSource: {
+                      mediaBrowserNodeState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserNodeState(...args),
+                      mediaBrowserRuntimeFor: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeFor(...args),
+                      isGalleryFrostEnabled: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.isGalleryFrostEnabled(...args),
+                      selectedMediaBrowserItemFrom: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserItemFrom(...args),
                      danbooruPostMediaType: (...args) => danbooruPostMediaType(...args),
                  },
                  maskNodeSource: {
@@ -3192,8 +3171,8 @@
                      isResultStale,
                      isCanvasRunActiveState,
                  },
-                 mediaSource: {
-                     mediaBrowserRuntimeFor,
+                  mediaSource: {
+                      mediaBrowserRuntimeFor: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeFor(...args),
                  },
              },
              nodeRenderSource: {
@@ -3278,8 +3257,8 @@
                 assetSource: {
                     getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
                     resultPreviewAspectSource: (...args) => CANVAS_ASSET_NODE_RENDERER?.resultPreviewAspectSource?.(...args),
-                    mediaBrowserRuntimeFor,
-                    refreshMediaBrowserNode,
+                    mediaBrowserRuntimeFor: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeFor(...args),
+                    refreshMediaBrowserNode: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.refreshMediaBrowserNode(...args),
                     captureVlmChatScroll,
                     captureMediaBrowserScroll,
                     restoreVlmChatScroll,
@@ -3333,6 +3312,10 @@
                         selectedEdgeId = next.selectedEdgeId || null;
                         selectedGroupId = next.selectedGroupId || null;
                     },
+                    setSelectedNodeId: (value) => { selectedNodeId = value; },
+                    setSelectedNodeIds: (values) => { selectedNodeIds = new Set(values || []); },
+                    setSelectedEdgeId: (value) => { selectedEdgeId = value; },
+                    setSelectedGroupId: (value) => { selectedGroupId = value; },
                 },
                 domSource: {
                     getNodesLayer: () => nodesLayer,
@@ -3641,12 +3624,7 @@
                  },
                  selectionSource: {
                      selectGroupLight: (...args) => CANVAS_SELECTION_CONTROLLER?.selectGroupLight?.(...args),
-                     setGroupSelection: (id) => {
-                         selectedGroupId = id || null;
-                         selectedNodeId = null;
-                         selectedNodeIds = new Set();
-                         selectedEdgeId = null;
-                     },
+                     setGroupSelection: id => CANVAS_SELECTION_CONTROLLER.setGroupSelectionState(id),
                  },
                  layoutSource: {
                      buildNodeLayoutPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeLayoutPatch?.(...args),
@@ -3974,24 +3952,7 @@
                           selectedEdgeId = next.selectedEdgeId || null;
                           selectedGroupId = next.selectedGroupId || null;
                       },
-                      applyMarqueeSelection: (ids) => {
-                          const nextIds = new Set(ids || []);
-                          const current = {
-                              selectedNodeId,
-                              selectedNodeIds: new Set(selectedNodeIds),
-                              selectedEdgeId,
-                              selectedGroupId,
-                          };
-                          const nextList = Array.from(nextIds);
-                          current.selectedNodeId = nextList.length ? nextList[nextList.length - 1] : null;
-                          current.selectedNodeIds = nextIds;
-                          current.selectedEdgeId = null;
-                          current.selectedGroupId = null;
-                          selectedNodeId = current.selectedNodeId;
-                          selectedNodeIds = current.selectedNodeIds;
-                          selectedEdgeId = current.selectedEdgeId;
-                          selectedGroupId = current.selectedGroupId;
-                      },
+                      applyMarqueeSelection: (ids) => CANVAS_SELECTION_CONTROLLER?.setMarqueeSelectionState?.(ids),
                       updateSelectionDomClasses: (...args) => CANVAS_SELECTION_CONTROLLER?.updateSelectionDomClasses?.(...args),
                   },
                   runtimeSource: {
@@ -4061,8 +4022,7 @@
                       selectNodeLight: (...args) => CANVAS_SELECTION_CONTROLLER?.selectNodeLight?.(...args),
                       toggleNodeSelectionLight: (...args) => CANVAS_SELECTION_CONTROLLER?.toggleNodeSelectionLight?.(...args),
                       focusSelectedNode: (nodeId) => {
-                          selectedNodeId = nodeId;
-                          selectedEdgeId = null;
+                          CANVAS_SELECTION_CONTROLLER?.focusNodePreservingSelection?.(nodeId);
                           CANVAS_SELECTION_CONTROLLER?.refreshSelectionUi?.();
                       },
                   },
@@ -4127,10 +4087,7 @@
                   selectionSource: {
                       selectNode: (...args) => CANVAS_SELECTION_CONTROLLER?.selectNode?.(...args),
                       selectInputConnectionTarget: (nodeId) => {
-                          selectedNodeId = nodeId;
-                          selectedNodeIds = new Set([nodeId]);
-                          selectedEdgeId = null;
-                          selectedGroupId = null;
+                          CANVAS_SELECTION_CONTROLLER?.setNodeSelectionIncludingEmpty?.(nodeId);
                           CANVAS_SELECTION_CONTROLLER?.refreshSelectionUi?.();
                       },
                   },
@@ -4356,12 +4313,12 @@
             batchAnyTargets,
             batchAnyTargetLabel,
             batchAnyTextFromItem,
-            mediaBrowserNodeState,
-            mediaBrowserRuntimeFor,
-            isGalleryFrostEnabled,
-            syncGalleryFrostClass,
+            mediaBrowserNodeState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserNodeState(...args),
+            mediaBrowserRuntimeFor: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeFor(...args),
+            isGalleryFrostEnabled: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.isGalleryFrostEnabled(...args),
+            syncGalleryFrostClass: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.syncGalleryFrostClass(...args),
             localizedDefaultTitle,
-            selectedMediaBrowserItemFrom,
+            selectedMediaBrowserItemFrom: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserItemFrom(...args),
             mediaBrowserItemMeta: item => CANVAS_ASSET_NODE_RENDERER.mediaBrowserItemMeta(item),
             danbooruPostMediaType: (...args) => danbooruPostMediaType(...args),
             getNodeElement: (id) => nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(id)}"]`),
@@ -4438,7 +4395,7 @@
             cssEscape: (value) => CSS.escape(value),
             updateCanvasRenderMode,
             ensureVlmNodeModeSize,
-            refreshMediaBrowserNode,
+            refreshMediaBrowserNode: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.refreshMediaBrowserNode(...args),
             captureVlmChatScroll,
             captureMediaBrowserScroll,
             logVlmRenderKeyChange,
@@ -4670,10 +4627,7 @@
             pushHistory: (...args) => pushHistory(...args)
         },
         selectionSource: {
-            selectConnectionNode: (nodeId) => {
-                selectedEdgeId = null;
-                selectedNodeId = nodeId;
-            }
+            selectConnectionNode: nodeId => CANVAS_SELECTION_CONTROLLER.focusNodePreservingSelection(nodeId)
         },
         renderSource: {
             refreshPresetSpecialNodeDom: (...args) => refreshPresetSpecialNodeDom(...args),
@@ -4711,10 +4665,7 @@
             mergeCanvasRunStatus: (...args) => mergeCanvasRunStatus(...args)
         },
         selectionSource: {
-            selectBridgeResult: (nodeId, select) => {
-                selectedEdgeId = null;
-                if (select) selectedNodeId = nodeId;
-            }
+            selectBridgeResult: (nodeId, select) => CANVAS_SELECTION_CONTROLLER.focusNodePreservingSelection(select ? nodeId : selectedNodeId)
         },
         renderSource: {
             mutate: (...args) => mutate(...args)
@@ -4872,7 +4823,7 @@
         projectSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.projectSource,
         nodeSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.nodeSource,
         directorSource: {
-            directorTimelineCreateNode,
+            directorTimelineAddNode,
             getDirectorTimelineNodeContext: () => DIRECTOR_TIMELINE_NODE_CONTEXT
         },
         layoutSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.layoutSource,
@@ -4895,17 +4846,7 @@
         },
         selectionSource: {
             getSelectedNodeIdList: (...args) => getSelectedNodeIdList(...args),
-            selectTimelineNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-            },
-            selectDirectorTimelineNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-            }
+            selectTimelineNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId),
         }
     };
     CANVAS_TIMELINE_CREATION_CONTROLLER = typeof WORKBENCH_CANVAS_TIMELINE_CREATION.createCanvasTimelineCreationController === 'function'
@@ -4938,30 +4879,30 @@
         : {};
     const MEDIA_BROWSER_INTERACTION_CONTEXT_SOURCE = {
         stateSource: {
-            mediaBrowserInitialState: (...args) => mediaBrowserInitialState(...args),
-            mediaBrowserNodeState: (...args) => mediaBrowserNodeState(...args),
-            mediaBrowserRuntimeFor: (...args) => mediaBrowserRuntimeFor(...args),
-            saveMediaBrowserNodeState: (...args) => saveMediaBrowserNodeState(...args),
-            selectedMediaBrowserNodeItem: (...args) => selectedMediaBrowserNodeItem(...args)
+            mediaBrowserInitialState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserInitialState(...args),
+            mediaBrowserNodeState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserNodeState(...args),
+            mediaBrowserRuntimeFor: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeFor(...args),
+            saveMediaBrowserNodeState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.saveMediaBrowserNodeState(...args),
+            selectedMediaBrowserNodeItem: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserNodeItem(...args)
         },
         layoutSource: {
             viewportCenterWorld: (...args) => viewportCenterWorld(...args),
             defaultNodeSize: (...args) => defaultNodeSize(...args)
         },
         dataSource: {
-            refreshMediaBrowserNode: (...args) => refreshMediaBrowserNode(...args),
-            loadMoreMediaBrowserNode: (...args) => loadMoreMediaBrowserNode(...args)
+            refreshMediaBrowserNode: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.refreshMediaBrowserNode(...args),
+            loadMoreMediaBrowserNode: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.loadMoreMediaBrowserNode(...args)
         },
         actionSource: {
-            addMediaBrowserItemToCanvas: (...args) => addMediaBrowserItemToCanvas(...args),
-            openMediaBrowserPanel: (...args) => openMediaBrowserPanel(...args),
-            copyMediaBrowserItemPrompt: (...args) => copyMediaBrowserItemPrompt(...args),
-            applyMediaBrowserItemPromptToTarget: (...args) => applyMediaBrowserItemPromptToTarget(...args),
-            deleteLocalMediaBrowserItem: (...args) => deleteLocalMediaBrowserItem(...args)
+            addMediaBrowserItemToCanvas: (...args) => CANVAS_MEDIA_IMPORT_CONTROLLER.addMediaBrowserItemToCanvas(...args),
+            openMediaBrowserPanel: (...args) => CANVAS_MEDIA_BROWSER_PANEL_CONTROLLER.openMediaBrowserPanel(...args),
+            copyMediaBrowserItemPrompt: (...args) => CANVAS_MEDIA_BROWSER_ACTION_CONTROLLER.copyMediaBrowserItemPrompt(...args),
+            applyMediaBrowserItemPromptToTarget: (...args) => CANVAS_MEDIA_BROWSER_ACTION_CONTROLLER.applyMediaBrowserItemPromptToTarget(...args),
+            deleteLocalMediaBrowserItem: (...args) => CANVAS_MEDIA_BROWSER_ACTION_CONTROLLER.deleteLocalMediaBrowserItem(...args)
         },
         frostSource: {
-            revealGalleryFrostArea: (...args) => revealGalleryFrostArea(...args),
-            setGalleryFrostEnabled: (...args) => setGalleryFrostEnabled(...args)
+            revealGalleryFrostArea: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.revealGalleryFrostArea(...args),
+            setGalleryFrostEnabled: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.setGalleryFrostEnabled(...args)
         },
         renderSource: {
             renderNodes: (...args) => renderNodes(...args)
@@ -4993,17 +4934,17 @@
         },
         stateSource: {
             getMediaBrowserNodeRuntime: () => mediaBrowserNodeRuntime,
-            mediaBrowserRuntimeFor: (...args) => mediaBrowserRuntimeFor(...args),
-            mediaBrowserNodeState: (...args) => mediaBrowserNodeState(...args),
-            saveMediaBrowserNodeState: (...args) => saveMediaBrowserNodeState(...args),
-            mergeMediaBrowserPage: (...args) => mergeMediaBrowserPage(...args)
+            mediaBrowserRuntimeFor: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeFor(...args),
+            mediaBrowserNodeState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserNodeState(...args),
+            saveMediaBrowserNodeState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.saveMediaBrowserNodeState(...args),
+            mergeMediaBrowserPage: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mergeMediaBrowserPage(...args)
         },
         fieldSource: {
-            readMediaBrowserFields: (...args) => readMediaBrowserFields(...args),
-            readMediaBrowserNodeFields: (...args) => readMediaBrowserNodeFields(...args)
+            readMediaBrowserFields: (...args) => CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.readMediaBrowserFields(...args),
+            readMediaBrowserNodeFields: (...args) => CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.readMediaBrowserNodeFields(...args)
         },
         renderSource: {
-            renderMediaBrowserPanel: (...args) => renderMediaBrowserPanel(...args),
+            renderMediaBrowserPanel: (...args) => CANVAS_MEDIA_BROWSER_PANEL_CONTROLLER.renderMediaBrowserPanel(...args),
             renderNodes: (...args) => renderNodes(...args),
             scheduleMediaBrowserPaintRefresh: (...args) => scheduleMediaBrowserPaintRefresh(...args),
             scheduleMediaBrowserNodePaintRefresh: (...args) => scheduleMediaBrowserNodePaintRefresh(...args)
@@ -5030,12 +4971,7 @@
         selectionSource: {
             getSelectedNodeIdList: (...args) => getSelectedNodeIdList(...args),
             getSelectedNodeId: () => selectedNodeId,
-            selectMetadataTarget: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-            }
+            selectMetadataTarget: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(nodeId)
         },
         layoutSource: {
             viewportCenterWorld: (...args) => viewportCenterWorld(...args)
@@ -5241,7 +5177,6 @@
             buildManualOutputNode: (...args) => buildManualOutputNode(...args),
             buildClassicNode: (...args) => buildClassicNode(...args),
             buildPresetNode: (...args) => buildPresetNode(...args),
-            buildStyleSelectorNode: (world, options) => styleSelectorCreateNode(world, options, STYLE_SELECTOR_NODE_CONTEXT)
         },
         projectSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.projectSource,
         nodeSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.nodeSource,
@@ -5257,35 +5192,26 @@
         connectionSource: {
             completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args)
         },
-        selectionSource: {
-            selectAuxNode: (nodeId, clearGroup) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-                if (clearGroup) selectedGroupId = null;
-            },
-            selectPresetNode: nodeId => {
-                selectedNodeId = nodeId;
-                selectedEdgeId = null;
-            },
-            selectManualOutputNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedEdgeId = null;
-            }
+            selectionSource: {
+                selectAuxNode: (nodeId, clearGroup) => {
+                    if (clearGroup) CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(nodeId);
+                    else CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId);
+                },
+            selectPresetNode: nodeId => CANVAS_SELECTION_CONTROLLER.focusNodePreservingSelection(nodeId),
+            selectManualOutputNode: nodeId => CANVAS_SELECTION_CONTROLLER.focusNodePreservingSelection(nodeId)
         },
         renderSource: {
             mutate: (...args) => mutate(...args)
         },
         refreshSource: {
             refreshWildcardsCatalog: (...args) => refreshWildcardsCatalog(...args),
-            refreshMediaBrowserNode: (...args) => refreshMediaBrowserNode(...args),
+            refreshMediaBrowserNode: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.refreshMediaBrowserNode(...args),
             scheduleAutoPresetModelChecks: (...args) => scheduleAutoPresetModelChecks(...args)
         },
         actionSource: {
             openTagCartForNode: (...args) => openTagCartForNode(...args),
+            addStyleSelectorNode: (...args) => addStyleSelectorNode(...args),
             findStyleSelectorForPreset: (...args) => findStyleSelectorForPreset(...args),
-            setSelectedStyle: (node, name) => typeof styleSelectorSetSelectedStyle === 'function'
-                ? styleSelectorSetSelectedStyle(node, name, STYLE_SELECTOR_NODE_CONTEXT) : undefined,
             linkStyleSelectorToPreset: (...args) => linkStyleSelectorToPreset(...args)
         },
         uiSource: {
@@ -5301,8 +5227,8 @@
     const MEDIA_BROWSER_ACTION_CONTEXT_SOURCE = {
         stateSource: {
             viewportCenterWorld: (...args) => viewportCenterWorld(...args),
-            mediaBrowserInitialState: (...args) => mediaBrowserInitialState(...args),
-            selectedMediaBrowserItem: (...args) => selectedMediaBrowserItem(...args)
+            mediaBrowserInitialState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserInitialState(...args),
+            selectedMediaBrowserItem: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserItem(...args)
         },
         metadataSource: {
             mediaBrowserItemPrompt: (...args) => mediaBrowserItemPrompt(...args),
@@ -5338,27 +5264,27 @@
         },
         stateSource: {
             viewportCenterWorld: (...args) => viewportCenterWorld(...args),
-            mediaBrowserInitialState: (...args) => mediaBrowserInitialState(...args),
-            normalizeMediaBrowserState: (...args) => normalizeMediaBrowserState(...args),
-            selectedMediaBrowserItem: (...args) => selectedMediaBrowserItem(...args),
-            readMediaBrowserFields: (...args) => readMediaBrowserFields(...args)
+            mediaBrowserInitialState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserInitialState(...args),
+            normalizeMediaBrowserState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.normalizeMediaBrowserState(...args),
+            selectedMediaBrowserItem: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserItem(...args),
+            readMediaBrowserFields: (...args) => CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.readMediaBrowserFields(...args)
         },
         dataSource: {
-            refreshMediaBrowserPanel: (...args) => refreshMediaBrowserPanel(...args),
-            loadMoreMediaBrowserPanel: (...args) => loadMoreMediaBrowserPanel(...args),
-            maybeAutoLoadMoreMediaBrowserPanel: (...args) => maybeAutoLoadMoreMediaBrowserPanel(...args)
+            refreshMediaBrowserPanel: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.refreshMediaBrowserPanel(...args),
+            loadMoreMediaBrowserPanel: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.loadMoreMediaBrowserPanel(...args),
+            maybeAutoLoadMoreMediaBrowserPanel: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.maybeAutoLoadMoreMediaBrowserPanel(...args)
         },
         actionSource: {
-            importSelectedMediaBrowserItem: (...args) => importSelectedMediaBrowserItem(...args),
-            deleteLocalMediaBrowserItem: (...args) => deleteLocalMediaBrowserItem(...args),
+            importSelectedMediaBrowserItem: (...args) => CANVAS_MEDIA_IMPORT_CONTROLLER.importSelectedMediaBrowserItem(...args),
+            deleteLocalMediaBrowserItem: (...args) => CANVAS_MEDIA_BROWSER_ACTION_CONTROLLER.deleteLocalMediaBrowserItem(...args),
             copySelectedMediaBrowserPrompt: (...args) => CANVAS_MEDIA_BROWSER_ACTION_CONTROLLER.copySelectedMediaBrowserPrompt(...args),
             applySelectedMediaBrowserPromptToTarget: (...args) => CANVAS_MEDIA_BROWSER_ACTION_CONTROLLER.applySelectedMediaBrowserPromptToTarget(...args)
         },
         frostSource: {
-            revealGalleryFrostArea: (...args) => revealGalleryFrostArea(...args),
-            setGalleryFrostEnabled: (...args) => setGalleryFrostEnabled(...args),
-            syncGalleryFrostClass: (...args) => syncGalleryFrostClass(...args),
-            isGalleryFrostEnabled: (...args) => isGalleryFrostEnabled(...args)
+            revealGalleryFrostArea: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.revealGalleryFrostArea(...args),
+            setGalleryFrostEnabled: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.setGalleryFrostEnabled(...args),
+            syncGalleryFrostClass: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.syncGalleryFrostClass(...args),
+            isGalleryFrostEnabled: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.isGalleryFrostEnabled(...args)
         },
         renderSource: {
             renderMediaBrowserPanelHtml: (...args) => renderMediaBrowserPanelHtml(...args),
@@ -5380,9 +5306,9 @@
             getTransferStation: () => window.SimpAITransferStation
         },
         mediaBrowserSource: {
-            selectedMediaBrowserItem: (...args) => selectedMediaBrowserItem(...args),
-            mediaBrowserInitialState: (...args) => mediaBrowserInitialState(...args),
-            normalizeMediaBrowserState: (...args) => normalizeMediaBrowserState(...args),
+            selectedMediaBrowserItem: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserItem(...args),
+            mediaBrowserInitialState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserInitialState(...args),
+            normalizeMediaBrowserState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.normalizeMediaBrowserState(...args),
             importDanbooruGalleryPost: (...args) => importDanbooruGalleryPost(...args)
         },
         fileSource: MEDIA_HELPERS_CONTEXT,
@@ -5417,16 +5343,8 @@
         languageSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.languageSource,
         renderSource: SPECIAL_RESULT_BRIDGE_CONTEXT_SOURCE.renderSource,
         selectionSource: {
-            selectImportedNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedEdgeId = null;
-            },
-            selectGalleryNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-            }
+            selectImportedNode: nodeId => CANVAS_SELECTION_CONTROLLER.focusNodePreservingSelection(nodeId),
+            selectGalleryNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(nodeId)
         },
         storageSource: {
             materializeNodeAssetForStorage: (...args) => materializeNodeAssetForStorage(...args)
@@ -5507,11 +5425,7 @@
             nowIso: (...args) => nowIso(...args)
         },
         selectionSource: {
-            selectBatchNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-            }
+            selectBatchNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId)
         },
         domSource: {
             getDocument: () => document
@@ -5671,11 +5585,7 @@
         },
         selectionSource: {
             selectNode: (...args) => selectNode(...args),
-            selectInputSource: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-            }
+            selectInputSource: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId)
         },
         uiSource: {
             showToast: (...args) => showToast(...args),
@@ -5804,7 +5714,7 @@
             cssEscape: value => cssEscape(value),
             normalizeInitialConfigLoras: (...args) => normalizeInitialConfigLoras(...args),
             modelConfigUsesFilter: node => modelConfigUsesFilter(node),
-            serializePresetForRun: (...args) => serializePresetForRun(...args),
+            serializePresetForRun: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetForRun?.(...args) || {},
             createOption: value => new Option(value, value)
         },
         configSource: {
@@ -5826,7 +5736,6 @@
             resolutionManualSizeLabel: (...args) => resolutionManualSizeLabel(...args)
         },
         eventSource: {
-            filterStylesConfigList: (...args) => filterStylesConfigList(...args),
             setModelConfigFilter: (...args) => setModelConfigFilter(...args),
             syncModelSelectTitle: (...args) => syncModelSelectTitle(...args),
             syncTwinParamInputs: (...args) => syncTwinParamInputs(...args),
@@ -5869,6 +5778,9 @@
         },
         classicSource: {
             getClassicEnhanceRegionDefaults: () => registryClassicEnhanceRegionDefaults,
+            getClassicEnhanceMaskModels: () => registryClassicEnhanceMaskModels,
+            getClassicEnhanceClothCategories: () => registryClassicEnhanceClothCategories,
+            getClassicEnhanceSamModels: () => registryClassicEnhanceSamModels,
             getClassicIpMaxImages: () => registryClassicIpMaxImages,
             getClassicIpControlTypes: () => registryClassicIpControlTypes,
             getClassicIpFilters: () => registryClassicIpFilters,
@@ -6042,26 +5954,7 @@
             specialMediaSource: SPECIAL_MEDIA_SOURCE_CONTEXT_SOURCE
         })
         : {};
-    const generatedResultNodesForPreset = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.generatedResultNodesForPreset?.(...args) || [];
-    const applyCanvasRunStatus = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.applyCanvasRunStatus?.(...args);
-    const applyRunDryRunResult = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.applyRunDryRunResult?.(...args);
-    const applyRunNodeResult = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.applyRunNodeResult?.(...args)
-        || Promise.resolve({ ok: false, error: 'preset run runtime controller unavailable' });
-    const pollCanvasRun = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.pollCanvasRun?.(...args)
-        || Promise.resolve({ ok: false, error: 'preset run runtime controller unavailable' });
-    const submitDirectorSegmentRun = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.submitDirectorSegmentRun?.(...args)
-        || Promise.resolve({ ok: false, error: 'preset run runtime controller unavailable' });
-    const findReusableResultNodeForPreset = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.findReusableResultNodeForPreset?.(...args) || null;
-    const findActiveResultNodeForPreset = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.findActiveResultNodeForPreset?.(...args) || null;
-    const reconcilePresetRunCompletion = (...args) => !!CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.reconcilePresetRunCompletion?.(...args);
-    const resultNodeRunSortScore = (...args) => Number(CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.resultNodeRunSortScore?.(...args) || 0);
-    const markResultRefreshPreparing = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.markResultRefreshPreparing?.(...args);
-    const clearResultRefreshPreparing = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.clearResultRefreshPreparing?.(...args);
     const runPresetNode = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.runPresetNode?.(...args)
-        || Promise.resolve({ ok: false, error: 'preset run runtime controller unavailable' });
-    const preflightDirectPresetRun = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.preflightDirectPresetRun?.(...args)
-        || Promise.resolve({ ok: false, error: 'preset run runtime controller unavailable' });
-    const ensurePresetModelsBeforeRun = (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.ensurePresetModelsBeforeRun?.(...args)
         || Promise.resolve({ ok: false, error: 'preset run runtime controller unavailable' });
     const CANVAS_RUNTIME_CONTEXT = typeof WORKBENCH_CANVAS_RUNTIME_CONTEXT.createCanvasWorkbenchRuntimeContext === 'function'
         ? WORKBENCH_CANVAS_RUNTIME_CONTEXT.createCanvasWorkbenchRuntimeContext({
@@ -6299,6 +6192,10 @@
     IMAGE_NODE_CONTEXT = CANVAS_MEDIA_NODE_CONTEXT.IMAGE_NODE_CONTEXT || null;
     VIDEO_NODE_CONTEXT = CANVAS_MEDIA_NODE_CONTEXT.VIDEO_NODE_CONTEXT || null;
     AUDIO_NODE_CONTEXT = CANVAS_MEDIA_NODE_CONTEXT.AUDIO_NODE_CONTEXT || null;
+    function setCompareNodeSelection(nodeId) {
+        return CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId);
+    }
+
     const COMPARE_NODE_CONTEXT_SOURCE = {
         utilitySource: {
             escapeHtml,
@@ -6310,7 +6207,8 @@
             readAssetSize
         },
         projectSource: {
-            getProject: () => project
+            getProject: () => project,
+            buildProjectNodeAppendPatch
         },
         nodeSource: {
             defaultNodeSize,
@@ -6319,10 +6217,16 @@
             isImageCompareSource,
             getSelectedResultAsset: (...args) => getSelectedResultAsset(...args)
         },
+        layoutSource: { placeNodeAvoidingOverlap },
+        connectionSource: { completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args) },
+        historySource: { pushHistory: (...args) => pushHistory(...args) },
+        selectionSource: { setSelectedNode: setCompareNodeSelection },
         renderSource: {
             renderIconHtml,
-            renderNodeStateBadges
-        }
+            renderNodeStateBadges,
+            mutate
+        },
+        uiSource: { showToast }
     };
     const CANVAS_COMPARE_NODE_CONTEXT = typeof WORKBENCH_CANVAS_COMPARE_NODE_CONTEXT.createCanvasWorkbenchCompareNodeContext === 'function'
         ? WORKBENCH_CANVAS_COMPARE_NODE_CONTEXT.createCanvasWorkbenchCompareNodeContext({
@@ -6331,29 +6235,19 @@
         : {};
     COMPARE_NODE_CONTEXT = CANVAS_COMPARE_NODE_CONTEXT.COMPARE_NODE_CONTEXT || {};
     const COMPARE_CREATION_CONTEXT_SOURCE = {
-        projectSource: {
-            getProject: () => project,
-            buildProjectNodeAppendPatch: (...args) => buildProjectNodeAppendPatch(...args)
-        },
         factorySource: {
-            createCompareNode: (world, options) => compareNodeCreateNode(world, options, COMPARE_NODE_CONTEXT)
+            addCompareNode: (world, options) => compareNodeAddNode(world, options, COMPARE_NODE_CONTEXT)
         },
         layoutSource: {
-            placeNodeAvoidingOverlap,
             getNodeRect,
             defaultNodeSize
         },
         connectionSource: {
-            completePendingConnectionToNode,
             createCompareImageEdge: (...args) => createCompareImageEdge(...args)
         },
         historySource: { pushHistory: (...args) => pushHistory(...args) },
         selectionSource: {
-            selectCompareNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-            }
+            selectCompareNode: setCompareNodeSelection
         },
         renderSource: { mutate },
         languageSource: {
@@ -6399,12 +6293,14 @@
         },
         applyStyleSelectorToPreset,
         getProject: () => project,
-        setSelectedNode: nodeId => {
-            selectedNodeId = nodeId;
-            selectedNodeIds = new Set(nodeId ? [nodeId] : []);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        },
+        buildProjectNodeAppendPatch: (...args) => buildProjectNodeAppendPatch(...args),
+        buildNodeLayoutPatch: (...args) => buildNodeLayoutPatch(...args),
+        placeNodeAvoidingOverlap: (...args) => placeNodeAvoidingOverlap(...args),
+        viewportCenterWorld: (...args) => viewportCenterWorld(...args),
+        completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args),
+        setSelectedStyle: (node, name) => typeof styleSelectorSetSelectedStyle === 'function'
+            ? styleSelectorSetSelectedStyle(node, name, STYLE_SELECTOR_NODE_CONTEXT) : undefined,
+        setSelectedNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionState(nodeId),
         buildStyleSelectorStatePatch,
         isStyleTransferPresetNode: (...args) => isStyleTransferPresetNode(...args),
         runPresetNode: (...args) => runPresetNode(...args),
@@ -6451,12 +6347,8 @@
         placeNodeAvoidingOverlap,
         pushHistory: (...args) => pushHistory(...args),
         renderNodeStateBadges,
-        setSelectedNode: (id) => {
-            selectedNodeId = id;
-            selectedNodeIds = new Set([id]);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        },
+        setSelectedNode: id => CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(id),
+        completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args),
         showToast
     };
     const {
@@ -6508,10 +6400,6 @@
         flushMinimapRender,
         resetMinimapCache,
         isMinimapDragging,
-        CANVAS_BRIDGE_TRANSPORT_CONTROLLER,
-        isCanvasBridgeReady,
-        bindCanvasBridgeResponseListener,
-        sendCanvasBridgeRequest,
         CANVAS_HISTORY_CONTROLLER,
         pushHistory,
         pushHistoryBatch,
@@ -6635,12 +6523,12 @@
             bindNodeContextMenu: (...args) => CANVAS_NODE_CONTEXT_MENU_CONTROLLER.bindNodeContextMenu(...args),
             textareaEditorFieldFromTitleClick: (...args) => textareaEditorFieldFromTitleClick(...args),
             openTextareaEditor: (...args) => openTextareaEditor(...args),
-            handleMediaBrowserNodeClick: (...args) => handleMediaBrowserNodeClick(...args),
+            handleMediaBrowserNodeClick: (...args) => CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.handleMediaBrowserNodeClick(...args),
             handleTimelineClick: (...args) => handleTimelineClick(...args),
-            handleResultMetadataToggle: (...args) => handleResultMetadataToggle(...args),
+            handleResultMetadataToggle: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.handleResultMetadataToggle?.(...args) || false,
             handleCanvasRelightLightButtonEvent: (...args) => handleCanvasRelightLightButtonEvent(...args),
             handlePresetParamResetClick: (...args) => handlePresetParamResetClick(...args),
-            handleResultAssetClick: (...args) => handleResultAssetClick(...args),
+            handleResultAssetClick: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.handleResultAssetClick?.(...args) || false,
             handleNodeMediaEditEvent: (...args) => handleNodeMediaEditEvent(...args),
             handleNodeConfigFieldEvent: (...args) => handleNodeConfigFieldEvent(...args),
             handleStylesConfigActionClick: (...args) => handleStylesConfigActionClick(...args),
@@ -6655,7 +6543,7 @@
             handleVlmChatMessageActionClick: (...args) => handleVlmChatMessageActionClick(...args),
             handleVlmAgentActionClick: (...args) => handleVlmAgentActionClick(...args),
             handleNodeActionEvent: (...args) => handleNodeActionEvent(...args),
-            handleMediaBrowserNodeKeydown: (...args) => handleMediaBrowserNodeKeydown(...args),
+            handleMediaBrowserNodeKeydown: (...args) => CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.handleMediaBrowserNodeKeydown(...args),
             handleVlmChatInputKeyDown: (...args) => handleVlmChatInputKeyDown(...args),
             handleNodeDoubleClick: (...args) => handleNodeDoubleClick(...args),
             handleTimelineNodeParamEvent: (...args) => handleTimelineNodeParamEvent(...args),
@@ -6663,7 +6551,7 @@
             handleNoteTextEvent: (...args) => handleNoteTextEvent(...args),
             handleNodeParamEvent: (...args) => handleNodeParamEvent(...args),
             handleNodeParamFieldChange: (...args) => handleNodeParamFieldChange(...args),
-            handleMediaBrowserNodeChange: (...args) => handleMediaBrowserNodeChange(...args),
+            handleMediaBrowserNodeChange: (...args) => CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.handleMediaBrowserNodeChange(...args),
             handleClassicNodeChangeEvent: (...args) => handleClassicNodeChangeEvent(...args),
             handlePresetThemeChange: (...args) => handlePresetThemeChange(...args)
         }
@@ -6721,11 +6609,7 @@
             buildCanvasRunStatus: (...args) => buildCanvasRunStatus(...args)
         },
         selectionSource: {
-            setSelection: (node) => {
-                selectedNodeId = node?.id || null;
-                selectedNodeIds = node?.id ? new Set([node.id]) : new Set();
-                selectedEdgeId = null;
-            }
+            setSelection: node => CANVAS_SELECTION_CONTROLLER.setOptionalNodeSelectionPreservingGroup(node?.id)
         },
         viewportSource: {
             getNodeRect: (...args) => getNodeRect(...args),
@@ -6790,14 +6674,14 @@
             buildSchedulerFinishedPatch: (...args) => schedulerBuildFinishedPatch(...args)
         },
         stateSource: {
-            refreshResultStaleFlags: (...args) => refreshResultStaleFlags(...args),
-            setSchedulerWaitingFromPlan: (...args) => setSchedulerWaitingFromPlan(...args),
-            setBlockedSchedulerFromPlan: (...args) => setBlockedSchedulerFromPlan(...args),
-            firstBlockedSchedulerStep: (...args) => firstBlockedSchedulerStep(...args),
-            markBlockedSchedulerSteps: (...args) => markBlockedSchedulerSteps(...args),
-            schedulerStepMissingSummary: (...args) => schedulerStepMissingSummary(...args),
+            refreshResultStaleFlags: (...args) => CANVAS_RESULT_STALENESS_CONTROLLER.refreshResultStaleFlags?.(...args) || false,
+            setSchedulerWaitingFromPlan: (plan, sourceIds) => CANVAS_SCHEDULER_STATE_CONTROLLER.setSchedulerWaitingFromPlan?.(plan, sourceIds),
+            setBlockedSchedulerFromPlan: (plan, options) => CANVAS_SCHEDULER_STATE_CONTROLLER.setBlockedSchedulerFromPlan?.(plan, options),
+            firstBlockedSchedulerStep: plan => CANVAS_SCHEDULER_STATE_CONTROLLER.firstBlockedSchedulerStep?.(plan) || null,
+            markBlockedSchedulerSteps: steps => CANVAS_SCHEDULER_STATE_CONTROLLER.markBlockedSchedulerSteps?.(steps) || [],
+            schedulerStepMissingSummary: step => CANVAS_SCHEDULER_STATE_CONTROLLER.schedulerStepMissingSummary?.(step) || '',
             waitForRefreshingSources: (...args) => waitForRefreshingSources(...args),
-            focusSchedulerProblem: (...args) => focusSchedulerProblem(...args)
+            focusSchedulerProblem: step => CANVAS_SCHEDULER_STATE_CONTROLLER.focusSchedulerProblem?.(step)
         },
         selectionSource: {
             getSelectedNodeIdList: (...args) => getSelectedNodeIdList(...args),
@@ -6810,7 +6694,8 @@
             renderEdges: (...args) => renderEdges(...args)
         },
         runSource: {
-            runSchedulerStep: (...args) => runSchedulerStep(...args)
+            runSchedulerStep: async (nodeId, step) => CANVAS_SCHEDULER_STEP_CONTROLLER.runSchedulerStep?.(nodeId, step)
+                || { ok: false, error: 'scheduler step controller unavailable' }
         },
         utilitySource: {
             cloneRunValue: (...args) => cloneRunValue(...args)
@@ -6865,9 +6750,9 @@
                     getDragMime: () => MEDIA_BROWSER_DRAG_MIME,
                 },
                 mediaSource: {
-                    getMediaBrowserNodeState: (node) => mediaBrowserNodeState(node),
-                    getMediaBrowserItems: (node) => mediaBrowserRuntimeFor(node.id).data?.items || [],
-                    serializableMediaBrowserState: (state) => serializableMediaBrowserState(state),
+                    getMediaBrowserNodeState: (node) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserNodeState(node),
+                    getMediaBrowserItems: (node) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeFor(node.id).data?.items || [],
+                    serializableMediaBrowserState: (state) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.serializableMediaBrowserState(state),
                 },
                 viewportSource: {
                     getViewport: () => viewport,
@@ -6882,7 +6767,7 @@
                     importTransferItemAt: (...args) => importTransferItemAt(...args),
                 },
                 mediaBrowserSource: {
-                    addMediaBrowserPayloadToCanvas: (...args) => addMediaBrowserPayloadToCanvas(...args),
+                    addMediaBrowserPayloadToCanvas: (...args) => CANVAS_MEDIA_IMPORT_CONTROLLER.addMediaBrowserPayloadToCanvas(...args),
                 },
                 fileSource: {
                     isWorkbenchProjectFile: (file) => isWorkbenchProjectFile(file),
@@ -6971,7 +6856,7 @@
                     viewportCenterWorld: () => viewportCenterWorld(),
                 },
                 runSource: {
-                    runSelectedChain: () => runSelectedChain(),
+                    runSelectedChain: () => CANVAS_SCHEDULER_RUN_CONTROLLER.runSelectedChain?.(),
                     runPresetNodeFromUi: (node) => runPresetNodeFromUi(node),
                     toggleTimelinePreviewPlayback: (node) => toggleTimelinePreviewPlayback(node),
                     playMediaSelection: (node) => playMediaSelection(node),
@@ -7059,10 +6944,7 @@
                 },
                 selectionSource: {
                     selectNodeForTailDrag: (nodeId) => {
-                        selectedNodeId = nodeId;
-                        selectedNodeIds = new Set([nodeId]);
-                        selectedEdgeId = null;
-                        selectedGroupId = null;
+                        CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(nodeId);
                     },
                     updateSelectionDomClasses: () => updateSelectionDomClasses(),
                     getSelectedNodeId: () => selectedNodeId,
@@ -7273,9 +7155,9 @@
                     updateVlmChatJumpButton: (...args) => updateVlmChatJumpButton(...args)
                 },
                 mediaSource: {
-                    mediaBrowserShouldAutoLoadMore: (...args) => mediaBrowserShouldAutoLoadMore(...args),
-                    mediaBrowserRuntimeFor: (...args) => mediaBrowserRuntimeFor(...args),
-                    loadMoreMediaBrowserNode: (...args) => loadMoreMediaBrowserNode(...args)
+                    mediaBrowserShouldAutoLoadMore: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.mediaBrowserShouldAutoLoadMore(...args),
+                    mediaBrowserRuntimeFor: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeFor(...args),
+                    loadMoreMediaBrowserNode: (...args) => CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.loadMoreMediaBrowserNode(...args)
                 },
                 nodeSource: {
                     getNode: (id) => getNode(id)
@@ -8014,13 +7896,9 @@
                     runtimeUiLang: () => runtimeUiLang()
                 },
                 serializationSource: {
-                    serializeClassicNodeForRun,
-                    serializePresetForRun,
+                    serializeClassicNodeForRun: node => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializeClassicNodeForRun?.(node) || {},
+                    serializePresetForRun: node => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetForRun?.(node) || {},
                     cloneRunValue
-                },
-                bridgeSource: {
-                    isBridgeReady: () => isCanvasBridgeReady(),
-                    sendBridgeRequest: (...args) => sendCanvasBridgeRequest(...args)
                 },
                 vlmSource: {
                     getVlmCustomApiKey,
@@ -8236,7 +8114,7 @@
         lifecycleSource: {
             stopTimelinePlayback: (...args) => stopTimelinePlayback(...args),
             resetRenderedProjectDomCache: (...args) => resetRenderedProjectDomCache(...args),
-            resetGalleryFrostReveals: (...args) => resetGalleryFrostReveals(...args)
+            resetGalleryFrostReveals: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.resetGalleryFrostReveals(...args)
         },
         nodeSource: {
             addPoseStudioNode: (...args) => addPoseStudioNode(...args),
@@ -8374,10 +8252,6 @@
                         deleteTemplate: apiDeleteTemplate
                     }[name])
                 },
-                bridgeSource: {
-                    isBridgeReady: () => isCanvasBridgeReady(),
-                    sendBridgeRequest: (...args) => sendCanvasBridgeRequest(...args)
-                },
                 userSource: {
                     getUserContext: () => getWorkbenchUserContext()
                 },
@@ -8479,16 +8353,11 @@
                     },
                     stateSource: {
                         setBackendLoadedStorageKey: (value) => { backendLoadedStorageKey = value; },
-                        resetSelectionState: () => {
-                            selectedNodeId = null;
-                            selectedNodeIds = new Set();
-                            selectedEdgeId = null;
-                            selectedGroupId = null;
-                        },
+                        resetSelectionState: () => CANVAS_SELECTION_CONTROLLER.resetSelectionState(),
                         resetHistory,
                         mutate,
                         fitAll,
-                        resetGalleryFrostReveals
+                        resetGalleryFrostReveals: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.resetGalleryFrostReveals(...args)
                     },
                     utilitySource: {
                         sanitizeStoragePart,
@@ -8684,7 +8553,11 @@
                     setCanvasSettingsTab: (tab) => { canvasSettingsState.tab = tab; }
                 },
                 renderSource: {
-                    renderCanvasSettingsPanel: (...args) => renderCanvasSettingsPanel(...args),
+                    getCanvasAgentPresetScanState: (...args) => getCanvasAgentPresetScanState(...args),
+                    getCanvasAgentReadyPresetCount: () => canvasAgentReadyPresetEntries().length,
+                    renderCanvasAgentSettingsTab: (...args) => renderCanvasAgentSettingsTab?.(...args) || '',
+                    renderCanvasSettingsPanelView: (...args) => renderCanvasSettingsPanelView(...args),
+                    ensureWorkbenchFormFieldNames: (...args) => ensureWorkbenchFormFieldNames(...args),
                     isCanvasAgentPresetScanIdle: () => getCanvasAgentPresetScanState().state === 'idle',
                     refreshCanvasAgentAvailablePresets: (...args) => refreshCanvasAgentAvailablePresets(...args),
                     mutate: (...args) => mutate(...args)
@@ -8853,6 +8726,15 @@
                     getWindow: () => window,
                     getDocument: () => document
                 },
+                mountSource: {
+                    bindWorkbenchEvents: () => bindWorkbenchEvents(),
+                    bindGroupLayerEvents: () => bindGroupLayerEvents(),
+                    handleEdgeLayerPointerDown,
+                    handleEdgeLayerClick,
+                    handleEdgeLayerContextMenu,
+                    bindNodeMediaEvents: (layer) => CANVAS_MEDIA_PLAYBACK_CONTROLLER.bindNodeMediaEvents(layer),
+                    getCanvasAgentPointerDown: () => CANVAS_AGENT_PANEL_CONTROLLER.onCanvasAgentPointerDown
+                },
                 projectSource: {
                     getProject: () => project,
                     ensureWorkbench: (...args) => ensureWorkbench(...args),
@@ -8862,7 +8744,7 @@
                 },
                 renderSource: {
                     applyThemeClass: (...args) => applyThemeClass(...args),
-                    resetGalleryFrostReveals: (...args) => resetGalleryFrostReveals(...args),
+                    resetGalleryFrostReveals: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.resetGalleryFrostReveals(...args),
                     renderAll: (...args) => renderAll(...args),
                     renderSystemInfo: (...args) => renderSystemInfo(...args),
                     renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
@@ -9005,7 +8887,7 @@
                     clearCanvasWithConfirm: (...args) => clearCanvasWithConfirm(...args)
                 },
                 runSource: {
-                    runSelectedChain: (...args) => runSelectedChain(...args)
+                    runSelectedChain: () => CANVAS_SCHEDULER_RUN_CONTROLLER.runSelectedChain?.()
                 },
                 selectionSource: {
                     getSelectedNodeIdList: (...args) => getSelectedNodeIdList(...args),
@@ -9163,10 +9045,7 @@
             },
             backendSource: {
                 sendCanvasProjectSaveRequest,
-                sendCanvasProjectLoadRequest,
-                isCanvasBridgeReady,
-                bindCanvasBridgeResponseListener,
-                sendCanvasBridgeRequest
+                sendCanvasProjectLoadRequest
             },
             assetSource: {
                 materializeInlineProjectAssets: (...args) => materializeInlineProjectAssets(...args),
@@ -9174,12 +9053,7 @@
                 setCanvasProjectAssetRoot: (...args) => setCanvasProjectAssetRoot(...args)
             },
             selectionSource: {
-                resetSelectionState: () => {
-                    selectedNodeId = null;
-                    selectedNodeIds = new Set();
-                    selectedEdgeId = null;
-                    selectedGroupId = null;
-                }
+                resetSelectionState: () => CANVAS_SELECTION_CONTROLLER.resetSelectionState()
             },
             historySource: {
                 resetHistory
@@ -9187,7 +9061,7 @@
             renderSource: {
                 resetRenderedProjectDomCache,
                 renderAll,
-                resetGalleryFrostReveals,
+                resetGalleryFrostReveals: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.resetGalleryFrostReveals(...args),
                 invalidateMinimapStaticCache,
                 invalidateNodeSpatialIndex
             },
@@ -9314,12 +9188,7 @@
             persistenceSource: {},
             assetSource: {},
             selectionSource: {
-                resetSelectionState: () => {
-                    selectedNodeId = null;
-                    selectedNodeIds = new Set();
-                    selectedEdgeId = null;
-                    selectedGroupId = null;
-                },
+                resetSelectionState: () => CANVAS_SELECTION_CONTROLLER.resetSelectionState(),
                 getSelectionState: () => ({
                     selectedNodeId,
                     selectedNodeIds: new Set(selectedNodeIds),
@@ -9343,7 +9212,7 @@
             renderSource: {
                 resetRenderedProjectDomCache,
                 renderAll,
-                resetGalleryFrostReveals,
+                resetGalleryFrostReveals: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.resetGalleryFrostReveals(...args),
                 renderStatus
             },
             runtimeSource: {
@@ -9540,11 +9409,7 @@
         },
         stateSource: {
             getSelectedNodeId: () => selectedNodeId,
-            selectReplacedNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-            }
+            selectReplacedNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId)
         },
         nodeSource: {
             getNode: (id) => getNode(id),
@@ -9647,10 +9512,6 @@
         })
         : {};
     const getSelectedResultAsset = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.getSelectedResultAsset?.(...args) || null;
-    const getResultAssetAt = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.getResultAssetAt?.(...args) || null;
-    const selectResultAsset = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.selectResultAsset?.(...args) || null;
-    const handleResultMetadataToggle = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.handleResultMetadataToggle?.(...args) || false;
-    const handleResultAssetClick = (...args) => CANVAS_RESULT_ASSET_CONTROLLER.handleResultAssetClick?.(...args) || false;
     if (typeof WORKBENCH_CANVAS_MEDIA_PLAYBACK.createCanvasMediaPlaybackController !== 'function') {
         throw new Error('Infinite Canvas media playback controller is not loaded.');
     }
@@ -9683,9 +9544,7 @@
                 finishCanvasAgentReferencePick: () => { canvasAgentState.pickReference = false; },
                 renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
                 selectNodeFromMediaControl: (nodeId) => {
-                    selectedNodeId = nodeId;
-                    selectedNodeIds = new Set([nodeId]);
-                    selectedEdgeId = null;
+                    CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId);
                     renderAll();
                     positionCanvasAgentPanel();
                 }
@@ -9728,19 +9587,19 @@
             serializeAssetSourceForRun: (...args) => serializeAssetSourceForRun(...args),
             directorMediaSourceHasAsset: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorMediaSourceHasAsset?.(...args) || false
         },
-        capabilitySource: { resolveDirectorCapabilityForPreset: (...args) => resolveDirectorCapabilityForPreset(...args) },
+        capabilitySource: { resolveDirectorCapabilityForPreset: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.resolveDirectorCapabilityForPreset?.(...args) || {} },
         referenceSource: {
             imageRefUploadSlots: () => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.imageRefUploadSlots?.() || [],
             previousSegmentVideoRef: () => DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF,
             previousSegmentImageRef: () => DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF
         },
         segmentSource: {
-            directorSegmentMediaRefs: (...args) => directorSegmentMediaRefs(...args),
-            directorSegmentFirstMediaRef: (...args) => directorSegmentFirstMediaRef(...args),
-            directorSegmentPrompt: (...args) => directorSegmentPrompt(...args),
-            directorSegmentSeconds: (...args) => directorSegmentSeconds(...args),
-            directorSegmentGenerationSeconds: (...args) => directorSegmentGenerationSeconds(...args),
-            directorSegmentDurationBounds: (...args) => directorSegmentDurationBounds(...args),
+            directorSegmentMediaRefs: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentMediaRefs?.(...args) || [],
+            directorSegmentFirstMediaRef: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentFirstMediaRef?.(...args) || '',
+            directorSegmentPrompt: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentPrompt?.(...args) || '',
+            directorSegmentSeconds: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentSeconds?.(...args) ?? 0,
+            directorSegmentGenerationSeconds: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentGenerationSeconds?.(...args) ?? 0,
+            directorSegmentDurationBounds: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentDurationBounds?.(...args) || [0, Infinity],
             directorDurationStrategyValue: (...args) => directorDurationStrategyValue(...args),
             directorDurationParamValue: (...args) => directorDurationParamValue(...args),
             directorAudioOutputValue: (...args) => directorAudioOutputValue(...args)
@@ -9780,7 +9639,7 @@
             addTimelineClipFromSource: (...args) => addTimelineClipFromSource(...args),
             timelineNormalizeNode: (...args) => typeof timelineNormalizeNode === 'function' ? timelineNormalizeNode(...args) : undefined
         },
-        segmentSource: { directorSegmentTimelineSeconds: (...args) => directorSegmentTimelineSeconds(...args) },
+        segmentSource: { directorSegmentTimelineSeconds: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentTimelineSeconds?.(...args) ?? 0 },
         languageSource: {
             getLanguageState: () => ({ __lang: runtimeUiLang() }),
             t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
@@ -9807,10 +9666,10 @@
             canvasAgentPresetPromptDefaults: (...args) => canvasAgentPresetPromptDefaults(...args)
         },
         segmentSource: {
-            directorSegmentMediaRefs: (...args) => directorSegmentMediaRefs(...args),
-            directorSegmentFirstMediaRef: (...args) => directorSegmentFirstMediaRef(...args),
-            directorSegmentGenerationSeconds: (...args) => directorSegmentGenerationSeconds(...args),
-            directorSegmentPrompt: (...args) => directorSegmentPrompt(...args)
+            directorSegmentMediaRefs: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentMediaRefs?.(...args) || [],
+            directorSegmentFirstMediaRef: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentFirstMediaRef?.(...args) || '',
+            directorSegmentGenerationSeconds: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentGenerationSeconds?.(...args) ?? 0,
+            directorSegmentPrompt: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentPrompt?.(...args) || ''
         },
         languageSource: {
             getLanguageState: () => ({ __lang: runtimeUiLang() }),
@@ -9859,7 +9718,7 @@
             enhanceRegionKey: (...args) => enhanceRegionKey(...args)
         },
         directorSource: {
-            applyDirectorCapabilityToPayloadForPreset: (...args) => applyDirectorCapabilityToPayloadForPreset(...args),
+            applyDirectorCapabilityToPayloadForPreset: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.applyDirectorCapabilityToPayloadForPreset?.(...args) ?? args[1],
             directorTimelinePayload: (...args) => directorTimelinePayload(...args)
         },
         serializationSource: {
@@ -9871,7 +9730,6 @@
             presetRunSerializationSource: PRESET_RUN_SERIALIZATION_CONTEXT_SOURCE
         })
         : {};
-    const getPresetUploadRunEdges = (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.getPresetUploadRunEdges?.(...args) || [];
     const PRESET_RUN_FINGERPRINT_CONTEXT_SOURCE = {
         projectSource: {
             getProject: () => project
@@ -9881,9 +9739,9 @@
             isNodeIgnored: (...args) => isNodeIgnored(...args)
         },
         presetSource: {
-            getPresetUploadRunEdges: (...args) => getPresetUploadRunEdges(...args),
-            serializeClassicNodeForRun: (...args) => serializeClassicNodeForRun(...args),
-            serializePresetForRun: (...args) => serializePresetForRun(...args)
+            getPresetUploadRunEdges: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.getPresetUploadRunEdges?.(...args) || [],
+            serializeClassicNodeForRun: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializeClassicNodeForRun?.(...args) || {},
+            serializePresetForRun: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetForRun?.(...args) || {}
         },
         assetSource: {
             serializeAssetSourceForRun: (...args) => serializeAssetSourceForRun(...args)
@@ -9901,7 +9759,6 @@
             presetRunFingerprintSource: PRESET_RUN_FINGERPRINT_CONTEXT_SOURCE
         })
         : {};
-    const computePresetRunFingerprint = (...args) => CANVAS_PRESET_RUN_FINGERPRINT_CONTROLLER.computePresetRunFingerprint?.(...args) || '';
     const RESULT_STALENESS_CONTEXT_SOURCE = {
         projectSource: {
             getProject: () => project,
@@ -9913,9 +9770,9 @@
             isNodeIgnored: (...args) => isNodeIgnored(...args)
         },
         fingerprintSource: {
-            computePresetRunFingerprint: (...args) => computePresetRunFingerprint(...args),
+            computePresetRunFingerprint: (...args) => CANVAS_PRESET_RUN_FINGERPRINT_CONTROLLER.computePresetRunFingerprint?.(...args) || '',
             computeTimelineRunFingerprint: (...args) => computeTimelineRunFingerprint(...args),
-            computeQwenTtsRunFingerprint: (...args) => computeQwenTtsRunFingerprint(...args)
+            computeQwenTtsRunFingerprint: (...args) => QWEN_TTS_RUNTIME_CONTROLLER.computeQwenTtsRunFingerprint?.(...args) || ''
         },
         resultSource: {
             resultNodeHasOutput: (...args) => resultNodeHasOutput(...args)
@@ -9930,9 +9787,6 @@
             resultStalenessSource: RESULT_STALENESS_CONTEXT_SOURCE
         })
         : {};
-    const computeResultProducerFingerprint = (...args) => CANVAS_RESULT_STALENESS_CONTROLLER.computeResultProducerFingerprint?.(...args) || '';
-    const setResultStaleState = (...args) => CANVAS_RESULT_STALENESS_CONTROLLER.setResultStaleState?.(...args);
-    const refreshResultStaleFlags = (...args) => CANVAS_RESULT_STALENESS_CONTROLLER.refreshResultStaleFlags?.(...args) || false;
     const QWEN_TTS_RUNTIME_CONTEXT_SOURCE = {
         projectSource: {
             getProject: () => project,
@@ -9963,11 +9817,11 @@
         },
         schedulerSource: {
             buildPlan: typeof schedulerBuildPlan === 'function' ? (...args) => schedulerBuildPlan(...args) : null,
-            refreshResultStaleFlags: (...args) => refreshResultStaleFlags(...args),
-            refreshingSourceIdsFromPlan: (...args) => refreshingSourceIdsFromPlan(...args),
-            setBlockedSchedulerFromPlan: (...args) => setBlockedSchedulerFromPlan(...args),
+            refreshResultStaleFlags: (...args) => CANVAS_RESULT_STALENESS_CONTROLLER.refreshResultStaleFlags?.(...args) || false,
+            refreshingSourceIdsFromPlan: plan => CANVAS_SCHEDULER_RUN_CONTROLLER.refreshingSourceIdsFromPlan?.(plan) || [],
+            setBlockedSchedulerFromPlan: (plan, options) => CANVAS_SCHEDULER_STATE_CONTROLLER.setBlockedSchedulerFromPlan?.(plan, options),
             waitForRefreshingSources: (...args) => waitForRefreshingSources(...args),
-            clearSchedulerBlockedState: (...args) => clearSchedulerBlockedState(...args)
+            clearSchedulerBlockedState: () => !!CANVAS_SCHEDULER_STATE_CONTROLLER.clearSchedulerBlockedState?.()
         },
         renderSource: {
             renderNodes: (...args) => renderNodes(...args),
@@ -9977,7 +9831,7 @@
             pollUpdate: (...args) => pollUpdate(...args)
         },
         resultSource: {
-            resultNodeRunSortScore: (...args) => resultNodeRunSortScore(...args),
+            resultNodeRunSortScore: (...args) => Number(CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.resultNodeRunSortScore?.(...args) || 0),
             buildQueuedResultNode: (...args) => buildQueuedResultNode(...args),
             buildResultRunMetadataPatch: (...args) => buildResultRunMetadataPatch(...args),
             buildResultStatusPatch: (...args) => buildResultStatusPatch(...args),
@@ -10003,11 +9857,7 @@
         },
         selectionSource: {
             getSelectedNodeId: () => selectedNodeId,
-            setSelection: (node) => {
-                selectedNodeId = node?.id || null;
-                selectedNodeIds = node?.id ? new Set([node.id]) : new Set();
-                selectedEdgeId = null;
-            }
+            setSelection: node => CANVAS_SELECTION_CONTROLLER.setOptionalNodeSelectionPreservingGroup(node?.id)
         },
         layoutSource: {
             getNodeRect: (...args) => getNodeRect(...args),
@@ -10049,24 +9899,6 @@
             qwenTtsRuntimeSource: QWEN_TTS_RUNTIME_CONTEXT_SOURCE
         })
         : {};
-    const qwenTtsResultBasePosition = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.qwenTtsResultBasePosition?.(...args) || { x: 0, y: 0 };
-    const generatedResultNodesForQwenTts = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.generatedResultNodesForQwenTts?.(...args) || [];
-    const findReusableResultNodeForQwenTts = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.findReusableResultNodeForQwenTts?.(...args) || null;
-    const findActiveResultNodeForQwenTts = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.findActiveResultNodeForQwenTts?.(...args) || null;
-    const qwenTtsAudioSourceForSlot = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.qwenTtsAudioSourceForSlot?.(...args) || null;
-    const buildQwenTtsInputAssets = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.buildQwenTtsInputAssets?.(...args) || {};
-    const qwenTtsInputEdgesForFingerprint = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.qwenTtsInputEdgesForFingerprint?.(...args) || [];
-    const buildQwenTtsRunFingerprintPayload = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.buildQwenTtsRunFingerprintPayload?.(...args) || null;
-    const computeQwenTtsRunFingerprint = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.computeQwenTtsRunFingerprint?.(...args) || '';
-    const validateQwenTtsNodeForRun = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.validateQwenTtsNodeForRun?.(...args) || [];
-    const preflightDirectQwenTtsRun = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.preflightDirectQwenTtsRun?.(...args)
-        || Promise.resolve({ ok: false, error: 'Qwen TTS runtime controller unavailable' });
-    const buildQwenTtsRunPayload = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.buildQwenTtsRunPayload?.(...args) || {};
-    const applyQwenTtsRunStatus = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.applyQwenTtsRunStatus?.(...args);
-    const pollQwenTtsRun = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.pollQwenTtsRun?.(...args)
-        || Promise.resolve({ ok: false, error: 'Qwen TTS runtime controller unavailable' });
-    const applyQwenTtsRunNodeResult = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.applyQwenTtsRunNodeResult?.(...args)
-        || Promise.resolve({ ok: false, error: 'Qwen TTS runtime controller unavailable' });
     const runQwenTtsNode = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.runQwenTtsNode?.(...args)
         || Promise.resolve({ ok: false, error: 'Qwen TTS runtime controller unavailable' });
     const stopQwenTtsNode = (...args) => QWEN_TTS_RUNTIME_CONTROLLER.stopQwenTtsNode?.(...args)
@@ -10096,11 +9928,7 @@
         },
         selectionSource: {
             getSelectedNodeId: () => selectedNodeId,
-            selectBatchNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-            }
+            selectBatchNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId)
         },
         persistenceSource: {
             scheduleSave: (...args) => scheduleSave(...args)
@@ -10158,11 +9986,7 @@
             mutate: (...args) => mutate(...args)
         },
         selectionSource: {
-            setSelection: (node) => {
-                selectedNodeId = node?.id || null;
-                selectedNodeIds = node?.id ? new Set([node.id]) : new Set();
-                selectedEdgeId = null;
-            }
+            setSelection: node => CANVAS_SELECTION_CONTROLLER.setOptionalNodeSelectionPreservingGroup(node?.id)
         },
         uiSource: {
             showToast: (...args) => showToast(...args)
@@ -10794,7 +10618,7 @@
                 presetSource: {
                     getSlotOrder: () => SLOT_ORDER,
                     normalizePresetName,
-                    getPresetUploadRunEdges,
+                    getPresetUploadRunEdges: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.getPresetUploadRunEdges?.(...args) || [],
                     getUploadSlotMediaKind,
                     getPresetCatalogEntryForNode,
                     findCanvasAgentPresetEntryByAlias,
@@ -10946,12 +10770,7 @@
                 getDefaultProjectId: () => PROJECT_ID,
                 getNode,
                 getNodeRect,
-                setVlmAgentTargetSelection: (nodeId, options) => {
-                    selectedNodeId = nodeId;
-                    selectedNodeIds = new Set(nodeId ? [nodeId] : []);
-                    selectedEdgeId = null;
-                    if (options?.clearGroup) selectedGroupId = null;
-                },
+                setVlmAgentTargetSelection: (nodeId, options) => CANVAS_SELECTION_CONTROLLER.setVlmAgentTargetSelection(nodeId, options),
                 centerViewportOnWorld,
                 isNodeIgnored,
                 isNodeLocked,
@@ -10959,7 +10778,7 @@
                 isVlmMediaSource,
             },
             resultSource: {
-                generatedResultNodesForPreset,
+                generatedResultNodesForPreset: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.generatedResultNodesForPreset?.(...args) || [],
                 resultNodeHasOutput,
             },
             historySource: {
@@ -11344,9 +11163,7 @@
             getProject: () => project,
             ensureProjectGroups,
             getGroup,
-            setSelectedGroupId: (value) => {
-                selectedGroupId = value || null;
-            }
+            setSelectedGroupId: value => CANVAS_SELECTION_CONTROLLER.setSelectedGroupFocus(value)
         },
         geometrySource: {
             getNodeRect,
@@ -11429,7 +11246,7 @@
             syncResolutionConfigForPresetInputs
         },
         resultSource: {
-            generatedResultNodesForPreset,
+            generatedResultNodesForPreset: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.generatedResultNodesForPreset?.(...args) || [],
             isResultRefreshing,
             isCanvasRunActiveState,
             nodeStatusState,
@@ -11577,11 +11394,11 @@
             serializeAssetSourceForRun: (...args) => serializeAssetSourceForRun(...args)
         },
         directorSource: {
-            directorSegmentUsesPreviousImage: (...args) => directorSegmentUsesPreviousImage(...args),
-            directorSegmentUsesPreviousVideo: (...args) => directorSegmentUsesPreviousVideo(...args),
-            directorResultAssetSource: (...args) => directorResultAssetSource(...args),
-            directorSegmentPrompt: (...args) => directorSegmentPrompt(...args),
-            directorRunContextForPreset: (...args) => directorRunContextForPreset(...args),
+            directorSegmentUsesPreviousImage: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentUsesPreviousImage?.(...args) || false,
+            directorSegmentUsesPreviousVideo: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentUsesPreviousVideo?.(...args) || false,
+            directorResultAssetSource: (...args) => CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.directorResultAssetSource?.(...args) || null,
+            directorSegmentPrompt: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentPrompt?.(...args) || '',
+            directorRunContextForPreset: (...args) => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorRunContextForPreset?.(...args) || null,
             runDirectorSegmentedPresetNode: (...args) => runDirectorSegmentedPresetNode(...args)
         },
         lockSource: {
@@ -11605,14 +11422,14 @@
             openMainMissingModelListForPreset: (...args) => openMainMissingModelListForPreset(...args)
         },
         fingerprintSource: {
-            computePresetRunFingerprint: (...args) => computePresetRunFingerprint(...args)
+            computePresetRunFingerprint: (...args) => CANVAS_PRESET_RUN_FINGERPRINT_CONTROLLER.computePresetRunFingerprint?.(...args) || ''
         },
         payloadSource: {
-            getPresetUploadRunEdges: (...args) => getPresetUploadRunEdges(...args),
-            applyDirectorTimelineMediaToPresetPayload: (...args) => applyDirectorTimelineMediaToPresetPayload(...args),
-            applyDirectorSegmentToPresetPayload: (...args) => applyDirectorSegmentToPresetPayload(...args),
-            serializeClassicNodeForRun: (...args) => serializeClassicNodeForRun(...args),
-            serializePresetForRun: (...args) => serializePresetForRun(...args)
+            getPresetUploadRunEdges: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.getPresetUploadRunEdges?.(...args) || [],
+            applyDirectorTimelineMediaToPresetPayload: (...args) => CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorTimelineMediaToPresetPayload?.(...args) ?? args[0],
+            applyDirectorSegmentToPresetPayload: (...args) => CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorSegmentToPresetPayload?.(...args) ?? args[0],
+            serializeClassicNodeForRun: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializeClassicNodeForRun?.(...args) || {},
+            serializePresetForRun: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetForRun?.(...args) || {}
         },
         patchSource: {
             buildResultSourcePatch: (...args) => buildResultSourcePatch(...args),
@@ -11635,11 +11452,11 @@
         },
         schedulerSource: {
             buildPlan: typeof schedulerBuildPlan === 'function' ? (...args) => schedulerBuildPlan(...args) : null,
-            refreshResultStaleFlags: (...args) => refreshResultStaleFlags(...args),
-            refreshingSourceIdsFromPlan: (...args) => refreshingSourceIdsFromPlan(...args),
-            setBlockedSchedulerFromPlan: (...args) => setBlockedSchedulerFromPlan(...args),
+            refreshResultStaleFlags: (...args) => CANVAS_RESULT_STALENESS_CONTROLLER.refreshResultStaleFlags?.(...args) || false,
+            refreshingSourceIdsFromPlan: plan => CANVAS_SCHEDULER_RUN_CONTROLLER.refreshingSourceIdsFromPlan?.(plan) || [],
+            setBlockedSchedulerFromPlan: (plan, options) => CANVAS_SCHEDULER_STATE_CONTROLLER.setBlockedSchedulerFromPlan?.(plan, options),
             waitForRefreshingSources: (...args) => waitForRefreshingSources(...args),
-            clearSchedulerBlockedState: (...args) => clearSchedulerBlockedState(...args)
+            clearSchedulerBlockedState: () => !!CANVAS_SCHEDULER_STATE_CONTROLLER.clearSchedulerBlockedState?.()
         },
         renderSource: {
             mutate: (...args) => mutate(...args),
@@ -11678,11 +11495,7 @@
             getCanvasAgentPanel: () => canvasAgentPanel
         },
         selectionSource: {
-            setSelection: (node) => {
-                selectedNodeId = node?.id || null;
-                selectedNodeIds = node?.id ? new Set([node.id]) : new Set();
-                selectedEdgeId = null;
-            }
+            setSelection: node => CANVAS_SELECTION_CONTROLLER.setOptionalNodeSelectionPreservingGroup(node?.id)
         },
         directorRunCoordinatorSource: {
             updateStatus: (node, state, message) => {
@@ -11692,17 +11505,11 @@
             },
             preflight: (...args) => preflightDirectorSegmentPrompts(...args),
             createResult: (...args) => createDirectorSegmentResultNode(...args),
-            submitSegment: (...args) => submitDirectorSegmentRun(...args),
-            selectInitialResult: nodeId => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-            },
-            clearSchedulerBlockedState: () => clearSchedulerBlockedState(),
-            selectFinalResult: nodeId => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-            },
+            submitSegment: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.submitDirectorSegmentRun?.(...args)
+                || Promise.resolve({ ok: false, error: 'preset run runtime controller unavailable' }),
+            selectInitialResult: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId),
+            clearSchedulerBlockedState: () => !!CANVAS_SCHEDULER_STATE_CONTROLLER.clearSchedulerBlockedState?.(),
+            selectFinalResult: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingEdgeAndGroup(nodeId),
             chainOutput: capability => directorCapabilityChainOutput(capability),
             prepareTimeline: (...args) => prepareDirectorSegmentTimeline(...args),
             renderTimeline: (...args) => renderTimelineToResult(...args)
@@ -11779,13 +11586,15 @@
             sendCanvasQwenTtsControlRequest: (...args) => sendCanvasQwenTtsControlRequest(...args)
         },
         presetRuntimeSource: {
-            applyCanvasRunStatus: (...args) => applyCanvasRunStatus(...args),
-            pollCanvasRun: (...args) => pollCanvasRun(...args),
+            applyCanvasRunStatus: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.applyCanvasRunStatus?.(...args),
+            pollCanvasRun: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.pollCanvasRun?.(...args)
+                || Promise.resolve({ ok: false, error: 'preset run runtime controller unavailable' }),
             runPresetNode: (...args) => runPresetNode(...args)
         },
         qwenRuntimeSource: {
-            applyQwenTtsRunStatus: (...args) => applyQwenTtsRunStatus(...args),
-            pollQwenTtsRun: (...args) => pollQwenTtsRun(...args),
+            applyQwenTtsRunStatus: (...args) => QWEN_TTS_RUNTIME_CONTROLLER.applyQwenTtsRunStatus?.(...args),
+            pollQwenTtsRun: (...args) => QWEN_TTS_RUNTIME_CONTROLLER.pollQwenTtsRun?.(...args)
+                || Promise.resolve({ ok: false, error: 'Qwen TTS runtime controller unavailable' }),
             runQwenTtsNode: (...args) => runQwenTtsNode(...args)
         },
         languageSource: {
@@ -11807,8 +11616,8 @@
     const RESULT_MEDIA_CONVERSION_CONTEXT_SOURCE = {
         resultAssetSource: {
             getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
-            getResultAssetAt: (...args) => getResultAssetAt(...args),
-            selectResultAsset: (...args) => selectResultAsset(...args)
+            getResultAssetAt: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.getResultAssetAt?.(...args) || null,
+            selectResultAsset: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.selectResultAsset?.(...args) || null
         },
         mediaSource: {
             assetMediaKind: (...args) => assetMediaKind(...args),
@@ -11818,15 +11627,8 @@
             pushHistory: (...args) => pushHistory(...args)
         },
         selectionSource: {
-            setSelectedNode: (node) => {
-                selectedNodeId = node?.id || null;
-                selectedNodeIds = node?.id ? new Set([node.id]) : new Set();
-                selectedEdgeId = null;
-            },
-            clearResultSelection: () => {
-                selectedNodeId = null;
-                selectedEdgeId = null;
-            }
+            setSelectedNode: node => CANVAS_SELECTION_CONTROLLER.setOptionalNodeSelectionPreservingGroup(node?.id),
+            clearResultSelection: () => CANVAS_SELECTION_CONTROLLER.focusNodePreservingSelection(null)
         },
         renderSource: {
             mutate: (...args) => mutate(...args)
@@ -11905,10 +11707,7 @@
             replaceNodeImage: (...args) => replaceNodeImage(...args),
             openLayerForgeForNode: (...args) => openLayerForgeForNode(...args),
             deleteResultNode: (node) => {
-                selectedNodeId = node.id;
-                selectedNodeIds = new Set([node.id]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
+                CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(node.id);
                 return deleteSelection({ forceNode: true });
             }
         },
@@ -11930,8 +11729,8 @@
             getProject: () => project
         },
         resultAssetSource: {
-            getResultAssetAt: (...args) => getResultAssetAt(...args),
-            selectResultAsset: (...args) => selectResultAsset(...args)
+            getResultAssetAt: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.getResultAssetAt?.(...args) || null,
+            selectResultAsset: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.selectResultAsset?.(...args) || null
         },
         assetSource: {
             assetMediaKind: (...args) => assetMediaKind(...args),
@@ -12054,7 +11853,7 @@
             openLtx23GuidePresetEditor: (...args) => openLtx23GuidePresetEditor(...args),
             openXyzPlotPanel: (...args) => openXyzPlotPanel(...args),
             handlePresetModelAction: (...args) => handlePresetModelAction(...args),
-            runNodeChain: (...args) => runNodeChain(...args),
+            runNodeChain: (node, mode) => CANVAS_SCHEDULER_RUN_CONTROLLER.runNodeChain?.(node, mode),
             ensureConfigNode: (...args) => ensureConfigNode(...args),
             runTranslationNode: (...args) => runTranslationNode(...args),
             openTagCartForNode: (...args) => openTagCartForNode(...args),
@@ -12092,7 +11891,7 @@
             appendAudioWorkflowBridgeMenuItems: (...args) => CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.appendAudioWorkflowBridgeMenuItems(...args)
         },
         eventSource: {
-            selectResultAsset: (...args) => selectResultAsset(...args),
+            selectResultAsset: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.selectResultAsset?.(...args) || null,
             openResultAssetContextMenu: (...args) => openResultAssetContextMenu(...args),
             openImageMediaContextMenu: (...args) => openImageMediaContextMenu(...args),
             openVideoMediaContextMenu: (...args) => openVideoMediaContextMenu(...args),
@@ -12163,7 +11962,7 @@
         },
         resultSource: {
             createCanvasAgentReservedResultNode,
-            findActiveResultNodeForPreset,
+            findActiveResultNodeForPreset: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.findActiveResultNodeForPreset?.(...args) || null,
             findCanvasAgentReservedResultNodeForPreset
         },
         layoutSource: {
@@ -13242,9 +13041,7 @@
     }
 
     function localizedDefaultTitle(value, defaultEn, defaultCn) {
-        const text = String(value || '').trim();
-        if (!text || text === defaultEn) return t(defaultEn, defaultCn);
-        return text;
+        return WORKBENCH_UTILS.localizedDefaultTitle(value, defaultEn, defaultCn, { __lang: runtimeUiLang() });
     }
 
     function tagCartLabel() {
@@ -13262,26 +13059,6 @@
     function localizeMaskStatus(value) {
         return WORKBENCH_UTILS.localizeMaskStatus?.(value, { __lang: runtimeUiLang() })
             ?? String(value || '').trim();
-    }
-
-    function isGalleryFrostEnabled() {
-        return CANVAS_GALLERY_FROST_CONTROLLER.isGalleryFrostEnabled();
-    }
-
-    function syncGalleryFrostClass() {
-        return CANVAS_GALLERY_FROST_CONTROLLER.syncGalleryFrostClass();
-    }
-
-    function setGalleryFrostEnabled(enabled) {
-        return CANVAS_GALLERY_FROST_CONTROLLER.setGalleryFrostEnabled(enabled);
-    }
-
-    function revealGalleryFrostArea(area) {
-        return CANVAS_GALLERY_FROST_CONTROLLER.revealGalleryFrostArea(area);
-    }
-
-    function resetGalleryFrostReveals() {
-        return CANVAS_GALLERY_FROST_CONTROLLER.resetGalleryFrostReveals();
     }
 
     CANVAS_GALLERY_FROST_CONTROLLER = WORKBENCH_CANVAS_GALLERY_FROST.createCanvasGalleryFrostController({
@@ -13526,12 +13303,8 @@
         serializeAssetSourceForRun,
         buildDirectorTimelineStatePatch,
         buildProjectNodeAppendPatch,
-        setSelectedNode: (id) => {
-            selectedNodeId = id;
-            selectedNodeIds = new Set([id]);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        },
+        completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args),
+        setSelectedNode: id => CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(id),
         showToast
     };
 
@@ -13575,19 +13348,7 @@
         } = elements);
         shellRenderer.syncStandaloneCanvasControls();
 
-        bindWorkbenchEvents();
-        bindGroupLayerEvents();
-        edgesLayer.addEventListener('pointerdown', handleEdgeLayerPointerDown);
-        edgesLayer.addEventListener('click', handleEdgeLayerClick);
-        edgesLayer.addEventListener('contextmenu', handleEdgeLayerContextMenu);
-        CANVAS_MEDIA_PLAYBACK_CONTROLLER.bindNodeMediaEvents(nodesLayer);
-        if (canvasAgentPanel) {
-            canvasAgentPanel.addEventListener('pointerdown', CANVAS_AGENT_PANEL_CONTROLLER.onCanvasAgentPointerDown);
-            ['pointerdown', 'dblclick', 'contextmenu', 'wheel'].forEach((eventName) => {
-                canvasAgentPanel.addEventListener(eventName, (evt) => evt.stopPropagation(), { passive: eventName === 'wheel' });
-            });
-        }
-        bindCanvasBridgeResponseListener();
+        CANVAS_LIFECYCLE_CONTROLLER.bindMountedWorkbenchEvents(elements);
         renderAll();
         warmDanbooruAutocompleteIndex();
         refreshQwenTtsStylePresets({ silent: true }).then(() => {
@@ -13863,8 +13624,8 @@
         projectSource: { getNode: (...args) => getNode(...args) },
         timelineSource: { getTimelineSourceAsset: (...args) => getTimelineSourceAsset(...args) },
         mediaBrowserSource: {
-            serializableMediaBrowserState: (...args) => serializableMediaBrowserState(...args),
-            mediaBrowserRuntimeSignature: (...args) => mediaBrowserRuntimeSignature(...args)
+            serializableMediaBrowserState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.serializableMediaBrowserState(...args),
+            mediaBrowserRuntimeSignature: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeSignature(...args)
         },
         overviewSource: {
             overviewNodeAsset: (...args) => overviewNodeAsset(...args),
@@ -13985,11 +13746,7 @@
     }
 
     function getDetectionChoices() {
-        return {
-            maskModels: registryClassicEnhanceMaskModels || ['u2net', 'u2netp', 'u2net_human_seg', 'u2net_cloth_seg', 'silueta', 'isnet-general-use', 'isnet-anime', 'sam'],
-            clothCategories: registryClassicEnhanceClothCategories || ['full', 'upper', 'lower'],
-            samModels: registryClassicEnhanceSamModels || ['vit_b', 'vit_l', 'vit_h']
-        };
+        return CANVAS_CONFIG_VALUES_CONTROLLER.getDetectionChoices();
     }
 
     function getDetectionConfigLabel(index) {
@@ -14004,10 +13761,7 @@
     }
 
     function applyPresetUploadSlotPatch(node, slot, sourceId) {
-        if (!node || !['preset', 'classic'].includes(node.type) || !slot) return;
-        Object.assign(node, buildPresetUploadSlotPatch(node, {
-            uploadSlotsPatch: { [slot]: sourceId }
-        }));
+        return CANVAS_NODE_FACTORY_CONTROLLER.applyPresetUploadSlotPatch(node, slot, sourceId);
     }
 
     function addClassicNode(entry, world, options) {
@@ -14034,9 +13788,6 @@
         return CANVAS_NODE_PARAM_CONTROLLER?.handleInpaintModeChange?.(nodeId, newMode);
     }
 
-    function serializeClassicNodeForRun(node) {
-        return CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializeClassicNodeForRun?.(node) || {};
-    }
     function getPresetSchema(node) {
         return CANVAS_CONFIG_VALUES_CONTROLLER.getPresetSchema(node);
     }
@@ -14047,10 +13798,6 @@
 
     function getPresetThemeInfo(node) {
         return CANVAS_CONFIG_VALUES_CONTROLLER.getPresetThemeInfo(node);
-    }
-
-    function resolveDirectorCapabilityForPreset(node) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.resolveDirectorCapabilityForPreset?.(node) || {};
     }
 
     function directorDurationParamValue(value, fallback = 'scene_video_duration') {
@@ -14136,8 +13883,8 @@
             scheduleSave: (...args) => scheduleSave(...args)
         },
         serializationSource: {
-            serializeClassicNodeForRun: (...args) => serializeClassicNodeForRun(...args),
-            serializePresetForRun: (...args) => serializePresetForRun(...args),
+            serializeClassicNodeForRun: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializeClassicNodeForRun?.(...args) || {},
+            serializePresetForRun: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetForRun?.(...args) || {},
             presetGenerationImageNumberValue: (...args) => presetGenerationImageNumberValue(...args)
         },
         patchSource: {
@@ -14460,12 +14207,8 @@
         pushHistoryBatch,
         renderNodeStateBadges,
         scheduleSave,
-        setSelectedNode: (id) => {
-            selectedNodeId = id || null;
-            selectedNodeIds = new Set(id ? [id] : []);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        },
+        setSelectedNode: id => CANVAS_SELECTION_CONTROLLER.setNodeSelectionState(id),
+        completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args),
         showToast
     };
 
@@ -14499,6 +14242,7 @@
         buildCameraMotionSourcePatch,
         buildCameraMotionStatePatch,
         buildProjectNodeAppendPatch,
+        completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args),
         buildVideoResponseAsset,
         defaultNodeSize,
         getNode,
@@ -14510,12 +14254,7 @@
         pushHistoryBatch,
         renderNodeStateBadges,
         scheduleSave,
-        setSelectedNode: (id) => {
-            selectedNodeId = id || null;
-            selectedNodeIds = new Set(id ? [id] : []);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        },
+        setSelectedNode: id => CANVAS_SELECTION_CONTROLLER.setNodeSelectionState(id),
         showToast
     };
 
@@ -14560,12 +14299,8 @@
         renderNodeStateBadges,
         scheduleSave,
         buildProjectNodeAppendPatch,
-        setSelectedNode: (id) => {
-            selectedNodeId = id || null;
-            selectedNodeIds = new Set(id ? [id] : []);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        },
+        completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args),
+        setSelectedNode: id => CANVAS_SELECTION_CONTROLLER.setNodeSelectionState(id),
         showToast
     };
 
@@ -14610,12 +14345,8 @@
         renderNodeStateBadges,
         scheduleSave,
         buildProjectNodeAppendPatch,
-        setSelectedNode: (id) => {
-            selectedNodeId = id || null;
-            selectedNodeIds = new Set(id ? [id] : []);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        },
+        completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args),
+        setSelectedNode: id => CANVAS_SELECTION_CONTROLLER.setNodeSelectionState(id),
         showToast
     };
 
@@ -14661,12 +14392,8 @@
         renderNodeStateBadges,
         scheduleSave,
         buildProjectNodeAppendPatch,
-        setSelectedNode: (id) => {
-            selectedNodeId = id || null;
-            selectedNodeIds = new Set(id ? [id] : []);
-            selectedEdgeId = null;
-            selectedGroupId = null;
-        },
+        completePendingConnectionToNode: (...args) => completePendingConnectionToNode(...args),
+        setSelectedNode: id => CANVAS_SELECTION_CONTROLLER.setNodeSelectionState(id),
         showToast
     };
 
@@ -14759,7 +14486,7 @@
         ? WORKBENCH_CANVAS_H3_STORYBOARD_PRESET_DATA.createCanvasMiniMaxH3StoryboardPresetData({
             nodeSource: {
                 getSlotOrder: () => SLOT_ORDER,
-                getPresetUploadRunEdges,
+                getPresetUploadRunEdges: (...args) => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.getPresetUploadRunEdges?.(...args) || [],
                 getUploadSlotMediaKind,
                 getNode,
                 getSelectedResultAsset,
@@ -15092,9 +14819,15 @@
     const CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER = typeof WORKBENCH_CANVAS_XYZ_MATRIX_EDITOR.createCanvasXyzMatrixEditorController === 'function'
         ? WORKBENCH_CANVAS_XYZ_MATRIX_EDITOR.createCanvasXyzMatrixEditorController({
             xyzMatrixEditorSource: {
-                nodeSource: { getNode, buildXyzMatrixNode, buildXyzMatrixStatePatch, selectResultAsset },
+                nodeSource: {
+                    getNode, buildXyzMatrixNode, buildXyzMatrixStatePatch,
+                    selectResultAsset: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.selectResultAsset?.(...args) || null
+                },
                 presetSource: { getPresetThemeInfo },
-                serializationSource: { serializeClassicNodeForRun, serializePresetForRun },
+                serializationSource: {
+                    serializeClassicNodeForRun: node => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializeClassicNodeForRun?.(node) || {},
+                    serializePresetForRun: node => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetForRun?.(node) || {}
+                },
                 scriptSource: { script: XYZ_PLOT_SCRIPT_NAME },
                 axisSource: { fallbackOptions: XYZ_AXIS_FALLBACKS },
                 projectSource: {
@@ -15107,9 +14840,7 @@
                 historySource: { pushHistory, mutate, scheduleSave },
                 selectionSource: {
                     selectSingleNode: id => {
-                        selectedNodeId = id;
-                        selectedNodeIds = new Set([id]);
-                        selectedEdgeId = null;
+                        CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(id);
                     }
                 },
                 renderSource: { renderAll, renderNodes, renderInspector },
@@ -15438,8 +15169,7 @@
     }
 
     function getHandleCenterWorldPoint(handle) {
-        const rect = handle.getBoundingClientRect();
-        return clientToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return viewportGetHandleCenterWorldPoint(handle, viewport, project.viewport);
     }
 
     const PENDING_CONNECTION_CONTEXT_SOURCE = {
@@ -15617,17 +15347,7 @@
     }
 
     function renderCanvasSettingsPanel() {
-        if (!canvasSettingsPanel || canvasSettingsPanel.hidden) return;
-        const settings = getCanvasAgentSettings();
-        const scan = getCanvasAgentPresetScanState();
-        const readyCount = canvasAgentReadyPresetEntries().length;
-        const agentSettingsHtml = renderCanvasAgentSettingsTab?.(settings, scan, readyCount) || '';
-        canvasSettingsPanel.innerHTML = renderCanvasSettingsPanelView({
-            tab: canvasSettingsState.tab,
-            agentHtml: agentSettingsHtml,
-            projectSettings: project.settings
-        });
-        ensureWorkbenchFormFieldNames(canvasSettingsPanel, 'canvas_settings');
+        return CANVAS_SETTINGS_CONTROLLER.renderCanvasSettingsPanel();
     }
 
     async function refreshCanvasAgentAvailablePresets(options) {
@@ -15707,70 +15427,6 @@
         return CANVAS_MEDIA_IMPORT_CONTROLLER.openImageFilePicker(world);
     }
 
-    function mediaBrowserInitialState(world) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserInitialState(world);
-    }
-
-    function normalizeMediaBrowserState(value, world) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.normalizeMediaBrowserState(value, world);
-    }
-
-    function serializableMediaBrowserState(state) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.serializableMediaBrowserState(state);
-    }
-
-    function mediaBrowserNodeState(node) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserNodeState(node);
-    }
-
-    function saveMediaBrowserNodeState(node, state, options) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.saveMediaBrowserNodeState(node, state, options);
-    }
-
-    function mediaBrowserRuntimeFor(nodeId) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeFor(nodeId);
-    }
-
-    function mediaBrowserRuntimeSignature(nodeId) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserRuntimeSignature(nodeId);
-    }
-
-    function mergeMediaBrowserPage(existing, page, append) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mergeMediaBrowserPage(existing, page, append);
-    }
-
-    function selectedMediaBrowserItemFrom(state, data) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserItemFrom(state, data);
-    }
-
-    function openMediaBrowserPanel(world, initialState) {
-        return CANVAS_MEDIA_BROWSER_PANEL_CONTROLLER.openMediaBrowserPanel(world, initialState);
-    }
-
-    function readMediaBrowserFields(modal) {
-        return CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.readMediaBrowserFields(modal);
-    }
-
-    async function refreshMediaBrowserPanel(modal) {
-        return CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.refreshMediaBrowserPanel(modal);
-    }
-
-    async function loadMoreMediaBrowserPanel(modal) {
-        return CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.loadMoreMediaBrowserPanel(modal);
-    }
-
-    function mediaBrowserShouldAutoLoadMore(scroller) {
-        return CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.mediaBrowserShouldAutoLoadMore(scroller);
-    }
-
-    function maybeAutoLoadMoreMediaBrowserPanel(modal, scroller) {
-        return CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.maybeAutoLoadMoreMediaBrowserPanel(modal, scroller);
-    }
-
-    function renderMediaBrowserPanel(modal, loading) {
-        return CANVAS_MEDIA_BROWSER_PANEL_CONTROLLER.renderMediaBrowserPanel(modal, loading);
-    }
-
     function nodeGenerationMetadata(node) {
         return CANVAS_GENERATION_METADATA_CONTROLLER.nodeGenerationMetadata(node);
     }
@@ -15797,62 +15453,6 @@
 
     function applyGenerationMetadataToPromptTarget(target, metadata, options) {
         return CANVAS_GENERATION_METADATA_CONTROLLER.applyGenerationMetadataToPromptTarget(target, metadata, options);
-    }
-
-    function selectedMediaBrowserItem(modal) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserItem(modal);
-    }
-
-    async function importSelectedMediaBrowserItem(modal) {
-        return CANVAS_MEDIA_IMPORT_CONTROLLER.importSelectedMediaBrowserItem(modal);
-    }
-
-    async function addMediaBrowserItemToCanvas(item, state, world) {
-        return CANVAS_MEDIA_IMPORT_CONTROLLER.addMediaBrowserItemToCanvas(item, state, world);
-    }
-
-    async function addMediaBrowserPayloadToCanvas(payload, world) {
-        return CANVAS_MEDIA_IMPORT_CONTROLLER.addMediaBrowserPayloadToCanvas(payload, world);
-    }
-
-    async function copyMediaBrowserItemPrompt(item) {
-        return CANVAS_MEDIA_BROWSER_ACTION_CONTROLLER.copyMediaBrowserItemPrompt(item);
-    }
-
-    function applyMediaBrowserItemPromptToTarget(item, state) {
-        return CANVAS_MEDIA_BROWSER_ACTION_CONTROLLER.applyMediaBrowserItemPromptToTarget(item, state);
-    }
-
-    async function deleteLocalMediaBrowserItem(item, state) {
-        return CANVAS_MEDIA_BROWSER_ACTION_CONTROLLER.deleteLocalMediaBrowserItem(item, state);
-    }
-
-    function readMediaBrowserNodeFields(node, nodeEl) {
-        return CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.readMediaBrowserNodeFields(node, nodeEl);
-    }
-
-    async function refreshMediaBrowserNode(node, options) {
-        return CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.refreshMediaBrowserNode(node, options);
-    }
-
-    function selectedMediaBrowserNodeItem(node) {
-        return CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.selectedMediaBrowserNodeItem(node);
-    }
-
-    function handleMediaBrowserNodeClick(node, evt, nodeEl) {
-        return CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.handleMediaBrowserNodeClick(node, evt, nodeEl);
-    }
-
-    async function loadMoreMediaBrowserNode(node, nodeEl) {
-        return CANVAS_MEDIA_BROWSER_DATA_CONTROLLER.loadMoreMediaBrowserNode(node, nodeEl);
-    }
-
-    function handleMediaBrowserNodeChange(node, evt, nodeEl) {
-        return CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.handleMediaBrowserNodeChange(node, evt, nodeEl);
-    }
-
-    function handleMediaBrowserNodeKeydown(node, evt, nodeEl) {
-        return CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.handleMediaBrowserNodeKeydown(node, evt, nodeEl);
     }
 
     const DANBOORU_GALLERY_CONTEXT_SOURCE = {
@@ -16097,9 +15697,7 @@
             defaultNodeSize,
             focusNode: (node) => {
                 if (!node) return;
-                selectedNodeId = node.id;
-                selectedNodeIds = new Set([node.id]);
-                selectedEdgeId = null;
+                CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(node.id);
                 centerViewportOnWorld((node.x || 0) + (node.w || defaultNodeSize(node.type).w) / 2, (node.y || 0) + (node.h || defaultNodeSize(node.type).h) / 2);
                 renderAll();
             }
@@ -16249,9 +15847,7 @@
             defaultNodeSize,
             locateNode: (node) => {
                 if (!node) return;
-                selectedNodeId = node.id;
-                selectedNodeIds = new Set([node.id]);
-                selectedEdgeId = null;
+                CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(node.id);
                 centerViewportOnWorld((node.x || 0) + (node.w || defaultNodeSize(node.type).w) / 2, (node.y || 0) + (node.h || defaultNodeSize(node.type).h) / 2);
                 renderAll();
             }
@@ -16382,12 +15978,7 @@
             mutate
         },
         selectionSource: {
-            selectNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-            }
+            selectNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(nodeId)
         },
         languageSource: {
             getLanguageState: () => ({ __lang: runtimeUiLang() }),
@@ -16411,12 +16002,7 @@
         stateSource: { buildNodeParamsPatch, buildLtx23GuidesStatePatch, buildSpecialNodeStatusPatch, mergeCanvasRunStatus },
         runtimeSource: { ensureWorkbenchLazyRuntime, pushHistory, nowIso, mutate, showToast },
         selectionSource: {
-            selectNode: nodeId => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-            }
+            selectNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(nodeId)
         },
         languageSource: {
             getLanguageState: () => ({ __lang: runtimeUiLang() }),
@@ -16461,12 +16047,7 @@
             showToast
         },
         selectionSource: {
-            selectNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-            }
+            selectNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionIncludingEmpty(nodeId)
         },
         languageSource: {
             getLanguageState: () => ({ __lang: runtimeUiLang() }),
@@ -16504,10 +16085,7 @@
             sendCanvasGenerateMaskRequest
         },
         selectionSource: {
-            selectMaskNode: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-            }
+            selectMaskNode: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingEdgeAndGroup(nodeId)
         },
         runtimeSource: {
             pushHistory,
@@ -16631,14 +16209,6 @@
         return CANVAS_CONFIG_EDIT_CONTROLLER.handleModelBrowserButtonClick(node, nodeEl, evt);
     }
 
-    function filterStylesConfigList(nodeEl, query) {
-        const q = String(query || '').trim().toLowerCase();
-        nodeEl?.querySelectorAll?.('[data-style-config-item]').forEach((item) => {
-            const text = item.getAttribute('data-style-config-item') || item.textContent || '';
-            item.hidden = !!q && !String(text).toLowerCase().includes(q);
-        });
-    }
-
     function setModelConfigFilter(nodeId, enabled) {
         return CANVAS_MODEL_CONFIG_CATALOG_CONTROLLER.setModelConfigFilter(nodeId, enabled);
     }
@@ -16672,7 +16242,7 @@
     }
 
     function addStyleSelectorNode(world, options) {
-        return CANVAS_AUX_NODE_CREATION_CONTROLLER.addStyleSelectorNode(world, options);
+        return styleSelectorAddNode?.(world, options, STYLE_SELECTOR_NODE_CONTEXT) ?? null;
     }
 
     function linkStyleSelectorToPreset(selectorNode, presetNode, options) {
@@ -16826,40 +16396,8 @@
         return CANVAS_NODE_PARAM_CONTROLLER?.updateQwenTtsParam?.(nodeId, key, value, inputType);
     }
 
-    function normalizeDirectorTimelineForNode(node) {
-        return CANVAS_TIMELINE_CONTEXT.normalizeDirectorTimelineForNode?.(node) ?? null;
-    }
-
     function updateDirectorStatus(node) {
         return CANVAS_TIMELINE_CONTEXT.updateDirectorStatus?.(node);
-    }
-
-    function directorTimelineConstrainSegmentTimes(director, index) {
-        return CANVAS_TIMELINE_CONTEXT.directorTimelineConstrainSegmentTimes?.(director, index);
-    }
-
-    function updateDirectorTimelineParam(nodeId, key, value, inputType) {
-        return CANVAS_TIMELINE_CONTEXT.updateDirectorTimelineParam?.(nodeId, key, value, inputType);
-    }
-
-    function updateDirectorTimelineSegmentParam(nodeId, index, key, value, inputType) {
-        return CANVAS_TIMELINE_CONTEXT.updateDirectorTimelineSegmentParam?.(nodeId, index, key, value, inputType);
-    }
-
-    function addDirectorTimelineSegment(node) {
-        return CANVAS_TIMELINE_CONTEXT.addDirectorTimelineSegment?.(node);
-    }
-
-    function removeDirectorTimelineSegment(node, index) {
-        return CANVAS_TIMELINE_CONTEXT.removeDirectorTimelineSegment?.(node, index);
-    }
-
-    function moveDirectorTimelineSegment(node, index, delta) {
-        return CANVAS_TIMELINE_CONTEXT.moveDirectorTimelineSegment?.(node, index, delta);
-    }
-
-    function copyDirectorTimelineOutput(node) {
-        return CANVAS_TIMELINE_CONTEXT.copyDirectorTimelineOutput?.(node);
     }
 
     function addMaskNode(world, options) {
@@ -16867,96 +16405,31 @@
     }
 
     function addSam3VideoMaskNode(world, options) {
-        return sam3CreateNode(world, options || {}, SAM3_VIDEO_MASK_NODE_CONTEXT);
+        return sam3AddNode(world, options || {}, SAM3_VIDEO_MASK_NODE_CONTEXT);
     }
 
     function addCameraMotionNode(world, options) {
-        const opts = options || {};
-        const node = cameraMotionCreateNode(world, Object.assign({}, opts, {
-            render: false,
-            toast: false
-        }), CAMERA_MOTION_NODE_CONTEXT);
-        if (!node) return null;
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        selectedGroupId = null;
-        if (opts.render !== false) mutate();
-        if (opts.toast !== false) showToast(autoMessage ? `${node.title || 'Uni3C Camera Motion'} node added, ${autoMessage}` : t('Uni3C Camera Motion node added', '已添加 Uni3C 运镜节点'));
-        return node;
+        return cameraMotionAddNode(world, options, CAMERA_MOTION_NODE_CONTEXT);
     }
 
     function addPoseStudioNode(world, options) {
-        const opts = options || {};
-        const node = poseStudioCreateNode(world, Object.assign({}, opts, {
-            render: false,
-            toast: false
-        }), POSE_STUDIO_NODE_CONTEXT);
-        if (!node) return null;
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        selectedGroupId = null;
-        if (opts.render !== false) mutate();
-        if (opts.toast !== false) showToast(autoMessage ? `${node.title || 'Pose Studio'} node added, ${autoMessage}` : t('Pose Studio node added', '已添加 Pose Studio 节点'));
-        return node;
+        return poseStudioAddNode(world, options, POSE_STUDIO_NODE_CONTEXT);
     }
 
     function addGaussianStudioNode(world, options) {
-        const opts = options || {};
-        const node = gaussianStudioCreateNode(world, Object.assign({}, opts, {
-            render: false,
-            toast: false
-        }), GAUSSIAN_STUDIO_NODE_CONTEXT);
-        if (!node) return null;
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        selectedGroupId = null;
-        if (opts.render !== false) mutate();
-        if (opts.toast !== false) showToast(autoMessage ? `${node.title || 'Gaussian Studio'} node added, ${autoMessage}` : t('Gaussian Studio node added', '已添加 Gaussian Studio 节点'));
-        return node;
+        return gaussianStudioAddNode(world, options, GAUSSIAN_STUDIO_NODE_CONTEXT);
     }
 
     function addLivePortraitExpressionNode(world, options) {
-        const opts = options || {};
-        const node = livePortraitCreateNode(world, Object.assign({}, opts, {
-            render: false,
-            toast: false
-        }), LIVEPORTRAIT_EXPRESSION_NODE_CONTEXT);
-        if (!node) return null;
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        selectedGroupId = null;
-        if (opts.render !== false) mutate();
-        if (opts.toast !== false) showToast(autoMessage ? `${node.title || 'LivePortrait Exp'} node added, ${autoMessage}` : t('LivePortrait Exp node added', '已添加 LivePortrait Exp 节点'));
-        return node;
+        return livePortraitAddNode(world, options, LIVEPORTRAIT_EXPRESSION_NODE_CONTEXT);
     }
 
     function addQwenTtsNode(mode, world, options) {
-        if (typeof qwenTtsCreateNode !== 'function') {
-            showToast('Qwen TTS canvas node is not loaded.');
+        if (typeof qwenTtsAddNode !== 'function') {
+            showToast(t('Qwen TTS canvas node is not loaded.', 'Qwen TTS 画布节点尚未加载。'));
             return null;
         }
-        const opts = options || {};
-        const node = qwenTtsCreateNode(mode || 'voice_design', world || viewportCenterWorld(), Object.assign({}, opts, {
-            render: false,
-            toast: false
-        }), QWEN_TTS_NODE_CONTEXT);
-        if (!node) return null;
-        const autoMessage = completePendingConnectionToNode(node);
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        selectedGroupId = null;
-        if (opts.render !== false) mutate();
-        if (opts.toast !== false) showToast(autoMessage ? `${node.title || 'Qwen TTS'} node added, ${autoMessage}` : `${node.title || 'Qwen TTS'} node added`);
-        return node;
+        return qwenTtsAddNode(mode || 'voice_design', world || viewportCenterWorld(), options, QWEN_TTS_NODE_CONTEXT);
     }
 
     function addDirectorTimelineNode(world, options) {
@@ -17220,130 +16693,16 @@
         return CANVAS_WD14_RUNTIME_CONTROLLER.runWd14Node(node);
     }
 
-    function applyDirectorCapabilityToPayload(payload, capability) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.applyDirectorCapabilityToPayload?.(payload, capability) ?? payload;
-    }
-
-    function applyDirectorCapabilityToPayloadForPreset(node, payload) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.applyDirectorCapabilityToPayloadForPreset?.(node, payload) ?? payload;
-    }
     const DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF = directorPreviousSegmentVideoRef || 'previous_segment';
     const DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF = directorPreviousSegmentImageRef || 'previous_segment_last_frame';
 
-    function validateDirectorPayloadForPreset(node, payload) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.validateDirectorPayloadForPreset?.(node, payload);
-    }
-
-    function directorRunContextForPreset(node) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorRunContextForPreset?.(node) || null;
-    }
-
-    function directorRunPlanForPreset(node) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorRunPlanForPreset?.(node) || null;
-    }
-
-    function directorCompactSeconds(value) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorCompactSeconds?.(value) ?? String(value);
-    }
-
-    function directorSegmentDurationBounds(capability) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentDurationBounds?.(capability) || [0, Infinity];
-    }
-
-    function directorSegmentRawSeconds(segment, plan) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentRawSeconds?.(segment, plan) ?? 0;
-    }
-
-    function directorSegmentSeconds(segment, plan) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentSeconds?.(segment, plan) ?? 0;
-    }
-
-    function directorSegmentDurationStrategy(plan) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentDurationStrategy?.(plan) || 'shot';
-    }
-
-    function directorSegmentGenerationSeconds(segment, plan) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentGenerationSeconds?.(segment, plan) ?? 0;
-    }
-
-    function directorResultDuration(result) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorResultDuration?.(result) ?? 0;
-    }
-
-    function directorSegmentTimelineSeconds(segment, plan, result) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentTimelineSeconds?.(segment, plan, result) ?? 0;
-    }
-
-    function directorSegmentPrompt(segment, fallback) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentPrompt?.(segment, fallback) || '';
-    }
-
-    function directorSegmentMediaRefs(segment, key) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentMediaRefs?.(segment, key) || [];
-    }
-
-    function directorSegmentFirstMediaRef(segment, key) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentFirstMediaRef?.(segment, key) || '';
-    }
-
-    function directorSegmentUsesPreviousVideo(segment) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentUsesPreviousVideo?.(segment) || false;
-    }
-
-    function directorSegmentUsesPreviousImage(segment) {
-        return CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorSegmentUsesPreviousImage?.(segment) || false;
-    }
-
-    function directorResultAssetSource(resultNode) {
-        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.directorResultAssetSource?.(resultNode) || null;
-    }
-
-    function directorTimelineMediaRefs(payload, key) {
-        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.directorTimelineMediaRefs?.(payload, key) || [];
-    }
-
-    function directorTimelineFirstMediaRef(payload, key) {
-        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.directorTimelineFirstMediaRef?.(payload, key) || '';
-    }
-
-    function applyDirectorMediaRefsToPresetPayload(next, mediaSources, imageRefs, audioRef, videoRef, capability) {
-        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorMediaRefsToPresetPayload?.(next, mediaSources, imageRefs, audioRef, videoRef, capability) ?? next;
-    }
-
-    function clearDirectorSegmentMediaSlots(next) {
-        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.clearDirectorSegmentMediaSlots?.(next) ?? next;
-    }
-
-    function applyDirectorTimelineMediaToPresetPayload(next) {
-        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorTimelineMediaToPresetPayload?.(next) ?? next;
-    }
-
-    function applyDirectorSegmentMediaToPresetPayload(next, plan, segment, previousResultNode) {
-        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorSegmentMediaToPresetPayload?.(next, plan, segment, previousResultNode) ?? next;
-    }
-
-    function applyDirectorSegmentToPresetPayload(presetPayload, plan, segment, index, previousResultNode) {
-        return CANVAS_DIRECTOR_SEGMENT_PAYLOAD_CONTROLLER.applyDirectorSegmentToPresetPayload?.(presetPayload, plan, segment, index, previousResultNode) ?? presetPayload;
-    }
     function createDirectorSegmentResultNode(presetNode, plan, segment, index, runId, runToken) {
         return CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER.createDirectorSegmentResultNode?.(presetNode, plan, segment, index, runId, runToken) || null;
-    }
-
-    function findDirectorSegmentTimelineNode(presetNode) {
-        return CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER.findDirectorSegmentTimelineNode?.(presetNode) || null;
-    }
-
-    function clearDirectorPresetClipsFromTimeline(timelineNode, presetNodeId) {
-        return CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER.clearDirectorPresetClipsFromTimeline?.(timelineNode, presetNodeId);
     }
 
     function prepareDirectorSegmentTimeline(presetNode, plan, segmentResults) {
         return CANVAS_DIRECTOR_SEGMENT_TIMELINE_CONTROLLER.prepareDirectorSegmentTimeline?.(presetNode, plan, segmentResults) || null;
     }
-    function directorSegmentPromptCompilerTarget(node, plan, segment) {
-        return CANVAS_DIRECTOR_SEGMENT_PROMPT_PREFLIGHT_CONTROLLER.directorSegmentPromptCompilerTarget(node, plan, segment);
-    }
-
     async function preflightDirectorSegmentPrompts(node, plan, options) {
         return CANVAS_DIRECTOR_SEGMENT_PROMPT_PREFLIGHT_CONTROLLER.preflightDirectorSegmentPrompts(node, plan, options);
     }
@@ -17356,62 +16715,8 @@
         return CANVAS_RESULT_CONNECTION_CONTROLLER.ensureGenerateEdge(fromId, toId);
     }
 
-    function runSelectedChain() {
-        return CANVAS_SCHEDULER_RUN_CONTROLLER.runSelectedChain?.();
-    }
-
-    function runNodeChain(node, mode) {
-        return CANVAS_SCHEDULER_RUN_CONTROLLER.runNodeChain?.(node, mode);
-    }
-
-    function clearSchedulerBlockedState() {
-        return !!CANVAS_SCHEDULER_STATE_CONTROLLER.clearSchedulerBlockedState?.();
-    }
-
-    function schedulerStepMissingSummary(step) {
-        return CANVAS_SCHEDULER_STATE_CONTROLLER.schedulerStepMissingSummary?.(step) || '';
-    }
-
-    function markBlockedSchedulerSteps(steps) {
-        return CANVAS_SCHEDULER_STATE_CONTROLLER.markBlockedSchedulerSteps?.(steps) || [];
-    }
-
-    function firstBlockedSchedulerStep(plan) {
-        return CANVAS_SCHEDULER_STATE_CONTROLLER.firstBlockedSchedulerStep?.(plan) || null;
-    }
-
-    function focusSchedulerProblem(step) {
-        return CANVAS_SCHEDULER_STATE_CONTROLLER.focusSchedulerProblem?.(step);
-    }
-
-    function setBlockedSchedulerFromPlan(plan, options) {
-        return CANVAS_SCHEDULER_STATE_CONTROLLER.setBlockedSchedulerFromPlan?.(plan, options);
-    }
-
-    function refreshingSourceIdsFromPlan(plan) {
-        return CANVAS_SCHEDULER_RUN_CONTROLLER.refreshingSourceIdsFromPlan?.(plan) || [];
-    }
-
-    function missingStepsAreOnlyRefreshing(missingSteps) {
-        return !!CANVAS_SCHEDULER_RUN_CONTROLLER.missingStepsAreOnlyRefreshing?.(missingSteps);
-    }
-
-    function setSchedulerWaitingFromPlan(plan, sourceIds) {
-        return CANVAS_SCHEDULER_STATE_CONTROLLER.setSchedulerWaitingFromPlan?.(plan, sourceIds);
-    }
-
     function resultNodeHasOutput(node) {
         return !!CANVAS_RESULT_ASSET_CONTROLLER.resultNodeHasOutput?.(node);
-    }
-
-    async function runSchedulerPlan(mode, nodeIds, options) {
-        return CANVAS_SCHEDULER_RUN_CONTROLLER.runSchedulerPlan?.(mode, nodeIds, options)
-            || { ok: false, error: 'scheduler run controller unavailable' };
-    }
-
-    async function runSchedulerStep(nodeId, step) {
-        return CANVAS_SCHEDULER_STEP_CONTROLLER.runSchedulerStep?.(nodeId, step)
-            || { ok: false, error: 'scheduler step controller unavailable' };
     }
 
     function cloneRunValue(value, fallback) {
@@ -17433,13 +16738,6 @@
         });
     }
 
-    function serializePresetConfigForRun(config) {
-        return CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetConfigForRun?.(config) || {};
-    }
-
-    function serializePresetForRun(node) {
-        return CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetForRun?.(node) || {};
-    }
     function createImageNodeFromAsset(asset, world, title, options) {
         return CANVAS_MEDIA_IMPORT_CONTROLLER.createImageNodeFromAsset(asset, world, title, options);
     }
@@ -17623,7 +16921,7 @@
             openGaussianStudioEditor: (...args) => openGaussianStudioEditor(...args),
             openLivePortraitExpressionEditor: (...args) => openLivePortraitExpressionEditor(...args),
             ensureConfigNode: (...args) => ensureConfigNode(...args),
-            selectResultAsset: (...args) => selectResultAsset(...args),
+            selectResultAsset: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.selectResultAsset?.(...args) || null,
             createMediaNodeFromResultAsset: (...args) => createMediaNodeFromResultAsset(...args)
         }
     };
@@ -17752,12 +17050,7 @@
             invalidateMinimapStaticCache: (...args) => invalidateMinimapStaticCache(...args)
         },
         selectionSource: {
-            resetSelectionState: () => {
-                selectedNodeId = null;
-                selectedNodeIds = new Set();
-                selectedEdgeId = null;
-                selectedGroupId = null;
-            }
+            resetSelectionState: () => CANVAS_SELECTION_CONTROLLER.resetSelectionState()
         },
         timelineSource: {
             stopTimelinePlayback: (...args) => stopTimelinePlayback(...args)
@@ -17766,7 +17059,7 @@
             saveProject: (...args) => saveProject(...args)
         },
         gallerySource: {
-            resetGalleryFrostReveals: (...args) => resetGalleryFrostReveals(...args)
+            resetGalleryFrostReveals: (...args) => CANVAS_GALLERY_FROST_CONTROLLER.resetGalleryFrostReveals(...args)
         },
         diagnosticsSource: {
             warn: (...args) => console.warn(...args)
@@ -17817,8 +17110,7 @@
             project = sanitizeProject(nextProject);
             resetCanvasRenderModeForProject(project);
             resetRenderedProjectDomCache();
-            selectedNodeId = null;
-            selectedEdgeId = null;
+            CANVAS_SELECTION_CONTROLLER.focusNodePreservingSelection(null);
              resetMinimapCache();
              invalidateMinimapStaticCache();
             cancelWheelPreviewLod();
@@ -17827,7 +17119,7 @@
             endDragEdgeLodVisual();
             saveProject(true).catch((err) => console.warn('[SimpAI Canvas] api load save failed:', err));
             renderAll();
-            resetGalleryFrostReveals();
+            CANVAS_GALLERY_FROST_CONTROLLER.resetGalleryFrostReveals();
         },
         addPresetNode: (entry, world) => addPresetNode(entry || {}, world || viewportCenterWorld()),
         addTextMergeNode: (world, options) => addTextMergeNode(world || viewportCenterWorld(), options || {}),

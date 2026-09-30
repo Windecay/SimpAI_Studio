@@ -95,7 +95,7 @@
       "sage_attention": "auto",
       "allow_compile": false,
       "model": [
-        "71",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -407,7 +407,7 @@
       "sage_attention": "disabled",
       "allow_compile": false,
       "model": [
-        "71",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -1101,6 +1101,20 @@
     "class_type": "PreviewImage",
     "_meta": {
       "title": "AIO Preview"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "71",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

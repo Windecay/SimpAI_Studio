@@ -2012,9 +2012,12 @@ def _build_preset_store_meta(state, copy_cached=True):
                     "base_model": preset_content.get("base_model") or preset_content.get("Base Model") or preset_content.get("default_model") or "",
                     "refiner_model": preset_content.get("refiner_model") or preset_content.get("Refiner Model") or preset_content.get("default_refiner") or "",
                     "clip_model": preset_content.get("clip_model") or preset_content.get("default_clip_model") or (backend_params.get("clip_model", "") if isinstance(backend_params, dict) else ""),
+                    "pe_model": backend_params.get("pe_model", "None") if isinstance(backend_params, dict) else "None",
                     "vae": preset_content.get("vae") or preset_content.get("VAE") or preset_content.get("default_vae") or "",
                     "upscale_model": preset_content.get("upscale_model") or preset_content.get("default_upscale_model") or (backend_params.get("upscale_model", "") if isinstance(backend_params, dict) else "") or "default",
                     "loras": _build_canvas_lora_defaults(preset_content, backend_params),
+                    "lora_stack": copy.deepcopy(preset_content.get("lora_stack", backend_params.get("lora_stack", []) if isinstance(backend_params, dict) else [])),
+                    "lora_stack_target": preset_content.get("lora_stack_target", backend_params.get("lora_stack_target", "auto") if isinstance(backend_params, dict) else "auto"),
                 }
                 generation_config = {
                     "guidance_scale": preset_content.get("default_cfg_scale", None),
@@ -2529,6 +2532,9 @@ def _apply_scene_video_backend_params(backend_params, video, mask_video, referen
 
 
 _GENERATION_MODEL_STATE_FIELDS = (
+    "pe_model",
+    "lora_stack",
+    "lora_stack_target",
     "base_model",
     "refiner_model",
     "refiner_switch",

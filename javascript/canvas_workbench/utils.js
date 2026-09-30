@@ -199,6 +199,12 @@
         return tOption(text, Object.assign({}, COMMON_CANVAS_LABELS_CN, cnMap || {}), langSource);
     }
 
+    function localizedDefaultTitle(value, defaultEn, defaultCn, langSource) {
+        const text = String(value || '').trim();
+        if (!text || text === defaultEn) return t(defaultEn, defaultCn, langSource);
+        return text;
+    }
+
     function workbenchStaticFilePath(path, documentRef) {
         const rel = String(path || '').replace(/^\/+/, '');
         if (!rel) return '';
@@ -248,6 +254,7 @@
         localizeValue,
         tOption,
         localizeCanvasLabel,
+        localizedDefaultTitle,
         workbenchStaticFilePath,
         resolveWorkbenchStaticPath,
         localizeMaskStatus

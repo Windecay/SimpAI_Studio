@@ -251,7 +251,7 @@
       "end_at_step": 5,
       "return_with_leftover_noise": "disable",
       "model": [
-        "448",
+        "simpai_lora_stack_main",
         0
       ],
       "positive": [
@@ -932,6 +932,20 @@
     "class_type": "easy int",
     "_meta": {
       "title": "i2i_clip_type"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "448",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

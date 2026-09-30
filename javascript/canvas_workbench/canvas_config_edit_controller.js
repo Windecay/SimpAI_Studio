@@ -178,7 +178,7 @@
 
         function modelBrowserTypeForConfigKey(key) {
             if (key === 'refiner_model') return 'refiner';
-            if (key === 'clip_model') return 'clip';
+            if (key === 'clip_model' || key === 'pe_model') return 'clip';
             if (key === 'vae') return 'vae';
             if (key === 'upscale_model') return 'upscale';
             return 'base';
@@ -321,6 +321,14 @@
             scheduleSave();
         }
 
+        function filterStylesConfigList(nodeEl, query) {
+            const q = String(query || '').trim().toLowerCase();
+            nodeEl?.querySelectorAll?.('[data-style-config-item]').forEach((item) => {
+                const text = item.getAttribute('data-style-config-item') || item.textContent || '';
+                item.hidden = !!q && !String(text).toLowerCase().includes(q);
+            });
+        }
+
         function handleNodeConfigFieldEvent(nodeEl, node, evt, eventType) {
             if (!node || !evt?.target) return false;
             const target = evt.target;
@@ -341,7 +349,7 @@
             }
             const styleSearch = target.closest('[data-style-config-search]');
             if (styleSearch && node.type === 'config' && node.config_kind === 'styles') {
-                eventCall('filterStylesConfigList', undefined, nodeEl, styleSearch.value);
+                filterStylesConfigList(nodeEl, styleSearch.value);
                 return true;
             }
             const styleToggle = target.closest('[data-config-style]');

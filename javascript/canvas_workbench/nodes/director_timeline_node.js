@@ -106,6 +106,7 @@
             buildDirectorTimelineStatePatch: pick(scope, 'buildDirectorTimelineStatePatch'),
             buildProjectNodeAppendPatch: pick(scope, 'buildProjectNodeAppendPatch'),
             setSelectedNode: pick(scope, 'setSelectedNode'),
+            completePendingConnectionToNode: pick(scope, 'completePendingConnectionToNode'),
             showToast: pick(scope, 'showToast')
         };
     }
@@ -816,6 +817,28 @@ ${renderTimelinePreview(timeline, node, ctx)}
         return node;
     }
 
+    function addNode(world, options, context) {
+        const ctx = contextOf(context);
+        const opts = options || {};
+        const node = createNode(world, Object.assign({}, opts, {
+            render: false,
+            toast: false
+        }), ctx);
+        if (!node) return null;
+        const autoMessage = call(ctx, 'completePendingConnectionToNode', '', node);
+        call(ctx, 'setSelectedNode', undefined, node.id);
+        if (opts.render !== false) call(ctx, 'mutate', undefined);
+        if (opts.toast !== false) {
+            const message = autoMessage
+                ? translateValue(ctx, '{title} node added, {message}', '{title} 节点已添加，{message}')
+                    .replace('{title}', node.title || translateValue(ctx, 'Director Timeline', '导演时间轴'))
+                    .replace('{message}', autoMessage)
+                : translateValue(ctx, 'Director Timeline node added', '已添加导演时间轴节点');
+            call(ctx, 'showToast', undefined, message);
+        }
+        return node;
+    }
+
     function mediaSourceKind(source, context) {
         if (!source) return '';
         if (source.type === 'image' || source.type === 'mask' || source.type === 'pose_studio' || source.type === 'gaussian_studio' || source.type === 'liveportrait_expression') return 'image';
@@ -908,6 +931,7 @@ ${renderTimelinePreview(timeline, node, ctx)}
         isMediaSourceForSlot,
         renderTimelinePreview,
         createNode,
+        addNode,
         renderInspector,
         renderNodeHtml,
         serializeForRun

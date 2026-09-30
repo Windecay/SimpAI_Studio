@@ -840,7 +840,7 @@
       "lora_name": "ltx\\ltx-2.3-22b-ic-lora-outpaint.safetensors",
       "strength_model": 2,
       "model": [
-        "617",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -1792,6 +1792,20 @@
     "class_type": "SimpAILTXVFrameTrim",
     "_meta": {
       "title": "SimpAI LTX Frame Trim / LTX 视频帧裁剪"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "617",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

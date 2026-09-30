@@ -125,6 +125,8 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         else:
             default_params.pop("i2i_clip_type", None)
     comfy_params = ComfyTaskParams(default_params, user_did)
+    if "qwen_image21" in task_method_l:
+        comfy_params.update_mapping_rule("pe_model", "SimpAIQwenImage21TextGenerate:Qwen Image 2.1 PE:pe_model")
     if "scene_" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):
         comfy_params.update_mapping_rule("sampler", "GeneralInput:GeneralInput:sampler")
         comfy_params.update_mapping_rule("scheduler", "GeneralInput:GeneralInput:scheduler")

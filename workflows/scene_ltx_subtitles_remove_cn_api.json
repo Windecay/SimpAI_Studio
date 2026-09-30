@@ -914,7 +914,7 @@
       "lora_name": "ltx\\ltx2.3-ic-subtitles-remove-general.safetensors",
       "strength_model": 1.5,
       "model": [
-        "613",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -1178,6 +1178,20 @@
     "class_type": "SimpAIAutoProtectedColorMatch",
     "_meta": {
       "title": "SimpAI Auto-Protected Color Match"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "613",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

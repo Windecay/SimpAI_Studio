@@ -27,6 +27,12 @@
             applyStyleSelectorToPreset: pick(scope, 'applyStyleSelectorToPreset'),
             setSelectedNode: pick(scope, 'setSelectedNode'),
             buildStyleSelectorStatePatch: pick(scope, 'buildStyleSelectorStatePatch'),
+            buildProjectNodeAppendPatch: pick(scope, 'buildProjectNodeAppendPatch'),
+            buildNodeLayoutPatch: pick(scope, 'buildNodeLayoutPatch'),
+            placeNodeAvoidingOverlap: pick(scope, 'placeNodeAvoidingOverlap'),
+            viewportCenterWorld: pick(scope, 'viewportCenterWorld'),
+            completePendingConnectionToNode: pick(scope, 'completePendingConnectionToNode'),
+            setSelectedStyle: pick(scope, 'setSelectedStyle'),
             getStyleTransferCatalogItems: delegate(catalogSource, 'getItems') || pick(scope, 'getStyleTransferCatalogItems'),
             getProject: pick(scope, 'getProject'),
             isStyleTransferPresetNode: pick(scope, 'isStyleTransferPresetNode'),
@@ -104,6 +110,54 @@
             initialState: { target_preset_id: opts.targetPresetId || '' },
             initialText: { updated_at: updatedAt }
         }));
+        return node;
+    }
+
+    function appendProjectNode(project, node, context) {
+        const patch = call(context, 'buildProjectNodeAppendPatch', null, project, node);
+        if (patch && Array.isArray(patch.nodes)) {
+            Object.assign(project, patch);
+            return;
+        }
+        const nodes = Array.isArray(project?.nodes) ? project.nodes.slice() : [];
+        if (node && typeof node === 'object') nodes.push(node);
+        Object.assign(project, { nodes });
+    }
+
+    function addNode(world, options, context) {
+        const ctx = contextOf(context);
+        const opts = options || {};
+        if (opts.history !== false) call(ctx, 'pushHistory', undefined, 'Add Style Selector node');
+        const node = createNode(world, opts, ctx);
+        if (!node) return null;
+        if (opts.selectedName) {
+            if (typeof ctx.setSelectedStyle === 'function') ctx.setSelectedStyle(node, opts.selectedName, context);
+            else setSelectedStyle(node, opts.selectedName, context);
+        }
+        if (opts.avoidOverlap === false) {
+            const position = {
+                x: Math.round(world?.x || 0),
+                y: Math.round(world?.y || 0)
+            };
+            const patch = call(ctx, 'buildNodeLayoutPatch', position, node, position);
+            Object.assign(node, patch);
+        } else {
+            const position = world || call(ctx, 'viewportCenterWorld', null);
+            call(ctx, 'placeNodeAvoidingOverlap', undefined, node, position);
+        }
+        const project = call(ctx, 'getProject', null) || {};
+        appendProjectNode(project, node, context);
+        if (opts.targetPresetId) {
+            const preset = call(ctx, 'getNode', null, opts.targetPresetId);
+            call(ctx, 'linkStyleSelectorToPreset', undefined, node, preset, { silent: true });
+        }
+        call(ctx, 'completePendingConnectionToNode', undefined, node);
+        if (opts.select !== false) call(ctx, 'setSelectedNode', undefined, node.id);
+        if (opts.render !== false) call(ctx, 'mutate', undefined, { inspector: true });
+        if (opts.toast !== false) {
+            call(ctx, 'showToast', undefined, translateValue(ctx,
+                'Style Selector node added.', '已添加 Style Selector 节点。'));
+        }
         return node;
     }
 
@@ -509,6 +563,7 @@ ${getNegative(node, context) ? `<div class="sai-inspector-section">
         catalogItems,
         createStyleSelectorNodeContext,
         createNode,
+        addNode,
         applyStyleSelectorToPreset,
         findStyleSelectorForPreset,
         getNegative,

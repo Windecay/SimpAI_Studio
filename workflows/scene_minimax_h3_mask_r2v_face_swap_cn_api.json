@@ -77,7 +77,7 @@
   "66": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["65", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_8"}},
   "67": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["66", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_9"}},
   "68": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["67", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_10"}},
-  "69": {"inputs": {"shift_video": ["1", 12], "shift_audio": ["1", 13], "model": ["68", 0]}, "class_type": "MiniMaxH3SigmaShift", "_meta": {"title": "ModelSamplingMiniMaxH3"}},
+  "69": {"inputs": {"shift_video": ["1", 12], "shift_audio": ["1", 13], "model": ["simpai_lora_stack_main", 0]}, "class_type": "MiniMaxH3SigmaShift", "_meta": {"title": "ModelSamplingMiniMaxH3"}},
   "70": {"inputs": {"expression": "ceil(a / 32) * 32", "values.a": ["90", 1]}, "class_type": "ComfyMathExpression", "_meta": {"title": "H3 Face Crop Internal Width"}},
   "71": {"inputs": {"expression": "ceil(a / 32) * 32", "values.a": ["90", 2]}, "class_type": "ComfyMathExpression", "_meta": {"title": "H3 Face Crop Internal Height"}},
   "72": {"inputs": {"image": ["100", 0], "width": ["91", 0], "height": ["91", 1], "upscale_method": "lanczos", "keep_proportion": "stretch", "pad_color": "0, 0, 0", "crop_position": "center", "divisible_by": 2, "device": "cpu"}, "class_type": "ImageResizeKJv2", "_meta": {"title": "Restore Selected Face Crop Size"}},
@@ -117,5 +117,19 @@
   "102": {"inputs": {"image": ["99", 0], "channel": "red"}, "class_type": "ImageToMask", "_meta": {"title": "Restore SAM3 Face Mask"}},
   "103": {"inputs": {"expression": "a", "values.a": ["1", 17]}, "class_type": "ComfyMathExpression", "_meta": {"title": "Load FPS Override as Float"}},
   "105": {"inputs": {"audio": ["95", 0], "source_fps": ["49", 3], "frame_count": ["49", 1]}, "class_type": "SimpAIH3SourceAudioTiming", "_meta": {"title": "Align Source Audio to H3 Internal Timeline"}},
-  "106": {"inputs": {"mask": ["77", 0]}, "class_type": "SimpAIFaceGenerationMask", "_meta": {"title": "Solidify Face Generation Core"}}
+  "106": {"inputs": {"mask": ["77", 0]}, "class_type": "SimpAIFaceGenerationMask", "_meta": {"title": "Solidify Face Generation Core"}},
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "68",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
+    }
+  }
 }

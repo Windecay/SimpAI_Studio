@@ -12,7 +12,7 @@
     "inputs": {
       "enable_fp16_accumulation": true,
       "model": [
-        "441",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -823,6 +823,20 @@
     "class_type": "ImageResizeKJv2",
     "_meta": {
       "title": "Resize Image v2"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "441",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

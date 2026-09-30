@@ -596,7 +596,7 @@
   "aio_style_transfer": {
     "inputs": {
       "model": [
-        "848",
+        "simpai_lora_stack_main",
         0
       ],
       "positive": [
@@ -953,7 +953,7 @@
   "aio_inpaint": {
     "inputs": {
       "model": [
-        "848",
+        "simpai_lora_stack_main",
         0
       ],
       "positive": [
@@ -1230,6 +1230,20 @@
     "class_type": "PreviewImage",
     "_meta": {
       "title": "AIO Preview"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "848",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

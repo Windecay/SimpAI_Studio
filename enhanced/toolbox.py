@@ -1098,6 +1098,10 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         restored[canonical_key] = combined
         preset_prepared[canonical_key] = combined
 
+    for key in ("lora_stack", "lora_stack_target", "pe_model"):
+        if key in backend_params:
+            restored[key] = copy.deepcopy(backend_params[key])
+            preset_prepared[key] = copy.deepcopy(backend_params[key])
     state_params["__preset_prepared"] = copy.deepcopy(preset_prepared)
 
     def _metadata_prompt_value(*keys):
@@ -1121,6 +1125,10 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         metadata_value = _metadata_prompt_value(*metadata_keys)
         if metadata_value is not None:
             restored[canonical_key] = metadata_value
+
+    if backend_params.get("lora_stack_prompt"):
+        from modules.lora_stack import restore_prompt_tags
+        restored["prompt"] = restore_prompt_tags(restored.get("prompt", ""), backend_params["lora_stack_prompt"])
 
     if state_params.get("task_method"):
         restored["task_method"] = state_params.get("task_method")
@@ -1388,6 +1396,10 @@ def save_preset(*args):
         if not backend_engine:
             backend_engine = config.backend_engine
         engine["backend_engine"] = backend_engine
+        stack_source = model_params_state if isinstance(model_params_state, dict) else backend_params
+        engine.setdefault("backend_params", {})["lora_stack"] = copy.deepcopy(stack_source.get("lora_stack", []))
+        engine["backend_params"]["lora_stack_target"] = stack_source.get("lora_stack_target", "auto")
+        engine["backend_params"]["pe_model"] = stack_source.get("pe_model", "None")
 
         task_method = backend_params.get("task_method", None) or state_params.get("task_method", None)
         if isinstance(task_method, str):

@@ -4,6 +4,7 @@
     function createCanvasLifecycleController(context) {
         const scope = context?.lifecycleSource || context || {};
         const domSource = scope.domSource || {};
+        const mountSource = scope.mountSource || {};
         const projectSource = scope.projectSource || {};
         const renderSource = scope.renderSource || {};
         const presetSource = scope.presetSource || {};
@@ -25,6 +26,22 @@
             : setTimeout;
         let pageLifecycleBound = false;
         let runtimeEventsBound = false;
+
+        function bindMountedWorkbenchEvents(elements) {
+            const { edgesLayer, nodesLayer, canvasAgentPanel } = elements;
+            call(mountSource, 'bindWorkbenchEvents');
+            call(mountSource, 'bindGroupLayerEvents');
+            edgesLayer.addEventListener('pointerdown', mountSource.handleEdgeLayerPointerDown);
+            edgesLayer.addEventListener('click', mountSource.handleEdgeLayerClick);
+            edgesLayer.addEventListener('contextmenu', mountSource.handleEdgeLayerContextMenu);
+            call(mountSource, 'bindNodeMediaEvents', nodesLayer);
+            if (canvasAgentPanel) {
+                canvasAgentPanel.addEventListener('pointerdown', call(mountSource, 'getCanvasAgentPointerDown'));
+                ['pointerdown', 'dblclick', 'contextmenu', 'wheel'].forEach((eventName) => {
+                    canvasAgentPanel.addEventListener(eventName, (evt) => evt.stopPropagation(), { passive: eventName === 'wheel' });
+                });
+            }
+        }
 
         function bindWorkbenchRuntimeEvents() {
             if (runtimeEventsBound) return;
@@ -151,7 +168,7 @@
             call(runtimeSource, 'stopPerformanceHud');
         }
 
-        return { bindWorkbenchRuntimeEvents, openWorkbench, closeWorkbench };
+        return { bindMountedWorkbenchEvents, bindWorkbenchRuntimeEvents, openWorkbench, closeWorkbench };
     }
 
     window.SimpAICanvasWorkbenchLifecycle = Object.assign({}, window.SimpAICanvasWorkbenchLifecycle || {}, {

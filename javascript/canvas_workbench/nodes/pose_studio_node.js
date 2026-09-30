@@ -54,6 +54,7 @@
             scheduleSave: pick(scope, 'scheduleSave'),
             serializeAssetSourceForRun: pick(assetSource, 'serializeAssetSourceForRun'),
             setSelectedNode: pick(scope, 'setSelectedNode'),
+            completePendingConnectionToNode: pick(scope, 'completePendingConnectionToNode'),
             showToast: pick(scope, 'showToast'),
             buildAssetReference: pick(scope, 'buildAssetReference'),
             buildProjectNodeAppendPatch: pick(scope, 'buildProjectNodeAppendPatch'),
@@ -323,6 +324,25 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
         return node;
     }
 
+    function addNode(world, options, context) {
+        const opts = options || {};
+        const node = createNode(world, Object.assign({}, opts, {
+            render: false,
+            toast: false
+        }), context);
+        if (!node) return null;
+        const autoMessage = call(context, 'completePendingConnectionToNode', '', node);
+        call(context, 'setSelectedNode', null, node.id);
+        if (opts.render !== false) call(context, 'mutate', null);
+        if (opts.toast !== false) {
+            const message = autoMessage
+                ? `${node.title || 'Pose Studio'} node added, ${autoMessage}`
+                : t('Pose Studio node added', '已添加 Pose Studio 节点', context);
+            call(context, 'showToast', null, message);
+        }
+        return node;
+    }
+
     function openEditor(node, context) {
         if (!node || node.type !== 'pose_studio') return null;
         const runtimeEditor = editor(context);
@@ -390,6 +410,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
 
     window.SimpAICanvasWorkbenchPoseStudioNode = {
         createPoseStudioNodeContext,
+        addNode,
         createNode,
         inputSourceForNode,
         isImageSource,

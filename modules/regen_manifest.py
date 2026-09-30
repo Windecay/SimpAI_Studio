@@ -7,7 +7,7 @@ SCHEMA = "simpleai.regen.v1"
 KEY = "simpleai_regen_manifest"
 LABEL = "SimpleAI Regen Manifest"
 VIDEO_DURATION_KEY = "scene_video_duration"
-EXTRA_BACKEND_ARGS = (KEY, VIDEO_DURATION_KEY, *(f"scene_input_image{index}" for index in range(5, 9)))
+EXTRA_BACKEND_ARGS = (KEY, VIDEO_DURATION_KEY, "lora_stack", "lora_stack_target", "pe_model", *(f"scene_input_image{index}" for index in range(5, 9)))
 _UNSET = object()
 _MODEL_FILE_EXTENSIONS = (
     ".safetensors",
@@ -50,7 +50,7 @@ def sync_lora_backend_params(manifest, backend_params, max_lora_number):
             else:
                 snapshot.pop(key, None)
 
-    for key in ("loras", "use_lora"):
+    for key in ("loras", "use_lora", "lora_stack", "lora_stack_target", "lora_stack_prompt"):
         if key in backend_params:
             snapshot[key] = json_safe(backend_params.get(key))
         else:

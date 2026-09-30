@@ -7,6 +7,7 @@ import modules.config as config
 import modules.model_loader as model_loader
 from enhanced import parameter_profiles
 from modules.access_mode import is_local_mode, user_can_download_models
+from modules.pe_models import PE_CATALOGS, is_pe_model_name, pe_model_rows
 
 
 MODEL_CATALOG_CACHE = {}
@@ -24,6 +25,7 @@ SELECTED_MODEL_CATALOGS = {
     "base_model": ("checkpoints", "diffusion_models"),
     "refiner_model": ("checkpoints", "diffusion_models"),
     "clip_model": ("clip", "text_encoders"),
+    "pe_model": PE_CATALOGS,
     "vae": ("vae",),
     "upscale_model": ("upscale_models",),
     "lora": ("loras",),
@@ -99,9 +101,11 @@ def _is_default_model_value(value):
 
 
 def _enabled_lora_models(model_values):
+    from modules.lora_stack import active_stack_models
+
     raw = model_values.get("loras") if isinstance(model_values, dict) else []
     if not isinstance(raw, list):
-        return []
+        raw = []
     names = []
     for item in raw:
         if not isinstance(item, dict):
@@ -111,6 +115,8 @@ def _enabled_lora_models(model_values):
         model = _model_value(item.get("model") or "")
         if model and not _is_default_model_value(model):
             names.append(model)
+    if isinstance(model_values, dict):
+        names.extend(name for name in active_stack_models(model_values.get("lora_stack")) if name and not _is_default_model_value(name))
     return names
 
 
@@ -260,6 +266,7 @@ def get_model_catalog_for_preset(payload):
             "lora_filenames": ["None"] + _normalize_list(lora_filenames),
             "vae_filenames": ["Default (model)"] + _normalize_list(vae_filenames),
             "clip_filenames": ["Default (model)"] + _normalize_list(clip_filenames),
+            "pe_enabled": "qwen_image21" in str(task_method or ""),
             "upscale_model_filenames": ["default"] + _normalize_list(getattr(config, "upscale_model_filenames", []) or []),
         }
         MODEL_CATALOG_CACHE[signature] = copy.deepcopy(catalog)
@@ -276,6 +283,14 @@ def get_model_catalog_for_preset(payload):
         ]
     catalog["base_model"] = base_model
     catalog["lora_folder_scope"] = lora_folder_scope or ""
+    inventory = []
+    modelsinfo = _modelsinfo_handle()
+    if modelsinfo is not None:
+        for category in PE_CATALOGS:
+            for name in modelsinfo.get_model_names(category):
+                if is_pe_model_name(name):
+                    inventory.append((category, name, _existing_model_path(name, (category,))))
+    catalog["pe_filenames"] = ["None", *[row["name"] for row in pe_model_rows(inventory)]]
 
     return {"ok": True, "catalog": catalog}
 

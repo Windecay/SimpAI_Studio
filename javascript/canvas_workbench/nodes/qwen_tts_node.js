@@ -128,6 +128,7 @@
             pushHistory: pick(scope, 'pushHistory'),
             renderNodeStateBadges: pick(scope, 'renderNodeStateBadges'),
             setSelectedNode: pick(scope, 'setSelectedNode'),
+            completePendingConnectionToNode: pick(scope, 'completePendingConnectionToNode'),
             showToast: pick(scope, 'showToast')
         };
         if (typeof scope.getQwenTtsStylePresets === 'function') {
@@ -594,8 +595,30 @@ ${status ? `<div class="sai-node-foot">${escapeHtmlValue(ctx, status)}</div>` : 
         return node;
     }
 
+    function addNode(mode, world, options, context) {
+        const ctx = contextOf(context);
+        const opts = options || {};
+        const node = createNode(mode, world, Object.assign({}, opts, {
+            render: false,
+            toast: false
+        }), ctx);
+        if (!node) return null;
+        const autoMessage = call(ctx, 'completePendingConnectionToNode', '', node);
+        call(ctx, 'setSelectedNode', null, node.id);
+        if (opts.render !== false) call(ctx, 'mutate', null);
+        if (opts.toast !== false) {
+            const title = node.title || 'Qwen TTS';
+            const message = autoMessage
+                ? translateValue(ctx, `${title} node added, ${autoMessage}`, `已添加 ${title} 节点，${autoMessage}`)
+                : translateValue(ctx, `${title} node added`, `已添加 ${title} 节点`);
+            call(ctx, 'showToast', null, message);
+        }
+        return node;
+    }
+
     window.SimpAICanvasWorkbenchQwenTtsNode = {
         createQwenTtsNodeContext,
+        addNode,
         MODE_SPECS,
         MODE_TYPES,
         TYPE_MODES,

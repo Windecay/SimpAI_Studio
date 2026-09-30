@@ -44,6 +44,8 @@
                 base_model: mergeChoices([defaults.base_model || '', ...(catalog.model_filenames || [])]),
                 refiner_model: mergeChoices(['None', defaults.refiner_model || '', ...(catalog.refiner_filenames || [])]),
                 clip_model: mergeChoices([defaults.clip_model || 'Default (model)', ...(catalog.clip_filenames || [])]),
+                pe_model: mergeChoices(['None', ...(catalog.pe_filenames || [])]),
+                pe_enabled: !!catalog.pe_enabled,
                 vae: mergeChoices([defaults.vae || 'Default (model)', ...(catalog.vae_filenames || [])]),
                 upscale_model: mergeChoices([defaults.upscale_model || 'default', ...(catalog.upscale_model_filenames || [])]),
                 lora: mergeChoices(['None', ...presetLoras, ...(catalog.lora_filenames || [])])

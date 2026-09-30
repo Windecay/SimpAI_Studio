@@ -1309,7 +1309,7 @@
   "aio_nag": {
     "inputs": {
       "model": [
-        "781",
+        "simpai_lora_stack_main",
         0
       ],
       "nag_scale": 5.0,
@@ -1347,7 +1347,7 @@
         0
       ],
       "on_false": [
-        "781",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -1363,7 +1363,7 @@
         0
       ],
       "on_true": [
-        "781",
+        "simpai_lora_stack_main",
         0
       ],
       "on_false": [
@@ -1385,6 +1385,20 @@
     "class_type": "easy compare",
     "_meta": {
       "title": "AIO CFG Is One"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "781",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

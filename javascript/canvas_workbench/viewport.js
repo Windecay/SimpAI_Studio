@@ -155,6 +155,16 @@
         );
     }
 
+    function getHandleCenterWorldPoint(handle, viewportEl, viewportState) {
+        const rect = handle.getBoundingClientRect();
+        return clientToWorld(
+            viewportEl,
+            viewportState,
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2
+        );
+    }
+
     function getNodeRenderWorldRect(visible, zoom, overscanPx) {
         const z = Math.max(0.15, Number(zoom || 1));
         const overscan = Math.round(Number(overscanPx || 960) / z);
@@ -264,6 +274,7 @@
         getVisibleWorldRect,
         clientToWorld,
         viewportCenterWorld,
+        getHandleCenterWorldPoint,
         getNodeRenderWorldRect,
         shouldRenderNodeInViewport,
         getMinimapBounds,

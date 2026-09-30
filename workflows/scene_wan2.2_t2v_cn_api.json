@@ -234,7 +234,7 @@
     "inputs": {
       "shift": 8,
       "model": [
-        "115",
+        "simpai_lora_stack_low",
         0
       ]
     },
@@ -271,7 +271,7 @@
       "strength": 1,
       "pre_cfg": false,
       "model": [
-        "120",
+        "simpai_lora_stack_high",
         0
       ]
     },
@@ -845,6 +845,34 @@
     "class_type": "CLIPLoader",
     "_meta": {
       "title": "clip_model"
+    }
+  },
+  "simpai_lora_stack_low": {
+    "inputs": {
+      "model": [
+        "115",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "low"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_low"
+    }
+  },
+  "simpai_lora_stack_high": {
+    "inputs": {
+      "model": [
+        "120",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "high"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_high"
     }
   }
 }

@@ -118,11 +118,66 @@
             return state;
         }
 
+        function setNodeSelectionState(id) {
+            const nextId = id || null;
+            writeSelection({
+                selectedNodeId: nextId,
+                selectedNodeIds: new Set(nextId ? [nextId] : []),
+                selectedEdgeId: null,
+                selectedGroupId: null
+            });
+        }
+
+        function resetSelectionState() {
+            writeSelection({
+                selectedNodeId: null,
+                selectedNodeIds: new Set(),
+                selectedEdgeId: null,
+                selectedGroupId: null
+            });
+        }
+
+        function setNodeSelectionIncludingEmpty(id) {
+            writeSelection({
+                selectedNodeId: id,
+                selectedNodeIds: new Set([id]),
+                selectedEdgeId: null,
+                selectedGroupId: null
+            });
+        }
+
+        function focusNodePreservingSelection(id) {
+            selectionCall('setSelectedNodeId', undefined, id);
+            selectionCall('setSelectedEdgeId', undefined, null);
+        }
+
+        function setMarqueeSelectionState(ids) {
+            const nextIds = new Set(ids || []);
+            const nextList = Array.from(nextIds);
+            writeSelection({
+                selectedNodeId: nextList.length ? nextList[nextList.length - 1] : null,
+                selectedNodeIds: nextIds,
+                selectedEdgeId: null,
+                selectedGroupId: null
+            });
+        }
+
         function selectCanvasAgentNode(nodeId) {
+            setNodeSelectionPreservingGroup(nodeId);
+        }
+
+        function setNodeSelectionPreservingGroup(nodeId) {
             setSelectionState(Object.assign({}, getSelectionState(), {
                 selectedNodeId: nodeId,
                 selectedNodeIds: new Set([nodeId]),
                 selectedEdgeId: null
+            }));
+        }
+
+        function setNodeSelectionPreservingEdgeAndGroup(nodeId) {
+            setSelectionState(Object.assign({}, getSelectionState(), {
+                selectedNodeId: nodeId,
+                selectedNodeIds: new Set([nodeId])
             }));
         }
 
@@ -135,6 +190,22 @@
             if (options?.clearGroup) next.selectedGroupId = null;
             else if (groupId !== undefined && (groupId || options?.clearEmptyGroup)) next.selectedGroupId = groupId || null;
             setSelectionState(next);
+        }
+
+        function setOptionalNodeSelectionPreservingGroup(id) {
+            const nextId = id || null;
+            setSelectionState(Object.assign({}, getSelectionState(), {
+                selectedNodeId: nextId,
+                selectedNodeIds: new Set(nextId ? [nextId] : []),
+                selectedEdgeId: null
+            }));
+        }
+
+        function setVlmAgentTargetSelection(nodeId, options) {
+            selectionCall('setSelectedNodeId', undefined, nodeId);
+            selectionCall('setSelectedNodeIds', undefined, nodeId ? [nodeId] : []);
+            selectionCall('setSelectedEdgeId', undefined, null);
+            if (options?.clearGroup) selectionCall('setSelectedGroupId', undefined, null);
         }
 
         function selectedNodeIds(state) {
@@ -215,6 +286,19 @@
             refreshSelectionUi();
         }
 
+        function setGroupSelectionState(id) {
+            writeSelection({
+                selectedGroupId: id || null,
+                selectedNodeId: null,
+                selectedNodeIds: new Set(),
+                selectedEdgeId: null
+            });
+        }
+
+        function setSelectedGroupFocus(id) {
+            selectionCall('setSelectedGroupId', undefined, id || null);
+        }
+
         function selectGroupLight(id) {
             const state = selectionState();
             const nextId = id || null;
@@ -222,12 +306,7 @@
                 && !state.selectedNodeId
                 && !state.selectedEdgeId
                 && !state.selectedNodeIds.size) return;
-            writeSelection({
-                selectedGroupId: nextId,
-                selectedNodeId: null,
-                selectedNodeIds: new Set(),
-                selectedEdgeId: null
-            });
+            setGroupSelectionState(nextId);
             refreshSelectionUi();
         }
 
@@ -396,11 +475,22 @@
         return {
             updateSelectionDomClasses,
             refreshSelectionUi,
+            setNodeSelectionState,
+            resetSelectionState,
+            setNodeSelectionIncludingEmpty,
+            focusNodePreservingSelection,
+            setMarqueeSelectionState,
             selectCanvasAgentNode,
+            setNodeSelectionPreservingGroup,
+            setNodeSelectionPreservingEdgeAndGroup,
             setCanvasAgentSelection,
+            setOptionalNodeSelectionPreservingGroup,
+            setVlmAgentTargetSelection,
             selectNodeLight,
             toggleNodeSelectionLight,
             selectGroupLight,
+            setGroupSelectionState,
+            setSelectedGroupFocus,
             selectNode,
             toggleNodeSelection,
             getSelectedNodeIdList,

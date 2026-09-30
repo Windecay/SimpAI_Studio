@@ -109,7 +109,10 @@
         const title = autoActive ? displayLabel + " · " + autoModeLabel : label;
         if (button.textContent !== displayLabel) button.textContent = displayLabel;
         button.classList.toggle("simpleai-random-auto-active", autoActive);
-        button.setAttribute("data-auto-random-mode", autoActive ? randomPanelState.everyGenerationMode : "");
+        const autoMode = autoActive ? randomPanelState.everyGenerationMode : "";
+        if (button.getAttribute("data-auto-random-mode") !== autoMode) {
+            button.setAttribute("data-auto-random-mode", autoMode);
+        }
         if (button.getAttribute("title") !== title) button.setAttribute("title", title);
         if (button.getAttribute("aria-label") !== title) button.setAttribute("aria-label", title);
     }

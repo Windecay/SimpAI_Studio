@@ -164,7 +164,7 @@
       "sage_attention": "auto",
       "allow_compile": false,
       "model": [
-        "213",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -1046,6 +1046,20 @@
     "class_type": "ImageResizeKJv2",
     "_meta": {
       "title": "Restore original video resolution"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "213",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

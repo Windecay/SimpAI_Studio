@@ -47,9 +47,6 @@
             buildVlmChatStoragePatch: serializationSource,
             sendCanvasProjectSaveRequest: backendSource,
             sendCanvasProjectLoadRequest: backendSource,
-            isCanvasBridgeReady: backendSource,
-            bindCanvasBridgeResponseListener: backendSource,
-            sendCanvasBridgeRequest: backendSource,
             materializeInlineProjectAssets: assetSource,
             syncCanvasProjectAssetRoot: assetSource,
             setCanvasProjectAssetRoot: assetSource,
@@ -288,19 +285,29 @@
             };
             if (opts.force) return Object.assign(base, { reason: 'force_load' });
             const emptyCheck = typeof projectSource.isProjectEmpty === 'function' ? projectSource.isProjectEmpty : projectIsEmpty;
-            if (emptyCheck(local)) return Object.assign(base, { reason: 'local_empty' });
+            const storageKey = call('getStorageKey', '', []);
+            if (emptyCheck(local)) {
+                let cachedProject = null;
+                try {
+                    const storage = call('getStorage', null, []);
+                    const cacheKey = local.storage?.key || browserCacheProjectKey(local.id);
+                    cachedProject = JSON.parse(storage?.getItem(cacheKey) || 'null');
+                } catch (err) {}
+                if (!local.id || cachedProject?.id !== local.id || !Array.isArray(cachedProject.nodes)) {
+                    return Object.assign(base, { reason: 'local_empty' });
+                }
+            }
             const localWeight = projectContentWeight(local);
             const incomingWeight = projectContentWeight(incoming);
-            const localIsDemo = !!local.settings?.__demo_initialized;
+            const localIsDemo = localWeight > 0 && !!local.settings?.__demo_initialized;
             const incomingIsDemo = !!incoming?.settings?.__demo_initialized;
-            if (opts.backendFound === false && localWeight > 0) {
+            if (opts.backendFound === false) {
                 return Object.assign(base, { keepBrowser: true, reason: localIsDemo ? 'backend_missing_keep_demo' : 'backend_missing_keep_browser' });
             }
             if (localIsDemo && !incomingIsDemo && incomingWeight > 0) {
                 return Object.assign(base, { reason: 'local_demo_backend_has_content' });
             }
             const storage = local.storage || {};
-            const storageKey = call('getStorageKey', '', []);
             const localIsBrowserCache = storage.kind === 'browser_local_storage_cache' || storage.key === storageKey;
             const localTime = projectTimestamp(local);
             const incomingTime = projectTimestamp(incoming);
@@ -340,20 +347,13 @@
             const storage = getProject().storage || {};
             const storageScope = call('getStorageScope', {}, []);
             if (storage.kind === 'user_directory') return storage.location || storageScope.location;
-            return call('isCanvasBridgeReady', false, [])
-                ? t('{location} (pending sync, browser cache only)', '{location}（待同步，浏览器仅作缓存）')
-                    .replace('{location}', storageScope.location)
-                : t('Browser localStorage cache (backend bridge not ready)', '浏览器 localStorage 缓存（后端桥未就绪）');
+            return t('Browser localStorage cache (backend unavailable)', '浏览器 localStorage 缓存（后端不可用）');
         }
 
         function storageDisplayPath() {
             const project = getProject();
             const storage = project.storage || {};
             if (storage.path) return storage.path;
-            if (call('isCanvasBridgeReady', false, [])) {
-                const projectId = project.id || call('getDefaultProjectId', 'default', []);
-                return `${t('User directory', '用户目录')} / canvas_workbench/projects/${projectId}.canvas.json`;
-            }
             return storage.key || call('getStorageKey', '', []);
         }
 
@@ -452,42 +452,17 @@
                     call('renderStatus', null, []);
                     return true;
                 }
-                if (!call('isCanvasBridgeReady', false, [])) {
-                    if (!silent) {
-                        call('showToast', null, t('Backend save bridge is not ready; cached to {location} · {scope}', '后端保存桥未就绪，已暂存到 {location} · {scope}')
+                if (!silent) {
+                    if (cached) {
+                        call('showToast', null, t('Backend save unavailable; cached to {location} · {scope}', '后端保存不可用，已暂存到 {location} · {scope}')
                             .replace('{location}', storageScope.cacheLocation)
                             .replace('{scope}', storageScope.label));
+                    } else {
+                        call('showToast', null, t('Save failed: neither directory nor browser cache was confirmed.', '保存失败：目录和浏览器缓存都未确认成功'));
                     }
-                    call('renderStatus', null, []);
-                    return true;
-                }
-                const result = await call('sendCanvasBridgeRequest', null, 'save_project', projectPayload, 45000);
-                if (!result || !result.ok) {
-                    const error = result && result.error ? `：${result.error}` : '';
-                    applyProjectStorage(currentProject, Object.assign({}, currentProject.storage || buildProjectStorageInfo(storageKey, storageScope), {
-                        location: t('{location} (pending sync, browser cache only)', '{location}（待同步，浏览器仅作缓存）').replace('{location}', storageScope.location)
-                    }));
-                    if (!silent) {
-                        call('showToast', null, t('Directory is not confirmed; saved to browser cache{error}', '目录暂未确认，已保存到浏览器缓存{error}')
-                            .replace('{error}', error));
-                    }
-                    call('renderStatus', null, []);
-                    return true;
-                }
-                if (result.project && typeof result.project === 'object') {
-                    currentProject = call('sanitizeProject', result.project, result.project) || result.project;
-                    call('setProject', null, currentProject);
-                }
-                if (result.storage && typeof result.storage === 'object') applyProjectStorage(currentProject, result.storage);
-                call('syncCanvasProjectAssetRoot', null, currentProject);
-                saveProjectToBrowserCache({ reason: 'bridge_backend_save_ok' });
-                if (!silent) {
-                    call('showToast', null, t('Canvas saved to {location} · {path}', '画布已保存到 {location} · {path}')
-                        .replace('{location}', currentProject.storage?.location || storageScope.location)
-                        .replace('{path}', currentProject.storage?.path || storageScope.label));
                 }
                 call('renderStatus', null, []);
-                return true;
+                return cached;
             } catch (err) {
                 warn('[SimpAI Canvas] save failed:', err);
                 if (!silent) call('showToast', null, t('Save failed: neither directory nor browser cache was confirmed.', '保存失败：目录和浏览器缓存都未确认成功'));
@@ -566,7 +541,6 @@
 
         async function loadProjectFromBackend(options) {
             const opts = options || {};
-            call('bindCanvasBridgeResponseListener', null, []);
             const storageKey = call('getStorageKey', '', []);
             if (call('getBackendLoadedStorageKey', '', []) === storageKey && !opts.force) return true;
 
@@ -579,29 +553,11 @@
                 if (directLoad.storage && typeof directLoad.storage === 'object') applyProjectStorage(incoming, directLoad.storage);
                 return applyBackendProject(incoming, opts, directLoad.found !== false, true);
             }
-            if (!call('isCanvasBridgeReady', false, [])) {
-                if (!opts.silent) {
-                    call('showToast', null, t('Backend save bridge is not ready; using {location}', '后端保存桥未就绪，正在使用 {location}').replace('{location}', call('getStorageScope', {}, []).cacheLocation));
-                }
-                return false;
+            if (!opts.silent) {
+                call('showToast', null, t('Backend project load unavailable; using {location}', '后端项目读取不可用，正在使用 {location}')
+                    .replace('{location}', call('getStorageScope', {}, []).cacheLocation));
             }
-            if (call('getBackendLoadedStorageKey', '', []) === storageKey && !opts.force) return true;
-            let result = await call('sendCanvasProjectLoadRequest', null, projectLoadPayload);
-            if ((!result || !result.ok) && call('isCanvasBridgeReady', false, [])) {
-                result = await call('sendCanvasBridgeRequest', null, 'load_project', projectLoadPayload, 45000);
-            }
-            if (!result || !result.ok) {
-                if (!opts.silent) {
-                    call('showToast', null, t('Project load from directory failed; using local cache{error}', '目录项目读取失败，正在使用本地缓存{error}')
-                        .replace('{error}', result && result.error ? `: ${result.error}` : ''));
-                }
-                return false;
-            }
-            if (!result.project || typeof result.project !== 'object') return false;
-            const fallback = call('createDefaultProject', {}, []);
-            const incoming = call('sanitizeProject', fallback, result.project) || fallback;
-            if (result.storage && typeof result.storage === 'object') applyProjectStorage(incoming, result.storage);
-            return applyBackendProject(incoming, opts, result.found !== false, false);
+            return false;
         }
 
         return {

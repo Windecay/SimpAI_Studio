@@ -15,12 +15,10 @@
         const renderSource = scope.renderSource || {};
         const runStatusSource = scope.runStatusSource || {};
         const minimapSource = scope.minimapSource || {};
-        const bridgeSource = scope.bridgeSource || {};
         const historySource = scope.historySource || {};
         const renderMethod = name => method(controllers.render, name);
         const runStatusMethod = name => method(controllers.runStatus, name);
         const minimapMethod = name => method(controllers.minimap, name);
-        const bridgeMethod = name => method(controllers.bridge, name);
         const historyMethod = name => method(controllers.history, name);
         const nodeRenderMethod = name => method(controllers.nodeRender, name);
         const spatialMethod = name => method(controllers.nodeSpatialIndex, name);
@@ -69,12 +67,6 @@
             })
         );
 
-        controllers.bridge = createController(
-            window.SimpAICanvasWorkbenchBridgeTransport || {},
-            'createCanvasBridgeTransportController',
-            bridgeSource
-        );
-
         controllers.history = createController(
             window.SimpAICanvasWorkbenchHistory || {},
             'createCanvasHistoryController',
@@ -102,7 +94,6 @@
                 CANVAS_RENDER_CONTROLLER: controllers.render,
                 CANVAS_RUN_STATUS_CONTROLLER: controllers.runStatus,
                 CANVAS_MINIMAP_CONTROLLER: controllers.minimap,
-                CANVAS_BRIDGE_TRANSPORT_CONTROLLER: controllers.bridge,
                 CANVAS_HISTORY_CONTROLLER: controllers.history
             },
             expose('render', ['renderAll']),
@@ -115,7 +106,6 @@
                 'mergeCanvasRunStatus', 'buildCanvasNodeStatusPatch'
             ]),
             minimapAliases,
-            expose('bridge', ['isCanvasBridgeReady', 'bindCanvasBridgeResponseListener', 'sendCanvasBridgeRequest']),
             expose('history', [
                 'pushHistory', 'pushHistoryBatch', 'undoCanvasEdit', 'redoCanvasEdit',
                 'renderHistoryButtons', 'resetHistory'

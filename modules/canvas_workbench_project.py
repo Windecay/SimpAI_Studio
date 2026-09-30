@@ -7,7 +7,7 @@ import time
 from urllib.parse import unquote
 
 import shared
-from modules import canvas_workbench_assets, canvas_workbench_runner
+from modules import canvas_workbench_assets
 from modules.access_mode import get_access_mode, is_local_mode
 
 
@@ -493,7 +493,6 @@ def list_templates(payload, state_params):
         },
     }
 
-
 def load_template(payload, state_params):
     template_id = _safe_id(payload.get("template_id") or payload.get("id") or "") if isinstance(payload, dict) else ""
     if not template_id:
@@ -541,49 +540,3 @@ def delete_template(payload, state_params):
             "path": templates_dir,
         },
     }
-
-
-def handle_bridge_request(payload_text, state_params):
-    request_id = ""
-    try:
-        payload = json.loads(payload_text or "{}")
-        if not isinstance(payload, dict):
-            payload = {}
-        request_id = str(payload.get("request_id") or "")
-        action = str(payload.get("action") or "").strip()
-        data = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
-        if action == "save_project":
-            result = save_project(data, state_params)
-        elif action == "load_project":
-            result = load_project(data, state_params)
-        elif action == "clear_project":
-            result = clear_project(data, state_params)
-        elif action == "list_projects":
-            result = list_projects(data, state_params)
-        elif action == "delete_project":
-            result = delete_project(data, state_params)
-        elif action == "save_template":
-            result = save_template(data, state_params)
-        elif action == "list_templates":
-            result = list_templates(data, state_params)
-        elif action == "load_template":
-            result = load_template(data, state_params)
-        elif action == "delete_template":
-            result = delete_template(data, state_params)
-        elif action == "list_assets":
-            result = canvas_workbench_assets.list_project_assets(data.get("project_id") or "default", state_params, data)
-        elif action == "delete_assets":
-            result = canvas_workbench_assets.delete_project_assets(data.get("project_id") or "default", state_params, data.get("paths") or [])
-        elif action == "dry_run_node":
-            result = canvas_workbench_runner.dry_run_node(data, state_params)
-        else:
-            result = {"ok": False, "error": f"Unknown canvas action: {action}"}
-        result["request_id"] = request_id
-        result["action"] = action
-        return json.dumps(result, ensure_ascii=False)
-    except Exception as err:
-        return json.dumps({
-            "ok": False,
-            "request_id": request_id,
-            "error": f"{type(err).__name__}: {err}",
-        }, ensure_ascii=False)

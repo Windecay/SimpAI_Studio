@@ -1183,6 +1183,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
 
     function localizeModelsJsPanel(panel) {
         const root = panel || document;
+        window.SimpAILoraStackEditor?.refresh(root, modelsPanelLang());
         root.querySelectorAll?.('[data-simpai-i18n-en]').forEach((node) => {
             node.textContent = modelsPanelText(node.dataset.simpaiI18nEn || '', node.dataset.simpaiI18nCn || '');
         });
@@ -1309,6 +1310,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     const modelsPanelCatalogRequests = new Map();
     let modelsPanelCatalogForceNext = false;
     let modelsPanelCatalogGeneration = 0;
+    let modelsPanelCatalogRefreshTimer = null;
 
     function modelsPanelUseModelFilter() {
         const checkbox = document.querySelector('.use_model_filter_checkbox input[type="checkbox"]');
@@ -1322,8 +1324,8 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     function modelsPanelCatalogSignature() {
         const params = window.simpleaiTopbarSystemParams || {};
         const engine = String(params.__backend_engine || params.backend_engine || params.engine || params.task_class_name || 'Z-image').trim() || 'Z-image';
-        const taskMethod = String(params.task_method || params.__scene_task_method || '').trim();
         const sceneFrontend = !!params.__is_scene_frontend;
+        const taskMethod = String((sceneFrontend ? params.__scene_task_method : '') || params.task_method || params.__scene_task_method || '').trim();
         const useModelFilter = modelsPanelUseModelFilter();
         const baseModelField = document.querySelector('[data-simpai-models-js-root] [data-simpai-model-field="base_model"]');
         const baseModel = String(baseModelField?.value || params.__base_model || params.base_model || '').trim();
@@ -1379,7 +1381,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         try {
             modelsPanelCatalogGeneration += 1;
             modelsPanelCatalogCache.delete(signature.key);
-            modelsPanelCatalogRequests.delete(signature.key);
+            modelsPanelCatalogRequests.clear();
             if (window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object') {
                 delete window.simpleaiTopbarSystemParams.__canvas_model_catalog;
             }
@@ -1397,11 +1399,13 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         }
         catalog.task_method = signature.taskMethod;
         catalog.use_model_filter = signature.useModelFilter;
+        modelsPanelCatalogCache.set(signature.key, catalog);
+        if (signature.key !== modelsPanelCatalogSignature().key) return catalog;
         if (!window.simpleaiTopbarSystemParams || typeof window.simpleaiTopbarSystemParams !== 'object') {
             window.simpleaiTopbarSystemParams = {};
         }
         window.simpleaiTopbarSystemParams.__canvas_model_catalog = catalog;
-        modelsPanelCatalogCache.set(signature.key, catalog);
+        syncAllModelsPanelControls();
         return catalog;
     }
 
@@ -1437,6 +1441,8 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const signature = modelsPanelCatalogSignature();
         const forceRefresh = !!(options && options.force) || modelsPanelCatalogForceNext;
         if (forceRefresh) {
+            clearTimeout(modelsPanelCatalogRefreshTimer);
+            modelsPanelCatalogRefreshTimer = null;
             modelsPanelCatalogForceNext = false;
             invalidateModelsPanelCatalog(signature);
         }
@@ -1460,9 +1466,11 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             })
             .catch(() => null)
             .finally(() => {
-                modelsPanelCatalogRequests.delete(signature.key);
+                if (modelsPanelCatalogRequests.get(signature.key) === request) {
+                    modelsPanelCatalogRequests.delete(signature.key);
+                }
             });
-        if (!forceRefresh) modelsPanelCatalogRequests.set(signature.key, request);
+        modelsPanelCatalogRequests.set(signature.key, request);
         return request;
     }
 
@@ -1470,7 +1478,10 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         modelsPanelCatalogForceNext = true;
         invalidateModelsPanelCatalog();
         closeModelsSelectMenu();
-        setTimeout(() => {
+        syncAllModelsPanelControls();
+        clearTimeout(modelsPanelCatalogRefreshTimer);
+        modelsPanelCatalogRefreshTimer = setTimeout(() => {
+            modelsPanelCatalogRefreshTimer = null;
             if (!document.querySelector('[data-simpai-models-js-root]')) return;
             refreshModelsPanelCatalog({ force: true }).then((catalog) => {
                 if (!catalog) return;
@@ -1486,6 +1497,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             return uniqueModelChoices(catalog.refiner_filenames || ['None', ...modelChoices], currentValue);
         }
         if (type === 'clip') return uniqueModelChoices(catalog.clip_filenames || [], currentValue);
+        if (type === 'pe') return uniqueModelChoices(catalog.pe_filenames || ['None']);
         if (type === 'vae') return uniqueModelChoices(catalog.vae_filenames || [], currentValue);
         if (type === 'upscale') return uniqueModelChoices(catalog.upscale_model_filenames || [], currentValue);
         if (type === 'lora') {
@@ -1884,6 +1896,10 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         panel.querySelectorAll('[data-simpai-model-range], [data-simpai-model-field], [data-simpai-lora-weight]').forEach(syncSliderPair);
         panel.querySelectorAll('[data-simpai-lora-enabled]').forEach(syncLoraRowInteractivity);
         syncModelsPanelRefinerAvailability(panel);
+        // PE availability belongs to the active task, not the asynchronous file catalog.
+        const peEnabled = modelsPanelCatalogSignature().taskMethod.includes('qwen_image21');
+        const peField = panel.querySelector('[data-simpai-model-card="pe"]');
+        if (peField) peField.hidden = !peEnabled;
     }
 
     function syncAllModelsPanelControls() {
@@ -1922,7 +1938,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const apply = () => {
             if (seq && latestPresetModelsPanelResetSeq !== seq) return;
             document.querySelectorAll('[data-simpai-models-js-root]').forEach((panel) => {
-                ['base_model', 'refiner_model', 'clip_model', 'vae_name', 'upscale_model'].forEach((key) => {
+                ['base_model', 'refiner_model', 'clip_model', 'pe_model', 'vae_name', 'upscale_model'].forEach((key) => {
                     if (!Object.prototype.hasOwnProperty.call(modelState, key)) return;
                     setSelectValue(panel.querySelector(`[data-simpai-model-field="${key}"]`), modelState[key]);
                 });
@@ -1951,6 +1967,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
                     });
                 }
                 syncModelsPanelControls(panel);
+                window.SimpAILoraStackEditor?.set(panel.querySelector('[data-simpai-lora-stack]'), modelState.lora_stack || [], modelState.lora_stack_target || 'auto');
             });
             if (Object.prototype.hasOwnProperty.call(modelState, 'base_model')) {
                 markModelsPanelCatalogDirty();
@@ -1968,6 +1985,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
 
     function collectModelsPanelPayload(panel) {
         const payload = { loras: [] };
+        Object.assign(payload, window.SimpAILoraStackEditor?.read(panel.querySelector('[data-simpai-lora-stack]')) || {});
         panel.querySelectorAll('[data-simpai-model-field]').forEach((field) => {
             const key = field.dataset.simpaiModelField;
             payload[key] = key === 'refiner_switch' ? numericValue(field.value, 0.5) : String(field.value || '');
@@ -2165,6 +2183,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             base: modelsPanelText('Browse Base Model', '浏览基础模型'),
             refiner: modelsPanelText('Browse Refiner Model', '浏览精修模型'),
             clip: modelsPanelText('Browse CLIP / Text Encoder', '浏览 CLIP / 文本编码器'),
+            pe: modelsPanelText('Browse PE Model', '浏览 PE 模型'),
             vae: modelsPanelText('Browse VAE', '浏览 VAE'),
             upscale: modelsPanelText('Browse Upscale Model', '浏览放大模型'),
             lora: `${modelsPanelText('Browse LoRA', '浏览 LoRA')}${Number.isInteger(loraIndex) ? ` ${loraIndex + 1}` : ''}`
@@ -2172,7 +2191,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const openSharedBrowser = () => {
             if (!window.SimpAIModelBrowser?.open) return false;
             window.SimpAIModelBrowser.open({
-                type,
+                type: type === 'pe' ? 'clip' : type,
                 title: titleByType[type] || modelsPanelText('Model Browser', '模型浏览器'),
                 onSelect: (item) => {
                     const value = item?.name || item?.path || '';
@@ -2221,6 +2240,11 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         clickGradioButton(fallbackTrigger);
     }
 
+    document.addEventListener('simpai:lora-stack-change', (event) => {
+        const panel = event.target?.closest?.('[data-simpai-models-js-root]');
+        if (panel) applyModelsPanel(panel, 0);
+    });
+
     document.addEventListener('change', (event) => {
         const panel = event.target?.closest?.('[data-simpai-models-js-root]');
         if (!panel) return;
@@ -2228,6 +2252,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             syncSliderPair(event.target);
             if (event.target.matches('[data-simpai-lora-enabled]')) syncLoraRowInteractivity(event.target);
             syncModelsPanelBridgeField(event.target, panel);
+            if (event.target.matches('[data-simpai-model-field="pe_model"]')) syncModelsPanelControls(panel);
             if (event.target.matches('[data-simpai-model-field="base_model"]')) {
                 markModelsPanelCatalogDirty();
             }

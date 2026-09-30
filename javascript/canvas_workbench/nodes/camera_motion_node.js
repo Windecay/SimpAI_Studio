@@ -76,6 +76,7 @@
             clearTimeout: pick(runtimeSource, 'clearTimeout'),
             generateCameraMotionReference: pick(apiSource, 'generateCameraMotionReference'),
             setSelectedNode: pick(scope, 'setSelectedNode'),
+            completePendingConnectionToNode: pick(scope, 'completePendingConnectionToNode'),
             showToast: pick(scope, 'showToast'),
             buildCameraMotionParamsPatch: pick(scope, 'buildCameraMotionParamsPatch'),
             buildCameraMotionSourcePatch: pick(scope, 'buildCameraMotionSourcePatch'),
@@ -315,6 +316,25 @@ ${status ? `<div class="sai-node-foot">${escapeHtmlValue(ctx, status)}</div>` : 
         return node;
     }
 
+    function addNode(world, options, context) {
+        const opts = options || {};
+        const node = createNode(world, Object.assign({}, opts, {
+            render: false,
+            toast: false
+        }), context);
+        if (!node) return null;
+        const autoMessage = call(context, 'completePendingConnectionToNode', '', node);
+        call(context, 'setSelectedNode', null, node.id);
+        if (opts.render !== false) call(context, 'mutate', null);
+        if (opts.toast !== false) {
+            const message = autoMessage
+                ? `${node.title || 'Uni3C Camera Motion'} node added, ${autoMessage}`
+                : translateValue(context, 'Uni3C Camera Motion node added', '已添加 Uni3C 运镜节点');
+            call(context, 'showToast', null, message);
+        }
+        return node;
+    }
+
     async function runNode(node, context) {
         const ctx = contextOf(context);
         if (!node || node.type !== 'camera_motion') return { ok: false, error: 'Uni3C Camera Motion node is unavailable' };
@@ -385,6 +405,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtmlValue(ctx, status)}</div>` : 
 
     window.SimpAICanvasWorkbenchCameraMotionNode = {
         createCameraMotionNodeContext,
+        addNode,
         clearNode,
         createNode,
         defaultParams,

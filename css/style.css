@@ -552,6 +552,20 @@ html.simpai-hide-refiner-model .models-grid #model_dropdown_base {
   gap: 14px 22px;
 }
 
+.simpai-models-js-grid > [data-simpai-model-card="pe"],
+.simpai-models-js-grid > .sai-help-model-field:has(> [data-simpai-model-card="pe"]) {
+  grid-column: 1 / -1;
+}
+
+html.simpai-hide-refiner-model .simpai-models-js-grid > [data-simpai-model-card="refiner"],
+html.simpai-hide-refiner-model .simpai-models-js-grid > .sai-help-model-field:has(> [data-simpai-model-card="refiner"]),
+html.simpai-hide-refiner-model .simpai-models-js-grid > [data-simpai-model-card="refiner_switch"],
+html.simpai-hide-refiner-model .simpai-models-js-grid > .sai-help-model-field:has(> [data-simpai-model-card="refiner_switch"]),
+html.simpai-hide-refiner-switch .simpai-models-js-grid > [data-simpai-model-card="refiner_switch"],
+html.simpai-hide-refiner-switch .simpai-models-js-grid > .sai-help-model-field:has(> [data-simpai-model-card="refiner_switch"]) {
+  display: none !important;
+}
+
 .simpai-models-js-field {
   display: flex;
   flex-direction: column;
@@ -560,6 +574,10 @@ html.simpai-hide-refiner-model .models-grid #model_dropdown_base {
   font-size: 12px;
   font-weight: 500;
   line-height: 1.25;
+}
+
+.simpai-models-js-field[hidden] {
+  display: none !important;
 }
 
 .simpai-models-js-field.is-disabled {
@@ -580,6 +598,10 @@ html.simpai-hide-refiner-model .models-grid #model_dropdown_base {
 }
 
 .simpai-models-js-inputrow:has(> input:only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.simpai-models-js-field[data-simpai-model-card="pe"] .simpai-models-js-inputrow {
   grid-template-columns: minmax(0, 1fr);
 }
 

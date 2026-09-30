@@ -27,9 +27,11 @@
         models: pair('Generation models', '生成模型指引'),
         refiner: pair('Refiner / Low-noise model', '精修 / 低噪声模型'),
         clip: pair('CLIP / Text encoder', 'CLIP / 文本编码器'),
+        pe: pair('PE model guide', 'PE 模型指引'),
         vae: pair('VAE guide', 'VAE 指引'),
         upscale: pair('Upscale model guide', '放大模型指引'),
         lora: pair('LoRA guide', 'LoRA 指引'),
+        lora_stack: pair('Extra LoRA stack guide', '扩展 LoRA 堆指引'),
         general: pair('General generation settings', '常规生成设置'),
         sampling: pair('Sampling settings', '采样设置'),
         control: pair('Control preprocessing', '控图预处理'),
@@ -213,7 +215,7 @@
                     pair('Directories are on the Studio server. A file appearing in the list does not prove architectural compatibility or sufficient memory. Opening help does not download or load models.', '模型目录位于运行 Studio 的电脑上。文件出现在列表中，不代表架构匹配或内存足够。打开指引不会下载或加载模型。'),
                 ]],
             ],
-            links: ['refiner', 'clip', 'vae', 'lora', 'upscale', 'cfg', 'setup'],
+            links: ['refiner', 'clip', 'pe', 'vae', 'lora', 'lora_stack', 'upscale', 'cfg', 'setup'],
         },
         refiner: {
             intro: pair('The refiner field can mean a refinement model or a low-noise model, depending on the preset.', '精修位置可能用于精修模型，也可能用于低噪声模型，具体含义随预置变化。'),
@@ -233,6 +235,23 @@
                 pair('A generation text encoder is not the chat agent model. Even when its filename contains Qwen, selecting it here does not configure chat or enable an agent.', '生成用文本编码器不等于对话智能体模型。即使文件名带有 Qwen，在这里选择它也不会完成对话配置或启用智能体。'),
             ]]],
             links: ['models', 'setup'],
+        },
+        pe: {
+            intro: pair('PE optionally rewrites prompts for the Qwen Image 2.1 workflow. It does not replace the generation text encoder or the image model.', 'PE 可为 Qwen Image 2.1 流程改写提示词，不会替代生成用文本编码器或图像模型。'),
+            sections: [
+                [pair('Choose a model', '选择模型'), [
+                    {
+                        ...pair('Official PE model downloads (ModelScope)', 'PE 模型官方下载（ModelScope）'),
+                        href: 'https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/tree/master/text_encoders',
+                    },
+                    pair('Select None to use the original prompt without loading a PE model. The selector appears only when the current preset supports PE; choose a matching T2I or I2I model for your task.', '选择 None 时直接使用原提示词，也不会加载 PE 模型。只有当前预置支持 PE 时才显示该选项；文生图与图生图请选用对应模型。'),
+                    pair('The list contains eligible local PE files from text-encoder model libraries. A GGUF model also needs a matching mmproj in the same directory; a filename in the list does not guarantee inference compatibility.', '列表显示文本编码器模型库中符合筛选条件的本地 PE 文件。GGUF 模型还需要同目录配套的 mmproj；能选中某个文件，不代表它一定能正常推理。'),
+                ]],
+                [pair('Saved choices', '保存与恢复'), [
+                    pair('The choice can be saved with a preset or parameter profile. If a saved PE file or its mmproj is missing, generation uses the unchanged original prompt and records a warning; model inference errors are still reported.', 'PE 选择可随预置或参数方案保存。已保存的 PE 文件或配套 mmproj 缺失时，生成会沿用原提示词并记录警告；模型推理错误仍会正常报错。'),
+                ]],
+            ],
+            links: ['models', 'clip', 'profiles'],
         },
         vae: {
             intro: pair('VAE converts between media and the latent representation used in generation. It is not a style model or an upscaler.', 'VAE 负责媒体与生成过程所用潜空间表示之间的转换，不是风格模型，也不是放大模型。'),
@@ -263,7 +282,21 @@
                 pair('Several LoRAs can interfere with one another. When comparing, enable one at a time. Speed/step-distillation LoRAs may also require matching steps and CFG; keep those bundled with the preset unless you understand their role.', '多个 LoRA 可能互相影响，比较效果时可逐个启用。加速或步数蒸馏 LoRA 还可能要求配套的步数和 CFG；未了解其作用前，建议保留预置自带的配置。'),
                 ]],
             ],
-            links: ['models', 'cfg'],
+            links: ['models', 'cfg', 'lora_stack'],
+        },
+        lora_stack: {
+            intro: pair('The extra LoRA stack is a separate list beside the original ten slots. It does not use up or rearrange those slots.', '扩展 LoRA 堆是原有十个槽位之外的独立列表，不会占用或重新排列旧槽位。'),
+            sections: [
+                [pair('Add and route LoRAs', '添加与作用范围'), [
+                    pair('Add a LoRA, choose its file, enable it and set its model weight. Entries can be reordered or removed. The CLIP weight starts at zero and requires a workflow whose stack node is connected to CLIP.', '添加条目后选择文件、启用并设置模型权重，也可以调整顺序或删除。CLIP 权重默认为零；要使用非零权重，工作流中的堆节点需要连接 CLIP。'),
+                    pair('Main targets a single model. For high/low-noise workflows, choose High, Low or High + low explicitly, or use Auto: it reads the LoRA filename markers for each file; unmarked files go to High.', '单模型流程使用主模型。高低噪流程可手动选择高噪、低噪或高低噪；自动模式会逐个识别文件名标记，无法识别的文件进入高噪。'),
+                ]],
+                [pair('Prompt tags and workflow support', '提示词标签与工作流'), [
+                    pair('A <lora:name:weight> prompt tag also uses the stack, but stays separate from manually added entries. The prompt-tag target controls those tags only; tags are removed from the text sent to the encoder.', '提示词中的 <lora:名称:权重> 标签也使用堆，但不会加入手动列表。提示词 LoRA 的作用范围只管理标签；送入文本编码器前会移除标签文本。'),
+                    pair('Extra entries and tags require a Comfy workflow with a SimpAILoraStack node. A custom workflow without that node reports an error instead of applying them to the old ten slots; other backends do not run this stack.', '扩展条目和标签需要带 SimpAILoraStack 节点的 Comfy 工作流。自定义工作流缺少该节点时会报错，不会转入旧十槽；其他后端不会执行扩展堆。'),
+                ]],
+            ],
+            links: ['lora', 'models', 'preset'],
         },
         store: {
             intro: pair('Organize the presets shown in the top navbar. Changes stay in the draft until you apply them. Organizing presets does not require an LLM.', '整理顶部导航栏中的常用预置。仓库内的调整先保留在草稿中，点击应用后才更新导航栏。整理预置不需要 LLM。'),

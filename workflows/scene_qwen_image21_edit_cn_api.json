@@ -44,13 +44,23 @@
   "7": {
     "inputs": {
       "clip": ["54", 0], "vae": ["5", 0],
-      "prompt": ["1", 0], "negative_prompt": ["1", 29], "resolution": ["1", 10],
+      "prompt": ["simpai_qwen21_pe", 0], "negative_prompt": ["1", 29], "resolution": ["1", 10],
       "images.image_1": ["22", 0], "images.image_2": ["25", 0], "images.image_3": ["28", 0],
       "images.image_4": ["31", 0], "images.image_5": ["34", 0], "images.image_6": ["37", 0],
       "images.image_7": ["40", 0], "images.image_8": ["43", 0], "images.image_9": ["46", 0]
     },
     "class_type": "TextEncodeQwenImage21",
     "_meta": {"title": "Qwen Image 2.1 Ordered References"}
+  },
+  "simpai_qwen21_pe": {
+    "inputs": {
+      "prompt": ["1", 0], "pe_model": "None", "seed": ["2", 0],
+      "images.image_1": ["22", 0], "images.image_2": ["25", 0], "images.image_3": ["28", 0],
+      "images.image_4": ["31", 0], "images.image_5": ["34", 0], "images.image_6": ["37", 0],
+      "images.image_7": ["40", 0], "images.image_8": ["43", 0], "images.image_9": ["46", 0]
+    },
+    "class_type": "SimpAIQwenImage21TextGenerate",
+    "_meta": {"title": "Qwen Image 2.1 PE"}
   },
   "8": {
     "inputs": {"width": ["14", 1], "height": ["15", 1], "batch_size": 1},
@@ -254,7 +264,7 @@
     "_meta": {"title": "Select clip loader"}
   },
   "55": {
-    "inputs": {"model": ["65", 0], "attention": "comfy kitchen attention"},
+    "inputs": {"model": ["simpai_lora_stack_main", 0], "attention": "comfy kitchen attention"},
     "class_type": "ModelAttentionBackend",
     "_meta": {"title": "Qwen Image 2.1 Kitchen Attention"}
   },
@@ -307,5 +317,19 @@
     "inputs": {"model": ["64", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
     "class_type": "LoraLoaderModelOnly",
     "_meta": {"title": "lora_10"}
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "65",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
+    }
   }
 }

@@ -27,6 +27,9 @@ except Exception:
     api_params = None
 
 CANVAS_EXTRA_BACKEND_ARGS = (
+    "pe_model",
+    "lora_stack",
+    "lora_stack_target",
     "upscale_model",
     "keep_vlm_model_loaded",
     "cloud_config_name",
@@ -1400,6 +1403,9 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
         params_backend.get("keep_vlm_model_loaded"),
     )
     params_backend.update(_scene_lora_backend_params(enabled_loras))
+    params_backend["lora_stack"] = copy.deepcopy(models.get("lora_stack", []))
+    params_backend["lora_stack_target"] = models.get("lora_stack_target", "auto")
+    params_backend["pe_model"] = models.get("pe_model", "None")
     director_runtime = _director_runtime_from_params(params)
     if director_runtime:
         params_backend["director_timeline"] = director_runtime
@@ -1769,6 +1775,9 @@ def build_canvas_task_args_preview(payload, materialized_inputs, state_params):
         params_backend.get("keep_vlm_model_loaded"),
     )
     params_backend.update(_scene_lora_backend_params(enabled_loras))
+    params_backend["lora_stack"] = copy.deepcopy(models.get("lora_stack", []))
+    params_backend["lora_stack_target"] = models.get("lora_stack_target", "auto")
+    params_backend["pe_model"] = models.get("pe_model", "None")
     if scene_steps is not None:
         params_backend["steps"] = scene_steps
     if generation_api_overrides.get("guidance_scale") is not None:

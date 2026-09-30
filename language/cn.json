@@ -2446,6 +2446,8 @@
   "Face Track Has Unreviewed Frames": "仍有缺失帧未处理，请修正脸框或明确选择保留原画",
   "No Face Boxes in Interval": "处理范围内没有需要修复的脸框",
   "Face Preview Video Failed": "预览视频读取失败",
+  "PE Model": "PE 模型",
+  "Browse PE Model": "浏览 PE 模型",
   "Qwen2.1-Edit": "Qwen2.1-编辑",
   "Qwen2.1-Edit\u2B07": "Qwen2.1-编辑\u2B07",
   "Qwen Image 2.1 Edit": "Qwen Image 2.1 编辑",

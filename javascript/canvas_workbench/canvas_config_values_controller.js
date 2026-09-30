@@ -391,6 +391,15 @@
             }));
         }
 
+        function getDetectionChoices() {
+            return {
+                maskModels: call(classicSource, 'getClassicEnhanceMaskModels', null)
+                    || ['u2net', 'u2netp', 'u2net_human_seg', 'u2net_cloth_seg', 'silueta', 'isnet-general-use', 'isnet-anime', 'sam'],
+                clothCategories: call(classicSource, 'getClassicEnhanceClothCategories', null) || ['full', 'upper', 'lower'],
+                samModels: call(classicSource, 'getClassicEnhanceSamModels', null) || ['vit_b', 'vit_l', 'vit_h']
+            };
+        }
+
         function getDetectionConfigLabel(index) {
             const preset = getClassicEnhanceRegionDefault(index);
             return `${preset.label || `Region ${index + 1}`} Detection`;
@@ -712,8 +721,11 @@
                 base_model: defaults.base_model || '',
                 refiner_model: defaults.refiner_model || 'None',
                 clip_model: defaults.clip_model || 'Default (model)',
+                pe_model: defaults.pe_model || 'None',
                 vae: defaults.vae || 'Default (model)',
                 upscale_model: defaults.upscale_model || 'default',
+                lora_stack: defaults.lora_stack || [],
+                lora_stack_target: defaults.lora_stack_target || 'auto',
                 loras: normalizeInitialConfigLoras(defaults, overrides)
             }, overrides, { loras: normalizeInitialConfigLoras(defaults, overrides) });
         }
@@ -729,7 +741,7 @@
             normalizeStyleSelections, firstStyleConfigValue, styleConfigSelectionFromValues,
             canvasBoolValue, enhanceRegionKey, detectionSlotForRegion, parseDetectionSlot,
             getClassicEnhanceRegionDefault, getClassicEnhanceRegionValues,
-            applyClassicEnhanceRegionValues, getDetectionConfigLabel,
+            applyClassicEnhanceRegionValues, getDetectionChoices, getDetectionConfigLabel,
             getClassicIpMaxImages, getClassicIpCount, getVisibleClassicUploadSlots,
             getClassicIpTypes, getClassicUovMethods,
             getClassicInpaintEngines, resolveClassicInpaintTaskMethod, normalizeClassicInpaintMode,

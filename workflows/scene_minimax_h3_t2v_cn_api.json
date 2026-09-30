@@ -329,7 +329,7 @@
     "inputs": {
       "shift_video": ["1", 12],
       "shift_audio": ["1", 13],
-      "model": ["68", 0]
+      "model": ["simpai_lora_stack_main", 0]
     },
     "class_type": "MiniMaxH3SigmaShift",
     "_meta": {"title": "ModelSamplingMiniMaxH3"}
@@ -384,5 +384,19 @@
     },
     "class_type": "easy ifElse",
     "_meta": {"title": "H3 Output Image"}
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "68",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
+    }
   }
 }

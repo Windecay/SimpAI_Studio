@@ -1546,6 +1546,8 @@ def _selected_model_path_exists(catalogs, value):
 
 def selected_model_missing_status(model_state, backend_params=None):
     """Return True/False for concrete selections, or None when none are available."""
+    from modules.lora_stack import active_stack_models
+
     if not isinstance(model_state, dict):
         return None
     if not model_state.get("__model_params_state") and not any(
@@ -1594,6 +1596,9 @@ def selected_model_missing_status(model_state, backend_params=None):
                 enabled = enabled.strip().lower() not in ("", "0", "false", "no", "off")
             if enabled:
                 add_selection(f"lora[{index}]", model_name, ("loras",))
+
+    for index, model_name in enumerate(active_stack_models(model_state.get("lora_stack", backend_params.get("lora_stack")))):
+        add_selection(f"lora_stack[{index}]", model_name, ("loras",))
 
     if not selections:
         return None

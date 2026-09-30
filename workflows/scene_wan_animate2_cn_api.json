@@ -350,7 +350,7 @@
       "device": "gpu",
       "dtype": "int4",
       "model": [
-        "23",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -738,7 +738,7 @@
       "device": "cpu",
       "dtype": "int4",
       "model": [
-        "23",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -922,6 +922,20 @@
     "class_type": "easy ifElse",
     "_meta": {
       "title": "Select Wan Animate 2 Final Frames"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "23",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

@@ -1274,7 +1274,7 @@
         0
       ],
       "on_false": [
-        "683",
+        "simpai_lora_stack_main_2",
         0
       ]
     },
@@ -1294,7 +1294,7 @@
         0
       ],
       "on_false": [
-        "683",
+        "simpai_lora_stack_main_2",
         0
       ]
     },
@@ -2877,7 +2877,7 @@
     "inputs": {
       "strength": 1,
       "model": [
-        "679",
+        "simpai_lora_stack_main_1",
         0
       ]
     },
@@ -6520,7 +6520,7 @@
     "inputs": {
       "total": 4,
       "initial_value1": [
-        "683",
+        "simpai_lora_stack_main_2",
         0
       ]
     },
@@ -7387,6 +7387,34 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "lora_10"
+    }
+  },
+  "simpai_lora_stack_main_1": {
+    "inputs": {
+      "model": [
+        "679",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
+    }
+  },
+  "simpai_lora_stack_main_2": {
+    "inputs": {
+      "model": [
+        "683",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

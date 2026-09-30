@@ -278,7 +278,7 @@
     "inputs": {
       "shift": 8,
       "model": [
-        "150",
+        "simpai_lora_stack_low",
         0
       ]
     },
@@ -359,7 +359,7 @@
     "inputs": {
       "shift": 8,
       "model": [
-        "150",
+        "simpai_lora_stack_low",
         0
       ]
     },
@@ -1718,7 +1718,7 @@
   "158": {
     "inputs": {
       "model": [
-        "149",
+        "simpai_lora_stack_high",
         0
       ],
       "model_patch": [
@@ -1762,13 +1762,41 @@
         0
       ],
       "on_false": [
-        "149",
+        "simpai_lora_stack_high",
         0
       ]
     },
     "class_type": "easy ifElse",
     "_meta": {
       "title": "Wan Uni3C High Noise Select"
+    }
+  },
+  "simpai_lora_stack_high": {
+    "inputs": {
+      "model": [
+        "149",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "high"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_high"
+    }
+  },
+  "simpai_lora_stack_low": {
+    "inputs": {
+      "model": [
+        "150",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "low"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_low"
     }
   }
 }

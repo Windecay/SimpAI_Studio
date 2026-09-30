@@ -58,6 +58,21 @@
             ]);
         }
 
+        function renderCanvasSettingsPanel() {
+            const panel = panelCall('getCanvasSettingsPanel', null);
+            if (!panel || panel.hidden) return;
+            const settings = agentSettingsCall('getCanvasAgentSettings', undefined);
+            const scan = renderCall('getCanvasAgentPresetScanState', undefined);
+            const readyCount = renderCall('getCanvasAgentReadyPresetCount', 0);
+            const agentHtml = renderCall('renderCanvasAgentSettingsTab', '', settings, scan, readyCount) || '';
+            panel.innerHTML = renderCall('renderCanvasSettingsPanelView', '', {
+                tab: panelCall('getCanvasSettingsTab', undefined),
+                agentHtml,
+                projectSettings: call(projectSource, 'getProject', {})?.settings
+            });
+            renderCall('ensureWorkbenchFormFieldNames', undefined, panel, 'canvas_settings');
+        }
+
         function closeCanvasSettingsPanel() {
             const panel = panelCall('getCanvasSettingsPanel', null);
             if (panel) panel.hidden = true;
@@ -73,7 +88,7 @@
             siblingPanelCall('closeContextMenu', null);
             siblingPanelCall('closeRunQueuePanel', null);
             siblingPanelCall('closeRunHistoryPanel', null);
-            renderCall('renderCanvasSettingsPanel', null);
+            renderCanvasSettingsPanel();
             if ((tab || currentTab) === 'agent' && renderCall('isCanvasAgentPresetScanIdle', false)) {
                 renderCall('refreshCanvasAgentAvailablePresets', null);
             }
@@ -84,7 +99,7 @@
             const tab = button?.getAttribute?.('data-canvas-settings-tab') || '';
             if (tab) {
                 panelCall('setCanvasSettingsTab', null, tab);
-                renderCall('renderCanvasSettingsPanel', null);
+                renderCanvasSettingsPanel();
                 if (tab === 'agent' && renderCall('isCanvasAgentPresetScanIdle', false)) {
                     renderCall('refreshCanvasAgentAvailablePresets', null);
                 }
@@ -110,7 +125,7 @@
                 agentSettingsCall('syncSelectedVlmCustomFromCanvasAgent', null);
             } else if (action.startsWith('toggle:')) {
                 toggleSetting(action.slice('toggle:'.length));
-                renderCall('renderCanvasSettingsPanel', null);
+                renderCanvasSettingsPanel();
             } else if (action === 'load-demo') {
                 templateCall('openTemplateLibrary', null);
             } else if (action === 'save-current-template') {
@@ -125,7 +140,8 @@
             return true;
         }
 
-        return { openCanvasSettingsPanel, closeCanvasSettingsPanel, handleCanvasSettingsAction, openSettingsMenu, toggleSetting };
+        return { openCanvasSettingsPanel, closeCanvasSettingsPanel, renderCanvasSettingsPanel,
+            handleCanvasSettingsAction, openSettingsMenu, toggleSetting };
     }
 
     window.SimpAICanvasWorkbenchSettingsController = Object.assign({}, window.SimpAICanvasWorkbenchSettingsController || {}, {

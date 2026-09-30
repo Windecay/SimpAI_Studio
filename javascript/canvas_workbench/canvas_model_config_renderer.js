@@ -23,7 +23,11 @@
         function renderModelConfigField(label, key, choices, value, preview = true, extraClass = '') {
             const attrs = preview ? ` data-hover-preview-kind="model" data-model-preview-param="${escapeHtml(key)}"` : '';
             const className = `sai-node-field${extraClass ? ` ${extraClass}` : ''}`;
-            return `<label class="${className}"><span>${escapeHtml(label)}</span><div class="sai-model-config-select-row"><select data-config-param="${escapeHtml(key)}"${attrs}${modelSelectTitleAttr(value)}>${optionHtml(choices, value)}</select>${renderModelBrowserButton('data-model-browser-param', key)}</div></label>`;
+            const browser = key === 'pe_model' ? '' : renderModelBrowserButton('data-model-browser-param', key);
+            const field = `<label class="${className}"><span>${escapeHtml(label)}</span><div class="sai-model-config-select-row"><select data-config-param="${escapeHtml(key)}"${attrs}${modelSelectTitleAttr(value)}>${optionHtml(choices, value)}</select>${browser}</div></label>`;
+            if (key !== 'pe_model') return field;
+            const helpLabel = translate('PE model guide', 'PE 模型指引');
+            return `<div class="sai-help-canvas-model-field">${field}<span class="sai-help-inline"><button type="button" class="sai-help-button" data-studio-help="pe" data-studio-help-source="canvas" title="${escapeHtml(helpLabel)}" aria-label="${escapeHtml(helpLabel)}" aria-haspopup="dialog"><i class="fa-solid fa-circle-question" aria-hidden="true"></i></button></span></div>`;
         }
 
         function renderModelsConfigNodeHtml(node) {
@@ -32,6 +36,8 @@
             const loras = call('normalizeInitialConfigLoras', [], node.config?.defaults || {}, values);
             const useModelFilter = call('modelConfigUsesFilter', false, node);
             const nodeBadges = call('renderNodeStateBadges', '', node);
+            const stack = values.lora_stack ?? node.config?.defaults?.lora_stack ?? [];
+            const stackJson = typeof stack === 'string' ? stack : JSON.stringify(stack);
 
             return `
 <div class="sai-node-head">
@@ -45,6 +51,7 @@
   ${renderModelConfigField(translate('Base Model', '基础模型'), 'base_model', choices.base_model, values.base_model, true, 'sai-collapsed-keep')}
   ${renderModelConfigField(translate('Refiner', '精修模型'), 'refiner_model', choices.refiner_model, values.refiner_model)}
   ${renderModelConfigField('CLIP', 'clip_model', choices.clip_model, values.clip_model, false)}
+  ${choices.pe_enabled ? renderModelConfigField(translate('PE Model', 'PE 模型'), 'pe_model', choices.pe_model, values.pe_model || 'None', false) : ''}
   ${renderModelConfigField('VAE', 'vae', choices.vae, values.vae, false)}
   ${renderModelConfigField(translate('Upscale Model', '放大模型'), 'upscale_model', choices.upscale_model, values.upscale_model || 'default')}
   <div class="sai-lora-config-list">
@@ -54,6 +61,7 @@
       <input data-config-lora-weight="${index}" type="number" min="-4" max="4" step="0.05" value="${escapeHtml(lora.weight ?? 1)}">
     </div>`).join('')}
   </div>
+  <div data-simpai-lora-stack="1" data-canvas="1" data-lang="${escapeHtml(translate('en', 'cn'))}" data-items="${escapeHtml(stackJson)}" data-target="${escapeHtml(values.lora_stack_target || node.config?.defaults?.lora_stack_target || 'auto')}" data-models="${escapeHtml(JSON.stringify(choices.lora || []))}"></div>
 </div>
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="config" title="${escapeHtml(translate('Config output', '配置输出'))}"></button>`;
         }

@@ -42,7 +42,7 @@
   "66": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_8"}, "inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["65", 0]}},
   "67": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_9"}, "inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["66", 0]}},
   "68": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_10"}, "inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["67", 0]}},
-  "69": {"class_type": "MiniMaxH3SigmaShift", "inputs": {"shift_video": ["1", 12], "shift_audio": 3, "model": ["68", 0]}},
+  "69": {"class_type": "MiniMaxH3SigmaShift", "inputs": {"shift_video": ["1", 12], "shift_audio": 3, "model": ["simpai_lora_stack_main", 0]}},
   "70": {"class_type": "SimpAIH3RegionSource", "_meta": {"title": "H3 Region Source"},
     "inputs": {"video": "", "start": ["1", 14], "end": ["1", 15], "factor": ["1", 16], "width": ["1", 6], "height": ["1", 7], "keep_source_size": true}},
   "73": {"class_type": "SimpAIH3RegionOutput", "inputs": {"region": ["70", 0], "images": ["90", 0], "source_aligned": true}},
@@ -65,5 +65,19 @@
       "bboxes": ["85", 0], "reference1": ["83", 0], "reference2": ["88", 0], "reference3": ["93", 0]}},
   "91": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 27], "image": "None"}},
   "92": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 27], "b": ["80", 0]}},
-  "93": {"class_type": "easy ifElse", "inputs": {"boolean": ["92", 0], "on_true": ["79", 0], "on_false": ["91", 0]}}
+  "93": {"class_type": "easy ifElse", "inputs": {"boolean": ["92", 0], "on_true": ["79", 0], "on_false": ["91", 0]}},
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "68",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
+    }
+  }
 }

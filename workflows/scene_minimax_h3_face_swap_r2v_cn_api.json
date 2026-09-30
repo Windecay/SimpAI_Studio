@@ -389,7 +389,7 @@
     "inputs": {
       "shift_video": ["1", 12],
       "shift_audio": ["1", 13],
-      "model": ["68", 0]
+      "model": ["simpai_lora_stack_main", 0]
     },
     "class_type": "MiniMaxH3SigmaShift",
     "_meta": {"title": "ModelSamplingMiniMaxH3"}
@@ -719,5 +719,19 @@
     "inputs": {"mask": ["77", 0]},
     "class_type": "SimpAIFaceGenerationMask",
     "_meta": {"title": "Solidify Face Generation Core"}
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "68",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
+    }
   }
 }

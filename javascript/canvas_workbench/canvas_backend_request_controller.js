@@ -9,7 +9,6 @@
         const systemSource = scope.systemSource || {};
         const languageSource = scope.languageSource || {};
         const serializationSource = scope.serializationSource || {};
-        const bridgeSource = scope.bridgeSource || {};
         const vlmSource = scope.vlmSource || {};
         const networkSource = scope.networkSource || {};
         const getApiMethod = (name) => typeof apiSource.getApiMethod === 'function' ? apiSource.getApiMethod(name) : null;
@@ -265,9 +264,6 @@
             const body = withWorkbenchUserContext(payload);
             const method = getApiMethod('deleteProject');
             if (typeof method === 'function') return method(body);
-            if (call(bridgeSource, 'isBridgeReady', false)) {
-                return call(bridgeSource, 'sendBridgeRequest', unavailable('project-delete'), 'delete_project', body, 45000);
-            }
             return unavailable('project-delete');
         }
 
@@ -275,9 +271,6 @@
             const body = withWorkbenchUserContext(payload);
             const method = getApiMethod('clearProject');
             if (typeof method === 'function') return method(body);
-            if (call(bridgeSource, 'isBridgeReady', false)) {
-                return call(bridgeSource, 'sendBridgeRequest', unavailable('project-clear'), 'clear_project', body, 45000);
-            }
             return unavailable('project-clear');
         }
 

@@ -8,6 +8,7 @@
   "prompt_agent_required": true,
   "default_engine": {
     "backend_engine": "Qwen",
+    "backend_params": {"pe_model": "None"},
     "engine_type": "image",
     "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
     "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],

@@ -476,7 +476,7 @@
       "sage_attention": "auto",
       "allow_compile": false,
       "model": [
-        "740",
+        "simpai_lora_stack_main",
         0
       ]
     },
@@ -1143,6 +1143,20 @@
     "class_type": "SimpAILTXVFramePad",
     "_meta": {
       "title": "SCAIL2 Input Frame Grid Pad"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "740",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

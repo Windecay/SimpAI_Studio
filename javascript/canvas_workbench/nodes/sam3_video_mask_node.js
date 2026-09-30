@@ -79,6 +79,7 @@
             cancelSam3VideoMask: pick(apiSource, 'cancelSam3VideoMask'),
             normalizeSam3MaskVideo: pick(apiSource, 'normalizeSam3MaskVideo'),
             setSelectedNode: pick(scope, 'setSelectedNode'),
+            completePendingConnectionToNode: pick(scope, 'completePendingConnectionToNode'),
             showToast: pick(scope, 'showToast'),
             buildMediaEditAsset: pick(scope, 'buildMediaEditAsset'),
             buildSam3SourcePatch: pick(scope, 'buildSam3SourcePatch'),
@@ -444,6 +445,27 @@ ${running
         setSelectedNode(node.id, context);
         if (opts.render !== false) call(context, 'mutate', null);
         if (opts.toast !== false) call(context, 'showToast', null, t('SAM3 Video Mask node added', '已添加 SAM3 视频蒙版节点', context));
+        return node;
+    }
+
+    function addNode(world, options, context) {
+        const ctx = contextOf(context);
+        const opts = options || {};
+        const node = createNode(world, Object.assign({}, opts, {
+            render: false,
+            toast: false
+        }), ctx);
+        if (!node) return null;
+        const autoMessage = call(ctx, 'completePendingConnectionToNode', '', node);
+        setSelectedNode(node.id, ctx);
+        if (opts.render !== false) call(ctx, 'mutate', null);
+        if (opts.toast !== false) {
+            const title = node.title || 'SAM3 Video Mask';
+            const message = autoMessage
+                ? t(`${title} node added, ${autoMessage}`, `已添加 ${title} 节点，${autoMessage}`, ctx)
+                : t('SAM3 Video Mask node added', '已添加 SAM3 视频蒙版节点', ctx);
+            call(ctx, 'showToast', null, message);
+        }
         return node;
     }
 
@@ -1005,6 +1027,7 @@ ${running
 
     window.SimpAICanvasWorkbenchSam3VideoMaskNode = {
         createSam3VideoMaskNodeContext,
+        addNode,
         createNode,
         defaultParams,
         inputSourceForNode,

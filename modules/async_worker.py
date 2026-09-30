@@ -12,6 +12,7 @@ from modules.patch import PatchSettings, patch_settings, patch_all
 from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress
 from modules.comfy_progress_filter import use_progress_profile
 from modules.gpu_task_lock import exclusive_task_lock
+from modules.lora_stack import build_fooocus_stack, prepare_stack_params
 import modules.config
 
 patch_all()
@@ -681,7 +682,7 @@ def worker():
     from modules.private_logger import log, p2p_log
     from extras.expansion import safe_str
     from modules.util import (remove_empty_str, join_prompts, HWC3, resize_image, get_image_shape_ceil, set_image_shape_ceil,
-                              get_shape_ceil, resample_image, erode_or_dilate, parse_lora_references_from_prompt,
+                              get_shape_ceil, resample_image, erode_or_dilate,
                               apply_wildcards, normalize_inpaint_mask_upload, generate_temp_filename)
     from modules.lora_params import sync_loras_to_params_backend
     from modules.upscaler import perform_upscale
@@ -1259,6 +1260,7 @@ def worker():
             except Exception as err:
                 logger.warning("H3 reference frontend preprocess skipped: %s", err)
             default_params.update(params_backend)
+            default_params["__lang"] = async_task.simpleai_lang
             try:
                 user_cert = shared.token.get_register_cert(async_task.user_did)
                 comfy_task = get_comfy_task(async_task.user_did, async_task.task_class, async_task.task_name, async_task.task_method, 
@@ -1912,6 +1914,13 @@ def worker():
 
     def process_prompt(async_task, prompt, negative_prompt, base_model_additional_loras, image_number, disable_seed_increment, use_expansion, use_style,
                        use_synthetic_refiner, current_progress, advance_progress=False):
+        lora_filenames = modules.util.remove_performance_lora(modules.config.lora_filenames,
+                                                              async_task.performance_selection)
+        prompt = prepare_stack_params(
+            prompt, async_task.params_backend, lora_filenames,
+            supports_stack=async_task.task_class in flags.comfy_classes or async_task.task_class == 'Fooocus',
+            lang=async_task.simpleai_lang,
+        )
         preserve_prompt_newlines = async_task.task_class in flags.comfy_classes
         if preserve_prompt_newlines:
             prompts = remove_empty_str([safe_str(prompt)], default='')
@@ -1927,12 +1936,7 @@ def worker():
         extra_positive_prompts = prompts[1:] if len(prompts) > 1 else []
         extra_negative_prompts = negative_prompts[1:] if len(negative_prompts) > 1 else []
         
-        lora_filenames = modules.util.remove_performance_lora(modules.config.lora_filenames,
-                                                              async_task.performance_selection)
-        loras, prompt = parse_lora_references_from_prompt(prompt, async_task.loras,
-                                                          modules.config.default_max_lora_number,
-                                                          lora_filenames=lora_filenames,
-                                                          preserve_lora_slots=async_task.task_class in flags.comfy_classes)
+        loras = list(async_task.loras)
         if async_task.task_class in flags.comfy_classes:
             sync_loras_to_params_backend(
                 async_task.params_backend,
@@ -1940,11 +1944,11 @@ def worker():
                 modules.config.default_max_lora_number,
                 lora_filenames=lora_filenames,
             )
-            regen_manifest.sync_lora_backend_params(
-                async_task.simpleai_regen_manifest,
-                async_task.params_backend,
-                modules.config.default_max_lora_number,
-            )
+        regen_manifest.sync_lora_backend_params(
+            async_task.simpleai_regen_manifest,
+            async_task.params_backend,
+            modules.config.default_max_lora_number,
+        )
         loras += async_task.performance_loras
         if advance_progress:
             current_progress += 1
@@ -2066,7 +2070,8 @@ def worker():
                                     base_model_name=async_task.base_model_name,
                                     loras=loras, base_model_additional_loras=base_model_additional_loras,
                                     use_synthetic_refiner=use_synthetic_refiner, vae_name=async_task.vae_name,
-                                    use_expansion=use_expansion)
+                                    use_expansion=use_expansion,
+                                    lora_stack=build_fooocus_stack(async_task.params_backend, loras, lora_filenames))
             pipeline.set_clip_skip(async_task.clip_skip)
         elif use_expansion:
             pipeline.reload_expansion()
@@ -2559,11 +2564,22 @@ def worker():
         else:
             # Determine use_expansion based on style selections
             skip_use_expansion = fooocus_expansion in async_task.style_selections
+            lora_filenames = modules.util.remove_performance_lora(modules.config.lora_filenames,
+                                                                 async_task.performance_selection)
+            prepare_stack_params(
+                async_task.prompt, async_task.params_backend, lora_filenames,
+                supports_stack=async_task.task_class in flags.comfy_classes or async_task.task_class == 'Fooocus',
+                lang=async_task.simpleai_lang,
+            )
+            regen_manifest.sync_lora_backend_params(
+                async_task.simpleai_regen_manifest, async_task.params_backend, modules.config.default_max_lora_number,
+            )
             pipeline.refresh_everything(refiner_model_name=async_task.refiner_model_name,
                                     base_model_name=async_task.base_model_name,
                                     loras=async_task.loras,
                                     vae_name=async_task.vae_name,
-                                    use_expansion=skip_use_expansion)
+                                    use_expansion=skip_use_expansion,
+                                    lora_stack=build_fooocus_stack(async_task.params_backend, async_task.loras, lora_filenames))
             pipeline.set_clip_skip(async_task.clip_skip)
 
         if async_task.task_class in flags.comfy_classes:

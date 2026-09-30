@@ -32,7 +32,6 @@
         const buildManualOutputNode = (...args) => call(factorySource, 'buildManualOutputNode', null, ...args);
         const buildClassicNode = (...args) => call(factorySource, 'buildClassicNode', null, ...args);
         const buildPresetNode = (...args) => call(factorySource, 'buildPresetNode', null, ...args);
-        const buildStyleSelectorNode = (...args) => call(factorySource, 'buildStyleSelectorNode', null, ...args);
         const placeNodeAvoidingOverlap = (...args) => call(layoutSource, 'placeNodeAvoidingOverlap', undefined, ...args);
         const buildNodeLayoutPatch = (...args) => call(layoutSource, 'buildNodeLayoutPatch', {}, ...args);
         const viewportCenterWorld = () => call(layoutSource, 'viewportCenterWorld', null);
@@ -40,7 +39,7 @@
         const selectAuxNode = (...args) => call(selectionSource, 'selectAuxNode', undefined, ...args);
         const selectManualOutputNode = (...args) => call(selectionSource, 'selectManualOutputNode', undefined, ...args);
         const selectPresetNode = nodeId => call(selectionSource, 'selectPresetNode', undefined, nodeId);
-        const setSelectedStyle = (...args) => call(scope.actionSource || {}, 'setSelectedStyle', undefined, ...args);
+        const addStyleSelectorNodeFromModule = (...args) => call(scope.actionSource || {}, 'addStyleSelectorNode', null, ...args);
         const linkStyleSelectorToPreset = (...args) => call(scope.actionSource || {}, 'linkStyleSelectorToPreset', undefined, ...args);
         const pushHistory = label => call(historySource, 'pushHistory', undefined, label);
         const mutate = (...args) => call(renderSource, 'mutate', undefined, ...args);
@@ -241,25 +240,7 @@
         }
 
         function addStyleSelectorNode(world, options) {
-            const opts = options || {};
-            if (opts.history !== false) pushHistory('Add Style Selector node');
-            const node = buildStyleSelectorNode(world, opts);
-            if (opts.selectedName) setSelectedStyle(node, opts.selectedName);
-            if (opts.avoidOverlap === false) {
-                Object.assign(node, buildNodeLayoutPatch(node, {
-                    x: Math.round(world?.x || 0),
-                    y: Math.round(world?.y || 0)
-                }));
-            } else {
-                placeNodeAvoidingOverlap(node, world || viewportCenterWorld());
-            }
-            Object.assign(getProject(), buildProjectNodeAppendPatch(getProject(), node));
-            if (opts.targetPresetId) linkStyleSelectorToPreset(node, getNode(opts.targetPresetId), { silent: true });
-            completePendingConnectionToNode(node);
-            if (opts.select !== false) selectAuxNode(node.id, true);
-            if (opts.render !== false) mutate({ inspector: true });
-            if (opts.toast !== false) showToast(t('Style Selector node added.', '已添加 Style Selector 节点。'));
-            return node;
+            return addStyleSelectorNodeFromModule(world, options);
         }
 
         function ensureStyleSelectorForPreset(presetNode, options) {

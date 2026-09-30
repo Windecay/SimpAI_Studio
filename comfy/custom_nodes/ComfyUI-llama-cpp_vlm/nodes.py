@@ -47,6 +47,26 @@ def _is_visual_component_filename(filename):
         return True
     return bool(re.search(r"(?<![a-z0-9])vision(?![a-z0-9])", name))
 
+
+def _resolve_model_file(catalog, name, root=None):
+    if catalog not in ("LLM", "clip", "text_encoders"):
+        raise ValueError("Unsupported llama.cpp model catalog.")
+    if root is None:
+        path = folder_paths.get_full_path(catalog, name)
+        if path and any(folder_paths.is_within_directory(folder, path)
+                        for folder in folder_paths.get_folder_paths(catalog)):
+            return path
+    else:
+        roots = {os.path.normcase(os.path.realpath(folder))
+                 for folder in folder_paths.get_folder_paths(catalog)}
+        if os.path.normcase(os.path.realpath(root)) not in roots:
+            raise ValueError("Unregistered llama.cpp model directory.")
+        path = os.path.abspath(os.path.join(root, name))
+        if folder_paths.is_within_directory(root, path) and os.path.isfile(path):
+            return path
+    raise FileNotFoundError(f"Model not found in registered {catalog} paths: {name}")
+
+
 try:
     from llama_cpp.llama_chat_format import MTMDChatHandler
     chat_handlers += ["DeepSeek-OCR"]
@@ -302,9 +322,9 @@ class LLAMA_CPP_STORAGE:
         has_mmproj = bool(mmproj and mmproj != "None")
         n_gpu_layers = -1
         
-        model_path = folder_paths.get_full_path("LLM", model)
-        if not model_path:
-            raise FileNotFoundError(f"LLM model not found in registered LLM paths: {model}")
+        model_catalog = config.get("model_catalog", "LLM")
+        model_root = config.get("model_root")
+        model_path = _resolve_model_file(model_catalog, model, model_root)
         handler = get_chat_handler(chat_handler)
         
         if vram_limit != -1:
@@ -313,9 +333,7 @@ class LLAMA_CPP_STORAGE:
             gguf_layer_size = gguf_size / gguf_layers
         
         if has_mmproj:
-            mmproj_path = folder_paths.get_full_path("LLM", mmproj)
-            if not mmproj_path:
-                raise FileNotFoundError(f"LLM mmproj not found in registered LLM paths: {mmproj}")
+            mmproj_path = _resolve_model_file(model_catalog, mmproj, model_root)
             if chat_handler == "None":
                 raise ValueError('"chat_handler" cannot be None when mmproj is used!')
             

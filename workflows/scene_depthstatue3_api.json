@@ -684,7 +684,7 @@
       "end_at": 1,
       "embeds_scaling": "V only",
       "model": [
-        "57",
+        "simpai_lora_stack_main",
         0
       ],
       "ipadapter": [
@@ -703,6 +703,20 @@
     "class_type": "IPAdapterPreciseStyleTransfer",
     "_meta": {
       "title": "IPAdapter Precise Style Transfer"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {
+      "model": [
+        "57",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_main"
     }
   }
 }

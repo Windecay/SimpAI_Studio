@@ -42,7 +42,12 @@
         const assetSource = scope.assetSource || {};
         const nodeSource = scope.nodeSource || {};
         const projectSource = scope.projectSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const connectionSource = scope.connectionSource || {};
+        const historySource = scope.historySource || {};
+        const selectionSource = scope.selectionSource || {};
         const renderSource = scope.renderSource || {};
+        const uiSource = scope.uiSource || {};
         const pick = (group, name) => delegate(group, name) || delegate(scope, name);
         const getProject = pick(projectSource, 'getProject');
         const getNode = pick(nodeSource, 'getNode');
@@ -65,14 +70,22 @@
         return {
             assetDisplaySrc: pick(assetSource, 'assetDisplaySrc'),
             defaultNodeSize: pick(nodeSource, 'defaultNodeSize'),
+            buildProjectNodeAppendPatch: pick(projectSource, 'buildProjectNodeAppendPatch'),
             escapeHtml: pick(utilitySource, 'escapeHtml'),
             t: pick(utilitySource, 't'),
             clamp: pick(utilitySource, 'clamp'),
             getCompareSourceAsset: pick(nodeSource, 'getCompareSourceAsset') || resolveCompareSourceAsset,
             getCompareSourceNode: pick(nodeSource, 'getCompareSourceNode') || resolveCompareSourceNode,
+            getProject: pick(projectSource, 'getProject'),
             readAssetSize: pick(assetSource, 'readAssetSize'),
+            pushHistory: pick(historySource, 'pushHistory'),
+            placeNodeAvoidingOverlap: pick(layoutSource, 'placeNodeAvoidingOverlap'),
+            completePendingConnectionToNode: pick(connectionSource, 'completePendingConnectionToNode'),
+            setSelectedNode: pick(selectionSource, 'setSelectedNode'),
             renderIconHtml: pick(renderSource, 'renderIconHtml'),
             renderNodeStateBadges: pick(renderSource, 'renderNodeStateBadges'),
+            mutate: pick(renderSource, 'mutate'),
+            showToast: pick(uiSource, 'showToast'),
             uid: pick(nodeSource, 'uid')
         };
     }
@@ -179,6 +192,39 @@
             params: { position: 50, mode: 'fit' },
             source: { kind: 'manual_compare' }
         };
+    }
+
+    function appendProjectNode(project, node, context) {
+        const patch = call(context, 'buildProjectNodeAppendPatch', null, project, node);
+        if (patch && Array.isArray(patch.nodes)) {
+            Object.assign(project, patch);
+            return;
+        }
+        const nodes = Array.isArray(project?.nodes) ? project.nodes.slice() : [];
+        if (node && typeof node === 'object') nodes.push(node);
+        Object.assign(project, { nodes });
+    }
+
+    function addNode(world, options, context) {
+        const ctx = contextOf(context);
+        const opts = options || {};
+        if (opts.history !== false) call(ctx, 'pushHistory', undefined, 'Add compare node');
+        const node = createNode(world, opts, ctx);
+        if (!node) return null;
+        call(ctx, 'placeNodeAvoidingOverlap', undefined, node, world, opts);
+        const project = call(ctx, 'getProject', null) || {};
+        appendProjectNode(project, node, ctx);
+        const autoMessage = call(ctx, 'completePendingConnectionToNode', '', node);
+        call(ctx, 'setSelectedNode', undefined, node.id);
+        if (opts.render !== false) call(ctx, 'mutate', undefined);
+        if (opts.toast !== false) {
+            const message = autoMessage
+                ? translateValue(ctx, 'Compare node added, {message}', 'Compare 节点已添加，{message}')
+                    .replace('{message}', autoMessage)
+                : translateValue(ctx, 'Compare node added', 'Compare 节点已添加');
+            call(ctx, 'showToast', undefined, message);
+        }
+        return node;
     }
 
     function getSourceNode(node, slot, context) {
@@ -405,6 +451,7 @@ ${renderControls(node, ctx)}
     window.SimpAICanvasWorkbenchCompareNode = {
         createCompareNodeContext,
         createNode,
+        addNode,
         buildCompareStatePatch,
         sourceSignature,
         imageGeometry,

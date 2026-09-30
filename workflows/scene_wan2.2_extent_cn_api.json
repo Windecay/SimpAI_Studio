@@ -297,7 +297,7 @@
       "lora_name": "SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors",
       "strength_model": 1,
       "model": [
-        "215",
+        "simpai_lora_stack_low",
         0
       ]
     },
@@ -311,7 +311,7 @@
       "lora_name": "SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors",
       "strength_model": 1,
       "model": [
-        "41",
+        "simpai_lora_stack_high",
         0
       ]
     },
@@ -1351,6 +1351,34 @@
     "class_type": "easy ifElse",
     "_meta": {
       "title": "Select SVI Latent"
+    }
+  },
+  "simpai_lora_stack_high": {
+    "inputs": {
+      "model": [
+        "41",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "high"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_high"
+    }
+  },
+  "simpai_lora_stack_low": {
+    "inputs": {
+      "model": [
+        "215",
+        0
+      ],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "low"
+    },
+    "class_type": "SimpAILoraStack",
+    "_meta": {
+      "title": "lora_stack_low"
     }
   }
 }
