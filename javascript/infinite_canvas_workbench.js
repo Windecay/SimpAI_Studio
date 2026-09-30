@@ -9081,13 +9081,13 @@
                 getSuppressWheelUntil: () => suppressWheelUntil
             },
             runtimeSource: {
-                performanceNow: () => canvasPerformanceNow(),
                 setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined,
                 clearTimeout: (...args) => typeof window.clearTimeout === 'function' ? window.clearTimeout(...args) : undefined
             },
             timeSource: {
                 nowIso,
-                parseDate: (value) => Date.parse(value || '')
+                parseDate: (value) => Date.parse(value || ''),
+                performanceNow: () => canvasPerformanceNow()
             }
         },
         assetsSource: {

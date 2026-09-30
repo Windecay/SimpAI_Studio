@@ -25,6 +25,14 @@ def is_pe_model_name(name):
     )
 
 
+def pe_model_task(name):
+    for part in reversed(str(name).replace("\\", "/").split("/")):
+        match = re.search(r"(?:^|[-_.\s])(t2i|i2i)(?:$|[-_.\s])", part, re.I)
+        if match:
+            return match.group(1).casefold()
+    return None
+
+
 def scan_pe_model_files(catalog, roots):
     if catalog not in PE_CATALOGS:
         return []
@@ -93,8 +101,9 @@ def pe_model_rows(inventory):
     for catalog, name, path in inventory:
         if catalog not in PE_CATALOGS or not is_pe_model_name(name) or not path or not os.path.isfile(path):
             continue
-        mmproj = paired_mmproj(path) if str(name).lower().endswith(".gguf") else None
-        if str(name).lower().endswith(".gguf") and not mmproj:
+        requires_mmproj = str(name).casefold().endswith(".gguf") and pe_model_task(name) != "t2i"
+        mmproj = paired_mmproj(path) if requires_mmproj else None
+        if requires_mmproj and not mmproj:
             continue
         key = str(name).replace("\\", "/").casefold()
         if key in names:

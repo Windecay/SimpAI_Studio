@@ -80,6 +80,7 @@
             };
         let saveTimer = 0;
         let viewportSaveTimer = 0;
+        let backendLoadSequence = 0;
 
         function browserCacheBaseKey(scope) {
             const targetScope = scope || call('getCurrentStorageScope', null, []) || call('getStorageScope', {}, []);
@@ -208,6 +209,11 @@
 
         function getProject() {
             return call('getProject', {}, []) || {};
+        }
+
+        function isCurrentProjectRequest(candidate, scopeKey) {
+            return getProject() === candidate
+                && browserCacheBaseKey(call('getStorageScope', {}, [])) === scopeKey;
         }
 
         function touchProject(project) {
@@ -410,12 +416,14 @@
                 const opts = options || {};
                 const persistToDisk = opts.persist === true || (!silent && opts.persist !== false);
                 syncStorageScope({ silent: true });
-                let currentProject = getProject();
+                const currentProject = getProject();
                 touchProject(currentProject);
                 const storageScope = call('getStorageScope', {}, []);
+                const scopeKey = browserCacheBaseKey(storageScope);
                 const storageKey = call('getStorageKey', '', []);
                 applyProjectStorage(currentProject, buildProjectStorageInfo(storageKey, storageScope));
                 await call('materializeInlineProjectAssets', null, []);
+                if (!isCurrentProjectRequest(currentProject, scopeKey)) return false;
                 const cached = saveProjectToBrowserCache({ reason: 'save_project_start', persistToDisk });
                 if (!persistToDisk) {
                     if (!cached) {
@@ -436,14 +444,19 @@
                     project: compactProjectForStorage(currentProject, { stripAllMaterializedDataUrls: true }),
                     backup_existing: !!opts.backupExisting
                 };
-                const directResult = await call('sendCanvasProjectSaveRequest', null, projectPayload);
+                let directResult = null;
+                try {
+                    directResult = await call('sendCanvasProjectSaveRequest', null, projectPayload);
+                } catch (err) {
+                    warn('[SimpAI Canvas] backend save failed; browser cache result retained:', err);
+                }
+                if (!isCurrentProjectRequest(currentProject, scopeKey)) return !!directResult?.ok || cached;
                 if (directResult && directResult.ok) {
-                    if (directResult.project && typeof directResult.project === 'object') {
-                        currentProject = call('sanitizeProject', directResult.project, directResult.project) || directResult.project;
-                        call('setProject', null, currentProject);
-                    }
-                    if (directResult.storage && typeof directResult.storage === 'object') applyProjectStorage(currentProject, directResult.storage);
+                    // The response describes the submitted snapshot, not edits made while saving.
+                    const savedStorage = directResult.storage || directResult.project?.storage;
+                    if (savedStorage && typeof savedStorage === 'object') applyProjectStorage(currentProject, savedStorage);
                     call('syncCanvasProjectAssetRoot', null, currentProject);
+                    touchProject(currentProject);
                     saveProjectToBrowserCache({ reason: 'direct_backend_save_ok' });
                     if (!silent) {
                         call('showToast', null, t('Canvas saved: {target}', '画布已保存：{target}')
@@ -545,8 +558,11 @@
             if (call('getBackendLoadedStorageKey', '', []) === storageKey && !opts.force) return true;
 
             const currentProject = getProject();
+            const scopeKey = browserCacheBaseKey(call('getStorageScope', {}, []));
+            const loadSequence = ++backendLoadSequence;
             const projectLoadPayload = { project_id: currentProject.id || projectId() };
             const directLoad = await call('sendCanvasProjectLoadRequest', null, projectLoadPayload);
+            if (loadSequence !== backendLoadSequence || !isCurrentProjectRequest(currentProject, scopeKey)) return false;
             if (directLoad && directLoad.ok) {
                 const fallback = call('createDefaultProject', {}, []);
                 const incoming = call('sanitizeProject', fallback, directLoad.project || fallback) || fallback;

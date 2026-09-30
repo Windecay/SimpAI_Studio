@@ -685,6 +685,7 @@ def worker():
                               get_shape_ceil, resample_image, erode_or_dilate,
                               apply_wildcards, normalize_inpaint_mask_upload, generate_temp_filename)
     from modules.lora_params import sync_loras_to_params_backend
+    from modules.comfy_pe_metadata import capture_pe_result, pe_metadata_rows
     from modules.upscaler import perform_upscale
     from modules.flags import Performance
     from modules.meta_parser import get_metadata_parser, MetadataParser
@@ -1416,6 +1417,11 @@ def worker():
                         prompt_accepted_callback=mark_comfy_prompt_accepted,
                         process_alive_callback=comfyd.is_running,
                     )
+                if imgs and "qwen_image21" in str(async_task.task_method or "").lower():
+                    capture_pe_result(
+                        comfypipeline, async_task.simpleai_comfy_prompt_id,
+                        params_backend.get("pe_model"), task,
+                    )
                 
                 if inpaint_worker.current_task is not None:
                     imgs = [inpaint_worker.current_task.post_process(x) for x in imgs]
@@ -1540,6 +1546,8 @@ def worker():
             d.append(('Sampler', 'sampler', async_task.sampler_name))
             d.append(('Scheduler', 'scheduler', async_task.scheduler_name))
             d.append(('CLIP / Text Encoder', 'clip_model', async_task.clip_model_name))
+            if "qwen_image21" in str(async_task.task_method or "").lower():
+                d.extend(pe_metadata_rows(task, async_task.params_backend.get("pe_model")))
             d.append(('VAE', 'vae', async_task.vae_name))
             d.append(('Upscale Model', 'upscale_model', async_task.upscale_model_name))
             d.append(('Seed', 'seed', str(task['task_seed'])))

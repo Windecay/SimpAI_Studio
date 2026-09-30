@@ -2086,6 +2086,9 @@ class A1111MetadataParser(MetadataParser):
         'scheduler': 'Schedule type',
         'vae': 'VAE',
         'clip_model': 'Text Encoder',
+        'pe_model': 'PE Model',
+        'pe_prompt': 'PE Prompt',
+        'pe_status': 'PE Status',
         'guidance_scale': 'CFG scale',
         'seed': 'Seed',
         'resolution': 'Size',
@@ -2332,7 +2335,8 @@ class A1111MetadataParser(MetadataParser):
                 self.fooocus_to_a1111['refiner_model_hash']: self.refiner_model_hash
             }
 
-        for key in ['adaptive_cfg', 'overwrite_switch', 'refiner_swap_method', 'freeu']:
+        for key in ['adaptive_cfg', 'overwrite_switch', 'refiner_swap_method', 'freeu',
+                    'pe_model', 'pe_prompt', 'pe_status']:
             if key in data:
                 generation_params[self.fooocus_to_a1111[key]] = data[key]
 

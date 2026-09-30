@@ -20,6 +20,7 @@ _catalog_spec.loader.exec_module(_catalog_module)
 PE_CATALOGS = _catalog_module.PE_CATALOGS
 pe_model_rows = _catalog_module.pe_model_rows
 paired_mmproj = _catalog_module.paired_mmproj
+pe_model_task = _catalog_module.pe_model_task
 
 
 T2I_SYSTEM = """You rewrite image requests for Qwen Image 2.1.
@@ -64,7 +65,7 @@ def _resolve_model(name):
                 if (folder_paths.is_within_directory(root, candidate)
                         and os.path.normcase(os.path.realpath(candidate)) == os.path.normcase(os.path.realpath(row["path"]))):
                     return {**row, "root": root}
-    raise FileNotFoundError("PE model is missing or its adjacent mmproj is unavailable.")
+    raise FileNotFoundError("PE model is missing or its required adjacent mmproj is unavailable.")
 
 
 def _clean_output(text):
@@ -75,6 +76,16 @@ def _clean_output(text):
         value = json.loads(text)
         text = value["rewritten_prompt"]
     return str(text).strip()
+
+
+def _prompt_output(prompt, model, status):
+    record = {"model": model or "None", "prompt": prompt, "status": status}
+    if status != "disabled":
+        logging.info(
+            "[SimpAI Qwen Image 2.1 PE] model=%s status=%s prompt=%s",
+            record["model"], status, json.dumps(prompt, ensure_ascii=False),
+        )
+    return io.NodeOutput(prompt, ui={"simpai_pe": [record]})
 
 
 def _native_generate(model_path, prompt, system, images, seed, max_length):
@@ -103,13 +114,17 @@ def _gguf_generate(row, prompt, system, images, seed, max_length):
     instruct = nodes.NODE_CLASS_MAPPINGS.get("llama_cpp_instruct_adv")
     if loader is None or instruct is None:
         raise RuntimeError("GGUF PE requires ComfyUI-llama-cpp_vlm.")
-    mmproj_path = paired_mmproj(row["path"])
-    if not mmproj_path:
-        raise FileNotFoundError("GGUF PE has no matching adjacent mmproj file.")
-    root = os.path.dirname(row["path"])
-    if not folder_paths.is_within_directory(root, mmproj_path):
-        raise ValueError("PE mmproj must be in the model directory.")
-    mmproj = os.path.relpath(mmproj_path, row["root"])
+    mmproj = "None"
+    if pe_model_task(row["name"]) == "t2i":
+        images = []
+    else:
+        mmproj_path = paired_mmproj(row["path"])
+        if not mmproj_path:
+            raise FileNotFoundError("GGUF PE has no matching adjacent mmproj file.")
+        root = os.path.dirname(row["path"])
+        if not folder_paths.is_within_directory(root, mmproj_path):
+            raise ValueError("PE mmproj must be in the model directory.")
+        mmproj = os.path.relpath(mmproj_path, row["root"])
     module = importlib.import_module(loader.__module__)
     config = {
         "model": row["name"], "mmproj": mmproj if images else "None",
@@ -160,6 +175,7 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
             node_id="SimpAIQwenImage21TextGenerate",
             display_name="SimpAI Qwen Image 2.1 PE",
             category="text",
+            has_intermediate_output=True,
             inputs=[
                 io.String.Input("prompt", multiline=True, dynamic_prompts=True),
                 io.Combo.Input("pe_model", options=["None", *[row["name"] for row in _model_rows()]], default="None"),
@@ -175,7 +191,7 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
     @classmethod
     def execute(cls, prompt, pe_model, seed, max_length=4096, images=None):
         if pe_model in (None, "", "None"):
-            return io.NodeOutput(prompt)
+            return _prompt_output(prompt, pe_model, "disabled")
         try:
             row = _resolve_model(pe_model)
             images = images or {}
@@ -186,9 +202,8 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
                 for index in range(images[name].shape[0])
             ]
             filename = os.path.basename(pe_model).lower()
-            edit = bool(re.search(r"(?:^|[-_.])i2i(?:[-_.]|$)", filename))
-            t2i = bool(re.search(r"(?:^|[-_.])t2i(?:[-_.]|$)", filename))
-            edit = edit or (not t2i and bool(image_list))
+            task = pe_model_task(pe_model)
+            edit = task == "i2i" or (task is None and bool(image_list))
             image_list = image_list if edit else []
             system = I2I_SYSTEM if edit else T2I_SYSTEM
             if filename.endswith(".gguf"):
@@ -199,8 +214,9 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
                 raise ValueError("PE model must be safetensors or GGUF.")
         except FileNotFoundError as error:
             logging.warning("[SimpAI Qwen Image 2.1 PE] Skipping %r: %s Using the original prompt.", pe_model, error)
-            return io.NodeOutput(prompt)
-        return io.NodeOutput(_clean_output(text) or prompt)
+            return _prompt_output(prompt, pe_model, "unavailable")
+        rewritten = _clean_output(text)
+        return _prompt_output(rewritten or prompt, pe_model, "rewritten" if rewritten else "empty_output")
 
 
 NODE_CLASS_MAPPINGS = {"SimpAIQwenImage21TextGenerate": SimpAIQwenImage21TextGenerate}

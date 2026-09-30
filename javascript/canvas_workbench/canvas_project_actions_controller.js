@@ -157,6 +157,11 @@
             Object.assign(project, call('buildProjectIdentityPatch', { id, title }, project, { id, title }));
         }
 
+        function isCurrentSwitchTarget(nextProject, loaded) {
+            const activeProject = call('getCurrentProject', nextProject, []);
+            return activeProject?.id === nextProject.id && (loaded || activeProject === nextProject);
+        }
+
         function clearBrowserCache() {
             const storage = call('getStorage', null);
             try {
@@ -285,6 +290,7 @@
                 call('showToast', null, t('Current workbench could not be saved to browser cache; switch cancelled.', '当前工作台无法保存到浏览器缓存，已取消切换。'));
                 return false;
             }
+            if (call('getCurrentProject', currentProject, []) !== currentProject) return false;
             const storageScope = call('getStorageScope', {}, []);
             call('setActiveBrowserCacheProject', null, safeId, storageScope);
             const storageKey = call('getStorageKey', '', []);
@@ -299,11 +305,13 @@
             call('resetHistory', null);
             call('renderAll', null);
             const loaded = await call('loadProjectFromBackend', false, { force: false });
+            if (!isCurrentSwitchTarget(nextProject, loaded)) return false;
             if (!loaded) {
                 const fallbackProject = call('getCurrentProject', {}, []) || nextProject;
                 const fallbackStorage = call('buildProjectStorageInfo', {}, storageKey, storageScope);
                 applyProjectStoragePatch(fallbackProject, fallbackStorage);
                 await call('saveProject', null, true, { persist: false });
+                if (!isCurrentSwitchTarget(nextProject, false)) return false;
                 call('renderAll', null);
             }
             call('showToast', null, t('Switched to project: {id}', '已切换到项目：{id}').replace('{id}', safeId));
@@ -340,6 +348,7 @@
                 call('showToast', null, t('Current workbench could not be saved to browser cache; open cancelled.', '当前工作台无法保存到浏览器缓存，已取消打开。'));
                 return false;
             }
+            if (call('getCurrentProject', currentProject, []) !== currentProject) return false;
             const storageScope = call('getStorageScope', {}, []);
             call('setActiveBrowserCacheProject', null, safeId, storageScope);
             const storageKey = call('getStorageKey', '', []);
@@ -354,10 +363,12 @@
             call('resetHistory', null);
             call('renderAll', null);
             const ok = await call('loadProjectFromBackend', false, { force: false });
+            if (!isCurrentSwitchTarget(nextProject, ok)) return false;
             if (!ok && opts.createIfMissing) {
                 const nextStorage = call('buildProjectStorageInfo', {}, storageKey, storageScope);
                 applyProjectStoragePatch(nextProject, nextStorage);
                 await call('saveProject', false, true, { persist: false });
+                if (!isCurrentSwitchTarget(nextProject, false)) return false;
                 call('renderAll', null);
                 call('showToast', null, t('Created local workbench cache: {id}', '已创建本地工作台缓存：{id}').replace('{id}', safeId));
                 return true;

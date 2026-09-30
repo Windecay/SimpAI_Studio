@@ -245,10 +245,10 @@
                         href: 'https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/tree/master/text_encoders',
                     },
                     pair('Select None to use the original prompt without loading a PE model. The selector appears only when the current preset supports PE; choose a matching T2I or I2I model for your task.', '选择 None 时直接使用原提示词，也不会加载 PE 模型。只有当前预置支持 PE 时才显示该选项；文生图与图生图请选用对应模型。'),
-                    pair('The list contains eligible local PE files from text-encoder model libraries. A GGUF model also needs a matching mmproj in the same directory; a filename in the list does not guarantee inference compatibility.', '列表显示文本编码器模型库中符合筛选条件的本地 PE 文件。GGUF 模型还需要同目录配套的 mmproj；能选中某个文件，不代表它一定能正常推理。'),
+                    pair('The list contains eligible local PE files from clip, text_encoders and LLM model libraries. T2I GGUF models do not need mmproj and use text only. I2I GGUF models require a matching mmproj in the same directory; unmarked GGUF models also require it. Task markers are read from the filename first, then the nearest marked parent directory. A filename in the list does not guarantee inference compatibility.', '列表显示 clip、text_encoders 和 LLM 模型库中符合筛选条件的本地 PE 文件。T2I GGUF 不需要 mmproj，只处理文本；I2I GGUF 需要同目录配套的 mmproj，未标记类型的 GGUF 也保留这项检查。优先读取文件名中的任务标记，再读取最近的带标记父目录；能选中某个文件，不代表它一定能正常推理。'),
                 ]],
                 [pair('Saved choices', '保存与恢复'), [
-                    pair('The choice can be saved with a preset or parameter profile. If a saved PE file or its mmproj is missing, generation uses the unchanged original prompt and records a warning; model inference errors are still reported.', 'PE 选择可随预置或参数方案保存。已保存的 PE 文件或配套 mmproj 缺失时，生成会沿用原提示词并记录警告；模型推理错误仍会正常报错。'),
+                    pair('The choice can be saved with a preset or parameter profile. If a saved PE file or its required mmproj is missing, generation uses the unchanged original prompt and records a warning; model inference errors are still reported.', 'PE 选择可随预置或参数方案保存。已保存的 PE 文件或模型所需的 mmproj 缺失时，生成会沿用原提示词并记录警告；模型推理错误仍会正常报错。'),
                 ]],
             ],
             links: ['models', 'clip', 'profiles'],

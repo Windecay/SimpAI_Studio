@@ -43,6 +43,7 @@ _REGEN_PARAMETER_ALIASES = {
     "refiner_model": ("Refiner Model", "Refiner"),
     "refiner_switch": ("Refiner Switch",),
     "clip_model": ("CLIP / Text Encoder", "Text Encoder", "CLIP Model"),
+    "pe_model": ("PE Model",),
     "vae": ("VAE",),
     "upscale_model": ("Upscale Model",),
     "overwrite_switch": ("Overwrite Switch",),
@@ -1099,7 +1100,10 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         preset_prepared[canonical_key] = combined
 
     for key in ("lora_stack", "lora_stack_target", "pe_model"):
-        if key in backend_params:
+        if key == "pe_model" and any(
+                parsed_parameters.get(field) not in (None, "") for field in ("pe_model", "PE Model")):
+            preset_prepared[key] = copy.deepcopy(restored[key])
+        elif key in backend_params:
             restored[key] = copy.deepcopy(backend_params[key])
             preset_prepared[key] = copy.deepcopy(backend_params[key])
     state_params["__preset_prepared"] = copy.deepcopy(preset_prepared)

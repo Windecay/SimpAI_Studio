@@ -292,6 +292,8 @@ def _metadata_value_html(label, key, value):
     if _is_regen_manifest_metadata(label, key):
         value_txt = html.escape(value_txt)
         return f"<details><summary>SimpleAI Regen Manifest</summary><pre>{value_txt}</pre></details>"
+    if key in ("pe_model", "pe_prompt", "pe_status"):
+        value_txt = html.escape(value_txt)
     return value_txt.replace("\n", " </br> ")
 
 
@@ -438,7 +440,10 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
         item += f"<tr><td class='label'>{label}</td><td class='value'>{value_txt}</td></tr>\n"
 
     if task is not None and 'positive' in task and 'negative' in task:
-        full_prompt_details = f"""<details><summary>Positive</summary>{', '.join(task['positive'])}</details>
+        positive_prompt = ', '.join(task['positive'])
+        if isinstance(task.get('pe_prompt'), str):
+            positive_prompt = html.escape(positive_prompt)
+        full_prompt_details = f"""<details><summary>Positive</summary>{positive_prompt}</details>
         <details><summary>Negative</summary>{', '.join(task['negative'])}</details>"""
         item += f"<tr><td class='label'>Full raw prompt</td><td class='value'>{full_prompt_details}</td></tr>\n"
 
