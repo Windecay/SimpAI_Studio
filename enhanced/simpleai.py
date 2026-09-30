@@ -1176,6 +1176,14 @@ identity_mode_texts = {
         "cn": "身份绑定未成功，请重新输入身份口令。若这是您自己的主机且管理员口令已经遗忘，可查看下方恢复说明。",
         "en": "Identity binding failed. Enter the identity passphrase again. If this is your own host and the admin passphrase has been forgotten, see the recovery guide below.",
     },
+    "identity_session_unavailable": {
+        "cn": "暂时无法保存登录会话，请稍后重新验证身份。",
+        "en": "The login session could not be saved. Please verify your identity again later.",
+    },
+    "identity_session_revoke_failed": {
+        "cn": "暂时无法撤销登录会话，身份尚未解绑，请稍后重试。",
+        "en": "The login session could not be revoked. Your identity is still bound. Please try again later.",
+    },
     "identity_phrase_format_invalid": {
         "cn": "身份口令格式不正确。口令至少 8 位，必须包含大写字母、小写字母和数字，且不能包含特殊字符。",
         "en": "The identity passphrase format is invalid. Use at least 8 characters with uppercase letters, lowercase letters, and numbers, without special characters.",
@@ -1340,10 +1348,17 @@ def ensure_identity_state_defaults(state):
 
 
 def _apply_identity_context(state, context, close_preset_store=False):
+    session = shared.token.get_user_sstoken(context.get_did(), state["ua_hash"])
+    if not session or session == "Unknown":
+        raise gr.Error(get_identity_mode_text("identity_session_unavailable", state.get("__lang")))
     state["user"] = context
     state["sys_did"] = context.get_sys_did()
-    state["sstoken"] = shared.token.get_user_sstoken(context.get_did(), state["ua_hash"])
+    state["sstoken"] = session
     state["__session"] = state["sstoken"]
+    state.pop("__identity_original_session", None)
+    state.pop("__identity_last_check", None)
+    state.pop("__identity_expires_at", None)
+    state["__identity_status"] = "valid"
     state["__identity_session_seq"] = int(state.get("__identity_session_seq", 0) or 0) + 1
     state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
     if close_preset_store:
@@ -1617,6 +1632,13 @@ def confirm_identity(input_id_info, state, phrase, activation_confirmed=False):
 def unbind_identity(input_id_info, state, phrase):
     state = ensure_identity_state_defaults(state)
     if check_phrase(phrase):
+        if hasattr(shared.token, "revoke_sstoken"):
+            try:
+                revoked = bool(shared.token.revoke_sstoken(state.get("__identity_original_session") or state.get("__session", "")))
+            except Exception:
+                revoked = False
+            if not revoked:
+                raise gr.Error(get_identity_mode_text("identity_session_revoke_failed", state.get("__lang")))
         context = shared.token.unbind_and_return_guest(state["user"].get_did(), phrase)
         if shared.token.is_guest(context.get_did()):
             _apply_identity_context(state, context, close_preset_store=True)

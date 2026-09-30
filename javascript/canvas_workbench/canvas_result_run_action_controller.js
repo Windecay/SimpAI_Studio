@@ -111,12 +111,18 @@
                     showToast(t('This result has no run id.', '此 Result 没有 run id。'));
                     return null;
                 }
+                const project = getProject();
+                const runToken = node.producer?.pending_run_token || node.producer?.run_token || '';
+                const isCurrent = () => getProject() === project && getNode(node.id) === node
+                    && node.producer?.run_id === runId
+                    && (node.producer?.pending_run_token || node.producer?.run_token || '') === runToken;
                 if (node?.producer?.qwen_tts_node_id) {
                     if (action !== 'stop') {
                         showToast(t('Qwen TTS results only support Stop.', 'Qwen TTS 结果只支持停止。'));
                         return null;
                     }
                     const response = await sendCanvasQwenTtsControlRequest(runId, action);
+                    if (!isCurrent()) return { ok: false, error: 'run no longer current', response };
                     applyQwenTtsRunStatus(runId, node.id, node.producer?.qwen_tts_node_id, response);
                     showToast(response?.ok
                         ? t('Qwen TTS stop requested.', '已请求停止 Qwen TTS。')
@@ -130,6 +136,7 @@
                     return response;
                 }
                 const response = await sendCanvasControlRunRequest(runId, action);
+                if (!isCurrent()) return { ok: false, error: 'run no longer current', response };
                 applyCanvasRunStatus(runId, node.id, node.producer?.preset_node_id, response);
                 const actionLabel = action === 'skip' ? t('Skip', '跳过') : t('Stop', '停止');
                 showToast(response?.ok

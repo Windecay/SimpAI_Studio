@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from modules import media_library
+from modules.identity_session import resolve_session
 from modules.media_library_page import render_media_library_html
 
 
@@ -87,18 +88,6 @@ def _request_identity_did(request: Request | None = None) -> str:
     """Resolve the authenticated identity from the same aitoken contract as the main UI."""
     did, _ua_hash, _invalid = _request_identity_state(request)
     return did
-
-
-def _guest_session_for_invalid_request(request: Request | None = None) -> str:
-    """Create a valid guest session when the browser sent a stale aitoken."""
-    _did, ua_hash, invalid = _request_identity_state(request)
-    if not invalid or not ua_hash or shared.token is None or not hasattr(shared.token, "get_guest_sstoken"):
-        return ""
-    try:
-        session = str(shared.token.get_guest_sstoken(ua_hash) or "").strip()
-        return session
-    except Exception:
-        return ""
 
 
 def _user_did_from_payload(payload: Any = None, request: Request | None = None) -> str:
@@ -293,9 +282,15 @@ async def media_library_app(request: Request):
         render_media_library_html(root_path=_root_path(request), theme=theme, lang=lang),
         headers={"Cache-Control": "no-store"},
     )
-    guest_session = _guest_session_for_invalid_request(request)
-    if guest_session:
-        response.set_cookie("aitoken", guest_session, max_age=90 * 24 * 60 * 60, path="/", samesite="lax")
+    credential = _cookie_value(request, "aitoken")
+    if credential and shared.token is not None and hasattr(shared.token, "resolve_sstoken"):
+        ua_hash = hashlib.sha256(str(request.headers.get("user-agent") or "").encode("utf-8")).hexdigest()
+        session = resolve_session(shared.token, credential, ua_hash)
+        if session["status"] == "valid":
+            response.set_cookie(
+                "aitoken", session["sstoken"], max_age=session["expires_in"],
+                path="/", samesite="lax", secure=request.url.scheme == "https",
+            )
     return response
 
 

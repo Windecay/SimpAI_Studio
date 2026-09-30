@@ -100,6 +100,8 @@
                 scheduleSave();
             }
             const plan = buildPlan(project, { mode, nodeIds });
+            const isCurrentProject = () => getProject() === project;
+            const projectChangedResult = () => ({ ok: false, error: 'project changed', plan });
             if (!plan?.steps?.length) {
                 showToast(t('No runnable nodes in this chain.', '此链路没有可运行节点。'));
                 return { ok: false, error: 'empty plan', plan };
@@ -129,8 +131,10 @@
                 if (refreshingIds.length && !opts.skipRefreshingWait && missingStepsAreOnlyRefreshing(missing)) {
                     setSchedulerWaitingFromPlan(plan, refreshingIds);
                     const waited = await waitForRefreshingSources(refreshingIds, {
-                        waitingNodeId: firstBlockedSchedulerStep(plan)?.node_id
+                        waitingNodeId: firstBlockedSchedulerStep(plan)?.node_id,
+                        shouldContinue: isCurrentProject
                     });
+                    if (!isCurrentProject()) return projectChangedResult();
                     if (waited) {
                         applyProjectSchedulerPatch(buildResumePatch({ nowIso: () => nowIso() }), { merge: true });
                         renderStatus();
@@ -176,8 +180,11 @@
             showToast(t('Scheduler plan: {plan}', '调度计划：{plan}').replace('{plan}', planPreview), 3200);
             info('[SimpAI Canvas] scheduler plan', plan);
             const result = await runPlan(plan, {
-                runNode: (...args) => runSchedulerStep(...args),
+                runNode: (...args) => isCurrentProject()
+                    ? runSchedulerStep(...args)
+                    : projectChangedResult(),
                 onStepStart: (step, index) => {
+                    if (!isCurrentProject()) return;
                     applyProjectSchedulerPatch(buildStepStartPatch(step, index, { nowIso: () => nowIso() }), { merge: true });
                     renderStatus();
                     renderRunQueuePanelIfOpen();
@@ -187,21 +194,25 @@
                         .replace('{title}', step.title || step.node_id || t('node', '节点')));
                 },
                 onStepEnd: (_step, index) => {
+                    if (!isCurrentProject()) return;
                     applyProjectSchedulerPatch(buildStepEndPatch(index, { nowIso: () => nowIso() }), { merge: true });
                     renderStatus();
                     renderRunQueuePanelIfOpen();
                 },
                 onError: (step, err) => {
+                    if (!isCurrentProject()) return;
                     applyProjectSchedulerPatch(buildErrorPatch(step, err, { nowIso: () => nowIso() }), { merge: true });
                     renderStatus();
                     renderRunQueuePanelIfOpen();
                 },
                 onFinish: () => {
+                    if (!isCurrentProject()) return;
                     applyProjectSchedulerPatch(buildFinishedPatch({ nowIso: () => nowIso() }), { merge: true });
                     renderStatus();
                     renderRunQueuePanelIfOpen();
                 }
             });
+            if (!isCurrentProject()) return projectChangedResult();
             if (result?.ok) {
                 showToast(t('Workbench chain finished.', '工作台链路已完成。'));
             } else {

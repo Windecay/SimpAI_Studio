@@ -72,6 +72,12 @@ DEFAULT_VLM_VERSION = "Qwen3.5-9B-abliterated-Q4_K_M"
 
 class PromptActionOutputLimitError(RuntimeError):
     pass
+
+
+class PromptActionQualityError(RuntimeError):
+    pass
+
+
 CUSTOM_VLM_IMAGE_MAX_SIDE = 1688
 CUSTOM_VLM_IMAGE_JPEG_QUALITY = 85
 HUIHUI_QWEN35_MODEL_DIR = "Huihui-Qwen3.5-9B-abliterated"
@@ -1876,6 +1882,7 @@ class VLM:
             )
             if action_id != "smart_expand":
                 payload["node_id"] = f"canvas_agent_prompt_rewrite:main_webui_{action_id}"
+            payload["prompt_action_instruction"] = str(action_options.get("instruction") or "")
             target = (
                 payload.get("agent_context", {})
                 .get("prompt_generation_targets", {})
@@ -1968,6 +1975,21 @@ class VLM:
                 ]
                 user_prompt = "\n\n".join(part for part in compiler_parts if str(part or "").strip())
             compiler_mode = minimax_h3_prompt_compiler.resolve_mode(compiler, media_context) if compiler else ""
+            detail_policy = prompt_actions.prompt_action_detail_policy(
+                action_id,
+                canvas_vlm_agent._canvas_vlm_prompt_rewrite_required_docs(payload) if not compiler else [],
+                input_text,
+                instruction=str(action_options.get("instruction") or ""),
+                has_images=bool(_superprompt_input_image_count(input_images)),
+            )
+            if detail_policy.get("min_words"):
+                user_prompt += (
+                    "\n\nThis Detailed Expand request needs the full frame description, not a caption: "
+                    "write about 20 complete sentences totaling 400-500 English words in one paragraph, "
+                    "following the internal sentence plan. Preserve every fixed constraint and exact text string. "
+                    "Describe each relevant region with distinct visible facts instead of stopping after "
+                    "the main subject and a few style adjectives."
+                )
             logger.info(
                 "Using VLM prompt action: action=%s target=%s task_method=%s video_frames=%s mask_overlay=%s duration=%s",
                 action_id,
@@ -1977,21 +1999,48 @@ class VLM:
                 bool((media_context or {}).get("mask_overlay_used")) if isinstance(media_context, dict) else False,
                 (media_context or {}).get("duration_seconds") if isinstance(media_context, dict) else None,
             )
-            result = self.inference(
-                _superprompt_image_input(input_images),
-                user_prompt,
-                max_tokens=1800 if compiler_mode == minimax_h3_prompt_compiler.MODE_REF2VA else (1200 if compiler else 2048),
-                temperature=0.65,
-                top_p=0.85,
-                top_k=40,
-                repetition_penalty=1.05,
-                seed=-1,
-                system_prompt=system_prompt,
-                enable_thinking=False,
-                reject_truncated=True,
-            )
-            return _superprompt_clean_output(result, fallback="" if compiler else input_text)
-        except PromptActionOutputLimitError:
+            inference_image = _superprompt_image_input(input_images)
+            request_prompt = user_prompt
+            for attempt in range(2 if detail_policy else 1):
+                result = self.inference(
+                    inference_image,
+                    request_prompt,
+                    max_tokens=1800 if compiler_mode == minimax_h3_prompt_compiler.MODE_REF2VA else (1200 if compiler else 2048),
+                    temperature=0.65 if attempt == 0 else 0.45,
+                    top_p=0.85,
+                    top_k=40,
+                    repetition_penalty=1.05,
+                    seed=-1,
+                    system_prompt=system_prompt,
+                    enable_thinking=False,
+                    reject_truncated=True,
+                )
+                cleaned = _superprompt_clean_output(
+                    result, fallback="" if compiler or detail_policy else input_text,
+                )
+                if not detail_policy:
+                    return cleaned
+                review = prompt_actions.validate_prompt_action_detail(cleaned, detail_policy)
+                logger.info(
+                    "Detailed expansion review: profile=%s attempt=%s words=%s sentences=%s issues=%s",
+                    detail_policy["key"], attempt + 1, review["words"], review["sentences"], review["issues"],
+                )
+                if review["ok"]:
+                    return cleaned
+                if attempt == 0:
+                    request_prompt = (
+                        f"{user_prompt}\n\nPrevious draft:\n{cleaned}\n\n"
+                        "Revise the previous draft against the detailed frame-description contract. "
+                        "The original request and all its fixed constraints remain authoritative; discard invented "
+                        "text, numbers or alternatives from the draft. Rewrite the whole paragraph in frame-reading "
+                        "order instead of appending disconnected detail sentences or another summary. "
+                        "Keep all spatial relationships, crop boundaries, lighting and materials physically consistent.\n"
+                        f"Review feedback:\n{review['feedback']}\n"
+                        "Before answering, check that the revised description addresses every review item. "
+                        "Return the complete revised paragraph only, without reporting your checks."
+                    )
+            raise PromptActionQualityError("Detailed expansion failed the frame-description checks.")
+        except (PromptActionOutputLimitError, PromptActionQualityError):
             raise
         except Exception as exc:
             logger.warning("VLM prompt action failed; falling back to legacy prompt expansion: %s", exc)
@@ -2087,6 +2136,17 @@ class VLM:
                     "Model output reached its token limit. The original prompt was preserved."
                     if language.startswith("en") else
                     "模型输出达到 token 上限，已保留原提示词。"
+                ),
+            }
+        except PromptActionQualityError:
+            language = str((state or {}).get("__lang") or "cn").lower() if isinstance(state, dict) else "cn"
+            result = {
+                "ok": False, "text": str(input_text or ""), "action_id": action_id,
+                "error": (
+                    "Detailed expansion remained too short or did not meet the output format. "
+                    "The original prompt was preserved."
+                    if language.startswith("en") else
+                    "详细扩写结果仍然过短或格式不完整，已保留原提示词。"
                 ),
             }
         if not isinstance(result, dict):

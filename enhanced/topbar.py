@@ -20,6 +20,7 @@ import modules.regen_manifest as regen_manifest
 import modules.sdxl_styles
 import modules.constants as constants
 from modules.access_mode import get_access_mode, is_local_mode, state_has_full_local_access
+from modules.identity_session import session_cookie_days, update_identity_session
 import modules.meta_parser as meta_parser
 import modules.sdxl_styles as sdxl_styles
 import modules.style_sorter as style_sorter
@@ -1040,34 +1041,18 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, dy
     state_params.update({"ua_hash": ua_hash})
     state_params.update({"ua_session": ua_session})
     state_params.update({"__identity_session_seq": int(state_params.get("__identity_session_seq", 0) or 0)})
-    if "__session" not in state_params.keys():
-        sstoken = shared.token.get_guest_sstoken(ua_hash)
-        state_params.update({"sstoken": sstoken})
-        user_did = shared.token.get_guest_did()
-        user_session = sstoken
-        state_params.update({"__session": user_session})
-        logger.info(f'New request/新请求(无身份): {client_host}:{client_port} --> {request_host}, session({user_session})')
+    had_session = bool(state_params.get("__session") or state_params.get("__identity_original_session"))
+    identity_status = update_identity_session(state_params, shared.token, force=True)
+    user_session = state_params["__session"]
+    user_did = state_params["user"].get_did() if state_params.get("user") is not None else shared.token.get_guest_did()
+    if not had_session:
+        logger.info(f'New request/新请求(无身份): {client_host}:{client_port} --> {request_host}')
+    elif identity_status != "valid":
+        logger.info(f'Reset request/重置请求(无效身份): {client_host}:{client_port} --> {request_host}, status={identity_status}')
+    elif shared.token.is_guest(user_did):
+        logger.info(f'Reset request/游客请求: {client_host}:{client_port} --> {request_host}')
     else:
-        #logger.info(f'aitoken: {state_params["__session"]}, guest={shared.token.get_guest_did()}')
-        user_session = state_params["__session"]
-        user_did = shared.token.check_sstoken_and_get_did(user_session, ua_hash)
-        if user_did == "Unknown":
-            sstoken = shared.token.get_guest_sstoken(ua_hash)
-            state_params.update({"sstoken": sstoken})
-            user_did = shared.token.get_guest_did()
-            user_session = sstoken
-            state_params.update({"__session": user_session})
-            state_params["__identity_session_seq"] += 1
-            logger.debug(f'user-agent:{user_agent}, cookie:{request_cookie}')
-            logger.info(f'Reset request/重置请求(无效身份): {client_host}:{client_port} --> {request_host}, session({user_session})')
-            user = shared.token.get_user_context(user_did)
-        else:
-            user = shared.token.get_user_context(user_did)
-            state_params.update({"sstoken": ""})
-            if user.get_nickname().startswith('guest_'):
-                logger.info(f'Reset request/游客请求: {client_host}:{client_port} --> {request_host}, session({user_session})')
-            else:
-                logger.info(f'Binded request/含身份请求: {client_host}:{client_port} --> {request_host}, session({user_session})')
+        logger.info(f'Binded request/含身份请求: {client_host}:{client_port} --> {request_host}')
     shared.token.log_register(state_params["__session"])
     state_params.update({"user": shared.token.get_user_context(user_did)})
     state_params.update({"sys_did":  shared.token.get_sys_did()})
@@ -4541,6 +4526,8 @@ def _build_scene_control_props(scene_frontend, scene_theme):
 
 
 def update_topbar_js_params(state, include_canvas_catalogs=True):
+    if state.get("ua_hash") and hasattr(shared.token, "resolve_sstoken"):
+        update_identity_session(state, shared.token)
     regen_preset_restore = bool(state.pop("__regen_preset_restore", False))
     filtered_preset_name_list = _get_effective_nav_preset_list(state)
     nav_user_did = _state_user_did(state)
@@ -4718,6 +4705,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __preset_switched=bool(state.get("__preset_switched", False)),
         __regen_preset_restore=regen_preset_restore,
         __identity_session_seq=int(state.get("__identity_session_seq", 0) or 0),
+        __identity_session_days=session_cookie_days(state),
         __preset_store_seq=int(state.get("__preset_store_seq", 0) or 0),
         __theme=state.get("__theme"),
         __is_scene_frontend=("scene_frontend" in state),
@@ -4740,7 +4728,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __scene_canvas_mask_disabled=_resolve_scene_canvas_mask_disabled(scene_frontend, scene_theme),
         __resolution_control_profile=_resolve_resolution_control_profile(scene_frontend, scene_theme),
         __nav_name_list=filtered_nav_name_list_str,  # 使用过滤后的预设列表
-        sstoken=state["sstoken"],
+        sstoken=state.get("sstoken", ""),
         user_name=_state_user_nickname(state),
         user_did=current_user_did,
         user_role=user_role,
@@ -5035,7 +5023,7 @@ def update_after_identity_sub(state, lightweight_nav=False, skip_output_refresh=
     user_did = _state_user_did(state)
     engine_type = state["engine_type"]
     state["__gallery_engine_type"] = engine_type
-    logger.info(f'Session identity/当前身份: {nickname}({user_did}{", admin" if user_did and shared.token.is_admin(user_did) else ""}), session({state["__session"]})')
+    logger.info(f'Session identity/当前身份: {nickname}({user_did}{", admin" if user_did and shared.token.is_admin(user_did) else ""})')
     if skip_output_refresh:
         output_list = state.get("__output_list", [])
         finished_nums_pages = state.get("__finished_nums_pages", "0,0")
@@ -5227,7 +5215,7 @@ def restore_all_defaults(state_params):
     except Exception:
         user_did = None
     try:
-        logger.info(f"[RestoreDefaults] confirm: session={state_params.get('__session', None)}, ua_hash={state_params.get('ua_hash', None)}, did={user_did}")
+        logger.info(f"[RestoreDefaults] confirm: session_present={bool(state_params.get('__session'))}, did={user_did}")
     except Exception:
         pass
 

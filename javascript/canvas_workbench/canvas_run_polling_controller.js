@@ -52,31 +52,55 @@
                     const value = callback(result, state);
                     return value === undefined ? fallback : value;
                 };
+                const failedResult = (error) => ({
+                    ok: false,
+                    state: 'failed',
+                    error: String(error?.message || error || 'Run polling failed')
+                });
+                const canContinue = () => typeof opts.shouldContinue !== 'function' || opts.shouldContinue();
                 const tick = async () => {
-                    const result = await opts.poll();
-                    const state = typeof opts.getState === 'function'
-                        ? opts.getState(result)
-                        : (result?.state || 'failed');
-                    if (typeof opts.onResult === 'function') opts.onResult(result, state);
-                    if (result && result.ok && !isTerminalRunState(state)) {
-                        if (!schedule(tick, intervalMs)) {
-                            finish(callbackResult('onTimerUnavailable', result, state, {
-                                ok: false,
-                                state,
-                                error: 'poll timer unavailable',
-                                result
-                            }));
+                    if (settled) return;
+                    try {
+                        if (!canContinue()) {
+                            finish({ ok: false, error: 'run no longer current' });
+                            return;
                         }
-                        return;
-                    }
-                    if (state === 'finished') {
-                        finish(callbackResult('onFinished', result, state, { ok: true, state, result }));
-                    } else if (state === 'canceled' || state === 'skipped') {
-                        finish(callbackResult('onCanceled', result, state, { ok: false, state, result }));
-                    } else if (state === 'failed') {
-                        finish(callbackResult('onFailed', result, state, { ok: false, state, result }));
-                    } else {
-                        finish(callbackResult('onStopped', result, state, { ok: false, state, result }));
+                        let result;
+                        try {
+                            result = await opts.poll();
+                        } catch (err) {
+                            result = failedResult(err);
+                        }
+                        if (!canContinue()) {
+                            finish({ ok: false, error: 'run no longer current' });
+                            return;
+                        }
+                        const state = typeof opts.getState === 'function'
+                            ? opts.getState(result)
+                            : (result?.state || 'failed');
+                        if (typeof opts.onResult === 'function') opts.onResult(result, state);
+                        if (result && result.ok && !isTerminalRunState(state)) {
+                            if (!schedule(tick, intervalMs)) {
+                                finish(callbackResult('onTimerUnavailable', result, state, {
+                                    ok: false,
+                                    state,
+                                    error: 'poll timer unavailable',
+                                    result
+                                }));
+                            }
+                            return;
+                        }
+                        if (state === 'finished') {
+                            finish(callbackResult('onFinished', result, state, { ok: true, state, result }));
+                        } else if (state === 'canceled' || state === 'skipped') {
+                            finish(callbackResult('onCanceled', result, state, { ok: false, state, result }));
+                        } else if (state === 'failed') {
+                            finish(callbackResult('onFailed', result, state, { ok: false, state, result }));
+                        } else {
+                            finish(callbackResult('onStopped', result, state, { ok: false, state, result }));
+                        }
+                    } catch (err) {
+                        finish(failedResult(err));
                     }
                 };
 

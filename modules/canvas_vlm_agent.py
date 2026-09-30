@@ -12,6 +12,7 @@ import modules.canvas_danbooru_prompt_review as canvas_danbooru_prompt_review
 import modules.canvas_danbooru_service as canvas_danbooru_service
 import modules.canvas_vlm_prompt_pipeline as canvas_vlm_prompt_pipeline
 import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
+import modules.prompt_actions as prompt_actions
 import modules.vlm_preset_guide_router as vlm_preset_guide_router
 
 try:
@@ -636,6 +637,10 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
     target_requires_anima = _canvas_is_anima_prompt_target_key(target_key, target_meta)
     target_requires_danbooru = target_key in CANVAS_DANBOORU_TARGET_KEYS
     target_family = _canvas_vlm_prompt_rewrite_target_family(target_key, target_meta)
+    required_docs = _canvas_vlm_prompt_rewrite_required_docs(target_payload)
+    qwen21_t2i = bool(
+        {"qwen_image21_t2i_en.md", "qwen_image21_t2i_cn.md"}.intersection(required_docs)
+    )
     if target_requires_anima:
         format_rule = "Final prompt: English Anima hybrid prompt, with compact Anima/Danbooru anchors plus short nltags control sentences when useful. No Chinese characters."
     elif target_requires_danbooru:
@@ -648,6 +653,11 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         format_rule = "Final prompt: fluent English natural-language image prompt. No Chinese characters."
     elif target_family == "natural_zh":
         format_rule = "Final prompt: coherent Simplified Chinese natural-language image prompt."
+    elif qwen21_t2i:
+        format_rule = (
+            "Final prompt: one coherent English description of the finished image. "
+            "Preserve requested on-image text verbatim in its original language inside straight double quotes."
+        )
     else:
         format_rule = "Final prompt: coherent natural-language image prompt; preserve Chinese for Chinese user requests."
     parts = [
@@ -660,7 +670,13 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         "Target: " + target,
         format_rule,
     ]
-    required_docs = _canvas_vlm_prompt_rewrite_required_docs(payload if isinstance(payload, dict) else {})
+    detail_policy = prompt_actions.prompt_action_detail_policy(
+        _canvas_vlm_prompt_rewrite_purpose(payload=payload).removeprefix("main_webui_"),
+        required_docs,
+        prompt,
+        instruction=str(target_payload.get("prompt_action_instruction") or ""),
+        has_images=_canvas_vlm_payload_has_image_references(target_payload),
+    )
     docs = _canvas_read_vlm_skill_docs(
         prompt,
         VLM_PROMPT_REWRITE_SKILL_SOURCE_MAX_CHARS,
@@ -706,6 +722,8 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
             "Preset-specific rewrite notes. These are lower priority than the output-format rule above; do not copy any JSON/markdown output format from them:\n"
             + preset_notes
         )
+    if detail_policy:
+        parts.append(detail_policy["instruction"])
     return "\n".join(part for part in parts if str(part or "").strip()).strip()
 
 def _canvas_vlm_agent_mode(params):

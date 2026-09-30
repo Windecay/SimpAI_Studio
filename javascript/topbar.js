@@ -3426,7 +3426,7 @@ function checkAndUpdateSession(sstoken, days, identitySessionSeq, userRole) {
             topbarLastIdentitySessionRank = Math.max(topbarLastIdentitySessionRank, incomingRank);
         }
     }
-    if (!sstoken) return;
+    if (!sstoken || sstoken === "Unknown" || !Number.isFinite(Number(days)) || Number(days) <= 0) return;
     try {
         setCookie("aitoken", `${sstoken}`, days);
     } catch (e) {}
@@ -4266,7 +4266,7 @@ function refresh_topbar_status_js(system_params) {
     }
     checkAndUpdateSession(
         system_params["sstoken"],
-        90,
+        system_params["__identity_session_days"] ?? 90,
         system_params["__identity_session_seq"],
         system_params["user_role"]
     );

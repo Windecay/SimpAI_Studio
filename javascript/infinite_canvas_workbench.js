@@ -2749,7 +2749,7 @@
                     },
                     projectSource: {
                         getProject: () => project,
-                        setProject: (...args) => setProject(...args),
+                        setProject: (value) => { project = value; },
                         compactProjectForStorage,
                         sanitizeProject,
                     },
@@ -6277,7 +6277,12 @@
             escapeSelector: value => CSS.escape(value),
             querySelectorAll: selector => document.querySelectorAll(selector)
         },
-        runtimeSource: { pushHistoryBatch: (...args) => pushHistoryBatch(...args), scheduleSave, mutate }
+        runtimeSource: {
+            pushHistory: (...args) => pushHistory(...args),
+            pushHistoryBatch: (...args) => pushHistoryBatch(...args),
+            scheduleSave,
+            mutate
+        }
     };
     const CANVAS_COMPARE_STATE_CONTROLLER = typeof WORKBENCH_CANVAS_COMPARE_STATE.createCanvasCompareStateController === 'function'
         ? WORKBENCH_CANVAS_COMPARE_STATE.createCanvasCompareStateController({ compareStateSource: COMPARE_STATE_CONTEXT_SOURCE })
@@ -7021,6 +7026,9 @@
                 updateSource: {
                     updateCompareParam: (...args) => updateCompareParam(...args),
                     refreshCompareDom: (nodeId) => refreshCompareDom(nodeId),
+                },
+                historySource: {
+                    endHistoryBatch: () => CANVAS_HISTORY_CONTROLLER.endHistoryBatch(),
                 },
                 persistenceSource: {
                     scheduleSave: (...args) => scheduleSave(...args),

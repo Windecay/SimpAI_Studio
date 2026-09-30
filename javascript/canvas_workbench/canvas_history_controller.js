@@ -130,7 +130,14 @@
             if (redoButton) redoButton.disabled = !redoStack.length;
         }
 
+        function endHistoryBatch() {
+            clearTimer(historyBatchTimer);
+            historyBatchTimer = 0;
+            historyBatchKey = '';
+        }
+
         function pushHistory(label) {
+            endHistoryBatch();
             const entry = createHistoryEntry(label);
             if (!entry) return;
             const last = undoStack[undoStack.length - 1];
@@ -149,6 +156,7 @@
             clearTimer(historyBatchTimer);
             historyBatchTimer = setTimer(() => {
                 historyBatchKey = '';
+                historyBatchTimer = 0;
             }, 900);
         }
 
@@ -183,6 +191,7 @@
         }
 
         function undoCanvasEdit() {
+            endHistoryBatch();
             if (!undoStack.length) {
                 uiCall('showToast', null, t('No canvas edits to undo', '没有可撤销的画布编辑'));
                 return false;
@@ -197,6 +206,7 @@
         }
 
         function redoCanvasEdit() {
+            endHistoryBatch();
             if (!redoStack.length) {
                 uiCall('showToast', null, t('No canvas edits to redo', '没有可重做的画布编辑'));
                 return false;
@@ -213,15 +223,14 @@
         function resetHistory() {
             undoStack = [];
             redoStack = [];
-            historyBatchKey = '';
-            clearTimer(historyBatchTimer);
-            historyBatchTimer = 0;
+            endHistoryBatch();
             renderHistoryButtons();
         }
 
         return {
             pushHistory,
             pushHistoryBatch,
+            endHistoryBatch,
             undoCanvasEdit,
             redoCanvasEdit,
             renderHistoryButtons,

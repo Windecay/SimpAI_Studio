@@ -455,6 +455,20 @@
             `运行失败：${response?.error || '未知错误'}`
         );
 
+        function resultRunIsCurrent(resultNode, runId, run) {
+            const currentRunId = resultNode?.producer?.run_id || '';
+            const pendingToken = resultNode?.producer?.pending_run_token || resultNode?.source?.pending_run_token || '';
+            return !!resultNode && (!currentRunId || currentRunId === runId)
+                && (!pendingToken || !run?.run_token || pendingToken === run.run_token);
+        }
+
+        function isCurrentResultRun(project, runId, resultNodeId, runToken) {
+            if (getProject() !== project) return false;
+            const resultNode = getNode(resultNodeId);
+            return (runToken === undefined || (resultNode?.producer?.run_token || '') === runToken)
+                && resultRunIsCurrent(resultNode, runId, (project.runs || []).find(run => run.id === runId));
+        }
+
         function resultNodeRunSortScore(node) {
             if (!node) return 0;
             const project = getProject();
@@ -1072,6 +1086,9 @@
                 const payload = buildRunDryRunPayload(node, resultNode, runId);
                 applyPromptPreflightOverrideToRunPayload(payload, preflight.promptOverride);
                 const runResult = await sendCanvasRunNodeRequest(payload);
+                if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
+                    return { ok: false, error: 'run no longer current', response: runResult };
+                }
                 return applyRunNodeResult(runId, resultNode.id, node.id, runResult, opts);
             } finally {
                 if (runKey) clearPendingPresetRun(runKey);
@@ -1128,18 +1145,8 @@
             if (run) {
                 Object.assign(run, buildCanvasRunResponsePatch(run, response));
             }
-            const currentResultRunId = resultNode?.producer?.run_id || '';
-            const responseTargetsCurrentResult = !currentResultRunId || currentResultRunId === runId;
-            if (resultNode && !responseTargetsCurrentResult) {
-                if (presetNode && isTerminalRunState(state)) {
-                    Object.assign(presetNode, buildCanvasNodeStatusPatch(presetNode, {
-                        status: buildCanvasRunStatus(
-                            state,
-                            ok ? (response?.message || state) : runFailureMessage(response)
-                        )
-                    }));
-                }
-                scheduleSave();
+            if (resultNode && !resultRunIsCurrent(resultNode, runId, run)) {
+                if (run) scheduleSave();
                 return;
             }
             if (resultNode) {
@@ -1208,7 +1215,21 @@
                     stopResultPreviewPlayer(resultNode.id);
                 }
             }
-            if (presetNode) {
+            const anotherActiveResult = presetNode && (project.nodes || []).some(node =>
+                node?.type === 'result' && node.id !== resultNodeId
+                && (isResultRefreshing(node) || isCanvasRunActiveState(nodeStatusState(node)))
+                && (node.producer?.preset_node_id === presetNodeId || (project.edges || []).some(edge =>
+                    edge.type === 'generate' && edge.from === presetNodeId && edge.to === node.id
+                ))
+            );
+            let producerRunId = '';
+            const runs = project.runs || [];
+            for (let index = runs.length - 1; index >= 0; index -= 1) {
+                if (runs[index]?.preset_node_id !== presetNodeId) continue;
+                producerRunId = runs[index].id || '';
+                break;
+            }
+            if (presetNode && !anotherActiveResult && (!producerRunId || producerRunId === runId)) {
                 Object.assign(presetNode, buildCanvasNodeStatusPatch(presetNode, { status: state }));
             }
             if (isTerminalRunState(state)) {
@@ -1220,6 +1241,9 @@
         }
 
         function applyRunNodeResult(runId, resultNodeId, presetNodeId, response, options) {
+            if (!isCurrentResultRun(getProject(), runId, resultNodeId)) {
+                return Promise.resolve({ ok: false, error: 'run no longer current', response });
+            }
             applyCanvasRunStatus(runId, resultNodeId, presetNodeId, response);
             if (response && response.ok) {
                 const state = String(response.state || ((response.asset || (Array.isArray(response.assets) && response.assets.length)) ? 'finished' : '')).trim();
@@ -1242,7 +1266,10 @@
 
         function pollCanvasRun(runId, resultNodeId, presetNodeId, options) {
             const opts = options || {};
+            const project = getProject();
+            const runToken = getNode(resultNodeId)?.producer?.run_token || '';
             return pollRunWithController(runId, {
+                shouldContinue: () => isCurrentResultRun(project, runId, resultNodeId, runToken),
                 initialDelayMs: opts.initialDelayMs ?? 900,
                 intervalMs: opts.intervalMs ?? 1200,
                 poll: () => sendCanvasPollRunRequest(runId, {
@@ -1322,7 +1349,13 @@
                 Promise.resolve({ ok: false, error: 'run request unavailable' }),
                 payload
             );
+            if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
+                return { ok: false, error: 'run no longer current', response: runResult };
+            }
             const outcome = await applyRunNodeResult(runId, resultNode.id, presetNode.id, runResult, { initialDelayMs: 900 });
+            if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
+                return { ok: false, error: 'run no longer current', result: outcome };
+            }
             const current = getNode(resultNode.id);
             if (current) {
                 Object.assign(current, buildResultSourcePatch(current, {

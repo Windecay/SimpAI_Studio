@@ -24,6 +24,8 @@
         });
 
         async function waitForRefreshingSources(sourceIds, options) {
+            const shouldContinue = () => typeof options?.shouldContinue !== 'function' || options.shouldContinue();
+            if (!shouldContinue()) return false;
             const ids = (sourceIds || []).filter(Boolean);
             if (!ids.length) return true;
             const timeoutMs = Math.max(5000, Number(options?.timeoutMs || 30 * 60 * 1000));
@@ -39,6 +41,7 @@
             }
             call(uiSource, 'showToast', undefined, message, 2600);
             while (currentTime() - started < timeoutMs) {
+                if (!shouldContinue()) return false;
                 const pending = ids
                     .map(id => call(nodeSource, 'getNode', null, id))
                     .filter(node => node && (

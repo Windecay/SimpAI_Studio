@@ -9,6 +9,7 @@
         const viewportSource = scope.viewportSource || {};
         const selectionSource = scope.selectionSource || {};
         const updateSource = scope.updateSource || {};
+        const historySource = scope.historySource || {};
         const persistenceSource = scope.persistenceSource || {};
         const uiSource = scope.uiSource || {};
         const getDocument = () => typeof domSource.getDocument === 'function'
@@ -42,6 +43,9 @@
         const refreshCompareDom = (...args) => typeof updateSource.refreshCompareDom === 'function'
             ? updateSource.refreshCompareDom(...args)
             : undefined;
+        const endHistoryBatch = () => typeof historySource.endHistoryBatch === 'function'
+            ? historySource.endHistoryBatch()
+            : undefined;
         const scheduleSave = (...args) => typeof persistenceSource.scheduleSave === 'function'
             ? persistenceSource.scheduleSave(...args)
             : undefined;
@@ -62,6 +66,7 @@
 
         function startComparePositionDrag(node, stageEl, evt) {
             if (!node || node.type !== 'compare' || !stageEl || !evt || isNodeLocked(node)) return;
+            endHistoryBatch();
             evt.preventDefault();
             evt.stopPropagation();
             setSuppressWheelUntil(getPerformanceNow() + 240);
@@ -91,6 +96,7 @@
             if (evt && evt.pointerId !== dragState.pointerId) return;
             const nodeId = dragState.nodeId;
             dragState = null;
+            endHistoryBatch();
             const doc = getDocument();
             doc?.removeEventListener('pointermove', onComparePositionDragMove, true);
             doc?.removeEventListener('pointerup', stopComparePositionDrag, true);

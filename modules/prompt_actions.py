@@ -130,6 +130,132 @@ def prompt_action_option_bool(options, key, default=False):
     return bool(value)
 
 
+def prompt_action_detail_policy(action_id, required_docs, input_text="", instruction="", has_images=False):
+    qwen_t2i_docs = {"qwen_image21_t2i_en.md", "qwen_image21_t2i_cn.md"}
+    if action_id != "detailed_expand" or has_images or not qwen_t2i_docs.intersection(required_docs or []):
+        return {}
+    request = "\n".join((str(input_text or ""), str(instruction or "")))
+    constraints = re.sub(r'"[^"\n]*"|“[^”\n]*”', "", request)
+    complex_frame = bool(re.search(
+        r"\b(?:poster|infographic|advertisement|brochure|multi-panel|crowd)\b|"
+        r"海报|招贴|信息图|宣传页|多栏|多人物|人群",
+        constraints, re.I,
+    ))
+    brief_request = bool(re.search(
+        r"\b(?:concise|brief|minimalist|minimalism)\b|"
+        r"\b(?:one|single)\s+sentence\b|"
+        r"\b(?:under|at most|no more than)\s+\d+\s+words\b|"
+        r"简短|简洁|极简|简约|不超过|只写一句",
+        constraints, re.I,
+    ))
+    instruction_text = (
+        "Detailed Qwen Image 2.1 frame-description contract:\n"
+        "- Write one coherent English paragraph describing the finished frame in present tense and third person. "
+        "Keep requested on-image text verbatim in its original language, inside straight double quotes.\n"
+        "- Plan internally, then describe the medium, main subject and palette; background and supporting surfaces; "
+        "upper band; left-to-right body regions; foreground and lower band; light source, direction, shadows and "
+        "reflections; and one final sentence about overall composition, medium and mood.\n"
+        "- Make subject count, appearance, pose, expressions, clothing, materials, relative scale, depth and spatial "
+        "relationships concrete when relevant. Start about one third of the sentences with a position in the frame. "
+        "For each requested text string, describe its exact wording, position, size, weight, color and reading hierarchy.\n"
+        "- Keep the framing and spatial relationships consistent throughout. Do not describe body parts, objects or "
+        "shadows outside the stated crop; do not turn a static image into a sequence of events.\n"
+        "- Return the description only, without headings, lists, Markdown, JSON, renderer instructions or planning. "
+        "Resolve open visual choices into one coherent scene instead of listing alternatives. "
+        "Do not guess a year, anniversary numeral, slogan, logo or extra text that the user did not supply. "
+        "Omit unspecified factual inscriptions rather than writing placeholders.\n"
+        "- Honor explicit brevity, minimalist composition and fixed subject counts. Never invent extra subjects, "
+        "objects or text just to meet a length target."
+    )
+    if complex_frame and not brief_request:
+        instruction_text += (
+            "\n- This is a complex frame: write approximately 18-22 complete sentences and 400-500 English words. "
+            "A short caption or a few generic quality phrases is not a detailed expansion. "
+            "Use the space for distinct visible facts, not repeated adjectives or unrelated backstory.\n"
+            "- Use this internal 20-sentence plan, without printing numbers: sentence 1 introduces the medium, "
+            "subject and palette; sentences 2-4 establish the background, surfaces and depth; sentences 5-7 describe "
+            "the upper band and requested typography; sentences 8-10 describe the left and central body regions; "
+            "sentences 11-13 describe the right body region and relevant subject relationships; sentences 14-16 "
+            "describe the lower band, foreground and materials; sentences 17-19 describe light direction, shadows "
+            "and reflections; sentence 20 closes with the overall composition, medium and mood. "
+            "Use about 20-25 words per sentence, adapting the regions to the requested scene without adding unrequested "
+            "subjects or inscriptions. Check the full paragraph before returning it; do not stop after a caption."
+        )
+    return {
+        "key": "qwen_image21_t2i",
+        "instruction": instruction_text,
+        "min_words": 350 if complex_frame and not brief_request else 0,
+        "min_sentences": 14 if complex_frame and not brief_request else 0,
+        "request": request,
+    }
+
+
+def validate_prompt_action_detail(text, policy):
+    output = str(text or "").strip()
+    request = str(policy.get("request") or "")
+    prose = re.sub(r'"[^"\n]*"|“[^”\n]*”', "", output)
+    words = len(re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", output))
+    sentences = len(re.findall(r'[.!?][\'")]*?(?=\s|$)', prose))
+    issues = []
+    if not output:
+        issues.append("empty_output")
+    if re.search(r"(?m)^\s*(?:#{1,6}\s|[-*]\s|\d+[.)]\s|\*\*[^*\n]+[:：]\*\*)", output):
+        issues.append("headings_or_list")
+    if re.search(r"\n\s*\n", output) or "```" in output:
+        issues.append("not_one_paragraph")
+    if words < int(policy.get("min_words") or 0):
+        issues.append("too_few_words")
+    if sentences < int(policy.get("min_sentences") or 0):
+        issues.append("too_few_sentences")
+    placeholders = re.finditer(
+        r"\b(?:depending on (?:the )?(?:specific |selected )?year|"
+        r"or (?:the )?(?:specific|selected|desired) year|"
+        r"insert (?:the )?(?:title|year|text) here)\b",
+        prose, re.I,
+    )
+    if any(match.group(0).lower() not in request.lower() for match in placeholders):
+        issues.append("unresolved_placeholder")
+    visible_text = re.finditer(
+        r'(?:\b(?:text|headline|title|caption|wording|label)\b|文字|标题|文案|写着|写上|写有|字样)'
+        r'[^"“”\n]{0,24}["“]([^"“”\n]+)["”]',
+        request, re.I,
+    )
+    for match in visible_text:
+        prefix = request[max(0, match.start() - 24):match.start()]
+        if re.search(r"(?:不要|不得|不显示|不出现|without|do not|\bno)\s*$", prefix, re.I):
+            continue
+        if match.group(1) not in output:
+            issues.append("missing_visible_text")
+            break
+        if f'"{match.group(1)}"' not in output:
+            issues.append("unquoted_visible_text")
+            break
+    feedback = {
+        "empty_output": "Return the finished description, not an empty answer.",
+        "headings_or_list": "Remove all headings, bullet points and numbered sections.",
+        "not_one_paragraph": "Return one coherent paragraph with no Markdown fences.",
+        "too_few_words": (
+            f"The draft has {words} English words; expand it to 400-500 words with distinct visible details."
+        ),
+        "too_few_sentences": (
+            f"The draft has {sentences} complete sentences; use approximately 18-22 complete sentences "
+            "in the prescribed frame-reading order."
+        ),
+        "unresolved_placeholder": (
+            "Remove unresolved year/title alternatives. Omit unspecified factual inscriptions instead of guessing them."
+        ),
+        "missing_visible_text": "Restore every explicitly requested on-image text string verbatim.",
+        "unquoted_visible_text": "Enclose each requested on-image text string in straight double quotes.",
+    }
+    return {
+        "ok": not issues,
+        "words": words,
+        "sentences": sentences,
+        "issues": issues,
+        "feedback": "\n".join(feedback[issue] for issue in issues),
+    }
+
+
 def transform_prompt_tag_separators(value, direction="auto"):
     return tag_separator.convert_tag_separators(value, direction)
 
@@ -1714,9 +1840,16 @@ def _register_builtin_actions():
             "use_scene_agent_prompt": True,
             "handler": "agent_rewrite",
             "instruction": (
-                "Expand the input substantially while preserving its intent. Add concrete visible details for the subject, "
-                "action or pose, environment, spatial relationships, composition and camera, lighting, mood, materials, "
-                "and style. Keep the final result generator-ready and obey the current target prompt format."
+                "Expand the input substantially while preserving every explicit constraint and the current target prompt "
+                "format. Describe distinct visible facts: subject count and appearance, action or pose, expressions, "
+                "environment, foreground/background relationships, composition and camera, light direction and shadows, "
+                "colors, materials and style. For posters and other multi-element layouts, describe the reading order, "
+                "visual hierarchy and exact placement and typography of requested text. Develop a coherent visible scene, "
+                "not a short caption, a list of generic quality adjectives or an unrelated story. Choose one definite "
+                "arrangement; do not leave alternatives or placeholders in the final prompt. Preserve requested on-image "
+                "wording exactly and do not invent dates, anniversary numbers, slogans or extra text. For local image "
+                "edits, detail only the requested operation and relevant preservation constraints; do not repaint the "
+                "whole source or add changes just to increase length. Respect explicit brevity and minimalist requests."
             ),
         },
         {

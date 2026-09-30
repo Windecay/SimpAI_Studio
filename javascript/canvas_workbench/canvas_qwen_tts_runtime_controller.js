@@ -135,6 +135,20 @@
         const getWorkbenchUserContext = (...args) => call(projectSource, 'getWorkbenchUserContext', {}, ...args);
         const pendingQwenTtsRuns = new Set();
 
+        function resultRunIsCurrent(resultNode, runId, run) {
+            const currentRunId = resultNode?.producer?.run_id || '';
+            const pendingToken = resultNode?.producer?.pending_run_token || resultNode?.source?.pending_run_token || '';
+            return !!resultNode && (!currentRunId || currentRunId === runId)
+                && (!pendingToken || !run?.run_token || pendingToken === run.run_token);
+        }
+
+        function isCurrentResultRun(project, runId, resultNodeId, runToken) {
+            if (getProject() !== project) return false;
+            const resultNode = getNode(resultNodeId);
+            return (runToken === undefined || (resultNode?.producer?.run_token || '') === runToken)
+                && resultRunIsCurrent(resultNode, runId, (project.runs || []).find(run => run.id === runId));
+        }
+
         function qwenTtsResultBasePosition(node) {
             return {
                 x: Math.round((node?.x || 0) + (node?.w || 360) + 140),
@@ -303,9 +317,11 @@
             const ok = !!(response && response.ok);
             const state = response?.state || (ok && (response?.asset || (Array.isArray(response?.assets) && response.assets.length)) ? 'finished' : (ok ? 'queued' : 'failed'));
             if (run) Object.assign(run, buildQwenTtsRunResponsePatch(run, response));
-            const currentResultRunId = resultNode?.producer?.run_id || '';
-            const responseTargetsCurrentResult = !currentResultRunId || currentResultRunId === runId;
-            if (resultNode && responseTargetsCurrentResult) {
+            if (resultNode && !resultRunIsCurrent(resultNode, runId, run)) {
+                if (run) scheduleSave();
+                return;
+            }
+            if (resultNode) {
                 Object.assign(resultNode, buildResultRunMetadataPatch(resultNode, {
                     response,
                     ok,
@@ -367,7 +383,15 @@
                     }));
                 }
             }
-            if (qwenNode) {
+            const anotherActiveResult = qwenNode && (project.nodes || []).some(node =>
+                node?.type === 'result' && node.id !== resultNodeId
+                && (isResultRefreshing(node) || isCanvasRunActiveState(nodeStatusState(node)))
+                && (node.producer?.qwen_tts_node_id === qwenNodeId || (project.edges || []).some(edge =>
+                    edge.type === 'generate' && edge.from === qwenNodeId && edge.to === node.id
+                ))
+            );
+            const producerRunId = qwenNode?.qwen_tts_run?.run_id || '';
+            if (qwenNode && !anotherActiveResult && (!producerRunId || producerRunId === runId)) {
                 Object.assign(qwenNode, buildQwenTtsStatePatch(qwenNode, {
                     runPatch: {
                         run_id: runId,
@@ -393,7 +417,10 @@
 
         function pollQwenTtsRun(runId, resultNodeId, qwenNodeId, options) {
             const opts = options || {};
+            const project = getProject();
+            const runToken = getNode(resultNodeId)?.producer?.run_token || '';
             return pollRunWithController(runId, {
+                shouldContinue: () => isCurrentResultRun(project, runId, resultNodeId, runToken),
                 initialDelayMs: opts.initialDelayMs ?? 900,
                 intervalMs: opts.intervalMs ?? 1200,
                 poll: () => sendCanvasQwenTtsPollRequest(runId),
@@ -417,6 +444,9 @@
         }
 
         function applyQwenTtsRunNodeResult(runId, resultNodeId, qwenNodeId, response, options) {
+            if (!isCurrentResultRun(getProject(), runId, resultNodeId)) {
+                return Promise.resolve({ ok: false, error: 'run no longer current', response });
+            }
             applyQwenTtsRunStatus(runId, resultNodeId, qwenNodeId, response);
             if (response && response.ok) {
                 showToast('Qwen TTS queued.');
@@ -564,7 +594,11 @@
                 mutate();
                 showToast('Result placeholder created; submitting to Qwen TTS.');
                 const payload = buildQwenTtsRunPayload(node, resultNode, runId);
+                const project = getProject();
                 const runResult = await sendCanvasQwenTtsRunRequest(payload);
+                if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
+                    return { ok: false, error: 'run no longer current', response: runResult };
+                }
                 return applyQwenTtsRunNodeResult(runId, resultNode.id, node.id, runResult, opts);
             } finally {
                 if (runKey) pendingQwenTtsRuns.delete(runKey);
@@ -579,7 +613,13 @@
                 showToast('This Qwen TTS node has no active run.');
                 return { ok: false, error: 'no active run' };
             }
+            const project = getProject();
+            const runToken = result?.producer?.run_token || '';
             const response = await sendCanvasQwenTtsControlRequest(runId, 'stop');
+            if (getProject() !== project || getNode(node.id) !== node
+                || (result ? !isCurrentResultRun(project, runId, result.id, runToken) : node.qwen_tts_run?.run_id !== runId)) {
+                return { ok: false, error: 'run no longer current', response };
+            }
             if (result) applyQwenTtsRunStatus(runId, result.id, node.id, response);
             else if (node) {
                 Object.assign(node, buildQwenTtsStatePatch(node, {
