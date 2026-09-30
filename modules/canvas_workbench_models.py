@@ -7,7 +7,7 @@ import modules.config as config
 import modules.model_loader as model_loader
 from enhanced import parameter_profiles
 from modules.access_mode import is_local_mode, user_can_download_models
-from modules.pe_models import PE_CATALOGS, is_pe_model_name, pe_model_rows
+from modules.pe_models import PE_CATALOGS, is_pe_model_name, pe_model_rows, scan_pe_model_files
 
 
 MODEL_CATALOG_CACHE = {}
@@ -285,8 +285,13 @@ def get_model_catalog_for_preset(payload):
     catalog["lora_folder_scope"] = lora_folder_scope or ""
     inventory = []
     modelsinfo = _modelsinfo_handle()
-    if modelsinfo is not None:
-        for category in PE_CATALOGS:
+    path_map = getattr(modelsinfo, "path_map", {}) or {}
+    fallback_path_map = getattr(config, "model_cata_map", {}) or {}
+    for category in PE_CATALOGS:
+        if category == "LLM":
+            # ModelsInfo indexes LLM model directories, not their individual files.
+            inventory.extend(scan_pe_model_files(category, path_map.get(category, fallback_path_map.get(category, []))))
+        elif modelsinfo is not None:
             for name in modelsinfo.get_model_names(category):
                 if is_pe_model_name(name):
                     inventory.append((category, name, _existing_model_path(name, (category,))))

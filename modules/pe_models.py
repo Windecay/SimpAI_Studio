@@ -13,14 +13,41 @@ def _is_projector(name):
 
 
 def is_pe_model_name(name):
-    filename = os.path.basename(str(name).replace("\\", "/"))
+    parts = str(name).replace("\\", "/").split("/")
+    filename = parts[-1]
     stem, extension = os.path.splitext(filename)
+    pe_directory = any(re.search(r"(?:^|[-_.\s])pe(?:$|[-_.\s])", part, re.I) for part in parts[:-1])
     return (
-        "pe" in stem.casefold()
+        ("pe" in stem.casefold() or pe_directory)
         and extension.casefold() in {".safetensors", ".gguf"}
         and not _is_projector(filename)
         and not re.search(r"(?:^|[-_.])mtp(?:[-_.]|$)", stem, re.I)
     )
+
+
+def scan_pe_model_files(catalog, roots):
+    if catalog not in PE_CATALOGS:
+        return []
+    if isinstance(roots, (str, os.PathLike)):
+        roots = [roots]
+    inventory = []
+    for root in roots or []:
+        root = os.path.abspath(root)
+        root_real = os.path.normcase(os.path.realpath(root))
+        for directory, subdirs, filenames in os.walk(root):
+            subdirs[:] = sorted(name for name in subdirs if name != ".git")
+            for filename in sorted(filenames, key=str.casefold):
+                path = os.path.join(directory, filename)
+                name = os.path.relpath(path, root)
+                if not is_pe_model_name(name):
+                    continue
+                try:
+                    if os.path.commonpath((root_real, os.path.normcase(os.path.realpath(path)))) != root_real:
+                        continue
+                except ValueError:
+                    continue
+                inventory.append((catalog, name, path))
+    return inventory
 
 
 def _model_tokens(path):
