@@ -4605,7 +4605,7 @@ with shared.gradio_root:
                                                             elem_id='comparison_box', elem_classes=['main_view'])
                             progress_video = gr.Video(label='Generated Video', show_label=True, visible=False, height=768,
                                                 elem_classes=['main_view', 'video_player'], elem_id='video_player', autoplay=True)
-                            gallery = gr.Gallery(label='Gallery', show_label=True, object_fit='contain', visible=False, height=768,
+                            gallery = gr.Gallery(label='Gallery', show_label=True, object_fit='contain', visible="hidden", height=768,
                                         elem_classes=['resizable_area', 'main_view', 'final_gallery', 'image_gallery'],
                                         elem_id='final_gallery', allow_preview=True, preview=True, selected_index=None,
                                         columns=4, interactive=False, fit_columns=False )
@@ -11815,6 +11815,13 @@ with shared.gradio_root:
                 generation_failure_cleanup,
                 inputs=[state_topbar],
                 outputs=generation_failure_outputs,
+                show_progress=False,
+                queue=False,
+            )
+            cleanup_event = cleanup_event.then(
+                scene_director_webui.restore_h3_director_generation_surface,
+                inputs=[currentTask],
+                outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button],
                 show_progress=False,
                 queue=False,
             )

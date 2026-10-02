@@ -744,6 +744,50 @@
     const h3TwoPassPresets = new Set([
         'MiniMax-H3(I2V)', 'MiniMax-H3(R2C)', 'MiniMax-H3(R2I)', 'MiniMax-H3(R2V)', 'MiniMax-H3(T2V)',
     ]);
+    const h3DurationPresets = new Set([
+        'MiniMax-H3(Avatar)', 'MiniMax-H3(I2V)', 'MiniMax-H3(Motion)', 'MiniMax-H3(R2C)',
+        'MiniMax-H3(R2V)', 'MiniMax-H3(Swap)', 'MiniMax-H3(Swap-SAM3)',
+        'MiniMax-H3(T2V)', 'MiniMax-H3(Transition)',
+    ]);
+    const h3DurationLimitPresets = new Set(['MiniMax-H3(Swap)', 'MiniMax-H3(Swap-SAM3)']);
+    const h3ShiftPresets = new Set([
+        'MiniMax-H3(Avatar)', 'MiniMax-H3(Edit)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2C)', 'MiniMax-H3(R2V)',
+        'MiniMax-H3(Swap)', 'MiniMax-H3(Swap-SAM3)', 'MiniMax-H3(T2V)', 'MiniMax-H3(Transition)',
+    ]);
+    const h3DurationNote = pair(
+        'Video Duration sets the length of each generated segment, not necessarily the final video after joining clips. Although this preset allows up to 30s, aim for 15s or less and try not to exceed 20s; 25–30s may reduce image quality and prompt adherence. For longer videos, continue or join shorter segments.',
+        '“视频时长”设置每次新生成的片段，不一定是拼接后的成片长度。虽然此预置最多支持 30 秒，建议每段优先控制在 15 秒以内，尽量不超过 20 秒；25～30 秒可能降低画质和提示词遵循。长视频建议分段生成后续接或拼接。'
+    );
+    const h3DurationLimitNote = pair(
+        'Duration limit caps how much of the source video is processed: 0 means no limit, and 30s is the largest nonzero setting, not a target length for a new video. Aim to process segments of 15s or less and try not to exceed 20s; 25–30s may reduce image quality and prompt adherence. For longer videos, edit shorter segments and join them.',
+        '“时长上限”限制原视频的处理范围：0 表示不限制，30 秒是可设置的最大非零值，不是新视频的目标时长。建议每段优先处理 15 秒以内，尽量不超过 20 秒；25～30 秒可能降低画质和提示词遵循。长视频建议分段编辑后拼接。'
+    );
+    const h3ShiftNote = pair(
+        'Video Shift and Audio Shift adjust separate picture and sound sampling schedules; they do not extend the video. Keep the preset defaults unless you are testing a specific change.',
+        '“视频 Shift”和“音频 Shift”分别调整画面与声音的采样日程，不会延长视频。没有明确调整目标时，保持预置默认值即可。'
+    );
+    const h3TwoPassControlNote = pair(
+        'In 2 pass mode, Downsample factor sets how much smaller the first pass runs; a larger factor reduces its size and can lose detail. 2-pass denoise controls how much the second sampling stage may change the first result. Keep the defaults when starting out.',
+        '使用“双采样”时，“缩小倍率”控制第一次采样的画面缩小多少；倍率越大，一采画面越小，可能损失细节。“二采降噪强度”决定第二次采样可以在多大程度上改变第一次的结果，初次使用建议保留默认值。'
+    );
+    const h3SpecificControlNotes = {
+        'MiniMax-H3(Avatar)': pair(
+            'Source Audio Start selects where to begin reading the uploaded audio; 0 starts from the beginning. Video Duration then sets how much of that audio segment is used.',
+            '“原音频起点”决定从上传音频的第几秒开始读取，0 表示从头开始；“视频时长”决定使用这段音频的多长时间。'
+        ),
+        'MiniMax-H3(Motion)': pair(
+            'ControlNet Strength adjusts how strongly the source video guides movement. Higher values can follow the driving motion more closely; keep the default unless the motion is too weak or restrictive.',
+            '“ControlNet 强度”调整源视频对动作的约束程度。数值越大通常越贴近驱动动作；动作跟随不足或限制过强时再从默认值调整。'
+        ),
+        'MiniMax-H3(Transition)': pair(
+            'Transition Overlap Per Side sets how much of each source clip is included at the two joins; it is not the duration of the inserted middle segment.',
+            '“单侧过渡重叠时长”决定两个连接处各取多少原视频用于衔接，不是新增中间片段的时长。'
+        ),
+        'MiniMax-H3(Upscale)': pair(
+            'Redraw strength controls how much the upscale pass may change the source picture. Higher values can add detail but also alter the original appearance; start with the preset default.',
+            '“重绘强度”控制放大时可以多大程度改动原画面。数值越大可能增加细节，也可能改变原有外观，建议先使用预置默认值。'
+        ),
+    };
     const h3SamplingModes = [
         pair('Basic: generate with a single sampling stage.', '基础：单次采样生成。'),
         pair('2 pass: combine a low-resolution first sampling stage with a high-resolution second sampling stage to balance image quality and speed. This may slightly affect consistency.', '双采样：通过低分辨率一采与高分辨率二采，平衡画质与速度，可能略微影响一致性。'),
@@ -767,6 +811,11 @@
     }
 
     const presetGuides = {
+        'Qwen2.1-Edit': {
+            intro: pair('Upload an image and describe how to edit it, or combine several images using clearly assigned references. Without any image, this preset generates a new image from text.', '上传图片后用文字说明要怎样修改，也可以结合多张参考图进行合成；不上传图片时，才会根据文字生成新图。'),
+            inputs: pair('For editing, put the source in Main Image (1), optionally add reference images, and describe both the changes and what should remain. Paint on the main image to limit a local edit; without a painted mask the ordinary edit path stays available. Text-only generation needs only a prompt.', '编辑时把原图放在“主体图片(1)”，需要时再添加参考图；提示词说明要改什么、保留什么。需要局部修改时在主体图片上绘制遮罩；不画遮罩仍可普通编辑。纯文字生图只需填写提示词。'),
+            keyPoint: pair('Reference Resolution affects the input images seen by the model, not the output dimensions: 1024 keeps the aspect ratio and scales each reference to roughly one million pixels; 0 stays near the original size (rounded to multiples of 32). Set the final width and height separately. Higher values may use more memory and time.', '“参考图分辨率”控制模型读取输入图片的尺寸，不决定成图宽高：1024 表示等比缩放到约 100 万像素，并不是最长边 1024；0 尽量保持原图尺寸，但仍按 32 像素对齐。成图宽高请另设输出尺寸；数值越大可能越占显存、耗时越久。'),
+        },
         'MiniMax-H3(Region)': {
             intro: pair('Rework a selected time range in an existing video. Motion Rebuild regenerates motion and can slow it down; Face Refine improves facial detail; Tile Refine enlarges and redraws individual image regions to improve detail across the frame.', '针对已有视频的指定时间片段进行重建与细节优化。动态重建用于重新生成动作或制作慢动作；面部优化用于改善人脸细节；分区优化将画面分区放大重绘，改善全画面细节。'),
             inputs: pair('A source video, the start and end times, and a prompt describing the desired result. Optionally add up to 3 appearance reference images; no manually prepared mask is required.', '源视频、处理片段的起止时间，以及描述目标效果的提示词。可选添加最多 3 张外观参考图，无需手动制作蒙版。'),
@@ -837,6 +886,8 @@
             intro: pair('This custom preset has no declared task description. Its name alone does not identify its intended result.', '此自定义预置包尚未声明任务用途，仅凭名称无法判断它会生成或处理什么内容。'),
             inputs: pair('Input requirements have not been declared; check the preset author instructions and the visible input labels.', '尚未声明素材要求，请查看作者提供的说明及当前输入位置的标注。'),
         };
+        const durationNote = h3DurationLimitPresets.has(preset)
+            ? h3DurationLimitNote : h3DurationPresets.has(preset) ? h3DurationNote : null;
         const modes = h3TwoPassPresets.has(preset) ? h3SamplingModes : [];
         const steps = guide.steps || [
             pair('Choose the required mode before adding media. When editing, state both the intended change and what must remain unchanged.', '添加素材前选择需要的模式；编辑任务中，同时说明要修改和要保留的内容。'),
@@ -850,6 +901,10 @@
         if (sam3) sections.push(...topics.sam3.sections);
         const notes = [...(guide.notes || [])];
         if (guide.keyPoint) notes.unshift(guide.keyPoint);
+        if (durationNote) notes.push(durationNote);
+        if (h3ShiftPresets.has(preset)) notes.push(h3ShiftNote);
+        if (h3TwoPassPresets.has(preset)) notes.push(h3TwoPassControlNote);
+        if (Object.hasOwn(h3SpecificControlNotes, preset)) notes.push(h3SpecificControlNotes[preset]);
         notes.push(pair('If model files are missing, use the model check and the installation guide before generation. The help dialog does not install or load models.', '模型文件缺失时，生成前查看模型检查和安装指引。打开帮助不会安装或加载模型。'));
         sections.push([pair('Important details', '使用要点'), notes]);
         if (!dedicated && knownTasks.length > 1) {
@@ -859,7 +914,7 @@
             title: preset || text(titles.preset, state),
             intro: text(guide.intro, state),
             inputs: text(guide.inputs, state),
-            keyPoint: [guide.keyPoint, sam3 ? sam3Summary : null].filter(Boolean).map(value => text(value, state)).join(' '),
+            keyPoint: [guide.keyPoint, durationNote, sam3 ? sam3Summary : null].filter(Boolean).map(value => text(value, state)).join(' '),
             mode: modes.map(mode => text(mode, state)).join(' '),
             sections,
             links: sam3 ? ['sam3', 'media', 'prompt', 'models'] : ['media', 'prompt', 'setup'],

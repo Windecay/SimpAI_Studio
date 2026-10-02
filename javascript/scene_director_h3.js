@@ -5,8 +5,11 @@
 })(typeof window !== "undefined" ? window : globalThis, function (root) {
     "use strict";
     const META = 14;
-    const MODES = ["text", "first_frame", "first_last", "reference", "continue"];
+    const MODES = ["text", "first_frame", "first_last", "reference", "continue", "avatar", "motion"];
+    const DRIVER_MODES = ["avatar", "motion"];
     const LABELS = {
+        avatar: ["Audio-driven avatar", "\u6570\u5b57\u4eba"],
+        motion: ["Motion transfer", "\u52a8\u4f5c\u8fc1\u79fb"],
         text: ["Text to video", "\u6587\u751f\u89c6\u9891"],
         first_frame: ["First frame", "\u9996\u5e27\u56fe\u751f"],
         first_last: ["First and last frames", "\u9996\u5c3e\u5e27\u56fe\u751f"],
@@ -30,9 +33,12 @@
     function isFamily(state = params()) {
         const preset = String(state.__preset || state.preset || state.preset_name || "").replace(/\.json$/, "");
         const engine = state.engine_type || (state.default_engine || {}).engine_type;
-        return /^MiniMax-H3\((T2V|I2V|R2V|R2C|Avatar|Motion|Transition|Edit|Swap|Swap-SAM3|Region|Upscale)\)$/.test(preset) && engine !== "image";
+        return /^MiniMax-H3\((T2V|I2V|R2V|R2C|Avatar|Motion|Transition)\)$/.test(preset) && engine !== "image";
     }
     function capability(state = params()) {
+        if (/^MiniMax-H3\((Edit|Swap|Swap-SAM3|Region|Upscale|R2I|Pose)\)(\.json)?$/.test(String(state.__preset || state.preset || state.preset_name || ""))) {
+            return { director_supported: false, source: "h3_excluded" };
+        }
         if (!isFamily(state)) return null;
         return {
             h3_unified: true, director_supported: true,
@@ -51,6 +57,8 @@
     }
     function defaultMode(state, count) {
         const preset = String(state.__preset || state.preset || "");
+        if (preset.includes("(Avatar)")) return "avatar";
+        if (preset.includes("(Motion)")) return "motion";
         if (preset.includes("(R2V)")) return "reference";
         if (preset.includes("(R2C)")) return "continue";
         if (preset.includes("(I2V)")) return count >= 2 ? "first_last" : "first_frame";
@@ -73,6 +81,10 @@
             if (saved.prompt_state && typeof saved.prompt_state === "object") {
                 meta.prompt_state = JSON.parse(JSON.stringify(saved.prompt_state));
             }
+            if (saved.mode_settings && typeof saved.mode_settings === "object") {
+                meta.mode_settings = {};
+                DRIVER_MODES.forEach(mode => { meta.mode_settings[mode] = driverSettings(saved, mode); });
+            }
             if (saved.transition && typeof saved.transition === "object") {
                 meta.transition = JSON.parse(JSON.stringify(saved.transition));
             }
@@ -86,6 +98,13 @@
     }
     function shotCapability(capability, mode) {
         if (!capability.h3Unified) return capability;
+        if (DRIVER_MODES.includes(mode)) return {
+            ...capability, h3Mode: mode, imagePolicy: "required", minImages: 1,
+            maxImages: mode === "avatar" ? 3 : 5,
+            audioPolicy: mode === "avatar" ? "required" : "forbidden", maxAudios: mode === "avatar" ? 1 : 0,
+            videoPolicy: mode === "motion" ? "required" : "forbidden", maxVideos: mode === "motion" ? 1 : 0,
+            videoModes: ["explicit"],
+        };
         return {
             ...capability, h3Mode: mode,
             imagePolicy: mode === "text" ? "forbidden" : "optional", minImages: 0,
@@ -98,12 +117,32 @@
     }
     function syncShotControls(rowNode) {
         const mode = rowNode.querySelector('[data-h3-field="mode"]')?.value || rowNode.__h3Meta?.mode;
-        const visibility = {image: mode !== "text", audio: mode === "reference", video: ["reference", "continue"].includes(mode)};
+        const visibility = {image: mode !== "text", audio: ["reference", "avatar"].includes(mode), video: ["reference", "continue", "motion"].includes(mode)};
+        const profile = rowNode.querySelector('[data-h3-field="sampling_profile"]');
+        if (profile) {
+            profile.disabled = DRIVER_MODES.includes(mode);
+            if (profile.disabled) profile.value = "Basic";
+        }
+        rowNode.querySelectorAll("[data-h3-driver-mode]").forEach(group => {
+            group.hidden = group.dataset.h3DriverMode !== mode;
+            const start = Number(group.querySelector('[data-h3-driver="source_start"]')?.value || 0);
+            const from = Number(rowNode.querySelector('[data-scene-director-field="start"]')?.value || 0);
+            const to = Number(rowNode.querySelector('[data-scene-director-field="end"]')?.value || 0);
+            const range = group.querySelector("[data-h3-driver-range]");
+            if (range) range.textContent = `${start.toFixed(2)} - ${(start + Math.max(0, to - from)).toFixed(2)} s`;
+        });
         ["image", "audio", "video"].forEach(kind => {
             const selector = kind === "image" ? ".scene-director-image-refs-field" : `[data-scene-director-field="${kind}_ref"]`;
             const field = rowNode.querySelector(selector);
             const label = kind === "image" ? field : field?.closest("label");
             if (label) {
+                const heading = label.querySelector?.(".h3-reference-heading > span");
+                if (heading) {
+                    const names = {image: DRIVER_MODES.includes(mode) ? ["Character pictures", "\u4eba\u7269\u56fe\u7247"] : ["Image refs", "\u56fe\u50cf\u5f15\u7528"],
+                        audio: mode === "avatar" ? ["Driving audio", "\u9a71\u52a8\u97f3\u9891"] : ["Audio refs", "\u97f3\u9891\u5f15\u7528"],
+                        video: mode === "motion" ? ["Driving video", "\u9a71\u52a8\u89c6\u9891"] : mode === "continue" ? ["Source video", "\u6e90\u89c6\u9891"] : ["Video refs", "\u89c6\u9891\u5f15\u7528"]};
+                    heading.textContent = text(...names[kind]);
+                }
                 if (visibility[kind]) label.style.removeProperty("display");
                 else label.style.setProperty("display", "none", "important");
             }
@@ -180,6 +219,10 @@
                     preview_url: kind === "image" ? root.sceneDirectorMediaMap().get(ref)?.src || "" : fileUrl,
                     mime: item.mime || `${kind}/${kind === "image" ? "png" : kind === "audio" ? "wav" : "mp4"}`,
                     name: item.name || ref, duration: item.duration, waveform: item.waveform,
+                    ...(DRIVER_MODES.includes(target.meta.mode) && kind === (target.meta.mode === "avatar" ? "audio" : "video")
+                        ? { role: target.meta.mode === "avatar" ? "audio_drive" : "motion_drive",
+                            source_start: driverSettings(target.meta, target.meta.mode).source_start,
+                            source_end: driverSettings(target.meta, target.meta.mode).source_start + Number(target.row[1]) - Number(target.row[0]) } : {}),
                 };
             });
         }
@@ -333,8 +376,9 @@
         const targetAttrs = target ? `data-h3-segment-id="${escape(target.segment_id)}" data-h3-version-id="${escape(target.version_id || "")}"` : "";
         return `<button type="button" class="h3-command ${escape(className)}" data-h3-action="${action}" ${targetAttrs} title="${escape(tooltip)}" aria-label="${escape(title)}" ${disabled ? "disabled" : ""}><i class="fa-solid fa-${glyph}" aria-hidden="true"></i><span>${escape(title)}</span></button>`;
     }
-    function referenceOptions(kind, options, selectedRefs, mediaMap, rowIndex = 0) {
+    function referenceOptions(kind, options, selectedRefs, mediaMap, rowIndex = 0, mode = "") {
         return options.filter(ref => {
+            if (DRIVER_MODES.includes(mode) && ref.startsWith("previous_segment")) return false;
             if (!ref || selectedRefs.includes(ref)) return true;
             if (ref === "previous_segment") return rowIndex > 0;
             const media = mediaMap.get(ref);
@@ -444,7 +488,8 @@
     }
     function timelineToolbar(disabled, readiness = {}) {
         const current = !!results.preview?.current;
-        const blocked = refreshPending || readiness.ready === false;
+        const blocked = refreshPending || readiness.ready === false || !!results.preview?.blocked_reason;
+        const reviewTarget = readiness.reviewTarget;
         const update = readiness.transitionUpdate;
         const adopt = update?.action === "select";
         const status = rendering ? text("Rendering", "\u6e32\u67d3\u4e2d") :
@@ -452,8 +497,10 @@
             adopt ? text("A new transition is waiting to be adopted", "\u65b0\u8f6c\u573a\u5c1a\u672a\u91c7\u7528") :
             readiness.transitionError ? readiness.transitionError :
             readiness.transitionMissing ? text(`${readiness.transitionMissing} transition(s) not generated`, `${readiness.transitionMissing} \u4e2a\u8f6c\u573a\u672a\u751f\u6210`) :
+            reviewTarget ? text(`Shot ${reviewTarget.number} settings or source changed`, `\u5206\u955c ${reviewTarget.number} \u7684\u53c2\u6570\u6216\u6765\u6e90\u5df2\u53d8\u5316`) :
             readiness.review ? text(`${readiness.review} shot(s) need review`, `${readiness.review} \u6bb5\u5f85\u68c0\u67e5`) :
             readiness.missing ? text(`${readiness.missing} shot(s) not generated`, `${readiness.missing} \u6bb5\u672a\u751f\u6210`) :
+            results.preview?.blocked_reason ? results.preview.blocked_reason :
             readiness.ready === false ? text("No included shots", "\u672a\u9009\u62fc\u63a5\u5206\u955c") :
             current ? text("Reviewed", "\u5df2\u9884\u89c8") :
             results.preview?.url ? text("Preview out of date", "\u9884\u89c8\u5df2\u8fc7\u671f") : text("Not previewed", "\u672a\u9884\u89c8");
@@ -461,9 +508,13 @@
             text("Regenerate transition", "\u91cd\u751f\u6210\u8f6c\u573a");
         const previewLabel = results.preview?.url && !current ? text("Update preview", "\u66f4\u65b0\u9884\u89c8") :
             text("Preview movie", "\u9884\u89c8\u6210\u7247");
-        return `<span class="h3-preview-state" role="status">${status}</span>
+        const keepLabel = reviewTarget && text(`Keep shot ${reviewTarget.number} result`, `\u4fdd\u7559\u5206\u955c ${reviewTarget.number} \u73b0\u6709\u7ed3\u679c`);
+        const regenerateLabel = reviewTarget && text(`Regenerate shot ${reviewTarget.number}`, `\u91cd\u751f\u6210\u5206\u955c ${reviewTarget.number}`);
+        return `<span class="h3-preview-state" role="status">${escape(status)}</span>
+            ${reviewTarget ? icon("keep", "thumbtack", keepLabel, disabled || refreshPending, "h3-primary", keepLabel, reviewTarget) : ""}
+            ${reviewTarget ? icon("single", "play", regenerateLabel, disabled || refreshPending, "", regenerateLabel, reviewTarget) : ""}
             ${update ? icon(update.action, adopt ? "check" : "play", updateLabel, disabled || refreshPending, "h3-primary", updateLabel, update) : ""}
-            ${icon("preview", "film", previewLabel, disabled || blocked)}
+            ${icon("preview", "film", previewLabel, disabled || blocked, "", blocked ? status : previewLabel)}
             ${icon("export", "download", text("Export movie", "\u8f93\u51fa\u6210\u7247"), disabled || blocked || !current, "h3-primary")}
             ${rendering ? icon("cancel", "stop", text("Cancel rendering", "\u53d6\u6d88\u6e32\u67d3")) : ""}`;
     }
@@ -805,6 +856,26 @@
         refreshPending = false;
         viewedVersions = {};
     }
+    function driverSettings(meta, mode) {
+        const saved = meta.mode_settings?.[mode] || {};
+        const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+        return { source_start: finite(saved.source_start, 0), ...(mode === "motion" ? {
+            strength: finite(saved.strength, 1), depth: saved.depth === true,
+            pose: saved.pose === true, smoothing: saved.smoothing === true,
+        } : {}) };
+    }
+    function driverControls(meta, row) {
+        return DRIVER_MODES.map(mode => {
+            const settings = driverSettings(meta, mode);
+            const end = settings.source_start + Number(row[1]) - Number(row[0]);
+            return `<div class="h3-driver-settings" data-h3-driver-mode="${mode}" ${meta.mode === mode ? "" : "hidden"}>
+                <label><span>${mode === "avatar" ? text("Audio start (s)", "\u97f3\u9891\u8d77\u70b9 (\u79d2)") : text("Video start (s)", "\u89c6\u9891\u8d77\u70b9 (\u79d2)")}</span><input type="number" min="0" max="86400" step="0.01" data-h3-driver="source_start" value="${escape(settings.source_start)}"></label>
+                <span class="h3-driver-range">${text("Source range", "\u7d20\u6750\u7247\u6bb5")} <output data-h3-driver-range>${settings.source_start.toFixed(2)} - ${end.toFixed(2)} s</output></span>
+                ${mode === "motion" ? `<label><span>${text("Control strength", "\u63a7\u5236\u5f3a\u5ea6")}</span><input type="number" min="0" max="2" step="0.05" data-h3-driver="strength" value="${escape(settings.strength)}"></label>
+                ${[["depth", "Depth", "\u6df1\u5ea6\u63a7\u5236"], ["pose", "Pose", "\u59ff\u6001\u63a7\u5236"], ["smoothing", "RIFE smoothing", "RIFE \u5e73\u6ed1"]].map(([key, en, cn]) => `<label class="h3-driver-toggle"><input type="checkbox" data-h3-driver="${key}" ${settings[key] ? "checked" : ""}><span>${text(en, cn)}</span></label>`).join("")}` : ""}
+            </div>`;
+        }).join("");
+    }
     function controls(row, index, rows) {
         if (!isFamily()) return "";
         const meta = metadata(row);
@@ -821,6 +892,7 @@
             <label class="h3-include"><input type="checkbox" data-h3-field="included" ${meta.included ? "checked" : ""}><span>${text("Include in timeline", "\u53c2\u4e0e\u62fc\u63a5")}</span></label>
             <div class="h3-shot-actions">${icon("single", "play", text("Generate shot", "\u751f\u6210\u672c\u6bb5"), busy)}
             ${icon("affected", "diagram-project", text("Regenerate this shot and dependent shots", "\u91cd\u751f\u6210\u672c\u6bb5\u53ca\u5173\u8054\u6bb5"), busy)}</div>
+            ${driverControls(meta, row)}
         </div>`;
     }
     function collect(rowNode, row, index, rows) {
@@ -828,6 +900,16 @@
         const previousMode = meta.mode;
         rowNode.querySelectorAll("[data-h3-field]").forEach(input => {
             meta[input.dataset.h3Field] = input.type === "checkbox" ? input.checked : input.value;
+        });
+        rowNode.querySelectorAll("[data-h3-driver-mode]").forEach(group => {
+            const mode = group.dataset.h3DriverMode;
+            if (!DRIVER_MODES.includes(mode)) return;
+            meta.mode_settings = meta.mode_settings || {};
+            const settings = driverSettings(meta, mode);
+            group.querySelectorAll("[data-h3-driver]").forEach(input => {
+                settings[input.dataset.h3Driver] = input.type === "checkbox" ? input.checked : Number(input.value);
+            });
+            meta.mode_settings[mode] = settings;
         });
         if (meta.mode !== previousMode && MODES.includes(meta.mode)) {
             meta.mode_bindings = meta.mode_bindings || {};
@@ -840,9 +922,12 @@
             else if (meta.mode === "first_frame") images = images.slice(0, 1);
             else if (meta.mode === "first_last") images = images.slice(0, 2);
             else images = images.filter(ref => ref !== "previous_segment_last_frame");
-            if (meta.mode !== "reference") audio = "";
-            if (!["reference", "continue"].includes(meta.mode)) video = "";
-            if (meta.mode === "continue") {
+            if (DRIVER_MODES.includes(meta.mode)) images = images.slice(0, meta.mode === "avatar" ? 3 : 5);
+            if (!["reference", "avatar"].includes(meta.mode)) audio = "";
+            if (meta.mode === "avatar") audio = root.sceneDirectorSerializeMediaRefs(root.sceneDirectorMediaRefsFromValue(audio, "audio").slice(0, 1));
+            if (!["reference", "continue", "motion"].includes(meta.mode)) video = "";
+            if (meta.mode === "motion") video = root.sceneDirectorSerializeMediaRefs(root.sceneDirectorMediaRefsFromValue(video, "video").filter(ref => ref !== "previous_segment"));
+            if (["continue", "motion"].includes(meta.mode)) {
                 const refs = root.sceneDirectorMediaRefsFromValue(video, "video");
                 video = root.sceneDirectorSerializeMediaRefs(refs.slice(0, 1));
             }
@@ -851,6 +936,7 @@
             root.sceneDirectorSetSelectedMediaRefs?.(rowNode, "audio", audio);
             root.sceneDirectorSetSelectedMediaRefs?.(rowNode, "video", video);
         }
+        if (DRIVER_MODES.includes(meta.mode)) meta.sampling_profile = "Basic";
         const hasDependency = row.slice(3, 12).includes("previous_segment_last_frame") || String(row[13]).includes("previous_segment");
         if (hasDependency && !meta.source_segment_id && index > 0) meta.source_segment_id = rows[index - 1]?.[META]?.id || "";
         row[META] = meta;
@@ -1028,6 +1114,8 @@
             const shots = included.map(row => results.shots?.find(shot => shot.id === row.__h3Meta?.id));
             const missing = shots.filter(shot => !shot?.versions?.some(version => version.id === shot.selected && version.available)).length;
             const review = shots.filter(shot => shot?.stale).length;
+            const reviewRow = included[shots.findIndex(shot => shot?.stale)];
+            const reviewTarget = reviewRow ? {segment_id: reviewRow.__h3Meta.id, number: rows.indexOf(reviewRow) + 1} : null;
             const edges = included.map(row => row.__h3Meta?.transition).filter(edge => edge?.enabled);
             const transitions = edges.map(edge => selectedResult(edge.id, "transitions").result);
             const transitionMissing = transitions.filter(item => !item?.versions?.some(version => version.id === item.selected && version.available)).length;
@@ -1035,7 +1123,7 @@
                 (transitions.some(item => item?.stale) ? text("Transitions need updating", "\u8f6c\u573a\u9700\u8981\u66f4\u65b0") : "");
             const orphan = rows.some(row => row.__h3Meta?.transition?.enabled && row.__h3Meta?.included === false);
             const outputHtml = timelineToolbar(disabled, {ready: included.length > 0 && !missing && !review && !transitionMissing && !transitionError && !orphan,
-                missing, review, transitionMissing,
+                missing, review, reviewTarget, transitionMissing,
                 transitionUpdate: !orphan && !review && !missing ? transitionUpdate(transitions) : null,
                 transitionError: transitionError || (orphan ? text("A transition source is excluded", "\u8f6c\u573a\u6765\u6e90\u672a\u53c2\u4e0e\u62fc\u63a5") : "")});
             if (output.__signature !== outputHtml) {
@@ -1100,7 +1188,7 @@
                     return;
                 }
                 const row = event.target.closest("[data-scene-director-shot]");
-                if (event.target.matches("[data-h3-field]")) {
+                if (event.target.matches("[data-h3-field], [data-h3-driver]")) {
                     root.sceneDirectorWriteRows(root.sceneDirectorRowsFromEditor(editor));
                     root.sceneDirectorRefreshEditorPreviews(editor);
                 } else if (event.target.matches("[data-h3-version]")) {
@@ -1112,6 +1200,10 @@
             });
             editor.addEventListener("input", event => {
                 if (event.target.matches('textarea[data-h3-transition-field], input[type="number"][data-h3-transition-field]')) changeTransition(editor, event.target);
+                if (event.target.matches("[data-h3-driver]")) {
+                    root.sceneDirectorWriteRows(root.sceneDirectorRowsFromEditor(editor));
+                    syncShotControls(event.target.closest("[data-scene-director-shot]"));
+                }
             });
             editor.addEventListener("click", onAction);
             const generateRoot = query("#generate_button");
@@ -1133,7 +1225,7 @@
             scheduleRefresh();
         }
     }
-    return { META, MODES, capability, isFamily, metadata, defaultMode, editorProject, resetProject,
+    return { META, MODES, capability, isFamily, metadata, defaultMode, driverSettings, editorProject, resetProject,
         controls, collect, shotCapability, syncShotControls, referenceOptions, mediaButton, mainToolbar, timelineToolbar,
         transitionPlan, outputRows, transitionMarkup, transitionUpdate, timelineDrag, timelineGaps, gapTransition, snapTransitions,
         mediaWorkspaceMarkup, syncMediaWorkspace,

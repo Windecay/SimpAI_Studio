@@ -810,6 +810,18 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     if director_segment and director_runtime.get("schema") == "simpai.h3_director.v1":
         from modules import scene_director_h3
 
+        if director_segment.get("mode") in scene_director_h3.DRIVER_MODES:
+            from modules.scene_director_webui import _h3_prepare_driver_input
+
+            kind = "audio" if director_segment["mode"] == "avatar" else "video"
+            refs = _prompt_action_media_refs(director_segment.get(kind))
+            if refs:
+                path = _prompt_action_existing_path(_prompt_action_director_media_value(director_runtime, refs[0]))
+                if path:
+                    prepared = {kind: path}
+                    _h3_prepare_driver_input(prepared, director_runtime, director_segment, data, trim_for_analysis=True)
+                    director_runtime = copy.deepcopy(director_runtime)
+                    director_runtime.setdefault("media_sources", {})[refs[0]] = {"path": prepared[kind]}
         if director_segment.get("mode") == "transition":
             from modules.scene_director_webui import _h3_source_input, _h3_transition_source_runtime
 
@@ -888,6 +900,8 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
             "prompt_compiler": director_segment.get("prompt_compiler", ""),
             "dependency_version": director_runtime.get("dependency_version", ""),
         }
+        if director_segment.get("driver"):
+            director_context["driver"] = copy.deepcopy(director_segment["driver"])
 
     entries, unresolved_image_slots = _prompt_action_normalize_image_entries(entries)
     roles = ["storyboard"] * len(entries) if analysis_only_images else _prompt_action_image_roles(
@@ -1863,6 +1877,9 @@ def prompt_action_resource_contract_note(media_meta):
             f"- director_video_refs_in_order: {', '.join(director.get('video_refs') or []) or 'none'}",
             f"- director_video_ref: {director.get('video_ref') or 'none'}",
         ])
+        if director.get("driver"):
+            lines.append(f"- driving_media_source_start_seconds: {director['driver']['source_start']}")
+            lines.append("The supplied driving media is the selected source range. Reuse its original audio and timing; do not invent dialogue or new sounds.")
         if str(meta.get("video_source") or "") == "director_previous_segment_pending":
             lines.append("- previous_segment_visual_status: unavailable before the previous shot has generated")
     if masked_image_edit:

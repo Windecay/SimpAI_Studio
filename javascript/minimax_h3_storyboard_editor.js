@@ -2601,7 +2601,8 @@
         const director = directorPromptContext(field, segmentId);
         if (director) return {
             mode: { text: MODE_T2VA, first_frame: MODE_I2VA, first_last: MODE_FL2VA,
-                reference: MODE_REF2VA, continue: MODE_REF2VA, transition: MODE_REF2VA }[director.mode],
+                reference: MODE_REF2VA, continue: MODE_REF2VA, transition: MODE_REF2VA,
+                avatar: MODE_REF2VA, motion: MODE_REF2VA }[director.mode],
             duration: director.duration, inventory: director.inventory,
             director_segment_id: director.segment_id, min_duration: director.min_duration, max_duration: director.max_duration,
             is_video_transition: director.mode === 'transition', langState: languageState(source),

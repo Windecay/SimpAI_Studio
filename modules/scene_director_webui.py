@@ -1052,6 +1052,10 @@ def _scene_director_visible_image_slot_count(state_params=None):
 
 
 def _scene_director_capability_from_state(state_params=None, scene_theme=None):
+    state = state_params if isinstance(state_params, dict) else {}
+    preset = str(state.get("__preset") or state.get("preset") or "").removesuffix(".json")
+    if preset in h3_director.EXCLUDED_PRESETS:
+        return {**copy.deepcopy(SCENE_DIRECTOR_DEFAULT_CAPABILITY), "director_supported": False}
     if h3_director.is_family(state_params):
         return copy.deepcopy(h3_director.CAPABILITY)
     explicit = _scene_director_explicit_capability(state_params, scene_theme)
@@ -1969,6 +1973,54 @@ def _scene_director_clear_segment_media_backend(backend):
         backend.pop(key, None)
 
 
+def _h3_prepare_driver_input(backend, runtime, segment, state, trim_for_analysis=False):
+    from modules import canvas_workbench_assets as assets
+
+    kind = "audio" if segment["mode"] == "avatar" else "video"
+    path = backend.get(kind)
+    if not isinstance(path, str) or not os.path.isfile(path):
+        raise gr.Error(h3_director.text(state, "The driving media is unavailable.", "驱动素材不可用。"))
+    mime = "audio/wav" if kind == "audio" else "video/mp4"
+    info = assets._probe_media_metadata(path, mime)
+    duration = _scene_director_segment_duration(segment)
+    start = segment["driver"]["source_start"]
+    available = h3_director.number(info.get("duration"), 0)
+    if available <= 0 or start < 0 or start + duration > available + 1 / 24:
+        raise gr.Error(h3_director.text(
+            state, "The driving media cannot cover this range. Adjust its start or the shot duration.",
+            "驱动素材无法覆盖所选片段，请调整素材起点或分镜时长。"))
+    if (kind == "video" and start > 0) or trim_for_analysis:
+        # Both Motion's raw/RIFE and 24 FPS branches must receive the same range and soundtrack.
+        backend[kind] = assets._trim_media_file(
+            path, mime, {"trim_start": start, "trim_end": start + duration, "duration": duration},
+            "h3-director-" + runtime["project_id"], state, node_id=segment["id"],
+            role=segment["mode"] + ("_analysis" if trim_for_analysis else "_drive"), force_reencode=True,
+        )
+        if not backend[kind]:
+            raise gr.Error(h3_director.text(state, "Could not prepare the driving media.", "无法处理驱动素材片段。"))
+
+
+def _h3_driven_result(path, runtime, segment, state):
+    from modules import canvas_workbench_assets as assets
+
+    info = assets._probe_media_metadata(path, "video/mp4")
+    wanted = _scene_director_segment_duration(segment)
+    actual = h3_director.number(info.get("duration"), 0)
+    if abs(h3_director.number(info.get("fps"), 0) - 24) > 0.01 or actual < wanted - 1 / 24:
+        raise gr.Error(h3_director.text(state, "The driven result has an unexpected duration or frame rate.",
+                                        "驱动生成结果的时长或帧率与请求不符，未采用该结果。"))
+    # Motion pads to H3's frame grid. Discard only the padding, never stretch the soundtrack.
+    if actual > wanted + 0.01:
+        path = assets._trim_media_file(
+            path, "video/mp4", {"trim_start": 0, "trim_end": wanted, "duration": wanted},
+            "h3-director-" + runtime["project_id"], state, node_id=segment["id"],
+            role="driven_result", force_reencode=True,
+        )
+        if not path:
+            raise gr.Error(h3_director.text(state, "Could not align the driven result.", "无法对齐驱动生成结果的时长。"))
+    return path
+
+
 def _scene_director_build_segment_task(base_task, runtime, segment, index, previous_video=None, state_params=None):
     import modules.async_worker as worker
 
@@ -2044,10 +2096,15 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
         next_backend["video"] = previous_video["from"]
         next_backend["reference_video"] = previous_video["to"]
         next_backend.pop("reference_video2", None)
+    if h3_director.is_runtime(runtime) and segment["mode"] in h3_director.DRIVER_MODES:
+        _h3_prepare_driver_input(next_backend, runtime, segment, state_params)
 
     segment_prompt = str(segment.get("prompt") or "").strip()
     segment_duration = _scene_director_segment_generation_duration(runtime, segment, 1.0)
     runtime_capability = runtime.get("director_capability") if isinstance(runtime, dict) and isinstance(runtime.get("director_capability"), dict) else {}
+    if h3_director.is_runtime(runtime) and segment["mode"] in h3_director.DRIVER_MODES:
+        runtime_capability = {**runtime_capability, "duration_strategy": "shot",
+                              "audio_output": "input_audio" if segment["mode"] == "avatar" else "source_audio"}
     duration_strategy = _scene_director_duration_strategy(runtime_capability.get("duration_strategy"))
     shot_duration = _scene_director_segment_duration(segment, 1.0)
     segment_duration_param = _scene_director_segment_duration_param(
@@ -2083,6 +2140,8 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
             sampling_profile=segment["sampling_profile"],
             source_segment_id=segment.get("source_segment_id"),
         )
+        if segment["mode"] in h3_director.DRIVER_MODES:
+            next_backend["director_segment"]["driver"] = copy.deepcopy(segment["driver"])
         if segment["mode"] == "transition":
             next_backend["director_segment"].update(
                 from_segment_id=segment["from_segment_id"], to_segment_id=segment["to_segment_id"],
@@ -2432,13 +2491,32 @@ def _h3_request(value, state=None):
 def _h3_generation_surface(compare_button_update_fn, results=None, message=""):
     return (
         gr_update(visible=bool(message), value=html_module.make_progress_html(1, message)),
-        gr_update(visible=False), gr_update(visible=False, value=None),
+        gr_update(visible=not bool(results)), gr_update(visible=False, value=None),
         gr_update(visible=False, value=None),
         gr_update(visible=bool(results), value=results or []), False,
         gr_update(visible=False), compare_button_update_fn(visible=False, ready=False),
         gr_update(visible=bool(message), interactive=True),
         gr_update(visible=bool(message), interactive=True),
     )
+
+
+def _h3_generation_result_surface(task, runtime, project, compare_fn):
+    results = [
+        project.selected(segment["id"])["asset"]["path"]
+        for segment in runtime["segments"] if project.available(segment["id"])
+    ]
+    task.results = results
+    task.simpleai_generation_had_output = bool(results)
+    task.image_number = max(1, len(results))
+    return _h3_generation_surface(compare_fn, results=results)
+
+
+def restore_h3_director_generation_surface(task):
+    surface = getattr(task, "h3_director_failure_surface", None)
+    if surface is None:
+        return tuple(gr_update() for _ in range(10))
+    task.h3_director_failure_surface = None
+    return surface
 
 
 def _h3_source_input(runtime, source_version, state, cancel_callback=None):
@@ -2482,6 +2560,7 @@ def _h3_transition_source_runtime(runtime, project, transition):
 
 
 def _generate_h3_director(task, state, runtime, generate_fn, compare_fn, request):
+    task.h3_director_failure_surface = None
     request = _h3_request(request, state)
     snapshot = request.get("editor")
     if isinstance(snapshot, dict):
@@ -2547,6 +2626,10 @@ def _generate_h3_director(task, state, runtime, generate_fn, compare_fn, request
                         lambda: getattr(task, "last_stop", False) in ("stop", "skip"),
                     )
                 segment_task = _scene_director_build_segment_task(task, runtime, segment, index, previous, state)
+                if getattr(task, "last_stop", False) in ("stop", "skip"):
+                    shot.update(status="stopped", error="")
+                    project.save()
+                    break
                 task.active_director_task = segment_task
                 for out in generate_fn(segment_task, state):
                     yield out
@@ -2564,6 +2647,13 @@ def _generate_h3_director(task, state, runtime, generate_fn, compare_fn, request
                         break
                     raise gr.Error(shot["error"])
                 parameters = _h3_generation_settings(segment_task)
+                if segment["mode"] in h3_director.DRIVER_MODES:
+                    path = _h3_driven_result(path, runtime, segment, state)
+                    parameters["driver"] = copy.deepcopy(segment["driver"])
+                    if getattr(task, "last_stop", False) in ("stop", "skip"):
+                        shot.update(status="stopped", error="")
+                        project.save()
+                        break
                 if "image_seed" in api_params.all_args:
                     parameters["image_seed"] = segment_task.args[api_params.all_args.index("image_seed")]
                 parameters["task_method"] = getattr(segment_task, "task_method", None)
@@ -2590,15 +2680,14 @@ def _generate_h3_director(task, state, runtime, generate_fn, compare_fn, request
                 shot.update(status="failed", error=str(error))
                 project.save()
                 raise
-        results = [
-            project.selected(s["id"])["asset"]["path"]
-            for s in runtime["segments"] if project.available(s["id"])
-        ]
-        task.results = results
-        task.simpleai_generation_had_output = bool(results)
-        task.image_number = max(1, len(results))
         project.save()
-        yield _h3_generation_surface(compare_fn, results=results)
+        yield _h3_generation_result_surface(task, runtime, project, compare_fn)
+    except Exception as error:
+        # Restore after Gradio's failure handling, not from the failing stream.
+        task.h3_director_failure_surface = _h3_generation_result_surface(task, runtime, project, compare_fn)
+        logger.warning("[SceneDirector] H3 generation failed; preview recovery queued: project=%s, results=%s, error=%s",
+                       runtime["project_id"], len(task.results), error)
+        raise
     finally:
         task.processing = False
         task.active_director_task = None
@@ -2812,10 +2901,21 @@ def h3_director_result_action(request, enabled, compose, rows, width, height, fp
         elif action != "refresh":
             raise gr.Error(h3_director.text(state, "Invalid result action.", "结果操作无效。"))
         view = project.view(runtime)
+        preview_error = ""
         try:
             _, signature = _h3_timeline_snapshot(runtime, project, state)
-        except gr.Error:
+        except gr.Error as error:
             signature = ""
+            preview_error = str(error.message)
+        review_numbers = [str(index + 1) for index, segment in enumerate(runtime["segments"])
+                          if segment.get("included", True) and view["shots"][index]["stale"]]
+        if review_numbers:
+            numbers = ", ".join(review_numbers)
+            preview_error = h3_director.text(
+                state, f'Shot {numbers}: settings or source changed. Choose "Keep shot result" or "Regenerate shot" beside the timeline, then update the preview.',
+                f"分镜 {numbers} 的参数或来源已变化。请在时间线旁选择保留该分镜现有结果，或重生成该分镜，再更新预览。",
+            )
+        view["preview"]["blocked_reason"] = preview_error
         view["preview"]["current"] = bool(
             signature and view["preview"]["signature"] == signature
             and os.path.isfile(project.data.get("preview", {}).get("path", ""))
@@ -2826,29 +2926,33 @@ def h3_director_result_action(request, enabled, compose, rows, width, height, fp
             preview_path = project.data.get("preview", {}).get("path", "")
             if os.path.isfile(preview_path):
                 result_path = preview_path
-                if not message:
-                    stale_transitions = [item for item in view["transitions"] if item["enabled"] and item["stale"]]
-                    waiting_adoption = any(
-                        v["available"] and v["current"] and v["id"] != item["selected"]
-                        for item in stale_transitions for v in item["versions"]
+            if not message:
+                stale_transitions = [item for item in view["transitions"] if item["enabled"] and item["stale"]]
+                waiting_adoption = any(
+                    v["available"] and v["current"] and v["id"] != item["selected"]
+                    for item in stale_transitions for v in item["versions"]
+                )
+                if view["preview"]["current"]:
+                    message = h3_director.text(state, "Preview ready.", "预览已生成。")
+                elif review_numbers:
+                    message = preview_error
+                elif waiting_adoption:
+                    message = h3_director.text(
+                        state, "The old preview is out of date. Use the new transition, then update the preview.",
+                        "旧预览已过期。请采用新版转场，再更新预览。",
                     )
-                    if view["preview"]["current"]:
-                        message = h3_director.text(state, "Preview ready.", "预览已生成。")
-                    elif waiting_adoption:
-                        message = h3_director.text(
-                            state, "The old preview is out of date. Use the new transition, then update the preview.",
-                            "旧预览已过期。请采用新版转场，再更新预览。",
-                        )
-                    elif stale_transitions:
-                        message = h3_director.text(
-                            state, "The selected transition is out of date. Regenerate it and adopt the new version.",
-                            "当前采用的转场已过期。请重生成转场并采用新版本。",
-                        )
-                    else:
-                        message = h3_director.text(
-                            state, 'Preview is out of date. Click "Update preview" on the timeline.',
-                            "预览已过期。请点击时间线右侧的“更新预览”。",
-                        )
+                elif stale_transitions:
+                    message = h3_director.text(
+                        state, "The selected transition is out of date. Regenerate it and adopt the new version.",
+                        "当前采用的转场已过期。请重生成转场并采用新版本。",
+                    )
+                elif preview_error:
+                    message = preview_error
+                elif result_path:
+                    message = h3_director.text(
+                        state, 'Preview is out of date. Click "Update preview" on the timeline.',
+                        "预览已过期。请点击时间线右侧的“更新预览”。",
+                    )
         return json.dumps(view, ensure_ascii=False), gr_update(value=result_path or None, visible=bool(result_path)), gr_update(value=message)
     finally:
         if action != "refresh":

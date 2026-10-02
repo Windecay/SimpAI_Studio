@@ -28173,6 +28173,37 @@ html.simpai-h3-director #scene_director_h3_toolbar {
   margin-left: auto;
 }
 
+.h3-driver-settings {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.h3-driver-settings input[type="number"] {
+  width: 88px;
+  min-width: 64px;
+  max-width: 100%;
+  padding: 5px 6px;
+  border: 1px solid var(--border-color-primary);
+  border-radius: 4px;
+  color: var(--body-text-color);
+  background: var(--input-background-fill);
+}
+
+.h3-driver-range {
+  color: var(--body-text-color-subdued);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.h3-driver-range output {
+  font-variant-numeric: tabular-nums;
+}
+
 .h3-shot-controls label {
   display: flex;
   align-items: center;
@@ -28547,6 +28578,9 @@ html.simpai-h3-director #scene_director_settings_row > .form {
 @media (max-width: 640px) {
   .h3-shot-controls label:not(.h3-include) {
     flex: 1 1 145px;
+  }
+  .h3-shot-controls > label:first-child {
+    flex-basis: 100%;
   }
   .h3-shot-controls select {
     flex: 1;

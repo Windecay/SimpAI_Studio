@@ -13,12 +13,14 @@ from pathlib import Path
 
 SCHEMA = "simpai.h3_director.v1"
 META_INDEX = 14
-MODES = ("text", "first_frame", "first_last", "reference", "continue")
+MODES = ("text", "first_frame", "first_last", "reference", "continue", "avatar", "motion")
+DRIVER_MODES = ("avatar", "motion")
 VIDEO_PRESETS = {
     f"MiniMax-H3({name})"
-    for name in ("T2V", "I2V", "R2V", "R2C", "Avatar", "Motion", "Transition",
-                 "Edit", "Swap", "Swap-SAM3", "Region", "Upscale")
+    for name in ("T2V", "I2V", "R2V", "R2C", "Avatar", "Motion", "Transition")
 }
+EXCLUDED_PRESETS = {f"MiniMax-H3({name})" for name in
+                    ("Edit", "Swap", "Swap-SAM3", "Region", "Upscale", "R2I", "Pose")}
 ROUTES = {
     "text": ("T2V", "minimax_h3_t2va"),
     "first_frame": ("I2V", "minimax_h3_frame_anchor"),
@@ -26,6 +28,8 @@ ROUTES = {
     "reference": ("R2V", "minimax_h3_ref2va"),
     "continue": ("R2C", "minimax_h3_ref2va"),
     "transition": ("Transition", "minimax_h3_ref2va"),
+    "avatar": ("Avatar", "minimax_h3_ref2va"),
+    "motion": ("Motion", "minimax_h3_ref2va"),
 }
 CAPABILITY = {
     "h3_unified": True,
@@ -64,6 +68,9 @@ def is_runtime(runtime):
 
 def default_mode(state, image_count=0):
     preset = str((state or {}).get("__preset") or "")
+    for mode in DRIVER_MODES:
+        if f"({mode.title()})" in preset:
+            return mode
     if "(R2V)" in preset:
         return "reference"
     if "(R2C)" in preset:
@@ -86,7 +93,7 @@ def number(value, default):
         return default
 
 
-@lru_cache(maxsize=5)
+@lru_cache(maxsize=8)
 def route_preset(name):
     return json.loads((ROOT / "presets" / f"MiniMax-H3({name}).json").read_text(encoding="utf-8"))
 
@@ -97,11 +104,13 @@ def route(segment):
         raise ValueError("Unknown H3 director mode")
     name, compiler = ROUTES[mode]
     profile = segment.get("sampling_profile", "Basic")
-    if mode == "transition" and profile != "Basic":
-        raise ValueError("H3 transitions support Basic sampling only")
+    if mode in (*DRIVER_MODES, "transition") and profile != "Basic":
+        raise ValueError("This H3 mode supports Basic sampling only")
     if profile not in ("Basic", "2 pass"):
         raise ValueError("Unknown H3 sampling profile")
     scene = route_preset(name)["default_engine"]["scene_frontend"]
+    if mode == "motion":
+        profile = "Character Motion Transfer"
     return name, profile, scene["task_method"][profile], compiler
 
 
@@ -127,6 +136,12 @@ def route_backend(segment, width, height):
         backend["scene_switch_option1"] = False
     if segment["mode"] == "transition":
         backend["scene_var_number5"] = segment["overlap"]
+    if segment["mode"] == "avatar":
+        backend["scene_var_number5"] = segment["driver"]["source_start"]
+    elif segment["mode"] == "motion":
+        driver = segment["driver"]
+        backend.update(scene_var_number4=driver["strength"], scene_switch_option1=driver["depth"],
+                       scene_switch_option2=driver["pose"], scene_switch_option3=driver["smoothing"])
     return backend
 
 
@@ -149,6 +164,17 @@ def _refs(value, kind):
         if (re.fullmatch(rf"{kind}_\d+", ref) or ref == previous) and ref not in refs:
             refs.append(ref)
     return refs
+
+
+def driver_settings(meta, mode):
+    settings = meta.get("mode_settings", {})
+    settings = settings.get(mode, {}) if isinstance(settings, dict) else {}
+    settings = settings if isinstance(settings, dict) else {}
+    driver = {"source_start": number(settings.get("source_start"), 0)}
+    if mode == "motion":
+        driver.update(strength=number(settings.get("strength"), 1),
+                      **{key: settings.get(key) is True for key in ("depth", "pose", "smoothing")})
+    return driver
 
 
 def build_runtime(rows, width, height, fps, duration, media_sources, state, editor=None):
@@ -196,7 +222,16 @@ def build_runtime(rows, width, height, fps, duration, media_sources, state, edit
             "audio": [{"source_ref": ref, "role": "reference"} for ref in audios],
             "video": [{"source_ref": ref, "role": "continuation_source" if mode == "continue" else "reference"} for ref in videos],
         }
-        if mode in MODES and segment["sampling_profile"] in ("Basic", "2 pass"):
+        if mode in DRIVER_MODES:
+            segment["driver"] = driver_settings(meta, mode)
+            for item in segment["images"]:
+                item["role"] = "character"
+            for item in segment["audio"]:
+                item["role"] = "audio_drive"
+            for item in segment["video"]:
+                item["role"] = "motion_drive"
+        profiles = ("Basic",) if mode in DRIVER_MODES else ("Basic", "2 pass")
+        if mode in MODES and segment["sampling_profile"] in profiles:
             _, _, segment["task_method"], segment["prompt_compiler"] = route(segment)
         segments.append(segment)
         raw_transition = meta.get("transition")
@@ -342,6 +377,18 @@ def validation(runtime, state, target_ids=None):
             error = text(state, "Reference mode requires media.", "多模态参考模式需要选择素材。")
         elif mode == "continue" and (len(videos) != 1 or audios):
             error = text(state, "Continuation requires one source video and no standalone audio.", "视频续接需要一个源视频，不使用独立音频。")
+        elif mode == "avatar" and (not 1 <= len(images) <= 3 or len(audios) != 1 or videos):
+            error = text(state, "Avatar requires 1-3 pictures and one driving audio clip, with no video.",
+                         "数字人需要 1–3 张人物图片和一个驱动音频，不使用视频素材。")
+        elif mode == "motion" and (not 1 <= len(images) <= 5 or len(videos) != 1 or audios):
+            error = text(state, "Motion transfer requires 1-5 character pictures and one driving video, with no standalone audio.",
+                         "动作迁移需要 1–5 张人物图片和一个驱动视频，不使用独立音频。")
+        elif mode in DRIVER_MODES and segment["sampling_profile"] != "Basic":
+            error = text(state, "Avatar and motion transfer support Basic sampling only.", "数字人和动作迁移仅支持基础采样。")
+        elif mode in DRIVER_MODES and not 0 <= segment["driver"]["source_start"] <= 86400:
+            error = text(state, "The driving media start must be between 0 and 86400 seconds.", "驱动素材起点须在 0–86400 秒之间。")
+        elif mode == "motion" and not 0 <= segment["driver"]["strength"] <= 2:
+            error = text(state, "Motion control strength must be between 0 and 2.", "动作控制强度须在 0–2 之间。")
         elif mode not in ("reference", "continue") and any(v["source_ref"] == "previous_segment" for v in videos):
             error = text(state, "A source video requires Reference or Continue mode.", "引用来源视频需要选择多模态参考或视频续接模式。")
         elif any(v["source_ref"] == "previous_segment_last_frame" for v in images) and (
@@ -352,6 +399,15 @@ def validation(runtime, state, target_ids=None):
             error = text(state, "The source shot must exist before this shot.", "来源分镜必须存在，并位于本段之前。")
         elif any(v["source_ref"].startswith("previous_segment") for v in images + videos) and not segment.get("source_segment_id"):
             error = text(state, "No preceding shot result is available.", "本段没有可引用的前置分镜。")
+        if not error and mode in DRIVER_MODES:
+            kind = "audio" if mode == "avatar" else "video"
+            ref = segment[kind][0]["source_ref"]
+            media = runtime.get("media_sources", {}).get(ref, {})
+            media = media if isinstance(media, dict) else {}
+            available = number(media.get("duration"), 0)
+            if available > 0 and segment["driver"]["source_start"] + segment["end"] - segment["start"] > available + 1 / 24:
+                error = text(state, "The driving media is shorter than the requested range. Adjust the source start or shot duration.",
+                             "驱动素材不足以覆盖所选片段，请调整素材起点或分镜时长。")
         if error:
             errors.append(f"{text(state, 'Shot', '分镜')} {index + 1}: {error}")
     errors.extend(transition_errors(runtime, state, target_ids))
@@ -373,6 +429,8 @@ def request_signature(segment, runtime):
         "media": {ref: media.get(ref) for ref in refs if not ref.startswith("previous_segment")},
         "generation_settings": runtime.get("generation_settings", {}),
     }
+    if segment["mode"] in DRIVER_MODES:
+        request["driver"] = segment["driver"]
     if segment["mode"] == "transition":
         by_id = {s["id"]: s for s in runtime["segments"]}
         request["transition"] = {

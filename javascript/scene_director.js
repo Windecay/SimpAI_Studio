@@ -1740,7 +1740,7 @@ function sceneDirectorRenderImageRefPicker(rowNode, mediaMap = sceneDirectorMedi
     const noneDisabled = capability.imagePolicy === "required" || capability.imagePolicy === "forbidden";
     const noneLabel = sceneDirectorNoneChoiceLabel(capability, selectedRefs.length);
     const options = capability.h3Unified
-        ? window.SimpAIH3Director.referenceOptions("image", SCENE_DIRECTOR_IMAGE_OPTIONS, selectedRefs, mediaMap, rowIndex)
+        ? window.SimpAIH3Director.referenceOptions("image", SCENE_DIRECTOR_IMAGE_OPTIONS, selectedRefs, mediaMap, rowIndex, capability.h3Mode)
         : SCENE_DIRECTOR_IMAGE_OPTIONS;
     const nextHtml = [
         `<button type="button" class="scene-director-ref-choice scene-director-ref-none ${selectedRefs.length ? "" : "is-active"}" data-scene-director-ref-choice="" aria-pressed="${selectedRefs.length ? "false" : "true"}" ${noneDisabled ? 'disabled aria-disabled="true"' : ""}><span>${sceneDirectorEscapeHtml(noneLabel)}</span></button>`,
@@ -1815,7 +1815,7 @@ function sceneDirectorRenderMediaRefPicker(rowNode, kind, mediaMap = sceneDirect
     const policy = kind === "audio" ? capability.audioPolicy : capability.videoPolicy;
     const noneDisabled = policy === "required" || policy === "forbidden";
     let options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
-    if (capability.h3Unified) options = window.SimpAIH3Director.referenceOptions(kind, options, selectedRefs, mediaMap, rowIndex);
+    if (capability.h3Unified) options = window.SimpAIH3Director.referenceOptions(kind, options, selectedRefs, mediaMap, rowIndex, capability.h3Mode);
     const nextHtml = [
         `<button type="button" class="scene-director-compact-ref-choice scene-director-compact-ref-none ${selectedRefs.length ? "" : "is-active"}" data-scene-director-media-ref-choice="" data-scene-director-media-kind="${kind}" aria-pressed="${selectedRefs.length ? "false" : "true"}" ${noneDisabled ? 'disabled aria-disabled="true"' : ""}><span>${sceneDirectorEscapeHtml(sceneDirectorText("None"))}</span></button>`,
         ...options.filter(Boolean).map((ref) => sceneDirectorMediaChoiceHtml(kind, ref, selectedRefs, mediaMap, capability, rowIndex)),
@@ -1833,12 +1833,12 @@ function sceneDirectorMediaFieldHtml(kind, value, capability, mediaMap, rowIndex
     const policy = kind === "audio" ? capability.audioPolicy : capability.videoPolicy;
     const label = sceneDirectorText(kind === "audio" ? (maxRefs > 1 ? "Audio refs" : "Audio") : (maxRefs > 1 ? "Video refs" : "Video"));
     const refs = sceneDirectorNormalizeMediaRefs(value, kind, capability);
-    if (maxRefs <= 1) {
+    if (maxRefs <= 1 && !capability.h3Unified) {
         const options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
         return `<label class="scene-director-media-refs-field"><span>${sceneDirectorEscapeHtml(label)}</span><select data-scene-director-field="${kind}_ref" ${policy === "forbidden" ? 'disabled aria-disabled="true"' : ""}>${sceneDirectorOptionHtml(options, refs[0] || "")}</select></label>`;
     }
     let options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
-    if (capability.h3Unified) options = window.SimpAIH3Director.referenceOptions(kind, options, refs, mediaMap, rowIndex);
+    if (capability.h3Unified) options = window.SimpAIH3Director.referenceOptions(kind, options, refs, mediaMap, rowIndex, capability.h3Mode);
     const heading = capability.h3Unified
         ? `<span class="h3-reference-heading"><span>${sceneDirectorEscapeHtml(label)}</span>${window.SimpAIH3Director.mediaButton(kind)}</span>`
         : `<span>${sceneDirectorEscapeHtml(label)}</span>`;
@@ -2750,9 +2750,9 @@ function sceneDirectorUpdateRule(rowNode) {
 }
 
 function sceneDirectorRenderShot(row, index, total, rows = []) {
-    const capability = sceneDirectorCapability();
+    let capability = sceneDirectorCapability();
     const values = sceneDirectorNormalizeRowValues(row, capability, index);
-    if (capability.h3Unified) capability.h3Mode = values[14]?.mode;
+    if (capability.h3Unified) capability = window.SimpAIH3Director.shotCapability(capability, values[14]?.mode);
     const mediaMap = sceneDirectorMediaMap();
     const startNumber = Number(values[0]);
     const endMin = Number.isFinite(startNumber) ? Math.round((startNumber + capability.minSegmentDuration) * 1000) / 1000 : "";
@@ -2768,7 +2768,7 @@ function sceneDirectorRenderShot(row, index, total, rows = []) {
     const videoField = sceneDirectorMediaFieldHtml("video", values[SCENE_DIRECTOR_VIDEO_INDEX], capability, mediaMap, index);
     if (capability.h3Unified) {
         const h3 = window.SimpAIH3Director;
-        const images = h3.referenceOptions("image", SCENE_DIRECTOR_IMAGE_OPTIONS, imageRefs, mediaMap, index);
+        const images = h3.referenceOptions("image", SCENE_DIRECTOR_IMAGE_OPTIONS, imageRefs, mediaMap, index, capability.h3Mode);
         const command = (action, glyph, title, disabled) => `<button type="button" data-scene-director-action="${action}" title="${sceneDirectorEscapeHtml(title)}" aria-label="${sceneDirectorEscapeHtml(title)}" ${disabled ? "disabled" : ""}><i class="fa-solid fa-${glyph}" aria-hidden="true"></i></button>`;
         return `
 <div class="scene-director-shot h3-shot ${index === sceneDirectorActiveShotIndex ? "is-active-shot" : ""}" data-scene-director-shot data-scene-director-index="${index}" ${index === sceneDirectorActiveShotIndex ? 'aria-current="true"' : ""}>
@@ -2918,7 +2918,8 @@ function sceneDirectorBindEditor() {
             const rowNode = refChoice.closest("[data-scene-director-shot]");
             const ref = String(refChoice.getAttribute("data-scene-director-ref-choice") || "").trim();
             const refs = sceneDirectorSelectedImageRefs(rowNode);
-            const capability = sceneDirectorCapability();
+            let capability = sceneDirectorCapability();
+            if (capability.h3Unified) capability = window.SimpAIH3Director.shotCapability(capability, rowNode.__h3Meta?.mode);
             const nextRefs = sceneDirectorNextImageRefs(ref, refs, capability);
             sceneDirectorSetSelectedImageRefs(rowNode, nextRefs, capability);
             sceneDirectorRenderImageRefPicker(rowNode);
@@ -2933,7 +2934,8 @@ function sceneDirectorBindEditor() {
             const kind = String(mediaRefChoice.getAttribute("data-scene-director-media-kind") || "").trim();
             if (!rowNode || !["audio", "video"].includes(kind)) return;
             const ref = String(mediaRefChoice.getAttribute("data-scene-director-media-ref-choice") || "").trim();
-            const capability = sceneDirectorCapability();
+            let capability = sceneDirectorCapability();
+            if (capability.h3Unified) capability = window.SimpAIH3Director.shotCapability(capability, rowNode.__h3Meta?.mode);
             const refs = sceneDirectorSelectedMediaRefs(rowNode, kind, capability);
             const nextRefs = sceneDirectorNextMediaRefs(ref, refs, kind, capability);
             sceneDirectorSetSelectedMediaRefs(rowNode, kind, nextRefs, capability);
