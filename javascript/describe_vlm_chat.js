@@ -639,25 +639,42 @@
         const ids = (key) => Array.isArray(source[key])
             ? [...new Set(source[key].map((item) => String(item || '').trim().slice(0, 160)).filter(Boolean))].slice(0, 20)
             : [];
-        return { manual_ids: ids('manual_ids'), automatic_ids: ids('automatic_ids') };
+        const unavailable = (Array.isArray(source.unavailable) ? source.unavailable : [])
+            .filter((item) => item && typeof item === 'object' && item.id)
+            .slice(0, 20).map((item) => ({
+                id: String(item.id).trim().slice(0, 160),
+                reason: String(item.reason || '').trim().slice(0, 80)
+            }));
+        return { manual_ids: ids('manual_ids'), automatic_ids: ids('automatic_ids'), unavailable };
     }
 
     function renderRoleplayMemoryUsage(message, session) {
         const selection = normalizeRoleplayMemorySelection(message.roleplay_memory_selection || message.roleplay_context?.memory_selection);
         const automatic = selection.automatic_ids;
         const manual = selection.manual_ids;
-        if (!automatic.length && !manual.length) return '';
+        const unavailable = selection.unavailable;
+        if (!automatic.length && !manual.length && !unavailable.length) return '';
         const items = Array.isArray(session?.memory_store?.items) ? session.memory_store.items : [];
         const label = (id) => String(items.find((item) => item.id === id)?.text || id).slice(0, 120);
         const rows = [
             ...automatic.map((id) => ({ id, mode: localText('Automatic', '自动') })),
-            ...manual.map((id) => ({ id, mode: localText('Manual', '手动') }))
+            ...manual.map((id) => ({ id, mode: localText('Manual', '手动') })),
+            ...unavailable.map((item) => ({ ...item, mode: localText('Not referenced', '未引用') }))
         ];
+        const reasons = {
+            not_found: localText('Memory no longer exists in this story', '当前故事中找不到该记忆'),
+            disabled: localText('Memory is disabled', '记忆已停用'),
+            empty: localText('Memory has no text', '记忆正文为空'),
+            not_visible: localText('Memory is not visible to this character', '记忆对当前角色不可见'),
+            inactive_chapter: localText('Memory belongs to another chapter', '记忆属于其他章节'),
+            context_limit: localText('Context capacity exceeded', '上下文容量不足')
+        };
         const summary = [
             automatic.length ? localText(`${automatic.length} automatic memory reference(s)`, `自动引用 ${automatic.length} 条记忆`) : '',
-            manual.length ? localText(`${manual.length} manual memory reference(s)`, `手动引用 ${manual.length} 条记忆`) : ''
+            manual.length ? localText(`${manual.length} manual memory reference(s)`, `手动引用 ${manual.length} 条记忆`) : '',
+            unavailable.length ? localText(`${unavailable.length} requested memory reference(s) not used`, `${unavailable.length} 条手动记忆未引用`) : ''
         ].filter(Boolean).join(' · ');
-        return `<details class="describe-vlm-chat-roleplay-memory-usage" data-roleplay-memory-usage><summary><i class="fa-solid fa-brain" aria-hidden="true"></i>${escapeHtml(summary)}</summary><ul>${rows.map((row) => `<li><b>${escapeHtml(row.mode)}</b> ${escapeHtml(label(row.id))}</li>`).join('')}</ul></details>`;
+        return `<details class="describe-vlm-chat-roleplay-memory-usage" data-roleplay-memory-usage><summary><i class="fa-solid fa-brain" aria-hidden="true"></i>${escapeHtml(summary)}</summary><ul>${rows.map((row) => `<li><b>${escapeHtml(row.mode)}</b> ${escapeHtml(label(row.id))}${row.reason ? ` · ${escapeHtml(reasons[row.reason] || localText('Not included in context', '未加入上下文'))}` : ''}</li>`).join('')}</ul></details>`;
     }
 
     function roleplayContextBlockLabel(blockId) {
@@ -9002,10 +9019,11 @@
         };
         const identity = read('[data-describe-vlm-chat-roleplay-character-identity]');
         const style = read('[data-describe-vlm-chat-roleplay-character-style]');
+        const behavior = read('[data-describe-vlm-chat-roleplay-character-behavior]');
         const exampleDialogues = read('[data-describe-vlm-chat-roleplay-character-example-dialogues]');
         const appearance = read('[data-describe-vlm-chat-roleplay-character-appearance]');
         const name = read('[data-describe-vlm-chat-roleplay-character-name]');
-        const hasVisibleValues = [name, appearance, identity, style, exampleDialogues].some((value) => value !== null && value !== '');
+        const hasVisibleValues = [name, appearance, identity, style, behavior, exampleDialogues].some((value) => value !== null && value !== '');
         if (!preserveEmpty || hasVisibleValues) {
             if (name !== null) card.name = name;
             if (appearance !== null) card.appearance = appearance;
@@ -9016,6 +9034,9 @@
             if (style !== null) {
                 card.personality = style.split(/\n\n+/)[0] || '';
                 card.speech_style = style.split(/\n\n+/).slice(1).join('\n\n');
+            }
+            if (behavior !== null) {
+                card.behavior_rules = behavior.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 40);
             }
             if (exampleDialogues !== null) {
                 card.example_dialogues = parseRoleplayCharacterLibraryExampleDialogues(exampleDialogues);
@@ -9135,6 +9156,7 @@
             'character.appearance': '[data-describe-vlm-chat-roleplay-character-appearance]',
             'character.identity': '[data-describe-vlm-chat-roleplay-character-identity]',
             'character.style': '[data-describe-vlm-chat-roleplay-character-style]',
+            'character.behavior_rules': '[data-describe-vlm-chat-roleplay-character-behavior]',
             'character_state.appearance': '[data-describe-vlm-chat-roleplay-character-current-appearance]',
             'character_state.state_text': '[data-describe-vlm-chat-roleplay-character-state-text]',
             'character_state.current_action': '[data-describe-vlm-chat-roleplay-character-current-action]',
@@ -9476,6 +9498,7 @@
         setValue('[data-describe-vlm-chat-roleplay-character-appearance]', session.character.appearance, ['character', 'appearance']);
         setValue('[data-describe-vlm-chat-roleplay-character-identity]', [session.character.identity, session.character.background].filter(Boolean).join('\n\n'), ['character', 'identity']);
         setValue('[data-describe-vlm-chat-roleplay-character-style]', [session.character.personality, session.character.speech_style].filter(Boolean).join('\n\n'), ['character', 'style']);
+        setValue('[data-describe-vlm-chat-roleplay-character-behavior]', (session.character.behavior_rules || []).join('\n'), ['character', 'behavior_rules']);
         setValue(
             '[data-describe-vlm-chat-roleplay-character-example-dialogues]',
             formatRoleplayCharacterLibraryExampleDialogues(session.character.example_dialogues),
@@ -10284,6 +10307,7 @@
             setField('[data-describe-vlm-chat-roleplay-character-appearance]', next.character.appearance);
             setField('[data-describe-vlm-chat-roleplay-character-identity]', [next.character.identity, next.character.background].filter(Boolean).join('\n\n'));
             setField('[data-describe-vlm-chat-roleplay-character-style]', [next.character.personality, next.character.speech_style].filter(Boolean).join('\n\n'));
+            setField('[data-describe-vlm-chat-roleplay-character-behavior]', (next.character.behavior_rules || []).join('\n'));
             setField('[data-describe-vlm-chat-roleplay-character-example-dialogues]', formatRoleplayCharacterLibraryExampleDialogues(next.character.example_dialogues));
         }
         target.roleplaySession = normalizeRoleplaySession(next, target.conversationId);
@@ -11266,11 +11290,17 @@
 
     const DESCRIBE_VLM_CHAT_STREAM_IDLE_TIMEOUT_MS = 90 * 1000;
 
-    async function readDescribeVlmChatStreamChunk(reader, timeoutMs) {
+    async function readDescribeVlmChatStreamChunk(reader, timeoutMs, signal = null) {
         let timeoutId = null;
+        let onAbort = null;
         try {
+            if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
             return await Promise.race([
                 reader.read(),
+                new Promise((resolve, reject) => {
+                    onAbort = () => reject(new DOMException('aborted', 'AbortError'));
+                    signal?.addEventListener('abort', onAbort, { once: true });
+                }),
                 new Promise((resolve, reject) => {
                     timeoutId = window.setTimeout(() => {
                         const error = new Error('stream_idle_timeout');
@@ -11281,6 +11311,7 @@
             ]);
         } finally {
             if (timeoutId !== null) window.clearTimeout(timeoutId);
+            if (onAbort) signal?.removeEventListener('abort', onAbort);
         }
     }
 
@@ -11293,107 +11324,266 @@
         } catch (err) {}
     }
 
+    function waitForDescribeVlmChatStreamReconnect(signal, delayMs) {
+        return new Promise((resolve) => {
+            let timer = null;
+            let finished = false;
+            const page = typeof document === 'object' ? document : null;
+            const online = () => (
+                page?.visibilityState !== 'hidden'
+                && (typeof navigator !== 'object' || navigator.onLine !== false)
+            );
+            const finish = (ready) => {
+                if (finished) return;
+                finished = true;
+                if (timer !== null) window.clearTimeout(timer);
+                signal?.removeEventListener('abort', aborted);
+                page?.removeEventListener?.('visibilitychange', wake);
+                window.removeEventListener?.('online', wake);
+                window.removeEventListener?.('pageshow', wake);
+                resolve(ready);
+            };
+            const aborted = () => finish(false);
+            const wake = () => { if (online()) finish(!signal?.aborted); };
+            const check = () => {
+                if (signal?.aborted) finish(false);
+                else if (online()) finish(true);
+                else timer = window.setTimeout(check, 1000);
+            };
+            if (signal?.aborted) {
+                finish(false);
+                return;
+            }
+            signal?.addEventListener('abort', aborted, { once: true });
+            page?.addEventListener?.('visibilitychange', wake);
+            window.addEventListener?.('online', wake);
+            window.addEventListener?.('pageshow', wake);
+            timer = window.setTimeout(check, delayMs);
+        });
+    }
+
+    function describeVlmChatStreamToken() {
+        if (!globalThis.crypto?.getRandomValues) return '';
+        const values = new Uint32Array(4);
+        globalThis.crypto.getRandomValues(values);
+        return Array.from(values, value => value.toString(16).padStart(8, '0')).join('');
+    }
+
     async function postJsonStream(endpoint, payload, options = {}, onEvent = null) {
         let reader = null;
+        let connection = null;
+        let forcedReconnect = false;
+        let cursor = 0;
+        let reconnectAttempts = 0;
+        const resumable = endpoint === '/describe-image/vlm-chat-stream'
+            && !!payload?.conversation_id && !!payload?.request_id;
+        const streamStage = String(
+            payload?.request_kind || payload?.roleplay_request_kind || payload?.chat_mode || ''
+        ).trim();
+        let token = resumable ? describeVlmChatStreamToken() : '';
+        const page = typeof document === 'object' ? document : null;
+        const abortConnection = () => {
+            connection?.abort();
+            cancelDescribeVlmChatStreamReader(reader);
+        };
+        const wakeConnection = () => {
+            if (!resumable || !connection || page?.visibilityState === 'hidden') return;
+            forcedReconnect = true;
+            abortConnection();
+        };
+        const forward = (event) => { try { onEvent?.(event); } catch (err) {} };
+        const requestedIdleTimeout = Number(options?.idleTimeoutMs);
+        const idleTimeoutMs = Number.isFinite(requestedIdleTimeout) && requestedIdleTimeout > 0
+            ? Math.max(1000, requestedIdleTimeout)
+            : DESCRIBE_VLM_CHAT_STREAM_IDLE_TIMEOUT_MS;
+        const maximumAttempts = Math.max(0, Number(options?.maxReconnectAttempts ?? 12));
+        options?.signal?.addEventListener('abort', abortConnection);
+        if (resumable) {
+            page?.addEventListener?.('visibilitychange', wakeConnection);
+            window.addEventListener?.('online', wakeConnection);
+            window.addEventListener?.('pageshow', wakeConnection);
+        }
         try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-                body: JSON.stringify(payload || {}),
-                signal: options?.signal
-            });
-            if (!response.ok) {
-                let data = null;
-                try { data = await response.json(); } catch (err) {}
-                const failure = Object.assign({}, data || {}, {
-                    ok: false,
-                    error: data?.error || `HTTP ${response.status}`,
-                    details: data?.details || response.statusText || ''
-                });
-                if (!failure.aborted) {
-                    logDescribeVlmChatFailure(endpoint, payload, Object.assign({}, failure, {
-                        http_status: response.status
-                    }));
-                }
-                return failure;
-            }
-            if (!response.body) return { ok: false, error: 'Streaming response body is unavailable.' };
-            reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            let finalResult = null;
-            const requestedIdleTimeout = Number(options?.idleTimeoutMs);
-            const idleTimeoutMs = Number.isFinite(requestedIdleTimeout) && requestedIdleTimeout > 0
-                ? Math.max(1000, requestedIdleTimeout)
-                : DESCRIBE_VLM_CHAT_STREAM_IDLE_TIMEOUT_MS;
-
-            const dispatchBlock = (block) => {
-                const data = block.split(/\r?\n/)
-                    .filter(line => line.startsWith('data:'))
-                    .map(line => line.slice(5).trimStart())
-                    .join('\n')
-                    .trim();
-                if (!data || data === '[DONE]') return;
-                let event = null;
-                try { event = JSON.parse(data); } catch (err) { return; }
-                if (event?.type === 'delta') {
-                    try { onEvent?.(event); } catch (err) {}
-                    return;
-                }
-                if (event?.type === 'reset') {
-                    try { onEvent?.(event); } catch (err) {}
-                    return;
-                }
-                if (event?.type === 'status' || event?.type === 'progress') {
-                    try { onEvent?.(event); } catch (err) {}
-                    return;
-                }
-                if (event?.type === 'result') {
-                    finalResult = event.result && typeof event.result === 'object'
-                        ? event.result
-                        : event;
-                    try { onEvent?.(event); } catch (err) {}
-                }
-            };
-
             while (true) {
-                const { value, done } = await readDescribeVlmChatStreamChunk(reader, idleTimeoutMs);
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const blocks = buffer.split(/\r?\n\r?\n/);
-                buffer = blocks.pop() || '';
-                blocks.forEach(dispatchBlock);
-                if (finalResult) {
+                if (options?.signal?.aborted) return { ok: false, aborted: true, error: 'aborted' };
+                forcedReconnect = false;
+                connection = new AbortController();
+                let connectionTimer = resumable ? window.setTimeout(
+                    abortConnection, Math.max(1, Number(options?.connectTimeoutMs) || 30000)
+                ) : null;
+                let finalResult = null;
+                let transportError = null;
+                try {
+                    const requestPayload = resumable
+                        ? reconnectAttempts > 0
+                            ? {
+                                conversation_id: payload.conversation_id,
+                                request_id: payload.request_id,
+                                _stream_token: token,
+                                _stream_resume: true,
+                                _stream_after: cursor,
+                                _stream_stage: streamStage
+                            }
+                            : Object.assign({}, payload, { _stream_token: token })
+                        : payload;
+                    const response = await fetch(reconnectAttempts > 0 ? `${endpoint}-resume` : endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+                        body: JSON.stringify(requestPayload || {}),
+                        signal: connection.signal,
+                        cache: 'no-store'
+                    });
+                    if (connectionTimer !== null) {
+                        window.clearTimeout(connectionTimer);
+                        connectionTimer = null;
+                    }
+                    if (!response.ok) {
+                        if (resumable && [502, 503, 504].includes(response.status)) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+                        let data = null;
+                        try { data = await response.json(); } catch (err) {}
+                        const failure = Object.assign({}, data || {}, {
+                            ok: false,
+                            error: data?.error || `HTTP ${response.status}`,
+                            details: data?.details || response.statusText || ''
+                        });
+                        if (resumable && reconnectAttempts > 0 && [404, 410].includes(response.status)) {
+                            failure.error = localText(
+                                'This reply is no longer available for reconnection. It was not generated again.',
+                                '这次回复的缓存已不可用，未重新发起生成。'
+                            );
+                            failure.failure_stage = 'stream_reconnect';
+                            failure.retryable = true;
+                        }
+                        if (!failure.aborted) {
+                            logDescribeVlmChatFailure(endpoint, payload, Object.assign({}, failure, {
+                                http_status: response.status
+                            }));
+                        }
+                        return failure;
+                    }
+                    if (!response.body) throw new Error('Streaming response body is unavailable.');
+                    reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    const dispatchBlock = (block) => {
+                        const data = block.split(/\r?\n/)
+                            .filter(line => line.startsWith('data:'))
+                            .map(line => line.slice(5).trimStart())
+                            .join('\n')
+                            .trim();
+                        if (!data || data === '[DONE]') return;
+                        let event = null;
+                        try { event = JSON.parse(data); } catch (err) { return; }
+                        if (event?.type === 'session') {
+                            token = String(event.resume_token || token);
+                            if (reconnectAttempts > 0) forward({ type: 'status', phase: 'stream_reconnected' });
+                            return;
+                        }
+                        const idLine = block.split(/\r?\n/).find(line => line.startsWith('id:'));
+                        const sequence = idLine ? Number(idLine.slice(3).trim()) : null;
+                        if (Number.isSafeInteger(sequence) && sequence > 0) {
+                            if (sequence <= cursor) return;
+                            cursor = sequence;
+                        }
+                        if (event?.type === 'snapshot') {
+                            forward({ type: 'reset' });
+                            if (event.text) forward({ type: 'delta', text: event.text });
+                            if (event.status) forward(event.status);
+                            return;
+                        }
+                        if (event?.type === 'delta' || event?.type === 'reset'
+                            || event?.type === 'status' || event?.type === 'progress') {
+                            forward(event);
+                            return;
+                        }
+                        if (event?.type === 'result') {
+                            finalResult = event.result && typeof event.result === 'object'
+                                ? event.result
+                                : event;
+                            forward(event);
+                        }
+                    };
+
+                    while (true) {
+                        const { value, done } = await readDescribeVlmChatStreamChunk(reader, idleTimeoutMs, connection.signal);
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        const blocks = buffer.split(/\r?\n\r?\n/);
+                        buffer = blocks.pop() || '';
+                        blocks.forEach(dispatchBlock);
+                        if (finalResult) {
+                            cancelDescribeVlmChatStreamReader(reader);
+                            return finalResult;
+                        }
+                    }
+                    buffer += decoder.decode();
+                    if (buffer.trim()) dispatchBlock(buffer);
+                    if (finalResult) return finalResult;
+                    throw new Error('Streaming response ended without a final result.');
+                } catch (err) {
+                    transportError = err;
+                } finally {
+                    if (connectionTimer !== null) window.clearTimeout(connectionTimer);
                     cancelDescribeVlmChatStreamReader(reader);
-                    return finalResult;
+                    reader = null;
+                    connection?.abort();
+                    connection = null;
                 }
-            }
-            buffer += decoder.decode();
-            if (buffer.trim()) dispatchBlock(buffer);
-            return finalResult || { ok: false, error: 'Streaming response ended without a final result.' };
-        } catch (err) {
-            if (err?.name === 'AbortError') {
-                return { ok: false, aborted: true, error: 'aborted' };
-            }
-            if (err?.name === 'StreamIdleTimeoutError') {
-                cancelDescribeVlmChatStreamReader(reader);
-                const failure = {
-                    ok: false,
-                    error: roleplayDictionaryText(
-                        'The remote connection stopped returning data. The input box is available again.'
-                    ),
-                    details: roleplayDictionaryText(
-                        'Check the server log for the matching request ID before retrying this turn.'
-                    ),
-                    failure_stage: 'stream_idle_timeout',
-                    retryable: true
-                };
-                logDescribeVlmChatFailure(endpoint, payload, { transport_error: failure.error, failure_stage: failure.failure_stage });
+                if (options?.signal?.aborted || (!resumable && transportError?.name === 'AbortError' && !forcedReconnect)) {
+                    return { ok: false, aborted: true, error: 'aborted' };
+                }
+                if (resumable && reconnectAttempts < maximumAttempts) {
+                    forward({ type: 'status', phase: 'stream_reconnecting' });
+                    const delayMs = forcedReconnect ? 0 : Math.min(
+                        10000, Math.max(1, Number(options?.reconnectDelayMs) || 1000) * (2 ** reconnectAttempts)
+                    );
+                    if (!await waitForDescribeVlmChatStreamReconnect(options?.signal, delayMs)) {
+                        return { ok: false, aborted: true, error: 'aborted' };
+                    }
+                    reconnectAttempts += 1;
+                    continue;
+                }
+                if (resumable) {
+                    const failure = {
+                        ok: false,
+                        error: localText(
+                            'The connection could not be restored. Any received text has been kept; this reply was not generated again.',
+                            '暂时无法恢复连接。已收到的文本会保留，未重新发起生成。'
+                        ),
+                        failure_stage: 'stream_reconnect',
+                        retryable: true
+                    };
+                    logDescribeVlmChatFailure(endpoint, payload, failure);
+                    return failure;
+                }
+                if (transportError?.name === 'StreamIdleTimeoutError') {
+                    const failure = {
+                        ok: false,
+                        error: roleplayDictionaryText(
+                            'The remote connection stopped returning data. The input box is available again.'
+                        ),
+                        details: roleplayDictionaryText(
+                            'Check the server log for the matching request ID before retrying this turn.'
+                        ),
+                        failure_stage: 'stream_idle_timeout',
+                        retryable: true
+                    };
+                    logDescribeVlmChatFailure(endpoint, payload, { transport_error: failure.error, failure_stage: failure.failure_stage });
+                    return failure;
+                }
+                const failure = { ok: false, error: transportError?.message || String(transportError || 'streaming request failed') };
+                logDescribeVlmChatFailure(endpoint, payload, { transport_error: failure.error });
                 return failure;
             }
-            const failure = { ok: false, error: err?.message || String(err || 'streaming request failed') };
-            logDescribeVlmChatFailure(endpoint, payload, { transport_error: failure.error });
-            return failure;
+        } finally {
+            options?.signal?.removeEventListener('abort', abortConnection);
+            page?.removeEventListener?.('visibilitychange', wakeConnection);
+            window.removeEventListener?.('online', wakeConnection);
+            window.removeEventListener?.('pageshow', wakeConnection);
+            abortConnection();
         }
     }
 
@@ -12445,6 +12635,7 @@
         const characterAppearance = read('[data-describe-vlm-chat-roleplay-character-appearance]');
         const characterIdentity = read('[data-describe-vlm-chat-roleplay-character-identity]');
         const characterStyle = read('[data-describe-vlm-chat-roleplay-character-style]');
+        const characterBehavior = read('[data-describe-vlm-chat-roleplay-character-behavior]');
         const characterExampleDialogues = read('[data-describe-vlm-chat-roleplay-character-example-dialogues]');
         if (characterName !== null && changedSinceSnapshot(['character', 'name'], characterName)) {
             card.name = characterName;
@@ -12462,13 +12653,16 @@
             card.personality = parts.shift() || '';
             card.speech_style = parts.join('\n\n');
         }
+        if (characterBehavior !== null && changedSinceSnapshot(['character', 'behavior_rules'], characterBehavior)) {
+            card.behavior_rules = characterBehavior.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 40);
+        }
         if (characterExampleDialogues !== null) {
             const examples = parseRoleplayCharacterLibraryExampleDialogues(characterExampleDialogues);
             if (changedSinceSnapshot(['character', 'example_dialogues'], examples)) {
                 card.example_dialogues = examples;
             }
         }
-        if (activeId && (characterName !== null || characterAppearance !== null || characterIdentity !== null || characterStyle !== null || characterExampleDialogues !== null)) {
+        if (activeId && (characterName !== null || characterAppearance !== null || characterIdentity !== null || characterStyle !== null || characterBehavior !== null || characterExampleDialogues !== null)) {
             session.characters[activeId] = card;
             session.character = card;
         }
@@ -12631,6 +12825,7 @@
                 appearance: read('[data-describe-vlm-chat-roleplay-character-appearance]', character.appearance, ['character', 'appearance']),
                 identity: read('[data-describe-vlm-chat-roleplay-character-identity]', [character.identity, character.background].filter(Boolean).join('\n\n'), ['character', 'identity']),
                 style: read('[data-describe-vlm-chat-roleplay-character-style]', [character.personality, character.speech_style].filter(Boolean).join('\n\n'), ['character', 'style']),
+                behavior_rules: read('[data-describe-vlm-chat-roleplay-character-behavior]', (character.behavior_rules || []).join('\n'), ['character', 'behavior_rules']),
                 example_dialogues: readExampleDialogues(character.example_dialogues, ['character', 'example_dialogues'])
             },
             character_state: {
@@ -13756,6 +13951,7 @@
         <label><span>${escapeHtml(localText('Fixed appearance', '固定形象'))}</span><textarea data-describe-vlm-chat-roleplay-character-appearance rows="2" placeholder="${escapeHtml(localText('Face, hair, body type, age, and other stable visual traits', '脸型、发型、体型、年龄等不会随剧情轻易改变的特征'))}"></textarea></label>
         <label><span>${escapeHtml(localText('Identity and background', '身份与背景'))}</span><textarea data-describe-vlm-chat-roleplay-character-identity rows="3"></textarea></label>
         <label><span>${escapeHtml(localText('Personality and speech', '性格与说话方式'))}</span><textarea data-describe-vlm-chat-roleplay-character-style rows="3"></textarea></label>
+        <label><span>${escapeHtml(localText('Behavior rules, one per line', '行为规则，每行一条'))}</span><textarea data-describe-vlm-chat-roleplay-character-behavior rows="3" placeholder="${escapeHtml(localText('Rules followed by this character in the current story.', '角色在当前故事中需要遵守的规则。'))}"></textarea></label>
         <label><span>${escapeHtml(localText('Example dialogues (use <START> between examples)', '示例对话（多段示例之间使用 <START> 分隔）'))}</span><textarea data-describe-vlm-chat-roleplay-character-example-dialogues rows="5" placeholder="${escapeHtml(localText('Use <START> before each example, then write {{user}} and {{char}} dialogue.', '每段示例前写 <START>，并使用 {{user}} 与 {{char}} 表示对话。'))}"></textarea></label>
         <label><span>${escapeHtml(localText('Character draft request', '角色生成要求'))}</span><div class="describe-vlm-chat-character-mention-wrap" data-roleplay-character-mention-wrap><textarea data-describe-vlm-chat-roleplay-character-draft-context data-roleplay-character-mention-input rows="2" aria-describedby="describe_vlm_chat_roleplay_character_mention_hint" aria-controls="describe_vlm_chat_roleplay_character_mention_menu" aria-expanded="false" placeholder="${escapeHtml(localText('Describe the character you want the assistant to create', '描述你希望助手生成的角色'))}"></textarea><small id="describe_vlm_chat_roleplay_character_mention_hint" class="describe-vlm-chat-character-mention-hint">${escapeHtml(roleplayDictionaryText("Type @ to reference a character from the current story or character library, for example: Create @Mira's mother."))}</small><div id="describe_vlm_chat_roleplay_character_mention_menu" class="describe-vlm-chat-character-mention-menu" data-roleplay-character-mention-menu role="listbox" hidden></div></div></label>
         <label><span>${escapeHtml(localText('Character image direction', '角色图要求'))}</span><textarea data-describe-vlm-chat-roleplay-character-reference-request rows="2" placeholder="${escapeHtml(localText('Optional image direction, such as full body, white evening dress, neutral pose', '可选的角色图要求，例如全身、白色晚装、自然站姿'))}"></textarea></label>
@@ -23582,6 +23778,17 @@
             if (requestToken !== runtime.requestToken) return;
             if (event?.type === 'status') {
                 const phase = String(event.phase || '').trim();
+                if (phase === 'stream_reconnecting') {
+                    setConversationStatus(runtime, localText(
+                        'Connection interrupted. Reconnecting to the same reply...',
+                        '连接中断，正在恢复同一次回复……'
+                    ));
+                    return;
+                }
+                if (phase === 'stream_reconnected') {
+                    setConversationStatus(runtime, busyControlLabel(runtime.busyStage || ''));
+                    return;
+                }
                 if (phase === 'creative_h3_prompt_started' || phase === 'creative_h3_prompt_finished') {
                     const stage = phase === 'creative_h3_prompt_started' ? phase : '';
                     setConversationBusyStage(runtime, stage);
@@ -23755,7 +23962,9 @@
         }
         const reply = response?.ok
             ? visibleReplyFromResponse(response, completion)
-            : describeVlmChatFailure(response);
+            : response?.failure_stage === 'stream_reconnect' && streamedReplyText
+                ? `${streamedReplyText}\n\n${describeVlmChatFailure(response)}`
+                : describeVlmChatFailure(response);
         const assistant = {
             id: pendingMessageId || uid('describe_vlm_chat_assistant'),
             revision: Math.max(1, Math.round(Number(pendingIndex >= 0 ? messages[pendingIndex]?.revision : 1) || 1)),

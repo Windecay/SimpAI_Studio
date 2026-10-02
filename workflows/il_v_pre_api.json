@@ -12,7 +12,7 @@
     "inputs": {
       "text": "",
       "clip": [
-        "1",
+        "simpai_lora_stack_main",
         1
       ]
     },
@@ -25,7 +25,7 @@
     "inputs": {
       "text": "",
       "clip": [
-        "1",
+        "simpai_lora_stack_main",
         1
       ]
     },
@@ -292,6 +292,10 @@
       "model": [
         "16",
         0
+      ],
+      "clip": [
+        "1",
+        1
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",
       "branch": "main"

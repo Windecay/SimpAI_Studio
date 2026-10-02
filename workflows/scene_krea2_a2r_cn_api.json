@@ -614,8 +614,8 @@
       "mode": "2_image",
       "batch_size": 1,
       "clip": [
-        "197",
-        0
+        "simpai_lora_stack_main",
+        1
       ],
       "vae": [
         "5",
@@ -910,6 +910,10 @@
     "inputs": {
       "model": [
         "193",
+        0
+      ],
+      "clip": [
+        "197",
         0
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",

@@ -24,7 +24,7 @@
   "11": {
     "class_type": "SimpAIH3TransitionConditioning", "_meta": {"title": "H3 Transition First and Last Frames"},
     "inputs": {
-      "clip": ["48", 0], "vae": ["5", 0], "audio_vae": ["6", 0], "prompt": ["1", 0],
+      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "audio_vae": ["6", 0], "prompt": ["1", 0],
       "transition": ["70", 0],
       "reference_token_budget": 0, "max_image_long_edge": 2048,
       "ref_images.ref_image_0": ["21", 0], "ref_images.ref_image_1": ["25", 0],
@@ -128,6 +128,10 @@
     "inputs": {
       "model": [
         "68",
+        0
+      ],
+      "clip": [
+        "48",
         0
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",

@@ -4072,6 +4072,8 @@ function sceneDirectorAudioOutputValue(value, fallback) {
 
 function sceneDirectorCapabilityFromSystemParams(systemParams) {
     const params = sceneDirectorStateParams(systemParams);
+    const h3Capability = window.SimpAIH3Director?.capability(params);
+    if (h3Capability) return h3Capability;
     const explicit = sceneDirectorExplicitCapability(systemParams);
     const inferredImagePolicy = sceneDirectorInferImagePolicy(systemParams);
     const imagePolicy = sceneDirectorPolicyValue(explicit.image_policy, SCENE_DIRECTOR_IMAGE_POLICIES, inferredImagePolicy);

@@ -504,8 +504,8 @@
         0
       ],
       "clip": [
-        "852",
-        0
+        "simpai_lora_stack_main",
+        1
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -520,8 +520,8 @@
         1
       ],
       "clip": [
-        "852",
-        0
+        "simpai_lora_stack_main",
+        1
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -916,8 +916,8 @@
         9
       ],
       "clip": [
-        "852",
-        0
+        "simpai_lora_stack_main",
+        1
       ]
     },
     "class_type": "SimpAIAIOUOVZImage",
@@ -1122,8 +1122,8 @@
         0
       ],
       "clip": [
-        "852",
-        0
+        "simpai_lora_stack_main",
+        1
       ],
       "positive": [
         "aio_reference_4",
@@ -1236,6 +1236,10 @@
     "inputs": {
       "model": [
         "848",
+        0
+      ],
+      "clip": [
+        "852",
         0
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",

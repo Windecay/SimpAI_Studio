@@ -571,7 +571,7 @@
         0
       ],
       "clip": [
-        "268",
+        "simpai_lora_stack_main_1",
         1
       ]
     },
@@ -860,7 +860,7 @@
         1
       ],
       "clip": [
-        "268",
+        "simpai_lora_stack_main_1",
         1
       ]
     },
@@ -5072,7 +5072,7 @@
         0
       ],
       "clip": [
-        "268",
+        "simpai_lora_stack_main_1",
         1
       ]
     },
@@ -6181,7 +6181,7 @@
         0
       ],
       "clip": [
-        "268",
+        "simpai_lora_stack_main_1",
         1
       ]
     },
@@ -7395,6 +7395,10 @@
         "679",
         0
       ],
+      "clip": [
+        "simpai_lora_stack_main_2",
+        1
+      ],
       "stack_json": "{\"version\":1,\"items\":[]}",
       "branch": "main"
     },
@@ -7408,6 +7412,10 @@
       "model": [
         "683",
         0
+      ],
+      "clip": [
+        "268",
+        1
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",
       "branch": "main"

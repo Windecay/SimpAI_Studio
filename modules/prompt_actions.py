@@ -543,7 +543,17 @@ def _prompt_action_director_segments(runtime):
     return [item for item in segments if isinstance(item, dict)] if isinstance(segments, list) else []
 
 
-def _prompt_action_director_segment(runtime, input_text=""):
+def _prompt_action_director_segment(runtime, input_text="", state=None):
+    transition_id = runtime.get("active_transition_id") if isinstance(runtime, dict) else None
+    if transition_id:
+        transition = next((item for item in runtime.get("transitions", [])
+                           if item.get("id") == transition_id and item.get("enabled")), None)
+        if transition is None:
+            from modules import scene_director_h3
+
+            raise ValueError(scene_director_h3.text(
+                state, "The target transition is no longer available.", "目标转场已关闭或不存在。"))
+        return -1, transition
     segments = _prompt_action_director_segments(runtime)
     if not segments:
         return -1, None
@@ -699,10 +709,42 @@ def _prompt_action_visual_analysis_intent(input_text):
     return ""
 
 
+def h3_director_prompt_state(state, scene_resources=None, input_text=""):
+    from modules import scene_director_h3
+
+    resources = scene_resources if isinstance(scene_resources, dict) else {}
+    runtime = resources.get("director_state")
+    if not resources.get("director_enabled") or not scene_director_h3.is_runtime(runtime):
+        return state
+    _index, segment = _prompt_action_director_segment(runtime, input_text, state)
+    if not segment:
+        return state
+    name, profile, _method, _compiler = scene_director_h3.route(segment)
+    data = copy.deepcopy(state if isinstance(state, dict) else {})
+    scene = copy.deepcopy(scene_director_h3.route_preset(name)["default_engine"]["scene_frontend"])
+    data.update(
+        __is_scene_frontend=True, __preset=f"MiniMax-H3({name})",
+        scene_frontend=scene, scene_theme=profile,
+    )
+    data.pop("__preset_prepared", None)
+    data.pop("director_capability", None)
+    data.pop("__director_capability", None)
+    return data
+
+
 def prepare_prompt_action_resources(state, input_images, scene_resources=None, input_text="", options=None):
-    data = state if isinstance(state, dict) else {}
-    resources = dict(scene_resources or {})
     opts = normalize_prompt_action_options(options)
+    resources = dict(scene_resources or {})
+    if opts.get("director_transition_id"):
+        runtime = resources.get("director_state")
+        if not resources.get("director_enabled") or not isinstance(runtime, dict) or runtime.get("schema") != "simpai.h3_director.v1":
+            from modules import scene_director_h3
+
+            raise ValueError(scene_director_h3.text(
+                state, "The director transition is unavailable.", "导演台转场不可用。"))
+        resources["director_state"] = dict(runtime, active_transition_id=str(opts["director_transition_id"]))
+    data = h3_director_prompt_state(state, resources, input_text)
+    data = data if isinstance(data, dict) else {}
     scene_mode = prompt_action_mode(data) == "scene"
     scene = _prompt_action_scene_frontend(data) if scene_mode else {}
     theme = _prompt_action_scene_theme(data, scene) if scene_mode else ""
@@ -742,7 +784,7 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
 
     director_runtime = resources.get("director_state") if isinstance(resources.get("director_state"), dict) else {}
     director_enabled = bool(resources.get("director_enabled")) and bool(director_runtime)
-    if director_enabled and isinstance(director_runtime.get("director_capability"), dict):
+    if director_enabled and director_runtime.get("schema") != "simpai.h3_director.v1" and isinstance(director_runtime.get("director_capability"), dict):
         capability = {
             key: copy.deepcopy(director_runtime["director_capability"].get(key))
             for key in PROMPT_ACTION_CAPABILITY_KEYS
@@ -763,8 +805,44 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         max_images = len(entries)
     if capability and not analysis_only_images:
         entries = entries[:max(0, max_images)]
-    director_index, director_segment = _prompt_action_director_segment(director_runtime, input_text) if director_enabled else (-1, None)
+    director_index, director_segment = _prompt_action_director_segment(director_runtime, input_text, data) if director_enabled else (-1, None)
     director_context = {}
+    if director_segment and director_runtime.get("schema") == "simpai.h3_director.v1":
+        from modules import scene_director_h3
+
+        if director_segment.get("mode") == "transition":
+            from modules.scene_director_webui import _h3_source_input, _h3_transition_source_runtime
+
+            project = scene_director_h3.Project(director_runtime["project_id"], data)
+            project.dependencies(director_segment)
+            source_runtime = _h3_transition_source_runtime(director_runtime, project, director_segment)
+            by_id = {s["id"]: s for s in director_runtime["segments"]}
+            for key, slot in (("from_segment_id", "scene_video"), ("to_segment_id", "scene_reference_video")):
+                sid = director_segment[key]
+                if sid not in by_id or project.stale(by_id[sid], director_runtime):
+                    raise ValueError(scene_director_h3.text(data, "Review the transition source videos first.",
+                                                           "请检查转场两侧的分镜结果后再优化提示词。"))
+                path = _h3_source_input(source_runtime, project.selected(sid), data)
+                resources[slot] = path
+                resources[slot + "_original_path"] = path
+        source_id = director_segment.get("source_segment_id")
+        source_refs = _prompt_action_media_refs(director_segment.get("images")) + _prompt_action_media_refs(director_segment.get("video"))
+        if source_id and any(ref.startswith("previous_segment") for ref in source_refs):
+            project = scene_director_h3.Project(director_runtime["project_id"], data)
+            if project.available(source_id):
+                version = project.selected(source_id)
+                from modules.scene_director_webui import _h3_source_input
+
+                source_path = _h3_source_input(director_runtime, version, data)
+                director_runtime = copy.deepcopy(director_runtime)
+                director_runtime["previous_segment_path"] = source_path
+                director_runtime["dependency_version"] = version["id"]
+                if "previous_segment_last_frame" in source_refs:
+                    from modules import util
+
+                    tail = util.extract_video_last_frame(source_path)
+                    if tail:
+                        director_runtime.setdefault("media_sources", {})["previous_segment_last_frame"] = {"asset": {"path": tail}}
     if director_segment is not None:
         if image_policy == "forbidden":
             director_entries, director_image_refs = [], []
@@ -806,6 +884,9 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
             "video_refs": video_refs,
             "audio_ref": audio_refs[0] if audio_refs else "",
             "video_ref": video_refs[0] if video_refs else "",
+            "mode": director_segment.get("mode", ""),
+            "prompt_compiler": director_segment.get("prompt_compiler", ""),
+            "dependency_version": director_runtime.get("dependency_version", ""),
         }
 
     entries, unresolved_image_slots = _prompt_action_normalize_image_entries(entries)
@@ -1032,10 +1113,10 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     ]
     audio_present = audio_allowed and bool(audio_slots)
     audio_count = len(audio_slots)
-    if audio_allowed and director_context.get("audio_refs"):
+    if audio_allowed and director_context.get("enabled"):
         available_audio_refs = [
             ref
-            for ref in director_context["audio_refs"]
+            for ref in director_context.get("audio_refs", [])
             if _prompt_action_director_media_value(director_runtime, ref)
         ]
         audio_present = bool(available_audio_refs)
@@ -1100,6 +1181,7 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         "reference_video_present": reference_video_present,
         "additional_prompts": additional_prompts,
         "director": director_context,
+        "prompt_compiler": director_context.get("prompt_compiler", ""),
     }
     if masked_video_edit:
         context.update({

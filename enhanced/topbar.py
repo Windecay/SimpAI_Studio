@@ -2554,6 +2554,9 @@ def _generation_model_state_with_payload(current_state=None, payload=None):
 
 
 def process_before_generation(state_params, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source, sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_width=None, overwrite_height=None, resolution_multiplier=1.0, resolution_quantize_step=None, resolution_edit_mode=None, resolution_original_input=False, sam3_trim_payload=None, overwrite_step=None, scene_director_enabled=False, scene_director_state=None, scene_video_duration=None, scene_reference_video=None, scene_reference_video_original_path=None, scene_video_trim_payload=None, scene_reference_video_trim_payload=None, scene_input_image5=None, scene_input_image6=None, scene_input_image7=None, scene_input_image8=None, scene_reference_video2=None, scene_reference_video2_original_path=None, scene_reference_video2_trim_payload=None, scene_audio2=None, scene_audio3=None, current_model_params_state=None, models_js_payload=None, no_model_modal_checkbox=None):
+    from modules import scene_director_h3
+
+    h3_director_active = bool(scene_director_enabled and scene_director_h3.is_family(state_params))
     regen_scene_additional_prompt = scene_additional_prompt
     regen_scene_additional_prompt_2 = scene_additional_prompt_2
     user_did = _state_user_did(state_params)
@@ -2590,7 +2593,19 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         except Exception as e:
             logger.warning(f"Error updating comfyd IO directories: {e}")
     
-    if 'scene_frontend' in state_params:
+    if h3_director_active:
+        size = str(scene_aspect_ratio or "864*480").replace("×", "*").split("*")
+        width = scene_director_h3.number(overwrite_width, -1)
+        height = scene_director_h3.number(overwrite_height, -1)
+        if width <= 0 or height <= 0:
+            width, height = (scene_director_h3.number(size[0], 864), scene_director_h3.number(size[1], 480)) if len(size) == 2 else (864, 480)
+        for key in tuple(backend_params):
+            if key.startswith("scene_") or key in ("video", "audio", "audio2", "audio3", "reference_video", "reference_video2", "mask_video"):
+                backend_params.pop(key, None)
+        backend_params.update(scene_director_h3.initial_backend(max(32, int(width)), max(32, int(height))))
+        scene_video_effective = reference_video_effective = reference_video2_effective = None
+
+    if 'scene_frontend' in state_params and not h3_director_active:
         scene_frontend = state_params['scene_frontend']
         scene_theme = _resolve_scene_generation_theme(state_params, scene_frontend, scene_theme)
         disvisible = _scene_disvisible_with_optional_inputs(scene_frontend, scene_theme)

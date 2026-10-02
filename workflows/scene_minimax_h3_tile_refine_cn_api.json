@@ -57,7 +57,7 @@
   "88": {"class_type": "easy ifElse", "inputs": {"boolean": ["87", 0], "on_true": ["79", 0], "on_false": ["86", 0]}},
   "90": {"class_type": "SimpAIH3DetailRefine", "_meta": {"title": "H3 Tiled Refinement"},
     "inputs": {"region": ["70", 0], "images": ["70", 1], "model": ["69", 0], "model_patch": ["75", 0],
-      "clip": ["48", 0], "vae": ["5", 0], "prompt": ["1", 0], "mode": "tiles",
+      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "prompt": ["1", 0], "mode": "tiles",
       "resolution": ["1", 18], "magnification": 2, "feather": 8, "automatic_grid": ["1", 20],
       "denoise_percent": ["1", 17], "control_strength": ["1", 13], "steps": ["1", 9],
       "sampler_name": ["1", 30], "scheduler": ["1", 31], "seed": ["2", 0],
@@ -69,6 +69,10 @@
     "inputs": {
       "model": [
         "68",
+        0
+      ],
+      "clip": [
+        "48",
         0
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",

@@ -92,8 +92,8 @@
         0
       ],
       "clip": [
-        "915",
-        0
+        "simpai_lora_stack_main",
+        1
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -108,8 +108,8 @@
         29
       ],
       "clip": [
-        "915",
-        0
+        "simpai_lora_stack_main",
+        1
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -1236,6 +1236,10 @@
     "inputs": {
       "model": [
         "796",
+        0
+      ],
+      "clip": [
+        "915",
         0
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",

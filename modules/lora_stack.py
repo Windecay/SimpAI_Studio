@@ -180,6 +180,18 @@ def _legacy_names(prompt, stack_node):
     return names
 
 
+def _upstream_clip_entries(nodes, prepared, node):
+    visited = set()
+    link = node.get("inputs", {}).get("clip")
+    while isinstance(link, list) and len(link) == 2 and link[1] == 1:
+        node_id = str(link[0])
+        if node_id not in nodes or node_id in visited:
+            break
+        visited.add(node_id)
+        yield from prepared[node_id]
+        link = nodes[node_id].get("inputs", {}).get("clip")
+
+
 def apply_stack_inputs(prompt, params):
     if not prompt or not any(key in params for key in (*BACKEND_FIELDS, "lora_stack_prompt")):
         return prompt
@@ -201,20 +213,32 @@ def apply_stack_inputs(prompt, params):
     grouped = {branch: [] for branch in branches}
     occupied = {branch: set() for branch in branches}
     for source, items in (("manual", manual), ("prompt", tags)):
-        for item in items:
+        for index, item in enumerate(items):
             if not _active(item):
                 continue
             for branch in _targets(item["target"], branches, item["model"], lang):
                 key = item["model"].casefold()
                 if source == "prompt" and key in occupied[branch]:
                     continue
-                grouped[branch].append({**item, "target": branch, "source": source})
+                grouped[branch].append({**item, "target": branch, "source": source, "_entry_id": (source, index)})
                 occupied[branch].add(key)
-    result = copy.deepcopy(prompt)
+    prepared = {}
     for node_id, node in nodes.items():
         branch = node.get("inputs", {}).get("branch", "main")
         legacy = _legacy_names(prompt, node)
-        entries = [item for item in grouped[branch] if item["source"] != "prompt" or item["model"].casefold() not in legacy]
+        prepared[node_id] = [item for item in grouped[branch] if item["source"] != "prompt" or item["model"].casefold() not in legacy]
+    result = copy.deepcopy(prompt)
+    for node_id, node in nodes.items():
+        applied_clip = {
+            item["_entry_id"] for item in _upstream_clip_entries(nodes, prepared, node)
+            if item["strength_clip"] != 0
+        }
+        entries = []
+        for item in prepared[node_id]:
+            entry = {key: value for key, value in item.items() if key != "_entry_id"}
+            if item["_entry_id"] in applied_clip:
+                entry["strength_clip"] = 0.0
+            entries.append(entry)
         if any(item["strength_clip"] != 0 for item in entries) and not node.get("inputs", {}).get("clip"):
             raise ValueError(_message(lang, "Connect CLIP to the LoRA stack node before using a CLIP weight.", "使用 CLIP 权重前，需要为 LoRA 堆节点连接 CLIP。"))
         result[node_id]["inputs"]["stack_json"] = json.dumps({"version": 1, "items": entries}, ensure_ascii=False, allow_nan=False)

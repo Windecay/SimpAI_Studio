@@ -131,8 +131,8 @@
   "11": {
     "inputs": {
       "clip": [
-        "48",
-        0
+        "simpai_lora_stack_main",
+        1
       ],
       "vae": [
         "5",
@@ -1033,8 +1033,8 @@
   "74": {
     "inputs": {
       "clip": [
-        "48",
-        0
+        "simpai_lora_stack_main",
+        1
       ],
       "vae": [
         "5",
@@ -1446,6 +1446,10 @@
     "inputs": {
       "model": [
         "68",
+        0
+      ],
+      "clip": [
+        "48",
         0
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",

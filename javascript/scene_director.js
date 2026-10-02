@@ -6,6 +6,8 @@ const SCENE_DIRECTOR_TEXT = {
     "Compose timeline": "合成时间线",
     "Timeline format": "时间线格式",
     "Timeline preview": "时间线预览",
+    "Output timeline": "输出时间线",
+    "Manual export": "手动输出",
     "Video track": "视频轨",
     "Audio track": "音频轨",
     "Prompt track": "提示词轨",
@@ -46,6 +48,10 @@ const SCENE_DIRECTOR_TEXT = {
     "Image 8": "图片 8",
     "Image 9": "图片 9",
     "Drop image": "拖入图片",
+    "Uploading image": "\u6b63\u5728\u4e0a\u4f20\u56fe\u7247",
+    "Image upload failed. Retry or clear this slot.": "\u56fe\u7247\u4e0a\u4f20\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u6216\u6e05\u9664\u6b64\u4f4d\u7f6e\u3002",
+    "Browser backup unavailable; this image is temporary.": "\u6d4f\u89c8\u5668\u539f\u4ef6\u5907\u4efd\u4e0d\u53ef\u7528\uff0c\u56fe\u7247\u4ec5\u5b58\u4e8e\u4e34\u65f6\u7f13\u5b58\u3002",
+    "Image restore failed. Refresh or upload again.": "\u56fe\u7247\u6062\u590d\u5931\u8d25\uff0c\u8bf7\u5237\u65b0\u6216\u91cd\u65b0\u4e0a\u4f20\u3002",
     "Click or drop": "点击或拖入",
     "Clear": "清除",
     "Audio": "音频",
@@ -95,6 +101,12 @@ const SCENE_DIRECTOR_TEXT = {
 
 const SCENE_DIRECTOR_MEDIA_RULES_TEXT = "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-9 images = Reference set | previous_segment_last_frame = previous shot last frame | audio_1-5 / video_1-5 = media refs | previous_segment = previous shot result";
 const SCENE_DIRECTOR_README_TEXT = "Director README";
+const sceneDirectorImageUploads = new Map();
+const sceneDirectorLegacyThumbnails = new Map();
+let sceneDirectorMediaCacheText = null;
+let sceneDirectorMediaCache = {};
+let sceneDirectorMediaMapCache = null;
+let sceneDirectorMediaRevision = 0;
 
 function sceneDirectorQuery(selector) {
     try {
@@ -266,6 +278,8 @@ let sceneDirectorTimelineDragPendingPoint = null;
 let sceneDirectorActiveShotIndex = 0;
 
 function sceneDirectorCapability() {
+    const unifiedH3 = window.SimpAIH3Director?.capability(window.simpleaiTopbarSystemParams || {});
+    if (unifiedH3) return sceneDirectorNormalizeCapability(unifiedH3);
     sceneDirectorEnsurePresetCapabilityLoaded();
     let inferredDerivedCapability = null;
     try {
@@ -317,6 +331,7 @@ function sceneDirectorRenderRules() {
     if (!root) return;
     const textNode = root.querySelector("[data-scene-director-rules-text]");
     if (textNode) {
+        textNode.style.display = window.SimpAIH3Director?.isFamily() ? "none" : "";
         sceneDirectorSetText(textNode, SCENE_DIRECTOR_MEDIA_RULES_TEXT);
     } else {
         sceneDirectorTranslateTextNodes(root);
@@ -435,7 +450,9 @@ function sceneDirectorDraftIdentity() {
     const preset = sceneDirectorPresetName() || String(prepared.name || prepared.preset || "default").trim() || "default";
     const theme = sceneDirectorThemeFromParams(params) || String(params.__theme || params.theme || "default").trim() || "default";
     const user = String(params.__user_did || params.user_did || params.user_id || params.username || "local").trim() || "local";
-    return { preset, theme, user };
+    return window.SimpAIH3Director?.isFamily(params)
+        ? { preset: "MiniMax-H3(Director)", theme: "Unified", user }
+        : { preset, theme, user };
 }
 
 function sceneDirectorDraftStorageKey() {
@@ -569,6 +586,46 @@ async function sceneDirectorDeleteDraftAsset(id) {
     return sceneDirectorDraftAssetTx(db, "readwrite", (store) => store.delete(id));
 }
 
+async function sceneDirectorBackupImageOriginal(file, path, ref, draftKey) {
+    const id = sceneDirectorDraftAssetId(draftKey, "originals", ref) + ":" + sceneDirectorMediaIdentity(ref, { path }) +
+        ":" + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const saved = await sceneDirectorPutDraftAsset({
+        id, draft_key: draftKey, group: "originals", ref, original_file: file,
+        name: file.name || ref, mime: file.type || "image/png", updated_at: new Date().toISOString(),
+    });
+    return saved ? id : "";
+}
+
+async function sceneDirectorRestoreImageOriginal(item) {
+    if (!item?.__draft_image_original_id) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 120000);
+    try {
+        const existing = item.path && await fetch(`/gradio_api/file=${encodeURIComponent(item.path)}`, {
+            method: "HEAD", credentials: "same-origin", signal: controller.signal,
+        });
+        if (existing?.ok) {
+            delete item.restore_error;
+            return;
+        }
+        const original = await sceneDirectorGetDraftAsset(item.__draft_image_original_id);
+        if (!original?.original_file) throw new Error("Image backup unavailable");
+        const body = new FormData();
+        body.append("files", original.original_file, original.name);
+        const response = await fetch("/gradio_api/upload", {
+            method: "POST", credentials: "same-origin", body, signal: controller.signal,
+        });
+        const paths = response.ok && await response.json();
+        if (!Array.isArray(paths) || typeof paths[0] !== "string" || !paths[0]) throw new Error("Image restore failed");
+        item.path = paths[0];
+        delete item.restore_error;
+    } catch (error) {
+        item.restore_error = true;
+    } finally {
+        window.clearTimeout(timer);
+    }
+}
+
 function sceneDirectorDraftMediaGroups(text) {
     if (!text) return { images: {}, audio: {}, video: {} };
     try {
@@ -664,6 +721,7 @@ async function sceneDirectorHydrateDraftMediaState(draft) {
             if (typeof value === "string" && !item[field]) item[field] = value;
         });
     }));
+    await Promise.all(Object.values(groups.images).map(sceneDirectorRestoreImageOriginal));
     return Object.assign({}, draft, { media_state: JSON.stringify(groups) });
 }
 
@@ -882,6 +940,7 @@ function sceneDirectorApplyDraft(draft) {
     if (!sceneDirectorDraftControlsMounted()) return false;
     const directorAvailable = sceneDirectorPresetAvailable(sceneDirectorDatasetCapability(true));
     sceneDirectorWithDraftSavePaused(() => {
+        if (window.SimpAIH3Director?.isFamily()) window.SimpAIH3Director.resetProject();
         sceneDirectorSetCheckboxValue("#scene_director_enabled", directorAvailable && !!draft.enabled, false);
         sceneDirectorSetControlValue("#scene_director_width", draft.width || 1280, false);
         sceneDirectorSetControlValue("#scene_director_height", draft.height || 720, false);
@@ -920,7 +979,14 @@ async function sceneDirectorRestoreDraft(options = {}) {
     let restored = false;
     if (storage && key) {
         try {
-            const raw = storage.getItem(key);
+            let raw = storage.getItem(key);
+            if (!raw && window.SimpAIH3Director?.isFamily()) {
+                const params = window.simpleaiTopbarSystemParams || {};
+                const legacyKey = SCENE_DIRECTOR_DRAFT_STORAGE_PREFIX + [
+                    sceneDirectorDraftIdentity().user, sceneDirectorPresetName(), sceneDirectorThemeFromParams(params) || "default"
+                ].map(part => encodeURIComponent(part)).join(":");
+                raw = storage.getItem(legacyKey);
+            }
             const draft = raw ? JSON.parse(raw) : null;
             if (draft && draft.schema === SCENE_DIRECTOR_DRAFT_SCHEMA) {
                 restored = sceneDirectorApplyDraft(await sceneDirectorHydrateDraftMediaState(draft));
@@ -1033,6 +1099,7 @@ function sceneDirectorPresetFetchUrl(name) {
 }
 
 function sceneDirectorEnsurePresetCapabilityLoaded() {
+    if (window.SimpAIH3Director?.isFamily()) return;
     const name = sceneDirectorPresetName();
     const theme = sceneDirectorThemeFromParams(window.simpleaiTopbarSystemParams || {});
     const cacheKey = sceneDirectorPresetCapabilityCacheKey(name, theme);
@@ -1093,6 +1160,7 @@ function sceneDirectorNormalizeCapability(raw) {
     const normalizedMinSegmentDuration = Number.isFinite(minSegmentDuration) ? Math.max(minDurationFloor, Math.min(86400, minSegmentDuration)) : (minDurationFloor === 0 ? 0 : 0.1);
     const normalizedMaxSegmentDuration = Number.isFinite(maxSegmentDuration) ? Math.max(normalizedMinSegmentDuration, Math.min(86400, maxSegmentDuration)) : Math.max(normalizedMinSegmentDuration, 10);
     return {
+        h3Unified: !!read("h3Unified", "h3_unified", false),
         imagePolicy: ["required", "forbidden", "optional"].includes(policy) ? policy : "optional",
         audioPolicy: ["required", "forbidden", "optional"].includes(audioPolicy) ? audioPolicy : "optional",
         videoPolicy: ["required", "forbidden", "optional"].includes(videoPolicy) ? videoPolicy : "optional",
@@ -1114,6 +1182,7 @@ function sceneDirectorNormalizeCapability(raw) {
 
 function sceneDirectorCapabilitySignature() {
     const capability = sceneDirectorCapability();
+    if (capability.h3Unified) return "h3_unified_v1";
     return `${capability.imagePolicy}:${capability.minImages}:${capability.maxImages}:${capability.imageModes.join(",")}:${capability.audioPolicy}:${capability.maxAudios}:${capability.videoPolicy}:${capability.maxVideos}:${capability.videoModes.join(",")}:${capability.chainOutput}:${capability.segmentDurationParam}:${capability.durationStrategy}:${capability.audioOutput}:${capability.directorSupported}:${capability.minSegmentDuration}:${capability.maxSegmentDuration}`;
 }
 
@@ -1139,16 +1208,22 @@ function sceneDirectorMediaStateField() {
 function sceneDirectorReadMediaState() {
     const field = sceneDirectorMediaStateField();
     const text = field ? String(field.value || "").trim() : "";
-    if (!text) return {};
+    if (text === sceneDirectorMediaCacheText) return sceneDirectorMediaCache;
+    sceneDirectorMediaCacheText = text;
+    sceneDirectorMediaMapCache = null;
+    sceneDirectorMediaRevision += 1;
+    sceneDirectorMediaCache = {};
+    if (!text) return sceneDirectorMediaCache;
     try {
         const parsed = JSON.parse(text);
-        if (!parsed || typeof parsed !== "object") return {};
+        if (!parsed || typeof parsed !== "object") return sceneDirectorMediaCache;
         const hasGroups = ["images", "audio", "video"].some((key) => parsed[key] && typeof parsed[key] === "object");
-        if (!hasGroups) return parsed;
-        return Object.assign({}, parsed.images || {}, parsed.audio || {}, parsed.video || {});
+        sceneDirectorMediaCache = hasGroups
+            ? Object.assign({}, parsed.images || {}, parsed.audio || {}, parsed.video || {}) : parsed;
     } catch (e) {
-        return {};
+        sceneDirectorMediaCache = {};
     }
+    return sceneDirectorMediaCache;
 }
 
 function sceneDirectorWriteMediaState(media) {
@@ -1209,6 +1284,7 @@ function sceneDirectorCloneRows(rows) {
                     ...Array.from({ length: SCENE_DIRECTOR_MAX_IMAGE_REFS }, (_, imageIndex) => row[SCENE_DIRECTOR_IMAGE_START_INDEX + imageIndex] ?? ""),
                     row[SCENE_DIRECTOR_AUDIO_INDEX] ?? "",
                     row[SCENE_DIRECTOR_VIDEO_INDEX] ?? "",
+                    ...(row[14] || window.SimpAIH3Director?.isFamily() ? [window.SimpAIH3Director?.metadata(row) || row[14]] : []),
                 ];
             }
             if (row.length >= SCENE_DIRECTOR_IMAGE_START_INDEX + SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS + 2) {
@@ -1264,6 +1340,7 @@ function sceneDirectorCloneRows(rows) {
                 ...Array.from({ length: SCENE_DIRECTOR_MAX_IMAGE_REFS }, (_, imageIndex) => imageValue(imageIndex + 1)),
                 sceneDirectorSerializeMediaRefs(audioRefs),
                 sceneDirectorSerializeMediaRefs(videoRefs),
+                ...(row.mode || window.SimpAIH3Director?.isFamily() ? [window.SimpAIH3Director?.metadata(row) || row] : []),
             ];
         }
         return [index * 5, (index + 1) * 5, "", ...Array(SCENE_DIRECTOR_MAX_IMAGE_REFS + 2).fill("")];
@@ -1279,6 +1356,7 @@ function sceneDirectorReadRows() {
     }
     try {
         const parsed = JSON.parse(field.value);
+        if (window.SimpAIH3Director?.isFamily()) window.SimpAIH3Director.editorProject(parsed);
         const rows = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.rows) ? parsed.rows : []);
         const normalized = sceneDirectorNormalizeRowsForCapability(rows.length ? rows : SCENE_DIRECTOR_DEFAULT_ROWS);
         if (parsed && !Array.isArray(parsed) && typeof parsed === "object") {
@@ -1318,14 +1396,26 @@ function sceneDirectorSetActiveShot(editor, index) {
 function sceneDirectorWriteRows(rows) {
     const field = sceneDirectorEditorField();
     if (!field) return;
-    const normalized = sceneDirectorNormalizeRowsForCapability(rows);
+    let normalized = sceneDirectorNormalizeRowsForCapability(rows);
+    if (window.SimpAIH3Director?.isFamily()) {
+        normalized = window.SimpAIH3Director.snapTransitions(normalized);
+        const editor = sceneDirectorQuery("#scene_director_editor_root");
+        normalized.forEach((row, index) => {
+            const node = editor?.querySelector(`[data-scene-director-shot][data-scene-director-index="${index}"]`);
+            if (node) node.__h3Meta = { ...row[14] };
+        });
+        sceneDirectorTimelineSetEditorRowTimes(normalized);
+    }
     sceneDirectorActiveShotIndex = Math.max(0, Math.min(Math.max(0, normalized.length - 1), sceneDirectorActiveShotIndex));
-    field.value = JSON.stringify({ rows: normalized, active_index: sceneDirectorActiveShotIndex });
+    const payload = { rows: normalized, active_index: sceneDirectorActiveShotIndex };
+    if (window.SimpAIH3Director?.isFamily()) payload.project_id = window.SimpAIH3Director.editorProject();
+    field.value = JSON.stringify(payload);
     field.dispatchEvent(new Event("input", { bubbles: true }));
     field.dispatchEvent(new Event("change", { bubbles: true }));
     sceneDirectorSyncActiveShot();
     sceneDirectorRenderTimelinePreview(normalized);
     sceneDirectorScheduleDraftSave();
+    window.SimpAIH3Director?.scheduleRefresh();
 }
 
 function sceneDirectorOptionHtml(options, value) {
@@ -1396,6 +1486,10 @@ function sceneDirectorImageLabel(ref) {
 
 function sceneDirectorMediaLabel(ref) {
     const text = String(ref || "");
+    if (window.SimpAIH3Director?.isFamily()) {
+        if (text === SCENE_DIRECTOR_PREVIOUS_VIDEO_REF) return window.SimpAIH3Director.text("Source video", "\u6765\u6e90\u89c6\u9891");
+        if (text === SCENE_DIRECTOR_PREVIOUS_IMAGE_REF) return window.SimpAIH3Director.text("Source last frame", "\u6765\u6e90\u5c3e\u5e27");
+    }
     if (text === SCENE_DIRECTOR_PREVIOUS_VIDEO_REF) return sceneDirectorText("Previous shot result");
     if (text === SCENE_DIRECTOR_PREVIOUS_IMAGE_REF) return sceneDirectorText("Previous shot last frame");
     const match = text.match(/^(image|audio|video)_(\d+)$/);
@@ -1404,23 +1498,28 @@ function sceneDirectorMediaLabel(ref) {
     return `${sceneDirectorText(key)} ${match[2]}`;
 }
 
-function sceneDirectorImageRoleText(index, total) {
+function sceneDirectorImageRoleText(index, total, capability = {}) {
+    if (capability.h3Unified && !["first_frame", "first_last"].includes(capability.h3Mode)) {
+        return sceneDirectorText("Reference {index}").replace("{index}", String(index + 1));
+    }
     if (total <= 1) return sceneDirectorText("First frame");
     if (total === 2) return index === 0 ? sceneDirectorText("First frame") : sceneDirectorText("Last frame");
     return sceneDirectorText("Reference {index}").replace("{index}", String(index + 1));
 }
 
 function sceneDirectorMediaMap() {
-    const map = new Map();
     const state = sceneDirectorReadMediaState();
+    if (sceneDirectorMediaMapCache) return sceneDirectorMediaMapCache;
+    const map = new Map();
     Object.entries(state).forEach(([ref, item]) => {
         if (!ref || !item || typeof item !== "object") return;
-        const src = String(item.thumb || item.data_url || item.src || "");
+        const src = sceneDirectorImagePreviewSource(ref, item);
         map.set(ref, {
             src,
             label: String(item.name || item.title || sceneDirectorMediaLabel(ref)),
             mime: String(item.mime || ""),
             path: String(item.path || ""),
+            identity: sceneDirectorMediaIdentity(ref, item),
         });
     });
     document.querySelectorAll("#scene_director_media_preview [data-scene-director-ref]").forEach((tile) => {
@@ -1433,7 +1532,27 @@ function sceneDirectorMediaMap() {
             path: tile.getAttribute("data-scene-director-path") || "",
         });
     });
+    sceneDirectorMediaMapCache = map;
     return map;
+}
+
+function sceneDirectorImagePreviewSource(ref, item) {
+    const source = String(item.thumb || item.data_url || item.src || "");
+    if (!/^image_[1-9]$/.test(ref) || source.length < 100000 || !source.startsWith("data:image/") ||
+            !window.SimpAIH3Director?.isFamily()) return source;
+    let entry = sceneDirectorLegacyThumbnails.get(ref);
+    if (entry?.source === source) return entry.thumb;
+    entry = { source, thumb: "" };
+    sceneDirectorLegacyThumbnails.set(ref, entry);
+    fetch(source).then(response => response.blob()).then(sceneDirectorImageThumbnail).then(thumb => {
+        if (sceneDirectorLegacyThumbnails.get(ref) !== entry) return;
+        entry.thumb = thumb;
+        sceneDirectorMediaMapCache = null;
+        sceneDirectorMediaRevision += 1;
+        sceneDirectorRenderMediaPreview();
+        window.SimpAIH3Director?.scheduleRefresh();
+    }).catch(() => {});
+    return "";
 }
 
 function sceneDirectorSelectedImageRefs(rowNode) {
@@ -1445,6 +1564,14 @@ function sceneDirectorSelectedImageRefs(rowNode) {
         if (ref && !refs.includes(ref)) refs.push(ref);
     }
     return refs;
+}
+
+function sceneDirectorMediaIdentity(ref, item) {
+    if (item.asset_id) return String(item.asset_id);
+    const source = String(item.path || item.data_url || item.src || item.thumb || ref);
+    let hash = 2166136261;
+    for (let index = 0; index < source.length; index += 1) hash = Math.imul(hash ^ source.charCodeAt(index), 16777619);
+    return `source:${(hash >>> 0).toString(16)}`;
 }
 
 function sceneDirectorSelectedMediaRefs(rowNode, kind, capability = sceneDirectorCapability()) {
@@ -1497,15 +1624,16 @@ function sceneDirectorNormalizeImageRefs(refs, capability = sceneDirectorCapabil
 function sceneDirectorNormalizeRowValues(row, capability = sceneDirectorCapability(), rowIndex = null) {
     const values = sceneDirectorCloneRows([row])[0];
     let refs = sceneDirectorNormalizeImageRefs(values.slice(SCENE_DIRECTOR_IMAGE_START_INDEX, SCENE_DIRECTOR_AUDIO_INDEX), capability);
-    if (rowIndex !== null && Number(rowIndex) === 0) refs = refs.filter((ref) => ref !== SCENE_DIRECTOR_PREVIOUS_IMAGE_REF);
+    if (!capability.h3Unified && rowIndex !== null && Number(rowIndex) === 0) refs = refs.filter((ref) => ref !== SCENE_DIRECTOR_PREVIOUS_IMAGE_REF);
     for (let index = 0; index < SCENE_DIRECTOR_MAX_IMAGE_REFS; index += 1) {
         values[index + SCENE_DIRECTOR_IMAGE_START_INDEX] = refs[index] || "";
     }
     const audioRefs = sceneDirectorNormalizeMediaRefs(values[SCENE_DIRECTOR_AUDIO_INDEX], "audio", capability);
     let videoRefs = sceneDirectorNormalizeMediaRefs(values[SCENE_DIRECTOR_VIDEO_INDEX], "video", capability);
-    if (rowIndex !== null && Number(rowIndex) === 0) videoRefs = videoRefs.filter((ref) => ref !== SCENE_DIRECTOR_PREVIOUS_VIDEO_REF);
+    if (!capability.h3Unified && rowIndex !== null && Number(rowIndex) === 0) videoRefs = videoRefs.filter((ref) => ref !== SCENE_DIRECTOR_PREVIOUS_VIDEO_REF);
     values[SCENE_DIRECTOR_AUDIO_INDEX] = sceneDirectorSerializeMediaRefs(audioRefs);
     values[SCENE_DIRECTOR_VIDEO_INDEX] = sceneDirectorSerializeMediaRefs(videoRefs);
+    if (capability.h3Unified) values[14] = window.SimpAIH3Director.metadata(values);
     return values;
 }
 
@@ -1554,14 +1682,23 @@ function sceneDirectorImageChoiceHtml(ref, selectedRefs, mediaMap, capability = 
     const media = mediaMap.get(ref) || {};
     const src = String(media.src || "");
     const label = String(media.label || sceneDirectorImageLabel(ref));
-    const title = blockedByLimit
+    let title = blockedByLimit
         ? sceneDirectorText("Not selectable: current preset accepts up to {count} image(s)").replace("{count}", String(maxImages))
         : label;
-    const role = active ? sceneDirectorImageRoleText(selectedIndex, selectedCount) : "";
+    const unreferenced = capability.h3Unified && !active;
+    const role = active ? sceneDirectorImageRoleText(selectedIndex, selectedCount, capability)
+        : unreferenced ? window.SimpAIH3Director.text("Not used", "\u672a\u5f15\u7528") : "";
+    const status = unreferenced
+        ? window.SimpAIH3Director.text("Not referenced by this shot", "\u5f53\u524d\u5206\u955c\u672a\u5f15\u7528")
+        : role;
+    if (capability.h3Unified) title = `${title} - ${status}`;
     const preview = src
         ? `<img src="${sceneDirectorEscapeHtml(src)}" alt="">`
         : `<span>${sceneDirectorEscapeHtml(ref.replace("image_", ""))}</span>`;
-    return `<button type="button" class="scene-director-ref-choice ${active ? "is-active" : ""} ${blockedByLimit ? "is-limit-disabled" : ""} ${src ? "has-image" : "is-empty"}" data-scene-director-ref-choice="${sceneDirectorEscapeHtml(ref)}" aria-pressed="${active ? "true" : "false"}" title="${sceneDirectorEscapeHtml(title)}" ${disabled ? 'disabled aria-disabled="true"' : ""}>${preview}${role ? `<em class="scene-director-ref-role">${sceneDirectorEscapeHtml(role)}</em>` : ""}<small>${sceneDirectorEscapeHtml(ref)}</small></button>`;
+    const caption = capability.h3Unified ? sceneDirectorImageLabel(ref) : ref;
+    const accessibleLabel = capability.h3Unified
+        ? ` aria-label="${sceneDirectorEscapeHtml(`${caption}: ${label} - ${status}`)}"` : "";
+    return `<button type="button" class="scene-director-ref-choice ${active ? "is-active" : ""} ${unreferenced ? "is-unreferenced" : ""} ${blockedByLimit ? "is-limit-disabled" : ""} ${src ? "has-image" : "is-empty"}" data-scene-director-ref-choice="${sceneDirectorEscapeHtml(ref)}" aria-pressed="${active ? "true" : "false"}"${accessibleLabel} title="${sceneDirectorEscapeHtml(title)}" ${disabled ? 'disabled aria-disabled="true"' : ""}>${preview}${role ? `<em class="scene-director-ref-role">${sceneDirectorEscapeHtml(role)}</em>` : ""}<small>${sceneDirectorEscapeHtml(caption)}</small></button>`;
 }
 
 function sceneDirectorImagePickerSignature(selectedRefs, mediaMap, capability) {
@@ -1569,15 +1706,17 @@ function sceneDirectorImagePickerSignature(selectedRefs, mediaMap, capability) {
         const media = mediaMap.get(ref) || {};
         return [
             ref,
-            media.src ? "1" : "0",
+            media.src || media.path ? "1" : "0",
             String(media.label || ""),
         ].join(":");
     }).join("|");
     return [
         sceneDirectorLanguageKey(),
+        sceneDirectorMediaRevision,
         capability.imagePolicy,
         capability.minImages,
         capability.maxImages,
+        capability.h3Mode || "",
         selectedRefs.join(","),
         imageState,
     ].join("\n");
@@ -1587,7 +1726,8 @@ function sceneDirectorRenderImageRefPicker(rowNode, mediaMap = sceneDirectorMedi
     if (!rowNode) return;
     const picker = rowNode.querySelector("[data-scene-director-ref-picker]");
     if (!picker) return;
-    const capability = sceneDirectorCapability();
+    let capability = sceneDirectorCapability();
+    if (capability.h3Unified) capability = window.SimpAIH3Director.shotCapability(capability, rowNode.querySelector('[data-h3-field="mode"]')?.value || rowNode.__h3Meta?.mode);
     const selectedRefs = sceneDirectorNormalizeImageRefs(sceneDirectorSelectedImageRefs(rowNode), capability);
     const changed = sceneDirectorSetSelectedImageRefs(rowNode, selectedRefs, capability);
     const rowIndex = Number(rowNode.getAttribute("data-scene-director-index") || 0);
@@ -1599,9 +1739,12 @@ function sceneDirectorRenderImageRefPicker(rowNode, mediaMap = sceneDirectorMedi
     }
     const noneDisabled = capability.imagePolicy === "required" || capability.imagePolicy === "forbidden";
     const noneLabel = sceneDirectorNoneChoiceLabel(capability, selectedRefs.length);
+    const options = capability.h3Unified
+        ? window.SimpAIH3Director.referenceOptions("image", SCENE_DIRECTOR_IMAGE_OPTIONS, selectedRefs, mediaMap, rowIndex)
+        : SCENE_DIRECTOR_IMAGE_OPTIONS;
     const nextHtml = [
         `<button type="button" class="scene-director-ref-choice scene-director-ref-none ${selectedRefs.length ? "" : "is-active"}" data-scene-director-ref-choice="" aria-pressed="${selectedRefs.length ? "false" : "true"}" ${noneDisabled ? 'disabled aria-disabled="true"' : ""}><span>${sceneDirectorEscapeHtml(noneLabel)}</span></button>`,
-        ...SCENE_DIRECTOR_IMAGE_OPTIONS.filter(Boolean).map((ref) => sceneDirectorImageChoiceHtml(ref, selectedRefs, mediaMap, capability)),
+        ...options.filter(Boolean).map((ref) => sceneDirectorImageChoiceHtml(ref, selectedRefs, mediaMap, capability)),
     ].join("");
     const signature = sceneDirectorImagePickerSignature(selectedRefs, mediaMap, capability);
     if (picker.dataset.sceneDirectorRefPickerSignature !== signature) {
@@ -1621,7 +1764,12 @@ function sceneDirectorMediaChoiceHtml(kind, ref, selectedRefs, mediaMap, capabil
     const disabled = policy === "forbidden" || maxRefs <= 0 || blockedByLimit || previousBlocked;
     const media = mediaMap.get(ref) || {};
     const src = String(media.src || "");
-    const label = String(media.label || sceneDirectorMediaLabel(ref));
+    const caption = capability.h3Unified
+        ? ref === SCENE_DIRECTOR_PREVIOUS_VIDEO_REF
+            ? window.SimpAIH3Director.text("Source video", "\u6765\u6e90\u89c6\u9891")
+            : sceneDirectorMediaLabel(ref)
+        : ref;
+    const label = String(media.label || (capability.h3Unified ? caption : sceneDirectorMediaLabel(ref)));
     const limitKey = kind === "audio"
         ? "Not selectable: current preset accepts up to {count} audio reference(s)"
         : "Not selectable: current preset accepts up to {count} video reference(s)";
@@ -1635,14 +1783,14 @@ function sceneDirectorMediaChoiceHtml(kind, ref, selectedRefs, mediaMap, capabil
     const order = active
         ? `<em class="scene-director-media-ref-order" title="${sceneDirectorEscapeHtml(sceneDirectorText("Reference order {index}").replace("{index}", String(selectedIndex + 1)))}">${selectedIndex + 1}</em>`
         : "";
-    return `<button type="button" class="scene-director-compact-ref-choice ${active ? "is-active" : ""} ${blockedByLimit ? "is-limit-disabled" : ""} ${src ? "has-media" : "is-empty"}" data-scene-director-media-ref-choice="${sceneDirectorEscapeHtml(ref)}" data-scene-director-media-kind="${kind}" aria-pressed="${active ? "true" : "false"}" title="${sceneDirectorEscapeHtml(title)}" ${disabled ? 'disabled aria-disabled="true"' : ""}>${preview}${order}<small>${sceneDirectorEscapeHtml(ref)}</small></button>`;
+    return `<button type="button" class="scene-director-compact-ref-choice ${active ? "is-active" : ""} ${blockedByLimit ? "is-limit-disabled" : ""} ${src ? "has-media" : "is-empty"}" data-scene-director-media-ref-choice="${sceneDirectorEscapeHtml(ref)}" data-scene-director-media-kind="${kind}" aria-pressed="${active ? "true" : "false"}" title="${sceneDirectorEscapeHtml(title)}" ${disabled ? 'disabled aria-disabled="true"' : ""}>${preview}${order}<small>${sceneDirectorEscapeHtml(caption)}</small></button>`;
 }
 
 function sceneDirectorMediaPickerSignature(kind, selectedRefs, mediaMap, capability, rowIndex) {
     const options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
     const mediaState = options.filter(Boolean).map((ref) => {
         const media = mediaMap.get(ref) || {};
-        return [ref, media.src ? "1" : "0", String(media.label || "")].join(":");
+        return [ref, media.src || media.path ? "1" : "0", String(media.label || "")].join(":");
     }).join("|");
     return [
         sceneDirectorLanguageKey(),
@@ -1659,13 +1807,15 @@ function sceneDirectorRenderMediaRefPicker(rowNode, kind, mediaMap = sceneDirect
     if (!rowNode) return false;
     const picker = rowNode.querySelector(`[data-scene-director-media-ref-picker="${kind}"]`);
     if (!picker) return false;
-    const capability = sceneDirectorCapability();
+    let capability = sceneDirectorCapability();
+    if (capability.h3Unified) capability = window.SimpAIH3Director.shotCapability(capability, rowNode.querySelector('[data-h3-field="mode"]')?.value || rowNode.__h3Meta?.mode);
     const selectedRefs = sceneDirectorSelectedMediaRefs(rowNode, kind, capability);
     const changed = sceneDirectorSetSelectedMediaRefs(rowNode, kind, selectedRefs, capability);
     const rowIndex = Number(rowNode.getAttribute("data-scene-director-index") || 0);
     const policy = kind === "audio" ? capability.audioPolicy : capability.videoPolicy;
     const noneDisabled = policy === "required" || policy === "forbidden";
-    const options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
+    let options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
+    if (capability.h3Unified) options = window.SimpAIH3Director.referenceOptions(kind, options, selectedRefs, mediaMap, rowIndex);
     const nextHtml = [
         `<button type="button" class="scene-director-compact-ref-choice scene-director-compact-ref-none ${selectedRefs.length ? "" : "is-active"}" data-scene-director-media-ref-choice="" data-scene-director-media-kind="${kind}" aria-pressed="${selectedRefs.length ? "false" : "true"}" ${noneDisabled ? 'disabled aria-disabled="true"' : ""}><span>${sceneDirectorEscapeHtml(sceneDirectorText("None"))}</span></button>`,
         ...options.filter(Boolean).map((ref) => sceneDirectorMediaChoiceHtml(kind, ref, selectedRefs, mediaMap, capability, rowIndex)),
@@ -1687,10 +1837,16 @@ function sceneDirectorMediaFieldHtml(kind, value, capability, mediaMap, rowIndex
         const options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
         return `<label class="scene-director-media-refs-field"><span>${sceneDirectorEscapeHtml(label)}</span><select data-scene-director-field="${kind}_ref" ${policy === "forbidden" ? 'disabled aria-disabled="true"' : ""}>${sceneDirectorOptionHtml(options, refs[0] || "")}</select></label>`;
     }
-    return `<label class="scene-director-media-refs-field is-multi"><span>${sceneDirectorEscapeHtml(label)}</span><input type="hidden" data-scene-director-field="${kind}_ref" value="${sceneDirectorEscapeHtml(sceneDirectorSerializeMediaRefs(refs))}"><div class="scene-director-compact-ref-picker" data-scene-director-media-ref-picker="${kind}">${["", ...(kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions()).filter(Boolean)].map((ref) => ref ? sceneDirectorMediaChoiceHtml(kind, ref, refs, mediaMap, capability, rowIndex) : `<button type="button" class="scene-director-compact-ref-choice scene-director-compact-ref-none ${refs.length ? "" : "is-active"}" data-scene-director-media-ref-choice="" data-scene-director-media-kind="${kind}" aria-pressed="${refs.length ? "false" : "true"}"><span>${sceneDirectorEscapeHtml(sceneDirectorText("None"))}</span></button>`).join("")}</div></label>`;
+    let options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
+    if (capability.h3Unified) options = window.SimpAIH3Director.referenceOptions(kind, options, refs, mediaMap, rowIndex);
+    const heading = capability.h3Unified
+        ? `<span class="h3-reference-heading"><span>${sceneDirectorEscapeHtml(label)}</span>${window.SimpAIH3Director.mediaButton(kind)}</span>`
+        : `<span>${sceneDirectorEscapeHtml(label)}</span>`;
+    return `<label class="scene-director-media-refs-field is-multi">${heading}<input type="hidden" data-scene-director-field="${kind}_ref" value="${sceneDirectorEscapeHtml(sceneDirectorSerializeMediaRefs(refs))}"><div class="scene-director-compact-ref-picker" data-scene-director-media-ref-picker="${kind}">${["", ...options.filter(Boolean)].map((ref) => ref ? sceneDirectorMediaChoiceHtml(kind, ref, refs, mediaMap, capability, rowIndex) : `<button type="button" class="scene-director-compact-ref-choice scene-director-compact-ref-none ${refs.length ? "" : "is-active"}" data-scene-director-media-ref-choice="" data-scene-director-media-kind="${kind}" aria-pressed="${refs.length ? "false" : "true"}"><span>${sceneDirectorEscapeHtml(sceneDirectorText("None"))}</span></button>`).join("")}</div></label>`;
 }
 
 function sceneDirectorNoneChoiceLabel(capability, selectedCount) {
+    if (capability.h3Unified) return sceneDirectorText("None");
     if (selectedCount > 0) return sceneDirectorText("None");
     if (capability.imagePolicy === "required") return sceneDirectorText("Missing first frame");
     if (capability.imagePolicy === "forbidden") return sceneDirectorText("No image input");
@@ -1703,6 +1859,7 @@ function sceneDirectorRefreshEditorPreviews(editor, options = {}) {
     const mediaMap = sceneDirectorMediaMap();
     let changed = false;
     root.querySelectorAll("[data-scene-director-shot]").forEach((rowNode) => {
+        if (window.SimpAIH3Director?.isFamily()) window.SimpAIH3Director.syncShotControls(rowNode);
         if (sceneDirectorRenderImageRefPicker(rowNode, mediaMap)) changed = true;
         if (sceneDirectorRenderMediaRefPicker(rowNode, "audio", mediaMap)) changed = true;
         if (sceneDirectorRenderMediaRefPicker(rowNode, "video", mediaMap)) changed = true;
@@ -1733,7 +1890,8 @@ function sceneDirectorRenderMediaPreview(options = {}) {
         const kind = String(tile.getAttribute("data-scene-director-kind") || "").trim();
         const disabled = sceneDirectorMediaKindForbidden(kind);
         const item = ref && state[ref] && typeof state[ref] === "object" ? state[ref] : {};
-        const src = String(item.thumb || item.data_url || item.src || "");
+        const upload = sceneDirectorImageUploads.get(ref);
+        const src = sceneDirectorImagePreviewSource(ref, item);
         const path = String(item.path || "");
         const label = String(item.name || item.title || sceneDirectorMediaLabel(ref));
         const drop = tile.querySelector("[data-scene-director-media-drop]");
@@ -1747,10 +1905,14 @@ function sceneDirectorRenderMediaPreview(options = {}) {
                 drop.innerHTML = nextHtml;
                 drop.dataset.sceneDirectorMediaDropSignature = dropSignature;
             }
-            drop.disabled = disabled;
-            drop.setAttribute("aria-disabled", disabled ? "true" : "false");
-            drop.title = disabled ? sceneDirectorText("Media input disabled for current preset") : "";
+            drop.disabled = disabled || !!upload?.pending;
+            drop.setAttribute("aria-disabled", drop.disabled ? "true" : "false");
+            drop.title = upload?.error ? sceneDirectorText("Image upload failed. Retry or clear this slot.")
+                : item.restore_error ? sceneDirectorText("Image restore failed. Refresh or upload again.")
+                : item.backup_warning ? sceneDirectorText("Browser backup unavailable; this image is temporary.")
+                : disabled ? sceneDirectorText("Media input disabled for current preset") : "";
         }
+        tile.setAttribute("aria-busy", upload?.pending ? "true" : "false");
         tile.classList.toggle("is-policy-disabled", disabled);
         tile.classList.toggle("has-image", !!(src || path));
         tile.classList.toggle("has-media", !!(src || path));
@@ -1771,7 +1933,11 @@ function sceneDirectorRenderMediaPreview(options = {}) {
             if (title.textContent !== displayTitle) title.textContent = displayTitle;
         }
         const small = tile.querySelector("small");
-        const smallText = src || path ? label : "";
+        const smallText = upload?.pending ? sceneDirectorText("Uploading image")
+            : upload?.error ? sceneDirectorText("Image upload failed. Retry or clear this slot.")
+                : item.restore_error ? sceneDirectorText("Image restore failed. Refresh or upload again.")
+                : item.backup_warning ? sceneDirectorText("Browser backup unavailable; this image is temporary.")
+                : src || path ? label : "";
         if (small && small.textContent !== smallText) small.textContent = smallText;
     });
     sceneDirectorBindMediaPreviewObserver();
@@ -1832,6 +1998,7 @@ function sceneDirectorOpenTemporaryFileDialog(accept, multiple, onFiles) {
             window.setTimeout(cleanup, 0);
         }
     }, { once: true });
+    input.addEventListener("cancel", cleanup, { once: true });
     document.body.appendChild(input);
     try {
         input.click();
@@ -1845,16 +2012,39 @@ function sceneDirectorOpenTemporaryFileDialog(accept, multiple, onFiles) {
     }
 }
 
+function sceneDirectorMediaUploadContext() {
+    return {
+        draftKey: sceneDirectorDraftStorageKey(),
+        projectId: window.SimpAIH3Director?.isFamily() ? window.SimpAIH3Director.editorProject() : "",
+    };
+}
+
 function sceneDirectorOpenMediaFileDialog(kind) {
-    const targetInput = sceneDirectorUploadInput(kind);
+    if (kind !== "audio" && kind !== "video") return false;
     if (sceneDirectorMediaKindForbidden(kind)) return false;
-    if (!targetInput) return false;
     const accept = kind === "audio"
         ? ".wav,.mp3,.flac,.ogg,.m4a,.aac,.opus,audio/*"
         : ".mp4,.webm,.mov,.mkv,.avi,.m4v,video/*";
+    const origin = sceneDirectorMediaUploadContext();
     return sceneDirectorOpenTemporaryFileDialog(accept, true, (files) => {
-        sceneDirectorUploadMediaFiles(kind, files);
+        sceneDirectorUploadPickedMedia(kind, files, origin);
     });
+}
+
+async function sceneDirectorUploadPickedMedia(kind, fileList, origin = sceneDirectorMediaUploadContext()) {
+    const files = Array.from(fileList || []).filter(file => sceneDirectorFileMatchesKind(file, kind));
+    if (!files.length) return false;
+    // Folded Gradio 6 panels can mount their upload input after the picker opens.
+    for (let attempt = 0; attempt < 30; attempt++) {
+        const current = sceneDirectorMediaUploadContext();
+        if (origin.draftKey !== current.draftKey || origin.projectId !== current.projectId
+            || sceneDirectorMediaKindForbidden(kind)) return false;
+        if (sceneDirectorUploadInput(kind)) return sceneDirectorUploadMediaFiles(kind, files);
+        await new Promise(resolve => window.setTimeout(resolve, 50));
+    }
+    window.alert(sceneDirectorIsEnglish() ? "Media upload is unavailable. Expand the media panel and try again."
+        : "\u7d20\u6750\u4e0a\u4f20\u63a7\u4ef6\u672a\u5c31\u7eea\uff0c\u8bf7\u5c55\u5f00\u7d20\u6750\u533a\u540e\u91cd\u8bd5\u3002");
+    return false;
 }
 
 function sceneDirectorUploadMediaFiles(kind, fileList) {
@@ -1876,31 +2066,122 @@ function sceneDirectorUploadMediaFiles(kind, fileList) {
     }
 }
 
-function sceneDirectorReadImageFile(file, ref) {
-    if (!sceneDirectorFileMatchesKind(file, "image")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
+async function sceneDirectorImageThumbnail(file) {
+    let image = null;
+    let objectUrl = "";
+    try {
+        if (typeof createImageBitmap === "function") {
+            image = await createImageBitmap(file, { resizeWidth: 320, resizeQuality: "medium" });
+        } else {
+            objectUrl = URL.createObjectURL(file);
+            image = new Image();
+            image.decoding = "async";
+            image.src = objectUrl;
+            await image.decode();
+        }
+        const scale = Math.min(1, 320 / image.width, 240 / image.height);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL("image/webp", 0.8);
+    } finally {
+        image?.close?.();
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+    }
+}
+
+function sceneDirectorCancelImageUpload(ref) {
+    sceneDirectorImageUploads.get(ref)?.controller.abort();
+    sceneDirectorImageUploads.delete(ref);
+}
+
+function sceneDirectorImageUploadPending(ref) {
+    return !!sceneDirectorImageUploads.get(ref)?.pending;
+}
+
+function sceneDirectorAvailableImageRef() {
+    const media = sceneDirectorMediaMap();
+    for (let index = 1; index <= 9; index++) {
+        const ref = "image_" + index;
+        const item = media.get(ref);
+        if (!(item?.src || item?.path) && !sceneDirectorImageUploadPending(ref)) return ref;
+    }
+    return "";
+}
+
+async function sceneDirectorReadImageFile(file, ref) {
+    if (!sceneDirectorFileMatchesKind(file, "image") || !/^image_[1-9]$/.test(ref)) return false;
+    sceneDirectorCancelImageUpload(ref);
+    const job = { controller: new AbortController(), pending: true, draftKey: sceneDirectorDraftStorageKey() };
+    let originalId = "", committed = false;
+    sceneDirectorImageUploads.set(ref, job);
+    sceneDirectorRenderMediaPreview({ refreshEditor: false });
+    window.SimpAIH3Director?.scheduleRefresh();
+    const timer = window.setTimeout(() => job.controller.abort(), 120000);
+    try {
+        const body = new FormData();
+        body.append("files", file, file.name);
+        const [response, thumb] = await Promise.all([
+            fetch("/gradio_api/upload", { method: "POST", credentials: "same-origin", body, signal: job.controller.signal }),
+            sceneDirectorImageThumbnail(file).catch(() => ""),
+        ]);
+        if (!response.ok) throw new Error(`Image upload: HTTP ${response.status}`);
+        const paths = await response.json();
+        if (!Array.isArray(paths) || typeof paths[0] !== "string" || !paths[0]) throw new Error("Image upload returned no file");
+        if (sceneDirectorImageUploads.get(ref) !== job) return false;
+        originalId = await sceneDirectorBackupImageOriginal(file, paths[0], ref, job.draftKey);
+        if (sceneDirectorImageUploads.get(ref) !== job || sceneDirectorDraftStorageKey() !== job.draftKey) {
+            if (sceneDirectorImageUploads.get(ref) === job) sceneDirectorCancelImageUpload(ref);
+            return false;
+        }
+        if (job.controller.signal.aborted) throw new Error("Image upload timed out");
         const state = sceneDirectorReadMediaState();
+        const previousOriginal = state[ref]?.__draft_image_original_id;
         state[ref] = {
             type: "image",
             name: file.name || ref,
             title: file.name || ref,
             mime: file.type || "image/png",
             size: file.size || 0,
-            data_url: String(reader.result || ""),
-            thumb: String(reader.result || ""),
+            path: paths[0],
+            thumb,
+            ...(originalId ? { __draft_image_original_id: originalId } : { backup_warning: true }),
         };
+        sceneDirectorImageUploads.delete(ref);
         sceneDirectorWriteMediaState(state);
+        committed = true;
+        if (previousOriginal && previousOriginal !== originalId) sceneDirectorDeleteDraftAsset(previousOriginal);
         sceneDirectorRenderMediaPreview();
-    };
-    reader.readAsDataURL(file);
+        window.SimpAIH3Director?.scheduleRefresh();
+        return true;
+    } catch (error) {
+        if (sceneDirectorImageUploads.get(ref) === job) {
+            job.pending = false;
+            job.error = true;
+            sceneDirectorRenderMediaPreview({ refreshEditor: false });
+            window.SimpAIH3Director?.scheduleRefresh();
+            console.warn("[Director] Image upload failed", error);
+        }
+        return false;
+    } finally {
+        if (!committed && originalId) await sceneDirectorDeleteDraftAsset(originalId);
+        window.clearTimeout(timer);
+    }
 }
 
 function sceneDirectorOpenImageFileDialog(ref) {
     if (sceneDirectorMediaKindForbidden("image")) return false;
+    if (!ref && !sceneDirectorAvailableImageRef()) return false;
+    const origin = sceneDirectorMediaUploadContext();
     return sceneDirectorOpenTemporaryFileDialog(".png,.jpg,.jpeg,.webp,.gif,.bmp,.avif,.tif,.tiff,image/*", false, (files) => {
         const file = files && files[0];
-        if (file) sceneDirectorReadImageFile(file, ref);
+        const current = sceneDirectorMediaUploadContext();
+        if (!file || origin.draftKey !== current.draftKey || origin.projectId !== current.projectId) return;
+        const target = ref || sceneDirectorAvailableImageRef();
+        if (target) sceneDirectorReadImageFile(file, target);
+        else window.alert(sceneDirectorIsEnglish() ? "All image slots are occupied. Clear a slot before adding an image."
+            : "\u56fe\u7247\u4f4d\u7f6e\u5df2\u6ee1\uff0c\u8bf7\u6e05\u9664\u4e00\u5f20\u56fe\u7247\u540e\u518d\u6dfb\u52a0\u3002");
     });
 }
 
@@ -1913,7 +2194,9 @@ function sceneDirectorBindMediaPreviewObserver() {
         if (clear) {
             const tile = clear.closest("[data-scene-director-ref]");
             const ref = tile ? String(tile.getAttribute("data-scene-director-ref") || "") : "";
+            sceneDirectorCancelImageUpload(ref);
             const state = sceneDirectorReadMediaState();
+            if (state[ref]?.__draft_image_original_id) sceneDirectorDeleteDraftAsset(state[ref].__draft_image_original_id);
             delete state[ref];
             sceneDirectorWriteMediaState(state);
             sceneDirectorRenderMediaPreview();
@@ -1969,6 +2252,10 @@ function sceneDirectorImageRefsFromRow(row) {
 }
 
 function sceneDirectorRowRuleText(row) {
+    if (window.SimpAIH3Director?.isFamily()) {
+        if (row[14]?.mode === "transition") return window.SimpAIH3Director.text("H3 transition", "H3 \u8f6c\u573a");
+        return window.SimpAIH3Director.modeLabel(row[14]?.mode || "text");
+    }
     const capability = sceneDirectorCapability();
     const refs = sceneDirectorImageRefsFromRow(row);
     const labels = refs.map((ref) => sceneDirectorImageLabel(ref));
@@ -2016,12 +2303,15 @@ function sceneDirectorTimelineRoundSeconds(value) {
 
 function sceneDirectorTimelineRows(rows) {
     const capability = sceneDirectorCapability();
-    return sceneDirectorCloneRows(Array.isArray(rows) ? rows : sceneDirectorReadRows())
+    const sourceRows = Array.isArray(rows) ? rows : sceneDirectorReadRows();
+    return sceneDirectorCloneRows(sourceRows)
         .map((row, index) => {
             const start = sceneDirectorTimelineNumber(row[0], index * 5, 0, 86400);
             const end = Math.max(start, sceneDirectorTimelineNumber(row[1], start + 1, 0, 86400));
             return {
-                index,
+                index: capability.h3Unified ? sourceRows[index]?.[14]?.timeline_source_index ?? index : index,
+                transitionId: capability.h3Unified && row[14]?.mode === "transition" ? row[14].id : "",
+                transitionOwnerIndex: capability.h3Unified ? sourceRows[index]?.[14]?.timeline_owner_index : undefined,
                 start,
                 end,
                 prompt: String(row[2] || "").trim(),
@@ -2036,7 +2326,7 @@ function sceneDirectorTimelineRows(rows) {
 function sceneDirectorTimelineTotalDuration(rows) {
     const controlDuration = sceneDirectorTimelineControlNumber("#scene_director_duration", 10, 0.1, 86400);
     const rowEnd = rows.reduce((maxValue, row) => Math.max(maxValue, row.end), 0);
-    return Math.max(0.1, controlDuration, rowEnd);
+    return Math.max(0.1, window.SimpAIH3Director?.isFamily() ? rowEnd : Math.max(controlDuration, rowEnd));
 }
 
 function sceneDirectorTimelineRefChips(refs, mediaMap) {
@@ -2046,7 +2336,7 @@ function sceneDirectorTimelineRefChips(refs, mediaMap) {
         const label = String(media.label || sceneDirectorMediaLabel(ref));
         const body = src
             ? `<img src="${sceneDirectorEscapeHtml(src)}" alt="">`
-            : `<span>${sceneDirectorEscapeHtml(ref.replace(/^(image|audio|video)_/, ""))}</span>`;
+            : `<span>${sceneDirectorEscapeHtml(window.SimpAIH3Director?.isFamily() ? sceneDirectorMediaLabel(ref) : ref.replace(/^(image|audio|video)_/, ""))}</span>`;
         return `<em class="scene-director-timeline-ref" title="${sceneDirectorEscapeHtml(label)}">${body}</em>`;
     }).join("");
 }
@@ -2055,12 +2345,16 @@ function sceneDirectorTimelineClipHtml(row, totalDuration, mediaMap) {
     const left = Math.max(0, Math.min(100, row.start / totalDuration * 100));
     const right = Math.max(0, Math.min(100, (totalDuration - row.end) / totalDuration * 100));
     const duration = Math.max(0, row.end - row.start);
+    if (row.transitionId) {
+        const title = window.SimpAIH3Director.text("H3 transition", "H3 \u8f6c\u573a");
+        return `<div class="h3-timeline-transition" data-h3-transition-link="${sceneDirectorEscapeHtml(row.transitionId)}" data-scene-director-timeline-owner="${row.transitionOwnerIndex}" style="left:${left}%;right:${right}%;">
+            <button type="button" data-h3-action="locate-transition" data-h3-transition-link="${sceneDirectorEscapeHtml(row.transitionId)}" data-scene-director-timeline-drag="transition-move" title="${sceneDirectorEscapeHtml(title)}" aria-label="${sceneDirectorEscapeHtml(title)}"><i class="fa-solid fa-link" aria-hidden="true"></i><span>${sceneDirectorEscapeHtml(title)}</span></button>
+            <button type="button" class="scene-director-timeline-handle is-end" data-scene-director-timeline-drag="transition-end" title="${sceneDirectorEscapeHtml(sceneDirectorText("Adjust end"))}" aria-label="${sceneDirectorEscapeHtml(sceneDirectorText("Adjust end"))}"></button></div>`;
+    }
     const refs = [...row.imageRefs, ...row.videoRefs];
-    const badges = [
-        ...row.imageRefs.map((ref) => `@${ref}`),
-        ...row.audioRefs.map((ref) => `@${ref}`),
-        ...row.videoRefs.map((ref) => `@${ref}`),
-    ].filter(Boolean).join(" ");
+    const badges = [...row.imageRefs, ...row.audioRefs, ...row.videoRefs]
+        .map(ref => `@${window.SimpAIH3Director?.isFamily() ? sceneDirectorMediaLabel(ref) : ref}`)
+        .filter(Boolean).join(" ");
     const title = `${sceneDirectorText("Shot")} ${row.index + 1} · ${sceneDirectorTimelineFormatSeconds(row.start)}-${sceneDirectorTimelineFormatSeconds(row.end)}`;
     const prompt = row.prompt || sceneDirectorMediaLabel(row.videoRefs[0]) || sceneDirectorText("Text-to-Video");
     return `
@@ -2080,19 +2374,29 @@ function sceneDirectorTimelineAudioHtml(row, totalDuration) {
     if (!row.audioRefs.length) return "";
     const left = Math.max(0, Math.min(100, row.start / totalDuration * 100));
     const right = Math.max(0, Math.min(100, (totalDuration - row.end) / totalDuration * 100));
-    return `<span class="scene-director-timeline-audio-segment" data-scene-director-timeline-audio="${row.index}" style="left:${left}%; right:${right}%;">${sceneDirectorEscapeHtml(row.audioRefs.join(" + "))}</span>`;
+    const labels = window.SimpAIH3Director?.isFamily() ? row.audioRefs.map(sceneDirectorMediaLabel) : row.audioRefs;
+    return `<span class="scene-director-timeline-audio-segment" data-scene-director-timeline-audio="${row.index}" style="left:${left}%; right:${right}%;">${sceneDirectorEscapeHtml(labels.join(" + "))}</span>`;
 }
 
 function sceneDirectorTimelinePromptHtml(row, totalDuration) {
     const left = Math.max(0, Math.min(100, row.start / totalDuration * 100));
     const right = Math.max(0, Math.min(100, (totalDuration - row.end) / totalDuration * 100));
     const prompt = row.prompt || sceneDirectorText("No shots");
-    return `<span class="scene-director-timeline-prompt-segment" data-scene-director-timeline-prompt="${row.index}" style="left:${left}%; right:${right}%;">${sceneDirectorEscapeHtml(prompt)}</span>`;
+    return `<span class="scene-director-timeline-prompt-segment" ${row.transitionId ? `data-h3-transition-prompt="${sceneDirectorEscapeHtml(row.transitionId)}"` : `data-scene-director-timeline-prompt="${row.index}"`} style="left:${left}%; right:${right}%;">${sceneDirectorEscapeHtml(prompt)}</span>`;
+}
+
+function sceneDirectorTimelineGapHtml(gap, totalDuration) {
+    const title = window.SimpAIH3Director.text("Add transition", "\u6dfb\u52a0\u8f6c\u573a");
+    const label = `${title} \u00b7 ${sceneDirectorTimelineFormatSeconds(gap.duration)}`;
+    const hint = gap.duration < 0.2 || gap.duration > 30
+        ? window.SimpAIH3Director.text("Transition duration must be 0.2-30s", "\u8f6c\u573a\u65f6\u957f\u987b\u4e3a 0.2-30 \u79d2") : label;
+    return `<button type="button" class="h3-timeline-gap" data-h3-action="add-gap-transition" data-h3-gap-from="${sceneDirectorEscapeHtml(gap.fromId)}" data-h3-gap-to="${sceneDirectorEscapeHtml(gap.toId)}" style="left:${gap.start / totalDuration * 100}%;right:${(totalDuration - gap.end) / totalDuration * 100}%;" ${gap.disabled ? "disabled" : ""} title="${sceneDirectorEscapeHtml(hint)}" aria-label="${sceneDirectorEscapeHtml(label)}"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>${sceneDirectorEscapeHtml(label)}</span></button>`;
 }
 
 function sceneDirectorTimelineRulerHtml(totalDuration) {
     const steps = 4;
-    const fps = sceneDirectorTimelineControlNumber("#scene_director_fps", 24, 1, 240);
+    const fps = window.SimpAIH3Director?.isFamily() && window.SimpAIH3Director.transitionPlan(sceneDirectorReadRows()).length
+        ? 24 : sceneDirectorTimelineControlNumber("#scene_director_fps", 24, 1, 240);
     return Array.from({ length: steps + 1 }, (_item, index) => {
         const seconds = totalDuration * index / steps;
         const left = index / steps * 100;
@@ -2110,7 +2414,9 @@ function sceneDirectorSetHtmlIfChanged(node, html) {
 function sceneDirectorRenderTimelinePreview(rows) {
     const preview = sceneDirectorQuery("[data-scene-director-timeline-preview]");
     if (!preview) return;
-    const timelineRows = sceneDirectorTimelineRows(rows);
+    rows = Array.isArray(rows) ? rows : sceneDirectorReadRows();
+    const outputRows = window.SimpAIH3Director?.isFamily() ? window.SimpAIH3Director.outputRows(rows) : rows;
+    const timelineRows = sceneDirectorTimelineRows(outputRows);
     const totalDuration = sceneDirectorTimelineTotalDuration(timelineRows);
     const mediaMap = sceneDirectorMediaMap();
     const composeEnabled = sceneDirectorComposeEnabled();
@@ -2118,13 +2424,14 @@ function sceneDirectorRenderTimelinePreview(rows) {
     preview.classList.toggle("is-compose-disabled", !composeEnabled);
 
     const title = preview.querySelector("[data-scene-director-timeline-title]");
-    if (title) title.textContent = sceneDirectorText("Timeline preview");
+    if (title) title.textContent = sceneDirectorText(window.SimpAIH3Director?.isFamily() ? "Output timeline" : "Timeline preview");
     const meta = preview.querySelector("[data-scene-director-timeline-meta]");
     if (meta) {
-        const fps = sceneDirectorTimelineControlNumber("#scene_director_fps", 24, 1, 240);
+        const fps = window.SimpAIH3Director?.isFamily() && window.SimpAIH3Director.transitionPlan(rows).length
+            ? 24 : sceneDirectorTimelineControlNumber("#scene_director_fps", 24, 1, 240);
         const width = sceneDirectorTimelineControlNumber("#scene_director_width", 1280, 64, 8192);
         const height = sceneDirectorTimelineControlNumber("#scene_director_height", 720, 64, 8192);
-        const status = sceneDirectorText(composeEnabled ? "Compose on" : "Compose off");
+        const status = sceneDirectorText(window.SimpAIH3Director?.isFamily() ? "Manual export" : composeEnabled ? "Compose on" : "Compose off");
         meta.textContent = `${status} · ${Math.round(width)}x${Math.round(height)} · ${fps}fps · ${sceneDirectorTimelineFormatSeconds(totalDuration)}`;
     }
 
@@ -2132,8 +2439,9 @@ function sceneDirectorRenderTimelinePreview(rows) {
     if (ruler) sceneDirectorSetHtmlIfChanged(ruler, sceneDirectorTimelineRulerHtml(totalDuration));
     const videoTrack = preview.querySelector("[data-scene-director-timeline-video-track]");
     if (videoTrack) {
+        const gaps = window.SimpAIH3Director?.isFamily() ? window.SimpAIH3Director.timelineGaps(rows) : [];
         const html = timelineRows.length
-            ? `<strong>${sceneDirectorEscapeHtml(sceneDirectorText("Video track"))}</strong>${timelineRows.map((row) => sceneDirectorTimelineClipHtml(row, totalDuration, mediaMap)).join("")}`
+            ? `<strong>${sceneDirectorEscapeHtml(sceneDirectorText("Video track"))}</strong>${timelineRows.map((row) => sceneDirectorTimelineClipHtml(row, totalDuration, mediaMap)).join("")}${gaps.map(gap => sceneDirectorTimelineGapHtml(gap, totalDuration)).join("")}`
             : `<strong>${sceneDirectorEscapeHtml(sceneDirectorText("Video track"))}</strong><span class="scene-director-timeline-empty">${sceneDirectorEscapeHtml(sceneDirectorText("No shots"))}</span>`;
         sceneDirectorSetHtmlIfChanged(videoTrack, html);
     }
@@ -2203,6 +2511,10 @@ function sceneDirectorTimelineDragRows(event) {
     const state = sceneDirectorTimelineDragState;
     if (!state || !state.trackWidth) return null;
     const delta = (event.clientX - state.startClientX) / state.trackWidth * state.totalDuration;
+    if (window.SimpAIH3Director?.isFamily()) {
+        const changed = window.SimpAIH3Director.timelineDrag(state.rows, state.index, state.mode, delta, state.minDuration, state.maxDuration);
+        if (changed) return changed;
+    }
     const minDuration = state.minDuration;
     const maxDuration = state.maxDuration;
     const rows = sceneDirectorCloneRows(state.rows);
@@ -2260,10 +2572,13 @@ function sceneDirectorTimelineSetSegmentStyle(node, row, totalDuration) {
 function sceneDirectorUpdateTimelineDragPreview(rows) {
     const preview = sceneDirectorQuery("[data-scene-director-timeline-preview]");
     if (!preview) return;
-    const timelineRows = sceneDirectorTimelineRows(rows);
-    const totalDuration = sceneDirectorTimelineTotalDuration(timelineRows);
+    const outputRows = window.SimpAIH3Director?.isFamily() ? window.SimpAIH3Director.outputRows(rows) : rows;
+    const timelineRows = sceneDirectorTimelineRows(outputRows);
+    const totalDuration = sceneDirectorTimelineDragState?.totalDuration || sceneDirectorTimelineTotalDuration(timelineRows);
     timelineRows.forEach((row) => {
-        const clip = preview.querySelector(`[data-scene-director-timeline-clip="${row.index}"]`);
+        const clip = preview.querySelector(row.transitionId
+            ? `.h3-timeline-transition[data-h3-transition-link="${row.transitionId}"]`
+            : `[data-scene-director-timeline-clip="${row.index}"]`);
         sceneDirectorTimelineSetSegmentStyle(clip, row, totalDuration);
         if (clip) {
             const title = clip.querySelector(".scene-director-timeline-clip-body b");
@@ -2277,8 +2592,13 @@ function sceneDirectorUpdateTimelineDragPreview(rows) {
             }
         }
         sceneDirectorTimelineSetSegmentStyle(preview.querySelector(`[data-scene-director-timeline-audio="${row.index}"]`), row, totalDuration);
-        sceneDirectorTimelineSetSegmentStyle(preview.querySelector(`[data-scene-director-timeline-prompt="${row.index}"]`), row, totalDuration);
+        sceneDirectorTimelineSetSegmentStyle(preview.querySelector(row.transitionId
+            ? `[data-h3-transition-prompt="${row.transitionId}"]` : `[data-scene-director-timeline-prompt="${row.index}"]`), row, totalDuration);
     });
+    if (window.SimpAIH3Director?.isFamily()) {
+        window.SimpAIH3Director.timelineGaps(rows).forEach(gap => sceneDirectorTimelineSetSegmentStyle(
+            preview.querySelector(`[data-h3-gap-from="${gap.fromId}"]`), gap, totalDuration));
+    }
 }
 
 function sceneDirectorTimelineApplyDrag(event, commit = false) {
@@ -2324,8 +2644,13 @@ function sceneDirectorTimelinePointerUp(event) {
     if (!sceneDirectorTimelineDragState) return;
     event.preventDefault();
     sceneDirectorTimelineCancelDragPreviewFrame();
-    sceneDirectorTimelineApplyDrag(event, true);
     const preview = sceneDirectorQuery("[data-scene-director-timeline-preview]");
+    if (event.type !== "pointercancel" && Math.abs(event.clientX - sceneDirectorTimelineDragState.startClientX) >= 3) {
+        sceneDirectorTimelineApplyDrag(event, true);
+        if (preview) preview.__sceneDirectorSuppressClickUntil = Date.now() + 250;
+    } else {
+        sceneDirectorRenderTimelinePreview();
+    }
     if (preview) preview.classList.remove("is-dragging");
     document.removeEventListener("pointermove", sceneDirectorTimelinePointerMove, true);
     document.removeEventListener("pointerup", sceneDirectorTimelinePointerUp, true);
@@ -2335,11 +2660,12 @@ function sceneDirectorTimelinePointerUp(event) {
 
 function sceneDirectorTimelinePointerDown(event) {
     if (!event || event.button !== 0) return;
+    if (window.SimpAIH3Director?.isFamily() && !window.SimpAIH3Director.canEditTimeline()) return;
     const dragNode = event.target && event.target.closest ? event.target.closest("[data-scene-director-timeline-drag]") : null;
-    const clip = event.target && event.target.closest ? event.target.closest("[data-scene-director-timeline-clip]") : null;
+    const clip = event.target && event.target.closest ? event.target.closest("[data-scene-director-timeline-clip], [data-scene-director-timeline-owner]") : null;
     const track = event.target && event.target.closest ? event.target.closest("[data-scene-director-timeline-video-track]") : null;
     if (!dragNode || !clip || !track) return;
-    const index = Number(clip.getAttribute("data-scene-director-timeline-clip"));
+    const index = Number(clip.getAttribute("data-scene-director-timeline-clip") ?? clip.getAttribute("data-scene-director-timeline-owner"));
     if (!Number.isFinite(index)) return;
     const rows = sceneDirectorCloneRows(sceneDirectorReadRows());
     const row = rows[index];
@@ -2348,7 +2674,7 @@ function sceneDirectorTimelinePointerDown(event) {
     if (!rect || rect.width <= 1) return;
     const sourceStart = sceneDirectorTimelineNumber(row[0], index * 5, 0, 86400);
     const sourceEnd = Math.max(sourceStart + sceneDirectorTimelineMinDuration(), sceneDirectorTimelineNumber(row[1], sourceStart + 1, 0, 86400));
-    const timelineRows = sceneDirectorTimelineRows(rows);
+    const timelineRows = sceneDirectorTimelineRows(window.SimpAIH3Director?.isFamily() ? window.SimpAIH3Director.outputRows(rows) : rows);
     const neighborBounds = sceneDirectorTimelineNeighborBounds(rows, index);
     sceneDirectorTimelineDragState = {
         index,
@@ -2377,6 +2703,12 @@ function sceneDirectorBindTimelinePreviewControls() {
     if (!preview || preview.dataset.sceneDirectorTimelinePreviewBound === "1") return;
     preview.dataset.sceneDirectorTimelinePreviewBound = "1";
     preview.addEventListener("pointerdown", sceneDirectorTimelinePointerDown, true);
+    preview.addEventListener("click", event => {
+        if (Date.now() < (preview.__sceneDirectorSuppressClickUntil || 0)) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    }, true);
     ["#scene_director_compose", "#scene_director_width", "#scene_director_height", "#scene_director_fps", "#scene_director_duration"].forEach((selector) => {
         const root = sceneDirectorQuery(selector);
         if (!root) return;
@@ -2386,7 +2718,8 @@ function sceneDirectorBindTimelinePreviewControls() {
 }
 
 function sceneDirectorRowsFromEditor(editor) {
-    return Array.from(editor.querySelectorAll("[data-scene-director-shot]")).map((row) => {
+    const nodes = Array.from(editor.querySelectorAll("[data-scene-director-shot]"));
+    const rows = nodes.map((row) => {
         const value = (key) => {
             const field = row.querySelector(`[data-scene-director-field="${key}"]`);
             return field ? field.value : "";
@@ -2398,8 +2731,12 @@ function sceneDirectorRowsFromEditor(editor) {
             ...Array.from({ length: SCENE_DIRECTOR_MAX_IMAGE_REFS }, (_, imageIndex) => value(`image_ref_${imageIndex + 1}`)),
             value("audio_ref"),
             value("video_ref"),
+            ...(row.__h3Meta ? [{ ...row.__h3Meta }] : []),
         ];
     });
+    return window.SimpAIH3Director?.isFamily()
+        ? rows.map((row, index) => window.SimpAIH3Director.collect(nodes[index], row, index, rows))
+        : rows;
 }
 
 function sceneDirectorUpdateRule(rowNode) {
@@ -2412,9 +2749,10 @@ function sceneDirectorUpdateRule(rowNode) {
     if (node) node.textContent = sceneDirectorRowRuleText(row);
 }
 
-function sceneDirectorRenderShot(row, index, total) {
+function sceneDirectorRenderShot(row, index, total, rows = []) {
     const capability = sceneDirectorCapability();
     const values = sceneDirectorNormalizeRowValues(row, capability, index);
+    if (capability.h3Unified) capability.h3Mode = values[14]?.mode;
     const mediaMap = sceneDirectorMediaMap();
     const startNumber = Number(values[0]);
     const endMin = Number.isFinite(startNumber) ? Math.round((startNumber + capability.minSegmentDuration) * 1000) / 1000 : "";
@@ -2428,6 +2766,45 @@ function sceneDirectorRenderShot(row, index, total) {
     const hasMultiMediaRefs = capability.maxAudios > 1 || capability.maxVideos > 1;
     const audioField = sceneDirectorMediaFieldHtml("audio", values[SCENE_DIRECTOR_AUDIO_INDEX], capability, mediaMap, index);
     const videoField = sceneDirectorMediaFieldHtml("video", values[SCENE_DIRECTOR_VIDEO_INDEX], capability, mediaMap, index);
+    if (capability.h3Unified) {
+        const h3 = window.SimpAIH3Director;
+        const images = h3.referenceOptions("image", SCENE_DIRECTOR_IMAGE_OPTIONS, imageRefs, mediaMap, index);
+        const command = (action, glyph, title, disabled) => `<button type="button" data-scene-director-action="${action}" title="${sceneDirectorEscapeHtml(title)}" aria-label="${sceneDirectorEscapeHtml(title)}" ${disabled ? "disabled" : ""}><i class="fa-solid fa-${glyph}" aria-hidden="true"></i></button>`;
+        return `
+<div class="scene-director-shot h3-shot ${index === sceneDirectorActiveShotIndex ? "is-active-shot" : ""}" data-scene-director-shot data-scene-director-index="${index}" ${index === sceneDirectorActiveShotIndex ? 'aria-current="true"' : ""}>
+  <div class="scene-director-shot-head">
+    <b>${sceneDirectorEscapeHtml(sceneDirectorText("Shot"))} ${index + 1}</b>
+    <span class="h3-shot-status" data-h3-shot-status role="status"></span>
+    <span data-scene-director-rule hidden>${sceneDirectorEscapeHtml(sceneDirectorRowRuleText(values))}</span>
+    <div class="h3-shot-order-actions">
+      ${command("move-up", "arrow-up", sceneDirectorText("Move up"), index === 0)}
+      ${command("move-down", "arrow-down", sceneDirectorText("Move down"), index >= total - 1)}
+      ${command("delete", "xmark", sceneDirectorText("Delete shot"), total <= 1)}
+    </div>
+  </div>
+  ${h3.controls(values, index, rows)}
+  <div class="h3-shot-workspace">
+    <div class="h3-shot-editor">
+      <div class="h3-shot-time">
+        <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Start"))}</span><input type="number" min="0" max="86400" step="0.1" data-scene-director-field="start" value="${sceneDirectorEscapeHtml(values[0])}"></label>
+        <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("End"))}</span><input type="number" min="${sceneDirectorEscapeHtml(endMin)}" max="${sceneDirectorEscapeHtml(endMax)}" step="0.1" data-scene-director-field="end" value="${sceneDirectorEscapeHtml(values[1])}"></label>
+      </div>
+      <label class="scene-director-shot-prompt"><span class="scene-director-shot-prompt-heading"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Prompt"))}</span><span class="h3-prompt-actions">${h3.promptButtons()}<button type="button" class="h3-command" data-scene-director-action="prompt-tools" title="${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}" aria-label="${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}" ${String(values[2] || "").trim() ? "" : "disabled"}><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}</span></button></span></span><textarea rows="3" data-scene-director-field="prompt">${sceneDirectorEscapeHtml(values[2])}</textarea></label>
+      <div class="h3-shot-reference-grid">
+        <label class="scene-director-image-refs-field">
+          <span class="h3-reference-heading"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Image refs"))}</span>${h3.mediaButton("image")}</span>
+          ${hiddenImageFields}
+          <span class="scene-director-inherit-tail"><input type="checkbox" data-scene-director-inherit-tail ${inheritPreviousTail ? "checked" : ""} ${inheritDisabled ? 'disabled aria-disabled="true"' : ""}><span>${sceneDirectorEscapeHtml(sceneDirectorText("Inherit previous shot last frame"))}</span></span>
+          <div class="scene-director-ref-picker" data-scene-director-ref-picker>${images.filter(Boolean).map(ref => sceneDirectorImageChoiceHtml(ref, imageRefs, mediaMap, capability)).join("")}</div>
+        </label>
+        ${audioField}
+        ${videoField}
+      </div>
+    </div>
+    <div class="h3-shot-results" data-h3-shot-results hidden></div>
+  </div>
+</div>`;
+    }
     return `
 <div class="scene-director-shot ${index === sceneDirectorActiveShotIndex ? "is-active-shot" : ""}" data-scene-director-shot data-scene-director-index="${index}" ${index === sceneDirectorActiveShotIndex ? 'aria-current="true"' : ""}>
   <div class="scene-director-shot-head">
@@ -2439,6 +2816,7 @@ function sceneDirectorRenderShot(row, index, total) {
       <button type="button" data-scene-director-action="delete" title="${sceneDirectorEscapeHtml(sceneDirectorText("Delete shot"))}" ${total <= 1 ? "disabled" : ""}>×</button>
     </div>
   </div>
+  ${window.SimpAIH3Director?.isFamily() ? window.SimpAIH3Director.controls(values, index, rows) : ""}
   <div class="scene-director-shot-grid ${hasMultiMediaRefs ? "has-multi-media-refs" : ""}">
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Start"))}</span><input type="number" min="0" max="86400" step="0.1" data-scene-director-field="start" value="${sceneDirectorEscapeHtml(values[0])}"></label>
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("End"))}</span><input type="number" min="${sceneDirectorEscapeHtml(endMin)}" max="${sceneDirectorEscapeHtml(endMax)}" step="0.1" data-scene-director-field="end" value="${sceneDirectorEscapeHtml(values[1])}"></label>
@@ -2458,16 +2836,21 @@ function sceneDirectorRenderEditor(rows) {
     const sourceRows = sceneDirectorCloneRows(rows.length ? rows : SCENE_DIRECTOR_DEFAULT_ROWS);
     const capability = sceneDirectorCapability();
     const capabilitySignature = sceneDirectorCapabilitySignature();
-    const nextRows = sourceRows.map((row, index) => sceneDirectorNormalizeRowValues(row, capability, index));
+    let nextRows = sourceRows.map((row, index) => sceneDirectorNormalizeRowValues(row, capability, index));
+    if (capability.h3Unified) nextRows = window.SimpAIH3Director.snapTransitions(nextRows);
     sceneDirectorActiveShotIndex = Math.max(0, Math.min(Math.max(0, nextRows.length - 1), sceneDirectorActiveShotIndex));
     const title = editor.querySelector("[data-scene-director-title]");
     if (title) title.textContent = sceneDirectorText("Shots");
     const add = editor.querySelector('[data-scene-director-action="add"]');
     if (add) add.textContent = sceneDirectorText("Add shot");
-    list.innerHTML = nextRows.map((row, index) => sceneDirectorRenderShot(row, index, nextRows.length)).join("");
+    list.innerHTML = nextRows.map((row, index) => sceneDirectorRenderShot(row, index, nextRows.length, nextRows)).join("");
+    list.querySelectorAll("[data-scene-director-shot]").forEach((node, index) => {
+        if (nextRows[index][14]) node.__h3Meta = { ...nextRows[index][14] };
+    });
     sceneDirectorRefreshEditorPreviews(editor, { writeRows: true });
     sceneDirectorRenderTimelinePreview(nextRows);
-    if (JSON.stringify(sourceRows) !== JSON.stringify(nextRows)) sceneDirectorWriteRows(nextRows);
+    if (JSON.stringify(sourceRows) !== JSON.stringify(nextRows) || capability.h3Unified) sceneDirectorWriteRows(nextRows);
+    window.SimpAIH3Director?.sync();
     editor.dataset.sceneDirectorRendered = "1";
     editor.dataset.sceneDirectorRenderedCapabilitySignature = capabilitySignature;
     if (typeof syncPositivePromptMetaState === "function") {
@@ -2671,6 +3054,7 @@ function sceneDirectorCanComposeTimeline() {
 }
 
 function sceneDirectorComposeEnabled() {
+    if (window.SimpAIH3Director?.isFamily()) return true;
     const input = sceneDirectorCheckboxInput("#scene_director_compose");
     return !!(input && input.checked && sceneDirectorCanComposeTimeline());
 }
@@ -2726,15 +3110,18 @@ function sceneDirectorBindComposeControls() {
 function sceneDirectorSetGenerateButtonLabel() {
     const root = sceneDirectorQuery("#generate_button");
     sceneDirectorSyncPromptInputInteractivity();
+    window.SimpAIH3Director?.sync();
     if (!root) return;
     const label = sceneDirectorGenerateEnabled() ? sceneDirectorText("Generate shots") : sceneDirectorText("Generate");
+    const buttonLabel = sceneDirectorGenerateEnabled() && window.SimpAIH3Director?.isFamily()
+        ? window.SimpAIH3Director.text("Generate missing shots", "生成未完成段") : label;
     const button = root.matches && root.matches("button") ? root : root.querySelector("button");
-    if (button && !button.disabled && button.textContent.trim() !== label) {
-        button.textContent = label;
+    if (button && !button.disabled && button.textContent.trim() !== buttonLabel) {
+        button.textContent = buttonLabel;
     }
     const span = root.querySelector("span");
-    if (span && span.textContent.trim() !== label) {
-        span.textContent = label;
+    if (span && span.textContent.trim() !== buttonLabel) {
+        span.textContent = buttonLabel;
     }
 }
 
@@ -2795,6 +3182,7 @@ function sceneDirectorInitWorkspace() {
         sceneDirectorRestoreDraft();
         sceneDirectorSyncComposeControls();
         sceneDirectorSetGenerateButtonLabel();
+        window.SimpAIH3Director?.sync();
         refresh_scene_director_editor();
         if (accordion) accordion.dataset.sceneDirectorWorkspaceInitialized = "1";
         return true;
@@ -2850,6 +3238,7 @@ function refresh_scene_director_editor() {
     } finally {
         editor.dataset.sceneDirectorRefreshing = "0";
     }
+    window.SimpAIH3Director?.sync();
 }
 
 function refresh_scene_director_localization() {

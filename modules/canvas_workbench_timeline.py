@@ -2,6 +2,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -66,7 +67,21 @@ def _asset_dimensions(asset, path, mime):
     return 0, 0
 
 
-def _contain_box(asset, path, mime, canvas_width, canvas_height):
+def _contain_box(asset, path, mime, canvas_width, canvas_height, fit_canvas=None):
+    if isinstance(fit_canvas, dict):
+        fit_canvas_width = _num(fit_canvas.get("width"), 0)
+        fit_canvas_height = _num(fit_canvas.get("height"), 0)
+        if fit_canvas_width > 0 and fit_canvas_height > 0:
+            # Connected H3 shots share a native canvas before fitting the final output.
+            _, _, inner_width, inner_height = _contain_box(
+                asset, path, mime, fit_canvas_width, fit_canvas_height,
+            )
+            _, _, outer_width, outer_height = _contain_box(
+                fit_canvas, "", "", canvas_width, canvas_height,
+            )
+            width = max(2, round(inner_width * outer_width / fit_canvas_width))
+            height = max(2, round(inner_height * outer_height / fit_canvas_height))
+            return round((canvas_width - width) / 2), round((canvas_height - height) / 2), width, height
     asset_width, asset_height = _asset_dimensions(asset, path, mime)
     if asset_width <= 0 or asset_height <= 0:
         return 0, 0, int(canvas_width), int(canvas_height)
@@ -252,7 +267,57 @@ def _publish_timeline_to_gallery(output_path, digest, node_id, state_params):
     return gallery
 
 
-def render_timeline(payload, state_params=None):
+def _run_timeline_ffmpeg(cmd, duration, progress_callback=None, cancel_callback=None):
+    timeout = max(60, int(duration * 6 + 60))
+    if progress_callback is None and cancel_callback is None:
+        return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout), False
+    import tempfile
+
+    def report(output):
+        if not progress_callback:
+            return
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        times = re.findall(r"out_time_us=(\d+)", output or "")
+        if times:
+            progress_callback(min(0.99, int(times[-1]) / 1000000 / max(0.05, duration)))
+
+    with tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(
+            cmd[:1] + ["-progress", "pipe:1", "-nostats"] + cmd[1:],
+            stdout=subprocess.PIPE, stderr=errors, text=True,
+        )
+        started = time.monotonic()
+        cancelled = False
+        output = ""
+        try:
+            while True:
+                if cancel_callback and cancel_callback():
+                    cancelled = True
+                    process.terminate()
+                    break
+                if time.monotonic() - started > timeout:
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+                try:
+                    output, _ = process.communicate(timeout=0.2)
+                    report(output)
+                    break
+                except subprocess.TimeoutExpired as pending:
+                    report(pending.output)
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    output, _ = process.communicate(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    output, _ = process.communicate(timeout=3)
+        errors.seek(0)
+        details = errors.read().decode("utf-8", errors="replace")
+        return subprocess.CompletedProcess(cmd, process.returncode, output, details), cancelled
+
+
+def render_timeline(payload, state_params=None, progress_callback=None, cancel_callback=None):
     state_params = state_params if isinstance(state_params, dict) else {}
     project_id = str(payload.get("project_id") or "default")
     node_id = str(payload.get("node_id") or "timeline")
@@ -265,6 +330,9 @@ def render_timeline(payload, state_params=None):
     width = max(16, int(round(_num(canvas.get("width"), 1280))))
     height = max(16, int(round(_num(canvas.get("height"), 720))))
     fps = _clamp(_num(canvas.get("fps"), 30), 1, 120)
+    frame_exact = render_payload.get("frame_exact") is True
+    minimum_clip = 1 / fps if frame_exact else 0.05
+    time_precision = 6 if frame_exact else 3
     duration = max(0.05, _num(canvas.get("duration"), 1))
     background = str(canvas.get("background") or "#000000").strip() or "#000000"
     if not background.startswith("#"):
@@ -302,7 +370,7 @@ def render_timeline(payload, state_params=None):
 
     for layer in sorted(layers, key=lambda item: _num(item.get("z_index"), 0)):
         timing = layer.get("timing") if isinstance(layer.get("timing"), dict) else {}
-        clip_duration = max(0.05, min(duration, _num(timing.get("duration"), duration)))
+        clip_duration = max(minimum_clip, min(duration, _num(timing.get("duration"), duration)))
         clip_in = max(0.0, _num(timing.get("in"), 0))
         asset = layer.get("asset") if isinstance(layer.get("asset"), dict) else {}
         path, mime = _asset_path(asset, project_id, state_params, node_id, "timeline_visual")
@@ -312,7 +380,7 @@ def render_timeline(payload, state_params=None):
         if str(mime).startswith("image/"):
             cmd += ["-loop", "1", "-t", f"{clip_duration:.3f}", "-i", path]
         else:
-            cmd += ["-ss", f"{clip_in:.3f}", "-t", f"{clip_duration:.3f}", "-i", path]
+            cmd += ["-ss", f"{clip_in:.{time_precision}f}", "-t", f"{clip_duration:.{time_precision}f}", "-i", path]
         input_count += 1
         mask_input_index = None
         mask = layer.get("mask") if isinstance(layer.get("mask"), dict) else {}
@@ -326,14 +394,14 @@ def render_timeline(payload, state_params=None):
 
     for item in audio_layers:
         timing = item.get("timing") if isinstance(item.get("timing"), dict) else {}
-        clip_duration = max(0.05, min(duration, _num(timing.get("duration"), duration)))
+        clip_duration = max(minimum_clip, min(duration, _num(timing.get("duration"), duration)))
         clip_in = max(0.0, _num(timing.get("in"), 0))
         asset = item.get("asset") if isinstance(item.get("asset"), dict) else {}
         path, mime = _asset_path(asset, project_id, state_params, node_id, "timeline_audio")
         if not path:
             continue
         input_index = input_count
-        cmd += ["-ss", f"{clip_in:.3f}", "-t", f"{clip_duration:.3f}", "-i", path]
+        cmd += ["-ss", f"{clip_in:.{time_precision}f}", "-t", f"{clip_duration:.{time_precision}f}", "-i", path]
         input_count += 1
         audio_inputs.append((input_index, item, mime))
 
@@ -348,7 +416,7 @@ def render_timeline(payload, state_params=None):
         has_opacity_keyframes = _has_keyframed_prop(layer, "opacity")
         has_x_keyframes = _has_keyframed_prop(layer, "x")
         has_y_keyframes = _has_keyframed_prop(layer, "y")
-        clip_duration = max(0.05, min(duration - start, _num(timing.get("duration"), duration)))
+        clip_duration = max(minimum_clip, min(duration - start, _num(timing.get("duration"), duration)))
         end = min(duration, start + clip_duration)
         opacity = _clamp(_num(transform.get("opacity"), 1), 0, 1)
         layer_alpha = 1.0 if mask_input_index is not None else opacity
@@ -362,7 +430,7 @@ def render_timeline(payload, state_params=None):
         right = _clamp(_num(crop.get("right"), 0), 0, 95) / 100
         top = _clamp(_num(crop.get("top"), 0), 0, 95) / 100
         bottom = _clamp(_num(crop.get("bottom"), 0), 0, 95) / 100
-        _fit_x, _fit_y, fit_w, fit_h = _contain_box(asset, path, _mime, width, height)
+        _fit_x, _fit_y, fit_w, fit_h = _contain_box(asset, path, _mime, width, height, transform.get("fit_canvas"))
         scaled_w = max(2, int(round(fit_w * scale)))
         scaled_h = max(2, int(round(fit_h * scale)))
         if geometry_pixels:
@@ -450,11 +518,12 @@ def render_timeline(payload, state_params=None):
     for index, (input_index, item, _mime) in enumerate(audio_inputs):
         timing = item.get("timing") if isinstance(item.get("timing"), dict) else {}
         start = _clamp(_num(timing.get("start"), 0), 0, duration)
-        clip_duration = max(0.05, min(duration - start, _num(timing.get("duration"), duration)))
+        clip_duration = max(minimum_clip, min(duration - start, _num(timing.get("duration"), duration)))
         volume = _clamp(_num(item.get("volume"), 1), 0, 2)
-        delay = max(0, int(round(start * 1000)))
+        delay = str(max(0, int(round(start * 48000)))) + "S" if frame_exact else str(max(0, int(round(start * 1000))))
+        resample = "aresample=48000," if frame_exact else ""
         filters.append(
-            f"[{input_index}:a]atrim=0:{clip_duration:.6f},asetpts=PTS-STARTPTS,volume={volume:.6f},adelay={delay}:all=1[a{index}]"
+            f"[{input_index}:a]{resample}atrim=0:{clip_duration:.6f},asetpts=PTS-STARTPTS,volume={volume:.6f},adelay={delay}:all=1[a{index}]"
         )
         audio_labels.append(f"[a{index}]")
 
@@ -464,7 +533,8 @@ def render_timeline(payload, state_params=None):
         "-map", f"[{current}]",
     ]
     if audio_labels:
-        filter_complex += ";" + "".join(audio_labels) + f"amix=inputs={len(audio_labels)}:duration=longest:dropout_transition=0,atrim=0:{duration:.6f}[aud]"
+        normalization = ":normalize=0" if frame_exact else ""
+        filter_complex += ";" + "".join(audio_labels) + f"amix=inputs={len(audio_labels)}:duration=longest:dropout_transition=0{normalization},atrim=0:{duration:.6f}[aud]"
         cmd[cmd.index("-filter_complex") + 1] = filter_complex
         cmd += ["-map", "[aud]", "-c:a", "aac", "-b:a", "192k"]
     else:
@@ -480,7 +550,16 @@ def render_timeline(payload, state_params=None):
         tmp_path,
     ]
     started = time.time()
-    completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=max(60, int(duration * 6 + 60)))
+    try:
+        completed, cancelled = _run_timeline_ffmpeg(cmd, duration, progress_callback, cancel_callback)
+    except Exception:
+        if os.path.isfile(tmp_path):
+            os.remove(tmp_path)
+        raise
+    if cancelled:
+        if os.path.isfile(tmp_path):
+            os.remove(tmp_path)
+        return {"ok": False, "cancelled": True, "error": "Timeline render cancelled"}
     if completed.returncode != 0 or not os.path.exists(tmp_path) or os.path.getsize(tmp_path) <= 0:
         if os.path.exists(tmp_path):
             try:
@@ -494,6 +573,8 @@ def render_timeline(payload, state_params=None):
             "cmd": " ".join(_filter_escape_path(part) for part in cmd[:16]) + " ...",
         }
     os.replace(tmp_path, output_path)
+    if progress_callback:
+        progress_callback(1)
     asset_ref = canvas_workbench_assets.register_existing_file_asset(
         output_path,
         project_id,
@@ -600,7 +681,7 @@ def render_timeline_frame(payload, state_params=None):
             right = _clamp(_num(crop.get("right"), 0), 0, 95) / 100
             top = _clamp(_num(crop.get("top"), 0), 0, 95) / 100
             bottom = _clamp(_num(crop.get("bottom"), 0), 0, 95) / 100
-            _fit_x, _fit_y, fit_w, fit_h = _contain_box(asset, path, mime, width, height)
+            _fit_x, _fit_y, fit_w, fit_h = _contain_box(asset, path, mime, width, height, transform.get("fit_canvas"))
             scaled_w = max(2, int(round(fit_w * scale)))
             scaled_h = max(2, int(round(fit_h * scale)))
             if geometry_pixels:

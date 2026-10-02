@@ -1,5 +1,6 @@
 import base64
 import copy
+import secrets
 import html
 import io
 import json
@@ -16,6 +17,7 @@ from PIL import Image
 
 import args_manager
 import modules.canvas_workbench_director as canvas_workbench_director
+from modules import scene_director_h3 as h3_director
 import modules.html as html_module
 import simpleai_base.api_params as api_params
 from ui.update_helpers import gr_update
@@ -137,10 +139,13 @@ SCENE_DIRECTOR_DEFAULT_CAPABILITY = {
 
 
 def _scene_director_ensure_backend_args():
+    from modules import regen_manifest
+
+    regen_manifest.ensure_api_params_backend_arg(api_params)
     backend_args = getattr(api_params, "backend_args", None)
     if not isinstance(backend_args, list):
         return
-    for key in (*SCENE_DIRECTOR_AUDIO_BACKEND_SLOTS[1:], *SCENE_DIRECTOR_VIDEO_BACKEND_SLOTS[1:]):
+    for key in (*SCENE_DIRECTOR_AUDIO_BACKEND_SLOTS[1:], *SCENE_DIRECTOR_VIDEO_BACKEND_SLOTS[1:], "director_segment"):
         if key not in backend_args:
             backend_args.append(key)
 
@@ -1047,6 +1052,8 @@ def _scene_director_visible_image_slot_count(state_params=None):
 
 
 def _scene_director_capability_from_state(state_params=None, scene_theme=None):
+    if h3_director.is_family(state_params):
+        return copy.deepcopy(h3_director.CAPABILITY)
     explicit = _scene_director_explicit_capability(state_params, scene_theme)
     scenes = _scene_director_scene_frontend(state_params)
     theme = _scene_director_theme_from_state(state_params, scene_theme)
@@ -1745,6 +1752,14 @@ def _scene_director_looks_like_method(value):
 def _scene_director_apply_target_method(runtime, state_params=None, scene_theme=None):
     if not isinstance(runtime, dict):
         return runtime
+    if h3_director.is_family(state_params):
+        if h3_director.is_runtime(runtime):
+            return copy.deepcopy(runtime)
+        return h3_director.build_runtime(
+            runtime.get("segments", []), runtime.get("width", 1280), runtime.get("height", 720),
+            runtime.get("fps", 24), runtime.get("duration", 10), runtime.get("media_sources", {}),
+            state_params, runtime,
+        )
     task_method = _scene_director_task_method_from_state(state_params, scene_theme, "")
     if not task_method:
         return runtime
@@ -1767,6 +1782,21 @@ def _scene_director_apply_target_method(runtime, state_params=None, scene_theme=
 
 
 def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=10, target_format="Wan", media_state=None, state_params=None, scene_theme=None, compose_timeline=None):
+    if h3_director.is_family(state_params):
+        parsed = rows
+        if isinstance(rows, str):
+            try:
+                parsed = json.loads(rows)
+            except json.JSONDecodeError:
+                parsed = {}
+        editor = parsed if isinstance(parsed, dict) else {}
+        raw_rows = editor.get("rows", editor.get("shots", [])) if editor else parsed
+        runtime = h3_director.build_runtime(
+            raw_rows if isinstance(raw_rows, list) else [], width, height, fps, duration,
+            _scene_director_media_sources(media_state), state_params, editor,
+        )
+        runtime["validation"] = h3_director.validation(runtime, state_params)
+        return runtime
     active_row_index = _scene_director_active_row_index(rows)
     normalized_rows = _scene_director_rows(rows)
     segments = []
@@ -1862,6 +1892,8 @@ def apply_scene_director_prompt_for_generation(prompt_text, backend_params, enab
         runtime = build_scene_director_payload(SCENE_DIRECTOR_DEFAULT_ROWS, state_params=state_params, scene_theme=scene_theme)
     else:
         runtime = _scene_director_apply_target_method(runtime, state_params, scene_theme)
+    if h3_director.is_runtime(runtime):
+        return str(runtime.get("prompt_override") or prompt_text or ""), next_backend
     validation = runtime.get("validation") if isinstance(runtime.get("validation"), dict) else {}
     errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
     if errors:
@@ -1940,6 +1972,7 @@ def _scene_director_clear_segment_media_backend(backend):
 def _scene_director_build_segment_task(base_task, runtime, segment, index, previous_video=None, state_params=None):
     import modules.async_worker as worker
 
+    _scene_director_ensure_backend_args()
     base_args = list(getattr(base_task, "args", []) or [])
     if not base_args:
         return worker.AsyncTask(args=[])
@@ -1956,6 +1989,14 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
     }
     next_backend = copy.deepcopy(backend)
     _scene_director_clear_segment_media_backend(next_backend)
+    if h3_director.is_runtime(runtime):
+        generation = runtime.get("generation_settings", {})
+        next_backend.update(h3_director.route_backend(
+            segment, generation.get("width", runtime["width"]), generation.get("height", runtime["height"]),
+        ))
+        next_backend.pop("native_process", None)
+        name, profile, _method, _compiler = h3_director.route(segment)
+        next_backend["preset"] = f"MiniMax-H3({name})"
 
     image_refs = _scene_director_segment_image_refs(segment)
     for ref_index, ref in enumerate(image_refs):
@@ -1975,6 +2016,10 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
         else:
             image = _scene_director_backend_image(_scene_director_media_value(runtime, ref))
         if image is None:
+            if h3_director.is_runtime(runtime):
+                raise gr.Error(h3_director.text(
+                    state_params, f"Could not read {ref}.", f"无法读取图片素材 {ref}。",
+                ))
             continue
         slot = SCENE_DIRECTOR_IMAGE_BACKEND_SLOTS[ref_index]
         value = _scene_director_canvas_value(image) if slot == "scene_canvas_image" else image
@@ -1995,6 +2040,10 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
             video_value = _scene_director_media_file_value(runtime, video_ref, "video", base_video_by_ref.get(video_ref))
         if video_value:
             next_backend[slot] = video_value
+    if h3_director.is_runtime(runtime) and segment["mode"] == "transition":
+        next_backend["video"] = previous_video["from"]
+        next_backend["reference_video"] = previous_video["to"]
+        next_backend.pop("reference_video2", None)
 
     segment_prompt = str(segment.get("prompt") or "").strip()
     segment_duration = _scene_director_segment_generation_duration(runtime, segment, 1.0)
@@ -2028,8 +2077,45 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
         "video_ref": video_refs[0] if video_refs else "",
         "previous_video": previous_video if SCENE_DIRECTOR_PREVIOUS_VIDEO_REF in video_refs else "",
     }
+    if h3_director.is_runtime(runtime):
+        next_backend["director_segment"].update(
+            project_id=runtime["project_id"], mode=segment["mode"],
+            sampling_profile=segment["sampling_profile"],
+            source_segment_id=segment.get("source_segment_id"),
+        )
+        if segment["mode"] == "transition":
+            next_backend["director_segment"].update(
+                from_segment_id=segment["from_segment_id"], to_segment_id=segment["to_segment_id"],
+                overlap=segment["overlap"], source_videos=copy.deepcopy(previous_video),
+            )
+        manifest = next_backend.get("simpleai_regen_manifest")
+        if isinstance(manifest, dict):
+            manifest["preset_name"] = next_backend["preset"]
+            manifest.setdefault("ui_values", {}).update(
+                scene_theme=profile, scene_video_duration=round(segment_duration, 3),
+                scene_switch_option1=False if segment["mode"] == "continue" else next_backend.get("scene_switch_option1"),
+            )
+            manifest["director_segment"] = copy.deepcopy(next_backend["director_segment"])
+            for slot in SCENE_DIRECTOR_IMAGE_BACKEND_SLOTS:
+                manifest.setdefault("backend_params", {}).pop(slot, None)
+            manifest.setdefault("backend_params", {}).update(
+                {key: copy.deepcopy(value) for key, value in next_backend.items()
+                 if (key.startswith("scene_") or key == "task_method")
+                 and key not in SCENE_DIRECTOR_IMAGE_BACKEND_SLOTS}
+            )
+            manifest.setdefault("ui_values", {})["scene_steps"] = next_backend["scene_steps"]
 
     args_i = copy.deepcopy(base_args)
+    if h3_director.is_runtime(runtime):
+        for key, value in (("image_number", 1), ("enhance_checkbox", False), ("input_image_checkbox", False)):
+            if key in api_params.all_args and len(args_i) > api_params.all_args.index(key):
+                args_i[api_params.all_args.index(key)] = value
+        if runtime.get("random_seed") and "image_seed" in api_params.all_args:
+            args_i[api_params.all_args.index("image_seed")] = secrets.randbelow(2 ** 32)
+        manifest = next_backend.get("simpleai_regen_manifest")
+        if isinstance(manifest, dict) and "image_seed" in api_params.all_args:
+            manifest["ui_values"]["image_seed"] = args_i[api_params.all_args.index("image_seed")]
+            manifest["ui_values"]["seed_random"] = False
     if len(args_i) > prompt_index:
         args_i[prompt_index] = segment_prompt
     if len(args_i) > params_backend_index:
@@ -2175,7 +2261,10 @@ def _scene_director_timeline_asset(path, project_id, state_params, index):
 
 def _scene_director_build_final_timeline_payload(runtime, segment_videos, state_params=None):
     runtime = runtime if isinstance(runtime, dict) else {}
-    project_id = _scene_director_project_id(state_params)
+    project_id = (
+        "h3-director-" + runtime["project_id"]
+        if h3_director.is_runtime(runtime) else _scene_director_project_id(state_params)
+    )
     width = _scene_director_int(runtime.get("width"), 1280, 16, 8192)
     height = _scene_director_int(runtime.get("height"), 720, 16, 8192)
     fps = _scene_director_float(runtime.get("fps"), 24, 1, 120)
@@ -2192,12 +2281,17 @@ def _scene_director_build_final_timeline_payload(runtime, segment_videos, state_
         if not path:
             continue
         start = _scene_director_float(segment.get("start"), timeline_end, 0, 86400)
-        asset = _scene_director_timeline_asset(path, project_id, state_params, index)
-        duration = _scene_director_segment_timeline_duration(runtime, segment, asset, 1.0)
+        saved_asset = item.get("asset") if h3_director.is_runtime(runtime) else None
+        asset = copy.deepcopy(saved_asset) if isinstance(saved_asset, dict) else _scene_director_timeline_asset(path, project_id, state_params, index)
+        duration = (
+            float(item["duration"]) if h3_director.is_runtime(runtime) and "duration" in item
+            else _scene_director_segment_timeline_duration(runtime, segment, asset, 1.0)
+        )
         end = start + duration
         timeline_end = max(timeline_end, end)
         clip_id = f"director_shot_{index + 1}"
-        timing = {"start": start, "duration": duration, "in": 0, "out": duration}
+        source_in = float(item.get("source_in", 0)) if h3_director.is_runtime(runtime) else 0
+        timing = {"start": start, "duration": duration, "in": source_in, "out": source_in + duration}
         layer = {
             "clip_id": clip_id,
             "track_id": "v1",
@@ -2218,6 +2312,8 @@ def _scene_director_build_final_timeline_payload(runtime, segment_videos, state_
             "mask": {},
             "asset": asset,
         }
+        if h3_director.is_runtime(runtime) and isinstance(item.get("fit_canvas"), dict):
+            layer["transform"]["fit_canvas"] = copy.deepcopy(item["fit_canvas"])
         layers.append(layer)
         source_clips.append({
             "id": clip_id,
@@ -2225,8 +2321,8 @@ def _scene_director_build_final_timeline_payload(runtime, segment_videos, state_
             "kind": "video",
             "start": start,
             "duration": duration,
-            "in": 0,
-            "out": duration,
+            "in": source_in,
+            "out": source_in + duration,
             "asset": asset,
         })
         if _scene_director_video_has_audio(path):
@@ -2272,6 +2368,8 @@ def _scene_director_build_final_timeline_payload(runtime, segment_videos, state_
             "clips": source_clips,
         },
     }
+    if h3_director.is_runtime(runtime) and h3_director.enabled_transitions(runtime):
+        render_payload["frame_exact"] = True
     return {
         "project_id": project_id,
         "node_id": "webui_director_final",
@@ -2304,6 +2402,471 @@ def _scene_director_render_final_timeline(runtime, segment_videos, state_params=
     return path if path and os.path.exists(path) else ""
 
 
+def _h3_generation_settings(task):
+    args = list(getattr(task, "args", []) or [])
+    settings = {}
+    for key in ("base_model", "refiner_model", "loras", "guidance_scale", "sampler_name",
+                "scheduler_name", "vae_name", "overwrite_step", "overwrite_width", "overwrite_height"):
+        if key in api_params.all_args and len(args) > api_params.all_args.index(key):
+            settings[key] = copy.deepcopy(args[api_params.all_args.index(key)])
+    backend = getattr(task, "params_backend", {}) or {}
+    size = str(backend.get("scene_aspect_ratio") or getattr(task, "aspect_ratios_selection", None) or "864*480").replace("×", "*")
+    parts = size.split("*")
+    for index, key in enumerate(("width", "height")):
+        value = settings.get("overwrite_" + key)
+        default = h3_director.number(parts[index], 864 if index == 0 else 480) if len(parts) == 2 else (864 if index == 0 else 480)
+        settings[key] = max(32, int((h3_director.number(value, default) if h3_director.number(value, -1) > 0 else default) // 32 * 32))
+    return settings
+
+
+def _h3_request(value, state=None):
+    if isinstance(value, dict):
+        return value
+    try:
+        request = json.loads(value or "{}")
+        return request if isinstance(request, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        raise gr.Error(h3_director.text(state, "Invalid director request.", "导演台请求无效。"))
+
+
+def _h3_generation_surface(compare_button_update_fn, results=None, message=""):
+    return (
+        gr_update(visible=bool(message), value=html_module.make_progress_html(1, message)),
+        gr_update(visible=False), gr_update(visible=False, value=None),
+        gr_update(visible=False, value=None),
+        gr_update(visible=bool(results), value=results or []), False,
+        gr_update(visible=False), compare_button_update_fn(visible=False, ready=False),
+        gr_update(visible=bool(message), interactive=True),
+        gr_update(visible=bool(message), interactive=True),
+    )
+
+
+def _h3_source_input(runtime, source_version, state, cancel_callback=None):
+    from modules import canvas_workbench_timeline
+
+    source_id = source_version["segment"]["id"]
+    source = next((s for s in runtime["segments"] if s["id"] == source_id), None)
+    if source is None:
+        raise gr.Error(h3_director.text(state, "The source shot is missing.", "来源分镜不存在。"))
+    asset = source_version["asset"]
+    duration = _scene_director_segment_duration(source)
+    same_format = all(
+        abs(h3_director.number(asset.get(key), runtime[key]) - runtime[key]) < 0.001
+        for key in ("width", "height", "fps")
+    )
+    if same_format and abs(h3_director.number(asset.get("duration"), 0) - duration) < 0.001:
+        return asset["path"]
+    # Use the same video range, frame rate and sound as the source shot in the final timeline.
+    source_clip = dict(source, start=0, end=duration)
+    payload = _scene_director_build_final_timeline_payload(runtime, [{
+        "index": 0, "segment": source_clip, "path": asset["path"], "asset": asset,
+    }], state)
+    payload.update(publish_gallery=False, node_id="h3_director_source_" + source_id)
+    result = canvas_workbench_timeline.render_timeline(payload, state, cancel_callback=cancel_callback)
+    if result.get("cancelled"):
+        raise gr.Error(h3_director.text(state, "Source preparation cancelled.", "已取消来源视频处理。"))
+    path = _scene_director_video_path(result.get("path"))
+    if not result.get("ok") or not path:
+        raise gr.Error(h3_director.text(state, "Could not prepare the source shot: ", "无法处理来源分镜：") + str(result.get("error", "")))
+    return path
+
+
+def _h3_transition_source_runtime(runtime, project, transition):
+    source_runtime = copy.deepcopy(runtime)
+    # Keep the output letterbox outside the model's repainting window.
+    source_runtime.update(h3_director.transition_canvas(runtime, project, transition))
+    source_runtime["fps"] = 24
+    for segment in source_runtime["segments"]:
+        segment["end"] = segment["start"] + max(1, round(_scene_director_segment_duration(segment) * 24)) / 24
+    return source_runtime
+
+
+def _generate_h3_director(task, state, runtime, generate_fn, compare_fn, request):
+    request = _h3_request(request, state)
+    snapshot = request.get("editor")
+    if isinstance(snapshot, dict):
+        runtime = build_scene_director_payload(
+            snapshot, request.get("width"), request.get("height"), request.get("fps"),
+            request.get("duration"), media_state=request.get("media_state"), state_params=state,
+        )
+    else:
+        runtime = _scene_director_apply_target_method(runtime or {}, state)
+    runtime["random_seed"] = bool(request.get("random_seed"))
+    project = h3_director.Project(runtime["project_id"], state)
+    if not project.lock.acquire(blocking=False):
+        raise gr.Error(h3_director.text(state, "This project is busy.", "这个导演项目正在处理，请等待当前操作完成。"))
+    try:
+        # Reload after acquiring the lock; another callback may have committed a version.
+        project = h3_director.Project(runtime["project_id"], state)
+        runtime["generation_settings"] = _h3_generation_settings(task)
+        project.data["generation_settings"] = copy.deepcopy(runtime["generation_settings"])
+        wanted = h3_director.generation_ids(runtime, project, request)
+        validation = h3_director.validation(runtime, state, set(wanted))
+        if validation["errors"]:
+            raise gr.Error(validation["errors"][0])
+        task.processing = True
+        task.content_type = "video"
+        task.results = []
+        working_versions = {}
+        for index, segment in enumerate(h3_director.generation_items(runtime)):
+            if segment["id"] not in wanted:
+                continue
+            if getattr(task, "last_stop", False) in ("stop", "skip"):
+                break
+            dependencies = project.dependencies(segment, working_versions)
+            source = segment.get("source_segment_id")
+            source_version = (working_versions.get(source) or project.selected(source)) if dependencies and source else None
+            previous = None
+            for key, kind in (("images", "image"), ("audio", "audio"), ("video", "video")):
+                for media in segment[key]:
+                    ref = media["source_ref"]
+                    if not ref.startswith("previous_segment") and not _scene_director_media_available(runtime, ref, kind):
+                        raise gr.Error(h3_director.text(state, f"Missing media: {ref}.", f"素材不可用：{ref}。"))
+            shot = project.shot(segment["id"])
+            shot.update(status="running", error="")
+            project.save()
+            label = h3_director.text(state, "Transition", "转场") if segment["mode"] == "transition" else h3_director.text(state, "Shot", "分镜")
+            yield _h3_generation_surface(compare_fn, message=f"{label} {index + 1}")
+            try:
+                if segment["mode"] == "transition":
+                    previous = {}
+                    source_runtime = _h3_transition_source_runtime(runtime, project, segment)
+                    for key, name in (("from_segment_id", "from"), ("to_segment_id", "to")):
+                        sid = segment[key]
+                        source_segment = next(s for s in runtime["segments"] if s["id"] == sid)
+                        if project.stale(source_segment, runtime):
+                            raise gr.Error(h3_director.text(state, "Review both source videos before generating a transition.",
+                                                            "两侧分镜结果需要检查，请采用当前结果或明确保留后生成转场。"))
+                        previous[name] = _h3_source_input(
+                            source_runtime, project.selected(sid), state,
+                            lambda: getattr(task, "last_stop", False) in ("stop", "skip"),
+                        )
+                elif source_version:
+                    previous = _h3_source_input(
+                        runtime, source_version, state,
+                        lambda: getattr(task, "last_stop", False) in ("stop", "skip"),
+                    )
+                segment_task = _scene_director_build_segment_task(task, runtime, segment, index, previous, state)
+                task.active_director_task = segment_task
+                for out in generate_fn(segment_task, state):
+                    yield out
+                stopped = getattr(task, "last_stop", False) or getattr(segment_task, "user_cancel_action", None) or getattr(segment_task, "last_stop", False)
+                if stopped in ("stop", "skip"):
+                    task.last_stop = stopped
+                    shot.update(status="stopped", error="")
+                    project.save()
+                    break
+                path = _scene_director_video_path(_scene_director_first_video_result(getattr(segment_task, "results", [])))
+                if not path:
+                    shot.update(status="failed", error=h3_director.text(state, "No video result.", "没有生成视频结果。"))
+                    project.save()
+                    if getattr(task, "last_stop", False) in ("stop", "skip"):
+                        break
+                    raise gr.Error(shot["error"])
+                parameters = _h3_generation_settings(segment_task)
+                if "image_seed" in api_params.all_args:
+                    parameters["image_seed"] = segment_task.args[api_params.all_args.index("image_seed")]
+                parameters["task_method"] = getattr(segment_task, "task_method", None)
+                if segment["mode"] == "transition":
+                    parameters["director_transition"] = {
+                        "layout": h3_director.transition_layout(runtime, segment),
+                        "source_canvas": {key: source_runtime[key] for key in ("width", "height")},
+                        "sources": copy.deepcopy(previous), "dependencies": copy.deepcopy(dependencies),
+                    }
+                if source_version:
+                    parameters["director_source"] = {
+                        "version_id": source_version["id"], "path": previous,
+                        "width": runtime["width"], "height": runtime["height"], "fps": runtime["fps"],
+                        "duration": _scene_director_segment_duration(next(s for s in runtime["segments"] if s["id"] == source)),
+                    }
+                version = project.append(segment, runtime, path, parameters, dependencies)
+                if request.get("action") in ("all", "affected", "missing"):
+                    working_versions[segment["id"]] = version
+            except Exception as error:
+                if getattr(task, "last_stop", False) in ("stop", "skip"):
+                    shot.update(status="stopped", error="")
+                    project.save()
+                    break
+                shot.update(status="failed", error=str(error))
+                project.save()
+                raise
+        results = [
+            project.selected(s["id"])["asset"]["path"]
+            for s in runtime["segments"] if project.available(s["id"])
+        ]
+        task.results = results
+        task.simpleai_generation_had_output = bool(results)
+        task.image_number = max(1, len(results))
+        project.save()
+        yield _h3_generation_surface(compare_fn, results=results)
+    finally:
+        task.processing = False
+        task.active_director_task = None
+        project.lock.release()
+
+
+def _h3_timeline_snapshot(runtime, project, state):
+    chosen = [s for s in runtime["segments"] if s.get("included", True)]
+    if not chosen:
+        raise gr.Error(h3_director.text(state, "No shots selected for export.", "没有选择参与拼接的分镜。"))
+    transition_errors = h3_director.transition_errors(runtime, state)
+    if transition_errors:
+        raise gr.Error(transition_errors[0])
+    last_end = 0.0
+    clips = []
+    for segment in chosen:
+        if not project.available(segment["id"]):
+            raise gr.Error(h3_director.text(state, "A selected shot has no result.", "参与拼接的分镜尚无可用结果。"))
+        if project.stale(segment, runtime):
+            raise gr.Error(h3_director.text(state, "Review changed shot results before export.", "部分结果的参数或来源已变化，请重生成或明确保留旧结果后再预览。"))
+        if segment["start"] < last_end - 0.001:
+            raise gr.Error(h3_director.text(state, "Overlapping shots need different start/end times.", "分镜时间重叠，请调整开始和结束时间。"))
+        last_end = segment["end"]
+        asset = project.selected(segment["id"])["asset"]
+        clips.append({"index": len(clips), "segment": segment, "path": asset["path"], "asset": copy.deepcopy(asset)})
+    signature = h3_director.digest({
+        "width": runtime["width"], "height": runtime["height"], "fps": runtime["fps"],
+        "shots": [(s["id"], s["start"], s["end"], project.selected(s["id"])["id"]) for s in chosen],
+        "transitions": [(item["id"], project.selected(item["id"])["id"] if project.available(item["id"]) else "",
+                         h3_director.request_signature(item, runtime))
+                        for item in h3_director.enabled_transitions(runtime)],
+    })
+    if h3_director.enabled_transitions(runtime):
+        by_source = {}
+        incoming = {}
+        canvases = {}
+        for item in h3_director.enabled_transitions(runtime):
+            if not project.available(item["id"]):
+                raise gr.Error(h3_director.text(state, "An enabled transition has no adopted result.",
+                                                "已启用的转场尚无已采用结果，请生成转场或关闭它。"))
+            if project.stale(item, runtime):
+                raise gr.Error(h3_director.text(state, "A transition's settings or sources changed; regenerate or disable it.",
+                                                "转场参数或来源版本已变化，请重生成转场或关闭它。"))
+            version = project.selected(item["id"])
+            layout = version.get("parameters", {}).get("director_transition", {}).get("layout")
+            if layout != h3_director.transition_layout(runtime, item):
+                raise gr.Error(h3_director.text(state, "Transition context metadata is missing or changed.",
+                                                "转场上下文记录缺失或已变化，请重新生成转场。"))
+            by_source[item["from_segment_id"]] = (item, version, layout)
+            incoming[item["to_segment_id"]] = layout["right"]
+            canvas = h3_director.transition_canvas(runtime, project, item)
+            canvases[item["from_segment_id"]] = canvases[item["to_segment_id"]] = canvas
+        composed = []
+        offset = 0
+        base_end = 0
+        original_end = 0
+        for clip in clips:
+            segment = clip["segment"]
+            source_id = segment["id"]
+            frames = max(1, round(_scene_director_segment_duration(segment) * 24))
+            head = incoming.get(source_id, 0)
+            edge = by_source.get(source_id)
+            tail = edge[2]["left"] if edge else 0
+            base_start = base_end + round((segment["start"] - original_end) * 24) / 24
+            base_end = base_start + frames / 24
+            original_end = segment["end"]
+            start = base_start + offset + head / 24
+            body = (frames - head - tail) / 24
+            if body > 0:
+                composed.append(dict(clip, index=len(composed), source_in=head / 24, duration=body,
+                                     fit_canvas=canvases.get(source_id),
+                                     segment=dict(segment, start=start, end=start + body)))
+            if edge:
+                item, version, layout = edge
+                start = base_start + offset + (frames - tail) / 24
+                duration = (layout["left"] + layout["gap"] + layout["right"]) / 24
+                composed.append({
+                    "index": len(composed), "path": version["asset"]["path"],
+                    "asset": copy.deepcopy(version["asset"]), "source_in": 0, "duration": duration,
+                    "fit_canvas": canvases[source_id],
+                    "segment": dict(item, start=start, end=start + duration),
+                })
+                offset += layout["gap"] / 24
+        clips = composed
+    return clips, signature
+
+
+def h3_director_result_action(request, enabled, compose, rows, width, height, fps, duration,
+                              target_format, media_state, state, scene_theme, progress=gr.Progress()):
+    if not enabled or not h3_director.is_family(state):
+        return "{}", gr_update(visible=False), gr_update(value="")
+    runtime = build_scene_director_payload(
+        rows, width, height, fps, duration, target_format, media_state, state, scene_theme, False,
+    )
+    request = _h3_request(request, state)
+    project = h3_director.Project(runtime["project_id"], state)
+    runtime["generation_settings"] = project.data.get("generation_settings", {})
+    action = request.get("action", "refresh")
+    if action != "refresh" and not project.lock.acquire(blocking=False):
+        raise gr.Error(h3_director.text(state, "This project is busy.", "这个导演项目正在处理，请等待当前操作完成。"))
+    result_path = ""
+    message = ""
+    try:
+        if action != "refresh":
+            project = h3_director.Project(runtime["project_id"], state)
+            runtime["generation_settings"] = project.data.get("generation_settings", {})
+        if action == "select":
+            project.select(str(request.get("segment_id")), str(request.get("version_id")))
+        elif action == "keep":
+            segment = next((s for s in runtime["segments"] if s["id"] == request.get("segment_id")), None)
+            if not segment or not project.available(segment["id"]):
+                raise gr.Error(h3_director.text(state, "Shot result is missing.", "分镜结果不存在。"))
+            project.shot(segment["id"])["acknowledged"] = project.stale_key(segment, runtime)
+            project.save()
+        elif action == "transition_preview":
+            item = next((item for item in h3_director.enabled_transitions(runtime)
+                         if item["id"] == request.get("segment_id")), None)
+            if not item:
+                raise gr.Error(h3_director.text(state, "The transition is unavailable.", "转场已关闭或不存在。"))
+            errors = h3_director.transition_errors(runtime, state, {item["id"]})
+            if errors:
+                raise gr.Error(errors[0])
+            local = copy.deepcopy(runtime)
+            local["segments"] = [copy.deepcopy(next(s for s in runtime["segments"] if s["id"] == sid))
+                                 for sid in (item["from_segment_id"], item["to_segment_id"])]
+            cursor = 0
+            for segment in local["segments"]:
+                duration = _scene_director_segment_duration(segment)
+                segment.update(start=cursor, end=cursor + duration)
+                cursor += duration
+            local["transitions"] = [copy.deepcopy(item)]
+            clips, _signature = _h3_timeline_snapshot(local, project, state)
+            signature = h3_director.transition_preview_signature(runtime, project, item)
+            cached = project.data.get("transition_previews", {}).get(item["id"], {})
+            if cached.get("signature") != signature or not os.path.isfile(cached.get("path", "")):
+                from modules import canvas_workbench_timeline
+
+                project.render_cancel.clear()
+                payload = _scene_director_build_final_timeline_payload(local, clips, state)
+                payload.update(publish_gallery=False, node_id="h3_director_transition_preview_" + item["id"])
+                canvas = payload["payload"]["canvas"]
+                scale = min(1, 640 / max(canvas["width"], canvas["height"]))
+                canvas["width"] = max(16, round(canvas["width"] * scale / 2) * 2)
+                canvas["height"] = max(16, round(canvas["height"] * scale / 2) * 2)
+                result = canvas_workbench_timeline.render_timeline(
+                    payload, state, cancel_callback=project.render_cancel.is_set,
+                )
+                if not result.get("ok") or not os.path.isfile(result.get("path", "")):
+                    raise gr.Error(h3_director.text(state, "Transition preview failed: ", "衔接预览失败：")
+                                   + str(result.get("error", "")))
+                project.data.setdefault("transition_previews", {})[item["id"]] = {
+                    "signature": signature, "path": result["path"],
+                }
+                project.save()
+            message = h3_director.text(state, "Transition preview ready.", "衔接预览已生成。")
+        elif action in ("preview", "export"):
+            project.render_cancel.clear()
+            clips, signature = _h3_timeline_snapshot(runtime, project, state)
+            previous_end = 0
+            has_gap = False
+            for clip in clips:
+                segment = clip["segment"]
+                has_gap = has_gap or segment["start"] > previous_end + 0.001
+                previous_end = segment["start"] + clip.get("duration", _scene_director_segment_duration(segment))
+            if has_gap:
+                gr.Warning(h3_director.text(
+                    state, "The timeline includes blank intervals at the chosen start times.",
+                    "当前时间线包含空白时段，将按所选开始时间保留空白画面。",
+                ))
+            previous_preview = project.data.get("preview", {})
+            if action == "export" and (
+                previous_preview.get("signature") != signature or not os.path.isfile(previous_preview.get("path", ""))
+            ):
+                raise gr.Error(h3_director.text(state, "Preview the current timeline before exporting.", "请先预览当前版本的完整时间线，再拼接输出。"))
+            if action == "preview" and previous_preview.get("signature") == signature and os.path.isfile(previous_preview.get("path", "")):
+                result_path = previous_preview["path"]
+            else:
+                from modules import canvas_workbench_timeline
+
+                payload = _scene_director_build_final_timeline_payload(runtime, clips, state)
+                payload["publish_gallery"] = action == "export"
+                payload["node_id"] = "h3_director_" + action
+                if action == "preview":
+                    canvas = payload["payload"]["canvas"]
+                    scale = min(1, 640 / max(canvas["width"], canvas["height"]))
+                    canvas["width"] = max(16, round(canvas["width"] * scale / 2) * 2)
+                    canvas["height"] = max(16, round(canvas["height"] * scale / 2) * 2)
+                render_label = h3_director.text(state, "Rendering timeline", "正在渲染时间线")
+                progress(0, desc=render_label)
+                result = canvas_workbench_timeline.render_timeline(
+                    payload, state, progress_callback=lambda value: progress(value, desc=render_label),
+                    cancel_callback=project.render_cancel.is_set,
+                )
+                if result.get("cancelled"):
+                    raise gr.Error(h3_director.text(state, "Timeline rendering cancelled.", "已取消时间线渲染，分镜结果仍保留。"))
+                if not result.get("ok"):
+                    raise gr.Error(h3_director.text(state, "Timeline render failed: ", "时间线渲染失败：") + str(result.get("error", "")))
+                result_path = str((result.get("gallery") or {}).get("path") or result.get("path") or "")
+                if not os.path.isfile(result_path):
+                    raise gr.Error(h3_director.text(state, "The rendered file is missing.", "渲染结果文件不存在。"))
+                if action == "export" and not (result.get("gallery") or {}).get("path"):
+                    raise gr.Error(h3_director.text(state, "The export was rendered but could not be published.", "成片已渲染，但发布到相册失败。"))
+                if action == "preview":
+                    project.data["preview"] = {"signature": signature, "path": result_path}
+                else:
+                    project.data["exports"].append({"signature": signature, "path": result_path})
+                project.save()
+            message = h3_director.text(state, "Preview ready." if action == "preview" else "Export ready.", "预览已生成。" if action == "preview" else "成片已输出。")
+            if has_gap:
+                message += h3_director.text(state, " The timeline includes blank intervals.", " 当前时间线包含空白时段。")
+        elif action != "refresh":
+            raise gr.Error(h3_director.text(state, "Invalid result action.", "结果操作无效。"))
+        view = project.view(runtime)
+        try:
+            _, signature = _h3_timeline_snapshot(runtime, project, state)
+        except gr.Error:
+            signature = ""
+        view["preview"]["current"] = bool(
+            signature and view["preview"]["signature"] == signature
+            and os.path.isfile(project.data.get("preview", {}).get("path", ""))
+        )
+        view["completed_action"] = action
+        view["completed_nonce"] = str(request.get("nonce") or "")
+        if not result_path:
+            preview_path = project.data.get("preview", {}).get("path", "")
+            if os.path.isfile(preview_path):
+                result_path = preview_path
+                if not message:
+                    stale_transitions = [item for item in view["transitions"] if item["enabled"] and item["stale"]]
+                    waiting_adoption = any(
+                        v["available"] and v["current"] and v["id"] != item["selected"]
+                        for item in stale_transitions for v in item["versions"]
+                    )
+                    if view["preview"]["current"]:
+                        message = h3_director.text(state, "Preview ready.", "预览已生成。")
+                    elif waiting_adoption:
+                        message = h3_director.text(
+                            state, "The old preview is out of date. Use the new transition, then update the preview.",
+                            "旧预览已过期。请采用新版转场，再更新预览。",
+                        )
+                    elif stale_transitions:
+                        message = h3_director.text(
+                            state, "The selected transition is out of date. Regenerate it and adopt the new version.",
+                            "当前采用的转场已过期。请重生成转场并采用新版本。",
+                        )
+                    else:
+                        message = h3_director.text(
+                            state, 'Preview is out of date. Click "Update preview" on the timeline.',
+                            "预览已过期。请点击时间线右侧的“更新预览”。",
+                        )
+        return json.dumps(view, ensure_ascii=False), gr_update(value=result_path or None, visible=bool(result_path)), gr_update(value=message)
+    finally:
+        if action != "refresh":
+            project.lock.release()
+
+
+def cancel_h3_director_render(rows, state):
+    if not h3_director.is_family(state):
+        return gr_update(value="")
+    editor = _h3_request(rows, state)
+    project_id = editor.get("project_id")
+    if not project_id:
+        return gr_update(value="")
+    project = h3_director.Project(project_id, state)
+    project.render_cancel.set()
+    return gr_update(value=h3_director.text(state, "Cancellation requested.", "已请求取消时间线渲染。"))
+
+
 def generate_clicked_or_director(
     generation_task,
     state_params,
@@ -2311,10 +2874,18 @@ def generate_clicked_or_director(
     director_runtime,
     generate_clicked_fn,
     compare_button_update_fn,
+    h3_request=None,
 ):
     capability = _scene_director_capability_from_state(state_params)
     if not director_enabled or not _scene_director_available_from_state(state_params, capability=capability):
         yield from generate_clicked_fn(generation_task, state_params)
+        return
+
+    if h3_director.is_family(state_params):
+        yield from _generate_h3_director(
+            generation_task, state_params, director_runtime, generate_clicked_fn,
+            compare_button_update_fn, h3_request,
+        )
         return
 
     runtime = director_runtime if isinstance(director_runtime, dict) else {}

@@ -36,6 +36,7 @@
     function sourceIdentity(item) {
         if (String(item.preview || '').startsWith('waveform:')) return '';
         if (item.asset_id) return String(item.asset_id);
+        if (item.source_identity) return String(item.source_identity);
         if (!item.preview) return String(item.source_id || item.slot || '');
         let hash = 2166136261;
         for (const char of String(item.preview)) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
@@ -46,6 +47,20 @@
             ...item, kind, token: `<${{ image: 'Picture', video: 'Video', audio: 'Audio' }[kind]} ${index + 1}>`,
             identity: sourceIdentity(item),
         })));
+    }
+    function characterInsertionRange(value, selection) {
+        const range = { start: selection.start, end: selection.end };
+        if (range.start !== range.end) return range;
+        const headings = Array.from(String(value).matchAll(
+            /^(subject_definitions|retention_analysis|summary|detailed_description|integrated_multimodal_description|overall_soundscape|non_diegetic_music):[ \t]*/gm));
+        if (!headings.some(match => range.start >= match.index && range.start <= match.index + match[0].length)) return range;
+        const description = headings.find(match => match[1] === 'integrated_multimodal_description')
+            || headings.find(match => match[1] === 'detailed_description');
+        if (!description) return range;
+        let position = description.index + description[0].length;
+        const marker = String(value).slice(position).match(/^\s*\[Shot\s+\d+\](?:\s+At\s+[^,\n]+,)?\s*/);
+        if (marker) position += marker[0].length;
+        return { start: position, end: position };
     }
     function normalizeBindings(value) {
         if (!Array.isArray(value)) return [];
@@ -128,9 +143,9 @@
         return output + escape(value.slice(offset));
     }
     async function request(action, payload, state) {
-        const controller = /^(voice|image)-/.test(action) ? new AbortController() : null;
+        const controller = /^(voice|image)-/.test(action) || action === 'resolve' ? new AbortController() : null;
         const timer = controller && root.setTimeout(() => controller.abort(),
-            /-(poll|stop)$/.test(action) ? 15000 : 120000);
+            action === 'resolve' || /-(poll|stop)$/.test(action) ? 15000 : 120000);
         try {
             const response = await fetch(`/describe-image/visual-characters/${action}`, {
                 method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
@@ -147,7 +162,8 @@
             }
             return result;
         } catch (error) {
-            if (error.name === 'AbortError') throw new Error(action.startsWith('image-') ? 'image_request_timeout' : 'voice_request_timeout');
+            if (error.name === 'AbortError') throw new Error(action === 'resolve' ? 'media_request_timeout'
+                : action.startsWith('image-') ? 'image_request_timeout' : 'voice_request_timeout');
             throw error;
         } finally {
             if (timer) root.clearTimeout(timer);
@@ -455,12 +471,16 @@
                 unsupported_or_oversized_media: t('Unsupported media, or file exceeds 20 MB.', '媒体格式不支持，或文件超过 20 MB。'),
                 asset_not_found: t('Reference asset is unavailable.', '参考素材已不可用。'),
                 reference_capacity: t('Not enough appendable reference slots. Existing inputs were not replaced.', '可追加的参考槽位不足，未替换现有输入。'),
-                reference_media_unsupported: t('This preset does not accept the reference types on this card. Use a character with compatible media or insert its description.', '当前预设不接收这张卡片的素材类型，可选择含适用素材的角色或使用角色描述。'),
+                reference_media_unsupported: options.directorSegmentId
+                    ? t('This shot mode does not accept the reference types on this card. Use compatible media or insert the character description.', '\u5f53\u524d\u5206\u955c\u6a21\u5f0f\u4e0d\u652f\u6301\u8fd9\u5f20\u89d2\u8272\u5361\u7684\u7d20\u6750\u7c7b\u578b\uff0c\u53ef\u9009\u62e9\u9002\u7528\u7d20\u6750\u6216\u4f7f\u7528\u89d2\u8272\u63cf\u8ff0\u3002')
+                    : t('This preset does not accept the reference types on this card. Use a character with compatible media or insert its description.', '当前预设不接收这张卡片的素材类型，可选择含适用素材的角色或使用角色描述。'),
                 media_slot_occupied: t('A reference slot is now occupied. Refresh and retry.', '参考槽位已被占用，请刷新后重试。'),
                 invalid_trim_range: t('Enter a valid audio time range.', '请输入有效的音频起止时间。'),
                 audio_trim_unavailable: t('Audio trimming requires ffmpeg.', '当前音频裁剪需要 ffmpeg。'),
                 audio_trim_failed: t('Audio trimming failed. The original is unchanged.', '音频裁剪失败，原音频未改变。'),
                 media_apply_timeout: t('Input update timed out. Check the input slots before retrying.', '输入更新超时，请检查素材槽位后重试。'),
+                director_prompt_target_changed: t('This shot changed or was removed. Reopen its prompt editor.', '\u5f53\u524d\u5206\u955c\u5df2\u6539\u53d8\u6216\u5220\u9664\uff0c\u8bf7\u91cd\u65b0\u6253\u5f00\u5b83\u7684\u63d0\u793a\u8bcd\u7f16\u8f91\u5668\u3002'),
+                media_request_timeout: t('Loading character media timed out. Try again.', '\u89d2\u8272\u7d20\u6750\u52a0\u8f7d\u8d85\u65f6\uff0c\u8bf7\u91cd\u8bd5\u3002'),
                 voice_style_model_unavailable: t('Enable and configure the existing VLM before expanding voice style.', '请先启用并配置项目已有的 VLM，再生成声音风格。'),
                 voice_style_empty: t('No voice style was returned.', '声音风格生成结果为空。'),
                 voice_style_failed: t('Voice style generation failed. Your existing style is unchanged.', '声音风格生成失败，原有风格未改变。'),
@@ -530,12 +550,14 @@
                         const preview = kind === 'Picture' ? safeUrl(current?.preview_url || current?.preview) : '';
                         return `<button type="button" data-vpe-insert="${escape(saved.token)}" title="${escape(saved.token)}">${preview ? `<img src="${escape(preview)}" alt="">` : `<i class="fa-solid fa-${kind === 'Picture' ? 'image' : 'volume-high'}"></i>`}<span>${escape(saved.token)}</span></button>`;
                     }).join('') : `<small>${escape(t('Not assigned', '未关联'))}</small>`}</div>`;
-                }).join('')}</div>`).join('');
+                }).join('')}${options.warnReferenceChanges && binding.references.some(saved => !refs.some(ref => ref.slot === saved.slot && ref.identity === saved.identity && ref.token === saved.token))
+                    ? `<small role="status">${escape(t('Character references changed. Reassign or remove the binding.', '\u89d2\u8272\u53c2\u8003\u5df2\u6539\u53d8\uff0c\u8bf7\u91cd\u65b0\u5173\u8054\u6216\u79fb\u9664\u7ed1\u5b9a\u3002'))}</small>` : ''}</div>`).join('');
         }
         function insert(inserted, character, keepText = false) {
-            const { start, end } = savedSelection;
-            const from = mentionStart ?? start;
             const definitionTarget = options.definitionTarget;
+            const { start, end } = character && definitionTarget === 'prompt' && mentionStart === null
+                ? characterInsertionRange(value, savedSelection) : savedSelection;
+            const from = mentionStart ?? start;
             const atDefinitions = character?.references?.length && definitionTarget && targetId === definitionTarget;
             if (!atDefinitions && !keepText) value = value.slice(0, from) + inserted + value.slice(end);
             let caret = keepText ? end : from + inserted.length;
@@ -802,8 +824,11 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 if (!skipped?.length) return '';
                 const kinds = [...new Set(skipped.map(item => item.kind))].map(kind =>
                     kind === 'audio' ? t('audio', '声音') : t('images', '图片')).join(t(', ', '、'));
-                return t(` · Skipped ${kinds}: not supported by this preset.`,
-                    ` · 已跳过${kinds}：当前预设不接收此类参考素材。`);
+                return options.directorSegmentId
+                    ? t(` · Skipped ${kinds}: not supported by this shot mode.`,
+                        ` \u00b7 \u5df2\u8df3\u8fc7${kinds}\uff1a\u5f53\u524d\u5206\u955c\u6a21\u5f0f\u4e0d\u652f\u6301\u6b64\u7c7b\u53c2\u8003\u7d20\u6750\u3002`)
+                    : t(` · Skipped ${kinds}: not supported by this preset.`,
+                        ` · 已跳过${kinds}：当前预设不接收此类参考素材。`);
             };
             if (action === 'image-presets') { await loadImagePresets(); return; }
             if (action === 'image-poll' || action === 'image-stop') { await pollImage(action === 'image-stop'); return; }
@@ -1154,7 +1179,7 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
         field.insertAdjacentElement('afterend', button);
         field.__visualPromptButton = button;
     }
-    const api = { open, attach, references, normalizeBindings, validateBindings, serializeDom, renderPrompt, safeUrl, sourceIdentity, planMediaAttachments, matchingAsset, request, voiceDefaults, addGeneratedVoice, imagePresetRoute, addGeneratedImage, audioTime, waveformBars, audioPlayerHtml, previewPlacement };
+    const api = { open, attach, references, characterInsertionRange, normalizeBindings, validateBindings, serializeDom, renderPrompt, safeUrl, sourceIdentity, planMediaAttachments, matchingAsset, request, voiceDefaults, addGeneratedVoice, imagePresetRoute, addGeneratedImage, audioTime, waveformBars, audioPlayerHtml, previewPlacement };
     root.SimpAIVisualPromptEditor = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document !== 'undefined') {

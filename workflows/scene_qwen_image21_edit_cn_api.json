@@ -43,7 +43,7 @@
   },
   "7": {
     "inputs": {
-      "clip": ["54", 0], "vae": ["5", 0],
+      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0],
       "prompt": ["simpai_qwen21_pe", 0], "negative_prompt": ["1", 29], "resolution": ["1", 10],
       "images.image_1": ["22", 0], "images.image_2": ["25", 0], "images.image_3": ["28", 0],
       "images.image_4": ["31", 0], "images.image_5": ["34", 0], "images.image_6": ["37", 0],
@@ -322,6 +322,10 @@
     "inputs": {
       "model": [
         "65",
+        0
+      ],
+      "clip": [
+        "54",
         0
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",

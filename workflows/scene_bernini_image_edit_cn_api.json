@@ -814,8 +814,8 @@
         0
       ],
       "clip": [
-        "197",
-        0
+        "simpai_lora_stack_low",
+        1
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -830,8 +830,8 @@
         29
       ],
       "clip": [
-        "197",
-        0
+        "simpai_lora_stack_low",
+        1
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -1317,6 +1317,10 @@
         "192",
         0
       ],
+      "clip": [
+        "197",
+        0
+      ],
       "stack_json": "{\"version\":1,\"items\":[]}",
       "branch": "high"
     },
@@ -1330,6 +1334,10 @@
       "model": [
         "193",
         0
+      ],
+      "clip": [
+        "simpai_lora_stack_high",
+        1
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",
       "branch": "low"

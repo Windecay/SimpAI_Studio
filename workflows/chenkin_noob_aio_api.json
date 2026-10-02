@@ -382,7 +382,7 @@
         0
       ],
       "clip": [
-        "242",
+        "simpai_lora_stack_main",
         1
       ]
     },
@@ -398,7 +398,7 @@
         1
       ],
       "clip": [
-        "242",
+        "simpai_lora_stack_main",
         1
       ]
     },
@@ -817,7 +817,7 @@
         0
       ],
       "clip": [
-        "242",
+        "simpai_lora_stack_main",
         1
       ]
     },
@@ -1027,7 +1027,7 @@
         0
       ],
       "clip": [
-        "242",
+        "simpai_lora_stack_main",
         1
       ],
       "positive": [
@@ -1146,6 +1146,10 @@
       "model": [
         "652",
         0
+      ],
+      "clip": [
+        "242",
+        1
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",
       "branch": "main"

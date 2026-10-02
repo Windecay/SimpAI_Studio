@@ -491,8 +491,8 @@
         0
       ],
       "clip": [
-        "807",
-        0
+        "simpai_lora_stack_main",
+        1
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -507,8 +507,8 @@
         1
       ],
       "clip": [
-        "807",
-        0
+        "simpai_lora_stack_main",
+        1
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -887,8 +887,8 @@
         9
       ],
       "clip": [
-        "807",
-        0
+        "simpai_lora_stack_main",
+        1
       ]
     },
     "class_type": "SimpAIAIOUOVFlux2",
@@ -1093,8 +1093,8 @@
         0
       ],
       "clip": [
-        "807",
-        0
+        "simpai_lora_stack_main",
+        1
       ],
       "positive": [
         "aio_positive",
@@ -1241,6 +1241,10 @@
     "inputs": {
       "model": [
         "804",
+        0
+      ],
+      "clip": [
+        "807",
         0
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",

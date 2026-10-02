@@ -2174,7 +2174,9 @@ class VLM:
             return {"ok": False, "text": original, "action_id": str(action_id or ""), "error": "Unknown prompt action."}
         if not original.strip() and str(action.get("id") or "") not in {"smart_expand", "detailed_expand"}:
             return {"ok": False, "text": original, "action_id": action["id"], "error": "Prompt is empty."}
-        state_data = state if isinstance(state, dict) else {}
+        state_data = prompt_actions.h3_director_prompt_state(
+            state if isinstance(state, dict) else {}, scene_resources, original,
+        )
         mode = prompt_actions.prompt_action_mode(state_data)
         if mode not in action.get("modes", []):
             return {"ok": False, "text": original, "action_id": action["id"], "error": "Prompt action is unavailable in this mode."}

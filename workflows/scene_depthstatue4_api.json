@@ -51,7 +51,7 @@
         5
       ],
       "clip": [
-        "63",
+        "simpai_lora_stack_main",
         1
       ]
     },
@@ -67,7 +67,7 @@
         4
       ],
       "clip": [
-        "63",
+        "simpai_lora_stack_main",
         1
       ]
     },
@@ -662,6 +662,10 @@
       "model": [
         "57",
         0
+      ],
+      "clip": [
+        "63",
+        1
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",
       "branch": "main"

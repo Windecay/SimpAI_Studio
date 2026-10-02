@@ -77,6 +77,7 @@ from PIL import Image
 from modules.sdxl_styles import legal_style_names, fooocus_expansion
 from modules.auth import auth_enabled, check_auth
 from modules.access_mode import is_local_mode, user_can_download_models, user_can_generate, user_has_full_local_access
+from modules.identity_session import resolve_session
 import modules.identity_access as identity_access
 import modules.util as util
 from modules.meta_parser import switch_scene_theme, switch_scene_theme_safe, switch_scene_theme_ready_to_gen, get_welcome_image, describe_prompt_for_scene, extract_scene_image
@@ -646,16 +647,17 @@ def _get_request_aitoken(request):
     except Exception:
         return ""
 
+def _get_request_identity_session(request):
+    sid = _get_request_aitoken(request)
+    user_agent = str(_get_request_header(request, "user-agent", ""))
+    ua_hash = hashlib.sha256(user_agent.encode("utf-8")).hexdigest()
+    return resolve_session(getattr(shared, "token", None), sid, ua_hash)
+
+
 def _get_request_identity_did(request):
     try:
-        sid = _get_request_aitoken(request)
-        if not sid or not hasattr(shared.token, "check_sstoken_and_get_did"):
-            return ""
-        headers = getattr(request, "headers", {}) or {}
-        user_agent = headers.get("user-agent", "") if hasattr(headers, "get") else ""
-        ua_hash = hashlib.sha256(user_agent.encode("utf-8")).hexdigest()
-        did = shared.token.check_sstoken_and_get_did(sid, ua_hash)
-        return "" if did == "Unknown" else str(did or "")
+        session = _get_request_identity_session(request)
+        return session["did"] if session["status"] == "valid" else ""
     except Exception as e:
         logger.debug(f"[IdentityAccess] status monitor did check failed: {e}")
         return ""
@@ -752,18 +754,18 @@ def get_start_timestamp(request: gr.Request):
     global START_TIMESTAMP
 
     online_users, domain_online_nodes, domain_online_users, new_msg_number = 0, 0, 0, 0
-    sid = _get_request_aitoken(request)
-    if sid:
-        online_users, domain_online_nodes, domain_online_users, new_msg_number = shared.token.log_access(sid)
-        #node_all, usesr_all, new_msg = shared.token.get_global_status(sid,0)
-        
+    is_admin, pending_access_count = False, 0
+    if not is_local_mode():
+        session = _get_request_identity_session(request)
+        if session["status"] == "valid":
+            online_users, domain_online_nodes, domain_online_users, new_msg_number = shared.token.log_access(session["sstoken"])
+            is_admin = bool(shared.token.is_admin(session["did"]))
+        pending_access_count = _pending_user_access_count()
+
     qsize = worker.get_task_size()
     vram_ram_info = model_management.get_vram_ram_used()
     if new_msg_number>0:
         logger.info(f'new messages: {shared.token.get_global_msg_all()}')
-    user_did = _get_request_identity_did(request)
-    is_admin = bool(user_did and getattr(shared, "token", None) is not None and shared.token.is_admin(user_did))
-    pending_access_count = _pending_user_access_count()
     return f'{START_TIMESTAMP},{qsize},{vram_ram_info[0]},{vram_ram_info[1]},{vram_ram_info[2]},{vram_ram_info[3]},{online_users},{domain_online_users},{domain_online_nodes},{pending_access_count},{1 if is_admin else 0}'
 
 def get_wildcards_list(request: gr.Request):
@@ -5839,35 +5841,31 @@ with shared.gradio_root:
                         scene_director_enabled = gr.Checkbox(label="Director mode", value=False, elem_id="scene_director_enabled")
                         scene_director_compose = gr.Checkbox(label="Compose timeline", value=False, elem_id="scene_director_compose")
                         scene_director_format = gr.Dropdown(label="Timeline format", choices=SCENE_DIRECTOR_FORMATS, value="Wan", visible=False, elem_id="scene_director_format")
-                    with gr.Column(elem_id="scene_director_side_panel"):
-                        with gr.Row(elem_id="scene_director_settings_row"):
-                            scene_director_width = gr.Slider(label="Compose width", minimum=64, maximum=4096, step=8, value=1280, elem_id="scene_director_width")
-                            scene_director_height = gr.Slider(label="Compose height", minimum=64, maximum=4096, step=8, value=720, elem_id="scene_director_height")
-                            scene_director_fps = gr.Slider(label="Compose FPS", minimum=1, maximum=120, step=1, value=24, elem_id="scene_director_fps")
-                            scene_director_duration = gr.Slider(label="Timeline range", minimum=0.1, maximum=120, step=0.1, value=10, elem_id="scene_director_duration")
-                        scene_director_media_rules = gr.HTML(
-                            value=render_scene_director_media_rules(),
-                            elem_id="scene_director_media_rules",
-                        )
-                    scene_director_media_preview = gr.HTML(
-                        value=render_scene_director_media_preview(),
-                        elem_id="scene_director_media_preview",
+                    scene_director_h3_toolbar = gr.HTML(
+                        value='<div class="h3-director-toolbar" data-h3-toolbar></div>',
+                        elem_id="scene_director_h3_toolbar",
+                        elem_classes=["simpai-h3-director-only"],
                     )
-                    with gr.Row(elem_id="scene_director_media_files_row"):
-                        scene_director_audio_files = gr.File(
-                            label="Director audio pool",
-                            file_count="multiple",
-                            file_types=[".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"],
-                            type="filepath",
-                            elem_id="scene_director_audio_files",
+                    with gr.Accordion("Project media", open=False, elem_id="scene_director_media_accordion"):
+                        scene_director_media_preview = gr.HTML(
+                            value=render_scene_director_media_preview(),
+                            elem_id="scene_director_media_preview",
                         )
-                        scene_director_video_files = gr.File(
-                            label="Director video pool",
-                            file_count="multiple",
-                            file_types=[".mp4", ".webm", ".mov", ".mkv", ".avi"],
-                            type="filepath",
-                            elem_id="scene_director_video_files",
-                        )
+                        with gr.Row(elem_id="scene_director_media_files_row"):
+                            scene_director_audio_files = gr.File(
+                                label="Director audio pool",
+                                file_count="multiple",
+                                file_types=[".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"],
+                                type="filepath",
+                                elem_id="scene_director_audio_files",
+                            )
+                            scene_director_video_files = gr.File(
+                                label="Director video pool",
+                                file_count="multiple",
+                                file_types=[".mp4", ".webm", ".mov", ".mkv", ".avi"],
+                                type="filepath",
+                                elem_id="scene_director_video_files",
+                            )
                     scene_director_media_state = gr.Textbox(
                         value="{}",
                         visible=True,
@@ -5885,6 +5883,23 @@ with shared.gradio_root:
                         elem_id="scene_director_editor",
                     )
                     scene_director_prompt_preview = gr.Textbox(label="prompt_override", value="", lines=3, interactive=False, elem_id="scene_director_prompt_preview")
+                    scene_director_h3_request = gr.Textbox(value="{}", elem_id="scene_director_h3_request", elem_classes=["sai-gradio-hidden-bridge"])
+                    scene_director_h3_action = gr.Textbox(value="{}", elem_id="scene_director_h3_action", elem_classes=["sai-gradio-hidden-bridge"])
+                    scene_director_h3_cancel = gr.Textbox(value="{}", elem_id="scene_director_h3_cancel", elem_classes=["sai-gradio-hidden-bridge"])
+                    scene_director_h3_results = gr.Textbox(value="{}", elem_id="scene_director_h3_results", elem_classes=["sai-gradio-hidden-bridge"])
+                    scene_director_h3_video = gr.Video(label="Timeline Preview", show_label=False, height=360, visible=False, elem_id="scene_director_h3_video")
+                    scene_director_h3_status = gr.Textbox(value="", show_label=False, interactive=False, elem_id="scene_director_h3_status", elem_classes=["simpai-h3-director-only"])
+                    with gr.Accordion("Output settings", open=True, elem_id="scene_director_output_accordion"):
+                        with gr.Column(elem_id="scene_director_side_panel"):
+                            with gr.Row(elem_id="scene_director_settings_row"):
+                                scene_director_width = gr.Slider(label="Compose width", minimum=64, maximum=4096, step=8, value=1280, elem_id="scene_director_width")
+                                scene_director_height = gr.Slider(label="Compose height", minimum=64, maximum=4096, step=8, value=720, elem_id="scene_director_height")
+                                scene_director_fps = gr.Slider(label="Compose FPS", minimum=1, maximum=120, step=1, value=24, elem_id="scene_director_fps")
+                                scene_director_duration = gr.Slider(label="Timeline range", minimum=0.1, maximum=120, step=0.1, value=10, elem_id="scene_director_duration")
+                            scene_director_media_rules = gr.HTML(
+                                value=render_scene_director_media_rules(),
+                                elem_id="scene_director_media_rules",
+                            )
                 with floating_shell(visible=False, elem_id="identity_dialog", elem_classes=["identity_note"], modal=False) as identity_dialog:
                     with gr.Tabs(elem_id="identity_dialog_content", elem_classes=["identity_note"]):
                         with gr.Tab(label='IdentityCard') as bind_id_tab:
@@ -6170,18 +6185,22 @@ with shared.gradio_root:
 
                         def stop_clicked(currentTask):
                             currentTask.last_stop = 'stop'
-                            if getattr(currentTask, "task_class", None) == "Cloud":
-                                currentTask.user_cancel_action = 'stop'
-                            elif (currentTask.processing):
-                                worker.worker.interrupt_processing(currentTask)
+                            activeTask = getattr(currentTask, "active_director_task", None) or currentTask
+                            activeTask.last_stop = 'stop'
+                            if getattr(activeTask, "task_class", None) == "Cloud":
+                                activeTask.user_cancel_action = 'stop'
+                            elif activeTask.processing:
+                                worker.worker.interrupt_processing(activeTask)
                             return currentTask
 
                         def skip_clicked(currentTask):
                             currentTask.last_stop = 'skip'
-                            if getattr(currentTask, "task_class", None) == "Cloud":
-                                currentTask.user_cancel_action = 'skip'
-                            elif (currentTask.processing):
-                                worker.worker.interrupt_processing(currentTask)
+                            activeTask = getattr(currentTask, "active_director_task", None) or currentTask
+                            activeTask.last_stop = 'skip'
+                            if getattr(activeTask, "task_class", None) == "Cloud":
+                                activeTask.user_cancel_action = 'skip'
+                            elif activeTask.processing:
+                                worker.worker.interrupt_processing(activeTask)
                             return currentTask
 
                         stop_button.click(stop_clicked, inputs=currentTask, outputs=currentTask, queue=False, show_progress=False, js='cancelGenerateForever')
@@ -10287,6 +10306,25 @@ with shared.gradio_root:
                     queue=False,
                     show_progress=False,
                 )
+            scene_director_h3_action_event = scene_director_h3_action.change(
+                scene_director_webui.h3_director_result_action,
+                inputs=[scene_director_h3_action, *scene_director_inputs],
+                outputs=[scene_director_h3_results, scene_director_h3_video, scene_director_h3_status],
+                show_progress="hidden",
+            )
+            scene_director_h3_action_event.then(
+                fn=None, inputs=[scene_director_h3_results], queue=False, show_progress=False,
+                js="(value)=>{window.SimpAIH3Director?.setResults(value);}",
+            )
+            scene_director_h3_action_event.failure(
+                fn=None, queue=False, show_progress=False,
+                js="()=>{window.SimpAIH3Director?.resultActionFailed();}",
+            )
+            scene_director_h3_cancel.change(
+                scene_director_webui.cancel_h3_director_render,
+                inputs=[scene_director_editor_state, state_topbar], outputs=scene_director_h3_status,
+                queue=False, show_progress=False,
+            )
             if _qwen_send_audio_binder is not None:
                 for _qwen_send_button, _qwen_send_output_audio, _qwen_send_target_dropdown in _qwen_pending_send_audio_bindings:
                     _qwen_send_audio_binder(_qwen_send_button, _qwen_send_output_audio, _qwen_send_target_dropdown)
@@ -11678,7 +11716,9 @@ with shared.gradio_root:
             )
             return media_updates + surface_updates
 
-        def generate_clicked_or_director(generation_task, state_params, director_enabled, director_runtime):
+        def generate_clicked_or_director(generation_task, state_params, director_enabled, director_runtime, h3_request, random_seed):
+            request = scene_director_webui._h3_request(h3_request, state_params) if director_enabled and scene_director_webui.h3_director.is_family(state_params) else {}
+            request["random_seed"] = bool(random_seed)
             yield from scene_director_webui.generate_clicked_or_director(
                 generation_task,
                 state_params,
@@ -11686,6 +11726,7 @@ with shared.gradio_root:
                 director_runtime,
                 generate_clicked_fn=generate_clicked,
                 compare_button_update_fn=compare_button_gr_update,
+                h3_request=request,
             )
 
         def finalize_generation_gallery_surface(generation_task):
@@ -11777,7 +11818,7 @@ with shared.gradio_root:
                 show_progress=False,
                 queue=False,
             )
-            cleanup_event.then(fn=None, queue=False, show_progress=False, js='()=>{window.finishSimpleAIGenerationStartSurface?.();}')
+            cleanup_event.then(fn=None, queue=False, show_progress=False, js='()=>{window.finishSimpleAIGenerationStartSurface?.();window.SimpAIH3Director?.generationFinished();}')
             return event
 
         generation_sync_groups = {
@@ -11838,7 +11879,11 @@ with shared.gradio_root:
                 cloud_values=cloud_values,
                 sync_model_state=_sync_model_params_state_from_ui,
                 wait_for_vlm=topbar.wait_for_vlm_completion,
-                avoid_empty_prompt=topbar.avoid_empty_prompt_for_scene,
+                avoid_empty_prompt=(
+                    (lambda *args: args[0])
+                    if director_values[0] and scene_director_webui.h3_director.is_family(prompt_values[1])
+                    else topbar.avoid_empty_prompt_for_scene
+                ),
                 apply_director_prompt=apply_scene_director_prompt_for_generation,
                 select_random_aspect_ratio=select_random_aspect_ratio,
                 sync_quick_enhance=sync_quick_enhance_for_generation,
@@ -11949,7 +11994,9 @@ with shared.gradio_root:
         ))
         generate_event = bind_generation_failure_cleanup(generate_event.success(sync_generation_inputs, inputs=generation_sync_inputs, outputs=generation_sync_outputs, show_progress=False, queue=False, js=generation_sync_submit_state_js))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False, queue=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
+        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state, scene_director_h3_request, seed_random], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
+        generate_event.then(fn=None, queue=False, show_progress=False, js="()=>{window.SimpAIH3Director?.generationFinished();}")
+        generate_event.failure(fn=None, queue=False, show_progress=False, js="()=>{window.SimpAIH3Director?.generationFinished();}")
         generate_event.success(fn=update_prompt_history, inputs=[currentTask, state_prompt_history, prompt], outputs=[state_prompt_history, history_prompts, prompt_history_data], show_progress=False)
         generate_event = bind_generation_failure_cleanup(generate_event.success(topbar.process_after_generation, inputs=[state_topbar, currentTask], outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(check_comparison_visibility, inputs=[cached_input_image, currentTask, state_topbar, image_tools_checkbox, scene_input_image1, scene_canvas_image], outputs=[compare_btn, image_toolbox, state_topbar, comparison_output_paths, post_generation_result_data], show_progress=False))
@@ -17189,15 +17236,23 @@ async def describe_image_vlm_chat_run_endpoint(request: Request, payload: dict =
 @app.post("/describe-image/vlm-chat-stream")
 async def describe_image_vlm_chat_stream_endpoint(request: Request, payload: dict = Body(...)):
     """Stream free-chat text while keeping the normal final response contract."""
-    import queue as _queue
+    from modules.vlm_chat_stream import STREAMS, StreamRequestError
 
     payload = payload if isinstance(payload, dict) else {}
     payload = {**payload, "_skill_access": _vlm_skill_access_for_request(request)}
-    events = _queue.Queue()
-    stream_id = f"vlm-chat-stream-{uuid.uuid4().hex[:10]}"
-    stream_started = time.monotonic()
-    conversation_id = str(payload.get("conversation_id") or "").strip()[:160]
-    request_id = str(payload.get("request_id") or "").strip()[:160]
+    try:
+        session, after = await run_in_threadpool(
+            STREAMS.open,
+            payload, _get_request_identity_did(request),
+            describe_vlm_chat.run_describe_vlm_chat,
+        )
+    except StreamRequestError as exc:
+        return JSONResponse(
+            {"ok": False, "error": exc.code, "failure_stage": "stream_reconnect"},
+            status_code=exc.status_code,
+        )
+    stream_id = session.stream_id
+    conversation_id, request_id = session.key[1:3]
     request_kind = str(payload.get("request_kind") or payload.get("roleplay_request_kind") or "").strip()[:80]
     heartbeat_seconds = 15.0
     logger.info(
@@ -17208,86 +17263,33 @@ async def describe_image_vlm_chat_stream_endpoint(request: Request, payload: dic
         request_kind,
     )
 
-    def emit_delta(delta):
-        if isinstance(delta, dict):
-            event_type = str(delta.get("type") or "").strip().lower()
-            if event_type == "reset":
-                events.put({"type": "reset"})
-            elif event_type in {"status", "progress"}:
-                event = dict(delta)
-                event["type"] = event_type
-                events.put(event)
-            return
-        text = str(delta or "")
-        if text:
-            events.put({"type": "delta", "text": text})
-
-    def worker():
-        try:
-            result = describe_vlm_chat.run_describe_vlm_chat(payload, stream_callback=emit_delta)
-            if not isinstance(result, dict):
-                result = {
-                    "ok": False,
-                    "error": "Invalid VLM response.",
-                    "failure_stage": "vlm_runtime",
-                }
-            events.put({"type": "result", "result": result})
-            logger.info(
-                "Describe Image VLM chat stream result ready: stream_id=%s elapsed=%.3fs ok=%s actions=%s",
-                stream_id,
-                time.monotonic() - stream_started,
-                result.get("ok"),
-                len(result.get("limited_actions") or []),
-            )
-        except Exception as exc:
-            logger.exception("Describe Image VLM chat streaming exception")
-            events.put({
-                "type": "result",
-                "result": {
-                    "ok": False,
-                    "error": "Describe Image VLM streaming error",
-                    "details": str(exc),
-                    "failure_stage": "endpoint_exception",
-                },
-            })
-
-    threading.Thread(target=worker, name="describe-vlm-chat-stream", daemon=True).start()
-
     async def event_stream():
+        cursor = after
         yield ": connected\n\n"
+        metadata = {
+            "type": "session",
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+            "resume_token": session.token,
+            "stream_stage": session.key[3],
+        }
+        yield f"data: {json.dumps(metadata, separators=(',', ':'))}\n\n"
         while True:
-            try:
-                event = await run_in_threadpool(events.get, True, heartbeat_seconds)
-            except _queue.Empty:
+            events = await run_in_threadpool(session.read, cursor, heartbeat_seconds)
+            if not events:
+                if session.result_event is not None:
+                    break
                 yield ": heartbeat\n\n"
                 continue
-            try:
-                serialized = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
-            except Exception as exc:
-                logger.exception(
-                    "Describe Image VLM chat stream serialization failed: stream_id=%s",
-                    stream_id,
-                )
-                event = {
-                    "type": "result",
-                    "result": {
-                        "ok": False,
-                        "error": "Describe Image VLM streaming serialization error",
-                        "details": str(exc),
-                        "failure_stage": "response_serialization",
-                    },
-                }
-                serialized = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
-            if event.get("type") == "result":
-                logger.info(
-                    "Describe Image VLM chat stream completed: stream_id=%s elapsed=%.3fs response_chars=%s",
-                    stream_id,
-                    time.monotonic() - stream_started,
-                    len(serialized),
-                )
-            yield f"data: {serialized}\n\n"
-            if event.get("type") == "result":
-                break
+            for sequence, serialized in events:
+                cursor = sequence
+                yield f"id: {sequence}\ndata: {serialized}\n\n"
+                if session.result_event is not None and sequence == session.result_event[0]:
+                    logger.info(
+                        "Describe Image VLM chat stream completed: stream_id=%s elapsed=%.3fs response_chars=%s",
+                        stream_id, time.monotonic() - session.started_at, len(serialized),
+                    )
+                    return
 
     return StreamingResponse(
         event_stream(),
@@ -17298,6 +17300,14 @@ async def describe_image_vlm_chat_stream_endpoint(request: Request, payload: dic
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/describe-image/vlm-chat-stream-resume")
+async def describe_image_vlm_chat_stream_resume_endpoint(request: Request, payload: dict = Body(...)):
+    return await describe_image_vlm_chat_stream_endpoint(
+        request, {**payload, "_stream_resume": True},
+    )
+
 
 def _roleplay_endpoint_user_did(payload, request):
     authenticated = str(_get_request_identity_did(request) or "").strip()

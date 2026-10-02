@@ -58,7 +58,7 @@ def _cookie_value(request: Request | None, key: str) -> str:
 def _request_identity_state(request: Request | None = None) -> tuple[str, str, bool]:
     """Return ``(did, ua_hash, invalid_session)`` for a request cookie."""
     session = _cookie_value(request, "aitoken")
-    if not session or shared.token is None or not hasattr(shared.token, "check_sstoken_and_get_did"):
+    if not session or shared.token is None:
         return "", "", False
     user_agent = str(request.headers.get("user-agent") or "") if request is not None else ""
     ua_hash = hashlib.sha256(user_agent.encode("utf-8")).hexdigest()
@@ -69,9 +69,9 @@ def _request_identity_state(request: Request | None = None) -> tuple[str, str, b
         if cached and now - cached[0] < _IDENTITY_CACHE_TTL:
             return cached[1], ua_hash, cached[2]
     try:
-        did = str(shared.token.check_sstoken_and_get_did(session, ua_hash) or "").strip()
-        if did and did != "Unknown":
-            resolved = media_library.resolve_user_did(did)
+        identity = resolve_session(shared.token, session, ua_hash)
+        if identity["status"] == "valid":
+            resolved = media_library.resolve_user_did(identity["did"])
             invalid = False
         else:
             resolved = ""

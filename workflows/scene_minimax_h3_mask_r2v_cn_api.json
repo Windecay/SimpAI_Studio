@@ -104,7 +104,7 @@
   },
   "11": {
     "inputs": {
-      "clip": ["48", 0],
+      "clip": ["simpai_lora_stack_main", 1],
       "vae": ["5", 0],
       "audio_vae": ["6", 0],
       "prompt": ["1", 0],
@@ -665,6 +665,10 @@
     "inputs": {
       "model": [
         "68",
+        0
+      ],
+      "clip": [
+        "48",
         0
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",

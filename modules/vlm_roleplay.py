@@ -3778,11 +3778,26 @@ def _resource_key_hits(
     return hits
 
 
-def _resource_visible_to_actor(resource: dict[str, Any], actor_id: str, include_hidden: bool = False) -> bool:
+def _resource_visible_to_actor(
+    resource: dict[str, Any], actor_id: str, include_hidden: bool = False,
+    *, session: dict[str, Any] | None = None,
+) -> bool:
     if include_hidden:
         return True
     visibility = _text(resource.get("visibility"), 40).lower() or "public"
     visible_to = _clean_string_list(resource.get("visible_to") or resource.get("known_by"), 20)
+    if visible_to and session:
+        entities = dict(session.get("characters") or {})
+        persona = session.get("persona") or {}
+        if persona.get("id"):
+            entities[persona["id"]] = persona
+        resolved = []
+        for reference in visible_to:
+            matches = [entity_id for entity_id, card in entities.items() if card.get("name") == reference]
+            resolved.append(
+                reference if reference in entities or len(matches) != 1 else matches[0]
+            )
+        visible_to = resolved
     if visibility == "private":
         return bool(actor_id and actor_id in visible_to)
     if visible_to and actor_id and actor_id not in visible_to:
@@ -3902,7 +3917,7 @@ def query_roleplay_memories(
     for memory in normalized.get("memory_store", {}).get("items", []):
         if not memory.get("enabled") or not memory.get("text"):
             continue
-        if not _resource_visible_to_actor(memory, actor_id, include_hidden):
+        if not _resource_visible_to_actor(memory, actor_id, include_hidden, session=normalized):
             continue
         chapter_id = _text(memory.get("chapter_id"), 160)
         if chapter_id and chapter_id != active_chapter_id and not include_hidden:
@@ -4939,6 +4954,23 @@ def build_roleplay_context(
         if block.get("id") == "memories" and block.get("transport") == "system":
             selected_memory_ids = [item.get("id") for item in json.loads(block["content"]) if item.get("id")]
             break
+    unavailable_memories = []
+    memory_catalog = {item["id"]: item for item in normalized.get("memory_store", {}).get("items", [])}
+    for memory_id in sorted(requested_memory_ids - set(selected_memory_ids)):
+        memory = memory_catalog.get(memory_id)
+        if memory is None:
+            reason = "not_found"
+        elif not memory.get("enabled"):
+            reason = "disabled"
+        elif not memory.get("text"):
+            reason = "empty"
+        elif not _resource_visible_to_actor(memory, actor_id, session=normalized):
+            reason = "not_visible"
+        elif memory.get("chapter_id") and memory["chapter_id"] != normalized.get("active_chapter_id"):
+            reason = "inactive_chapter"
+        else:
+            reason = "context_limit"
+        unavailable_memories.append({"id": memory_id, "reason": reason})
     return {
         "schema": CONTEXT_SCHEMA,
         "version": 1,
@@ -4954,6 +4986,7 @@ def build_roleplay_context(
         "memory_selection": {
             "manual_ids": [item for item in selected_memory_ids if item in requested_memory_ids],
             "automatic_ids": [item for item in selected_memory_ids if item not in requested_memory_ids],
+            "unavailable": unavailable_memories,
         },
         "world_book_selection": {
             "matched": len(world_candidates),

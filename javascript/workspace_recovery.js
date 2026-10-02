@@ -548,6 +548,7 @@
     }
 
     function automaticRestoreRequest() {
+        if (restoreCompleted) return null;
         if (automaticRestoreCandidate) return automaticRestoreCandidate;
         if (automaticRestoreChecked) return null;
         automaticRestoreChecked = true;
@@ -1663,7 +1664,18 @@
         return { schema: 1, workspaces: {}, updated_at: Date.now() };
     }
 
+    function restoreRequestIsActive(request) {
+        return !restoreCompleted && restoreRequested && restoreRequest === request;
+    }
+
+    function ignoreLateRestoreRequest(request, fallbackOwner, stage) {
+        const owner = request?.owner || ownerKey() || fallbackOwner || 'local';
+        markPerformance('workspace.restore_late_callback_ignored', { owner, stage }, true);
+        return [emptyRestoreSnapshot(), owner];
+    }
+
     async function prepareRestoreRequest(fallbackState, fallbackOwner) {
+        if (restoreCompleted) return ignoreLateRestoreRequest(null, fallbackOwner, 'prepare');
         const request = restoreRequest || activeRestoreRequest();
         if (!request) return [emptyRestoreSnapshot(), ownerKey() || fallbackOwner || 'local'];
         try {
@@ -1676,7 +1688,9 @@
             restoreRequested = true;
             if (request.source !== 'browser_history') clearManualReconnectRequest(request);
             const uiReady = await waitForStudioUiReady(request);
+            if (!restoreRequestIsActive(request)) return ignoreLateRestoreRequest(request, fallbackOwner, 'ui_ready');
             const presetReady = await ensureReconnectPreset(request);
+            if (!restoreRequestIsActive(request)) return ignoreLateRestoreRequest(request, fallbackOwner, 'preset_ready');
             if (!presetReady) {
                 markPerformance('workspace.restore_preset_timeout', {
                     expected_preset: normalizedPresetName(request?.context?.preset || ''),
@@ -1685,6 +1699,7 @@
                 return [emptyRestoreSnapshot(), request.owner];
             }
             await prepareRestoredLayout(request);
+            if (!restoreRequestIsActive(request)) return ignoreLateRestoreRequest(request, fallbackOwner, 'layout_ready');
             const requestSnapshot = request.snapshot
                 && request.snapshot.schema === 1
                 && request.snapshot.workspaces
@@ -1701,6 +1716,7 @@
                 'workspace.restore_sketch_values_timeout',
                 { owner: request.owner, preset: request.context?.preset || '' },
             );
+            if (!restoreRequestIsActive(request)) return ignoreLateRestoreRequest(request, fallbackOwner, 'sketch_ready');
             const materialized = materializeWorkspaceSnapshot(
                 hydratedCandidate,
                 request.owner,
@@ -1723,6 +1739,7 @@
             }, true);
             return [snapshot, request.owner];
         } catch (error) {
+            if (!restoreRequestIsActive(request)) return ignoreLateRestoreRequest(request, fallbackOwner, 'prepare_failed');
             markPerformance('workspace.restore_prepare_failed', {
                 owner: request.owner || '',
                 preset: normalizedPresetName(request?.context?.preset || ''),
@@ -2195,7 +2212,7 @@
                 message: String(error?.message || error || ''),
             }, true);
         }
-        return finishRestore();
+        return restoreRequestIsActive(request) ? finishRestore() : false;
     }
 
     function finishRestore() {

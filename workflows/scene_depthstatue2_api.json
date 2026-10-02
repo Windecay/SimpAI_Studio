@@ -3,7 +3,7 @@
     "inputs": {
       "text": "(Monochrome, black and white, grayscale,:1.2),masterpiece,best quality,best details,high quality,super high quality,detail,clear,super high resolutiom,8K, 4K, stunning",
       "clip": [
-        "63",
+        "simpai_lora_stack_main",
         1
       ]
     },
@@ -16,7 +16,7 @@
     "inputs": {
       "text": "(color:1.3),lowers,text,error,watermark,username,",
       "clip": [
-        "63",
+        "simpai_lora_stack_main",
         1
       ]
     },
@@ -589,6 +589,10 @@
       "model": [
         "57",
         0
+      ],
+      "clip": [
+        "63",
+        1
       ],
       "stack_json": "{\"version\":1,\"items\":[]}",
       "branch": "main"

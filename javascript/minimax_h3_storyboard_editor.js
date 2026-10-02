@@ -780,7 +780,7 @@
     }
 
     function defaultShotStarts(duration, count = null) {
-        const total = Math.max(0.3, finiteNumber(duration, 5));
+        const total = Math.max(MIN_SHOT_DURATION, finiteNumber(duration, 5));
         const requested = count === null || count === undefined ? Number.NaN : Number(count);
         const size = Math.max(
             1,
@@ -1079,7 +1079,7 @@
     }
 
     function defaultState(options) {
-        const duration = Math.max(0.3, finiteNumber(options?.duration, 5));
+        const duration = Math.max(options?.director_segment_id ? MIN_SHOT_DURATION : 0.3, finiteNumber(options?.duration, 5));
         const starts = defaultShotStarts(duration);
         return {
             version: 1,
@@ -1178,9 +1178,13 @@
         const text = cleanText(prompt);
         if (!text) return applyRef2VADefaultBindings(base, options);
         const sections = sectionMap(text);
-        const timeline = sections.detailed_description || sections.integrated_multimodal_description || '';
-        const shots = parseShots(timeline, options?.duration);
-        const inferredMode = sections.detailed_description
+        const timeline = sections.detailed_description || sections.integrated_multimodal_description
+            || (options?.director_segment_id && !Object.keys(sections).length ? text : '');
+        let shots = parseShots(timeline, options?.duration);
+        if (!shots.length && timeline && options?.director_segment_id) {
+            shots = [normalizeShot({ start: 0, description: timeline, narrative: true }, 0, [0])];
+        }
+        const inferredMode = options?.director_segment_id ? normalizeMode(options.mode, options) : sections.detailed_description
             ? MODE_REF2VA
             : (/Picture\s+2/i.test(text) ? MODE_FL2VA : (/final frame|target duration/i.test(text) && /Picture\s+1/i.test(text) ? MODE_L2VA : normalizeMode(options?.mode, options)));
         return applyRef2VADefaultBindings(Object.assign(base, {
@@ -1192,7 +1196,8 @@
             subject_definitions: cleanText(sections.subject_definitions || ''),
             summary: cleanText(sections.summary || ''),
             retention_analysis: cleanText(sections.retention_analysis || ''),
-            timeline_preamble: cleanText(timeline.split(/\[Shot\s+\d+\]/i)[0]),
+            timeline_preamble: options?.director_segment_id && !/\[Shot\s+\d+\]/i.test(timeline)
+                ? '' : cleanText(timeline.split(/\[Shot\s+\d+\]/i)[0]),
             prompt_snapshot: text
         }), options);
     }
@@ -1202,11 +1207,12 @@
         const parsed = parseJsonObject(value);
         if (!parsed && typeof value === 'string' && /\[Shot\s+\d+\]/i.test(value)) return parsePrompt(value, opts);
         const source = parsed || (value && typeof value === 'object' ? value : {});
-        const base = defaultState(Object.assign({}, opts, { mode: source.mode || opts.mode }));
+        const mode = opts.director_segment_id ? opts.mode : source.mode || opts.mode;
+        const base = defaultState(Object.assign({}, opts, { mode }));
         const starts = defaultShotStarts(opts.duration);
         const rawShots = Array.isArray(source.shots) ? source.shots.slice(0, MAX_SHOTS) : [];
         return applyRef2VADefaultBindings(Object.assign(base, {
-            mode: normalizeMode(source.mode || opts.mode, opts),
+            mode: normalizeMode(mode, opts),
             optimize: boolValue(source.optimize, false),
             shots: (rawShots.length ? rawShots : base.shots).map((shot, index) => normalizeShot(shot, index, starts)),
             overall_soundscape: normalizeOverallSoundscape(
@@ -1777,7 +1783,16 @@
         );
     }
 
-    function ensureDistinctReferenceSubjects(value, inventory, lang) {
+    function ensureDistinctReferenceSubjects(value, inventory, lang, preserveSpeakers = false) {
+        if (preserveSpeakers) {
+            const lines = String(value || '').split('\n');
+            const speakerLine = line => /^\s*\(S[1-9]\d*\)\s/.test(line);
+            const speakers = lines.filter(speakerLine);
+            if (speakers.length) {
+                return [ensureDistinctReferenceSubjects(lines.filter(line => !speakerLine(line)).join('\n'), inventory, lang),
+                    ...speakers].filter(Boolean).join('\n');
+            }
+        }
         if (inventory.image_count < 1) return cleanText(value) || defaultReferenceSubjects(inventory, lang);
         const bodies = indexedSubjectBodies(value);
         return Array.from({ length: inventory.image_count }, (_unused, index) => {
@@ -1873,7 +1888,7 @@
         const inventory = inventoryFromOptions(options);
         const currentRetention = cleanText(state.retention_analysis);
         const next = Object.assign({}, state, {
-            subject_definitions: ensureDistinctReferenceSubjects(state.subject_definitions, inventory, options?.langState),
+            subject_definitions: ensureDistinctReferenceSubjects(state.subject_definitions, inventory, options?.langState, !!options?.director_segment_id),
             retention_analysis: !currentRetention || retentionAnalysisIsBare(currentRetention, inventory)
                 ? referenceRetention(inventory, options?.langState)
                 : currentRetention
@@ -1959,12 +1974,14 @@
 
     function validateDuration(options) {
         const duration = finiteNumber(options?.duration, 5);
-        if (duration < H3_MIN_DURATION || duration > H3_MAX_DURATION) {
+        const minimum = options?.director_segment_id ? finiteNumber(options.min_duration, 0.2) : H3_MIN_DURATION;
+        const maximum = options?.director_segment_id ? finiteNumber(options.max_duration, H3_MAX_DURATION) : H3_MAX_DURATION;
+        if (duration < minimum || duration > maximum) {
             return {
                 ok: false,
                 error: t(
-                    `MiniMax H3 output duration must be between ${H3_MIN_DURATION} and ${H3_MAX_DURATION} seconds.`,
-                    `MiniMax H3 输出时长必须在 ${H3_MIN_DURATION} 到 ${H3_MAX_DURATION} 秒之间。`,
+                    `MiniMax H3 output duration must be between ${minimum} and ${maximum} seconds.`,
+                    `MiniMax H3 输出时长必须在 ${minimum} 到 ${maximum} 秒之间。`,
                     options?.langState
                 )
             };
@@ -2002,7 +2019,7 @@
         const opts = options && typeof options === 'object' ? options : {};
         const state = normalize(value, opts);
         const mode = normalizeMode(state.mode || opts.mode, opts);
-        const duration = Math.max(0.3, finiteNumber(opts.duration, 5));
+        const duration = Math.max(opts.director_segment_id ? MIN_SHOT_DURATION : 0.3, finiteNumber(opts.duration, 5));
         const timeline = timelineText(state, Object.assign({}, opts, { duration }));
         const timelinePreamble = opts.includeTimelinePreamble === false ? '' : cleanText(state.timeline_preamble);
         const soundscape = normalizeOverallSoundscape(state.overall_soundscape, opts.langState);
@@ -2324,6 +2341,12 @@
         return activeDirectorPromptField() || positivePromptField();
     }
 
+    function directorPromptContext(field = currentPromptField(), segmentId = '') {
+        const context = root.SimpAIH3Director?.promptContext?.(field, segmentId) || null;
+        if (segmentId && !context) throw new Error(t('The target shot is no longer available.', '\u76ee\u6807\u5206\u955c\u5df2\u4e0d\u53ef\u7528\u3002', languageState()));
+        return context;
+    }
+
     function themeValue(source, key, fallback) {
         const state = languageState(source);
         const scene = state.scene_frontend && typeof state.scene_frontend === 'object' ? state.scene_frontend : {};
@@ -2442,7 +2465,9 @@
         return Array.isArray(slots) ? slots : [];
     }
 
-    function currentSceneInventory(source) {
+    function currentSceneInventory(source, field = currentPromptField()) {
+        const director = directorPromptContext(field);
+        if (director) return director.inventory;
         const hidden = sceneHiddenSlots(source);
         const sourceSlots = new Set(sceneSourceVideoSlots(source));
         const imageSlots = [
@@ -2496,8 +2521,9 @@
     }
 
     function sceneCharacterSlots(source) {
+        const director = directorPromptContext();
         const options = currentSceneOptions(source);
-        const hidden = sceneHiddenSlots(source);
+        const hidden = director ? new Set() : sceneHiddenSlots(source);
         const limits = options.mode === MODE_T2VA ? { image: 0, audio: 0 }
             : options.mode === MODE_REF2VA ? { image: 9, audio: 3 }
                 : { image: options.mode === MODE_FL2VA ? 2 : 1, audio: 0 };
@@ -2523,7 +2549,9 @@
     }
 
     let attachingSceneCharacter = false;
-    async function attachSceneCharacterMedia(card) {
+    async function attachSceneCharacterMedia(card, field = currentPromptField()) {
+        const director = directorPromptContext(field);
+        if (director) return director.attachMedia(card);
         if (attachingSceneCharacter) throw new Error('media_slot_occupied');
         const source = languageState();
         const api = root.SimpAIVisualPromptEditor;
@@ -2569,8 +2597,16 @@
         }
     }
 
-    function currentSceneOptions(source) {
-        const inventory = currentSceneInventory(source);
+    function currentSceneOptions(source, field = currentPromptField(), segmentId = '') {
+        const director = directorPromptContext(field, segmentId);
+        if (director) return {
+            mode: { text: MODE_T2VA, first_frame: MODE_I2VA, first_last: MODE_FL2VA,
+                reference: MODE_REF2VA, continue: MODE_REF2VA, transition: MODE_REF2VA }[director.mode],
+            duration: director.duration, inventory: director.inventory,
+            director_segment_id: director.segment_id, min_duration: director.min_duration, max_duration: director.max_duration,
+            is_video_transition: director.mode === 'transition', langState: languageState(source),
+        };
+        const inventory = currentSceneInventory(source, field);
         const sceneThemeText = cleanText(findById('scene_theme')?.textContent || '');
         return {
             mode: sceneModeFromSource(source, inventory, sceneThemeText),
@@ -2581,13 +2617,16 @@
         };
     }
 
-    function sceneStateFromPrompt(source) {
-        const options = currentSceneOptions(source);
-        const prompt = cleanText(currentPromptField()?.value || '');
-        const storedText = cleanText(readBridgeValue('minimax_h3_storyboard_scene_state'));
+    function sceneStateFromPrompt(source, field = currentPromptField(), segmentId = '') {
+        const options = currentSceneOptions(source, field, segmentId);
+        const prompt = cleanText(field?.value || '');
+        const director = directorPromptContext(field, segmentId);
+        const storedText = director ? director.prompt_state : cleanText(readBridgeValue('minimax_h3_storyboard_scene_state'));
         const stored = normalize(storedText, options);
         if (prompt) {
-            if (stored.prompt_snapshot === prompt) return stored;
+            const retainedContent = !director || /\[Shot\s+\d+\]/i.test(prompt)
+                || stored.shots.some(shot => [shot.description, shot.camera, shot.dialogue, shot.sound].some(cleanText));
+            if (stored.prompt_snapshot === prompt && retainedContent) return stored;
             return Object.assign(parsePrompt(prompt, Object.assign({}, options, { optimize: stored.optimize })), {
                 character_bindings: stored.character_bindings || []
             });
@@ -2764,7 +2803,10 @@
         const lang = languageState(opts.langState);
         const editorOptions = {
             mode: normalizeMode(opts.mode, opts),
-            duration: Math.max(0.3, finiteNumber(opts.duration, 5)),
+            duration: Math.max(opts.director_segment_id ? MIN_SHOT_DURATION : 0.3, finiteNumber(opts.duration, 5)),
+            director_segment_id: opts.director_segment_id || '',
+            min_duration: opts.min_duration,
+            max_duration: opts.max_duration,
             inventory: inventoryFromOptions(opts),
             langState: lang,
             context: opts.context || '',
@@ -3122,6 +3164,7 @@
             root.SimpAIVisualPromptEditor?.open({
                 targets, activeTarget: `shot:${activeShotIndex}:description`,
                 definitionTarget: state.mode === MODE_REF2VA ? 'global:subject_definitions' : '',
+                directorSegmentId: opts.director_segment_id || '',
                 inventory: opts.getInventory?.() || editorOptions.inventory,
                 getInventory: () => opts.getInventory?.() || editorOptions.inventory,
                 onAttachMedia: opts.onAttachMedia ? async card => {
@@ -3679,27 +3722,27 @@
             if (action !== 'apply') return;
             commitPendingTextEdit();
             setMessage('');
-            if (opts.getInventory) editorOptions.inventory = inventoryFromOptions({ inventory: opts.getInventory() });
-            backdrop.querySelectorAll('[data-h3sb-shot-field="start"],[data-h3sb-shot-field="duration"]').forEach((control) => {
-                commitTimeInput(control);
-            });
-            const checked = validate(state, editorOptions);
-            state = checked.state || normalize(state, editorOptions);
-            state.timeline_preamble = '';
-            const prompt = formatPrompt(state, editorOptions);
-            state.prompt_snapshot = prompt;
-            const response = {
-                state: normalize(state, editorOptions),
-                storyboard_state: serialize(state, editorOptions),
-                prompt,
-                mode: state.mode,
-                validation: checked
-            };
-            if (typeof opts.onConfirm !== 'function') {
-                close();
-                return;
-            }
             try {
+                if (opts.getInventory) editorOptions.inventory = inventoryFromOptions({ inventory: opts.getInventory() });
+                backdrop.querySelectorAll('[data-h3sb-shot-field="start"],[data-h3sb-shot-field="duration"]').forEach((control) => {
+                    commitTimeInput(control);
+                });
+                const checked = validate(state, editorOptions);
+                state = checked.state || normalize(state, editorOptions);
+                state.timeline_preamble = '';
+                const prompt = formatPrompt(state, editorOptions);
+                state.prompt_snapshot = prompt;
+                const response = {
+                    state: normalize(state, editorOptions),
+                    storyboard_state: serialize(state, editorOptions),
+                    prompt,
+                    mode: state.mode,
+                    validation: checked
+                };
+                if (typeof opts.onConfirm !== 'function') {
+                    close();
+                    return;
+                }
                 const result = opts.onConfirm(response);
                 if (result && typeof result.then === 'function') {
                     setBusy(true);
@@ -3714,7 +3757,9 @@
                 close();
             } catch (error) {
                 setBusy(false);
-                setMessage(error?.message || String(error), 'error');
+                setMessage(error?.message === 'director_prompt_target_changed'
+                    ? t('This shot changed or was removed. Reopen its storyboard editor.', '\u5f53\u524d\u5206\u955c\u5df2\u6539\u53d8\u6216\u5220\u9664\uff0c\u8bf7\u91cd\u65b0\u6253\u5f00\u5b83\u7684\u5206\u955c\u8868\u3002', lang)
+                    : error?.message || String(error), 'error');
             }
         });
         backdrop.addEventListener('keydown', (event) => {
@@ -3741,18 +3786,22 @@
         return backdrop;
     }
 
-    function openScenePreset() {
+    function openScenePreset(field = null, segmentId = '') {
         const source = languageState();
-        if (sceneHiddenSlots(source).has('minimax_h3_storyboard_control')) return null;
-        const options = currentSceneOptions(source);
-        const promptField = currentPromptField();
+        const hidden = sceneHiddenSlots(source).has('minimax_h3_storyboard_control');
+        if (hidden && !segmentId && !(root.SimpAIH3Director?.isFamily?.(source) && directorModeEnabled())) return null;
+        field = field || currentPromptField();
+        const director = directorPromptContext(field, segmentId);
+        if (!director && hidden) return null;
+        const options = currentSceneOptions(source, field, segmentId);
+        const promptField = field;
         const currentPrompt = cleanText(promptField?.value || '');
-        const state = sceneStateFromPrompt(source);
+        const state = sceneStateFromPrompt(source, field, segmentId);
         return open(Object.assign({}, options, {
             context: 'scene_preset',
-            getInventory: () => currentSceneInventory(languageState()),
+            getInventory: () => director ? director.getInventory() : currentSceneInventory(languageState(), field),
             onAttachMedia: async card => {
-                const result = await attachSceneCharacterMedia(card);
+                const result = await (director ? director.attachMedia(card) : attachSceneCharacterMedia(card, field));
                 options.inventory = result.inventory;
                 return result;
             },
@@ -3777,7 +3826,8 @@
                         use_video: useVideo,
                         preferred_video_slot: preferredVideoSlot,
                         skip_prompt_compiler_validation: true,
-                        expected_generation_image_slots: expectedGenerationImageSlots
+                        expected_generation_image_slots: expectedGenerationImageSlots,
+                        director_transition_id: director?.mode === 'transition' ? director.segment_id : ''
                     });
                 }
                 return root.runSimpleAIPromptActionDirect('smart_expand', response.prompt, {
@@ -3785,11 +3835,13 @@
                     h3_storyboard_form: true,
                     use_video: useVideo,
                     preferred_video_slot: preferredVideoSlot,
-                    expected_generation_image_slots: expectedGenerationImageSlots
+                    expected_generation_image_slots: expectedGenerationImageSlots,
+                    director_transition_id: director?.mode === 'transition' ? director.segment_id : ''
                 });
             },
             onConfirm: (response) => {
                 const nextState = Object.assign({}, response.state, { prompt_snapshot: response.prompt });
+                if (director) return director.save(response.prompt, nextState);
                 setNativeValue(promptField, response.prompt);
                 setNativeValue(bridgeInput('minimax_h3_storyboard_scene_state'), serialize(nextState, options));
                 syncSceneControl(source);
@@ -3798,23 +3850,28 @@
         }));
     }
 
-    function visualPromptContext(field) {
+    function visualPromptContext(field, segmentId = '') {
         const source = languageState();
-        const options = currentSceneOptions(source);
-        const stored = parseJsonObject(readBridgeValue('minimax_h3_storyboard_scene_state')) || {};
+        const director = directorPromptContext(field, segmentId);
+        const options = currentSceneOptions(source, field, segmentId);
+        const stored = director ? director.prompt_state : parseJsonObject(readBridgeValue('minimax_h3_storyboard_scene_state')) || {};
         return {
             langState: source,
+            warnReferenceChanges: !!director,
+            directorSegmentId: director?.segment_id || '',
             definitionTarget: options.mode === MODE_REF2VA ? 'prompt' : '',
             inventory: options.inventory,
-            getInventory: () => currentSceneInventory(languageState()),
-            onAttachMedia: attachSceneCharacterMedia,
+            getInventory: () => director ? director.getInventory() : currentSceneInventory(languageState(), field),
+            onAttachMedia: card => director ? director.attachMedia(card) : attachSceneCharacterMedia(card, field),
             bindings: stored.character_bindings || [],
             onApply: result => {
-                if (!field?.isConnected) return false;
-                setNativeValue(field, result.value);
-                const next = Object.assign(parsePrompt(result.value, currentSceneOptions(languageState())), {
+                if (!director && !field?.isConnected) return false;
+                const nextOptions = director ? { ...options, inventory: director.getInventory() } : currentSceneOptions(languageState(), field);
+                const next = Object.assign(parsePrompt(result.value, nextOptions), {
                     character_bindings: result.bindings, prompt_snapshot: result.value
                 });
+                if (director) return director.save(result.value, next);
+                setNativeValue(field, result.value);
                 setNativeValue(bridgeInput('minimax_h3_storyboard_scene_state'), serialize(next, options));
                 syncSceneControl(source);
                 return true;
@@ -3859,6 +3916,8 @@
         normalizeMode,
         sceneModeFromSource,
         currentSceneInventory,
+        currentSceneOptions,
+        sceneStateFromPrompt,
         audioSourceFromHost,
         normalize,
         parse: normalize,
