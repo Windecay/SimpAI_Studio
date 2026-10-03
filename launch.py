@@ -106,6 +106,12 @@ SIMPLEAI_BASE_WHEEL_SHA256 = {
     "simpleai_base-0.3.54-cp312-cp312-win_amd64.whl": "944fe3a86a67b5057c0c90a8c21f47c9a8eba0945db12e15e3f27ec203bd0e25",
     "simpleai_base-0.3.54-cp312-cp312-macosx_11_0_arm64.whl": "e376bda22e098823d75835475ae33c66b189e828ffae94c6b2d152cb28ac6583",
     "simpleai_base-0.3.54-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "40a1912c48c858fc72fc130fc00d756870ee991e3c08b354b72b9866f3217a72",
+    "simpleai_base-0.3.55-cp313-cp313-win_amd64.whl": "150d77ab5336f262c26583ab1627d46516fa47a97e451ae356551ad93858ad8a",
+    "simpleai_base-0.3.55-cp313-cp313-macosx_11_0_arm64.whl": "d3e134c8f04fe816cf5084fce0832e7337bf45a86f65d31b5da0fe0c8fbb07e9",
+    "simpleai_base-0.3.55-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "76bba510074d1535734f05bd3f97fd35e5eba5b91a3c8f1d9ddd561e5d3cee7b",
+    "simpleai_base-0.3.55-cp312-cp312-win_amd64.whl": "86892dbe7160f6d8bf6b5b7ecaffb136c0ac0c78a13f2af82cf11482d86a549a",
+    "simpleai_base-0.3.55-cp312-cp312-macosx_11_0_arm64.whl": "4c9ba25d8111e71f801b72f150538a56d19f78bc9bc20e0a08a667b14bbdf65b",
+    "simpleai_base-0.3.55-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "4df42a35e5e5c5d743382d3e73eddedcae0a9aba34cf3775dc1a72ffaaa90b18",
 }
 
 def cleanup_obsolete_custom_nodes():
@@ -281,6 +287,8 @@ def _simpleai_base_has_required_apis():
         "set_guest_can_download_models",
         "resolve_sstoken",
         "revoke_sstoken",
+        "get_local_mode_vars",
+        "set_local_mode_vars",
     ]
     code = (
         "import json, simpleai_base.simpleai_base as sb; "
@@ -316,6 +324,13 @@ def _installed_package_version(package):
     except Exception as e:
         logger.debug(f"读取 {package} 已安装版本失败: {e}")
         return None
+
+
+def _simpleai_base_version_satisfies(version_installed, version_required):
+    try:
+        return packaging_version.parse(version_installed) >= packaging_version.parse(version_required)
+    except (TypeError, packaging_version.InvalidVersion):
+        return False
 
 
 def _llama_cpp_runtime_probe():
@@ -654,22 +669,26 @@ def check_base_environment():
     print(f'{now_string()} ✦ | 兴趣使然的版本 | ✦ by冰華 ✦')
 
     base_pkg = "simpleai_base"
-    ver_required = "0.3.54"
+    ver_required = "0.3.55"
     REINSTALL_BASE = False
     base_branch = "studio"
     base_url = f"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/{base_branch}"
     base_file = _simpleai_base_wheel_filename(ver_required)
     base_path = os.path.abspath(os.path.join(root, f'enhanced/libs/{base_file}'))
     base_url = f'{base_url}/{base_file}'
-    has_update_whl, has_valid_base_wheel = _ensure_simpleai_base_wheel(base_url, base_path, base_file)
     has_required_base_apis = _simpleai_base_has_required_apis() if is_installed(base_pkg) else False
-    if has_update_whl or REINSTALL_BASE or not is_installed_version(base_pkg, ver_required) or not has_required_base_apis:
+    version_satisfies = _simpleai_base_version_satisfies(_installed_package_version(base_pkg), ver_required)
+    if version_satisfies and has_required_base_apis and not REINSTALL_BASE:
+        has_update_whl, has_valid_base_wheel = False, False
+    else:
+        has_update_whl, has_valid_base_wheel = _ensure_simpleai_base_wheel(base_url, base_path, base_file)
+    if has_update_whl or REINSTALL_BASE or not version_satisfies or not has_required_base_apis:
         if has_valid_base_wheel:
             if not is_installed(base_pkg):
                 run(f'"{python}" -s -m pip install {base_path}', f'Install {base_pkg} {ver_required}', custom_env=_make_pip_env())
             else:
                 version_installed = _installed_package_version(base_pkg)
-                version_mismatch = version_installed is None or packaging_version.parse(ver_required) != packaging_version.parse(version_installed)
+                version_mismatch = not _simpleai_base_version_satisfies(version_installed, ver_required)
                 if REINSTALL_BASE or version_mismatch or not has_required_base_apis:
                     logger.info(f"正在更新 {base_pkg}: {version_installed} -> {ver_required}")
                     run(f'"{python}" -s -m pip install -U {base_path}', f'Update {base_pkg} {ver_required}', custom_env=_make_pip_env())
@@ -680,7 +699,7 @@ def check_base_environment():
                 logger.error(f"缺失必要的包 {base_pkg} 且下载失败或安装包校验失败，程序可能无法正常运行。请检查网络连接并重新启动。")
             else:
                 version_installed = _installed_package_version(base_pkg) or "unknown"
-                if not is_installed_version(base_pkg, ver_required):
+                if not version_satisfies:
                     logger.warning(f"无法下载或校验更新包 {base_pkg} {ver_required}，当前版本为 {version_installed}，将尝试继续启动。")
                 elif not has_required_base_apis:
                     logger.warning(f"无法下载或校验更新包 {base_pkg} {ver_required}，当前版本 {version_installed} 缺少本地身份 API，将尝试继续启动。")
@@ -710,10 +729,10 @@ def check_base_environment():
     ensure_llama_cpp_runtime(runtime_profile)
 
     update_pkgs = [
-        ('comfyui-frontend-package', '1.53.6', None),
-        ('comfyui-workflow-templates', '0.11.66', None),
-        ('comfyui-embedded-docs', '0.5.12', None),
-        ('comfy-kitchen', '0.2.35', None),
+        ('comfyui-frontend-package', '1.53.10', None),
+        ('comfyui-workflow-templates', '0.11.76', None),
+        ('comfyui-embedded-docs', '0.5.13', None),
+        ('comfy-kitchen', '0.2.37', None),
         ('comfy-aimdo', '0.5.5', None),
         ('av', '17.0.0', None),
         ('PyOpenGL', None, '>=3.1.8'),

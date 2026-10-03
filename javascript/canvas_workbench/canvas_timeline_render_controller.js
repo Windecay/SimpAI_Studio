@@ -143,8 +143,15 @@
             return fingerprintPayload ? (call('stableHash', '', fingerprintPayload) || '') : '';
         }
 
-        async function renderTimelineToResult(node) {
+        const activeRenders = new WeakMap();
+
+        async function renderTimelineToResult(node, options) {
             if (!node || node.type !== 'timeline') return { ok: false, error: 'timeline node unavailable' };
+            const project = getProject();
+            const isTimelineCurrent = () => getProject() === project && getNode(node.id) === node
+                && (typeof options?.shouldContinue !== 'function' || options.shouldContinue());
+            const staleRender = () => ({ ok: false, error: 'timeline render no longer current' });
+            if (!isTimelineCurrent()) return staleRender();
             if (call('isNodeLocked', false, node)) {
                 call('showToast', undefined, 'Locked timeline cannot render.');
                 return { ok: false, error: 'timeline locked' };
@@ -155,6 +162,15 @@
                 call('showToast', undefined, 'Timeline result node is locked or unavailable.');
                 return { ok: false, error: 'timeline result unavailable' };
             }
+            const render = {
+                runToken: result.producer?.run_token || '',
+                pendingToken: result.producer?.pending_run_token || result.source?.pending_run_token || ''
+            };
+            activeRenders.set(result, render);
+            const isCurrent = () => isTimelineCurrent() && getNode(result.id) === result
+                && activeRenders.get(result) === render && result.producer?.timeline_node_id === node.id
+                && !result.producer?.run_id && (result.producer?.run_token || '') === render.runToken
+                && (result.producer?.pending_run_token || result.source?.pending_run_token || '') === render.pendingToken;
             const resultSize = timelineResultNodeSize(node);
             Object.assign(result, buildTimelineResultPatch(result, {
                 size: {
@@ -172,23 +188,27 @@
             call('setSelectedNodeIds', undefined, [result.id]);
             call('setSelectedEdgeId', undefined, null);
             call('mutate', undefined, { inspector: true });
-            const payload = serializeTimelineRenderPayload(node);
-            const inputFingerprint = computeTimelineRunFingerprint(node, payload);
-            Object.assign(result, buildTimelineResultPatch(result, {
-                producerPatch: {
-                    preset_node_id: null,
-                    timeline_node_id: node.id,
-                    run_id: null,
-                    task_id: null,
-                    fingerprint: inputFingerprint,
-                    stale: false
-                }
-            }));
-            const dataUrl = await call('renderTimelinePreviewFrameDataUrl', '', node);
+            let payload = {};
+            let inputFingerprint = '';
+            let dataUrl = '';
             const width = Math.max(16, Math.round(Number(node.params?.width || 1280)));
             const height = Math.max(16, Math.round(Number(node.params?.height || 720)));
             let renderResult = null;
             try {
+                payload = serializeTimelineRenderPayload(node);
+                inputFingerprint = computeTimelineRunFingerprint(node, payload);
+                Object.assign(result, buildTimelineResultPatch(result, {
+                    producerPatch: {
+                        preset_node_id: null,
+                        timeline_node_id: node.id,
+                        run_id: null,
+                        task_id: null,
+                        fingerprint: inputFingerprint,
+                        stale: false
+                    }
+                }));
+                dataUrl = await call('renderTimelinePreviewFrameDataUrl', '', node);
+                if (!isCurrent()) return staleRender();
                 renderResult = await call('sendCanvasRenderTimelineRequest', null, {
                     project_id: call('getProjectId', 'default'),
                     node_id: result.id,
@@ -198,6 +218,7 @@
             } catch (err) {
                 renderResult = { ok: false, error: err?.message || String(err || 'timeline render failed') };
             }
+            if (!isCurrent()) return staleRender();
             const renderedAsset = renderResult?.ok && renderResult.asset_ref
                 ? buildTimelineRenderAsset({
                     assetRef: renderResult.asset_ref,

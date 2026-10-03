@@ -49,8 +49,10 @@
             return node.wildcards_catalog;
         }
 
-        async function buildWildcardPreviewForNode(node) {
+        async function buildWildcardPreviewForNode(node, options) {
             if (!node || !['preset', 'classic'].includes(node.type)) return null;
+            const isCurrent = () => typeof options?.shouldContinue !== 'function' || options.shouldContinue();
+            if (!isCurrent()) return null;
             const requestPreview = apiSource.getWildcardsPreview();
             if (typeof requestPreview !== 'function') return null;
             const params = node.type === 'classic'
@@ -66,6 +68,7 @@
                 image_number: params.image_number || serializationSource.presetGenerationImageNumberValue(node) || params.scene_image_number || 1,
                 max_samples: 3
             });
+            if (!isCurrent()) return null;
             if (response?.ok) {
                 Object.assign(node, patchSource.buildPresetWildcardPreviewPatch(node, { preview: response }));
                 return response;

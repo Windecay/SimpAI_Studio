@@ -133,7 +133,8 @@
             max
         );
         const getWorkbenchUserContext = (...args) => call(projectSource, 'getWorkbenchUserContext', {}, ...args);
-        const pendingQwenTtsRuns = new Set();
+        const pendingQwenTtsRuns = new Map();
+        const staleRun = () => ({ ok: false, error: 'run no longer current' });
 
         function resultRunIsCurrent(resultNode, runId, run) {
             const currentRunId = resultNode?.producer?.run_id || '';
@@ -251,6 +252,10 @@
 
         async function preflightDirectQwenTtsRun(node, options) {
             if (options?.skipInputPreflight || !isQwenTtsNode(node)) return { ok: true };
+            const project = getProject();
+            const isCurrent = () => getProject() === project && getNode(node.id) === node
+                && (typeof options?.shouldContinue !== 'function' || options.shouldContinue());
+            if (!isCurrent()) return staleRun();
             if (typeof schedulerBuildPlan !== 'function') {
                 const missing = validateQwenTtsNodeForRun(node);
                 if (missing.length) {
@@ -281,6 +286,7 @@
             const refreshingIds = refreshingSourceIdsFromPlan(plan);
             if (refreshingIds.length && !options?.skipRefreshingWait) {
                 const waited = await waitForRefreshingSources(refreshingIds, { waitingNodeId: node.id });
+                if (!isCurrent()) return staleRun();
                 if (!waited) {
                     setBlockedSchedulerFromPlan(plan, { message: t('Timed out waiting for upstream Result refresh.', '等待上游 Result 刷新超时。') });
                     return { ok: false, error: 'upstream refresh timeout', plan };
@@ -458,13 +464,16 @@
 
         async function runQwenTtsNode(node, options) {
             if (!isQwenTtsNode(node)) return { ok: false, error: 'Qwen TTS node is unavailable' };
+            const project = getProject();
+            if (getNode(node.id) !== node) return staleRun();
             if (isNodeIgnored(node)) {
                 showToast('This Qwen TTS node is marked as skipped.');
                 return { ok: false, error: 'Qwen TTS node is skipped' };
             }
             const opts = options || {};
             const runKey = node.id || '';
-            if (runKey && pendingQwenTtsRuns.has(runKey)) {
+            const previousPreparation = pendingQwenTtsRuns.get(runKey);
+            if (previousPreparation?.project === project && previousPreparation.node === node) {
                 setSelection(node);
                 renderNodes();
                 renderEdges();
@@ -482,17 +491,25 @@
                 showToast('This Qwen TTS node already has an active run; focusing the current task.', 2600);
                 return { ok: false, error: 'run already active' };
             }
-            if (runKey) pendingQwenTtsRuns.add(runKey);
+            const preparation = { project, node };
+            pendingQwenTtsRuns.set(runKey, preparation);
+            const isCurrent = () => getProject() === project && getNode(runKey) === node
+                && pendingQwenTtsRuns.get(runKey) === preparation;
+            let resultNode = null;
+            let runId = '';
+            let runToken = '';
             try {
-                const preflight = await preflightDirectQwenTtsRun(node, opts);
+                const preflight = await preflightDirectQwenTtsRun(node, Object.assign({}, opts, { shouldContinue: isCurrent }));
+                if (!isCurrent()) return staleRun();
                 if (!preflight.ok) return preflight;
                 const existingResultNode = opts.resultNode || (opts.reuseExistingResult ? findReusableResultNodeForQwenTts(node) : null);
+                if (existingResultNode && getNode(existingResultNode.id) !== existingResultNode) return staleRun();
                 const inputFingerprint = computeQwenTtsRunFingerprint(node);
-                const runToken = uid('rt');
+                runToken = uid('rt');
                 pushHistory('Run Qwen TTS node');
-                const runId = uid('qwen_tts_run');
+                runId = uid('qwen_tts_run');
                 const basePosition = qwenTtsResultBasePosition(node);
-                const resultNode = existingResultNode || buildQueuedResultNode({
+                resultNode = existingResultNode || buildQueuedResultNode({
                     position: basePosition,
                     size: { w: 240, h: 260 },
                     title: `${node.title || call(nodeSource, 'qwenTtsModeLabel', 'Qwen TTS', qwenTtsNodeMode(node))} Output`,
@@ -527,7 +544,7 @@
                     },
                     collapsed: false
                 });
-                if (!resultNode) return { ok: false, error: 'result placeholder unavailable' };
+                if (!resultNode) throw new Error(t('Result placeholder unavailable.', '结果占位节点不可用。'));
                 if (existingResultNode) {
                     Object.assign(resultNode, buildResultRefreshPreparingPatchFromFactory(resultNode, {
                         runId,
@@ -593,15 +610,29 @@
                 clearSchedulerBlockedState();
                 mutate();
                 showToast('Result placeholder created; submitting to Qwen TTS.');
-                const payload = buildQwenTtsRunPayload(node, resultNode, runId);
-                const project = getProject();
-                const runResult = await sendCanvasQwenTtsRunRequest(payload);
+                let runResult;
+                try {
+                    const payload = buildQwenTtsRunPayload(node, resultNode, runId);
+                    runResult = await sendCanvasQwenTtsRunRequest(payload);
+                } catch (err) {
+                    runResult = { ok: false, state: 'failed', error: err?.message || String(err) };
+                }
                 if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
                     return { ok: false, error: 'run no longer current', response: runResult };
                 }
                 return applyQwenTtsRunNodeResult(runId, resultNode.id, node.id, runResult, opts);
+            } catch (err) {
+                if (!isCurrent()) return staleRun();
+                const error = err?.message || String(err);
+                if (resultNode && getNode(resultNode.id) === resultNode
+                    && isCurrentResultRun(project, runId, resultNode.id, runToken)) {
+                    return applyQwenTtsRunNodeResult(runId, resultNode.id, node.id, { ok: false, state: 'failed', error }, opts);
+                }
+                Object.assign(node, buildQwenTtsStatePatch(node, { status: buildCanvasRunStatus('failed', error) }));
+                mutate({ inspector: true });
+                return { ok: false, error };
             } finally {
-                if (runKey) pendingQwenTtsRuns.delete(runKey);
+                if (pendingQwenTtsRuns.get(runKey) === preparation) pendingQwenTtsRuns.delete(runKey);
             }
         }
 

@@ -1,0 +1,95 @@
+{
+    "supported_tasks": ["video_upscale"],
+    "default_engine": {
+        "backend_engine": "Comfy",
+        "backend_params": {"task_method": "seedvr2", "native_process": "studio"},
+        "native_process": "studio",
+        "engine_type": "video",
+        "disvisible": [
+            "input_image_checkbox", "prompt_panel_checkbox", "performance_selection",
+            "refiner_model", "clip_model", "upscale_model", "guidance_scale", "overwrite_step"
+        ],
+        "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+        "available_aspect_ratios_selection": "Flux",
+        "scene_frontend": {
+            "version": "v1.1",
+            "theme": ["SeedVR2 Video Upscale"],
+            "theme_labels": {
+                "SeedVR2 Video Upscale": {"en": "SeedVR2 Video Upscale", "zh": "SeedVR2 视频放大"}
+            },
+            "theme_title": "SeedVR2 Video Upscale",
+            "task_method": {"SeedVR2 Video Upscale": "seedvr2"},
+            "director_capability": {
+                "image_policy": "forbidden", "audio_policy": "forbidden", "video_policy": "required",
+                "max_images": 0, "min_images": 0, "image_modes": ["none"], "video_modes": ["explicit"],
+                "chain_output": "last_result", "requires_sequential": false,
+                "duration_strategy": "video_min", "audio_output": "source_audio", "mixed_segments": false
+            },
+            "disvisible": [
+                "scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3",
+                "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7",
+                "scene_input_image8", "scene_reference_video", "scene_reference_video2",
+                "scene_audio", "scene_audio2", "scene_audio3", "scene_additional_prompt",
+                "scene_additional_prompt_2", "scene_aspect_ratio", "scene_image_number", "scene_use_lora",
+                "scene_var_number3", "scene_var_number4", "scene_var_number5", "scene_var_number6",
+                "scene_var_number7", "scene_video_duration", "scene_switch_option2",
+                "scene_switch_option3", "scene_switch_option4", "scene_steps", "scene_refiner_model",
+                "sam3_input_video", "sam3_mask_video"
+            ],
+            "var_number_title": "Target shorter edge (pixels)",
+            "var_number": {"SeedVR2 Video Upscale": 1080},
+            "var_number_min": 16,
+            "var_number_max": 4096,
+            "var_number2_title": "Save quality (lower = better, larger file size)",
+            "var_number2": {"SeedVR2 Video Upscale": 19},
+            "var_number2_min": 5,
+            "var_number2_max": 45,
+            "var_number8_title": "Duration limit (seconds) [0 = no limit]",
+            "var_number8": {"SeedVR2 Video Upscale": 0},
+            "var_number8_min": 0,
+            "var_number8_max": 3600,
+            "var_number9_title": "Temporal window (frames)",
+            "var_number9": {"SeedVR2 Video Upscale": 17},
+            "var_number9_min": 5,
+            "var_number9_max": 33,
+            "var_number9_step": 4,
+            "var_number10_title": "Temporal overlap (frames)",
+            "var_number10": {"SeedVR2 Video Upscale": 1},
+            "var_number10_min": 0,
+            "var_number10_max": 4,
+            "switch_option1_title": "Tiled VAE",
+            "switch_option1": {"SeedVR2 Video Upscale": true},
+            "aspect_ratio": ["origin|Original"],
+            "resolution_control": {
+                "mode": "input_passthrough", "source": "scene_video", "interactive": true,
+                "frontend_preprocess": false
+            }
+        }
+    },
+    "default_model": "seedvr2_ema_3b_fp16.safetensors",
+    "default_vae": "ema_vae_fp16.safetensors",
+    "default_refiner": "None",
+    "default_refiner_switch": 0.5,
+    "default_clip_model": "Default (model)",
+    "default_upscale_model": "default",
+    "default_loras": [["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0]],
+    "default_cfg_scale": 1.0,
+    "default_sample_sharpness": 0,
+    "default_sampler": "euler",
+    "default_scheduler": "simple",
+    "default_performance": "Speed",
+    "default_styles": [],
+    "default_aspect_ratio": "1024*1024",
+    "default_image_number": 1,
+    "default_overwrite_step": 1,
+    "default_prompt": "",
+    "default_prompt_negative": "",
+    "checkpoint_downloads": {},
+    "embeddings_downloads": {},
+    "lora_downloads": {},
+    "vae_downloads": {},
+    "model_list": [
+        "SEEDVR2,seedvr2_ema_3b_fp16.safetensors,6783018808,0,https://www.modelscope.cn/models/numz/SeedVR2_comfyUI/resolve/master/seedvr2_ema_3b_fp16.safetensors",
+        "SEEDVR2,ema_vae_fp16.safetensors,501324814,0,https://www.modelscope.cn/models/numz/SeedVR2_comfyUI/resolve/master/ema_vae_fp16.safetensors"
+    ]
+}

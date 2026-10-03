@@ -25,6 +25,7 @@ def set_seed(seed: Optional[int], same_across_ranks: bool = False):
     if seed is not None:
         seed += get_global_rank() if not same_across_ranks else 0
         random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+        # Phase/rank offsets may exceed the RNGs' uint32/uint64 seed ranges.
+        np.random.seed(seed % (2**32))
+        torch.manual_seed(seed % (2**64))
 

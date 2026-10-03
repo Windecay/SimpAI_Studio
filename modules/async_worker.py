@@ -109,6 +109,7 @@ _NATIVE_METHOD_PRESET_NAMES = {
     'nvidia_vsr': {'nvidia-vsr'},
     'depth_anything_v2_video': {'depth-video', 'depth-anything-v2-video'},
     'topaz_starlight': {'topaz-starlight', 'topaz-starlight-video'},
+    'seedvr2': {'seedvr2', 'seedvr2-video'},
 }
 
 
@@ -841,6 +842,64 @@ def worker():
         else:
             comfyd.interrupt()
         ldm_patched.modules.model_management.interrupt_current_processing()
+
+    def run_native_seedvr2(async_task, processing_start_time):
+        from enhanced import seedvr2
+
+        status = "Finished"
+        try:
+            source_path = seedvr2.nvidia_vsr.resolve_input_video(async_task.params_backend)
+            output_root = modules.config.get_user_path_outputs(async_task.user_did)
+            _, output_path, _ = generate_temp_filename(folder=output_root, extension="mp4")
+            result = seedvr2.run_seedvr2(
+                source_path,
+                output_path,
+                async_task,
+                language=getattr(async_task, "simpleai_lang", None),
+                progress_callback=lambda number, text, image: progressbar(async_task, number, text, image),
+                cancel_callback=lambda: async_task.last_stop in ("stop", "skip"),
+                preview_enabled=not bool(getattr(async_task, "disable_preview", False)),
+            )
+            async_task.results = []
+            yield_result(
+                async_task,
+                [result["output_path"]],
+                100,
+                getattr(async_task, "black_out_nsfw", False),
+                censor=False,
+                do_not_show_finished_images=bool(getattr(async_task, "disable_intermediate_results", False)),
+            )
+            try:
+                from modules.media_library import queue_media_file_index
+
+                queue_media_file_index(result["output_path"], user_did=async_task.user_did)
+            except Exception:
+                logger.debug("Native SeedVR2 media indexing was not queued", exc_info=True)
+            logger.info(
+                "Native SeedVR2 finished: task_id=%s output=%s frames=%s fps=%s size=%sx%s "
+                "dit=%s vae=%s encoder=%s audio_muxed=%s",
+                async_task.task_id, result["output_path"], result["output_frames"], result["output_fps"],
+                result["output_width"], result["output_height"], result["dit_model"], result["vae_model"],
+                result["encoder"], result["audio_muxed"],
+            )
+        except seedvr2.SeedVR2Cancelled:
+            action = async_task.last_stop if async_task.last_stop in ("stop", "skip") else "stop"
+            async_task.user_cancel_action = action
+            status = "Skipped" if action == "skip" else "Stopped"
+            progressbar(async_task, 100, seedvr2.nvidia_vsr.localized_text(
+                getattr(async_task, "simpleai_lang", None),
+                "SeedVR2 was stopped by the user.", "SeedVR2 已由用户停止。",
+            ))
+        except Exception as exc:
+            status = "Failed"
+            async_task.simpleai_native_error = str(exc)
+            logger.exception("Native SeedVR2 failed: task_id=%s", async_task.task_id)
+            progressbar(async_task, 100, seedvr2.nvidia_vsr.localized_text(
+                getattr(async_task, "simpleai_lang", None),
+                f"SeedVR2 failed: {exc}", f"SeedVR2 处理失败：{exc}",
+            ))
+        finally:
+            stop_processing(async_task, processing_start_time, status)
 
     def run_native_nvidia_vsr(async_task, processing_start_time):
         from enhanced import nvidia_vsr
@@ -2471,6 +2530,8 @@ def worker():
                 run_native_depth_anything_v2_video(async_task, int(time.time() * 1000))
             elif getattr(async_task, 'simpleai_native_method', None) == 'topaz_starlight':
                 run_native_topaz_starlight(async_task, int(time.time() * 1000))
+            elif getattr(async_task, 'simpleai_native_method', None) == 'seedvr2':
+                run_native_seedvr2(async_task, int(time.time() * 1000))
             else:
                 run_native_nvidia_vsr(async_task, int(time.time() * 1000))
             return

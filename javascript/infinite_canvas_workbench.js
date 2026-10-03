@@ -11383,7 +11383,6 @@
             buildResultRefreshReconciledPatch: (...args) => buildResultRefreshReconciledPatch(...args),
             buildResultRefreshPreparingPatch: (...args) => buildResultRefreshPreparingPatch(...args),
             buildResultRefreshClearedPatch: (...args) => buildResultRefreshClearedPatch(...args),
-            buildResultProducerPatch: (...args) => buildResultProducerPatch(...args),
             buildQueuedResultNode: (...args) => buildQueuedResultNode(...args),
             buildResultLayoutPatch: (...args) => buildResultLayoutPatch(...args),
             canvasAgentResultForPresetRun: (...args) => canvasAgentResultForPresetRun(...args),
@@ -11441,6 +11440,7 @@
         },
         patchSource: {
             buildResultSourcePatch: (...args) => buildResultSourcePatch(...args),
+            buildResultProducerPatch: (...args) => buildResultProducerPatch(...args),
             buildProjectRunAppendPatch: (...args) => buildProjectRunAppendPatch(...args),
             buildProjectNodeAppendPatch: (...args) => buildProjectNodeAppendPatch(...args),
             buildPresetRunRecord: (...args) => buildPresetRunRecord(...args)
@@ -11518,7 +11518,7 @@
             selectInitialResult: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingGroup(nodeId),
             clearSchedulerBlockedState: () => !!CANVAS_SCHEDULER_STATE_CONTROLLER.clearSchedulerBlockedState?.(),
             selectFinalResult: nodeId => CANVAS_SELECTION_CONTROLLER.setNodeSelectionPreservingEdgeAndGroup(nodeId),
-            chainOutput: capability => directorCapabilityChainOutput(capability),
+            chainOutput: capability => CANVAS_DIRECTOR_PRESET_VALIDATION_CONTROLLER.directorCapabilityChainOutput?.(capability) || 'timeline',
             prepareTimeline: (...args) => prepareDirectorSegmentTimeline(...args),
             renderTimeline: (...args) => renderTimelineToResult(...args)
         },
@@ -13908,8 +13908,8 @@
         return CANVAS_WILDCARDS_RUNTIME_CONTROLLER.refreshWildcardsCatalog(node, options);
     }
 
-    async function buildWildcardPreviewForNode(node) {
-        return CANVAS_WILDCARDS_RUNTIME_CONTROLLER.buildWildcardPreviewForNode(node);
+    async function buildWildcardPreviewForNode(node, options) {
+        return CANVAS_WILDCARDS_RUNTIME_CONTROLLER.buildWildcardPreviewForNode(node, options);
     }
 
     function canvasRunPromptParamText(value) {

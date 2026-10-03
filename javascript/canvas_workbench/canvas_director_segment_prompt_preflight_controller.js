@@ -61,10 +61,14 @@
         }
 
         async function preflightDirectorSegmentPrompts(node, plan, options) {
+            const isCurrent = () => typeof options?.shouldContinue !== 'function' || options.shouldContinue();
+            const stale = () => ({ ok: false, error: 'Director preflight no longer current' });
+            if (!isCurrent()) return stale();
             const segments = Array.isArray(plan?.segments) ? plan.segments : [];
             const baseTarget = directorSegmentPromptCompilerTarget(node, plan, segments[0] || {});
             if (!baseTarget?.prompt_compiler) return { ok: true, plan };
-            const wildcardPreview = await buildWildcardPreviewForNode(node);
+            const wildcardPreview = await buildWildcardPreviewForNode(node, { shouldContinue: isCurrent });
+            if (!isCurrent()) return stale();
             const entry = getPresetCatalogEntryForNode(node);
             const presetDefaults = canvasAgentPresetPromptDefaults(node);
             const preparedSegments = [];
@@ -80,8 +84,10 @@
                     promptTarget,
                     userPrompt: prompt,
                     allowEditOnBlock: true,
-                    autoStart: !!options?.autoStart
+                    autoStart: !!options?.autoStart,
+                    shouldContinue: isCurrent
                 });
+                if (!isCurrent()) return stale();
                 if (!result.ok) {
                     return {
                         ok: false,

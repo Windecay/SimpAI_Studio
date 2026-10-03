@@ -67,7 +67,7 @@
   },
   "73": {"class_type": "SimpAIH3RegionOutput", "inputs": {"region": ["70", 0], "images": ["14", 0]}},
   "74": {"class_type": "ComfyMathExpression", "_meta": {"title": "Denoising Percentage to Strength"}, "inputs": {"expression": "a / 100", "values.a": ["1", 17]}},
-  "75": {"class_type": "ModelPatchLoader", "inputs": {"name": "minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors"}},
+  "75": {"class_type": "ModelPatchLoader", "inputs": {"name": "minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors"}},
   "76": {
     "class_type": "MiniMaxH3FunControlNetApply",
     "inputs": {"model": ["69", 0], "model_patch": ["75", 0], "vae": ["5", 0],

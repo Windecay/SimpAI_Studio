@@ -1,0 +1,88 @@
+{
+  "supported_tasks": ["image_upscale"],
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "image",
+    "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "Flux",
+    "scene_frontend": {
+      "version": "m1.1",
+      "theme": ["VOSR2 Image Upscale"],
+      "theme_labels": {
+        "VOSR2 Image Upscale": {"en": "VOSR2 Image Upscale", "zh": "\u0056\u004f\u0053\u0052\u0032 \u56fe\u50cf\u653e\u5927"}
+      },
+      "theme_title": "VOSR2 Image Upscale",
+      "disable_canvas_mask": true,
+      "director_capability": {
+        "image_policy": "required", "min_images": 1, "max_images": 1,
+        "image_modes": ["explicit"], "video_policy": "forbidden", "audio_policy": "forbidden",
+        "mixed_segments": false
+      },
+      "disvisible": [
+        "scene_additional_prompt", "scene_additional_prompt_2", "scene_aspect_ratio",
+        "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4",
+        "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8",
+        "scene_video", "scene_reference_video", "scene_reference_video2",
+        "scene_audio", "scene_audio2", "scene_audio3", "scene_video_duration",
+        "scene_use_lora", "scene_base_model", "scene_refiner_model", "scene_steps",
+        "scene_var_number3", "scene_var_number4", "scene_var_number5", "scene_var_number6",
+        "scene_var_number10", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
+        "sam3_input_video", "sam3_mask_video"
+      ],
+      "task_method": {"VOSR2 Image Upscale": "vosr2"},
+      "prompt": {"VOSR2 Image Upscale": ""},
+      "image_preprocessor_method": {"VOSR2 Image Upscale": [["-normalization"]]},
+      "var_number_title": "Upscale factor",
+      "var_number": {"VOSR2 Image Upscale": 2},
+      "var_number_min": 1, "var_number_max": 4, "var_number_step": 1,
+      "var_number2_title": "DiT tile size (pixels)",
+      "var_number2": {"VOSR2 Image Upscale": 512},
+      "var_number2_min": 128, "var_number2_max": 512, "var_number2_step": 64,
+      "var_number7_title": "DiT tile overlap (pixels)",
+      "var_number7": {"VOSR2 Image Upscale": 64},
+      "var_number7_min": 0, "var_number7_max": 120, "var_number7_step": 8,
+      "var_number8_title": "VAE tile size (pixels)",
+      "var_number8": {"VOSR2 Image Upscale": 1024},
+      "var_number8_min": 256, "var_number8_max": 2048, "var_number8_step": 64,
+      "var_number9_title": "VAE tile overlap (pixels)",
+      "var_number9": {"VOSR2 Image Upscale": 128},
+      "var_number9_min": 0, "var_number9_max": 248, "var_number9_step": 8,
+      "switch_option1_title": "Preserve source colors",
+      "switch_option1": {"VOSR2 Image Upscale": true},
+      "aspect_ratio": ["origin|Original"],
+      "resolution_control": {
+        "mode": "input_passthrough", "source": "scene_canvas",
+        "interactive": false, "frontend_preprocess": false
+      }
+    }
+  },
+  "default_model": "None",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "Default (model)",
+  "default_loras": [["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0]],
+  "default_cfg_scale": 1,
+  "default_sample_sharpness": 0,
+  "default_sampler": "euler",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "origin|Original",
+  "default_image_number": 1,
+  "default_overwrite_step": 1,
+  "default_prompt": "",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "vosr2,VOSR2/args.json,816,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/args.json",
+    "vosr2,VOSR2/checkpoints/ema_model.safetensors,5576385424,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/checkpoints/ema_model.safetensors",
+    "vosr2,VOSR2/Qwen-Image-vae-2d/config.json,811,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/config.json",
+    "vosr2,VOSR2/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,178418892,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors",
+    "vosr2,VOSR2/dinov2_vitl14_pretrain.pth,1217586395,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth"
+  ]
+}

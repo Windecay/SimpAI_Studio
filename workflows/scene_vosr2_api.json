@@ -1,0 +1,52 @@
+{
+  "1": {
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "", "additional_prompt": "",
+      "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
+      "inpaint_image": "None", "inpaint_mask": "None",
+      "width": 1024, "height": 1024, "cfg": 1, "steps": 1,
+      "var_number": 2, "var_number2": 512, "var_number3": 0, "var_number4": 0,
+      "var_number5": 0, "var_number6": 0, "var_number7": 64,
+      "var_number8": 1024, "var_number9": 128, "var_number10": 0,
+      "switch_option1": true, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "model_type": 1, "model_type2": 1, "clip_type": 1,
+      "negative_prompt": "", "sampler": "euler", "scheduler": "simple", "video_duration": 0
+    }
+  },
+  "2": {
+    "class_type": "LoadInputImage",
+    "_meta": {"title": "Load VOSR2 Source Image"},
+    "inputs": {"image_name": ["1", 4], "image": "None"}
+  },
+  "3": {
+    "class_type": "VOSR2ModelLoader",
+    "_meta": {"title": "VOSR2 Matched Model Bundle"},
+    "inputs": {"model": "VOSR2", "dtype": "default", "image": ["2", 0]}
+  },
+  "4": {
+    "class_type": "SeedInput",
+    "_meta": {"title": "SeedInput"},
+    "inputs": {"seed": 42}
+  },
+  "5": {
+    "class_type": "easy ifElse",
+    "_meta": {"title": "VOSR2 Color Alignment"},
+    "inputs": {"boolean": ["1", 20], "on_true": "wavelet", "on_false": "none"}
+  },
+  "6": {
+    "class_type": "VOSR2Upscale",
+    "_meta": {"title": "VOSR2 Image Upscale"},
+    "inputs": {
+      "model": ["3", 0], "image": ["2", 0], "upscale": ["1", 10], "seed": ["4", 0],
+      "color_alignment": ["5", 0], "tile_size": ["1", 11], "tile_overlap": ["1", 16],
+      "vae_tile_size": ["1", 17], "vae_tile_overlap": ["1", 18]
+    }
+  },
+  "7": {
+    "class_type": "SaveImageWebsocket",
+    "_meta": {"title": "VOSR2 Image Result"},
+    "inputs": {"images": ["6", 0]}
+  }
+}

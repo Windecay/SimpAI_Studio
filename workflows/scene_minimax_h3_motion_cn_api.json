@@ -690,7 +690,7 @@
   },
   "123": {
     "inputs": {
-      "name": "minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors"
+      "name": "minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors"
     },
     "class_type": "ModelPatchLoader",
     "_meta": {"title": "H3 Motion ControlNet Patch"}

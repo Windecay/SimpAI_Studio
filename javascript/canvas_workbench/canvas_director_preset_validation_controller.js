@@ -494,6 +494,7 @@
 
         return {
             resolveDirectorCapabilityForPreset,
+            directorCapabilityChainOutput,
             directorDurationParamValue,
             directorDurationStrategyValue,
             directorAudioOutputValue,

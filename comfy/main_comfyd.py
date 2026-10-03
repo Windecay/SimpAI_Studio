@@ -587,7 +587,7 @@ import importlib.metadata
 import folder_paths
 import time
 from app.logger import setup_logger
-from app.database.db import dependencies_available, init_db
+from app.database.db import dependencies_available, init_db, lock_holder_db_path
 from app.assets.lifecycle import cleanup_temp_filesystem
 from app.assets.manager import AssetManager, default_asset_manager
 import itertools
@@ -622,6 +622,9 @@ if __name__ == "__main__":
     ):
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         logging.warning("Windows defaults to single GPU mode due to an NVIDIA issue; use --cuda-device all to enable all GPUs. / Windows 因 NVIDIA 相关问题默认使用单 GPU；使用 --cuda-device all 可启用所有 GPU。")
+
+    if args.disable_api_nodes:
+        logging.warning("--disable-api-nodes is deprecated and currently behaves like --offline. Use --offline or --disable-partner-nodes. / --disable-api-nodes 已弃用，当前等同于 --offline；请使用 --offline 或 --disable-partner-nodes。")
 
 faulthandler.enable(file=sys.stderr, all_threads=args.debug_hang)
 if __name__ == "__main__" and args.debug_hang:
@@ -917,86 +920,98 @@ def prompt_worker(q, server_instance, asset_manager):
     last_gc_collect = 0
     need_gc = False
     gc_collect_interval = 10.0
+    background_scan_paused = False
 
     while True:
-        timeout = 1000.0
-        if need_gc:
-            timeout = max(gc_collect_interval - (current_time - last_gc_collect), 0.0)
+        try:
+            timeout = 1000.0
+            if need_gc:
+                timeout = max(gc_collect_interval - (current_time - last_gc_collect), 0.0)
 
-        queue_item = q.get(timeout=timeout)
-        if queue_item is not None:
-            item, item_id = queue_item
-            execution_start_time = time.perf_counter()
-            prompt_id = item[1]
-            server_instance.last_prompt_id = prompt_id
+            queue_item = q.get(timeout=timeout)
+            if queue_item is not None:
+                item, item_id = queue_item
+                execution_start_time = time.perf_counter()
+                prompt_id = item[1]
+                server_instance.last_prompt_id = prompt_id
 
-            sensitive = item[5]
-            extra_data = item[3].copy()
-            for k in sensitive:
-                extra_data[k] = sensitive[k]
+                sensitive = item[5]
+                extra_data = item[3].copy()
+                for k in sensitive:
+                    extra_data[k] = sensitive[k]
 
-            asset_manager.pause_background_scan()
-            try:
-                import torch
-                if torch.cuda.is_available() and torch.backends.cudnn.is_available() and torch.backends.cudnn.benchmark:
-                    logging.info("Forcing torch.backends.cudnn.benchmark = False before prompt execution.")
-                    torch.backends.cudnn.benchmark = False
-            except Exception:
-                pass
-            e.execute(item[2], prompt_id, extra_data, item[4])
-            try:
-                import torch
-                if torch.cuda.is_available() and torch.backends.cudnn.is_available() and torch.backends.cudnn.benchmark:
-                    logging.warning("torch.backends.cudnn.benchmark was re-enabled during prompt execution. Forcing it back to False.")
-                    torch.backends.cudnn.benchmark = False
-            except Exception:
-                pass
-            need_gc = True
+                asset_manager.pause_background_scan()
+                background_scan_paused = True
+                try:
+                    import torch
+                    if torch.cuda.is_available() and torch.backends.cudnn.is_available() and torch.backends.cudnn.benchmark:
+                        logging.info("Forcing torch.backends.cudnn.benchmark = False before prompt execution.")
+                        torch.backends.cudnn.benchmark = False
+                except Exception:
+                    pass
+                e.execute(item[2], prompt_id, extra_data, item[4])
+                try:
+                    import torch
+                    if torch.cuda.is_available() and torch.backends.cudnn.is_available() and torch.backends.cudnn.benchmark:
+                        logging.warning("torch.backends.cudnn.benchmark was re-enabled during prompt execution. Forcing it back to False.")
+                        torch.backends.cudnn.benchmark = False
+                except Exception:
+                    pass
+                need_gc = True
 
-            remove_sensitive = lambda prompt: prompt[:5] + prompt[6:]
-            q.task_done(item_id,
-                        e.history_result,
-                        status=execution.PromptQueue.ExecutionStatus(
-                            status_str='success' if e.success else 'error',
-                            completed=e.success,
-                            messages=e.status_messages), process_item=remove_sensitive)
-            if server_instance.client_id is not None:
-                server_instance.send_sync("executing", {"node": None, "prompt_id": prompt_id}, server_instance.client_id)
+                remove_sensitive = lambda prompt: prompt[:5] + prompt[6:]
+                q.task_done(item_id,
+                            e.history_result,
+                            status=execution.PromptQueue.ExecutionStatus(
+                                status_str='success' if e.success else 'error',
+                                completed=e.success,
+                                messages=e.status_messages), process_item=remove_sensitive)
+                if server_instance.client_id is not None:
+                    server_instance.send_sync("executing", {"node": None, "prompt_id": prompt_id}, server_instance.client_id)
 
-            current_time = time.perf_counter()
-            execution_time = current_time - execution_start_time
+                current_time = time.perf_counter()
+                execution_time = current_time - execution_start_time
 
-            # Log Time in a more readable way after 10 minutes
-            if execution_time > 600:
-                execution_time = time.strftime("%H:%M:%S", time.gmtime(execution_time))
-                logging.info(f"Prompt executed in {execution_time}")
-            else:
-                logging.info("Prompt executed in {:.2f} seconds".format(execution_time))
+                # Log Time in a more readable way after 10 minutes
+                if execution_time > 600:
+                    execution_time = time.strftime("%H:%M:%S", time.gmtime(execution_time))
+                    logging.info(f"Prompt executed in {execution_time}")
+                else:
+                    logging.info("Prompt executed in {:.2f} seconds".format(execution_time))
 
-        flags = q.get_flags()
-        free_memory = flags.get("free_memory", False)
+            flags = q.get_flags()
+            free_memory = flags.get("free_memory", False)
 
-        if flags.get("unload_models", free_memory):
-            comfy.model_management.unload_all_models()
-            need_gc = True
-            last_gc_collect = 0
+            if flags.get("unload_models", free_memory):
+                comfy.model_management.unload_all_models()
+                need_gc = True
+                last_gc_collect = 0
 
-        if free_memory:
-            e.reset()
-            need_gc = True
-            last_gc_collect = 0
+            if free_memory:
+                e.reset()
+                need_gc = True
+                last_gc_collect = 0
 
-        if need_gc:
-            current_time = time.perf_counter()
-            if (current_time - last_gc_collect) > gc_collect_interval:
-                gc.collect()
-                comfy.model_management.soft_empty_cache()
-                last_gc_collect = current_time
-                need_gc = False
-                hook_breaker_ac10a0.restore_functions()
+            if need_gc:
+                current_time = time.perf_counter()
+                if (current_time - last_gc_collect) > gc_collect_interval:
+                    gc.collect()
+                    comfy.model_management.soft_empty_cache()
+                    last_gc_collect = current_time
+                    need_gc = False
+                    hook_breaker_ac10a0.restore_functions()
 
-                asset_manager.queue_output_scan()
-                asset_manager.resume_background_scan()
+                    asset_manager.queue_output_scan()
+                    asset_manager.resume_background_scan()
+                    background_scan_paused = False
+        # Resume also when the worker exits before its delayed garbage collection.
+        except BaseException:
+            if background_scan_paused:
+                try:
+                    asset_manager.resume_background_scan()
+                except Exception:
+                    logging.exception("Failed to resume background asset scanning after prompt worker failure / 任务线程异常后无法恢复后台资源扫描")
+            raise
 
 
 async def run(server_instance, address='', port=8188, verbose=True, call_on_start=None):
@@ -1045,37 +1060,45 @@ def setup_database(asset_manager):
     if not dependencies_available():
         return
 
+    if not asset_manager.enabled:
+        warn_if_database_in_use()
+        asset_manager.startup()
+        return
+
     try:
         init_db()
         asset_manager.startup()
     except Exception as e:
-        if "database is locked" in str(e):
+        if "database is locked" in str(e) or "Could not acquire lock on database" in str(e):
             logging.error(
                 "Database is locked. Another ComfyUI process is already using this database.\n"
                 "To resolve this, specify a separate database file for this instance:\n"
                 "  --database-url sqlite:///path/to/another.db"
             )
             sys.exit(1)
-        if "Could not acquire lock on database" in str(e):
-            logging.error(
-                "Database is locked. Another ComfyUI process is already using this database.\n"
-                "To resolve this, specify a separate database file for this instance:\n"
-                "  --database-url sqlite:///path/to/another.db"
-            )
-            if args.enable_assets:
-                sys.exit(1)
-            return
-        if args.enable_assets:
-            logging.error(
-                f"Failed to initialize database: {e}\n"
-                "The --enable-assets flag requires a working database connection.\n"
-                "To resolve this, try one of the following:\n"
-                "  1. Install the latest requirements: pip install -r requirements.txt\n"
-                "  2. Specify an alternative database URL: --database-url sqlite:///path/to/your.db\n"
-                "  3. Use an in-memory database: --database-url sqlite:///:memory:"
-            )
-            sys.exit(1)
-        logging.error(f"Failed to initialize database. Please ensure you have installed the latest requirements. If the error persists, please report this as in future the database will be required: {e}")
+        logging.error(
+            f"Failed to initialize database: {e}\n"
+            "The --enable-assets flag requires a working database connection.\n"
+            "To resolve this, try one of the following:\n"
+            "  1. Install the latest requirements: pip install -r requirements.txt\n"
+            "  2. Specify an alternative database URL: --database-url sqlite:///path/to/your.db\n"
+            "  3. Use an in-memory database: --database-url sqlite:///:memory:"
+        )
+        sys.exit(1)
+
+
+def warn_if_database_in_use():
+    db_path = lock_holder_db_path()
+    if db_path is None:
+        return
+    app.logger.log_startup_warning(
+        f"Another ComfyUI is using the asset database: {db_path}\n"
+        "Assets are disabled; this instance will start without using that database.\n"
+        "For a separate database, use --database-url sqlite:///path/to/another.db\n"
+        f"其他 ComfyUI 正在使用资源数据库：{db_path}\n"
+        "当前未启用资源库，本实例不会使用该数据库，仍会启动。\n"
+        "如需独立数据库，请使用 --database-url sqlite:///path/to/another.db"
+    )
 
 def start_comfyui(asyncio_loop=None):
     """
@@ -1087,6 +1110,7 @@ def start_comfyui(asyncio_loop=None):
         logging.info(f"Setting temp directory to: {temp_dir}")
         folder_paths.set_temp_directory(temp_dir)
     asset_manager: AssetManager = default_asset_manager()
+    feature_flags.SERVER_FEATURE_FLAGS["assets"] = asset_manager.enabled
     if not asset_manager.enabled:
         cleanup_temp_filesystem()
 
@@ -1108,7 +1132,7 @@ def start_comfyui(asyncio_loop=None):
     hook_breaker_ac10a0.save_functions()
     asyncio_loop.run_until_complete(nodes.init_extra_nodes(
         init_custom_nodes=(not args.disable_all_custom_nodes) or len(args.whitelist_custom_nodes) > 0,
-        init_api_nodes=not args.disable_api_nodes
+        init_api_nodes=not args.disable_partner_nodes
     ))
 
     # Re-apply Comfy's cuDNN benchmark policy after custom-node imports. Benchmark

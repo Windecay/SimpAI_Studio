@@ -713,7 +713,7 @@ def _create_new_runner(
     
     debug.start_timer("config_load")
     config_path = os.path.join(script_directory, 
-                              './configs_7b' if "7b" in dit_model else './configs_3b', 
+                              './configs_7b' if "7b" in os.path.basename(dit_model).lower() else './configs_3b',
                               'main.yaml')
     config = load_config(config_path)
     debug.end_timer("config_load", "Config loading")

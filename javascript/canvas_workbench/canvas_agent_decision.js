@@ -259,8 +259,12 @@
 
         async function ensureCanvasAgentPromptPreflightAllows(prompt, target, purpose, options) {
             const opts = options || {};
+            const isCurrent = () => typeof opts.shouldContinue !== 'function' || opts.shouldContinue();
+            const stale = () => ({ ok: false, error: 'prompt preflight no longer current' });
+            if (!isCurrent()) return stale();
             let currentPrompt = String(prompt || '').trim();
             let preflight = await canvasAgentPromptPreflight(currentPrompt, target, purpose, opts);
+            if (!isCurrent()) return stale();
             if (String(preflight?.state || '') !== 'block') return { ok: true, prompt: currentPrompt, preflight };
             if (opts.autoStart) {
                 return { ok: false, prompt: currentPrompt, preflight, error: preflight.summary || 'prompt preflight blocked' };
@@ -283,6 +287,7 @@
                         { value: 'cancel', label: t('Cancel', '取消'), icon: 'fa-xmark' }
                     ]
                 });
+                if (!isCurrent()) return stale();
                 if (choice === 'cancel') return { ok: false, prompt: currentPrompt, preflight, error: 'prompt preflight cancelled' };
                 currentPrompt = String(form.prompt || currentPrompt).trim();
                 if (choice === 'rewrite') {
@@ -296,8 +301,10 @@
                     } catch (err) {
                         console.warn('[SimpAI Canvas Agent] preflight regenerate failed', err);
                     }
+                    if (!isCurrent()) return stale();
                 }
                 preflight = await canvasAgentPromptPreflight(currentPrompt, target, purpose, opts);
+                if (!isCurrent()) return stale();
             }
             return { ok: true, prompt: currentPrompt, preflight };
         }

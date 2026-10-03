@@ -76,8 +76,14 @@
             return [];
         }
 
+        const activeBatches = new WeakMap();
+
         async function runBatchAnyNode(node, options) {
             if (!node || node.type !== 'batch_any') return { ok: false, error: 'batch node not found' };
+            const project = getProject();
+            const stale = () => ({ ok: false, stale: true, error: 'batch no longer current' });
+            if (getNode(node.id) !== node) return stale();
+            if (activeBatches.get(node)?.isCurrent()) return { ok: false, error: 'batch already running' };
             const opts = options || {};
             const items = Array.isArray(node.items) ? node.items : [];
             if (!items.length) {
@@ -93,106 +99,120 @@
                 ? [Number(node.current_index || 0)]
                 : items.map((_, index) => index);
             const jobId = uid('batch_any_job');
-            applyBatchAnyStatePatch(node, {
-                batchPatch: {
-                    state: 'running',
-                    job_id: jobId,
-                    target_node_id: target.node.id,
-                    target_slot: target.slot,
-                    current: 0,
-                    total: indexes.length,
-                    run_ids: [],
-                    last_error: ''
-                }
-            });
-            const project = getProject();
-            applyProjectPatch(buildProjectBatchJobAppendPatch(project, buildBatchAnyJob({
-                jobId,
-                sourceNodeId: node.id,
-                targetNodeId: target.node.id,
-                targetSlot: target.slot,
-                itemIds: indexes.map(index => items[index]?.id || '')
-            })));
-            mutate({ inspector: true });
-            const currentProject = getProject();
-            const job = (currentProject.batch_jobs || []).find(entry => entry.id === jobId);
+            let job = null;
+            const operation = {};
+            const isCurrent = () => getProject() === project
+                && getNode(node.id) === node
+                && getNode(target.node.id) === target.node
+                && activeBatches.get(node) === operation
+                && node.batch?.job_id === jobId
+                && (!job || (project.batch_jobs || []).includes(job));
+            operation.isCurrent = isCurrent;
+            activeBatches.set(node, operation);
             const results = [];
             let batchResultNode = null;
             let batchAssets = [];
-            for (let order = 0; order < indexes.length; order += 1) {
-                const index = indexes[order];
-                const item = setBatchAnyCurrentItem(node, index, { render: false });
-                if (!item) continue;
+            let canceled = false;
+            const finish = () => {
+                if (!isCurrent()) return stale();
+                const failed = results.find(result => !result?.ok);
+                const finalState = canceled ? 'canceled' : (failed ? 'failed' : 'finished');
                 applyBatchAnyStatePatch(node, {
                     batchPatch: {
-                        current: order + 1,
-                        active_item_id: item.id,
-                        active_item_name: item.name || ''
+                        state: finalState,
+                        last_error: failed?.error || (failed && !canceled ? t('Batch item failed.', '批量素材运行失败。') : ''),
+                        finished_at: nowIso()
                     }
                 });
-                mutate({ inspector: getSelectedNodeId() === node.id });
-                const result = await runPresetNode(target.node, {
-                    resultNode: batchResultNode,
-                    reuseExistingResult: !!batchResultNode,
-                    skipInputPreflight: true,
-                    initialDelayMs: 900
+                if (job) Object.assign(job, buildBatchJobCompletionPatch(finalState));
+                if (batchResultNode && getNode(batchResultNode.id) === batchResultNode) setSelection(batchResultNode);
+                mutate({ inspector: true });
+                showToast(canceled
+                    ? t('Batch Any canceled.', 'Batch Any 已取消。')
+                    : (failed ? t('Batch Any stopped with an error.', 'Batch Any 因错误停止。')
+                        : t('Batch Any finished.', 'Batch Any 已完成。')));
+                return { ok: !failed && !canceled, results, job_id: jobId };
+            };
+            try {
+                applyBatchAnyStatePatch(node, {
+                    batchPatch: {
+                        state: 'running', job_id: jobId, target_node_id: target.node.id,
+                        target_slot: target.slot, current: 0, total: indexes.length,
+                        run_ids: [], last_error: ''
+                    }
                 });
-                results.push(result);
-                const runId = result?.result?.run_id
-                    || getNode(result?.result_node_id)?.producer?.run_id
-                    || '';
-                if (runId) {
-                    const runIds = Array.isArray(node.batch?.run_ids)
-                        ? node.batch.run_ids.concat([runId])
-                        : [runId];
-                    applyBatchAnyStatePatch(node, { batchPatch: { run_ids: runIds } });
-                    if (job) Object.assign(job, buildBatchJobRunIdsPatch(job, runId));
-                }
-                const resultNode = getNode(result?.result_node_id);
-                if (resultNode) {
-                    if (!batchResultNode) batchResultNode = resultNode;
-                    const newAssets = batchAnyResultAssetsFromResponse(result);
-                    const assetIndex = batchAssets.length;
-                    if (newAssets.length) {
-                        batchAssets = batchAssets.concat(cloneRunValue(newAssets, []));
-                        Object.assign(resultNode, buildResultAssetPatch(resultNode, {
-                            assets: batchAssets,
-                            selectedAssetIndex: assetIndex,
-                            asset: batchAssets[assetIndex]
+                applyProjectPatch(buildProjectBatchJobAppendPatch(project, buildBatchAnyJob({
+                    jobId, sourceNodeId: node.id, targetNodeId: target.node.id,
+                    targetSlot: target.slot, itemIds: indexes.map(index => items[index]?.id || '')
+                })));
+                job = (project.batch_jobs || []).find(entry => entry.id === jobId);
+                mutate({ inspector: true });
+                for (let order = 0; order < indexes.length; order += 1) {
+                    if (!isCurrent()) return stale();
+                    const index = indexes[order];
+                    const item = setBatchAnyCurrentItem(node, index, { render: false });
+                    if (!item) continue;
+                    applyBatchAnyStatePatch(node, {
+                        batchPatch: { current: order + 1, active_item_id: item.id, active_item_name: item.name || '' }
+                    });
+                    mutate({ inspector: getSelectedNodeId() === node.id });
+                    const result = await runPresetNode(target.node, {
+                        resultNode: batchResultNode,
+                        reuseExistingResult: !!batchResultNode,
+                        skipInputPreflight: true,
+                        initialDelayMs: 900,
+                        shouldContinue: isCurrent
+                    });
+                    if (!isCurrent()) return stale();
+                    const resultNode = getNode(result?.result_node_id);
+                    const response = result?.result || result?.response || {};
+                    const runId = result?.run_id || response.run_id || '';
+                    const runToken = result?.run_token || response.run_token || '';
+                    const obsolete = result?.stale || result?.error === 'run no longer current'
+                        || (result?.result_node_id && (!resultNode
+                            || (batchResultNode?.id === resultNode.id && resultNode !== batchResultNode)
+                            || (runId && resultNode.producer?.run_id !== runId)
+                            || (runToken && (resultNode.producer?.pending_run_token || resultNode.producer?.run_token) !== runToken)));
+                    if (obsolete) {
+                        results.push({ ok: false, error: t('Batch result is no longer current.', '批量运行的结果任务已变更。') });
+                        batchResultNode = null;
+                        break;
+                    }
+                    results.push(result);
+                    const currentRunId = runId || resultNode?.producer?.run_id || '';
+                    if (currentRunId) {
+                        const runIds = (Array.isArray(node.batch?.run_ids) ? node.batch.run_ids : []).concat([currentRunId]);
+                        applyBatchAnyStatePatch(node, { batchPatch: { run_ids: runIds } });
+                        if (job) Object.assign(job, buildBatchJobRunIdsPatch(job, currentRunId));
+                    }
+                    if (resultNode) {
+                        if (!batchResultNode) batchResultNode = resultNode;
+                        const newAssets = batchAnyResultAssetsFromResponse(result);
+                        const assetIndex = batchAssets.length;
+                        if (newAssets.length) {
+                            batchAssets = batchAssets.concat(cloneRunValue(newAssets, []));
+                            Object.assign(resultNode, buildResultAssetPatch(resultNode, {
+                                assets: batchAssets, selectedAssetIndex: assetIndex, asset: batchAssets[assetIndex]
+                            }));
+                        }
+                        Object.assign(resultNode, buildResultBatchMetadataPatch(resultNode, {
+                            title: batchAnyResultTitle(node), batchJobId: jobId, batchNodeId: node.id,
+                            batchItemId: item.id || resultNode.batch_item_id || '', batchIndex: index,
+                            batchItemName: item.name || resultNode.batch_item_name || '', gridRole: 'batch_result'
                         }));
                     }
-                    Object.assign(resultNode, buildResultBatchMetadataPatch(resultNode, {
-                        title: batchAnyResultTitle(node),
-                        batchJobId: jobId,
-                        batchNodeId: node.id,
-                        batchItemId: item.id || resultNode.batch_item_id || '',
-                        batchIndex: index,
-                        batchItemName: item.name || resultNode.batch_item_name || '',
-                        gridRole: 'batch_result'
-                    }));
+                    canceled = !!result?.cancelled || ['canceled', 'cancelled'].includes(result?.state || response.state);
+                    if (canceled || (!result?.ok && node.params?.stop_on_error !== false)) break;
                 }
-                if (!result?.ok && node.params?.stop_on_error !== false) {
-                    const error = result?.error || t('Batch item failed.', '批量素材运行失败。');
-                    applyBatchAnyStatePatch(node, { batchPatch: { last_error: error } });
-                    if (job) Object.assign(job, buildBatchJobFailurePatch());
-                    break;
-                }
+                return finish();
+            } catch (err) {
+                if (!isCurrent()) return stale();
+                results.push({ ok: false, error: err?.message || String(err) });
+                if (job) Object.assign(job, buildBatchJobFailurePatch());
+                return finish();
+            } finally {
+                if (activeBatches.get(node) === operation) activeBatches.delete(node);
             }
-            const failed = results.find(result => !result?.ok);
-            const finalState = failed ? 'failed' : 'finished';
-            applyBatchAnyStatePatch(node, {
-                batchPatch: {
-                    state: finalState,
-                    finished_at: nowIso()
-                }
-            });
-            if (job) Object.assign(job, buildBatchJobCompletionPatch(node.batch?.state || finalState));
-            if (batchResultNode) setSelection(batchResultNode);
-            mutate({ inspector: true });
-            showToast(failed
-                ? t('Batch Any stopped with an error.', 'Batch Any 因错误停止。')
-                : t('Batch Any finished.', 'Batch Any 已完成。'));
-            return { ok: !failed, results, job_id: jobId };
         }
 
         return {

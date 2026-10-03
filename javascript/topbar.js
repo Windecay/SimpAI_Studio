@@ -40,6 +40,7 @@ let presetStoreDraftState = {
     dirty: false,
     pointerDrag: null,
 };
+let presetStoreSaveState = { pending: null, timer: 0, sequence: 0, keepOpen: false };
 let presetStoreObserver = null;
 let presetStoreObservedEl = null;
 let presetStoreUpdateQueued = false;
@@ -4266,6 +4267,7 @@ function refresh_topbar_status_js(system_params) {
     if (!system_params || typeof system_params !== "object") {
         return;
     }
+    handlePresetStoreSaveResult(system_params);
     checkAndUpdateSession(
         system_params["sstoken"],
         system_params["__identity_session_days"] ?? 90,
@@ -4389,7 +4391,8 @@ function refresh_topbar_status_js(system_params) {
     presetStoreUiState.nav_name_list = nav_name_list;
     presetStoreUiState.role = system_params["user_role"];
     if (shouldApplyPresetStore) {
-        presetStoreUiState.expand_flag = !!system_params["preset_store"];
+        presetStoreUiState.expand_flag = !!system_params["preset_store"]
+            || (presetStoreSaveState.keepOpen && system_params["user_role"] !== "guest");
     }
     if (shouldApplyPresetStore && system_params["__preset_store_meta"] && typeof system_params["__preset_store_meta"] === "object") {
         presetStoreUiState.meta = system_params["__preset_store_meta"];
@@ -9872,6 +9875,7 @@ function clearPresetStoreOptimisticIntent() {
 }
 
 function recordPresetStoreOptimisticIntent(isOpen) {
+    if (!isOpen) presetStoreSaveState.keepOpen = false;
     const previousSeq = Math.max(0, Number(topbarLastPresetStoreSeq) || 0);
     const expectedSeq = previousSeq + 1;
     clearPresetStoreOptimisticIntent();
@@ -10382,6 +10386,7 @@ function getPresetStoreDraftLimit() {
 }
 
 function setPresetStoreDraftFromNav(navList, force = false) {
+    if (presetStoreSaveState.pending) return;
     if (presetStoreDraftState.dirty && !force) return;
     presetStoreDraftState.list = cleanPresetStoreNameList(navList, getPresetStoreDraftLimit());
     presetStoreDraftState.list = ensurePresetStoreNavListMinimum(presetStoreDraftState.list);
@@ -11132,12 +11137,74 @@ function renderPresetStoreCandidatePool(candidateEntries = null) {
     return mainButtons.concat(userButtons);
 }
 
+function presetStoreSaveMessage(kind, params = window.simpleaiTopbarSystemParams || {}) {
+    const english = String(params.__lang || "cn").toLowerCase().startsWith("en");
+    if (kind === "saving") return english ? "Saving..." : "正在保存...";
+    if (kind === "saved") return english ? "Saved." : "已保存。";
+    if (kind === "timeout") return english
+        ? "Save was not confirmed. Your draft is kept. Please retry."
+        : "尚未收到保存确认，已保留编辑内容，请重试。";
+    return english ? "Could not save the navbar presets. Your draft is kept. Please retry."
+        : "导航栏预设保存失败，已保留编辑内容，请重试。";
+}
+
+function setPresetStoreSaveBusy(busy) {
+    ["#preset_store_apply_draft", "#preset_store_apply_draft_close", "#preset_store_reset_draft"].forEach((selector) => {
+        const button = getPresetStoreControl(selector);
+        if (button) button.disabled = !!busy;
+    });
+}
+
+function finishPresetStoreSave() {
+    window.clearTimeout(presetStoreSaveState.timer);
+    presetStoreSaveState.timer = 0;
+    presetStoreSaveState.pending = null;
+    setPresetStoreSaveBusy(false);
+}
+
+function failPresetStoreSave(requestId, message = "") {
+    const pending = presetStoreSaveState.pending;
+    if (!pending || pending.id !== requestId) return;
+    finishPresetStoreSave();
+    presetStoreDraftState.dirty = true;
+    presetStoreSaveState.keepOpen = true;
+    presetStoreUiState.expand_flag = true;
+    setPresetStoreOpen(getPresetStoreElement(), true);
+    showPresetStoreStatus(message || presetStoreSaveMessage("failed"), "warning");
+}
+
+function handlePresetStoreSaveResult(params) {
+    const result = params.__preset_store_save_result;
+    const pending = presetStoreSaveState.pending;
+    if (!pending || !result || result.request_id !== pending.id) return;
+    if (result.ok !== true) {
+        failPresetStoreSave(pending.id, result.message || presetStoreSaveMessage("failed", params));
+        return;
+    }
+    finishPresetStoreSave();
+    const current = cleanPresetStoreNameList(presetStoreDraftState.list, getPresetStoreDraftLimit());
+    // Edits made while saving belong to the next submission, not this acknowledgment.
+    const unchanged = JSON.stringify(current) === JSON.stringify(pending.presets);
+    if (unchanged) setPresetStoreDraftFromNav(result.presets || pending.presets, true);
+    else presetStoreDraftState.dirty = true;
+    presetStoreSaveState.keepOpen = !unchanged;
+    presetStoreUiState.expand_flag = !pending.close || !unchanged;
+    setPresetStoreOpen(getPresetStoreElement(), presetStoreUiState.expand_flag);
+    if (unchanged) showPresetStoreStatus(presetStoreSaveMessage("saved", params), "success");
+    else clearPresetStoreStatus();
+    renderPresetStoreDraft();
+    syncPresetStoreCandidatePinnedState();
+}
+
 function submitPresetStoreDraft(closeAfterApply) {
+    if (presetStoreSaveState.pending) return;
     let nextNav = cleanPresetStoreNameList(presetStoreDraftState.list, getPresetStoreDraftLimit());
     nextNav = ensurePresetStoreNavListMinimum(nextNav, true);
+    const requestId = `${Date.now()}-${++presetStoreSaveState.sequence}`;
     const payload = JSON.stringify({
         presets: nextNav,
         close: !!closeAfterApply,
+        request_id: requestId,
         t: Date.now(),
     });
     if (!nextNav.length) {
@@ -11146,32 +11213,28 @@ function submitPresetStoreDraft(closeAfterApply) {
     }
     if (typeof setTopbarHiddenBridgeTextboxValue !== "function" || typeof clickTopbarHiddenBridgeButton !== "function") {
         console.warn("[UI-TRACE] preset_store_apply.bridge_missing");
+        showPresetStoreStatus(presetStoreSaveMessage("failed"));
         return;
     }
     const ok = setTopbarHiddenBridgeTextboxValue("preset_store_apply_payload", payload);
     if (!ok) {
         console.warn("[UI-TRACE] preset_store_apply.payload_missing");
+        showPresetStoreStatus(presetStoreSaveMessage("failed"));
         return;
     }
-    topbarLastPresetStoreSeq = Math.max(0, Number(topbarLastPresetStoreSeq) || 0) + 1;
-    topbarLastNavNameList = nextNav.slice();
-    presetStoreUiState.nav_name_list = nextNav.slice();
     presetStoreDraftState.list = nextNav.slice();
-    renderPresetStoreDraft();
-    syncPresetStoreCandidatePinnedState();
-    applyTopbarNavStyles(
-        topbarLastPreset || nextNav[0],
-        topbarLastTheme || presetStoreUiState.theme || "dark",
-        nextNav
-    );
-    presetStoreDraftState.dirty = false;
-    if (closeAfterApply) {
-        presetStoreUiState.expand_flag = false;
-        setPresetStoreOpen(getPresetStoreElement(), false);
-    }
+    presetStoreDraftState.dirty = true;
+    presetStoreSaveState.pending = { id: requestId, presets: nextNav.slice(), close: !!closeAfterApply };
+    presetStoreSaveState.keepOpen = true;
+    setPresetStoreSaveBusy(true);
+    showPresetStoreStatus(presetStoreSaveMessage("saving"), "info");
+    presetStoreSaveState.timer = window.setTimeout(() => {
+        failPresetStoreSave(requestId, presetStoreSaveMessage("timeout"));
+    }, 30000);
     requestAnimationFrame(() => {
         if (!triggerPresetStoreApplyOnce()) {
             console.warn("[UI-TRACE] preset_store_apply.button_missing");
+            failPresetStoreSave(requestId);
         }
     });
 }
@@ -11359,6 +11422,7 @@ function getPresetStoreControl(selector) {
 function bindPresetStoreControls() {
     const presetStoreEl = getPresetStoreElement();
     if (!presetStoreEl) return;
+    setPresetStoreSaveBusy(!!presetStoreSaveState.pending);
     bindPresetStoreWheelContainment(presetStoreEl);
     const search = getPresetStoreControl("#preset_store_search");
     if (search && search.dataset.simpleaiBound !== "1") {

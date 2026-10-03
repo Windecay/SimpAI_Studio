@@ -106,3 +106,41 @@
 - H3 VAE 采用上游的 `strip` 方案：下一行垂直融合时读取上一行已经完成横向融合的对应区域，保留官方对交叉重叠区域的处理；更新空间融合回归测试覆盖批量解码和不同尺寸。
 - 核心 requirements 移除 `torchaudio`，改由 `comfy.audio` 提供音频重采样；Studio 启动器中 PyTorch 家族安装策略暂保留 `torchaudio`。
 - 更新 Studio 嵌入式后端依赖声明和版本标记；未安装依赖、未启动服务、未执行 GPU 或完整工作流验证。
+
+## 2026-10-03 上游同步与 H3 ControlNet 2.0
+
+- 合并官方上游至 `3c169c2c`，新增 78 个提交；保留未提交 merge。同步 H3 ControlNet Union 2.0 的十层注入与 `inpaint_post_norm`，保留 Studio 已有的采样前 VAE 编码、LoRA 和失败清理流程。
+- 私有入口采用上游后台扫描异常恢复、未启用资源库时不初始化数据库的策略，以及 `--disable-partner-nodes` 参数；保留默认关闭 compiler、cuDNN benchmark 管理和其他私有运行行为。
+- 依赖声明统一为 frontend `1.53.10`、workflow templates `0.11.76`、embedded docs `0.5.13`、Kitchen `0.2.37`、aimdo `0.5.5`；Kitchen 同时核对 Forge 两个入口，不安装依赖。
+- Studio 残留 Stability 文件是上游此前删除的旧文件，不恢复到集成仓库；Studio 专属文本缓存测试及节点包保持原样。音频保存同步到 `comfy.audio.resample`，不恢复旧 torchaudio 实现。
+- **数据库提醒**：新增 `0008_drop_asset_meta` 会删除 `asset_meta` 表；上游当前元数据使用资产记录中的 JSON 字段。保留此前 `0007` 的数据风险提示，启用资源库或启动新后端前仍需独立备份数据库，本次不迁移用户数据库。
+
+### 2026-10-03 验证与实际环境
+
+- Studio checkout 已逐文件验证 190 项同步清单，包括删除旧 Sora 节点文件及旧 SeedVR2 VAE 测试；三个合并冲突均已解决，两仓库 HEAD 保持不变。
+
+| 专项范围 | 最终结果 |
+| --- | --- |
+| 启动、依赖、资源库、更新器、Nunchaku 及三个指定 Forge 合同 | 116 passed、21 subtests passed；1 个既有 Forge 失败 |
+| H3 ControlNet 2.0、生命周期、MLP、VAE 分块和 Motion | 181 passed |
+| 区域重建、人脸跟踪、细化与音视频 CPU API | 282 passed |
+| 上游 H3、SeedVR2 与冲突相关模型测试 | 76 passed、14 个 CUDA 专项 skipped |
+| 任务线程、数据库锁与临时数据库迁移 | 45 passed |
+| Python 语法、JSON、格式 | 194 个 Python、6 份 JSON 通过；Git whitespace 通过，Windows batch 按 CRLF 检查 |
+
+- 合计 700 项及 21 项子测试通过，仅累计各组最后一次结果，不重复计入前期检查或单独复测。
+- 修改前出现 36 个 VAE 分块参考算法失败和 2 个 Nunchaku 存储策略断言失败：生产 tiling 与 ModelPatcher 在本次升级前已采用当前行为，旧测试仍假定全部纵向融合优先、构造函数合并 CLI 标志。更新测试参考与断言，保留零误差比较和连续克隆检查；未为通过测试改写这两处生产算法。
+- **既有失败**：Forge 的 `test_source_backend_streaming_progress_and_anima_defaults_contract` 仍期待 `livePreview.style.display = "block"`，Git HEAD 中对应页面已使用 `"flex"`。本次只更新该合同的 Kitchen 版本断言，没有修改 Forge 预览界面或掩盖此失败。
+- **未通过的进程检查**：`test_db_lock_processes.py` 的三个真实入口用例在 CPU 隔离环境下因 Triton 报 `0 active drivers` 失败，未建立服务。其中一个后续步骤要求完整服务，因此不继续执行；45 项数据库与线程测试不包含这三个用例。它们的失败日志单独保留，不能称为进程级验证通过。
+- 上述入口尝试重新生成了开发端忽略文件 `extra_model_paths.yaml`。当前内容与既有用户配置生成结果一致；用户配置修改时间仍为 `2026-08-31T13:19:32`，未改写用户配置或用户数据库。未记录测试前 YAML 哈希，不能承诺与此前内容逐字一致。
+- 成功的 CPU 测试在进程内禁用可选 Triton 导入，保留真实 Kitchen eager 后端；区域等短 Python 子进程采用相同隔离。不修改已安装包，不用这些结果代替 GPU 或正常启动验证。
+
+| 包 | 实际已安装 | 本次声明 |
+| --- | --- | --- |
+| comfyui-frontend-package | 1.53.6 | 1.53.10 |
+| comfyui-workflow-templates | 0.11.66 | 0.11.76 |
+| comfyui-embedded-docs | 0.5.12 | 0.5.13 |
+| comfy-kitchen | 0.2.35 | 0.2.37 |
+| comfy-aimdo | 0.5.5 | 0.5.5 |
+
+- 未安装依赖、下载模型、重启服务、执行 GPU/浏览器/长视频对照、同步 E 盘、提交或推送。环境还缺少 pytest-asyncio、pytest-mock、pytest-aiohttp，没有执行依赖它们的测试。原有暂存和未暂存内容保持各自状态；同一区域无法独立暂存的 H3 内容保留原 index。

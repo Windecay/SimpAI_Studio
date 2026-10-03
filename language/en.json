@@ -802,5 +802,21 @@
     "Qwen Image 2.1 Edit": "Qwen Image 2.1 Edit",
     "Qwen Image 2.1 Edit [up to 9 images]": "Qwen Image 2.1 Edit [up to 9 images]",
     "Reference Resolution (0 = Original)": "Reference Resolution (0 = Original)",
-    "Custom Canvas Size": "Custom Canvas Size"
+    "Custom Canvas Size": "Custom Canvas Size",
+    "VOSR2": "VOSR2 Image Upscale",
+    "VOSR2\u2B07": "VOSR2 Image Upscale\u2B07",
+    "VOSR2 Image Upscale": "VOSR2 Image Upscale",
+    "Upscale factor": "Upscale factor",
+    "DiT tile size (pixels)": "DiT tile size (pixels)",
+    "DiT tile overlap (pixels)": "DiT tile overlap (pixels)",
+    "VAE tile size (pixels)": "VAE tile size (pixels)",
+    "VAE tile overlap (pixels)": "VAE tile overlap (pixels)",
+    "Preserve source colors": "Preserve source colors",
+    "SeedVR2": "SeedVR2 Video Upscale",
+    "SeedVR2\u2B07": "SeedVR2 Video Upscale\u2B07",
+    "SeedVR2 Video Upscale": "SeedVR2 Video Upscale",
+    "Target shorter edge (pixels)": "Target shorter edge (pixels)",
+    "Temporal window (frames)": "Temporal window (frames)",
+    "Temporal overlap (frames)": "Temporal overlap (frames)",
+    "Tiled VAE": "Tiled VAE"
 }

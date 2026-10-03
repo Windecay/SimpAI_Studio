@@ -46,7 +46,7 @@
   "70": {"class_type": "SimpAIH3RegionSource", "_meta": {"title": "H3 Region Source"},
     "inputs": {"video": "", "start": ["1", 14], "end": ["1", 15], "factor": ["1", 16], "width": ["1", 6], "height": ["1", 7], "keep_source_size": true}},
   "73": {"class_type": "SimpAIH3RegionOutput", "inputs": {"region": ["70", 0], "images": ["90", 0], "source_aligned": true}},
-  "75": {"class_type": "ModelPatchLoader", "inputs": {"name": "minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors"}},
+  "75": {"class_type": "ModelPatchLoader", "inputs": {"name": "minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors"}},
   "79": {"class_type": "noneNode", "inputs": {}},
   "80": {"class_type": "easy string", "inputs": {"value": "None"}},
   "81": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 2], "image": "None"}},

@@ -35,10 +35,10 @@ PYPI_INDEX_URL = "https://pypi.org/simple"
 
 # Keep this list aligned with launch.py's startup package checks.
 RUNTIME_UPDATE_PACKAGES = (
-    ("comfyui-frontend-package", "1.53.6", None),
-    ("comfyui-workflow-templates", "0.11.66", None),
-    ("comfyui-embedded-docs", "0.5.12", None),
-    ("comfy-kitchen", "0.2.35", None),
+    ("comfyui-frontend-package", "1.53.10", None),
+    ("comfyui-workflow-templates", "0.11.76", None),
+    ("comfyui-embedded-docs", "0.5.13", None),
+    ("comfy-kitchen", "0.2.37", None),
     ("comfy-aimdo", "0.5.5", None),
     ("av", "17.0.0", None),
     ("PyOpenGL", None, ">=3.1.8"),

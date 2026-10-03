@@ -2364,6 +2364,10 @@ def get_model_filenames(folder_paths, extensions=None, name_filter=None):
 
 def get_base_model_list(engine='Z-image', task_method=None, use_model_filter: bool = True):
     global modelsinfo
+    if str(task_method or '').strip().casefold().removeprefix('scene_') == 'seedvr2':
+        from enhanced.seedvr2 import list_local_models
+
+        return list_local_models(paths_SEEDVR2)['dit']
     base_model_list = modelsinfo.get_model_names('checkpoints', [])
     base_model_list.extend(modelsinfo.get_model_names('diffusion_models', []))
     base_model_list = [_normalize_model_name(n) for n in base_model_list]
@@ -2376,6 +2380,14 @@ def get_base_model_list(engine='Z-image', task_method=None, use_model_filter: bo
 
 def update_files(engine='Z-image', task_method=None, use_model_filter: bool = True, base_model: Optional[str] = None):
     global modelsinfo, model_filenames, lora_filenames, vae_filenames, clip_filenames, upscale_model_filenames, wildcard_filenames
+    if str(task_method or '').strip().casefold().removeprefix('scene_') == 'seedvr2':
+        from enhanced.seedvr2 import list_local_models
+
+        seedvr2_models = list_local_models(paths_SEEDVR2)
+        model_filenames = seedvr2_models['dit']
+        vae_filenames = seedvr2_models['vae']
+        lora_filenames, clip_filenames, upscale_model_filenames = [], [], []
+        return model_filenames, lora_filenames, vae_filenames, clip_filenames
     modelsinfo.refresh_from_path()
     _apply_builtin_model_arch_family_cache(path_models_root)
     model_filenames = get_base_model_list(engine, task_method, use_model_filter=use_model_filter)

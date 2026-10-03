@@ -528,3 +528,19 @@ SimpAI UI guide skill:
   Krea2-ImageEdit, or Bernini-ImageEdit route matching the supplied media.
   `Swap+` remains a manual-mask workflow. Do not treat all fp4/int4 models
   as retired or substitute a text-to-image preset for reference editing.
+
+## 2026-10-03 VOSR2 Image Upscale / VOSR2 图像放大
+
+- Recommend `VOSR2` for dedicated one-step still-image super-resolution without
+  a text prompt. It requires one source RGB image and its matched DiT,
+  Qwen-Image 2D VAE, and DINOv2-L bundle.
+- Preserve source size on input and multiply both dimensions by the selected
+  integer factor (1-4, default 2). Defaults enable DiT and VAE tiling and preserve
+  source colors through wavelet alignment.
+- Use Studio's model panel for the five pinned model files. The first load
+  converts the installed DINOv2 checkpoint locally; it never downloads weights
+  during generation.
+- Do not describe this preset as video VSR, transparent-image processing,
+  text-guided editing, or guaranteed exact detail recovery.
+- Follow `state.__lang`: English display name `VOSR2 Image Upscale`, Chinese
+  display name `VOSR2 图像放大`; the catalog key remains `VOSR2`.

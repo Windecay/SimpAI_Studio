@@ -65,25 +65,53 @@
             return (Array.isArray(requirements.model_list) && requirements.model_list.length > 0) || !!requirements.has_model_probe;
         }
 
+        const statusRequests = new WeakMap();
+
         async function checkPresetModelStatus(node) {
             if (!isPresetNode(node)) return { ok: false, error: 'preset node is unavailable' };
+            const project = getProject();
+            const request = {};
+            statusRequests.set(node, request);
             Object.assign(node, applyStatusPatch(node, checkingStatus(translate('Checking required model files...', '正在检查所需模型文件...'))));
             render({ inspector: false });
-            const response = await checkRequest(node);
+            let response;
+            let requestError;
+            try {
+                response = await checkRequest(node);
+            } catch (err) {
+                requestError = err;
+                response = { ok: false, error: err?.message || String(err) };
+            }
             const current = getNode(node.id);
+            if (getProject() !== project || current !== node || statusRequests.get(node) !== request) {
+                return { ok: false, stale: true, error: 'model check no longer current' };
+            }
             if (current) {
                 applyStatus(current, response);
                 mutate({ inspector: false });
             }
+            if (requestError) throw requestError;
             return response;
         }
 
         async function queuePresetModelDownloads(node, options) {
             if (!isPresetNode(node)) return { ok: false, error: 'preset node is unavailable' };
+            const project = getProject();
+            if (getNode(node.id) !== node) return { ok: false, stale: true, error: 'model download no longer current' };
+            const request = {};
+            statusRequests.set(node, request);
             Object.assign(node, applyStatusPatch(node, checkingStatus(translate('Queuing missing model downloads...', '正在加入缺失模型下载任务...'))));
             render({ inspector: false });
-            const response = await downloadRequest(node, options || {});
+            let response;
+            try {
+                response = await downloadRequest(node, options || {});
+            } catch (err) {
+                response = { ok: false, error: err?.message || String(err) };
+            }
             const current = getNode(node.id);
+            if (getProject() !== project || current !== node || statusRequests.get(node) !== request) {
+                return { ok: false, stale: true, error: 'model download no longer current' };
+            }
             if (current) {
                 applyStatus(current, response);
                 if (response?.ok && response.state === 'queued') {
@@ -112,6 +140,7 @@
                 return { ok: true, ready: state === 'ready', state, teaching: true };
             }
             const status = await checkPresetModelStatus(node);
+            if (status?.stale) return status;
             if (!status?.ok) {
                 showToast(translate('Model check failed: {error}', '模型检查失败：{error}').replace('{error}', status?.error || status?.details || 'unknown error'));
                 return status;
@@ -129,19 +158,32 @@
         }
 
         const autoCheckQueued = new Set();
+        const autoCheckRequests = new Map();
+
+        function releaseAutoCheck(nodeId, request) {
+            if (autoCheckRequests.get(nodeId) !== request) return;
+            autoCheckRequests.delete(nodeId);
+            autoCheckQueued.delete(nodeId);
+        }
 
         function scheduleAutoPresetModelChecks() {
             const project = getProject();
+            autoCheckRequests.forEach((request, nodeId) => {
+                if (request.project !== project || getNode(nodeId) !== request.node) releaseAutoCheck(nodeId, request);
+            });
             const nodes = Array.isArray(project?.nodes)
                 ? project.nodes.filter((node) => shouldAutoCheck(node))
                 : [];
             nodes.forEach((node, index) => {
                 if (!node?.id || autoCheckQueued.has(node.id)) return;
+                const request = { project, node };
+                autoCheckRequests.set(node.id, request);
                 autoCheckQueued.add(node.id);
                 const scheduled = schedule(async () => {
                     const current = getNode(node.id);
-                    if (!shouldAutoCheck(current)) {
-                        autoCheckQueued.delete(node.id);
+                    if (autoCheckRequests.get(node.id) !== request || getProject() !== project
+                        || current !== node || !shouldAutoCheck(current)) {
+                        releaseAutoCheck(node.id, request);
                         return;
                     }
                     try {
@@ -149,20 +191,27 @@
                     } catch (err) {
                         warn('[SimpAI Canvas] auto model check failed:', err);
                     } finally {
-                        autoCheckQueued.delete(node.id);
+                        releaseAutoCheck(node.id, request);
                     }
                 }, 500 + index * 350);
-                if (!scheduled) autoCheckQueued.delete(node.id);
+                if (!scheduled) releaseAutoCheck(node.id, request);
             });
         }
 
         function schedulePresetModelListRefreshes(nodeId, fallbackNode, delays) {
             if (typeof uiSource.openMainMissingModelListForPreset !== 'function') return;
+            const project = getProject();
+            const node = getNode(nodeId) || fallbackNode;
+            if (!node) return;
+            const request = statusRequests.get(node);
             const scheduleDelays = Array.isArray(delays) && delays.length
                 ? delays
                 : [1200, 3200, 6500];
             scheduleDelays.forEach((delay) => {
-                schedule(() => openMissingModelList(getNode(nodeId) || fallbackNode), delay);
+                schedule(() => {
+                    if (getProject() !== project || getNode(nodeId) !== node || statusRequests.get(node) !== request) return;
+                    openMissingModelList(node);
+                }, delay);
             });
         }
 

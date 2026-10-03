@@ -20,7 +20,7 @@ import modules.regen_manifest as regen_manifest
 import modules.sdxl_styles
 import modules.constants as constants
 from modules.access_mode import get_access_mode, is_local_mode, state_has_full_local_access
-from modules.identity_session import session_cookie_days, update_identity_session
+from modules.identity_session import resolve_session, session_cookie_days, update_identity_session
 import modules.meta_parser as meta_parser
 import modules.sdxl_styles as sdxl_styles
 import modules.style_sorter as style_sorter
@@ -599,8 +599,42 @@ def _is_nav_preset_value_present(value):
     text = str(value).strip()
     return bool(text) and text not in ["Unknown", "None", "Default"]
 
+def _resolve_nav_preset_session(user_session, ua_hash):
+    if is_local_mode():
+        # Older base wheels still need a fresh guest credential for this storage key.
+        return shared.token.get_guest_sstoken(ua_hash), shared.token.get_guest_did()
+    resolved = resolve_session(shared.token, user_session, ua_hash)
+    if resolved["status"] != "valid":
+        raise RuntimeError("Navbar settings session is unavailable")
+    return resolved["sstoken"], resolved["did"]
+
+
+def _read_nav_preset_value(user_session, ua_hash):
+    if is_local_mode() and hasattr(shared.token, "get_local_mode_vars"):
+        return shared.token.get_local_mode_vars("user_presets", ""), shared.token.get_guest_did()
+    session, user_did = _resolve_nav_preset_session(user_session, ua_hash)
+    return shared.token.get_local_vars("user_presets", "", session, ua_hash), user_did
+
+
 def _persist_nav_preset_value(user_session, ua_hash, presets_list):
-    shared.token.set_local_vars("user_presets", presets_list, user_session, ua_hash)
+    if is_local_mode() and hasattr(shared.token, "set_local_mode_vars"):
+        saved = shared.token.set_local_mode_vars("user_presets", presets_list)
+        stored = shared.token.get_local_mode_vars("user_presets", "") if saved else None
+    else:
+        session, user_did = _resolve_nav_preset_session(user_session, ua_hash)
+        if not is_local_mode() and shared.token.is_guest(user_did):
+            raise PermissionError("Guests cannot edit navbar settings in multi-user mode")
+        saved = shared.token.set_local_vars("user_presets", presets_list, session, ua_hash)
+        # Legacy wheels return None. Readback is required for those wheels too.
+        stored = shared.token.get_local_vars("user_presets", "", session, ua_hash) if saved is not False else None
+    if saved is False or stored != presets_list:
+        raise RuntimeError("Navbar settings write failed or readback did not match")
+
+
+def _nav_preset_save_error(lang=None):
+    if normalize_ui_lang(lang) == "en":
+        return "Could not save the navbar presets. Your draft is kept. Please retry."
+    return "导航栏预设保存失败，已保留编辑内容，请重试。"
 
 
 def _state_can_manage_preset_store(state):
@@ -691,27 +725,23 @@ def _nav_minimum_preset_message(lang=None):
     return "导航栏至少需要保留 1 个预设，已保留当前预设。"
 
 def get_preset_name_list(user_session, ua_hash):
-    user_did = shared.token.check_sstoken_and_get_did(user_session, ua_hash)
-    is_guest = not user_did or shared.token.is_guest(user_did)
-
+    user_did = None
     try:
-        stored_presets = shared.token.get_local_vars("user_presets", "", user_session, ua_hash)
+        stored_presets, user_did = _read_nav_preset_value(user_session, ua_hash)
     except Exception as e:
         logger.debug(f"Error getting nav presets: {str(e)}")
         stored_presets = ""
     if _is_nav_preset_value_present(stored_presets):
-        nav_presets = _coerce_nav_preset_list(str(stored_presets).split(','), user_did)
+        nav_presets = _coerce_nav_preset_list(
+            str(stored_presets).split(','), user_did, apply_missing_model_filter=False,
+        )
         if nav_presets:
-            presets_list = ','.join(nav_presets)
-            if presets_list != str(stored_presets).strip():
-                _persist_nav_preset_value(user_session, ua_hash, presets_list)
-            return presets_list
+            return ','.join(nav_presets)
         logger.warning(f"[Preset Management] Ignored empty/invalid stored navbar preset list for user_did={user_did}")
 
+    is_guest = not user_did or shared.token.is_guest(user_did)
     nav_presets = _build_default_nav_preset_list(user_did if not is_guest else None, config.preset)
-    presets_list = ','.join(nav_presets)
-    _persist_nav_preset_value(user_session, ua_hash, presets_list)
-    return presets_list
+    return ','.join(nav_presets)
 
 def get_initial_nav_preset(state_params):
     try:
@@ -1213,14 +1243,11 @@ def _get_effective_nav_preset_list(state_params):
         str(raw_nav_name_list or "").split(','),
         user_did=user_did,
         fallback_preset=state_params.get("__preset"),
+        apply_missing_model_filter=False,
     )
 
     if not preset_name_list:
         preset_name_list = _build_default_nav_preset_list(user_did if not is_guest else None, state_params.get("__preset"))
-
-    nav_name_list = ','.join(_canonicalize_nav_preset_names(preset_name_list))
-    if nav_name_list != ','.join(_canonicalize_nav_preset_names(str(raw_nav_name_list or "").split(','))):
-        _persist_nav_preset_value(state_params.get("__session", ""), state_params.get("ua_hash", ""), nav_name_list)
 
     return _canonicalize_nav_preset_names(preset_name_list)
 
@@ -3975,6 +4002,10 @@ def toggle_preset_store(state):
 
 def update_navbar_from_mystore(selected_preset, state):
     global preset_samples
+    if not is_local_mode():
+        update_identity_session(state, shared.token, force=True)
+    if not _state_can_manage_preset_store(state):
+        return refresh_nav_bars(state) + update_topbar_js_params(state)
     user_did = _state_user_did(state)
     is_guest = shared.token.is_guest(user_did) if user_did else True
 
@@ -4004,33 +4035,13 @@ def update_navbar_from_mystore(selected_preset, state):
     results2 = update_topbar_js_params(state)
     nav_name_list = get_preset_name_list(state["__session"], state["ua_hash"])
     nav_array = _canonicalize_nav_preset_names(nav_name_list.split(','))
-    available_presets_count = 0
-
-    missing_model_filter = ads.get_admin_default("missing_model_filter_checkbox")
-
-    filtered_nav_array = []
-    for preset in nav_array:
-        if preset:
-            if not missing_model_filter or not is_models_file_absent(preset, user_did):
-                available_presets_count += 1
-                filtered_nav_array.append(preset)
-            else:
-                logger.info(f'[Preset Management] Filtered out preset with missing model: {preset}')
-
-    if len(filtered_nav_array) != len([p for p in nav_array if p]):
-        nav_array = filtered_nav_array
-        if 'user' in state and not is_guest:
-            filtered_nav_name_list = ','.join(_canonicalize_nav_preset_names(nav_array))
-            shared.token.set_local_vars("user_presets", filtered_nav_name_list, state["__session"], state["ua_hash"])
-
     if selected_preset_name == state["__preset"]:
         return results + results2
     if selected_preset_name in nav_array:
         nav_array.remove(selected_preset_name)
         logger.info(f'[Preset Management] Withdraw the preset/回撤预置包: {selected_preset_name}.')
     else:
-        elimination_threshold = max(available_presets_count, len(nav_array))
-        if elimination_threshold >= shared.BUTTON_NUM:
+        if len(nav_array) >= shared.BUTTON_NUM:
             if state["__preset"] not in nav_array:
                 return results + results2
             position = nav_array.index(state["__preset"])
@@ -4048,16 +4059,12 @@ def update_navbar_from_mystore(selected_preset, state):
         apply_missing_model_filter=False,
     )
     nav_name_list = ','.join(_canonicalize_nav_preset_names(nav_array))
-    if 'user' in state:
-        if not is_guest:
-            logger.info(f"[Preset Management] save mypreset: {nav_name_list}")
-            shared.token.set_local_vars("user_presets", nav_name_list, state["__session"], state["ua_hash"])
-        else:
-            has_admin = False
-            has_admin = check_admin_exists()
-            
-            if not has_admin:
-                shared.token.set_local_vars("user_presets", nav_name_list, state["__session"], state["ua_hash"])
+    try:
+        _persist_nav_preset_value(state.get("__session", ""), state.get("ua_hash", ""), nav_name_list)
+        logger.info(f"[Preset Management] saved mypreset: {nav_name_list}")
+    except Exception:
+        logger.exception("[Preset Management] Failed to save navbar presets")
+        gr.Warning(_nav_preset_save_error(state.get("__lang")))
 
     try:
         return refresh_nav_bars(state) + update_topbar_js_params(state)
@@ -4065,26 +4072,36 @@ def update_navbar_from_mystore(selected_preset, state):
         logger.error(f"UI Update Error: {str(e)}")
 
 def apply_navbar_from_store_editor(payload, state):
+    try:
+        parsed = json.loads(payload or "{}")
+    except Exception:
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    result = {
+        "request_id": str(parsed.get("request_id") or "")[:128],
+        "ok": False,
+        "message": _nav_preset_save_error(state.get("__lang")),
+    }
+    state["__preset_store_save_result"] = result
+    if not is_local_mode():
+        update_identity_session(state, shared.token, force=True)
     user_did = _state_user_did(state)
 
     if not _state_can_manage_preset_store(state):
         state["preset_store"] = False
         state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
         try:
-            gr.Info("Please sign in.")
+            result["message"] = "Please sign in again before saving." if normalize_ui_lang(state.get("__lang")) == "en" else "请重新登录后保存。"
+            gr.Info(result["message"])
         except Exception:
             pass
         return refresh_nav_bars(state) + update_topbar_js_params(state)
 
-    try:
-        parsed = json.loads(payload or "{}")
-    except Exception:
-        parsed = {}
-
-    raw_presets = parsed.get("presets", []) if isinstance(parsed, dict) else []
+    raw_presets = parsed.get("presets")
     if not isinstance(raw_presets, list):
-        raw_presets = []
-    close_after_apply = bool(parsed.get("close")) if isinstance(parsed, dict) else False
+        return refresh_nav_bars(state) + update_topbar_js_params(state)
+    close_after_apply = bool(parsed.get("close"))
 
     nav_array = []
     seen = set()
@@ -4123,9 +4140,15 @@ def apply_navbar_from_store_editor(payload, state):
         apply_missing_model_filter=False,
     )
     nav_name_list = ','.join(_canonicalize_nav_preset_names(nav_array))
-    if 'user' in state:
-        logger.info(f"[Preset Management] apply store draft: {nav_name_list}")
-        _persist_nav_preset_value(state["__session"], state["ua_hash"], nav_name_list)
+    try:
+        if not nav_name_list:
+            raise ValueError("Navbar presets cannot be empty")
+        _persist_nav_preset_value(state.get("__session", ""), state.get("ua_hash", ""), nav_name_list)
+    except Exception:
+        logger.exception("[Preset Management] Failed to save store draft")
+        return refresh_nav_bars(state) + update_topbar_js_params(state)
+    logger.info(f"[Preset Management] saved store draft: {nav_name_list}")
+    result.update(ok=True, message="", presets=nav_array)
     state["preset_store"] = not close_after_apply
     state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
     return refresh_nav_bars(state) + update_topbar_js_params(state)
@@ -4722,6 +4745,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __identity_session_seq=int(state.get("__identity_session_seq", 0) or 0),
         __identity_session_days=session_cookie_days(state),
         __preset_store_seq=int(state.get("__preset_store_seq", 0) or 0),
+        __preset_store_save_result=state.get("__preset_store_save_result"),
         __theme=state.get("__theme"),
         __is_scene_frontend=("scene_frontend" in state),
         __engine_disvisible=engine_disvisible,

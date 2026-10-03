@@ -1670,6 +1670,22 @@
       },
       "path": "javascript/canvas_workbench/templates/nvidia-vsr-video-upscale.canvas.json",
       "preview": ""
+    },
+    {
+      "id": "vosr2_image_upscale",
+      "title": {"en": "VOSR2 Image Upscale", "zh": "VOSR2 图像放大"},
+      "description": {"en": "One-step image super-resolution.", "zh": "单步图像超分辨率。"},
+      "category": "image",
+      "tags": ["image", "vosr2", "upscale", "super-resolution", "runnable", "图像放大", "超分辨率"],
+      "type_label": {"en": "Image upscale", "zh": "图像放大"},
+      "model_dependency": {
+        "mode": "requires_models",
+        "label": {"en": "Requires image + VOSR2 models", "zh": "需要图片和 VOSR2 模型"},
+        "note": {"en": "Matched DiT, Qwen-Image 2D VAE, and DINOv2-L.", "zh": "配套 DiT、Qwen-Image 2D VAE 和 DINOv2-L。"},
+        "models": ["ema_model.safetensors", "diffusion_pytorch_model.safetensors", "dinov2_vitl14_pretrain.pth"]
+      },
+      "path": "javascript/canvas_workbench/templates/vosr2-image-upscale.canvas.json",
+      "preview": ""
     }
   ]
 }

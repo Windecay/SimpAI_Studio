@@ -1,0 +1,130 @@
+{
+  "schema": "simpai.canvas.workbench.v1",
+  "id": "vosr2_image_upscale",
+  "title": "VOSR2 Image Upscale",
+  "created_at": "2026-10-03T00:00:00Z",
+  "updated_at": "2026-10-03T00:00:00Z",
+  "viewport": {"x": 40, "y": 80, "zoom": 0.8},
+  "settings": {"grid": true, "snap": true, "minimap": true, "edgeLabels": true},
+  "groups": [],
+  "nodes": [
+    {
+      "id": "vosr2_source", "type": "image", "x": 0, "y": 0, "w": 280, "h": 300,
+      "title": "Source Image / 原图", "asset": null, "mask": null,
+      "status": {"state": "waiting", "message": ""},
+      "source": {"kind": "template_input_placeholder", "slot": "scene_canvas_image"}
+    },
+    {
+      "id": "vosr2_preset", "type": "preset", "x": 360, "y": 0, "w": 420, "h": 540,
+      "title": "VOSR2 Image Upscale",
+      "preset": {
+        "name": "VOSR2", "display_name": "VOSR2", "snapshot_hash": null,
+        "snapshot": {"default_styles": [], "default_prompt": "", "default_prompt_negative": ""}
+      },
+      "runtime": {
+        "backend_engine": "Comfy", "engine_type": "image", "scene_frontend": "m1.1",
+        "scene_theme": "VOSR2 Image Upscale", "task_method": "vosr2"
+      },
+      "schema": {
+        "version": "m1.1", "themes": ["VOSR2 Image Upscale"],
+        "default_theme": "VOSR2 Image Upscale", "theme_title": "VOSR2 Image Upscale",
+        "theme_labels": {"VOSR2 Image Upscale": {"en": "VOSR2 Image Upscale", "zh": "VOSR2 图像放大"}},
+        "disvisible": [
+          "scene_additional_prompt", "scene_additional_prompt_2", "scene_aspect_ratio",
+          "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4",
+          "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8",
+          "scene_video", "scene_reference_video", "scene_reference_video2",
+          "scene_audio", "scene_audio2", "scene_audio3", "scene_video_duration",
+          "scene_use_lora", "scene_base_model", "scene_refiner_model", "scene_steps",
+          "scene_var_number3", "scene_var_number4", "scene_var_number5", "scene_var_number6",
+          "scene_var_number10", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
+          "sam3_input_video", "sam3_mask_video"
+        ],
+        "disinteractive": [], "divisible": [], "disable_canvas_mask": true,
+        "image_preprocessor_method": [["-normalization"]],
+        "resolution_control": {
+          "mode": "input_passthrough", "source": "scene_canvas",
+          "interactive": false, "frontend_preprocess": false
+        },
+        "upload_slots": [
+          {"key": "scene_canvas_image", "label": "Canvas Image", "visible": true, "interactive": true}
+        ],
+        "params": [
+          {"key": "scene_var_number", "label": "Upscale factor", "type": "number", "default": 2, "min": 1, "max": 4, "step": 1, "visible": true, "interactive": true},
+          {"key": "scene_var_number2", "label": "DiT tile size (pixels)", "type": "number", "default": 512, "min": 128, "max": 512, "step": 64, "visible": true, "interactive": true},
+          {"key": "scene_var_number7", "label": "DiT tile overlap (pixels)", "type": "number", "default": 64, "min": 0, "max": 120, "step": 8, "visible": true, "interactive": true},
+          {"key": "scene_var_number8", "label": "VAE tile size (pixels)", "type": "number", "default": 1024, "min": 256, "max": 2048, "step": 64, "visible": true, "interactive": true},
+          {"key": "scene_var_number9", "label": "VAE tile overlap (pixels)", "type": "number", "default": 128, "min": 0, "max": 248, "step": 8, "visible": true, "interactive": true},
+          {"key": "scene_switch_option1", "label": "Preserve source colors", "type": "checkbox", "default": true, "visible": true, "interactive": true}
+        ],
+        "per_theme": {
+          "VOSR2 Image Upscale": {
+            "task_method": "vosr2",
+            "defaults": {
+              "prompt": "", "scene_var_number": 2, "scene_var_number2": 512,
+              "scene_var_number7": 64, "scene_var_number8": 1024, "scene_var_number9": 128,
+              "scene_switch_option1": true
+            }
+          }
+        }
+      },
+      "models_config": {
+        "mode": "preset_default",
+        "defaults": {"base_model": "None", "refiner_model": "None", "clip_model": "Default (model)", "vae": "Default (model)", "loras": []},
+        "overrides": {}
+      },
+      "generation_config": {
+        "mode": "preset_default",
+        "defaults": {"image_number": 1, "overwrite_step": 1},
+        "overrides": {}
+      },
+      "model_requirements": {
+        "has_model_probe": true, "source": "presets/VOSR2.json",
+        "model_list": [
+          "vosr2,VOSR2/args.json,816,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/args.json",
+          "vosr2,VOSR2/checkpoints/ema_model.safetensors,5576385424,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/checkpoints/ema_model.safetensors",
+          "vosr2,VOSR2/Qwen-Image-vae-2d/config.json,811,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/config.json",
+          "vosr2,VOSR2/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,178418892,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors",
+          "vosr2,VOSR2/dinov2_vitl14_pretrain.pth,1217586395,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth"
+        ]
+      },
+      "model_status": {"state": "unknown", "missing_count": 0, "message": ""},
+      "upload_slots": {"scene_canvas_image": "vosr2_source"},
+      "text_inputs": {},
+      "params": {
+        "prompt": "", "seed_random": false, "image_seed": 42,
+        "scene_var_number": 2, "scene_var_number2": 512, "scene_var_number7": 64,
+        "scene_var_number8": 1024, "scene_var_number9": 128, "scene_switch_option1": true
+      },
+      "status": "idle", "collapsed": false,
+      "source": {"kind": "template_runnable_preset", "preset": "VOSR2"}
+    },
+    {
+      "id": "vosr2_result", "type": "result", "x": 860, "y": 0, "w": 360, "h": 340,
+      "title": "VOSR2 Result / 放大结果",
+      "producer": {"preset_node_id": "vosr2_preset", "run_id": null, "task_id": null},
+      "status": {"state": "placeholder", "percent": 0, "message": ""},
+      "preview": null, "asset": null, "source": {"kind": "template_result_placeholder"}
+    }
+  ],
+  "edges": [
+    {"id": "vosr2_upload", "type": "upload", "from": "vosr2_source", "to": "vosr2_preset", "slot": "scene_canvas_image"},
+    {"id": "vosr2_output", "type": "generate", "from": "vosr2_preset", "to": "vosr2_result", "slot": "preset"}
+  ],
+  "runs": [], "batch_jobs": [],
+  "template": {
+    "id": "vosr2_image_upscale",
+    "title": {"en": "VOSR2 Image Upscale", "zh": "VOSR2 图像放大"},
+    "description": {"en": "One-step image super-resolution.", "zh": "单步图像超分辨率。"},
+    "category": "image",
+    "tags": ["image", "vosr2", "upscale", "super-resolution", "runnable", "图像放大", "超分辨率"],
+    "type_label": {"en": "Image upscale", "zh": "图像放大"},
+    "model_dependency": {
+      "mode": "requires_models",
+      "label": {"en": "Requires image + VOSR2 models", "zh": "需要图片和 VOSR2 模型"},
+      "note": {"en": "Matched DiT, Qwen-Image 2D VAE, and DINOv2-L.", "zh": "配套 DiT、Qwen-Image 2D VAE 和 DINOv2-L。"},
+      "models": ["ema_model.safetensors", "diffusion_pytorch_model.safetensors", "dinov2_vitl14_pretrain.pth"]
+    },
+    "preview": ""
+  }
+}

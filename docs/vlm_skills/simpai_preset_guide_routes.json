@@ -10,6 +10,13 @@
   "default_routes": ["overview"],
   "routes": [
     {
+      "key": "vosr2",
+      "title": {"en": "VOSR2 Image Upscale", "cn": "VOSR2 图像放大"},
+      "priority": 950,
+      "keywords": ["vosr2", "vosr", "图像超分", "图片超分", "图像放大", "图片放大", "image upscale", "image super-resolution"],
+      "sections": ["2026-10-03 VOSR2 Image Upscale / VOSR2 图像放大"]
+    },
+    {
       "key": "h3",
       "title": {"en": "MiniMax H3 Preset Family", "cn": "MiniMax H3 预设系列"},
       "priority": 1000,
