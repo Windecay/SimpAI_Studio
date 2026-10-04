@@ -439,12 +439,23 @@ def install_llama_cpp_runtime_for_comfyd():
     return True
 
 
+def _load_package_index_router():
+    import importlib.util
+
+    module_path = os.path.join(target_dir, "modules", "package_index_router.py")
+    spec = importlib.util.spec_from_file_location("simpai_package_index_router", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load package index router: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.install_with_routing
+
+
 def install_requirements_sequential():
     requirements_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "requirements.txt")
     if not os.path.isfile(requirements_path):
         return None
 
-    import subprocess
     import importlib.metadata
 
     try:
@@ -458,15 +469,7 @@ def install_requirements_sequential():
     timeout_seconds = int(os.environ.get("COMFY_REQUIREMENTS_INSTALL_TIMEOUT", "300"))
     index_url = os.environ.get("INDEX_URL", "https://mirrors.aliyun.com/pypi/simple")
     extra_index_url = os.environ.get("EXTRA_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
-    pypi_index_url = "https://pypi.org/simple"
-    install_sources = []
-    for source_name, source_url in (
-        ("清华源", extra_index_url),
-        ("备用源", index_url),
-        ("官方 PyPI", pypi_index_url),
-    ):
-        if source_url and source_url not in {item[1] for item in install_sources}:
-            install_sources.append((source_name, source_url))
+    install_with_routing = _load_package_index_router()
 
     force_reinstall_names = set()
     try:
@@ -479,6 +482,8 @@ def install_requirements_sequential():
     def is_requirement_satisfied(req_line: str) -> bool:
         try:
             req = packaging.requirements.Requirement(req_line)
+            if req.marker and not req.marker.evaluate():
+                return True
             if req.name in force_reinstall_names:
                 return False
             installed_version = importlib.metadata.version(req.name)
@@ -515,30 +520,18 @@ def install_requirements_sequential():
         return None
 
     for req_line, force_reinstall in requirements_to_install:
-        installed = False
-        for source_name, source_url in install_sources:
-            try:
-                print(f"[Comfyd] Installing requirement from {source_name}: {req_line}")
-                cmd = [python_exe]
-                if sys.flags.no_user_site or ("python_embeded" in python_exe) or ("python_embedded" in python_exe):
-                    cmd.append("-s")
-                cmd += ["-m", "pip", "install", "-U", "--upgrade-strategy", "only-if-needed"]
-                if force_reinstall:
-                    cmd.append("--force-reinstall")
-                cmd += [req_line, "--prefer-binary", "--index-url", source_url]
-
-                result = subprocess.run(cmd, check=False, timeout=timeout_seconds)
-                if result.returncode == 0:
-                    installed = True
-                    break
-                print(f"[Comfyd] Requirement source failed: {source_name} / {req_line}")
-            except subprocess.TimeoutExpired:
-                print(f"[Comfyd] Requirement install timed out from {source_name}: {req_line}")
-            except Exception as e:
-                print(f"[Comfyd] Requirement install failed from {source_name}: {req_line} / {e}")
-
-        if not installed:
-            print(f"[Comfyd] Requirement install failed from all sources: {req_line}")
+        pip_args = ["install", "-U", "--upgrade-strategy", "only-if-needed"]
+        if force_reinstall:
+            pip_args.append("--force-reinstall")
+        pip_args.append(req_line)
+        no_user_site = sys.flags.no_user_site or "python_embeded" in python_exe or "python_embedded" in python_exe
+        if not install_with_routing(
+            pip_args, primary_url=index_url, extra_url=extra_index_url,
+            python=python_exe, python_args=("-s",) if no_user_site else (),
+            env=_pip_env(), cwd=target_dir, download_timeout=timeout_seconds,
+            description=f"[Comfyd] {req_line}",
+        ):
+            print(f"[Comfyd] 依赖安装失败 / Requirement install failed: {req_line}")
 
     return None
 

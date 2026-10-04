@@ -36,6 +36,7 @@ from modules.llama_cpp_runtime import (
     llama_cpp_version_matches,
     select_llama_cpp_wheel,
 )
+from modules.package_index_router import install_with_routing
 from enhanced.logger import setup_logger, now_string, get_log_file
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 os.environ["RUST_LOG"] = os.environ.get("SIMPAI_RUST_LOG", "off")
@@ -112,6 +113,12 @@ SIMPLEAI_BASE_WHEEL_SHA256 = {
     "simpleai_base-0.3.55-cp312-cp312-win_amd64.whl": "86892dbe7160f6d8bf6b5b7ecaffb136c0ac0c78a13f2af82cf11482d86a549a",
     "simpleai_base-0.3.55-cp312-cp312-macosx_11_0_arm64.whl": "4c9ba25d8111e71f801b72f150538a56d19f78bc9bc20e0a08a667b14bbdf65b",
     "simpleai_base-0.3.55-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "4df42a35e5e5c5d743382d3e73eddedcae0a9aba34cf3775dc1a72ffaaa90b18",
+    "simpleai_base-0.3.56-cp313-cp313-win_amd64.whl": "226a8b557edff00942e886da6214c7bf17d7b9b733542d2dde1bb028200e7610",
+    "simpleai_base-0.3.56-cp313-cp313-macosx_11_0_arm64.whl": "3eb1cbef8d261c1b2d95036a6b834e57138857007ed3a41b64541fad48e6029c",
+    "simpleai_base-0.3.56-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "81aabca18493d5876c69126858bac4bea26dc71593eded1e99620afa54f740d8",
+    "simpleai_base-0.3.56-cp312-cp312-win_amd64.whl": "db632cffa7436ac85fbabcd14d7792272f9d9185d5823f4826ec1cbdd75e7374",
+    "simpleai_base-0.3.56-cp312-cp312-macosx_11_0_arm64.whl": "07e155420542f487de5715205b544fdac3465396304f268aa406a4d29fac2284",
+    "simpleai_base-0.3.56-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "eba8145d1cd9970c8b4854d5ba7700578f0ec7b0fd8b64146a686adf7fd53389",
 }
 
 def cleanup_obsolete_custom_nodes():
@@ -158,28 +165,11 @@ def _package_install_spec(pkg_name, pkg_version=None, version_specifier=None):
 
 def install_package_with_retry(pkg_name, pkg_version=None, description=None, version_specifier=None):
     install_spec = _package_install_spec(pkg_name, pkg_version, version_specifier)
-    desc = description or f'Installing {install_spec}'
-    errdesc = f"Couldn't install {install_spec}"
-
-    indexes = []
-    for label, package_index in (
-        ("清华大学 / Tsinghua University", extra_index_url),
-        ("备用源 / Fallback index", index_url),
-        ("官方 PyPI / Official PyPI", PYPI_INDEX_URL),
-    ):
-        if package_index and package_index not in {item[1] for item in indexes}:
-            indexes.append((label, package_index))
-
-    for label, package_index in indexes:
-        logger.info(f"从 {label} 安装 {install_spec} / Installing {install_spec} from {label}")
-        try:
-            pkg_command = f'pip install -U "{install_spec}" -i {package_index}'
-            run(f'"{python}" -s -m {pkg_command}', desc, errdesc, custom_env=_make_pip_env(), live=True)
-            return True
-        except Exception as e:
-            logger.warning(f"{label} 安装失败 / Installation failed: {str(e)}")
-    logger.error(f"所有源均无法安装 {install_spec} / All indexes failed to install {install_spec}")
-    return False
+    return install_with_routing(
+        ["install", "-U", install_spec],
+        primary_url=index_url, extra_url=extra_index_url, python=python,
+        env=_make_pip_env(), description=description or install_spec, emit=logger.info,
+    )
 
 def _simpleai_base_wheel_filename(ver_required):
     current_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
@@ -669,7 +659,7 @@ def check_base_environment():
     print(f'{now_string()} ✦ | 兴趣使然的版本 | ✦ by冰華 ✦')
 
     base_pkg = "simpleai_base"
-    ver_required = "0.3.55"
+    ver_required = "0.3.56"
     REINSTALL_BASE = False
     base_branch = "studio"
     base_url = f"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/{base_branch}"

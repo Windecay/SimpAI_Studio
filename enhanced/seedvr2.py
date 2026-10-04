@@ -10,12 +10,13 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from itertools import chain
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable, Iterator
 
-from enhanced import nvidia_vsr
+from enhanced import nvidia_vsr, seedvr2_memory
 
 
 SEEDVR2_METHOD = "seedvr2"
@@ -186,6 +187,8 @@ def _load_core(project_root: Path) -> dict[str, Any]:
             "utils": "core.generation_utils",
             "phases": "core.generation_phases",
             "memory": "optimization.memory_manager",
+            "blockswap": "optimization.blockswap",
+            "loader": "core.model_loader",
             "debug": "utils.debug",
         }.items()
     }
@@ -204,6 +207,7 @@ class _SeedVR2Runtime:
         self.runner = None
         self.ctx = None
         self.cache_context = None
+        self.memory_policy = None
         self.device = f"cuda:{torch.cuda.current_device()}"
         try:
             for module_name in ("ldm_patched.modules.model_management", "comfy.model_management"):
@@ -227,6 +231,15 @@ class _SeedVR2Runtime:
                 decode_tile_overlap=(64, 64),
                 attention_mode="sdpa",
             )
+            # Load on CPU before planning so custom/quantized models use real weight sizes.
+            for role in ("vae", "dit"):
+                _check_cancel(cancel_callback)
+                self.core["loader"].materialize_model(
+                    self.runner, role, torch.device("cpu"), self.runner.config, self.debug,
+                )
+            self.memory_policy = seedvr2_memory.SeedVR2MemoryPolicy(
+                self.runner, self.core, self.debug, self.device, config.batch_size,
+            )
         except BaseException:
             self.close()
             raise
@@ -243,16 +256,35 @@ class _SeedVR2Runtime:
         ctx["interrupt_fn"] = lambda: _check_cancel(self.cancel_callback)
         return ctx
 
+    @property
+    def batch_size(self):
+        return self.config.batch_size
+
+    def _set_batch_size(self, frames):
+        if frames < self.config.batch_size:
+            self.config = replace(self.config, batch_size=frames)
+        if self.memory_policy is not None:
+            self.memory_policy.frames = self.config.batch_size
+
+    def prepare_video(self, first_frame):
+        ctx = self._new_context()
+        try:
+            _, info = self.core["utils"].compute_generation_info(
+                ctx, first_frame.unsqueeze(0), resolution=self.config.resolution,
+                batch_size=self.config.batch_size, uniform_batch_size=True,
+                seed=self.config.seed, debug=self.debug,
+            )
+            if self.memory_policy is not None:
+                self._set_batch_size(self.memory_policy.select_window(info))
+        finally:
+            ctx.clear()
+            self.debug.clear_history()
+
     def process(self, images: Any, phase_callback: Callable[[float, str], None]):
+        import torch
+
         _check_cancel(self.cancel_callback)
-        config = self.config
         utils, phases = self.core["utils"], self.core["phases"]
-        self.ctx = self._new_context()
-        self.ctx["cache_context"] = self.cache_context
-        images, _ = utils.compute_generation_info(
-            self.ctx, images, resolution=config.resolution, batch_size=config.batch_size,
-            uniform_batch_size=True, seed=config.seed, debug=self.debug,
-        )
 
         def progress(current, total, _frames, phase):
             _check_cancel(self.cancel_callback)
@@ -265,51 +297,99 @@ class _SeedVR2Runtime:
             }.get(phase, (0.0, 0.0))
             phase_callback(offset + weight * min(1.0, current / max(1, total)), phase)
 
-        phase_callback(0.0, "Phase 1: Encoding")
-        try:
-            with importlib.import_module("torch").inference_mode():
-                self.ctx = phases.encode_all_batches(
-                    self.runner, ctx=self.ctx, images=images, debug=self.debug,
-                    batch_size=config.batch_size, uniform_batch_size=True, seed=config.seed,
-                    progress_callback=progress, temporal_overlap=0, resolution=config.resolution,
-                    color_correction="lab",
+        # At most one full-offload retry plus 33 -> 17 -> 9 -> 5 frame reductions.
+        for attempt in range(5):
+            _check_cancel(self.cancel_callback)
+            config = self.config
+            self.ctx = self._new_context()
+            self.ctx["cache_context"] = self.cache_context
+            prepared_images = None
+            next_batch = config.batch_size
+            try:
+                prepared_images, info = utils.compute_generation_info(
+                    self.ctx, images, resolution=config.resolution, batch_size=config.batch_size,
+                    uniform_batch_size=True, seed=config.seed, debug=self.debug,
                 )
-                phase_callback(0.20, "Phase 2: Upscaling")
-                self.ctx = phases.upscale_all_batches(
-                    self.runner, ctx=self.ctx, debug=self.debug, progress_callback=progress,
-                    seed=config.seed, cache_model=True,
+                if self.memory_policy is not None:
+                    self._set_batch_size(self.memory_policy.select_window(info))
+                    if self.config.batch_size < config.batch_size:
+                        phase_callback(0.0, f"Window reduced: {self.config.batch_size}")
+                        config = self.config
+                    self.memory_policy.begin_window(info, self.ctx)
+                # A retry may subdivide an already-read larger window; the core blends its overlaps.
+                temporal_overlap = config.overlap if len(images) > config.batch_size else 0
+                phase_callback(0.0, "Phase 1: Encoding")
+                with torch.inference_mode():
+                    self.ctx = phases.encode_all_batches(
+                        self.runner, ctx=self.ctx, images=prepared_images, debug=self.debug,
+                        batch_size=config.batch_size, uniform_batch_size=True, seed=config.seed,
+                        progress_callback=progress, temporal_overlap=temporal_overlap, resolution=config.resolution,
+                        color_correction="lab",
+                    )
+                    phase_callback(0.20, "Phase 2: Upscaling")
+                    self.ctx = phases.upscale_all_batches(
+                        self.runner, ctx=self.ctx, debug=self.debug, progress_callback=progress,
+                        seed=config.seed, cache_model=True,
+                    )
+                    phase_callback(0.55, "Phase 3: Decoding")
+                    self.ctx = phases.decode_all_batches(
+                        self.runner, ctx=self.ctx, debug=self.debug, progress_callback=progress,
+                        cache_model=True,
+                    )
+                    phase_callback(0.90, "Phase 4: Post-processing")
+                    self.ctx = phases.postprocess_all_batches(
+                        ctx=self.ctx, debug=self.debug, progress_callback=progress,
+                        color_correction="lab", temporal_overlap=temporal_overlap, batch_size=config.batch_size,
+                    )
+                    return self.ctx["final_video"].detach().cpu()
+            except torch.cuda.OutOfMemoryError:
+                if attempt == 4 or self.memory_policy is None:
+                    raise
+                already_offloaded = self.memory_policy.force_offload or getattr(
+                    self.memory_policy, "fully_offloaded", False,
                 )
-                phase_callback(0.55, "Phase 3: Decoding")
-                self.ctx = phases.decode_all_batches(
-                    self.runner, ctx=self.ctx, debug=self.debug, progress_callback=progress,
-                    cache_model=True,
-                )
-                phase_callback(0.90, "Phase 4: Post-processing")
-                self.ctx = phases.postprocess_all_batches(
-                    ctx=self.ctx, debug=self.debug, progress_callback=progress,
-                    color_correction="lab", temporal_overlap=0, batch_size=config.batch_size,
-                )
-                return self.ctx["final_video"].detach().cpu()
-        finally:
-            self.core["memory"].cleanup_text_embeddings(self.ctx, self.debug)
-            self.ctx.clear()
-            self.debug.clear_history()
+                if already_offloaded:
+                    if config.batch_size <= 5:
+                        raise
+                    next_batch = seedvr2_memory.smaller_temporal_window(config.batch_size)
+            finally:
+                self.core["memory"].cleanup_text_embeddings(self.ctx, self.debug)
+                self.ctx.clear()
+                self.debug.clear_history()
+            # Retry only after exception frames and window tensors have been released.
+            del prepared_images
+            _check_cancel(self.cancel_callback)
+            self.memory_policy.recover_from_oom()
+            if next_batch < self.config.batch_size:
+                self._set_batch_size(next_batch)
+                phase_callback(0.0, f"Window reduced: {self.config.batch_size}")
+            phase_callback(0.0, "Memory retry")
 
     def close(self):
         if self.ctx:
             self.core["memory"].cleanup_text_embeddings(self.ctx, self.debug)
             self.ctx.clear()
         if self.runner is not None:
-            self.core["memory"].complete_cleanup(self.runner, debug=self.debug, dit_cache=False, vae_cache=False)
-            self.runner = None
+            try:
+                try:
+                    if self.memory_policy is not None:
+                        self.memory_policy.offload()
+                finally:
+                    self.core["memory"].complete_cleanup(
+                        self.runner, debug=self.debug, dit_cache=False, vae_cache=False,
+                    )
+            finally:
+                self.runner = None
+                self.memory_policy = None
 
 
-def _iter_windows(frames: Iterator[Any], size: int, overlap: int, torch: Any):
+def _iter_windows(frames: Iterator[Any], size: int | Callable[[], int], overlap: int, torch: Any):
     window = []
     start = 0
     while True:
+        current_size = size() if callable(size) else size
         previous_count = len(window)
-        for _ in range(size - previous_count):
+        for _ in range(current_size - previous_count):
             try:
                 window.append(next(frames))
             except StopIteration:
@@ -317,9 +397,9 @@ def _iter_windows(frames: Iterator[Any], size: int, overlap: int, torch: Any):
         if len(window) == previous_count:
             return
         yield start, torch.stack(window)
-        if len(window) < size:
+        if len(window) < current_size:
             return
-        start += size - overlap
+        start += len(window) - overlap
         window = window[-overlap:] if overlap else []
 
 
@@ -479,18 +559,41 @@ def run_seedvr2(
                 _check_cancel(cancel_callback)
                 yield frame
 
-        for start, images in _iter_windows(iter(source()), config.batch_size, config.overlap, torch):
+        video_frames = iter(source())
+        first_frame = next(video_frames, None)
+        if first_frame is None:
+            raise ValueError("Input video has no readable frames.")
+        prepare_video = getattr(runtime, "prepare_video", None)
+        if callable(prepare_video):
+            prepare_video(first_frame)
+        initial_batch_size = getattr(runtime, "batch_size", config.batch_size)
+        if initial_batch_size < config.batch_size:
+            report(
+                1, f"SeedVR2 temporal window: {config.batch_size} -> {initial_batch_size} frames (VRAM limit)",
+                f"SeedVR2 时间窗口：{config.batch_size} -> {initial_batch_size} 帧（显存限制）",
+            )
+        window_size = lambda: getattr(runtime, "batch_size", config.batch_size)
+        window_count = 0
+        for start, images in _iter_windows(chain((first_frame,), video_frames), window_size, config.overlap, torch):
             _check_cancel(cancel_callback)
             new_frames = start + len(images) - source_frames
             window_end = start + len(images)
 
             def phase_progress(fraction, phase):
-                stage_en, stage_cn = {
+                stages = {
                     "Phase 1: Encoding": ("VAE encoding", "VAE 编码"),
                     "Phase 2: Upscaling": ("Upscaling", "放大"),
                     "Phase 3: Decoding": ("VAE decoding", "VAE 解码"),
                     "Phase 4: Post-processing": ("Color correction", "色彩校正"),
-                }[phase]
+                    "Memory retry": ("Retrying with CPU offload", "增加 CPU 卸载并重试当前窗口"),
+                }
+                if phase.startswith("Window reduced: "):
+                    frames = phase.split(": ", 1)[1]
+                    stage_en, stage_cn = (
+                        f"Temporal window reduced to {frames} frames", f"时间窗口缩小为 {frames} 帧",
+                    )
+                else:
+                    stage_en, stage_cn = stages[phase]
                 report(
                     2 + 92 * (source_frames + new_frames * fraction) / frame_count,
                     f"SeedVR2: {stage_en}, frames {start + 1}-{window_end}/{frame_count}",
@@ -516,6 +619,7 @@ def run_seedvr2(
                 output_frames += 1
             pending = output[-keep:].clone() if keep else None
             source_frames = window_end
+            window_count += 1
             if preview_enabled and end:
                 last_preview = _output_preview(output[end - 1])
             report(
@@ -534,6 +638,7 @@ def run_seedvr2(
             del pending
         if writer is None or source_frames != frame_count or output_frames != frame_count:
             raise RuntimeError(f"SeedVR2 frame count mismatch: {output_frames}/{frame_count}.")
+        effective_batch_size = getattr(runtime, "batch_size", config.batch_size)
         runtime.close()
         runtime = None
         report(96, "Saving SeedVR2 video...", "正在保存 SeedVR2 视频...")
@@ -550,6 +655,8 @@ def run_seedvr2(
             "output_width": writer.width, "output_height": writer.height,
             "audio_muxed": info.has_audio, "encoder": writer.encoder,
             "dit_model": config.dit_model, "vae_model": config.vae_model,
+            "requested_batch_size": config.batch_size, "initial_batch_size": initial_batch_size,
+            "effective_batch_size": effective_batch_size, "window_count": window_count,
         }
         report(100, "SeedVR2 finished", "SeedVR2 已完成")
         success = True

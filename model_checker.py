@@ -124,7 +124,7 @@ MODEL_SCAN_CATEGORIES = [
     'layer_model', 'pulid', 'insightface', 'prompt_expansion', 'fooocus_expansion',
     'gemma3', 'jina_clip', 'rembg', 'birefnet', 'sam3', 'sam3dbody', 'sharp', 'sams', 'qwen-tts',
     'latent_upscale_models', 'hunyuan_foley', 'liveportrait', 'gligen',
-    'hypernetworks', 'photomaker',
+    'hypernetworks', 'photomaker', 'vosr2',
 ]
 
 MODEL_ROOT_CATEGORY_FOLDERS = {
@@ -378,6 +378,7 @@ def load_model_paths():
             "gemma3": [os.path.join(simplemodels_root, "gemma3")],
             "nlf": [os.path.join(simplemodels_root, "nlf")],
             "SEEDVR2": _config_paths(config, "path_SEEDVR2", os.path.join(simplemodels_root, "SEEDVR2")),
+            "vosr2": [os.path.join(simplemodels_root, "vosr2")],
             "sam3": _config_paths(config, "path_sam3", os.path.join(simplemodels_root, "sam3")),
             "sam3dbody": _config_paths(config, "path_sam3dbody", os.path.join(simplemodels_root, "sam3dbody")),
             "sharp": [os.path.abspath(os.path.join(script_dir, p)) if not os.path.isabs(p) else p
@@ -445,6 +446,7 @@ def load_model_paths():
             "gemma3": [os.path.join(simplemodels_root, "gemma3")],
             "nlf": [os.path.join(simplemodels_root, "nlf")],
             "SEEDVR2": [os.path.join(simplemodels_root, "SEEDVR2")],
+            "vosr2": [os.path.join(simplemodels_root, "vosr2")],
             "sam3": [os.path.join(simplemodels_root, "sam3")],
             "sam3dbody": [os.path.join(simplemodels_root, "sam3dbody")],
             "sharp": [os.path.join(simplemodels_root, "sharp")],
@@ -4072,6 +4074,16 @@ packages = {'base_package': {'id': 1,
                                     'vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors'],
                           'info_links': ['https://modelscope.cn/models/Qwen/Qwen-Image-2.1/summary'],
                           'preset_sample': []},
+ 'vosr2_package': {'id': 46,
+                    'name': '[46]VOSR2图像放大模型包 / VOSR2 Image Upscale',
+                    'note': 'VOSR 2.0 单步图像超分，含主模型、匹配的 VAE 与 DINOv2；默认 2 倍 / One-step image super-resolution with matched VAE and DINOv2; default 2x.',
+                    'files': ['vosr2,VOSR2/args.json,816,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/args.json,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/args.json',
+                              'vosr2,VOSR2/checkpoints/ema_model.safetensors,5576385424,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/checkpoints/ema_model.safetensors,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/checkpoints/ema_model.safetensors',
+                              'vosr2,VOSR2/Qwen-Image-vae-2d/config.json,811,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/config.json,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/config.json',
+                              'vosr2,VOSR2/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,178418892,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors',
+                              'vosr2,VOSR2/dinov2_vitl14_pretrain.pth,1217586395,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth'],
+                    'info_links': ['https://huggingface.co/CSWRY/VOSR', 'https://github.com/cswry/VOSR'],
+                    'preset_sample': []},
 }
 MANUAL_DOWNLOAD_MAP = {
 }

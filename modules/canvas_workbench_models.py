@@ -125,6 +125,14 @@ def _selected_model_requirements(preset_node):
     if not _model_config_is_external(config_data):
         return []
     values = _merged_model_config_values(config_data)
+    runtime = preset_node.get("runtime") if isinstance(preset_node.get("runtime"), dict) else {}
+    preset = preset_node.get("preset") if isinstance(preset_node.get("preset"), dict) else {}
+    runtime_params = runtime.get("backend_params") if isinstance(runtime.get("backend_params"), dict) else {}
+    preset_params = preset.get("backend_params") if isinstance(preset.get("backend_params"), dict) else {}
+    task_method = (
+        runtime.get("task_method") or runtime_params.get("task_method")
+        or preset.get("task_method") or preset_params.get("task_method")
+    )
     requirements = []
     for key, label in (
         ("base_model", "Base Model"),
@@ -136,7 +144,9 @@ def _selected_model_requirements(preset_node):
         name = _model_value(values.get(key) or "")
         if not name or _is_default_model_value(name):
             continue
-        catalogs = SELECTED_MODEL_CATALOGS[key]
+        catalogs = model_loader.selected_model_catalogs(
+            key, {"task_method": task_method}, default=SELECTED_MODEL_CATALOGS[key],
+        )
         requirements.append({
             "role": label,
             "cata": catalogs[0],

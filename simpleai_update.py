@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import filecmp
 import importlib.metadata as importlib_metadata
+import importlib.util
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -31,7 +33,6 @@ DEPENDENCY_UPDATE_FAILED = 6
 ROOT_REQUIREMENTS_FILE = STUDIO_ROOT / "requirements.txt"
 DEFAULT_INDEX_URL = os.environ.get("INDEX_URL", "https://mirrors.aliyun.com/pypi/simple")
 EXTRA_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
-PYPI_INDEX_URL = "https://pypi.org/simple"
 
 # Keep this list aligned with launch.py's startup package checks.
 RUNTIME_UPDATE_PACKAGES = (
@@ -300,48 +301,25 @@ def _portable_site_packages() -> Path | None:
     return site_packages if site_packages.is_dir() else None
 
 
-def _pip_command(pip_args: list[str], index_url: str) -> list[str]:
-    command = [sys.executable, "-s", "-m", "pip", *pip_args]
-    site_packages = _portable_site_packages()
-    if site_packages is not None:
-        command.extend(["--target", str(site_packages)])
-    command.append("--prefer-binary")
-    if index_url:
-        command.extend(["--index-url", index_url])
-    return command
+@lru_cache(maxsize=1)
+def _load_package_index_router():
+    module_path = STUDIO_ROOT / "modules" / "package_index_router.py"
+    spec = importlib.util.spec_from_file_location("simpai_package_index_router", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load package index router: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.install_with_routing
 
 
 def pip_install_with_retry(pip_args: list[str], *, description: str) -> bool:
-    indexes = []
-    for label, index_url in (
-        ("首选源 / Primary index", DEFAULT_INDEX_URL),
-        ("清华大学 / Tsinghua University", EXTRA_INDEX_URL),
-        ("官方 PyPI / Official PyPI", PYPI_INDEX_URL),
-    ):
-        if index_url and index_url not in {item[1] for item in indexes}:
-            indexes.append((label, index_url))
+    install_with_routing = _load_package_index_router()
 
-    last_error: Exception | None = None
-    for label, index_url in indexes:
-        command = _pip_command(pip_args, index_url)
-        print(f"> {subprocess.list2cmdline(command)}")
-        try:
-            subprocess.run(
-                command,
-                cwd=str(STUDIO_ROOT),
-                check=True,
-                env=_make_pip_env(),
-            )
-            return True
-        except (OSError, subprocess.CalledProcessError) as exc:
-            last_error = exc
-            print(
-                f"{description}在 {label} 安装失败。 / {description} failed using {label}."
-            )
-
-    if last_error is not None:
-        print(f"{description}失败: {last_error} / {description} failed: {last_error}")
-    return False
+    return install_with_routing(
+        pip_args, primary_url=DEFAULT_INDEX_URL, extra_url=EXTRA_INDEX_URL,
+        cwd=str(STUDIO_ROOT), env=_make_pip_env(), target=_portable_site_packages(),
+        description=description,
+    )
 
 
 def install_package_with_retry(

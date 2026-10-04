@@ -144,3 +144,19 @@
 | comfy-aimdo | 0.5.5 | 0.5.5 |
 
 - 未安装依赖、下载模型、重启服务、执行 GPU/浏览器/长视频对照、同步 E 盘、提交或推送。环境还缺少 pytest-asyncio、pytest-mock、pytest-aiohttp，没有执行依赖它们的测试。原有暂存和未暂存内容保持各自状态；同一区域无法独立暂存的 H3 内容保留原 index。
+
+### 依赖源测速与低速下载换源
+
+- 范围为 Studio `launch.py`、Comfyd 私有入口 `main_comfyd.py`、`simpleai_update.py`，共用 `modules/package_index_router.py`。不修改启动器程序、`build_launcher.py`、上游 `main.py` 或 ComfyUI 核心；没有新增后台联网、遥测或模型下载。仅在原安装入口确实需要安装依赖时检查镜像。
+- 候选包含已配置的首选源、清华、华为、腾讯和官方 PyPI，重复 URL 只尝试一次。Huawei 使用 `https://repo.huaweicloud.com/repository/pypi/simple`，Tencent 使用 `https://mirrors.cloud.tencent.com/pypi/simple`。
+- 检查目标包的 Simple API，支持 HTML 和 JSON、`Requires-Python`、wheel 平台/Python 标签、sdist 与 yanked 标记；精确指定版本时保留 pip 对 yanked 发布的处理。已知缺包、不兼容或版本过旧的源不参与当前版本安装；检查超时或网络失败的源仍可在测速源之后尝试。
+- 同一目标版本的实际文件最多读取 256 KiB 测速，每次网络请求 socket timeout 为 3 秒；索引响应最多读取 8 MiB。索引检查最多三个并发请求，文件测速顺序执行，避免多个测速任务争用用户带宽。兼容版本一致后按观测下载速度排序，不承诺下载全程最快。
+- 同一进程缓存索引和文件测速五分钟，失败结果缓存 30 秒；持续低速的源在一分钟内降低排序优先级。更新器按自身所在目录加载并缓存辅助模块，Comfyd 沿用已有的按文件加载方式，不依赖额外 `PYTHONPATH` 设置。
+- 依赖解析、下载缓存、完整性检查和安装仍由 pip 负责，不使用 `--no-deps`。监测 pip 原始字节进度：默认 20 秒无进展或持续低速时结束当前 pip 下载进程及其子进程，改用后续源；每个源最多尝试一次。已测得网络本身较慢时，速度阈值下降至观测速度的四分之一，监测窗口适当延长，最多 120 秒。
+- pip 输出进入 `Installing collected packages` 或卸载阶段后停止下载超时/低速判定；安装阶段报错不会自动换源重试，避免重复修改已经开始安装的环境。源码构建/metadata 阶段不使用字节速度判定。`COMFY_REQUIREMENTS_INSTALL_TIMEOUT` 保留为 Comfyd 安装前阶段的总时间限制，默认 300 秒；其他两个入口默认 1800 秒，不限制实际安装阶段。
+- `SIMPAI_PIP_SLOW_SECONDS` 调整默认监测窗口，`SIMPAI_PIP_MIN_KIBPS` 调整默认速度上限（64 KiB/s）。pip 子进程隔离用户/site 配置的隐式索引以及继承的 `PIP_EXTRA_INDEX_URL`，通过命令指定单个当前源；不改写全局 pip 配置。显式环境中的代理/证书设置仍交给 pip 使用。
+- 单包安装会固定选出的目标版本并保留 extras/markers。`-r requirements.txt` 仍由 pip 整体解析，以第一条适用的标准包要求作为初始测速对象，不手写依赖解析器；后续遇到 pip 明确报告的缺失依赖时，针对该依赖重新检查剩余源。已有 PyTorch CUDA、ONNX Runtime nightly、llama.cpp 和 ModelScope wheel 专用渠道保持原样。
+- CLI 新增提示中英并列，没有新增 UI 文本或修改 `state.__lang` 的界面行为。
+- 修改前专项基线为 57 passed、27 subtests passed，另有一个既有 Forge 失败：`test_forge_launch_skips_cuda_only_installs_in_compatibility_mode` 仍期待 Kitchen `0.2.33`，生产文件已经声明 `0.2.37`。本次不修改该 Forge 测试或生产文件。
+- 最终专项验证为 135 passed、27 subtests passed，仍有上述 1 个既有 Forge 失败。覆盖 Simple API/平台/版本筛选、实际文件测速与缓存、环境隔离、三个入口、依赖缺包重新检查、慢网络阈值、真实子进程停滞/持续低速终止/换源与安装阶段保护，以及 llama.cpp/local base 回归。HTTP 测试仅使用自动关闭的本机临时服务器，子进程仅输出模拟下载进度，没有执行 pip 安装。
+- 修改的 Python 文件语法检查通过，已跟踪文件及两个新增文件的 Git whitespace 检查通过。未执行互联网镜像测速、真实依赖安装、Studio/Comfyd 启动或重启、GPU/浏览器验证、E 盘同步、暂存、提交或推送；保留其他任务的现有改动。

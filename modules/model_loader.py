@@ -1509,6 +1509,14 @@ _MODEL_SELECTION_SENTINELS = frozenset({
 })
 
 
+def selected_model_catalogs(field, backend_params=None, default=None):
+    backend_params = backend_params if isinstance(backend_params, dict) else {}
+    method = str(backend_params.get("task_method") or "").strip().lower().removeprefix("scene_")
+    if method == "seedvr2" and field in ("base_model", "vae_name", "vae"):
+        return ("SEEDVR2",)
+    return tuple(default if default is not None else _SELECTED_MODEL_CATALOGS.get(field, ()))
+
+
 def _selected_model_text(value):
     if isinstance(value, dict):
         value = value.get("path") or value.get("name") or value.get("model") or value.get("filename")
@@ -1564,7 +1572,9 @@ def selected_model_missing_status(model_state, backend_params=None):
             return
         selections.append((field, tuple(catalogs or _SELECTED_MODEL_CATALOGS[field]), model_name))
 
-    add_selection("base_model", model_state.get("base_model"))
+    add_selection(
+        "base_model", model_state.get("base_model"), selected_model_catalogs("base_model", backend_params),
+    )
     add_selection("refiner_model", model_state.get("refiner_model"))
 
     clip_model = model_state.get("clip_model")
@@ -1575,7 +1585,7 @@ def selected_model_missing_status(model_state, backend_params=None):
     vae_name = model_state.get("vae_name")
     if _selected_model_text(vae_name).casefold() in _MODEL_SELECTION_SENTINELS:
         vae_name = backend_params.get("vae_model")
-    add_selection("vae_name", vae_name)
+    add_selection("vae_name", vae_name, selected_model_catalogs("vae_name", backend_params))
 
     raw_loras = model_state.get("loras")
     if isinstance(raw_loras, (list, tuple)):
