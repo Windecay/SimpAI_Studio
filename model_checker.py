@@ -19,9 +19,23 @@ import threading
 import atexit
 import json
 import argparse
+import importlib.util
 from collections import defaultdict
 from multiprocessing import current_process
-from modules import vosr2_model_files
+
+
+def _load_vosr2_model_files():
+    # Launcher embedded Python may exclude Studio from sys.path.
+    module_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules", "vosr2_model_files.py")
+    spec = importlib.util.spec_from_file_location("simpai_vosr2_model_files", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load VOSR2 model file metadata: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+vosr2_model_files = _load_vosr2_model_files()
 DEFAULT_DOWNLOAD_PREFIX = "https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/"
 HF_DOWNLOAD_PREFIX = "https://huggingface.co/metercai/SimpleSDXL2/resolve/main/"
 DOWNLOAD_SOURCE = os.getenv("SIMPLEAI_DOWNLOAD_SOURCE", "modelscope").strip().lower()
@@ -3965,7 +3979,7 @@ packages = {'base_package': {'id': 1,
                                               'birefnet,BiRefNet_lite/birefnet.py,92134,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/birefnet.py,https://huggingface.co/ZhengPeng7/BiRefNet_lite/resolve/main/birefnet.py',
                                               'birefnet,BiRefNet_lite/config.json,410,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/config.json,https://huggingface.co/ZhengPeng7/BiRefNet_lite/resolve/main/config.json',
                                               'birefnet,BiRefNet_lite/model.safetensors,177634392,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/model.safetensors,https://huggingface.co/ZhengPeng7/BiRefNet_lite/resolve/main/model.safetensors',
-                                              'loras,VNCCS_QI2_PoseStudioV1.1.safetensors,159436408,0,https://huggingface.co/MIUProject/VNCCS_PoseStudio_QI2.1/resolve/main/VNCCS_QI2_PoseStudioV1.1.safetensors'
+                                              'loras,VNCCS_QI2_PoseStudioV1.1.safetensors,159436408,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/VNCCS_QI2_PoseStudioV1.1.safetensors,https://huggingface.co/MIUProject/VNCCS_PoseStudio_QI2.1/resolve/main/VNCCS_QI2_PoseStudioV1.1.safetensors'
 
 ],
                                     'info_links': ['https://modelscope.cn/models/facebook/sam-3d-body-dinov3',
@@ -3978,7 +3992,7 @@ packages = {'base_package': {'id': 1,
                                              'diffusion_models,qwen_image_2.1_int8_convrot.safetensors,7256783064,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/diffusion_models/qwen_image_2.1_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors',
                                              'text_encoders,qwen3vl_8b_int8_convrot.safetensors,9350798360,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors',
                                              'vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors',
-                                             'loras,QI2.1_AnyAngle.safetensors,119590312,0,https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/QI2.1_AnyAngle.safetensors'],
+                                             'loras,QI2.1_AnyAngle.safetensors,119590312,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/QI2.1_AnyAngle.safetensors,https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/QI2.1_AnyAngle.safetensors'],
                                    'info_links': ['https://modelscope.cn/models/apple/Sharp/',
                                                   'https://huggingface.co/lilylilith/QI_2.1_AnyAngle'],
                                    'preset_sample': []},
@@ -4101,7 +4115,7 @@ packages = {'base_package': {'id': 1,
                                   'files': ['diffusion_models,qwen_image_2.1_int8_convrot.safetensors,7256783064,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/diffusion_models/qwen_image_2.1_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors',
                                             'text_encoders,qwen3vl_8b_int8_convrot.safetensors,9350798360,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors',
                                             'vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors',
-                                            'loras,qwen-image-2.1-outpaint-v2.safetensors,159436576,0,https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors'],
+                                            'loras,qwen-image-2.1-outpaint-v2.safetensors,159436576,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/qwen-image-2.1-outpaint-v2.safetensors,https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors'],
                                   'info_links': ['https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA'],
                                   'preset_sample': []},
  'vosr2_package': {'id': 46,

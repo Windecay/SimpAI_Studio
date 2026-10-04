@@ -229,6 +229,10 @@ def save_character(value, user_did, root=None):
             "appearance": str(source.get("appearance") or "").strip()[:12000],
             "image_prompt": str(source.get("image_prompt") or "").strip()[:12000],
             "image_preset": str(source.get("image_preset") or "").strip()[:200],
+            "image_edit_preset": str(source.get("image_edit_preset") or "").strip()[:200],
+            "image_mode": source.get("image_mode") if source.get("image_mode") in ("text", "reference")
+                          else ("reference" if any(item["mime"].startswith("image/") for item in media) else "text"),
+            "image_source_asset_id": str(source.get("image_source_asset_id") or "")[:100],
             "personality": str(source.get("personality") or "").strip()[:4000],
             "voice_description": str(source.get("voice_description") or "").strip()[:4000],
             "voice": normalize_voice(source.get("voice")),

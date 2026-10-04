@@ -183,17 +183,39 @@
         if (card.media.filter(ref => ref.mime?.startsWith('audio/')).length >= 3) throw new Error('too_many_audios');
         card.media.push(clone(result.asset));
     }
-    function imagePresetRoute(entry) {
+    function characterImageMode(card) {
+        return ['text', 'reference'].includes(card?.image_mode) ? card.image_mode
+            : card?.media?.some(ref => ref.mime?.startsWith('image/')) ? 'reference' : 'text';
+    }
+    function characterImageSource(card) {
+        const images = (card?.media || []).filter(ref => ref.mime?.startsWith('image/'));
+        return images.find(ref => ref.asset_id === card.image_source_asset_id)
+            || images.find(ref => !ref.character_sheet) || images[0];
+    }
+    function imagePresetRoute(entry, mode = 'text') {
         if (!entry || ['video', 'audio'].includes(entry.engine_type || entry.default_engine?.engine_type)
                 || ['video', 'audio'].includes(entry.media_capability?.output_type)
                 || entry.media_capability?.interaction_requirements?.length) return null;
         const themes = entry.schema?.themes || [];
+        if (mode === 'reference') {
+            if (entry.name !== 'Qwen2.1-Edit') return null;
+            const theme = themes.find(key => entry.schema?.per_theme?.[key]?.task_method === 'qwen_image21_edit_cn');
+            return { theme: theme || entry.schema?.default_theme || themes[0] || '' };
+        }
         const theme = themes.find(key => entry.schema?.per_theme?.[key]?.supported_tasks?.includes('text_to_image'));
         if (theme) return { theme };
         const tasks = entry.media_capability?.supported_tasks;
         if (tasks?.length && !tasks.includes('text_to_image')) return null;
         if (!tasks?.length && /edit|kontext|inpaint|outpaint|repair|pose|a2r/i.test(`${entry.name} ${entry.task_method || ''}`)) return null;
         return { theme: entry.schema?.default_theme || themes[0] || '' };
+    }
+    function characterImagePreset(card, presets) {
+        const mode = characterImageMode(card);
+        const compatible = presets.filter(entry => imagePresetRoute(entry, mode));
+        const saved = mode === 'reference' ? card.image_edit_preset : card.image_preset;
+        return compatible.find(entry => entry.name === saved)
+            || compatible.find(entry => entry.name === (mode === 'reference' ? 'Qwen2.1-Edit' : 'Krea2-Turbo'))
+            || compatible.find(entry => !entry.missing) || compatible[0];
     }
     function addGeneratedImage(card, result) {
         if (result.character_id !== card.id || !result.asset?.mime?.startsWith('image/')) throw new Error('character_image_result_missing');
@@ -425,6 +447,7 @@
         let imageJob = null, imageTimer = null, pollingImage = false;
         let imageMessage = '';
         let imagePresets = [], imagePresetsLoading = false, imagePresetsLoaded = false;
+        let imagePresetsTask = null;
         const previousFocus = document.activeElement;
         const host = document.createElement('div');
         host.className = 'sai-vpe-backdrop';
@@ -460,6 +483,9 @@
                 character_image_prompt_required: t('Enter an appearance or image prompt.', '请填写外观描述或生图提示词。'),
                 character_image_service_outdated: t('Studio has not loaded character image generation yet. Restart Studio, then refresh this page.', '当前 Studio 尚未加载角色生图接口。请重启 Studio，再刷新页面。'),
                 character_image_preset_required: t('Select an image preset.', '请选择生图预设。'),
+                character_image_reference_preset_required: t('Select Qwen2.1 Edit for portrait conversion.', '图片转换请选择 Qwen2.1 编辑预设。'),
+                character_image_source_required: t('Upload or select a character portrait.', '请上传或选择一张角色照。'),
+                character_image_mode_invalid: t('Select a character image mode.', '请选择角色生图方式。'),
                 character_image_models_missing: t('The selected preset has missing models. Choose an installed preset.', '所选预设缺少模型，请选择已安装模型的预设。'),
                 character_image_run_not_found: t('This image task is unavailable.', '生图任务已不可用。'),
                 character_image_result_missing: t('The task did not return one character sheet.', '任务未返回一张有效的角色设定图。'),
@@ -470,6 +496,7 @@
                 character_revision_conflict: t('This card changed elsewhere. Refresh before saving.', '角色卡已在其他位置修改，请刷新后重新编辑。'),
                 unsupported_or_oversized_media: t('Unsupported media, or file exceeds 20 MB.', '媒体格式不支持，或文件超过 20 MB。'),
                 asset_not_found: t('Reference asset is unavailable.', '参考素材已不可用。'),
+                asset_file_missing: t('The reference file is missing. Upload it again.', '参考文件已不存在，请重新上传。'),
                 reference_capacity: t('Not enough appendable reference slots. Existing inputs were not replaced.', '可追加的参考槽位不足，未替换现有输入。'),
                 reference_media_unsupported: options.directorSegmentId
                     ? t('This shot mode does not accept the reference types on this card. Use compatible media or insert the character description.', '\u5f53\u524d\u5206\u955c\u6a21\u5f0f\u4e0d\u652f\u6301\u8fd9\u5f20\u89d2\u8272\u5361\u7684\u7d20\u6750\u7c7b\u578b\uff0c\u53ef\u9009\u62e9\u9002\u7528\u7d20\u6750\u6216\u4f7f\u7528\u89d2\u8272\u63cf\u8ff0\u3002')
@@ -639,7 +666,8 @@ ${voice ? mediaHtml(voice) : ''}
             return `<div class="sai-vpe-media">${(draft.media || []).map((ref, index) => `
 <div class="sai-vpe-media-row" data-vpe-media-index="${index}">
 ${mediaHtml(ref)}<span>${escape(ref.name || ref.asset_id)}</span>
-<button type="button" data-vpe-remove-media="${index}" title="${escape(t('Remove media', '移除素材'))}" aria-label="${escape(t('Remove media', '移除素材'))}"><i class="fa-solid fa-xmark"></i></button>
+<div class="sai-vpe-actions sai-vpe-media-actions">${ref.mime?.startsWith('image/') ? button(`image-convert:${ref.asset_id}`, 'images', t('Convert this image to four views', '将这张图片转为四视图')) : ''}
+<button type="button" data-vpe-remove-media="${index}" title="${escape(t('Remove media', '移除素材'))}" aria-label="${escape(t('Remove media', '移除素材'))}"><i class="fa-solid fa-xmark"></i></button></div>
 ${ref.mime?.startsWith('audio/') ? `<details class="sai-vpe-audio-tools"><summary>${escape(t('Trim audio', '裁剪声音'))}</summary><div class="sai-vpe-trim">
 <label>${escape(t('Start (s)', '开始（秒）'))}<input type="number" min="0" step="0.01" data-vpe-trim-start value="0"></label>
 <label>${escape(t('End (s)', '结束（秒）'))}<input type="number" min="0" step="0.01" data-vpe-trim-end value="${escape(ref.duration || '')}"></label>
@@ -647,28 +675,32 @@ ${button(`preview-trim:${index}`, 'play', t('Preview range', '试听区间'))}${
 ${ref.trim_source_asset_id ? button(`restore-audio:${index}`, 'rotate-left', t('Restore original audio', '恢复原音频')) : ''}</div></details>` : ''}</div>`).join('')}</div>`;
         }
         function renderImagePresets() {
-            const select = query('[data-vpe-field="image_preset"]');
+            const select = query('[data-vpe-image-preset]');
             if (!select || !draft) return;
-            const selected = draft.image_preset || (imagePresets.find(entry => entry.name === 'Krea2-Turbo' && !entry.missing)
-                || imagePresets.find(entry => !entry.missing) || imagePresets[0])?.name || '';
+            const mode = characterImageMode(draft);
+            const compatible = imagePresets.filter(entry => imagePresetRoute(entry, mode));
+            const selected = characterImagePreset(draft, imagePresets)?.name || '';
             select.innerHTML = `<option value="">${escape(imagePresetsLoading ? t('Loading presets...', '正在读取预设…') : t('Select image preset', '选择生图预设'))}</option>`
-                + imagePresets.map(entry => `<option value="${escape(entry.name)}"${entry.name === selected ? ' selected' : ''}>${escape(entry.display_name || entry.name)}${entry.missing ? escape(t(' (models missing)', '（缺少模型）')) : ''}</option>`).join('')
-                + (selected && !imagePresets.some(entry => entry.name === selected) ? `<option selected value="${escape(selected)}">${escape(selected)} ${escape(t('(unavailable)', '（不可用）'))}</option>` : '');
+                + compatible.map(entry => `<option value="${escape(entry.name)}"${entry.name === selected ? ' selected' : ''}>${escape(entry.display_name || entry.name)}${entry.missing ? escape(t(' (models missing)', '（缺少模型）')) : ''}</option>`).join('');
         }
         async function loadImagePresets() {
-            if (imagePresetsLoading) return;
+            if (imagePresetsLoading) return imagePresetsTask;
             imagePresetsLoading = true; renderImagePresets();
-            try {
-                const api = root.SimpAICanvasWorkbenchApi;
-                if (!api?.presetCatalog) throw new Error('image_api_unavailable');
-                const result = await api.presetCatalog({ user_context: state });
-                if (!result?.ok) throw new Error(result?.error || 'image_api_unavailable');
-                imagePresets = (result.presets || []).filter(entry => imagePresetRoute(entry));
-            } catch (error) { status(errorText(error)); }
-            finally {
-                imagePresetsLoading = false; imagePresetsLoaded = true;
-                if (host.isConnected) renderImagePresets();
-            }
+            imagePresetsTask = (async () => {
+                try {
+                    const api = root.SimpAICanvasWorkbenchApi;
+                    if (!api?.presetCatalog) throw new Error('image_api_unavailable');
+                    const result = await api.presetCatalog({ user_context: state });
+                    if (!result?.ok) throw new Error(result?.error || 'image_api_unavailable');
+                    imagePresets = (result.presets || []).filter(entry => imagePresetRoute(entry) || imagePresetRoute(entry, 'reference'));
+                } catch (error) { status(errorText(error)); }
+                finally {
+                    imagePresetsLoading = false; imagePresetsLoaded = true;
+                    if (host.isConnected) renderImagePresets();
+                }
+            })();
+            await imagePresetsTask;
+            imagePresetsTask = null;
         }
         function renderDetail() {
             const detail = query('[data-vpe-detail]');
@@ -676,6 +708,9 @@ ${ref.trim_source_asset_id ? button(`restore-audio:${index}`, 'rotate-left', t('
             detail.hidden = !draft;
             if (!draft) { detail.innerHTML = ''; mediaPreviews.sync(); return; }
             const imported = draft.category === 'roleplay';
+            const imageMode = characterImageMode(draft);
+            const sourceImage = characterImageSource(draft);
+            const imageRefs = (draft.media || []).filter(ref => ref.mime?.startsWith('image/'));
             draft.voice = voiceDefaults(draft.voice, state);
             detail.innerHTML = `<div class="sai-vpe-actions"><strong>${escape(t('Edit character', '编辑角色'))}</strong>${button('save-card', 'floppy-disk', imported ? t('Save audiovisual copy', '保存为视听副本') : t('Save character', '保存角色'))}${!imported && draft.id ? button('delete-card', 'trash', t('Delete character', '删除角色')) : ''}${button('close-detail', 'xmark', t('Close character settings', '收起角色设置'))}</div>
 <button type="button" class="is-primary sai-vpe-use" data-vpe-action="insert-character"><i class="fa-solid fa-plus"></i> ${escape(t('Use character', '使用角色'))}</button>
@@ -684,11 +719,13 @@ ${draftMediaHtml()}
 <label>${escape(t('Name', '名称'))}<input data-vpe-field="name" value="${escape(draft.name)}" maxlength="200"></label>
 <label>${escape(t('Appearance', '外观描述'))}<textarea data-vpe-field="appearance" rows="5">${escape(draft.appearance)}</textarea></label>
 <section class="sai-vpe-sheet" aria-label="${escape(t('Character sheet', '角色设定图'))}">
-<div class="sai-vpe-actions"><strong>${escape(t('Character sheet · 1 image', '角色设定图 · 单张'))}</strong>${button('image-presets', 'arrows-rotate', t('Refresh image presets', '刷新生图预设'))}</div>
-<label>${escape(t('Image preset', '生图预设'))}<select data-vpe-field="image_preset"></select></label>
+<div class="sai-vpe-actions"><strong>${escape(t('Four-view sheet · 1 image', '标准四视图 · 单张'))}</strong>${button('image-presets', 'arrows-rotate', t('Refresh image presets', '刷新生图预设'))}</div>
+<div class="sai-vpe-mode sai-vpe-sheet-mode" role="group" aria-label="${escape(t('Image source', '生图来源'))}"><button type="button" data-vpe-action="image-mode:reference" aria-pressed="${imageMode === 'reference'}"${sourceImage ? '' : ' disabled'}>${escape(t('Current image', '当前图片'))}</button><button type="button" data-vpe-action="image-mode:text" aria-pressed="${imageMode === 'text'}">${escape(t('Generate directly', '直接生成'))}</button></div>
+${imageMode === 'reference' ? `<label>${escape(t('Character portrait', '角色参考图'))}<select data-vpe-field="image_source_asset_id">${imageRefs.map(ref => `<option value="${escape(ref.asset_id)}"${ref.asset_id === sourceImage?.asset_id ? ' selected' : ''}>${escape(ref.name || ref.asset_id)}</option>`).join('')}</select></label>` : ''}
+<label>${escape(t('Image preset', '生图预设'))}<select data-vpe-image-preset data-vpe-field="${imageMode === 'reference' ? 'image_edit_preset' : 'image_preset'}"></select></label>
 <label>${escape(t('Additional image prompt', '额外生图提示词'))}<textarea data-vpe-field="image_prompt" rows="3" maxlength="12000">${escape(draft.image_prompt || '')}</textarea></label>
 <div class="sai-vpe-sheet-layout"><span>${escape(t('White background', '白底'))}</span><span>${escape(t('Close-up + front / side / back', '特写 + 正面 / 侧面 / 背面'))}</span></div>
-<div class="sai-vpe-voice-actions"><button type="button" class="is-primary" data-vpe-action="image-start"><i class="fa-solid fa-wand-magic-sparkles"></i> ${escape(t('Generate character sheet', '生成角色设定图'))}</button>
+<div class="sai-vpe-voice-actions"><button type="button" class="is-primary" data-vpe-action="image-start"><i class="fa-solid fa-wand-magic-sparkles"></i> ${escape(imageMode === 'reference' ? t('Convert to four views', '当前图片转四视图') : t('Generate character sheet', '生成角色设定图'))}</button>
 ${imageJob ? `${button('image-stop', 'stop', t('Stop image generation', '停止生图'))}${button('image-poll', 'arrows-rotate', t('Check image progress', '检查生图进度'))}<progress data-vpe-image-progress max="1" value="0" aria-label="${escape(t('Image progress', '生图进度'))}"></progress>` : ''}</div>
 <p data-vpe-image-status role="status" aria-live="polite"${imageMessage ? '' : ' hidden'}>${escape(imageMessage)}</p></section>
 <label>${escape(t('Personality', '性格描述'))}<textarea data-vpe-field="personality" rows="2" maxlength="4000">${escape(draft.personality)}</textarea></label>
@@ -832,25 +869,45 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             };
             if (action === 'image-presets') { await loadImagePresets(); return; }
             if (action === 'image-poll' || action === 'image-stop') { await pollImage(action === 'image-stop'); return; }
+            if (action.startsWith('image-mode:')) {
+                draft.image_mode = action.split(':')[1]; dirty = true;
+                imageMessage = ''; renderDetail(); return;
+            }
+            if (action.startsWith('image-convert:')) {
+                draft.image_source_asset_id = action.slice('image-convert:'.length);
+                draft.image_mode = 'reference'; dirty = true;
+                renderDetail();
+                action = 'image-start';
+            }
             if (action === 'image-start') {
-                if (!draft.appearance?.trim() && !draft.image_prompt?.trim()) throw new Error('character_image_prompt_required');
-                const selected = query('[data-vpe-field="image_preset"]')?.value;
+                if (!imagePresetsLoaded || imagePresetsLoading) await loadImagePresets();
+                const mode = characterImageMode(draft);
+                const sourceImage = mode === 'reference' ? characterImageSource(draft) : null;
+                if (mode === 'reference' && !sourceImage) throw new Error('character_image_source_required');
+                if (mode === 'text' && !draft.appearance?.trim() && !draft.image_prompt?.trim()) throw new Error('character_image_prompt_required');
+                const selected = query('[data-vpe-image-preset]')?.value;
                 const entry = imagePresets.find(item => item.name === selected);
-                if (!entry) throw new Error('character_image_preset_required');
+                if (!entry || !imagePresetRoute(entry, mode)) throw new Error('character_image_preset_required');
                 if (entry.missing) throw new Error('character_image_models_missing');
                 const api = root.SimpAICanvasWorkbenchApi;
                 if (!api?.buildPresetRunNode) throw new Error('image_api_unavailable');
                 imageStatus(t('Saving character and submitting image task...', '正在保存角色并提交生图任务…'));
-                if (draft.image_preset !== selected) { draft.image_preset = selected; dirty = true; }
+                const presetField = mode === 'reference' ? 'image_edit_preset' : 'image_preset';
+                if (draft[presetField] !== selected) { draft[presetField] = selected; dirty = true; }
+                if (mode === 'reference' && draft.image_source_asset_id !== sourceImage.asset_id) {
+                    draft.image_source_asset_id = sourceImage.asset_id; dirty = true;
+                }
+                if (draft.image_mode !== mode) { draft.image_mode = mode; dirty = true; }
                 // Unnamed drafts can generate immediately; the editable card gets a meaningful default name.
                 if (!draft.name?.trim()) { draft.name = t('New character', '新角色'); dirty = true; }
                 await saveDraft();
                 const presetNode = api.buildPresetRunNode(entry, {
                     prompt: draft.appearance, imageNumber: 1, aspectRatio: '3:2',
-                    sceneTheme: imagePresetRoute(entry).theme,
+                    sceneTheme: imagePresetRoute(entry, mode).theme,
                 });
                 imageJob = await request('image-start', {
                     character_id: draft.id, revision: draft.revision, preset_node: presetNode,
+                    mode, ...(sourceImage ? { source_asset_id: sourceImage.asset_id } : {}),
                 }, state);
                 renderDetail(); imageStatus(t('Character sheet queued.', '角色设定图任务已排队。'));
                 imageTimer = root.setTimeout(() => pollImage(), 500);
@@ -1047,7 +1104,9 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 renderText(savedSelection.start); return;
             }
             if (target.hasAttribute('data-vpe-remove-media')) {
-                draft.media.splice(Number(target.dataset.vpeRemoveMedia), 1); dirty = true; renderDetail(); return;
+                draft.media.splice(Number(target.dataset.vpeRemoveMedia), 1);
+                if (!characterImageSource(draft)) draft.image_mode = 'text';
+                dirty = true; renderDetail(); return;
             }
             if (target.hasAttribute('data-vpe-unbind')) {
                 bindings.splice(Number(target.dataset.vpeUnbind), 1); record(); renderText(); return;
@@ -1103,6 +1162,9 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                         reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
                     });
                     const result = await request('upload', { name: file.name, data_url: dataUrl }, state);
+                    if (result.asset.mime?.startsWith('image/') && !characterImageSource(draft)) {
+                        draft.image_mode = 'reference'; draft.image_source_asset_id = result.asset.asset_id;
+                    }
                     draft.media.push(result.asset); dirty = true; renderDetail();
                 });
             }
@@ -1179,7 +1241,7 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
         field.insertAdjacentElement('afterend', button);
         field.__visualPromptButton = button;
     }
-    const api = { open, attach, references, characterInsertionRange, normalizeBindings, validateBindings, serializeDom, renderPrompt, safeUrl, sourceIdentity, planMediaAttachments, matchingAsset, request, voiceDefaults, addGeneratedVoice, imagePresetRoute, addGeneratedImage, audioTime, waveformBars, audioPlayerHtml, previewPlacement };
+    const api = { open, attach, references, characterInsertionRange, normalizeBindings, validateBindings, serializeDom, renderPrompt, safeUrl, sourceIdentity, planMediaAttachments, matchingAsset, request, voiceDefaults, addGeneratedVoice, characterImageMode, characterImageSource, characterImagePreset, imagePresetRoute, addGeneratedImage, audioTime, waveformBars, audioPlayerHtml, previewPlacement };
     root.SimpAIVisualPromptEditor = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document !== 'undefined') {
