@@ -5635,6 +5635,7 @@ function resolveSceneCanvasMaskDisabled(systemParams) {
 }
 
 function syncSceneCanvasMaskMode(systemParams) {
+    syncSceneCanvasOutpaintMode(systemParams);
     const disabled = resolveSceneCanvasMaskDisabled(systemParams);
     const app = gradioApp();
     const root = (app && app.getElementById ? app.getElementById("scene_canvas") : null) || document.getElementById("scene_canvas");
@@ -5663,6 +5664,130 @@ function syncSceneCanvasMaskMode(systemParams) {
 }
 
 window.syncSceneCanvasMaskMode = syncSceneCanvasMaskMode;
+
+const SCENE_OUTPAINT_FIELDS = { up: 7, down: 8, left: 9, right: 10 };
+
+function sceneOutpaintContext(systemParams) {
+    const state = systemParams || {};
+    const frontend = state.scene_frontend || {};
+    const selected = sceneSelectedThemeValue();
+    const fallbackTheme = Array.isArray(frontend.theme) ? frontend.theme[0] : frontend.theme;
+    const stateTheme = state.__scene_theme || state.scene_theme || fallbackTheme || "";
+    const theme = selected || stateTheme;
+    const matchesTheme = !selected || !stateTheme || selected === stateTheme;
+    const method = sceneTaskMethodForTheme(frontend, theme);
+    // Ordinary WebUI receives a projected state, not the original scene_frontend.
+    const taskMethod = state.__scene_task_method || method.value;
+    const isScene = !!state.__is_scene_frontend || sceneThemeBelongsToFrontend(frontend, theme);
+    const enabled = isScene && matchesTheme
+        && (taskMethod === "qwen_image21_outpaint"
+            || sceneBoolValueForTheme(frontend, "canvas_outpaint_control", theme, false));
+    return { enabled, theme, key: `${state.__preset || ""}:${theme}`, frontend };
+}
+
+function readSceneOutpaintValue(id, fallback) {
+    const root = getSimpleAIElementById(id);
+    const input = root?.querySelector('input[type="number"], input[type="range"]');
+    const raw = input?.value;
+    const value = raw == null || raw === "" ? Number(fallback) : Number(raw);
+    return Number.isFinite(value) ? value : Number(fallback);
+}
+
+async function saveSceneOutpaintValues(root, key, values, isCurrent) {
+    const stillCurrent = () => root.isConnected && isCurrent()
+        && sceneOutpaintContext(window.simpleaiTopbarSystemParams).enabled
+        && sceneOutpaintContext(window.simpleaiTopbarSystemParams).key === key;
+    if (!stillCurrent()) return false;
+    const controlsReady = () => Object.values(SCENE_OUTPAINT_FIELDS).every((index) =>
+        getSimpleAIElementById(`scene_var_number${index}`)?.querySelector('input[type="number"], input[type="range"]'));
+    // Gradio 6 mounts accordion children on first expansion and retains them afterward.
+    const accordion = getSimpleAIElementById("scene_advanced_parameters_accordion");
+    const toggle = accordion?.querySelector("button");
+    let expandedHere = false;
+    try {
+        if (!controlsReady()) {
+            if (!toggle) return false;
+            toggle.click();
+            expandedHere = true;
+            const deadline = Date.now() + 1500;
+            while (!controlsReady() && Date.now() < deadline && stillCurrent()) {
+                await new Promise((resolve) => setTimeout(resolve, 25));
+            }
+        }
+        if (!controlsReady() || !stillCurrent()) return false;
+        const state = window.simpleaiTopbarSystemParams || {};
+        for (const [direction, index] of Object.entries(SCENE_OUTPAINT_FIELDS)) {
+            const id = `scene_var_number${index}`;
+            const value = Math.round(Math.min(100, Math.max(0, Number(values[direction]) || 0)));
+            const inputs = getScenePresetDefaultInputs(getSimpleAIElementById(id), 'input[type="number"], input[type="range"]');
+            for (const input of orderScenePresetValueInputs(inputs)) {
+                applyScenePresetControlProps(input, state.__scene_control_props?.[id] || { minimum: 0, maximum: 100, step: 1 });
+                setNativeInputValue(input, value, "value");
+            }
+        }
+        return Object.entries(SCENE_OUTPAINT_FIELDS).every(([direction, index]) =>
+            readSceneOutpaintValue(`scene_var_number${index}`, -1) === values[direction]);
+    } finally {
+        if (expandedHere && accordion?.isConnected) toggle.click();
+    }
+}
+
+function syncSceneCanvasOutpaintMode(systemParams) {
+    const state = systemParams || {};
+    const root = getSimpleAIElementById("scene_canvas");
+    if (!root) return false;
+    const context = sceneOutpaintContext(state);
+    const previous = root.__simpaiOutpaintControl;
+    const samePreset = previous?.key === context.key && previous?.enabled;
+    const defaults = state.__scene_defaults || {};
+    const byTheme = (field, fallback) => context.frontend[field]?.[context.theme] ?? fallback;
+    const values = {};
+    const defaultValues = {};
+    for (const [direction, index] of Object.entries(SCENE_OUTPAINT_FIELDS)) {
+        const fallback = defaults[`scene_var_number${index}`] ?? byTheme(`var_number${index}`, 15);
+        defaultValues[direction] = Number(fallback);
+        values[direction] = samePreset ? readSceneOutpaintValue(`scene_var_number${index}`, fallback) : Number(fallback);
+    }
+    const config = {
+        enabled: context.enabled, key: context.key, values, defaultValues,
+        lang: String(state.__lang || "en").toLowerCase().startsWith("en") ? "en" : "cn",
+        maxMegapixels: samePreset
+            ? readSceneOutpaintValue("scene_var_number3", defaults.scene_var_number3 ?? byTheme("var_number3", 0))
+            : Number(defaults.scene_var_number3 ?? byTheme("var_number3", 0)),
+        onSave: (next, isCurrent) => saveSceneOutpaintValues(root, context.key, next, isCurrent),
+    };
+    root.__simpaiOutpaintControl = config;
+    const enabledAttr = config.enabled ? "1" : "0";
+    if (root.dataset.simpaiOutpaintEnabled !== enabledAttr) root.dataset.simpaiOutpaintEnabled = enabledAttr;
+    root.__simpaiSketch?.setOutpaintControl?.(config);
+    return context.enabled;
+}
+
+window.syncSceneCanvasOutpaintMode = syncSceneCanvasOutpaintMode;
+
+async function applySceneOutpaintSubmitValues(args, indices) {
+    const state = window.simpleaiTopbarSystemParams || {};
+    const context = sceneOutpaintContext(state);
+    if (!context.enabled) return args;
+    const root = getSimpleAIElementById("scene_canvas");
+    const saved = await root?.__simpaiSketch?.flushOutpaint?.();
+    const current = sceneOutpaintContext(window.simpleaiTopbarSystemParams);
+    if (saved === false || !current.enabled || current.key !== context.key
+        || !root?.isConnected || root !== getSimpleAIElementById("scene_canvas")) {
+        const message = String(state.__lang || "en").toLowerCase().startsWith("en")
+            ? "Outpaint proportions were not saved. Please retry."
+            : "\u6269\u56fe\u6bd4\u4f8b\u672a\u4fdd\u5b58\uff0c\u8bf7\u91cd\u8bd5\u3002";
+        window.alert(message);
+        throw new Error(message);
+    }
+    for (const index of [3, ...Object.values(SCENE_OUTPAINT_FIELDS)]) {
+        const id = `scene_var_number${index}`;
+        if (Number.isInteger(indices[id])) args[indices[id]] = readSceneOutpaintValue(id, args[indices[id]]);
+    }
+    return args;
+}
+
+window.applySceneOutpaintSubmitValues = applySceneOutpaintSubmitValues;
 
 const SCENE_BATCH_TARGET_SLOT_ORDER = ["scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8"];
 
@@ -5943,7 +6068,7 @@ function syncSceneUploadImageLabels(isScene, hidden) {
     syncSceneBatchTargetLabels(isScene, hiddenSet, items);
 }
 
-const GAUSSIAN_STUDIO_SCENE_STATUS_TEXT = "Input Image 1 reference -> Gaussian Studio -> Canvas output";
+const GAUSSIAN_STUDIO_SCENE_STATUS_TEXT = "Image 1 original -> Gaussian Studio -> Image 2 camera render";
 const LIVEPORTRAIT_EXPRESSION_SCENE_STATUS_TEXT = "Source Image 1 -> Reference Image 2 -> Expression output";
 const LIVEPORTRAIT_EXPRESSION_VIDEO_SCENE_STATUS_TEXT = "Source video first frame -> expression params -> video output";
 
@@ -5955,7 +6080,7 @@ function bindGaussianStudioSceneInputGuard() {
     const guardedEvents = ["click", "dblclick", "pointerdown", "mousedown", "mouseup", "dragenter", "dragover", "drop", "paste", "keydown"];
     const isGuardedTarget = (event) => {
         const target = event && event.target && event.target.closest
-            ? event.target.closest("#scene_canvas.sai-gaussian-studio-output-slot")
+            ? event.target.closest("#scene_input_image1.sai-gaussian-studio-output-slot")
             : null;
         if (!target) return false;
         if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return false;
@@ -5975,6 +6100,7 @@ function bindGaussianStudioSceneInputGuard() {
 }
 
 function setGaussianStudioSceneImageMode(active, langSource) {
+    const translate = (en, cn) => String(langSource?.__lang || window.simpleaiTopbarSystemParams?.__lang || window.locale_lang || "en").toLowerCase().startsWith("en") ? en : cn;
     const app = gradioApp();
     const row = (app && app.getElementById ? app.getElementById("scene_input_images") : null) || document.getElementById("scene_input_images");
     const canvas = (app && app.getElementById ? app.getElementById("scene_canvas") : null) || document.getElementById("scene_canvas");
@@ -5990,15 +6116,16 @@ function setGaussianStudioSceneImageMode(active, langSource) {
     if (active) {
         bindGaussianStudioSceneInputGuard();
         if (canvas) {
-            canvas.classList.toggle("sai-gaussian-studio-output-slot", true);
-            canvas.dataset.saiGaussianRole = "output";
-            canvas.setAttribute("aria-disabled", "true");
-            canvas.setAttribute("title", topbarTranslateText("Canvas is the Gaussian Studio output slot. Upload the reference to Input Image 1."));
+            canvas.classList.remove("sai-gaussian-studio-output-slot");
+            canvas.dataset.saiGaussianRole = "reference";
+            canvas.removeAttribute("aria-disabled");
+            canvas.setAttribute("title", translate("Original image (Image 1)", "原图（图1）"));
         }
         if (left) {
-            left.dataset.saiGaussianRole = "reference";
-            left.removeAttribute("aria-disabled");
-            left.setAttribute("title", topbarTranslateText("Upload the reference to Input Image 1 before opening Gaussian Studio."));
+            left.classList.add("sai-gaussian-studio-output-slot");
+            left.dataset.saiGaussianRole = "output";
+            left.setAttribute("aria-disabled", "true");
+            left.setAttribute("title", translate("Gaussian camera render (Image 2)", "高斯调整视角图（图2）"));
         }
         if (right) {
             delete right.dataset.saiGaussianRole;
@@ -6017,7 +6144,7 @@ function setGaussianStudioSceneImageMode(active, langSource) {
                 || current === "右侧参考图 -> 左侧输出 / Right reference -> Left output"
             ) {
                 status.dataset.saiGaussianDefaultStatus = "1";
-                status.textContent = topbarTranslateText(GAUSSIAN_STUDIO_SCENE_STATUS_TEXT);
+                status.textContent = translate(GAUSSIAN_STUDIO_SCENE_STATUS_TEXT, "图1原图 -> Gaussian Studio -> 图2调整视角图");
                 status.classList.remove("is-error");
             }
         }
@@ -6339,6 +6466,7 @@ function syncSceneSourceVideoLayout(isScene, state) {
 }
 
 function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisible, langSource) {
+    syncSceneCanvasOutpaintMode(langSource);
     const themeText = String(theme || "").toLowerCase();
     const taskText = String(taskMethod || "").toLowerCase();
     const hidden = sceneDisvisibleSetFromValue(disvisible);

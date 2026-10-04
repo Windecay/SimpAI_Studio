@@ -79,10 +79,10 @@
   "lora_downloads": {},
   "vae_downloads": {},
   "model_list": [
-    "vosr2,VOSR2/args.json,816,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/args.json",
-    "vosr2,VOSR2/checkpoints/ema_model.safetensors,5576385424,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/checkpoints/ema_model.safetensors",
-    "vosr2,VOSR2/Qwen-Image-vae-2d/config.json,811,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/config.json",
-    "vosr2,VOSR2/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,178418892,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors",
-    "vosr2,VOSR2/dinov2_vitl14_pretrain.pth,1217586395,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth"
+    "vosr2,VOSR2/args.json,816,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/VOSR2/args.json,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/args.json",
+    "vosr2,VOSR2/checkpoints/ema_model.safetensors,5576385424,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/VOSR2/checkpoints/ema_model.safetensors,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/checkpoints/ema_model.safetensors",
+    "vosr2,VOSR2/Qwen-Image-vae-2d/config.json,754,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/Qwen-Image-vae-2d/config.json,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/config.json",
+    "vosr2,VOSR2/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,178418892,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors",
+    "vosr2,VOSR2/dinov2_vitl14_pretrain.pth,1217586395,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth"
   ]
 }

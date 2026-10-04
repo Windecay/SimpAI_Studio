@@ -4857,13 +4857,13 @@ with shared.gradio_root:
   <button type="button" class="sai-gaussian-studio-scene-open" data-gaussian-studio-scene-open title="Open Gaussian Studio Editor">
     <i class="fa-solid fa-cube"></i><span>Gaussian Studio</span>
   </button>
-  <small data-gaussian-studio-scene-status data-sai-gaussian-default-status="1">Input Image 1 reference -> Gaussian Studio -> Canvas output</small>
+  <small data-gaussian-studio-scene-status data-sai-gaussian-default-status="1">Image 1 original -> Gaussian Studio -> Image 2 camera render</small>
 </div>
 """,
                                 elem_id="gaussian_studio_scene_control_html",
                             )
                             gaussian_studio_scene_payload = gr.Textbox(value="", visible="hidden", elem_id="gaussian_studio_scene_payload", elem_classes=["sai-gradio-hidden-bridge"])
-                            gaussian_studio_scene_target = gr.Textbox(value="scene_canvas_image", visible="hidden", elem_id="gaussian_studio_scene_target", elem_classes=["sai-gradio-hidden-bridge"])
+                            gaussian_studio_scene_target = gr.Textbox(value="scene_input_image1", visible="hidden", elem_id="gaussian_studio_scene_target", elem_classes=["sai-gradio-hidden-bridge"])
                             gaussian_studio_scene_state = gr.Textbox(value="", visible="hidden", elem_id="gaussian_studio_scene_state", elem_classes=["sai-gradio-hidden-bridge"])
                             gaussian_studio_scene_apply_btn = gr.Button("Gaussian Studio Apply", visible="hidden", elem_id="gaussian_studio_scene_apply_btn", elem_classes=["sai-gradio-hidden-bridge"])
 
@@ -5027,7 +5027,7 @@ with shared.gradio_root:
 
                         def apply_pose_studio_scene_image(payload, target):
                             target = str(target or "scene_input_image1").strip()
-                            target = target if target in ("scene_input_image1", "scene_input_image2") else "scene_input_image1"
+                            target = target if target in ("scene_canvas_image", "scene_input_image1", "scene_input_image2") else "scene_input_image1"
                             data = {}
                             if isinstance(payload, dict):
                                 data = payload
@@ -5036,6 +5036,8 @@ with shared.gradio_root:
                                     data = json.loads(payload)
                                 except Exception:
                                     data = {}
+                            if not isinstance(data, dict):
+                                data = {}
 
                             def normalize_source(value):
                                 text = str(value or "").strip()
@@ -5079,27 +5081,30 @@ with shared.gradio_root:
                             }
                             state_json = json.dumps(state_payload, ensure_ascii=False)
                             if image_value is None:
-                                return skip_component_update(), skip_component_update(), state_json
+                                return skip_component_update(), skip_component_update(), skip_component_update(), state_json
+                            if target == "scene_canvas_image":
+                                canvas_value = util.normalize_gradio_sketch_value({"image": image_value}, image_mode="RGBA")
+                                return gr_update(value=canvas_value), skip_component_update(), skip_component_update(), state_json
                             if target == "scene_input_image1":
-                                return gr_update(value=image_value), skip_component_update(), state_json
-                            return skip_component_update(), gr_update(value=image_value), state_json
+                                return skip_component_update(), gr_update(value=image_value), skip_component_update(), state_json
+                            return skip_component_update(), skip_component_update(), gr_update(value=image_value), state_json
 
                         pose_studio_scene_apply_btn.click(
                             apply_pose_studio_scene_image,
                             inputs=[pose_studio_scene_payload, pose_studio_scene_target],
-                            outputs=[scene_input_image1, scene_input_image2, pose_studio_scene_state],
+                            outputs=[scene_canvas_image, scene_input_image1, scene_input_image2, pose_studio_scene_state],
                             queue=False,
                             show_progress=False,
                         ).then(
                             lambda: None,
-                            js='()=>{try{if(typeof refresh_scene_localization==="function") refresh_scene_localization(); if(typeof refreshResolutionControlSource==="function") refreshResolutionControlSource("scene_input_image1","pose_studio"); else if(typeof syncResolutionControlWidgets==="function") syncResolutionControlWidgets();}catch(e){console.warn("[SimpAI Pose Studio] scene bridge refresh failed", e);}}',
+                            js='async()=>{try{await window.SimpAIPoseStudioEditor?.refreshSceneBridge?.();}catch(e){console.warn("[SimpAI Pose Studio] scene bridge refresh failed", e);}}',
                             queue=False,
                             show_progress=False,
                         )
 
                         def apply_gaussian_studio_scene_image(payload, target):
-                            target = str(target or "scene_canvas_image").strip()
-                            target = target if target in ("scene_canvas_image", "scene_input_image1", "scene_input_image2") else "scene_canvas_image"
+                            target = str(target or "scene_input_image1").strip()
+                            target = target if target in ("scene_canvas_image", "scene_input_image1", "scene_input_image2") else "scene_input_image1"
                             data = {}
                             if isinstance(payload, dict):
                                 data = payload
@@ -5108,6 +5113,8 @@ with shared.gradio_root:
                                     data = json.loads(payload)
                                 except Exception:
                                     data = {}
+                            if not isinstance(data, dict):
+                                data = {}
 
                             def normalize_source(value):
                                 text = str(value or "").strip()
@@ -5176,7 +5183,7 @@ with shared.gradio_root:
                             show_progress=False,
                         ).then(
                             lambda: None,
-                            js='async()=>{try{if(window.SimpAIGaussianStudioEditor?.syncSceneCanvasFromBridge) await window.SimpAIGaussianStudioEditor.syncSceneCanvasFromBridge(); if(typeof refresh_scene_localization==="function") refresh_scene_localization(); if(typeof refreshResolutionControlSource==="function") refreshResolutionControlSource("scene_input_image1","gaussian_studio"); else if(typeof syncResolutionControlWidgets==="function") syncResolutionControlWidgets();}catch(e){console.warn("[SimpAI Gaussian Studio] scene bridge refresh failed", e);}}',
+                            js='async()=>{try{if(typeof refresh_scene_localization==="function") refresh_scene_localization(); if(typeof refreshResolutionControlSource==="function") refreshResolutionControlSource("scene_canvas","gaussian_studio"); else if(typeof syncResolutionControlWidgets==="function") syncResolutionControlWidgets();}catch(e){console.warn("[SimpAI Gaussian Studio] scene bridge refresh failed", e);}}',
                             queue=False,
                             show_progress=False,
                         )
@@ -10954,6 +10961,14 @@ with shared.gradio_root:
             "scene_var_number6": scene_batch_generation_inputs.index(scene_var_number6),
             "scene_var_number7": scene_batch_generation_inputs.index(scene_var_number7),
         }
+        scene_batch_outpaint_indices = {
+            control: scene_batch_generation_inputs.index(component)
+            for control, component in (
+                ("scene_var_number3", scene_var_number3),
+                ("scene_var_number7", scene_var_number7), ("scene_var_number8", scene_var_number8),
+                ("scene_var_number9", scene_var_number9), ("scene_var_number10", scene_var_number10),
+            )
+        }
         scene_batch_evt = scene_batch_start.click(
             fn=_start_scene_batch,
             inputs=[model_params_state, models_js_payload, params_backend, state_topbar],
@@ -10970,7 +10985,10 @@ with shared.gradio_root:
         ).then(
             fn=batch_run_scene_fn,
             inputs=scene_batch_generation_inputs,
-            js="(...args) => window.SimpAIVideoRegionSelector?.applySubmitValues(args, %s) || args" % json.dumps(scene_batch_region_indices),
+            js="""async (...args) => {
+                if (window.applySceneOutpaintSubmitValues) args = await window.applySceneOutpaintSubmitValues(args, %s);
+                return window.SimpAIVideoRegionSelector?.applySubmitValues(args, %s) || args;
+            }""" % (json.dumps(scene_batch_outpaint_indices), json.dumps(scene_batch_region_indices)),
             outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button, generate_button, state_is_generating, scene_batch_status, scene_batch_id],
             show_progress=False
         )
@@ -11959,7 +11977,16 @@ with shared.gradio_root:
             "scene_var_number6": scene_generation_inputs.index(scene_var_number6),
             "scene_var_number7": scene_generation_inputs.index(scene_var_number7),
         }
-        scene_generation_sync_js = """(...args) => {
+        scene_outpaint_submit_indices = {
+            control: scene_generation_inputs.index(component)
+            for control, component in (
+                ("scene_var_number3", scene_var_number3),
+                ("scene_var_number7", scene_var_number7), ("scene_var_number8", scene_var_number8),
+                ("scene_var_number9", scene_var_number9), ("scene_var_number10", scene_var_number10),
+            )
+        }
+        scene_generation_sync_js = """async (...args) => {
+            if (window.applySceneOutpaintSubmitValues) args = await window.applySceneOutpaintSubmitValues(args, %s);
             %s
             try {
                 if (typeof window.syncSimpleAISceneModeCheckbox === "function") {
@@ -11971,6 +11998,7 @@ with shared.gradio_root:
             }
             return window.SimpAIVideoRegionSelector?.applySubmitValues(args, %s) || args;
         }""" % (
+            json.dumps(scene_outpaint_submit_indices),
             _models_payload_submit_body(scene_generation_inputs),
             scene_switch_option3_input_index,
             json.dumps(scene_region_submit_indices),

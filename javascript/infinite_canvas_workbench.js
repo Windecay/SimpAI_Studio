@@ -7063,7 +7063,8 @@
                     setCanvasAgentResolutionOpen: (...args) => setCanvasAgentResolutionOpenBeforeUi(...args)
                 },
                 outpaintSource: {
-                    onOutpaintSliderInput: (...args) => onOutpaintSliderInput(...args)
+                    onOutpaintSliderInput: (...args) => onOutpaintSliderInput(...args),
+                    onOutpaintPresetChange: (...args) => onOutpaintPresetChange(...args)
                 },
                 settingsSource: {
                     handleCanvasAgentSettingInput: (...args) => handleCanvasAgentSettingInput(...args),
@@ -8630,6 +8631,7 @@
          updateOutpaintFromSlider,
          onOutpaintOverlayPointerDown,
          onOutpaintSliderInput,
+         onOutpaintPresetChange,
          CANVAS_SETTINGS_CONTROLLER,
          openCanvasSettingsPanel,
          closeCanvasSettingsPanel,

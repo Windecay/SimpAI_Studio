@@ -232,6 +232,96 @@
             .simpai-sketch.is-mask-disabled .simpai-sketch__brush-cursor {
                 display: none !important;
             }
+            .simpai-sketch__outpaint {
+                position: relative;
+                z-index: 12;
+                padding: 12px;
+                border-top: 1px solid var(--border-color-primary, #d9d9e3);
+                background: var(--block-background-fill, #fff);
+                color: var(--body-text-color, #222);
+                font-size: 13px;
+                letter-spacing: 0;
+            }
+            .simpai-sketch__outpaint[hidden],
+            .simpai-sketch__outpaint [hidden],
+            .simpai-sketch__outpaint-preview {
+                display: none;
+            }
+            .simpai-sketch.is-outpainting .simpai-sketch__outpaint-preview {
+                display: block;
+                pointer-events: none;
+                z-index: 3;
+            }
+            .simpai-sketch.is-outpainting canvas[data-role="background"] {
+                opacity: 0;
+            }
+            .simpai-sketch__outpaint-header,
+            .simpai-sketch__outpaint-footer {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .simpai-sketch__outpaint-header strong {
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .simpai-sketch__outpaint-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+                gap: 10px 18px;
+                margin: 12px 0;
+            }
+            .simpai-sketch__outpaint-field {
+                display: grid;
+                grid-template-columns: 44px minmax(0, 1fr) 54px 12px;
+                align-items: center;
+                gap: 6px;
+                min-width: 0;
+            }
+            .simpai-sketch__outpaint input[type="range"] {
+                width: 100%;
+                min-width: 0;
+                accent-color: var(--color-accent, #f97316);
+            }
+            .simpai-sketch__outpaint input[type="number"] {
+                width: 54px;
+                min-width: 0;
+                height: 28px;
+                box-sizing: border-box;
+                padding: 2px 4px;
+                border: 1px solid var(--border-color-primary, #d9d9e3);
+                border-radius: 4px;
+                background: var(--input-background-fill, #fff);
+                color: inherit;
+                font-size: 13px;
+                font-variant-numeric: tabular-nums;
+            }
+            .simpai-sketch__outpaint-status {
+                color: var(--body-text-color-subdued, #6b7280);
+                font-variant-numeric: tabular-nums;
+                overflow-wrap: anywhere;
+            }
+            .simpai-sketch__outpaint-actions {
+                display: inline-flex;
+                gap: 6px;
+                margin-left: auto;
+            }
+            .simpai-sketch--fullscreen .simpai-sketch__outpaint {
+                position: fixed;
+                left: 16px;
+                bottom: 16px;
+                width: min(460px, calc(100vw - 32px));
+                box-sizing: border-box;
+                border: 1px solid var(--border-color-primary, #d9d9e3);
+            }
+            @media (max-width: 480px) {
+                .simpai-sketch__outpaint-grid {
+                    grid-template-columns: minmax(0, 1fr);
+                    gap: 8px;
+                }
+            }
             .simpai-sketch__dock--left {
                 left: 0;
                 top: 0;
@@ -961,6 +1051,40 @@
         });
     }
 
+    function outpaintPercentages(values = {}) {
+        return Object.fromEntries(["up", "down", "left", "right"].map((key) =>
+            [key, Math.round(Math.min(100, Math.max(0, Number(values[key]) || 0)))]));
+    }
+
+    function qwenOutpaintGeometry(sourceWidth, sourceHeight, values, maxMegapixels = 0) {
+        const percentages = outpaintPercentages(values);
+        // Match Python round (ties to even), including the 32px alignment and MP limit.
+        const roundEven = (value) => {
+            const floor = Math.floor(value);
+            return value - floor === 0.5 ? floor + (floor % 2) : Math.round(value);
+        };
+        const geometry = (w, h) => {
+            const left = roundEven(w * percentages.left / 100);
+            const top = roundEven(h * percentages.up / 100);
+            return {
+                sourceWidth: w, sourceHeight: h, left, top,
+                width: Math.max(32, Math.ceil((w + left + roundEven(w * percentages.right / 100)) / 32) * 32),
+                height: Math.max(32, Math.ceil((h + top + roundEven(h * percentages.down / 100)) / 32) * 32),
+            };
+        };
+        let result = geometry(sourceWidth, sourceHeight);
+        const maxPixels = Math.max(0, Number(maxMegapixels) || 0) * 1000000;
+        if (maxPixels && result.width * result.height > maxPixels) {
+            let scale = Math.sqrt(maxPixels / (result.width * result.height));
+            result = geometry(Math.max(1, Math.floor(sourceWidth * scale)), Math.max(1, Math.floor(sourceHeight * scale)));
+            while (result.width * result.height > maxPixels && (result.sourceWidth > 1 || result.sourceHeight > 1)) {
+                scale = Math.min(0.99, Math.sqrt(maxPixels / (result.width * result.height)));
+                result = geometry(Math.max(1, Math.floor(result.sourceWidth * scale)), Math.max(1, Math.floor(result.sourceHeight * scale)));
+            }
+        }
+        return result;
+    }
+
     function bindSketchDockAutoHide(dock) {
         if (!dock || dock.dataset.simpaiDockDebounced === "1") return;
         dock.dataset.simpaiDockDebounced = "1";
@@ -1020,6 +1144,7 @@
             <div class="simpai-sketch__stage">
                 <canvas data-role="background"></canvas>
                 <canvas data-role="mask" data-key="mask" class="mask"></canvas>
+                <canvas data-role="outpaint-preview" class="simpai-sketch__outpaint-preview"></canvas>
                 <div class="simpai-sketch__brush-cursor" data-role="brush-cursor"></div>
                 <div class="simpai-sketch__crop" data-role="crop-overlay">
                     <div class="simpai-sketch__crop-box" data-role="crop-box">
@@ -1089,6 +1214,28 @@
                 </select>
                 <button class="simpai-sketch__button" type="button" data-action="crop-apply" title="Apply crop" aria-label="Apply crop"><i class="fa-solid fa-check"></i></button>
                 <button class="simpai-sketch__button" type="button" data-action="crop-cancel" title="Cancel crop" aria-label="Cancel crop"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="simpai-sketch__outpaint" data-role="outpaint" hidden>
+                <div class="simpai-sketch__outpaint-header">
+                    <strong data-role="outpaint-title"></strong>
+                    <span class="simpai-sketch__outpaint-status" data-role="outpaint-dimensions"></span>
+                </div>
+                <div class="simpai-sketch__outpaint-grid">
+                    ${["up", "down", "left", "right"].map((direction) => `
+                        <label class="simpai-sketch__outpaint-field">
+                            <span data-outpaint-label="${direction}"></span>
+                            <input type="range" min="0" max="100" step="1" data-outpaint-direction="${direction}">
+                            <input type="number" min="0" max="100" step="1" data-outpaint-direction="${direction}">
+                            <span>%</span>
+                        </label>`).join("")}
+                </div>
+                <div class="simpai-sketch__outpaint-footer">
+                    <span class="simpai-sketch__outpaint-status" data-role="outpaint-status" role="status" aria-live="polite"></span>
+                    <div class="simpai-sketch__outpaint-actions">
+                        <button class="simpai-sketch__button" type="button" data-role="outpaint-reset"><i class="fa-solid fa-rotate-left"></i></button>
+                        <button class="simpai-sketch__button" type="button" data-role="outpaint-retry" hidden><i class="fa-solid fa-rotate-right"></i></button>
+                    </div>
+                </div>
             </div>
             <img class="simpai-sketch__image-proxy" alt="">
         `;
@@ -1178,6 +1325,189 @@
         let lastCropBadgeAt = 0;
         let uiHidden = false;
         let maskDisabled = root.dataset.simpaiMaskDisabled === "1";
+        const outpaintPanel = editor.querySelector("[data-role='outpaint']");
+        const outpaintPreview = editor.querySelector("[data-role='outpaint-preview']");
+        const outpaintInputs = Array.from(editor.querySelectorAll("[data-outpaint-direction]"));
+        const outpaintRetry = editor.querySelector("[data-role='outpaint-retry']");
+        const outpaintReset = editor.querySelector("[data-role='outpaint-reset']");
+        let outpaintConfig = { enabled: false };
+        let outpaintDraft = outpaintPercentages();
+        let outpaintSaved = outpaintPercentages();
+        let outpaintDirty = false;
+        let outpaintBusy = false;
+        let outpaintStatus = "";
+        let outpaintSequence = 0;
+        let outpaintSyncFrame = null;
+        let outpaintSaveTimer = null;
+        let outpaintSaveTask = null;
+
+        function outpaintText(en, cn) {
+            return outpaintConfig.lang === "cn" ? cn : en;
+        }
+
+        function outpaintGeometry() {
+            return qwenOutpaintGeometry(width, height, outpaintDraft, outpaintConfig.maxMegapixels);
+        }
+
+        function refreshOutpaintControl() {
+            outpaintPanel.hidden = !outpaintConfig.enabled;
+            const visible = outpaintConfig.enabled && hasImage && !cropMode;
+            editor.classList.toggle("is-outpainting", !!visible);
+            editor.querySelector("[data-role='outpaint-title']").textContent = outpaintText("Outpaint proportions", "\u6269\u56fe\u6bd4\u4f8b");
+            const labels = { up: ["Up", "\u4e0a"], down: ["Down", "\u4e0b"], left: ["Left", "\u5de6"], right: ["Right", "\u53f3"] };
+            for (const input of outpaintInputs) {
+                const direction = input.dataset.outpaintDirection;
+                input.value = String(outpaintDraft[direction]);
+                input.disabled = !hasImage || cropMode;
+                input.setAttribute("aria-label", `${outpaintText(...labels[direction])} (%)`);
+            }
+            for (const [direction, label] of Object.entries(labels)) {
+                editor.querySelector(`[data-outpaint-label="${direction}"]`).textContent = outpaintText(...label);
+            }
+            const nonzero = Object.values(outpaintDraft).some((value) => value > 0);
+            const defaultValues = outpaintPercentages(outpaintConfig.defaultValues);
+            outpaintReset.disabled = !hasImage || cropMode || Object.keys(defaultValues).every((key) => outpaintDraft[key] === defaultValues[key]);
+            const resetTitle = outpaintText("Restore default proportions", "\u6062\u590d\u9ed8\u8ba4\u6bd4\u4f8b");
+            outpaintReset.title = resetTitle;
+            outpaintReset.setAttribute("aria-label", resetTitle);
+            outpaintRetry.hidden = outpaintStatus !== "error";
+            outpaintRetry.disabled = !hasImage || cropMode || outpaintBusy;
+            const retryTitle = outpaintText("Retry saving proportions", "\u91cd\u8bd5\u4fdd\u5b58\u6bd4\u4f8b");
+            outpaintRetry.title = retryTitle;
+            outpaintRetry.setAttribute("aria-label", retryTitle);
+            const geometry = visible ? outpaintGeometry() : null;
+            editor.querySelector("[data-role='outpaint-dimensions']").textContent = geometry ? `${geometry.width} x ${geometry.height}` : "";
+            const status = !hasImage ? outpaintText("No image", "\u672a\u4e0a\u4f20\u56fe\u7247")
+                : outpaintBusy || outpaintDirty && outpaintStatus !== "error" ? outpaintText("Saving...", "\u6b63\u5728\u4fdd\u5b58...")
+                : outpaintStatus === "error" ? outpaintText("Not saved. Please retry.", "\u6bd4\u4f8b\u672a\u4fdd\u5b58\uff0c\u8bf7\u91cd\u8bd5")
+                : !nonzero ? outpaintText("No expansion selected", "\u672a\u8bbe\u7f6e\u6269\u56fe\u6bd4\u4f8b")
+                : outpaintStatus === "saved" ? outpaintText("Saved", "\u5df2\u4fdd\u5b58") : "";
+            editor.querySelector("[data-role='outpaint-status']").textContent = status;
+        }
+
+        function drawOutpaintPreview() {
+            if (!outpaintConfig.enabled || !hasImage || cropMode) {
+                outpaintPreview.width = 1;
+                outpaintPreview.height = 1;
+                return;
+            }
+            const geometry = outpaintGeometry();
+            const scale = Math.min(1, Math.max(1, editor.clientWidth || configuredWidth) / geometry.width, configuredHeight / geometry.height);
+            outpaintPreview.width = Math.max(1, Math.round(geometry.width * scale));
+            outpaintPreview.height = Math.max(1, Math.round(geometry.height * scale));
+            const context = outpaintPreview.getContext("2d");
+            context.fillStyle = "#808080";
+            context.fillRect(0, 0, outpaintPreview.width, outpaintPreview.height);
+            const sx = outpaintPreview.width / geometry.width;
+            const sy = outpaintPreview.height / geometry.height;
+            context.drawImage(bgCanvas, geometry.left * sx, geometry.top * sy, geometry.sourceWidth * sx, geometry.sourceHeight * sy);
+        }
+
+        function setOutpaintControl(config = {}) {
+            const changed = outpaintConfig.key !== config.key || outpaintConfig.enabled !== config.enabled;
+            if (changed) {
+                cancelOutpaintSave();
+            }
+            outpaintConfig = config;
+            if (changed || (!outpaintDirty && !outpaintBusy)) {
+                const next = outpaintPercentages(config.values);
+                if (Object.keys(next).some((key) => next[key] !== outpaintSaved[key])) {
+                    outpaintStatus = "";
+                }
+                outpaintSaved = next;
+                outpaintDraft = { ...outpaintSaved };
+            }
+            refreshOutpaintControl();
+            if (fullscreenMode) fitFullscreenStage();
+            else updateStageDisplay();
+        }
+
+        function cancelOutpaintSave() {
+            outpaintSequence += 1;
+            if (outpaintSaveTimer) clearTimeout(outpaintSaveTimer);
+            outpaintSaveTimer = null;
+            outpaintSaveTask = null;
+            outpaintBusy = false;
+            outpaintDirty = false;
+            outpaintStatus = "";
+            outpaintDraft = { ...outpaintSaved };
+        }
+
+        function saveOutpaintValues() {
+            if (outpaintSaveTimer) clearTimeout(outpaintSaveTimer);
+            outpaintSaveTimer = null;
+            if (outpaintSaveTask) return outpaintSaveTask;
+            if (destroyed || !outpaintConfig.enabled || !hasImage || cropMode || !outpaintDirty) return Promise.resolve(true);
+            const key = outpaintConfig.key;
+            const imageSequence = payloadSequence;
+            const operationCurrent = () => !destroyed && hasImage && !cropMode && outpaintConfig.enabled
+                && key === outpaintConfig.key && imageSequence === payloadSequence;
+            outpaintBusy = true;
+            refreshOutpaintControl();
+            const task = (async () => {
+                while (outpaintDirty && operationCurrent()) {
+                    const sequence = outpaintSequence;
+                    const current = () => operationCurrent() && sequence === outpaintSequence;
+                    const values = { ...outpaintDraft };
+                    let saved = false;
+                    try {
+                        saved = await outpaintConfig.onSave?.(values, current);
+                    } catch (error) {
+                        console.warn("[SimpAI Sketch] Outpaint proportions could not be saved", error);
+                    }
+                    if (outpaintSaveTask !== task || !operationCurrent()) return false;
+                    if (sequence !== outpaintSequence) continue;
+                    if (!saved) {
+                        outpaintStatus = "error";
+                        return false;
+                    }
+                    outpaintSaved = values;
+                    outpaintDirty = false;
+                    outpaintStatus = "saved";
+                }
+                return operationCurrent();
+            })().finally(() => {
+                if (outpaintSaveTask !== task) return;
+                outpaintSaveTask = null;
+                outpaintBusy = false;
+                refreshOutpaintControl();
+            });
+            outpaintSaveTask = task;
+            return task;
+        }
+
+        function updateOutpaintValues(values) {
+            if (destroyed || !outpaintConfig.enabled || !hasImage || cropMode) return;
+            outpaintSequence += 1;
+            outpaintDraft = outpaintPercentages(values);
+            outpaintDirty = outpaintBusy || Object.keys(outpaintDraft).some((key) => outpaintDraft[key] !== outpaintSaved[key]);
+            outpaintStatus = "";
+            if (outpaintSaveTimer) clearTimeout(outpaintSaveTimer);
+            outpaintSaveTimer = outpaintDirty ? setTimeout(() => {
+                outpaintSaveTimer = null;
+                saveOutpaintValues();
+            }, 120) : null;
+            refreshOutpaintControl();
+            if (fullscreenMode) fitFullscreenStage();
+            else updateStageDisplay();
+        }
+
+        for (const input of outpaintInputs) {
+            addLifecycleListener(input, "input", () => updateOutpaintValues({
+                ...outpaintDraft, [input.dataset.outpaintDirection]: input.value
+            }));
+        }
+        addLifecycleListener(outpaintReset, "click", () => updateOutpaintValues(outpaintConfig.defaultValues));
+        addLifecycleListener(outpaintRetry, "click", saveOutpaintValues);
+        const syncOutpaintNativeValues = (event) => {
+            if (!outpaintConfig.enabled || !event.target?.closest?.("#scene_var_number3, #scene_var_number7, #scene_var_number8, #scene_var_number9, #scene_var_number10") || outpaintSyncFrame) return;
+            outpaintSyncFrame = requestAnimationFrame(() => {
+                outpaintSyncFrame = null;
+                if (!destroyed) window.syncSceneCanvasOutpaintMode?.(window.simpleaiTopbarSystemParams);
+            });
+        };
+        addLifecycleListener(document, "input", syncOutpaintNativeValues, true);
+        addLifecycleListener(document, "change", syncOutpaintNativeValues, true);
 
         function addLifecycleListener(target, type, listener, options) {
             target.addEventListener(type, listener, options);
@@ -1251,6 +1581,8 @@
             if (cropCancelButton) cropCancelButton.disabled = !cropMode;
             updateResolutionBadge();
             updateCropOverlay();
+            refreshOutpaintControl();
+            drawOutpaintPreview();
         }
 
         function setUiHidden(hidden) {
@@ -1726,6 +2058,7 @@
 
         function enterCropMode() {
             if (!hasImage) return false;
+            cancelOutpaintSave();
             if (panFloatingMode) exitPanFloating();
             cropMode = true;
             cropDrag = null;
@@ -1828,6 +2161,8 @@
         }
 
         function updateStageDisplay() {
+            refreshOutpaintControl();
+            drawOutpaintPreview();
             if (fullscreenMode || panFloatingMode) {
                 updateCropOverlay();
                 return;
@@ -1837,7 +2172,8 @@
                 1,
                 Math.floor(editor.clientWidth || root.clientWidth || stage.parentElement?.clientWidth || configuredWidth)
             );
-            const imageAspect = hasImage && height ? width / height : defaultAspectRatio;
+            const geometry = outpaintConfig.enabled && hasImage && !cropMode ? outpaintGeometry() : { width, height };
+            const imageAspect = hasImage && geometry.height ? geometry.width / geometry.height : defaultAspectRatio;
             const needsSideReserve = cropMode && hasImage && imageAspect <= 1.12;
             const cropReserve = needsSideReserve ? Math.min(148, Math.floor(availableWidth * 0.28)) : 0;
             const usableWidth = Math.max(1, availableWidth - cropReserve);
@@ -1856,10 +2192,10 @@
                 return;
             }
 
-            let scale = Math.min(1, maxDisplayWidth / width, maxDisplayHeight / height);
+            let scale = Math.min(1, maxDisplayWidth / geometry.width, maxDisplayHeight / geometry.height);
 
-            const displayWidth = Math.max(1, Math.round(width * scale));
-            const displayHeight = Math.max(1, Math.round(height * scale));
+            const displayWidth = Math.max(1, Math.round(geometry.width * scale));
+            const displayHeight = Math.max(1, Math.round(geometry.height * scale));
             if (cropMode && hasImage) {
                 const availableHeight = Math.max(
                     displayHeight,
@@ -1915,13 +2251,16 @@
 
         function fitFullscreenStage() {
             if (!fullscreenMode || !width || !height) return;
+            refreshOutpaintControl();
+            drawOutpaintPreview();
+            const geometry = outpaintConfig.enabled && !cropMode ? outpaintGeometry() : { width, height };
             const availableWidth = Math.max(1, window.innerWidth - 32);
-            const availableHeight = Math.max(1, window.innerHeight - 32);
-            viewportScale = Math.min(availableWidth / width, availableHeight / height);
-            viewportPanX = Math.round((window.innerWidth - width * viewportScale) / 2);
-            viewportPanY = Math.round((window.innerHeight - height * viewportScale) / 2);
-            stage.style.width = `${width}px`;
-            stage.style.height = `${height}px`;
+            const availableHeight = Math.max(1, window.innerHeight - (outpaintConfig.enabled ? outpaintPanel.offsetHeight + 48 : 32));
+            viewportScale = Math.min(availableWidth / geometry.width, availableHeight / geometry.height);
+            viewportPanX = Math.round((window.innerWidth - geometry.width * viewportScale) / 2);
+            viewportPanY = Math.round((availableHeight - geometry.height * viewportScale) / 2);
+            stage.style.width = `${geometry.width}px`;
+            stage.style.height = `${geometry.height}px`;
             stage.style.minHeight = "0";
             applyViewportTransform();
             updateCropOverlay();
@@ -2269,16 +2608,11 @@
                 await payloadLoadTask;
             }
             if (payloadLoadFailed) return false;
-            if (!valueDirty && !options.force) {
-                if (options.cache && lastPayload) {
-                    return ensureCachedPayload(lastPayload, {
-                        write: true,
-                        refresh: options.refreshCache === true
-                    });
-                }
-                return true;
+            // Keep getValue() synchronous while proportion saves finish.
+            if (valueDirty || options.force) serialize(options);
+            if (outpaintConfig.enabled && (outpaintDirty || outpaintSaveTask)) {
+                if (await saveOutpaintValues() === false) return false;
             }
-            serialize(options);
             if (options.cache && lastPayload) {
                 return ensureCachedPayload(lastPayload, {
                     write: true,
@@ -2289,6 +2623,7 @@
         }
 
         function clearImage(options = {}) {
+            cancelOutpaintSave();
             payloadSequence += 1;
             exitCropMode();
             hasImage = false;
@@ -2317,6 +2652,7 @@
         }
 
         async function applyPayload(text) {
+            cancelOutpaintSave();
             const sequence = ++payloadSequence;
             if (!text) {
                 if (!hasImage) {
@@ -2421,6 +2757,7 @@
 
         async function openImageDataUrl(dataUrl, options = {}) {
             if (!dataUrl) return false;
+            cancelOutpaintSave();
             const sequence = ++payloadSequence;
             try {
                 exitCropMode();
@@ -3018,6 +3355,10 @@
         function destroy() {
             if (destroyed) return false;
             destroyed = true;
+            cancelOutpaintSave();
+            if (outpaintSyncFrame) cancelAnimationFrame(outpaintSyncFrame);
+            outpaintPreview.width = 1;
+            outpaintPreview.height = 1;
             payloadSequence += 1;
             releaseTransientState();
             maskDisabledObserver.disconnect();
@@ -3115,6 +3456,8 @@
                 return setMaskDisabled(!enabled, options);
             },
             setMaskDisabled,
+            setOutpaintControl,
+            flushOutpaint: saveOutpaintValues,
             isMaskDisabled: () => maskDisabled,
             clearImage,
             undo: undoMask,
@@ -3186,6 +3529,7 @@
         window.SimpAISketch.beginPanGesture = (target) => window.SimpAISketch.get(target)?.beginPanGesture();
         window.SimpAISketch.endPanGesture = (target) => window.SimpAISketch.get(target)?.endPanGesture();
         setMaskDisabled(maskDisabled, { clearMask: false, force: true, change: false });
+        setOutpaintControl(root.__simpaiOutpaintControl || { enabled: false });
         window.SimpAISketch.enterCropMode = (target) => window.SimpAISketch.get(target)?.enterCropMode();
         window.SimpAISketch.exitCropMode = (target) => window.SimpAISketch.get(target)?.exitCropMode();
         window.SimpAISketch.applyCrop = (target) => window.SimpAISketch.get(target)?.applyCrop();

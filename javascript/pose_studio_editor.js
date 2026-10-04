@@ -4,7 +4,10 @@
     const UTILS = window.SimpAICanvasWorkbenchUtils || {};
     const API = window.SimpAICanvasWorkbenchApi || {};
     const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const t = UTILS.t || ((en, cn) => cn || en);
+    const t = UTILS.t || ((en, cn) => {
+        const state = window.simpleaiTopbarSystemParams || {};
+        return String(state.__lang || 'en').toLowerCase().startsWith('en') ? en : (cn || en);
+    });
 
     let activeModal = null;
     let poseViewerCorePromise = null;
@@ -268,9 +271,42 @@
         updateSceneBridgePreview(null, t('Scene pose image', 'Scene pose image'));
     }
 
+    function sceneOutputSlot() {
+        const state = window.simpleaiTopbarSystemParams || {};
+        const configured = state.scene_frontend?.pose_studio_output_slot;
+        return ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2'].includes(configured)
+            ? configured : 'scene_input_image1';
+    }
+
+    async function syncSceneCanvasFromBridge() {
+        const state = safeJsonParse(readBridgeValue('pose_studio_scene_state'));
+        if (!state.ok || state.slot !== 'scene_canvas_image') return false;
+        const root = findById('scene_canvas');
+        const field = root?.querySelector?.('textarea, input[type="text"], input:not([type])');
+        const value = safeJsonParse(field?.value);
+        if (!value.image) return false;
+        const api = root ? (window.SimpAISketch?.get?.(root) || root.__simpaiSketch) : null;
+        if (api?.setValue) return !!(await api.setValue(value, { change: false }));
+        if (root && typeof window.SimpAISketch?.setValue === 'function') {
+            return !!(await window.SimpAISketch.setValue(root, value, { change: false }));
+        }
+        return false;
+    }
+
+    async function refreshSceneBridge() {
+        const state = safeJsonParse(readBridgeValue('pose_studio_scene_state'));
+        if (!state.ok) return;
+        await syncSceneCanvasFromBridge();
+        if (typeof refresh_scene_localization === 'function') refresh_scene_localization();
+        const source = state.slot === 'scene_canvas_image' ? 'scene_canvas' : state.slot;
+        if (typeof refreshResolutionControlSource === 'function') refreshResolutionControlSource(source, 'pose_studio');
+        else if (typeof syncResolutionControlWidgets === 'function') syncResolutionControlWidgets();
+    }
+
     async function openScenePresetBridge() {
         const state = safeJsonParse(readBridgeValue('pose_studio_scene_state'), {});
         const reference = await readSceneReference();
+        const outputSlot = sceneOutputSlot();
         const poseData = state.pose_data || {};
         const editorState = state.editor_state || {};
         const hasExistingPose = hasStoredPoseForEditing(poseData, editorState);
@@ -290,12 +326,17 @@
             onConfirm(response) {
                 const payload = JSON.stringify(Object.assign({}, response || {}, {
                     scene_reference_source: reference.sourceId || '',
-                    scene_bridge_target: 'scene_input_image1'
+                    scene_bridge_target: outputSlot
                 }));
-                setBridgeValue('pose_studio_scene_target', 'scene_input_image1');
+                setBridgeValue('pose_studio_scene_target', outputSlot);
                 setBridgeValue('pose_studio_scene_payload', payload);
                 clickBridgeButton('pose_studio_scene_apply_btn');
-                updateSceneBridgePreview(response, t('Pose image sent to Input Image 1', '姿势图已发送到输入图 1'));
+                const message = outputSlot === 'scene_canvas_image'
+                    ? t('Pose image sent to Image 1', '姿势图已发送到图1')
+                    : outputSlot === 'scene_input_image2'
+                        ? t('Pose image sent to Image 3', '姿势图已发送到图3')
+                        : t('Pose image sent to Image 2', '姿势图已发送到图2');
+                updateSceneBridgePreview(response, message);
             }
         });
     }
@@ -2680,6 +2721,7 @@
         openScenePreset: openScenePresetBridge,
         close: closeActiveModal,
         closeScenePreset: clearScenePresetBridge,
+        refreshSceneBridge,
         __runSAM3DFrameFitSmoke: runSAM3DFrameFitSmoke
     };
 

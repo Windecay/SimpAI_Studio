@@ -90,6 +90,7 @@
             updateOutpaintFromSlider: outpaintMethod('updateOutpaintFromSlider'),
             onOutpaintOverlayPointerDown: outpaintMethod('onOutpaintOverlayPointerDown'),
             onOutpaintSliderInput: outpaintMethod('onOutpaintSliderInput'),
+            onOutpaintPresetChange: outpaintMethod('onOutpaintPresetChange'),
             syncOutpaintAgentPanel: outpaintMethod('syncOutpaintAgentPanel'),
             cancelOutpaintEdgeDrag: outpaintMethod('cancelOutpaintEdgeDrag'),
             renderOutpaintControlPanel: outpaintMethod('renderOutpaintControlPanel'),

@@ -55,7 +55,7 @@
                 videoEditPreset: '',
                 audioPresetMode: 'auto',
                 audioPreset: '',
-                outpaintPreset: 'OneKey-Outpaint',
+                outpaintPreset: 'QwenOutpaint',
                 erasePreset: 'Eraser',
                 replacePreset: 'Swap+',
                 upscalePresetMode: 'uov_auto',

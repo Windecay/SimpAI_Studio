@@ -8,26 +8,61 @@
         "scene_frontend": {
             "version": "m1.1",
                 "theme": ["QwenPose"],
+                "theme_labels": {
+                    "QwenPose": {"en": "Qwen2.1 Pose", "zh": "Qwen2.1\u59ff\u52bf"}
+                },
                 "theme_title": "QwenPose Editor",
                 "disable_canvas_mask": true,
+                "pose_studio_reference_slots": ["scene_input_image1"],
+                "pose_studio_output_slot": "scene_canvas_image",
+                "prompt_action_media": {
+                    "image_roles": ["pose_reference", "character_reference"]
+                },
+                "director_capability": {
+                    "image_policy": "required",
+                    "audio_policy": "forbidden",
+                    "video_policy": "forbidden",
+                    "min_images": 2,
+                    "max_images": 2,
+                    "image_modes": ["reference_set"],
+                    "audio_output": "silent",
+                    "mixed_segments": false
+                },
                 "disvisible": ["scene_additional_prompt", "scene_video", "scene_audio","scene_input_image2","scene_refiner_model",
-                "scene_var_number","scene_var_number2", "scene_var_number3","scene_var_number4","scene_switch_option1", "scene_switch_option2", "scene_additional_prompt_2", "scene_steps", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
+                "scene_var_number2", "scene_var_number3","scene_var_number4","scene_switch_option1", "scene_switch_option2", "scene_additional_prompt_2", "scene_steps", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
                 ,"scene_switch_option3","scene_switch_option4","sam3_input_video","sam3_mask_video"],
             "task_method": {
                 "QwenPose": "qwenedit_pose_cn"
             },
             "prompt": {
-                "QwenPose": "Draw character from image2"
+                "QwenPose": "replace the pose of <image 2> with the pose of <image 1>. keep the character of <image 2>"
+            },
+            "agent_prompt": {
+                "QwenPose": "Write one self-contained Qwen Image 2.1 pose-editing instruction using exactly two ordered images and return only the final prompt in the user's language. Treat <image 1> as the pose reference exported by Pose Studio into the Studio canvas. Treat <image 2> as the character and original scene in the first extra image slot. Replace the pose of <image 2> with the pose of <image 1>, including visible body orientation, limb positions, and gestures. Keep the character of <image 2>. Preserve <image 2>'s identity, appearance, clothing, worn accessories, background, surrounding people and objects, camera view, lighting, and visual style unless the user explicitly requests another change. Preserve only details the user has not asked to change; do not require preserving the source pose. Do not copy <image 1>'s character, clothing, mannequin appearance, background, or lighting. Keep the image order unchanged and use <image 1> and <image 2>, not H3 <Picture N> labels. Do not invent missing references, objects, text, masks, video, or audio. Do not add output-size instructions, explanations, or JSON."
+            },
+            "prompt_skill_docs": {
+                "image_edit": {
+                    "en": ["qwen_image21_i2i_en.md"],
+                    "cn": ["qwen_image21_i2i_cn.md"]
+                }
             },
             "image_preprocessor_method": {
                     "QwenPose": [["-normalization"]]
             },
+            "var_number_title": "Reference Resolution (0 = Original)",
+            "var_number_min": 0,
+            "var_number_max": 4096,
+            "var_number_step": 32,
+            "var_number": {"QwenPose": 1024},
+            "overwrite_step": {"QwenPose": 25},
+            "overwrite_step_min": 1,
+            "overwrite_step_max": 50,
             "resolution_control": {
             "mode": "image_keep_input_area",
             "source": "scene_canvas",
             "base_width": 1024,
             "base_height": 1024,
-            "quantize": 16,
+            "quantize": 32,
             "interactive": true,
             "frontend_preprocess": true,
             "preprocess_target": "image",
@@ -36,14 +71,14 @@
             "aspect_ratio": ["1024|1:1", "1536|1:1", "2048|1:1","origin|Original"]
         }
     },
-    "default_model": "qwen_image_edit_2511_fp8mixed.safetensors",
+    "default_model": "qwen_image_2.1_int8_convrot.safetensors",
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
-    "default_vae": "qwen_image_vae.safetensors",
-    "default_clip_model": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    "default_vae": "qwen_image_2.1_vae_bf16.safetensors",
+    "default_clip_model": "qwen3vl_8b_int8_convrot.safetensors",
     "default_loras": [
         [
-            "VNCCS_QIE2511_PoseStudio_ART_V5.9.5.safetensors",
+            "VNCCS_QI2_PoseStudioV1.1.safetensors",
             1.0
         ],
         [
@@ -70,20 +105,20 @@
     "default_performance": "Speed",
     "default_styles": [],
     "default_aspect_ratio": "1024*1024",
+    "default_resolution_quantize_step": 32,
     "default_image_number": 1,
-    "default_overwrite_step": 8,
-    "default_prompt": "",
+    "default_overwrite_step": 25,
+    "default_prompt": "replace the pose of <image 2> with the pose of <image 1>. keep the character of <image 2>",
     "default_prompt_negative": "",
     "checkpoint_downloads": {},
     "embeddings_downloads": {},
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "diffusion_models,qwen_image_edit_2511_fp8mixed.safetensors,20533762817,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
-        "loras,Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors,849608296,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors",
-        "loras,VNCCS_QIE2511_PoseStudio_ART_V5.9.5.safetensors,1179883808,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/VNCCS_QIE2511_PoseStudio_ART_V5.9.5.safetensors",
-        "text_encoders,qwen_2.5_vl_7b_fp8_scaled.safetensors,9384670680,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/qwen_2.5_vl_7b_fp8_scaled.safetensors",
-        "vae,qwen_image_vae.safetensors,253806246,0,",
+        "diffusion_models,qwen_image_2.1_int8_convrot.safetensors,7256783064,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/diffusion_models/qwen_image_2.1_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+        "loras,VNCCS_QI2_PoseStudioV1.1.safetensors,159436408,0,https://huggingface.co/MIUProject/VNCCS_PoseStudio_QI2.1/resolve/main/VNCCS_QI2_PoseStudioV1.1.safetensors",
+        "text_encoders,qwen3vl_8b_int8_convrot.safetensors,9350798360,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+        "vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
         "birefnet,BiRefNet_lite/BiRefNet_config.py,298,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/BiRefNet_config.py",
         "birefnet,BiRefNet_lite/birefnet.py,92134,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/birefnet.py",
         "birefnet,BiRefNet_lite/config.json,410,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/config.json",

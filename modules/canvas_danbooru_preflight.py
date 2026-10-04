@@ -143,6 +143,10 @@ def prompt_preflight_check(payload):
         if h3_validation.get("ok") and not h3_validation.get("warnings"):
             add("pass", "minimax_h3_structure", f"MiniMax H3 {h3_validation.get('mode') or ''} prompt structure is valid.")
 
+    elif target_key_lower == "qwen_image21_outpaint":
+        if prompt:
+            add("pass", "qwen_image21_outpaint", "Qwen 2.1 outpaint prompt is present.")
+
     elif target_key_lower == "outpaint_instruction" or action.lower() == "outpaint" or purpose.lower() == "outpaint":
         if has_chinese:
             add("block", "outpaint_chinese", "FLUX outpaint prompt contains Chinese characters.", "Translate the final prompt into concise English before submitting.")

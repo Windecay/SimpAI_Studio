@@ -20,6 +20,7 @@ from torch.hub import download_url_to_file
 
 import logging
 from enhanced.logger import format_name
+from modules import vosr2_model_files
 logger = logging.getLogger(format_name(__name__))
 
 thread_pool = ThreadPoolExecutor(max_workers=6)
@@ -139,7 +140,8 @@ def _split_download_urls(url):
         raw_items = url
     else:
         raw_items = str(url or "").split(",")
-    return [str(item or "").strip().strip("`") for item in raw_items if str(item or "").strip().strip("`")]
+    urls = [str(item or "").strip().strip("`") for item in raw_items if str(item or "").strip().strip("`")]
+    return vosr2_model_files.prioritize_urls(urls)
 
 
 def _apply_hf_mirror(url):
@@ -175,6 +177,9 @@ def _file_size_matches(file_path, size):
     expected_size = _normalize_expected_size(size)
     if not os.path.exists(file_path):
         return False
+    config_match = vosr2_model_files.vae_config_matches(file_path, expected_size)
+    if config_match is not None:
+        return config_match
     if expected_size <= 0:
         return True
     try:
@@ -255,7 +260,7 @@ async def download_file_with_progress(
     global download_progress
     file_name = os.path.basename(file_path)
     progress_key = task_id or file_name
-    size = _normalize_expected_size(size)
+    size = vosr2_model_files.download_size(url, _normalize_expected_size(size))
     timeout = int(max(60.0, size / (1024 * 1024)))
     logger.info(f'the download file timeout: {timeout}s')
     async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
@@ -268,7 +273,7 @@ async def download_file_with_progress(
             partial_file_path = file_path + ".partial"
 
             resume_size = 0
-            if os.path.exists(partial_file_path):
+            if os.path.exists(partial_file_path) and not vosr2_model_files.is_vae_config_path(file_path):
                 resume_size = os.path.getsize(partial_file_path)
                 logger.info(f"发现部分下载的文件，将从 {resume_size} 字节处继续下载")
 
@@ -338,6 +343,8 @@ async def download_file_with_progress(
             downloaded_size = os.path.getsize(partial_file_path)
             expected_total = total_size or size
             if expected_total <= 0 or downloaded_size == expected_total:
+                if vosr2_model_files.vae_config_matches(partial_file_path, size, file_path) is False:
+                    raise ValueError("VOSR2 VAE 配置校验失败 / Configuration checksum mismatch")
                 os.replace(partial_file_path, file_path)
                 if refresh_models_info:
                     shared.modelsinfo.refresh_file('add', file_path, url)
@@ -395,7 +402,7 @@ def load_file_from_url(
         file_name = os.path.basename(parts.path)
     cached_file = os.path.abspath(os.path.join(model_dir, file_name))
     effective_task_id = task_id or file_name
-    expected_size = _normalize_expected_size(size)
+    expected_size = vosr2_model_files.download_size(primary_url, _normalize_expected_size(size))
     cached_file_exists = os.path.exists(cached_file)
     cached_file_size_mismatch = _file_size_mismatch(cached_file, expected_size)
     if cached_file_exists and not cached_file_size_mismatch:
@@ -434,6 +441,8 @@ def load_file_from_url(
                 candidate_url = _apply_hf_mirror(candidate_url)
                 try:
                     download_url_to_file(candidate_url, cached_file, progress=progress)
+                    if vosr2_model_files.vae_config_matches(cached_file, expected_size) is False:
+                        raise ValueError("VOSR2 VAE 配置校验失败 / Configuration checksum mismatch")
                     shared.modelsinfo.refresh_file('add', cached_file, candidate_url)
                     _clear_missing_model_list_cache()
                     return
@@ -1381,7 +1390,7 @@ def _build_missing_model_details(model_list, previous_default_info=None):
         else:
             file_path = _resolve_model_filepath(cata, path_file)
             if file_path and os.path.exists(file_path):
-                if not size or os.path.getsize(file_path) == size:
+                if _file_size_matches(file_path, size):
                     continue
             if _existing_previous_default_model(cata, previous_default_info, path_file):
                 continue

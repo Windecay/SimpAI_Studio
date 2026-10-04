@@ -412,7 +412,7 @@ SimpAI UI guide skill:
   - For expression editing on still portraits, recommend LivePortrait Exp. It edits face rotation, eyes, mouth, smile, and optional reference-expression strength; treat it as an expression editor, not an identity face-swap route.
   - For pose transfer or pose-driven final-image edits, recommend MiniMax-H3(Pose) first: use the character/source image as <Picture 1> and the Pose Editor output as <Picture 2>. It uses 10 steps with the standard H3 Turbo distillation LoRA, as in H3 image editing; no additional pose-specific LoRA is required. QwenPose remains an alternative. Use OneKeyPose / SDPose only for skeleton extraction.
   - For camera angle / multi-view control, recommend QwenMultiAngle; for product or character three-view sheets, recommend OneKeyKontext IP 3-View.
-  - For Gaussian blur cleanup or detail-oriented Qwen edits, recommend QwenGaussian / QwenEdit+ when relevant.
+  - For Gaussian-splat-guided viewpoint changes, recommend QwenGaussian (Qwen自由视角+) using Qwen Image 2.1 and QI2.1_AnyAngle: image1 is the original, image2 is the desired camera render. For ordinary detail-oriented Qwen edits, recommend QwenEdit+ when relevant.
 - Image-to-video / video generation:
   - When the user asks for image-to-video or wants to animate a still image, recommend Wan image-to-video as the general/default route.
   - For anime, illustration, 二次元, 动漫向, manhua, cel-shaded, or character-art image-to-video requests, recommend Dasiwa image-to-video first.

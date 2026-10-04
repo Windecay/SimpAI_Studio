@@ -1,0 +1,90 @@
+{
+  "1": {
+    "inputs": {
+      "prompt": "", "additional_prompt": "",
+      "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
+      "inpaint_image": "None", "inpaint_mask": "None",
+      "width": 1024, "height": 1024, "cfg": 1, "steps": 25,
+      "var_number": 0, "var_number2": 32, "var_number3": 0, "var_number4": 0,
+      "var_number5": 0, "var_number6": 0, "var_number7": 15, "var_number8": 15,
+      "var_number9": 15, "var_number10": 15,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "model_type": 1, "model_type2": 1, "clip_type": 1,
+      "negative_prompt": "", "sampler": "euler", "scheduler": "simple", "video_duration": 0
+    },
+    "class_type": "SceneInput", "_meta": {"title": "SceneInput"}
+  },
+  "2": {
+    "inputs": {"seed": 0}, "class_type": "SeedInput", "_meta": {"title": "SeedInput"}
+  },
+  "3": {
+    "inputs": {"unet_name": "qwen_image_2.1_int8_convrot.safetensors", "weight_dtype": "default"},
+    "class_type": "UNETLoader", "_meta": {"title": "base_model"}
+  },
+  "4": {
+    "inputs": {"clip_name": "qwen3vl_8b_int8_convrot.safetensors", "type": "qwen_image", "device": "default"},
+    "class_type": "CLIPLoader", "_meta": {"title": "clip_model"}
+  },
+  "5": {
+    "inputs": {"vae_name": "qwen_image_2.1_vae_bf16.safetensors"},
+    "class_type": "VAELoader", "_meta": {"title": "vae_model"}
+  },
+  "6": {
+    "inputs": {"lora_name": "qwen-image-2.1-outpaint-v2.safetensors", "strength_model": 1, "model": ["3", 0]},
+    "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}
+  },
+  "simpai_lora_stack_main": {
+    "inputs": {"model": ["6", 0], "clip": ["4", 0], "stack_json": "{\"version\":1,\"items\":[]}", "branch": "main"},
+    "class_type": "SimpAILoraStack", "_meta": {"title": "lora_stack_main"}
+  },
+  "7": {
+    "inputs": {"model": ["attention", 0], "device": "auto", "dtype": "default"},
+    "class_type": "QwenImage21Cache", "_meta": {"title": "Qwen Image 2.1 Cache"}
+  },
+  "attention": {
+    "inputs": {"model": ["simpai_lora_stack_main", 0], "attention": "comfy kitchen attention"},
+    "class_type": "ModelAttentionBackend"
+  },
+  "8": {
+    "inputs": {"image_name": ["1", 4], "image": "None"},
+    "class_type": "LoadInputImage", "_meta": {"title": "Source Image"}
+  },
+  "9": {
+    "inputs": {
+      "image": ["8", 0], "prompt": ["1", 0],
+      "up": ["1", 16], "down": ["1", 17], "left": ["1", 18], "right": ["1", 19],
+      "max_megapixels": ["1", 12]
+    },
+    "class_type": "SimpAIQwen21OutpaintPrepare", "_meta": {"title": "Gray Outpaint Canvas"}
+  },
+  "10": {
+    "inputs": {
+      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "prompt": ["9", 2],
+      "negative_prompt": ["1", 29], "resolution": 0, "images.image_1": ["9", 0]
+    },
+    "class_type": "TextEncodeQwenImage21", "_meta": {"title": "Qwen Padded Reference"}
+  },
+  "11": {
+    "inputs": {
+      "model": ["7", 0], "seed": ["2", 0], "steps": ["1", 9], "cfg": ["1", 8],
+      "sampler_name": ["1", 30], "scheduler": ["1", 31], "denoise": 1,
+      "positive": ["10", 0], "negative": ["10", 1], "latent_image": ["10", 2]
+    },
+    "class_type": "KSampler", "_meta": {"title": "Qwen Outpaint Sampler"}
+  },
+  "12": {
+    "inputs": {"samples": ["11", 0], "vae": ["5", 0]},
+    "class_type": "VAEDecode", "_meta": {"title": "VAE Decode"}
+  },
+  "13": {
+    "inputs": {"image": ["12", 0]}, "class_type": "SplitImageWithAlpha"
+  },
+  "14": {
+    "inputs": {"image": ["13", 0], "stitch_data": ["9", 1], "feather": ["1", 11]},
+    "class_type": "SimpAIQwen21OutpaintStitch", "_meta": {"title": "Restore Original Picture"}
+  },
+  "15": {
+    "inputs": {"images": ["14", 0]},
+    "class_type": "SaveImageWebsocket", "_meta": {"title": "SaveImageWebsocket"}
+  }
+}

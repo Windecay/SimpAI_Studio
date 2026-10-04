@@ -78,6 +78,10 @@
             if (key === 'outpaint_instruction') {
                 return 'seamless outpainting, natural image-border expansion, preserve the original subject, preserve lighting and perspective, match camera angle and composition, match style, color palette, texture, and depth, coherent background continuation, clean seamless edges';
             }
+            if (key === 'qwen_image21_outpaint') {
+                const instruction = 'Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.';
+                return text.startsWith(instruction) ? text : `${instruction}\nScene: ${text}`;
+            }
             if ((key.includes('flux') || key.includes('t5') || key.endsWith('_en')) && hasChinese) return '';
             if (canvasAgentPromptTargetNeedsDanbooru(target)) {
                 return canvasAgentDanbooruFallbackPrompt(text, target, {}, [])
@@ -234,6 +238,7 @@
                 prompt_format: uiLanguage === 'en' ? 'natural_en' : 'natural_zh',
                 source: 'minimax_h3_storyboard_editor'
             } : basePromptTarget;
+            const isQwenOutpaint = String(promptTarget?.key || '') === 'qwen_image21_outpaint';
             const h3CompilerText = typeof promptTarget?.prompt_compiler === 'string'
                 ? promptTarget.prompt_compiler
                 : JSON.stringify(promptTarget?.prompt_compiler || {});
@@ -254,7 +259,9 @@
                     : (isImageEdit
                     ? 'Refine the user request into a concise, high-quality image editing prompt.'
                     : (isOutpaintPurpose
-                        ? 'Translate and refine the user request into a concise English FLUX outpainting prompt for seamless image-border expansion.'
+                        ? (isQwenOutpaint
+                            ? 'Refine the user request into a Qwen Image 2.1 outpainting prompt. Begin with the required solid-gray replacement instruction, then optionally append Scene: and the requested continuation.'
+                            : 'Translate and refine the user request into a concise English FLUX outpainting prompt for seamless image-border expansion.')
                     : (isVideoPurpose
                         ? 'Refine the user request into a concise, high-quality video generation/editing prompt.'
                         : (isAudioPurpose
@@ -277,7 +284,9 @@
                         : 'H3 段落名、Shot 标记和 Camera:/Dialogue and visible text:/Synchronized sound: 标签保留英文，所有可编辑内容使用简体中文。每个 Shot 必须将画面/动作、运镜、对白/画面文字、声音分开输出。未要求对白时写“无”，未要求声音时写“静音”，运镜可根据动作合理设计。')
                     : '',
                 isOutpaintPurpose
-                    ? 'For FLUX outpaint, write English only. Preserve the original image content, lighting, perspective, camera angle, style, color palette, texture, and depth; describe seamless continuation beyond the current borders.'
+                    ? (isQwenOutpaint
+                        ? 'For Qwen 2.1 outpaint, keep the English solid-gray replacement instruction first. Chinese scene descriptions are allowed. Preserve the existing picture, subject, position, lighting, perspective and style.'
+                        : 'For FLUX outpaint, write English only. Preserve the original image content, lighting, perspective, camera angle, style, color palette, texture, and depth; describe seamless continuation beyond the current borders.')
                     : '',
                 isImageEdit && assetSources.length
                     ? 'Use the attached source image as the grounding reference. Preserve the source identity, subject, pose, composition, and lighting unless the user explicitly asks to change them.'
@@ -338,7 +347,9 @@
                         : (isImageEdit
                         ? 'You are a prompt refinement assistant for SimpAI Studio image editing. Use compact built-in prompt rules. Ground edits in the attached image when provided. Follow the prompt target rules in the user message.'
                         : (isOutpaintPurpose
-                            ? 'You are a prompt refinement assistant for SimpAI Studio FLUX outpainting. Output English only and follow the prompt target rules in the user message.'
+                            ? (isQwenOutpaint
+                                ? 'You refine Qwen Image 2.1 outpainting prompts. Keep the required English instruction first and preserve the source picture. Follow the target rules; Chinese scene descriptions are allowed.'
+                                : 'You are a prompt refinement assistant for SimpAI Studio FLUX outpainting. Output English only and follow the prompt target rules in the user message.')
                         : (isVideoPurpose
                             ? 'You are a prompt refinement assistant for SimpAI Studio video generation and editing. Use compact built-in prompt rules. Follow the prompt target rules in the user message.'
                             : 'You are a prompt refinement assistant for SimpAI Studio. Use compact built-in prompt rules. Follow the prompt target rules in the user message.'))),

@@ -12611,7 +12611,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 
-#scene_canvas.sai-gaussian-studio-output-slot {
+#scene_input_image1.sai-gaussian-studio-output-slot {
     border-color: rgba(148, 163, 184, 0.30) !important;
     border-style: dashed !important;
     background: color-mix(in srgb, var(--block-background-fill, #24262b) 82%, #0f172a) !important;
@@ -12619,11 +12619,11 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     cursor: not-allowed !important;
 }
 
-#scene_canvas.sai-gaussian-studio-output-slot :where(.upload-container, input, button, label, canvas) {
+#scene_input_image1.sai-gaussian-studio-output-slot :where(.upload-container, input, button, label, canvas) {
     cursor: not-allowed !important;
 }
 
-#scene_input_images.sai-gaussian-studio-image-flow #scene_input_image1 {
+#scene_input_images.sai-gaussian-studio-image-flow #scene_canvas {
     border-color: #67e8f9 !important;
     background: color-mix(in srgb, var(--block-background-fill, #24262b) 88%, #0891b2) !important;
     box-shadow:

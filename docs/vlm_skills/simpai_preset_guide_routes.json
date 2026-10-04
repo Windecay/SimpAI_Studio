@@ -66,6 +66,14 @@
       "sections": ["2026-08-24 Video Workflow Routed Leaf / 视频工作流叶子"]
     },
     {
+      "key": "qwen_pose",
+      "title": {"en": "Qwen2.1 Pose", "cn": "Qwen2.1姿势"},
+      "priority": 710,
+      "exclusive": true,
+      "keywords": ["qwenpose", "qwen姿势", "qwen pose", "qwen2.1姿势", "qwen2.1 姿势", "qwen2.1 pose", "qwen 2.1 pose", "qwen 2.1 姿势"],
+      "sections": ["2026-10-04 Qwen2.1 Pose Editing / Qwen2.1 姿势编辑"]
+    },
+    {
       "key": "pose_camera",
       "title": {"en": "Pose And Camera", "cn": "姿势与视角"},
       "priority": 700,

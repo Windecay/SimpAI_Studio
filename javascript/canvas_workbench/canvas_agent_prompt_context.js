@@ -848,6 +848,7 @@
                 flux_t5_en: t('FLUX/T5XXL / English prompt', 'FLUX/T5XXL / 英文提示词'),
                 sdxl_danbooru: t('SDXL / Danbooru tags', 'SDXL / Danbooru 标签'),
                 outpaint_instruction: t('FLUX outpaint / English prompt', 'FLUX 扩图 / 英文提示词'),
+                qwen_image21_outpaint: t('Qwen 2.1 / outpaint prompt', 'Qwen 2.1 / 扩图提示词'),
                 unknown_default: t('Default queue target', '默认队列目标')
             };
             return labels[key] || labels.unknown_default;
@@ -878,6 +879,7 @@
             if (key === 'flux_t5_en') return 'Final prompt target: FLUX/T5XXL English prompt. The final prompt must be English natural language only; no Chinese characters.';
             if (key === 'sdxl_danbooru') return 'Final prompt target: SDXL/Danbooru tags. Output only comma-separated canonical English tags such as 1girl, solo, long_hair, looking_at_viewer, best_quality. Prefer several short known tags over one descriptive phrase. Do not write prose, full sentences, captions, explanations, Chinese, or made-up long underscore tags.';
             if (key === 'outpaint_instruction') return 'Final prompt target: FLUX outpaint English prompt. Write concise English only for seamless image-border expansion. Preserve the original subject, lighting, perspective, camera angle, style, color palette, and texture. Do not output Chinese, Danbooru tags, or only the word outpaint.';
+            if (key === 'qwen_image21_outpaint') return 'Begin with: Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged. Optionally append Scene: with the source scene and requested continuation. Preserve the existing picture, subject, position, lighting, perspective and style. Chinese scene descriptions are allowed.';
             if (key === 'qwen_natural') return 'Final prompt target: Qwen/Z-image natural language. For Chinese user requests, write a coherent Chinese natural-language image prompt with subject, action, setting, composition, light, and mood.';
             return 'Final prompt target: unknown/default. Infer from the chosen preset queue; prefer Z-image natural language for T2I, Wan Chinese motion prompts for video, and Qwen-style natural language for image edits.';
         }
@@ -988,6 +990,9 @@
                 modelList.join('|')
             ].join('|').toLowerCase();
             let key = purposeText.includes('outpaint') ? 'outpaint_instruction' : 'unknown_default';
+            if (key === 'outpaint_instruction' && /qwen_image21_outpaint|qwenoutpaint/i.test(haystack)) {
+                key = 'qwen_image21_outpaint';
+            }
             const taskMethodLower = taskMethod.toLowerCase();
             const taskMethodIsChinese = /(?:^|[_-])cn$/.test(taskMethodLower);
             const isH3ImageEdit = hasH3Compiler && (

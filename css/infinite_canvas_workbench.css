@@ -2892,6 +2892,18 @@
     color: var(--sai-canvas-accent);
 }
 
+.sai-outpaint-preset {
+    margin-left: auto;
+    min-width: 0;
+    max-width: 180px;
+    padding: 4px 8px;
+    border: 1px solid var(--sai-canvas-border);
+    border-radius: 6px;
+    color: var(--sai-canvas-text);
+    background: var(--sai-canvas-panel);
+    font: inherit;
+}
+
 .sai-outpaint-control-grid {
     display: flex;
     flex-direction: column;

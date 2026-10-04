@@ -5,7 +5,11 @@
     const UTILS = window.SimpAICanvasWorkbenchUtils || {};
     const ASSETS = window.SimpAICanvasWorkbenchAssetNodes || {};
     const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const t = UTILS.t || ((en, cn) => cn || en);
+    const t = (en, cn) => {
+        const langState = window.simpleaiTopbarSystemParams || {};
+        if (typeof UTILS.t === 'function') return UTILS.t(en, cn, langState);
+        return String(langState.__lang || window.locale_lang || 'en').toLowerCase().startsWith('en') ? en : (cn || en);
+    };
 
     const VIEWER_VERSION = 'gaussian-default-scale-20260530-2';
     const DEFAULT_VIEWER_URL = `/gaussian-studio/vendor/viewer_gaussian_v2.html?v=${VIEWER_VERSION}`;
@@ -850,6 +854,7 @@
     }
 
     async function syncSceneCanvasFromBridge(options = {}) {
+        if (getBridgeValue('gaussian_studio_scene_target') !== 'scene_canvas_image') return false;
         const requestedAttempts = Number(options.attempts);
         const requestedWaitMs = Number(options.waitMs);
         const attempts = Number.isFinite(requestedAttempts) ? Math.max(1, requestedAttempts) : 12;
@@ -879,7 +884,7 @@
         if (!sceneBridgeOpen) return;
         const payload = JSON.stringify(response || {});
         setBridgeValue('gaussian_studio_scene_payload', payload);
-        setBridgeValue('gaussian_studio_scene_target', state?.sceneTarget || 'scene_canvas_image');
+        setBridgeValue('gaussian_studio_scene_target', state?.sceneTarget || 'scene_input_image1');
         clickBridge('gaussian_studio_scene_apply_btn');
     }
 
@@ -1201,10 +1206,13 @@
     }
 
     async function captureSceneReference() {
-        const sourceId = 'scene_input_image1';
+        const sourceId = 'scene_canvas';
         const root = document.getElementById(sourceId);
+        const api = root ? (window.SimpAISketch?.get?.(root) || root.__simpaiSketch) : null;
+        const field = root?.querySelector?.('textarea, input[type="text"], input:not([type])');
+        const sketch = api?.getValue?.() || parseSketchPayload(field?.value || '');
         const imageInfo = firstImageInfo(root);
-        const src = imageInfo.src;
+        const src = sketch?.image || imageInfo.src;
         if (!src) return { src: '', dataUrl: '', signature: '', dataSignature: '', sourceId, width: 0, height: 0 };
         try {
             const dataUrl = await urlToDataUrl(src);
@@ -1248,13 +1256,13 @@
     }
 
     async function openScenePresetBridge() {
-        setSceneBridgeStatus(t('Checking Input Image 1...', '正在检查 Input Image 1...'), false);
+        setSceneBridgeStatus(t('Checking Image 1...', '正在检查图1...'), false);
         const ref = await captureSceneReference();
         if (!ref.src && !ref.dataUrl) {
-            setSceneBridgeStatus(t('Upload Reference Image before opening Gaussian Studio.', '请先上传参考图片(2)，再打开 Gaussian Studio。'), true);
+            setSceneBridgeStatus(t('Upload the original to Image 1 before opening Gaussian Studio.', '请先将原图上传到图1，再打开 Gaussian Studio。'), true);
             return null;
         }
-        setSceneBridgeStatus(t('Input Image 1 ready. Opening Gaussian Studio...', 'Input Image 1 已就绪，正在打开 Gaussian Studio...'), false);
+        setSceneBridgeStatus(t('Image 1 ready. Opening Gaussian Studio...', '图1已就绪，正在打开 Gaussian Studio...'), false);
         const cachedState = sceneBridgeCache || readSceneBridgeState() || {};
         sceneBridgeCache = cachedState && typeof cachedState === 'object' ? cachedState : null;
         const popup = open({
@@ -1262,7 +1270,7 @@
             projectId: 'scene',
             nodeId: 'scene_gaussian_studio',
             sceneBridge: true,
-            sceneTarget: 'scene_canvas_image',
+            sceneTarget: 'scene_input_image1',
             state: cachedState,
             gaussianState: cachedState,
             autoBuild: true,

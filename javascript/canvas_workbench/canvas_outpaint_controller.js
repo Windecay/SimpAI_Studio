@@ -47,6 +47,7 @@
             right: 'right'
         };
         let dragState = null;
+        let overlayVersion = 0;
 
         const getTargetNode = () => {
             const provided = targetCall('getOutpaintTargetNode');
@@ -187,6 +188,20 @@
             return true;
         }
 
+        function onOutpaintPresetChange(evt) {
+            const select = evt?.target?.closest?.('[data-outpaint-preset]');
+            const state = getState();
+            if (!select || !state?.active) return false;
+            const presetName = select.value;
+            if (!['QwenOutpaint', 'OneKey-Outpaint'].includes(presetName)) return false;
+            if (presetName === state.presetName) return true;
+            cancelOutpaintEdgeDrag();
+            state.presetName = presetName;
+            state.version = ++overlayVersion;
+            projectCall('setCanvasAgentSettingsPatch', { outpaintPreset: presetName });
+            return true;
+        }
+
         function syncOutpaintAgentPanel() {
             const state = getState();
             const panel = panelCall('getCanvasAgentPanel') || null;
@@ -203,6 +218,12 @@
         function renderOutpaintControlPanel() {
             const state = getState();
             if (!state?.active) return '';
+            const presetName = getCanvasAgentSettings().outpaintPreset || 'QwenOutpaint';
+            const presets = [
+                ['QwenOutpaint', t('Qwen Outpaint', 'Qwen扩图')],
+                ['OneKey-Outpaint', t('Flux Outpaint', 'Flux扩图')]
+            ];
+            if (!presets.some(([name]) => name === presetName)) presets.push([presetName, presetName]);
             const rows = [
                 { key: 'top', label: t('Up', '上'), icon: '↑', value: state.up },
                 { key: 'bottom', label: t('Down', '下'), icon: '↓', value: state.down },
@@ -213,12 +234,15 @@
 <div class="sai-outpaint-control">
   <div class="sai-outpaint-control-title">
     <i class="fa-solid fa-expand"></i>
-    <span>${escapeHtml(t('Outpaint Range', '扩图范围'))}</span>
+    <span>${escapeHtml(t('Outpaint', '扩图'))}</span>
+    <select class="sai-outpaint-preset" data-outpaint-preset aria-label="${escapeHtml(t('Outpaint model', '扩图模型'))}">
+      ${presets.map(([name, label]) => `<option value="${escapeHtml(name)}"${name === presetName ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+    </select>
   </div>
   <div class="sai-outpaint-control-grid">
     ${rows.map(row => `<div class="sai-outpaint-control-edge">
       <span class="sai-outpaint-edge-label">${escapeHtml(row.icon)} ${escapeHtml(row.label)}</span>
-      <input type="range" data-outpaint-slider="${row.key}" min="0" max="100" value="${row.value}">
+      <input type="range" data-outpaint-slider="${row.key}" aria-label="${escapeHtml(row.label)}" min="0" max="100" step="1" value="${row.value}">
       <output data-outpaint-output="${row.key}">${row.value}%</output>
     </div>`).join('')}
   </div>
@@ -230,7 +254,7 @@
 </div>`;
         }
 
-        function showOutpaintOverlay(nodeId, initialPcts) {
+        function showOutpaintOverlay(nodeId, initialPcts, options) {
             const overlay = getOverlayElement();
             if (!overlay) return;
             const project = getProject();
@@ -239,8 +263,11 @@
             const state = getState();
             if (!state) return;
             const settings = getCanvasAgentSettings();
+            cancelOutpaintEdgeDrag();
             state.active = true;
             state.nodeId = nodeId;
+            state.presetName = options?.presetName || settings.outpaintPreset || 'QwenOutpaint';
+            state.version = ++overlayVersion;
             state.up = clamp(Number(initialPcts?.up ?? settings.outpaintUpPercent ?? 15), 0, 100);
             state.down = clamp(Number(initialPcts?.down ?? settings.outpaintDownPercent ?? 15), 0, 100);
             state.left = clamp(Number(initialPcts?.left ?? settings.outpaintLeftPercent ?? 15), 0, 100);
@@ -257,6 +284,8 @@
             if (state) {
                 state.active = false;
                 state.nodeId = '';
+                state.presetName = '';
+                state.version = ++overlayVersion;
             }
         }
 
@@ -344,6 +373,10 @@
             const lBot = overlay.querySelector('[data-dim="bottom"]');
             const lL = overlay.querySelector('[data-dim="left"]');
             const lR = overlay.querySelector('[data-dim="right"]');
+            if (lTop) lTop.hidden = exUp <= 6;
+            if (lBot) lBot.hidden = exDown <= 6;
+            if (lL) lL.hidden = exLeft <= 6;
+            if (lR) lR.hidden = exRight <= 6;
             if (lTop && exUp > 6) { lTop.textContent = `${state.up}%`; lTop.style.left = `${outerW / 2}px`; lTop.style.top = `${exUp / 2}px`; lTop.style.transform = 'translate(-50%, -50%)'; }
             if (lBot && exDown > 6) { lBot.textContent = `${state.down}%`; lBot.style.left = `${outerW / 2}px`; lBot.style.top = `${exUp + mediaH + exDown / 2}px`; lBot.style.transform = 'translate(-50%, -50%)'; }
             if (lL && exLeft > 6) { lL.textContent = `${state.left}%`; lL.style.left = `${exLeft / 2}px`; lL.style.top = `${outerH / 2}px`; lL.style.transform = 'translate(-50%, -50%)'; }
@@ -365,6 +398,7 @@
             cancelOutpaintEdgeDrag,
             onOutpaintOverlayPointerDown,
             onOutpaintSliderInput,
+            onOutpaintPresetChange,
             updateOutpaintFromSlider,
             syncOutpaintAgentPanel,
             renderOutpaintControlPanel,

@@ -82,7 +82,7 @@
     "_meta": {"title": "VAEDecode"}
   },
   "12": {
-    "inputs": {"images": ["simpai_qwen21_canvas_composite", 0]},
+    "inputs": {"images": ["simpai_qwen21_canvas_alpha_join", 0]},
     "class_type": "SaveImageWebsocket",
     "_meta": {"title": "SaveImageWebsocket"}
   },
@@ -343,15 +343,28 @@
     "class_type": "SimpAIQwen21CanvasInpaint",
     "_meta": {"title": "Qwen 2.1 Canvas Mask"}
   },
+  "simpai_qwen21_canvas_alpha_split": {
+    "inputs": {"image": ["11", 0]},
+    "class_type": "SplitImageWithAlpha",
+    "_meta": {"title": "Keep Qwen 2.1 Generated Alpha"}
+  },
   "simpai_qwen21_canvas_composite": {
     "inputs": {
       "destination": ["simpai_qwen21_canvas_inpaint", 1],
-      "source": ["11", 0],
+      "source": ["simpai_qwen21_canvas_alpha_split", 0],
       "mask": ["simpai_qwen21_canvas_inpaint", 2],
       "x": 0, "y": 0, "resize_source": false
     },
     "class_type": "ImageCompositeMasked",
-    "_meta": {"title": "Preserve Outside Canvas Mask"}
+    "_meta": {"title": "Preserve RGB Outside Canvas Mask"}
+  },
+  "simpai_qwen21_canvas_alpha_join": {
+    "inputs": {
+      "image": ["simpai_qwen21_canvas_composite", 0],
+      "alpha": ["simpai_qwen21_canvas_alpha_split", 1]
+    },
+    "class_type": "JoinImageWithAlpha",
+    "_meta": {"title": "Return Qwen 2.1 Generated Alpha"}
   },
   "simpai_lora_stack_main": {
     "inputs": {

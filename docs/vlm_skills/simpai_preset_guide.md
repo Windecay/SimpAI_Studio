@@ -146,9 +146,10 @@ SimpAI UI guide skill:
 - For erasing unwanted areas or cleanup, recommend Eraser or QwenEdit+ with a
   mask.
 - For seamless outpainting / image-edge expansion (无缝扩图 / 边缘拓展),
-  recommend OneKey-Outpaint first. It uses the Flux1.Fill model for
-  general-purpose image boundary extension across subjects, and is often used to
-  change composition, change aspect ratio, or add missing surrounding elements.
+  recommend QwenOutpaint first. It uses Qwen Image 2.1 and the Outpaint LoRA,
+  defaults to 15% expansion on all four sides, and extends outside the original
+  image without a default pixel-area limit. OneKey-Outpaint (Flux1.Fill) is the
+  alternative when the user selects Flux or its models are the available route.
 
 ## Face, Body, Pose, And Camera
 
@@ -168,26 +169,30 @@ SimpAI UI guide skill:
   standard H3 Turbo distillation LoRA; no additional pose-specific LoRA is
   required. QwenPose remains the Qwen alternative. Both produce the edited
   final image, not only a skeleton control image.
+- QwenPose uses the opposite image order required by its Qwen2.1 Pose LoRA:
+  image1 / the canvas is the pose, image2 / the first extra image is the character.
+  Pose Studio reads image2 and exports to image1. Do not apply H3's order to Qwen.
 - For skeleton/control-map extraction only, recommend OneKeyPose. Its two
   built-in pose extraction presets are SDPose-OOD and DWPose: SDPose-OOD is the
   whole-body SDPose route with people-count and body-part drawing controls,
   while DWPose is the fast DWPose skeleton route for general pose/control-map
   preparation.
-- For camera angle / multi-view control, recommend Qwen自由视角+ /
+- For camera angle / multi-view control, recommend Qwen自由视角 /
   QwenMultiAngle / Qwen-MultiAngle Free Viewpoint when the user wants to rotate
   the camera, change viewpoint, produce another view of the same subject, or
   adjust view parameters such as front view, eye level, horizontal, vertical, or
   zoom. For product or character three-view sheets, recommend OneKeyKontext
   IP 3-View.
 - For ordinary detail-oriented Qwen edits, recommend QwenEdit+ when relevant.
-- For QwenGaussianStudio / QwenGaussian, recommend it when the user mentions
+- For Qwen自由视角+ / QwenGaussianStudio / QwenGaussian, recommend it when the user mentions
   高斯泼溅, Gaussian splatting, advanced viewpoint change, stronger angle
   conversion, perspective reconstruction, or camera/view repair. Treat it as
-  the more advanced Qwen angle-change route above Qwen自由视角+ when the user
-  needs stronger geometry and perspective handling. It uses the right/reference
-  image (image2/scene_input_image2) to reproject or repair image1 perspective
-  and fill missing regions after the angle change; do not present it as a pose
-  preset.
+  the more advanced Qwen angle-change route above Qwen自由视角 when the user
+  needs stronger geometry and perspective handling. It uses Qwen Image 2.1 and
+  QI2.1_AnyAngle: image1 / scene_canvas_image holds the original image;
+  image2 / scene_input_image1 holds the Gaussian render at the desired camera
+  angle. Use `Change the camera angle from <image2> to <image1>.` with LoRA
+  strength 1.0, CFG 3, and 25 steps. Do not present it as a pose preset.
 
 ## Image-To-Video / Video Generation
 
@@ -290,11 +295,19 @@ SimpAI UI guide skill:
 - SAM3-mask and no-SAM3-mask variants.
 - LTX(InsightTool) for video restoration, HD enhancement, watermark removal,
   and subtitle removal.
-- Qwen自由视角+ / QwenMultiAngle / Qwen-MultiAngle Free Viewpoint.
+- Qwen自由视角 / QwenMultiAngle / Qwen-MultiAngle Free Viewpoint.
+- Qwen自由视角+ / QwenGaussianStudio / QwenGaussian.
 - MiniMax-H3(Pose) and QwenPose are pose-driven final-image editors.
+- QwenPose is displayed as Qwen2.1 Pose and uses Qwen Image 2.1, Qwen3-VL,
+  the Qwen Image 2.1 VAE, and VNCCS_QI2_PoseStudioV1.1 at strength 1.0.
+  It defaults to 25 steps, CFG 1, Euler / simple; it does not use the
+  Qwen Edit 2511 Lightning LoRA. The canvas / first image is the Pose Editor
+  output and the second image is the character reference, following this
+  LoRA's pose-first order, which differs from H3 Pose's character-first order.
 - SDPose-OOD and DWPose are OneKeyPose skeleton extraction presets.
 - QwenGaussianStudio is the advanced Gaussian-splatting viewpoint-change route
-  using image2 to reproject/repair image1 perspective and missing regions.
+  using image2 to guide the camera angle of the original image1 with
+  Qwen Image 2.1 and QI2.1_AnyAngle, preserving the original appearance.
 - identity/permission state.
 
 ## 2026-07-30 Classic AIO Enhance Routing
@@ -544,3 +557,24 @@ SimpAI UI guide skill:
   text-guided editing, or guaranteed exact detail recovery.
 - Follow `state.__lang`: English display name `VOSR2 Image Upscale`, Chinese
   display name `VOSR2 图像放大`; the catalog key remains `VOSR2`.
+
+## 2026-10-04 Qwen2.1 Pose Editing / Qwen2.1 姿势编辑
+
+- Recommend `QwenPose` / Qwen2.1 Pose / Qwen2.1姿势 for two-image character pose
+  editing with Qwen Image 2.1. This is a final-image editor, not skeleton extraction.
+- In Studio and Canvas, image1 / the canvas is the target pose. Image2 / the
+  first extra image slot is the character and original scene. Pose Studio reads
+  the character in image2 and saves its pose export into image1 without replacing
+  image2. H3 Pose still uses character-first order and exports its pose to image2.
+- The encoder and prompt-rewrite images keep that same pose-first,
+  character-second order. Use `<image 1>` for the pose and `<image 2>` for the
+  character; do not use H3 `<Picture N>` labels.
+- The default prompt is: `replace the pose of <image 2> with the pose of <image 1>. keep the character of <image 2>`.
+  Preserve image2's identity, appearance, clothing, accessories, original
+  background, camera, lighting, and style. Do not copy image1's character,
+  mannequin appearance, clothing, background, or lighting. User-requested
+  changes take precedence over the source pose; do not invent additional edits.
+- Defaults: 25 steps, CFG 1, Euler / simple, reference resolution 1024, and
+  `VNCCS_QI2_PoseStudioV1.1.safetensors` at strength 1.0. No 2511 Lightning LoRA.
+- Follow `state.__lang` for guidance and display names: Chinese `Qwen2.1姿势`,
+  English `Qwen2.1 Pose`; keep `QwenPose` as the catalog and saved-project key.

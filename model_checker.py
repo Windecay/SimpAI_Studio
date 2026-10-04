@@ -21,6 +21,7 @@ import json
 import argparse
 from collections import defaultdict
 from multiprocessing import current_process
+from modules import vosr2_model_files
 DEFAULT_DOWNLOAD_PREFIX = "https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/"
 HF_DOWNLOAD_PREFIX = "https://huggingface.co/metercai/SimpleSDXL2/resolve/main/"
 DOWNLOAD_SOURCE = os.getenv("SIMPLEAI_DOWNLOAD_SOURCE", "modelscope").strip().lower()
@@ -926,6 +927,15 @@ def select_download_url(entry):
     if CURRENT_DOWNLOAD_SOURCE == "huggingface":
         return entry.get("hf_url")
     return entry.get("modelscope_url")
+
+def select_download_size(entry):
+    return vosr2_model_files.download_size(select_download_url(entry), entry["size"])
+
+def _package_file_matches(entry, file_path, actual_size):
+    config_match = vosr2_model_files.vae_config_matches(file_path, entry["size"])
+    if config_match is not None:
+        return config_match
+    return actual_size == select_download_size(entry)
 
 def iter_package_file_entries(files_list):
     for file_entry in files_list:
@@ -1848,7 +1858,7 @@ def validate_files(packages):
 
         parsed_entries = list(iter_package_file_entries(files_and_sizes))
         resource_entries = list(iter_resource_bundle_entries(package_info.get("resource_bundles", [])))
-        total_size = sum(e["size"] for e in parsed_entries) + sum(
+        total_size = sum(select_download_size(e) for e in parsed_entries) + sum(
             _normalize_expected_size(item.get("size")) for item in resource_entries
         )
         total_size_gb = total_size / (1024 ** 3)
@@ -1864,7 +1874,7 @@ def validate_files(packages):
 
         for entry in parsed_entries:
             expected_path = entry["expected_path"]
-            expected_size = entry["size"]
+            expected_size = select_download_size(entry)
             expected_filename = os.path.basename(expected_path) 
             path_parts = expected_path.split('/')
             path_type = path_parts[0] if len(path_parts) > 0 else ''
@@ -1914,7 +1924,7 @@ def validate_files(packages):
                 case_mismatch_files.append((os.path.join(actual_dir, actual_filename), expected_filename))
             else:
                 actual_size = os.path.getsize(os.path.join(actual_dir, actual_filename))
-                if actual_size != expected_size:
+                if not _package_file_matches(entry, os.path.join(actual_dir, actual_filename), actual_size):
                     size_mismatch_files.append((entry["expected_path"], os.path.join(actual_dir, actual_filename), actual_size, expected_size))
                 else:
                     non_missing_size += expected_size
@@ -2008,7 +2018,7 @@ def validate_files(packages):
                 print(f"{Fore.GREEN}文件名已更正为: {expected_filename}{Style.RESET_ALL}")
 
         if size_mismatch_files:
-            print(f"{Fore.RED}×{package_name}中有文件大小不匹配，可能存在下载不完全或损坏，请检查列出的文件。{Style.RESET_ALL}")
+            print(f"{Fore.RED}×{package_name}中有文件大小或配置内容不匹配 / File size or configuration mismatch。{Style.RESET_ALL}")
             for expected_path, local_file, actual_size, expected_size in size_mismatch_files:
                 normalized_path = normalize_path(expected_path)
                 print(f"{normalized_path} 当前大小={actual_size}, 预期大小={expected_size}")
@@ -2104,7 +2114,7 @@ def get_package_status(packages, package_ids=None):
         files_and_sizes = package_info.get("files", [])
         parsed_entries = list(iter_package_file_entries(files_and_sizes))
         resource_entries = list(iter_resource_bundle_entries(package_info.get("resource_bundles", [])))
-        total_size = sum(e["size"] for e in parsed_entries) + sum(
+        total_size = sum(select_download_size(e) for e in parsed_entries) + sum(
             _normalize_expected_size(item.get("size")) for item in resource_entries
         )
         non_missing_size = 0
@@ -2112,7 +2122,7 @@ def get_package_status(packages, package_ids=None):
         resource_statuses = []
         for entry in parsed_entries:
             expected_path = entry["expected_path"]
-            expected_size = entry["size"]
+            expected_size = select_download_size(entry)
             path_parts = expected_path.split('/')
             path_type = path_parts[0] if len(path_parts) > 0 else ''
             sub_path = '/'.join(path_parts[1:]) if len(path_parts) > 1 else ''
@@ -2162,8 +2172,13 @@ def get_package_status(packages, package_ids=None):
                             actual_size = os.path.getsize(actual_path)
                         except Exception:
                             actual_size = None
-                        if actual_size is not None and actual_size != expected_size:
-                            status_name = "size_mismatch"
+                        if actual_size is not None and not _package_file_matches(entry, actual_path, actual_size):
+                            status_name = (
+                                "hash_mismatch"
+                                if vosr2_model_files.is_vae_config_path(actual_path)
+                                and actual_size in vosr2_model_files.VAE_CONFIG_SIZES
+                                else "size_mismatch"
+                            )
                         else:
                             status_name = "ok"
                             non_missing_size += expected_size
@@ -2274,7 +2289,7 @@ def download_missing_for_packages(package_ids):
             if not entry:
                 continue
             url = select_download_url(entry)
-            size = entry.get("size", 0) or 0
+            size = select_download_size(entry)
             download_entries.append((url, size))
         for resource_info in pkg_status.get("resource_bundles", []):
             if resource_info.get("status") == "ok":
@@ -2318,7 +2333,7 @@ def download_files_by_expected_paths(expected_paths):
             print(f"{Fore.GREEN}√文件已存在: {expected_path}{Style.RESET_ALL}")
             continue
         url = select_download_url(entry)
-        size = entry.get("size", 0) or 0
+        size = select_download_size(entry)
         if not url:
             print(f"{Fore.RED}△没有可用下载链接: {expected_path}{Style.RESET_ALL}")
             continue
@@ -2626,11 +2641,12 @@ def delete_log_files():
 
 def download_file_with_resume(link, file_path, position, result_queue, max_retries=5, lock=None, expected_path=None, expected_total_size=None):
     partial_file_path = file_path + ".partial"
+    expected_total_size = vosr2_model_files.download_size(link, expected_total_size)
     retries = 0
     while retries < max_retries:
         try:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            if os.path.exists(partial_file_path):
+            if os.path.exists(partial_file_path) and not vosr2_model_files.is_vae_config_path(file_path):
                 resume_size = os.path.getsize(partial_file_path)
                 headers = {'Range': f"bytes={resume_size}-"}
             else:
@@ -2639,7 +2655,7 @@ def download_file_with_resume(link, file_path, position, result_queue, max_retri
 
             response = requests.get(link, stream=True, headers=headers, timeout=(30, 60))
 
-            mode = 'ab'
+            mode = 'ab' if resume_size > 0 else 'wb'
             try:
                 total_size = int(expected_total_size) if expected_total_size is not None else 0
             except Exception:
@@ -2726,6 +2742,8 @@ def download_file_with_resume(link, file_path, position, result_queue, max_retri
                     raise requests.exceptions.RequestException("文件大小校验失败：下载结果为空")
                 if total_size > 0 and downloaded_size != total_size:
                     raise requests.exceptions.RequestException(f"文件大小校验失败：预期 {total_size} 字节，实际 {downloaded_size} 字节")
+                if vosr2_model_files.vae_config_matches(partial_file_path, total_size, file_path) is False:
+                    raise requests.exceptions.RequestException("VOSR2 VAE 配置校验失败 / VAE configuration checksum mismatch")
 
             final_file_path = os.path.normpath(file_path)
             partial_file_path = os.path.normpath(partial_file_path)
@@ -3055,7 +3073,7 @@ def get_download_links_for_package(packages, download_list_path):
         for entry in iter_package_file_entries(package_info.get("files", [])):
             link = select_download_url(entry)
             if link:
-                allowed_links[link] = entry["size"]
+                allowed_links[link] = select_download_size(entry)
 
     valid_files = []
     added_links = set()
@@ -3939,7 +3957,7 @@ packages = {'base_package': {'id': 1,
                         "preset_sample": []},
  'pose_studio_sam3d_body_package': {'id': 37,
                                     'name': '[37]Pose Studio SAM 3D Body姿势解析模型包',
-                                    'note': 'Pose Studio参考图姿势解析必需模型包;QwenPose和MiniMax-H3(Pose)使用',
+                                    'note': 'Pose Studio参考图姿势解析模型和Qwen2.1姿势LoRA;QwenPose和MiniMax-H3(Pose)使用 / Pose Studio reference pose extraction models and Qwen2.1 pose LoRA; used by QwenPose and MiniMax-H3(Pose).',
                                     'files': ['sam3dbody,model.ckpt,2109129346,0,https://www.modelscope.cn/models/facebook/sam-3d-body-dinov3/resolve/master/model.ckpt,https://huggingface.co/jetjodh/sam-3d-body-dinov3/resolve/main/model.ckpt',
                                               'sam3dbody,model_config.yaml,1488,0,https://www.modelscope.cn/models/facebook/sam-3d-body-dinov3/resolve/master/model_config.yaml,https://huggingface.co/jetjodh/sam-3d-body-dinov3/resolve/main/model_config.yaml',
                                               'sam3dbody,assets/mhr_model.pt,696110248,0,https://www.modelscope.cn/models/facebook/sam-3d-body-dinov3/resolve/master/assets/mhr_model.pt,https://huggingface.co/jetjodh/sam-3d-body-dinov3/resolve/main/assets/mhr_model.pt',
@@ -3947,19 +3965,22 @@ packages = {'base_package': {'id': 1,
                                               'birefnet,BiRefNet_lite/birefnet.py,92134,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/birefnet.py,https://huggingface.co/ZhengPeng7/BiRefNet_lite/resolve/main/birefnet.py',
                                               'birefnet,BiRefNet_lite/config.json,410,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/config.json,https://huggingface.co/ZhengPeng7/BiRefNet_lite/resolve/main/config.json',
                                               'birefnet,BiRefNet_lite/model.safetensors,177634392,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/model.safetensors,https://huggingface.co/ZhengPeng7/BiRefNet_lite/resolve/main/model.safetensors',
-                                              'loras,VNCCS_QIE2511_PoseStudio_ART_V5.9.5.safetensors,1179883808,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/VNCCS_QIE2511_PoseStudio_ART_V5.9.5.safetensors,https://huggingface.co/MIUProject/VNCCS_PoseStudio/resolve/main/models/loras/qwen/VNCCS/VNCCS_QIE2511_PoseStudio_ART_V5.9.5.safetensors'
+                                              'loras,VNCCS_QI2_PoseStudioV1.1.safetensors,159436408,0,https://huggingface.co/MIUProject/VNCCS_PoseStudio_QI2.1/resolve/main/VNCCS_QI2_PoseStudioV1.1.safetensors'
 
 ],
                                     'info_links': ['https://modelscope.cn/models/facebook/sam-3d-body-dinov3',
                                                    'https://github.com/AHEKOT/ComfyUI_VNCCS_Utils'],
                                     'preset_sample': []},
  'gaussian_studio_sharp_package': {'id': 38,
-                                   'name': '[38]Gaussian Studio SHARP 3DGS模型包',
-                                   'note': 'Gaussian Studio单图3D高斯泼溅视角旋转与缺损修复模型包;Gaussian Studio使用',
+                                   'name': '[38]Qwen2.1自由视角+ SHARP 3DGS预置包',
+                                   'note': 'Qwen2.1 + AnyAngle + SHARP：图1原图，图2高斯调整视角图 / Image 1 original, image 2 Gaussian camera render',
                                    'files': ['sharp,sharp_2572gikvuh.pt,2809738232,0,https://modelscope.cn/models/apple/Sharp/resolve/master/sharp_2572gikvuh.pt,https://huggingface.co/apple/Sharp/resolve/main/sharp_2572gikvuh.pt',
-                                             'loras,Repair-Damage_25.safetensors,236117040,0,https://modelscope.cn/models/Daniel8152/Repair-Damage/resolve/20260111212939/Repair-Damage_25.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/loras/Repair-Damage_25.safetensors'],
+                                             'diffusion_models,qwen_image_2.1_int8_convrot.safetensors,7256783064,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/diffusion_models/qwen_image_2.1_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors',
+                                             'text_encoders,qwen3vl_8b_int8_convrot.safetensors,9350798360,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors',
+                                             'vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors',
+                                             'loras,QI2.1_AnyAngle.safetensors,119590312,0,https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/QI2.1_AnyAngle.safetensors'],
                                    'info_links': ['https://modelscope.cn/models/apple/Sharp/',
-                                                  'https://modelscope.cn/models/Daniel8152/Repair-Damage'],
+                                                  'https://huggingface.co/lilylilith/QI_2.1_AnyAngle'],
                                    'preset_sample': []},
  'bernini_r_package': {'id': 39,
                        'name': '[39]Bernini-R图像编辑/多图视频/视频编辑模型包',
@@ -4074,15 +4095,24 @@ packages = {'base_package': {'id': 1,
                                     'vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors'],
                           'info_links': ['https://modelscope.cn/models/Qwen/Qwen-Image-2.1/summary'],
                           'preset_sample': []},
+ 'qwen_image21_outpaint_package': {'id': 47,
+                                  'name': '[47]Qwen扩图 / Qwen Outpaint',
+                                  'note': 'Qwen Image 2.1 扩图，包含 INT8 主模型、编码器、VAE 和 Outpaint v2 LoRA / Qwen 2.1 outpaint with INT8 model, encoder, VAE and Outpaint v2 LoRA.',
+                                  'files': ['diffusion_models,qwen_image_2.1_int8_convrot.safetensors,7256783064,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/diffusion_models/qwen_image_2.1_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors',
+                                            'text_encoders,qwen3vl_8b_int8_convrot.safetensors,9350798360,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors',
+                                            'vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors',
+                                            'loras,qwen-image-2.1-outpaint-v2.safetensors,159436576,0,https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors'],
+                                  'info_links': ['https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA'],
+                                  'preset_sample': []},
  'vosr2_package': {'id': 46,
                     'name': '[46]VOSR2图像放大模型包 / VOSR2 Image Upscale',
                     'note': 'VOSR 2.0 单步图像超分，含主模型、匹配的 VAE 与 DINOv2；默认 2 倍 / One-step image super-resolution with matched VAE and DINOv2; default 2x.',
-                    'files': ['vosr2,VOSR2/args.json,816,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/args.json,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/args.json',
-                              'vosr2,VOSR2/checkpoints/ema_model.safetensors,5576385424,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/checkpoints/ema_model.safetensors,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/checkpoints/ema_model.safetensors',
-                              'vosr2,VOSR2/Qwen-Image-vae-2d/config.json,811,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/config.json,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/config.json',
-                              'vosr2,VOSR2/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,178418892,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors',
-                              'vosr2,VOSR2/dinov2_vitl14_pretrain.pth,1217586395,0,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth'],
-                    'info_links': ['https://huggingface.co/CSWRY/VOSR', 'https://github.com/cswry/VOSR'],
+                    'files': ['vosr2,VOSR2/args.json,816,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/VOSR2/args.json,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/args.json',
+                              'vosr2,VOSR2/checkpoints/ema_model.safetensors,5576385424,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/VOSR2/checkpoints/ema_model.safetensors,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/VOSR2/checkpoints/ema_model.safetensors',
+                              'vosr2,VOSR2/Qwen-Image-vae-2d/config.json,754,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/Qwen-Image-vae-2d/config.json,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/config.json',
+                              'vosr2,VOSR2/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,178418892,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/Qwen-Image-vae-2d/diffusion_pytorch_model.safetensors',
+                              'vosr2,VOSR2/dinov2_vitl14_pretrain.pth,1217586395,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth'],
+                    'info_links': ['https://modelscope.cn/models/LULALULALU/VOSR_CKPT', 'https://huggingface.co/CSWRY/VOSR', 'https://github.com/cswry/VOSR'],
                     'preset_sample': []},
 }
 MANUAL_DOWNLOAD_MAP = {
@@ -4218,7 +4248,7 @@ def verify_package_strict(package_id, packages):
 
     for entry in entries:
         expected_path = entry["expected_path"]
-        expected_size = entry["size"]
+        expected_size = select_download_size(entry)
         path_parts = expected_path.split('/')
         path_type = path_parts[0] if len(path_parts) > 0 else ''
         rel_path = entry["relative_path"].replace("/", os.sep)
@@ -4246,7 +4276,8 @@ def verify_package_strict(package_id, packages):
                 found = True
                 break
 
-        target_url = entry.get("modelscope_url")
+        config_file = vosr2_model_files.is_vae_config_path(expected_path)
+        target_url = select_download_url(entry) if config_file else entry.get("modelscope_url")
 
         if found and actual_path:
             print(f"正在计算: {os.path.basename(actual_path)} ...", end="", flush=True)
@@ -4255,6 +4286,14 @@ def verify_package_strict(package_id, packages):
             print(f"  路径: {actual_path}")
             print(f"  SHA256: {Fore.YELLOW}{sha256_val}{Style.RESET_ALL}")
             print(f"  大小: {os.path.getsize(actual_path)} bytes (预期: {expected_size})")
+
+            if config_file:
+                if vosr2_model_files.vae_config_matches(actual_path, expected_size):
+                    print(f"  校验结果: {Fore.GREEN}√ 通过 / Verified VOSR2 config (LF or CRLF){Style.RESET_ALL}")
+                else:
+                    print(f"  校验结果: {Fore.RED}× VOSR2 VAE 配置校验失败 / Configuration checksum mismatch{Style.RESET_ALL}")
+                    corrupted_files.append((actual_path, target_url, expected_size, sha256_val, vosr2_model_files.VAE_CONFIG_LF_SHA256))
+                continue
 
             # 尝试获取官方SHA256
             official_sha256 = None

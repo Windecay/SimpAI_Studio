@@ -26,6 +26,8 @@
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
+        const qwenOutpaintPrompt = 'Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.';
+        let outpaintConfirmationPending = false;
         const uid = (...args) => call(identitySource, 'uid', '', ...args);
         const normalizePresetName = utilitySource.normalizePresetName || (value => String(value || '').trim());
         const maxExtraImageReferences = () => Math.max(0, Number(call(configSource, 'getMaxExtraImageReferences', 0) || 0));
@@ -149,8 +151,8 @@
                 outpaint: {
                     label: t('Outpaint', '扩图'),
                     presetSetting: 'outpaintPreset',
-                    defaultPreset: 'OneKey-Outpaint',
-                    prompt: t('Extend the image naturally beyond its current borders.', '自然扩展画面边界。'),
+                    defaultPreset: 'QwenOutpaint',
+                    prompt: qwenOutpaintPrompt,
                     classicMode: 'inpaint',
                     autoRun: true
                 },
@@ -387,8 +389,19 @@
                 return;
             }
             if (toolKey === 'outpaint') {
+                const presetName = canvasAgentQuickToolPresetName('outpaint');
+                if (!findCanvasAgentPresetEntryByAlias(presetName)) {
+                    showToast(t('Outpaint preset is unavailable: {preset}', '扩图预置不可用：{preset}').replace('{preset}', presetName));
+                    return;
+                }
                 revealCanvasAgentPanelForToolCard();
-                showOutpaintOverlay(target.id);
+                const settings = getCanvasAgentSettings();
+                showOutpaintOverlay(target.id, {
+                    up: settings.outpaintUpPercent ?? 15,
+                    down: settings.outpaintDownPercent ?? 15,
+                    left: settings.outpaintLeftPercent ?? 15,
+                    right: settings.outpaintRightPercent ?? 15
+                }, { presetName });
                 renderCanvasAgentPanel();
                 return;
             }
@@ -548,6 +561,12 @@
             const presetName = normalizePresetName(entry?.name || entry?.display_name || initialPresetName || '');
             const promptTarget = canvasAgentPromptTargetFromEntry(entry, 'outpaint');
             const presetDefaults = canvasAgentPresetPromptDefaults(entry);
+            if (presetName === 'QwenOutpaint') {
+                const prompt = canvasAgentOutpaintPromptIsGeneric(userText)
+                    ? qwenOutpaintPrompt
+                    : userText.startsWith(qwenOutpaintPrompt) ? userText : `${qwenOutpaintPrompt}\nScene: ${userText}`;
+                return { prompt, promptTarget: Object.assign({}, promptTarget, { key: 'qwen_image21_outpaint' }), presetDefaults };
+            }
             let prompt = canvasAgentOutpaintPrompt(userText, state);
             const targetRewrite = await ensureCanvasAgentPromptMatchesTarget(prompt, promptTarget, 'outpaint', {
                 entry,
@@ -561,16 +580,40 @@
         }
 
         async function confirmOutpaintFromOverlay() {
+            if (outpaintConfirmationPending) return;
+            outpaintConfirmationPending = true;
+            try {
+                await submitOutpaintFromOverlay();
+            } catch (err) {
+                setCanvasAgentMessage(t('Outpaint could not start: {error}', '扩图未能开始：{error}').replace('{error}', err?.message || String(err)));
+                clearCanvasAgentRunInfo(1800);
+            } finally {
+                outpaintConfirmationPending = false;
+            }
+        }
+
+        async function submitOutpaintFromOverlay() {
             const overlayState = getOutpaintOverlayState();
             if (!overlayState.active) return;
-            const s = overlayState;
+            const s = Object.assign({}, overlayState);
             const agentState = getAgentState();
+            if (agentState.busy || agentState.currentRun) return;
             const node = s.nodeId ? getNode(s.nodeId) : null;
             if (!node) { hideOutpaintOverlay(); return; }
+            if (![s.up, s.down, s.left, s.right].some(value => Number(value) > 0)) {
+                showToast(t('Choose at least one outpaint percentage above 0%.', '请至少将一个方向的扩图比例设为大于 0%。'));
+                return;
+            }
             const initialPresetName = canvasAgentQuickToolPresetName('outpaint');
+            const stillCurrent = () => {
+                const current = getOutpaintOverlayState();
+                return current.active && current.nodeId === s.nodeId && current.version === s.version
+                    && canvasAgentQuickToolPresetName('outpaint') === initialPresetName
+                    && getNode(s.nodeId) === node;
+            };
             let entry = findCanvasAgentPresetEntryByAlias(initialPresetName);
             if (!entry) {
-                showToast(t('Outpaint preset is unavailable: {preset}', 'Outpaint preset 不可用：{preset}').replace('{preset}', initialPresetName || 'OneKey-Outpaint'));
+                showToast(t('Outpaint preset is unavailable: {preset}', '扩图预置不可用：{preset}').replace('{preset}', initialPresetName || 'QwenOutpaint'));
                 return;
             }
             const outpaintParams = {
@@ -579,7 +622,9 @@
                 scene_var_number9: s.left,
                 scene_var_number10: s.right
             };
+            if (normalizePresetName(entry.name || entry.display_name) === 'QwenOutpaint') outpaintParams.scene_var_number3 = 0;
             const resolvedPrompt = await resolveCanvasAgentOutpaintPrompt(agentState.input, s, node, entry, initialPresetName);
+            if (!stillCurrent()) return;
             let prompt = resolvedPrompt.prompt;
             const promptTarget = resolvedPrompt.promptTarget;
             const preflightGate = await ensureCanvasAgentPromptPreflightAllows(prompt, promptTarget, 'outpaint', {
@@ -589,6 +634,7 @@
                 userPrompt: String(agentState.input || '').trim(),
                 presetDefaults: resolvedPrompt.presetDefaults
             });
+            if (!stillCurrent()) return;
             if (!preflightGate.ok) {
                 setCanvasAgentMessage(preflightGate.error || t('Prompt preflight blocked outpaint.', '提示词预检查阻止了扩图。'));
                 return;
@@ -597,6 +643,7 @@
             const presetNode = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(node), {
                 collapsed: true
             }));
+            if (!presetNode) return;
             configureCanvasAgentQuickToolNode(presetNode, 'outpaint', outpaintParams);
             applyCanvasAgentPromptToGenerator(presetNode, prompt);
             const connections = connectCanvasAgentImagesToGenerator(presetNode, node, []);

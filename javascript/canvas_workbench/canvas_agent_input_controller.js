@@ -91,6 +91,7 @@
         }
 
         function onChange(evt) {
+            if (outpaintCall('onOutpaintPresetChange', evt)) return true;
             const decisionField = closest(evt, '[data-canvas-agent-decision-field]');
             if (decisionField) {
                 decisionCall('handleCanvasAgentDecisionFieldInput', decisionField);

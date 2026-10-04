@@ -798,6 +798,9 @@
     "Invalid Tile Source Size": "Invalid Tile Source Size",
     "tiles": "tiles",
     "Qwen2.1-Edit": "Qwen2.1-Edit",
+    "QwenPose": "Qwen2.1 Pose",
+    "QwenPose\u2B07": "Qwen2.1 Pose\u2B07",
+    "QwenPose Editor": "Qwen2.1 Pose Editor",
     "Qwen2.1-Edit\u2B07": "Qwen2.1-Edit\u2B07",
     "Qwen Image 2.1 Edit": "Qwen Image 2.1 Edit",
     "Qwen Image 2.1 Edit [up to 9 images]": "Qwen Image 2.1 Edit [up to 9 images]",
@@ -818,5 +821,16 @@
     "Target shorter edge (pixels)": "Target shorter edge (pixels)",
     "Temporal window (frames)": "Temporal window (frames)",
     "Temporal overlap (frames)": "Temporal overlap (frames)",
-    "Tiled VAE": "Tiled VAE"
+    "Tiled VAE": "Tiled VAE",
+    "QwenOutpaint": "Qwen Outpaint",
+    "QwenOutpaint\u2B07": "Qwen Outpaint\u2B07",
+    "Qwen Outpaint": "Qwen Outpaint",
+    "Maximum canvas (MP, 0 = Original)": "Maximum canvas (MP, 0 = Original)",
+    "Edge feather (pixels)": "Edge feather (pixels)",
+    "Qwen Image 2.1 Gaussian Viewpoint": "Qwen Image 2.1 Gaussian Viewpoint",
+    "QwenGaussian": "Qwen Free Viewpoint+",
+    "QwenGaussian\u2B07": "Qwen Free Viewpoint+\u2B07",
+    "Image 1 original -> Gaussian Studio -> Image 2 camera render": "Image 1 original -> Gaussian Studio -> Image 2 camera render",
+    "Original image (Image 1)": "Original image (Image 1)",
+    "Gaussian camera render (Image 2)": "Gaussian camera render (Image 2)"
 }
