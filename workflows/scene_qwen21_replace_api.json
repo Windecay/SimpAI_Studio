@@ -13,7 +13,7 @@
       "height": 1024,
       "cfg": 1,
       "steps": 25,
-      "var_number": 0,
+      "var_number": 1536,
       "var_number2": 0,
       "var_number3": 0,
       "var_number4": 0,
@@ -121,8 +121,8 @@
         0
       ],
       "images.image_2": [
-        "simpai_qwen21_masked_edit",
-        1
+        "simpai_qwen21_clothing_scale",
+        0
       ]
     },
     "class_type": "TextEncodeQwenImage21",
@@ -716,6 +716,42 @@
     "_meta": {
       "title": "Qwen 2.1 outfit swap with optional sampling mask"
     }
+  },
+  "simpai_qwen21_clothing_size": {
+    "class_type": "GetImageSize",
+    "inputs": {"image": ["simpai_qwen21_masked_edit", 1]},
+    "_meta": {"title": "Clothing reference dimensions"}
+  },
+  "simpai_qwen21_clothing_width": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "expression": "max(32, round(a * min(1, max(32, floor(c / 32) * 32) / max(a, b)) / 32) * 32) if c > 0 else a",
+      "values.a": ["simpai_qwen21_clothing_size", 0],
+      "values.b": ["simpai_qwen21_clothing_size", 1],
+      "values.c": ["1", 10]
+    },
+    "_meta": {"title": "Clothing reference width within edge limit"}
+  },
+  "simpai_qwen21_clothing_height": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "expression": "max(32, round(b * min(1, max(32, floor(c / 32) * 32) / max(a, b)) / 32) * 32) if c > 0 else b",
+      "values.a": ["simpai_qwen21_clothing_size", 0],
+      "values.b": ["simpai_qwen21_clothing_size", 1],
+      "values.c": ["1", 10]
+    },
+    "_meta": {"title": "Clothing reference height within edge limit"}
+  },
+  "simpai_qwen21_clothing_scale": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["simpai_qwen21_masked_edit", 1],
+      "upscale_method": "area",
+      "width": ["simpai_qwen21_clothing_width", 1],
+      "height": ["simpai_qwen21_clothing_height", 1],
+      "crop": "disabled"
+    },
+    "_meta": {"title": "Clothing reference within maximum edge"}
   },
   "simpai_qwen21_source_scale": {
     "class_type": "ImageScale",
