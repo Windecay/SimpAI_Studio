@@ -3457,6 +3457,7 @@
     let modalBackdropPointerStarted = false;
     let modalTouchPoint = null;
     let roleplayPresenceDrag = null;
+    let chatMediaDragDepth = 0;
     let describeViewportSyncFrame = 0;
     let describeKeyboardSyncFrame = 0;
 
@@ -13793,6 +13794,11 @@
         modal.hidden = true;
         modal.innerHTML = `
 <div class="describe-vlm-chat-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(t('VLM/LLM AI chat', 'VLM/LLM AI对话'))}">
+  <div class="describe-vlm-chat-drop-overlay" data-describe-vlm-chat-drop-overlay role="status" aria-live="polite" aria-hidden="true" hidden>
+    <i class="fa-solid fa-images" aria-hidden="true"></i>
+    <strong data-describe-vlm-chat-drop-title>${escapeHtml(roleplayDictionaryText('Drop to attach media'))}</strong>
+    <small data-describe-vlm-chat-drop-detail>${escapeHtml(roleplayDictionaryText('Images, videos and audio'))}</small>
+  </div>
   <div class="describe-vlm-chat-head">
     <strong class="describe-vlm-chat-title"><i class="fa-solid fa-comments"></i><span class="describe-vlm-chat-title-text">${escapeHtml(t('VLM/LLM AI chat', 'VLM/LLM AI对话'))}</span>${window.SimpAIStudioHelp?.button('agent') || ''}</strong>
     <div class="describe-vlm-chat-model-pill" data-describe-vlm-chat-model aria-live="polite">
@@ -17450,6 +17456,7 @@
 
     function closeModal() {
         const modal = ensureModal();
+        setChatMediaDropFeedback(false);
         cancelVlmSkillDraft(modal);
         closeUserSystemPromptTemplateDialog(modal);
         stopVlmRuntimeStatusPolling();
@@ -22747,13 +22754,77 @@
         setStatus(`${t('Reference media attached.', '引用媒体已添加。')} ${imageUploadStatus(state.pendingImages)}`);
     }
 
+    function normalizeChatMediaFile(file) {
+        if (!file) return null;
+        if (/^(?:image|video|audio)\//i.test(file.type || '')) return file;
+        if (file.type && file.type !== 'application/octet-stream') return null;
+        const extension = String(file.name || '').split('.').pop().toLowerCase();
+        const mime = {
+            png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+            webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp',
+            avif: 'image/avif', svg: 'image/svg+xml', tif: 'image/tiff', tiff: 'image/tiff',
+            mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/mp4',
+            mp3: 'audio/mpeg', wav: 'audio/wav', flac: 'audio/flac',
+            m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', opus: 'audio/ogg'
+        }[extension];
+        return mime ? new File([file], file.name, { type: mime, lastModified: file.lastModified }) : null;
+    }
+
     function collectClipboardImageFiles(dataTransfer) {
-        const files = Array.from(dataTransfer?.files || []).filter((file) => /^(?:image|video|audio)\//i.test(file.type || ''));
+        const files = Array.from(dataTransfer?.files || []).map(normalizeChatMediaFile).filter(Boolean);
         if (files.length) return files;
         return Array.from(dataTransfer?.items || [])
-            .filter((item) => item.kind === 'file' && /^(?:image|video|audio)\//i.test(item.type || ''))
-            .map((item) => item.getAsFile())
+            .filter((item) => item.kind === 'file')
+            .map((item) => normalizeChatMediaFile(item.getAsFile?.()))
             .filter(Boolean);
+    }
+
+    function supportsChatMediaDrop(dataTransfer, readContents = false) {
+        if (!dataTransfer) return false;
+        const types = Array.from(dataTransfer.types || [], (type) => String(type).toLowerCase());
+        if (types.includes(ROLEPLAY_PRESENCE_DRAG_TYPE)) return false;
+        if (types.includes('files') || dataTransfer.files?.length
+            || Array.from(dataTransfer.items || []).some((item) => item.kind === 'file')) return true;
+        if (readContents) return !!firstImageDropUrl(dataTransfer);
+        // File contents and URL values may be inaccessible until the drop event.
+        if (types.some((type) => [
+            'text/uri-list', 'text/html', 'application/x-simpleai-gallery-original-url'
+        ].includes(type))) return true;
+        return !!firstImageDropUrl(dataTransfer);
+    }
+
+    function setChatMediaDropFeedback(active) {
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        modal?.classList.toggle('is-drag-over', active);
+        const overlay = modal?.querySelector('[data-describe-vlm-chat-drop-overlay]');
+        if (overlay) {
+            overlay.hidden = !active;
+            overlay.setAttribute('aria-hidden', active ? 'false' : 'true');
+            if (active) {
+                for (const [selector, key] of [
+                    ['[data-describe-vlm-chat-drop-title]', 'Drop to attach media'],
+                    ['[data-describe-vlm-chat-drop-detail]', 'Images, videos and audio']
+                ]) {
+                    const element = overlay.querySelector(selector);
+                    const text = roleplayDictionaryText(key);
+                    if (element && element.textContent !== text) element.textContent = text;
+                }
+            }
+        }
+        if (!active) chatMediaDragDepth = 0;
+    }
+
+    function handleChatMediaDragOver(evt) {
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        const inside = !!modal && !modal.hidden && modal.contains(eventTargetElement(evt.target));
+        if (!inside || roleplayPresenceDrag || !supportsChatMediaDrop(evt.dataTransfer)) {
+            if (!inside) setChatMediaDropFeedback(false);
+            return;
+        }
+        evt.preventDefault();
+        try { evt.dataTransfer.dropEffect = 'copy'; } catch (err) {}
+        chatMediaDragDepth = evt.type === 'dragenter' ? chatMediaDragDepth + 1 : Math.max(1, chatMediaDragDepth);
+        setChatMediaDropFeedback(true);
     }
 
     function firstUriFromList(text) {
@@ -22824,13 +22895,18 @@
         if (uri) return uri;
         const htmlSrc = normalizeImageDropSource(firstHtmlImageSrc(dataTransfer.getData('text/html')));
         if (htmlSrc) return htmlSrc;
-        return normalizeImageDropSource(dataTransfer.getData('text/plain'));
+        const plain = String(dataTransfer.getData('text/plain') || '').trim();
+        return /^(?:https?:\/\/|blob:|data:image\/|file:\/\/|\/)/i.test(plain)
+            ? normalizeImageDropSource(plain)
+            : '';
     }
 
     async function imageFileFromDropUrl(source) {
         if (!source) return null;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 15_000);
         try {
-            const response = await fetch(source, { credentials: 'same-origin' });
+            const response = await fetch(source, { credentials: 'same-origin', signal: controller.signal });
             if (!response.ok) return null;
             const blob = await response.blob();
             const mime = blob.type || 'image/png';
@@ -22840,16 +22916,21 @@
             return new File([blob], `dropped-image.${ext}`, { type: mime });
         } catch (err) {
             return null;
+        } finally {
+            window.clearTimeout(timeout);
         }
     }
 
     async function collectDroppedImageFiles(dataTransfer) {
+        // Capture files before awaiting a URL: the drag data store expires after dispatch.
+        const files = collectClipboardImageFiles(dataTransfer);
         const url = firstImageDropUrl(dataTransfer);
+        if (files.length && /^file:/i.test(url)) return files;
         if (url) {
             const file = await imageFileFromDropUrl(url);
             if (file) return [file];
         }
-        return collectClipboardImageFiles(dataTransfer);
+        return files;
     }
 
     function modalIsOpen() {
@@ -26372,7 +26453,10 @@
         document.querySelectorAll('[data-describe-vlm-chat-roleplay-presence-zone].is-drag-over').forEach((zone) => zone.classList.remove('is-drag-over'));
         document.getElementById('describe_vlm_chat_modal')?.classList.remove('is-roleplay-presence-dragging');
         roleplayPresenceDrag = null;
+        setChatMediaDropFeedback(false);
     });
+
+    document.addEventListener('dragenter', handleChatMediaDragOver, true);
 
     document.addEventListener('dragover', (evt) => {
         const zone = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-presence-zone]');
@@ -26387,18 +26471,25 @@
             zone.classList.add('is-drag-over');
             return;
         }
-        if (!modalIsOpen() || !eventInsideModal(evt)) return;
-        const hasImage = collectClipboardImageFiles(evt.dataTransfer).length > 0 || !!firstImageDropUrl(evt.dataTransfer);
-        if (!hasImage) return;
-        evt.preventDefault();
-        document.getElementById('describe_vlm_chat_modal')?.classList.add('is-drag-over');
-    });
+        if (isRoleplayPresenceDrag) return;
+        handleChatMediaDragOver(evt);
+    }, true);
 
-    document.addEventListener('dragleave', () => {
-        document.getElementById('describe_vlm_chat_modal')?.classList.remove('is-drag-over');
-    });
+    document.addEventListener('dragleave', (evt) => {
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (!modal?.contains(eventTargetElement(evt.target))) return;
+        chatMediaDragDepth = Math.max(0, chatMediaDragDepth - 1);
+        const next = eventTargetElement(evt.relatedTarget);
+        const nextInside = !!next && modal.contains(next);
+        if (!nextInside && (next || chatMediaDragDepth === 0 || evt.target === modal)) {
+            setChatMediaDropFeedback(false);
+        }
+    }, true);
+
+    window.addEventListener('blur', () => setChatMediaDropFeedback(false));
 
     document.addEventListener('drop', async (evt) => {
+        setChatMediaDropFeedback(false);
         const zone = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-presence-zone]');
         const isRoleplayPresenceDrag = !!roleplayPresenceDrag
             || Array.from(evt.dataTransfer?.types || []).includes(ROLEPLAY_PRESENCE_DRAG_TYPE);
@@ -26423,13 +26514,20 @@
             roleplayPresenceDrag = null;
             return;
         }
-        if (!modalIsOpen() || !eventInsideModal(evt)) return;
-        const files = await collectDroppedImageFiles(evt.dataTransfer);
-        if (!files.length) return;
+        if (isRoleplayPresenceDrag) return;
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (!modal || modal.hidden || !modal.contains(eventTargetElement(evt.target))
+            || !supportsChatMediaDrop(evt.dataTransfer, true)) return;
         evt.preventDefault();
-        document.getElementById('describe_vlm_chat_modal')?.classList.remove('is-drag-over');
-        addPendingImageFiles(files);
-    });
+        evt.stopPropagation();
+        setStatus(roleplayDictionaryText('Reading dropped media...'));
+        const files = await collectDroppedImageFiles(evt.dataTransfer);
+        if (!files.length) {
+            setStatus(roleplayDictionaryText('Could not read the dropped media. Try pasting the image or choosing a file.'), true);
+            return;
+        }
+        await addPendingImageFiles(files);
+    }, true);
 
     document.addEventListener('pointerover', (evt) => {
         const identity = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-speaker-identity]');

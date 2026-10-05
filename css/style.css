@@ -5392,7 +5392,50 @@ html.describe-vlm-chat-resizing * {
 }
 
 .describe-vlm-chat-modal.is-drag-over .describe-vlm-chat-panel {
-  border-color: color-mix(in srgb, var(--button-primary-background-fill, #f97316) 62%, #ffffff 38%);
+  border-color: color-mix(in srgb, var(--button-primary-background-fill, #f97316) 62%, #ffffff 38%) !important;
+}
+
+.describe-vlm-chat-drop-overlay {
+  position: absolute;
+  inset: 10px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  border: 2px dashed var(--describe-chat-accent, #f97316);
+  border-radius: 6px;
+  background: rgba(31, 32, 37, 0.94);
+  color: var(--describe-chat-text, #f3f4f8);
+  text-align: center;
+  pointer-events: none;
+}
+
+.describe-vlm-chat-drop-overlay[hidden] {
+  display: none !important;
+}
+
+.describe-vlm-chat-drop-overlay > i {
+  margin-bottom: 4px;
+  color: var(--describe-chat-accent, #f97316);
+  font-size: 34px;
+}
+
+.describe-vlm-chat-drop-overlay > strong {
+  max-width: 100%;
+  font-size: 16px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-drop-overlay > small {
+  max-width: 100%;
+  color: var(--describe-chat-muted, #a4a8b4);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .describe-vlm-chat-head {
