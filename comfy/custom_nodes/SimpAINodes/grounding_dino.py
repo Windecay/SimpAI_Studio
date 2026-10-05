@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 import torch
 from groundingdino.util.inference import Model, get_phrases_from_posmap, load_model, preprocess_caption
-from ldm_patched.modules import model_management
-from ldm_patched.modules.model_patcher import ModelPatcher
+from comfy import model_management
+from comfy.model_patcher import ModelPatcher
 from torch.hub import download_url_to_file
 
 from .model_path_utils import find_model_in_dirs
