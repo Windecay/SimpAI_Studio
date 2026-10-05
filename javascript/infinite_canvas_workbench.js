@@ -408,7 +408,7 @@
     ];
     const CANVAS_AGENT_PRESET_QUEUE_STORAGE_KEY = canvasAgentPresetQueueStorageKey || 'simpai.canvas.agentPresetQueues.v1';
     const CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE = canvasAgentDefaultT2iPresetQueue || ['Z-imageT'];
-    const CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE = canvasAgentDefaultEditPresetQueue || ['Flux2-KleinEdit', 'MiniMax-H3(R2I)'];
+    const CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE = canvasAgentDefaultEditPresetQueue || ['Qwen2.1-Edit', 'Flux2-KleinEdit', 'MiniMax-H3(R2I)'];
     const CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE = canvasAgentDefaultI2vPresetQueue || ['Wan(I2V)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Dasiwa(I2V)'];
     const CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE = canvasAgentDefaultT2vPresetQueue || ['Wan(T2V)', 'MiniMax-H3(T2V)', 'Wan-TTP'];
     const CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE = canvasAgentDefaultVideoEditPresetQueue || ['Bernini-VideoEdit', 'Wan-Extent', 'Dasiwa-Extent'];
@@ -1460,7 +1460,7 @@
         audioPresetMode: 'auto',
         audioPreset: '',
         outpaintPreset: 'OneKey-Outpaint',
-        erasePreset: 'Eraser',
+        erasePreset: 'QwenEraser',
         replacePreset: 'Swap+',
         upscalePresetMode: 'uov_auto',
         upscalePreset: '',

@@ -33,7 +33,7 @@
         const queueStorageKey = String(configSource.presetQueueStorageKey || 'simpai.canvas.agentPresetQueues.v1');
         const defaultQueues = {
             t2i: Array.isArray(configSource.defaultT2iPresetQueue) ? configSource.defaultT2iPresetQueue : ['Z-imageT'],
-            edit: Array.isArray(configSource.defaultEditPresetQueue) ? configSource.defaultEditPresetQueue : ['Flux2-KleinEdit', 'MiniMax-H3(R2I)'],
+            edit: Array.isArray(configSource.defaultEditPresetQueue) ? configSource.defaultEditPresetQueue : ['Qwen2.1-Edit', 'Flux2-KleinEdit', 'MiniMax-H3(R2I)'],
             i2v: Array.isArray(configSource.defaultI2vPresetQueue) ? configSource.defaultI2vPresetQueue : ['Wan(I2V)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Dasiwa(I2V)'],
             t2v: Array.isArray(configSource.defaultT2vPresetQueue) ? configSource.defaultT2vPresetQueue : ['Wan(T2V)', 'MiniMax-H3(T2V)', 'Wan-TTP'],
             video_edit: Array.isArray(configSource.defaultVideoEditPresetQueue) ? configSource.defaultVideoEditPresetQueue : ['Bernini-VideoEdit', 'Wan-Extent', 'Dasiwa-Extent'],
@@ -198,7 +198,12 @@
                 const raw = storage && typeof storage.getItem === 'function' ? storage.getItem(queueStorageKey) : '{}';
                 const stored = JSON.parse(raw || '{}');
                 const values = Array.isArray(stored?.[config.key]) ? stored[config.key] : fallback;
-                const queue = values.map(item => normalizePresetName(item)).filter(Boolean);
+                let queue = values.map(item => normalizePresetName(item)).filter(Boolean);
+                const legacyEditQueue = ['Flux2-KleinEdit', 'MiniMax-H3(R2I)'];
+                if (config.key === 'edit' && queue.length === legacyEditQueue.length
+                    && queue.every((name, index) => name === legacyEditQueue[index])) {
+                    queue = fallback.map(item => normalizePresetName(item)).filter(Boolean);
+                }
                 if (preferred) queue.unshift(preferred);
                 return Array.from(new Set(queue));
             } catch (err) {

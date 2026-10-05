@@ -284,6 +284,8 @@ PRESET_STORE_ORDER = [
     "FluxKontext",
     "Swap+",
     "Qwen2.1-Edit",
+    "QwenEraser",
+    "QwenOutfitSwap",
     "QwenEdit+",
     "Qwen2512",
     "QwenA2R",

@@ -74,6 +74,22 @@
       "sections": ["2026-10-04 Qwen2.1 Pose Editing / Qwen2.1 姿势编辑"]
     },
     {
+      "key": "qwen_outfit_swap",
+      "title": {"en": "Qwen Outfit Swap", "cn": "Qwen换装"},
+      "priority": 705,
+      "exclusive": true,
+      "keywords": ["qwenoutfitswap", "qwen outfit swap", "outfitswap", "qwenreplace", "qwen replace", "qwen替换", "qwen换装", "换装", "试衣", "outfit swap", "clothing transfer", "virtual try-on"],
+      "sections": ["2026-10-05 Qwen Outfit Swap Sampling Mask / Qwen换装采样范围"]
+    },
+    {
+      "key": "qwen_erase",
+      "title": {"en": "Qwen Erase", "cn": "Qwen擦除"},
+      "priority": 704,
+      "exclusive": true,
+      "keywords": ["qweneraser", "qwen eraser", "qwen erase", "qwen擦除", "qwen 擦除", "qwen2.1擦除", "qwen2.1 擦除"],
+      "sections": ["2026-10-05 Qwen Erase Preset"]
+    },
+    {
       "key": "pose_camera",
       "title": {"en": "Pose And Camera", "cn": "姿势与视角"},
       "priority": 700,

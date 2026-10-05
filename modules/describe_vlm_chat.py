@@ -211,7 +211,8 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "An unqualified request such as `use Anima to generate it` counts as a session preference. "
     "Do not return that preference action only when the user explicitly says the choice is for this image or one time. "
     "The generate_image action is a task request, not an execution plan and not proof that generation has started. The application selects and validates the Preset, theme, task_method, models, input slots, and interaction requirements. "
-    "For image work, include the exact attached media refs in visual input order. Use image_edit for a general one-image edit and multi_image_edit for a general edit using two or more images. "
+    "For image work, include the exact attached media refs in visual input order. Use image_edit for a general one-image edit and multi_image_edit for a general edit using two or more images. Prefer Qwen2.1-Edit for both tasks when ready; preserve an explicitly selected compatible preset or session preference. Use <image1> through <image9> for Qwen2.1 references, not H3 <Picture N> labels. "
+    "For requests to erase or remove a named object, such as a cup, balloon, person, or watermark, use image_object_removal with the source image ref. Describe the target and its location, reconstruct the background naturally, and preserve unrelated content. The application prefers QwenEraser when ready. A painted mask is optional: do not ask the user to paint one before executing a text-directed removal. If the source image is missing, the application will request it. Keep the existing automatic-generation or confirmation preference. "
     "For video work, use text_to_video with no refs, image_to_video with one image ref, multi_image_to_video with two or more image refs, audio_to_video with audio refs only, image_audio_to_video with image and audio refs, and video_audio_to_video whenever a reference video is included. "
     "MiniMax-H3(T2V) is text-to-video, MiniMax-H3(I2V) uses the first image as the first frame and an optional second image as the last frame, and MiniMax-H3(R2V) accepts up to nine ordered images, three ordered videos, and three ordered standalone audio clips. Preserve the user's language and describe coherent motion, camera movement, timing, and matching generated audio. "
     "For MiniMax-H3(R2V), preserve the attached source order in media_refs. Refer to inputs in the prompt with independently numbered tags such as <Picture 1>, <Video 1>, and <Audio 1>; use only tags listed in the attached media manifest. A reference video's soundtrack remains paired with that video. "
@@ -224,7 +225,8 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "Use image_detail_enhance for automatic face, hand, eye, or local detail repair through a Classic Preset Enhance workflow, and include enhance_targets using only face, hand, and eye. "
     "Use the matching specialized task when requested: text_to_video, image_to_video, multi_image_to_video, image_upscale, image_restore, image_detail_enhance, image_background_removal, image_object_removal, image_object_transfer, image_outpaint, image_relight, image_style_transfer, image_face_swap, image_pose_transfer, image_pose_extraction, image_anime_to_real, image_view_synthesis, image_depth_estimation, or image_expression_transfer. "
     "When the user asks the character or person in image 1 to wear clothing or an outfit from image 2, use image_object_transfer with image 1 first as the target and image 2 second as the clothing reference. This is an image edit, never text_to_image. "
-    "For image_outpaint, write prompt as a concise English natural-language FLUX/T5 outpaint instruction, and express the requested expansion as percentage intent in outpaint.up/down/left/right. Use 0 for directions the user excluded. "
+    "For image_outpaint, prefer QwenOutpaint when ready, with OneKey-Outpaint as the Flux alternative. For QwenOutpaint, begin with 'Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.' and optionally append Scene: with the requested continuation in the user's language. Use the English FLUX/T5 instruction contract only when OneKey-Outpaint is selected. Express the requested expansion as percentage intent in outpaint.up/down/left/right; default to 15 for each direction and use 0 for directions the user excluded. "
+    "For image_pose_transfer, prefer QwenPose when ready. Keep media_refs in character/source image then pose-reference order. The application binds the pose reference to QwenPose's <image 1> canvas and the character/source to <image 2>; write the instruction using those labels, preserve the character and scene of <image 2>, and transfer only the pose from <image 1>. MiniMax-H3(Pose) remains an alternative using character/source <Picture 1> and pose <Picture 2>. "
     "Do not choose or invent a Preset, theme, task_method, input slot, model, API route, or canvas node. "
     "Do not choose or invent a parameter profile. Set preset_hint or parameter_profile_hint only when the user's latest message explicitly names it. Never invent media refs. "
     "Supported aspect_ratio values are auto, 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 7:4, and 4:7. "
@@ -405,12 +407,12 @@ SimpAI UI guide skill:
   - For relighting or matching foreground/background lighting, recommend Relight or Flux2-AngleLight.
   - For anime-to-real or stylized-to-real character conversion, recommend Flux2-A2R or Krea2-A2R. Krea2-A2R uses the required trigger 'transform the image to realistic photograph'; preserve it when rewriting prompts.
   - For style transfer, recommend StyleTransfer+ with its 110 prompt-style presets. Do not recommend the older SDXL style-transfer preset route.
-  - For erasing unwanted areas or cleanup, recommend Qwen2.1-Edit for an instruction-only edit, or Eraser / QwenEdit+ when a painted mask is needed.
-  - For seamless outpainting / image-edge expansion (无缝扩图 / 边缘拓展), recommend OneKey-Outpaint first. It uses the Flux1.Fill model for general-purpose image boundary extension across subjects, and is often used to change composition, change aspect ratio, or add missing surrounding elements.
+  - For object removal or cleanup, recommend QwenEraser with one source image and a clear target instruction. A painted mask is optional. Canvas Agent and VLM Chat Creative mode default to this route; an explicitly selected Eraser still requires its mask.
+  - For seamless outpainting / image-edge expansion (无缝扩图 / 边缘拓展), recommend QwenOutpaint first. It uses Qwen Image 2.1 with the outpaint LoRA and expands beyond the original image, preserving its existing content; each edge defaults to 15%. Keep OneKey-Outpaint, using Flux1.Fill, as the alternative.
 - Face, body, pose, and camera:
   - For face swap on still images, recommend QwenFaceSwap first. It uses exactly two images in target/base then source-identity order and detects the target face without requiring a painted mask. Use Swapface as an alternative when its models are the available ready route.
   - For expression editing on still portraits, recommend LivePortrait Exp. It edits face rotation, eyes, mouth, smile, and optional reference-expression strength; treat it as an expression editor, not an identity face-swap route.
-  - For pose transfer or pose-driven final-image edits, recommend MiniMax-H3(Pose) first: use the character/source image as <Picture 1> and the Pose Editor output as <Picture 2>. It uses 10 steps with the standard H3 Turbo distillation LoRA, as in H3 image editing; no additional pose-specific LoRA is required. QwenPose remains an alternative. Use OneKeyPose / SDPose only for skeleton extraction.
+  - For pose transfer or pose-driven final-image edits, recommend QwenPose first. It uses Qwen Image 2.1 and the Pose Studio LoRA: the Pose Editor output is <image 1> in the canvas, and the character/source image is <image 2> in the first extra image slot. Preserve the character and original scene of <image 2> and transfer only the pose from <image 1>. MiniMax-H3(Pose) remains an alternative: use the character/source as <Picture 1> and the pose as <Picture 2>. H3 uses 10 steps with the standard H3 Turbo distillation LoRA; no additional pose-specific LoRA is required. Use OneKeyPose / SDPose only for skeleton extraction.
   - For camera angle / multi-view control, recommend QwenMultiAngle; for product or character three-view sheets, recommend OneKeyKontext IP 3-View.
   - For Gaussian-splat-guided viewpoint changes, recommend QwenGaussian (Qwen自由视角+) using Qwen Image 2.1 and QI2.1_AnyAngle: image1 is the original, image2 is the desired camera render. For ordinary detail-oriented Qwen edits, recommend QwenEdit+ when relevant.
 - Image-to-video / video generation:
@@ -631,12 +633,19 @@ CREATIVE_REFERENCE_OPT_OUT_RE = re.compile(
     r"\b(?:attached|uploaded|reference)\b.{0,15}\b(?:images?|pictures?|photos?|media)\b",
     re.I,
 )
+CREATIVE_OBJECT_REMOVAL_INTENT_RE = re.compile(
+    r"(?<!不要)(?<!别)(?<!不)(?:擦除|擦掉|抹除|抹掉|消除|去掉|去除|移除|删掉)|"
+    r"删除.{0,16}(?:物体|人物|路人|对象|东西|水印|字幕|图中|图里|画面中)|"
+    r"\bobject removal\b|(?<!do not )(?<!don't )(?<!never )(?<!not )\b(?:remove|erase)\b\s+\S",
+    re.I,
+)
 CREATIVE_EDIT_INTENT_RE = re.compile(
     r"("
     r"修图|改图|编辑.{0,20}(?:图|图片|图像|照片)|修改.{0,30}(?:图|图片|图像|照片)|"
     r"(?:把|将|给).{0,50}(?:改|换|变|加|删|移除|替换|放大|超分|修复|抠图|扩图|打光|迁移)|"
     r"(?:^|[，。！？\s])(?:换成|改成|增加|删除|移除|替换|复刻|重绘|放大|超分|修复|抠图|扩图).{0,40}|"
     r"\b(?:edit|modify|change|replace|remove|add|upscale|restore|outpaint|relight)\b.{0,30}\b(?:image|picture|photo)\b"
+    rf"|{CREATIVE_OBJECT_REMOVAL_INTENT_RE.pattern}"
     r")",
     re.I,
 )
@@ -4348,7 +4357,7 @@ def _generation_media_refs_for_task(media_refs, task, available_media_refs=None)
 
 SPECIALIZED_IMAGE_TASK_PATTERNS = (
     ("image_detail_enhance", re.compile(r"(?:修手|修脸|修眼|精修.{0,4}(?:手|脸|眼|细节)|修(?!改|图)(?:一下)?.{0,12}(?:手部|手指|手|面部|脸部|脸|五官|眼睛|眼部|眼)|(?:修复|改善|优化).{0,6}(?:手部|手指|面部|脸部|五官|眼睛|眼部)|(?:手部|手指|面部|脸部|五官|眼睛|眼部|眼).{0,8}(?:修(?:得|一下)?|精修|修复|改善|优化)|(?:fix|repair|enhance).{0,10}(?:hand|finger|face|eye)|detail enhancement)", re.I)),
-    ("image_background_removal", re.compile(r"(?:\u53bb(?:\u6389)?|\u79fb\u9664|\u5220\u9664).{0,8}(?:\u80cc\u666f|\u5e95\u8272)|\u62a0\u56fe|remov(?:e|ing).{0,12}background", re.I)),
+    ("image_background_removal", re.compile(r"(?:\u53bb(?:\u6389)?|\u79fb\u9664|\u5220\u9664).{0,8}(?:背景(?![中里上的内外])|底色)|\u62a0\u56fe|remov(?:e|ing).{0,12}background", re.I)),
     ("image_outpaint", re.compile(r"\u6269\u56fe|\u6269\u5c55.{0,6}(?:\u753b\u5e03|\u753b\u9762|\u8fb9\u7f18)|outpaint", re.I)),
     ("image_upscale", re.compile(r"\u8d85\u5206|\u9ad8\u6e05\u5316|(?:\u653e\u5927|\u63d0\u9ad8|\u63d0\u5347).{0,8}(?:\u5206\u8fa8\u7387|\u6e05\u6670\u5ea6|\u50cf\u7d20)|upscal|super[-_ ]?resolution", re.I)),
     ("image_restore", re.compile(r"\u8001\u7167\u7247|(?:\u4fee\u590d|\u590d\u539f).{0,8}(?:\u7167\u7247|\u56fe\u7247|\u56fe\u50cf)|\u53bb\u5212\u75d5|photo restoration|restore.{0,8}(?:photo|image)", re.I)),
@@ -4362,7 +4371,7 @@ SPECIALIZED_IMAGE_TASK_PATTERNS = (
     ("image_depth_estimation", re.compile(r"\u6df1\u5ea6\u56fe|\u4f30\u8ba1.{0,6}\u6df1\u5ea6|depth map|depth estimation", re.I)),
     ("image_expression_transfer", re.compile(r"\u8868\u60c5\u8fc1\u79fb|\u53c2\u8003.{0,6}\u8868\u60c5|expression transfer", re.I)),
     ("image_object_transfer", re.compile(r"\u7269\u4f53\u8fc1\u79fb|\u7279\u5f81\u8fc1\u79fb|\u6362\u88c5|\u670d\u88c5\u8fc1\u79fb|\u6750\u8d28\u8fc1\u79fb|(?=[\s\S]*(?:\u56fe\s*[\u4e001]|\u7b2c\u4e00\u5f20(?:\u56fe)?))(?=[\s\S]*(?:\u56fe\s*[\u4e8c2]|\u7b2c\u4e8c\u5f20(?:\u56fe)?))(?=[\s\S]*(?:\u8863\u670d|\u670d\u88c5|\u7a7f\u642d|\u9020\u578b))(?=[\s\S]*(?:\u7a7f\u4e0a|\u6362\u4e0a|\u6539\u7a7f|\u7a7f\u5230|\u6362\u5230|\u5957\u7528|\u8fc1\u79fb))|object transfer|feature transfer|clothing transfer|(?=[\s\S]*(?:(?:image|photo)\s*(?:1|one)|first\s+(?:image|photo)))(?=[\s\S]*(?:(?:image|photo)\s*(?:2|two)|second\s+(?:image|photo)))(?=[\s\S]*(?:outfit|clothes|clothing|dress))(?=[\s\S]*(?:wear|use|apply|transfer|put\s+on))", re.I)),
-    ("image_object_removal", re.compile(r"(?:\u53bb(?:\u6389)?|\u79fb\u9664|\u5220\u9664|\u64e6\u9664).{0,10}(?:\u7269\u4f53|\u4eba\u7269|\u8def\u4eba|\u5bf9\u8c61|\u4e1c\u897f|\u6c34\u5370|\u5b57\u5e55)|object removal|remove.{0,10}(?:object|person|watermark|subtitle)", re.I)),
+    ("image_object_removal", CREATIVE_OBJECT_REMOVAL_INTENT_RE),
 )
 
 
@@ -4507,17 +4516,17 @@ GENERATION_PRESET_PRIORITIES = {
     "video_audio_to_video": ("MiniMax-H3(R2V)",),
     "image_upscale": ("Z-TTP", "Wan-TTP"),
     "image_restore": ("Imagerepair+", "Qwen2.1-Edit", "OneKeyKontext"),
-    "image_edit": ("MiniMax-H3(R2I)", "Qwen2.1-Edit", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
-    "multi_image_edit": ("MiniMax-H3(R2I)", "Qwen2.1-Edit", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
+    "image_edit": ("Qwen2.1-Edit", "MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
+    "multi_image_edit": ("Qwen2.1-Edit", "MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
     "image_detail_enhance": ("Z-imageT", "Anima", "Flux2-Klein", "Qwen2512", "Wan(T2I)", "Flux1-dev", "Illustrious(OB)", "Illustrious(MiaoKa)", "ChenkinXL", "SD1.5"),
     "image_background_removal": ("Removebg", "OneKeyKontext"),
-    "image_object_removal": ("Qwen2.1-Edit", "Flux2-KleinEdit", "Krea2-ImageEdit", "OneKeyKontext", "Eraser"),
+    "image_object_removal": ("QwenEraser", "Qwen2.1-Edit", "Flux2-KleinEdit", "Krea2-ImageEdit", "OneKeyKontext", "Eraser"),
     "image_object_transfer": ("Qwen2.1-Edit", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "Bernini-ImageEdit", "MiniMax-H3(R2I)", "OneKeyKontext", "Swap+"),
-    "image_outpaint": ("OneKey-Outpaint",),
+    "image_outpaint": ("QwenOutpaint", "OneKey-Outpaint"),
     "image_relight": ("Relight", "Flux2-AngleLight", "Qwen2.1-Edit", "OneKeyKontext"),
     "image_style_transfer": ("StyleTransfer+", "Qwen2.1-Edit"),
     "image_face_swap": ("QwenFaceSwap", "Qwen2.1-Edit", "Swapface"),
-    "image_pose_transfer": ("MiniMax-H3(Pose)", "QwenPose", "Qwen2.1-Edit"),
+    "image_pose_transfer": ("QwenPose", "MiniMax-H3(Pose)", "Qwen2.1-Edit"),
     "image_pose_extraction": ("OneKeyPose",),
     "image_anime_to_real": ("Flux2-A2R", "Krea2-A2R", "QwenA2R", "Qwen2.1-Edit"),
     "image_view_synthesis": ("QwenMultiAngle", "Qwen2.1-Edit", "OneKeyKontext"),
@@ -4528,7 +4537,7 @@ GENERATION_PRESET_PRIORITIES = {
 
 def _generation_preset_priorities(task):
     return GENERATION_PRESET_PRIORITIES.get(task) or (
-        ("MiniMax-H3(R2I)", "Qwen2.1-Edit", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext")
+        ("Qwen2.1-Edit", "MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext")
         if task in {"image_edit", "multi_image_edit"}
         else ("Z-imageT", "Anima")
     )
@@ -5017,6 +5026,13 @@ def compile_creative_execution_plan(
         else []
         for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS
     }
+    if (
+        task == "image_pose_transfer"
+        and str(capability.get("name") or "").lower() == "qwenpose"
+        and slot_map["image"][:2] == ["scene_canvas_image", "scene_input_image1"]
+    ):
+        # Chat pose inputs stay character-first; QwenPose's encoder is pose-first.
+        slot_map["image"] = ["scene_input_image1", "scene_canvas_image"]
     type_map = _generation_media_type_map(available_media_refs)
     slot_positions = {media_type: 0 for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS}
     bindings = []

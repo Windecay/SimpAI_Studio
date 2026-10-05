@@ -36,7 +36,7 @@
       "audioPresetMode": "auto",
       "audioPreset": "",
       "outpaintPreset": "QwenOutpaint",
-      "erasePreset": "Eraser",
+      "erasePreset": "QwenEraser",
       "replacePreset": "Swap+",
       "upscalePresetMode": "uov_auto",
       "upscalePreset": "",

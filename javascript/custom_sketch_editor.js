@@ -1056,9 +1056,9 @@
             [key, Math.round(Math.min(100, Math.max(0, Number(values[key]) || 0)))]));
     }
 
-    function qwenOutpaintGeometry(sourceWidth, sourceHeight, values, maxMegapixels = 0) {
+    function qwenOutpaintGeometry(sourceWidth, sourceHeight, values) {
         const percentages = outpaintPercentages(values);
-        // Match Python round (ties to even), including the 32px alignment and MP limit.
+        // Preview the restored output size, with Python round (ties to even) and 32px alignment.
         const roundEven = (value) => {
             const floor = Math.floor(value);
             return value - floor === 0.5 ? floor + (floor % 2) : Math.round(value);
@@ -1072,17 +1072,7 @@
                 height: Math.max(32, Math.ceil((h + top + roundEven(h * percentages.down / 100)) / 32) * 32),
             };
         };
-        let result = geometry(sourceWidth, sourceHeight);
-        const maxPixels = Math.max(0, Number(maxMegapixels) || 0) * 1000000;
-        if (maxPixels && result.width * result.height > maxPixels) {
-            let scale = Math.sqrt(maxPixels / (result.width * result.height));
-            result = geometry(Math.max(1, Math.floor(sourceWidth * scale)), Math.max(1, Math.floor(sourceHeight * scale)));
-            while (result.width * result.height > maxPixels && (result.sourceWidth > 1 || result.sourceHeight > 1)) {
-                scale = Math.min(0.99, Math.sqrt(maxPixels / (result.width * result.height)));
-                result = geometry(Math.max(1, Math.floor(result.sourceWidth * scale)), Math.max(1, Math.floor(result.sourceHeight * scale)));
-            }
-        }
-        return result;
+        return geometry(sourceWidth, sourceHeight);
     }
 
     function bindSketchDockAutoHide(dock) {
@@ -1346,7 +1336,7 @@
         }
 
         function outpaintGeometry() {
-            return qwenOutpaintGeometry(width, height, outpaintDraft, outpaintConfig.maxMegapixels);
+            return qwenOutpaintGeometry(width, height, outpaintDraft);
         }
 
         function refreshOutpaintControl() {

@@ -391,9 +391,14 @@ def is_fake_or_suspicious_ip(ip):
 
 def is_port_available(port, host='127.0.0.1'):
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind((host, port))
-            return True
+        # Windows can allow overlapping wildcard and specific-address binds.
+        # Check both without sharing; close each probe before checking the next.
+        for bind_host in dict.fromkeys(('0.0.0.0', host)):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                s.bind((bind_host, port))
+        return True
     except Exception:
         return False
 def find_available_port(start_port=8187, max_attempts=100, suppress_logging=False, host=None, reserved_ports=None):
@@ -435,12 +440,7 @@ def find_available_port(start_port=8187, max_attempts=100, suppress_logging=Fals
                 logger.warning(f"常规端口范围被占用，使用随机端口: {port}")
             return port
 
-    fallback_port = start_port
-    while fallback_port in excluded_ports:
-        fallback_port += 1
-    if not suppress_logging:
-        logger.error(f"无法找到可用端口，尝试使用端口: {fallback_port}")
-    return fallback_port
+    raise RuntimeError(f"No available Comfyd port near {start_port}")
 
 def _get_local_comfyd_input_dir():
     candidates = [

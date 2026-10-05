@@ -1,0 +1,175 @@
+{
+  "supported_tasks": [
+    "image_object_removal"
+  ],
+  "prompt_agent_required": true,
+  "default_engine": {
+    "backend_engine": "Qwen",
+    "backend_params": {
+      "pe_model": "None"
+    },
+    "engine_type": "image",
+    "disvisible": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection"
+    ],
+    "disinteractive": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection"
+    ],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "m1.1",
+      "theme": [
+        "Qwen Erase"
+      ],
+      "theme_labels": {
+        "Qwen Erase": {
+          "en": "Qwen Erase",
+          "zh": "Qwen擦除"
+        }
+      },
+      "theme_title": "Qwen Erase",
+      "disable_canvas_mask": false,
+      "director_capability": {
+        "image_policy": "required",
+        "audio_policy": "forbidden",
+        "video_policy": "forbidden",
+        "min_images": 1,
+        "max_images": 1,
+        "image_modes": [
+          "single"
+        ],
+        "audio_output": "silent",
+        "mixed_segments": false
+      },
+      "disvisible": [
+        "scene_additional_prompt",
+        "scene_additional_prompt_2",
+        "scene_input_image1",
+        "scene_input_image2",
+        "scene_input_image3",
+        "scene_input_image4",
+        "scene_input_image5",
+        "scene_input_image6",
+        "scene_input_image7",
+        "scene_input_image8",
+        "scene_var_number2",
+        "scene_var_number3",
+        "scene_var_number5",
+        "scene_var_number6",
+        "scene_var_number7",
+        "scene_var_number8",
+        "scene_var_number9",
+        "scene_var_number10",
+        "scene_switch_option1",
+        "scene_switch_option2",
+        "scene_switch_option3",
+        "scene_switch_option4",
+        "scene_refiner_model",
+        "scene_video",
+        "scene_reference_video",
+        "scene_audio",
+        "scene_video_duration",
+        "sam3_input_video",
+        "sam3_mask_video",
+        "scene_batch",
+        "minimax_h3_storyboard_control",
+        "scene_aspect_ratio"
+      ],
+      "task_method": {
+        "Qwen Erase": "qwen21_erase"
+      },
+      "prompt": {
+        "Qwen Erase": "Remove the selected object from the image and reconstruct the background naturally. Preserve all unrelated content."
+      },
+      "agent_prompt": {
+        "Qwen Erase": "Write one direct object-removal instruction for Qwen Image 2.1 using the user's source image. State what should be removed and reconstruct the background naturally. Preserve all unrelated content. Preserve user-provided image numbers when identifying the source, but with this single user image refer to the image naturally instead of adding image tags. Write Chinese instructions in Chinese and English instructions in English. Preserve quoted text verbatim. A painted canvas mask is optional; when present it identifies the selected content without requiring object recognition. The workflow crops the selection with surrounding context, paints an opaque red region on the crop, adds the removal instructions automatically, and applies the same original-color matching as Krea2 editing before stitching the crop back at the original image dimensions using an outward edge transition and generated alpha. Automatic processing resolution follows the selection and its context, preserves aspect ratio, and uses a native 2K pixel budget with up to a 4096-pixel long edge. A manual processing resolution overrides the automatic budget. This limits only the crop, not the final image size. The model receives one image, with no separate mask image. Do not add internal color instructions or mask image numbers. Without a mask, describe the target explicitly. Do not request unrelated changes. Return only the removal instruction, with no explanation or JSON."
+      },
+      "var_number_title": "Erase processing resolution (0 = Auto)",
+      "var_number_min": 0,
+      "var_number_max": 4096,
+      "var_number_step": 32,
+      "var_number": {
+        "Qwen Erase": 0
+      },
+      "resolution_control": {
+        "mode": "input_passthrough",
+        "source": "scene_canvas",
+        "interactive": false,
+        "frontend_preprocess": false
+      },
+      "aspect_ratio": [
+        "origin|Original"
+      ],
+      "image_preprocessor_method": [
+        [
+          "-normalization"
+        ]
+      ],
+      "overwrite_step": {
+        "Qwen Erase": 25
+      },
+      "overwrite_step_min": 1,
+      "overwrite_step_max": 50,
+      "var_number4_title": "Match original colors",
+      "var_number4_min": 0,
+      "var_number4_max": 1.5,
+      "var_number4_step": 0.05,
+      "var_number4": {
+        "Qwen Erase": 1.0
+      }
+    }
+  },
+  "default_model": "qwen_image_2.1_int8_convrot.safetensors",
+  "default_clip_model": "qwen3vl_8b_int8_convrot.safetensors",
+  "default_vae": "qwen_image_2.1_vae_bf16.safetensors",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_loras": [
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ]
+  ],
+  "default_cfg_scale": 1,
+  "default_sample_sharpness": 2,
+  "default_sampler": "euler",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "1024*1024",
+  "default_resolution_quantize_step": 32,
+  "default_image_number": 1,
+  "default_overwrite_step": 25,
+  "default_prompt": "Remove the selected object from the image and reconstruct the background naturally. Preserve all unrelated content.",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,qwen_image_2.1_int8_convrot.safetensors,7256783064,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/diffusion_models/qwen_image_2.1_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+    "text_encoders,qwen3vl_8b_int8_convrot.safetensors,9350798360,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+    "vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors"
+  ]
+}

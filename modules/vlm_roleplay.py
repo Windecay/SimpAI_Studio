@@ -11748,7 +11748,7 @@ def build_character_appearance_generation_action(
     turn_id: str = "",
     lang: str = "cn",
 ) -> dict[str, Any] | None:
-    """Prepare a Flux2-KleinEdit action for a reviewable current-appearance image."""
+    """Prepare a Qwen2.1-Edit action for a reviewable current-appearance image."""
     normalized = normalize_roleplay_session(session)
     character = _character_card_for_id(normalized, character_id)
     if not character:
@@ -11783,6 +11783,7 @@ def build_character_appearance_generation_action(
     prompt = "\n".join(
         [
             f"Edit the base image into the character's current appearance. Prompt language: {reply_language}.",
+            "Use <image1> as the base image; additional images are fixed character identity references in their supplied order.",
             "Preserve the character's identity, face, hairstyle, body proportions, age, and recognizable traits from the fixed character reference.",
             "Change only the current clothing, accessories, visible condition, and pose or expression required by the current state.",
             "When a current appearance image is provided, use it as the base for visual continuity; use the fixed character references as identity anchors.",
@@ -11828,12 +11829,12 @@ def build_character_appearance_generation_action(
             "task": "image_edit",
             "media_refs": refs[:5],
             "instruction": prompt,
-            "preset_hint": "Flux2-KleinEdit",
+            "preset_hint": "Qwen2.1-Edit",
             "aspect_ratio": "auto",
             "image_number": 1,
         },
         "prompt": prompt,
-        "preset": "Flux2-KleinEdit",
+        "preset": "Qwen2.1-Edit",
         "preset_source": "roleplay_state_image",
         "aspect_ratio": "auto",
         "image_number": 1,

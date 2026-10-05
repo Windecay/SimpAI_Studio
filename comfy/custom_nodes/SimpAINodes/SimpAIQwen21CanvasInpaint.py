@@ -16,6 +16,7 @@ class SimpAIQwen21CanvasInpaint:
             "optional": {
                 "image": ("IMAGE",),
                 "mask_image": ("IMAGE",),
+                "use_source_latent": ("BOOLEAN", {"default": True}),
             },
         }
 
@@ -24,7 +25,7 @@ class SimpAIQwen21CanvasInpaint:
     FUNCTION = "prepare"
     CATEGORY = "SimpAI/image"
 
-    def prepare(self, vae, latent, width, height, image=None, mask_image=None):
+    def prepare(self, vae, latent, width, height, image=None, mask_image=None, use_source_latent=True):
         if image is None:
             original = torch.zeros((1, height, width, 3), dtype=torch.float32)
             return (latent, original, torch.ones((1, height, width), dtype=torch.float32))
@@ -52,6 +53,9 @@ class SimpAIQwen21CanvasInpaint:
 
         if not torch.any(mask > 0):
             return (latent, original, torch.ones_like(mask))
+
+        if not use_source_latent:
+            return (latent, original, mask)
 
         samples = vae.encode(source)
         return ({"samples": samples, "noise_mask": mask.unsqueeze(1)}, original, mask)

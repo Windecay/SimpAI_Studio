@@ -39,9 +39,9 @@
         "QwenOutpaint": "Begin with: Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged. Optionally append Scene: followed by the source scene and the user's requested continuation. Preserve the source subject, position, lighting, perspective and style. Do not invent another subject or change the existing picture. Return only the prompt."
       },
       "image_preprocessor_method": [["-normalization"]],
-      "var_number3_title": "Maximum canvas (MP, 0 = Original)",
+      "var_number3_title": "Generation canvas limit (MP, 0 = Auto 8 MP)",
       "var_number3_min": 0,
-      "var_number3_max": 16,
+      "var_number3_max": 8,
       "var_number3_step": 0.1,
       "var_number3": {"QwenOutpaint": 0},
       "var_number2_title": "Edge feather (pixels)",

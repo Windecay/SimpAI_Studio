@@ -129,8 +129,10 @@
             const explicitOverride = call(catalogSource, 'findCanvasAgentPresetEntryByAlias', null, opts.presetName || opts.overridePreset || '');
             const overrideEntry = explicitOverride || call(catalogSource, 'findCanvasAgentPresetInstructionOverride', null, opts.prompt || '');
             const overrideName = normalizePresetName(overrideEntry?.name || overrideEntry?.display_name || '');
-            if (overrideName && !queue.includes(overrideName)) {
-                if (preferred && queue[0] === preferred) queue.splice(1, 0, overrideName);
+            if (overrideName) {
+                const overrideIndex = queue.indexOf(overrideName);
+                if (overrideIndex >= 0) queue.splice(overrideIndex, 1);
+                if (preferred && queue[0] === preferred && overrideName !== preferred) queue.splice(1, 0, overrideName);
                 else queue.unshift(overrideName);
             }
             const uniqueQueue = Array.from(new Set(queue.filter(Boolean)));

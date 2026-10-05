@@ -97,6 +97,9 @@ SimpAI UI guide skill:
 - Bernini-ImageEdit is the Bernini-R still-image editing route for instruction
   edits, style conversion, replacement, inpainting, and color matching on an
   input image.
+- Qwen2.1-Edit is the default ordinary single-image and multi-image editor when
+  ready. It accepts up to nine ordered reference images; preserve an explicit
+  compatible model choice or session preference.
 - QwenEdit+ is heavier, slower, and more stable for image editing, with stronger
   reference consistency.
 - Nun/Nunchaku presets are retired, including NunFlux, NunQwenEdit+, NunSwap
@@ -110,9 +113,12 @@ SimpAI UI guide skill:
 
 ## Image Editing / Retouching
 
-- For instruction-based image editing, object add/remove/replace, text editing,
-  style conversion, inpainting, or optional mask editing, recommend QwenEdit+ /
-  Qwen-Edit-2511 first.
+- For ordinary instruction-based single-image or multi-image editing, recommend
+  Qwen2.1-Edit first, with image labels <image1> through <image9> in input order.
+  Keep QwenEdit+ / Qwen-Edit-2511 for optional painted-mask editing and the
+  existing natural-language style-editing route until its Qwen2.1 replacement
+  has been tested. Agent erasing defaults to QwenEraser with an optional mask;
+  brush replacement still defaults to Swap+.
 - For image object transfer / item migration (图像物品迁移 / 物品替换 /
   把一个物体迁移到另一张图), recommend Swap+ when the user wants strong
   painted-mask control. Swap+ uses the Flux1.Fill model and is suited for
@@ -143,8 +149,10 @@ SimpAI UI guide skill:
 - For anime-to-real or stylized-to-real character conversion, recommend
   Flux2-A2R.
 - For style transfer, recommend StyleTransfer+ with its 110 prompt-style presets. Do not recommend the older SDXL style-transfer preset route.
-- For erasing unwanted areas or cleanup, recommend Eraser or QwenEdit+ with a
-  mask.
+- For object removal or cleanup, recommend QwenEraser with one source image and
+  a clear target instruction. A painted mask is optional. In VLM Chat Creative
+  mode, a request such as "remove the cup" uses `image_object_removal` and the
+  attached source image without requiring Sketch or a separate mask image.
 - For seamless outpainting / image-edge expansion (无缝扩图 / 边缘拓展),
   recommend QwenOutpaint first. It uses Qwen Image 2.1 and the Outpaint LoRA,
   defaults to 15% expansion on all four sides, and extends outside the original
@@ -160,14 +168,14 @@ SimpAI UI guide skill:
 - For expression editing on still portraits, recommend LivePortrait Exp. It
   edits face rotation, eyes, mouth, smile, and optional reference-expression
   strength; treat it as an expression editor, not an identity face-swap route.
-- For pose transfer or pose-driven final-image edits, recommend MiniMax-H3(Pose)
-  first, with QwenPose as an alternative.
+- For pose transfer or pose-driven final-image edits, recommend QwenPose first.
+  MiniMax-H3(Pose) remains an alternative.
 - For pose preset workflows where image1 is the character/source image and
   image2 supplies the target body pose, recommend MiniMax-H3(Pose): it uses
   the H3 image-editing workflow with <Picture 1> from the character canvas and
   <Picture 2> exported from Pose Editor. It defaults to 10 steps with the
   standard H3 Turbo distillation LoRA; no additional pose-specific LoRA is
-  required. QwenPose remains the Qwen alternative. Both produce the edited
+  required. QwenPose is the default Qwen2.1 route. Both produce the edited
   final image, not only a skeleton control image.
 - QwenPose uses the opposite image order required by its Qwen2.1 Pose LoRA:
   image1 / the canvas is the pose, image2 / the first extra image is the character.
@@ -578,3 +586,162 @@ SimpAI UI guide skill:
   `VNCCS_QI2_PoseStudioV1.1.safetensors` at strength 1.0. No 2511 Lightning LoRA.
 - Follow `state.__lang` for guidance and display names: Chinese `Qwen2.1姿势`,
   English `Qwen2.1 Pose`; keep `QwenPose` as the catalog and saved-project key.
+
+## 2026-10-04 Qwen2.1 Editing Priorities
+
+- Ordinary infinite-canvas editing and chat Agent single/multi-image editing
+  prefer Qwen2.1-Edit. Chat outpaint prefers QwenOutpaint, pose editing prefers
+  QwenPose, and roleplay current-appearance images use Qwen2.1-Edit.
+- Chat pose inputs remain character/source then pose-reference in the media
+  list. QwenPose binds the pose to scene_canvas_image / <image 1> and the
+  character to scene_input_image1 / <image 2>; H3 retains character-first encoding.
+- Model readiness, task compatibility and explicitly selected presets continue
+  to apply. Natural-language style editing and brush erase/replace defaults
+  are not migrated here; region-editing presets and real-image testing come first.
+
+## 2026-10-04 Optional Qwen2.1 Region Editing
+
+Historical guidance; the current QwenEraser and QwenOutfitSwap behavior is described
+in the 2026-10-05 erase and outfit sampling sections below.
+
+- `QwenEraser` and `QwenReplace` are dedicated Qwen2.1 presets with no default
+  enhancement LoRA. Both require one source image but accept an optional mask.
+  QwenReplace accepts an optional second user image as the replacement reference;
+  a source image plus a textual replacement description is also valid.
+- Do not force a painted mask or a second user image when the selected Qwen
+  preset does not require them. Without a mask, describe the target explicitly.
+  The workflow adds its internal black-and-white region image and assigns image
+  numbers; user-facing instructions should describe source and reference roles
+  without inventing mask colors or internal reference numbers.
+- Preserve Eraser/Swap+ defaults and their required mask/reference interactions
+  until real-image evaluation approves a default change. Explicit Qwen preset
+  selection is allowed. Natural-language style editing remains unchanged.
+
+## 2026-10-04 Stable User Image Labels in Qwen Region Editing
+
+Historical multi-image mask design, superseded by the 2026-10-05 sections below.
+
+- The internal mask is appended after all user images. The source is always
+  `<image1>`; QwenReplace's optional replacement reference is always `<image2>`.
+  A nonempty mask is `<image3>` with a reference, or `<image2>` without one.
+- Preserve the user's source/reference labels and quoted text when rewriting
+  instructions. The workflow adds mask roles and white-edit/black-preserve
+  instructions automatically; do not invent or manually number the internal mask.
+- Adding or removing a mask must not renumber the user's reference image.
+  No mask, including an empty painted mask, adds no mask image or mask instruction.
+
+## 2026-10-04 Official Qwen Region-Edit Prompt Format
+
+- Keep user image numbers stable, but normalize natural-language references to
+  `<image1>` and `<image2>` for multiple user images. With only one user image,
+  use a natural reference to the image. The workflow handles the actual image
+  count and internal mask labels. Never rewrite quoted output text.
+- Name the target and the requested replacement, including which object or part
+  to take from a reference. Use general object-editing instructions, without
+  assuming a particular subject category. A generic prefill does not establish
+  which part of a complex reference the user intends to transfer.
+- Keep Chinese edit instructions in Chinese and English instructions in English.
+  Leave internal mask instructions to the workflow. The real-image checks have
+  not approved changing the default brush erase/replace presets.
+
+## 2026-10-04 Qwen Outfit Swap / Qwen换装
+
+- This section supersedes the earlier generic QwenReplace guidance. The preset
+  key is `QwenOutfitSwap`, displayed as `Qwen Outfit Swap` in English or
+  `Qwen换装` in Chinese, following `state.__lang`.
+  It is clothing-only, not a general object-transfer preset.
+- Require two user images: the person/source in `scene_canvas_image` / `<image1>`,
+  and the clothing reference in `scene_input_image1` / `<image2>`. A person wearing
+  the clothes, a flat lay or a product image may serve as the clothing reference.
+  Do not copy the reference person's face, body, pose or background.
+- Use `qwen-image-2.1-outfit-swap.safetensors` (1000-step main file) at strength
+  1.0. The preset and model package use the user's ModelScope mirror. No trigger
+  word or extra acceleration LoRA is required by this workflow.
+- The prefill requests a full outfit change. For a specific garment or retained
+  shoes/accessories, replace that instruction with the user's narrower request;
+  do not append a compulsory full-outfit instruction. Preserve the source face,
+  hair, hands, pose, background and framing. Keep Chinese instructions in Chinese
+  and English instructions in English; preserve quoted text and image numbers.
+- A mask is optional and used only for final compositing. It is not sent to the
+  model, consumes no image number and does not restrict the sampling latent.
+  The source is resized to the selected output size before encoding at
+  `resolution=0`; sampling uses the encoder's own latent output.
+- General brush replacement still defaults to `Swap+`, and erasing to `QwenEraser`.
+  `QwenEraser` and natural-language style editing are unchanged. Recommend this
+  preset only for clothing requests; do not claim the previous generic-reference
+  failures are solved. LoRA image-quality evaluation is still pending.
+
+## 2026-10-05 Qwen Outfit Swap Sampling Mask / Qwen换装采样范围
+
+- This section supersedes all earlier QwenReplace and outfit-mask instructions.
+  The preset key is `QwenOutfitSwap`, displayed as `Qwen Outfit Swap` in English
+  or `Qwen换装` in Chinese, following `state.__lang`.
+  It is clothing-only, not a general object-transfer preset.
+- Require two user images: the person/source in `scene_canvas_image` / `<image1>`,
+  and the clothing reference in `scene_input_image1` / `<image2>`. Transfer the
+  outfit, not the reference person or background. Keep these image numbers.
+- Use `qwen-image-2.1-outfit-swap.safetensors`, the 1000-step main file, at strength
+  1.0 from the user's ModelScope mirror. Keep Kitchen attention and the existing
+  GGUF, ten LoRA slots and LoRA Stack. No extra acceleration LoRA is enabled.
+- A nonempty painted mask restricts denoising during sampling, with the resized
+  source encoded as the initial latent and its mask passed as `noise_mask`.
+  It is not sent to the visual encoder as another image and consumes no image number.
+  Use the decoded result directly; do not paste a generated region over the source.
+  Without a mask, or with an empty mask, use the encoder's empty latent for normal
+  two-image editing. Preserve the selected output size and `resolution=0`.
+- The visible clothing-reference max-edge control defaults to 1536 pixels.
+  It limits only `<image2>`, keeping its aspect ratio with 32-pixel alignment;
+  smaller references are not enlarged beyond that alignment. A value of 0 skips
+  this resize. The person/source reference continues to use the selected output
+  size, which also determines the unmasked sampling latent.
+- The default prompt changes the whole outfit. Respect a narrower garment request
+  or retained shoes/accessories without adding a compulsory full-outfit change.
+  Preserve the source identity, face, hair, hands, pose, background and framing.
+  Keep Chinese instructions in Chinese and English instructions in English,
+  preserving quoted text. Do not invent a third-image mask instruction.
+- A region outside the sampling mask is retained in latent space, not pasted
+  pixel-for-pixel afterward. VAE reconstruction can still alter its pixels;
+  do not promise exact preservation or claim real-image quality is verified.
+  An outfit extending beyond the painted area requires an appropriately larger mask.
+- General brush replacement still defaults to `Swap+`, and erasing to `QwenEraser`.
+  `QwenEraser` and natural-language style editing are unchanged. The earlier
+  generic-reference failures remain known failures; outfit quality needs testing.
+
+## 2026-10-05 Qwen Erase Preset
+
+- `QwenEraser` requires one source image and accepts an optional painted mask.
+  It uses Qwen Image 2.1 with no default enhancement LoRA. This section supersedes
+  the earlier QwenEraser black-and-white mask reference instructions.
+- With a nonempty mask, the workflow crops the selection with surrounding context,
+  paints the selection solid red on a copy, and sends that single crop to the
+  model. There is no separate mask reference or mask image number. Soft strokes
+  also receive opaque red guidance. The full original stays available for stitching.
+- Processing resolution defaults to `0 = Auto`. It follows the crop's native size
+  and aspect ratio, with a 2048x2048 pixel budget and a 4096-pixel long-edge limit.
+  Small selections are not enlarged to a fixed 1024; larger selections can use
+  more than 1024 pixels. A manual nonzero value changes the long-edge limit and
+  pixel budget. Context grows with the selection, from 150 to 512 pixels per side.
+  The final output always retains the uploaded image dimensions, including 6000x4000.
+- The workflow adds generic removal and background reconstruction instructions.
+  A painted selection does not require object recognition or an additional VLM.
+  Describe the user's requested removal, preserve quoted text, and use natural
+  single-image references. Keep Chinese instructions in Chinese and English in
+  English. Do not add internal color instructions or invent mask image labels.
+- Sampling uses the encoder's empty latent with `resolution=0`, without a source
+  latent or sampling mask. Before stitching, the workflow uses Krea2 editing's
+  `SimpAIAutoProtectedColorMatch` against the clean resized crop. "Match original
+  colors" defaults to 1.0; zero disables the correction. Its confidence check
+  can bypass correction, and improvement is not guaranteed in every scene.
+  Stitching uses generated alpha and an outward edge transition. The original selection
+  weights are retained; the transition extends at most 20 pixels per coordinate
+  direction. Only pixels outside that expanded support are preserved exactly.
+- Without a mask, including an all-black mask, explicitly name the removal target.
+  Process the whole image within the same automatic budget, apply color matching,
+  and restore its original dimensions with generated alpha. Do not promise exact
+  preservation of unrelated pixels on this text-only selection path.
+- Keep Kitchen attention, GGUF, ten LoRA slots, LoRA Stack and existing model
+  downloads. Agent erasing defaults to `QwenEraser`; VLM Chat Creative mode uses
+  `image_object_removal` with one source image and the named target, without a
+  mandatory mask. Keep the user's auto-generate or confirmation preference.
+  Explicit preset choices still apply. Limited GPU samples support solid red as
+  the current default; object removal and seamless boundaries are not guaranteed.

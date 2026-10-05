@@ -159,11 +159,11 @@
                 erase: {
                     label: t('Erase', '擦除'),
                     presetSetting: 'erasePreset',
-                    defaultPreset: 'Eraser',
-                    prompt: t('Erase the masked area and fill it naturally.', '擦除蒙版区域并自然补全。'),
+                    defaultPreset: 'QwenEraser',
+                    prompt: t('Remove the specified object and reconstruct the background naturally.'),
                     classicMode: 'inpaint',
-                    requiresMask: true,
-                    autoRun: false
+                    requiresMask: false,
+                    autoRun: true
                 },
                 replace: {
                     label: t('Replace', '替换'),
@@ -222,6 +222,20 @@
                 });
             }
             return canvasAgentPresetDecisionOptions(selectedEntry);
+        }
+
+        function canvasAgentQuickToolSpecForEntry(toolKey, entry) {
+            const spec = canvasAgentQuickToolSpec(toolKey);
+            const capability = entry?.media_capability;
+            if (!spec || !['erase', 'replace'].includes(toolKey) || !Array.isArray(capability?.supported_tasks)) return spec;
+            const requirements = Array.isArray(capability.interaction_requirements) ? capability.interaction_requirements : [];
+            const requiresMask = requirements.includes('mask');
+            const minimumImages = Number(capability.min_images);
+            return Object.assign({}, spec, {
+                requiresMask,
+                wantsReference: Number.isFinite(minimumImages) ? minimumImages > 1 : !!spec.wantsReference,
+                autoRun: !requiresMask
+            });
         }
 
         function configureCanvasAgentQuickToolNode(node, key, extraParams) {
@@ -430,16 +444,42 @@
                 preset: normalizePresetName(entry.name || entry.display_name || ''),
                 prompt
             };
-            const missingRequiredReference = !!spec.wantsReference && !extraImageRefs.length;
-            const ok = await askCanvasAgentDecision({
-                title: missingRequiredReference
-                    ? t('Reference image required', '需要参考图')
-                    : ((spec.autoRun || spec.requiresMask) ? t('Start quick tool?', '开始快捷工具？') : t('Create quick tool node?', '创建快捷工具节点？')),
-                message: missingRequiredReference
-                    ? t('{tool} needs the main image plus another reference image. Pick a Ref first, or create the node and connect the reference manually.', '{tool} 需要主图加另一张参考图。先选择 Ref，或只创建节点后手动连接参考图。').replace('{tool}', spec.label)
-                    : spec.requiresMask
-                    ? t('{tool} needs a mask. Agent will reserve the result, open Sketch, then auto-run after you save the mask.', '{tool} 需要蒙版。Agent 会先预留结果节点并打开 Sketch，保存蒙版后自动运行。').replace('{tool}', spec.label)
-                    : t('Agent will use {tool}, connect the main image, and submit this prompt.', 'Agent 将使用 {tool}，连接主图并提交以下提示词。').replace('{tool}', spec.label),
+            const updateDecisionRequirements = decision => {
+                const selectedEntry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
+                const selectedSpec = canvasAgentQuickToolSpecForEntry(toolKey, selectedEntry);
+                const missingReference = !!selectedSpec.wantsReference && !extraImageRefs.length;
+                Object.assign(decision, {
+                    title: missingReference
+                        ? t('Reference image required', '需要参考图')
+                        : ((selectedSpec.autoRun || selectedSpec.requiresMask) ? t('Start quick tool?', '开始快捷工具？') : t('Create quick tool node?', '创建快捷工具节点？')),
+                    message: missingReference
+                        ? t('{tool} needs the main image plus another reference image. Pick a Ref first, or create the node and connect the reference manually.', '{tool} 需要主图加另一张参考图。先选择 Ref，或只创建节点后手动连接参考图。').replace('{tool}', spec.label)
+                        : selectedSpec.requiresMask
+                        ? t('{tool} needs a mask. Agent will reserve the result, open Sketch, then auto-run after you save the mask.', '{tool} 需要蒙版。Agent 会先预留结果节点并打开 Sketch，保存蒙版后自动运行。').replace('{tool}', spec.label)
+                        : t('Agent will use {tool}, connect the main image, and submit this prompt.', 'Agent 将使用 {tool}，连接主图并提交以下提示词。').replace('{tool}', spec.label),
+                    facts: [
+                        { label: t('Action', '动作'), value: spec.label },
+                        { label: t('Preset', '预设'), value: selectedEntry.display_name || selectedEntry.name || initialPresetName },
+                        { label: t('Source', '源图'), value: canvasAgentShortNodeLabel(target) },
+                        extraImageRefs.length ? { label: t('Image refs', '图片参考'), value: String(extraImageRefs.length) } : null,
+                        missingReference ? { label: t('Reference', '参考图'), value: t('Required before running', '运行前需要提供') } : null,
+                        selectedSpec.requiresMask ? { label: t('Mask', '蒙版'), value: t('Paint, then auto-run', '绘制后自动运行') } : null,
+                        { label: t('Resolution', '分辨率'), value: canvasAgentResolutionLabel() }
+                    ].filter(Boolean),
+                    note: selectedSpec.requiresMask
+                        ? t('Sketch saves the mask onto the image. The reserved result node will receive the run output.', 'Sketch 会把蒙版保存到图像上；预留的结果节点会承接本次输出。')
+                        : '',
+                    actions: missingReference ? [
+                        { value: 'pick-reference', label: t('Pick Ref', '选择 Ref'), icon: 'fa-crosshairs', primary: true },
+                        { value: 'create-node', label: t('Create node only', '只创建节点'), icon: 'fa-plus' },
+                        { value: 'cancel', label: t('Cancel', '取消'), icon: 'fa-xmark' }
+                    ] : [
+                        { value: 'continue', label: selectedSpec.requiresMask ? t('Open Sketch', '打开 Sketch') : (selectedSpec.autoRun ? t('Start', '开始') : t('Create node', '创建节点')), icon: selectedSpec.requiresMask ? 'fa-paintbrush' : (selectedSpec.autoRun ? 'fa-play' : 'fa-plus'), primary: true },
+                        { value: 'cancel', label: t('Cancel', '取消'), icon: 'fa-xmark' }
+                    ]
+                });
+            };
+            const decisionOptions = {
                 form: decisionForm,
                 fields: [
                     { key: 'preset', label: t('Target preset', '目标 preset'), options: canvasAgentQuickToolPresetOptions(toolKey, entry) },
@@ -450,29 +490,18 @@
                 promptFallback: spec.prompt,
                 promptAutoValue: promptFromPreset ? prompt : '',
                 promptEdited: !promptFromPreset,
-                facts: [
-                    { label: t('Action', '动作'), value: spec.label },
-                    { label: t('Preset', '预设'), value: entry.display_name || entry.name || initialPresetName },
-                    { label: t('Source', '源图'), value: canvasAgentShortNodeLabel(target) },
-                    extraImageRefs.length ? { label: t('Image refs', '图片参考'), value: String(extraImageRefs.length) } : null,
-                    spec.wantsReference && !extraImageRefs.length ? { label: t('Reference', '参考图'), value: t('Recommended before manual run', '建议在手动运行前补充') } : null,
-                    spec.requiresMask ? { label: t('Mask', '蒙版'), value: t('Paint, then auto-run', '绘制后自动运行') } : null,
-                    { label: t('Resolution', '分辨率'), value: canvasAgentResolutionLabel() }
-                ].filter(Boolean),
                 details: prompt,
-                note: spec.requiresMask
-                    ? t('Sketch saves the mask onto the image. The reserved result node will receive the run output.', 'Sketch 会把蒙版保存到图像上；预留的结果节点会承接本次输出。')
-                    : '',
-                actions: missingRequiredReference ? [
-                    { value: 'pick-reference', label: t('Pick Ref', '选择 Ref'), icon: 'fa-crosshairs', primary: true },
-                    { value: 'create-node', label: t('Create node only', '只创建节点'), icon: 'fa-plus' },
-                    { value: 'cancel', label: t('Cancel', '取消'), icon: 'fa-xmark' }
-                ] : [
-                    { value: 'continue', label: spec.requiresMask ? t('Open Sketch', '打开 Sketch') : (spec.autoRun ? t('Start', '开始') : t('Create node', '创建节点')), icon: spec.requiresMask ? 'fa-paintbrush' : (spec.autoRun ? 'fa-play' : 'fa-plus'), primary: true },
-                    { value: 'cancel', label: t('Cancel', '取消'), icon: 'fa-xmark' }
-                ]
-            });
-            if (ok === 'pick-reference') {
+                onFieldChange: (decision, key) => {
+                    Object.assign(decisionForm, decision.form);
+                    if (key === 'preset') updateDecisionRequirements(decision);
+                }
+            };
+            updateDecisionRequirements(decisionOptions);
+            const ok = await askCanvasAgentDecision(decisionOptions);
+            entry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
+            const selectedSpec = canvasAgentQuickToolSpecForEntry(toolKey, entry);
+            const missingRequiredReference = !!selectedSpec.wantsReference && !extraImageRefs.length;
+            if (ok === 'pick-reference' || (ok === 'continue' && missingRequiredReference)) {
                 startCanvasAgentReferencePickForTool(target, spec);
                 return;
             }
@@ -482,7 +511,6 @@
             }
             const createOnlyBecauseReferenceMissing = missingRequiredReference && ok === 'create-node';
             const finalPrompt = canvasAgentPromptFromDecision(decisionForm, prompt);
-            entry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
             const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
                 collapsed: true
             }));
@@ -513,8 +541,8 @@
             }
             setCanvasAgentSelection(node.id, [node.id]);
             mutate({ inspector: true });
-            if (spec.requiresMask) {
-                prepareCanvasAgentManualMaskWorkflow(target, node, spec, `${t('Agent quick tool', 'Agent 快捷工具')}: ${spec.label}`);
+            if (selectedSpec.requiresMask) {
+                prepareCanvasAgentManualMaskWorkflow(target, node, selectedSpec, `${t('Agent quick tool', 'Agent 快捷工具')}: ${spec.label}`);
                 return;
             }
             setCanvasAgentRunInfo({

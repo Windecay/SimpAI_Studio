@@ -163,6 +163,7 @@
                     promptAutoValue: options.promptAutoValue || '',
                     promptEdited: !!options.promptEdited,
                     actions: Array.isArray(options.actions) ? options.actions : [],
+                    onFieldChange: typeof options.onFieldChange === 'function' ? options.onFieldChange : null,
                     resolve
                 };
                 requestRenderCanvasAgentPanel();
@@ -201,9 +202,14 @@
                 const autoPrompt = String(decision.promptAutoValue || '').trim();
                 const currentPrompt = String(value || '').trim();
                 decision.promptEdited = !!currentPrompt && currentPrompt !== autoPrompt;
+                if (decision.onFieldChange) decision.onFieldChange(decision, key, value);
                 return;
             }
             if (key === decision.promptPresetField) syncCanvasAgentDecisionPromptFromPreset(decision, value);
+            if (decision.onFieldChange) {
+                decision.onFieldChange(decision, key, value);
+                requestRenderCanvasAgentPanel();
+            }
         }
 
         function renderCanvasAgentPanel() {
