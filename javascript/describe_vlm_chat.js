@@ -5446,6 +5446,7 @@
         if (autoImage) autoImage.checked = !!state.autoAttachPreviousImage;
         if (roleplayVisualDraft) roleplayVisualDraft.hidden = state.chatMode !== 'roleplay';
         if (memoryMentionTrigger) memoryMentionTrigger.hidden = state.chatMode !== 'roleplay';
+        if (state.chatMode !== 'roleplay') hideRoleplayMemoryMentionMenu();
         if (roleplayTurnIntentWrap) roleplayTurnIntentWrap.hidden = state.chatMode !== 'roleplay';
         if (roleplayTurnIntent) {
             roleplayTurnIntent.innerHTML = renderRoleplayTurnIntentOptions(state.roleplayTurnIntent);
@@ -20181,8 +20182,12 @@
         return normalized;
     }
 
-    function creativeCompatiblePresetEntry(task, media = 0) {
-        const candidates = state.creativePresetCatalog.filter((entry) => creativePresetSupportsTask(entry, task, media));
+    function creativeCompatiblePresetEntry(task, media = 0, instruction = '') {
+        const outfitTransfer = task === 'image_object_transfer' && !!UTILS.isOutfitTransferRequest?.(instruction);
+        const candidates = state.creativePresetCatalog.filter((entry) =>
+            creativePresetSupportsTask(entry, task, media)
+            && (task !== 'image_object_transfer' || String(entry.name || '').toLowerCase() !== 'qwenoutfitswap' || outfitTransfer)
+        );
         const taskPriorities = {
             text_to_video: ['MiniMax-H3(T2V)', 'Wan(T2V)', 'LTX(T2V)', 'Wan-TTP'],
             image_to_video: ['MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Wan(I2V)', 'Dasiwa(I2V)', 'LTX(I2V)'],
@@ -20210,6 +20215,7 @@
             image_expression_transfer: ['LivePortrait Exp', 'Qwen2.1-Edit']
         };
         const priorities = (taskPriorities[task] || ['Qwen2.1-Edit', 'MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext']).slice();
+        if (outfitTransfer) priorities.unshift('QwenOutfitSwap');
         if (task === 'text_to_image') priorities.splice(0, priorities.length, 'MiniMax-H3(R2I)', 'QwenNSFW', CREATIVE_DEFAULT_PRESET, 'Anima');
         const readinessRank = { ready: 0, unknown: 1, missing: 2 };
         return candidates.slice().sort((left, right) => {
@@ -20619,7 +20625,7 @@
             && (!creativePresetEntry(selected) || selected === 'MiniMax-H3(R2I)')
         ) {
             const automatic = roleplayPreferredPresetEntry(action, task, mediaInputs.length)
-                || creativeCompatiblePresetEntry(task, mediaInputs);
+                || creativeCompatiblePresetEntry(task, mediaInputs, action.prompt);
             if (automatic) {
                 selected = automatic.name;
                 action.preset = selected;
@@ -21588,7 +21594,7 @@
         const plannedTask = creativeActionTask(found.action, found.action.media_inputs);
         const resolvedEntry = entry && creativePresetHasTaskRoute(entry, plannedTask, found.action.media_inputs)
             ? entry
-            : creativeCompatiblePresetEntry(plannedTask, found.action.media_inputs) || entry;
+            : creativeCompatiblePresetEntry(plannedTask, found.action.media_inputs, found.action.prompt) || entry;
         if (resolvedEntry && resolvedEntry !== entry) {
             found.action.preset = resolvedEntry.name;
             found.action.preset_source = 'agent_auto';
@@ -22061,7 +22067,7 @@
         if (automaticRoleplayRoute) {
             const automatic = roleplayPreferredPresetEntry(action, requestedTask, mediaInputs.length)
                 || ((!entry || String(action.preset || '') === 'MiniMax-H3(R2I)')
-                    ? creativeCompatiblePresetEntry(requestedTask, mediaInputs)
+                    ? creativeCompatiblePresetEntry(requestedTask, mediaInputs, action.prompt)
                     : null);
             if (automatic) {
                 action.preset = automatic.name;
@@ -22078,7 +22084,7 @@
             return;
         }
         if (!entry) {
-            entry = creativeCompatiblePresetEntry(requestedTask, mediaInputs)
+            entry = creativeCompatiblePresetEntry(requestedTask, mediaInputs, action.prompt)
                 || (CREATIVE_VIDEO_TASKS.has(requestedTask) ? null : creativePresetEntry(CREATIVE_DEFAULT_PRESET))
                 || catalog[0]
                 || null;
@@ -26147,7 +26153,7 @@
                 let entry = creativePresetEntry(found.action.preset);
                 const task = creativeActionTask(found.action, mediaInputs);
                 if (!entry || !creativePresetHasTaskRoute(entry, task, mediaInputs)) {
-                    const compatible = creativeCompatiblePresetEntry(task, mediaInputs);
+                    const compatible = creativeCompatiblePresetEntry(task, mediaInputs, found.action.prompt);
                     if (compatible) {
                         found.action.preset = compatible.name;
                         found.action.preset_source = 'user';

@@ -57,7 +57,7 @@
                 audioPreset: '',
                 outpaintPreset: 'QwenOutpaint',
                 erasePreset: 'QwenEraser',
-                replacePreset: 'Swap+',
+                replacePreset: 'Qwen2.1-Edit',
                 upscalePresetMode: 'uov_auto',
                 upscalePreset: '',
                 videoOutpaintPreset: 'LTX-Outpaint',

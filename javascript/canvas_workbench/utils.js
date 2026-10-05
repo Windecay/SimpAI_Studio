@@ -56,6 +56,30 @@
         return String(name || '').replace(/\u2B07/g, '').trim();
     }
 
+    function isOutfitTransferRequest(value) {
+        const clothes = '(?:衣服|服装|外套|夹克|衬衫|裙子|连衣裙|西装|裤子|上衣|套装)';
+        const pattern = new RegExp(
+            '换装|换衣(?!服?(?:的)?(?:颜色|图案|材质))|服装迁移|衣服迁移|'
+            + `(?:穿上|换上|改穿|穿到|换到|换成|更换|替换).{0,28}${clothes}|${clothes}.{0,28}(?:穿上|换上|穿到|换到|换成|穿在)|`
+            + '\\b(?:outfit|clothing|clothes|garment)[-_ ]+(?:swap|transfer)\\b|'
+            + '\\b(?:wear|put\\s+on|swap|replace|transfer|change\\s+into)\\b.{0,40}\\b(?:outfit|clothes|clothing|garment|coat|jacket|shirt|dress|suit|trousers|pants)\\b|'
+            + '\\bput\\b.{0,40}\\b(?:outfit|clothes|clothing|garment|coat|jacket|shirt|dress|suit|trousers|pants)\\b.{0,24}\\bon(?:to)?\\b|'
+            + '\\bdress\\b.{0,40}\\b(?:person|woman|man|character|model)\\b', 'i'
+        );
+        const attributeEdit = new RegExp(
+            `${clothes}(?:的|上(?:的)?)?(?:颜色|色彩|配色|材质|纹理|图案)|`
+            + '(?:颜色|色彩|配色|材质|纹理|图案).{0,12}迁移|'
+            + '\\b(?:color|colour|texture|material|pattern)\\s+transfer\\b|'
+            + '\\b(?:change|replace|swap|transfer|apply|copy)\\b.{0,45}\\b(?:color|colour|texture|material|pattern)\\b', 'i'
+        );
+        return String(value || '').split(/[，,。.!?;；！？\n]|但是|但|并且|\b(?:and|but)\b/i).some(part => {
+            const text = part.trim();
+            const match = pattern.exec(text);
+            if (!match || attributeEdit.test(text)) return false;
+            return !/(?:不要|别|不用|不需要|无需|保持|保留|\b(?:keep|preserve|retain|not|never)\b|don't\b)/i.test(text.slice(0, match.index));
+        });
+    }
+
     function sanitizeStoragePart(value) {
         return String(value || 'guest')
             .trim()
@@ -245,6 +269,7 @@
         stableHash,
         escapeHtml,
         normalizePresetName,
+        isOutfitTransferRequest,
         sanitizeStoragePart,
         shortIdentity,
         formatBytes,

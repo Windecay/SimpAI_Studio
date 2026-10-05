@@ -6353,7 +6353,8 @@ html.describe-vlm-chat-resizing * {
   border-color: #fbbf24 !important;
 }
 
-.describe-vlm-chat-compose-toolbar [data-describe-vlm-chat-roleplay-visual-draft][hidden] {
+.describe-vlm-chat-compose-toolbar [data-describe-vlm-chat-roleplay-visual-draft][hidden],
+.describe-vlm-chat-compose-toolbar [data-roleplay-memory-mention-trigger][hidden] {
   display: none !important;
 }
 
@@ -23445,6 +23446,23 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 .describe-vlm-chat-generation-status.is-failed,
 .describe-vlm-chat-generation-status.is-canceled {
     color: #f87171;
+}
+
+.describe-vlm-chat-generation .describe-vlm-chat-action-buttons button[data-describe-vlm-chat-generation-run]:not(:disabled) {
+    color: #17181b !important;
+    background: var(--describe-chat-accent, #f97316) !important;
+    border-color: var(--describe-chat-accent, #f97316) !important;
+    font-weight: 600;
+}
+
+.describe-vlm-chat-generation .describe-vlm-chat-action-buttons button[data-describe-vlm-chat-generation-run]:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--describe-chat-accent, #f97316) 85%, #fff) !important;
+    border-color: color-mix(in srgb, var(--describe-chat-accent, #f97316) 85%, #fff) !important;
+}
+
+.describe-vlm-chat-generation .describe-vlm-chat-action-buttons button[data-describe-vlm-chat-generation-run]:focus-visible {
+    outline: 2px solid var(--describe-chat-accent, #f97316);
+    outline-offset: 3px;
 }
 
 .describe-vlm-chat-generation .describe-vlm-chat-action-buttons .is-danger {

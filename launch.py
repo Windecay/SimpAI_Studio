@@ -308,12 +308,25 @@ def _simpleai_base_has_required_apis():
         return False
     return True
 
-def _installed_package_version(package):
+def _installed_package_versions(package):
     try:
-        return importlib_metadata.version(package)
+        return [
+            str(distribution.version)
+            for distribution in importlib_metadata.distributions(name=package)
+        ]
     except Exception as e:
         logger.debug(f"读取 {package} 已安装版本失败: {e}")
+        return []
+
+def _installed_package_version(package):
+    versions = _installed_package_versions(package)
+    if not versions:
         return None
+    try:
+        return str(max(packaging_version.parse(value) for value in versions))
+    except Exception as e:
+        logger.debug(f"比较 {package} 已安装版本失败: {e}")
+        return versions[-1]
 
 
 def _simpleai_base_version_satisfies(version_installed, version_required):
@@ -503,19 +516,22 @@ def ensure_llama_cpp_runtime(runtime_profile):
     return True
 
 def _package_requirement_met(package, pkg_version=None, version_specifier=None):
-    version_installed = _installed_package_version(package)
-    if version_installed is None:
+    versions_installed = _installed_package_versions(package)
+    if not versions_installed:
         return False
     try:
-        installed = packaging_version.parse(version_installed)
-        if pkg_version:
-            return packaging_version.parse(pkg_version) == installed
-        if version_specifier:
-            return installed in packaging_specifiers.SpecifierSet(version_specifier)
+        required = packaging_version.parse(pkg_version) if pkg_version else None
+        specifier = packaging_specifiers.SpecifierSet(version_specifier or "")
+        for version_installed in versions_installed:
+            installed = packaging_version.parse(version_installed)
+            if required is not None and installed == required:
+                return True
+            if required is None and version_specifier and installed in specifier:
+                return True
     except Exception as e:
         logger.debug(f"比较 {package} 已安装版本失败: {e}")
         return False
-    return True
+    return not pkg_version and not version_specifier
 
 def _installed_onnxruntime_cuda_info():
     code = r"""

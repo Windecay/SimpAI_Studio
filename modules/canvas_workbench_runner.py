@@ -1737,6 +1737,12 @@ def build_canvas_task_args_preview(payload, materialized_inputs, state_params):
     scene_theme = runtime.get("scene_theme") or ""
     aspect_ratio = _resolve_backend_aspect_ratio(resolution, scene_params, materialized_inputs)
     random_resolution = _resolution_random_aspect_enabled(resolution)
+    if resolution.get("use_input_aspect") and not random_resolution:
+        # Dimension overrides and canvas metadata must use the same source size
+        # as Auto; preset-default width/height would otherwise force a square.
+        resolved_size = _split_size_text(aspect_ratio)
+        if resolved_size:
+            resolution = {**resolution, "width": resolved_size[0], "height": resolved_size[1]}
     scene_image_number = _positive_int(generation_api_overrides.get("image_number")) or _positive_int(_scene_param(params, scene_defaults, "scene_image_number")) or 1
     scene_steps = _positive_int(generation_api_overrides.get("overwrite_step"))
     if scene_steps is None:

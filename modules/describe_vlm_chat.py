@@ -224,7 +224,8 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "Flux2 presets use a multilingual Qwen text encoder. Presets whose task_method ends with `_cn`, or whose text encoder is Qwen, must preserve the user's request language instead of applying the legacy FLUX.1/T5 English-only rule. "
     "Use image_detail_enhance for automatic face, hand, eye, or local detail repair through a Classic Preset Enhance workflow, and include enhance_targets using only face, hand, and eye. "
     "Use the matching specialized task when requested: text_to_video, image_to_video, multi_image_to_video, image_upscale, image_restore, image_detail_enhance, image_background_removal, image_object_removal, image_object_transfer, image_outpaint, image_relight, image_style_transfer, image_face_swap, image_pose_transfer, image_pose_extraction, image_anime_to_real, image_view_synthesis, image_depth_estimation, or image_expression_transfer. "
-    "When the user asks the character or person in image 1 to wear clothing or an outfit from image 2, use image_object_transfer with image 1 first as the target and image 2 second as the clothing reference. This is an image edit, never text_to_image. "
+    "For object or attribute transfer between two images, use image_object_transfer with the target/base image first as <image1> and the reference second as <image2>. The application defaults to Qwen2.1-Edit without requiring a painted mask; do not ask for one before executing. "
+    "When the user asks the character or person in image 1 to wear clothing or an outfit from image 2, use image_object_transfer with image 1 first as the target and image 2 second as the clothing reference. This is an image edit, never text_to_image. The application prefers QwenOutfitSwap with its preset-defined LoRA when ready, also without requiring a painted mask. Preserve a request for a specific garment or retained shoes/accessories; never expand it to a compulsory full-outfit change. Color, texture or pattern edits and instructions to preserve clothing use the general editor. Keep the existing automatic-generation or confirmation preference. "
     "For image_outpaint, prefer QwenOutpaint when ready, with OneKey-Outpaint as the Flux alternative. For QwenOutpaint, begin with 'Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.' and optionally append Scene: with the requested continuation in the user's language. Use the English FLUX/T5 instruction contract only when OneKey-Outpaint is selected. Express the requested expansion as percentage intent in outpaint.up/down/left/right; default to 15 for each direction and use 0 for directions the user excluded. "
     "For image_pose_transfer, prefer QwenPose when ready. Keep media_refs in character/source image then pose-reference order. The application binds the pose reference to QwenPose's <image 1> canvas and the character/source to <image 2>; write the instruction using those labels, preserve the character and scene of <image 2>, and transfer only the pose from <image 1>. MiniMax-H3(Pose) remains an alternative using character/source <Picture 1> and pose <Picture 2>. "
     "Do not choose or invent a Preset, theme, task_method, input slot, model, API route, or canvas node. "
@@ -399,7 +400,7 @@ SimpAI UI guide skill:
   - QwenNSFW is a community-merged single-checkpoint route for direct text-to-image and restricted editing cases that the original QwenEdit may filter.
 - Image editing / retouching:
   - For instruction-based image editing, object add/remove/replace, text editing, style conversion, and multi-reference compositing without a painted mask, recommend Qwen2.1-Edit. For optional painted-mask editing, recommend QwenEdit+ / Qwen-Edit-2511.
-  - For image object transfer / item migration (图像物品迁移 / 物品替换 / 把一个物体迁移到另一张图), recommend Swap+ when the user wants strong painted-mask control. Swap+ uses the Flux1.Fill model and is suited for brush-mask-directed object migration or replacement. Flux2-Klein and QwenEdit are multimodal editors that can take multiple input images and replace objects by instruction, with optional brush masks; their mask function is useful but weaker than Swap+ for precise masked transfer.
+  - For image object transfer / item migration (图像物品迁移 / 物品替换 / 把一个物体迁移到另一张图), default to Qwen2.1-Edit with the target as <image1> and the reference as <image2>; a painted mask is not required. For explicit clothing transfer, prefer QwenOutfitSwap with its preset-defined LoRA, also without a mandatory mask. Respect specific garments and retained accessories. Keep Swap+ available when explicitly chosen; that Flux1.Fill workflow still requires its mask.
   - For broad one-click commercial/product retouching, recommend OneKeyKontext. Rough submode guidance: product repair / 3C / home appliances / jewelry / metal for commercial product polish; face / body for portrait or figure cleanup; clothing / clothing extraction / take clothes for garment workflows; angle edit / IP 3-View / depth reference for view, structure, and multi-view control; remove anything / object insertion / clear background / composite / scene / pattern for local replacement, background, and layout work.
   - For manual detail repair of hands, faces, or eyes (修手 / 修脸 / 修眼 / 精修细节), recommend the inpaint/outpaint mode inside the relevant text-to-image model family: choose the detail-improvement option (提升细节), write the extra/additional prompt for the area, then tune redraw/denoise strength (重绘幅度) and feathering (羽化).
   - For automatic detail repair of hands, faces, or eyes, recommend Enhance / 增强修图. Explain that it can optionally upscale once, then run three region-recognition refinement passes; by default the regions are detected and processed in order: face, hands, eyes. It can be chained after text-to-image generation or used directly with an uploaded image.
@@ -2150,12 +2151,14 @@ def _describe_chat_system_prompt(options, lang):
         media_manifest = options.get("media_manifest") if isinstance(options.get("media_manifest"), list) else []
         if media_manifest:
             manifest_text = ", ".join(
-                f"source {item.get('index')} tag={item.get('tag')} ref={item.get('ref')} type={item.get('type')}"
+                f"source {item.get('index')} h3_tag={item.get('tag')} ref={item.get('ref')} type={item.get('type')}"
                 for item in media_manifest if isinstance(item, dict)
             )
             sections.append(
                 f"Attached media manifest, in exact connection order: {manifest_text}. "
-                "Use only these refs in media_refs, preserve that order, and use the listed tags when referring to media in the executable prompt."
+                "Use only these refs in media_refs and preserve that order. The listed h3_tag values apply only to MiniMax H3. "
+                "For Qwen Image 2.1 editing, use <image1> through <image9> in the selected workflow's image input order, never <Picture N>. "
+                "For QwenPose, follow the pose-first, character-second labels specified above."
             )
         if preferred_style or preferred_preset or preferred_parameter_profile:
             sections.append(
@@ -4355,6 +4358,33 @@ def _generation_media_refs_for_task(media_refs, task, available_media_refs=None)
     ]
 
 
+def _is_outfit_transfer_request(value):
+    # Keep the same conservative clothing intent rules as canvas_workbench/utils.js.
+    clothes = r"(?:衣服|服装|外套|夹克|衬衫|裙子|连衣裙|西装|裤子|上衣|套装)"
+    pattern = re.compile(
+        r"换装|换衣(?!服?(?:的)?(?:颜色|图案|材质))|服装迁移|衣服迁移|"
+        rf"(?:穿上|换上|改穿|穿到|换到|换成|更换|替换).{{0,28}}{clothes}|{clothes}.{{0,28}}(?:穿上|换上|穿到|换到|换成|穿在)|"
+        r"\b(?:outfit|clothing|clothes|garment)[-_ ]+(?:swap|transfer)\b|"
+        r"\b(?:wear|put\s+on|swap|replace|transfer|change\s+into)\b.{0,40}\b(?:outfit|clothes|clothing|garment|coat|jacket|shirt|dress|suit|trousers|pants)\b|"
+        r"\bput\b.{0,40}\b(?:outfit|clothes|clothing|garment|coat|jacket|shirt|dress|suit|trousers|pants)\b.{0,24}\bon(?:to)?\b|"
+        r"\bdress\b.{0,40}\b(?:person|woman|man|character|model)\b", re.I,
+    )
+    attribute_edit = re.compile(
+        rf"{clothes}(?:的|上(?:的)?)?(?:颜色|色彩|配色|材质|纹理|图案)|"
+        r"(?:颜色|色彩|配色|材质|纹理|图案).{0,12}迁移|"
+        r"\b(?:color|colour|texture|material|pattern)\s+transfer\b|"
+        r"\b(?:change|replace|swap|transfer|apply|copy)\b.{0,45}\b(?:color|colour|texture|material|pattern)\b", re.I,
+    )
+    for part in re.split(r"[，,。.!?;；！？\n]|但是|但|并且|\b(?:and|but)\b", str(value or ""), flags=re.I):
+        text = part.strip()
+        match = pattern.search(text)
+        if not match or attribute_edit.search(text):
+            continue
+        if not re.search(r"(?:不要|别|不用|不需要|无需|保持|保留|\b(?:keep|preserve|retain|not|never)\b|don't\b)", text[:match.start()], re.I):
+            return True
+    return False
+
+
 SPECIALIZED_IMAGE_TASK_PATTERNS = (
     ("image_detail_enhance", re.compile(r"(?:修手|修脸|修眼|精修.{0,4}(?:手|脸|眼|细节)|修(?!改|图)(?:一下)?.{0,12}(?:手部|手指|手|面部|脸部|脸|五官|眼睛|眼部|眼)|(?:修复|改善|优化).{0,6}(?:手部|手指|面部|脸部|五官|眼睛|眼部)|(?:手部|手指|面部|脸部|五官|眼睛|眼部|眼).{0,8}(?:修(?:得|一下)?|精修|修复|改善|优化)|(?:fix|repair|enhance).{0,10}(?:hand|finger|face|eye)|detail enhancement)", re.I)),
     ("image_background_removal", re.compile(r"(?:\u53bb(?:\u6389)?|\u79fb\u9664|\u5220\u9664).{0,8}(?:背景(?![中里上的内外])|底色)|\u62a0\u56fe|remov(?:e|ing).{0,12}background", re.I)),
@@ -4370,7 +4400,12 @@ SPECIALIZED_IMAGE_TASK_PATTERNS = (
     ("image_view_synthesis", re.compile(r"\u591a\u89d2\u5ea6|\u591a\u89c6\u89d2|\u4e09\u89c6\u56fe|\u6362.{0,4}\u89d2\u5ea6|multi[-_ ]?angle|multi[-_ ]?view", re.I)),
     ("image_depth_estimation", re.compile(r"\u6df1\u5ea6\u56fe|\u4f30\u8ba1.{0,6}\u6df1\u5ea6|depth map|depth estimation", re.I)),
     ("image_expression_transfer", re.compile(r"\u8868\u60c5\u8fc1\u79fb|\u53c2\u8003.{0,6}\u8868\u60c5|expression transfer", re.I)),
-    ("image_object_transfer", re.compile(r"\u7269\u4f53\u8fc1\u79fb|\u7279\u5f81\u8fc1\u79fb|\u6362\u88c5|\u670d\u88c5\u8fc1\u79fb|\u6750\u8d28\u8fc1\u79fb|(?=[\s\S]*(?:\u56fe\s*[\u4e001]|\u7b2c\u4e00\u5f20(?:\u56fe)?))(?=[\s\S]*(?:\u56fe\s*[\u4e8c2]|\u7b2c\u4e8c\u5f20(?:\u56fe)?))(?=[\s\S]*(?:\u8863\u670d|\u670d\u88c5|\u7a7f\u642d|\u9020\u578b))(?=[\s\S]*(?:\u7a7f\u4e0a|\u6362\u4e0a|\u6539\u7a7f|\u7a7f\u5230|\u6362\u5230|\u5957\u7528|\u8fc1\u79fb))|object transfer|feature transfer|clothing transfer|(?=[\s\S]*(?:(?:image|photo)\s*(?:1|one)|first\s+(?:image|photo)))(?=[\s\S]*(?:(?:image|photo)\s*(?:2|two)|second\s+(?:image|photo)))(?=[\s\S]*(?:outfit|clothes|clothing|dress))(?=[\s\S]*(?:wear|use|apply|transfer|put\s+on))", re.I)),
+    ("image_object_transfer", re.compile(
+        r"物(?:体|品)迁移|物品替换|特征迁移|材质迁移|object transfer|feature transfer|material transfer|"
+        r"\A(?=[\s\S]*(?:图\s*[一1]|第一张(?:图)?|(?:image|photo)\s*(?:1|one)|first\s+(?:image|photo)))"
+        r"(?=[\s\S]*(?:图\s*[二2]|第二张(?:图)?|(?:image|photo)\s*(?:2|two)|second\s+(?:image|photo)))"
+        r"(?=[\s\S]*(?:迁移|移到|放到|放入|替换|\b(?:transfer|move|replace|copy)\b))", re.I,
+    )),
     ("image_object_removal", CREATIVE_OBJECT_REMOVAL_INTENT_RE),
 )
 
@@ -4380,6 +4415,8 @@ def _infer_specialized_generation_task(text):
     if not source:
         return ""
     for task, pattern in SPECIALIZED_IMAGE_TASK_PATTERNS:
+        if task == "image_object_transfer" and _is_outfit_transfer_request(source):
+            return task
         if pattern.search(source):
             return task
     return ""
@@ -4535,12 +4572,15 @@ GENERATION_PRESET_PRIORITIES = {
 }
 
 
-def _generation_preset_priorities(task):
-    return GENERATION_PRESET_PRIORITIES.get(task) or (
+def _generation_preset_priorities(task, instruction=""):
+    priorities = GENERATION_PRESET_PRIORITIES.get(task) or (
         ("Qwen2.1-Edit", "MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext")
         if task in {"image_edit", "multi_image_edit"}
         else ("Z-imageT", "Anima")
     )
+    if task == "image_object_transfer" and _is_outfit_transfer_request(instruction):
+        return ("QwenOutfitSwap", *priorities)
+    return priorities
 
 
 def _capability_route_rows(capability, task):
@@ -4877,28 +4917,11 @@ def compile_creative_execution_plan(
     refs = request["media_refs"]
     task = request["task"]
     media_counts = _generation_media_counts(refs, available_media_refs)
+    intent_text = "\n".join(part for part in (user_message, request.get("instruction")) if part)
     route_rows = []
     for order, capability in enumerate(capabilities):
         for route in _capability_route_rows(capability, task):
             route_rows.append({"capability": capability, "order": order, **route})
-
-    count_compatible = [
-        route for route in route_rows
-        if _capability_accepts_media_counts(route["capability"], task, media_counts)
-    ]
-    status = "ready"
-    candidates = count_compatible
-    if not candidates:
-        incomplete_candidates = [
-            route for route in route_rows
-            if _capability_media_counts_can_complete(route["capability"], task, media_counts)
-        ]
-        if incomplete_candidates:
-            candidates = incomplete_candidates
-            status = "needs_media"
-
-    if not refs and any(_generation_task_media_requirements(task).values()) and candidates:
-        status = "needs_media"
 
     preferred = str(preferred_preset or "").strip()
     hint = _explicit_preset_hint(
@@ -4923,6 +4946,27 @@ def compile_creative_execution_plan(
     selected_profile = explicit_profile or session_profile
     parameter_profile_source = "request_hint" if explicit_profile else "session_preference" if session_profile else ""
     requested_preset = str((selected_profile or {}).get("preset") or hint or preferred).strip()
+
+    if task == "image_object_transfer" and not _is_outfit_transfer_request(intent_text):
+        route_rows = [
+            route for route in route_rows
+            if str(route["capability"].get("name") or "").lower() != "qwenoutfitswap"
+            or requested_preset.lower() == "qwenoutfitswap"
+        ]
+    candidates = [
+        route for route in route_rows
+        if _capability_accepts_media_counts(route["capability"], task, media_counts)
+    ]
+    status = "ready"
+    if not candidates:
+        candidates = [
+            route for route in route_rows
+            if _capability_media_counts_can_complete(route["capability"], task, media_counts)
+        ]
+        if candidates:
+            status = "needs_media"
+    if not refs and any(_generation_task_media_requirements(task).values()) and candidates:
+        status = "needs_media"
 
     if profile_error:
         return {
@@ -5003,7 +5047,7 @@ def compile_creative_execution_plan(
     else:
         preset_source = "automatic"
 
-    priorities = {name.lower(): index for index, name in enumerate(_generation_preset_priorities(task))}
+    priorities = {name.lower(): index for index, name in enumerate(_generation_preset_priorities(task, intent_text))}
     readiness_rank = {"ready": 0, "unknown": 1, "missing": 2}
     candidates.sort(key=lambda route: (
         1 if _preset_requires_manual_interaction(route["capability"]) else 0,
@@ -5081,14 +5125,16 @@ def compile_creative_execution_plan(
     return plan
 
 
-def _compatible_generation_preset(preset, task, media_counts, preset_capabilities):
+def _compatible_generation_preset(preset, task, media_counts, preset_capabilities, instruction=""):
     current = str(preset or "").strip()
     capabilities = [item for item in (preset_capabilities or []) if isinstance(item, dict)]
     compatible = [
         item for item in capabilities
         if _preset_supports_generation_task(item.get("name"), task, media_counts, capabilities)
+        and (task != "image_object_transfer" or str(item.get("name") or "").lower() != "qwenoutfitswap"
+             or _is_outfit_transfer_request(instruction) or current.lower() == "qwenoutfitswap")
     ]
-    priorities = _generation_preset_priorities(task)
+    priorities = _generation_preset_priorities(task, instruction)
     priority_map = {name.lower(): index for index, name in enumerate(priorities)}
     readiness_rank = {"ready": 0, "unknown": 1, "missing": 2}
     compatible.sort(
@@ -5134,7 +5180,7 @@ def _apply_generation_media_limits(actions, available_media_refs=None, preset_ca
         refs = _generation_media_refs_for_task(refs, task, available_media_refs)
         media_counts = _generation_media_counts(refs, available_media_refs)
         item["preset"] = _compatible_generation_preset(
-            item.get("preset"), task, media_counts, preset_capabilities
+            item.get("preset"), task, media_counts, preset_capabilities, item.get("prompt")
         )
         limits = _generation_media_limits(item.get("preset"), preset_capabilities)
         refs = _limit_generation_media_refs(refs, available_media_refs, limits)
@@ -5142,6 +5188,65 @@ def _apply_generation_media_limits(actions, available_media_refs=None, preset_ca
         item["task"] = _normalize_generation_task(task, refs, item.get("prompt"), available_media_refs)
         normalized.append(item)
     return normalized
+
+
+_QWEN21_EDIT_METHODS = {
+    "qwen_image21_edit_cn", "qwen21_erase", "qwen21_replace",
+    "qwen_image21_outpaint", "qwenedit_pose_cn", "qwenedit_gaussian_cn",
+}
+_QWEN21_EDIT_PRESETS = {
+    "qwen2.1-edit", "qweneraser", "qwenoutfitswap", "qwenoutpaint", "qwenpose", "qwengaussian",
+}
+_CREATIVE_IMAGE_REFERENCE_RE = re.compile(
+    r'(?P<literal>"(?:\\.|[^"\\])*"|(?<!\w)\'(?:\\.|[^\'\\])*\'|“[^”]*”|‘[^’]*’|「[^」]*」|『[^』]*』)'
+    r"|<\s*(?P<label>picture|image)\s*(?P<number>[1-9])\s*>",
+    re.I,
+)
+
+
+def _normalize_creative_qwen21_image_references(prompt, plan, available_media_refs=None):
+    method = _task_method_key(plan.get("task_method"))
+    if method not in _QWEN21_EDIT_METHODS and (
+        method or str(plan.get("preset") or "").lower() not in _QWEN21_EDIT_PRESETS
+    ):
+        return prompt
+
+    # Legacy Picture numbers refer to the attachment manifest. Qwen numbers refer
+    # to connected encoder inputs, which can be reordered (notably QwenPose).
+    bound_images = []
+    for binding in plan.get("media_bindings") or []:
+        slot = str(binding.get("slot") or "")
+        match = re.fullmatch(r"scene_input_image([1-8])", slot)
+        if slot == "scene_canvas_image" or match:
+            bound_images.append((int(match.group(1)) if match else 0, binding.get("ref")))
+    qwen_indices = {ref: index for index, (_, ref) in enumerate(sorted(bound_images), 1)}
+    picture_indices = {}
+    image_index = 0
+    for source in available_media_refs or []:
+        item = source if isinstance(source, dict) else {"ref": source}
+        if (item.get("type") or "image") != "image":
+            continue
+        image_index += 1
+        try:
+            picture_index = int(item.get("type_index") or image_index)
+        except (TypeError, ValueError):
+            picture_index = image_index
+        if item.get("ref") in qwen_indices:
+            picture_indices[picture_index] = qwen_indices[item["ref"]]
+
+    def replace(match):
+        if match.group("literal") is not None:
+            return match.group(0)
+        index = int(match.group("number"))
+        if match.group("label").lower() == "picture":
+            if available_media_refs and bound_images and index not in picture_indices:
+                # Do not silently retarget an image that the action did not bind.
+                return match.group(0)
+            index = picture_indices.get(index, index)
+        # Existing Qwen labels already describe workflow order; keep this idempotent.
+        return f"<image{index}>"
+
+    return _CREATIVE_IMAGE_REFERENCE_RE.sub(replace, prompt)
 
 
 def compile_creative_action_plans(
@@ -5185,6 +5290,9 @@ def compile_creative_action_plans(
             user_message,
             parameter_profiles,
             effective_parameter_profile,
+        )
+        request["instruction"] = _normalize_creative_qwen21_image_references(
+            request["instruction"], plan, available_media_refs,
         )
         item.update({
             "task": request["task"],
@@ -5550,6 +5658,7 @@ def normalize_limited_actions(
                     request["task"],
                     _generation_media_counts(request["media_refs"], available_media_refs),
                     preset_capabilities,
+                    request["instruction"],
                 )
             normalized.append(
                 {
@@ -5753,6 +5862,7 @@ def _creative_director_should_be_suppressed(message):
     return bool(
         CREATIVE_GENERATION_INTENT_RE.search(text)
         or CREATIVE_EDIT_INTENT_RE.search(text)
+        or _is_outfit_transfer_request(text)
         or PROMPT_INTENT_RE.search(text)
     )
 
@@ -5917,6 +6027,31 @@ def build_programmatic_creative_offer(payload):
     return _repair_creative_anima_prompt(offer, user_message)
 
 
+def _creative_recovery_is_text_only(message):
+    if re.search(
+        r"(?:不要|别|不用|无需|不需要|不必|暂不)(?:直接|实际|现在|马上|自动|立即)?(?:生成(?!提示词|prompt)|生图|出图|执行)|"
+        r"\b(?:do not|don't|never)\s+(?:actually\s+)?(?:generate|render|execute|run)\b",
+        message, re.I,
+    ):
+        return True
+    if re.search(r"提示词|\bprompts?\b", message, re.I):
+        if re.search(r"(?:只|仅)[^，。；,;\n]{0,30}(?:提示词|\bprompts?\b)|\b(?:only|just)\b[^,.;\n]{0,40}\b(?:write|draft|prompt)\b", message, re.I):
+            return True
+        draft_request = re.search(
+            r"(?:写|撰写|编写|整理|优化|改写|提供|给我)[^，。；,;\n]{0,80}提示词|"
+            r"\b(?:write|draft|rewrite|provide|improve)\b[^,.;\n]{0,80}\bprompts?\b",
+            message, re.I,
+        )
+        if draft_request and not CREATIVE_GENERATION_INTENT_RE.search(message):
+            return True
+    return bool(re.search(
+        r"^\s*(?:请|帮我|请帮我)?(?:解释|介绍|讲解|说明|什么是|怎样|如何|怎么)|"
+        r"(?:是什么|是什么意思)[？?。.!！\s]*$|"
+        r"^\s*(?:please\s+)?(?:explain\b|describe\s+(?:what|how)\b|what\s+is\b|how\s+(?:does|do|can|to)\b)",
+        message, re.I,
+    ))
+
+
 def recover_creative_generation_action(
     user_message,
     response_text,
@@ -5930,12 +6065,17 @@ def recover_creative_generation_action(
 ):
     message = _clean_multiline_text(user_message, limit=8000)
     response = _clean_multiline_text(response_text, limit=12000)
-    if CREATIVE_RESPONSE_REFUSAL_RE.search(response):
+    reply = _visible_response_text(_response_reply_value(raw_json)) if isinstance(raw_json, dict) else response
+    if (
+        CREATIVE_RESPONSE_REFUSAL_RE.search(reply)
+        or CREATIVE_RESPONSE_REFUSAL_RE.search(response)
+        or _creative_recovery_is_text_only(message)
+    ):
         return None
     _, available_refs = _normalize_generation_media_refs([], available_media_refs)
-    has_images = bool(available_refs)
     requested = bool(CREATIVE_GENERATION_INTENT_RE.search(message))
     requested = requested or bool(CREATIVE_EDIT_INTENT_RE.search(message))
+    requested = requested or _is_outfit_transfer_request(message)
     requested = requested or bool(CREATIVE_RESPONSE_EXECUTION_RE.search(response))
     if not requested:
         return None
@@ -5966,6 +6106,7 @@ def recover_creative_generation_action(
         task,
         media_counts,
         preset_capabilities,
+        message,
     )
     actions = normalize_limited_actions(
         [

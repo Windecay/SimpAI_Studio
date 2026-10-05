@@ -19,7 +19,7 @@
       "theme_labels": {
         "Qwen Image 2.1 Edit": {"en": "Qwen Image 2.1 Edit", "zh": "Qwen Image 2.1 \u7f16\u8f91"}
       },
-      "theme_title": "Qwen Image 2.1 Edit [up to 9 images]",
+      "theme_title": "Qwen Image 2.1 Edit [up to 9 images, Optional mask]",
       "disable_canvas_mask": false,
       "director_capability": {
         "image_policy": "optional",

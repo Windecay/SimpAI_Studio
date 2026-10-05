@@ -118,14 +118,16 @@ SimpAI UI guide skill:
   Keep QwenEdit+ / Qwen-Edit-2511 for optional painted-mask editing and the
   existing natural-language style-editing route until its Qwen2.1 replacement
   has been tested. Agent erasing defaults to QwenEraser with an optional mask;
-  brush replacement still defaults to Swap+.
+  two-image replacement defaults to Qwen2.1-Edit without a mandatory mask.
 - For image object transfer / item migration (图像物品迁移 / 物品替换 /
-  把一个物体迁移到另一张图), recommend Swap+ when the user wants strong
-  painted-mask control. Swap+ uses the Flux1.Fill model and is suited for
-  brush-mask-directed object migration or replacement. Flux2-Klein and QwenEdit
-  are multimodal editors that can take multiple input images and replace objects
-  by instruction, with optional brush masks; their mask function is useful but
-  weaker than Swap+ for precise masked transfer.
+  把一个物体迁移到另一张图), default to Qwen2.1-Edit. Supply the target/base as
+  <image1> and the reference as <image2>; describe what to transfer and what to
+  preserve. Both images are required, but a painted mask is not. For explicit
+  clothing transfer, prefer QwenOutfitSwap with its preset-defined LoRA when
+  available, also without a mandatory mask. Clothing color, texture or pattern
+  edits and requests to preserve clothing use the general editor. Respect a
+  specific garment request without imposing a full outfit change. Swap+ remains
+  available when explicitly chosen and still requires its Flux1.Fill brush mask.
 - For broad one-click commercial/product retouching, recommend OneKeyKontext.
   Rough submode guidance: product repair / 3C / home appliances / jewelry /
   metal for commercial product polish; face / body for portrait or figure
@@ -666,8 +668,9 @@ Historical multi-image mask design, superseded by the 2026-10-05 sections below.
   model, consumes no image number and does not restrict the sampling latent.
   The source is resized to the selected output size before encoding at
   `resolution=0`; sampling uses the encoder's own latent output.
-- General brush replacement still defaults to `Swap+`, and erasing to `QwenEraser`.
-  `QwenEraser` and natural-language style editing are unchanged. Recommend this
+- General two-image replacement defaults to `Qwen2.1-Edit`, and erasing to `QwenEraser`.
+  Neither default requires a painted mask. Prefer `QwenOutfitSwap` for explicit
+  clothing transfer when its models are available. Recommend this
   preset only for clothing requests; do not claim the previous generic-reference
   failures are solved. LoRA image-quality evaluation is still pending.
 
@@ -703,8 +706,10 @@ Historical multi-image mask design, superseded by the 2026-10-05 sections below.
   pixel-for-pixel afterward. VAE reconstruction can still alter its pixels;
   do not promise exact preservation or claim real-image quality is verified.
   An outfit extending beyond the painted area requires an appropriately larger mask.
-- General brush replacement still defaults to `Swap+`, and erasing to `QwenEraser`.
-  `QwenEraser` and natural-language style editing are unchanged. The earlier
+- General two-image replacement defaults to `Qwen2.1-Edit`, and erasing to `QwenEraser`.
+  Neither default requires a painted mask. Prefer `QwenOutfitSwap` for explicit
+  clothing transfer when its models are available. Keep `Swap+` as an explicit
+  choice with its required mask. The earlier
   generic-reference failures remain known failures; outfit quality needs testing.
 
 ## 2026-10-05 Qwen Erase Preset

@@ -31,7 +31,7 @@
           "zh": "Qwen擦除"
         }
       },
-      "theme_title": "Qwen Erase",
+      "theme_title": "Qwen Erase [Optional mask]",
       "disable_canvas_mask": false,
       "director_capability": {
         "image_policy": "required",

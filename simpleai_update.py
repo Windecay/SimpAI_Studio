@@ -252,13 +252,26 @@ def _package_install_spec(pkg_name: str, pkg_version: str | None = None, version
     return pkg_name
 
 
-def _installed_package_version(package: str) -> str | None:
+def _installed_package_versions(package: str) -> list[str]:
     try:
-        return importlib_metadata.version(package)
-    except importlib_metadata.PackageNotFoundError:
-        return None
+        return [
+            str(distribution.version)
+            for distribution in importlib_metadata.distributions(name=package)
+        ]
     except Exception:
+        return []
+
+
+def _installed_package_version(package: str) -> str | None:
+    versions = _installed_package_versions(package)
+    if not versions:
         return None
+    try:
+        from packaging import version as packaging_version
+
+        return str(max(packaging_version.parse(value) for value in versions))
+    except Exception:
+        return versions[-1]
 
 
 def _package_requirement_met(
@@ -266,8 +279,8 @@ def _package_requirement_met(
     pkg_version: str | None = None,
     version_specifier: str | None = None,
 ) -> bool:
-    installed = _installed_package_version(package)
-    if installed is None:
+    installed_versions = _installed_package_versions(package)
+    if not installed_versions:
         return False
     if not pkg_version and not version_specifier:
         return True
@@ -276,10 +289,15 @@ def _package_requirement_met(
         from packaging import specifiers as packaging_specifiers
         from packaging import version as packaging_version
 
-        installed_version = packaging_version.parse(installed)
-        if pkg_version:
-            return installed_version == packaging_version.parse(pkg_version)
-        return installed_version in packaging_specifiers.SpecifierSet(version_specifier or "")
+        required_version = packaging_version.parse(pkg_version) if pkg_version else None
+        specifier = packaging_specifiers.SpecifierSet(version_specifier or "")
+        for installed in installed_versions:
+            installed_version = packaging_version.parse(installed)
+            if required_version is not None and installed_version == required_version:
+                return True
+            if required_version is None and installed_version in specifier:
+                return True
+        return False
     except Exception:
         return False
 

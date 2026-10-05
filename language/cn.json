@@ -2457,11 +2457,14 @@
   "QwenEraser": "Qwen擦除",
   "QwenEraser\u2B07": "Qwen擦除\u2B07",
   "Qwen Erase": "Qwen擦除",
+  "Qwen Erase [Optional mask]": "Qwen擦除 [蒙版可选]",
   "QwenOutfitSwap": "Qwen换装",
   "QwenOutfitSwap\u2B07": "Qwen换装\u2B07",
   "Qwen Outfit Swap": "Qwen换装",
+  "Qwen Outfit Swap [Optional mask]": "Qwen换装 [蒙版可选]",
   "Qwen Image 2.1 Edit": "Qwen Image 2.1 编辑",
   "Qwen Image 2.1 Edit [up to 9 images]": "Qwen Image 2.1 编辑 [最多9张图]",
+  "Qwen Image 2.1 Edit [up to 9 images, Optional mask]": "Qwen Image 2.1 编辑 [最多9张图，蒙版可选]",
   "Reference Resolution (0 = Original)": "参考图分辨率（0 = 原始尺寸）",
   "Clothing Reference Max Edge (0 = Original)": "服装参考图长边上限（0 = 原始尺寸）",
   "Custom Canvas Size": "自定义画布尺寸",
@@ -2494,5 +2497,7 @@
   "Qwen Outpaint": "Qwen扩图",
   "Generation canvas limit (MP, 0 = Auto 8 MP)": "生成画布上限（百万像素，0 = 自动，最高 8）",
   "Edge feather (pixels)": "边缘羽化（像素）",
-  "Remove the specified object and reconstruct the background naturally.": "移除指定物体，自然还原背景。"
+  "Remove the specified object and reconstruct the background naturally.": "移除指定物体，自然还原背景。",
+  "Transfer the requested object or attributes from <image2> to <image1>. Preserve all unrelated content in <image1>.": "将 <image2> 中指定的物体或特征迁移到 <image1>，保留 <image1> 中其余内容。",
+  "{tool} node and reference image input created. Upload the reference image, then run the node.": "{tool} 节点和参考图输入已创建。上传参考图后即可运行节点。"
 }

@@ -14,7 +14,7 @@
       "theme_labels": {
         "Qwen Outfit Swap": {"en": "Qwen Outfit Swap", "zh": "Qwen\u6362\u88c5"}
       },
-      "theme_title": "Qwen Outfit Swap",
+      "theme_title": "Qwen Outfit Swap [Optional mask]",
       "disable_canvas_mask": false,
       "director_capability": {
         "image_policy": "required",

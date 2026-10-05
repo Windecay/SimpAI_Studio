@@ -168,12 +168,12 @@
                 replace: {
                     label: t('Replace', '替换'),
                     presetSetting: 'replacePreset',
-                    defaultPreset: 'Swap+',
-                    prompt: t('Replace the masked area using the reference image and preserve the rest.', '使用参考图替换蒙版区域，并保留其他部分。'),
+                    defaultPreset: 'Qwen2.1-Edit',
+                    prompt: t('Transfer the requested object or attributes from <image2> to <image1>. Preserve all unrelated content in <image1>.'),
                     classicMode: 'inpaint',
-                    requiresMask: true,
+                    requiresMask: false,
                     wantsReference: true,
-                    autoRun: false
+                    autoRun: true
                 },
                 style_transfer: {
                     label: t('Style Transfer', '风格转换'),
@@ -233,7 +233,7 @@
             const minimumImages = Number(capability.min_images);
             return Object.assign({}, spec, {
                 requiresMask,
-                wantsReference: Number.isFinite(minimumImages) ? minimumImages > 1 : !!spec.wantsReference,
+                wantsReference: !!spec.wantsReference || (Number.isFinite(minimumImages) && minimumImages > 1),
                 autoRun: !requiresMask
             });
         }
@@ -427,7 +427,13 @@
                 .map(ref => canvasAgentReferenceNode(ref))
                 .filter(node => node && node.id !== target.id && isCanvasAgentImageTarget(node))
                 .slice(0, maxExtraImageReferences());
-            const initialPresetName = canvasAgentQuickToolPresetName(toolKey);
+            const agentPrompt = String(state.input || '').trim();
+            let initialPresetName = canvasAgentQuickToolPresetName(toolKey);
+            if (toolKey === 'replace' && initialPresetName === spec.defaultPreset
+                && call(utilitySource, 'isOutfitTransferRequest', false, agentPrompt)) {
+                const outfit = findCanvasAgentPresetEntryByAlias('QwenOutfitSwap');
+                if (outfit && !outfit.missing) initialPresetName = 'QwenOutfitSwap';
+            }
             let entry = findCanvasAgentPresetEntryByAlias(initialPresetName);
             if (!entry) {
                 showToast(t('Quick tool preset is unavailable: {preset}', '快捷工具 preset 不可用：{preset}').replace('{preset}', initialPresetName || spec.label));
@@ -437,9 +443,9 @@
                 createCanvasAgentStyleTransferWorkflow(target, entry, extraImageRefs, spec);
                 return;
             }
-            const agentPrompt = String(state.input || '').trim();
             const promptFromPreset = !agentPrompt;
-            const prompt = agentPrompt || canvasAgentPresetDefaultPrompt(entry, spec.prompt);
+            const prompt = agentPrompt || (toolKey === 'replace' && initialPresetName === spec.defaultPreset
+                ? spec.prompt : canvasAgentPresetDefaultPrompt(entry, spec.prompt));
             const decisionForm = {
                 preset: normalizePresetName(entry.name || entry.display_name || ''),
                 prompt
@@ -531,7 +537,9 @@
                 mutate({ inspector: true });
                 centerCanvasAgentWorkflow(workflowNodes);
                 if (referenceNode) {
-                    setCanvasAgentMessage(t('{tool} node and reference image input created. Upload the reference image, then add the mask and run it manually.', '{tool} 节点和参考图输入已创建。上传参考图后，再添加蒙版并手动运行。').replace('{tool}', spec.label));
+                    setCanvasAgentMessage((selectedSpec.requiresMask
+                        ? t('{tool} node and reference image input created. Upload the reference image, then add the mask and run it manually.', '{tool} 节点和参考图输入已创建。上传参考图后，再添加蒙版并手动运行。')
+                        : t('{tool} node and reference image input created. Upload the reference image, then run the node.')).replace('{tool}', spec.label));
                     showToast(t('{tool} reference image input created.', '{tool} 参考图输入已创建。').replace('{tool}', spec.label));
                 } else {
                     setCanvasAgentMessage(t('{tool} node created, but no free reference image slot was found. Connect a reference image manually before running.', '{tool} 节点已创建，但没有找到空闲参考图槽。运行前请手动连接参考图。').replace('{tool}', spec.label));

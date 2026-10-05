@@ -1461,7 +1461,7 @@
         audioPreset: '',
         outpaintPreset: 'OneKey-Outpaint',
         erasePreset: 'QwenEraser',
-        replacePreset: 'Swap+',
+        replacePreset: 'Qwen2.1-Edit',
         upscalePresetMode: 'uov_auto',
         upscalePreset: '',
         videoOutpaintPreset: CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET,
@@ -12338,7 +12338,8 @@
                     uid
                 },
                 utilitySource: {
-                    normalizePresetName
+                    normalizePresetName,
+                    isOutfitTransferRequest: WORKBENCH_UTILS.isOutfitTransferRequest
                 },
                 configSource: {
                     getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
