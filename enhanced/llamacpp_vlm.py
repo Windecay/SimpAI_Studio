@@ -2265,6 +2265,37 @@ class LlamaCppVLM:
                 **request_kwargs,
             )
 
+    def completion_messages(self, messages, cancel_check=None, **kwargs):
+        """Yield stateless API chunks without UI settings, history or tool execution."""
+        with self.lock:
+            if self.llm is None:
+                raise RuntimeError("Local model is not loaded")
+            messages = [dict(message) for message in messages]
+            guard = self._with_non_thinking_guard("", False)
+            if guard:
+                if messages and messages[0].get("role") == "system":
+                    content = messages[0].get("content")
+                    if isinstance(content, str):
+                        messages[0]["content"] = self._with_non_thinking_guard(content, False)
+                    elif isinstance(content, list):
+                        messages[0]["content"] = [*content, {"type": "text", "text": guard}]
+                else:
+                    messages.insert(0, {"role": "system", "content": guard})
+            try:
+                with self._request_thinking_mode(False):
+                    stream = self._create_request_chat_completion(
+                        messages=messages, enable_thinking=False, stream=True, **kwargs)
+                    try:
+                        for chunk in stream:
+                            if callable(cancel_check):
+                                cancel_check()
+                            yield chunk
+                    finally:
+                        if hasattr(stream, "close"):
+                            stream.close()
+            finally:
+                self._clear_hybrid_cache_if_needed()
+
     def chat(self, image, prompt, conversation_id="default", system_prompt=None, save_state=True, max_history=24,
              max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1,
              enable_thinking=None):

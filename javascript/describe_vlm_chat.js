@@ -138,7 +138,7 @@
     const CREATIVE_DEFAULT_PRESET = 'Z-imageT';
     const CREATIVE_POLL_INTERVAL_MS = 900;
     const CREATIVE_TERMINAL_STATES = new Set(['finished', 'failed', 'canceled', 'skipped', 'skipped_queue_limit', 'stale_branch']);
-    const CREATIVE_ACTIVE_STATES = new Set(['preparing', 'checking_models', 'queued', 'running', 'cancelling', 'skipping']);
+    const CREATIVE_ACTIVE_STATES = new Set(['preparing', 'checking_models', 'downloading_models', 'searching_alternatives', 'queued', 'running', 'cancelling', 'skipping']);
     const ROLEPLAY_VISUAL_RUNNING_LIMIT = 1;
     const ROLEPLAY_VISUAL_WAITING_LIMIT = 2;
     const CREATIVE_IMAGE_TASKS = new Set([
@@ -232,6 +232,7 @@
             preset,
             parameter_profile: parameterProfile,
             auto_generate: !!source.auto_generate,
+            review_results: source.review_results === true,
             source: String(source.source || '').trim().slice(0, 80),
             updated_at: String(source.updated_at || '').trim().slice(0, 80)
         };
@@ -4318,6 +4319,7 @@
         target.messages.forEach((message) => {
             (Array.isArray(message?.actions) ? message.actions : []).forEach((action) => {
                 if (!['generate_image', 'offer_image'].includes(action?.type)) return;
+                if (action.model_download_declined) return;
                 const generationState = String(action.generation?.state || 'awaiting_confirmation').toLowerCase();
                 const mediaInputs = Array.isArray(action.media_inputs) ? action.media_inputs : [];
                 const task = creativeActionTask(action, mediaInputs);
@@ -11492,12 +11494,16 @@
                         }
                         if (event?.type === 'snapshot') {
                             forward({ type: 'reset' });
+                            for (const message of Array.isArray(event.messages) ? event.messages : []) {
+                                forward({ type: 'assistant_message', message });
+                            }
                             if (event.text) forward({ type: 'delta', text: event.text });
                             if (event.status) forward(event.status);
                             return;
                         }
                         if (event?.type === 'delta' || event?.type === 'reset'
-                            || event?.type === 'status' || event?.type === 'progress') {
+                            || event?.type === 'status' || event?.type === 'progress'
+                            || event?.type === 'assistant_message') {
                             forward(event);
                             return;
                         }
@@ -14265,6 +14271,19 @@
             missing_count: Math.max(0, Number(generation.missing_count) || 0),
             preview_serial: Math.max(0, Number(generation.preview_serial) || 0),
             submission_uncertain: !!generation.submission_uncertain,
+            recovery_pending: !!generation.recovery_pending,
+            recovery_message: String(generation.recovery_message || '').slice(0, 500),
+            result_review: generation.result_review && typeof generation.result_review === 'object' ? {
+                state: ['pending', 'running'].includes(generation.result_review.state) ? 'interrupted'
+                    : ['pending', 'completed', 'failed', 'interrupted', 'skipped'].includes(generation.result_review.state)
+                        ? generation.result_review.state : 'interrupted',
+                run_id: String(generation.result_review.run_id || '').slice(0, 240),
+                verdict: ['pass', 'needs_changes', 'uncertain'].includes(generation.result_review.verdict)
+                    ? generation.result_review.verdict : '',
+                summary: String(generation.result_review.summary || '').slice(0, 1800),
+                issues: Array.isArray(generation.result_review.issues)
+                    ? generation.result_review.issues.filter(item => typeof item === 'string').slice(0, 6).map(item => item.slice(0, 300)) : []
+            } : null,
             skip_reason: String(generation.skip_reason || '').slice(0, 80),
             queue_position: Math.max(0, Math.round(Number(generation.queue_position) || 0)),
             started_at: String(generation.started_at || '').slice(0, 80),
@@ -14326,6 +14345,8 @@
                 ? String(action.preset_source)
                 : '',
             parameter_profile: String(action.parameter_profile || action.execution_plan?.parameter_profile || '').slice(0, 200),
+            parameter_profile_selection_required: !!action.parameter_profile_selection_required,
+            parameter_profile_fingerprint: /^[0-9a-f]{64}$/.test(String(action.parameter_profile_fingerprint || '')) ? action.parameter_profile_fingerprint : '',
             execution_plan: normalizeCreativeExecutionPlan(action.execution_plan),
             aspect_ratio: String(action.aspect_ratio || 'auto').slice(0, 40),
             image_number: Math.max(1, Math.min(4, Math.round(Number(action.image_number) || 1))),
@@ -14341,6 +14362,9 @@
             prompt_target_preset: String(action.prompt_target_preset || action.preset || '').trim().slice(0, 200),
             prompt_user_edited: !!action.prompt_user_edited,
             direct_run: !!action.direct_run,
+            model_download_declined: !!action.model_download_declined,
+            model_alternative_identity_binding: /^[0-9a-f]{64}$/.test(String(action.model_alternative_identity_binding || ''))
+                ? action.model_alternative_identity_binding : '',
             prompt_reformat: normalizeRoleplayPromptReformat(action.prompt_reformat),
             roleplay_visible_character_ids: Array.isArray(action.roleplay_visible_character_ids)
                 ? action.roleplay_visible_character_ids.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 20)
@@ -18299,6 +18323,28 @@
         return true;
     }
 
+    function commitAgentAssistantMessage(message, runtime, requestId, responseSource) {
+        if (!runtime || !requestId || !/^round-\d+$/.test(String(message?.id || ''))
+            || typeof message?.text !== 'string' || !message.text.trim()) return false;
+        const id = `${requestId}:${message.id}`;
+        const messages = runtime.messages;
+        if (!Array.isArray(messages) || messages.some(item => item?.id === id)) return false;
+        const assistant = {
+            id, revision: 1, role: 'assistant', content: message.text,
+            response_source: responseSource, actions: []
+        };
+        const pendingIndex = messages.findIndex(item => item?.pending);
+        messages.splice(pendingIndex < 0 ? messages.length : pendingIndex, 0, assistant);
+        runtime.persistenceDirty = true;
+        scheduleConversationPersist(runtime, 'agent_message', 'soon');
+        if (isCurrentConversationRuntime(runtime)) {
+            state.messages = messages;
+            state.persistenceDirty = true;
+            renderMessages();
+        }
+        return true;
+    }
+
     function abortCreativeDirectorRequest(notifyBackend = false, runtime = currentConversationRuntime()) {
         const controller = runtime.creativeDirectorAbortController;
         const requestId = runtime.creativeDirectorRequestId;
@@ -19554,7 +19600,7 @@
         return (Array.isArray(entries) ? entries : []).map((item) => {
             if (!item || typeof item !== 'object') return null;
             const name = String(item.name || '').trim().slice(0, 200);
-            const preset = String(item.preset || item.preset_name || '').trim().replace(/\.json$/i, '').slice(0, 200);
+            const preset = String(item.preset || item.preset_id || item.preset_name || '').trim().replace(/\.json$/i, '').slice(0, 200);
             const key = `${preset.toLowerCase()}\n${name.toLowerCase()}`;
             if (!name || !preset || isRetiredCreativePreset(preset) || seen.has(key)) return null;
             seen.add(key);
@@ -19562,7 +19608,8 @@
                 name,
                 preset,
                 scene_theme: String(item.scene_theme || '').trim().slice(0, 200),
-                task_method: String(item.task_method || '').trim().slice(0, 200)
+                task_method: String(item.task_method || '').trim().slice(0, 200),
+                fingerprint: /^[0-9a-f]{64}$/.test(String(item.fingerprint || '')) ? item.fingerprint : ''
             };
         }).filter(Boolean).sort((left, right) => {
             const presetOrder = left.preset.localeCompare(right.preset);
@@ -19635,7 +19682,8 @@
             name: String(item.name || ''),
             preset: String(item.preset || ''),
             scene_theme: String(item.scene_theme || ''),
-            task_method: String(item.task_method || '')
+            task_method: String(item.task_method || ''),
+            ...(item.fingerprint ? { fingerprint: item.fingerprint } : {})
         }));
     }
 
@@ -20017,6 +20065,14 @@
         const task = creativeActionTask(action, inputs);
         const parameterProfileName = String(action?.parameter_profile || action?.execution_plan?.parameter_profile || '').trim();
         const parameterProfile = creativeParameterProfileEntry(parameterProfileName, entry?.name);
+        if (action?.parameter_profile_selection_required) {
+            return {
+                schema: 'simpai.execution_plan.v1', status: 'needs_parameter_profile',
+                task, preset: String(entry?.name || action.preset || ''), theme: '', task_method: '',
+                media_bindings: [], interaction_requirements: [], model_status: 'unknown',
+                preset_source: presetSource, parameter_profile_selection_required: true
+            };
+        }
         const namedProfileExists = state.creativeParameterProfiles.some(
             (item) => String(item.name || '').toLowerCase() === parameterProfileName.toLowerCase()
         );
@@ -20128,6 +20184,8 @@
         if (parameterProfile) {
             plan.parameter_profile = parameterProfile.name;
             plan.parameter_profile_source = String(action?.execution_plan?.parameter_profile_source || presetSource);
+            const fingerprint = action.parameter_profile_fingerprint || parameterProfile.fingerprint;
+            if (/^[0-9a-f]{64}$/.test(String(fingerprint || ''))) plan.parameter_profile_fingerprint = fingerprint;
         }
         const classicMode = String(taskModes[task] || '');
         if (classicMode) plan.classic_mode = classicMode;
@@ -20137,7 +20195,7 @@
 
     function normalizeCreativeExecutionPlan(plan) {
         if (!plan || typeof plan !== 'object' || plan.schema !== 'simpai.execution_plan.v1') return null;
-        const statuses = new Set(['ready', 'needs_media', 'needs_mask', 'needs_interaction', 'models_missing', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible']);
+        const statuses = new Set(['ready', 'needs_media', 'needs_mask', 'needs_interaction', 'needs_parameter_profile', 'models_missing', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible']);
         const rawParameterOverrides = plan.parameter_overrides && typeof plan.parameter_overrides === 'object'
             ? plan.parameter_overrides
             : {};
@@ -20176,12 +20234,14 @@
             interaction_requirements: Array.isArray(plan.interaction_requirements) ? plan.interaction_requirements.slice(0, 8).map(String) : [],
             model_status: ['ready', 'missing', 'unknown'].includes(String(plan.model_status || '')) ? String(plan.model_status) : 'unknown',
             preset_source: String(plan.preset_source || 'automatic'),
-            parameter_overrides: parameterOverrides
+            parameter_overrides: parameterOverrides,
+            parameter_profile_selection_required: !!plan.parameter_profile_selection_required
         };
         const parameterProfile = String(plan.parameter_profile || '').trim().slice(0, 200);
         if (parameterProfile) {
             normalized.parameter_profile = parameterProfile;
             normalized.parameter_profile_source = String(plan.parameter_profile_source || plan.preset_source || 'automatic').slice(0, 80);
+            if (/^[0-9a-f]{64}$/.test(String(plan.parameter_profile_fingerprint || ''))) normalized.parameter_profile_fingerprint = plan.parameter_profile_fingerprint;
         }
         const classicMode = String(plan.classic_mode || '').toLowerCase();
         if (classicMode === 'enhance') normalized.classic_mode = classicMode;
@@ -20189,10 +20249,11 @@
         return normalized;
     }
 
-    function creativeCompatiblePresetEntry(task, media = 0, instruction = '') {
+    function creativeCompatiblePresetEntries(task, media = 0, instruction = '') {
         const outfitTransfer = task === 'image_object_transfer' && !!UTILS.isOutfitTransferRequest?.(instruction);
         const candidates = state.creativePresetCatalog.filter((entry) =>
             creativePresetSupportsTask(entry, task, media)
+            && String(entry.name || '').toLowerCase() !== 'onekeykontext'
             && (task !== 'image_object_transfer' || String(entry.name || '').toLowerCase() !== 'qwenoutfitswap' || outfitTransfer)
         );
         const taskPriorities = {
@@ -20233,7 +20294,11 @@
             const leftPriority = priorities.findIndex((name) => name.toLowerCase() === String(left?.name || '').toLowerCase());
             const rightPriority = priorities.findIndex((name) => name.toLowerCase() === String(right?.name || '').toLowerCase());
             return (leftPriority < 0 ? priorities.length : leftPriority) - (rightPriority < 0 ? priorities.length : rightPriority);
-        })[0] || null;
+        });
+    }
+
+    function creativeCompatiblePresetEntry(task, media = 0, instruction = '') {
+        return creativeCompatiblePresetEntries(task, media, instruction)[0] || null;
     }
 
     function roleplayAutomaticPresetAction(action) {
@@ -20336,7 +20401,9 @@
             )))
         ));
         const options = [
-            `<option value="">${escapeHtml(localText('Preset defaults', '使用 Preset 默认参数'))}</option>`,
+            config.selectionRequired
+                ? `<option value="" selected disabled>${escapeHtml(roleplayDictionaryText('Choose a saved parameter profile'))}</option>`
+                : `<option value="">${escapeHtml(localText('Preset defaults', '使用 Preset 默认参数'))}</option>`,
             ...rows.map((item) => {
                 const itemPreset = String(item.preset || '').trim();
                 const selectedMatch = item.name === selectedName && (
@@ -20406,6 +20473,8 @@
     </div>
   </div>
   <label class="describe-vlm-chat-auto-generate"><input type="checkbox" data-describe-vlm-chat-auto-generate ${preference.auto_generate ? 'checked' : ''}><span>${escapeHtml(localText('Generate without confirmation', '无需确认，直接生成'))}</span></label>
+  <label class="describe-vlm-chat-auto-generate" title="${escapeHtml(roleplayDictionaryText('Review may reload the local vision model. It never regenerates automatically.'))}"><input type="checkbox" data-describe-vlm-chat-review-results ${preference.review_results ? 'checked' : ''}><span>${escapeHtml(roleplayDictionaryText('Review generated images in this conversation'))}</span></label>
+  ${preference.review_results ? `<small class="describe-vlm-chat-generation-prompt-note">${escapeHtml(roleplayDictionaryText('Review may reload the local vision model. It never regenerates automatically.'))}</small>` : ''}
 </div>`;
     }
 
@@ -20422,8 +20491,11 @@
             ensureCreativePresetCatalog().catch(() => {});
         }
         if (state.creativePreferenceExpanded) {
+            const scrollTop = mount.querySelector('.describe-vlm-chat-preference')?.scrollTop || 0;
             mount.classList.add('is-expanded');
             mount.innerHTML = renderCreativePreferencePanel();
+            const panel = mount.querySelector('.describe-vlm-chat-preference');
+            if (panel) panel.scrollTop = scrollTop;
             return;
         }
         mount.classList.remove('is-expanded');
@@ -20436,8 +20508,13 @@
 
     function toggleCreativePreferenceMount() {
         if (normalizeChatMode(state.chatMode) !== 'creative') return;
+        const runtime = currentConversationRuntime();
         state.creativePreferenceExpanded = !state.creativePreferenceExpanded;
+        runtime.creativePreferenceExpanded = state.creativePreferenceExpanded;
+        runtime.persistenceDirty = true;
+        state.persistenceDirty = true;
         renderCreativePreferenceMount();
+        scheduleConversationPersist(runtime, 'creative_preference_visibility');
     }
 
     function creativeGenerationForAction(action) {
@@ -20565,6 +20642,8 @@
             action.requested_task = plan?.task || action.task_request?.task || action.task || '';
             action.preset = plan?.preset || (plan?.status === 'no_compatible_route' ? '' : String(action.preset || CREATIVE_DEFAULT_PRESET));
             action.parameter_profile = String(plan?.parameter_profile || action.parameter_profile || '');
+            action.parameter_profile_selection_required = !!plan?.parameter_profile_selection_required;
+            action.parameter_profile_fingerprint = String(plan?.parameter_profile_fingerprint || action.parameter_profile_fingerprint || '');
             action.preset_source = plan?.preset_source === 'session_preference'
                 ? 'session_preference'
                 : plan?.preset_source === 'request_hint' ? 'user' : 'agent_auto';
@@ -20579,7 +20658,7 @@
                 generation.state = 'needs_media';
                 generation.error = roleplayDictionaryText('An attached input could not be restored. Generation has been stopped.');
             }
-            if (plan && ['needs_media', 'needs_mask', 'needs_interaction', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible'].includes(plan.status) && generation.state === 'awaiting_confirmation') {
+            if (plan && ['needs_media', 'needs_mask', 'needs_interaction', 'needs_parameter_profile', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible'].includes(plan.status) && generation.state === 'awaiting_confirmation') {
                 generation.state = plan.status;
             }
             prepared.push(action);
@@ -20695,7 +20774,7 @@
         const selected = String(action?.parameter_profile || action?.execution_plan?.parameter_profile || '');
         const available = state.creativeParameterProfiles.some((item) => String(item.preset || '') === preset);
         const roleplayVisual = !!action?.roleplay_visual;
-        if (!roleplayVisual && !available && !selected) return '';
+        if (!roleplayVisual && !available && !selected && !action.parameter_profile_selection_required) return '';
         const selectedPreset = String(action?.parameter_profile_preset || preset);
         const label = roleplayVisual
             ? localText('Private parameter profile', '私人参数预设')
@@ -20703,7 +20782,7 @@
         const options = creativeParameterProfileOptions(
             preset,
             selected,
-            roleplayVisual ? { includeAll: true, selectedPreset } : {}
+            { ...(roleplayVisual ? { includeAll: true, selectedPreset } : {}), selectionRequired: !!action.parameter_profile_selection_required }
         );
         return `<label><span>${escapeHtml(label)}</span><select data-describe-vlm-chat-generation-parameter-profile="${escapeHtml(actionRef)}" ${disabled}>${options}</select></label>`;
     }
@@ -20729,7 +20808,13 @@
     }
 
     function creativeResponseError(response) {
+        if (response?.error && typeof response.error === 'object') {
+            return String(response.error.message || localText('Generation failed.', '生成失败。'));
+        }
         const code = String(response?.error || '').trim();
+        if (code === 'parameter_profile_changed') {
+            return roleplayDictionaryText('The parameter profile changed. Refresh the profile list and select it again.');
+        }
         if (code === 'generation_not_allowed') {
             return localText('The current identity is not allowed to generate images.', '当前身份没有生图权限。');
         }
@@ -20746,14 +20831,20 @@
     }
 
     function creativeStateLabel(generation) {
+        if (generation?.recovery_pending) return roleplayDictionaryText('Waiting to restore task status');
         const current = String(generation?.state || 'awaiting_confirmation').toLowerCase();
         if (current === 'needs_media') return localText('Reference media required', '需要引用素材');
         if (current === 'needs_mask') return localText('Manual mask required', '需要手动绘制遮罩');
         if (current === 'needs_interaction') return localText('Manual setup required', '需要手动设置');
+        if (current === 'needs_parameter_profile') return roleplayDictionaryText('Choose a saved parameter profile');
         if (current === 'no_compatible_route') return localText('No compatible generation route', '没有兼容的生成路线');
         if (current === 'parameter_profile_missing') return localText('Parameter profile unavailable', '参数预设不可用');
         if (current === 'parameter_profile_incompatible') return localText('Parameter profile incompatible', '参数预设不兼容');
         if (current === 'checking_models') return localText('Checking models', '正在检查模型');
+        if (current === 'downloading_models') return localText('Downloading required models', '正在下载所需模型');
+        if (current === 'searching_alternatives') return localText('Checking alternatives', '正在检查替代方案');
+        if (current === 'alternatives_unavailable') return localText('Unable to execute', '当前无法执行');
+        if (current === 'alternative_search_failed') return localText('Checks incomplete', '检查尚未完成');
         if (current === 'models_missing') {
             const count = Math.max(0, Number(generation?.missing_count) || 0);
             return localText(`${count} required model file(s) are missing`, `缺少 ${count} 个所需模型文件`);
@@ -21121,7 +21212,7 @@
     <button type="button" data-describe-vlm-chat-copy="${escapeHtml(actionRef)}" title="${escapeHtml(copyTitle)}" aria-label="${escapeHtml(copyTitle)}"><i class="fa-solid fa-copy"></i></button>
   </div>
 </div>`;
-        }).join('')}</div>`;
+        }).join('')}${renderCreativeResultReview(action, actionRef)}</div>`;
     }
 
     async function attachCreativeResultImage(ref, assetIndex) {
@@ -21285,7 +21376,7 @@
             : '';
         const statusDetail = String(generation.message || '').trim();
         const roleplayAutoStart = !!(action?.roleplay_state_image || action?.roleplay_character_image || action?.roleplay_scene_reference_image);
-        const planBlocked = ['needs_media', 'needs_mask', 'needs_interaction', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible'].includes(currentState);
+        const planBlocked = action.parameter_profile_selection_required || ['needs_media', 'needs_mask', 'needs_interaction', 'needs_parameter_profile', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible'].includes(currentState);
         const canSubmit = !active && !promptReformatActive && !planBlocked && !(roleplayAutoStart && currentState === 'awaiting_confirmation');
         const stateLabel = promptReformatActive
             ? localText('Preparing prompt for the selected Preset', '正在按当前 Preset 整理提示词')
@@ -21294,7 +21385,7 @@
             : creativeStateLabel(generation);
         const submitLabel = ['finished', 'failed', 'canceled', 'skipped', 'skipped_queue_limit'].includes(currentState)
             ? localText('Generate again', '再次生成')
-            : ['models_missing', 'preset_missing'].includes(currentState)
+            : ['models_missing', 'preset_missing', 'alternatives_unavailable', 'alternative_search_failed'].includes(currentState)
                 ? localText('Check again', '重新检查')
                 : localText('Generate', '确认生成');
         const submitTitle = CREATIVE_VIDEO_TASKS.has(String(action?.task || '').trim().toLowerCase())
@@ -21352,10 +21443,13 @@
     <label><span>${escapeHtml(localText('Images', '数量'))}</span><select data-describe-vlm-chat-generation-count="${escapeHtml(actionRef)}" ${disabled}>${[1, 2, 3, 4].map((count) => `<option value="${count}" ${count === action.image_number ? 'selected' : ''}>${count}</option>`).join('')}</select></label>
   </div>
   ${previewHtml}
-  <div class="describe-vlm-chat-generation-status is-${escapeHtml(currentState)}" aria-live="polite"><span>${escapeHtml(stateLabel)}</span>${active && progress ? `<progress max="100" value="${progress}"></progress><b>${progress}%</b>` : ''}${statusDetail && !['awaiting_confirmation', 'finished', 'failed', 'models_missing'].includes(currentState) ? `<small>${escapeHtml(statusDetail)}</small>` : ''}</div>
+  ${renderCreativeModelDownload(generation, actionRef)}
+  ${generation.recovery_pending ? `<p class="describe-vlm-chat-generation-prompt-note">${escapeHtml(generation.recovery_message || roleplayDictionaryText('Task status is unavailable. Restore the connection and check again.'))}</p>` : ''}
+  <div class="describe-vlm-chat-generation-status is-${escapeHtml(currentState)}" aria-live="polite"><span>${escapeHtml(stateLabel)}</span>${active && progress ? `<progress max="100" value="${progress}"></progress><b>${progress}%</b>` : ''}${statusDetail && !['awaiting_confirmation', 'finished', 'failed'].includes(currentState) ? `<small>${escapeHtml(statusDetail)}</small>` : ''}</div>
   <div class="describe-vlm-chat-action-buttons">
+    ${generation.recovery_pending && generation.run_id ? `<button type="button" data-describe-vlm-chat-generation-recover="${escapeHtml(actionRef)}"><i class="fa-solid fa-rotate"></i><span>${escapeHtml(roleplayDictionaryText('Restore task status'))}</span></button>` : ''}
     ${canSubmit ? `<button type="button" data-describe-vlm-chat-generation-run="${escapeHtml(actionRef)}" title="${escapeHtml(submitTitle)}" aria-label="${escapeHtml(submitTitle)}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(submitLabel)}</span></button>` : ''}
-    ${active && (generation.run_id || (promptReformatActive && promptReformat.request_id.startsWith('creative_h3_prompt'))) ? `<button type="button" class="is-danger" data-describe-vlm-chat-generation-stop="${escapeHtml(actionRef)}" title="${escapeHtml(stopTitle)}" aria-label="${escapeHtml(stopTitle)}"><i class="fa-solid fa-stop"></i><span>${escapeHtml(localText('Stop', '停止'))}</span></button>` : ''}
+    ${active && (generation.run_id || ['downloading_models', 'searching_alternatives'].includes(currentState) || (promptReformatActive && promptReformat.request_id.startsWith('creative_h3_prompt'))) ? `<button type="button" class="is-danger" data-describe-vlm-chat-generation-stop="${escapeHtml(actionRef)}" title="${escapeHtml(stopTitle)}" aria-label="${escapeHtml(stopTitle)}"><i class="fa-solid fa-stop"></i><span>${escapeHtml(localText('Stop', '停止'))}</span></button>` : ''}
     <button type="button" data-describe-vlm-chat-copy="${escapeHtml(actionRef)}" title="${escapeHtml(localText('Copy prompt', '复制提示词'))}" aria-label="${escapeHtml(localText('Copy prompt', '复制提示词'))}"><i class="fa-solid fa-copy"></i></button>
   </div>
   </div>
@@ -21673,6 +21767,111 @@
         if (render && isCurrentConversationRuntime(target)) renderMessages(renderOptions);
     }
 
+    function renderCreativeResultReview(action, ref) {
+        const review = action.generation?.result_review;
+        if (!review) return '';
+        const labels = {
+            pending: 'Waiting to review images', running: 'Reviewing generated images',
+            failed: 'Image review unavailable', interrupted: 'Image review interrupted; it was not repeated',
+            skipped: 'Image review skipped', pass: 'Image review: meets the request',
+            needs_changes: 'Image review: changes suggested', uncertain: 'Image review: uncertain'
+        };
+        const label = labels[review.state === 'completed' ? review.verdict : review.state] || labels.uncertain;
+        return `<details class="describe-vlm-chat-image-context" open><summary>${escapeHtml(roleplayDictionaryText(label))}</summary>${review.summary ? `<p>${escapeHtml(review.summary)}</p>` : ''}${review.issues?.length ? `<ul>${review.issues.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}</details>`;
+    }
+
+    function cancelCreativeResultReviews(runtime) {
+        let changed = false;
+        for (const message of runtime.messages || []) {
+            for (const action of message.actions || []) {
+                if (action.generation?.result_review?.state === 'pending') {
+                    action.generation.result_review.state = 'interrupted';
+                    changed = true;
+                }
+            }
+        }
+        if (runtime.resultReviewContext) {
+            changed = true;
+            runtime.resultReviewContext.controller.abort();
+            notifyBackendChatCancel(runtime.conversationId, runtime.resultReviewContext.requestId).catch(() => {});
+        }
+        if (changed) persistCreativeAction(false, {}, runtime);
+    }
+
+    function scheduleCreativeResultReviews(runtime = currentConversationRuntime()) {
+        if (!runtime?.creativePreference?.review_results || runtime.resultReviewBusy || !isCurrentConversationRuntime(runtime)) return;
+        const entries = [];
+        (runtime.messages || []).forEach((message, mi) => (message.actions || []).forEach((action, ai) => entries.push({ action, ref: `${mi}:${ai}` })));
+        // Finish this conversation's generation queue before loading a vision model.
+        if (entries.some(({ action }) => action.generation?.run_id && CREATIVE_ACTIVE_STATES.has(action.generation.state))) return;
+        const next = entries.find(({ action }) => action.generation?.state === 'finished' && action.generation?.result_review?.state === 'pending');
+        if (!next) return;
+        runtime.resultReviewBusy = true;
+        Promise.resolve(reviewCreativeResult(next.ref, runtime)).finally(() => {
+            runtime.resultReviewBusy = false;
+            scheduleCreativeResultReviews(runtime);
+        });
+    }
+
+    async function reviewCreativeResult(ref, runtime) {
+        const found = creativeActionFromRef(ref, runtime.messages);
+        const action = found?.action;
+        const generation = action?.generation;
+        const review = generation?.result_review;
+        if (!review || review.state !== 'pending' || !runtime.creativePreference?.review_results) return;
+        const controller = new AbortController();
+        const owner = JSON.stringify(creativeUserContext());
+        const prompt = String(action.prompt || '');
+        const current = () => !controller.signal.aborted && runtime.creativePreference?.review_results
+            && creativeActionFromRef(ref, runtime.messages)?.action === action
+            && action.generation === generation && generation.run_id === review.run_id
+            && action.prompt === prompt && JSON.stringify(creativeUserContext()) === owner;
+        const requestId = uid('creative_result_review');
+        runtime.resultReviewContext = { controller, requestId };
+        review.state = 'running';
+        persistCreativeAction(true, {}, runtime);
+        try {
+            const outputs = (generation.assets || []).filter(asset => mediaKind(asset) === 'image');
+            const inputs = action.media_inputs || [];
+            if (!outputs.length || outputs.length !== (generation.assets || []).length
+                || inputs.some(item => mediaKind(item) !== 'image') || inputs.length + outputs.length > MAX_REFERENCE_IMAGES) {
+                review.state = 'skipped';
+                return;
+            }
+            const version = readSelectedVlmVersion();
+            const settings = { version, custom_api: readDescribeCustomApi(version),
+                vram_policy: state.vramPolicy, kv_cache_type: state.kvCacheType,
+                n_ctx: currentVlmNctx(version), load_mtp: !!state.mtpEnabled,
+                unload_after_chat: !!runtime.unloadAfterChat, lang: state.__lang, __lang: state.__lang };
+            const images = [];
+            for (const item of [...inputs.map(input => ({ asset: input.asset, name: input.name })), ...outputs.map(asset => ({ asset, name: asset.name }))]) {
+                if (!current()) return;
+                images.push(await readConversationImage(item, controller.signal));
+            }
+            if (!current()) return;
+            const messageIndex = runtime.messages.indexOf(found.message);
+            const userRequest = runtime.messages.slice(0, Math.max(0, messageIndex)).reverse()
+                .find(message => message.role === 'user')?.content || '';
+            const response = await postJsonStream('/describe-image/vlm-chat-stream', {
+                ...settings, request_kind: 'creative_result_review', request_id: requestId,
+                conversation_id: runtime.conversationId, result_review_enabled: true,
+                review_instruction: JSON.stringify({ user_request: String(userRequest).slice(0, 4000),
+                    generation_prompt: prompt.slice(0, 6000), requested_outputs: Number(action.image_number) || 1 }),
+                review_source_count: inputs.length, images,
+                user_did: creativeUserContext().user_did
+            }, { signal: controller.signal });
+            if (!current()) return;
+            if (!response?.ok || !response.review) throw new Error('review_failed');
+            Object.assign(review, response.review, { state: 'completed' });
+        } catch (error) {
+            review.state = controller.signal.aborted ? 'interrupted' : 'failed';
+        } finally {
+            if (review.state === 'running') review.state = 'interrupted';
+            if (runtime.resultReviewContext?.requestId === requestId) runtime.resultReviewContext = null;
+            persistCreativeAction(true, {}, runtime);
+        }
+    }
+
     function applyCreativeRunResponse(ref, response, runtime = null) {
         const target = runtime || currentConversationRuntime();
         const found = creativeActionFromRef(ref, target.messages);
@@ -21692,6 +21891,8 @@
         generation.message = String(response?.message || '');
         generation.error = response?.ok === false ? creativeResponseError(response) : '';
         generation.submission_uncertain = false;
+        generation.recovery_pending = false;
+        generation.recovery_message = '';
         const frames = Array.isArray(response?.preview_stream?.frames_delta) ? response.preview_stream.frames_delta : [];
         const preview = frames.length ? frames[frames.length - 1] : response?.preview;
         if (preview && typeof preview === 'object') generation.preview = Object.assign({}, preview);
@@ -21704,7 +21905,11 @@
         if (CREATIVE_TERMINAL_STATES.has(responseState)) {
             generation.finished_at = String(response?.finished_at || new Date().toISOString());
         }
+        if (!wasFinished && responseState === 'finished' && generation.assets.length && target.creativePreference?.review_results && !found.action.roleplay_visual) {
+            generation.result_review = { state: 'pending', run_id: generation.run_id, summary: '', issues: [] };
+        }
         persistCreativeAction(true, CREATIVE_TERMINAL_STATES.has(responseState) ? {} : { anchorGenerationRef: ref }, target);
+        if (CREATIVE_TERMINAL_STATES.has(responseState) && target.creativePreference?.review_results) scheduleCreativeResultReviews(target);
         if (CREATIVE_TERMINAL_STATES.has(responseState) && found.action.roleplay_visual) {
             scheduleRoleplayVisualQueue(target);
         }
@@ -21734,7 +21939,7 @@
         const target = runtime || currentConversationRuntime();
         const id = String(runId || '');
         const initial = creativeActionFromRef(ref, target.messages);
-        if (!id || !initial || target.creativeGenerationPolls.has(id)) return;
+        if (!id || !initial || initial.action.generation?._polling || target.creativeGenerationPolls.has(id)) return;
         const messageId = String(initial.message?.id || '');
         const toolCallId = String(initial.action?.tool_call_id || '');
         const timer = window.setTimeout(async () => {
@@ -21744,31 +21949,43 @@
             if (!found || String(found.action.generation?.run_id || '') !== id) return;
             const api = creativeCanvasApi();
             if (!api || typeof api.pollRun !== 'function') {
-                found.action.generation.state = 'failed';
-                found.action.generation.error = localText('Canvas generation API is unavailable.', 'Canvas 生图接口不可用。');
+                found.action.generation.recovery_pending = true;
+                found.action.generation.recovery_message = roleplayDictionaryText('Task status is unavailable. Restore the connection and check again.');
                 persistCreativeAction(true, {}, target);
                 if (found.action.roleplay_visual) scheduleRoleplayVisualQueue(target);
                 return;
             }
-            const response = await api.pollRun(id, {
-                after_preview_serial: Number(found.action.generation?.preview_serial) || 0,
-                user_context: creativeUserContext()
-            });
+            const polledGeneration = found.action.generation;
+            const owner = JSON.stringify(creativeUserContext());
+            const controller = new AbortController();
+            const timeout = window.setTimeout(() => controller.abort(), 20000);
+            polledGeneration._polling = true;
+            let response;
+            try {
+                response = await api.pollRun(id, {
+                    after_preview_serial: Number(polledGeneration.preview_serial) || 0,
+                    user_context: creativeUserContext(), signal: controller.signal
+                });
+            } catch (error) {
+                response = { ok: false, error: 'connection_failed' };
+            } finally {
+                window.clearTimeout(timeout);
+                polledGeneration._polling = false;
+            }
             const live = creativeActionFromRuntimeIdentity(target, messageId, toolCallId)
                 || creativeActionFromRef(ref, target.messages);
             if (!live || live.action !== found.action || String(live.action.generation?.run_id || '') !== id) return;
+            if (live.action.generation !== polledGeneration || owner !== JSON.stringify(creativeUserContext())) return;
             if (!response?.ok) {
+                if (CREATIVE_TERMINAL_STATES.has(String(polledGeneration.state || ''))) return;
                 const failures = (Number(found.action.generation?._poll_failures) || 0) + 1;
                 found.action.generation._poll_failures = failures;
-                if (failures < 3 && String(response?.error || '') !== 'run not found') {
-                    scheduleCreativeGenerationPoll(ref, id, CREATIVE_POLL_INTERVAL_MS * failures, target);
-                    return;
-                }
-                found.action.generation.state = 'failed';
-                found.action.generation.error = creativeResponseError(response);
-                found.action.generation.message = String(response?.details || response?.error || '');
+                found.action.generation.recovery_pending = true;
+                found.action.generation.recovery_message = roleplayDictionaryText('Task status is unavailable. Restore the connection and check again.');
                 persistCreativeAction(true, {}, target);
-                if (found.action.roleplay_visual) scheduleRoleplayVisualQueue(target);
+                if (failures < 12 && ![401, 403, 404, 410].includes(response?.http_status) && String(response?.error || '') !== 'run not found') {
+                    scheduleCreativeGenerationPoll(ref, id, Math.min(30000, CREATIVE_POLL_INTERVAL_MS * failures), target);
+                }
                 return;
             }
             found.action.generation._poll_failures = 0;
@@ -21791,24 +22008,28 @@
             });
         });
         if (normalizeChatMode(runtime.chatMode) === 'roleplay') scheduleRoleplayVisualQueue(runtime);
+        scheduleCreativeResultReviews(runtime);
     }
 
     function autoStartCreativeActionsForMessage(messageId, runtime = currentConversationRuntime()) {
-        if (!runtime.creativePreference.auto_generate) return;
         const messageIndex = runtime.messages.findIndex((message) => String(message?.id || '') === String(messageId || ''));
         if (messageIndex < 0) return;
         const actions = Array.isArray(runtime.messages[messageIndex]?.actions) ? runtime.messages[messageIndex].actions : [];
         actions.forEach((action, actionIndex) => {
             if (action?.type !== 'generate_image') return;
+            if (action.parameter_profile_selection_required) return;
+            if (action.model_download_declined) return;
             const generation = creativeGenerationForAction(action);
             if (String(generation.state || 'awaiting_confirmation').toLowerCase() !== 'awaiting_confirmation') return;
-            startCreativeGeneration(`${messageIndex}:${actionIndex}`, runtime);
+            if (!runtime.creativePreference.auto_generate && action.execution_plan?.status !== 'models_missing') return;
+            startCreativeGeneration(`${messageIndex}:${actionIndex}`, runtime, { checkOnly: !runtime.creativePreference.auto_generate });
         });
     }
 
     function stopCreativePolls(runtime = currentConversationRuntime()) {
         runtime.creativeGenerationPolls.forEach((timer) => window.clearTimeout(timer));
         runtime.creativeGenerationPolls.clear();
+        cancelCreativeResultReviews(runtime);
     }
 
     function roleplayVisualActionMatchesRuntime(action, runtime) {
@@ -22036,12 +22257,370 @@
         }
     }
 
-    async function startCreativeGeneration(ref, runtime = currentConversationRuntime()) {
-        const found = isCurrentConversationRuntime(runtime)
+    function creativeModelDownloadSignature(action) {
+        return JSON.stringify({ preset: action.preset, task: action.task, prompt: action.prompt,
+            aspect_ratio: action.aspect_ratio, image_number: action.image_number,
+            parameter_profile: action.parameter_profile, execution_plan: action.execution_plan,
+            media_inputs: action.media_inputs });
+    }
+
+    function creativeAgentApiBase() {
+        const root = String(window.gradio_config?.root || window.location.href.split(/[?#]/)[0]).replace(/\/+$/, '');
+        return new URL(root + '/api/v1/', window.location.href).href;
+    }
+
+    async function creativeAgentModelRequest(url, body = null, signal = null) {
+        const target = new URL(url, window.location.href);
+        if (target.origin !== window.location.origin || !target.pathname.includes('/api/v1/')) {
+            throw new Error(localText('Invalid Studio endpoint.', 'Studio 接口地址无效。'));
+        }
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        if (signal?.aborted) cancel();
+        signal?.addEventListener('abort', cancel, { once: true });
+        const timer = window.setTimeout(cancel, 20000);
+        try {
+            const response = await fetch(target.href, { method: body === null ? 'GET' : 'POST',
+                credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+                headers: { 'Content-Type': 'application/json' },
+                ...(body === null ? {} : { body: JSON.stringify(body) }) });
+            const value = await response.json();
+            if (!response.ok || !value?.ok) {
+                const error = new Error(String(value?.error?.message || `HTTP ${response.status}`));
+                error.code = String(value?.error?.code || '');
+                error.status = response.status;
+                throw error;
+            }
+            return value.data;
+        } finally {
+            window.clearTimeout(timer);
+            signal?.removeEventListener('abort', cancel);
+        }
+    }
+
+    function renderCreativeModelDownload(generation, ref) {
+        const download = generation?.model_download;
+        if (!download || !['models_missing', 'downloading_models'].includes(generation.state)) return '';
+        const size = bytes => Number(bytes) > 0 ? (Number(bytes) < 1024 ** 2 ? `${Math.round(Number(bytes))} B` : `${(Number(bytes) / 1024 ** 2).toFixed(1)} MiB`)
+            : localText('Size unknown', '大小未知');
+        const models = Array.isArray(download.models) ? download.models : [];
+        const waiting = generation.state === 'models_missing';
+        return `<div class="describe-vlm-chat-model-download" aria-live="polite">
+  <p>${escapeHtml(localText('This task needs the following models:', '完成这个任务需要下载以下模型：'))}</p>
+  <ul>${models.map(item => `<li style="overflow-wrap:anywhere">${escapeHtml(item.name)} <small style="white-space:nowrap">${escapeHtml(size(item.size))}</small></li>`).join('')}</ul>
+  <p>${escapeHtml(download.can_download
+            ? localText('Models are shared on this node. Continue this task after download?', '模型保存在本节点的共享目录。下载完成后继续当前任务？')
+            : localText('This identity cannot download these models. Ask an administrator to install them.', '当前身份不能下载这些模型，请联系管理员安装。'))}</p>
+  ${waiting && generation._download_context ? `<div class="describe-vlm-chat-action-buttons">
+    ${download.can_download && !download.declined ? `<button type="button" data-describe-vlm-chat-model-download="${escapeHtml(ref)}"><i class="fa-solid fa-download"></i><span>${escapeHtml(localText('Download and continue', '确认下载并继续'))}</span></button>` : ''}
+    <button type="button" data-describe-vlm-chat-model-download-decline="${escapeHtml(ref)}"><i class="fa-solid fa-magnifying-glass"></i><span>${escapeHtml(localText('Find an alternative', '不下载，寻找替代方案'))}</span></button>
+  </div>` : ''}
+</div>`;
+    }
+
+    async function prepareCreativeModelDownload(ref, action, runtime, modelStatus, attemptToken) {
+        const generation = action.generation;
+        const owner = JSON.stringify(creativeUserContext());
+        const signature = creativeModelDownloadSignature(action);
+        try {
+            const query = new URLSearchParams({ theme: String(action.execution_plan?.theme || '') });
+            if (action.parameter_profile) {
+                query.set('parameter_profile', action.parameter_profile);
+                const fingerprint = action.parameter_profile_fingerprint || action.execution_plan?.parameter_profile_fingerprint;
+                if (fingerprint) query.set('expected_parameter_profile_fingerprint', fingerprint);
+            }
+            const status = await creativeAgentModelRequest(creativeAgentApiBase()
+                + `presets/${encodeURIComponent(action.preset)}/models/status?${query}`);
+            if (creativeActionFromRef(ref, runtime.messages)?.action !== action
+                || action.generation !== generation || generation._attempt_token !== attemptToken) return;
+            if (owner !== JSON.stringify(creativeUserContext()) || signature !== creativeModelDownloadSignature(action)) {
+                throw new Error(localText('The task or identity changed. Check again.', '任务或身份已变化，请重新检查。'));
+            }
+            const did = String(creativeUserContext().user_did || '');
+            if (did && status.user_id !== did) throw new Error(localText('The identity changed. Reload this chat.', '身份已变化，请重新加载当前对话。'));
+            const keys = rows => (rows || []).map(row => `${row.category || row.cata}/${row.name || row.path_file}`.replaceAll('\\', '/')).sort().join('\n');
+            const sameModels = keys(modelStatus.missing_models) === keys(status.missing_models);
+            generation.model_download = { can_download: !!modelStatus.can_download && !!status.can_download && sameModels,
+                declined: !!action.model_download_declined,
+                models: sameModels ? status.missing_models || [] : (modelStatus.missing_models || []).map(row => ({ name: row.path_file, size: row.size })),
+                state: 'awaiting_confirmation' };
+            generation._download_context = { status, owner, signature, attemptToken, created_at: Date.now() };
+            generation.message = localText('Model download needs your confirmation.', '模型下载需要你确认。');
+        } catch (error) {
+            if (action.generation === generation) generation.message = String(error?.message || error);
+        }
+        if (action.generation === generation) persistCreativeAction(true, {}, runtime);
+    }
+
+    function cancelCreativeModelDownload(ref, runtime = currentConversationRuntime()) {
+        const found = creativeActionFromRef(ref, runtime.messages);
+        const generation = found?.action?.generation;
+        if (!generation?._download_context) return false;
+        const started = generation.state === 'downloading_models';
+        generation._download_context.controller?.abort();
+        generation._attempt_token = '';
+        delete generation._download_context;
+        generation.state = 'canceled';
+        generation.message = started
+            ? localText('Further generation stopped. Shared downloads already started are not canceled.', '已停止后续生成。已启动的共享模型下载不受影响。')
+            : localText('Download declined. This task has not been submitted.', '暂不下载，当前任务尚未提交。');
+        persistCreativeAction(true, {}, runtime);
+        return true;
+    }
+
+    function creativeAlternativePlan(action, entry, theme) {
+        const original = action.execution_plan || {};
+        const proposal = { ...action, preset: entry.name,
+            execution_plan: { ...original, preset: entry.name, theme } };
+        const plan = creativeExecutionPlanForEntry(proposal, entry, 'automatic');
+        if (!['ready', 'models_missing'].includes(plan.status)) return null;
+        const method = value => String(value || '').replace(/^scene_/, '');
+        const sameMethod = method(original.task_method) === method(plan.task_method);
+        const overrides = original.parameter_overrides || {};
+        for (const [key, value] of Object.entries(overrides)) {
+            const portable = key === 'scene_video_duration' || key === 'scene_steps'
+                || (plan.task === 'image_outpaint' && creativePresetSupportsOutpaintDirections(entry)
+                    && ['scene_var_number7', 'scene_var_number8', 'scene_var_number9', 'scene_var_number10'].includes(key));
+            if ((!sameMethod && !portable) || plan.parameter_overrides?.[key] !== value) return null;
+        }
+        return plan;
+    }
+
+    function finishCreativeAlternativeSearch(runtime, action, generation, message, stateName) {
+        generation.state = stateName;
+        generation.message = message;
+        delete generation._alternative_context;
+        runtime.messages.push({ id: uid('describe_vlm_chat_alternative'), revision: 1, role: 'assistant',
+            content: message, actions: [], roleplay_control_only: normalizeChatMode(runtime.chatMode) === 'roleplay' });
+        persistCreativeAction(true, {}, runtime);
+        setConversationStatus(runtime, message, stateName !== 'awaiting_confirmation');
+    }
+
+    function cancelCreativeAlternativeSearch(ref, runtime = currentConversationRuntime()) {
+        const generation = creativeActionFromRef(ref, runtime.messages)?.action?.generation;
+        if (!generation?._alternative_context) return false;
+        generation._alternative_context.controller.abort();
+        delete generation._alternative_context;
+        generation._attempt_token = '';
+        generation.state = 'canceled';
+        generation.message = localText('Alternative search stopped. Nothing was downloaded or submitted.', '已停止寻找替代方案，没有下载模型或提交生成。');
+        persistCreativeAction(true, {}, runtime);
+        return true;
+    }
+
+    async function declineCreativeModelDownload(ref, runtime = currentConversationRuntime()) {
+        const found = isCurrentConversationRuntime(runtime) ? syncCreativeActionFromDom(ref) : creativeActionFromRef(ref, runtime.messages);
+        const action = found?.action;
+        const generation = action?.generation;
+        const previous = generation?._download_context;
+        if (!previous || generation.state !== 'models_missing') return;
+        const context = { ...previous, controller: new AbortController() };
+        const current = () => creativeActionFromRef(ref, runtime.messages)?.action === action
+            && action.generation === generation && generation._attempt_token === context.attemptToken
+            && context.owner === JSON.stringify(creativeUserContext())
+            && context.signature === creativeModelDownloadSignature(action)
+            && roleplayVisualActionMatchesRuntime(action, runtime);
+        previous.controller?.abort();
+        delete generation._download_context;
+        action.model_download_declined = true;
+        generation._alternative_context = context;
+        generation.state = 'searching_alternatives';
+        generation.percent = 0;
+        generation.message = localText('Checking compatible presets without downloading models...', '正在检查兼容预置，不会下载模型……');
+        persistCreativeAction(true, {}, runtime);
+        const deadline = Date.now() + 90000;
+        const timer = window.setTimeout(() => context.controller.abort(), 90000);
+        let queryFailures = 0;
+        let checked = 0;
+        try {
+            if (!current()) throw new Error(localText('The task or identity changed. Check again.', '任务或身份已变化，请重新检查。'));
+            if (!Array.isArray(state.creativePresetCatalog) || !state.creativePresetCatalog.length) {
+                throw new Error(localText('The preset catalog is unavailable. Check again.', '预置目录暂不可用，请重新检查。'));
+            }
+            const task = creativeActionTask(action, action.media_inputs);
+            const entries = creativeCompatiblePresetEntries(task, action.media_inputs, action.prompt);
+            const seen = new Set([JSON.stringify([action.preset, action.execution_plan?.theme || ''])]);
+            const api = creativeCanvasApi();
+            if (!api?.buildPresetRunNode || !api?.presetModelStatus) throw new Error(localText('Model checks are unavailable.', '模型检查接口暂不可用。'));
+            for (const entry of entries) {
+                for (const theme of creativeTaskThemes(entry, task)) {
+                    if (!current()) throw new Error(localText('The task or identity changed. Check again.', '任务或身份已变化，请重新检查。'));
+                    if (context.controller.signal.aborted || Date.now() >= deadline) {
+                        throw new Error(localText('Alternative checks timed out. Availability is still unknown.', '替代方案检查超时，尚不能判断是否有可用方案。'));
+                    }
+                    const key = JSON.stringify([entry.name, theme]);
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    const plan = creativeAlternativePlan(action, entry, theme);
+                    if (!plan) continue;
+                    if (checked >= 64) throw new Error(localText(
+                        'The alternative check limit was reached. Some candidates remain unchecked; availability is still unknown.',
+                        '已达到替代方案检查上限，仍有候选方案尚未检查，不能断定全部不可用。'
+                    ));
+                    checked += 1;
+                    generation.message = localText(`Checking ${entry.name}...`, `正在检查 ${entry.name}……`);
+                    persistCreativeAction(true, {}, runtime);
+                    try {
+                        // Logical references are sufficient for this read-only preview; no asset is uploaded.
+                        const preview = await creativeAgentModelRequest(creativeAgentApiBase() + 'routes/preview', {
+                            preset_id: entry.name, theme: plan.theme, task, instruction: action.prompt,
+                            inputs: action.media_inputs.map(input => ({ ref: input.ref, type: mediaKind(input) })),
+                            parameters: plan.parameter_overrides || {}, output: { count: action.image_number }, lang: state.__lang
+                        }, context.controller.signal);
+                        if (!current()) throw new Error(localText('The task or identity changed. Check again.', '任务或身份已变化，请重新检查。'));
+                        if (preview.models?.identity_binding !== context.status.identity_binding) {
+                            const error = new Error(localText('The identity changed. Confirm the task again.', '身份已变化，请重新确认任务。'));
+                            error.code = 'identity_context_changed';
+                            throw error;
+                        }
+                        if (!preview.models?.ready || preview.models.backend_disabled || preview.plan?.status !== 'ready') continue;
+                        const bindings = preview.plan.media_bindings || [];
+                        const refs = new Set(action.media_inputs.map(input => input.ref));
+                        if (preview.plan.task !== task || preview.preset_id !== entry.name
+                            || bindings.length !== action.media_inputs.length || bindings.some(binding => !refs.has(binding.ref))) continue;
+                        const verified = { ...plan, ...preview.plan,
+                            parameter_overrides: { ...(preview.plan.parameter_overrides || {}), ...(plan.parameter_overrides || {}) } };
+                        if (plan.parameter_profile) verified.parameter_profile = plan.parameter_profile;
+                        const presetNode = api.buildPresetRunNode(entry, {
+                            id: `describe_vlm_chat_alternative_${action.tool_call_id}`, prompt: action.prompt,
+                            aspectRatio: action.aspect_ratio, imageNumber: action.image_number,
+                            sceneTheme: verified.theme, taskMethod: verified.task_method, classicMode: verified.classic_mode,
+                            enhanceTargets: verified.enhance_targets, parameterOverrides: verified.parameter_overrides,
+                            parameterProfile: verified.parameter_profile
+                        });
+                        const native = await api.presetModelStatus({ project_id: 'describe_vlm_chat',
+                            preset_node: presetNode, user_context: creativeUserContext() }, { signal: context.controller.signal });
+                        if (!current()) throw new Error(localText('The task or identity changed. Check again.', '任务或身份已变化，请重新检查。'));
+                        if (context.controller.signal.aborted || Date.now() >= deadline) throw new Error(localText('Alternative checks timed out.', '替代方案检查超时。'));
+                        if (!native?.ok) { queryFailures += 1; continue; }
+                        if (!native.ready || native.backend_disabled) continue;
+                        action.preset = entry.name;
+                        action.preset_source = 'agent_auto';
+                        action.execution_plan = verified;
+                        action.model_alternative_identity_binding = context.status.identity_binding;
+                        action.prompt = String(preview.instruction || action.prompt);
+                        generation.alternative_checked_count = checked;
+                        delete generation.model_download;
+                        finishCreativeAlternativeSearch(runtime, action, generation, localText(
+                            `You chose not to download models. ${entry.name} can handle this task with the current media. Review the alternative and confirm generation.`,
+                            `你已选择不下载模型。已找到可使用当前素材的替代方案：${entry.name}。请检查方案并确认生成。`
+                        ), 'awaiting_confirmation');
+                        return;
+                    } catch (error) {
+                        if (!current() || context.controller.signal.aborted || [401, 403].includes(error?.status)
+                            || ['identity_context_changed', 'account_not_allowed'].includes(error?.code)) throw error;
+                        if (!['invalid_parameter', 'incompatible_preset', 'incompatible_theme', 'invalid_theme', 'preset_not_found', 'no_compatible_preset'].includes(error?.code)) queryFailures += 1;
+                    }
+                }
+            }
+            if (!current()) throw new Error(localText('The task or identity changed. Check again.', '任务或身份已变化，请重新检查。'));
+            if (context.controller.signal.aborted || Date.now() >= deadline) queryFailures += 1;
+            generation.alternative_checked_count = checked;
+            finishCreativeAlternativeSearch(runtime, action, generation, queryFailures ? localText(
+                'Some alternatives could not be checked. Availability is still unknown; check the service connection and retry. Nothing was downloaded or submitted.',
+                '部分替代方案未能完成检查，尚不能判断是否有可用方案。请检查服务连接后重试，没有下载模型或提交生成。'
+            ) : localText(
+                'Unable to execute this task without downloading models while keeping the current media and parameters. No compatible ready alternative was found in the current preset catalog. Nothing was submitted.',
+                '当前无法执行：在不下载模型并保留当前素材和参数的条件下，当前预置目录中没有可用的兼容方案。没有提交生成任务。'
+            ), queryFailures ? 'alternative_search_failed' : 'alternatives_unavailable');
+        } catch (error) {
+            if (creativeActionFromRef(ref, runtime.messages)?.action !== action
+                || action.generation !== generation || generation._attempt_token !== context.attemptToken) return;
+            const message = context.controller.signal.aborted
+                ? localText('Alternative checks timed out. Availability is still unknown. Nothing was downloaded or submitted.', '替代方案检查超时，尚不能判断是否有可用方案。没有下载模型或提交生成。')
+                : String(error?.message || error);
+            finishCreativeAlternativeSearch(runtime, action, generation, message, 'alternative_search_failed');
+        } finally {
+            window.clearTimeout(timer);
+        }
+    }
+
+    async function confirmCreativeModelDownload(ref, runtime = currentConversationRuntime()) {
+        const found = isCurrentConversationRuntime(runtime) ? syncCreativeActionFromDom(ref) : creativeActionFromRef(ref, runtime.messages);
+        const action = found?.action;
+        const generation = action?.generation;
+        const context = generation?._download_context;
+        if (!context || action.model_download_declined || !generation.model_download?.can_download || generation.state !== 'models_missing') return;
+        const current = () => creativeActionFromRef(ref, runtime.messages)?.action === action
+            && action.generation === generation && generation._attempt_token === context.attemptToken
+            && context.owner === JSON.stringify(creativeUserContext())
+            && context.signature === creativeModelDownloadSignature(action)
+            && roleplayVisualActionMatchesRuntime(action, runtime);
+        context.controller = new AbortController();
+        generation.state = 'downloading_models';
+        generation.error = '';
+        generation.percent = 0;
+        persistCreativeAction(true, {}, runtime);
+        try {
+            if (!current() || Date.now() - context.created_at > 10 * 60 * 1000) {
+                throw new Error(localText('The task changed or confirmation expired. Check again.', '任务已变化或确认已过期，请重新检查。'));
+            }
+            const { status } = context;
+            await creativeAgentModelRequest(status.download_url, { theme: status.theme || '',
+                ...(action.parameter_profile ? { parameter_profile: action.parameter_profile,
+                    expected_parameter_profile_fingerprint: action.parameter_profile_fingerprint || action.execution_plan?.parameter_profile_fingerprint || '' } : {}),
+                expected_identity_binding: status.identity_binding,
+                expected_model_fingerprint: status.model_fingerprint }, context.controller.signal);
+            const deadline = Date.now() + 30 * 60 * 1000;
+            while (current() && Date.now() < deadline && !context.controller.signal.aborted) {
+                const progress = await creativeAgentModelRequest(status.status_url, null, context.controller.signal);
+                if (!current()) break;
+                if (progress.identity_binding !== status.identity_binding) {
+                    throw new Error(localText('The identity changed. Confirm the task again.', '身份已变化，请重新确认任务。'));
+                }
+                if (progress.preset_fingerprint !== status.preset_fingerprint) {
+                    throw new Error(localText('The preset model configuration changed. Check this task again.', '预置的模型配置已变化，请重新检查当前任务。'));
+                }
+                if (progress.backend_disabled || !progress.can_download) {
+                    throw new Error(localText('Download permission or backend availability changed.', '下载权限或后端可用状态已变化。'));
+                }
+                if (progress.ready) {
+                    generation.state = 'awaiting_confirmation';
+                    delete generation._download_context;
+                    await startCreativeGeneration(ref, runtime, { expectedIdentityBinding: status.identity_binding, fromDownload: true });
+                    return;
+                }
+                const rows = progress.missing_models || [];
+                if (rows.some(item => ['failed', 'canceled'].includes(item.download_status?.state))) {
+                    throw new Error(localText('Model download stopped or failed. Generation has not started.', '模型下载失败或已停止，尚未开始生成。'));
+                }
+                generation.model_download.models = rows;
+                generation.missing_count = rows.length;
+                const known = rows.length && rows.every(item => Number(item.download_status?.total_bytes) > 0);
+                const total = rows.reduce((sum, item) => sum + (Number(item.download_status?.total_bytes) || 0), 0);
+                const received = rows.reduce((sum, item) => sum + (Number(item.download_status?.downloaded_bytes) || 0), 0);
+                generation.percent = known ? Math.min(1, received / total) : 0;
+                generation.message = localText('Waiting for model files to be verified...', '正在等待模型文件下载和校验……');
+                persistCreativeAction(true, {}, runtime);
+                await new Promise(resolve => window.setTimeout(resolve, 2000));
+            }
+            throw new Error(localText('Waiting stopped or timed out. Generation has not started.', '等待已停止或超时，尚未开始生成。'));
+        } catch (error) {
+            if (action.generation !== generation || generation._attempt_token !== context.attemptToken) return;
+            generation.state = 'models_missing';
+            generation.message = String(error?.message || error);
+            delete generation._download_context;
+            persistCreativeAction(true, {}, runtime);
+            setConversationStatus(runtime, generation.message, true);
+        }
+    }
+
+    async function startCreativeGeneration(ref, runtime = currentConversationRuntime(), options = {}) {
+        const found = !options.fromDownload && isCurrentConversationRuntime(runtime)
             ? syncCreativeActionFromDom(ref)
             : creativeActionFromRef(ref, runtime.messages);
         if (!found) return;
         const action = found.action;
+        if (action.parameter_profile_selection_required) {
+            const generation = creativeGenerationForAction(action);
+            generation.state = 'needs_parameter_profile';
+            generation.error = '';
+            persistCreativeAction(true, {}, runtime);
+            return;
+        }
+        if (action.model_download_declined && action.model_alternative_identity_binding) {
+            options = { ...options, expectedIdentityBinding: action.model_alternative_identity_binding };
+        }
         if (!String(action.prompt || '').trim()) {
             setConversationStatus(runtime, localText('Enter a generation prompt first.', '请先填写生图提示词。'), true);
             return;
@@ -22051,6 +22630,7 @@
             return;
         }
         const previous = creativeGenerationForAction(action);
+        if (CREATIVE_ACTIVE_STATES.has(previous.state) && (previous.state !== 'queued' || previous.run_id)) return;
         const reusableRunId = previous.submission_uncertain && previous.run_id ? previous.run_id : '';
         const attemptToken = uid('describe_vlm_chat_attempt');
         action.generation = {
@@ -22069,7 +22649,7 @@
         let mediaInputs = Array.isArray(action.media_inputs) ? action.media_inputs : [];
         const requestedTask = creativeActionTask(action, mediaInputs);
         let entry = creativePresetEntry(action.preset);
-        const automaticRoleplayRoute = roleplayAutomaticPresetAction(action)
+        const automaticRoleplayRoute = !options.fromDownload && !action.model_download_declined && roleplayAutomaticPresetAction(action)
             && !['user', 'session_preference'].includes(String(action?.preset_source || ''));
         if (automaticRoleplayRoute) {
             const automatic = roleplayPreferredPresetEntry(action, requestedTask, mediaInputs.length)
@@ -22199,7 +22779,8 @@
             classicMode: executionPlan.classic_mode,
             enhanceTargets: executionPlan.enhance_targets,
             parameterOverrides: executionPlan.parameter_overrides,
-            parameterProfile: executionPlan.parameter_profile
+            parameterProfile: executionPlan.parameter_profile,
+            parameterProfileFingerprint: executionPlan.parameter_profile_fingerprint
         });
         if (!api || !presetNode || typeof api.presetModelStatus !== 'function' || typeof api.runNode !== 'function') {
             action.generation.state = 'failed';
@@ -22221,6 +22802,12 @@
         if (!liveAfterModelCheck || liveAfterModelCheck.action !== action || action.generation?._attempt_token !== attemptToken) return;
         if (!modelStatus?.ok) {
             action.generation.state = 'failed';
+            if (modelStatus?.error === 'parameter_profile_changed') {
+                action.parameter_profile = '';
+                action.parameter_profile_fingerprint = '';
+                action.parameter_profile_selection_required = true;
+                action.generation.state = 'needs_parameter_profile';
+            }
             action.generation.error = creativeResponseError(modelStatus);
             action.generation.message = String(modelStatus?.message || '');
             persistCreativeAction(true, {}, runtime);
@@ -22230,6 +22817,15 @@
             action.generation.state = 'models_missing';
             action.generation.missing_count = Math.max(0, Number(modelStatus.missing_count) || 0);
             action.generation.message = String(modelStatus.message || '');
+            persistCreativeAction(true, {}, runtime);
+            await prepareCreativeModelDownload(ref, action, runtime, modelStatus, attemptToken);
+            if (action.model_download_declined && action.generation?._attempt_token === attemptToken) {
+                await declineCreativeModelDownload(ref, runtime);
+            }
+            return;
+        }
+        if (options.checkOnly) {
+            action.generation.state = 'awaiting_confirmation';
             persistCreativeAction(true, {}, runtime);
             return;
         }
@@ -22250,6 +22846,7 @@
             asset_sources: assetSources,
             user_context: creativeUserContext(),
             result_asset_scope: 'gallery',
+            ...(options.expectedIdentityBinding ? { expected_identity_binding: options.expectedIdentityBinding } : {}),
             client_context: {
                 surface: 'studio_vlm_chat',
                 conversation_id: runtime.conversationId,
@@ -22283,6 +22880,8 @@
 
     async function stopCreativeGeneration(ref) {
         const runtime = syncCurrentRuntimeFromState();
+        if (cancelCreativeAlternativeSearch(ref, runtime)) return;
+        if (cancelCreativeModelDownload(ref, runtime)) return;
         const found = creativeActionFromRef(ref, runtime.messages);
         const runId = String(found?.action?.generation?.run_id || '');
         const reformat = found?.action?.prompt_reformat;
@@ -23866,10 +24465,28 @@
         let streamedReplyText = '';
         let streamRenderTimer = null;
         let firstStreamTokenRecorded = false;
+        const agentResponseSource = normalizeResponseSource({}, { version, custom_api: customApi });
         const onChatStreamEvent = (event) => {
             if (requestToken !== runtime.requestToken) return;
+            if (event?.type === 'assistant_message') {
+                commitAgentAssistantMessage(event.message, runtime, requestId, agentResponseSource);
+                return;
+            }
             if (event?.type === 'status') {
                 const phase = String(event.phase || '').trim();
+                if (phase === 'agent_model') {
+                    setConversationStatus(runtime, localText('Considering the next step...', '正在判断下一步……'));
+                    return;
+                }
+                if (phase === 'agent_tool_started' || phase === 'agent_tool_finished') {
+                    const name = String(event.name || '').slice(0, 96);
+                    setConversationStatus(runtime, localText('Querying', '正在查询') + ': ' + name);
+                    return;
+                }
+                if (phase === 'agent_finished') {
+                    setConversationStatus(runtime, busyControlLabel(runtime.busyStage || ''));
+                    return;
+                }
                 if (phase === 'stream_reconnecting') {
                     setConversationStatus(runtime, localText(
                         'Connection interrupted. Reconnecting to the same reply...',
@@ -23974,6 +24591,9 @@
             streamRenderTimer = null;
         }
         if (requestToken !== runtime.requestToken) return;
+        for (const message of Array.isArray(response?.harness?.messages) ? response.harness.messages : []) {
+            commitAgentAssistantMessage(message, runtime, requestId, agentResponseSource);
+        }
         if (streamedReplyText) updatePendingAssistantStream(streamedReplyText, runtime);
         if (runtime.activeRequestId === requestId) {
             runtime.activeRequestId = '';
@@ -23985,6 +24605,11 @@
         }
         if (requestToken !== runtime.requestToken) return;
         applyVlmRunRuntimeStatus(response, modal);
+        if (response?.ok && Array.isArray(response?.harness?.parameter_profiles) && isCurrentConversationRuntime(runtime)) {
+            state.creativeParameterProfiles = normalizeCreativeParameterProfiles([
+                ...response.harness.parameter_profiles, ...state.creativeParameterProfiles
+            ]);
+        }
         if (response?.aborted) {
             runtime.busy = false;
             runtime.busyStage = '';
@@ -25914,6 +26539,26 @@
             });
             return;
         }
+        const modelDownload = evt.target.closest('[data-describe-vlm-chat-model-download]');
+        if (modelDownload) {
+            confirmCreativeModelDownload(modelDownload.getAttribute('data-describe-vlm-chat-model-download'));
+            return;
+        }
+        const modelDownloadDecline = evt.target.closest('[data-describe-vlm-chat-model-download-decline]');
+        if (modelDownloadDecline) {
+            declineCreativeModelDownload(modelDownloadDecline.getAttribute('data-describe-vlm-chat-model-download-decline'));
+            return;
+        }
+        const generationRecover = evt.target.closest('[data-describe-vlm-chat-generation-recover]');
+        if (generationRecover) {
+            const ref = generationRecover.getAttribute('data-describe-vlm-chat-generation-recover');
+            const found = creativeActionFromRef(ref);
+            if (found?.action?.generation?.run_id) {
+                found.action.generation._poll_failures = 0;
+                scheduleCreativeGenerationPoll(ref, found.action.generation.run_id, 0);
+            }
+            return;
+        }
         const generationRun = evt.target.closest('[data-describe-vlm-chat-generation-run]');
         if (generationRun) {
             const generationRef = generationRun.getAttribute('data-describe-vlm-chat-generation-run');
@@ -26099,6 +26744,12 @@
             setCreativePreference({ auto_generate: !!evt.target.checked }, 'preference_card');
             return;
         }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-review-results]')) {
+            setCreativePreference({ review_results: !!evt.target.checked }, 'preference_card');
+            const runtime = currentConversationRuntime();
+            if (!evt.target.checked) cancelCreativeResultReviews(runtime);
+            return;
+        }
         if (evt.target?.matches?.('[data-describe-vlm-chat-preference-preset]')) {
             syncCreativePreferenceParameterProfileOptions();
             syncCreativePreferenceApplyButton();
@@ -26162,7 +26813,10 @@
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-generation-parameter-profile]')) {
             const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-parameter-profile');
+            const selectionRuntime = currentConversationRuntime();
+            const selectionOwner = String(creativeUserContext().user_did || '');
             const prior = creativeActionFromRef(ref);
+            const wasWaitingForProfile = !!prior?.action?.parameter_profile_selection_required;
             const priorPreset = String(prior?.action?.preset || '').trim();
             const priorPromptTarget = String(prior?.action?.prompt_target_preset || priorPreset).trim();
             const priorPromptUserEdited = !!prior?.action?.prompt_user_edited;
@@ -26175,6 +26829,11 @@
             if (found) {
                 let shouldAutoReformat = false;
                 found.action.parameter_profile = selectedProfileName;
+                found.action.parameter_profile_fingerprint = creativeParameterProfileEntry(selectedProfileName, found.action.preset)?.fingerprint || '';
+                if (selectedProfileName) {
+                    found.action.parameter_profile_selection_required = false;
+                    if (found.action.task_request) found.action.task_request.parameter_profile_selection_required = false;
+                }
                 found.action.parameter_profile_preset = selectedProfilePreset;
                 if (
                     found.action.roleplay_visual
@@ -26203,6 +26862,14 @@
                     generation.error = '';
                 }
                 persistCreativeAction(true);
+                if (wasWaitingForProfile && selectedProfileName && state.creativePreference.auto_generate) {
+                    window.setTimeout(() => {
+                        const current = creativeActionFromRef(ref, selectionRuntime.messages);
+                        if (current?.action !== found.action || String(creativeUserContext().user_did || '') !== selectionOwner
+                            || !['awaiting_confirmation', 'models_missing'].includes(String(current.action.generation?.state || ''))) return;
+                        return startCreativeGeneration(ref, selectionRuntime);
+                    }, 0);
+                }
                 if (shouldAutoReformat) {
                     window.setTimeout(() => {
                         requestRoleplayVisualPromptReformat(ref, syncCurrentRuntimeFromState(), modal).catch(() => {});

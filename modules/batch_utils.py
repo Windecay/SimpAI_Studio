@@ -368,10 +368,9 @@ def stop_batch(batch_id, state_params=None, worker=None):
     evt = BATCH_EVENTS.get(batch_id)
     if evt is not None:
         evt.set()
-    if worker is not None:
+    if worker is not None and evt is not None:
         try:
-            if getattr(worker, "worker_processing", None) is not None:
-                worker.worker.interrupt_processing()
+            worker.request_batch_cancel(evt)
         except Exception:
             pass
     return _batch_text(state_params, "Stopping...", "正在停止...") if batch_id else ""
@@ -551,6 +550,7 @@ def batch_run_uov(folder_path, upload_files, seed_random, *args, get_task_with_r
             pass
         args_i[19] = img
         task = worker.AsyncTask(args=args_i)
+        task.simpleai_batch_cancel_event = evt
 
         status = _batch_text(
             state,
@@ -632,6 +632,7 @@ def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_wi
             pass
         args_i[75] = img
         task = worker.AsyncTask(args=args_i)
+        task.simpleai_batch_cancel_event = evt
 
         status = _batch_text(
             state,
@@ -865,6 +866,7 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
             pass
 
         task = worker.AsyncTask(args=args_i)
+        task.simpleai_batch_cancel_event = evt
         status = _batch_text(
             state,
             f"Batch Scene: {i + 1}/{len(files)} - {os.path.basename(path)}",

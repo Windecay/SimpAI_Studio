@@ -584,6 +584,21 @@ def extract_response_text(response):
     return str(content or choice_text or "")
 
 
+def extract_response_message_texts(response):
+    """Preserve Responses assistant message boundaries without reasoning output."""
+    response = response if isinstance(response, dict) else {}
+    messages = []
+    for item in response.get("output") or []:
+        if (not isinstance(item, dict) or item.get("type") != "message"
+                or item.get("role", "assistant") != "assistant"
+                or item.get("channel") in {"analysis", "reasoning", "thought"}):
+            continue
+        text = extract_response_text({"output": [item]})
+        if text:
+            messages.append(text)
+    return messages
+
+
 def extract_stream_completion_response(event):
     if not isinstance(event, dict):
         return None

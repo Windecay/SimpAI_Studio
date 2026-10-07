@@ -27146,10 +27146,6 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   position: relative;
 }
 
-.describe-vlm-chat-compose textarea[data-describe-vlm-chat-input] {
-  padding-right: 48px;
-}
-
 .describe-vlm-chat-thinking-toggle {
   grid-column: 1 / 2;
   grid-row: 3;
@@ -27209,10 +27205,6 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
     min-width: 28px !important;
     min-height: 28px !important;
     margin: 0 6px 6px 0;
-  }
-
-  .describe-vlm-chat-compose textarea[data-describe-vlm-chat-input] {
-    padding-right: 42px;
   }
 }
 
@@ -27918,8 +27910,10 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   }
 }
 
-.describe-vlm-chat-compose textarea[data-describe-vlm-chat-input] {
-  padding-right: 112px;
+.describe-vlm-chat-compose textarea[data-describe-vlm-chat-input],
+.describe-vlm-chat-compose:has(.describe-vlm-chat-attachments[hidden]) textarea[data-describe-vlm-chat-input] {
+  padding-right: 12px;
+  padding-bottom: 44px;
 }
 
 .describe-vlm-chat-context-usage {
@@ -27988,8 +27982,20 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 }
 
 @media (max-width: 640px) {
-  .describe-vlm-chat-compose textarea[data-describe-vlm-chat-input] {
-    padding-right: 104px;
+  .describe-vlm-chat-compose {
+    grid-template-rows: auto auto minmax(88px, 96px);
+  }
+
+  .describe-vlm-chat-compose:has(.describe-vlm-chat-attachments[hidden]) {
+    grid-template-rows: auto minmax(88px, 96px);
+  }
+
+  .describe-vlm-chat-compose textarea[data-describe-vlm-chat-input],
+  .describe-vlm-chat-compose:has(.describe-vlm-chat-attachments[hidden]) textarea[data-describe-vlm-chat-input] {
+    padding-right: 9px;
+    padding-bottom: 40px;
+    min-height: 88px;
+    max-height: 96px;
   }
 
   .describe-vlm-chat-context-usage {
@@ -28006,8 +28012,9 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 }
 
 @media (max-width: 340px) {
-  .describe-vlm-chat-compose textarea[data-describe-vlm-chat-input] {
-    padding-right: 98px;
+  .describe-vlm-chat-compose textarea[data-describe-vlm-chat-input],
+  .describe-vlm-chat-compose:has(.describe-vlm-chat-attachments[hidden]) textarea[data-describe-vlm-chat-input] {
+    padding-right: 8px;
   }
 
   .describe-vlm-chat-context-usage {

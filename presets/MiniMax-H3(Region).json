@@ -9,6 +9,8 @@
     "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
     "available_aspect_ratios_selection": "Custom",
     "scene_frontend": {
+      "switch_option4_title": "Sparse Attention Acceleration",
+      "switch_option4": true,
       "version": "v1.1",
       "theme": ["Region Reconstruction", "Face Refinement", "Tiled Refinement"],
       "theme_title": "MiniMax H3 Region Reconstruction",
@@ -54,7 +56,7 @@
         "scene_audio", "scene_audio2", "scene_audio3", "sam3_video_mask_accordion",
         "sam3_input_video", "sam3_mask_video", "scene_additional_prompt", "scene_additional_prompt_2",
         "scene_var_number", "scene_var_number2", "scene_switch_option2",
-        "scene_switch_option3", "scene_switch_option4", "scene_refiner_model",
+        "scene_switch_option3", "scene_refiner_model",
         "scene_video_duration", "scene_batch", "minimax_h3_storyboard_control"
       ],
       "theme_disvisible": {

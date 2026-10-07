@@ -8,6 +8,8 @@
     "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
     "available_aspect_ratios_selection": "Custom",
     "scene_frontend": {
+      "switch_option4_title": "Sparse Attention Acceleration",
+      "switch_option4": true,
       "version": "v1.1",
       "theme": ["Basic"],
       "theme_labels": {"Basic": {"en": "Basic", "zh": "\u57fa\u7840"}},
@@ -26,7 +28,7 @@
         "scene_input_image6", "scene_input_image7", "scene_input_image8",
         "scene_var_number", "scene_var_number2", "scene_var_number6",
         "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10",
-        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
+        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3",
         "scene_refiner_model", "sam3_input_video", "sam3_mask_video", "scene_batch"
       ],
       "prompt": {"Basic": "subject_definitions:\n<Subject 1> is the person in <Picture 1>, preserving their facial identity, hairstyle, clothing, and proportions. (S1) is the existing vocal performance in <Audio 1>.\n\nsummary:\n[reference generation + audio reuse] Animate <Subject 1> from <Picture 1> in precise lip sync with the supplied <Audio 1> segment.\n\nretention_analysis:\n<Picture 1>: fully_preserved identity, appearance, background, lighting, and visual style.\n<Audio 1>: fully_copy the supplied source segment, preserving its voice, words, timing, pauses, and existing sounds.\n\ndetailed_description:\nPreserve the visual style of <Picture 1>. [Shot 1] <Subject 1> from <Picture 1> performs the vocal content of <Audio 1> continuously. Lip and jaw movements follow the source phonemes and pauses, with natural blinks, subtle facial expressions, and restrained head and upper-body movement. Keep the face visible and consistent throughout the source segment.\nCamera: Fixed camera, stable framing matching <Picture 1>, no camera movement or scene changes.\nDialogue and visible text: (S1) Use only the existing speech or singing in <Audio 1>; do not invent a transcript or add subtitles.\nSynchronized sound: Reuse <Audio 1> unchanged and synchronize the visible performance to it; no added sounds.\n\noverall_soundscape:\nOnly the original <Audio 1> segment, including its existing pauses and background sounds. No regenerated voice or added ambience.\n\nnon_diegetic_music:\nN/A"},

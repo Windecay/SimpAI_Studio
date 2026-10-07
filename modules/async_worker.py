@@ -647,7 +647,7 @@ def auto_cn_skip_preprocessors(*args):
 
 
 def worker():
-    global async_tasks, worker_processing, pending_tasks
+    global async_tasks, worker_processing, pending_tasks, executing_task_id
 
 
     import os
@@ -1192,17 +1192,31 @@ def worker():
         finally:
             if acquired_cloud_slot:
                 cloud_task_semaphore.release()
-            finalize_task(async_task)
+            try:
+                finalize_task(async_task)
+            finally:
+                with processing_lock:
+                    cloud_tasks.pop(async_task.task_id, None)
 
     def start_cloud_task(async_task: AsyncTask):
         async_task.processing = True
+        with processing_lock:
+            cancel_event = getattr(async_task, "simpleai_batch_cancel_event", None)
+            if cancel_event is not None and cancel_event.is_set():
+                async_task.last_stop = async_task.user_cancel_action = "stop"
+            cloud_tasks[async_task.task_id] = async_task
         thread = threading.Thread(
             target=run_cloud_task,
             args=(async_task,),
             daemon=True,
             name=f"cloud-task-{async_task.task_id[:8]}",
         )
-        thread.start()
+        try:
+            thread.start()
+        except Exception:
+            with processing_lock:
+                cloud_tasks.pop(async_task.task_id, None)
+            raise
         return
 
     def build_image_wall(async_task):
@@ -3422,15 +3436,30 @@ def worker():
                 continue
             with processing_lock:
                 worker_processing = task.task_id
+                tracked_tasks[task.task_id] = task
 
             logger.info(f'Got async_tasks: {task.task_id}')
             try:
                 with exclusive_task_lock:
-                    handler(task)
-                    if task.task_class != 'Cloud':
-                        finalize_task(task)
-                    if task.task_class == 'Fooocus' and not args_manager.args.disable_backend:
-                        pipeline.prepare_text_encoder(async_call=True)
+                    with processing_lock:
+                        executing_task_id = task.task_id
+                    try:
+                        if task.last_stop in ('stop', 'skip'):
+                            task.user_cancel_action = task.last_stop
+                            task.processing = False
+                            task.yields.append(['finish', task.results])
+                        elif task.task_class == "ImportedWorkflow":
+                            from modules.agent_workflow_execution import execute
+                            execute(task)
+                        else:
+                            handler(task)
+                            if task.task_class != 'Cloud':
+                                finalize_task(task)
+                            if task.task_class == 'Fooocus' and not args_manager.args.disable_backend:
+                                pipeline.prepare_text_encoder(async_call=True)
+                    finally:
+                        with processing_lock:
+                            executing_task_id = None
             except:
                 _restore_standard_streams_if_closed()
                 try:
@@ -3441,10 +3470,13 @@ def worker():
                     task.yields.append(['finish', task.results])
             finally:
                 async_tasks.task_done()
-                p2p_task.gc_p2p_task()
-                with processing_lock:
-                    pending_tasks -= 1
-                    worker_processing = None
+                try:
+                    p2p_task.gc_p2p_task()
+                finally:
+                    with processing_lock:
+                        pending_tasks -= 1
+                        tracked_tasks.pop(task.task_id, None)
+                        worker_processing = None
                 if pid in modules.patch.patch_settings:
                     del modules.patch.patch_settings[pid]
         except Exception as e:
@@ -3457,9 +3489,72 @@ def worker():
 
 def add_task(task):
     global pending_tasks, async_tasks
-    async_tasks.put(task)
     with processing_lock:
+        cancel_event = getattr(task, "simpleai_batch_cancel_event", None)
+        if cancel_event is not None and cancel_event.is_set():
+            task.last_stop = task.user_cancel_action = "stop"
+        tracked_tasks[task.task_id] = task
         pending_tasks += 1
+        async_tasks.put(task)
+
+
+def get_queue_snapshot():
+    with processing_lock:
+        with async_tasks.mutex:
+            waiting = list(async_tasks.queue)
+        positions = {task.task_id: index + 1 for index, task in enumerate(waiting)}
+        tasks = {task.task_id: task for task in waiting}
+        tasks.update(tracked_tasks)
+        tasks.update(cloud_tasks)
+        items = []
+        for task_id, task in tasks.items():
+            running = task_id == worker_processing or task_id in cloud_tasks
+            items.append({
+                "task_id": task_id, "owner_user_did": str(getattr(task, "user_did", "") or ""),
+                "preset_id": str(getattr(task, "task_name", "") or ""),
+                "task_class": str(getattr(task, "task_class", "") or ""),
+                "state": "running" if running else "queued" if task_id in positions else "dispatching",
+                "queue_position": positions.get(task_id),
+                "cancel_requested": (getattr(task, "user_cancel_action", None) or
+                                     getattr(task, "last_stop", None)) in ("stop", "skip"),
+            })
+        items.sort(key=lambda item: (item["state"] != "running", item["queue_position"] or 0))
+        running_count = sum(item["state"] == "running" for item in items)
+        return {
+            "items": items,
+            "counts": {"queued": len(items) - running_count, "running": running_count,
+                       "preparing": 0, "total": len(items)},
+            "worker": {"alive": thread.is_alive(),
+                       "ready": thread.is_alive() and callable(getattr(worker, "get_service_info", None))},
+            "gpu_task_busy": exclusive_task_lock.locked(),
+        }
+
+
+def request_task_cancel(task, action):
+    if action not in ("stop", "skip"):
+        raise ValueError("Unsupported task cancellation action")
+    with processing_lock:
+        task.last_stop = action
+        task.user_cancel_action = action
+        # Keep the worker from advancing to another task while issuing an interrupt.
+        if executing_task_id == task.task_id and worker_processing == task.task_id and getattr(task, "processing", False):
+            if getattr(task, "task_class", None) == "ImportedWorkflow":
+                # Its executor sends a targeted stop and checks backend state
+                # before releasing the shared task lock.
+                return
+            worker.interrupt_processing(task)
+
+
+def request_batch_cancel(cancel_event):
+    if cancel_event is None:
+        return
+    with processing_lock:
+        tasks = {**tracked_tasks, **cloud_tasks}
+        matching = [task for task in tasks.values()
+                    if getattr(task, "simpleai_batch_cancel_event", None) is cancel_event]
+    for task in matching:
+        request_task_cancel(task, "stop")
+
 
 def get_task_size():
     global pending_tasks
@@ -3516,11 +3611,14 @@ def start_worker():
         restart_lock.release()
 
 def initialize_worker_resources():
-    global async_tasks, worker_processing, processing_lock, pending_tasks
+    global async_tasks, worker_processing, processing_lock, pending_tasks, tracked_tasks, cloud_tasks, executing_task_id
     async_tasks = queue.Queue()  
     worker_processing = None  
     processing_lock = threading.Lock()
     pending_tasks = 0
+    tracked_tasks = {}
+    cloud_tasks = {}
+    executing_task_id = None
 
 def _worker_not_ready_stop_processing(async_task, *_args, **_kwargs):
     if async_task is not None:
@@ -3536,6 +3634,9 @@ async_tasks = queue.Queue()
 worker_processing = None
 processing_lock = threading.Lock()
 pending_tasks = 0
+tracked_tasks = {}
+cloud_tasks = {}
+executing_task_id = None
 restart_lock = threading.Lock()
 stop_event = threading.Event()
 

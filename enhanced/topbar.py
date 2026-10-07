@@ -1022,13 +1022,16 @@ function(system_params) {
             return null;
         }
     };
-    const sessionCookie = readCookie('aitoken') || (typeof getCookie === 'function' ? getCookie('aitoken') : null);
-    const sessionLocal = (!sessionCookie && typeof localStorage !== "undefined") ? localStorage.getItem("aitoken") : null;
+    const readStored = (name) => {
+        try { return window.localStorage.getItem(name); } catch (e) { return null; }
+    };
+    const sessionCookie = readCookie('aitoken');
+    const sessionLocal = !sessionCookie ? readStored("aitoken") : null;
     const url_params = Object.fromEntries(params);
     if (url_params["__lang"]) 
         system_params["__lang"]=url_params["__lang"];
     if (!url_params["__lang"]) {
-        const persistedLang = readCookie("ailang") || (typeof localStorage !== "undefined" ? localStorage.getItem("ailang") : null);
+        const persistedLang = readCookie("ailang") || readStored("ailang");
         if (persistedLang === "cn" || persistedLang === "en") {
             system_params["__lang"] = persistedLang;
         }
@@ -1539,7 +1542,7 @@ def _canvas_param_schema(scene_frontend, key, title_key=None, default_key=None, 
     return item
 
 
-def _build_canvas_scene_schema(scene_frontend):
+def _build_canvas_scene_schema(scene_frontend, _include_theme_params=True):
     if not isinstance(scene_frontend, dict):
         return {}
     themes = _canvas_scene_themes(scene_frontend)
@@ -1688,6 +1691,12 @@ def _build_canvas_scene_schema(scene_frontend):
         }
         if scene_frontend.get("theme_disvisible"):
             per_theme[theme]["disvisible"] = _scene_disvisible_with_optional_inputs(scene_frontend, theme)
+        if _include_theme_params:
+            # Resolve labels, ranges and visibility for the chosen theme as well
+            # as defaults. API consumers must not inherit another theme's fields.
+            theme_source = copy.deepcopy(scene_frontend)
+            theme_source["theme"] = [theme] if theme else []
+            per_theme[theme]["params"] = _build_canvas_scene_schema(theme_source, _include_theme_params=False)["params"]
 
     return {
         "version": scene_frontend.get("version", ""),
@@ -1936,7 +1945,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         samples = []
 
     sample_signature = (
-        "canvas_preset_meta_media_capability_v9",
+        "canvas_preset_meta_media_capability_v10",
         *(
             item[0] if isinstance(item, (list, tuple)) and item else item
             for item in samples

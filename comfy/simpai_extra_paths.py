@@ -50,6 +50,7 @@ SIMPAI_CONFIG_PATH_MAP = {
     "sharp": ("path_sharp",),
     "lsnet": ("path_lsnet",),
     "seedvr2": ("path_SEEDVR2",),
+    "vosr2": ("path_vosr2",),
     "hunyuan_foley": ("path_hunyuan_foley",),
     "qwen-tts": ("path_qwen_tts",),
 }

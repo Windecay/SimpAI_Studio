@@ -100,7 +100,7 @@ function isTagCartLocalizationExcluded(target) {
     if (!element || !element.closest) return false;
 
     return !!element.closest(
-        '#draggable-container, #custom-tags-editor, #selected-tags-container, #tag-display-container, .tagcart-panel, .tagcart-editor'
+        '[translate="no"], #draggable-container, #custom-tags-editor, #selected-tags-container, #tag-display-container, .tagcart-panel, .tagcart-editor'
     );
 }
 

@@ -2,6 +2,7 @@ import numpy as np
 import csv
 import onnxruntime as ort
 import os
+import threading
 
 from PIL import Image
 from onnxruntime import InferenceSession
@@ -12,12 +13,15 @@ from modules.wd14_preprocess import (
     needs_wd14_timm_normalization,
     prepare_wd14_image,
 )
+from modules.wd14_models import MODEL_SPECS
 import logging
 logger = logging.getLogger(__name__)
 
 global_model = None
 global_csv = None
 current_model_name = None
+current_cpu_only = None
+_model_lock = threading.RLock()
 
 
 def _ort_providers():
@@ -37,41 +41,44 @@ def _ort_providers():
 
 
 def free_model():
-    global global_model, global_csv, current_model_name
-    if global_model is not None:
-        del global_model
+    global global_model, global_csv, current_model_name, current_cpu_only
+    with _model_lock:
         global_model = None
-    global_csv = None
-    current_model_name = None
+        global_csv = None
+        current_model_name = None
+        current_cpu_only = None
     import gc
     gc.collect()
 
 
-def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclude_tags=""):
-    global global_model, global_csv, current_model_name
+def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclude_tags="",
+                         *, allow_download=True, cpu_only=False, return_details=False):
+    if not _model_lock.acquire(timeout=25):
+        raise TimeoutError("WD14 is busy")
+    try:
+        return _interrogate(image, threshold, character_threshold, exclude_tags,
+                            allow_download=allow_download, cpu_only=cpu_only, return_details=return_details)
+    finally:
+        _model_lock.release()
 
-    model_specs = (
-        (
-            "wd-eva02-tagger-2026-canary-onnx-v2",
-            "https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/wd-eva02-tagger-2026-canary-onnx-v2.onnx",
-            "https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/wd-eva02-tagger-2026-canary-onnx-v2.csv",
-        ),
-        (
-            "wd-eva02-large-tagger-v3",
-            "https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/wd-eva02-large-tagger-v3.onnx",
-            "https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/wd-eva02-large-tagger-v3.csv",
-        ),
-        (
-            "wd-v1-4-moat-tagger-v2",
-            "https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/wd-v1-4-moat-tagger-v2.onnx",
-            "https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/wd-v1-4-moat-tagger-v2.csv",
-        ),
-    )
+
+def _interrogate(image, threshold, character_threshold, exclude_tags,
+                 *, allow_download, cpu_only, return_details):
+    global global_model, global_csv, current_model_name, current_cpu_only
+    model_specs = MODEL_SPECS
 
     model_name = None
     model_onnx_filename = None
     model_csv_filename = None
     for candidate_name, model_onnx_url, model_csv_url in model_specs:
+        if not allow_download:
+            candidate_onnx_filename = find_model_in_dirs(paths_clip_vision, candidate_name + ".onnx")
+            candidate_csv_filename = find_model_in_dirs(paths_clip_vision, candidate_name + ".csv")
+            if (candidate_onnx_filename and os.path.isfile(candidate_onnx_filename)
+                    and candidate_csv_filename and os.path.isfile(candidate_csv_filename)):
+                model_name, model_onnx_filename, model_csv_filename = candidate_name, candidate_onnx_filename, candidate_csv_filename
+                break
+            continue
         model_dir = find_dir_containing_model(paths_clip_vision, f"{candidate_name}.onnx")
         try:
             candidate_onnx_filename = load_file_from_url(
@@ -95,16 +102,22 @@ def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclud
     if model_name is None:
         raise RuntimeError("[WD14 Tagger] 没有可用的 ONNX 模型和标签表")
 
-    if current_model_name != model_name:
+    if current_model_name != model_name or current_cpu_only != cpu_only:
         global_model = None
         global_csv = None
         current_model_name = model_name
+        current_cpu_only = cpu_only
     logger.info(f"[WD14 Tagger] 当前使用模型: {model_name}")
 
     if global_model is not None:
         model = global_model
     else:
-        model = InferenceSession(model_onnx_filename, providers=_ort_providers())
+        if cpu_only:
+            options = ort.SessionOptions()
+            options.intra_op_num_threads = 4
+            model = InferenceSession(model_onnx_filename, providers=["CPUExecutionProvider"], sess_options=options)
+        else:
+            model = InferenceSession(model_onnx_filename, providers=_ort_providers())
         global_model = model
 
     input = model.get_inputs()[0]
@@ -118,7 +131,7 @@ def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclud
         csv_lines = global_csv
     else:
         csv_lines = []
-        with open(model_csv_filename) as f:
+        with open(model_csv_filename, encoding="utf-8-sig", newline="") as f:
             reader = csv.reader(f)
             next(reader)
             for row in reader:
@@ -126,13 +139,7 @@ def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclud
         global_csv = csv_lines
 
     tags = []
-    general_index = None
-    character_index = None
-    for line_num, row in enumerate(csv_lines):
-        if general_index is None and row[2] == "0":
-            general_index = line_num
-        elif character_index is None and row[2] == "4":
-            character_index = line_num
+    for row in csv_lines:
         tags.append(row[1])
 
     label_name = model.get_outputs()[0].name
@@ -144,12 +151,17 @@ def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclud
 
     result = list(zip(tags, probs[0]))
 
-    general = [item for item in result[general_index:character_index] if item[1] > threshold]
-    character = [item for item in result[character_index:] if item[1] > character_threshold]
+    general = [item for item, row in zip(result, csv_lines) if row[2] == "0" and item[1] > threshold]
+    character = [item for item, row in zip(result, csv_lines) if row[2] == "4" and item[1] > character_threshold]
 
     all = character + general
-    remove = [s.strip() for s in exclude_tags.lower().split(",")]
-    all = [tag for tag in all if tag[0] not in remove]
+    remove = {s.strip().replace(" ", "_") for s in exclude_tags.lower().split(",")}
+    all = [tag for tag in all if tag[0].lower().replace(" ", "_") not in remove]
 
     res = ", ".join((item[0].replace("(", "\\(").replace(")", "\\)") for item in all)).replace('_', ' ')
-    return res
+    if not return_details:
+        return res
+    categories = {row[1]: "character" if row[2] == "4" else "general" for row in csv_lines}
+    return {"prompt": res, "model_id": model_name, "providers": model.get_providers(),
+            "tags": [{"tag": tag, "confidence": float(confidence), "category": categories[tag]}
+                     for tag, confidence in all]}

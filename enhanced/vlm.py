@@ -188,27 +188,8 @@ def _superprompt_scene_value(state, theme, key, default=""):
 
 
 def _superprompt_target_key(backend_engine, task_method, target_text):
-    haystack = f"{backend_engine} {task_method} {target_text}".lower()
-    if "minimax" in haystack and "h3" in haystack:
-        return "minimax_h3"
-    if "anima" in haystack:
-        return "anima_aio"
-    if any(token in haystack for token in (
-        "il_v_pre", "illustrious", "chenkin", "noob", "newbie",
-        "pony", "animagine", "sd15_aio",
-    )):
-        return "sdxl_danbooru"
-    if "flux" in haystack:
-        return "flux_t5_en"
-    if "wan" in haystack or "video" in haystack or any(token in haystack for token in ("t2v", "i2v", "v2v", "av2v", "ltx")):
-        return "wan_video_cn"
-    if "qwen" in haystack:
-        return "qwen_natural"
-    if "t5" in haystack:
-        return "flux_t5_en"
-    if "_cn" in haystack or "中文" in haystack or "chinese" in haystack:
-        return "natural_zh"
-    return "natural_en"
+    from modules.prompt_targets import prompt_target_key
+    return prompt_target_key(backend_engine, task_method, target_text)
 
 
 def _superprompt_target_from_state(state):

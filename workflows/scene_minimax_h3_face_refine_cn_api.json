@@ -7,7 +7,7 @@
       "width": 768, "height": 768, "cfg": 1, "steps": 8, "var_number": 0, "var_number2": 0,
       "var_number3": 6, "var_number4": 0.6, "var_number5": 0, "var_number6": 1,
       "var_number7": 1, "var_number8": 60, "var_number9": 768, "var_number10": 8,
-      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": true,
       "model_type": 1, "model_type2": 1, "clip_type": 1, "negative_prompt": "",
       "sampler": "er_sde", "scheduler": "normal", "video_duration": 1
     }
@@ -28,7 +28,7 @@
       "start_percent": 0.0, "end_percent": 1.0, "min_tokens": 8192,
       "dense_blocks": "", "extra_tokens": 0, "sink_conditioning": "exact_kv", "verbose": true}
   },
-  "45": {"class_type": "ModelPatchTorchSettings", "inputs": {"enable_fp16_accumulation": true, "model": ["44", 0]}},
+  "45": {"class_type": "ModelPatchTorchSettings", "inputs": {"enable_fp16_accumulation": true, "model": ["h3_attention_switch", 0]}},
   "46": {"class_type": "CLIPLoaderGGUF", "_meta": {"title": "clip_model"}, "inputs": {"clip_name": "placeholder.safetensors", "type": "minimax"}},
   "47": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 26], "b": ["41", 0]}},
   "48": {"class_type": "easy ifElse", "inputs": {"boolean": ["47", 0], "on_true": ["4", 0], "on_false": ["46", 0]}},
@@ -82,6 +82,39 @@
     "class_type": "SimpAILoraStack",
     "_meta": {
       "title": "lora_stack_main"
+    }
+  },
+  "h3_dense_attention": {
+    "inputs": {
+      "model": [
+        "43",
+        0
+      ],
+      "attention": "comfy kitchen attention"
+    },
+    "class_type": "ModelAttentionBackend",
+    "_meta": {
+      "title": "MiniMax H3 Comfy Kitchen Attention"
+    }
+  },
+  "h3_attention_switch": {
+    "inputs": {
+      "boolean": [
+        "1",
+        23
+      ],
+      "on_true": [
+        "44",
+        0
+      ],
+      "on_false": [
+        "h3_dense_attention",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "MiniMax H3 Sparse Attention Switch"
     }
   }
 }

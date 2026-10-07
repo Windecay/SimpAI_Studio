@@ -17,6 +17,8 @@
     ],
     "available_aspect_ratios_selection": "Custom",
     "scene_frontend": {
+      "switch_option4_title": "Sparse Attention Acceleration",
+      "switch_option4": true,
       "version": "v1.1",
       "theme": ["Basic", "2 pass"],
       "theme_labels": {
@@ -52,7 +54,6 @@
         "scene_switch_option1",
         "scene_switch_option2",
         "scene_switch_option3",
-        "scene_switch_option4",
         "scene_refiner_model",
         "sam3_input_video",
         "sam3_mask_video",

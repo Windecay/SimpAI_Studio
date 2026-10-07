@@ -9,6 +9,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ui.runtime_patches import apply_gradio6_runtime_patches
 from ui.heartbeat_transport import GradioHeartbeatWebSocketMiddleware
+from ui.frontend_loopback import studio_http_server
 
 
 def _reload_javascript() -> None:
@@ -101,6 +102,9 @@ def _enable_landing_page_compression(kwargs: dict) -> None:
 def launch_root_app(blocks: gr.Blocks, **kwargs):
     """Single entry point for launching the root app."""
     _hide_gradio_event_docs(blocks)
+    # Our FastAPI Agent API has its own connection page. Gradio's event docs
+    # are intentionally empty; the frontend adds the Studio connection link.
+    kwargs.setdefault("footer_links", ["gradio", "settings"])
     _enable_landing_page_compression(kwargs)
     middleware = kwargs["app_kwargs"]["middleware"]
     if not any(getattr(item, "cls", None) is GradioHeartbeatWebSocketMiddleware for item in middleware):
@@ -108,4 +112,5 @@ def launch_root_app(blocks: gr.Blocks, **kwargs):
     launch_theme = getattr(blocks, "__dict__", {}).get("_simpai_launch_theme")
     if launch_theme is not None and "theme" not in kwargs:
         kwargs["theme"] = launch_theme
-    return blocks.launch(**kwargs)
+    with studio_http_server():
+        return blocks.launch(**kwargs)

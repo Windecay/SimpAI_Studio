@@ -78,6 +78,7 @@ from modules.sdxl_styles import legal_style_names, fooocus_expansion
 from modules.auth import auth_enabled, check_auth
 from modules.access_mode import is_local_mode, user_can_download_models, user_can_generate, user_has_full_local_access
 from modules.identity_session import resolve_session
+from modules.agent_auth import AgentAuthorization, private_store_directory
 import modules.identity_access as identity_access
 import modules.util as util
 from modules.meta_parser import switch_scene_theme, switch_scene_theme_safe, switch_scene_theme_ready_to_gen, get_welcome_image, describe_prompt_for_scene, extract_scene_image
@@ -1616,10 +1617,7 @@ def generate_clicked(task: worker.AsyncTask, state):
                     skip_update
                 logger.error(f"[Generate] timeout: max_wait={MAX_WAIT_TIME}, ready_flag={ready_flag}, last_update_time={last_update_time}, {task_meta}")
                 task.last_stop = 'stop'
-                worker.worker.stop_processing(task, 0, 'timeout')
-                if (task.processing):
-                    logger.error(f"[Generate] timeout_interrupt: {task_meta}")
-                    worker.worker.interrupt_processing()
+                worker.request_task_cancel(task, 'stop')
                 stop_update, skip_update = controls_interactive_updates(True)
                 yield tracked_component_update("progress_html", visible=False), \
                     tracked_component_update("progress_window", visible=True), \
@@ -6193,21 +6191,13 @@ with shared.gradio_root:
                         def stop_clicked(currentTask):
                             currentTask.last_stop = 'stop'
                             activeTask = getattr(currentTask, "active_director_task", None) or currentTask
-                            activeTask.last_stop = 'stop'
-                            if getattr(activeTask, "task_class", None) == "Cloud":
-                                activeTask.user_cancel_action = 'stop'
-                            elif activeTask.processing:
-                                worker.worker.interrupt_processing(activeTask)
+                            worker.request_task_cancel(activeTask, 'stop')
                             return currentTask
 
                         def skip_clicked(currentTask):
                             currentTask.last_stop = 'skip'
                             activeTask = getattr(currentTask, "active_director_task", None) or currentTask
-                            activeTask.last_stop = 'skip'
-                            if getattr(activeTask, "task_class", None) == "Cloud":
-                                activeTask.user_cancel_action = 'skip'
-                            elif activeTask.processing:
-                                worker.worker.interrupt_processing(activeTask)
+                            worker.request_task_cancel(activeTask, 'skip')
                             return currentTask
 
                         stop_button.click(stop_clicked, inputs=currentTask, outputs=currentTask, queue=False, show_progress=False, js='cancelGenerateForever')
@@ -13656,7 +13646,7 @@ app, local_url, share_url = _launch_root_app_with_frontend_port_retry(
         *modules.config.paths_loras,
         *getattr(modules.config, "paths_upscale_models", [])
     ],
-    blocked_paths=[constants.AUTH_FILENAME],
+    blocked_paths=[constants.AUTH_FILENAME, str(private_store_directory())],
     prevent_thread_lock=True
 )
 worker.start_worker()
@@ -13679,6 +13669,7 @@ import modules.canvas_workbench_qwen_tts as canvas_workbench_qwen_tts
 import modules.canvas_workbench_timeline as canvas_workbench_timeline
 import modules.model_browser_service as model_browser_service
 import modules.media_library_api as media_library_api
+import modules.agent_api as agent_api
 import ui.services.pose_studio as pose_studio_service
 import ui.services.gaussian_studio as gaussian_studio_service
 import ui.services.liveportrait_expression as liveportrait_expression_service
@@ -14356,8 +14347,10 @@ def _canvas_workbench_payload_for_request(request, payload):
         try:
             if token is not None and hasattr(token, "is_admin") and token.is_admin(request_did):
                 user_role = "admin"
+            elif token is not None and hasattr(token, "is_guest") and token.is_guest(request_did):
+                user_role = "guest"
         except Exception:
-            pass
+            user_role = "guest"
         effective_did = request_did
     else:
         effective_did = ""
@@ -14375,6 +14368,29 @@ def _canvas_workbench_payload_for_request(request, payload):
         access_mode="multi",
         user_role=user_role,
     )
+
+
+def _agent_api_context_for_request(request):
+    context = agent_api.context_for_request(request, _canvas_workbench_payload_for_request, _canvas_workbench_state_params)
+    context.state.setdefault("__lang", args_manager.args.language)
+    return context
+
+
+_agent_authorization = AgentAuthorization(_agent_api_context_for_request)
+app.include_router(agent_api.create_router(_agent_api_context_for_request, authorization=_agent_authorization))
+
+
+def _describe_vlm_chat_payload_for_request(request, payload):
+    from modules import vlm_skill_runtime
+
+    lang = payload.get("lang") or ""
+    principal = _agent_authorization.chat_context(request, lang)
+    def resolver():
+        if principal.authorization is not None:
+            return _agent_authorization.chat_credential_context(principal.authorization["id"], lang)
+        return _agent_authorization.chat_context(request, lang)
+    return {**payload, "_skill_access": vlm_skill_runtime.resolve_skill_access(principal.user_id),
+            "_agent_api_context": principal, "_agent_context_resolver": resolver}
 
 
 def _canvas_wildcards_user_did(payload=None):
@@ -15522,6 +15538,13 @@ async def canvas_workbench_run_node_endpoint(request: Request, payload: dict = B
             )
         payload = _canvas_workbench_payload_for_request(request, payload)
 
+        if payload.get("expected_identity_binding"):
+            from modules.agent_service import AgentAPIError, require_identity_binding
+            try:
+                require_identity_binding(_agent_api_context_for_request(request), payload["expected_identity_binding"])
+            except AgentAPIError as exc:
+                return JSONResponse(exc.payload(), status_code=exc.status)
+
         def safe_process():
             return canvas_workbench_runner.run_node(payload, _canvas_workbench_state_params(payload))
 
@@ -15911,7 +15934,7 @@ async def canvas_workbench_preset_catalog_endpoint(payload: dict = Body(...)):
                 entry["name"] = str(name)
                 entry["display_name"] = str(name)
                 entries.append(entry)
-            profiles = parameter_profiles.list_agent_profile_capabilities(
+            profiles = parameter_profiles.list_agent_profiles(
                 state_params,
                 [entry.get("name") for entry in entries],
             )
@@ -16220,10 +16243,15 @@ async def describe_image_vlm_skill_package_endpoint(request: Request):
 async def describe_image_vlm_tools_endpoint(request: Request, payload: dict = Body(default={})):
     try:
         payload = payload if isinstance(payload, dict) else {}
+        tool_name = str(payload.get("name") or payload.get("tool") or "")
+        agent_context = _agent_authorization.request_context(request) if tool_name.startswith("simpai.") and payload.get("action") not in {None, "list", "catalog"} else None
         result = await run_in_threadpool(
             describe_vlm_chat.run_vlm_tool, payload, access=_vlm_skill_access_for_request(request),
+            agent_context=agent_context,
         )
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except agent_api.AgentAPIError as exc:
+        return JSONResponse(exc.payload(), status_code=exc.status)
     except Exception as e:
         logger.exception("Describe Image VLM tools endpoint failed")
         return JSONResponse(
@@ -17193,7 +17221,7 @@ async def describe_image_vlm_chat_run_endpoint(request: Request, payload: dict =
                 status_code=400,
             )
 
-        payload = {**payload, "_skill_access": _vlm_skill_access_for_request(request)}
+        payload = _describe_vlm_chat_payload_for_request(request, payload)
         request_meta = request_summary(payload)
         started = time.monotonic()
         logger.info(
@@ -17247,6 +17275,8 @@ async def describe_image_vlm_chat_run_endpoint(request: Request, payload: dict =
             len(result.get("limited_actions") or []),
         )
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except agent_api.AgentAPIError as exc:
+        return JSONResponse(exc.payload(), status_code=exc.status)
     except Exception as e:
         logger.exception(
             "Describe Image VLM chat exception: error_id=%s failure_stage=endpoint_exception conversation_id=%s request_id=%s",
@@ -17274,13 +17304,15 @@ async def describe_image_vlm_chat_stream_endpoint(request: Request, payload: dic
     from modules.vlm_chat_stream import STREAMS, StreamRequestError
 
     payload = payload if isinstance(payload, dict) else {}
-    payload = {**payload, "_skill_access": _vlm_skill_access_for_request(request)}
     try:
+        payload = _describe_vlm_chat_payload_for_request(request, payload)
         session, after = await run_in_threadpool(
             STREAMS.open,
-            payload, _get_request_identity_did(request),
+            payload, payload["_agent_api_context"].user_id,
             describe_vlm_chat.run_describe_vlm_chat,
         )
+    except agent_api.AgentAPIError as exc:
+        return JSONResponse(exc.payload(), status_code=exc.status)
     except StreamRequestError as exc:
         return JSONResponse(
             {"ok": False, "error": exc.code, "failure_stage": "stream_reconnect"},

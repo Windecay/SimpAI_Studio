@@ -7,7 +7,7 @@
       "var_number": 0, "var_number2": 0, "var_number3": 12, "var_number4": 3,
       "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
       "var_number9": 0, "var_number10": 0,
-      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": true,
       "model_type": 1, "model_type2": 1, "clip_type": 1, "negative_prompt": "",
       "sampler": "res_multistep", "scheduler": "simple", "video_duration": 14
     },
@@ -71,7 +71,7 @@
   "52": {"inputs": {"audio": ["51", 0], "start_index": ["1", 14], "duration": ["1", 32]}, "class_type": "TrimAudioDuration", "_meta": {"title": "H3 Source Audio Segment"}},
   "53": {"inputs": {"audio": ["52", 0]}, "class_type": "PainterAudioLength", "_meta": {"title": "H3 Source Audio Length"}},
   "54": {"inputs": {"av_latent": ["11", 1], "source_audio": ["52", 0], "audio_vae": ["6", 0]}, "class_type": "VRGDG_MiniMaxH3AudioDrive", "_meta": {"title": "H3 Source Audio Lock"}},
-  "59": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["49", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}},
+  "59": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["h3_attention_switch", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}},
   "60": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["59", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_2"}},
   "61": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["60", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_3"}},
   "62": {"inputs": {"lora_name": "placeholder.safetensors", "strength_model": 0, "model": ["61", 0]}, "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_4"}},
@@ -102,6 +102,39 @@
     "class_type": "SimpAILoraStack",
     "_meta": {
       "title": "lora_stack_main"
+    }
+  },
+  "h3_dense_attention": {
+    "inputs": {
+      "model": [
+        "45",
+        0
+      ],
+      "attention": "comfy kitchen attention"
+    },
+    "class_type": "ModelAttentionBackend",
+    "_meta": {
+      "title": "MiniMax H3 Comfy Kitchen Attention"
+    }
+  },
+  "h3_attention_switch": {
+    "inputs": {
+      "boolean": [
+        "1",
+        23
+      ],
+      "on_true": [
+        "49",
+        0
+      ],
+      "on_false": [
+        "h3_dense_attention",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "MiniMax H3 Sparse Attention Switch"
     }
   }
 }

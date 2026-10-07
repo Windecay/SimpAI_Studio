@@ -2,14 +2,42 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import threading
 import time
+from collections import OrderedDict
 
 COOKIE_DAYS = 90
 CHECK_INTERVAL = 300
+_REJECTED_SESSION_LIMIT = 256
+_REJECTED_SESSIONS = OrderedDict()
+_REJECTED_SESSION_LOCK = threading.RLock()
 
 
 def resolve_session(token, session, ua_hash):
+    # Polling must not send the same rejected legacy credential to the native
+    # verifier every two seconds. Never cache successful authentication or a
+    # temporary backend failure; new credentials must be checked immediately.
+    if not session or token is None or str(session).startswith("s2_"):
+        return _resolve_session(token, session, ua_hash)
+    fingerprint = hashlib.sha256(json.dumps([session, ua_hash]).encode("utf-8")).digest()
+    key = (id(token), fingerprint)
+    with _REJECTED_SESSION_LOCK:
+        now = time.monotonic()
+        cached = _REJECTED_SESSIONS.get(key)
+        if cached is not None and cached[0] is token and now < cached[1]:
+            return {"status": "invalid_legacy", "did": "", "sstoken": "", "expires_in": 0}
+        _REJECTED_SESSIONS.pop(key, None)
+        result = _resolve_session(token, session, ua_hash)
+        if result["status"] == "invalid_legacy":
+            _REJECTED_SESSIONS[key] = (token, time.monotonic() + CHECK_INTERVAL)
+            while len(_REJECTED_SESSIONS) > _REJECTED_SESSION_LIMIT:
+                _REJECTED_SESSIONS.popitem(last=False)
+        return result
+
+
+def _resolve_session(token, session, ua_hash):
     rejected = {"status": "unavailable", "did": "", "sstoken": "", "expires_in": 0}
     if not session:
         return dict(rejected, status="missing")

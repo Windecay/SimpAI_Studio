@@ -293,6 +293,10 @@
         const parameterProfile = String(opts.parameterProfile || '').trim().slice(0, 200);
         if (parameterProfile) {
             node.parameter_profile = { name: parameterProfile, preset: cleanName, source: 'private' };
+            if (/^[0-9a-f]{64}$/.test(String(opts.parameterProfileFingerprint || ''))) {
+                node.parameter_profile.fingerprint = opts.parameterProfileFingerprint;
+                node.parameter_profile.preserve_models = true;
+            }
         }
         return node;
     }
@@ -322,6 +326,7 @@
                 return Object.assign({}, data || {}, {
                     ok: false,
                     error: data?.error || `HTTP ${response.status}`,
+                    http_status: response.status,
                     details: data?.details || response.statusText || '',
                     errors: data?.errors || []
                 });
@@ -430,6 +435,7 @@
             payload.user_context = options.user_context;
         }
         return postJson('/canvas-workbench/poll-run', payload, {
+            signal: options?.signal,
             emptyError: 'empty poll response',
             requestError: 'poll request failed'
         }).then((data) => {
@@ -569,10 +575,11 @@
         });
     }
 
-    function presetModelStatus(payload) {
+    function presetModelStatus(payload, options = {}) {
         return postJson('/canvas-workbench/preset-model-status', payload, {
             emptyError: 'empty preset model status response',
-            requestError: 'preset model status request failed'
+            requestError: 'preset model status request failed',
+            signal: options?.signal
         });
     }
 

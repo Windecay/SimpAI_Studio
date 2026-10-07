@@ -5,6 +5,7 @@ SimpAI Studio 是面向本地创作的 AI 多媒体工作台。项目把面向�
 - Wiki 入口：[SimpAI.cn](http://SimpAI.cn)
 - 应用指南：[《SimpAI 创意生图集中营：应用指南全收录》](https://acnmokx5gwds.feishu.cn/wiki/QK3LwOp2oiRRaTkFRhYcO4LonGe)
 - 用户交流：QQ 交流群 `1005085136`
+- Agent 接入：[统一 API 文档](docs/agent-api-v1.md) · [MCP 配置](docs/agent-mcp.md) · [仓库 Agent 指南](AGENTS.md)
 
 ![SimpAI Studio 主 WebUI / Main WebUI](docs/image/readme/01-main-webui-overview.jpg)
 

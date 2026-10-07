@@ -302,6 +302,17 @@ def _scene_theme_defaults(preset_node, runtime):
     return copy.deepcopy(defaults)
 
 
+def _fixed_theme_prompt(preset_node):
+    preset = preset_node.get("preset") or {}
+    if str(preset.get("name") or "").casefold() != "onekeykontext":
+        return None
+    defaults = _scene_theme_defaults(preset_node, preset_node.get("runtime") or {})
+    value = str(defaults.get("prompt") or "")
+    if not value:
+        raise ValueError("OneKeyKontext requires the selected theme's fixed prompt.")
+    return value
+
+
 def _scene_param(params, defaults, key, fallback=None):
     if isinstance(params, dict) and key in params:
         return params.get(key)
@@ -1588,6 +1599,9 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
         classic_prompt = preset_defaults["default_prompt"]
     if director_runtime and director_runtime.get("prompt_override"):
         classic_prompt = director_runtime.get("prompt_override")
+    fixed_prompt = _fixed_theme_prompt(preset_node)
+    if fixed_prompt is not None:
+        classic_prompt = fixed_prompt
 
     api_arg_overrides = {
         "prompt": classic_prompt,
@@ -1880,6 +1894,9 @@ def build_canvas_task_args_preview(payload, materialized_inputs, state_params):
         scene_prompt = preset_defaults["default_prompt"]
     if director_runtime and director_runtime.get("prompt_override"):
         scene_prompt = director_runtime.get("prompt_override")
+    fixed_prompt = _fixed_theme_prompt(preset_node)
+    if fixed_prompt is not None:
+        scene_prompt = fixed_prompt
 
     api_arg_overrides = {
         "prompt": scene_prompt,
@@ -1989,6 +2006,9 @@ def _build_task_preview(preset_node, materialized_inputs):
     prompt = params.get("prompt", "")
     if not str(prompt or "").strip():
         prompt = preset_defaults["default_prompt"]
+    fixed_prompt = _fixed_theme_prompt(preset_node)
+    if fixed_prompt is not None:
+        prompt = fixed_prompt
     negative_prompt = params.get("negative_prompt", "")
     if not str(negative_prompt or "").strip():
         negative_prompt = preset_defaults["default_prompt_negative"]
@@ -2050,11 +2070,12 @@ def dry_run_node(payload, state_params):
 
 
 def _cleanup_runs(now=None):
-    now = now or time.time()
+    now = time.time() if now is None else now
     with CANVAS_RUNS_LOCK:
         stale = [
             run_id for run_id, record in CANVAS_RUNS.items()
-            if now - float(record.get("updated_ts") or record.get("created_ts") or now) > CANVAS_RUN_RETENTION_SECONDS
+            if record.get("state") in TERMINAL_RUN_STATES
+            and now - float(record.get("updated_ts") or record.get("created_ts") or now) > CANVAS_RUN_RETENTION_SECONDS
         ]
         for run_id in stale:
             CANVAS_RUNS.pop(run_id, None)
@@ -2365,7 +2386,15 @@ def _apply_task_yields(record):
             assets = [item for item in assets if item]
             record["assets"] = assets
             cancel_action = getattr(task, "user_cancel_action", None) or getattr(task, "last_stop", None)
-            if cancel_action == "stop":
+            workflow_error = getattr(task, "simpleai_workflow_error", None)
+            if (getattr(task, "task_class", None) == "ImportedWorkflow" and isinstance(workflow_error, dict)
+                    and isinstance(workflow_error.get("code"), str) and isinstance(workflow_error.get("message"), str)):
+                record["state"] = "failed"
+                record["error"] = copy.deepcopy(workflow_error)
+                record["message"] = workflow_error["message"]
+                record["finished_ts"] = time.time()
+                _add_run_event(record, "error", record["message"])
+            elif cancel_action == "stop":
                 record["state"] = "canceled"
                 record["percent"] = max(float(record.get("percent") or 0), 0.01)
                 record["message"] = "Stopped by user."
@@ -2420,6 +2449,8 @@ def _public_run_record(record, after_preview_serial=None):
         "updated_at": _iso_from_ts(record.get("updated_ts")),
         "finished_at": _iso_from_ts(record.get("finished_ts")),
     }
+    if record.get("error"):
+        result["error"] = copy.deepcopy(record["error"])
     preview_stream = _public_preview_stream(record, after_preview_serial=after_preview_serial)
     if preview_stream:
         result["preview_stream"] = preview_stream
@@ -2460,6 +2491,60 @@ def _build_gallery_refresh_info(record):
         }
 
 
+def run_workflow(payload, state_params):
+    """Server-constructed imported task; shares queue, ownership and run polling."""
+    _cleanup_runs()
+    identity = _state_identity(payload, state_params)
+    if not user_can_generate(identity.get("user_did") or ""):
+        return {"ok": False, "error": "generation_not_allowed"}
+    run_id = payload["run_id"]
+    now = time.time()
+    reservation = {
+        "run_id": run_id, "request_fingerprint": payload["request_fingerprint"],
+        "project_id": "agent_api", "state": "preparing", "percent": 0.01,
+        "owner_user_did": identity["user_did"], "created_ts": now, "updated_ts": now,
+        "state_params": {**copy.deepcopy(state_params), "user_did": identity["user_did"]},
+        "client_context": _normalize_client_context(payload.get("client_context")),
+        "result_asset_scope": "canvas", "placeholder_node_id": run_id + "-output",
+    }
+    with CANVAS_RUNS_LOCK:
+        existing = CANVAS_RUNS.get(run_id)
+        if existing:
+            if not _run_record_owned_by(existing, identity):
+                return {"ok": False, "error": "run_id_conflict"}
+            if existing.get("request_fingerprint") != payload["request_fingerprint"]:
+                return {"ok": False, "error": "request_id_conflict"}
+            return {**_public_run_record(existing), "idempotent_replay": True}
+        CANVAS_RUNS[run_id] = reservation
+    try:
+        import modules.async_worker as worker
+        if not worker.get_queue_snapshot()["worker"]["ready"]:
+            raise RuntimeError("Studio task worker is not ready")
+        task = worker.AsyncTask(args=[])
+        task.task_class = "ImportedWorkflow"
+        task.task_name = payload["workflow_request"]["workflow_id"]
+        task.task_method = "imported_workflow"
+        task.user_did = identity["user_did"]
+        task.simpleai_lang = state_params.get("__lang") or "en"
+        task.content_type = "video" if any(item["type"] == "video" for item in payload["outputs"]) else "image"
+        task.generate_image_grid = False
+        task.simpleai_workflow_request = copy.deepcopy(payload["workflow_request"])
+        task.simpleai_workflow_identity = payload["identity_binding"]
+        task.simpleai_workflow_outputs = copy.deepcopy(payload["outputs"])
+        reservation.update({"task_id": task.task_id, "task": task, "state": "queued", "percent": 0.02,
+                            "message": "Queued imported workflow.", "input_count": len(task.simpleai_workflow_request["bindings"]),
+                            "task_preview": {"workflow_id": task.task_name,
+                                             "source_instruction": task.simpleai_workflow_request.get("instruction", ""),
+                                             "outputs": copy.deepcopy(payload["outputs"])}})
+        worker.add_task(task)
+        return _public_run_record(reservation)
+    except Exception as exc:
+        with CANVAS_RUNS_LOCK:
+            if CANVAS_RUNS.get(run_id) is reservation:
+                CANVAS_RUNS.pop(run_id, None)
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 def run_node(payload, state_params):
     if not isinstance(payload, dict):
         return {"ok": False, "error": "payload is not an object"}
@@ -2483,6 +2568,7 @@ def run_node(payload, state_params):
     now = time.time()
     reservation = {
         "run_id": run_id,
+        "request_fingerprint": str(payload.get("request_fingerprint") or "")[:64],
         "project_id": payload.get("project_id") or "default",
         "placeholder_node_id": payload.get("placeholder_node_id") or "",
         "preset_node_id": "",
@@ -2504,6 +2590,8 @@ def run_node(payload, state_params):
                     "error": "run_id_conflict",
                     "details": "The run_id is already used by another identity.",
                 }
+            if reservation["request_fingerprint"] and existing.get("request_fingerprint") != reservation["request_fingerprint"]:
+                return {"ok": False, "error": "request_id_conflict", "details": "This request ID already identifies a different submission."}
             response = _public_run_record(existing)
             response["idempotent_replay"] = True
             return response
@@ -2672,10 +2760,7 @@ def control_run(payload, state_params):
         task.user_cancel_action = action
         try:
             import modules.async_worker as worker
-            if action == "stop" and hasattr(worker.worker, "stop_processing"):
-                worker.worker.stop_processing(task, 0, "Canvas stop requested")
-            if hasattr(worker.worker, "interrupt_processing"):
-                worker.worker.interrupt_processing()
+            worker.request_task_cancel(task, action)
         except Exception:
             pass
         record["state"] = "cancelling" if action == "stop" else "skipping"

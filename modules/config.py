@@ -759,6 +759,7 @@ paths_sam3dbody = get_dir_or_set_default('path_sam3dbody', f'{path_models_root}/
 paths_sharp = get_dir_or_set_default('path_sharp', f'{path_models_root}/sharp', True)
 paths_lsnet = get_dir_or_set_default('path_lsnet', f'{path_models_root}/lsnet', True)
 paths_SEEDVR2 = get_dir_or_set_default('path_SEEDVR2', f'{path_models_root}/SEEDVR2', True)
+paths_vosr2 = get_dir_or_set_default('path_vosr2', f'{path_models_root}/vosr2', True)
 paths_hunyuan_foley = get_dir_or_set_default('path_hunyuan_foley', f'{path_models_root}/hunyuan_foley', True)
 paths_qwen_tts = get_dir_or_set_default('path_qwen_tts', f'{path_models_root}/qwen-tts', True)
 
@@ -813,6 +814,7 @@ model_cata_map = {
     'sams': paths_sams,
     'seedvr2': paths_SEEDVR2,
     'SEEDVR2': paths_SEEDVR2,
+    'vosr2': paths_vosr2,
     'hunyuan_foley': paths_hunyuan_foley,
     'qwen-tts': paths_qwen_tts,
     }
@@ -1689,6 +1691,7 @@ comfyui:
      models_root: {models_root}
      checkpoints: {checkpoints}
      LLM: {LLM}
+     llms: {llms}
      clip_vision: {clip_vision}
      clip: {clip}
      controlnet: {controlnets}
@@ -1722,12 +1725,17 @@ comfyui:
      model_patches: {model_patches}
      grounding-dino: {grounding_dino}
      detection: {detection}
+     ultralytics: {ultralytics}
+     liveportrait: {liveportrait}
+     bbox: {bbox}
+     segm: {segm}
      text_encoders: {text_encoders}
      sam3: {sam3}
      sam3dbody: {sam3dbody}
      sharp: {sharp}
      lsnet: {lsnet}
      seedvr2: {seedvr2}
+     vosr2: {vosr2}
      hunyuan_foley: {hunyuan_foley}
      qwen-tts: {qwen_tts}
      '''
@@ -1760,6 +1768,7 @@ config_comfy_text = config_comfy_formatted_text.format(
         models_root=_path_to_comfy_extra_yaml_value(_model_root_for_extra_paths()),
         checkpoints=paths2str(_extra_model_paths('checkpoints', paths_diffusion_models + paths_checkpoints),'checkpoints'),
         LLM=paths2str(_extra_model_paths('LLM', paths_LLM), 'LLM'),
+        llms=paths2str(_extra_model_paths('llms', paths_llms), 'llms'),
         clip_vision=paths2str(_extra_model_paths('clip_vision', paths_clip_vision + paths_ipadapter), 'clip_vision'),
         clip=paths2str(_extra_model_paths('clip', paths_text_encoders + paths_clip), 'clip'),
         controlnets=paths2str(_extra_model_paths('controlnet', paths_controlnet),'controlnet'), 
@@ -1792,6 +1801,10 @@ config_comfy_text = config_comfy_formatted_text.format(
         model_patches=paths2str(_extra_model_paths('model_patches', paths_model_patches), 'model_patches'),
         grounding_dino=paths2str(_extra_model_paths('grounding-dino', paths_grounding_dino), 'grounding-dino'),
         detection=paths2str(_extra_model_paths('detection', paths_detection), 'detection'),
+        ultralytics=paths2str(_extra_model_paths('ultralytics', paths_ultralytics), 'ultralytics'),
+        liveportrait=paths2str(_extra_model_paths('liveportrait', paths_liveportrait), 'liveportrait'),
+        bbox=paths2str(_extra_model_paths('bbox', paths_bbox), 'bbox'),
+        segm=paths2str(_extra_model_paths('segm', paths_segm), 'segm'),
         text_encoders=paths2str(_extra_model_paths('text_encoders', paths_text_encoders + paths_clip), 'text_encoders'),
         diffusion_models=paths2str(_extra_model_paths('diffusion_models', paths_unet + paths_diffusion_models + paths_checkpoints), 'diffusion_models'),
         sam3=paths2str(_extra_model_paths('sam3', paths_sam3), 'sam3'),
@@ -1799,6 +1812,7 @@ config_comfy_text = config_comfy_formatted_text.format(
         sharp=paths2str(_extra_model_paths('sharp', paths_sharp), 'sharp'),
         lsnet=paths2str(_extra_model_paths('lsnet', paths_lsnet), 'lsnet'),
         seedvr2=paths2str(_extra_model_paths('seedvr2', paths_SEEDVR2), 'seedvr2'),
+        vosr2=paths2str(_extra_model_paths('vosr2', paths_vosr2), 'vosr2'),
         hunyuan_foley=paths2str(_extra_model_paths('hunyuan_foley', paths_hunyuan_foley), 'hunyuan_foley'),
         qwen_tts=paths2str(_extra_model_paths('qwen-tts', paths_qwen_tts), 'qwen-tts'),
         )

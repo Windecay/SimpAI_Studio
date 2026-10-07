@@ -119,6 +119,12 @@ SIMPLEAI_BASE_WHEEL_SHA256 = {
     "simpleai_base-0.3.56-cp312-cp312-win_amd64.whl": "db632cffa7436ac85fbabcd14d7792272f9d9185d5823f4826ec1cbdd75e7374",
     "simpleai_base-0.3.56-cp312-cp312-macosx_11_0_arm64.whl": "07e155420542f487de5715205b544fdac3465396304f268aa406a4d29fac2284",
     "simpleai_base-0.3.56-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "eba8145d1cd9970c8b4854d5ba7700578f0ec7b0fd8b64146a686adf7fd53389",
+    "simpleai_base-0.3.57-cp313-cp313-win_amd64.whl": "34315965de927c732dfe493d162e15cf4edf9ab2b2351a7c25b72699ccef228f",
+    "simpleai_base-0.3.57-cp313-cp313-macosx_11_0_arm64.whl": "f923e47f97af0133263b1356a175afa1d34eb1cccb13ca8be8693cdd7b00326f",
+    "simpleai_base-0.3.57-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "d138c444637cb2582ca4c287c590cd7c8a3813983637bceb3b28742b56543352",
+    "simpleai_base-0.3.57-cp312-cp312-win_amd64.whl": "17e9eee18dee70b0fed0970ab97b668453692e15fc9f00fed4ce337ae1ce1f09",
+    "simpleai_base-0.3.57-cp312-cp312-macosx_11_0_arm64.whl": "2865a86aee3ef25e0b3f51be641d6b02829b5625f36f8ba2bc3d61e5ce8aa9eb",
+    "simpleai_base-0.3.57-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": "54557ff2ac39cf1b5eab69214d28c23a6ae9c10058d34eea8a6e66497726622e",
 }
 
 def cleanup_obsolete_custom_nodes():
@@ -675,7 +681,7 @@ def check_base_environment():
     print(f'{now_string()} ✦ | 兴趣使然的版本 | ✦ by冰華 ✦')
 
     base_pkg = "simpleai_base"
-    ver_required = "0.3.56"
+    ver_required = "0.3.57"
     REINSTALL_BASE = False
     base_branch = "studio"
     base_url = f"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/{base_branch}"

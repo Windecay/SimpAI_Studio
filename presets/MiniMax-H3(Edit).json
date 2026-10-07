@@ -17,6 +17,8 @@
     ],
     "available_aspect_ratios_selection": "Custom",
     "scene_frontend": {
+      "switch_option4_title": "Sparse Attention Acceleration",
+      "switch_option4": true,
       "version": "v1.1",
       "theme": ["MiniMax H3 SAM3 Local Replacement"],
       "theme_title": "MiniMax H3 + SAM3 Local Replacement Tools",
@@ -74,7 +76,6 @@
         "scene_switch_option1",
         "scene_switch_option2",
         "scene_switch_option3",
-        "scene_switch_option4",
         "scene_refiner_model",
         "scene_batch"
       ],

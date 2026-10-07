@@ -34,6 +34,7 @@ class ChatStreamSession:
         self.events = deque()
         self.event_bytes = 0
         self.text_parts = []
+        self.assistant_messages = {}
         self.status = None
         self.result_event = None
 
@@ -65,6 +66,10 @@ class ChatStreamSession:
                 self.text_parts.append(str(event.get("text") or ""))
             elif event_type == "reset":
                 self.text_parts.clear()
+            elif event_type == "assistant_message":
+                message = event.get("message") or {}
+                if message.get("id"):
+                    self.assistant_messages[message["id"]] = message
             elif event_type in {"status", "progress"}:
                 self.status = event
             elif event_type == "result":
@@ -83,7 +88,7 @@ class ChatStreamSession:
             event_type = str(delta.get("type") or "").strip().lower()
             if event_type == "reset":
                 self.emit({"type": "reset"})
-            elif event_type in {"status", "progress"}:
+            elif event_type in {"status", "progress", "assistant_message"}:
                 self.emit({**delta, "type": event_type})
         elif delta:
             self.emit({"type": "delta", "text": str(delta)})
@@ -106,6 +111,8 @@ class ChatStreamSession:
                     "text": "".join(self.text_parts),
                     "status": self.status,
                 }
+                if self.assistant_messages:
+                    snapshot["messages"] = list(self.assistant_messages.values())
                 replay.append((
                     snapshot_sequence,
                     json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")),
@@ -171,7 +178,8 @@ class ChatStreamRegistry:
         if not resume:
             original = {
                 name: value for name, value in payload.items()
-                if name not in {"_skill_access", "_stream_token", "_stream_after", "_stream_resume", "_stream_stage"}
+                if name not in {"_skill_access", "_agent_api_context", "_agent_context_resolver",
+                                "_stream_token", "_stream_after", "_stream_resume", "_stream_stage"}
             }
             fingerprint = hashlib.sha256(
                 json.dumps(original, sort_keys=True, ensure_ascii=False).encode("utf-8")

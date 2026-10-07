@@ -7,6 +7,7 @@ read-only skill and image-context helpers.
 
 import re
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as ToolTimeoutError
 
 from modules import vlm_skill_runtime, vlm_skill_authoring
@@ -63,15 +64,24 @@ class ToolRegistry:
         cancel_check = context.get("cancel_check")
         if callable(cancel_check) and cancel_check():
             return _error_result(name, call_id, "cancelled", "Tool call was cancelled.", started)
+        timeout_seconds = tool["timeout_ms"] / 1000.0
+        remaining = context.get("tool_timeout_seconds")
+        if isinstance(remaining, (int, float)):
+            timeout_seconds = max(0.001, min(timeout_seconds, remaining))
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="simpai-vlm-tool")
-        future = executor.submit(tool["handler"], args, context)
+        inference_cancel = threading.Event() if name in {"simpai.vlm.chat", "simpai.vlm.analyze"} else None
+        worker_context = context if inference_cancel is None else {
+            **context, "cancel_check": lambda: inference_cancel.is_set() or (callable(cancel_check) and cancel_check())}
+        future = executor.submit(tool["handler"], args, worker_context)
         try:
-            result = future.result(timeout=tool["timeout_ms"] / 1000.0)
+            result = future.result(timeout=timeout_seconds)
             if isinstance(result, dict) and result.get("ok") is False:
                 output = result
             else:
                 output = {"ok": True, "data": result}
         except ToolTimeoutError:
+            if inference_cancel is not None:
+                inference_cancel.set()
             future.cancel()
             output = {"ok": False, "error": "Tool call timed out.", "code": "tool_timeout"}
         except Exception as exc:
@@ -198,6 +208,22 @@ def _tool_select_image_context(arguments, context):
 
 def create_default_registry():
     registry = ToolRegistry()
+    def tool_schema(arguments, context):
+        name = arguments["name"]
+        allowed = context.get("allowed_tool_names")
+        tool = registry.get(name)
+        if tool is None or (allowed is not None and name not in allowed):
+            return {"ok": False, "code": "tool_not_available", "error": "This tool is not available in the current turn."}
+        return {key: value for key, value in tool.items() if key != "handler"}
+
+    registry.register(
+        "vlm.tool_schema",
+        "Read one available tool's argument schema before calling it.",
+        {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}},
+         "additionalProperties": False},
+        tool_schema,
+        read_only=True,
+    )
     registry.register(
         vlm_skill_authoring.DRAFT_TOOL_NAME,
         "Validate and prepare an instruction-only SKILL.md draft for user review. Never saves or enables it.",
@@ -251,6 +277,16 @@ def create_default_registry():
         read_only=True,
         side_effect="none",
     )
+    from modules.agent_api_contract import OPERATIONS
+    from modules.agent_service import execute_registered_tool
+    for name, (schema, description, read_only, _) in OPERATIONS.items():
+        registry.register(
+            name, description, schema.model_json_schema(),
+            lambda arguments, context, tool_name=name: execute_registered_tool(tool_name, arguments, context),
+            read_only=read_only, side_effect="none" if read_only else "studio_task_or_asset",
+            timeout_ms=600_000 if name in {"simpai.vlm.chat", "simpai.vlm.analyze"} else 30_000,
+            concurrent_safe=read_only,
+        )
     return registry
 
 
@@ -269,7 +305,7 @@ def execute_tool_call(name, arguments=None, context=None, tool_call_id=""):
     return _DEFAULT_REGISTRY.execute(name, arguments, context=context, tool_call_id=tool_call_id)
 
 
-def tools_endpoint_payload(payload=None, access=None):
+def tools_endpoint_payload(payload=None, access=None, agent_context=None):
     payload = payload if isinstance(payload, dict) else {}
     action = str(payload.get("action") or "list").strip().lower()
     if action in {"list", "catalog"}:
@@ -280,6 +316,7 @@ def tools_endpoint_payload(payload=None, access=None):
         "project_root": vlm_skill_runtime.studio_root(),
         "include_user": payload.get("include_user", True) is not False,
         "skill_access": vlm_skill_runtime._access(access),
+        "agent_api_context": agent_context,
     }
     result = execute_tool_call(name, arguments, context=context, tool_call_id=payload.get("tool_call_id"))
     return result
@@ -290,10 +327,10 @@ def build_tool_prompt_contract(lang="cn"):
         return (
             "Tool protocol is available for explicit client integrations. A tool request must use the exact JSON shape "
             '{"name":"vlm.load_skill","arguments":{"name":"skill-name"}}. '
-            "Only listed read-only tools are valid; never request arbitrary paths or code execution."
+            "Only listed tools are valid. Respect their read_only and side_effect metadata and the user's generation preferences. Never request arbitrary paths or code execution."
         )
     return (
         "工具协议供明确的客户端调用使用。工具请求必须使用固定 JSON 结构 "
         '{"name":"vlm.load_skill","arguments":{"name":"skill-name"}}。'
-        "只能调用已列出的只读工具，不要请求任意路径或代码执行。"
+        "只能调用已列出的工具，遵守 read_only、side_effect 声明和用户的生成设置；不要请求任意路径或代码执行。"
     )

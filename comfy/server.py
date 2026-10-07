@@ -1313,6 +1313,18 @@ class PromptServer():
             queue_info['queue_pending'] = _remove_sensitive_from_queue(current_queue[1])
             return web.json_response(queue_info)
 
+        @routes.post("/simpai/workflows/validate")
+        async def validate_imported_workflow(request):
+            json_data = await request.json()
+            prompt = json_data.get("prompt")
+            if not isinstance(prompt, dict) or not 0 < len(prompt) <= 512:
+                return web.json_response({"valid": False, "error": "invalid_prompt",
+                                          "strict_submission_supported": True}, status=400)
+            self.node_replace_manager.apply_replacements(prompt)
+            valid = await execution.validate_prompt(str(uuid.uuid4()), prompt, None)
+            return web.json_response({"valid": bool(valid[0] and not valid[3]), "error": valid[1],
+                                      "node_errors": valid[3], "strict_submission_supported": True})
+
         @routes.post("/prompt")
         async def post_prompt(request):
             logging.info("got prompt")
@@ -1416,7 +1428,7 @@ class PromptServer():
                     usage_source = request.headers.get("Comfy-Usage-Source")
                     if usage_source:
                         extra_data["comfy_usage_source"] = usage_source
-                if valid[0]:
+                if valid[0] and not (json_data.get("simpai_require_all_outputs") and valid[3]):
                     outputs_to_execute = valid[2]
                     sensitive = {}
                     for sensitive_val in execution.SENSITIVE_EXTRA_DATA_KEYS:
@@ -1444,7 +1456,9 @@ class PromptServer():
                     return web.json_response(response)
                 else:
                     logging.warning("invalid prompt: {}".format(valid[1]))
-                    return web.json_response({"error": valid[1], "node_errors": valid[3]}, status=400)
+                    return web.json_response({"error": valid[1] or {"type": "invalid_output_branch",
+                                                                   "message": "All imported workflow outputs must validate."},
+                                              "node_errors": valid[3]}, status=400)
             else:
                 error = {
                     "type": "no_prompt",

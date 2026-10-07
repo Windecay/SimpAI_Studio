@@ -26,7 +26,7 @@
       "switch_option1": false,
       "switch_option2": false,
       "switch_option3": false,
-      "switch_option4": false,
+      "switch_option4": true,
       "model_type": 1,
       "model_type2": 1,
       "clip_type": 1,
@@ -388,7 +388,7 @@
   "45": {
     "inputs": {
       "enable_fp16_accumulation": true,
-      "model": ["44", 0]
+      "model": ["h3_attention_switch", 0]
     },
     "class_type": "ModelPatchTorchSettings",
     "_meta": {"title": "H3 FP16 Accumulation"}
@@ -791,6 +791,39 @@
     "class_type": "SimpAILoraStack",
     "_meta": {
       "title": "lora_stack_main"
+    }
+  },
+  "h3_dense_attention": {
+    "inputs": {
+      "model": [
+        "43",
+        0
+      ],
+      "attention": "comfy kitchen attention"
+    },
+    "class_type": "ModelAttentionBackend",
+    "_meta": {
+      "title": "MiniMax H3 Comfy Kitchen Attention"
+    }
+  },
+  "h3_attention_switch": {
+    "inputs": {
+      "boolean": [
+        "1",
+        23
+      ],
+      "on_true": [
+        "44",
+        0
+      ],
+      "on_false": [
+        "h3_dense_attention",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "MiniMax H3 Sparse Attention Switch"
     }
   }
 }

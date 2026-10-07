@@ -39,7 +39,9 @@
             const search = new URLSearchParams(window.location.search || '');
             candidates.push(search.get('__lang'), search.get('lang'), search.get('language'));
         } catch (err) {}
-        if (typeof window.locale_lang === 'string') candidates.push(window.locale_lang);
+        // The page bootstrap declares locale_lang with let, so it is not a
+        // window property. Use that initial language before UI state arrives.
+        if (typeof locale_lang === 'string') candidates.push(locale_lang);
         try {
             candidates.push(localStorage.getItem('ailang'));
         } catch (err) {}

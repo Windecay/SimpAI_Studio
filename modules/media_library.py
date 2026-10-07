@@ -167,7 +167,7 @@ def _json_loads(value: Any, fallback: Any) -> Any:
     return parsed
 
 
-def _normalise_did(user_did: Any) -> str:
+def _normalise_did(user_did: Any = None) -> str:
     value = str(user_did or "").strip()
     if value:
         return value

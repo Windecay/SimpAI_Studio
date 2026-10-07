@@ -3395,11 +3395,11 @@ function toggleComponentVisibility(toggleButton, targetComponentId) {
 }
 
 function getCookie(name) {
-    const cookies = document.cookie.split(';').map(cookie => cookie.trim());
-    const cookie = cookies.find(cookie => cookie.startsWith(name + '='));
-    if (cookie) {
-        return cookie.split('=')[1];
-    }
+    try {
+        const cookies = document.cookie.split(';').map(cookie => cookie.trim());
+        const cookie = cookies.find(cookie => cookie.startsWith(name + '='));
+        if (cookie) return cookie.split('=').slice(1).join('=');
+    } catch (e) {}
     return null;
 }
 
@@ -14242,14 +14242,15 @@ if (typeof window.__simpleai_ui_ready === "undefined") {
     window.__simpleai_ui_ready = false;
 }
 if (!cookieToken) {
-    const localStorageToken = localStorage.getItem("aitoken");
-    if (localStorageToken) {
-    	setCookie('aitoken', `${localStorageToken}`, 90);
-    	console.log("AiToken restored from localStorage to Cookie");
+    try {
+        const localStorageToken = localStorage.getItem("aitoken");
+        if (localStorageToken) {
+            setCookie('aitoken', `${localStorageToken}`, 90);
+        }
+    } catch (e) {
+        // Restricted browser storage must not interrupt page initialization.
     }
-    } else {
-        console.log("AiToken exists in Cookie");
-    }
+}
 
 document.addEventListener("DOMContentLoaded", function() {
     const isKnownGradioRaceError = (message, stackText) => {

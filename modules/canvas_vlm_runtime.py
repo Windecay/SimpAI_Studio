@@ -32,6 +32,7 @@ from modules.custom_llm_api import (
     extract_response_metadata,
     extract_reasoning_display_metadata,
     extract_response_text,
+    extract_response_message_texts,
     extract_stream_completion_response,
     extract_stream_reasoning_delta,
     extract_stream_text_delta,
@@ -63,6 +64,13 @@ def _clamp_number(value, default, min_value=None, max_value=None):
 
 def _clamp_int(value, default, min_value=None, max_value=None):
     return int(round(_clamp_number(value, default, min_value, max_value)))
+
+
+def _canvas_vlm_request_timeout(params, default):
+    deadline = params.get("_harness_deadline")
+    if isinstance(deadline, (int, float)):
+        return max(0.1, min(default, deadline - time.monotonic()))
+    return default
 
 
 def _canvas_vlm_cancel_key(project_id="", node_id="", conversation_id="", request_id=""):
@@ -886,7 +894,7 @@ def canvas_custom_llm_run(
                 api_key,
                 api_format,
                 intent_request,
-                timeout=120,
+                timeout=_canvas_vlm_request_timeout(params, 120),
             )
             intent_text = canvas_extract_openai_text(intent_response).strip()
             two_stage_intent_meta = canvas_vlm_agent.parse_two_stage_intent_response(intent_text, payload, params, prompt)
@@ -989,7 +997,7 @@ def canvas_custom_llm_run(
                 stream_url,
                 stream_request_payload,
                 api_key=api_key,
-                timeout=180,
+                timeout=_canvas_vlm_request_timeout(params, 180),
             ):
                 if is_canvas_vlm_cancelled("", "", conversation_id, request_id):
                     return {
@@ -1053,7 +1061,7 @@ def canvas_custom_llm_run(
             api_key,
             api_format,
             request_payload,
-            timeout=180,
+            timeout=_canvas_vlm_request_timeout(params, 180),
         )
     main_elapsed = time.monotonic() - main_started
     _canvas_vlm_add_timing(params, "custom_main_api_call", main_elapsed)
@@ -1079,7 +1087,7 @@ def canvas_custom_llm_run(
             api_key,
             api_format,
             review_request,
-            timeout=120,
+            timeout=_canvas_vlm_request_timeout(params, 120),
         )
         return canvas_extract_openai_text(review_response).strip()
 
@@ -1110,7 +1118,7 @@ def canvas_custom_llm_run(
             api_key,
             api_format,
             retry_request,
-            timeout=180,
+            timeout=_canvas_vlm_request_timeout(params, 180),
         )
         retry_elapsed = time.monotonic() - retry_started
         _canvas_vlm_add_timing(params, "custom_draft_retry_api_call", retry_elapsed)
@@ -1219,6 +1227,7 @@ def canvas_custom_llm_run(
         **output_error,
         "text": display_text,
         "raw_text": text if display_text != text else "",
+        **({"harness_output_messages": extract_response_message_texts(response)} if params.get("describe_harness") else {}),
         "agent_actions": agent_actions,
         "version": str(params.get("custom_profile_version") or "Custom"),
         "provider": params.get("custom_provider") or "custom",
@@ -1789,7 +1798,7 @@ def canvas_vlm_run(payload, stream_callback=None):
         current_prompt = canvas_vlm_agent._canvas_vlm_stateless_prompt_text(
             base_prompt,
             text_budget,
-            preserve_contract=bool(params.get("describe_roleplay_director") or params.get("describe_image_context") or params.get("describe_skill_draft")),
+            preserve_contract=bool(params.get("describe_roleplay_director") or params.get("describe_image_context") or params.get("describe_skill_draft") or params.get("describe_harness")),
         )
         sections = []
         system_text = ""
@@ -1836,12 +1845,13 @@ def canvas_vlm_run(payload, stream_callback=None):
         and not bool(params.get("force_stateful_chat"))
         and not bool(params.get("force_stateful_image_chat"))
     )
+    stateless_local_chat = stateless_llamacpp_chat or bool(mode == "chat" and params.get("describe_harness"))
     stateless_prompt_includes_text_history = False
     stateless_system_prompt = ""
     rolling_context_stats = {"omitted": 0, "chars": 0, "max_history": 0, "budget": 0}
     completion_stats = {}
     stage_started = time.monotonic()
-    if mode == "chat" and not stateless_llamacpp_chat:
+    if mode == "chat" and not stateless_local_chat:
         if bool(params.get("reset_context")):
             vlm.clear_conversation(conversation_id)
         system_prompt = params.get("system_prompt")
@@ -1864,7 +1874,7 @@ def canvas_vlm_run(payload, stream_callback=None):
         completion_stats = _canvas_vlm_local_completion_stats()
     else:
         inference_prompt = prompt
-        if stateless_llamacpp_chat:
+        if stateless_local_chat:
             stateless_started = time.monotonic()
             inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats, stateless_system_prompt = build_stateless_llamacpp_chat_prompt(prompt)
             _canvas_vlm_add_timing(params, "stateless_prompt_prepare", time.monotonic() - stateless_started)
@@ -1898,7 +1908,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 top_k=top_k,
                 repetition_penalty=repetition_penalty,
                 seed=seed,
-                system_prompt=stateless_system_prompt if stateless_llamacpp_chat else None,
+                system_prompt=stateless_system_prompt if stateless_local_chat else None,
                 enable_thinking=enable_thinking,
             )
         completion_stats = _canvas_vlm_local_completion_stats()
@@ -1953,7 +1963,7 @@ def canvas_vlm_run(payload, stream_callback=None):
             retry_prompt = _canvas_vlm_current_media_retry_prompt(prompt)
             retry_system_prompt = (
                 stateless_system_prompt
-                if stateless_llamacpp_chat
+                if stateless_local_chat
                 else str(params.get("system_prompt") or "")
             )
             if stateless_llamacpp_chat and callable(stream_callback) and VLM.is_llamacpp:

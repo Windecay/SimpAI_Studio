@@ -13,7 +13,7 @@ pieces are not independently selectable and live together:
 Studio installs the bundle through its model panel. Loading never downloads
 files. The official DINOv2 checkpoint is converted locally to safetensors once.
 
-The ``model`` combo value is re-joined against ``_VOSR2_ROOT`` via
+The ``model`` combo value is re-joined against registered ``vosr2`` roots via
 ``_safe_child_dir``, never taken as -- or resolved through -- an arbitrary path.
 """
 import gc
@@ -107,12 +107,22 @@ def _safe_child_dir(root: Path, name: str) -> Path:
 
 
 def list_model_bundles() -> list:
-    if not _VOSR2_ROOT.is_dir():
-        return []
-    return sorted(
-        p.name for p in _VOSR2_ROOT.iterdir()
+    return sorted({
+        p.name
+        for root in folder_paths.get_folder_paths(VOSR2_FOLDER_KEY)
+        if Path(root).is_dir()
+        for p in Path(root).iterdir()
         if p.is_dir() and (p / "args.json").is_file()
-    )
+    })
+
+
+def _resolve_bundle_dir(model_name: str) -> Path:
+    default_bundle = _safe_child_dir(_VOSR2_ROOT, model_name)
+    for root in folder_paths.get_folder_paths(VOSR2_FOLDER_KEY):
+        bundle = _safe_child_dir(Path(root), model_name)
+        if (bundle / "args.json").is_file():
+            return bundle
+    return default_bundle
 
 
 def model_options() -> list:
@@ -121,7 +131,7 @@ def model_options() -> list:
     ComfyUI snapshots combo ``options`` when the schema is built, so on a fresh
     install ``list_model_bundles()`` returns ``[]`` and the dropdown would be
     empty and unselectable. Seeding it with the confirmed name lets the user pick
-    it and run; the loader then downloads that bundle on first execute.
+    it and run; the loader reports missing files through Studio's model panel.
     """
     found = list_model_bundles()
     return found if KNOWN_MODEL in found else [KNOWN_MODEL, *found]
@@ -147,7 +157,7 @@ def _convert_dinov2_pth_to_safetensors(src_pth: Path, dest: Path) -> None:
 
 def ensure_vosr2_files(model_name: str) -> None:
     """Validate a locally installed bundle without implicit network access."""
-    bundle = _safe_child_dir(_VOSR2_ROOT, model_name)
+    bundle = _resolve_bundle_dir(model_name)
     vae_dir = bundle / _VAE_SUBDIR
     missing = []
     if not (bundle / "args.json").is_file():
@@ -350,7 +360,7 @@ class VOSR2Model:
 def load_vosr2(model_name: str, dtype: str) -> VOSR2Model:
     ensure_vosr2_files(model_name)
 
-    bundle_dir = _safe_child_dir(_VOSR2_ROOT, model_name)
+    bundle_dir = _resolve_bundle_dir(model_name)
     if not bundle_dir.is_dir():
         raise VOSR2LoadError(f"VOSR2 model bundle not found: {model_name!r}")
     args = _load_args_json(bundle_dir)

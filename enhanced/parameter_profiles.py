@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import logging
 import os
@@ -52,6 +53,7 @@ _SCENE_PROFILE_CONTROL_KEYS = (
 _CANVAS_PROFILE_PARAM_KEYS = (
     "negative_prompt",
     "seed_random",
+    "image_number",
     "inpaint_advanced_masking_checkbox",
     "mixing_image_prompt_and_vary_upscale",
     "mixing_image_prompt_and_inpaint",
@@ -67,6 +69,7 @@ _CANVAS_PROFILE_PARAM_KEYS = (
 )
 
 _CANVAS_PROFILE_GENERATION_KEYS = {
+    "image_number": "image_number",
     "guidance_scale": "guidance_scale",
     "sharpness": "sharpness",
     "sampler": "sampler_name",
@@ -815,7 +818,7 @@ def _sanitize_profile_values(metadata: dict[str, Any], warnings: list[str], stat
     return metadata
 
 
-def prepare_metadata_for_load(metadata: dict[str, Any], payload: dict[str, Any] | None, context: Any = None) -> tuple[dict[str, Any], list[str]]:
+def prepare_metadata_for_load(metadata: dict[str, Any], payload: dict[str, Any] | None, context: Any = None, *, preserve_models: bool = False) -> tuple[dict[str, Any], list[str]]:
     metadata = copy.deepcopy(metadata or {})
     state_params = context if isinstance(context, dict) else {}
     warnings: list[str] = []
@@ -834,7 +837,8 @@ def prepare_metadata_for_load(metadata: dict[str, Any], payload: dict[str, Any] 
         ))
     metadata = _apply_current_preset_manifest(metadata, state_params, warnings)
     metadata = _sanitize_profile_values(metadata, warnings, state_params)
-    metadata = _sanitize_model_values(metadata, state_params, warnings)
+    if not preserve_models:
+        metadata = _sanitize_model_values(metadata, state_params, warnings)
     return metadata, warnings
 
 
@@ -984,6 +988,27 @@ def _find_user_profile(name: Any, preset_name: Any = None, context: Any = None) 
     return matches[0], ""
 
 
+def _profile_fingerprint(entry: dict[str, Any]) -> str:
+    value = {key: entry.get(key) for key in ("name", "preset_name", "schema", "metadata")}
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def list_agent_profiles(context: Any = None, preset_names: Any = None) -> list[dict[str, Any]]:
+    allowed = {_clean_name(name).casefold() for name in (preset_names or [])}
+    return [{**_profile_capability(entry), "fingerprint": _profile_fingerprint(entry)}
+            for entry in _all_user_profile_payloads(context)
+            if entry["preset_name"].casefold() in allowed]
+
+
+def agent_profile_snapshot(name: Any, preset_name: Any, context: Any = None) -> dict[str, Any]:
+    """Server-internal snapshot. The API separately allowlists public settings."""
+    entry, error = _find_user_profile(name, preset_name, context)
+    if not entry:
+        return {"ok": False, "error": error}
+    return {"ok": True, "profile": {**_profile_capability(entry), "fingerprint": _profile_fingerprint(entry)},
+            "metadata": copy.deepcopy(entry["metadata"])}
+
+
 def _task_method_key(value: Any) -> str:
     text = _clean_name(value).lower()
     return text[len("scene_"):] if text.startswith("scene_") else text
@@ -1053,14 +1078,28 @@ def apply_profile_to_canvas_node(preset_node: Any, context: Any = None) -> dict[
     if not entry:
         return {"ok": False, "error": error, "details": "The private parameter profile is unavailable."}
 
+    reference = reference if isinstance(reference, dict) else {}
+    fingerprint = _profile_fingerprint(entry)
+    if reference.get("fingerprint") and reference["fingerprint"] != fingerprint:
+        return {"ok": False, "error": "parameter_profile_changed",
+                "details": "The selected parameter profile changed. Read it again before generating."}
+    preserve_models = reference.get("preserve_models") is True
+
     state_params = dict(context) if isinstance(context, dict) else {}
     state_params.update({"__preset": node_preset, "preset": node_preset})
     runtime = node.get("runtime") if isinstance(node.get("runtime"), dict) else {}
+    if preserve_models:
+        saved_method = _task_method_key(_profile_capability(entry).get("task_method"))
+        active_method = _task_method_key(runtime.get("task_method"))
+        if saved_method and active_method and saved_method != active_method:
+            return {"ok": False, "error": "parameter_profile_incompatible",
+                    "details": "The parameter profile task method no longer matches this route."}
     if runtime.get("scene_theme"):
         state_params["scene_theme"] = runtime.get("scene_theme")
     if runtime.get("task_method"):
         state_params["task_method"] = runtime.get("task_method")
-    metadata, warnings = prepare_metadata_for_load(entry["metadata"], entry["payload"], state_params)
+    metadata, warnings = prepare_metadata_for_load(entry["metadata"], entry["payload"], state_params,
+                                                    preserve_models=preserve_models)
 
     saved_theme = _clean_name(metadata.get("scene_theme"))
     active_theme = _clean_name(runtime.get("scene_theme"))
@@ -1088,6 +1127,10 @@ def apply_profile_to_canvas_node(preset_node: Any, context: Any = None) -> dict[
             params[key] = copy.deepcopy(metadata.get(key))
     if not _as_bool(metadata.get("seed_random", True)) and metadata.get("seed") is not None:
         params["image_seed"] = metadata.get("seed")
+    overrides = reference.get("parameter_overrides")
+    overrides = {key: copy.deepcopy(value) for key, value in overrides.items()
+                 if key in {*_CANVAS_PROFILE_PARAM_KEYS, "image_seed", "image_number"}} if isinstance(overrides, dict) else {}
+    params.update(overrides)
 
     models_config = node.setdefault("models_config", {})
     model_defaults = models_config.setdefault("defaults", {}) if isinstance(models_config, dict) else {}
@@ -1134,6 +1177,9 @@ def apply_profile_to_canvas_node(preset_node: Any, context: Any = None) -> dict[
         "preset": capability["preset"],
         "source": "private",
         "updated_at": capability["updated_at"],
+        "fingerprint": fingerprint,
+        **({"preserve_models": True} if preserve_models else {}),
+        **({"parameter_overrides": overrides} if overrides else {}),
     }
     node["parameter_profile_warnings"] = warnings[:_PROFILE_WARNING_LIMIT]
     return {"ok": True, "preset_node": node, "profile": capability}

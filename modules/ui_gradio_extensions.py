@@ -171,6 +171,7 @@ def javascript_html():
     simpleai_i18n_js_path = webpath('javascript/simpleai_i18n.js')
     studio_help_content_path = webpath('javascript/studio_help_content.js')
     studio_help_path = webpath('javascript/studio_help.js')
+    agent_connection_path = webpath('javascript/agent_connection.js')
     video_region_selector_js_path = webpath('javascript/video_region_selector.js')
     face_track_editor_js_path = webpath('javascript/face_track_editor.js')
     studio_performance_js_path = webpath('javascript/studio_performance.js')
@@ -335,6 +336,7 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{script_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{studio_help_content_path}"></script>\n'
     head += f'<script type="text/javascript" src="{studio_help_path}"></script>\n'
+    head += f'<script type="text/javascript" src="{agent_connection_path}"></script>\n'
     head += f'<script type="text/javascript" src="{context_menus_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{localization_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{gradio_media_replacement_js_path}"></script>\n'

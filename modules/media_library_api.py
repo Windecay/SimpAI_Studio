@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from modules import media_library
+from modules.access_mode import is_local_mode
 from modules.identity_session import resolve_session
 from modules.media_library_page import render_media_library_html
 
@@ -56,7 +57,10 @@ def _cookie_value(request: Request | None, key: str) -> str:
 
 
 def _request_identity_state(request: Request | None = None) -> tuple[str, str, bool]:
-    """Return ``(did, ua_hash, invalid_session)`` for a request cookie."""
+    """Return ``(did, ua_hash, invalid_session)`` for the server mode and request."""
+    if is_local_mode():
+        # Preserve the existing local guest workspace without consulting browser credentials.
+        return media_library.resolve_user_did(), "", False
     session = _cookie_value(request, "aitoken")
     if not session or shared.token is None:
         return "", "", False
@@ -283,7 +287,7 @@ async def media_library_app(request: Request):
         headers={"Cache-Control": "no-store"},
     )
     credential = _cookie_value(request, "aitoken")
-    if credential and shared.token is not None and hasattr(shared.token, "resolve_sstoken"):
+    if not is_local_mode() and credential and shared.token is not None and hasattr(shared.token, "resolve_sstoken"):
         ua_hash = hashlib.sha256(str(request.headers.get("user-agent") or "").encode("utf-8")).hexdigest()
         session = resolve_session(shared.token, credential, ua_hash)
         if session["status"] == "valid":

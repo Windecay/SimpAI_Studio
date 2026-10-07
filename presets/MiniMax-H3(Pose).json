@@ -9,6 +9,8 @@
     "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
     "available_aspect_ratios_selection": "Custom",
     "scene_frontend": {
+      "switch_option4_title": "Sparse Attention Acceleration",
+      "switch_option4": true,
       "version": "m1.1",
       "theme": ["H3 Pose"],
       "theme_title": "MiniMax H3 Pose Editor",
@@ -38,7 +40,7 @@
         "scene_var_number", "scene_var_number2", "scene_var_number3", "scene_var_number4",
         "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8",
         "scene_var_number9", "scene_var_number10",
-        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
+        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3",
         "scene_video", "scene_reference_video", "scene_reference_video2",
         "scene_audio", "scene_audio2", "scene_audio3", "scene_video_duration",
         "sam3_input_video", "sam3_mask_video", "scene_batch", "minimax_h3_storyboard_control"
