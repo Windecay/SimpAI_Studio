@@ -138,12 +138,15 @@ def _compact_asset(asset):
 def _compact_node(node):
     if not isinstance(node, dict):
         return {}
+    mask = node.get("mask") if isinstance(node.get("mask"), dict) else {}
     return {
         "id": node.get("id"),
         "type": node.get("type"),
         "title": node.get("title"),
         "asset": _compact_asset(node.get("asset")),
-        "has_mask": bool(isinstance(node.get("mask"), dict) and node.get("mask", {}).get("data_url")),
+        "has_mask": any(mask.get(key) for key in (
+            "data_url", "asset_id", "path", "output_path", "asset_relative_path", "relative_path",
+        )),
     }
 
 
@@ -2608,12 +2611,12 @@ def run_node(payload, state_params):
         placeholder_node_id = payload.get("placeholder_node_id") or ""
         preset_node = payload.get("preset_node") if isinstance(payload.get("preset_node"), dict) else {}
         materialized_inputs, errors = _materialize_run_inputs(payload, state_params)
-        task_preview = _build_task_preview(preset_node, materialized_inputs)
-        task_args_preview = build_canvas_task_args_preview(payload, materialized_inputs, state_params)
-        async_args_preview = task_args_preview.get("async_args_preview") if isinstance(task_args_preview, dict) else {}
         if errors:
             discard_reservation()
             return {"ok": False, "error": "input materialization failed", "errors": errors}
+        task_preview = _build_task_preview(preset_node, materialized_inputs)
+        task_args_preview = build_canvas_task_args_preview(payload, materialized_inputs, state_params)
+        async_args_preview = task_args_preview.get("async_args_preview") if isinstance(task_args_preview, dict) else {}
         if not async_args_preview.get("ok"):
             discard_reservation()
             return {"ok": False, "error": async_args_preview.get("error") or "AsyncTask args validation failed", "task_args_preview": task_args_preview}

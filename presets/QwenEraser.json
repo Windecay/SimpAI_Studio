@@ -2,6 +2,7 @@
   "supported_tasks": [
     "image_object_removal"
   ],
+  "interaction_requirements": [],
   "prompt_agent_required": true,
   "default_engine": {
     "backend_engine": "Qwen",

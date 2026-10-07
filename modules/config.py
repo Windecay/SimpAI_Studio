@@ -326,6 +326,10 @@ def resolve_preset_interaction_requirements(preset_content, preset_name=""):
         engine.get("interaction_requirements"),
         scene.get("interaction_requirements"),
     ):
+        # An explicit empty list declares that no manual interaction is
+        # required; legacy name inference applies only without a declaration.
+        if isinstance(declared, (list, tuple)) and not declared:
+            return []
         normalized = normalize_preset_interaction_requirements(declared)
         if normalized:
             return normalized

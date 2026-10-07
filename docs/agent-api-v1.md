@@ -169,6 +169,8 @@ SimpAI Studio 服务地址：<实际 Studio 服务地址，包含部署前缀>�
 
 `inputs` 保留调用者的图片顺序，`ref` 可选，默认 `input_1`、`input_2` 等。每项包含 `type`（默认 `image`）和服务返回的 `asset_id`。上传与生成结果可能分别使用 `asset:<hash>` 或 `file:<hash>`，调用者应原样保留，不能自行改写 ID。蒙版通过对应画布图片的 `mask_asset_id` 提供。是否必需由所选预置声明。QwenPose 会按现有约定把人物图和姿势图绑定到正确的后端位置。
 
+原图和蒙版分别上传，再把两者的 ID 放到同一输入项，例如 `{"inputs":[{"asset_id":"asset:<原图 hash>","mask_asset_id":"asset:<蒙版 hash>"}]}`；不要把蒙版作为第二张参考图加入 `inputs`。建议使用与原图同尺寸的黑白 PNG，白色指定编辑区域，黑色保留。已指定的蒙版无法读取时会停止提交，不会自动按未提供蒙版处理。蒙版文件保存在当前身份的 Studio 素材目录，生成时再作为对应画布图片的蒙版传给后端。
+
 `output` 可指定 `count`（1–4）、`seed`（-1 为随机）、`aspect_ratio`（默认 `auto`），或成对指定 `width`、`height`。Auto 沿用输入比例和预置的尺寸处理规则。v1 不接受文件绝对路径、任意远端媒体 URL、Canvas 节点结构或模型/LoRA 覆盖字典。
 
 上传限制为 80 MiB，支持的 MIME 列表由 `capabilities` 返回。结果包含尺寸、MIME、素材 ID 和受身份检查的下载地址，不返回服务器文件路径。当前通过预置目录执行的工作流范围与 Studio 一致；专用工具节点的独立协议不自动变成预置。

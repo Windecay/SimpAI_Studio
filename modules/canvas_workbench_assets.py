@@ -940,6 +940,31 @@ def materialize_node_asset(project_id, state_params, source):
             role="mask",
             metadata=mask,
         )
+    elif mask:
+        root, _ = _asset_root(project_id, state_params)
+        mask_id = str(mask.get("asset_id") or "").strip()
+        durable_id = bool(_asset_id_digest(mask_id))
+        # API uploads and restored Canvas projects use saved asset references.
+        # A supplied durable ID must resolve for this user; a stale/foreign ID
+        # must not fall back to an unrelated client-supplied path.
+        path = (_resolve_asset_id_file_path(mask_id, root) if durable_id
+                else _resolve_asset_file_path(mask, project_id, state_params))
+        if path and os.path.isfile(path) and _asset_relative_path(path, os.path.dirname(root)):
+            mask_ref = register_existing_file_asset(
+                path, project_id, state_params, node_id=node_id, role="mask",
+                metadata=dict(mask), copy_to_assets=False,
+            )
+            if mask_ref and durable_id:
+                mask_ref["asset_id"] = mask_id
+
+    if mask and not mask_ref:
+        return {
+            "ok": False,
+            "node_id": node_id,
+            "asset_ref": main_ref,
+            "mask_ref": None,
+            "error": "source mask has no materializable data",
+        }
 
     return {
         "ok": bool(main_ref),
