@@ -170,6 +170,7 @@
             closeContextMenu: delegate(viewSource, 'closeContextMenu'),
             detectWorkbenchTheme: delegate(viewSource, 'detectWorkbenchTheme'),
             openAssetViewer: delegate(viewSource, 'openAssetViewer'),
+            openStorageManagement: delegate(viewSource, 'openStorageManagement'),
             showToast: delegate(uiSource, 'showToast'),
             setAssetRoot: typeof stateSource.setAssetRoot === 'function'
                 ? (...args) => stateSource.setAssetRoot(...args)
@@ -247,10 +248,11 @@
 ${disk.asset_root ? `<div class="sai-inspector-path"><span>${escapeHtml(context, t(context, 'Asset Root', '资产根目录'))}</span><code>${escapeHtml(context, disk.asset_root)}</code></div>` : ''}
 ${disk.error ? `<div class="sai-inspector-note">${escapeHtml(context, disk.error)}</div>` : ''}
 ${disk.truncated ? `<div class="sai-inspector-note">${escapeHtml(context, t(context, 'Asset directory scan was limited to {count} files. Use Refresh after cleanup if needed.', '资产目录扫描限制为 {count} 个文件。清理后可按需刷新。').replace('{count}', String(disk.scan_limit || diskAssets.length)))}</div>` : ''}
-${disk.ok ? `<div class="sai-inspector-note">${escapeHtml(context, t(context, 'Project assets are saved with relative references when they live under this root. You can clean unused files manually here; expiration-based cleanup can be configured later.', '项目资产位于该根目录内时会使用相对引用保存。你可以在这里手动清理未引用文件，后续可配置到期自动清理。'))}</div>` : ''}
+${disk.ok ? `<div class="sai-inspector-note">${escapeHtml(context, t(context, 'Manage retention and protected assets in Asset storage. Automatic cleanup checks references across your projects.', '可在资产空间管理中设置保留期和保护资产。自动清理会检查所有项目的引用。'))}</div>` : ''}
 ${disk.ok ? `<div class="sai-inspector-note">${escapeHtml(context, t(context, 'Scanned {count} file(s) in {seconds}s across {folders} folder(s).', '已扫描 {count} 个文件，用时 {seconds}s，覆盖 {folders} 个文件夹。').replace('{count}', String(diskAssets.length)).replace('{seconds}', String(disk.scan_elapsed ?? '?')).replace('{folders}', String(disk.scanned_dirs ?? '?')))}</div>` : ''}
 <div class="sai-asset-toolbar">
   <button type="button" data-asset-action="refresh"><i class="fa-solid fa-rotate"></i><span>${escapeHtml(context, t(context, 'Refresh', '刷新'))}</span></button>
+  <button type="button" data-asset-action="storage" ${typeof context.openStorageManagement === 'function' ? '' : 'disabled'}><i class="fa-solid fa-hard-drive"></i><span>${escapeHtml(context, t(context, 'Asset storage', '资产空间管理'))}</span></button>
   <button type="button" data-asset-action="copy-root" ${disk.asset_root ? '' : 'disabled'}><i class="fa-solid fa-copy"></i><span>${escapeHtml(context, t(context, 'Copy Root', '复制根目录'))}</span></button>
   <button type="button" data-asset-action="delete-unreferenced" class="danger" ${unreferenced.length ? '' : 'disabled'}><i class="fa-solid fa-trash"></i><span>${escapeHtml(context, t(context, 'Delete Unreferenced', '删除未引用资产'))}</span></button>
 </div>
@@ -317,6 +319,7 @@ ${disk.ok ? `<div class="sai-inspector-note">${escapeHtml(context, t(context, 'S
             });
         });
         modal.querySelector('[data-asset-action="refresh"]')?.addEventListener('click', () => renderPanel(modal, context));
+        modal.querySelector('[data-asset-action="storage"]')?.addEventListener('click', () => call(context, 'openStorageManagement', null));
         modal.querySelector('[data-asset-action="copy-root"]')?.addEventListener('click', () => writeClipboardText(context, assetRoot || '').then(() => call(context, 'showToast', null, t(context, 'Asset root copied.', '资产根目录已复制。')), () => call(context, 'showToast', null, t(context, 'Copy failed.', '复制失败。'))));
         modal.querySelector('[data-asset-action="delete-unreferenced"]')?.addEventListener('click', async () => {
             if (!unreferenced.length) return;

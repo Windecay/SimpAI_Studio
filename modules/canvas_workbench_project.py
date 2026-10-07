@@ -8,6 +8,7 @@ from urllib.parse import unquote
 
 import shared
 from modules import canvas_workbench_assets
+from modules import asset_lifecycle
 from modules.access_mode import get_access_mode, is_local_mode
 
 
@@ -241,6 +242,7 @@ def _sanitize_project(project, project_id, state_params, path=None, user_did=Non
     return project
 
 
+@asset_lifecycle.serialized
 def save_project(payload, state_params):
     project_id = _safe_id(payload.get("project_id") or "default") if isinstance(payload, dict) else "default"
     project = payload.get("project") if isinstance(payload, dict) else None
@@ -435,6 +437,7 @@ def _sanitize_template_project(project, template_id, metadata):
     return project
 
 
+@asset_lifecycle.serialized
 def save_template(payload, state_params):
     template_id = _safe_id(payload.get("template_id") or payload.get("id") or "template") if isinstance(payload, dict) else "template"
     effective_state_params = _state_params_for_payload(payload, state_params)

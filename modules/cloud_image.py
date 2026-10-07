@@ -9,7 +9,7 @@ import re
 import time
 import uuid
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import numpy as np
 import requests
@@ -22,13 +22,16 @@ import shared
 from modules.util import generate_temp_filename
 from modules.private_logger import log as private_log
 from modules.meta_parser import get_metadata_parser
+from modules.localization import localized_text
 from enhanced import version
 from enhanced.simpleai import get_path_in_user_dir
 
 logger = logging.getLogger(__name__)
 
 CONFIG_FILENAME = ".cloud_image_configs.json"
-PROTOCOLS = ("auto", "openai_images", "openai_chat", "openrouter_images", "siliconflow", "nano_banana")
+PROTOCOLS = ("auto", "openai_images", "openai_chat", "openrouter_images", "siliconflow", "nano_banana", "onethingai_v2")
+ONETHINGAI_POLL_TIMEOUT = 300.0
+ONETHINGAI_POLL_INTERVAL = 2.0
 
 
 def _resolve_config_user_did(user_did=None):
@@ -340,6 +343,12 @@ def _protocol(protocol, base_url, model):
         return value
     lowered_url = base_url.lower()
     lowered_model = model.lower()
+    parsed_url = urlsplit(base_url)
+    path = parsed_url.path.rstrip("/")
+    if parsed_url.hostname == "api-model.onethingai.com" and (
+        not path or path.endswith(("/v2", "/v2/generation"))
+    ):
+        return "onethingai_v2"
     if "openrouter.ai/api/v1" in lowered_url:
         return "openrouter_images"
     if "api.siliconflow.cn" in lowered_url:
@@ -354,6 +363,14 @@ def _protocol(protocol, base_url, model):
 def _endpoint(base_url, protocol, editing=False):
     value = base_url.rstrip("/")
     path = urlsplit(value).path.rstrip("/")
+    if protocol == "onethingai_v2":
+        parsed_url = urlsplit(base_url.strip())
+        path = parsed_url.path.rstrip("/")
+        if path.endswith("/v2/generation"):
+            generation_path = path
+        else:
+            generation_path = f"{path}/generation" if path.endswith("/v2") else f"{path}/v2/generation"
+        return parsed_url._replace(path=generation_path).geturl()
     if protocol == "openai_chat":
         return value if path.endswith("/chat/completions") else f"{value}/chat/completions"
     if protocol == "openrouter_images":
@@ -367,8 +384,13 @@ def _endpoint(base_url, protocol, editing=False):
     return f"{value}{suffix}"
 
 
-def _models_endpoint(base_url):
+def _models_endpoint(base_url, protocol=None):
     value = str(base_url or "").strip().rstrip("/")
+    if protocol == "onethingai_v2":
+        parsed_url = urlsplit(_endpoint(value, protocol))
+        return parsed_url._replace(
+            path=f"{parsed_url.path.removesuffix('/generation')}/openai/models",
+        ).geturl()
     path = urlsplit(value).path.rstrip("/")
     for suffix in ("/chat/completions", "/images/generations", "/images/edits", "/images", "/api/generate"):
         if path.endswith(suffix):
@@ -436,26 +458,33 @@ def _filter_image_models(models, protocol=None):
     return list(dict.fromkeys(fallback[:50]))
 
 
-def list_models(protocol, base_url, api_key, current_model=""):
+def list_models(protocol, base_url, api_key, current_model="", lang=None):
     base_value = str(base_url or "").strip().rstrip("/")
     api_key_value = str(api_key or "").strip()
     current_model_value = str(current_model or "").strip()
     if not base_value:
         return {"ok": False, "error": "API Base URL is required."}
     resolved_protocol = _protocol(protocol, base_value, current_model_value)
+    is_onethingai = resolved_protocol == "onethingai_v2"
     headers = {"Authorization": f"Bearer {api_key_value}"} if api_key_value else {}
-    models_url = _models_endpoint(base_value)
+    models_url = _models_endpoint(base_value, resolved_protocol)
     session = requests.Session()
     try:
         response = session.get(models_url, headers=headers, timeout=30)
     except requests.RequestException as error:
-        return {"ok": False, "error": _request_exception_message(error)}
+        if is_onethingai:
+            message = _onethingai_text(lang, "OneThingAI model-list request timed out.") if isinstance(error, requests.Timeout) else _onethingai_request_error(error, lang)
+        else:
+            message = _request_exception_message(error)
+        return {"ok": False, "error": message}
     if not response.ok:
-        return {"ok": False, "error": _error_message(response)}
+        message = _onethingai_http_error(response, lang) if is_onethingai else _error_message(response)
+        return {"ok": False, "error": message}
     try:
         payload = response.json()
     except ValueError:
-        return {"ok": False, "error": "API 返回了非 JSON 内容"}
+        message = _onethingai_text(lang, "OneThingAI returned a non-JSON response.") if is_onethingai else "API 返回了非 JSON 内容"
+        return {"ok": False, "error": message}
     models = _extract_model_ids(payload)
     visible_models = _filter_image_models(models, resolved_protocol)
     return {
@@ -485,6 +514,112 @@ def _openrouter_input_references(image_paths):
             },
         })
     return references
+
+
+def _onethingai_payload(model, prompt, size, image_paths):
+    width, height = (int(part) for part in size.split("x"))
+    parameters = {
+        "output_config": {"width": width, "height": height, "response_format": "url"},
+    }
+    if image_paths:
+        parameters["input_images"] = [
+            {"b64_json": f"data:{_mime_type(path)};base64,{base64.b64encode(Path(path).read_bytes()).decode('ascii')}"}
+            for path in image_paths
+        ]
+    return {
+        "model": model,
+        "prompt": prompt,
+        "job_type": "edit" if image_paths else "generation",
+        "sync_mode": "sync",
+        "n": 1,
+        "parameters": parameters,
+    }
+
+
+def _onethingai_text(lang, text):
+    return localized_text({"__lang": lang}, text)
+
+
+def _onethingai_data(payload, lang):
+    if not isinstance(payload, dict):
+        raise ValueError(_onethingai_text(lang, "OneThingAI returned an invalid task response."))
+    data = payload.get("data")
+    code = payload.get("code")
+    status = str(data.get("status") or "") if isinstance(data, dict) else ""
+    error = data.get("error") if isinstance(data, dict) else None
+    if code not in (0, "0") or status == "failed" or error:
+        if isinstance(error, dict):
+            detail = error.get("message") or error.get("detail") or json.dumps(error, ensure_ascii=False)
+        else:
+            detail = error or payload.get("message") or status or "unknown error"
+        raise ValueError(_onethingai_text(
+            lang, "OneThingAI task failed (code={code}): {detail}",
+        ).format(code=code, detail=str(detail)[:500]))
+    if not isinstance(data, dict):
+        raise ValueError(_onethingai_text(lang, "OneThingAI returned an invalid task response."))
+    if status not in ("success", "processing"):
+        raise ValueError(_onethingai_text(lang, "OneThingAI returned an invalid task status."))
+    return data
+
+
+def _onethingai_http_error(response, lang):
+    detail = ""
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            error = payload.get("error")
+            detail = error.get("message") if isinstance(error, dict) else error
+            detail = detail or payload.get("message") or payload.get("detail") or ""
+    except ValueError:
+        pass
+    return _onethingai_text(
+        lang, "OneThingAI HTTP request failed ({status}): {detail}",
+    ).format(status=response.status_code, detail=str(detail or response.reason)[:500])
+
+
+def _onethingai_request_error(error, lang):
+    if isinstance(error, requests.Timeout):
+        return _onethingai_text(lang, "OneThingAI request timed out. The submitted task was not resubmitted.")
+    return _onethingai_text(lang, "OneThingAI request failed: {detail}").format(detail=str(error)[:500])
+
+
+def _onethingai_result(payload, endpoint, session, headers, task, progressbar):
+    lang = getattr(task, "simpleai_lang", None)
+    data = _onethingai_data(payload, lang)
+    if data["status"] == "success":
+        return data.get("result")
+    job_id = str(data.get("job_id") or "").strip()
+    if not job_id:
+        raise ValueError(_onethingai_text(lang, "OneThingAI did not return a job ID."))
+    parsed_endpoint = urlsplit(endpoint)
+    status_url = parsed_endpoint._replace(
+        path=f"{parsed_endpoint.path.rstrip('/')}/job/{quote(job_id, safe='')}",
+    ).geturl()
+    deadline = time.monotonic() + ONETHINGAI_POLL_TIMEOUT
+    while True:
+        if task.user_cancel_action == "stop":
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError(_onethingai_text(
+                lang,
+                "Timed out waiting for OneThingAI. The submitted task was not resubmitted.",
+            ))
+        progressbar(task, 30, _onethingai_text(lang, "Waiting for OneThingAI..."))
+        response = session.get(status_url, headers=headers, timeout=(min(15, remaining / 2), min(30, remaining / 2)))
+        if not response.ok:
+            raise ValueError(_onethingai_http_error(response, lang))
+        try:
+            response_data = response.json()
+        except ValueError:
+            raise ValueError(_onethingai_text(lang, "OneThingAI returned a non-JSON response.")) from None
+        data = _onethingai_data(response_data, lang)
+        returned_job_id = str(data.get("job_id") or "").strip()
+        if returned_job_id and returned_job_id != job_id:
+            raise ValueError(_onethingai_text(lang, "OneThingAI returned a different job ID."))
+        if data["status"] == "success":
+            return data.get("result")
+        time.sleep(min(ONETHINGAI_POLL_INTERVAL, max(0, deadline - time.monotonic())))
 
 
 def _error_message(response):
@@ -529,6 +664,8 @@ def _request_exception_message(error):
 
 def _request_timeout(protocol, image_paths):
     has_input_references = bool(image_paths)
+    if protocol == "onethingai_v2":
+        return (15, 600)
     if protocol == "openrouter_images" and has_input_references:
         return (15, 600)
     return (15, 180)
@@ -741,7 +878,11 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
             )
             try:
                 endpoint = _endpoint(base_url, protocol, bool(image_paths))
-                if protocol == "openai_chat":
+                if protocol == "onethingai_v2":
+                    payload = _onethingai_payload(model, prompt, size, image_paths)
+                    response = session.post(endpoint, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=request_timeout)
+                    is_chat_response = False
+                elif protocol == "openai_chat":
                     content = [{"type": "text", "text": prompt}]
                     for path in image_paths:
                         encoded = base64.b64encode(Path(path).read_bytes()).decode("ascii")
@@ -796,23 +937,38 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                     response = session.post(endpoint, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=request_timeout)
                     is_chat_response = False
             except requests.RequestException as error:
-                request_errors.append(f"请求 {request_index}: {_request_exception_message(error)}")
+                message = _onethingai_request_error(error, getattr(task, "simpleai_lang", None)) if protocol == "onethingai_v2" else f"请求 {request_index}: {_request_exception_message(error)}"
+                request_errors.append(message)
                 continue
             if not response.ok:
-                request_errors.append(_error_message(response))
+                message = _onethingai_http_error(response, getattr(task, "simpleai_lang", None)) if protocol == "onethingai_v2" else _error_message(response)
+                request_errors.append(message)
                 continue
             try:
                 response_data = response.json()
             except ValueError:
-                request_errors.append(f"请求 {request_index}: API 返回了非 JSON 内容")
+                message = _onethingai_text(getattr(task, "simpleai_lang", None), "OneThingAI returned a non-JSON response.") if protocol == "onethingai_v2" else f"请求 {request_index}: API 返回了非 JSON 内容"
+                request_errors.append(message)
                 continue
+            if protocol == "onethingai_v2":
+                try:
+                    response_data = _onethingai_result(response_data, endpoint, session, headers, task, progressbar)
+                except requests.RequestException as error:
+                    request_errors.append(_onethingai_request_error(error, getattr(task, "simpleai_lang", None)))
+                    continue
+                except ValueError as error:
+                    request_errors.append(str(error))
+                    continue
+                if task.user_cancel_action == "stop":
+                    return
             extracted = _extract_chat_images(response_data) if is_chat_response else _extract_images(response_data)
             if extracted:
                 results.extend(extracted)
                 result_prompts.extend([prompt] * len(extracted))
                 result_negative_prompts.extend([rendered_negative_prompt] * len(extracted))
             else:
-                request_errors.append(f"请求 {request_index}: API 返回中没有可识别的图片")
+                message = _onethingai_text(getattr(task, "simpleai_lang", None), "OneThingAI returned no images.") if protocol == "onethingai_v2" else f"请求 {request_index}: API 返回中没有可识别的图片"
+                request_errors.append(message)
         if not results:
             raise RuntimeError("；".join(request_errors) if request_errors else "API 返回中没有可识别的图片")
         output_dir = config.get_user_path_outputs(task.user_did)

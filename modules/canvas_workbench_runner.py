@@ -14,6 +14,7 @@ import modules.config as config
 import modules.constants as constants
 import modules.flags as flags
 from modules import canvas_workbench_assets
+from modules import asset_lifecycle
 from modules import canvas_workbench_director
 from modules import minimax_h3_prompt_compiler
 from enhanced import parameter_profiles
@@ -2494,6 +2495,7 @@ def _build_gallery_refresh_info(record):
         }
 
 
+@asset_lifecycle.serialized
 def run_workflow(payload, state_params):
     """Server-constructed imported task; shares queue, ownership and run polling."""
     _cleanup_runs()
@@ -2520,6 +2522,7 @@ def run_workflow(payload, state_params):
             return {**_public_run_record(existing), "idempotent_replay": True}
         CANVAS_RUNS[run_id] = reservation
     try:
+        asset_lifecycle.for_state(state_params, "agent_api").check_capacity()
         import modules.async_worker as worker
         if not worker.get_queue_snapshot()["worker"]["ready"]:
             raise RuntimeError("Studio task worker is not ready")
@@ -2545,9 +2548,10 @@ def run_workflow(payload, state_params):
         with CANVAS_RUNS_LOCK:
             if CANVAS_RUNS.get(run_id) is reservation:
                 CANVAS_RUNS.pop(run_id, None)
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        return {"ok": False, "error": str(exc) if isinstance(exc, asset_lifecycle.StorageLimitError) else f"{type(exc).__name__}: {exc}"}
 
 
+@asset_lifecycle.serialized
 def run_node(payload, state_params):
     if not isinstance(payload, dict):
         return {"ok": False, "error": "payload is not an object"}
@@ -2604,6 +2608,12 @@ def run_node(payload, state_params):
         with CANVAS_RUNS_LOCK:
             if CANVAS_RUNS.get(run_id) is reservation:
                 CANVAS_RUNS.pop(run_id, None)
+
+    try:
+        asset_lifecycle.for_state(state_params, payload.get("project_id") or "default").check_capacity()
+    except asset_lifecycle.StorageLimitError as exc:
+        discard_reservation()
+        return {"ok": False, "error": str(exc)}
 
     try:
         import modules.async_worker as worker

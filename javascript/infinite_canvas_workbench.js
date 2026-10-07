@@ -15827,6 +15827,15 @@
         return projectManagerOpenPanel(PROJECT_MANAGER_CONTEXT);
     }
 
+    function openAssetStorageManagement() {
+        const supplied = window.gradio_config?.root;
+        const base = supplied ? new URL(supplied, window.location.href) : new URL('.', window.location.href);
+        base.pathname = base.pathname.replace(/\/+$/, '') + '/api/v1/assets/manage';
+        base.search = ''; base.hash = '';
+        base.searchParams.set('lang', runtimeUiLang());
+        window.open(base.href, '_blank', 'noopener');
+    }
+
     const ASSET_MANAGER_CONTEXT_SOURCE = {
         languageSource: {
             t
@@ -15866,7 +15875,8 @@
         viewSource: {
             closeContextMenu,
             detectWorkbenchTheme,
-            openAssetViewer
+            openAssetViewer,
+            openStorageManagement: openAssetStorageManagement
         },
         uiSource: {
             showToast

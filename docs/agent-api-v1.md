@@ -1140,3 +1140,13 @@ VLM 与模型目录专项联合为 `69 passed`，18.22 秒。初次两项用例�
 隔离 FastAPI／Gradio 宿主上的实际 Chromium 检查 8 组通过，覆盖中英文、1280／360 像素窗口、根路径／部署前缀、local 和 multi-user 配对可用／不可用状态。检查了索引链接、复制说明、语言和原 MCP 配置流程，没有替代生产浏览器配对或第三方 Agent 验收。新接口测试另覆盖搜索、分页、详情与原完整 schema 一致、查询后调用、未知工具、非法参数、游客拒绝及部署前缀。
 
 记录位于 `outputs/tool_discovery_20261007/`，启动器检查记录位于其工作区 `tmp/tool_discovery_20261007/`。本次没有重启现有 Studio、执行 GPU 生成、重建 MCP 小包或启动器 exe，也没有暂存、提交或上传。Studio 需加载更新后的代码才能提供新接口；启动器复制说明随后续 4.0.9 打包交付，网页版指引随 Studio 更新。
+
+## 2026-10-07：资产生命周期
+
+新增只读工具 `simpai.assets.storage`，返回当前身份的资产占用、保留策略、保护状态、可清理数量和管理页面地址。HTTP 入口通过 capabilities 的 `asset_storage_url` 发现，管理页面通过 `asset_management_url` 发现；当前分别为服务前缀下的 `/api/v1/assets/storage` 和 `/api/v1/assets/manage`。工具支持 `offset`、`limit` 分页，不返回其他身份的资产或服务器绝对路径。
+
+默认自动保留临时素材 30 天，API 读取、上传复用和任务输入使用会重新计算时间。项目、模板、备份等引用及用户保留的资产受到保护。旧文件首次纳入管理时获得完整保留期；只有可确认原件存在且未变化的生成结果副本允许自动清理。素材过期后读取返回 `asset_not_found`，需要重新上传，不改变身份或猜测文件路径。
+
+用户可在浏览器管理页修改策略、保留素材、清理过期文件。已有 Bearer 的 `read`、`assets.write`、生成权限均不授权这些管理写操作。容量上限默认不限；用户设置上限后，新上传／生成超额时返回 `asset_storage_limit`，已存在素材的重复上传和已有任务的幂等重试继续按原规则处理。完整保护范围、UI 入口和验证记录见 [资产空间管理](asset-lifecycle.md)。
+
+空间不足时路由预览返回 `ready_to_submit=false`、`plan.status=storage_full` 和 `plan.storage_error.management_url`。资产统计尚未完成时，使用 `storage_check_incomplete`／`asset_storage_scan_incomplete` 表达检查未完成，不把它误报为容量超限。大目录会保存分批登记进度；重复查询可以继续登记。`scan_complete` 表示引用检查是否完整，`inventory_complete` 表示文件登记是否完成，只有引用检查完整的已登记资产才可能被清理。

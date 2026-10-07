@@ -204,6 +204,15 @@ def _decode_data_url(data_url):
 
 
 def save_data_url_asset(data_url, project_id, state_params, node_id="", role="image", metadata=None):
+    from modules import asset_lifecycle
+    with asset_lifecycle.guard(state_params, project_id) as store:
+        ref = _save_data_url_asset(data_url, project_id, state_params, node_id, role, metadata)
+        if ref:
+            asset_lifecycle.track(project_id, state_params, ref["path"])
+        return ref
+
+
+def _save_data_url_asset(data_url, project_id, state_params, node_id="", role="image", metadata=None):
     mime, binary = _decode_data_url(data_url)
     if not binary:
         return None
@@ -220,6 +229,8 @@ def save_data_url_asset(data_url, project_id, state_params, node_id="", role="im
     filename = f"{node_name}.{role_name}.{sha[:16]}{ext}"
     path = _find_existing_hashed_asset(root, sha, ext) or os.path.abspath(os.path.join(folder, filename))
     if not os.path.exists(path):
+        from modules import asset_lifecycle
+        asset_lifecycle.for_state(state_params, project_id).check_capacity(len(binary))
         tmp_path = f"{path}.tmp"
         with open(tmp_path, "wb") as f:
             f.write(binary)
@@ -620,6 +631,16 @@ def _trim_media_file(source_path, mime, edit_range, project_id, state_params, no
 
 
 def register_existing_file_asset(path, project_id, state_params, node_id="", role="output", metadata=None, copy_to_assets=True):
+    from modules import asset_lifecycle
+    with asset_lifecycle.guard(state_params, project_id):
+        ref = _register_existing_file_asset(path, project_id, state_params, node_id, role, metadata, copy_to_assets)
+        if ref:
+            original = ref.get("original_output_path", "") if ref.get("copied_to_assets") else ""
+            asset_lifecycle.track(project_id, state_params, ref["path"], original=original)
+        return ref
+
+
+def _register_existing_file_asset(path, project_id, state_params, node_id="", role="output", metadata=None, copy_to_assets=True):
     path = os.path.abspath(str(path or ""))
     if not path or not os.path.exists(path):
         return None
@@ -784,6 +805,12 @@ def _materialize_video_last_frame(project_id, state_params, source, main_ref, no
 
 
 def materialize_node_asset(project_id, state_params, source):
+    from modules import asset_lifecycle
+    with asset_lifecycle.guard(state_params, project_id):
+        return _materialize_node_asset(project_id, state_params, source)
+
+
+def _materialize_node_asset(project_id, state_params, source):
     if not isinstance(source, dict):
         return {"ok": False, "error": "source is not an object"}
 
@@ -966,6 +993,11 @@ def materialize_node_asset(project_id, state_params, source):
             "error": "source mask has no materializable data",
         }
 
+    from modules import asset_lifecycle
+    for reference in (main_ref, mask_ref):
+        if reference and reference.get("path"):
+            asset_lifecycle.track(project_id, state_params, reference["path"])
+
     return {
         "ok": bool(main_ref),
         "node_id": node_id,
@@ -1043,6 +1075,16 @@ def list_project_assets(project_id, state_params, options=None):
 
 
 def delete_project_assets(project_id, state_params, paths):
+    from modules import asset_lifecycle
+    with asset_lifecycle.guard(state_params, project_id) as store:
+        protection, complete, busy = store.deletion_protection()
+        result = _delete_project_assets(project_id, state_params, paths, protection, complete, busy)
+        for path in result["deleted"]:
+            store.forget(path)
+        return result
+
+
+def _delete_project_assets(project_id, state_params, paths, protection, complete, busy):
     root, user_did = _asset_root(project_id, state_params)
     root_real = os.path.realpath(root)
     deleted = []
@@ -1055,6 +1097,10 @@ def delete_project_assets(project_id, state_params, paths):
             path = os.path.realpath(os.path.abspath(os.path.join(root_real, raw_text.replace("/", os.sep))))
         if not path.startswith(root_real + os.sep):
             skipped.append({"path": raw_path, "reason": "outside_asset_root"})
+            continue
+        reason = "scan_incomplete" if not complete else "active_task" if busy else protection.get(os.path.normcase(path), "unmanaged_asset")
+        if reason:
+            skipped.append({"path": raw_path, "reason": reason})
             continue
         if not os.path.exists(path) or not os.path.isfile(path):
             skipped.append({"path": raw_path, "reason": "missing"})

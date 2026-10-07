@@ -44,6 +44,7 @@ import modules.describe_vlm_chat as describe_vlm_chat
 import modules.vlm_roleplay as vlm_roleplay
 import modules.describe_media as describe_media
 import modules.cloud_image as cloud_image
+from modules.localization import localized_text
 import modules.vlm_api_profiles as vlm_api_profiles
 import modules.vlm_system_prompt_templates as vlm_system_prompt_templates
 import modules.canvas_workbench_media_gallery as canvas_workbench_media_gallery
@@ -5548,7 +5549,7 @@ with shared.gradio_root:
                             with gr.Row():
                                 scene_cloud_config_id = gr.Dropdown(label="Saved configurations", choices=[], value=None, elem_id="scene_cloud_config_id")
                             scene_cloud_name = gr.Textbox(label="Configuration name", value="My Image API", elem_id="scene_cloud_name")
-                            scene_cloud_protocol = gr.Dropdown(label="Protocol", choices=[("Auto", "auto"), ("OpenAI Images", "openai_images"), ("OpenRouter Images", "openrouter_images"), ("OpenAI Chat Image", "openai_chat"), ("SiliconFlow Images", "siliconflow"), ("Nano Banana", "nano_banana")], value="auto", elem_id="scene_cloud_protocol")
+                            scene_cloud_protocol = gr.Dropdown(label="Protocol", choices=[("Auto", "auto"), ("OpenAI Images", "openai_images"), ("OpenRouter Images", "openrouter_images"), ("OpenAI Chat Image", "openai_chat"), ("SiliconFlow Images", "siliconflow"), ("Nano Banana", "nano_banana"), ("OneThingAI v2", "onethingai_v2")], value="auto", elem_id="scene_cloud_protocol")
                             scene_cloud_base_url = gr.Textbox(label="API Base URL", placeholder="https://api.example.com/v1", elem_id="scene_cloud_base_url")
                             scene_cloud_api_key = gr.Textbox(label="API Key", type="password", elem_id="scene_cloud_api_key")
                             scene_cloud_model = gr.Dropdown(label="Model", choices=[], value=None, allow_custom_value=True, elem_id="scene_cloud_model")
@@ -5639,19 +5640,23 @@ with shared.gradio_root:
                             config_update = _cloud_config_dropdown_update(user_did, saved.get("default_id"))
                             return config_update, "Saved configuration"
 
-                        def fetch_cloud_image_models(protocol, base_url, api_key, model):
+                        def fetch_cloud_image_models(protocol, base_url, api_key, model, state_params):
                             model_update = _cloud_model_dropdown_update(model, [model])
                             if not base_url:
-                                return model_update, "Please fill API Base URL before fetching models"
-                            result = cloud_image.list_models(protocol, base_url, api_key, model)
+                                return model_update, localized_text(state_params, "Please fill API Base URL before fetching models")
+                            lang = state_params.get("__lang") if isinstance(state_params, dict) else None
+                            result = cloud_image.list_models(protocol, base_url, api_key, model, lang=lang)
                             if not result.get("ok"):
                                 message = str(result.get("error") or "unknown error")
-                                return model_update, f"Fetch models failed: {message}"
+                                prefix = localized_text(state_params, "Fetch models failed")
+                                return model_update, f"{prefix}: {message}"
                             models = result.get("models") or []
                             if not models:
-                                return model_update, "No image-capable models found from API"
-                            selected = str(model or "").strip() or models[0]
-                            return _cloud_model_dropdown_update(selected, models), "Fetched image model list"
+                                return model_update, localized_text(state_params, "No image-capable models found from API")
+                            selected = str(model or "").strip()
+                            if not selected and result.get("protocol") != "onethingai_v2":
+                                selected = models[0]
+                            return _cloud_model_dropdown_update(selected, models), localized_text(state_params, "Fetched image model list")
 
                         def delete_cloud_image_config(config_id, state_params, request: gr.Request):
                             if not config_id:
@@ -5692,7 +5697,7 @@ with shared.gradio_root:
 
                         scene_cloud_config_id.change(load_cloud_image_config, inputs=[scene_cloud_config_id, state_topbar], outputs=[scene_cloud_config_id, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_cloud_status], queue=False, show_progress=False)
                         scene_cloud_load.click(load_cloud_image_config, inputs=[scene_cloud_config_id, state_topbar], outputs=[scene_cloud_config_id, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_cloud_status], queue=False, show_progress=False)
-                        scene_cloud_fetch_models.click(fetch_cloud_image_models, inputs=[scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model], outputs=[scene_cloud_model, scene_cloud_status], queue=False, show_progress=False)
+                        scene_cloud_fetch_models.click(fetch_cloud_image_models, inputs=[scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, state_topbar], outputs=[scene_cloud_model, scene_cloud_status], queue=False, show_progress=False)
                         scene_cloud_save.click(save_cloud_image_config, inputs=[scene_cloud_config_id, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, state_topbar], outputs=[scene_cloud_config_id, scene_cloud_status], queue=False, show_progress=False)
                         scene_cloud_delete.click(lambda: gr_update(visible=True), inputs=None, outputs=scene_cloud_delete_panel, queue=False, show_progress=False)
                         scene_cloud_delete_cancel.click(lambda: gr_update(visible=False), inputs=None, outputs=scene_cloud_delete_panel, queue=False, show_progress=False)
@@ -16371,13 +16376,15 @@ async def vlm_user_system_prompt_templates_delete_endpoint(request: Request, pay
 _canvas_custom_llm_run = canvas_vlm_runtime.canvas_custom_llm_run
 
 @app.post("/canvas-workbench/list-assets")
-async def canvas_workbench_list_assets_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_list_assets_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             state_params = _canvas_workbench_state_params(payload)
@@ -16454,13 +16461,15 @@ async def canvas_workbench_media_gallery_delete_endpoint(request: Request, paylo
         )
 
 @app.post("/canvas-workbench/delete-assets")
-async def canvas_workbench_delete_assets_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_delete_assets_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             state_params = _canvas_workbench_state_params(payload)

@@ -108,6 +108,9 @@ def _public_urls(value, root_path):
 
 
 def create_router(context_resolver, service=None, authorization=None):
+    import shared
+    from modules import asset_lifecycle
+    asset_lifecycle.start_maintenance(getattr(shared, "path_userhome", None))
     from modules.agent_auth import AgentAuthorization
     from modules.agent_auth_api import add_auth_routes
     service = service or get_default_service()
@@ -324,6 +327,8 @@ def create_router(context_resolver, service=None, authorization=None):
                            routes=router.routes, servers=[{"url": prefix or "/"}])
 
     from modules.agent_vlm_api import add_routes as add_vlm_routes
+    from modules.asset_lifecycle_api import add_routes as add_storage_routes
+    add_storage_routes(router, authorization)
     add_vlm_routes(router, service, authorization, call)
     add_auth_routes(router, authorization)
     return router

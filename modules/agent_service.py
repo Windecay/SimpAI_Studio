@@ -96,6 +96,8 @@ def _backend_ok(result, code="backend_error"):
         code, status = {
             "run not found": ("run_not_found", 404), "run_id_conflict": ("run_id_conflict", 409),
             "request_id_conflict": ("request_id_conflict", 409), "generation_not_allowed": ("generation_not_allowed", 403),
+            "asset_storage_limit": ("asset_storage_limit", 409),
+            "asset_storage_scan_incomplete": ("asset_storage_scan_incomplete", 503),
             "parameter_profile_changed": ("parameter_profile_changed", 409),
             "parameter_profile_missing": ("parameter_profile_missing", 404),
             "parameter_profile_incompatible": ("parameter_profile_incompatible", 409),
@@ -190,7 +192,13 @@ class StudioBackend:
         return assets.save_data_url_asset(data_url, PROJECT_ID, context.state, node_id="upload", metadata={"name": name})
 
     def asset(self, asset_id, context):
+        from modules import asset_lifecycle
+        with asset_lifecycle.guard(context.state, PROJECT_ID):
+            return self._resolve_asset(asset_id, context)
+
+    def _resolve_asset(self, asset_id, context):
         from modules import canvas_workbench_assets as assets
+        from modules import asset_lifecycle
         if not ASSET_ID_RE.fullmatch(asset_id):
             raise AgentAPIError("asset_not_found", "Asset is unavailable to this user.", 404)
         root, _ = assets._asset_root(PROJECT_ID, context.state)
@@ -200,6 +208,7 @@ class StudioBackend:
         mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
         result = {"asset_id": asset_id, "path": path, "mime": mime, "size": Path(path).stat().st_size}
         result.update(assets._probe_media_metadata(path, mime) or {})
+        asset_lifecycle.track(PROJECT_ID, context.state, path)
         return result
 
     def submit(self, payload, context):
@@ -333,6 +342,8 @@ class AgentService:
                 "authentication": "Studio session; local workspace in local mode",
                 "session_url": f"{API_PREFIX}/session", "queue_url": f"{API_PREFIX}/queue",
                 "system_status_url": f"{API_PREFIX}/system/status",
+                "asset_storage_url": f"{API_PREFIX}/assets/storage",
+                "asset_management_url": f"{API_PREFIX}/assets/manage",
                 "parameter_profiles_url": f"{API_PREFIX}/parameter-profiles",
                 "workflows_url": f"{API_PREFIX}/workflows",
                 "workflow_import": {"formats": ["comfy_api", "comfy_ui"], "output_types": ["image", "video"],
@@ -1114,6 +1125,13 @@ class AgentService:
         plan, spec, node, refs, status = self._prepare(request, context)
         unbound = [ref for ref in refs if ref not in {item["ref"] for item in plan.get("media_bindings") or []}]
         self._sources(plan, refs, context, allow_missing=True)
+        if plan["status"] == "ready":
+            from modules import asset_lifecycle
+            try:
+                asset_lifecycle.for_state(context.state).check_capacity()
+            except asset_lifecycle.StorageLimitError as exc:
+                plan["status"] = "storage_full" if str(exc) == "asset_storage_limit" else "storage_check_incomplete"
+                plan["storage_error"] = {"code": str(exc), "management_url": f"{API_PREFIX}/assets/manage"}
         return {"plan": plan, "preset_id": plan["preset"], "instruction": node["params"]["prompt"],
                 "source_instruction": request.instruction, "prompt": node["params"]["prompt"], "prompt_guidance": spec["prompt_guidance"],
                 "parameter_values": {item["id"]: request.parameters.get(item["id"],
@@ -1199,7 +1217,19 @@ class AgentService:
                     image.verify()
         except (ValueError, OSError, Image.DecompressionBombError) as exc:
             raise AgentAPIError("invalid_media", "The media bytes are invalid or exceed the upload limit.", 422) from exc
-        asset = self.backend.upload(request.data_url, request.name, context)
+        from modules.asset_lifecycle import StorageLimitError
+        try:
+            asset = self.backend.upload(request.data_url, request.name, context)
+        except StorageLimitError as exc:
+            if str(exc) == "asset_storage_scan_incomplete":
+                message = ("资产统计尚未完成，请打开资产空间管理刷新后重试。" if context.state.get("__lang") == "cn"
+                           else "Asset indexing is incomplete. Refresh storage management and retry.")
+                raise AgentAPIError("asset_storage_scan_incomplete", message, 503,
+                                    {"management_url": f"{API_PREFIX}/assets/manage"}) from exc
+            message = ("资产空间已达到上限，请清理过期资产或调整容量设置。" if context.state.get("__lang") == "cn"
+                       else "Asset storage is full. Clean expired assets or adjust the storage limit.")
+            raise AgentAPIError("asset_storage_limit", message, 409,
+                                {"management_url": f"{API_PREFIX}/assets/manage"}) from exc
         if not asset:
             raise AgentAPIError("upload_failed", "The asset could not be stored.", 500)
         return self._public_asset({**asset, "name": request.name})
@@ -1208,6 +1238,11 @@ class AgentService:
         _require_context(context)
         require_scope(context, "read")
         return self.backend.asset(asset_id, context)
+
+    def asset_storage(self, request, context):
+        from modules import asset_lifecycle
+        return {**asset_lifecycle.for_state(context.state).status(request.offset, request.limit),
+                "management_url": f"{API_PREFIX}/assets/manage"}
 
     def workflow_import(self, request, context):
         from modules.agent_workflows import parse_source, png_source

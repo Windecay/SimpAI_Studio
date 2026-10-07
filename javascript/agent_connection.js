@@ -8,7 +8,7 @@
         return { studio, guide: studio + '/api/v1/connect', discovery: studio + '/api/v1/auth/discovery',
             capabilities: studio + '/api/v1/capabilities', tools: studio + '/api/v1/tools/index',
             openapi: studio + '/api/v1/openapi.json', authorization: studio + '/api/v1/auth/authorize',
-            llm: studio + '/api/v1/llm', vlmModels: studio + '/api/v1/vlm/models' };
+            llm: studio + '/api/v1/llm', vlmModels: studio + '/api/v1/vlm/models', storage: studio + '/api/v1/assets/manage' };
     }
     function configurations(folder, python, base, lang = 'cn', inference = false) {
         folder = String(folder || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
@@ -82,6 +82,20 @@
             if (link.href !== url.href) link.href = url.href;
             const label = lang === 'cn' ? (root.localization?.['Agent API / MCP'] || 'Agent API / MCP') : 'Agent API / MCP';
             if (link.textContent !== label) link.textContent = label;
+            let storage = footer.querySelector('[data-studio-asset-storage]');
+            if (!storage) {
+                storage = document.createElement('a');
+                storage.dataset.studioAssetStorage = '';
+                storage.setAttribute('translate', 'no');
+                storage.style.cssText = link.style.cssText;
+                storage.target = '_blank'; storage.rel = 'noopener';
+                footer.appendChild(storage);
+            }
+            const storageUrl = new URL(urls.storage);
+            storageUrl.searchParams.set('lang', lang);
+            if (storage.href !== storageUrl.href) storage.href = storageUrl.href;
+            const storageLabel = lang === 'cn' ? (root.localization?.['Asset storage'] || '资产空间管理') : 'Asset storage';
+            if (storage.textContent !== storageLabel) storage.textContent = storageLabel;
         }
     }
     api.syncFooter = syncFooter;
