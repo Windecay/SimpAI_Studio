@@ -37,6 +37,7 @@ from modules.llama_cpp_runtime import (
     select_llama_cpp_wheel,
 )
 from modules.package_index_router import install_with_routing
+from modules.translator_runtime import ensure_translator_runtime
 from enhanced.logger import setup_logger, now_string, get_log_file
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 os.environ["RUST_LOG"] = os.environ.get("SIMPAI_RUST_LOG", "off")
@@ -175,6 +176,17 @@ def install_package_with_retry(pkg_name, pkg_version=None, description=None, ver
         ["install", "-U", install_spec],
         primary_url=index_url, extra_url=extra_index_url, python=python,
         env=_make_pip_env(), description=description or install_spec, emit=logger.info,
+    )
+
+def ensure_online_translation_runtime():
+    return ensure_translator_runtime(
+        lambda pip_args: install_with_routing(
+            pip_args,
+            primary_url=index_url, extra_url=extra_index_url, python=python,
+            env=_make_pip_env(), description="translators 6.0.4 runtime",
+            emit=logger.info, download_timeout=300,
+        ),
+        emit=logger.warning,
     )
 
 def _simpleai_base_wheel_filename(ver_required):
@@ -739,6 +751,9 @@ def check_base_environment():
         )
 
     ensure_llama_cpp_runtime(runtime_profile)
+
+    if not ensure_online_translation_runtime():
+        logger.error("Online translation dependencies are unavailable; see the dependency report above.")
 
     update_pkgs = [
         ('comfyui-frontend-package', '1.53.10', None),

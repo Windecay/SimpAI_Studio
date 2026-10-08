@@ -1,51 +1,78 @@
 
 import random
+import logging
+import re
 import time
 import asyncio
 import warnings
 from functools import lru_cache
+from threading import RLock
 
 # Suppress 'Unable to find server backend' warning from translators library
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", message=".*Unable to find server backend.*")
-    import translators as ts
+try:
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*Unable to find server backend.*")
+        import translators as ts
+except Exception as exc:
+    ts = None
+    TRANSLATORS_IMPORT_ERROR = exc
+else:
+    TRANSLATORS_IMPORT_ERROR = None
 
 from ..utils.common import ProgressBar, log_prepare, log_error, TASK_TRANSLATE, SOURCE_NODE
 
-# Extracted from enhanced/translator.py
-translator_org = ['alibaba','cloudTranslation', 'google', 'iflyrec', 'translateCom', 'youdao']
-translator_default = 'alibaba'
+logger = logging.getLogger(__name__)
+translator_org = ('alibaba', 'cloudTranslation', 'iflyrec', 'youdao', 'translateCom')
+_translation_lock = RLock()
+_REQUEST_TIMEOUT = 5.0
+_RETRY_BUDGET = 20.0
 
-@lru_cache(maxsize=32, typed=False)
-def translate2zh_apis(text):
-    global translator_default
+
+@lru_cache(maxsize=128)
+def _translate_cached(text, from_lang, to_lang):
+    if from_lang == to_lang:
+        return text
+    if ts is None:
+        raise RuntimeError(f'Third-party translation is unavailable: {TRANSLATORS_IMPORT_ERROR}')
+    deadline = time.monotonic() + _RETRY_BUDGET
+    failures = []
+    for provider in translator_org:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            result = ts.translate_text(
+                text, translator=provider, from_language=from_lang, to_language=to_lang,
+                timeout=min(_REQUEST_TIMEOUT, remaining),
+            )
+            if not isinstance(result, str) or not result.strip() or result.strip() == text.strip():
+                raise ValueError('Empty, invalid or unchanged translation')
+            logger.info('Online translation succeeded: provider=%s direction=%s->%s',
+                        provider, from_lang, to_lang)
+            return result
+        except Exception as exc:
+            failures.append(f'{provider}: {type(exc).__name__}')
+            logger.warning('Online translation failed: provider=%s direction=%s->%s error=%s: %s',
+                           provider, from_lang, to_lang, type(exc).__name__, exc)
+            logger.debug('Online translation exception', exc_info=True)
+    # Raising, rather than returning the input, keeps failures out of the cache
+    # and preserves the frontend/node success=False error contract.
+    raise RuntimeError('No translation service succeeded: ' + '; '.join(failures))
+
+
+def _translate(text, from_lang, to_lang):
     if not text:
         return text
-    try:
-        return ts.translate_text(text, translator=translator_default, from_language='en', to_language='zh')
-    except Exception as e:
-        try:
-            # logger.info(f'Change another translator because of {e}')
-            translator_default = translator_org[random.randint(0,5)]
-            return ts.translate_text(text, translator=translator_default, from_language='en', to_language='zh')
-        except Exception as e:
-            # logger.info(f'Error during translation of APIs methods: {e}')
-            raise e
+    with _translation_lock:
+        return _translate_cached(text, from_lang, to_lang)
+
+
+def translate2zh_apis(text):
+    return _translate(text, 'en', 'zh')
+
 
 def translate2en_apis(text):
-    global translator_default
-    if not text:
-        return text
-    try:
-        return ts.translate_text(text, translator=translator_default, to_language='en')
-    except Exception as e:
-        try:
-            # logger.info(f'Change another translator because of {e}')
-            translator_default = translator_org[random.randint(0,5)]
-            return ts.translate_text(text, translator=translator_default, to_language='en')
-        except Exception as e:
-            # logger.info(f'Error during translation of APIs methods: {e}')
-            raise e
+    return _translate(text, 'zh', 'en')
 
 class ThirdPartyTranslateService:
     @staticmethod
@@ -75,17 +102,22 @@ class ThirdPartyTranslateService:
             if cancel_event and cancel_event.is_set():
                 return {"success": False, "error": "Task cancelled"}
 
-            # Select function based on target language
-            # Note: The original logic hardcoded 'en'->'zh' or 'zh'->'en'.
-            # Here we adapt it to standard from_lang/to_lang
-            
+            aliases = {'cn': 'zh', 'zh-cn': 'zh', 'zh-chs': 'zh', 'zh-hans': 'zh'}
+            source_language = str(from_lang or 'auto').lower()
+            target_language = str(to_lang or 'zh').lower()
+            source_language = aliases.get(source_language, source_language)
+            target_language = aliases.get(target_language, target_language)
+            if target_language not in ('en', 'zh'):
+                raise ValueError(f'Unsupported target language: {to_lang}')
+            if source_language == 'auto' and re.search(r'[\u3400-\u9fff]', text):
+                # Mixed prompts may still contain English to translate to Chinese.
+                source_language = ('en' if target_language == 'zh' and re.search(r'[A-Za-z]', text)
+                                   else 'zh')
+
             def do_translate():
-                if to_lang == 'zh':
-                    # Assuming source is English or mixed, trying to translate to Chinese
-                    return translate2zh_apis(text)
-                else:
-                    # Assuming target is English
-                    return translate2en_apis(text)
+                if cancel_event and cancel_event.is_set():
+                    raise RuntimeError('Task cancelled')
+                return _translate(text, source_language, target_language)
 
             start_time = time.perf_counter()
             
@@ -107,4 +139,5 @@ class ThirdPartyTranslateService:
             }
             
         except Exception as e:
+            log_error(task_type, request_id, str(e), source=source)
             return {"success": False, "error": str(e)}

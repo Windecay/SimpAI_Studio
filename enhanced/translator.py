@@ -1,9 +1,9 @@
 import os
-import random
 import re
 import torch
 import tarfile
 import time
+from threading import RLock
 try:
     import translators as ts
 except Exception as exc:
@@ -28,8 +28,19 @@ B_punct = '`~!@#$%^&*()_+=-{}[]:";|<>?,./. 1234567890'
 Q_alphabet = 'ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ'
 B_alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
-translator_org = ['alibaba','cloudTranslation', 'google', 'iflyrec', 'translateCom', 'youdao']
-translator_default = 'alibaba'
+# Ordered services verified for both directions. Google depends on region/proxy
+# configuration and must not be selected automatically.
+translator_org = ('alibaba', 'cloudTranslation', 'iflyrec', 'youdao', 'translateCom')
+_TRANSLATION_REQUEST_TIMEOUT = 5.0
+_TRANSLATION_RETRY_BUDGET = 20.0
+_TRANSLATION_CHUNK_SIZE = 1500  # Below the smallest provider limit (2000).
+_translation_api_lock = RLock()
+_translation_literal_pattern = re.compile(
+    r'(<[^>\r\n]+>|__[^\r\n]+?__|'
+    r'\[(?:image|picture|video|audio|图片|图像|视频|音频)\s*\d+\]|'
+    r'\r\n|\r|\n|[()\[\]{}:|])',
+    re.IGNORECASE,
+)
 translator_path = os.path.join(paths_llms[0], 'nllb-200-distilled-600M')
 translator_slim_path = os.path.join(paths_llms[0], 'Helsinki-NLP/opus-mt-zh-en')
 
@@ -160,39 +171,100 @@ def _translation_api_available():
     return False
 
 
-@lru_cache(maxsize=32, typed=False)
+class _OnlineTranslationError(RuntimeError):
+    pass
+
+
+@lru_cache(maxsize=128)
+def _translate_api_chunk(text, from_language, to_language):
+    # Exceptions are deliberately allowed out of the cached function: a failed
+    # request must not make the original text a cached translation.
+    deadline = time.monotonic() + _TRANSLATION_RETRY_BUDGET
+    for provider in translator_org:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            result = ts.translate_text(
+                text,
+                translator=provider,
+                from_language=from_language,
+                to_language=to_language,
+                timeout=min(_TRANSLATION_REQUEST_TIMEOUT, remaining),
+            )
+            if not isinstance(result, str) or not result.strip() or result.strip() == text.strip():
+                raise _OnlineTranslationError('Empty, invalid or unchanged translation')
+            logger.info('Online translation succeeded: provider=%s direction=%s->%s',
+                        provider, from_language, to_language)
+            return result.strip()
+        except Exception as exc:
+            logger.warning('Online translation failed: provider=%s direction=%s->%s error=%s: %s',
+                           provider, from_language, to_language, type(exc).__name__, exc)
+            logger.debug('Online translation exception', exc_info=True)
+    raise _OnlineTranslationError('No translation service succeeded within the retry budget')
+
+
+def _translation_chunks(text):
+    while len(text) > _TRANSLATION_CHUNK_SIZE:
+        boundary = max(text.rfind(mark, 0, _TRANSLATION_CHUNK_SIZE)
+                       for mark in ('。', '！', '？', '，', '.', '!', '?', ',', ';', ' ', '\t'))
+        end = boundary + 1 if boundary >= _TRANSLATION_CHUNK_SIZE // 2 else _TRANSLATION_CHUNK_SIZE
+        yield text[:end]
+        text = text[end:]
+    if text:
+        yield text
+
+
+def _translate_online(text, from_language, to_language):
+    try:
+        # translators keeps mutable provider sessions; serialize access and
+        # consult the cache inside the lock, including concurrent duplicates.
+        with _translation_api_lock:
+            parts = []
+            for index, part in enumerate(_translation_literal_pattern.split(text)):
+                if index % 2:
+                    parts.append(part)
+                    continue
+                translated_chunks = []
+                for chunk in _translation_chunks(part):
+                    source = chunk.strip()
+                    needs_translation = (is_chinese(source) if from_language == 'zh'
+                                         else bool(re.search(r'[A-Za-z]', source)))
+                    if not source or not needs_translation:
+                        translated_chunks.append(chunk)
+                        continue
+                    translated = _translate_api_chunk(source, from_language, to_language)
+                    if to_language == 'en':
+                        translated = Q2B_alphabet(Q2B_number_punctuation(translated))
+                    leading = chunk[:len(chunk) - len(chunk.lstrip())]
+                    trailing = chunk[len(chunk.rstrip()):]
+                    value = leading + translated + trailing
+                    if (to_language == 'en' and translated_chunks and translated_chunks[-1]
+                            and translated_chunks[-1][-1].isalnum() and value[0].isalnum()):
+                        translated_chunks.append(' ')
+                    translated_chunks.append(value)
+                parts.append(''.join(translated_chunks))
+            return ''.join(parts)
+    except _OnlineTranslationError:
+        logger.warning('Online translation unavailable (%s->%s); returning the original text.',
+                       from_language, to_language)
+        return text
+
+
 def translate2zh_apis(text):
-    global translator_default
     if not text:
         return text
     if not _translation_api_available():
         return text
-    try:
-        return ts.translate_text(text, translator=translator_default, from_language='en', to_language='zh')
-    except Exception as e:
-        try:
-            logger.info(f'Change another translator because of {e}')
-            translator_default = translator_org[random.randint(0,5)]
-            return ts.translate_text(text, translator=translator_default, from_language='en', to_language='zh')
-        except Exception as e:
-            logger.info(f'Error during translation of APIs methods: {e}')
-            return text
+    return _translate_online(text, 'en', 'zh')
+
+
 def translate2en_apis(text):
-    global translator_default
     if not text:
         return text
     if not _translation_api_available():
         return text
-    try:
-        return ts.translate_text(text, translator=translator_default, to_language='en')
-    except Exception as e:
-        try:
-            logger.info(f'Change another translator because of {e}')
-            translator_default = translator_org[random.randint(0,5)]
-            return ts.translate_text(text, translator=translator_default, to_language='en')
-        except Exception as e:
-            logger.info(f'Error during translation of APIs methods: {e}')
-            return text
+    return _translate_online(text, 'zh', 'en')
 
 def init_or_load_translator_model(method='Slim Model'):
     global g_tokenizer, g_model, g_model_type
@@ -288,7 +360,6 @@ def free_translator_model():
     return
 
 def toggle(text: str, method: str = 'Slim Model') -> str:
-    is_chinese_ext = lambda x: (Q_alphabet + B_punct).find(x) < -1
     if is_chinese(text):
         return convert(text, method)
     else:
@@ -300,24 +371,23 @@ def convert(text: str, method: str = 'Slim Model', lang: str = 'en' ) -> str:
 
     start = time.perf_counter()
 
+    if method == 'Third APIs':
+        translated = translate2zh_apis(text) if lang == 'cn' else translate2en_apis(text)
+        logger.info('Online translation completed in %.2fs (changed=%s)',
+                    time.perf_counter() - start, translated != text)
+        return translated
+
     if lang=='cn':
-        if method == 'Third APIs':
-            text_zh = translate2zh_apis(text)
-            ts_method = translator_default
-        else:
-            tokenizer, model = init_or_load_translator_model(method)
-            text_zh = translate2zh_model(model, tokenizer, text)
-            ts_method = method
+        tokenizer, model = init_or_load_translator_model(method)
+        text_zh = translate2zh_model(model, tokenizer, text)
+        ts_method = method
         stop = time.perf_counter()
         logger.info(f'Translate by "{ts_method}" in {(stop-start):.2f}s: "{text}" to "{text_zh}"')
         return text_zh
     is_chinese_ext = lambda x: (Q_alphabet + B_punct).find(x) < -1 
     #text = Q2B_number_punctuation(text)
     if is_chinese(text):
-        if method == 'Third APIs':
-            logger.info(f'Using an online translation APIs.')
-        else:
-            tokenizer, model = init_or_load_translator_model(method)
+        tokenizer, model = init_or_load_translator_model(method)
 
 
         def T_ZH2EN(text_zh):
@@ -329,8 +399,6 @@ def convert(text: str, method: str = 'Slim Model', lang: str = 'en' ) -> str:
                 inputs = tokenizer(text_zh, return_tensors="pt")
                 translated_tokens = model.generate(**inputs, forced_bos_token_id=tokenizer.convert_tokens_to_ids("eng_Latn"), max_length=60)
                 return 'Big Model', tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)[0].lower()
-            else:
-                return translator_default, translate2en_apis(text_zh)
 
 
         text_eng = ""

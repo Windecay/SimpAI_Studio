@@ -1,3 +1,4 @@
 httpx
 imageio
 imageio-ffmpeg
+translators==6.0.4

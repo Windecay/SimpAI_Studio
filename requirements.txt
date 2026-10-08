@@ -68,7 +68,7 @@ timm==1.0.7 #
 tiktoken==0.11.0
 tokenizers==0.22.1 #==0.19.1 #
 packaging==25.0 #
-translators==5.8.9
+translators==6.0.4
 websocket-client
 yarl==1.18.0
 GitPython==3.1.45
