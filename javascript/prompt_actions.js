@@ -13,6 +13,8 @@
     let activePromptField = null;
     let pendingPromptField = null;
     let pendingDirectRequest = null;
+    let promptActionSpinnerTimer = 0;
+    const promptActionReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let lastAppliedPromptField = null;
     let lastAppliedHistory = null;
     let mainPromptHistory = null;
@@ -273,11 +275,17 @@
     }
 
     function promptAgentRequired(params = paramsSource()) {
-        return !!(params && typeof params === "object"
+        if (params && typeof params === "object"
             && (params.__prompt_agent_required === true
                 || params.__prompt_agent_required === "true"
                 || params.prompt_agent_required === true
-                || params.prompt_agent_required === "true"));
+                || params.prompt_agent_required === "true")) return true;
+        const prompts = currentSceneFrontend(params).multimodal_prompt;
+        if (typeof prompts === "string") return !!prompts.trim();
+        if (!prompts || typeof prompts !== "object") return false;
+        const theme = String(params?.__scene_theme || params?.scene_theme || "").trim();
+        if (theme && Object.prototype.hasOwnProperty.call(prompts, theme)) return !!String(prompts[theme] || "").trim();
+        return Object.values(prompts).some((value) => !!String(value || "").trim());
     }
 
     function presetPromptAgentName(params = paramsSource()) {
@@ -489,10 +497,8 @@
         const hint = ensurePresetPromptAgentHint();
         if (!hint) return;
         const wasOpenForPreset = hint.classList.contains("is-open") && hint.dataset.preset === preset;
-        const message = text(
-            "This preset works better with a detailed prompt. Click Prompt Tools and choose Smart Expand.",
-            "这个预置使用更详细的提示词效果更好。点击提示工具，使用智能扩写。",
-        );
+        const hintText = "This preset works better with a detailed prompt. Click Prompt Tools and choose Smart Expand.";
+        const message = currentLang() === "en" ? hintText : (window.localization?.[hintText] || hintText);
         const messageNode = hint.querySelector('[data-role="message"]');
         if (messageNode) messageNode.textContent = message;
         const close = hint.querySelector('[data-role="close"]');
@@ -958,6 +964,40 @@
         node.setAttribute("title", `${prefix}${label}${suffix}${service?.agent_provider ? ` · ${service.agent_provider}` : ""}`);
     }
 
+    function stopPromptActionSpinner() {
+        if (promptActionSpinnerTimer) window.clearInterval(promptActionSpinnerTimer);
+        promptActionSpinnerTimer = 0;
+    }
+
+    function activePromptActionSpinner() {
+        if (!pending || document.hidden || promptActionReducedMotion.matches
+                || !modal?.isConnected || !modal.classList.contains("is-open")) return null;
+        return modal.querySelector(".simpleai-prompt-action-item.is-busy .simpleai-prompt-action-spinner");
+    }
+
+    function syncPromptActionSpinner() {
+        if (!activePromptActionSpinner()) {
+            stopPromptActionSpinner();
+            return;
+        }
+        if (promptActionSpinnerTimer) return;
+        // Update the angle at 4 Hz without a continuous CSS animation or transition.
+        promptActionSpinnerTimer = window.setInterval(() => {
+            const spinner = activePromptActionSpinner();
+            if (!spinner) {
+                stopPromptActionSpinner();
+                return;
+            }
+            const transform = `rotate(${(Math.floor(Date.now() / 250) % 8) * 45}deg)`;
+            if (spinner.style.transform !== transform) spinner.style.transform = transform;
+        }, 250);
+    }
+
+    document.addEventListener("visibilitychange", syncPromptActionSpinner);
+    promptActionReducedMotion.addEventListener("change", syncPromptActionSpinner);
+    window.addEventListener("pagehide", stopPromptActionSpinner);
+    window.addEventListener("pageshow", syncPromptActionSpinner);
+
     function renderModal() {
         const node = ensureModal();
         node.querySelector('[data-role="title"]').textContent = text("Prompt Tools", "提示工具");
@@ -995,6 +1035,7 @@
         const list = node.querySelector('[data-role="list"]');
         if (!items.length) {
             list.innerHTML = `<div class="simpleai-prompt-action-empty">${escapeHtml(text("No prompt actions are registered.", "没有可用的提示词能力。"))}</div>`;
+            syncPromptActionSpinner();
             return;
         }
         list.innerHTML = items.map((item) => {
@@ -1025,9 +1066,10 @@
                         ${badges.length ? `<span class="simpleai-prompt-action-item-badges">${badges.map((badge) => `<span>${escapeHtml(badge)}</span>`).join("")}</span>` : ""}
                         ${stateText ? `<span class="simpleai-prompt-action-item-state">${escapeHtml(stateText)}</span>` : ""}
                     </span>
-                    <span class="simpleai-prompt-action-item-arrow"><i class="fa-solid ${busy ? "fa-spinner fa-spin" : "fa-chevron-right"}"></i></span>
+                    <span class="simpleai-prompt-action-item-arrow"><i class="fa-solid ${busy ? "fa-spinner simpleai-prompt-action-spinner" : "fa-chevron-right"}" aria-hidden="true"></i></span>
                 </button>`;
         }).join("");
+        syncPromptActionSpinner();
     }
 
     function openModal(field = null) {
@@ -1039,10 +1081,12 @@
         const node = ensureModal();
         node.classList.add("is-open");
         node.removeAttribute("aria-hidden");
+        syncPromptActionSpinner();
         requestAnimationFrame(() => node.querySelector('[data-prompt-action="close"]')?.focus?.());
     }
 
     function closeModal() {
+        stopPromptActionSpinner();
         if (!modal) return;
         modal.classList.remove("is-open");
         modal.setAttribute("aria-hidden", "true");
@@ -1201,6 +1245,7 @@
         pendingActionId = "";
         pendingAgentService = null;
         pendingDirectRequest = null;
+        stopPromptActionSpinner();
         if (directRequest) {
             pendingPromptField = null;
             previousPrompt = "";
@@ -1278,6 +1323,9 @@
     });
 
     window.refreshSimpleAIPromptToolsButton = bindButton;
+    window.showSimpleAIPromptAgentHint = function showSimpleAIPromptAgentHint() {
+        if (!isGenerationActive()) syncPresetPromptAgentHint();
+    };
     window.openSimpleAIPromptToolsForField = function openSimpleAIPromptToolsForField(field) {
         openModal(field);
     };
@@ -1350,6 +1398,7 @@
                 pendingActionId = "";
                 pendingAgentService = null;
                 pendingDirectRequest = null;
+                stopPromptActionSpinner();
                 previousPrompt = "";
                 reject(error);
             });

@@ -43,7 +43,7 @@ logger = logging.getLogger(format_name(__name__))
 from datetime import datetime
 from modules.model_loader import is_models_file_absent, refresh_model_list, download_model_files
 import modules.model_loader as model_loader
-from modules.meta_parser import get_welcome_image, describe_prompt_for_scene
+from modules.meta_parser import get_welcome_image, get_scene_prompt
 from enhanced.simpleai import comfyd, get_admin_recovery_guide, get_identity_access_status, get_path_in_user_dir, toggle_identity_dialog, sync_intput_reserved, get_identity_mode_text, normalize_ui_lang, update_comfyd_io_paths
 from enhanced.vlm import VLM, vlm
 from enhanced.llamacpp_vlm import llamacpp_vlm
@@ -2234,7 +2234,7 @@ def avoid_empty_prompt_for_scene(prompt, state, canvas_image, input_image1, scen
         canvas_img = meta_parser.extract_scene_image(canvas_image) if canvas_visible else None
         input_img = meta_parser.extract_scene_image(input_image1)
         use_img = canvas_img if canvas_img is not None else input_img
-        describe_prompt, img_is_ok = describe_prompt_for_scene(state, use_img, scene_theme, f'{additional_prompt}{additional_prompt_2}')
+        describe_prompt, img_is_ok = get_scene_prompt(state, use_img, scene_theme, f'{additional_prompt}{additional_prompt_2}')
     return skip_update() if describe_prompt is None else describe_prompt
 
 

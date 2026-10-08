@@ -22,13 +22,12 @@ import shared
 
 from modules.flags import MetadataScheme, Performance, Steps, task_class_mapping, get_taskclass_by_fullname, default_class_params, scheduler_list, sampler_list, default_clip
 from modules.flags import SAMPLERS, CIVITAI_NO_KARRAS
-from modules.util import quote, unquote, extract_styles_from_prompt, is_json, sha256, get_files_from_folder, resize_image, resize_image_by_max_area, is_chinese, HWC3, normalize_gradio_image_value, simpai_ui_trace_enabled
+from modules.util import quote, unquote, extract_styles_from_prompt, is_json, sha256, get_files_from_folder, resize_image, resize_image_by_max_area, HWC3, normalize_gradio_image_value, simpai_ui_trace_enabled
 import enhanced.all_parameters as ads
 from modules.hash_cache import sha256_from_cache
 from modules.localization import localized_text as localized_ui_text
 import extras.preprocessors as preprocessors
 import numpy as np
-from enhanced.vlm import vlm
 from ui.update_helpers import dropdown_update, gr_update, skip_update
 
 import logging
@@ -384,12 +383,12 @@ def get_auto_candidate(img, selections, mode):
     return selections, index_value
 
 
-def describe_prompt_for_scene(state, img, scene_theme, additional_prompt):
+def get_scene_prompt(state, img, scene_theme, additional_prompt):
     img = normalize_gradio_image_value(img)
-    img = img if img is None else resize_image_by_max_area(HWC3(img), max_area=1024 * 1024)
     preprocessor_methods = modules.flags.get_value_by_scene_theme(state, scene_theme, 'image_preprocessor_method', [])
     img_is_ok = True
     if len(preprocessor_methods)>0 and img is not None:
+        img = resize_image_by_max_area(HWC3(img), max_area=1024 * 1024)
         for preprocessor_method in preprocessor_methods:
             if 'face' in preprocessor_method or 'hand' in preprocessor_method or 'body' in preprocessor_method:
                 img_is_ok = preprocessors.openpose_have(img, preprocessor_method)
@@ -397,22 +396,7 @@ def describe_prompt_for_scene(state, img, scene_theme, additional_prompt):
     describe_prompt = s_prompts.get(scene_theme, '')
     if not describe_prompt:
         return '', img_is_ok
-    if is_chinese(additional_prompt) and not state['scene_frontend']['task_method'][scene_theme].lower().endswith('_cn'):
-        additional_prompt = vlm.translate(additional_prompt, 'Slim Model')
-    describe_prompts = [describe_prompt.format(additional_prompt=additional_prompt)]
-    m_prompts = state['scene_frontend'].get('multimodal_prompt', {})
-    prompt_prompt = m_prompts.get(scene_theme, '')
-    if prompt_prompt and img is not None:
-        prompt_prompt = prompt_prompt.format(additional_prompt=additional_prompt)
-        prompt_prompt_key = prompt_prompt.strip().lower()
-        if 'tags' in prompt_prompt_key:
-            from extras.wd14tagger import default_interrogator as default_interrogator_anime
-            describe_prompts.append(default_interrogator_anime(img))
-        else:
-            vlm_prompt = None if 'photo' in prompt_prompt_key else prompt_prompt
-            describe_prompts.append(vlm.interrogate(img, prompt=vlm_prompt))
-    describe_prompt=', '.join(describe_prompts)
-    return describe_prompt, img_is_ok
+    return describe_prompt.format(additional_prompt=additional_prompt), img_is_ok
 
 def extract_scene_image(value):
     return normalize_gradio_image_value(value)
@@ -615,7 +599,7 @@ def switch_scene_theme_ready_to_gen(state, image_number, canvas_image, input_ima
     # ready for generation. Keep the prompt selector in sync even when the
     # image check cannot pass yet; only the Generate button should depend on
     # ready_to_gen.
-    describe_prompt, img_is_ok = describe_prompt_for_scene(
+    describe_prompt, img_is_ok = get_scene_prompt(
         state,
         use_image,
         theme,
@@ -625,6 +609,13 @@ def switch_scene_theme_ready_to_gen(state, image_number, canvas_image, input_ima
     if "infinitetalk" in (task_method or "").lower():
         return describe_prompt if describe_prompt else gr_update(), gr_update(interactive=bool(use_image is not None and audio is not None and img_is_ok))
     return describe_prompt if describe_prompt else gr_update(), gr_update(interactive=True if not ready_to_gen else img_is_ok)
+
+
+def update_scene_media_readiness(state, image_number, canvas_image, input_image1, additional_prompt, additional_prompt_2, theme=None, video=None, audio=None):
+    return switch_scene_theme_ready_to_gen(
+        state, image_number, canvas_image, input_image1, additional_prompt, additional_prompt_2,
+        theme=theme, video=video, audio=audio,
+    )[1]
 
 
 def switch_scene_theme(state, image_number, canvas_image, input_image1, additional_prompt, additional_prompt_2, video_duration, var_number, var_number2, var_number3, var_number4, var_number5, var_number6, var_number7, var_number8, var_number9, var_number10, scene_steps, switch_option1, switch_option2, switch_option3, switch_option4, theme=None):

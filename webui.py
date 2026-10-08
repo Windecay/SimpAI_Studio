@@ -82,7 +82,7 @@ from modules.identity_session import resolve_session
 from modules.agent_auth import AgentAuthorization, private_store_directory
 import modules.identity_access as identity_access
 import modules.util as util
-from modules.meta_parser import switch_scene_theme, switch_scene_theme_safe, switch_scene_theme_ready_to_gen, get_welcome_image, describe_prompt_for_scene, extract_scene_image
+from modules.meta_parser import switch_scene_theme, switch_scene_theme_safe, switch_scene_theme_ready_to_gen, update_scene_media_readiness, get_welcome_image, get_scene_prompt, extract_scene_image
 
 import comfy.comfy_version as comfy_version
 import enhanced.gallery as gallery_util
@@ -12275,17 +12275,16 @@ with shared.gradio_root:
 
         unload_btn.click(unload_models_clicked, inputs=[state_is_generating], show_progress=True)
 
-        def trigger_auto_describe_for_scene(state, canvas_image, img, scene_theme, additional_prompt, additional_prompt_2, state_is_generating):
+        def update_scene_input_readiness(state, canvas_image, img, scene_theme, state_is_generating):
             if not isinstance(state, dict) or not isinstance(state.get("scene_frontend"), dict):
-                return skip_component_update(), skip_component_update(), skip_component_update()
+                return skip_component_update()
 
             is_worker_processing = worker.worker_processing is not None
             has_pending_tasks = worker.pending_tasks > 0
             is_generating = state_is_generating or is_worker_processing or has_pending_tasks
 
             if is_generating:
-                logger.info(f"Generation is in progress or pending, skipping image description")
-                return skip_component_update(), skip_component_update(), skip_component_update()
+                return skip_component_update()
 
             is_canvas_image = 'scene_canvas_image' not in state["scene_frontend"].get('disvisible', [])
             ready_to_gen = True 
@@ -12294,11 +12293,8 @@ with shared.gradio_root:
             use_img = canvas_img if is_canvas_image else input_img
             if is_canvas_image and canvas_img is None:
                 ready_to_gen = False
-            describe_prompt, img_is_ok = describe_prompt_for_scene(state, use_img, scene_theme, f'{additional_prompt}{additional_prompt_2}')
-            styles = set()
-            styles.update([])
-            prompt_update = describe_prompt if describe_prompt else skip_component_update()
-            return prompt_update, list(styles), gr_update(interactive=ready_to_gen and img_is_ok)
+            _scene_prompt, img_is_ok = get_scene_prompt(state, use_img, scene_theme, "")
+            return gr_update(interactive=ready_to_gen and img_is_ok)
 
         def update_describe_output_tags(engine_class_display):
             if engine_class_display in ['SDXL', 'SD15', 'Illustrious', 'Anima']:
@@ -12310,12 +12306,12 @@ with shared.gradio_root:
             # controls into the shared Models tab.
             return []
 
-        scene_canvas_image.input(trigger_auto_describe_for_scene, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2, state_is_generating], outputs=[prompt, style_selections, generate_button], show_progress=True, queue=False)
+        scene_canvas_image.input(update_scene_input_readiness, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, state_is_generating], outputs=generate_button, show_progress=False, queue=False, js="(...args)=>{window.showSimpleAIPromptAgentHint?.(); return args;}")
         scene_canvas_image.change(fn=None, show_progress=False, queue=False, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_canvas", "change"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
         scene_input_image1.upload(fn=None, show_progress=False, queue=False, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "upload"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
         scene_input_image1.clear(lambda: None, queue=False, show_progress=False, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "clear"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
         scene_input_image1.change(fn=None, show_progress=False, queue=False, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "change"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
-        load_parameter_button.click(trigger_auto_describe_for_scene, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2, state_is_generating], outputs=[prompt, style_selections, generate_button], show_progress=True, queue=False) \
+        load_parameter_button.click(update_scene_input_readiness, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, state_is_generating], outputs=generate_button, show_progress=False, queue=False, js="(...args)=>{window.showSimpleAIPromptAgentHint?.(); return args;}") \
                         .then(lambda: None, js='()=>{refresh_scene_localization(); if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
 
         def switch_scene_theme_ui_state(state, theme, event_context):
@@ -12604,16 +12600,16 @@ with shared.gradio_root:
             queue=False, show_progress=False,
         )
 
-        scene_video.upload(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False) \
+        scene_video.upload(update_scene_media_readiness, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=generate_button, queue=False, show_progress=False, js="(...args)=>{window.showSimpleAIPromptAgentHint?.(); return args;}") \
             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "ready");}')
-        scene_video.clear(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False) \
+        scene_video.clear(update_scene_media_readiness, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=generate_button, queue=False, show_progress=False) \
             .then(lambda: None, js='()=>{try{if(typeof _rc_setTextValue==="function") _rc_setTextValue("resolution_source_meta", "{}", true);}catch(e){} if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "clear");}')
         scene_audio.upload(_remember_scene_audio_for_generation, inputs=[scene_audio], outputs=[scene_audio_backup], queue=False, show_progress=False) \
-            .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False)
+            .then(update_scene_media_readiness, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=generate_button, queue=False, show_progress=False)
         scene_audio.change(_remember_scene_audio_for_generation, inputs=[scene_audio], outputs=[scene_audio_backup], queue=False, show_progress=False) \
-            .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False)
+            .then(update_scene_media_readiness, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=generate_button, queue=False, show_progress=False)
         scene_audio.clear(_clear_scene_audio_for_generation, outputs=[scene_audio_backup], queue=False, show_progress=False) \
-            .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False)
+            .then(update_scene_media_readiness, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=generate_button, queue=False, show_progress=False)
 
         if args_manager.args.enable_auto_describe_image:
             def trigger_auto_describe(img, current_prompt, output_tags, output_chinese, output_artist, state_params, version, api_name, provider, api_format, base_url, model, api_key, supports_images, state_is_generating=True):

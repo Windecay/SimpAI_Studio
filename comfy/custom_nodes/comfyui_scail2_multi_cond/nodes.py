@@ -974,8 +974,37 @@ def _run_sam3_track(
     detection_threshold: float,
     max_objects: int,
     detect_interval: int,
+    *,
+    show_pbar: bool = True,
 ):
-    from comfy_extras.nodes_sam3 import SAM3_VideoTrack
+    from comfy_extras.nodes_sam3 import SAM3_VideoTrack, _extract_text_prompts
+
+    if not show_pbar:
+        import comfy.model_management
+
+        _, height, width, _ = images.shape
+        comfy.model_management.load_model_gpu(model)
+        device = comfy.model_management.get_torch_device()
+        dtype = model.model.get_dtype()
+        if conditioning is None or len(conditioning) == 0:
+            raise ValueError("Either initial_mask or conditioning must be provided")
+        text_prompts = [
+            (emb, mask) for emb, mask, _ in _extract_text_prompts(conditioning, device, dtype)
+        ]
+        # Internal tracking shares the scheduler's node ID, but is not sampling.
+        result = model.model.diffusion_model.forward_video(
+            images=images[..., :3].movedim(-1, 1),
+            initial_masks=None,
+            pbar=None,
+            text_prompts=text_prompts,
+            new_det_thresh=float(detection_threshold),
+            max_objects=int(max_objects),
+            detect_interval=max(1, int(detect_interval)),
+            target_device=device,
+            target_dtype=dtype,
+        )
+        result["orig_size"] = (height, width)
+        return result
 
     result = _node_result(
         SAM3_VideoTrack.execute(
@@ -3159,6 +3188,7 @@ class SCAIL2ScheduledLongVideoWithSAM(SCAIL2ScheduledLongVideo):
             detection_threshold=float(sam_detection_threshold),
             max_objects=int(sam_max_objects),
             detect_interval=int(sam_detect_interval),
+            show_pbar=False,
         )
 
         pose_video_mask = None
@@ -3172,6 +3202,7 @@ class SCAIL2ScheduledLongVideoWithSAM(SCAIL2ScheduledLongVideo):
                 detection_threshold=float(sam_detection_threshold),
                 max_objects=int(sam_max_objects),
                 detect_interval=1,
+                show_pbar=False,
             )
 
             current_pose_mask, _ = _create_scail_masks(

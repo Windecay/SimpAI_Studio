@@ -17172,6 +17172,12 @@ button.simpleai-auto-random-preparing {
   font-size: 11px;
 }
 
+.simpleai-prompt-action-spinner {
+  /* prompt_actions.js updates the angle at 4 Hz. */
+  animation: none;
+  transition: none;
+}
+
 .simpleai-prompt-action-status {
   min-height: 18px;
   padding: 0 14px 12px;
