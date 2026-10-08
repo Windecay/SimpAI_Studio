@@ -70,10 +70,10 @@ class SimpAIQwen21MaskedEdit:
         # Canvas strokes may be green; the RGB maximum also preserves soft edges.
         visual_mask = sampling_mask = None
         if mask_image is not None:
-            if mask_image.shape[1:3] != image.shape[1:3]:
-                raise ValueError("Canvas image and painted mask must have the same size.")
             mask = mask_image[:1, :, :, :3].amax(dim=-1, keepdim=True).clamp(0, 1)
             if torch.any(mask > 0):
+                if mask.shape[1:3] != image.shape[1:3]:
+                    raise ValueError("Canvas image and painted mask must have the same size.")
                 visual_mask = (mask > 0).to(mask.dtype).expand(-1, -1, -1, 3)
                 sampling_mask = mask.expand(-1, -1, -1, 3)
 
@@ -164,11 +164,11 @@ class SimpAIQwen21ErasePrepare:
         if width < 32 or height < 32 or width % 32 or height % 32:
             raise ValueError("Qwen erase output dimensions must be positive multiples of 32.")
         source = image[:1]
-        mask = torch.zeros(source.shape[:3], dtype=source.dtype, device=source.device)
-        if mask_image is not None:
-            if mask_image.shape[1:3] != source.shape[1:3]:
-                raise ValueError("Canvas image and painted mask must have the same size.")
-            mask = mask_image[:1, :, :, :3].amax(dim=-1).to(source).clamp(0, 1)
+        mask = None if mask_image is None else mask_image[:1, :, :, :3].amax(dim=-1).to(source).clamp(0, 1)
+        if mask is None or not torch.any(mask > 0):
+            mask = torch.zeros(source.shape[:3], dtype=source.dtype, device=source.device)
+        elif mask.shape[1:3] != source.shape[1:3]:
+            raise ValueError("Canvas image and painted mask must have the same size.")
         if source.shape[1:3] != (height, width):
             # Both use full-frame coordinates, including when the aspect ratio changes.
             source = comfy.utils.common_upscale(
@@ -274,11 +274,11 @@ class SimpAIQwen21EraseCrop:
             raise ValueError("Qwen erasing requires a source image.")
         source = image[:1]
         height, width = source.shape[1:3]
-        mask = torch.zeros((1, height, width), dtype=source.dtype, device=source.device)
-        if mask_image is not None:
-            if mask_image.shape[1:3] != (height, width):
-                raise ValueError("Canvas image and painted mask must have the same size.")
-            mask = mask_image[:1, :, :, :3].amax(-1).to(source).clamp(0, 1)
+        mask = None if mask_image is None else mask_image[:1, :, :, :3].amax(-1).to(source).clamp(0, 1)
+        if mask is None or not torch.any(mask > 0):
+            mask = torch.zeros((1, height, width), dtype=source.dtype, device=source.device)
+        elif mask.shape[1:3] != (height, width):
+            raise ValueError("Canvas image and painted mask must have the same size.")
         # Find occupied rows/columns without allocating coordinates for a full-size mask.
         rows = torch.where(torch.any(mask[0] > 0, dim=1))[0]
         columns = torch.where(torch.any(mask[0] > 0, dim=0))[0]

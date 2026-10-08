@@ -31,12 +31,11 @@ class SimpAIQwen21CanvasInpaint:
             return (latent, original, torch.ones((1, height, width), dtype=torch.float32))
 
         source = image[:1]
-        if mask_image is None:
+        mask = None if mask_image is None else mask_image[:1, :, :, :3].amax(dim=-1).clamp(0, 1)
+        if mask is None or not torch.any(mask > 0):
             mask = torch.zeros(source.shape[:3], dtype=source.dtype, device=source.device)
-        else:
-            if mask_image.shape[1:3] != source.shape[1:3]:
-                raise ValueError("Canvas image and painted mask must have the same size.")
-            mask = mask_image[:1, :, :, :3].amax(dim=-1).clamp(0, 1)
+        elif mask.shape[1:3] != source.shape[1:3]:
+            raise ValueError("Canvas image and painted mask must have the same size.")
 
         if source.shape[1:3] != (height, width):
             source = comfy.utils.common_upscale(
