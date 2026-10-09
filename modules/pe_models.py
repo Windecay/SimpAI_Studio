@@ -33,6 +33,16 @@ def pe_model_task(name):
     return None
 
 
+def qwen_pe_vlm_task(version):
+    prefix = "comfy:text_encoders:"
+    if not str(version or "").startswith(prefix):
+        return None
+    name = str(version)[len(prefix):].replace("\\", "/")
+    if "qwen" not in name.casefold() or not re.search(r"(?:^|[-_.\s/])pe(?:$|[-_.\s/])", name, re.I):
+        return None
+    return pe_model_task(name) if is_pe_model_name(name) else None
+
+
 def scan_pe_model_files(catalog, roots):
     if catalog not in PE_CATALOGS:
         return []

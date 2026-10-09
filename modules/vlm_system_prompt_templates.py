@@ -26,6 +26,10 @@ H3_PROMPT_WRITING_TEMPLATES = {
         "filename": "h3_prompt_writing_en.md",
     },
 }
+PE_PROMPT_TEMPLATES = {
+    "qwen21_pe_t2i.md": "Qwen2.1 PE - Text-to-image expansion",
+    "qwen21_pe_i2i.md": "Qwen2.1 PE - Image editing",
+}
 
 
 def _clean_text(value):
@@ -280,6 +284,20 @@ def _template_entry_from_csv_row(row, source_path, mtime=0, max_chars=MAX_TEMPLA
     return entry
 
 
+def _pe_prompt_template_entries(max_chars=MAX_TEMPLATE_CHARS):
+    root = DEFAULT_TEMPLATE_CSV.parent / "vlm_system_prompts"
+    entries = []
+    for filename, name in PE_PROMPT_TEMPLATES.items():
+        path = root / filename
+        if not path.is_file():
+            continue
+        entry = _template_entry(path, root, max_chars=max_chars)
+        if entry["content"]:
+            entry.update(name=name, source=f"bundled:{filename}", recommended_chat_mode="raw")
+            entries.append(entry)
+    return entries
+
+
 def _list_templates_from_csv(path, max_chars=MAX_TEMPLATE_CHARS):
     stat = path.stat()
     templates = []
@@ -346,6 +364,7 @@ def list_vlm_system_prompt_templates(payload=None, root=None, max_chars=MAX_TEMP
     language = _payload_language(payload)
     if _is_default_template_source(source):
         templates.extend(_h3_prompt_writing_template_entries(language=language, max_chars=max_chars))
+        templates.extend(_pe_prompt_template_entries(max_chars=max_chars))
     if language:
         templates = [
             item for item in templates

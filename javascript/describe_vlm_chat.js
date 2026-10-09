@@ -56,11 +56,12 @@
     const FULL_HISTORY_BUDGET = 9000;
     const CONTEXT_SUMMARY_MAX_CHARS = 2400;
     const CHAT_MAX_TOKENS_MIN = 64;
-    const CHAT_MAX_TOKENS_MAX = 8192;
-    const CHAT_MAX_TOKEN_CHOICES = Object.freeze([256, 512, 1024, 2048, 3072, 4096, 8192]);
+    const CHAT_MAX_TOKENS_MAX = 65536;
+    const CHAT_MAX_TOKEN_CHOICES = Object.freeze([256, 512, 1024, 2048, 3072, 4096, 8192, 16384, 32768, 65536]);
     const VLM_N_CTX_MIN = 512;
     const VLM_N_CTX_MAX = 131072;
     const VLM_N_CTX_STEP = 512;
+    const VLM_API_CONTEXT_DEFAULT = 32768;
     const VLM_SKILLS_ENDPOINT = '/describe-image/vlm-skills';
     const VLM_SKILL_LIMITS_BY_MODE = Object.freeze({
         raw: 8,
@@ -3218,6 +3219,13 @@
     }
 
     function vlmContextWindowForVersion(version) {
+        if (vlmBackendForVersion(version) === 'custom_api') {
+            const api = readDescribeCustomApi(version);
+            return normalizeVlmNctx(state.apiContextWindow)
+                || normalizeVlmNctx(api?.context_window || api?.contextWindow)
+                || knownVlmContextWindowForVersion(version)
+                || VLM_API_CONTEXT_DEFAULT;
+        }
         return knownVlmContextWindowForVersion(version) || Math.max(8192, normalizeVlmNctx(state.nCtx));
     }
 
@@ -3228,7 +3236,7 @@
             ? state.vlmModelCatalog
             : (Array.isArray(registry.VLM_MODEL_CATALOG) ? registry.VLM_MODEL_CATALOG : []);
         const item = catalog.find((entry) => String(entry?.id || '').trim() === cleanVersion);
-        return String(item?.backend || (cleanVersion === 'Custom' ? 'custom_api' : 'llamacpp')).trim();
+        return String(item?.backend || (cleanVersion === 'Custom' || cleanVersion.startsWith('custom_api:') ? 'custom_api' : 'llamacpp')).trim();
     }
 
     function normalizeVlmNctx(value, fallback = 0, maximum = VLM_N_CTX_MAX) {
@@ -3240,7 +3248,30 @@
     }
 
     function currentVlmNctx(version = readSelectedVlmVersion()) {
+        if (vlmBackendForVersion(version) === 'custom_api') return vlmContextWindowForVersion(version);
         return normalizeVlmNctx(state.nCtx, 0, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX);
+    }
+
+    function syncVlmContextInput(input) {
+        if (!input) return;
+        const version = resolveVlmVersion(readSelectedVlmVersion());
+        const backend = vlmBackendForVersion(version);
+        const api = backend === 'custom_api';
+        const preferred = normalizeVlmNctx(api ? state.apiContextWindow : state.nCtx);
+        input.min = String(VLM_N_CTX_MIN);
+        input.max = String(api ? VLM_N_CTX_MAX : Math.max(preferred, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX));
+        input.step = String(VLM_N_CTX_STEP);
+        input.disabled = backend !== 'llamacpp' && !api;
+        input.placeholder = localText('Auto', '自动');
+        if (document.activeElement !== input) {
+            const value = preferred > 0 ? String(preferred) : '';
+            if (input.value !== value) input.value = value;
+        }
+        const hint = roleplayDictionaryText(api
+            ? 'API context budget for history and roleplay. Empty uses the app default; the server limit is unchanged.'
+            : 'Context length for local llama.cpp. Empty uses the model default.');
+        input.title = hint;
+        if (input.parentElement) input.parentElement.title = hint;
     }
 
     function normalizeChatMaxTokens(value, fallback = 0) {
@@ -3417,6 +3448,7 @@
                 vramPolicy: normalizeVlmVramPolicy(data.vramPolicy),
                 kvCacheType: normalizeVlmKvCacheType(data.kvCacheType || data.kv_cache_type),
                 nCtx: normalizeVlmNctx(data.nCtx ?? data.n_ctx, 0),
+                apiContextWindow: normalizeVlmNctx(data.apiContextWindow ?? data.api_context_window, 0),
                 customSkillNames: normalizeVlmSkillNames(data.customSkillNames ?? data.skill_names),
                 vlmSkillsExpanded: storedBoolean(data, ['vlmSkillsExpanded', 'vlm_skills_expanded'], true),
                 ...selection,
@@ -3436,6 +3468,7 @@
                 vramPolicy: 'extreme',
                 kvCacheType: 'f16',
                 nCtx: 0,
+                apiContextWindow: 0,
                 customSkillNames: [],
                 vlmSkillsExpanded: true,
                 systemPromptTemplateId: '',
@@ -3504,6 +3537,7 @@
         vramPolicy: normalizeVlmVramPolicy(savedChatSettings.vramPolicy),
         kvCacheType: normalizeVlmKvCacheType(savedChatSettings.kvCacheType),
         nCtx: normalizeVlmNctx(savedChatSettings.nCtx, 0),
+        apiContextWindow: normalizeVlmNctx(savedChatSettings.apiContextWindow, 0),
         vlmRuntimeStatusPollTimer: null,
         vlmRuntimeStatusRequest: null,
         vlmRuntimeStatus: null,
@@ -4380,6 +4414,7 @@
                 vramPolicy: normalizeVlmVramPolicy(state.vramPolicy),
                 kvCacheType: normalizeVlmKvCacheType(state.kvCacheType),
                 nCtx: normalizeVlmNctx(state.nCtx),
+                apiContextWindow: normalizeVlmNctx(state.apiContextWindow),
                 vlmSkillsExpanded: state.vlmSkillsExpanded !== false,
                 systemPromptTemplateId: state.systemPromptTemplateId,
                 systemPromptPickerValue: state.systemPromptPickerValue,
@@ -4572,6 +4607,32 @@
         };
         const pair = labels[normalizeChatMode(mode)] || labels.chat;
         return localText(pair[0], pair[1]);
+    }
+
+    function activateChatMode(mode, modal = document.getElementById('describe_vlm_chat_modal')) {
+        const select = modal?.querySelector('[data-describe-vlm-chat-mode]');
+        const nextMode = normalizeChatMode(mode);
+        if (!select || select.disabled || normalizeChatMode(state.chatMode) === nextMode) return false;
+        select.value = nextMode;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    }
+
+    function renderChatEmptyState(runtime) {
+        if (normalizeChatMode(runtime?.chatMode || state.chatMode) !== 'chat') {
+            return `<div class="describe-vlm-chat-empty">${escapeHtml(t('No chat yet.', '暂无对话。'))}</div>`;
+        }
+        const entries = [
+            ['creative', 'fa-wand-magic-sparkles', 'Generate or edit images'],
+            ['prompt', 'fa-pen-nib', 'Refine a prompt'],
+            ['roleplay', 'fa-masks-theater', 'Start a roleplay'],
+            ['guide', 'fa-circle-question', 'Studio help']
+        ];
+        const actions = entries.map(([mode, icon, label]) => {
+            const title = roleplayDictionaryText('Switch to {mode}').replace('{mode}', chatModeLabel(mode));
+            return `<button type="button" data-describe-vlm-chat-start-mode="${mode}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText(label))}</span></button>`;
+        }).join('');
+        return `<div class="describe-vlm-chat-welcome" data-describe-vlm-chat-welcome><p>${escapeHtml(roleplayDictionaryText('Hello! What would you like to work on today?'))}</p><div class="describe-vlm-chat-welcome-actions">${actions}</div></div>`;
     }
 
     let vlmSkillDraftRequest = null;
@@ -5317,7 +5378,9 @@
         const outputValue = configuredMaxTokens > 0
             ? localText(`${configuredMaxTokens} tokens`, `${configuredMaxTokens} Token`)
             : localText(`Auto (${effectiveChatMaxTokens(state.chatMode)} tokens)`, `自动（${effectiveChatMaxTokens(state.chatMode)} Token）`);
-        const configuredNctx = currentVlmNctx(selectedVersion);
+        const configuredNctx = vlmBackendForVersion(selectedVersion) === 'custom_api'
+            ? normalizeVlmNctx(state.apiContextWindow)
+            : currentVlmNctx(selectedVersion);
         const contextValue = configuredNctx > 0
             ? String(configuredNctx)
             : localText('Auto', '自动');
@@ -5408,16 +5471,7 @@
             kvCacheType.innerHTML = renderVlmKvCacheTypeOptions();
             kvCacheType.value = normalizeVlmKvCacheType(state.kvCacheType);
         }
-        if (nCtx) {
-            const version = resolveVlmVersion(readSelectedVlmVersion());
-            const preferredNctx = normalizeVlmNctx(state.nCtx);
-            nCtx.min = String(VLM_N_CTX_MIN);
-            nCtx.max = String(Math.max(preferredNctx, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX));
-            nCtx.step = String(VLM_N_CTX_STEP);
-            if (document.activeElement !== nCtx) nCtx.value = preferredNctx > 0 ? String(preferredNctx) : '';
-            nCtx.placeholder = localText('Auto', '自动');
-            nCtx.disabled = vlmBackendForVersion(version) !== 'llamacpp';
-        }
+        syncVlmContextInput(nCtx);
         if (mtp) {
             const version = resolveVlmVersion(readSelectedVlmVersion());
             const llamaCpp = vlmBackendForVersion(version) === 'llamacpp';
@@ -11604,10 +11658,12 @@
             if (!id || !name || !content) return null;
             return {
                 id,
-                name,
+                name: key === 'templates' && String(item?.source || '').startsWith('bundled:')
+                    ? roleplayDictionaryText(name) : name,
                 filename: String(item?.filename || id),
                 content,
-                source: String(item?.source || '').trim()
+                source: String(item?.source || '').trim(),
+                recommendedChatMode: key === 'templates' && item?.recommended_chat_mode === 'raw' ? 'raw' : ''
             };
         }).filter(Boolean);
     }
@@ -11761,6 +11817,30 @@
         return systemPromptTemplateRequest;
     }
 
+    async function applyPeModelDefaults(modal, previousVersion = '') {
+        const version = readSelectedVlmVersion();
+        const catalog = Array.isArray(state.vlmModelCatalog) ? state.vlmModelCatalog : [];
+        const model = catalog.find((item) => item.id === version);
+        if (!['t2i', 'i2i'].includes(model?.prompt_enhancer_task)
+            || !['chat', 'prompt', 'raw'].includes(normalizeChatMode(state.chatMode))) return false;
+        const conversationId = state.conversationId;
+        const prompt = state.customSystemPrompt;
+        const templateId = state.systemPromptTemplateId;
+        const previous = catalog.find((item) => item.id === previousVersion);
+        const replaceDefault = previous?.default_system_prompt_template_id === templateId
+            && !!templateId && !state.systemPromptManualOverride && !state.userSystemPromptTemplateId;
+        const hasPrompt = !!(String(prompt || '').trim() || templateId || state.userSystemPromptTemplateId);
+        activateChatMode('raw', modal);
+        if (hasPrompt && !replaceDefault) return true;
+        await ensureSystemPromptTemplates(modal);
+        if (readSelectedVlmVersion() !== version || state.conversationId !== conversationId
+            || state.chatMode !== 'raw' || state.customSystemPrompt !== prompt
+            || state.systemPromptTemplateId !== templateId) return false;
+        const id = `qwen21_pe_${model.prompt_enhancer_task}.md`;
+        if (state.systemPromptTemplates.some((item) => item.id === id)) applySystemPromptTemplate(id, modal);
+        return true;
+    }
+
     function applySystemPromptTemplate(templateId, modal) {
         const rawId = String(templateId || '').trim();
         if (rawId.startsWith('user:')) {
@@ -11781,7 +11861,11 @@
         const target = modal || document.getElementById('describe_vlm_chat_modal');
         saveChatSettings();
         syncSystemPromptTemplateControls(target);
-        setStatus(template
+        const modeChanged = template?.recommendedChatMode === 'raw' && activateChatMode('raw', target);
+        if (!modeChanged) saveConversationSnapshot();
+        setStatus(modeChanged
+            ? roleplayDictionaryText('Loaded {name} and switched to Raw Model.').replace('{name}', template.name)
+            : template
             ? localText(`Built-in document loaded: ${template.name}`, `已载入内置文档：${template.name}`)
             : localText('Built-in document cleared.', '内置文档已清除。'));
     }
@@ -12972,8 +13056,9 @@
 
     function formatVlmRuntimeStatus(response = state.vlmRuntimeStatusResponse) {
         const selectedVersion = resolveVlmVersion(readSelectedVlmVersion());
-        if (selectedVersion === 'Custom') {
-            return localText('Remote API selected', '当前使用远程 API');
+        if (vlmBackendForVersion(selectedVersion) === 'custom_api') {
+            return roleplayDictionaryText('API context budget: {tokens} tokens')
+                .replace('{tokens}', String(currentVlmNctx(selectedVersion)));
         }
         if (response?.state === 'missing' || (response?.ready === false && response?.missing_count > 0)) {
             return t('Model files are missing', '模型文件缺失');
@@ -13088,18 +13173,7 @@
             if (mtp.disabled !== disabled) mtp.disabled = disabled;
         }
         const nCtx = status.querySelector('[data-describe-vlm-chat-n-ctx]');
-        if (nCtx) {
-            const version = resolveVlmVersion(readSelectedVlmVersion());
-            const preferredNctx = normalizeVlmNctx(state.nCtx);
-            const max = String(Math.max(preferredNctx, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX));
-            const disabled = vlmBackendForVersion(version) !== 'llamacpp';
-            if (nCtx.max !== max) nCtx.max = max;
-            if (nCtx.disabled !== disabled) nCtx.disabled = disabled;
-            if (document.activeElement !== nCtx) {
-                const textValue = preferredNctx > 0 ? String(preferredNctx) : '';
-                if (nCtx.value !== textValue) nCtx.value = textValue;
-            }
-        }
+        syncVlmContextInput(nCtx);
         const runtimeText = formatVlmRuntimeStatus();
         if (value.textContent !== runtimeText) value.textContent = runtimeText;
         const runtime = state.vlmRuntimeStatus;
@@ -14850,14 +14924,9 @@
     function chatCompletionLimitMessage(completion) {
         const limit = Math.max(0, Math.round(Number(completion?.max_tokens) || 0));
         return limit > 0
-            ? t(
-                `Reply reached the ${limit} token output limit and may be incomplete. Send “continue” to resume.`,
-                `回答达到 ${limit} token 输出上限，内容可能不完整。可发送“继续输出”。`
-            )
-            : t(
-                'Reply reached the output token limit and may be incomplete. Send “continue” to resume.',
-                '回答达到 token 输出上限，内容可能不完整。可发送“继续输出”。'
-            );
+            ? roleplayDictionaryText('Output reached the {tokens} token limit. Increase Maximum output tokens and regenerate if the answer is incomplete or only thinking was returned.')
+                .replace('{tokens}', String(limit))
+            : roleplayDictionaryText('Output reached the token limit. Increase Maximum output tokens and regenerate if the answer is incomplete or only thinking was returned.');
     }
 
     function visibleReplyFromResponse(response, completion) {
@@ -15594,6 +15663,13 @@
             context_usage: normalizeConversationContextUsage(target.contextUsage),
             messages
         };
+        if (target.systemPromptManualOverride) {
+            recovery.system_prompt_override = {
+                text: String(target.customSystemPrompt || '').slice(0, MAX_SYSTEM_PROMPT_CHARS),
+                template_id: String(target.systemPromptTemplateId || '').slice(0, 160),
+                user_template_id: String(target.userSystemPromptTemplateId || '').slice(0, 160)
+            };
+        }
         if (conversationHasRoleplayData(target, conversationId)) {
             recovery.roleplay_session = compactRoleplaySessionIndexForCatalog(target.roleplaySession);
             recovery.roleplay_branches = (Array.isArray(target.roleplayBranches) ? target.roleplayBranches : [])
@@ -15616,7 +15692,8 @@
                 const record = buildConversationRecoveryRecord(target, Object.assign({}, options, strategy));
                 if (!record?.messages?.length) return false;
                 const serialized = JSON.stringify(record);
-                if (serialized.length > MAX_CONVERSATION_RECOVERY_LENGTH) continue;
+                const promptLength = record.system_prompt_override ? JSON.stringify(record.system_prompt_override).length : 0;
+                if (serialized.length - promptLength > MAX_CONVERSATION_RECOVERY_LENGTH) continue;
                 window.localStorage?.setItem(CONVERSATION_RECOVERY_STORAGE_KEY, serialized);
                 markVlmChatPerformance('vlm_chat.persist.recovery', target, {
                     duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt),
@@ -15670,22 +15747,20 @@
             conversationId,
             maxMessages: null
         });
-        const indexById = new Map();
-        merged.forEach((message, index) => {
-            const id = String(message?.id || '').trim();
-            if (id) indexById.set(id, index);
-        });
-        (Array.isArray(recoveryMessages) ? recoveryMessages : []).forEach((message) => {
-            const normalized = normalizePersistedMessage(message, { conversationId });
-            if (!normalized) return;
+        const recovered = (Array.isArray(recoveryMessages) ? recoveryMessages : [])
+            .map((message) => normalizePersistedMessage(message, { conversationId }))
+            .filter(Boolean);
+        recovered.forEach((normalized, recoveryIndex) => {
             const id = String(normalized.id || '').trim();
-            const existingIndex = id ? indexById.get(id) : undefined;
-            if (existingIndex !== undefined) {
+            const existingIndex = id ? merged.findIndex((message) => message.id === id) : -1;
+            if (existingIndex >= 0) {
                 merged[existingIndex] = normalized;
                 return;
             }
-            merged.push(normalized);
-            if (id) indexById.set(id, merged.length - 1);
+            // The catalog may contain only the last reply; insert its recovered user turn before it.
+            const laterIds = new Set(recovered.slice(recoveryIndex + 1).map((message) => message.id));
+            const nextIndex = merged.findIndex((message) => laterIds.has(message.id));
+            merged.splice(nextIndex < 0 ? merged.length : nextIndex, 0, normalized);
         });
         return retainLatestRoleplayContextReport(merged);
     }
@@ -16284,7 +16359,18 @@
                 || runtime.deleted
             ) return { ok: false, restored: false, available: true, skipped: true };
             const archiveSource = restored || runtime;
-            const settingsSource = recoveryApplies ? runtime : archiveSource;
+            let settingsSource = recoveryApplies ? runtime : archiveSource;
+            const promptOverride = recoveryApplies ? recovery.system_prompt_override : null;
+            if (
+                typeof promptOverride?.text === 'string'
+                && promptOverride.template_id === String(runtime.systemPromptTemplateId || '')
+                && promptOverride.user_template_id === String(runtime.userSystemPromptTemplateId || '')
+            ) {
+                settingsSource = Object.assign({}, settingsSource, {
+                    customSystemPrompt: promptOverride.text.slice(0, MAX_SYSTEM_PROMPT_CHARS),
+                    systemPromptManualOverride: true
+                });
+            }
             const restoredMessages = recoveryApplies
                 ? mergeConversationRecoveryMessages(archiveSource.messages, recovery.messages, conversationId)
                 : archiveSource.messages;
@@ -22971,7 +23057,7 @@
         syncBusyControls(modal);
         syncConversationContextUsage(modal, runtime);
         if (!state.messages.length) {
-            log.innerHTML = `<div class="describe-vlm-chat-empty">${escapeHtml(t('No chat yet.', '暂无对话。'))}</div>${renderQueuedConversationMessages(runtime)}`;
+            log.innerHTML = `${renderChatEmptyState(runtime)}${renderQueuedConversationMessages(runtime)}`;
             renderRoleplayInlineGenerationResults(modal);
             return;
         }
@@ -24064,14 +24150,9 @@
         }
         const version = readSelectedVlmVersion();
         const customApi = readDescribeCustomApi(version);
-        const declaredApiContextWindow = Number(customApi?.context_window || customApi?.contextWindow || 0);
-        const configuredContextWindow = Number(currentVlmNctx(version) || 0);
-        const modelContextWindow = Number(vlmContextWindowForVersion(version) || 0);
         const requestedContextWindow = Math.max(
             1,
-            Number(customApi
-                ? declaredApiContextWindow || modelContextWindow || configuredContextWindow
-                : configuredContextWindow || modelContextWindow) || 8192
+            Number(currentVlmNctx(version) || vlmContextWindowForVersion(version)) || 8192
         );
         const supportsImageInput = !customApi || customApi.supports_images !== false;
         const canSendImages = isDirectRun || supportsImageInput;
@@ -24342,7 +24423,7 @@
                     ? localText('Preparing the prompt...', '正在整理提示词……')
                 : selectedMode === 'guide'
                         ? localText('Preparing workflow guidance...', '正在整理工作流建议……')
-                    : t('Thinking', '思考中'),
+                    : roleplayDictionaryText('Generating reply...'),
             stream_placeholder: roleplayTextStream
                 ? localText('Writing the character reply...', '正在生成角色回复……')
                 : '',
@@ -24927,6 +25008,11 @@
             return drainConversationMessageQueue(runtime);
         }
         try {
+            if (composerRequest) {
+                const conversationId = state.conversationId;
+                await applyPeModelDefaults(ensureModal());
+                if (state.conversationId !== conversationId) return;
+            }
             return await _performSendMessage(options);
         } finally {
             if (
@@ -25846,6 +25932,19 @@
             return;
         }
         if (modal.hidden) return;
+        const startMode = evt.target.closest('[data-describe-vlm-chat-start-mode]');
+        if (startMode) {
+            const mode = startMode.getAttribute('data-describe-vlm-chat-start-mode');
+            activateChatMode(mode, modal);
+            if (mode === 'prompt') {
+                state.settingsPanelOpen = true;
+                syncChatSettingsControls(modal);
+                modal.querySelector('[data-describe-vlm-chat-template]')?.focus();
+            } else {
+                modal.querySelector('[data-describe-vlm-chat-input]')?.focus();
+            }
+            return;
+        }
         const skillEdit = evt.target.closest('[data-describe-vlm-chat-skill-edit]');
         if (skillEdit) {
             editVlmSkill(modal, skillEdit.getAttribute('data-describe-vlm-chat-skill-edit'));
@@ -26719,7 +26818,11 @@
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-n-ctx]')) {
             const version = resolveVlmVersion(readSelectedVlmVersion());
-            state.nCtx = normalizeVlmNctx(evt.target.value, 0, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX);
+            if (vlmBackendForVersion(version) === 'custom_api') {
+                state.apiContextWindow = normalizeVlmNctx(evt.target.value);
+            } else {
+                state.nCtx = normalizeVlmNctx(evt.target.value, 0, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX);
+            }
             state.vlmRuntimeStatus = null;
             state.vlmRuntimeStatusResponse = null;
             saveChatSettings();
@@ -26934,11 +27037,13 @@
             return;
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-model-select]')) {
+            const previousVersion = readSelectedVlmVersion();
             setDescribeVlmVersionFromHeader(evt.target.value);
             state.vlmRuntimeStatus = null;
             state.vlmRuntimeStatusResponse = null;
             syncChatSettingsControls(document.getElementById('describe_vlm_chat_modal'));
             refreshVlmRuntimeStatus().catch(() => {});
+            applyPeModelDefaults(document.getElementById('describe_vlm_chat_modal'), previousVersion).catch(() => {});
             return;
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-conversation-select]')) {
@@ -27027,6 +27132,7 @@
         }
         if (evt.target?.closest?.('#describe_vlm_model_dropdown, #describe_vlm_model, #describe_vlm_custom_panel')) {
             updateAnswerModelIndicator();
+            updateVlmRuntimeStatus(document.getElementById('describe_vlm_chat_modal'));
             syncChatSettingsSummary(document.getElementById('describe_vlm_chat_modal'));
         }
     });
@@ -27064,6 +27170,7 @@
                 !== mergedSystemPromptContent().trim();
             syncSystemPromptTemplateControls(document.getElementById('describe_vlm_chat_modal'));
             saveChatSettings();
+            scheduleConversationPersist(syncCurrentRuntimeFromState(), 'system_prompt_edit');
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-user-template-name]')) {
             state.userSystemPromptTemplateName = evt.target.value || '';

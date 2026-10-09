@@ -300,7 +300,7 @@ def should_try_fallback(result: Any) -> bool:
         return True
     if result.get("ok"):
         return False
-    if result.get("aborted") or result.get("cancelled"):
+    if result.get("aborted") or result.get("cancelled") or result.get("error") == "textgen_stop_unconfirmed":
         return False
     error = _text(result.get("error") or result.get("details"), 240).lower()
     return not any(token in error for token in ("cancel", "aborted", "state_version_conflict", "branch_conflict"))

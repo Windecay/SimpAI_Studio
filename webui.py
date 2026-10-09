@@ -4459,6 +4459,8 @@ with shared.gradio_root:
                     ] + empty_buttons_update + empty_system_update
 
                 def _missing_model_download_system_update(state_params, active, user_did=None):
+                    if not isinstance(state_params, dict) or not state_params.get("engine"):
+                        return [skip_component_update()]
                     preset_status_updates = {}
                     if not active:
                         active_context = _get_missing_model_active_context(state_params, user_did=user_did)
@@ -4483,6 +4485,8 @@ with shared.gradio_root:
                 def refresh_missing_model_modal(state_params):
                     empty_buttons_update = [skip_component_update() for _ in range(len(bar_buttons))]
                     empty_system_update = [skip_component_update()]
+                    if not isinstance(state_params, dict) or not state_params.get("engine"):
+                        return [skip_component_update() for _ in range(4)] + empty_buttons_update + empty_system_update
                     user_did = _get_state_user_did(state_params)
                     modal_updates = _render_active_missing_model_modal_updates(state_params, user_did=user_did)
                     active = model_loader.has_active_download_tasks()
@@ -4494,6 +4498,8 @@ with shared.gradio_root:
                     return modal_updates + button_updates + system_update
 
                 def refresh_missing_model_nav_state(state_params):
+                    if not isinstance(state_params, dict) or not state_params.get("engine"):
+                        return [skip_component_update() for _ in range(len(bar_buttons) + 1)]
                     active = model_loader.has_active_download_tasks()
                     user_did = _get_state_user_did(state_params)
                     system_update = _missing_model_download_system_update(state_params, active, user_did=user_did)

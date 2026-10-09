@@ -1,6 +1,9 @@
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 
+import httpx
 import numpy as np
 from PIL import Image
 
@@ -19,11 +22,38 @@ _QWEN3VL_IM_END = "<|im_end|>"
 _QWEN3VL_IMAGE_BLOCK = "<|vision_start|><|image_pad|><|vision_end|>"
 
 
+class ComfyTextgenInterrupted(RuntimeError):
+    def __init__(self, code, message):
+        self.code = code
+        super().__init__(message)
+
+
 class ComfyTextgenVLM:
     def __init__(self):
         self.lock = threading.RLock()
         self.conversation_messages = {}
         self.conversation_system_prompts = {}
+        self._control = ContextVar("comfy_textgen_control", default=None)
+
+    @contextmanager
+    def request_control(self, *, deadline=None, cancel_check=None, timeout_code="textgen_timeout"):
+        token = self._control.set((deadline, cancel_check, timeout_code))
+        try:
+            self._check_request()
+            yield
+            self._check_request()
+        finally:
+            self._control.reset(token)
+
+    def _check_request(self):
+        control = self._control.get()
+        if control is None:
+            return
+        deadline, cancel_check, timeout_code = control
+        if callable(cancel_check) and cancel_check():
+            raise ComfyTextgenInterrupted("cancelled", "Text Encoder request cancelled.")
+        if deadline is not None and time.monotonic() >= deadline:
+            raise ComfyTextgenInterrupted(timeout_code, "Text Encoder inference timed out.")
 
     def _runtime(self):
         from enhanced.simpleai import comfyd, comfyclient_pipeline
@@ -31,23 +61,31 @@ class ComfyTextgenVLM:
         return comfyd, comfyclient_pipeline
 
     def _ensure_server(self, timeout=300):
+        self._check_request()
         if bool(getattr(getattr(shared, "args", None), "disable_backend", False)):
             raise RuntimeError("Comfy backend is disabled.")
         if bool(getattr(getattr(shared, "args", None), "disable_comfyd", False)):
             raise RuntimeError("Comfyd is disabled.")
         comfyd, comfyclient_pipeline = self._runtime()
         comfyd.start()
+        control = self._control.get()
+        if control is not None and control[0] is not None:
+            timeout = min(timeout, max(0.1, control[0] - time.monotonic()))
         deadline = time.monotonic() + max(1.0, float(timeout))
+
+        def process_alive():
+            self._check_request()
+            return comfyd.is_running()
+
         comfyclient_pipeline.wait_for_server_ready(
-            timeout_seconds=timeout, process_alive_callback=comfyd.is_running,
+            timeout_seconds=timeout, process_alive_callback=process_alive,
         )
         last_error = ""
         while time.monotonic() < deadline:
+            self._check_request()
             if not comfyd.is_running():
                 raise RuntimeError("Comfyd stopped before TextGenerate became available.")
             try:
-                import httpx
-
                 endpoint = str(comfyclient_pipeline.server_address())
                 with httpx.Client(timeout=5.0) as client:
                     response = client.get(f"http://{endpoint}/object_info")
@@ -143,6 +181,7 @@ class ComfyTextgenVLM:
             f"{_QWEN3VL_IM_START}user\n{image_prefix}{str(prompt or '').strip()}"
             f"{_QWEN3VL_IM_END}\n{_QWEN3VL_IM_START}assistant\n"
         )
+        sections.append("<think>\n" if thinking else "<think>\n</think>\n")
         return "".join(sections)
 
     def build_workflow(
@@ -159,6 +198,7 @@ class ComfyTextgenVLM:
         seed=-1,
         thinking=False,
         use_default_template=True,
+        system_prompt=None,
     ):
         image_names = list(image_names or [])
         workflow = {
@@ -214,6 +254,8 @@ class ComfyTextgenVLM:
         }
         if image_output is not None:
             textgen_inputs["image"] = image_output
+        if use_default_template and str(system_prompt or "").strip():
+            textgen_inputs["system_prompt"] = str(system_prompt).strip()
         workflow[textgen_id] = {"class_type": "TextGenerate", "inputs": textgen_inputs}
 
         preview_id = str(next_id)
@@ -259,33 +301,58 @@ class ComfyTextgenVLM:
 
     def _execute_workflow_in_session(self, workflow, preview_id, timeout=600):
         _, comfyclient_pipeline = self._runtime()
+        self._check_request()
         user_did, user_cert = self._user_credentials()
         queued = comfyclient_pipeline.queue_prompt(user_did, workflow, user_cert)
         if not isinstance(queued, dict) or not queued.get("prompt_id"):
             raise RuntimeError(f"Comfyd rejected the TextGenerate workflow: {queued}")
         prompt_id = str(queued["prompt_id"])
         deadline = time.monotonic() + max(1.0, float(timeout))
-        while time.monotonic() < deadline:
-            item = comfyclient_pipeline.get_history_item(prompt_id)
-            if isinstance(item, dict):
-                text = self._extract_preview_text(item, preview_id)
-                if text is not None:
-                    return strip_reasoning_text(text)
-                status = item.get("status")
-                if isinstance(status, dict):
-                    status_name = str(status.get("status_str") or "").lower()
-                    if status_name in {"error", "failed", "failure"}:
-                        raise RuntimeError(self._history_error(item))
-                    if status.get("completed") is True:
-                        if status_name not in {"success", "completed"}:
-                            raise RuntimeError(self._history_error(item))
-                        raise RuntimeError("Comfy TextGenerate completed without text output.")
-            time.sleep(0.25)
         try:
-            comfyclient_pipeline.interrupt()
-        except Exception:
-            pass
-        raise TimeoutError(f"Comfy TextGenerate timed out after {int(timeout)} seconds.")
+            while True:
+                self._check_request()
+                if time.monotonic() >= deadline:
+                    raise ComfyTextgenInterrupted("textgen_timeout", "Text Encoder inference timed out.")
+                item = comfyclient_pipeline.get_history_item(prompt_id)
+                if isinstance(item, dict):
+                    text = self._extract_preview_text(item, preview_id)
+                    if text is not None:
+                        return strip_reasoning_text(text)
+                    status = item.get("status")
+                    if isinstance(status, dict):
+                        status_name = str(status.get("status_str") or "").lower()
+                        if status_name in {"error", "failed", "failure"}:
+                            raise RuntimeError(self._history_error(item))
+                        if status.get("completed") is True:
+                            if status_name not in {"success", "completed"}:
+                                raise RuntimeError(self._history_error(item))
+                            raise RuntimeError("Comfy TextGenerate completed without text output.")
+                time.sleep(0.25)
+        except ComfyTextgenInterrupted:
+            self._cancel_workflow(prompt_id)
+            raise
+
+    def _cancel_workflow(self, prompt_id, timeout=15):
+        _, pipeline = self._runtime()
+        endpoint = f"http://{pipeline.server_address()}"
+        deadline = time.monotonic() + timeout
+        try:
+            with httpx.Client(timeout=5.0) as client:
+                client.post(f"{endpoint}/queue", json={"delete": [prompt_id]}).raise_for_status()
+                client.post(f"{endpoint}/interrupt", json={"prompt_id": prompt_id}).raise_for_status()
+                while time.monotonic() < deadline:
+                    response = client.get(f"{endpoint}/queue")
+                    response.raise_for_status()
+                    queued = response.json()
+                    running, pending = queued.get("queue_running"), queued.get("queue_pending")
+                    if not isinstance(running, list) or not isinstance(pending, list):
+                        raise ValueError("Invalid Comfy queue response.")
+                    if not any(len(row) > 1 and row[1] == prompt_id for row in running + pending):
+                        return
+                    time.sleep(0.1)
+        except Exception as exc:
+            logger.warning("Text Encoder cancellation could not be confirmed: prompt_id=%s error=%s", prompt_id, exc)
+        raise ComfyTextgenInterrupted("textgen_stop_unconfirmed", "Text Encoder cancellation could not be confirmed; check the backend task queue.")
 
     def inference(
         self,
@@ -304,11 +371,11 @@ class ComfyTextgenVLM:
         use_default_template=True,
     ):
         with self.lock:
+            self._check_request()
             self._ensure_server()
             effective_prompt = str(prompt or "").strip()
-            if str(system_prompt or "").strip():
-                effective_prompt = f"System instruction:\n{str(system_prompt).strip()}\n\nUser request:\n{effective_prompt}"
             image_names = self._upload_images(image)
+            self._check_request()
             workflow, preview_id = self.build_workflow(
                 clip_name=clip_name,
                 clip_type=clip_type,
@@ -322,6 +389,7 @@ class ComfyTextgenVLM:
                 seed=seed,
                 thinking=thinking,
                 use_default_template=use_default_template,
+                system_prompt=system_prompt,
             )
             return self._execute_workflow(workflow, preview_id)
 

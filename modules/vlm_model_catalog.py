@@ -7,12 +7,13 @@ import threading
 import time
 
 from modules.llama_cpp_runtime import LLAMA_CPP_N_CTX_MAX
+from modules.pe_models import qwen_pe_vlm_task
 
 
 CATALOG_SCHEMA = "simpai.vlm-model-catalog.v1"
 GGUF_RUNTIME_CONTEXT_DEFAULT = 8192
 GGUF_RUNTIME_CONTEXT_MAX = LLAMA_CPP_N_CTX_MAX
-CHAT_CATALOG_TEXT_ENCODER_ARCHITECTURES = frozenset({"qwen3vl_4b", "qwen3vl_8b"})
+CHAT_CATALOG_TEXT_ENCODER_ARCHITECTURES = frozenset({"qwen3vl_4b", "qwen3vl_8b", "qwen35_9b"})
 GGUF_SUPPORTED_VERSIONS = frozenset({2, 3})
 GGUF_METADATA_KEYS = frozenset({
     "general.architecture",
@@ -556,6 +557,10 @@ def infer_text_encoder_recipe(header, filename=""):
     if "model.language_model.layers.0.linear_attn.A_log" in keys:
         shape = _tensor_shape(header, "model.language_model.layers.0.input_layernorm.weight")
         size = {1024: "0.8B", 2560: "4B", 4096: "9B", 5120: "27B"}.get(shape[0] if shape else 0, "2B")
+        if size == "9B":
+            head_shape = _tensor_shape(header, "lm_head.weight") or _tensor_shape(header, "model.lm_head.weight")
+            if len(head_shape) != 2 or head_shape[0] <= 0 or head_shape[1] != shape[0]:
+                return None
         has_vision = any(key.startswith("model.visual.") for key in keys)
         return {
             "architecture": f"qwen35_{size.lower()}",
@@ -859,8 +864,15 @@ def _scan_text_encoder_items(text_encoder_roots, claimed_paths):
         if recipe.get("architecture") not in CHAT_CATALOG_TEXT_ENCODER_ARCHITECTURES:
             continue
         version_id = f"comfy:text_encoders:{relative_path}"
+        pe_task = qwen_pe_vlm_task(version_id)
+        pe_metadata = {
+            "prompt_enhancer_task": pe_task,
+            "recommended_chat_mode": "raw",
+            "default_system_prompt_template_id": f"qwen21_pe_{pe_task}.md",
+        } if pe_task else {}
         capabilities = list(recipe["capabilities"])
         config = {
+            **pe_metadata,
             "model": relative_path,
             "model_file": relative_path,
             "clip_name": relative_path,
@@ -879,6 +891,7 @@ def _scan_text_encoder_items(text_encoder_roots, claimed_paths):
         label = f"{recipe['family']} · {os.path.basename(relative_path)}"
         rows.append({
             "id": version_id,
+            **pe_metadata,
             "label": label,
             "display_label": _display_label("Text Encoder", label),
             "group": "Text Encoder",

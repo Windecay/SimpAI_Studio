@@ -71,14 +71,29 @@ def _parse_message(text):
         text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
     try:
         value, _ = json.JSONDecoder().raw_decode(text)
-    except (ValueError, TypeError):
-        if re.match(r'^\{\s*"assistant_message"\s*:', text):
+    except json.JSONDecodeError as exc:
+        if not re.match(r'^\{\s*"assistant_message"\s*:', text):
+            return None
+        # Recover one missing outer brace, without inventing text or a continuation flag.
+        if exc.pos != len(text):
             raise HarnessStopped("invalid_assistant_message") from None
-        return None
+        try:
+            value = json.loads(text + "}")
+        except json.JSONDecodeError:
+            raise HarnessStopped("invalid_assistant_message") from None
     if not isinstance(value, dict) or "assistant_message" not in value:
         return None
+    if value.get("tool_calls") == []:
+        value = {key: item for key, item in value.items() if key != "tool_calls"}
     message = value["assistant_message"]
-    if (set(value) != {"assistant_message"} or not isinstance(message, dict)
+    # Some local models flatten the text and continuation flag into the outer object.
+    if set(value) == {"assistant_message", "continue"} and isinstance(message, str):
+        message = {"text": message, "continue": value["continue"]}
+    elif set(value) != {"assistant_message"}:
+        raise HarnessStopped("invalid_assistant_message")
+    if isinstance(message, dict) and message.get("tool_calls") == []:
+        message = {key: item for key, item in message.items() if key != "tool_calls"}
+    if (not isinstance(message, dict)
             or set(message) != {"text", "continue"}
             or not isinstance(message["text"], str) or not message["text"].strip()
             or len(message["text"]) > 16000 or not isinstance(message["continue"], bool)):
@@ -168,6 +183,7 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
     rounds = 0
     continuation_open = False
     continuation_repairs = 0
+    reply_format_pending = False
 
     def summary(state):
         return {"rounds": rounds, "tool_calls": trace, "state": state,
@@ -319,6 +335,9 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
                     "\nContinuation is open. Plain text cannot end this turn. Send only the next unsent part as "
                     "assistant_message, or request tools. Use continue=false only for the actual last part. "
                     "The original structured reply/actions final format is also allowed. "
+                )
+            if continuation_repairs:
+                system_prompt += (
                     "If Prior steps includes a continuation_repair, its draft was NOT displayed: reissue that same "
                     "next part with the required envelope and correct continue value; do not skip it or repeat delivered messages."
                 )
@@ -336,6 +355,8 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
             except Exception:
                 check()
                 raise HarnessStopped("model_execution_failed") from None
+            if isinstance(result, dict) and result.get("error") == "textgen_stop_unconfirmed":
+                return {**result, "harness": summary("model_failed")}
             check()
             if not isinstance(result, dict) or not result.get("ok"):
                 return {**(result if isinstance(result, dict) else {"ok": False, "error": "Invalid model response."}),
@@ -346,28 +367,43 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
             native = result.get("harness_output_messages")
             blocks = [item.strip() for item in native if isinstance(item, str) and item.strip()] if isinstance(native, list) else []
             message, calls, prelude = None, None, []
-            for block in blocks or [text]:
-                message = _parse_message(block)
-                calls = None if message is not None else _parse_calls(block, limits.max_batch)
-                if message is not None or calls is not None:
-                    break
-                prelude.append(block)
+            parse_error, repair_draft = "", text
+            try:
+                for block in blocks or [text]:
+                    message = _parse_message(block)
+                    calls = None if message is not None else _parse_calls(block, limits.max_batch)
+                    if message is not None or calls is not None:
+                        break
+                    prelude.append(block)
+            except HarnessStopped as exc:
+                if exc.code != "invalid_assistant_message":
+                    raise
+                parse_error, repair_draft = exc.code, block
             result = {key: value for key, value in result.items() if key != "harness_output_messages"}
-            if continuation_open and message is None and calls is None and not _structured_final_reply(text):
+            if parse_error or ((continuation_open or reply_format_pending)
+                               and message is None and calls is None and not _structured_final_reply(text)):
                 if continuation_repairs >= limits.max_continuation_repairs:
-                    raise HarnessStopped("continuation_protocol_failed")
+                    raise HarnessStopped(parse_error or "continuation_protocol_failed")
                 if rounds == limits.max_rounds:
                     raise HarnessStopped("harness_step_limit")
                 continuation_repairs += 1
+                reply_format_pending = True
                 transcript.append({"continuation_repair": {
-                    "reason": "A continuation reply omitted its control envelope; it has not been delivered.",
-                    "draft": str(text)[:limits.result_chars],
+                    "reason": (
+                        'The assistant_message format is invalid and was NOT displayed. Preserve the intended text '
+                        'and return valid JSON: {"assistant_message":{"text":"...","continue":false}}. '
+                        'Use a boolean continuation flag and no extra fields. Do not repeat delivered messages.'
+                        if parse_error else
+                        "A continuation reply omitted its control envelope; it has not been delivered."
+                    ),
+                    "draft": str(repair_draft)[:limits.result_chars],
                     "delivered_messages": len(messages),
                 }})
                 logger.info("Studio Agent continuation protocol retry: conversation_id=%s request_id=%s round=%s delivered=%s repair=%s",
                             payload.get("conversation_id", ""), payload.get("request_id", ""), rounds, len(messages), continuation_repairs)
                 continue
             if message is not None:
+                reply_format_pending = False
                 refresh_context()
                 if message["continue"]:
                     continuation_open = True

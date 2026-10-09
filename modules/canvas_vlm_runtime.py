@@ -1701,7 +1701,7 @@ def canvas_vlm_run(payload, stream_callback=None):
         )
 
     stage_started = time.monotonic()
-    max_tokens = clamp_int(params.get("max_tokens", 1024), 1024, 64, 8192)
+    max_tokens = clamp_int(params.get("max_tokens", 1024), 1024, 64, 65536)
     temperature = clamp_number(params.get("temperature", 0.8), 0.8, 0, 2)
     top_p = clamp_number(params.get("top_p", 0.9), 0.9, 0, 1)
     top_k = clamp_int(params.get("top_k", 40), 40, 0, 200)

@@ -11,6 +11,7 @@ import io
 import shutil
 import stat
 import tempfile
+import traceback
 import zipfile
 from contextlib import redirect_stdout
 from tqdm import tqdm
@@ -1094,6 +1095,99 @@ def _resource_archive_path(bundle):
     return os.path.join(os.path.dirname(target_root), RESOURCE_CACHE_DIR_NAME, resource_id, file_name)
 
 
+def _resource_error_path(bundle):
+    return os.path.join(os.path.dirname(_resource_archive_path(bundle)), "last-install-error.json")
+
+
+def _resource_archive_signature(archive_path):
+    try:
+        info = os.stat(archive_path)
+        return {"size": info.st_size, "mtime_ns": info.st_mtime_ns}
+    except OSError:
+        return None
+
+
+def _read_resource_install_error(bundle, archive_path):
+    if not archive_path:
+        return {}
+    try:
+        with open(_resource_error_path(bundle), "r", encoding="utf-8") as error_file:
+            record = json.load(error_file)
+        if not isinstance(record, dict):
+            return {}
+        if (
+            os.path.normcase(record.get("archive_path", "")) != os.path.normcase(os.path.abspath(archive_path))
+            or record.get("archive_signature") != _resource_archive_signature(archive_path)
+            or record.get("expected_sha256") != bundle.get("sha256", "")
+            or record.get("install_path") != _resource_install_root(bundle)
+        ):
+            return {}
+        return record
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _clear_resource_install_error(bundle):
+    try:
+        os.remove(_resource_error_path(bundle))
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        print(f"△资源包错误记录清理失败: {_resource_error_path(bundle)} ({error!r})")
+
+
+def _report_resource_install_error(error, archive_path, bundle, staging_root, phase):
+    record = {
+        "archive_path": os.path.abspath(archive_path),
+        "install_path": _resource_install_root(bundle),
+        "staging_path": staging_root,
+        "archive_signature": _resource_archive_signature(archive_path),
+        "expected_sha256": bundle.get("sha256", ""),
+        "phase": phase,
+        "error_type": type(error).__name__,
+        "message": str(error) or repr(error),
+        "errno": getattr(error, "errno", None),
+        "winerror": getattr(error, "winerror", None),
+        "member": getattr(error, "resource_member", ""),
+        "destination": getattr(error, "resource_destination", ""),
+        "processed_bytes": getattr(error, "resource_processed_bytes", None),
+        "total_bytes": getattr(error, "resource_total_bytes", None),
+        "traceback": "".join(traceback.format_exception(type(error), error, error.__traceback__)),
+        "failed_at": time.time(),
+    }
+    print(f"×资源包解压安装失败: {record['error_type']}: {record['message']}")
+    for label, key in (
+        ("失败阶段", "phase"), ("压缩包完整路径", "archive_path"),
+        ("安装目录", "install_path"), ("临时解压目录", "staging_path"),
+        ("压缩包内部文件", "member"), ("写入路径", "destination"),
+    ):
+        if record[key]:
+            print(f"  {label}: {record[key]}")
+    if record["processed_bytes"] is not None:
+        print(f"  已解压字节: {record['processed_bytes']} / {record['total_bytes']}")
+    print(record["traceback"].rstrip())
+    temporary_path = ""
+    try:
+        error_path = _resource_error_path(bundle)
+        record["diagnostics_path"] = error_path
+        os.makedirs(os.path.dirname(error_path), exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=os.path.dirname(error_path),
+                                         prefix=".install-error-", suffix=".tmp", delete=False) as error_file:
+            temporary_path = error_file.name
+            json.dump(record, error_file, ensure_ascii=False, indent=2)
+        os.replace(temporary_path, error_path)
+        temporary_path = ""
+        print(f"  诊断记录: {error_path}")
+    except OSError as record_error:
+        print(f"△无法保存诊断记录，请保留以上控制台信息: {record_error!r}")
+    finally:
+        if temporary_path:
+            try:
+                os.remove(temporary_path)
+            except OSError:
+                pass
+
+
 def _resource_archive_candidates(bundle):
     file_name = os.path.basename(str(bundle.get("file_name") or "").strip().replace("\\", "/"))
     if not file_name or file_name in {".", ".."}:
@@ -1298,9 +1392,13 @@ def _cleanup_installed_resource_archives(bundle):
 def _resource_bundle_status(bundle):
     _cleanup_resource_staging_directories(bundle)
     if is_resource_bundle_installed(bundle):
+        _clear_resource_install_error(bundle)
         _cleanup_installed_resource_archives(bundle)
         return "ok"
-    if _find_existing_resource_archive(bundle, verify=False):
+    archive_path = _find_existing_resource_archive(bundle, verify=False)
+    if archive_path:
+        if _read_resource_install_error(bundle, archive_path):
+            return "install_failed"
         return "ready_to_install"
     return "missing"
 
@@ -1366,27 +1464,34 @@ def _extract_resource_archive(archive_path, staging_root, bundle, progress_callb
         last_reported_at = time.monotonic()
         report_step = max(16 * 1024 * 1024, total_bytes // 100) if total_bytes > 0 else 1
         for entry, member_path, destination, is_directory in installable_entries:
-            if is_directory:
-                os.makedirs(destination, exist_ok=True)
-                continue
-            os.makedirs(os.path.dirname(destination), exist_ok=True)
-            with archive.open(entry, "r") as source, open(destination, "wb") as target:
-                while True:
-                    data = source.read(8 * 1024 * 1024)
-                    if not data:
-                        break
-                    target.write(data)
-                    processed_bytes += len(data)
-                    if progress_callback:
-                        now = time.monotonic()
-                        if (
-                            processed_bytes >= total_bytes
-                            or processed_bytes - last_reported_bytes >= report_step
-                            or now - last_reported_at >= 0.5
-                        ):
-                            progress_callback(processed_bytes, total_bytes)
-                            last_reported_bytes = processed_bytes
-                            last_reported_at = now
+            try:
+                if is_directory:
+                    os.makedirs(destination, exist_ok=True)
+                    continue
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                with archive.open(entry, "r") as source, open(destination, "wb") as target:
+                    while True:
+                        data = source.read(8 * 1024 * 1024)
+                        if not data:
+                            break
+                        target.write(data)
+                        processed_bytes += len(data)
+                        if progress_callback:
+                            now = time.monotonic()
+                            if (
+                                processed_bytes >= total_bytes
+                                or processed_bytes - last_reported_bytes >= report_step
+                                or now - last_reported_at >= 0.5
+                            ):
+                                progress_callback(processed_bytes, total_bytes)
+                                last_reported_bytes = processed_bytes
+                                last_reported_at = now
+            except Exception as error:
+                error.resource_member = entry.filename
+                error.resource_destination = destination
+                error.resource_processed_bytes = processed_bytes
+                error.resource_total_bytes = total_bytes
+                raise
         if progress_callback:
             progress_callback(processed_bytes, total_bytes)
 
@@ -1599,16 +1704,23 @@ def _resource_delete_candidates(package_name, package, packages, force=False):
 
 
 def install_resource_bundle(archive_path, bundle):
+    archive_path = os.path.abspath(archive_path)
     target_root = _resource_install_root(bundle)
     parent_dir = os.path.dirname(target_root)
-    os.makedirs(parent_dir, exist_ok=True)
-    _cleanup_resource_staging_directories(bundle)
-    staging_root = tempfile.mkdtemp(prefix=f".{os.path.basename(target_root)}.staging-", dir=parent_dir)
+    staging_root = ""
     backup_root = f"{target_root}.backup-{time.time_ns()}"
     moved_existing = False
     install_committed = False
+    phase = "准备安装目录"
+    print(f"▶ 资源包完整路径: {archive_path}")
+    print(f"  安装目录: {target_root}")
     try:
-        print(f"{Fore.CYAN}▶ 正在解压资源包: {bundle.get('file_name')}{Style.RESET_ALL}")
+        os.makedirs(parent_dir, exist_ok=True)
+        _cleanup_resource_staging_directories(bundle)
+        staging_root = tempfile.mkdtemp(prefix=f".{os.path.basename(target_root)}.staging-", dir=parent_dir)
+        phase = "解压文件"
+        print(f"{Fore.CYAN}▶ 正在解压资源包: {archive_path}{Style.RESET_ALL}")
+        print(f"  临时解压目录: {staging_root}")
         _emit_resource_progress(bundle, "extracting", 0, 0)
         _extract_resource_archive(
             archive_path,
@@ -1618,7 +1730,9 @@ def install_resource_bundle(archive_path, bundle):
                 bundle, "extracting", current, total
             ),
         )
+        phase = "检查解压内容"
         _validate_resource_bundle_directory(staging_root, bundle)
+        phase = "写入安装记录"
         with open(os.path.join(staging_root, ".simpleai-resource.json"), "w", encoding="utf-8") as marker_file:
             json.dump(
                 {
@@ -1631,7 +1745,8 @@ def install_resource_bundle(archive_path, bundle):
                 ensure_ascii=False,
                 indent=2,
             )
-        print(f"{Fore.CYAN}▶ 正在安装资源包: {bundle.get('file_name')}{Style.RESET_ALL}")
+        phase = "替换安装目录"
+        print(f"{Fore.CYAN}▶ 正在安装资源包: {target_root}{Style.RESET_ALL}")
         _emit_resource_progress(bundle, "installing", 0, 0)
         if os.path.lexists(target_root):
             _rename_resource_path_with_retry(target_root, backup_root)
@@ -1639,6 +1754,7 @@ def install_resource_bundle(archive_path, bundle):
         _rename_resource_path_with_retry(staging_root, target_root)
         staging_root = ""
         install_committed = True
+        _clear_resource_install_error(bundle)
         if moved_existing:
             backup_error = _try_remove_resource_path(backup_root)
             if backup_error is not None:
@@ -1648,7 +1764,9 @@ def install_resource_bundle(archive_path, bundle):
         _cleanup_resource_staging_directories(bundle)
         _emit_resource_progress(bundle, "complete", 1, 1)
         return target_root
-    except Exception:
+    except Exception as error:
+        _report_resource_install_error(error, archive_path, bundle, staging_root, phase)
+        _emit_resource_progress(bundle, "failed", 0, 0)
         if os.path.lexists(target_root) and moved_existing:
             target_error = _try_remove_resource_path(target_root)
             if target_error is not None:
@@ -1678,7 +1796,7 @@ def install_resource_bundle(archive_path, bundle):
                 )
 
 
-def _install_local_resource_bundle(bundle):
+def _install_local_resource_bundle(bundle, archive_path=None):
     if not _resource_bundle_supported_by_launcher(bundle):
         _print_launcher_upgrade_required(bundle)
         return False
@@ -1687,7 +1805,7 @@ def _install_local_resource_bundle(bundle):
         _cleanup_resource_staging_directories(bundle)
         return True
 
-    archive_path = _find_existing_resource_archive(bundle, verify=True)
+    archive_path = archive_path or _find_existing_resource_archive(bundle, verify=True)
     if not archive_path:
         return False
 
@@ -1701,7 +1819,7 @@ def _install_local_resource_bundle(bundle):
         print(f"√已安装本地资源包: {_resource_install_root(bundle)}")
         return True
     except Exception as error:
-        print(f"×本地资源包安装失败: {error}")
+        print(f"×本地资源包安装失败: {type(error).__name__}: {str(error) or repr(error)}")
         return False
 
 
@@ -1732,8 +1850,13 @@ def _download_resource_bundle(bundle, position=0):
     if not _resource_bundle_supported_by_launcher(bundle):
         _print_launcher_upgrade_required(bundle)
         return False
-    if _install_local_resource_bundle(bundle):
-        return True
+    if is_resource_bundle_installed(bundle):
+        return _install_local_resource_bundle(bundle)
+    local_archive = _find_existing_resource_archive(bundle, verify=True)
+    if local_archive:
+        # A valid local archive failing to install must not trigger a second
+        # download/extraction attempt in the same operation.
+        return _install_local_resource_bundle(bundle, archive_path=local_archive)
 
     urls = select_resource_download_urls(bundle)
     if not urls:
@@ -1741,6 +1864,7 @@ def _download_resource_bundle(bundle, position=0):
         return False
 
     archive_path = _resource_archive_path(bundle)
+    print(f"▶ 资源包下载保存路径: {os.path.abspath(archive_path)}")
     os.makedirs(os.path.dirname(archive_path), exist_ok=True)
     if os.path.isfile(archive_path) and not _resource_archive_is_ready(archive_path, bundle):
         try:
@@ -1787,7 +1911,7 @@ def _download_resource_bundle(bundle, position=0):
         print(f"{Fore.GREEN}√资源包已安装 / Resource bundle installed: {_resource_install_root(bundle)}{Style.RESET_ALL}")
         return True
     except Exception as error:
-        print(f"{Fore.RED}×资源包解压安装失败 / Resource bundle installation failed: {error}{Style.RESET_ALL}")
+        print(f"{Fore.RED}×资源包解压安装失败: {type(error).__name__}: {str(error) or repr(error)}{Style.RESET_ALL}")
         return False
 
 
@@ -2208,14 +2332,25 @@ def get_package_status(packages, package_ids=None):
                 }
             )
         for resource in resource_entries:
-            if not is_resource_bundle_installed(resource):
-                _install_local_resource_bundle(resource)
-            status_name = _resource_bundle_status(resource)
-            target_root = _resource_install_root(resource)
+            target_root = ""
+            archive_path = ""
+            actual_archive_path = ""
+            error_info = {}
+            try:
+                target_root = _resource_install_root(resource)
+                archive_path = _resource_archive_path(resource)
+                # Listing packages must never start a lengthy installation.
+                status_name = _resource_bundle_status(resource)
+                actual_archive_path = _find_existing_resource_archive(resource, verify=False)
+                if status_name == "install_failed":
+                    error_info = _read_resource_install_error(resource, actual_archive_path)
+            except Exception as error:
+                status_name = "access_error"
+                error_info = {"error_type": type(error).__name__, "message": str(error) or repr(error)}
+                print(f"×资源包状态检查失败: {resource.get('file_name')}: {error_info['error_type']}: {error_info['message']}")
             resource_size = _normalize_expected_size(resource.get("size"))
             if status_name == "ok":
                 non_missing_size += resource_size
-            actual_archive_path = _find_existing_resource_archive(resource, verify=False)
             resource_statuses.append(
                 {
                     "id": resource.get("id"),
@@ -2225,8 +2360,9 @@ def get_package_status(packages, package_ids=None):
                     "sha256": resource.get("sha256"),
                     "install_path": target_root,
                     "status": status_name,
-                    "archive_path": _resource_archive_path(resource),
+                    "archive_path": archive_path,
                     "actual_archive_path": actual_archive_path or "",
+                    "error": error_info,
                     "required_paths": list(resource.get("required_paths", []) or []),
                 }
             )
@@ -4470,8 +4606,9 @@ def run_cli_command(argv):
                 else:
                     print(f"{Fore.RED}△输入格式错误：'{pkg_id_str}' 不是有效的模型包编号{Style.RESET_ALL}")
             package_ids = ids
-        status = get_package_status(packages, package_ids)
-        _print_obsolete_models_report()
+        with redirect_stdout(sys.stderr):
+            status = get_package_status(packages, package_ids)
+            _print_obsolete_models_report()
         print(json.dumps(status, ensure_ascii=False, indent=2))
         return
 

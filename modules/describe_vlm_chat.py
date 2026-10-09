@@ -28,6 +28,7 @@ import modules.vlm_skill_runtime as vlm_skill_runtime
 import modules.vlm_tool_runtime as vlm_tool_runtime
 import modules.vlm_harness as vlm_harness
 from modules.agent_service import AgentContext
+from modules.pe_models import qwen_pe_vlm_task
 
 
 logger = logging.getLogger(__name__)
@@ -1583,6 +1584,9 @@ def _prompt_mode_from_options(options):
 def _prompt_options_from_payload(payload, lang):
     raw_options = payload.get("prompt_options") if isinstance(payload.get("prompt_options"), dict) else {}
     chat_mode = _normalize_chat_mode(payload.get("chat_mode") or payload.get("describe_chat_mode"))
+    pe_task = qwen_pe_vlm_task(payload.get("version"))
+    if pe_task and chat_mode in {"chat", "prompt", "raw"}:
+        chat_mode = "raw"
     prompt_n_ctx = (
         _n_ctx_override(payload.get("n_ctx") or payload.get("context_window"))
         or 8192
@@ -1650,6 +1654,15 @@ def _prompt_options_from_payload(payload, lang):
             or "",
             limit=system_prompt_max_chars,
         )
+    if pe_task and chat_mode == "raw" and not (
+        custom_system_prompt or system_prompt_template_id or user_system_prompt_template_id
+        or system_prompt_manual_override
+    ):
+        system_prompt_template_id = f"qwen21_pe_{pe_task}.md"
+        base_system_prompt_content = vlm_system_prompt_templates.resolve_vlm_system_prompt_template(
+            system_prompt_template_id, max_chars=system_prompt_max_chars,
+        )
+        custom_system_prompt = base_system_prompt_content
     creative_preferences = _normalize_creative_preferences(payload.get("creative_preferences"))
     roleplay_session = vlm_roleplay.normalize_roleplay_session(
         payload.get("roleplay_session") or payload.get("roleplay") or {}
@@ -1677,6 +1690,7 @@ def _prompt_options_from_payload(payload, lang):
         "target_text_encoder": _prompt_target_field(options, "text_encoder", "clip_model", "clip"),
         "target_base_model": _prompt_target_field(options, "base_model", "model", "checkpoint"),
         "custom_system_prompt": custom_system_prompt,
+        "pe_task": pe_task or "",
         "system_prompt_max_chars": system_prompt_max_chars,
         "system_prompt_template_id": system_prompt_template_id,
         "user_system_prompt_template_id": user_system_prompt_template_id,
@@ -1952,6 +1966,8 @@ def _user_system_prompt_contract(custom_system_prompt, chat_mode, max_chars=4000
     if not custom_system_prompt:
         return ""
     mode = _normalize_chat_mode(chat_mode)
+    if mode == "raw":
+        return custom_system_prompt
     if mode == "creative":
         return (
             "User system prompt - primary persona and creative rules.\n"
@@ -2017,11 +2033,12 @@ def _describe_chat_system_prompt(options, lang):
 
     if chat_mode == "raw":
         sections = []
-        sections.append("You are a helpful multimodal chat model. Answer the user directly.")
-        sections.append(
-            "Runtime note: this is a standalone Describe Image chat wrapper with no canvas tools. "
-            "Keep answers in the user's UI language unless the user asks otherwise."
-        )
+        if not custom_system_prompt:
+            sections.append("You are a helpful multimodal chat model. Answer the user directly.")
+            sections.append(
+                "Runtime note: this is a standalone Describe Image chat wrapper with no canvas tools. "
+                "Keep answers in the user's UI language unless the user asks otherwise."
+            )
         if current_media_attached:
             sections.append(_current_media_system_note(lang))
         if media_only:
@@ -2500,7 +2517,7 @@ def build_runtime_payload(payload):
         requested_max_tokens = int(payload.get("max_tokens"))
     except (TypeError, ValueError):
         requested_max_tokens = default_max_tokens
-    max_tokens = max(64, min(8192, requested_max_tokens))
+    max_tokens = max(64, min(65536, requested_max_tokens))
     params = {
         **_thinking_runtime_params(
             payload,
@@ -2518,6 +2535,7 @@ def build_runtime_payload(payload):
         "describe_lang": lang,
         "describe_user_extension_chars": user_extension_chars,
         "describe_chat_mode": prompt_options["chat_mode"],
+        "describe_pe_task": prompt_options["pe_task"],
         "describe_prompt_mode": prompt_options["mode"],
         "describe_prompt_intent": prompt_options["prompt_intent"],
         "describe_prompt_actions_enabled": prompt_actions_enabled,
@@ -6450,6 +6468,30 @@ def _run_standalone_vlm_runtime(runtime_payload, payload, stream_callback=None, 
     def run():
         from modules import canvas_vlm_runtime
 
+        if version.startswith("comfy:text_encoders:") or version == "Qwen3VL-4B-TextEncoder":
+            from enhanced.comfy_textgen_vlm import ComfyTextgenInterrupted, comfy_textgen_vlm
+
+            execution_deadline = deadline
+            if execution_deadline is None and params.get("describe_pe_task"):
+                execution_deadline = time.monotonic() + 180
+            try:
+                with comfy_textgen_vlm.request_control(
+                    deadline=execution_deadline,
+                    cancel_check=lambda: is_describe_vlm_chat_cancelled(conversation_id, request_id),
+                    timeout_code="harness_timeout" if deadline is not None else "textgen_timeout",
+                ):
+                    return canvas_vlm_runtime.canvas_vlm_run(runtime_payload, stream_callback=stream_callback)
+            except ComfyTextgenInterrupted as exc:
+                details = {
+                    "cancelled": ("Text Encoder request stopped.", "Text Encoder 请求已停止。"),
+                    "harness_timeout": ("The agent timed out; its Text Encoder task was stopped.", "Agent 已超时，本次 Text Encoder 任务已停止。"),
+                    "textgen_timeout": ("Text Encoder inference timed out and was stopped. Try a shorter rewriting request.", "Text Encoder 推理超时，任务已停止。请缩短扩写要求后重试。"),
+                    "textgen_stop_unconfirmed": ("Text Encoder cancellation could not be confirmed. Check the backend task queue before retrying.", "未能确认 Text Encoder 任务已停止，请检查后端任务队列后再重试。"),
+                }
+                en, cn = details[exc.code]
+                return {"ok": False, "cancelled": exc.code == "cancelled", "error": exc.code,
+                        "details": en if _payload_lang(payload) == "en" else cn,
+                        "conversation_id": conversation_id, "request_id": request_id}
         if callable(stream_callback):
             return canvas_vlm_runtime.canvas_vlm_run(runtime_payload, stream_callback=stream_callback)
         return canvas_vlm_runtime.canvas_vlm_run(runtime_payload)
@@ -7245,7 +7287,7 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
     effective_stream_callback = stream_callback
     if params.get("roleplay_request_kind") == "character_setup":
         effective_stream_callback = None
-    chat_mode = _normalize_chat_mode(payload.get("chat_mode") or payload.get("describe_chat_mode"))
+    chat_mode = _normalize_chat_mode(params.get("describe_chat_mode") or payload.get("chat_mode") or payload.get("describe_chat_mode"))
     preview_classes = {
         "creative": _CreativeStreamPreview,
         "prompt": _PromptStreamPreview,
@@ -7281,6 +7323,7 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
             use_harness = (
                 chat_mode in {"chat", "creative", "guide"} and request_kind in {"", "chat", "creative", "guide"}
                 and isinstance(payload.get("_agent_api_context"), AgentContext)
+                and not params.get("describe_pe_task")
             )
             if use_harness:
                 text_budget = _describe_context_text_budget_chars(params.get("n_ctx"))

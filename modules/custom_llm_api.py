@@ -477,7 +477,7 @@ def empty_output_limit_error(text, completion):
     )
     if has_reasoning:
         detail = (
-            "The API reached its output limit with reasoning but no answer. Thinking was requested off; check the provider's thinking support."
+            "The API reached its output limit with reasoning but no answer. Thinking was requested off; if the provider cannot disable it, increase Maximum output tokens and regenerate."
             if completion.get("thinking_requested") is False else
             "The API reached its output limit with reasoning but no answer. Disable thinking or increase the output limit."
         )
