@@ -6401,7 +6401,9 @@ with shared.gradio_root:
                         "Dialogue / Role 2 Reference Audio": "qwen_role_2_audio",
                         "Dialogue / Role 3 Reference Audio": "qwen_role_3_audio",
                         "Dialogue / Role 4 Reference Audio": "qwen_role_4_audio",
-                        "Scene / Audio (Upload)": "scene_audio",
+                        "Scene / Audio 1 (Upload)": "scene_audio",
+                        "Scene / Audio 2 (Upload)": "scene_audio2",
+                        "Scene / Audio 3 (Upload)": "scene_audio3",
                     }
                     qwen_send_target_choices = list(qwen_send_target_options.keys())
                     with gr.Tabs(elem_id="setting_inner_tabs"):
@@ -6808,6 +6810,8 @@ with shared.gradio_root:
                             "qwen_role_3_audio": 3,
                             "qwen_role_4_audio": 4,
                             "scene_audio": 5,
+                            "scene_audio2": 6,
+                            "scene_audio3": 7,
                         }
                         qwen_send_numpy_target_keys = {
                             "qwen_clone_ref_audio",
@@ -6914,7 +6918,7 @@ with shared.gradio_root:
                             return _qwen_write_wav_temp(sr, wav)
 
                         def _qwen_send_audio_to_target(output_audio, target_label, state_params):
-                            outputs = [skip_component_update() for _ in range(7)]
+                            outputs = [skip_component_update() for _ in qwen_send_outputs]
                             if _is_blank(target_label):
                                 gr.Warning(_qwen_text(state_params, "Please select an Audio target to overwrite.", "请选择要写入的音频目标。"))
                                 return outputs
@@ -7255,7 +7259,7 @@ with shared.gradio_root:
                         qwen_dialogue_btn.click(fn=_qwen_tts_begin, inputs=[state_topbar], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn, qwen_dialogue_info], queue=False, show_progress=False).then(fn=qwen_dialogue_fn, inputs=[qwen_dialogue_script, qwen_role_1_name, qwen_role_1_audio, qwen_role_1_ref_text, qwen_role_2_name, qwen_role_2_audio, qwen_role_2_ref_text, qwen_role_3_name, qwen_role_3_audio, qwen_role_3_ref_text, qwen_role_4_name, qwen_role_4_audio, qwen_role_4_ref_text, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_pause_linebreak, qwen_period_pause, qwen_comma_pause, qwen_question_pause, qwen_hyphen_pause, qwen_dialogue_merge, qwen_dialogue_batch, qwen_dialogue_max_tokens, state_topbar], outputs=[qwen_dialogue_output, qwen_tts_seed, qwen_dialogue_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
                         qwen_dialogue_stop_btn.click(fn=_qwen_tts_stop, inputs=[state_topbar], outputs=[qwen_dialogue_info], queue=False, show_progress=False)
 
-                        qwen_send_outputs = [qwen_clone_ref_audio, qwen_role_1_audio, qwen_role_2_audio, qwen_role_3_audio, qwen_role_4_audio, scene_audio, scene_audio_backup]
+                        qwen_send_outputs = [qwen_clone_ref_audio, qwen_role_1_audio, qwen_role_2_audio, qwen_role_3_audio, qwen_role_4_audio, scene_audio, scene_audio2, scene_audio3, scene_audio_backup]
                         _qwen_send_audio_binder = _bind_qwen_send_audio
                         _qwen_pending_send_audio_bindings = [
                             (qwen_design_send_btn, qwen_design_output, qwen_design_send_target),

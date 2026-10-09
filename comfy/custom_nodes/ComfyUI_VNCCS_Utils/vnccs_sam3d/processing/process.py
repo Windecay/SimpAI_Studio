@@ -1462,7 +1462,7 @@ class SAM3DBodyProcessToJson:
 
     def process_to_json(self, model, image, bbox_threshold=0.8,
                         inference_type="full", debug_scale=False, mask=None,
-                        Left_hand_image=None, Right_hand_image=None):
+                        Left_hand_image=None, Right_hand_image=None, *, bboxes=None):
         from ..sam_3d_body import SAM3DBodyEstimator
 
         progress.update("Step 2/6: Initializing SAM 3D Body estimator...", 18)
@@ -1477,9 +1477,13 @@ class SAM3DBodyProcessToJson:
 
         img_bgr = comfy_image_to_numpy(image)
         mask_np = None
-        bboxes = None
         bbox_source = None
-        if mask is not None:
+        if bboxes is not None:
+            bboxes = np.asarray(bboxes, dtype=np.float32).reshape(-1, 4)
+            if len(bboxes) != 1:
+                raise ValueError("Pose reconstruction requires one detected person at a time")
+            bbox_source = "person_detector"
+        elif mask is not None:
             progress.update("Step 3/6: Reading provided body mask...", 40)
             mask_np = comfy_mask_to_numpy(mask)
             if mask_np.ndim == 3:

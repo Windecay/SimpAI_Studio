@@ -23,31 +23,47 @@ def _dependency_error(exc: Exception) -> RuntimeError:
     )
 
 
-def process_image_to_pose_json(image_tensor):
+def process_image_to_pose_json(image_tensor, *, bboxes=None):
     try:
-        import torch
-
         from .processing.load_model import LoadSAM3DBodyModel
-        from .processing.process import (
-            SAM3DBodyProcessToJson,
-            _FACE_BS_CACHE,
-            _get_mhr_rest_verts,
-            _load_sam3d_model,
-            _to_batched_tensor,
-        )
+        from .processing.process import SAM3DBodyProcessToJson
     except Exception as exc:
         raise _dependency_error(exc) from exc
 
     progress.update("Step 2/6: Checking SAM 3D Body model files...", 4)
     model = LoadSAM3DBodyModel().load_model("Auto")[0]
     progress.update("Step 4/6: Preparing SAM 3D Body reconstruction...", 55)
-    pose_json = SAM3DBodyProcessToJson().process_to_json(
-        model=model,
-        image=image_tensor,
-        bbox_threshold=0.8,
-        inference_type="full",
-    )[0]
-    progress.update("Step 5/6: Building Pose Studio skeleton data...", 82)
+    boxes = [None] if bboxes is None else list(bboxes)
+    if not boxes:
+        raise RuntimeError("No people detected in image")
+    people = []
+    for index, bbox in enumerate(boxes):
+        progress.update(f"Reconstructing person {index + 1}/{len(boxes)}...", 55)
+        pose_json = SAM3DBodyProcessToJson().process_to_json(
+            model=model,
+            image=image_tensor,
+            bbox_threshold=0.8,
+            inference_type="full",
+            bboxes=None if bbox is None else [bbox],
+        )[0]
+        people.append(json.loads(_add_skeleton_data(pose_json, model)))
+    progress.finish("Step 6/6: SAM 3D Body import complete.")
+    if len(people) == 1:
+        return json.dumps(people[0], ensure_ascii=False)
+    return json.dumps({
+        "format": "simpai_pose_scene",
+        "version": 1,
+        "people": people,
+        "image_size": people[0]["image_size"],
+    }, ensure_ascii=False)
+
+
+def _add_skeleton_data(pose_json, model):
+    import torch
+
+    from .processing.process import (
+        _FACE_BS_CACHE, _get_mhr_rest_verts, _load_sam3d_model, _to_batched_tensor,
+    )
 
     try:
         pose_data = json.loads(pose_json)
@@ -163,11 +179,9 @@ def process_image_to_pose_json(image_tensor):
             for index in range(num_joints)
         ]
         pose_data["sam3d_pose_space"] = "mhr_forward_canonical"
-        progress.finish("Step 6/6: SAM 3D Body import complete.")
         return json.dumps(pose_data, ensure_ascii=False, indent=2)
     except Exception as exc:
         print(f"[VNCCS] SAM3D rest skeleton export failed: {exc}")
-        progress.finish("Step 6/6: SAM 3D Body pose reconstructed.")
         return pose_json
 
 

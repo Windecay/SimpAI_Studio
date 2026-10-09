@@ -4,6 +4,7 @@ import mimetypes
 import os
 import re
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -23,6 +24,48 @@ POSE_STUDIO_CHARACTER_CACHE: Dict[str, Any] = {
     "targets": None,
     "skeleton": None,
 }
+_PERSON_DETECTOR_LOCK = threading.Lock()
+_PERSON_DETECTOR_CACHE = {}
+
+
+def _person_detector_path() -> Path:
+    import modules.config as config
+
+    relatives = ("hr16/yolox-onnx/yolox_l.torchscript.pt", "yzd-v/DWPose/yolox_l.onnx")
+    candidates = [Path(root) / relative for relative in relatives for root in config.paths_controlnet]
+    return next((path for path in candidates if path.is_file()), candidates[-1])
+
+
+def _detect_people(image_rgb):
+    import numpy as np
+    import torch
+
+    model_path = _person_detector_path()
+    if not model_path.is_file():
+        raise FileNotFoundError("Pose Studio person detector is missing. Install the Pose Studio model package (37).")
+    with _PERSON_DETECTOR_LOCK:
+        key = str(model_path.resolve())
+        if _PERSON_DETECTOR_CACHE.get("path") != key:
+            if model_path.suffix == ".pt":
+                from enhanced.dwpose_torchscript.jit_det import inference_detector
+                model = torch.jit.load(key, map_location="cpu").eval()
+            else:
+                import onnxruntime
+                from extras.easy_dwpose.body_estimation.detector import inference_detector
+                model = onnxruntime.InferenceSession(key, providers=["CPUExecutionProvider"])
+            _PERSON_DETECTOR_CACHE.update(path=key, model=model, infer=inference_detector)
+        with torch.no_grad():
+            boxes = _PERSON_DETECTOR_CACHE["infer"](_PERSON_DETECTOR_CACHE["model"], image_rgb[:, :, ::-1].copy())
+    if boxes is None or len(boxes) == 0:
+        raise ValueError("No people detected in the reference image.")
+    boxes = np.asarray(boxes, dtype=np.float32).reshape(-1, 4)
+    height, width = image_rgb.shape[:2]
+    boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, width)
+    boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, height)
+    boxes = boxes[np.isfinite(boxes).all(axis=1) & (boxes[:, 2] > boxes[:, 0]) & (boxes[:, 3] > boxes[:, 1])]
+    if len(boxes) == 0:
+        raise ValueError("No people detected in the reference image.")
+    return boxes[np.argsort((boxes[:, 0] + boxes[:, 2]) * 0.5, kind="stable")]
 
 
 def _repo_root() -> Path:
@@ -138,8 +181,9 @@ def _sam3d_model_status() -> Dict[str, Any]:
         "sam3d_model_config": _check(models_root, "sam3dbody/model_config.yaml"),
         "sam3d_mhr_model": _check(models_root, "sam3dbody/assets/mhr_model.pt"),
         "birefnet_config": _check(models_root, "birefnet/BiRefNet_lite/config.json"),
+        "person_detector": _check(_person_detector_path().parent, _person_detector_path().name),
     }
-    required = ["sam3d_model_ckpt", "sam3d_model_config", "sam3d_mhr_model"]
+    required = ["sam3d_model_ckpt", "sam3d_model_config", "sam3d_mhr_model", "person_detector"]
     missing_required = [key for key in required if not checks[key].get("exists")]
     dependency_error = ""
     try:
@@ -151,6 +195,7 @@ def _sam3d_model_status() -> Dict[str, Any]:
         "ready": ready,
         "required_ready": not missing_required,
         "birefnet_ready": bool(checks["birefnet_config"].get("exists")),
+        "person_detector_ready": bool(checks["person_detector"].get("exists")),
         "auto_download": True,
         "model_root": _norm_path(models_root / "sam3dbody"),
         "birefnet_root": _norm_path(models_root / "birefnet" / "BiRefNet_lite"),
@@ -234,6 +279,7 @@ def resource_status(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     checks = {
         "pose_studio_js": _check(root, "web/vnccs_pose_studio.js"),
         "pose_studio_core_js": _check(root, "web/vnccs_pose_studio_core.js"),
+        "pose_studio_scene_js": _check(root, "web/vnccs_pose_scene.js"),
         "openpose_import_js": _check(root, "web/vnccs_openpose_import.js"),
         "hand_presets_js": _check(root, "web/vnccs_hand_presets.js"),
         "three_module_js": _check(root, "web/three.module.js"),
@@ -248,7 +294,7 @@ def resource_status(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "makehuman_default_weights": _check(root, "CharacterData/makehuman/makehuman/data/rigs/default_weights.mhw"),
     }
     missing = [key for key, value in checks.items() if not value.get("exists")]
-    core_keys = ["pose_studio_js", "pose_studio_core_js", "pose_studio_node_py", "makehuman_base_obj"]
+    core_keys = ["pose_studio_js", "pose_studio_core_js", "pose_studio_scene_js", "pose_studio_node_py", "makehuman_base_obj"]
     available = root.exists() and all(checks[key].get("exists") for key in core_keys)
     sam3d = _sam3d_model_status()
     return {
@@ -488,6 +534,9 @@ def import_reference_image(payload: Optional[Dict[str, Any]] = None, state_param
     payload = payload if isinstance(payload, dict) else {}
     state_params = state_params if isinstance(state_params, dict) else {}
     task_id = str(payload.get("task_id") or f"pose_import_{uuid.uuid4().hex}").strip()
+    max_people = payload.get("max_people", 2)
+    if isinstance(max_people, bool) or not isinstance(max_people, int) or max_people < 1:
+        return {"ok": False, "task_id": task_id, "error": "Maximum people must be a positive integer."}
 
     try:
         reference_result = _reference_asset_from_payload(payload, state_params)
@@ -520,9 +569,14 @@ def import_reference_image(payload: Optional[Dict[str, Any]] = None, state_param
         with progress.task_context(task_id):
             progress.update("Step 1/6: Image uploaded. Preparing SAM 3D Body import...", 2)
             pil_image = Image.open(image_path).convert("RGB")
-            image_np = np.asarray(pil_image).astype(np.float32) / 255.0
+            image_rgb = np.asarray(pil_image)
+            progress.update("Detecting people in the reference image...", 3)
+            boxes = _detect_people(image_rgb)
+            detected_people = len(boxes)
+            boxes = boxes[:max_people]
+            image_np = image_rgb.astype(np.float32) / 255.0
             image_tensor = torch.from_numpy(image_np).unsqueeze(0)
-            pose_json = process_image_to_pose_json(image_tensor)
+            pose_json = process_image_to_pose_json(image_tensor, bboxes=boxes)
 
         try:
             pose_data = json.loads(pose_json)
@@ -534,6 +588,9 @@ def import_reference_image(payload: Optional[Dict[str, Any]] = None, state_param
             "task_id": task_id,
             "pose_json": pose_json,
             "pose_data": _safe_json_value(pose_data) if pose_data is not None else None,
+            "max_people": max_people,
+            "detected_people": detected_people,
+            "parsed_people": len(boxes),
             "reference_asset": _safe_json_value(reference_asset),
             "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "lighting_enabled": False,

@@ -679,7 +679,7 @@
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     mask-composite: exclude;
-    animation: sai-node-running-ring 1.8s linear infinite;
+    /* Keep the busy highlight static; animating this gradient repaints the panel. */
     pointer-events: none;
 }
 
@@ -697,7 +697,6 @@
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     mask-composite: exclude;
-    animation: sai-node-running-pulse 1.8s ease-in-out infinite;
     pointer-events: none;
 }
 
@@ -2389,7 +2388,7 @@
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     mask-composite: exclude;
-    animation: sai-node-running-ring 1.8s linear infinite;
+    /* Running state remains visible without continuously repainting the node. */
     pointer-events: none;
 }
 
@@ -2407,7 +2406,6 @@
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     mask-composite: exclude;
-    animation: sai-node-running-pulse 1.8s ease-in-out infinite;
     pointer-events: none;
 }
 
@@ -2505,30 +2503,6 @@
     color: #ffffff;
     border-color: var(--sai-canvas-accent);
     background: var(--sai-canvas-accent);
-}
-
-@property --sai-run-angle {
-    syntax: "<angle>";
-    inherits: false;
-    initial-value: 0deg;
-}
-
-@keyframes sai-node-running-ring {
-    to {
-        --sai-run-angle: 360deg;
-    }
-}
-
-@keyframes sai-node-running-pulse {
-    0%,
-    100% {
-        opacity: 0.48;
-        transform: scale(0.999);
-    }
-    50% {
-        opacity: 0.78;
-        transform: scale(1.005);
-    }
 }
 
 #simpai-infinite-canvas-workbench.reduced-motion .sai-canvas-node.is-running::before,
@@ -6413,7 +6387,10 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-translate-btn.is-busy i {
-    animation: sai-canvas-spin 0.9s linear infinite;
+    /* Shared with the other Studio busy icons; no continuous CSS animation. */
+    animation: none;
+    transition: none;
+    transform: rotate(var(--sai-busy-spinner-angle, 0deg));
 }
 
 .sai-translate-btn.is-busy {
@@ -6914,12 +6891,6 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     .sai-danbooru-autocomplete-translation,
     .sai-danbooru-autocomplete-aliases {
         text-align: left;
-    }
-}
-
-@keyframes sai-canvas-spin {
-    to {
-        transform: rotate(360deg);
     }
 }
 
@@ -12864,12 +12835,6 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     min-height: 178px;
     background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
     background-size: 240% 100%;
-    animation: sai-media-browser-pulse 1.2s linear infinite;
-}
-
-@keyframes sai-media-browser-pulse {
-    from { background-position: 120% 0; }
-    to { background-position: -120% 0; }
 }
 
 .sai-media-browser-thumb {
@@ -13629,6 +13594,23 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 .sai-pose-studio-control-field input[type="range"] {
     width: 100%;
     accent-color: #f97316;
+}
+
+.sai-pose-studio-control-field input[type="number"] {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: 1px solid var(--sai-canvas-border);
+    border-radius: 6px;
+    background: var(--sai-canvas-bg);
+    color: var(--sai-canvas-text);
+}
+
+.sai-pose-studio-control-field small {
+    color: var(--sai-canvas-muted);
+    font-size: 11px;
+    line-height: 1.5;
 }
 
 .sai-pose-studio-stage {

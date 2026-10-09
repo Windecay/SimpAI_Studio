@@ -4353,6 +4353,126 @@ function initGenerationProgressSpinner() {
 
 onUiLoaded(initGenerationProgressSpinner);
 
+function initUiBusySpinners() {
+    if (window.__simpleaiUiBusySpinnersBound) return;
+    window.__simpleaiUiBusySpinnersBound = true;
+    const selector = '.fa-spin, .fa-spin-pulse, .fa-pulse, .sai-translate-btn.is-busy i, '
+        + '.simpleai-interaction-wait-feedback.is-visible .simpleai-interaction-wait-spinner';
+    const angleProperty = '--sai-busy-spinner-angle';
+    const markers = new Map();
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let timer = 0;
+    let pageHidden = false;
+    let visible = [];
+
+    function stop() {
+        if (timer) window.clearInterval(timer);
+        timer = 0;
+    }
+
+    function refresh() {
+        visible = [];
+        const paused = pageHidden || document.hidden || reducedMotion.matches;
+        for (const [node, marker] of markers) {
+            if (!node.isConnected || !node.matches(selector)) {
+                intersectionObserver.unobserve(node);
+                markers.delete(node);
+                node.style.removeProperty(angleProperty);
+                continue;
+            }
+            if (paused || !marker.intersecting || node.closest('[hidden]')) continue;
+            const shown = typeof node.checkVisibility === 'function'
+                ? node.checkVisibility({ visibilityProperty: true, opacityProperty: true, contentVisibilityAuto: true })
+                : elementIsVisible(node);
+            if (shown) visible.push(node);
+        }
+        if (!visible.length) stop();
+        else if (!timer) timer = window.setInterval(advance, 250);
+    }
+
+    function advance() {
+        refresh();
+        const angle = `${(Math.floor(Date.now() / 250) % 8) * 45}deg`;
+        // Read visibility for the whole batch before writing any styles.
+        for (const node of visible) {
+            if (node.style.getPropertyValue(angleProperty) === angle) continue;
+            node.style.setProperty(angleProperty, angle);
+            markers.get(node).ownStyle = node.getAttribute('style');
+        }
+    }
+
+    const intersectionObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            const marker = markers.get(entry.target);
+            if (marker) marker.intersecting = entry.isIntersecting;
+        }
+        refresh();
+    });
+
+    function discover(root) {
+        let added = false;
+        const register = (node) => {
+            if (markers.has(node)) return;
+            markers.set(node, { intersecting: false, ownStyle: null });
+            intersectionObserver.observe(node);
+            added = true;
+        };
+        if (root.matches?.(selector)) register(root);
+        root.querySelectorAll?.(selector).forEach(register);
+        return added;
+    }
+
+    function containsMarker(node) {
+        for (const marker of markers.keys()) {
+            if (node === marker || node.contains(marker)) return true;
+        }
+        return false;
+    }
+
+    const observer = new MutationObserver((records) => {
+        let changed = false;
+        for (const record of records) {
+            if (record.type === 'childList') {
+                for (const node of record.addedNodes) {
+                    if (node.nodeType === 1) changed = discover(node) || changed;
+                }
+                if (record.removedNodes.length && markers.size) changed = true;
+                continue;
+            }
+            const node = record.target;
+            // Ignore our own angle writes; streaming text also needs no rescan.
+            if (record.attributeName === 'style' && markers.get(node)?.ownStyle === node.getAttribute('style')) continue;
+            if (record.attributeName === 'class') {
+                if (node.matches(selector) && !markers.has(node)) changed = discover(node) || changed;
+                if (node.matches('.sai-translate-btn, .simpleai-interaction-wait-feedback')) changed = discover(node) || changed;
+            }
+            if (containsMarker(node)) changed = true;
+        }
+        if (changed) refresh();
+    });
+
+    const roots = [document];
+    const app = gradioApp();
+    if (app !== document && app.nodeType === 11) roots.push(app);
+    for (const root of roots) {
+        discover(root);
+        observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open'] });
+        // Opacity can still be zero at the start of a window's opening transition.
+        root.addEventListener('transitionend', (event) => {
+            if (containsMarker(event.target)) refresh();
+        });
+        root.addEventListener('toggle', (event) => {
+            if (containsMarker(event.target)) refresh();
+        }, true);
+    }
+    document.addEventListener('visibilitychange', refresh);
+    reducedMotion.addEventListener('change', refresh);
+    window.addEventListener('pagehide', () => { pageHidden = true; stop(); });
+    window.addEventListener('pageshow', () => { pageHidden = false; refresh(); });
+}
+
+onUiLoaded(initUiBusySpinners);
+
 function initGeneratingStateRecovery() {
     const STUCK_UI_MS = 22000;
     const NO_PROGRESS_MS = 12000;

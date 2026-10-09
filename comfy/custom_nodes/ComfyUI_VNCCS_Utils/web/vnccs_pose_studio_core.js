@@ -4155,7 +4155,8 @@ export class PoseViewerCore {
     }
 
     _getSAMProjectionViewTarget(camera = this.captureCamera) {
-        const center = this.meshCenter || new this.THREE.Vector3(0, 10, 0);
+        const sceneCenter = this._samProjectionCameraFrame?.sceneCenter;
+        const center = sceneCenter ? new this.THREE.Vector3(...sceneCenter) : (this.meshCenter || new this.THREE.Vector3(0, 10, 0));
         if (!camera || !this.THREE) return center.clone();
         const forward = new this.THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
         const toCenter = center.clone().sub(camera.position);

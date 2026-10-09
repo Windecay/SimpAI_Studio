@@ -13,7 +13,7 @@
     let poseViewerCorePromise = null;
     let handPresetsPromise = null;
     let sceneBridgeAttached = false;
-    const POSE_VIEWER_CORE_VERSION = 'simpai-pose-bg-20260527-7';
+    const POSE_VIEWER_CORE_VERSION = 'simpai-pose-scene-20261009-1';
 
     function call(options, name, ...args) {
         if (typeof options?.[name] !== 'function') return null;
@@ -40,7 +40,10 @@
 
     function loadPoseViewerCore() {
         if (!poseViewerCorePromise) {
-            poseViewerCorePromise = import(`/pose-studio/vendor/vnccs_pose_studio_core.js?v=${POSE_VIEWER_CORE_VERSION}`);
+            poseViewerCorePromise = Promise.all([
+                import(`/pose-studio/vendor/vnccs_pose_studio_core.js?v=${POSE_VIEWER_CORE_VERSION}`),
+                import(`/pose-studio/vendor/vnccs_pose_scene.js?v=${POSE_VIEWER_CORE_VERSION}`)
+            ]).then(([core, scene]) => ({ ...core, ...scene }));
         }
         return poseViewerCorePromise;
     }
@@ -381,15 +384,14 @@
         const sam3d = response.sam3d || {};
         if (sam3d.dependency_error) {
             parts.push(t('SAM3D runtime dependencies are missing or incompatible.', 'SAM3D 运行依赖缺失或不兼容。'));
+        } else if (sam3d.person_detector_ready === false) {
+            parts.push(t('Person detector is missing. Install the Pose Studio model package (37).', '缺少人物检测模型，请安装 Pose Studio 模型包（37）。'));
         } else if (sam3d.ready) {
             parts.push(t('SAM3D pose parser models are ready.', 'SAM3D 姿势解析模型已就绪。'));
         } else if (sam3d.auto_download) {
             parts.push(t('SAM3D models are missing; first Parse will download them automatically.', 'SAM3D 模型未完整安装；首次解析会自动下载。'));
         } else {
             parts.push(t('SAM3D models are missing.', 'SAM3D 模型缺失。'));
-        }
-        if (sam3d.birefnet_ready === false && sam3d.auto_download) {
-            parts.push(t('BiRefNet mask model may also download on first parse.', 'BiRefNet 抠图模型也可能在首次解析时下载。'));
         }
         return parts.filter(Boolean).join(' ');
     }
@@ -919,6 +921,14 @@
         });
     }
 
+    function personLimitStatusText(response) {
+        const detected = Number(response?.detected_people);
+        const parsed = Number(response?.parsed_people);
+        if (!Number.isInteger(detected) || !Number.isInteger(parsed) || parsed < 1 || detected <= parsed) return '';
+        return t(`Detected ${detected} people. Parsed the first ${parsed} from left to right.`,
+            `检测到 ${detected} 人，已按从左到右的顺序解析前 ${parsed} 人。`);
+    }
+
     function hasStoredPoseForEditing(poseData, editorState) {
         return hasStoredPose(poseData)
             || hasStoredPose(editorState?.viewer_pose)
@@ -967,6 +977,10 @@
     </dl>
   </div>
   <div class="sai-pose-studio-toolbar">
+    <label class="sai-pose-studio-tool-group" data-pose-studio-people hidden>
+      <span>${escapeHtml(t('Person', '人物'))}</span>
+      <select data-pose-studio-person aria-label="${escapeHtml(t('Select person to edit', '选择要编辑的人物'))}"></select>
+    </label>
     <div class="sai-pose-studio-tool-group">
       <span>${escapeHtml(t('Reference', '参考'))}</span>
       <button type="button" data-pose-studio-action="reference" title="${escapeHtml(t('Load reference image', '载入参考图'))}"><i class="fa-solid fa-image"></i><span>${escapeHtml(t('Load', '载入'))}</span></button>
@@ -981,6 +995,14 @@
   </div>
   <div class="sai-pose-studio-body">
     <aside class="sai-pose-studio-controls" data-pose-studio-controls>
+      <details data-pose-studio-advanced>
+        <summary><i class="fa-solid fa-sliders"></i><span>${escapeHtml(t('Advanced parameters', '高级参数'))}</span></summary>
+        <label class="sai-pose-studio-control-field">
+          <span><b>${escapeHtml(t('Maximum people', '最大人数'))}</b></span>
+          <input type="number" data-pose-studio-max-people min="1" step="1" value="2" required aria-label="${escapeHtml(t('Maximum people', '最大人数'))}">
+          <small>${escapeHtml(t('Applies to the next parse. People are selected from left to right.', '用于下一次解析，按从左到右的顺序选取人物。'))}</small>
+        </label>
+      </details>
       <details open>
         <summary><i class="fa-solid fa-person-walking"></i><span>${escapeHtml(t('Pose', '姿势'))}</span></summary>
         <div class="sai-pose-studio-control-actions">
@@ -1073,6 +1095,9 @@
         const ctx = fallbackCanvas.getContext('2d');
         const status = modal.querySelector('[data-pose-studio-status]');
         const libraryList = modal.querySelector('[data-pose-library-list]');
+        const peopleControl = modal.querySelector('[data-pose-studio-people]');
+        const personSelect = modal.querySelector('[data-pose-studio-person]');
+        const maxPeopleInput = modal.querySelector('[data-pose-studio-max-people]');
         const controlSliders = Array.from(modal.querySelectorAll('[data-pose-studio-slider]'));
         const genderButtons = Array.from(modal.querySelectorAll('button[data-pose-studio-gender]'));
         const handSliders = Array.from(modal.querySelectorAll('[data-pose-studio-hand-slider]'));
@@ -1083,6 +1108,9 @@
         const toeStatus = modal.querySelector('[data-pose-studio-toe-status]');
         let poseData = options.poseData || {};
         let editorState = options.editorState || {};
+        const storedMaxPeople = Number(editorState.max_people);
+        let maxPeople = Number.isSafeInteger(storedMaxPeople) && storedMaxPeople > 0 ? storedMaxPeople : 2;
+        maxPeopleInput.value = String(maxPeople);
         let meshParams = Object.assign(defaultMeshParams(), options.meshParams || {}, editorState.mesh_params || {});
         let exportParams = Object.assign(
             defaultExportParams(),
@@ -1112,6 +1140,8 @@
         let referenceDrawn = false;
         let importPollTimer = null;
         let viewer = null;
+        let personScene = null;
+        let meshUpdatePending = false;
         let viewerReady = false;
         let usingFallbackCanvas = true;
         let busyActive = false;
@@ -1143,6 +1173,9 @@
             modal.classList.toggle('is-busy', busyActive);
             if (busyEl) busyEl.hidden = !busyActive;
             if (busyText) busyText.textContent = busyActive ? (message || t('Working...', '处理中...')) : '';
+            if (personSelect) personSelect.disabled = busyActive || meshUpdatePending;
+            maxPeopleInput.disabled = busyActive;
+            controlSliders.forEach(slider => { slider.disabled = busyActive || !viewerReady; });
             modal.querySelectorAll('[data-pose-studio-action]').forEach((button) => {
                 const action = button.getAttribute('data-pose-studio-action') || '';
                 button.disabled = busyActive && action !== 'status';
@@ -1241,12 +1274,24 @@
         };
 
         const persistEditorState = (extra = {}) => {
+            if (personScene?.loading) return editorState;
             editorState = Object.assign({}, editorState, extra, {
                 mesh_params: Object.assign({}, meshParams),
-                export_params: Object.assign({}, exportParams)
+                export_params: Object.assign({}, exportParams),
+                max_people: maxPeople,
+                person_scene: personScene?.serialize(meshParams) || null
             });
             return editorState;
         };
+
+        const readMaxPeople = () => {
+            const value = Number(maxPeopleInput.value);
+            if (!Number.isSafeInteger(value) || value < 1) return false;
+            maxPeople = value;
+            persistEditorState();
+            return true;
+        };
+        maxPeopleInput.addEventListener('input', readMaxPeople);
 
         const clampHandSliderValue = (key, value) => {
             const def = handSliderDefByKey.get(key) || {};
@@ -1866,7 +1911,10 @@
                 return false;
             }
             const requestId = ++meshUpdateRequestId;
+            meshUpdatePending = true;
+            personSelect.disabled = true;
             const currentPose = typeof viewer.getPose === 'function' ? viewer.getPose() : poseData;
+            const currentPosition = viewer.skinnedMesh.position.toArray();
             setStatus(t('Updating character...', '正在更新角色...'), false);
             try {
                 const response = await API.poseStudioCharacterPreview(meshParams);
@@ -1876,6 +1924,11 @@
                     return false;
                 }
                 viewer.loadData(response, true);
+                viewer.skinnedMesh.position.fromArray(currentPosition);
+                if (personScene) {
+                    personScene.meshData = response;
+                    if (personScene.people.length) personScene.people[personScene.active].meshData = response;
+                }
                 viewer.updateLights?.([{ type: 'ambient', color: '#ffffff', intensity: 1.0, x: 0, y: 0, z: 0 }]);
                 applyClientMeshControls();
                 if (currentPose) applyPoseToViewer(currentPose, true);
@@ -1888,10 +1941,17 @@
                     setStatus(err?.message || t('Character update failed.', '角色更新失败。'), true);
                 }
                 return false;
+            } finally {
+                if (requestId === meshUpdateRequestId) {
+                    meshUpdatePending = false;
+                    personSelect.disabled = busyActive;
+                }
             }
         };
 
         const scheduleCharacterPreviewUpdate = () => {
+            meshUpdatePending = true;
+            personSelect.disabled = true;
             if (meshUpdateTimer) window.clearTimeout(meshUpdateTimer);
             meshUpdateTimer = window.setTimeout(() => {
                 meshUpdateTimer = null;
@@ -2045,6 +2105,73 @@
             return drawReference(ctx, fallbackCanvas, src);
         };
 
+        const syncPeopleControl = () => {
+            const people = personScene?.people || [];
+            peopleControl.hidden = people.length < 2;
+            personSelect.replaceChildren(...people.map((person, index) => {
+                const option = document.createElement('option');
+                option.value = String(index);
+                option.textContent = `${t('Person', '人物')} ${index + 1}`;
+                return option;
+            }));
+            personSelect.value = String(personScene?.active || 0);
+        };
+
+        const syncSelectedPerson = () => {
+            const person = personScene.people[personScene.active];
+            if (!person) return;
+            if (modal.contains(document.activeElement) && document.activeElement?.matches('input[type="range"]')) {
+                document.activeElement.blur();
+            }
+            meshParams = { ...defaultMeshParams(), ...person.mesh_params };
+            poseData = viewer.getPose();
+            toeBaseRotations = {};
+            resetToeSliders();
+            if (activeToeSide) captureToeBaseRotation(activeToeSide);
+            syncToeControls();
+            if (activeHandSide && handPresets) calibrateHandSliderDefaults(activeHandSide);
+            syncHandControls();
+            syncControlValues();
+            syncPeopleControl();
+            applyCameraToViewer(true);
+            persistEditorState({ viewer_pose: poseData, sam3d_pose_data: null, viewer_enabled: true });
+        };
+
+        const selectPerson = (index) => {
+            if (busyActive || meshUpdatePending || !personScene) return;
+            ++meshUpdateRequestId;
+            if (meshUpdateTimer) window.clearTimeout(meshUpdateTimer);
+            meshUpdateTimer = null;
+            if (personScene.select(index, meshParams)) syncSelectedPerson();
+        };
+        personSelect.addEventListener('change', () => selectPerson(Number(personSelect.value)));
+        viewerCanvas.addEventListener('pointerdown', (event) => {
+            if (busyActive || !personScene) return;
+            const index = personScene.pick(event);
+            if (index >= 0 && index !== personScene.active) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                selectPerson(index);
+            }
+        }, true);
+
+        const loadPersonScene = async (data) => {
+            if (!viewerReady || !personScene) throw new Error(t('Pose viewer is unavailable.', '姿势编辑器尚未就绪。'));
+            ++meshUpdateRequestId;
+            if (meshUpdateTimer) window.clearTimeout(meshUpdateTimer);
+            meshUpdateTimer = null;
+            meshUpdatePending = false;
+            await personScene.load(data, meshParams,
+                params => API.poseStudioCharacterPreview(params),
+                (pose, params) => API.poseStudioRenderOverlay({ pose_data: pose, body_preset: { body_params: params }, pose_adjust: 0.0 })
+            );
+            if (!data.projection) {
+                Object.assign(exportParams, { cam_zoom: 1, cam_offset_x: 0, cam_offset_y: 0, cam_yaw_deg: 0, cam_pitch_deg: 0 });
+            }
+            syncSelectedPerson();
+            persistCameraParams();
+        };
+
         const loadReferenceFile = async (file) => {
             if (!file) return;
             if (file.type && !String(file.type).startsWith('image/')) {
@@ -2181,6 +2308,8 @@
         };
 
         const disposeViewer = () => {
+            personScene?.clear();
+            personScene = null;
             if (viewer && typeof viewer.dispose === 'function') {
                 try {
                     viewer.dispose();
@@ -2214,7 +2343,7 @@
             setStatus(t('Loading PoseViewerCore...', '正在载入 PoseViewerCore...'), false);
             setBusy(t('Loading Pose Studio resources...', '正在载入 Pose Studio 资源...'), true);
             try {
-                const [{ PoseViewerCore }, loadedHandPresets, modelData] = await Promise.all([
+                const [{ PoseViewerCore, PoseScene }, loadedHandPresets, modelData] = await Promise.all([
                     loadPoseViewerCore(),
                     loadHandPresets(),
                     API.poseStudioCharacterPreview(meshParams)
@@ -2248,6 +2377,7 @@
                         });
                     },
                     onPoseChange: (pose) => {
+                        if (personScene?.loading) return;
                         poseData = pose || {};
                         persistEditorState({ viewer_pose: poseData, viewer_enabled: true });
                         syncControlValues();
@@ -2256,11 +2386,19 @@
                 });
                 await viewer.init();
                 viewer.loadData(modelData, true);
+                personScene = new PoseScene(viewer);
+                personScene.meshData = modelData;
                 viewer.updateLights([{ type: 'ambient', color: '#ffffff', intensity: 1.0, x: 0, y: 0, z: 0 }]);
                 viewerReady = true;
                 applyClientMeshControls();
                 showFallbackCanvas(false);
                 await drawCurrentReference();
+                const initialScene = editorState.person_scene || (poseData.format === 'simpai_pose_scene' ? poseData : null);
+                if (initialScene) {
+                    await loadPersonScene(initialScene);
+                    setStatus(t('Stored scene loaded.', '已载入上次的多人场景。'), false);
+                    return true;
+                }
                 const initialPoseState = storedPoseForEditing(poseData, editorState);
                 const initialPose = initialPoseState.pose || {};
                 const appliedInitialPose = applyPoseToViewer(initialPose, true);
@@ -2316,6 +2454,18 @@
             }
             poseData = response.pose_data || {};
             editorState = Object.assign({}, editorState, { library_pose_id: poseId, library_pose_name: response.name || '', library_pose_source: response.source || '' });
+            if (poseData.format === 'simpai_pose_scene') {
+                setBusy(t('Loading pose scene...', '正在载入姿势场景...'), true);
+                try {
+                    await loadPersonScene(poseData);
+                    setStatus(response.name || poseId, false);
+                } catch (err) {
+                    setStatus(err.message, true);
+                } finally {
+                    setBusy('', false);
+                }
+                return;
+            }
             if (!applyPoseToViewer(poseData, true)) {
                 drawFallbackPose(ctx, fallbackCanvas.width, fallbackCanvas.height);
             }
@@ -2367,11 +2517,18 @@
                 setStatus('Pose Studio import API is not loaded.', true);
                 return;
             }
+            if (!readMaxPeople()) {
+                modal.querySelector('[data-pose-studio-advanced]').open = true;
+                maxPeopleInput.reportValidity();
+                setStatus(t('Maximum people must be a positive integer.', '最大人数必须为正整数。'), true);
+                return;
+            }
             const taskId = createImportTaskId(options.node?.id || options.nodeId);
             const payload = {
                 project_id: options.projectId || 'default',
                 node_id: options.node?.id || options.nodeId || '',
                 task_id: taskId,
+                max_people: maxPeople,
                 asset_source: referenceAssetSource || (referenceAsset ? {
                     node_id: options.node?.id || options.nodeId || '',
                     type: 'pose_reference',
@@ -2407,6 +2564,17 @@
                     sam3d_import_source: 'reference_image'
                 });
                 const rawPoseData = poseData;
+                const limitText = personLimitStatusText(response);
+                if (rawPoseData.format === 'simpai_pose_scene') {
+                    await loadPersonScene(rawPoseData);
+                    referenceDrawn = await drawCurrentReference();
+                    setStatus(limitText || `${t('People parsed:', '已解析人物：')}${personScene.people.length}${t('. Select a person to edit; export includes everyone.', '。选择人物分别编辑，导出时包含所有人。')}`, false);
+                    return;
+                }
+                personScene?.clear();
+                viewer?.skinnedMesh?.position.set(0, 0, 0);
+                viewer?.clearSAMMeshOverlay?.();
+                syncPeopleControl();
                 const summary = poseDataSummary(rawPoseData);
                 const appliedToViewer = applyPoseToViewer(rawPoseData, true);
                 const overlayResult = appliedToViewer ? await renderSAMOverlayForPose(rawPoseData) : { ok: false, mesh: null };
@@ -2418,7 +2586,7 @@
                 const frameText = frameFitReady
                     ? (frameFitResult.mode === 'sam_projection' ? t(' SAM camera angle applied.', ' 已应用 SAM 相机角度。') : t(' Frame fit applied.', ' 构图已适配。'))
                     : (frameFitResult.skipped ? t(' Close-up detected; camera fit skipped to avoid broken framing.', ' 检测到近景；已跳过相机自动拉近，避免构图错位。') : '');
-                setStatus(summary ? `${t('Reference pose parsed.', '参考姿势已解析。')} ${summary}${viewerText}${overlayText}${frameText}` : `${t('Reference pose parsed.', '参考姿势已解析。')}${viewerText}${overlayText}${frameText}`, false);
+                setStatus(limitText || (summary ? `${t('Reference pose parsed.', '参考姿势已解析。')} ${summary}${viewerText}${overlayText}${frameText}` : `${t('Reference pose parsed.', '参考姿势已解析。')}${viewerText}${overlayText}${frameText}`), false);
             } catch (err) {
                 setStatus(err?.message || t('Pose import failed.', '姿势解析失败。'), true);
             } finally {
@@ -2449,7 +2617,7 @@
             const response = await API.poseStudioLibrarySave({
                 name,
                 category: 'Saved',
-                pose_data: poseData,
+                pose_data: personScene?.serialize(meshParams) || poseData,
                 editor_state: editorState,
                 preview_data_url: previewDataUrl
             });
@@ -2490,7 +2658,7 @@
                 project_id: options.projectId || 'default',
                 node_id: options.node?.id || options.nodeId || '',
                 image_data_url: imageDataUrl,
-                pose_data: poseData,
+                pose_data: personScene?.serialize(meshParams) || poseData,
                 editor_state: Object.assign({}, editorState, {
                     reference_drawn: referenceDrawn,
                     viewer_enabled: viewerReady,
