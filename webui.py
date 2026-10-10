@@ -1793,12 +1793,18 @@ def generate_clicked(task: worker.AsyncTask, state):
                         if user_cancel_action is None and getattr(task, 'last_stop', False) in ['stop', 'skip']:
                             user_cancel_action = task.last_stop
                         had_prior_output = bool(getattr(task, "simpleai_generation_had_output", False))
+                        backend_error_text = str(getattr(task, "backend_error", "") or "").strip()
                         cloud_error_text = str(getattr(task, "cloud_error", "") or "").strip()
-                        ui_error_text = cloud_error_text if getattr(task, "task_class", None) == "Cloud" and cloud_error_text else _studio_text(
-                            state,
-                            "Generation failed: backend returned no results. Check the console log for details.",
-                            "生成失败：后端没有返回结果。请查看控制台日志了解详情。",
-                        )
+                        if backend_error_text:
+                            ui_error_text = _studio_text(
+                                state, "Generation failed: {error}", "生成失败：{error}",
+                            ).format(error=backend_error_text)
+                        else:
+                            ui_error_text = cloud_error_text if getattr(task, "task_class", None) == "Cloud" and cloud_error_text else _studio_text(
+                                state,
+                                "Generation failed: backend returned no results. Check the console log for details.",
+                                "生成失败：后端没有返回结果。请查看控制台日志了解详情。",
+                            )
                         try:
                             if user_cancel_action in ['stop', 'skip']:
                                 gr.Info(_studio_text(state, "Generation skipped or stopped by user.", "生成已由用户跳过或停止。"))

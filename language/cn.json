@@ -1,5 +1,9 @@
 {
   "Generating reply...": "正在生成回复……",
+  "Reading a public webpage...": "正在读取公开网页……",
+  "Public webpage reading finished.": "公开网页读取结束。",
+  "Searching GitHub projects...": "正在查找 GitHub 项目……",
+  "GitHub project search finished.": "GitHub 项目查询结束。",
   "Qwen2.1 PE - Text-to-image expansion": "Qwen2.1 PE · 文生图扩写",
   "Qwen2.1 PE - Image editing": "Qwen2.1 PE · 图像编辑",
   "Loaded {name} and switched to Raw Model.": "已载入{name}，并切换到原始模型。",

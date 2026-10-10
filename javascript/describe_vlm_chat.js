@@ -24581,7 +24581,12 @@
                 }
                 if (phase === 'agent_tool_started' || phase === 'agent_tool_finished') {
                     const name = String(event.name || '').slice(0, 96);
-                    setConversationStatus(runtime, localText('Querying', '正在查询') + ': ' + name);
+                    const webStatus = name === 'web.read'
+                        ? roleplayDictionaryText(phase === 'agent_tool_started' ? 'Reading a public webpage...' : 'Public webpage reading finished.')
+                        : name === 'web.search_github'
+                            ? roleplayDictionaryText(phase === 'agent_tool_started' ? 'Searching GitHub projects...' : 'GitHub project search finished.')
+                            : '';
+                    setConversationStatus(runtime, webStatus || localText('Querying', '正在查询') + ': ' + name);
                     return;
                 }
                 if (phase === 'agent_finished') {

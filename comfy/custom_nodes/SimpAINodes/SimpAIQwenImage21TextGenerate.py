@@ -3,7 +3,6 @@ import importlib.util
 import json
 import logging
 import os
-import re
 from pathlib import Path
 
 import comfy.model_management as model_management
@@ -21,6 +20,12 @@ PE_CATALOGS = _catalog_module.PE_CATALOGS
 pe_model_rows = _catalog_module.pe_model_rows
 paired_mmproj = _catalog_module.paired_mmproj
 pe_model_task = _catalog_module.pe_model_task
+
+_output_path = _catalog_path.with_name("custom_llm_api.py")
+_output_spec = importlib.util.spec_from_file_location("simpai_pe_output", _output_path)
+_output_module = importlib.util.module_from_spec(_output_spec)
+_output_spec.loader.exec_module(_output_module)
+PEOutputFormatError = _output_module.PEOutputFormatError
 
 
 T2I_SYSTEM = """You rewrite image requests for Qwen Image 2.1.
@@ -69,13 +74,7 @@ def _resolve_model(name):
 
 
 def _clean_output(text):
-    text = re.sub(r"<think>.*?(?:</think>|$)", "", str(text or ""), flags=re.S).strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
-    if text.startswith("{"):
-        value = json.loads(text)
-        text = value["rewritten_prompt"]
-    return str(text).strip()
+    return _output_module.clean_pe_output(text)
 
 
 def _prompt_output(prompt, model, status):
@@ -215,7 +214,14 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
         except FileNotFoundError as error:
             logging.warning("[SimpAI Qwen Image 2.1 PE] Skipping %r: %s Using the original prompt.", pe_model, error)
             return _prompt_output(prompt, pe_model, "unavailable")
-        rewritten = _clean_output(text)
+        try:
+            rewritten = _clean_output(text)
+        except PEOutputFormatError as error:
+            logging.warning(
+                "[SimpAI Qwen Image 2.1 PE] Invalid output: model=%s error=%s raw_output=%s Using the original prompt.",
+                pe_model, error, json.dumps(str(text), ensure_ascii=False),
+            )
+            return _prompt_output(prompt, pe_model, "invalid_output")
         return _prompt_output(rewritten or prompt, pe_model, "rewritten" if rewritten else "empty_output")
 
 

@@ -28,8 +28,8 @@
             "prompt": {
                 "QwenGaussianStudio": "Change the camera angle from <image2> to <image1>."
             },
-            "overwrite_step": {"QwenGaussianStudio": 25},
-            "overwrite_step_min": 20,
+            "overwrite_step": {"QwenGaussianStudio": 8},
+            "overwrite_step_min": 1,
             "overwrite_step_max": 50,
             "var_number": {"QwenGaussianStudio": 1024},
             "var_number_title": "Reference Resolution (0 = Original)",
@@ -64,7 +64,7 @@
             1.0
         ],
         [
-            "None",
+            "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
             1.0
         ],
         [
@@ -89,7 +89,7 @@
     "default_aspect_ratio": "1024*1024",
     "default_resolution_quantize_step": 32,
     "default_image_number": 1,
-    "default_overwrite_step": 25,
+    "default_overwrite_step": 8,
     "default_prompt": "Change the camera angle from <image2> to <image1>.",
     "default_prompt_negative": "",
     "checkpoint_downloads": {},
@@ -101,6 +101,7 @@
         "text_encoders,qwen3vl_8b_int8_convrot.safetensors,9350798360,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
         "vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
         "loras,QI2.1_AnyAngle.safetensors,119590312,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/QI2.1_AnyAngle.safetensors,https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/QI2.1_AnyAngle.safetensors",
+        "loras,qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors,913314512,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
         "sharp,sharp_2572gikvuh.pt,2809738232,0,https://modelscope.cn/models/apple/Sharp/resolve/master/sharp_2572gikvuh.pt,https://huggingface.co/apple/Sharp/resolve/main/sharp_2572gikvuh.pt"
     ]
 }

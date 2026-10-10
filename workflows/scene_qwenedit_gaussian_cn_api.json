@@ -4,7 +4,7 @@
       "prompt": "Change the camera angle from <image2> to <image1>.", "additional_prompt": "",
       "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
       "inpaint_image": "None", "inpaint_mask": "None",
-      "width": 1024, "height": 1024, "cfg": 3, "steps": 25,
+      "width": 1024, "height": 1024, "cfg": 3, "steps": 8,
       "var_number": 1024, "var_number2": 0, "var_number3": 0, "var_number4": 0,
       "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
       "var_number9": 0, "var_number10": 0,
@@ -140,7 +140,7 @@
     "_meta": {"title": "lora_1"}
   },
   "41": {
-    "inputs": {"model": ["40", 0], "lora_name": "placeholder.safetensors", "strength_model": 0},
+    "inputs": {"model": ["40", 0], "lora_name": "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors", "strength_model": 1},
     "class_type": "LoraLoaderModelOnly",
     "_meta": {"title": "lora_2"}
   },

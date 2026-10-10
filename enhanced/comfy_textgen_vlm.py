@@ -9,7 +9,8 @@ from PIL import Image
 
 import shared
 from enhanced.logger import format_name
-from modules.custom_llm_api import strip_reasoning_text
+from modules.custom_llm_api import strip_reasoning_text, clean_pe_output, PEOutputFormatError
+from modules.pe_models import qwen_pe_vlm_task
 
 import logging
 
@@ -317,6 +318,9 @@ class ComfyTextgenVLM:
                 if isinstance(item, dict):
                     text = self._extract_preview_text(item, preview_id)
                     if text is not None:
+                        clip_name = workflow.get("1", {}).get("inputs", {}).get("clip_name", "")
+                        if qwen_pe_vlm_task(f"comfy:text_encoders:{clip_name}"):
+                            return text
                         return strip_reasoning_text(text)
                     status = item.get("status")
                     if isinstance(status, dict):
@@ -391,7 +395,14 @@ class ComfyTextgenVLM:
                 use_default_template=use_default_template,
                 system_prompt=system_prompt,
             )
-            return self._execute_workflow(workflow, preview_id)
+            text = self._execute_workflow(workflow, preview_id)
+            if qwen_pe_vlm_task(f"comfy:text_encoders:{clip_name}"):
+                try:
+                    return clean_pe_output(text, strict_json=False)
+                except PEOutputFormatError as error:
+                    logger.error("Invalid PE chat output: model=%s error=%s raw_output=%r", clip_name, error, text)
+                    raise
+            return text
 
     def chat(
         self,

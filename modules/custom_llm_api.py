@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import socket
 import time
@@ -347,6 +348,89 @@ def strip_reasoning_text(text):
         output,
     )
     return output.strip()
+
+
+class PEOutputFormatError(ValueError):
+    """The response has a prompt wrapper but no reliably recoverable prompt."""
+
+
+_PE_PROMPT_KEYS = ("rewritten_prompt", "final_prompt", "positive_prompt", "prompt")
+
+
+def _pe_output_surface(text):
+    output = str(text or "").strip()
+    output = re.sub(r"^\s*<\|im_start\|>assistant\s*", "", output)
+    for _ in range(2):
+        if output.startswith("```"):
+            output = re.sub(r"^```(?:json|text|prompt)?\s*", "", output, flags=re.I)
+            output = re.sub(r"\s*```$", "", output).strip()
+        if not output.startswith("{"):
+            boundary = None
+            if re.match(r"(?is)^\s*<think\b[^>]*>", output):
+                boundary = re.search(r"(?is)</think\s*>", output)
+                if boundary is None:
+                    return ""
+            elif re.match(r"(?is)^\s*<\|(?:channel|message)\|?>", output):
+                boundary = re.search(
+                    r"(?is)<\|channel\|?>\s*(?:final|answer|response)\b|<\|message\|>",
+                    output,
+                )
+                if boundary is None:
+                    return ""
+            else:
+                boundary = re.search(r"(?im)^\s*</think\s*>", output)
+            if boundary is not None:
+                # Strip the protocol prefix without interpreting markers inside the answer.
+                end = boundary.end()
+                output = (strip_reasoning_text(output[:end]) + output[end:]).strip()
+    output = re.sub(r"\s*(?:<\|im_end\|>|<\|endoftext\|>)\s*$", "", output)
+    return output.strip()
+
+
+def clean_pe_output(text, *, strict_json=True):
+    output = _pe_output_surface(text)
+    if not output.startswith("{"):
+        return output
+    try:
+        value = json.loads(output)
+    except json.JSONDecodeError as error:
+        if error.msg == "Extra data":
+            raise PEOutputFormatError("PE returned extra content outside the prompt wrapper.") from error
+        keys = "|".join(_PE_PROMPT_KEYS)
+        wrapper = re.fullmatch(
+            rf'\{{\s*"(?P<key>{keys})"\s*:\s*"(?P<text>.*)"\s*,?\s*\}}',
+            output, flags=re.S,
+        )
+        if wrapper is None:
+            if re.search(rf'"(?:{keys})"\s*:', output):
+                raise PEOutputFormatError("PE returned an incomplete or invalid prompt wrapper.") from error
+            if re.match(r'^\{\s*"', output):
+                raise PEOutputFormatError("PE returned invalid JSON instead of an image prompt.") from error
+            return output
+        payload = wrapper["text"]
+        # Repair only a single string field; never include other JSON fields in the prompt.
+        if re.search(r'"\s*,\s*"[^"]+"\s*:', payload):
+            raise PEOutputFormatError("PE returned an ambiguous multi-field prompt wrapper.") from error
+        escaped = re.sub(
+            r'(\\*)"',
+            lambda match: match[1] + ("\\" if len(match[1]) % 2 == 0 else "") + '"',
+            payload,
+        )
+        try:
+            prompt = json.loads('"' + escaped + '"', strict=False)
+        except json.JSONDecodeError as repair_error:
+            raise PEOutputFormatError("PE prompt string could not be decoded.") from repair_error
+        logging.warning("Recovered PE prompt wrapper quoting: raw_output=%s", json.dumps(str(text), ensure_ascii=False))
+        return _pe_output_surface(prompt)
+    if isinstance(value, dict):
+        for key in _PE_PROMPT_KEYS:
+            if key in value:
+                if not isinstance(value[key], str):
+                    raise PEOutputFormatError(f"PE field {key} must contain text.")
+                return _pe_output_surface(value[key])
+    if strict_json:
+        raise PEOutputFormatError("PE JSON has no usable image prompt field.")
+    return output
 
 
 def extract_stream_reasoning_delta(event):

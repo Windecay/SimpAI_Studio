@@ -1,6 +1,8 @@
 import copy
+import inspect
 import logging
 import time
+from functools import wraps
 
 import httpx
 
@@ -230,4 +232,91 @@ def install_prompt_cancel_support(comfyclient_pipeline):
     interrupt_with_prompt_id._simpai_prompt_cancel_support = True
     interrupt_with_prompt_id._simpai_original_interrupt = interrupt
     comfyclient_pipeline.interrupt = interrupt_with_prompt_id
+    return True
+
+
+class ComfyExecutionError(RuntimeError):
+    def __init__(self, prompt_id, details):
+        self.prompt_id = prompt_id
+        self.node_id = str(details.get("node_id") or "")
+        self.node_type = str(details.get("node_type") or "Comfy")
+        self.exception_type = str(details.get("exception_type") or "ExecutionError")
+        self.exception_message = str(details.get("exception_message") or "Execution failed.").strip()
+        node = f"{self.node_type} (node {self.node_id})" if self.node_id else self.node_type
+        super().__init__(f"{node}: {self.exception_type}: {self.exception_message}")
+
+
+def _execution_error_from_history(history, prompt_id):
+    if not isinstance(history, dict):
+        return None
+    if prompt_id in history:
+        history = history[prompt_id]
+    status = history.get("status") if isinstance(history, dict) else None
+    messages = status.get("messages") if isinstance(status, dict) else None
+    if not isinstance(messages, (list, tuple)):
+        return None
+    for message in reversed(messages):
+        if not isinstance(message, (list, tuple)) or len(message) != 2:
+            continue
+        event, details = message
+        if not isinstance(details, dict) or str(details.get("prompt_id") or prompt_id) != prompt_id:
+            continue
+        if event == "execution_interrupted":
+            return None
+        if event == "execution_error":
+            return ComfyExecutionError(prompt_id, details)
+    return None
+
+
+def _check_empty_result_error(comfyclient_pipeline, prompt_id, timeout_seconds=1.0):
+    get_history_item = getattr(comfyclient_pipeline, "get_history_item", None)
+    if not callable(get_history_item):
+        return
+    deadline = time.monotonic() + max(0.0, float(timeout_seconds))
+    while True:
+        try:
+            history = get_history_item(prompt_id)
+        except (httpx.HTTPError, OSError, ValueError) as error:
+            logger.warning("Comfy execution status unavailable: prompt_id=%s error=%s", prompt_id, error)
+            return
+        if history is not None:
+            error = _execution_error_from_history(history, prompt_id)
+            if error is not None:
+                raise error
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.05, remaining))
+
+
+def install_execution_error_support(comfyclient_pipeline):
+    get_images = getattr(comfyclient_pipeline, "get_images", None)
+    if not callable(get_images) or getattr(get_images, "_simpai_execution_error_support", False):
+        return False
+    signature = inspect.signature(get_images)
+    if "prompt_accepted_callback" not in signature.parameters:
+        return False
+
+    @wraps(get_images)
+    def get_images_with_execution_errors(*args, **kwargs):
+        bound = signature.bind(*args, **kwargs)
+        original_callback = bound.arguments.get("prompt_accepted_callback")
+        accepted_prompt_id = None
+
+        def on_accepted(prompt_id, result):
+            nonlocal accepted_prompt_id
+            accepted_prompt_id = str(prompt_id or "")
+            if original_callback is not None:
+                original_callback(prompt_id, result)
+
+        bound.arguments["prompt_accepted_callback"] = on_accepted
+        images = get_images(*bound.args, **bound.kwargs)
+        if not images and accepted_prompt_id:
+            # The final websocket event can arrive just before history is committed.
+            _check_empty_result_error(comfyclient_pipeline, accepted_prompt_id)
+        return images
+
+    get_images_with_execution_errors._simpai_execution_error_support = True
+    comfyclient_pipeline.get_images = get_images_with_execution_errors
     return True

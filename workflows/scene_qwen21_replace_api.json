@@ -12,7 +12,7 @@
       "width": 1024,
       "height": 1024,
       "cfg": 1,
-      "steps": 25,
+      "steps": 8,
       "var_number": 1536,
       "var_number2": 0,
       "var_number3": 0,
@@ -477,8 +477,8 @@
         "56",
         0
       ],
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0
+      "lora_name": "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
+      "strength_model": 1
     },
     "class_type": "LoraLoaderModelOnly",
     "_meta": {

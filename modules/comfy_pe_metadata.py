@@ -5,7 +5,7 @@ import time
 
 logger = logging.getLogger(__name__)
 PE_OUTPUT_KEY = "simpai_pe"
-PE_STATUSES = {"rewritten", "unavailable", "empty_output", "disabled"}
+PE_STATUSES = {"rewritten", "unavailable", "empty_output", "invalid_output", "disabled"}
 
 
 def _model_key(name):

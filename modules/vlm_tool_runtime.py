@@ -208,6 +208,26 @@ def _tool_select_image_context(arguments, context):
 
 def create_default_registry():
     registry = ToolRegistry()
+    from modules import vlm_web_runtime
+
+    registry.register(
+        "web.read",
+        "Read a public URL without keys or login; cite its URL. Use next_offset for more.",
+        {"type": "object", "required": ["url"],
+         "properties": {"url": {"type": "string"}, "offset": {"type": "integer"}},
+         "additionalProperties": False},
+        vlm_web_runtime.read_page,
+        read_only=True, side_effect="external_network", timeout_ms=25_000,
+    )
+    registry.register(
+        "web.search_github",
+        "Find GitHub projects via public search pages without API keys. Cite returned URLs.",
+        {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}},
+         "additionalProperties": False},
+        vlm_web_runtime.search_github,
+        read_only=True, side_effect="external_network", timeout_ms=25_000,
+    )
+
     def tool_schema(arguments, context):
         name = arguments["name"]
         allowed = context.get("allowed_tool_names")

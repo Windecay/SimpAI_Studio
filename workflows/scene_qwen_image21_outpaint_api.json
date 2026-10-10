@@ -4,7 +4,7 @@
       "prompt": "", "additional_prompt": "",
       "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
       "inpaint_image": "None", "inpaint_mask": "None",
-      "width": 1024, "height": 1024, "cfg": 1, "steps": 25,
+      "width": 1024, "height": 1024, "cfg": 1, "steps": 8,
       "var_number": 0, "var_number2": 32, "var_number3": 0, "var_number4": 0,
       "var_number5": 0, "var_number6": 0, "var_number7": 15, "var_number8": 15,
       "var_number9": 15, "var_number10": 15,
@@ -33,8 +33,12 @@
     "inputs": {"lora_name": "qwen-image-2.1-outpaint-v2.safetensors", "strength_model": 1, "model": ["3", 0]},
     "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}
   },
+  "turbo_lora": {
+    "inputs": {"lora_name": "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors", "strength_model": 1, "model": ["6", 0]},
+    "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_2"}
+  },
   "simpai_lora_stack_main": {
-    "inputs": {"model": ["6", 0], "clip": ["4", 0], "stack_json": "{\"version\":1,\"items\":[]}", "branch": "main"},
+    "inputs": {"model": ["turbo_lora", 0], "clip": ["4", 0], "stack_json": "{\"version\":1,\"items\":[]}", "branch": "main"},
     "class_type": "SimpAILoraStack", "_meta": {"title": "lora_stack_main"}
   },
   "7": {

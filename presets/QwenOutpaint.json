@@ -76,7 +76,7 @@
         "preprocess_target": "none", "preprocess_fit": "proportional"
       },
       "aspect_ratio": ["origin|Original"],
-      "overwrite_step": {"QwenOutpaint": 25},
+      "overwrite_step": {"QwenOutpaint": 8},
       "overwrite_step_min": 1,
       "overwrite_step_max": 50
     }
@@ -87,7 +87,7 @@
   "default_refiner": "None",
   "default_refiner_switch": 0.5,
   "default_upscale_model": "default",
-  "default_loras": [["qwen-image-2.1-outpaint-v2.safetensors", 1], ["None", 1], ["None", 1], ["None", 1], ["None", 1]],
+  "default_loras": [["qwen-image-2.1-outpaint-v2.safetensors", 1], ["qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors", 1], ["None", 1], ["None", 1], ["None", 1]],
   "default_cfg_scale": 1,
   "default_sample_sharpness": 2,
   "default_sampler": "euler",
@@ -97,7 +97,7 @@
   "default_aspect_ratio": "1024*1024",
   "default_resolution_quantize_step": 32,
   "default_image_number": 1,
-  "default_overwrite_step": 25,
+  "default_overwrite_step": 8,
   "default_prompt": "Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.",
   "default_prompt_negative": "",
   "checkpoint_downloads": {},
@@ -108,6 +108,7 @@
     "diffusion_models,qwen_image_2.1_int8_convrot.safetensors,7256783064,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/diffusion_models/qwen_image_2.1_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
     "text_encoders,qwen3vl_8b_int8_convrot.safetensors,9350798360,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
     "vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
-    "loras,qwen-image-2.1-outpaint-v2.safetensors,159436576,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/qwen-image-2.1-outpaint-v2.safetensors,https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors"
+    "loras,qwen-image-2.1-outpaint-v2.safetensors,159436576,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/qwen-image-2.1-outpaint-v2.safetensors,https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors",
+    "loras,qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors,913314512,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"
   ]
 }

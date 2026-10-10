@@ -11,6 +11,7 @@ from extras.inpaint_mask import generate_mask_from_image, SAMOptions
 from modules.patch import PatchSettings, patch_settings, patch_all
 from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress
 from modules.comfy_progress_filter import use_progress_profile
+from modules.comfy_prompt_compat import ComfyExecutionError
 from modules.gpu_task_lock import exclusive_task_lock
 from modules.lora_stack import build_fooocus_stack, prepare_stack_params
 import modules.config
@@ -3460,6 +3461,14 @@ def worker():
                     finally:
                         with processing_lock:
                             executing_task_id = None
+            except ComfyExecutionError as error:
+                _restore_standard_streams_if_closed()
+                task.backend_error = str(error)
+                logger.exception("Comfy execution failed: task_id=%s prompt_id=%s", task.task_id, error.prompt_id)
+                try:
+                    stop_processing(task, 0, "Failed")
+                finally:
+                    task.yields.append(['finish', task.results])
             except:
                 _restore_standard_streams_if_closed()
                 try:
