@@ -1363,12 +1363,17 @@ def bind_topbar_identity_events(
     admin_access_outputs=None,
     identity_admin_surface_refresh_fn=None,
     identity_admin_surface_outputs=None,
+    main_vlm_load_fn=None,
+    main_vlm_load_inputs=None,
+    main_vlm_load_outputs=None,
     welcome_media_load_fn=None,
     welcome_media_load_inputs=None,
     welcome_media_load_outputs=None,
 ) -> None:
     admin_access_refresh_outputs = list(admin_access_outputs or [])
     identity_admin_surface_outputs = list(identity_admin_surface_outputs or [])
+    main_vlm_inputs = list(main_vlm_load_inputs or [state_topbar])
+    main_vlm_outputs = list(main_vlm_load_outputs or [])
     welcome_media_inputs = list(welcome_media_load_inputs or [state_topbar])
     welcome_media_outputs = list(welcome_media_load_outputs or [])
     activation = dict(identity_activation or {})
@@ -1464,6 +1469,14 @@ def bind_topbar_identity_events(
                 identity_admin_surface_refresh_fn,
                 inputs=state_topbar,
                 outputs=identity_admin_surface_outputs,
+                queue=False,
+                show_progress=False,
+            )
+        if main_vlm_load_fn is not None and main_vlm_outputs:
+            chain = chain.then(
+                main_vlm_load_fn,
+                inputs=main_vlm_inputs,
+                outputs=main_vlm_outputs,
                 queue=False,
                 show_progress=False,
             )

@@ -3456,6 +3456,7 @@
                     'systemPromptManualOverride', 'system_prompt_manual_override'
                 ]),
                 thinkingEnabled: storedBoolean(data, ['thinkingEnabled', 'enable_thinking']),
+                dialogueEmphasis: storedBoolean(data, ['dialogueEmphasis'], true),
                 mtpEnabled: storedBoolean(data, ['mtpEnabled', 'load_mtp']),
                 unloadAfterChat: storedBoolean(data, ['unloadAfterChat', 'unload_after_chat']),
                 windowLayout: normalizeChatWindowLayout(data.windowLayout)
@@ -3479,6 +3480,7 @@
                 userSystemPromptContent: '',
                 systemPromptManualOverride: false,
                 thinkingEnabled: false,
+                dialogueEmphasis: true,
                 mtpEnabled: false,
                 unloadAfterChat: false,
                 windowLayout: null
@@ -3591,6 +3593,7 @@
             busy: false
         },
         thinkingEnabled: !!savedChatSettings.thinkingEnabled,
+        dialogueEmphasis: savedChatSettings.dialogueEmphasis !== false,
         mtpEnabled: !!savedChatSettings.mtpEnabled,
         unloadAfterChat: !!savedChatSettings.unloadAfterChat,
         windowLayout: savedChatSettings.windowLayout,
@@ -4332,6 +4335,13 @@
         return String(dictionary[en] || en);
     }
 
+    function renderChatMessageText(content, runtime) {
+        if (!window.SimpAIChatRichText) return `<p>${escapeHtml(content || '')}</p>`;
+        return window.SimpAIChatRichText.render(content, {
+            emphasizeDialogue: !!state.dialogueEmphasis && normalizeChatMode(runtime?.chatMode || state.chatMode) === 'roleplay'
+        });
+    }
+
     function creativePreferenceLabel(preference = state.creativePreference) {
         const current = normalizeCreativePreference(preference);
         if (current.parameter_profile) {
@@ -4424,6 +4434,7 @@
                 userSystemPromptContent: state.userSystemPromptContent,
                 systemPromptManualOverride: !!state.systemPromptManualOverride,
                 thinkingEnabled: !!state.thinkingEnabled,
+                dialogueEmphasis: !!state.dialogueEmphasis,
                 mtpEnabled: !!state.mtpEnabled,
                 unloadAfterChat: !!state.unloadAfterChat,
                 windowLayout: state.windowLayout || null
@@ -13997,6 +14008,7 @@
         <label><span>${escapeHtml(localText('Local model', '本地模型'))}</span><select data-describe-vlm-chat-roleplay-agent-local-version aria-label="${escapeHtml(localText('Local VLM model', '本地 VLM 模型'))}">${renderRoleplayLocalModelOptions()}</select></label>
         <label><span>${escapeHtml(localText('API profile', 'API 模型'))}</span><select data-describe-vlm-chat-roleplay-agent-api-version>${renderRoleplayApiProfileOptions()}</select></label>
         <label class="describe-vlm-chat-roleplay-check"><input data-describe-vlm-chat-roleplay-agent-fallback type="checkbox"><span>${escapeHtml(localText('Allow local backup if an explicitly selected API fails', '明确选择的 API 失败后允许使用本地备用'))}</span></label>
+        <label class="describe-vlm-chat-roleplay-check"><input type="checkbox" data-describe-vlm-chat-dialogue-emphasis ${state.dialogueEmphasis ? 'checked' : ''}><span>${escapeHtml(roleplayDictionaryText('Highlight quoted dialogue'))}</span></label>
       </div>
       <div class="describe-vlm-chat-roleplay-section describe-vlm-chat-roleplay-character-section">
         <div class="describe-vlm-chat-roleplay-section-head"><strong>${escapeHtml(localText('Characters', '角色列表'))}</strong><span class="describe-vlm-chat-roleplay-section-actions"><button type="button" data-describe-vlm-chat-roleplay-character-add title="${escapeHtml(localText('Add character', '增加角色'))}" aria-label="${escapeHtml(localText('Add character', '增加角色'))}"><i class="fa-solid fa-plus"></i></button><button type="button" data-describe-vlm-chat-roleplay-character-remove title="${escapeHtml(localText('Remove current character', '删除当前角色'))}" aria-label="${escapeHtml(localText('Remove current character', '删除当前角色'))}"><i class="fa-solid fa-trash"></i></button><button type="button" data-describe-vlm-chat-roleplay-import-draft title="${escapeHtml(localText('Ask the assistant to create a character draft', '让助手生成角色草稿'))}" aria-label="${escapeHtml(localText('Ask the assistant to create a character draft', '让助手生成角色草稿'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button></span></div>
@@ -14923,10 +14935,18 @@
 
     function chatCompletionLimitMessage(completion) {
         const limit = Math.max(0, Math.round(Number(completion?.max_tokens) || 0));
-        return limit > 0
-            ? roleplayDictionaryText('Output reached the {tokens} token limit. Increase Maximum output tokens and regenerate if the answer is incomplete or only thinking was returned.')
-                .replace('{tokens}', String(limit))
-            : roleplayDictionaryText('Output reached the token limit. Increase Maximum output tokens and regenerate if the answer is incomplete or only thinking was returned.');
+        const outputTokens = Number(completion?.output_tokens);
+        const parts = [roleplayDictionaryText('Generation stopped due to a length limit; the answer may be incomplete.')];
+        if (Number.isFinite(limit) && limit > 0) {
+            parts.push(roleplayDictionaryText('Requested output limit: {tokens} tokens (not actual usage).')
+                .replace('{tokens}', String(limit)));
+        }
+        parts.push(Number.isFinite(outputTokens) && outputTokens > 0
+            ? roleplayDictionaryText('Server-reported output usage: {tokens} tokens.')
+                .replace('{tokens}', String(Math.round(outputTokens)))
+            : roleplayDictionaryText('Actual output usage is unknown.'));
+        parts.push(roleplayDictionaryText("Check the server's context capacity and output limit."));
+        return parts.join(' ');
     }
 
     function visibleReplyFromResponse(response, completion) {
@@ -14935,10 +14955,7 @@
         const rawText = String(response?.raw_text || response?.rawText || '').trim();
         if (rawText) return rawText;
         if (completion?.output_limited) {
-            return t(
-                'Reply reached the output limit before returning visible text.',
-                '回答达到输出上限，但没有返回可显示正文。'
-            );
+            return roleplayDictionaryText('Generation stopped due to a length limit without a visible answer.');
         }
         return t('No visible reply was returned.', '没有返回可显示正文。');
     }
@@ -17267,7 +17284,7 @@
   <header><span><small>#${index + 1}</small><strong>${escapeHtml(title)}</strong>${message.text_edited_at ? `<small>${escapeHtml(text('Text edited'))}</small>` : ''}</span><span>
     ${canUndo ? `<button type="button" data-history-undo="${escapeHtml(message.id)}" title="${escapeHtml(text('Undo text edit'))}" aria-label="${escapeHtml(text('Undo text edit'))}"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
     <button type="button" data-history-edit="${escapeHtml(message.id)}" title="${escapeHtml(text('Edit message text'))}" aria-label="${escapeHtml(text('Edit message text'))}"><i class="fa-solid fa-pen"></i></button>
-  </span></header><p>${escapeHtml(message.content || '')}</p></article>`;
+  </span></header><div class="describe-vlm-chat-rich-text" data-describe-vlm-message-body>${renderChatMessageText(message.content, runtime)}</div></article>`;
         }).join('') || `<p class="describe-vlm-history-empty">${escapeHtml(text('No matching messages'))}</p>`;
         if (viewer.windowEnd === viewer.pages - 1 && rows.length) {
             list.insertAdjacentHTML('beforeend', `<p><small>${escapeHtml(text('End of conversation history'))}</small></p>`);
@@ -18373,12 +18390,15 @@
         const log = modal?.querySelector('[data-describe-vlm-chat-log]');
         const message = log?.querySelector(`[data-describe-vlm-chat-message="${pendingIndex}"]`);
         if (!log || !message) return false;
-        const paragraph = message.querySelector(':scope > p');
+        const paragraph = message.querySelector(':scope > [data-describe-vlm-message-body]');
         if (!paragraph) return false;
         const previousScrollTop = log.scrollTop;
         const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
         const nextContent = String(content || '');
-        if (paragraph.textContent !== nextContent) paragraph.textContent = nextContent;
+        if (paragraph.__renderedSource !== nextContent) {
+            paragraph.innerHTML = renderChatMessageText(nextContent, runtime);
+            paragraph.__renderedSource = nextContent;
+        }
         log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
         return true;
     }
@@ -23164,7 +23184,7 @@
   ${renderMessageImages(message.images, message.media_assets)}
   ${renderConversationImageReads(message.image_context_reads)}
   ${role === 'assistant' && !pending ? completionReasoningHtml(completion, `${message.id}:${activeVariant?.id || ''}`) : ''}
-  ${message.content ? `<p>${escapeHtml(message.content)}</p>` : ''}
+  ${message.content || pending ? `<div class="describe-vlm-chat-rich-text" data-describe-vlm-message-body>${renderChatMessageText(message.content, runtime)}</div>` : ''}
   ${memoryUsageHtml}
   ${stateChangesHtml}
   ${resourceChangesHtml}
@@ -25485,6 +25505,14 @@
     }
 
     document.addEventListener('change', (evt) => {
+        const dialogueEmphasis = evt.target.closest?.('[data-describe-vlm-chat-dialogue-emphasis]');
+        if (dialogueEmphasis) {
+            state.dialogueEmphasis = dialogueEmphasis.checked;
+            saveChatSettings();
+            renderMessages();
+            if (conversationHistoryViewer && !conversationHistoryViewer.edit) renderConversationHistory(conversationHistoryViewer);
+            return;
+        }
         const skillUpload = evt.target.closest?.('[data-describe-vlm-chat-skill-upload-file]');
         if (skillUpload) {
             const modal = document.getElementById('describe_vlm_chat_modal');

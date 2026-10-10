@@ -199,6 +199,8 @@ def javascript_html():
     canvas_workbench_utils_path = webpath('javascript/canvas_workbench/utils.js')
     canvas_workbench_api_path = webpath('javascript/canvas_workbench/api.js')
     describe_vlm_chat_path = webpath('javascript/describe_vlm_chat.js')
+    chat_markdown_path = webpath('javascript/vendor/markdown-it/markdown-it-15.0.2.min.js')
+    chat_rich_text_path = webpath('javascript/chat_rich_text.js')
     webui_danbooru_autocomplete_path = webpath('javascript/webui_danbooru_autocomplete.js')
     scene_prompt_recommendations_path = webpath('javascript/scene_prompt_recommendations.js')
     prompt_actions_path = webpath('javascript/prompt_actions.js')
@@ -247,6 +249,8 @@ def javascript_html():
             },
             'describeVlmChat': {
                 'js': [
+                    chat_markdown_path,
+                    chat_rich_text_path,
                     describe_vlm_chat_path,
                 ],
             },

@@ -477,14 +477,14 @@ def empty_output_limit_error(text, completion):
     )
     if has_reasoning:
         detail = (
-            "The API reached its output limit with reasoning but no answer. Thinking was requested off; if the provider cannot disable it, increase Maximum output tokens and regenerate."
+            "The server stopped due to a length limit and returned only reasoning, with no answer. Thinking was requested off; check whether the server supports and applies this setting, as well as its context capacity and output limit."
             if completion.get("thinking_requested") is False else
-            "The API reached its output limit with reasoning but no answer. Disable thinking or increase the output limit."
+            "The server stopped due to a length limit and returned only reasoning, with no answer. Check the server's context capacity and output limit."
         )
         return {"error": "reasoning_output_limit", "details": detail}
     return {
         "error": "empty_response_output_limit",
-        "details": "The API reached its output limit without a usable answer. Check the model settings or increase the output limit.",
+        "details": "The server stopped due to a length limit without a usable answer. Check the server's context capacity and output limit.",
     }
 
 

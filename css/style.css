@@ -6048,6 +6048,56 @@ html.describe-vlm-chat-resizing * {
   line-height: 1.45;
 }
 
+.describe-vlm-chat-rich-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.describe-vlm-chat-rich-text > :first-child { margin-top: 0; }
+.describe-vlm-chat-rich-text > :last-child { margin-bottom: 0; }
+.describe-vlm-chat-msg .describe-vlm-chat-rich-text p,
+.describe-vlm-history-dialog article .describe-vlm-chat-rich-text p {
+  white-space: normal;
+  margin: 0 0 0.65em;
+  line-height: inherit;
+}
+.describe-vlm-chat-rich-text strong { font-weight: 700; }
+.describe-vlm-chat-rich-text strong.describe-vlm-chat-dialogue {
+  color: var(--describe-chat-dialogue-color, #e6b58a);
+}
+.describe-vlm-chat-rich-text em { font-style: italic; }
+.describe-vlm-chat-rich-text :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1.1em;
+  line-height: 1.4;
+  margin: 0.85em 0 0.4em;
+  letter-spacing: 0;
+}
+.describe-vlm-chat-rich-text :is(ul, ol) { padding-left: 1.7em; margin: 0.5em 0; }
+.describe-vlm-chat-rich-text ul { list-style: disc; }
+.describe-vlm-chat-rich-text ol { list-style: decimal; }
+.describe-vlm-chat-rich-text blockquote {
+  margin: 0.6em 0;
+  padding: 0.15em 0.8em;
+  border-left: 3px solid currentColor;
+}
+.describe-vlm-chat-rich-text code { font-family: Consolas, monospace; font-size: 0.95em; }
+.describe-vlm-chat-rich-text pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+  padding: 10px;
+  margin: 0.6em 0;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.describe-vlm-chat-rich-text pre code { overflow-wrap: normal; }
+.describe-vlm-chat-rich-text a { text-decoration: underline; }
+.describe-vlm-chat-table-scroll { max-width: 100%; overflow-x: auto; margin: 0.6em 0; }
+.describe-vlm-chat-table-scroll table { border-collapse: collapse; width: 100%; }
+.describe-vlm-chat-table-scroll :is(th, td) { padding: 6px 10px; border: 1px solid #727782; }
+
 .describe-vlm-chat-msg b {
   min-width: 0;
   overflow: hidden;
@@ -6197,7 +6247,7 @@ html.describe-vlm-chat-resizing * {
 }
 .describe-vlm-history-dialog article header > span { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .describe-vlm-history-dialog article header > span:last-child { flex: 0 0 auto; }
-.describe-vlm-history-dialog article strong { color: #7dd3fc; overflow-wrap: anywhere; }
+.describe-vlm-history-dialog article header strong { color: #7dd3fc; overflow-wrap: anywhere; }
 .describe-vlm-history-dialog small { color: #b5bbc5; }
 .describe-vlm-history-dialog article p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0 0; }
 .describe-vlm-history-dialog [data-history-editor] {
