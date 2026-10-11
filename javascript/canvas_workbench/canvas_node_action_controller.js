@@ -23,6 +23,7 @@
         };
 
         function handleNodeAction(node, action, actionElement, evt) {
+            if (['xy_matrix', 'xyz_matrix'].includes(node?.type) && call('handleXyzMatrixAction', node, action, evt)) return;
             if (node?.type === 'result' && call('handleResultInspectorAction', node, action, actionElement, evt)) return;
             if (call('handleTimelineAction', action, node, actionElement)) return;
             if (action === 'toggle-collapse') {
@@ -158,7 +159,7 @@
                 call('resetMediaTrim', node);
             } else if (action === 'replace-image' && node.type !== 'result') {
                 call('replaceNodeImage', node);
-            } else if (action === 'toggle-image-frameless' && node.type === 'image') {
+            } else if (action === 'toggle-image-frameless' && ['image', 'result'].includes(node.type)) {
                 call('pushHistory', call('isImageNodeFrameless', node) ? 'Show image frame' : 'Hide image frame');
                 Object.assign(node, call('buildMediaNodeStatePatch', node, {
                     displayMode: call('isImageNodeFrameless', node) ? 'card' : 'frameless'

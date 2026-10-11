@@ -379,6 +379,7 @@ ${status ? `<div class="sai-node-foot">${escape(status)}</div>` : ''}
             const convertLabel = selectedKind === 'video' ? translate('Video', '视频') : (selectedKind === 'audio' ? translate('Audio', '音频') : translate('Image', '图片'));
             const convertIcon = assetIcon(selectedAsset || {});
             const canLayerForge = !!selectedAsset && selectedKind === 'image';
+            const frameless = canLayerForge && String(node.display_mode || '').toLowerCase() === 'frameless';
             const stack = assets.length > 1 ? `<div class="sai-result-stack">${assets.map((asset, index) => {
                 const thumb = displaySrc(asset, asset.thumb || asset.preview_url || asset.data_url || '');
                 const kind = assetKind(asset);
@@ -409,6 +410,7 @@ ${status ? `<div class="sai-node-foot">${escape(status)}</div>` : ''}
   <span class="sai-node-kind">Result</span>
   <span class="sai-node-title">${escape(node.title || 'Result')}</span>
   ${nodeBadges(node)}
+  ${canLayerForge ? `<button type="button" class="${frameless ? 'is-active' : ''}" data-node-action="toggle-image-frameless" aria-pressed="${frameless}" title="${escape(frameless ? translate('Show image frame', '显示图像边框') : translate('Hide image frame', '隐藏图像边框'))}"><i class="fa-solid fa-border-all"></i></button>` : ''}
   <button type="button" data-node-action="delete" title="${escape(translate('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
 </div>
 <div class="sai-result-status" data-state="${escape(status.state || 'queued')}">

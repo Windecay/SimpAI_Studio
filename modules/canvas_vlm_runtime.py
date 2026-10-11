@@ -1312,6 +1312,9 @@ def canvas_vlm_run(payload, stream_callback=None):
     )
     if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
         return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
+
+    def cancel_local_inference():
+        return is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id)
     raw_user_system_prompt = str(params.get("user_system_prompt") or params.get("system_prompt") or "").strip()
     params["user_system_prompt"] = raw_user_system_prompt
     two_stage_requested = canvas_vlm_agent.two_stage_intent_enabled(payload, params, prompt)
@@ -1737,6 +1740,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 seed=seed,
                 system_prompt="You extract concise image intent as JSON only. Do not write final prompts.",
                 enable_thinking=enable_thinking,
+                cancel_check=cancel_local_inference,
             )
             intent_text = str(intent_text or "").strip()
             for prefix in VLM.remove_prefixs:
@@ -1870,6 +1874,7 @@ def canvas_vlm_run(payload, stream_callback=None):
             repetition_penalty=repetition_penalty,
             seed=seed,
             enable_thinking=enable_thinking,
+            cancel_check=cancel_local_inference,
         )
         completion_stats = _canvas_vlm_local_completion_stats()
     else:
@@ -1897,6 +1902,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 system_prompt=stateless_system_prompt,
                 on_delta=stream_callback,
                 enable_thinking=enable_thinking,
+                cancel_check=cancel_local_inference,
             )
         else:
             text = vlm.inference(
@@ -1910,6 +1916,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 seed=seed,
                 system_prompt=stateless_system_prompt if stateless_local_chat else None,
                 enable_thinking=enable_thinking,
+                cancel_check=cancel_local_inference,
             )
         completion_stats = _canvas_vlm_local_completion_stats()
         if (
@@ -1934,6 +1941,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                     system_prompt=stateless_system_prompt,
                     on_delta=stream_callback,
                     enable_thinking=enable_thinking,
+                    cancel_check=cancel_local_inference,
                 )
             else:
                 text = vlm.inference(
@@ -1947,6 +1955,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                     seed=seed,
                     system_prompt=stateless_system_prompt,
                     enable_thinking=enable_thinking,
+                    cancel_check=cancel_local_inference,
                 )
             completion_stats = _canvas_vlm_local_completion_stats()
         if mode == "chat" and image_input is not None and _canvas_vlm_claims_current_media_unavailable(text):
@@ -1979,6 +1988,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                     system_prompt=retry_system_prompt,
                     on_delta=stream_callback,
                     enable_thinking=enable_thinking,
+                    cancel_check=cancel_local_inference,
                 )
             else:
                 text = vlm.inference(
@@ -1992,6 +2002,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                     seed=seed,
                     system_prompt=retry_system_prompt,
                     enable_thinking=enable_thinking,
+                    cancel_check=cancel_local_inference,
                 )
             completion_stats = _canvas_vlm_local_completion_stats()
     if text is None:
@@ -2041,6 +2052,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 seed=seed,
                 system_prompt=system_prompt,
                 enable_thinking=enable_thinking,
+                cancel_check=cancel_local_inference,
             )
             if isinstance(result, str) and ("Context Shift is explicitly disabled" in result or ("n_ctx" in result and "fit the dialogue" in result)):
                 raise RuntimeError(result.strip()[:500])
@@ -2089,6 +2101,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 seed=(seed + 1 if seed >= 0 else seed),
                 system_prompt=str(params.get("system_prompt") or ""),
                 enable_thinking=enable_thinking,
+                cancel_check=cancel_local_inference,
             )
             retry_text = str(retry_text or "").strip()
             if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):

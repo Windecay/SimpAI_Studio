@@ -13,7 +13,7 @@
     let poseViewerCorePromise = null;
     let handPresetsPromise = null;
     let sceneBridgeAttached = false;
-    const POSE_VIEWER_CORE_VERSION = 'simpai-pose-scene-20261009-1';
+    const POSE_VIEWER_CORE_VERSION = 'simpai-pose-camera-20261011-1';
 
     function call(options, name, ...args) {
         if (typeof options?.[name] !== 'function') return null;
@@ -42,8 +42,10 @@
         if (!poseViewerCorePromise) {
             poseViewerCorePromise = Promise.all([
                 import(`/pose-studio/vendor/vnccs_pose_studio_core.js?v=${POSE_VIEWER_CORE_VERSION}`),
-                import(`/pose-studio/vendor/vnccs_pose_scene.js?v=${POSE_VIEWER_CORE_VERSION}`)
-            ]).then(([core, scene]) => ({ ...core, ...scene }));
+                import(`/pose-studio/vendor/vnccs_pose_scene.js?v=${POSE_VIEWER_CORE_VERSION}`),
+                import(`/pose-studio/vendor/simpai_pose_spatial_view.js?v=${POSE_VIEWER_CORE_VERSION}-grey-20261011`),
+                import(`/pose-studio/vendor/simpai_pose_regions.js?v=${POSE_VIEWER_CORE_VERSION}`)
+            ]).then(([core, scene, spatial, regions]) => ({ ...core, ...scene, ...spatial, ...regions }));
         }
         return poseViewerCorePromise;
     }
@@ -223,9 +225,18 @@
         return await readImageSize(options?.referenceImageDataUrl || options?.referenceSrc || '');
     }
 
-    async function readSceneReference() {
+    function sceneBridgeConfig() {
         const state = window.simpleaiTopbarSystemParams || {};
-        const configuredSlots = state.scene_frontend?.pose_studio_reference_slots;
+        if (typeof resolvePoseStudioSceneConfig === 'function') return resolvePoseStudioSceneConfig(state);
+        if (state.__scene_pose_studio?.pose_studio_output_slot || state.__scene_pose_studio?.pose_studio_reference_slots) {
+            return state.__scene_pose_studio;
+        }
+        return state.scene_frontend || state.default_engine?.scene_frontend
+            || state.__preset_prepared?.engine?.scene_frontend || {};
+    }
+
+    async function readSceneReference() {
+        const configuredSlots = sceneBridgeConfig().pose_studio_reference_slots;
         const slots = Array.isArray(configuredSlots) && configuredSlots.length
             ? configuredSlots.filter(id => ['scene_canvas', 'scene_input_image1', 'scene_input_image2'].includes(id))
             : ['scene_input_image1', 'scene_canvas', 'scene_input_image2'];
@@ -275,10 +286,24 @@
     }
 
     function sceneOutputSlot() {
-        const state = window.simpleaiTopbarSystemParams || {};
-        const configured = state.scene_frontend?.pose_studio_output_slot;
+        const configured = sceneBridgeConfig().pose_studio_output_slot;
         return ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2'].includes(configured)
             ? configured : 'scene_input_image1';
+    }
+
+    function sceneImageNumber(slot) {
+        return slot === 'scene_canvas' ? 1 : ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2'].indexOf(slot) + 1;
+    }
+
+    function refreshSceneBridgeFlow() {
+        const flow = findById('pose_studio_scene_control')?.querySelector?.('[data-pose-studio-scene-flow]');
+        if (!flow) return;
+        const slots = sceneBridgeConfig().pose_studio_reference_slots;
+        const source = Array.isArray(slots) && slots.length === 1 ? sceneImageNumber(slots[0]) : 0;
+        const target = sceneImageNumber(sceneOutputSlot());
+        flow.textContent = source
+            ? t(`Image ${source} original → Pose Studio → Image ${target} pose`, `图${source}人物原图 → Pose Studio → 图${target}姿势图`)
+            : t(`Pose Studio → Image ${target} pose`, `Pose Studio → 图${target}姿势图`);
     }
 
     async function syncSceneCanvasFromBridge() {
@@ -298,8 +323,13 @@
 
     async function refreshSceneBridge() {
         const state = safeJsonParse(readBridgeValue('pose_studio_scene_state'));
-        if (!state.ok) return;
+        if (!state.ok) {
+            if (state.error) updateSceneBridgePreview(null, t('Pose export was not applied.', '姿势图未写入，请重新打开编辑器后再确认。'));
+            return;
+        }
         await syncSceneCanvasFromBridge();
+        const number = sceneImageNumber(state.slot);
+        updateSceneBridgePreview(state, t(`Pose image sent to Image ${number}`, `姿势图已发送到图${number}`));
         if (typeof refresh_scene_localization === 'function') refresh_scene_localization();
         const source = state.slot === 'scene_canvas_image' ? 'scene_canvas' : state.slot;
         if (typeof refreshResolutionControlSource === 'function') refreshResolutionControlSource(source, 'pose_studio');
@@ -307,9 +337,15 @@
     }
 
     async function openScenePresetBridge() {
+        refreshSceneBridgeFlow();
         const state = safeJsonParse(readBridgeValue('pose_studio_scene_state'), {});
         const reference = await readSceneReference();
         const outputSlot = sceneOutputSlot();
+        if (outputSlot === 'scene_canvas_image' && sceneBridgeConfig().pose_studio_reference_slots?.includes('scene_input_image1') && !reference.dataUrl) {
+            updateSceneBridgePreview(null, t('Upload the character original to Image 2 first. Image 1 accepts your pose image after that.', '请先将人物原图上传到图2，再准备图1的姿势图或打开 Pose Studio。'));
+            findById('pose_studio_scene_control')?.querySelector?.('[data-pose-studio-scene-status]')?.setAttribute?.('data-pose-studio-needs-character', '');
+            return null;
+        }
         const poseData = state.pose_data || {};
         const editorState = state.editor_state || {};
         const hasExistingPose = hasStoredPoseForEditing(poseData, editorState);
@@ -334,11 +370,8 @@
                 setBridgeValue('pose_studio_scene_target', outputSlot);
                 setBridgeValue('pose_studio_scene_payload', payload);
                 clickBridgeButton('pose_studio_scene_apply_btn');
-                const message = outputSlot === 'scene_canvas_image'
-                    ? t('Pose image sent to Image 1', '姿势图已发送到图1')
-                    : outputSlot === 'scene_input_image2'
-                        ? t('Pose image sent to Image 3', '姿势图已发送到图3')
-                        : t('Pose image sent to Image 2', '姿势图已发送到图2');
+                const number = sceneImageNumber(outputSlot);
+                const message = t(`Sending pose image to Image ${number}...`, `正在将姿势图发送到图${number}…`);
                 updateSceneBridgePreview(response, message);
             }
         });
@@ -347,6 +380,8 @@
     function attachScenePresetBridge() {
         if (sceneBridgeAttached) return;
         sceneBridgeAttached = true;
+        refreshSceneBridgeFlow();
+        window.addEventListener('simpai:system-params-updated', refreshSceneBridgeFlow);
         document.addEventListener('click', (evt) => {
             const trigger = evt.target.closest?.('[data-pose-studio-scene-open]');
             if (!trigger || !trigger.closest?.('#pose_studio_scene_control')) return;
@@ -428,6 +463,7 @@
             view_width: 1024,
             view_height: 1024,
             cam_zoom: 1.0,
+            cam_distance: 1.0,
             cam_offset_x: 0,
             cam_offset_y: 0,
             cam_yaw_deg: 0,
@@ -451,7 +487,8 @@
         { group: 'rotation', key: 'rot_x', axis: 'x', label: 'X', min: -180, max: 180, step: 1, def: 0, suffix: 'deg' },
         { group: 'rotation', key: 'rot_y', axis: 'y', label: 'Y', min: -180, max: 180, step: 1, def: 0, suffix: 'deg' },
         { group: 'rotation', key: 'rot_z', axis: 'z', label: 'Z', min: -180, max: 180, step: 1, def: 0, suffix: 'deg' },
-        { group: 'camera', key: 'cam_zoom', label: t('Zoom', '缩放'), min: 0.1, max: 7, step: 0.01, def: 1.0 },
+        { group: 'camera', key: 'cam_zoom', label: t('View zoom', '视角缩放'), min: 0.1, max: 7, step: 0.01, def: 1.0 },
+        { group: 'camera', key: 'cam_distance', label: t('Camera distance', '相机远近'), min: 0.1, max: 5, step: 0.01, def: 1.0 },
         { group: 'camera', key: 'cam_offset_x', label: t('Pan X', '平移 X'), min: -20, max: 20, step: 0.1, def: 0 },
         { group: 'camera', key: 'cam_offset_y', label: t('Pan Y', '平移 Y'), min: -20, max: 20, step: 0.1, def: 0 },
         { group: 'camera', key: 'cam_yaw_deg', label: t('Yaw', '水平旋转'), min: -180, max: 180, step: 1, def: 0, suffix: 'deg' },
@@ -548,6 +585,7 @@
                 viewer.setSAMProjectionCameraFrame(frameParams.sam_projection || null);
             }
             exportParams.cam_zoom = frameParams.zoom || 1.0;
+            exportParams.cam_distance = 1.0;
             exportParams.cam_offset_x = frameParams.offset_x || 0;
             exportParams.cam_offset_y = frameParams.offset_y || 0;
             exportParams.cam_yaw_deg = frameParams.yaw_deg || 0;
@@ -588,6 +626,7 @@
             };
         }
         exportParams.cam_zoom = fallbackZoom;
+        exportParams.cam_distance = 1.0;
         exportParams.cam_offset_x = fallbackParams.offset_x || 0;
         exportParams.cam_offset_y = fallbackParams.offset_y || 0;
         exportParams.cam_yaw_deg = 0;
@@ -924,7 +963,14 @@
     function personLimitStatusText(response) {
         const detected = Number(response?.detected_people);
         const parsed = Number(response?.parsed_people);
+        if (response?.selection_method === 'manual' && Number.isInteger(parsed) && parsed > 0) {
+            return t(`Parsed ${parsed} manually selected ${parsed === 1 ? 'person' : 'people'}.`, `已按框选区域解析 ${parsed} 人。`);
+        }
         if (!Number.isInteger(detected) || !Number.isInteger(parsed) || parsed < 1 || detected <= parsed) return '';
+        if (response?.selection_method === 'subject') {
+            return t(`Detected ${detected} people. Parsed ${parsed} by subject priority (size and centrality).`,
+                `检测到 ${detected} 人，已按主角优先（人物大小与居中程度）解析 ${parsed} 人。`);
+        }
         return t(`Detected ${detected} people. Parsed the first ${parsed} from left to right.`,
             `检测到 ${detected} 人，已按从左到右的顺序解析前 ${parsed} 人。`);
     }
@@ -968,12 +1014,20 @@
     <dl>
       <dt>${escapeHtml(t('Wheel over viewport', '视口滚轮'))}</dt>
       <dd>${escapeHtml(t('Zoom the export viewport; hold Shift for fine zoom.', '缩放导出视口；按住 Shift 可细调。'))}</dd>
+      <dt>${escapeHtml(t('Right drag / Alt + left drag', '右键拖动 / Alt＋左键拖动'))}</dt>
+      <dd>${escapeHtml(t('Orbit the export camera horizontally and vertically; Shift makes smaller adjustments.', '调整导出相机的水平角和俯仰；Shift 可精调。'))}</dd>
+      <dt>${escapeHtml(t('Alt + wheel', 'Alt＋滚轮'))}</dt>
+      <dd>${escapeHtml(t('Move the export camera closer or farther; Shift makes smaller adjustments.', '移动导出相机的远近；Shift 可精调。'))}</dd>
       <dt>${escapeHtml(t('Middle drag viewport', '中键拖拽视口'))}</dt>
       <dd>${escapeHtml(t('Pan the export viewport without selecting a joint first.', '无需先选中关节，直接平移导出视口。'))}</dd>
       <dt>${escapeHtml(t('Drag joint marker', '拖拽关节点'))}</dt>
       <dd>${escapeHtml(t('Move the pose joint or IK target.', '移动姿势关节或 IK 目标。'))}</dd>
       <dt>${escapeHtml(t('Ctrl + middle drag', 'Ctrl + 中键拖拽'))}</dt>
       <dd>${escapeHtml(t('Rotate the observe-only viewer; it does not change the exported camera.', '旋转仅观察视角；不改变导出相机。'))}</dd>
+      <dt>${escapeHtml(t('Arrow keys / PageUp / PageDown / R', '方向键 / PageUp / PageDown / R'))}</dt>
+      <dd>${escapeHtml(t('Focus the viewport or camera diagram: arrows orbit, PageUp moves closer, PageDown moves farther, R resets the camera. Shift makes smaller adjustments.', '点击主画面或相机小窗后：方向键旋转，PageUp 靠近，PageDown 远离，R 重置相机；Shift 可精调。'))}</dd>
+      <dt>${escapeHtml(t('Drag in the camera diagram', '拖动相机小窗'))}</dt>
+      <dd>${escapeHtml(t('Top view changes yaw and distance; side view changes pitch and distance. Wheel changes distance; Fit reframes only the diagram.', '俯视调整水平角与远近，侧视调整俯仰与远近；滚轮调整远近。“适应”仅调整小窗显示范围。'))}</dd>
     </dl>
   </div>
   <div class="sai-pose-studio-toolbar">
@@ -985,6 +1039,8 @@
       <span>${escapeHtml(t('Reference', '参考'))}</span>
       <button type="button" data-pose-studio-action="reference" title="${escapeHtml(t('Load reference image', '载入参考图'))}"><i class="fa-solid fa-image"></i><span>${escapeHtml(t('Load', '载入'))}</span></button>
       <button type="button" data-pose-studio-action="parse-reference" title="${escapeHtml(t('Parse reference pose', '解析参考姿势'))}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Parse', '解析'))}</span></button>
+      <button type="button" data-pose-studio-action="select-regions" aria-pressed="false"><i class="fa-solid fa-vector-square"></i><span>${escapeHtml(t('Select people', '框选人物'))}</span></button>
+      <button type="button" data-pose-studio-action="clear-regions" hidden>${escapeHtml(t('Clear regions', '清除框选'))}</button>
     </div>
     <div class="sai-pose-studio-tool-group">
       <span>${escapeHtml(t('Pose', '姿势'))}</span>
@@ -1000,7 +1056,15 @@
         <label class="sai-pose-studio-control-field">
           <span><b>${escapeHtml(t('Maximum people', '最大人数'))}</b></span>
           <input type="number" data-pose-studio-max-people min="1" step="1" value="2" required aria-label="${escapeHtml(t('Maximum people', '最大人数'))}">
-          <small>${escapeHtml(t('Applies to the next parse. People are selected from left to right.', '用于下一次解析，按从左到右的顺序选取人物。'))}</small>
+          <small>${escapeHtml(t('Applies to the next parse.', '用于下一次解析。'))}</small>
+        </label>
+        <label class="sai-pose-studio-control-field">
+          <span><b>${escapeHtml(t('Person priority', '人物选择'))}</b></span>
+          <select data-pose-studio-person-selection aria-label="${escapeHtml(t('Person priority', '人物选择'))}">
+            <option value="subject">${escapeHtml(t('Main subject first', '主角优先'))}</option>
+            <option value="left_to_right">${escapeHtml(t('Left to right', '从左到右'))}</option>
+          </select>
+          <small>${escapeHtml(t('Subject priority favors larger people near the center. Draw regions to choose exact people.', '主角优先按人物大小与居中程度选择；可用“框选人物”指定目标。'))}</small>
         </label>
       </details>
       <details open>
@@ -1044,6 +1108,7 @@
           <button type="button" data-pose-studio-action="reset-camera"><i class="fa-solid fa-crosshairs"></i><span>${escapeHtml(t('Reset Camera', '重置相机'))}</span></button>
         </div>
         ${CONTROL_SLIDERS.filter(item => item.group === 'camera').map(item => sliderControlHtml(item, item.def)).join('')}
+        <p class="sai-pose-studio-control-hint">${escapeHtml(t('Distance: 1 is the original camera position; lower moves closer, higher moves farther.', '相机远近：1 为初始位置；小于 1 靠近，大于 1 远离。'))}</p>
       </details>
       <details open>
         <summary><i class="fa-solid fa-sliders"></i><span>${escapeHtml(t('Body', '角色'))}</span></summary>
@@ -1059,10 +1124,11 @@
       </details>
     </aside>
     <div class="sai-pose-studio-stage">
-      <div class="sai-pose-studio-canvas-wrap">
+      <div class="sai-pose-studio-canvas-wrap" tabindex="0" aria-label="${escapeHtml(t('Pose viewport', '姿势视口'))}">
         <img class="sai-pose-studio-reference-bg" data-pose-studio-reference-bg alt="" hidden>
         <canvas data-pose-studio-viewer-canvas></canvas>
         <canvas data-pose-studio-fallback-canvas></canvas>
+        <div class="sai-pose-studio-regions" data-pose-studio-regions hidden></div>
         <div class="sai-pose-studio-busy" data-pose-studio-busy hidden>
           <i class="fa-solid fa-spinner fa-spin"></i>
           <span></span>
@@ -1070,6 +1136,17 @@
       </div>
     </div>
     <aside class="sai-pose-studio-library">
+      <details class="sai-pose-studio-spatial" data-pose-studio-spatial open>
+        <summary>${escapeHtml(t('Camera & characters', '相机与角色'))}</summary>
+        <div class="sai-pose-studio-spatial-tabs">
+          <button type="button" data-pose-spatial-view="top" aria-pressed="true">${escapeHtml(t('Top view', '俯视'))}</button>
+          <button type="button" data-pose-spatial-view="side" aria-pressed="false">${escapeHtml(t('Side view', '侧视'))}</button>
+          <button type="button" data-pose-spatial-fit title="${escapeHtml(t('Fit the diagram without moving the camera', '适应小窗范围，不移动相机'))}">${escapeHtml(t('Fit', '适应'))}</button>
+        </div>
+        <canvas data-pose-spatial-canvas tabindex="0" width="240" height="180" aria-label="${escapeHtml(t('Camera diagram: drag to adjust the camera; arrow keys orbit', '相机空间图：拖动调整相机，方向键旋转'))}"></canvas>
+        <div class="sai-pose-studio-spatial-hint">${escapeHtml(t('Drag: angle & distance · Wheel: distance · Shift: fine', '拖动：角度与远近 · 滚轮：远近 · Shift：精调'))}</div>
+        <div class="sai-pose-studio-spatial-legend"><span>${escapeHtml(t('Blue: camera', '蓝色：相机'))}</span><span>${escapeHtml(t('Orange: selected person', '橙色：当前人物'))}</span></div>
+      </details>
       <div class="sai-pose-studio-library-head">
         <span>${escapeHtml(t('Pose Library', '姿势库'))}</span>
         <button type="button" data-pose-studio-action="refresh-library" title="${escapeHtml(t('Refresh', '刷新'))}"><i class="fa-solid fa-arrows-rotate"></i></button>
@@ -1098,6 +1175,9 @@
         const peopleControl = modal.querySelector('[data-pose-studio-people]');
         const personSelect = modal.querySelector('[data-pose-studio-person]');
         const maxPeopleInput = modal.querySelector('[data-pose-studio-max-people]');
+        const personSelectionInput = modal.querySelector('[data-pose-studio-person-selection]');
+        const selectRegionsButton = modal.querySelector('[data-pose-studio-action="select-regions"]');
+        const clearRegionsButton = modal.querySelector('[data-pose-studio-action="clear-regions"]');
         const controlSliders = Array.from(modal.querySelectorAll('[data-pose-studio-slider]'));
         const genderButtons = Array.from(modal.querySelectorAll('button[data-pose-studio-gender]'));
         const handSliders = Array.from(modal.querySelectorAll('[data-pose-studio-hand-slider]'));
@@ -1111,6 +1191,8 @@
         const storedMaxPeople = Number(editorState.max_people);
         let maxPeople = Number.isSafeInteger(storedMaxPeople) && storedMaxPeople > 0 ? storedMaxPeople : 2;
         maxPeopleInput.value = String(maxPeople);
+        let personSelection = editorState.person_selection === 'left_to_right' ? 'left_to_right' : 'subject';
+        personSelectionInput.value = personSelection;
         let meshParams = Object.assign(defaultMeshParams(), options.meshParams || {}, editorState.mesh_params || {});
         let exportParams = Object.assign(
             defaultExportParams(),
@@ -1122,6 +1204,7 @@
         if (editorState.camera_params && typeof editorState.camera_params === 'object') {
             exportParams = Object.assign(exportParams, {
                 cam_zoom: Number(editorState.camera_params.zoom ?? exportParams.cam_zoom),
+                cam_distance: Number(editorState.camera_params.distance_scale ?? exportParams.cam_distance),
                 cam_offset_x: Number(editorState.camera_params.offset_x ?? exportParams.cam_offset_x),
                 cam_offset_y: Number(editorState.camera_params.offset_y ?? exportParams.cam_offset_y),
                 cam_yaw_deg: Number(editorState.camera_params.yaw_deg ?? exportParams.cam_yaw_deg),
@@ -1141,6 +1224,9 @@
         let importPollTimer = null;
         let viewer = null;
         let personScene = null;
+        let spatialView = null;
+        let cameraGestures = null;
+        let regionSelector = null;
         let meshUpdatePending = false;
         let viewerReady = false;
         let usingFallbackCanvas = true;
@@ -1175,6 +1261,7 @@
             if (busyText) busyText.textContent = busyActive ? (message || t('Working...', '处理中...')) : '';
             if (personSelect) personSelect.disabled = busyActive || meshUpdatePending;
             maxPeopleInput.disabled = busyActive;
+            personSelectionInput.disabled = busyActive;
             controlSliders.forEach(slider => { slider.disabled = busyActive || !viewerReady; });
             modal.querySelectorAll('[data-pose-studio-action]').forEach((button) => {
                 const action = button.getAttribute('data-pose-studio-action') || '';
@@ -1279,6 +1366,7 @@
                 mesh_params: Object.assign({}, meshParams),
                 export_params: Object.assign({}, exportParams),
                 max_people: maxPeople,
+                person_selection: personSelection,
                 person_scene: personScene?.serialize(meshParams) || null
             });
             return editorState;
@@ -1292,6 +1380,10 @@
             return true;
         };
         maxPeopleInput.addEventListener('input', readMaxPeople);
+        personSelectionInput.addEventListener('change', () => {
+            personSelection = personSelectionInput.value;
+            persistEditorState();
+        });
 
         const clampHandSliderValue = (key, value) => {
             const def = handSliderDefByKey.get(key) || {};
@@ -1654,6 +1746,7 @@
             offset_x: Number(exportParams.cam_offset_x) || 0,
             offset_y: Number(exportParams.cam_offset_y) || 0,
             zoom: Number(exportParams.cam_zoom) || 1.0,
+            distance_scale: Number(exportParams.cam_distance) || 1.0,
             yaw_deg: Number(exportParams.cam_yaw_deg) || 0,
             pitch_deg: Number(exportParams.cam_pitch_deg) || 0
         });
@@ -1677,10 +1770,11 @@
             const offsetY = Number(exportParams.cam_offset_y) || 0;
             const yaw = Number(exportParams.cam_yaw_deg) || 0;
             const pitch = Number(exportParams.cam_pitch_deg) || 0;
+            const distance = Number(exportParams.cam_distance) || 1.0;
             if (snap && typeof viewer.snapToCaptureCamera === 'function') {
-                viewer.snapToCaptureCamera(width, height, zoom, offsetX, offsetY, yaw, pitch);
+                viewer.snapToCaptureCamera(width, height, zoom, offsetX, offsetY, yaw, pitch, distance);
             } else if (typeof viewer.updateCaptureCamera === 'function') {
-                viewer.updateCaptureCamera(width, height, zoom, offsetX, offsetY, yaw, pitch);
+                viewer.updateCaptureCamera(width, height, zoom, offsetX, offsetY, yaw, pitch, distance);
             }
             if (typeof viewer.setCameraParams === 'function') viewer.setCameraParams(currentCameraParams());
             persistCameraParams();
@@ -1707,6 +1801,51 @@
             return next;
         };
 
+        const canControlCamera = () => viewerReady && !!viewer && !busyActive && !meshUpdatePending && !regionSelector?.active;
+        const applyCameraGesturePatch = (patch) => {
+            if (!canControlCamera()) return false;
+            for (const [key, value] of Object.entries(patch)) {
+                if (controlDefByKey.get(key)?.group !== 'camera' || !Number.isFinite(value)) continue;
+                exportParams[key] = clampControlValue(key, value);
+                updateControlValue(key, exportParams[key]);
+            }
+            applyCameraToViewer(true);
+            return true;
+        };
+        const handleCameraKey = event => {
+            if (!canControlCamera() || event.target?.closest?.('input, textarea, select, button, [contenteditable="true"]')) return;
+            const action = cameraGestures?.cameraKeyboardAction(exportParams, event);
+            if (!action) return;
+            event.preventDefault(); event.stopPropagation();
+            if (action.reset) resetCameraControls();
+            else applyCameraGesturePatch(action.patch);
+        };
+        let viewportRotationDrag = null;
+        const startViewportRotationDrag = event => {
+            if (!canControlCamera()) return;
+            canvasWrap.focus({ preventScroll: true });
+            if (event.button !== 2 && !(event.button === 0 && event.altKey && !event.ctrlKey && !event.metaKey)) return;
+            event.preventDefault(); event.stopImmediatePropagation();
+            viewportRotationDrag = { id: event.pointerId, x: event.clientX, y: event.clientY };
+            canvasWrap.setPointerCapture(event.pointerId);
+            canvasWrap.classList.add('is-camera-rotating');
+        };
+        const moveViewportRotationDrag = event => {
+            if (event.pointerId !== viewportRotationDrag?.id) return;
+            event.preventDefault(); event.stopImmediatePropagation();
+            const drag = viewportRotationDrag;
+            const patch = cameraGestures.cameraRotationPatch(exportParams, event.clientX - drag.x, event.clientY - drag.y, event.shiftKey);
+            drag.x = event.clientX; drag.y = event.clientY;
+            applyCameraGesturePatch(patch);
+        };
+        const stopViewportRotationDrag = event => {
+            if (event.pointerId !== viewportRotationDrag?.id) return;
+            const id = viewportRotationDrag.id;
+            viewportRotationDrag = null;
+            canvasWrap.classList.remove('is-camera-rotating');
+            if (canvasWrap.hasPointerCapture(id)) canvasWrap.releasePointerCapture(id);
+            event.stopImmediatePropagation();
+        };
         let viewportPanDrag = null;
         let viewportObserveDrag = null;
         const isObserveModifier = (evt) => !!(evt && (evt.ctrlKey || evt.metaKey));
@@ -1801,7 +1940,7 @@
         };
 
         const startViewportPanDrag = (evt) => {
-            if (!canvasWrap || busyActive || evt.button !== 1) return;
+            if (!canvasWrap || busyActive || regionSelector?.active || evt.button !== 1) return;
             if (startViewportObserveDrag(evt)) return;
             if (isObserveModifier(evt)) {
                 evt.preventDefault();
@@ -1851,20 +1990,21 @@
         };
 
         const handleViewportWheel = (evt) => {
-            if (!canvasWrap || busyActive) return;
+            if (!canvasWrap || !canControlCamera()) return;
             if (evt.currentTarget && evt.target && !evt.currentTarget.contains(evt.target)) return;
             evt.preventDefault();
             evt.stopPropagation();
-            const currentZoom = Number(exportParams.cam_zoom) || 1.0;
-            const modeScale = evt.deltaMode === 1 ? 16 : (evt.deltaMode === 2 ? 240 : 1);
-            const delta = Math.max(-600, Math.min(600, Number(evt.deltaY) * modeScale));
-            if (!Number.isFinite(delta) || Math.abs(delta) < 0.01) return;
-            const speed = evt.shiftKey ? 0.00025 : 0.00055;
-            const nextZoom = currentZoom * Math.exp(-delta * speed);
-            applyCameraControlValue('cam_zoom', nextZoom, true);
+            const patch = cameraGestures.cameraWheelPatch(exportParams, evt);
+            if (patch) applyCameraGesturePatch(patch);
         };
 
         if (canvasWrap) {
+            canvasWrap.addEventListener('pointerdown', startViewportRotationDrag, { passive: false, capture: true });
+            canvasWrap.addEventListener('pointermove', moveViewportRotationDrag, { passive: false, capture: true });
+            canvasWrap.addEventListener('pointerup', stopViewportRotationDrag, { passive: false, capture: true });
+            canvasWrap.addEventListener('pointercancel', stopViewportRotationDrag, { passive: false, capture: true });
+            canvasWrap.addEventListener('lostpointercapture', stopViewportRotationDrag);
+            canvasWrap.addEventListener('keydown', handleCameraKey);
             canvasWrap.addEventListener('wheel', handleViewportWheel, { passive: false, capture: true });
             canvasWrap.addEventListener('pointerdown', startViewportPanDrag, { passive: false, capture: true });
             canvasWrap.addEventListener('pointermove', moveViewportPanDrag, { passive: false, capture: true });
@@ -1931,7 +2071,10 @@
                 }
                 viewer.updateLights?.([{ type: 'ambient', color: '#ffffff', intensity: 1.0, x: 0, y: 0, z: 0 }]);
                 applyClientMeshControls();
-                if (currentPose) applyPoseToViewer(currentPose, true);
+                if (currentPose) {
+                    const { bonePositions, ...reshapedPose } = currentPose;
+                    applyPoseToViewer(reshapedPose, true);
+                }
                 applyCameraToViewer(true);
                 persistEditorState();
                 setStatus(t('Character updated.', '角色已更新。'), false);
@@ -1998,6 +2141,7 @@
         const resetCameraControls = () => {
             Object.assign(exportParams, {
                 cam_zoom: 1.0,
+                cam_distance: 1.0,
                 cam_offset_x: 0,
                 cam_offset_y: 0,
                 cam_yaw_deg: 0,
@@ -2166,7 +2310,7 @@
                 (pose, params) => API.poseStudioRenderOverlay({ pose_data: pose, body_preset: { body_params: params }, pose_adjust: 0.0 })
             );
             if (!data.projection) {
-                Object.assign(exportParams, { cam_zoom: 1, cam_offset_x: 0, cam_offset_y: 0, cam_yaw_deg: 0, cam_pitch_deg: 0 });
+                Object.assign(exportParams, { cam_zoom: 1, cam_distance: 1, cam_offset_x: 0, cam_offset_y: 0, cam_yaw_deg: 0, cam_pitch_deg: 0 });
             }
             syncSelectedPerson();
             persistCameraParams();
@@ -2183,6 +2327,7 @@
                 const dataUrl = await readFileAsDataUrl(file);
                 const size = await readImageSize(dataUrl);
                 referenceDataUrl = dataUrl;
+                regionSelector?.clear();
                 referenceSrc = dataUrl;
                 referenceAsset = null;
                 referenceAssetSource = null;
@@ -2221,7 +2366,8 @@
                     pose_adjust: 0.0
                 });
                 if (!response?.ok || !response.mesh) return { ok: false, mesh: null };
-                const ok = viewer.setSAMMeshOverlayData(response.mesh, rawPose);
+                const ok = viewer.setSAMMeshOverlayData(response.mesh, rawPose,
+                    options.restoreCamera ? editorState.sam3d_overlay_frame : null);
                 if (ok && typeof viewer.setSAMMeshOverlayVisible === 'function') {
                     viewer.setSAMMeshOverlayVisible(true);
                 }
@@ -2243,6 +2389,10 @@
                     sam3d_overlay_ready: !!ok,
                     sam3d_overlay_fit: fittedToOverlay,
                     sam3d_pose_data: rawPose,
+                    sam3d_overlay_frame: ok ? {
+                        pelvisWorld: viewer._samMeshOverlaySourceFrame.pelvisWorld.toArray(),
+                        scale: viewer._samMeshOverlaySourceFrame.scale
+                    } : null,
                     sam3d_overlay_mesh: ok ? { vertex_count: Array.isArray(response.mesh.vertices) ? response.mesh.vertices.length : 0 } : null
                 });
                 return { ok: !!ok, mesh: response.mesh, fitted: fittedToOverlay };
@@ -2267,6 +2417,9 @@
                     syncControlValues();
                 }
             });
+            if (result?.applied) {
+                persistEditorState({ sam3d_projection_frame: viewer._samProjectionCameraFrame || null });
+            }
             syncControlValues();
             return result || { applied: false, mode: '' };
         };
@@ -2289,7 +2442,8 @@
                         Number(exportParams.cam_offset_x) || 0,
                         Number(exportParams.cam_offset_y) || 0,
                         Number(exportParams.cam_yaw_deg) || 0,
-                        Number(exportParams.cam_pitch_deg) || 0
+                        Number(exportParams.cam_pitch_deg) || 0,
+                        Number(exportParams.cam_distance) || 1.0
                     );
                 } finally {
                     if (referencePlane && oldReferenceVisible !== null) referencePlane.visible = oldReferenceVisible;
@@ -2308,6 +2462,12 @@
         };
 
         const disposeViewer = () => {
+            viewportRotationDrag = null;
+            cameraGestures = null;
+            regionSelector?.dispose();
+            regionSelector = null;
+            spatialView?.dispose();
+            spatialView = null;
             personScene?.clear();
             personScene = null;
             if (viewer && typeof viewer.dispose === 'function') {
@@ -2343,12 +2503,13 @@
             setStatus(t('Loading PoseViewerCore...', '正在载入 PoseViewerCore...'), false);
             setBusy(t('Loading Pose Studio resources...', '正在载入 Pose Studio 资源...'), true);
             try {
-                const [{ PoseViewerCore, PoseScene }, loadedHandPresets, modelData] = await Promise.all([
+                const [{ PoseViewerCore, PoseScene, PoseSpatialView, PoseRegionSelector, cameraKeyboardAction, cameraRotationPatch, cameraWheelPatch }, loadedHandPresets, modelData] = await Promise.all([
                     loadPoseViewerCore(),
                     loadHandPresets(),
                     API.poseStudioCharacterPreview(meshParams)
                 ]);
                 handPresets = loadedHandPresets;
+                cameraGestures = { cameraKeyboardAction, cameraRotationPatch, cameraWheelPatch };
                 if (!PoseViewerCore) throw new Error('PoseViewerCore export is unavailable.');
                 if (!modelData?.ok) throw new Error(modelData?.details || modelData?.error || 'character preview failed');
                 viewer = new PoseViewerCore(viewerCanvas, {
@@ -2361,6 +2522,7 @@
                     orbitEnabled: false,
                     syncMode: 'end',
                     skinMode: 'naked',
+                    onRender: () => spatialView?.render(),
                     onHandHover: ({ side }) => {
                         if (!viewerReady || !viewer || busyActive) return;
                         if (side && typeof viewer.showHandHighlightRing === 'function') {
@@ -2388,6 +2550,22 @@
                 viewer.loadData(modelData, true);
                 personScene = new PoseScene(viewer);
                 personScene.meshData = modelData;
+                spatialView = new PoseSpatialView(modal.querySelector('[data-pose-studio-spatial]'), viewer, () => personScene, t, {
+                    getParams: () => exportParams, apply: applyCameraGesturePatch, enabled: canControlCamera, keydown: handleCameraKey
+                });
+                regionSelector = new PoseRegionSelector(modal.querySelector('[data-pose-studio-regions]'), referenceBg, {
+                    getMaximum: () => Number(maxPeopleInput.value),
+                    onLimit: () => setStatus(t('Increase Maximum people or clear the existing regions.', '请提高“最大人数”或清除已有框选。'), true),
+                    onChange: (selector) => {
+                        stageEl.classList.toggle('is-selecting-people', selector.active);
+                        selectRegionsButton.setAttribute('aria-pressed', String(selector.active));
+                        selectRegionsButton.querySelector('span').textContent = selector.active ? t('Finish selection', '完成框选') : t('Select people', '框选人物');
+                        clearRegionsButton.hidden = !selector.boxes.length;
+                        setStatus(selector.boxes.length
+                            ? t(`Selected ${selector.boxes.length} regions. Click Parse; clear regions to restore automatic detection.`, `已框选 ${selector.boxes.length} 人，点击解析。清除框选可恢复自动识别。`)
+                            : (selector.active ? t('Drag a box around each person, then click Parse.', '拖动框住每个人物，再点击解析。') : t('Automatic person selection enabled.', '已恢复自动选择人物。')), false);
+                    }
+                });
                 viewer.updateLights([{ type: 'ambient', color: '#ffffff', intensity: 1.0, x: 0, y: 0, z: 0 }]);
                 viewerReady = true;
                 applyClientMeshControls();
@@ -2410,8 +2588,13 @@
                     });
                     let restoredCamera = false;
                     if (overlayResult.ok && exportParams.samApplyCamera) {
-                        const frameResult = applySAM3DFrameCameraParams(rawStoredPose, overlayResult.mesh || null);
-                        restoredCamera = !!frameResult.applied;
+                        if (editorState.sam3d_projection_frame && initialPoseState.source !== 'sam3d_pose_data') {
+                            viewer.setSAMProjectionCameraFrame(editorState.sam3d_projection_frame);
+                            restoredCamera = applyCameraToViewer(true);
+                        } else {
+                            const frameResult = applySAM3DFrameCameraParams(rawStoredPose, overlayResult.mesh || null);
+                            restoredCamera = !!frameResult.applied;
+                        }
                     }
                     if (!restoredCamera) applyCameraToViewer(true);
                 } else {
@@ -2523,12 +2706,19 @@
                 setStatus(t('Maximum people must be a positive integer.', '最大人数必须为正整数。'), true);
                 return;
             }
+            const manualRegions = regionSelector?.getBoxes() || [];
+            if ((regionSelector?.active && !manualRegions.length) || manualRegions.length > maxPeople) {
+                setStatus(t('Draw a person region within the maximum count, or clear regions for automatic selection.', '请在最大人数范围内框选人物，或清除框选后自动识别。'), true);
+                return;
+            }
+            if (regionSelector?.active) regionSelector.setActive(false);
             const taskId = createImportTaskId(options.node?.id || options.nodeId);
             const payload = {
                 project_id: options.projectId || 'default',
                 node_id: options.node?.id || options.nodeId || '',
                 task_id: taskId,
                 max_people: maxPeople,
+                person_selection: personSelection,
                 asset_source: referenceAssetSource || (referenceAsset ? {
                     node_id: options.node?.id || options.nodeId || '',
                     type: 'pose_reference',
@@ -2537,6 +2727,7 @@
                     source: { kind: 'pose_studio_reference' }
                 } : null)
             };
+            if (manualRegions.length) payload.person_regions = manualRegions;
             if (!payload.asset_source && referenceDataUrl) {
                 payload.image_data_url = referenceDataUrl;
             }
@@ -2551,7 +2742,9 @@
                 const response = await API.poseStudioImportReference(payload);
                 stopImportStatusPolling();
                 if (!response?.ok) {
-                    setStatus(response?.details || response?.error || t('Pose import failed.', '姿势解析失败。'), true);
+                    setStatus(response?.error_code === 'no_people_detected'
+                        ? t('No person detected; reconstruction has not started. Select people manually, then parse again.', '未检测到人物，尚未重建。请框选目标人物后再次解析。')
+                        : (response?.details || response?.error || t('Pose import failed.', '姿势解析失败。')), true);
                     return;
                 }
                 poseData = response.pose_data || {};
@@ -2828,6 +3021,18 @@
             }
             if (action === 'parse-reference') {
                 parseReference();
+                return;
+            }
+            if (action === 'select-regions') {
+                if (!currentReferenceSrc() || !regionSelector) {
+                    setStatus(t('Load a reference image and wait for the editor to be ready.', '请载入参考图并等待编辑器就绪。'), true);
+                    return;
+                }
+                regionSelector.setActive(!regionSelector.active);
+                return;
+            }
+            if (action === 'clear-regions') {
+                regionSelector?.clear();
                 return;
             }
             if (action === 'save-library') {

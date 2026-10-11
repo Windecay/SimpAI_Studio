@@ -740,6 +740,7 @@
 
         async function executeDirectorSegmentedRun(node, plan, options) {
             const isCurrent = currentRunGuard(node, options);
+            const isOwnerCurrent = currentRunGuard(node, { shouldContinue: options?.isOwnerCurrent });
             if (!isCurrent()) return staleRun();
             const project = getProject();
             const segmentResults = [];
@@ -766,8 +767,23 @@
                 state,
                 message
             );
+            const interrupted = () => {
+                if (!isOwnerCurrent()) return staleRun();
+                const message = t('Run stopped; completed outputs are retained.', '运行已停止，已完成的输出会保留。');
+                for (const operation of segmentRuns.slice(segmentIndex)) {
+                    if (!segmentIsCurrent(operation)) continue;
+                    const result = operation.node;
+                    const run = (project.runs || []).find(item => item.id === operation.runId);
+                    if (run || isTerminalRunState(nodeStatusState(result))) continue;
+                    Object.assign(result, buildResultRefreshFailurePatch(result));
+                    Object.assign(result, buildResultStatusPatch(result, { status: buildCanvasRunStatus('skipped', message) }));
+                }
+                if (!segmentRuns.some(operation => getNode(operation.node.id) && !segmentIsCurrent(operation))) updateStatus('canceled', message);
+                mutate({ inspector: true });
+                return { ok: false, state: 'canceled', segmented: true, error: message };
+            };
             const failRun = (error) => {
-                if (!isCurrent()) return staleRun();
+                if (!isCurrent()) return interrupted();
                 for (let index = segmentIndex; index < segmentRuns.length; index += 1) {
                     const operation = segmentRuns[index];
                     if (!segmentIsCurrent(operation)) continue;
@@ -798,7 +814,7 @@
                     plan,
                     Object.assign({}, options, { shouldContinue: isCurrent })
                 );
-                if (!isCurrent()) return staleRun();
+                if (!isCurrent()) return interrupted();
                 if (!promptGate?.ok) {
                     failRun(promptGate?.error || t('Director prompt preflight failed.', 'Director 提示词预检查失败。'));
                     return promptGate;
@@ -806,7 +822,7 @@
                 plan = promptGate.plan || plan;
 
                 const modelGate = await ensurePresetModelsBeforeRun(node, { shouldContinue: isCurrent });
-                if (!isCurrent()) return staleRun();
+                if (!isCurrent()) return interrupted();
                 if (!modelGate?.ok) {
                     if (nodeStatusState(node) === 'waiting') failRun(modelGate?.error || 'model check failed');
                     return modelGate;
@@ -823,7 +839,7 @@
                     segmentRuns.push(rememberSegment(result));
                 }
 
-                call(directorRunCoordinatorSource, 'selectInitialResult', undefined, segmentResults[0]?.id || node.id);
+                if (!options?.keepSelection) call(directorRunCoordinatorSource, 'selectInitialResult', undefined, segmentResults[0]?.id || node.id);
                 call(schedulerSource, 'clearSchedulerBlockedState', undefined);
                 mutate();
 
@@ -840,12 +856,12 @@
                     const pending = call(
                         directorRunCoordinatorSource, 'submitSegment',
                         Promise.resolve({ ok: false, error: 'Director segment submission unavailable' }),
-                        node, resultNode, plan, plan.segments[segmentIndex], segmentIndex, previousResultNode
+                        node, resultNode, plan, plan.segments[segmentIndex], segmentIndex, previousResultNode, options
                     );
                     // Submission assigns the actual run identity before its first await.
                     segmentRuns[segmentIndex] = rememberSegment(resultNode);
                     const outcome = await pending;
-                    if (!isCurrent()) return staleRun();
+                    if (!isCurrent()) return interrupted();
                     if (segmentRuns.some(operation => !segmentIsCurrent(operation))) return failRun('run no longer current');
                     if (!outcome?.ok) {
                         const failure = failRun(outcome?.error || t('Director segment run failed.', 'Director 分镜运行失败。'));
@@ -857,7 +873,7 @@
                 const finalResultNode = segmentResults[segmentResults.length - 1] || null;
                 if (call(directorRunCoordinatorSource, 'chainOutput', '', plan.capability) === 'last_result') {
                     updateStatus('finished', t('Director chained video finished.', 'Director 串联视频已完成。'));
-                    if (finalResultNode?.id) call(directorRunCoordinatorSource, 'selectFinalResult', undefined, finalResultNode.id);
+                    if (finalResultNode?.id && !options?.keepSelection) call(directorRunCoordinatorSource, 'selectFinalResult', undefined, finalResultNode.id);
                     mutate({ inspector: true });
                     return {
                         ok: true, segmented: true, chain_output: 'last_result',
@@ -872,9 +888,9 @@
                 const renderOutcome = await call(
                     directorRunCoordinatorSource, 'renderTimeline',
                     Promise.resolve({ ok: false, error: 'Director timeline render unavailable' }),
-                    timeline, { shouldContinue: isCurrent }
+                    timeline, options?.allowCurrentRenderToFinish ? { keepSelection: options.keepSelection } : { shouldContinue: isCurrent }
                 );
-                if (!isCurrent()) return staleRun();
+                if (!isCurrent()) return Object.assign(interrupted(), { render_result: renderOutcome });
                 if (segmentRuns.some(operation => !segmentIsCurrent(operation))) return failRun('run no longer current');
                 updateStatus(
                     renderOutcome?.ok ? 'finished' : 'failed',
@@ -1012,7 +1028,10 @@
                             && (typeof opts.shouldContinue !== 'function' || opts.shouldContinue())
                     });
                     try {
-                        return await runDirectorSegmentedPresetNode(node, directorPlan, Object.assign({}, opts, { shouldContinue: isCurrent }));
+                        return await runDirectorSegmentedPresetNode(node, directorPlan, Object.assign({}, opts, {
+                            shouldContinue: isCurrent,
+                            isOwnerCurrent: () => pendingPreparations.get(runKey) === preparation
+                        }));
                     } catch (err) {
                         if (!isCurrent()) return staleRun();
                         const error = err?.message || String(err);
@@ -1049,7 +1068,7 @@
                 const preflight = await preflightDirectPresetRun(node, Object.assign({}, opts, { shouldContinue: isCurrent }));
                 if (!isCurrent()) return staleRun();
                 if (!preflight.ok) return preflight;
-                existingResultNode = opts.resultNode
+                existingResultNode = opts.forceNewResult ? null : opts.resultNode
                     || (opts.reuseExistingResult ? findReusableResultNodeForPreset(node) : canvasAgentResultForPresetRun(node));
                 if (existingResultNode && getNode(existingResultNode.id) !== existingResultNode) return staleRun();
                 inputFingerprint = computePresetRunFingerprint(node);
@@ -1162,10 +1181,11 @@
                     runToken
                 })));
                 Object.assign(node, buildCanvasNodeStatusPatch(node, { status: 'queued' }));
-                setSelection(resultNode);
+                notifyRunCallback(opts.onRunCreated, runId, resultNode.id);
+                if (!opts.keepSelection) setSelection(resultNode);
                 clearSchedulerBlockedState();
                 mutate();
-                if (!existingResultNode) centerPresetRunViewport(node, resultNode);
+                if (!existingResultNode && !opts.keepViewport) centerPresetRunViewport(node, resultNode);
                 showToast(t('Result placeholder created; submitting to AsyncTask.', '已创建结果占位节点，正在提交到 AsyncTask'));
                 let runResult;
                 try {
@@ -1178,6 +1198,7 @@
                 if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
                     return { ok: false, error: 'run no longer current', response: runResult };
                 }
+                notifyRunCallback(opts.onSubmitted, runId, resultNode.id, runResult);
                 return applyRunNodeResult(runId, resultNode.id, node.id, runResult, opts);
             } catch (err) {
                 if (!isCurrent()) return staleRun();
@@ -1209,6 +1230,15 @@
                     }
                 }
                 endPreparation(preparation);
+            }
+        }
+
+        function notifyRunCallback(callback, runId, resultNodeId, response, details) {
+            if (typeof callback !== 'function') return;
+            try {
+                callback(Object.assign({ run_id: runId, result_node_id: resultNodeId, response }, details || {}));
+            } catch (err) {
+                console.warn('[SimpAI Canvas] run submission callback failed', err);
             }
         }
 
@@ -1414,7 +1444,7 @@
             });
         }
 
-        async function submitDirectorSegmentRun(presetNode, resultNode, plan, segment, index, previousResultNode) {
+        async function submitDirectorSegmentRun(presetNode, resultNode, plan, segment, index, previousResultNode, options) {
             if (directorSegmentUsesPreviousImage(segment) && !directorResultAssetSource(previousResultNode)) {
                 const message = t(
                     `Director shot ${index + 1} needs the previous shot last frame, but the previous run has no usable video yet.`,
@@ -1451,6 +1481,7 @@
                 runToken,
                 segmentIndex: index
             })));
+            notifyRunCallback(options?.onRunCreated, runId, resultNode.id, undefined, { director_segment_index: index });
             let runResult;
             try {
                 const payload = buildRunDryRunPayload(presetNode, resultNode, runId);
@@ -1470,7 +1501,8 @@
             if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
                 return { ok: false, error: 'run no longer current', response: runResult };
             }
-            const outcome = await applyRunNodeResult(runId, resultNode.id, presetNode.id, runResult, { initialDelayMs: 900 });
+            notifyRunCallback(options?.onSubmitted, runId, resultNode.id, runResult, { director_segment_index: index });
+            const outcome = await applyRunNodeResult(runId, resultNode.id, presetNode.id, runResult, Object.assign({ initialDelayMs: 900 }, options || {}));
             if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
                 return { ok: false, error: 'run no longer current', result: outcome };
             }

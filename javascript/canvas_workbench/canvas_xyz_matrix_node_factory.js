@@ -16,7 +16,7 @@
             : () => ({ w: 700, h: 520 });
         const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
             ? serializationSource.cloneRunValue
-            : ((value, fallback) => value ?? fallback);
+            : ((value, fallback) => JSON.parse(JSON.stringify(value ?? fallback)));
         const nowIso = typeof timeSource.nowIso === 'function'
             ? timeSource.nowIso
             : () => '';
@@ -71,7 +71,7 @@
                 y: position.y,
                 w: size.w,
                 h: size.h,
-                title: isXyz ? t('X/Y/Z Matrix', 'X/Y/Z 矩阵') : t('X/Y Matrix', 'X/Y 矩阵'),
+                title: t('Parameter Comparison', '参数对比'),
                 batch_job_id: jobId,
                 source_node_id: source.id,
                 status: { state: 'planned', message: t('Preview ready', '预览已生成') },
@@ -90,7 +90,31 @@
             };
         }
 
-        return { buildXyzMatrixNode, buildXyzMatrixStatePatch };
+        function buildXyzExecutionPreset(options) {
+            const { source, matrix, variant, position } = options || {};
+            if (!source || !matrix || !variant) return null;
+            const node = cloneRunValue(source, {});
+            Object.assign(node, {
+                id: uid(source.type), title: `${source.title || source.preset?.name || 'Preset'} / ${variant.id}`,
+                x: position?.x || 0, y: position?.y || 0, collapsed: true, status: 'idle',
+                source: { kind: 'parameter_comparison', comparison_node_id: matrix.id,
+                    comparison_variant_id: variant.id, comparison_source_id: source.id }
+            });
+            const patch = objectOrEmpty(variant.node_patch);
+            node.params = Object.assign({}, node.params || {}, cloneRunValue(patch.params || {}, {}));
+            for (const key of ['models_config', 'generation_config', 'resolution_config', 'styles_config']) {
+                const overrides = objectOrEmpty(patch[key]?.overrides);
+                if (!Object.keys(overrides).length) continue;
+                node[key] = Object.assign({}, node[key] || {}, {
+                    mode: 'custom', source_node_id: null,
+                    overrides: Object.assign({}, node[key]?.overrides || {}, cloneRunValue(overrides, {}))
+                });
+            }
+            delete node._last_wildcard_preview;
+            return node;
+        }
+
+        return { buildXyzMatrixNode, buildXyzMatrixStatePatch, buildXyzExecutionPreset };
     }
 
     window.SimpAICanvasWorkbenchXyzMatrixNodeFactory = Object.assign({}, window.SimpAICanvasWorkbenchXyzMatrixNodeFactory || {}, {

@@ -10,6 +10,7 @@ import inspect
 from contextlib import contextmanager
 from PIL import Image
 
+from modules.llama_cpp_cancellation import llama_cpp_request_cancellation
 from enhanced.logger import format_name
 logger = logging.getLogger(format_name(__name__))
 
@@ -1954,6 +1955,14 @@ class LlamaCppVLM:
             except Exception:
                 pass
 
+    def _clear_cancelled_completion(self):
+        self.last_completion_stats = {}
+        reset = getattr(self.llm, "reset", None)
+        if callable(reset):
+            reset()
+        else:
+            self.reset_runtime_context()
+
     def _default_system_prompt(self):
         return "You are a helpful visual assistant. Answer directly and use the conversation context when it is relevant."
 
@@ -2267,7 +2276,9 @@ class LlamaCppVLM:
 
     def completion_messages(self, messages, cancel_check=None, **kwargs):
         """Yield stateless API chunks without UI settings, history or tool execution."""
-        with self.lock:
+        with self.lock, llama_cpp_request_cancellation(
+            self.llm, cancel_check, on_cancel=self._clear_cancelled_completion,
+        ) as cancellation_checkpoint:
             if self.llm is None:
                 raise RuntimeError("Local model is not loaded")
             messages = [dict(message) for message in messages]
@@ -2287,8 +2298,7 @@ class LlamaCppVLM:
                         messages=messages, enable_thinking=False, stream=True, **kwargs)
                     try:
                         for chunk in stream:
-                            if callable(cancel_check):
-                                cancel_check()
+                            cancellation_checkpoint()
                             yield chunk
                     finally:
                         if hasattr(stream, "close"):
@@ -2298,8 +2308,10 @@ class LlamaCppVLM:
 
     def chat(self, image, prompt, conversation_id="default", system_prompt=None, save_state=True, max_history=24,
              max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1,
-             enable_thinking=None):
-        with self.lock:
+             enable_thinking=None, cancel_check=None):
+        with self.lock, llama_cpp_request_cancellation(
+            self.llm, cancel_check, on_cancel=self._clear_cancelled_completion,
+        ) as cancellation_checkpoint:
             self.last_completion_stats = {}
             if self.llm is None:
                 logger.error("Model not loaded")
@@ -2342,6 +2354,7 @@ class LlamaCppVLM:
                     repeat_penalty=repetition_penalty,
                     seed=seed if seed != -1 else None,
                 )
+                cancellation_checkpoint()
                 result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
                 self._record_completion_stats(output, elapsed)
@@ -2358,6 +2371,7 @@ class LlamaCppVLM:
                     self.conversation_messages[conversation_key] = self._sanitize_messages(messages)
                 return result
             except Exception as e:
+                cancellation_checkpoint()
                 context = self._runtime_context_summary(messages, max_tokens)
                 if is_llama_cpp_slot_error(e):
                     self._invalidate_runtime_after_slot_error("chat", e, context)
@@ -2367,8 +2381,10 @@ class LlamaCppVLM:
             finally:
                 self._clear_hybrid_cache_if_needed()
 
-    def inference(self, image, prompt, chat_handler_override=None, max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1, system_prompt=None, enable_thinking=None):
-        with self.lock:
+    def inference(self, image, prompt, chat_handler_override=None, max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1, system_prompt=None, enable_thinking=None, cancel_check=None):
+        with self.lock, llama_cpp_request_cancellation(
+            self.llm, cancel_check, on_cancel=self._clear_cancelled_completion,
+        ) as cancellation_checkpoint:
             self.last_completion_stats = {}
             if self.llm is None:
                 logger.error("Model not loaded")
@@ -2407,6 +2423,7 @@ class LlamaCppVLM:
                     repeat_penalty=repetition_penalty,
                     seed=seed if seed != -1 else None,
                 )
+                cancellation_checkpoint()
                 result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
                 self._record_completion_stats(output, elapsed)
@@ -2419,6 +2436,7 @@ class LlamaCppVLM:
                 )
                 return result
             except Exception as e:
+                cancellation_checkpoint()
                 context = self._runtime_context_summary(messages, max_tokens)
                 if is_llama_cpp_slot_error(e):
                     self._invalidate_runtime_after_slot_error("inference", e, context)
@@ -2430,10 +2448,12 @@ class LlamaCppVLM:
 
     def inference_stream(self, image, prompt, chat_handler_override=None, max_tokens=1024,
                          temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1,
-                         seed=-1, system_prompt=None, on_delta=None, enable_thinking=None):
+                         seed=-1, system_prompt=None, on_delta=None, enable_thinking=None, cancel_check=None):
         """Run one stateless llama.cpp completion and emit assistant text deltas."""
         callback = on_delta if callable(on_delta) else None
-        with self.lock:
+        with self.lock, llama_cpp_request_cancellation(
+            self.llm, cancel_check, on_cancel=self._clear_cancelled_completion,
+        ) as cancellation_checkpoint:
             self.last_completion_stats = {}
             if self.llm is None:
                 logger.error("Model not loaded")
@@ -2496,6 +2516,7 @@ class LlamaCppVLM:
                     return value if isinstance(value, str) else ""
 
                 if isinstance(output, dict):
+                    cancellation_checkpoint()
                     final_event = output
                     value = output.get("choices", [{}])[0].get("message", {}).get("content", "")
                     if isinstance(value, str) and value:
@@ -2503,16 +2524,22 @@ class LlamaCppVLM:
                         if callback:
                             callback(value)
                 else:
-                    for event in output:
-                        if not isinstance(event, dict):
-                            continue
-                        final_event = event
-                        value = event_delta(event)
-                        if not value:
-                            continue
-                        pieces.append(value)
-                        if callback:
-                            callback(value)
+                    try:
+                        for event in output:
+                            cancellation_checkpoint()
+                            if not isinstance(event, dict):
+                                continue
+                            final_event = event
+                            value = event_delta(event)
+                            if not value:
+                                continue
+                            pieces.append(value)
+                            if callback:
+                                callback(value)
+                    finally:
+                        close = getattr(output, "close", None)
+                        if callable(close):
+                            close()
 
                 raw_text = "".join(pieces)
                 result = strip_reasoning_text(raw_text)
@@ -2537,6 +2564,7 @@ class LlamaCppVLM:
                 )
                 return result
             except Exception as e:
+                cancellation_checkpoint()
                 context = self._runtime_context_summary(messages, max_tokens)
                 if is_llama_cpp_slot_error(e):
                     self._invalidate_runtime_after_slot_error("inference_stream", e, context)

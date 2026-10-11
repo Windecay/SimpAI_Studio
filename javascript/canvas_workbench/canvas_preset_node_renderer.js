@@ -448,7 +448,6 @@
       <button type="button" class="sai-inline-config-btn" data-inspector-action="advanced-config"><i class="fa-solid fa-sliders"></i><span>${escapeHtml(t('Advanced Config', '高级配置'))}</span></button>
     </div>
     <div class="sai-inspector-actions">
-      <button type="button" data-inspector-action="xyz-plot"><i class="fa-solid fa-table-cells-large"></i><span>${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}</span></button>
       <button type="button" data-inspector-action="run"><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
       <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
       <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
@@ -502,7 +501,6 @@
       ${uploadSlots.map(slot => `<div class="sai-inspector-kv"><span>${escapeHtml(localizeCanvasLabel(slot.label || getSlotLabels()[slot.key] || slot.key))}</span><b>${escapeHtml(getNode(node.upload_slots?.[slot.key])?.title || notConnectedText())}</b></div>`).join('')}
     </div>
     <div class="sai-inspector-actions">
-      <button type="button" data-inspector-action="xyz-plot"><i class="fa-solid fa-table-cells-large"></i><span>${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}</span></button>
       <button type="button" data-inspector-action="run"><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
       <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
       <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
@@ -636,7 +634,6 @@ ${enhanceOrder === 'After Last Enhancement' ? `<label class="sai-node-field"><sp
   <span class="sai-node-kind">${escapeHtml(modeInfo.icon)} Classic</span>
   <span class="sai-node-title">${escapeHtml(node.title || node.preset?.name || 'Classic')}</span>
   ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="xyz-plot" title="${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}"><i class="fa-solid fa-table-cells-large"></i></button>
   <button type="button" data-node-action="run" title="${escapeHtml(t('Run', '运行'))}" ${runDisabled}><i class="fa-solid fa-play"></i></button>
   <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
 </div>
@@ -659,7 +656,6 @@ ${renderPresetParamControl(node, { key: 'negative_prompt', label: 'Negative Prom
   <label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Images', '图片数'))}</span><div class="sai-range-pair"><input data-node-param="image_number" type="range" min="1" max="16" step="1" value="${escapeHtml(imageNumber)}"><input data-node-param="image_number" type="number" min="1" max="16" step="1" value="${escapeHtml(imageNumber)}"></div></label>
 </div>
 ${renderRunnableNodeStatusFoot(node)}
-<button type="button" class="sai-node-secondary" data-node-action="xyz-plot"><i class="fa-solid fa-table-cells-large"></i><span>${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}</span></button>
 <button type="button" class="sai-node-primary" data-node-action="run" ${runDisabled}><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="preset" title="${escapeHtml(t('Generated output', '生成输出'))}"></button>`;
         }
@@ -681,7 +677,6 @@ ${renderRunnableNodeStatusFoot(node)}
   ${isLivePortraitVideoExpressionPresetNode(node) ? `<button type="button" data-node-action="edit-liveportrait-video-expression" title="${escapeHtml(t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'))}"><i class="fa-solid fa-face-smile"></i></button>` : ''}
   ${isLtx23MultiGuidePresetNode(node) ? `<button type="button" data-node-action="edit-ltx23-guides" title="${escapeHtml(t('Edit LTX keyframe guides', '编辑 LTX 关键帧引导'))}"><i class="fa-solid fa-sliders"></i></button>` : ''}
   ${isMiniMaxH3PresetNode(node) ? `<button type="button" data-node-action="edit-h3-storyboard" title="${escapeHtml(t('Edit MiniMax H3 storyboard', '编辑 MiniMax H3 分镜表'))}"><i class="fa-solid fa-table-list"></i></button>` : ''}
-  <button type="button" data-node-action="xyz-plot" title="${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}"><i class="fa-solid fa-table-cells-large"></i></button>
   <button type="button" data-node-action="run" title="${escapeHtml(t('Run', '运行'))}"><i class="fa-solid fa-play"></i></button>
   <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
 </div>
@@ -714,7 +709,6 @@ ${uploadSlots.map((slotInfo, index) => {
 ${renderPresetSpecialController(node)}
 <div class="sai-preset-param-list">${params.map(param => renderPresetParamControl(node, param, 'data-node-param')).join('')}</div>
 ${renderRunnableNodeStatusFoot(node)}
-<button type="button" class="sai-node-secondary" data-node-action="xyz-plot"><i class="fa-solid fa-table-cells-large"></i><span>${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}</span></button>
 <button type="button" class="sai-node-primary" data-node-action="run"><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="preset" title="${escapeHtml(t('Generated output', '生成输出'))}"></button>`;
         }

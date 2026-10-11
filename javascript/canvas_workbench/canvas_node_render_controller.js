@@ -65,7 +65,7 @@
         const {
             logVlmRenderKeyChange, applyNodeCustomColorVars, renderNodeHtml,
             ensureWorkbenchFormFieldNames, ensureNodeCollapseButton, ensureNodeResizeHandle,
-            bindNodeEvents, restoreInlineTagCartAfterRender, syncOutpaintOverlayPosition
+            bindNodeEvents, restoreInlineTagCartAfterRender, syncOutpaintOverlayPosition, pruneDetachedOverlays
         } = renderSource;
         const presetSource = sourceObject('presetSource');
         const {
@@ -77,6 +77,17 @@
         const renderedNodeElsById = new Map();
         const nodeLayoutRects = new Map();
         let nodeRenderCoverageRect = null;
+
+        function setNodeStyle(nodeEl, name, value) {
+            if (nodeEl.style[name] !== value) nodeEl.style[name] = value;
+        }
+
+        function setExpandedMinHeight(nodeEl, height) {
+            const name = '--sai-node-expanded-min-height';
+            const value = `${height}px`;
+            const current = nodeEl.style.getPropertyValue?.(name) ?? nodeEl.style[name];
+            if (current !== value) nodeEl.style.setProperty(name, value);
+        }
 
         function renderNodes(options) {
             const startedAt = performanceNow();
@@ -120,6 +131,7 @@
                 }
             });
             let layoutChanged = false;
+            const pendingMeasurements = [];
             for (const node of visibleNodes) {
                 if (!renderOptions.panPreview) {
                     if (node.type === 'vlm') {
@@ -161,8 +173,11 @@
                     nodeEl = replacement;
                     renderedNodeElsById.set(node.id, nodeEl);
                 }
-                nodeEl.className = `sai-canvas-node sai-canvas-node-${node.type}`;
-                nodeEl.dataset.renderMode = renderMode;
+                if (nodeEl.__simpaiNodeType !== node.type) {
+                    nodeEl.className = `sai-canvas-node sai-canvas-node-${node.type}`;
+                    nodeEl.__simpaiNodeType = node.type;
+                }
+                if (nodeEl.dataset.renderMode !== renderMode) nodeEl.dataset.renderMode = renderMode;
                 nodeEl.classList.toggle('is-selected', node.id === getSelectedNodeId() || getSelectedNodeIds().has(node.id));
                 nodeEl.classList.toggle('is-focused', node.id === getSelectedNodeId());
                 nodeEl.classList.toggle('is-overview', renderMode === 'overview');
@@ -176,9 +191,9 @@
                 nodeEl.classList.toggle('is-scheduler-waiting', isNodeSchedulerWaiting(node));
                 nodeEl.classList.toggle('is-result-stale', isResultStale(node));
                 applyNodeCustomColorVars(node, nodeEl);
-                nodeEl.style.left = `${node.x || 0}px`;
-                nodeEl.style.top = `${node.y || 0}px`;
-                nodeEl.style.width = `${node.w || defaultNodeSize(node.type).w}px`;
+                setNodeStyle(nodeEl, 'left', `${node.x || 0}px`);
+                setNodeStyle(nodeEl, 'top', `${node.y || 0}px`);
+                setNodeStyle(nodeEl, 'width', `${node.w || defaultNodeSize(node.type).w}px`);
                 const defaultSize = defaultNodeSize(node.type);
                 const storedNodeHeight = node.h || defaultSize.h;
                 const measuredNodeHeight = Number(getNodeLayoutSize(node)?.h || 0);
@@ -187,9 +202,9 @@
                 const nodeLayoutHeight = useCollapsedPromptHeight
                     ? collapsedPromptNodeHeight(node)
                     : (preserveOverviewLayout ? Math.max(storedNodeHeight, measuredNodeHeight) : storedNodeHeight);
-                nodeEl.style.setProperty('--sai-node-expanded-min-height', `${storedNodeHeight}px`);
-                nodeEl.style.minHeight = isNodeCollapsed(node) ? '' : `${nodeLayoutHeight}px`;
-                nodeEl.style.height = useCollapsedPromptHeight || preserveOverviewLayout || shouldFixNodeHeight(node) ? `${nodeLayoutHeight}px` : '';
+                setExpandedMinHeight(nodeEl, storedNodeHeight);
+                setNodeStyle(nodeEl, 'minHeight', isNodeCollapsed(node) ? '' : `${nodeLayoutHeight}px`);
+                setNodeStyle(nodeEl, 'height', useCollapsedPromptHeight || preserveOverviewLayout || shouldFixNodeHeight(node) ? `${nodeLayoutHeight}px` : '');
                 const didRenderHtml = nodeEl.__simpaiRenderKey !== renderKey;
                 if (didRenderHtml) {
                     logVlmRenderKeyChange(node, nodeEl.__simpaiRenderKey, renderKey, nodeEl.__simpaiRenderKey === undefined ? 'first-render' : 'innerHTML');
@@ -211,8 +226,7 @@
                     || !nodeLayoutRects.has(node.id)
                 );
                 if (shouldMeasureLayout) {
-                    layoutChanged = rememberRenderedNodeLayout(node, nodeEl) || layoutChanged;
-                    nodeEl.__simpaiLayoutSignature = layoutSignature;
+                    pendingMeasurements.push({ node, nodeEl, layoutSignature });
                 }
                 if (node.type === 'vlm' && renderMode === 'full') {
                     restoreVlmChatScroll(nodeEl, vlmChatScroll, node);
@@ -225,12 +239,20 @@
                     syncResultPreviewPlayerDom(node, nodeEl);
                 }
             }
+            // Read dimensions after the DOM updates, so multi-node renders share a layout pass.
+            for (const { node, nodeEl, layoutSignature } of pendingMeasurements) {
+                layoutChanged = rememberRenderedNodeLayout(node, nodeEl) || layoutChanged;
+                nodeEl.__simpaiLayoutSignature = layoutSignature;
+            }
+            pruneDetachedOverlays?.();
             const root = getRoot();
             const project = getProject();
             const perfStats = getPerfStats();
             if (root) {
-                root.dataset.renderedNodes = String(visibleNodes.length);
-                root.dataset.totalNodes = String(project.nodes.length);
+                const renderedCount = String(visibleNodes.length);
+                const totalCount = String(project.nodes.length);
+                if (root.dataset.renderedNodes !== renderedCount) root.dataset.renderedNodes = renderedCount;
+                if (root.dataset.totalNodes !== totalCount) root.dataset.totalNodes = totalCount;
             }
             perfStats.renderNodesMs = performanceNow() - startedAt;
             perfStats.renderedNodes = visibleNodes.length;
@@ -295,11 +317,13 @@
         function syncRenderedNodeElementMap() {
             const nodesLayer = getNodesLayer();
             if (!nodesLayer) return;
-            if (renderedNodeElsById.size === nodesLayer.children.length) return;
+            if (renderedNodeElsById.size === nodesLayer.children.length
+                && Array.from(renderedNodeElsById.values()).every(nodeEl => nodeEl?.parentElement === nodesLayer && nodeEl.isConnected)) return;
             renderedNodeElsById.clear();
             Array.from(nodesLayer.children || []).forEach((nodeEl) => {
                 const nodeId = nodeEl?.getAttribute?.('data-node-id') || '';
-                if (nodeId) renderedNodeElsById.set(nodeId, nodeEl);
+                if (!nodeId || renderedNodeElsById.has(nodeId)) nodeEl.remove();
+                else renderedNodeElsById.set(nodeId, nodeEl);
             });
         }
 
@@ -333,6 +357,7 @@
             setActiveInlineTagCartNodeId('');
             invalidateMinimapStaticCache();
             invalidateNodeSpatialIndex();
+            pruneDetachedOverlays?.();
         }
 
         function shouldForceFullNodeRender(node) {
@@ -380,14 +405,16 @@
         function updateNodePositionDom(ids) {
             const nodesLayer = getNodesLayer();
             if (!nodesLayer) return;
+            const pendingMeasurements = [];
             (ids || []).forEach((id) => {
                 const node = getNode(id);
                 const escapedId = typeof cssEscape === 'function' ? cssEscape(id) : String(id);
-                const nodeEl = node ? nodesLayer.querySelector(`[data-node-id="${escapedId}"]`) : null;
+                const cached = renderedNodeElsById.get(id);
+                const nodeEl = node ? (cached?.parentElement === nodesLayer ? cached : nodesLayer.querySelector(`[data-node-id="${escapedId}"]`)) : null;
                 if (!node || !nodeEl) return;
-                nodeEl.style.left = `${node.x || 0}px`;
-                nodeEl.style.top = `${node.y || 0}px`;
-                nodeEl.style.width = `${node.w || defaultNodeSize(node.type).w}px`;
+                setNodeStyle(nodeEl, 'left', `${node.x || 0}px`);
+                setNodeStyle(nodeEl, 'top', `${node.y || 0}px`);
+                setNodeStyle(nodeEl, 'width', `${node.w || defaultNodeSize(node.type).w}px`);
                 const renderMode = nodeEl.dataset.renderMode || getNodeEffectiveRenderMode(node);
                 const defaultSize = defaultNodeSize(node.type);
                 const storedNodeHeight = node.h || defaultSize.h;
@@ -399,11 +426,12 @@
                     : (preserveOverviewLayout ? Math.max(storedNodeHeight, measuredNodeHeight) : storedNodeHeight);
                 applyNodeCustomColorVars(node, nodeEl);
                 nodeEl.classList.toggle('is-lod-placeholder', preserveOverviewLayout);
-                nodeEl.style.setProperty('--sai-node-expanded-min-height', `${storedNodeHeight}px`);
-                nodeEl.style.minHeight = isNodeCollapsed(node) ? '' : `${nodeLayoutHeight}px`;
-                nodeEl.style.height = useCollapsedPromptHeight || preserveOverviewLayout || shouldFixNodeHeight(node) ? `${nodeLayoutHeight}px` : '';
-                rememberRenderedNodeLayout(node, nodeEl);
+                setExpandedMinHeight(nodeEl, storedNodeHeight);
+                setNodeStyle(nodeEl, 'minHeight', isNodeCollapsed(node) ? '' : `${nodeLayoutHeight}px`);
+                setNodeStyle(nodeEl, 'height', useCollapsedPromptHeight || preserveOverviewLayout || shouldFixNodeHeight(node) ? `${nodeLayoutHeight}px` : '');
+                pendingMeasurements.push({ node, nodeEl });
             });
+            pendingMeasurements.forEach(({ node, nodeEl }) => rememberRenderedNodeLayout(node, nodeEl));
             positionCanvasAgentPanel();
         }
 
@@ -423,8 +451,11 @@
         function refreshNodeLayoutForAgent(nodeId, delayMs) {
             const nodesLayer = getNodesLayer();
             if (!nodeId || !nodesLayer) return;
+            const project = getProject();
+            const originalNode = getNode(nodeId);
             const run = () => {
                 const node = getNode(nodeId);
+                if (getProject() !== project || node !== originalNode || getNodesLayer() !== nodesLayer) return;
                 const escapedId = typeof cssEscape === 'function'
                     ? cssEscape(nodeId)
                     : String(nodeId);

@@ -39,7 +39,7 @@
                 if (nodeCall('isLtx23MultiGuidePresetNode', false, node)) {
                     items.push({ label: t('Edit LTX keyframe guides', '编辑 LTX 关键帧引导'), icon: 'fa-sliders', action: () => actionCall('openLtx23GuidePresetEditor', undefined, node) });
                 }
-                items.push({ label: t('X/Y/Z Plot', 'X/Y/Z 对比生成'), icon: 'fa-table-cells-large', action: () => actionCall('openXyzPlotPanel', undefined, node) });
+                items.push({ label: t('Parameter Comparison', '参数对比'), icon: 'fa-table-cells-large', action: () => actionCall('openXyzPlotPanel', undefined, node) });
                 items.push({ label: t('Check/download models', '检查/下载模型'), icon: 'fa-cloud-arrow-down', action: () => actionCall('handlePresetModelAction', undefined, node) });
                 items.push({ label: t('Run upstream to here', '运行上游到这里'), icon: 'fa-arrow-turn-down', action: () => actionCall('runNodeChain', undefined, node, 'to-here') });
                 items.push({ label: t('Run downstream from here', '从这里运行下游'), icon: 'fa-arrow-turn-up', action: () => actionCall('runNodeChain', undefined, node, 'from-here') });

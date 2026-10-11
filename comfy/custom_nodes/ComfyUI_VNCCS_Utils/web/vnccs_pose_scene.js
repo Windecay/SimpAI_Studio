@@ -68,6 +68,9 @@ export class PoseScene {
         const material = mesh.material.clone();
         material.onBeforeCompile = mesh.material.onBeforeCompile;
         person.snapshot = new v.THREE.Mesh(geometry, material);
+        person.snapshot.userData.poseJoints = Object.fromEntries(v.boneList.map(bone => [
+            bone.name, bone.getWorldPosition(point).toArray()
+        ]));
         v.scene.add(person.snapshot);
     }
 

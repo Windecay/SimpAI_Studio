@@ -184,9 +184,11 @@
                     message: t('Rendering Timeline...', '正在合成 Timeline...')
                 }
             }));
-            call('setSelectedNodeId', undefined, result.id);
-            call('setSelectedNodeIds', undefined, [result.id]);
-            call('setSelectedEdgeId', undefined, null);
+            if (!options?.keepSelection) {
+                call('setSelectedNodeId', undefined, result.id);
+                call('setSelectedNodeIds', undefined, [result.id]);
+                call('setSelectedEdgeId', undefined, null);
+            }
             call('mutate', undefined, { inspector: true });
             let payload = {};
             let inputFingerprint = '';

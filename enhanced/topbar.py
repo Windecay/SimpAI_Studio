@@ -4772,6 +4772,11 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __scene_aspect_ratios=scene_aspect_ratios,
         __scene_control_props=_build_scene_control_props(scene_frontend, scene_theme),
         __scene_task_method=str(scene_task_method or ""),
+        __scene_pose_studio={
+            key: copy.deepcopy(scene_frontend[key])
+            for key in ("pose_studio_reference_slots", "pose_studio_output_slot")
+            if key in scene_frontend
+        },
         __scene_video_source_slots=list(scene_frontend.get("video_source_slots") or []),
         __scene_temporal_region_control=dict(scene_frontend.get("temporal_region_control") or {}),
         __scene_video_slot_labels=dict(scene_frontend.get("video_slot_labels") or {}),

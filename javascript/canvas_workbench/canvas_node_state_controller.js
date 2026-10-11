@@ -1,7 +1,8 @@
 (function () {
     'use strict';
 
-    function createCanvasNodeStateController() {
+    function createCanvasNodeStateController(context) {
+        const assetSource = context?.assetSource || {};
         function isNodeLocked(node) {
             return !!node?.locked;
         }
@@ -11,6 +12,11 @@
         }
 
         function isImageNodeFrameless(node) {
+            if (node?.type === 'result') {
+                const asset = assetSource.getSelectedResultAsset?.(node);
+                return String(node.display_mode || '').toLowerCase() === 'frameless'
+                    && !!asset && assetSource.assetMediaKind?.(asset) === 'image';
+            }
             if (!node || node.type !== 'image') return false;
             return String(node.display_mode || node.image_display_mode || '').toLowerCase() !== 'card';
         }

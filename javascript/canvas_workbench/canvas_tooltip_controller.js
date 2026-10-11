@@ -16,6 +16,7 @@
         let tooltipEl = null;
         let tooltipTarget = null;
         let tooltipText = '';
+        let tooltipSize = null;
 
         function tooltipElementFromTarget(target) {
             if (!target?.closest) return null;
@@ -57,6 +58,7 @@
             }
             tooltipTarget = el;
             tooltipText = text;
+            tooltipSize = null;
             const tip = ensureCanvasTooltip();
             if (!tip) return;
             tip.textContent = text;
@@ -67,10 +69,15 @@
 
         function positionCanvasTooltip(clientX, clientY) {
             if (!tooltipEl || tooltipEl.hidden) return;
+            if (pruneDetachedTooltip()) return;
             const pad = 12;
             const offset = 14;
-            const rect = tooltipEl.getBoundingClientRect();
             const viewport = getWindow();
+            if (!tooltipSize || tooltipSize.viewportWidth !== viewport.innerWidth || tooltipSize.viewportHeight !== viewport.innerHeight) {
+                const rect = tooltipEl.getBoundingClientRect();
+                tooltipSize = { width: rect.width, height: rect.height, viewportWidth: viewport.innerWidth, viewportHeight: viewport.innerHeight };
+            }
+            const rect = tooltipSize;
             let left = clientX + offset;
             let top = clientY + offset;
             if (left + rect.width + pad > viewport.innerWidth) left = Math.max(pad, clientX - rect.width - offset);
@@ -89,10 +96,17 @@
             if (tooltipTarget) restoreTooltipTitle(tooltipTarget);
             tooltipTarget = null;
             tooltipText = '';
+            tooltipSize = null;
             if (tooltipEl) {
                 tooltipEl.classList.remove('is-visible');
                 tooltipEl.hidden = true;
             }
+        }
+
+        function pruneDetachedTooltip() {
+            if (!tooltipTarget || (tooltipTarget.isConnected !== false && !getRoot()?.hidden)) return false;
+            hideCanvasTooltip();
+            return true;
         }
 
         function onTooltipPointerOver(evt) {
@@ -137,6 +151,7 @@
             positionCanvasTooltip,
             restoreTooltipTitle,
             hideCanvasTooltip,
+            pruneDetachedTooltip,
             onTooltipPointerOver,
             onTooltipPointerMove,
             onTooltipPointerOut,

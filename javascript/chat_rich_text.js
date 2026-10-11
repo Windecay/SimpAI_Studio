@@ -20,7 +20,7 @@
     md.renderer.rules.text = (tokens, index, options, env) => {
         const value = tokens[index].content;
         if (!env.emphasizeDialogue || env.linkDepth) return escape(value);
-        const pattern = /“[^”\r\n]+”|"[^"\r\n]+"/g;
+        const pattern = /“[^”\r\n]+”|"[^"\r\n]+"|「[^」\r\n]+」|『[^』\r\n]+』/g;
         let html = '', start = 0;
         for (const match of value.matchAll(pattern)) {
             html += escape(value.slice(start, match.index)) + '<strong class="describe-vlm-chat-dialogue">' + escape(match[0]) + '</strong>';

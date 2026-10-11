@@ -67,6 +67,49 @@
             return getResultAssetAt(node, safeIndex);
         }
 
+        function positionResultMetadataPopover(wrap) {
+            const popup = wrap?.querySelector?.('.sai-result-metadata-popover');
+            const nodeEl = wrap?.closest?.('.sai-canvas-node');
+            const viewport = wrap?.ownerDocument?.defaultView;
+            if (!popup || !nodeEl || !viewport) return false;
+            const scale = nodeEl.getBoundingClientRect().width / nodeEl.offsetWidth || 1;
+            const pad = 12;
+            const canvasRect = wrap.closest('.sai-canvas-viewport')?.getBoundingClientRect();
+            const bounds = {
+                left: Math.max(0, canvasRect?.left ?? 0) + pad,
+                top: Math.max(0, canvasRect?.top ?? 0) + pad,
+                right: Math.min(viewport.innerWidth, canvasRect?.right ?? viewport.innerWidth) - pad,
+                bottom: Math.min(viewport.innerHeight, canvasRect?.bottom ?? viewport.innerHeight) - pad
+            };
+            popup.style.transform = 'none';
+            popup.style.maxWidth = `${Math.max(1, (bounds.right - bounds.left) / scale)}px`;
+            popup.style.maxHeight = `${Math.max(1, (bounds.bottom - bounds.top) / scale)}px`;
+            let rect = popup.getBoundingClientRect();
+            const anchor = wrap.getBoundingClientRect();
+            let left = anchor.right + pad;
+            let top = anchor.top;
+            if (left + rect.width > bounds.right) {
+                left = anchor.left - pad - rect.width;
+                if (left < bounds.left) {
+                    left = anchor.right - rect.width;
+                    const below = bounds.bottom - anchor.bottom - pad;
+                    const above = anchor.top - pad - bounds.top;
+                    const useBelow = below >= rect.height || below >= above;
+                    const availableHeight = Math.max(1, useBelow ? below : above);
+                    popup.style.maxHeight = `${availableHeight / scale}px`;
+                    rect = popup.getBoundingClientRect();
+                    top = useBelow ? anchor.bottom + pad : anchor.top - pad - rect.height;
+                }
+            }
+            left = Math.max(bounds.left, Math.min(left, bounds.right - rect.width));
+            top = Math.max(bounds.top, Math.min(top, bounds.bottom - rect.height));
+            const x = left - rect.left;
+            const y = top - rect.top;
+            popup.style.transform = `translate(${x / scale}px, ${y / scale}px)`;
+            popup.classList.toggle('is-repositioned', !!(x || y));
+            return true;
+        }
+
         function handleResultMetadataToggle(node, evt) {
             if (!node || node.type !== 'result' || !evt?.target) return false;
             const button = evt.target.closest?.('[data-result-metadata-toggle]');
@@ -74,7 +117,13 @@
             evt.preventDefault();
             evt.stopPropagation();
             const wrap = button.closest?.('[data-result-metadata]');
-            if (wrap) wrap.classList.toggle('is-pinned');
+            if (wrap) {
+                wrap.classList.toggle('is-pinned');
+                const pinned = !!wrap.classList.contains?.('is-pinned');
+                button.setAttribute?.('aria-expanded', String(pinned));
+                if (!pinned) button.blur?.();
+                positionResultMetadataPopover(wrap);
+            }
             return true;
         }
 
@@ -98,6 +147,7 @@
             getResultAssetAt,
             selectResultAsset,
             resultNodeHasOutput,
+            positionResultMetadataPopover,
             handleResultMetadataToggle,
             handleResultAssetClick
         };

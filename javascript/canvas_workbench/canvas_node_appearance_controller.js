@@ -33,18 +33,23 @@
         if (!nodeEl) return;
         const color = nodeCustomColor(node);
         nodeEl.classList.toggle('has-custom-color', !!color);
+        const setVariable = (name, value) => {
+            if (nodeEl.style.getPropertyValue?.(name) === value) return;
+            if (value) nodeEl.style.setProperty(name, value);
+            else nodeEl.style.removeProperty(name);
+        };
         if (!color) {
-            nodeEl.style.removeProperty('--sai-canvas-accent');
-            nodeEl.style.removeProperty('--sai-canvas-accent-soft');
-            nodeEl.style.removeProperty('--sai-node-accent-contrast');
-            nodeEl.style.removeProperty('--sai-node-custom-color');
+            setVariable('--sai-canvas-accent', '');
+            setVariable('--sai-canvas-accent-soft', '');
+            setVariable('--sai-node-accent-contrast', '');
+            setVariable('--sai-node-custom-color', '');
             return;
         }
         const hex = expandCanvasHexColor(color, '#14b8a6');
-        nodeEl.style.setProperty('--sai-canvas-accent', hex);
-        nodeEl.style.setProperty('--sai-canvas-accent-soft', `color-mix(in srgb, ${hex} 24%, var(--sai-canvas-panel))`);
-        nodeEl.style.setProperty('--sai-node-accent-contrast', nodeAccentContrastColor(hex));
-        nodeEl.style.setProperty('--sai-node-custom-color', hex);
+        setVariable('--sai-canvas-accent', hex);
+        setVariable('--sai-canvas-accent-soft', `color-mix(in srgb, ${hex} 24%, var(--sai-canvas-panel))`);
+        setVariable('--sai-node-accent-contrast', nodeAccentContrastColor(hex));
+        setVariable('--sai-node-custom-color', hex);
     }
 
     function createCanvasNodeAppearanceController(context) {
@@ -67,6 +72,12 @@
         const getLanguageState = () => call(languageSource, 'getLanguageState', { __lang: 'en' });
         const translate = (en, cn) => call(languageSource, 't', cn || en, en, cn, getLanguageState());
 
+        function updateControlLabel(element, label) {
+            const titleAttribute = element.hasAttribute?.('data-sai-native-title') ? 'data-sai-native-title' : 'title';
+            if (element.getAttribute?.(titleAttribute) !== label) element.setAttribute(titleAttribute, label);
+            if (element.getAttribute?.('aria-label') !== label) element.setAttribute('aria-label', label);
+        }
+
         function ensureNodeResizeHandle(nodeEl, node) {
             if (!nodeEl || !node) return;
             const document = call(domSource, 'getDocument', null);
@@ -80,9 +91,9 @@
                 nodeEl.appendChild(handle);
             }
             const label = translate('Resize node', '调整节点大小');
-            handle.setAttribute('title', label);
-            handle.setAttribute('aria-label', label);
-            handle.hidden = isNodeLocked(node);
+            updateControlLabel(handle, label);
+            const hidden = isNodeLocked(node);
+            if (handle.hidden !== hidden) handle.hidden = hidden;
         }
 
         function ensureNodeCollapseButton(nodeEl, node) {
@@ -102,10 +113,12 @@
             }
             const collapsed = isNodeCollapsed(node);
             const label = collapsed ? translate('Expand node', '展开节点') : translate('Collapse node', '折叠节点');
-            button.className = 'sai-node-collapse-btn';
-            button.setAttribute('title', label);
-            button.setAttribute('aria-label', label);
-            button.innerHTML = `<i class="fa-solid ${collapsed ? 'fa-up-right-and-down-left-from-center' : 'fa-down-left-and-up-right-to-center'}"></i>`;
+            if (button.className !== 'sai-node-collapse-btn') button.className = 'sai-node-collapse-btn';
+            updateControlLabel(button, label);
+            if (button.__simpaiCollapsed !== collapsed || !button.firstChild) {
+                button.innerHTML = `<i class="fa-solid ${collapsed ? 'fa-up-right-and-down-left-from-center' : 'fa-down-left-and-up-right-to-center'}"></i>`;
+                button.__simpaiCollapsed = collapsed;
+            }
         }
 
         function updateNodeCustomColor(nodeId, value, options) {

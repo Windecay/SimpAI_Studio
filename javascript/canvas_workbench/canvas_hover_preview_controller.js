@@ -37,6 +37,8 @@
         let hoverPreviewEl = null;
         let hoverPreviewTarget = null;
         let hoverPreviewImageRequestId = 0;
+        let hoverPreviewSize = null;
+        let hoverPreviewPosition = { x: 0, y: 0 };
         const hoverPreviewImageCache = new Map();
         const hoverPreviewModelCache = new Map();
 
@@ -249,10 +251,16 @@
 
         function positionHoverPreview(clientX, clientY) {
             if (!hoverPreviewEl || hoverPreviewEl.hidden) return;
+            if (pruneDetachedHoverPreview()) return;
+            hoverPreviewPosition = { x: clientX, y: clientY };
             const pad = 12;
             const offset = 16;
-            const rect = hoverPreviewEl.getBoundingClientRect();
             const viewport = getWindow();
+            if (!hoverPreviewSize || hoverPreviewSize.viewportWidth !== viewport.innerWidth || hoverPreviewSize.viewportHeight !== viewport.innerHeight) {
+                const rect = hoverPreviewEl.getBoundingClientRect();
+                hoverPreviewSize = { width: rect.width, height: rect.height, viewportWidth: viewport.innerWidth, viewportHeight: viewport.innerHeight };
+            }
+            const rect = hoverPreviewSize;
             let left = clientX + offset;
             let top = clientY + offset;
             if (left + rect.width + pad > viewport.innerWidth) left = Math.max(pad, clientX - rect.width - offset);
@@ -264,6 +272,7 @@
         function renderHoverPreview(payload, imageSrc, imageLoading) {
             const preview = ensureHoverPreview();
             if (!preview) return;
+            hoverPreviewSize = null;
             const kind = String(payload?.kind || 'preview');
             const prompt = String(payload?.prompt || '').trim();
             const negative = String(payload?.negative || '').trim();
@@ -285,6 +294,10 @@ ${prompt ? `<div class="sai-hover-preview-text"><b>${escapeHtml(t('Prompt', '提
 ${negative ? `<div class="sai-hover-preview-text"><b>${escapeHtml(t('Negative', '负向'))}</b><p>${escapeHtml(negative)}</p></div>` : ''}
 ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
 `;
+            preview.querySelector?.('img')?.addEventListener('load', () => {
+                hoverPreviewSize = null;
+                positionHoverPreview(hoverPreviewPosition.x, hoverPreviewPosition.y);
+            }, { once: true });
         }
 
         function findFirstPreviewImage(candidates, callback) {
@@ -487,25 +500,35 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             if (payload.kind === 'model' || payload.kind === 'lora') {
                 fetchModelBrowserHoverPreview(payload).then((src) => {
                     if (requestId !== hoverPreviewImageRequestId || hoverPreviewTarget !== target) return;
+                    if (pruneDetachedHoverPreview()) return;
                     renderHoverPreview(payload, src, false);
-                    positionHoverPreview(clientX, clientY);
+                    positionHoverPreview(hoverPreviewPosition.x, hoverPreviewPosition.y);
                 });
                 return;
             }
             findFirstPreviewImage(hoverPreviewCandidates(payload), (src) => {
                 if (requestId !== hoverPreviewImageRequestId || hoverPreviewTarget !== target) return;
+                if (pruneDetachedHoverPreview()) return;
                 renderHoverPreview(payload, src, false);
-                positionHoverPreview(clientX, clientY);
+                positionHoverPreview(hoverPreviewPosition.x, hoverPreviewPosition.y);
             });
         }
 
         function hideHoverPreview() {
             hoverPreviewTarget = null;
+            hoverPreviewSize = null;
             hoverPreviewImageRequestId += 1;
             if (hoverPreviewEl) {
                 hoverPreviewEl.classList.remove('is-visible');
                 hoverPreviewEl.hidden = true;
             }
+        }
+
+        function pruneDetachedHoverPreview() {
+            if (!hoverPreviewTarget) return false;
+            if (hoverPreviewTarget.isConnected !== false && !getRoot()?.hidden && !isCanvasPointerGestureActive()) return false;
+            hideHoverPreview();
+            return true;
         }
 
         function onHoverPreviewPointerOver(evt) {
@@ -576,6 +599,7 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             hoverPreviewElementFromTarget,
             showHoverPreviewFor,
             hideHoverPreview,
+            pruneDetachedHoverPreview,
             onHoverPreviewPointerOver,
             onHoverPreviewPointerMove,
             onHoverPreviewPointerOut,

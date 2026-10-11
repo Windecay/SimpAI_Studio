@@ -3455,6 +3455,61 @@
     border-color: color-mix(in srgb, var(--sai-canvas-accent) 44%, var(--sai-canvas-border));
 }
 
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) {
+    gap: 0;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+}
+
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) .sai-result-media {
+    width: 100%;
+    min-height: var(--sai-node-expanded-min-height, 220px);
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+}
+
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) :is(.sai-node-head, .sai-result-status, .sai-result-actions, .sai-result-stack) {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    z-index: 4;
+    margin: 0;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--sai-canvas-panel) 92%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+}
+
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) .sai-node-head { top: 6px; }
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) .sai-node-title { color: var(--sai-canvas-text); }
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) .sai-result-stack { top: 48px; }
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) .sai-result-status { bottom: 6px; }
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) .sai-result-actions { bottom: 42px; }
+
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview):is(:hover, :focus-within, .is-selected, .is-running, :has(.sai-result-metadata.is-pinned)) :is(.sai-node-head, .sai-result-status, .sai-result-actions, .sai-result-stack) {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) :is(.sai-node-info, .sai-node-foot) { display: none; }
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview) .sai-result-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    margin: 0;
+}
+
+.sai-canvas-node-result.is-image-frameless:not(.is-collapsed):not(.is-overview):has(.sai-result-status[data-state="finished"]) .sai-result-progress { display: none; }
+
 html.simpai-gallery-frost-enabled .sai-media-browser-modal:not([data-sai-frost-revealed="1"]) .sai-media-browser-main {
     position: relative;
     overflow: hidden;
@@ -9202,6 +9257,15 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     margin-left: 2px;
 }
 
+.sai-canvas-node-result:has(.sai-result-metadata:is(:hover, :focus-within, .is-pinned)) {
+    overflow: visible;
+    z-index: 40;
+}
+
+.sai-result-status:has(.sai-result-metadata:is(:hover, :focus-within, .is-pinned)) {
+    z-index: 5;
+}
+
 .sai-result-metadata-btn {
     display: inline-grid;
     place-items: center;
@@ -9223,6 +9287,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-result-metadata-popover {
+    box-sizing: border-box;
     position: absolute;
     left: calc(100% + 24px);
     right: auto;
@@ -9230,7 +9295,10 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     z-index: 40;
     display: none;
     width: 360px;
-    max-width: min(52vw, 460px);
+    max-width: calc(100vw - 24px);
+    height: min(380px, 70vh);
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: auto;
     padding: 10px;
     border: 1px solid color-mix(in srgb, var(--sai-canvas-accent) 44%, var(--sai-canvas-border));
     border-radius: 8px;
@@ -9253,10 +9321,13 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-result-metadata:hover .sai-result-metadata-popover,
+.sai-result-metadata:focus-within .sai-result-metadata-popover,
 .sai-result-metadata.is-pinned .sai-result-metadata-popover {
     display: grid;
     gap: 8px;
 }
+
+.sai-result-metadata-popover.is-repositioned::before { display: none; }
 
 .sai-canvas-viewport.is-panning .sai-result-metadata-popover {
     display: none !important;
@@ -9281,9 +9352,11 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-result-metadata-popover textarea {
+    box-sizing: border-box;
     width: 100%;
-    height: min(300px, 46vh);
-    min-height: 150px;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
     padding: 9px 10px;
     border: 1px solid var(--sai-canvas-border);
     border-radius: 6px;
@@ -13307,6 +13380,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     --sai-canvas-accent: #f97316;
     --sai-canvas-accent-soft: rgba(249, 115, 22, 0.16);
     width: min(1180px, calc(100vw - 32px));
+    max-width: 100%;
     height: min(860px, calc(100vh - 32px));
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
@@ -13318,6 +13392,10 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 
 .sai-pose-studio-modal {
     overscroll-behavior: contain;
+}
+
+.sai-pose-studio-panel:has(> .sai-pose-studio-help:not([hidden])) {
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
 }
 
 .sai-pose-studio-head-actions {
@@ -13350,6 +13428,8 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 
 .sai-pose-studio-help {
     display: grid;
+    max-height: 32vh;
+    overflow: auto;
     gap: 8px;
     padding: 10px 14px;
     border-bottom: 1px solid var(--sai-canvas-border);
@@ -13614,12 +13694,86 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-pose-studio-stage {
+    position: relative;
     min-width: 0;
     min-height: 0;
     display: grid;
     place-items: center;
     padding: 14px;
     background: #0f1119;
+}
+
+.sai-pose-studio-spatial {
+    min-width: 0;
+    margin: 10px 10px 0;
+    border: 1px solid #64748b66;
+    border-radius: 9px;
+    background: #27282a;
+    color: #e2e8f0;
+    font-size: 12px;
+}
+
+.sai-pose-studio-spatial summary {
+    padding: 9px 10px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.sai-pose-studio-spatial-tabs {
+    display: flex;
+    gap: 5px;
+    padding: 0 8px 6px;
+}
+
+.sai-pose-studio-spatial-tabs button {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 5px;
+    border: 1px solid #64748b55;
+    border-radius: 5px;
+    background: transparent;
+    color: #cbd5e1;
+    cursor: pointer;
+}
+
+.sai-pose-studio-spatial-tabs button[aria-pressed="true"] {
+    background: #3a3b3e;
+    color: #fff;
+}
+
+.sai-pose-studio-spatial canvas[data-pose-spatial-canvas] {
+    display: block;
+    position: static;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+    touch-action: none;
+    cursor: grab;
+}
+
+.sai-pose-studio-spatial canvas.is-dragging,
+.sai-pose-studio-canvas-wrap.is-camera-rotating { cursor: grabbing; }
+
+.sai-pose-studio-canvas-wrap:focus-visible,
+.sai-pose-studio-spatial canvas:focus-visible {
+    outline: 2px solid #fb923c;
+    outline-offset: -2px;
+}
+
+.sai-pose-studio-spatial-hint {
+    padding: 6px 8px 0;
+    font-size: 10px;
+    line-height: 1.4;
+    color: #cbd5e1;
+}
+
+.sai-pose-studio-spatial-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    padding: 7px 8px;
+    color: #94a3b8;
+    font-size: 10px;
 }
 
 .sai-pose-studio-canvas-wrap {
@@ -13651,6 +13805,64 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 
 .sai-pose-studio-reference-bg[hidden] {
     display: none;
+}
+
+.sai-pose-studio-control-hint {
+    color: var(--sai-canvas-muted);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.sai-pose-studio-control-field select {
+    width: 100%;
+    padding: 7px;
+    border: 1px solid #64748b66;
+    border-radius: 5px;
+    background: var(--sai-canvas-bg, #202329);
+    color: var(--sai-canvas-text, #e2e8f0);
+}
+
+.sai-pose-studio-regions {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    touch-action: none;
+}
+
+.sai-pose-studio-regions.is-active {
+    pointer-events: auto;
+    cursor: crosshair;
+}
+
+.sai-pose-studio-regions[hidden],
+.sai-pose-studio-toolbar button[hidden] {
+    display: none;
+}
+
+.sai-pose-studio-person-region {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid #fb923c;
+    background: #fb923c12;
+    pointer-events: none;
+}
+
+.sai-pose-studio-person-region span {
+    display: inline-block;
+    padding: 2px 7px;
+    background: #fb923c;
+    color: #111827;
+    font: 700 12px system-ui, sans-serif;
+}
+
+.sai-pose-studio-stage.is-selecting-people .sai-pose-studio-reference-bg {
+    opacity: 1;
+}
+
+.sai-pose-studio-stage.is-selecting-people [data-pose-studio-viewer-canvas],
+.sai-pose-studio-stage.is-selecting-people [data-pose-studio-fallback-canvas] {
+    visibility: hidden;
 }
 
 .sai-pose-studio-busy {
@@ -13705,7 +13917,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     border-left: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.03);
 }
@@ -13830,6 +14042,10 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 @media (max-width: 860px) {
+    .sai-pose-studio-modal {
+        padding: 10px;
+    }
+
     .sai-pose-studio-panel {
         width: calc(100vw - 20px);
         height: calc(100vh - 20px);
@@ -13837,7 +14053,8 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 
     .sai-pose-studio-body {
         grid-template-columns: 1fr;
-        grid-template-rows: 190px minmax(0, 1fr) 190px;
+        grid-template-rows: 190px minmax(148px, 1fr) 250px;
+        overflow: auto;
     }
 
     .sai-pose-studio-controls {
@@ -13850,8 +14067,24 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     }
 
     .sai-pose-studio-library {
+        grid-template-columns: 160px minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
         border-left: 0;
         border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .sai-pose-studio-library .sai-pose-studio-spatial {
+        grid-column: 1;
+        grid-row: 1 / 3;
+        align-self: start;
+        margin: 8px;
+    }
+
+    .sai-pose-studio-spatial-hint { display: none; }
+
+    .sai-pose-studio-library-head,
+    .sai-pose-studio-library-list {
+        grid-column: 2;
     }
 
     .sai-pose-studio-library-list {
@@ -14075,13 +14308,13 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-xyz-plot-panel {
-    width: min(1180px, calc(100vw - 40px));
-    height: min(820px, calc(100vh - 40px));
+    width: min(1180px, calc(100vw - 48px));
+    height: min(820px, calc(100vh - 48px));
 }
 
 .sai-xyz-plot-body {
     display: grid;
-    grid-template-rows: auto auto auto auto auto minmax(120px, 1fr);
+    grid-template-rows: auto auto auto auto minmax(120px, 1fr);
     gap: 12px;
     min-height: 0;
     padding: 14px;
@@ -14254,6 +14487,53 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     cursor: wait;
 }
 
+.sai-xyz-plot-modal.is-busy [data-xyz-action] {
+    pointer-events: none;
+    opacity: 0.55;
+}
+
+.sai-xyz-axis-row label { min-width: 0; }
+.sai-xyz-axis-row small { overflow-wrap: anywhere; color: var(--sai-canvas-muted); font-size: 11px; }
+
+.sai-xyz-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+}
+
+.sai-xyz-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 30px;
+    padding: 5px 9px;
+    border: 1px solid var(--sai-canvas-border);
+    border-radius: 5px;
+    color: var(--sai-canvas-text);
+    background: var(--sai-canvas-surface);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.sai-xyz-actions button:disabled { opacity: 0.45; cursor: default; }
+.sai-xyz-run-message { padding: 0 10px; color: var(--sai-canvas-muted); font-size: 12px; overflow-wrap: anywhere; }
+.sai-xyz-cell-preview { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; min-height: 0; overflow: hidden; }
+.sai-xyz-cell-preview img { width: 100%; height: 100%; object-fit: contain; }
+.sai-xyz-cell[data-state="failed"] { border-color: #d55a5a; }
+.sai-xyz-cell[data-state="running"] { border-color: var(--sai-canvas-accent); }
+.sai-xyz-cell small { font-size: 11px; overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+    .sai-canvas-modal.sai-xyz-plot-modal { padding: 8px; }
+    .sai-xyz-axis-row { grid-template-columns: minmax(0, 1fr) 32px; }
+    .sai-xyz-axis-row > label:first-child { grid-column: 1 / -1; }
+    .sai-xyz-options-grid { grid-template-columns: minmax(0, 1fr); }
+    .sai-xyz-plot-panel { width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }
+}
+
 .sai-xyz-matrix-meta,
 .sai-xyz-axis-tags {
     padding: 8px 10px 0;
@@ -14275,7 +14555,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 
 .sai-xyz-subgrid h4 {
     margin: 0;
-    color: var(--sai-node-muted, #94a3b8);
+    color: var(--sai-canvas-muted);
     font-size: 12px;
     font-weight: 800;
 }
@@ -14293,10 +14573,10 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     min-width: 0;
     min-height: 58px;
     padding: 6px;
-    border: 1px solid var(--sai-node-border, rgba(148, 163, 184, 0.28));
+    border: 1px solid var(--sai-canvas-border);
     border-radius: 6px;
-    color: var(--sai-node-text, #e2e8f0);
-    background: color-mix(in srgb, var(--sai-node-surface, #0f172a) 84%, #ffffff);
+    color: var(--sai-canvas-text);
+    background: var(--sai-canvas-surface);
     text-align: left;
     cursor: pointer;
 }
@@ -14532,7 +14812,6 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 @media (max-width: 820px) {
-    .sai-xyz-axis-row,
     .sai-xyz-swap-row,
     .sai-xyz-options-grid {
         grid-template-columns: 1fr;
@@ -14540,7 +14819,9 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 
     .sai-xyz-axis-row {
         align-items: stretch;
+        grid-template-columns: minmax(0, 1fr) 32px;
     }
+    .sai-xyz-axis-row > label:first-child { grid-column: 1 / -1; }
 
     .sai-xyz-preview-list div {
         grid-template-columns: 1fr;

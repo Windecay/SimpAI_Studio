@@ -148,7 +148,7 @@
         ]);
         expose('configNode', 'null', ['buildConfigNode']);
         expose('configNode', 'object', ['buildConfigStatePatch']);
-        expose('xyzMatrixNode', 'null', ['buildXyzMatrixNode']);
+        expose('xyzMatrixNode', 'null', ['buildXyzMatrixNode', 'buildXyzExecutionPreset']);
         expose('xyzMatrixNode', 'object', ['buildXyzMatrixStatePatch']);
         expose('group', 'null', ['buildAgentWorkflowGroup', 'buildAreaGroup']);
         expose('group', 'object', ['buildGroupIdPatch', 'buildGroupFieldPatch']);

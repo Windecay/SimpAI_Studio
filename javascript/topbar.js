@@ -6068,6 +6068,121 @@ function syncSceneUploadImageLabels(isScene, hidden) {
     syncSceneBatchTargetLabels(isScene, hiddenSet, items);
 }
 
+let qwenPoseImageModeActive = false;
+let qwenPoseImageLang = "en";
+let qwenPoseCharacterValueReady = null;
+let qwenPoseImageGuardBound = false;
+let qwenPoseImageObserver = null;
+let qwenPoseImageObserverRoot = null;
+
+function resolvePoseStudioSceneConfig(state = {}) {
+    const candidates = [state.__scene_pose_studio, state.scene_frontend,
+        state.default_engine?.scene_frontend, state.__preset_prepared?.engine?.scene_frontend];
+    const configured = candidates.find(scene => scene && typeof scene === "object"
+        && (Object.prototype.hasOwnProperty.call(scene, "pose_studio_reference_slots")
+            || Object.prototype.hasOwnProperty.call(scene, "pose_studio_output_slot")));
+    if (configured) return configured;
+    // Older running servers publish the resolved task, but omit scene_frontend.
+    // This task has a fixed pose-first / character-second image contract.
+    const task = String(state.__scene_task_method || state.task_method || "").toLowerCase();
+    if (task === "qwenedit_pose_cn") return {
+        pose_studio_reference_slots: ["scene_input_image1"],
+        pose_studio_output_slot: "scene_canvas_image"
+    };
+    return {};
+}
+
+function setQwenPoseCharacterImageValue(value) {
+    qwenPoseCharacterValueReady = !!value;
+    syncQwenPoseImageGuidance();
+}
+
+function syncQwenPoseImageGuidance() {
+    const app = gradioApp();
+    const find = id => (app?.getElementById?.(id) || document.getElementById(id));
+    const canvas = find("scene_canvas");
+    const character = find("scene_input_image1");
+    const translate = (en, cn) => qwenPoseImageLang.startsWith("en") ? en : cn;
+    const preview = character?.querySelector("img[src]");
+    const ready = qwenPoseCharacterValueReady ?? !!(preview?.complete && preview.naturalWidth > 0 && preview.naturalHeight > 0);
+    const locked = qwenPoseImageModeActive && !ready;
+    const pendingHint = find("pose_studio_scene_control")?.querySelector("[data-pose-studio-needs-character]");
+    if (pendingHint && (ready || !qwenPoseImageModeActive)) {
+        pendingHint.textContent = "";
+        pendingHint.removeAttribute("data-pose-studio-needs-character");
+    }
+    if (canvas) {
+        canvas.classList.toggle("sai-qwen-pose-await-character", locked);
+        if (qwenPoseImageModeActive) canvas.setAttribute("aria-disabled", String(locked));
+        else canvas.removeAttribute("aria-disabled");
+        const editor = canvas.querySelector(".simpai-sketch");
+        if (editor) editor.inert = locked;
+        if (locked && canvas.contains(document.activeElement)) document.activeElement.blur?.();
+    }
+    for (const [node, title, description] of [
+        [canvas, translate("Image 1 · Pose image", "图1 · 姿势图"), locked
+            ? translate("Upload the character original to Image 2 first. Image 1 will then become editable.", "请先将人物原图上传到图2，上传后这里会自动启用。")
+            : translate("Upload a ready-made pose image (gray mannequin on a white background), or export one from Pose Studio.", "可上传现成姿势图（白底灰模），也可使用 Pose Studio 制作并导出。")],
+        [character, translate("Image 2 · Character original — start here", "图2 · 人物原图（先上传这里）"),
+            translate("This is the character to preserve. Upload here before preparing Image 1.", "这里的人物将被保留。上传原图后，再准备图1的姿势。")]
+    ]) {
+        if (!node) continue;
+        let guide = node.querySelector("[data-qwen-pose-image-guide]");
+        if (!qwenPoseImageModeActive) { guide?.remove(); continue; }
+        if (!guide) {
+            guide = document.createElement("div");
+            guide.setAttribute("data-qwen-pose-image-guide", "");
+            guide.className = "sai-qwen-pose-image-guide";
+            guide.append(document.createElement("strong"), document.createElement("small"));
+            node.prepend(guide);
+        }
+        const heading = guide.querySelector("strong"), detail = guide.querySelector("small");
+        if (heading.textContent !== title) heading.textContent = title;
+        if (detail.textContent !== description) detail.textContent = description;
+    }
+}
+
+function setQwenPoseSceneImageMode(showPoseStudio, langSource) {
+    const state = langSource || window.simpleaiTopbarSystemParams || {};
+    const scene = resolvePoseStudioSceneConfig(state);
+    qwenPoseImageModeActive = !!showPoseStudio && scene.pose_studio_output_slot === "scene_canvas_image"
+        && scene.pose_studio_reference_slots?.includes("scene_input_image1");
+    qwenPoseImageLang = String(state.__lang || "en").toLowerCase();
+    const flow = document.getElementById("pose_studio_scene_control")?.querySelector("[data-pose-studio-scene-flow]");
+    if (flow) {
+        const slots = ["scene_canvas_image", "scene_input_image1", "scene_input_image2"];
+        const target = slots.includes(scene.pose_studio_output_slot) ? slots.indexOf(scene.pose_studio_output_slot) + 1 : 2;
+        const sourceSlot = scene.pose_studio_reference_slots?.length === 1 ? scene.pose_studio_reference_slots[0] : "";
+        const source = sourceSlot === "scene_canvas" ? 1 : slots.indexOf(sourceSlot) + 1;
+        const en = source ? `Image ${source} original → Pose Studio → Image ${target} pose` : "";
+        const cn = source ? `图${source}人物原图 → Pose Studio → 图${target}姿势图` : "";
+        flow.textContent = showPoseStudio ? (qwenPoseImageLang.startsWith("en") ? en : cn) : "";
+    }
+    if (!qwenPoseImageGuardBound) {
+        qwenPoseImageGuardBound = true;
+        for (const type of ["click", "dblclick", "pointerdown", "mousedown", "dragenter", "dragover", "drop", "paste", "change", "keydown"]) {
+            window.addEventListener(type, event => {
+                if (!event.target?.closest?.("#scene_canvas.sai-qwen-pose-await-character")) return;
+                if (type === "keydown" && ["Tab", "Escape"].includes(event.key)) return;
+                if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+                event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+            }, true);
+        }
+        document.addEventListener("load", event => {
+            if (event.target?.closest?.("#scene_input_image1")) syncQwenPoseImageGuidance();
+        }, true);
+    }
+    const app = gradioApp();
+    const row = app?.getElementById?.("scene_input_images") || document.getElementById("scene_input_images");
+    if (row && row !== qwenPoseImageObserverRoot && typeof MutationObserver !== "undefined") {
+        qwenPoseImageObserver?.disconnect();
+        qwenPoseImageObserverRoot = row;
+        qwenPoseImageObserver = new MutationObserver(syncQwenPoseImageGuidance);
+        qwenPoseImageObserver.observe(row, { childList: true, subtree: true, attributes: true, attributeFilter: ["src"] });
+    }
+    syncQwenPoseImageGuidance();
+}
+
 const GAUSSIAN_STUDIO_SCENE_STATUS_TEXT = "Image 1 original -> Gaussian Studio -> Image 2 camera render";
 const LIVEPORTRAIT_EXPRESSION_SCENE_STATUS_TEXT = "Source Image 1 -> Reference Image 2 -> Expression output";
 const LIVEPORTRAIT_EXPRESSION_VIDEO_SCENE_STATUS_TEXT = "Source video first frame -> expression params -> video output";
@@ -6513,6 +6628,7 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     setSceneAuxControlVisible("scene_cloud_image_api", showCloudImageApi);
     setRelightLightSliderHidden(showRelightLight);
     setGaussianStudioSceneImageMode(showGaussianStudio, langSource);
+    setQwenPoseSceneImageMode(showPoseStudio, langSource);
     setLivePortraitExpressionSceneImageMode(showLivePortraitExpression, langSource);
     if (showRelightLight) syncRelightLightControl(langSource);
     if (!showPoseStudio && window.SimpAIPoseStudioEditor?.closeScenePreset) {

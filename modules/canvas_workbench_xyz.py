@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -25,6 +26,13 @@ class AxisOption:
     choices_kind: str = ""
     prepare: str = ""
     confirm: str = ""
+    param_key: str = ""
+    display_label: str = ""
+    param_choices: tuple = ()
+    minimum: float | None = None
+    maximum: float | None = None
+    step: float | None = None
+    current_value: object = None
 
     def to_dict(self, include_choices=False, choices_payload=None):
         data = {
@@ -40,7 +48,13 @@ class AxisOption:
             "has_choices": bool(self.choices_kind),
         }
         if include_choices:
-            data["choices"] = _choices_for_kind(self.choices_kind, choices_payload)
+            data["choices"] = list(self.param_choices) if self.param_key else _choices_for_kind(self.choices_kind, choices_payload)
+        if self.param_key:
+            data.update(param_key=self.param_key, display_label=self.display_label,
+                        min=self.minimum, max=self.maximum, step=self.step,
+                        current_value=self.current_value, group="preset")
+        elif any(value is not None for value in (self.minimum, self.maximum, self.step)):
+            data.update(min=self.minimum, max=self.maximum, step=self.step)
         return data
 
 
@@ -58,10 +72,10 @@ AXIS_OPTIONS = [
     AxisOption("Resolution Template", "str", "template", choices_kind="resolution_templates"),
     AxisOption("Aspect Ratio", "str", "aspect_ratio", choices_kind="aspect_ratios"),
     AxisOption("Random Size", "str", "random_aspect_ratio", choices_kind="boolean_reverse"),
-    AxisOption("Width", "int", "width"),
-    AxisOption("Height", "int", "height"),
+    AxisOption("Width", "int", "width", minimum=1),
+    AxisOption("Height", "int", "height", minimum=1),
     AxisOption("Normalize", "int", "quantize", choices_kind="quantize_steps"),
-    AxisOption("Resolution Scale", "float", "multiplier"),
+    AxisOption("Resolution Scale", "float", "multiplier", minimum=1, maximum=2),
     AxisOption("Resolution Edit Mode", "str", "edit_mode", choices_kind="resolution_edit_modes"),
     AxisOption("Guidance Scale", "float", "guidance_scale"),
     AxisOption("Forced Sampling Steps", "int", "overwrite_step"),
@@ -283,6 +297,8 @@ def _float_range(start, end, step):
 
 def _linspace(start, end, count):
     count = int(count)
+    if count > MAX_PREVIEW_VARIANTS:
+        raise ValueError("axis range exceeds the variant limit")
     if count <= 0:
         return []
     if count == 1:
@@ -301,18 +317,26 @@ def _expand_int_values(values):
         count_match = RE_COUNT_INT.fullmatch(text)
         if match:
             start = int(_int_text(match.group(1)))
-            end = int(_int_text(match.group(2))) + 1
-            step = int(_int_text(match.group(3) or "1"))
+            last = int(_int_text(match.group(2)))
+            step = int(_int_text(match.group(3) or ("1" if last >= start else "-1")))
             if step == 0:
                 raise ValueError("integer range step must not be 0")
-            expanded.extend(list(range(start, end, step)))
+            values_range = range(start, last + (1 if step > 0 else -1), step)
+            if len(values_range) + len(expanded) > MAX_PREVIEW_VARIANTS:
+                raise ValueError("axis range exceeds the variant limit")
+            expanded.extend(values_range)
         elif count_match:
             start = int(_int_text(count_match.group(1)))
             end = int(_int_text(count_match.group(2)))
             count = int(_int_text(count_match.group(3) or "1"))
             expanded.extend([int(item) for item in _linspace(start, end, count)])
         else:
-            expanded.append(int(float(text)))
+            value = float(text)
+            if not math.isfinite(value) or not value.is_integer():
+                raise ValueError(f"Expected an integer, got {raw}")
+            expanded.append(int(text) if re.fullmatch(r"[+-]?\d+", text) else int(value))
+        if len(expanded) > MAX_PREVIEW_VARIANTS:
+            raise ValueError("axis range exceeds the variant limit")
     return expanded
 
 
@@ -483,13 +507,88 @@ def _axis_options_for_mode(mode):
     return result
 
 
+def _parameter_choice_text(value):
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _parameter_options(node, parameter_keys=None):
+    node = node if isinstance(node, dict) else {}
+    schema = node.get("schema") if isinstance(node.get("schema"), dict) else {}
+    params = node.get("params") if isinstance(node.get("params"), dict) else {}
+    runtime = node.get("runtime") if isinstance(node.get("runtime"), dict) else {}
+    theme = runtime.get("scene_theme") or schema.get("default_theme") or next(iter(schema.get("themes") or []), "")
+    theme_info = (schema.get("per_theme") or {}).get(theme) or {}
+    hidden = set(theme_info.get("disvisible") or [])
+    allowed = set(parameter_keys) if isinstance(parameter_keys, list) else None
+    bound = node.get("text_inputs") if isinstance(node.get("text_inputs"), dict) else {}
+    options = []
+    seen = set()
+    for param in schema.get("params") or []:
+        if not isinstance(param, dict):
+            continue
+        key = str(param.get("key") or "")
+        if (not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", key) or key in seen
+                or key in {"constructor", "prototype", "prompt", "negative_prompt", "image_seed", "seed_random"}
+                or key in hidden or bound.get(key) or param.get("visible") is False
+                or param.get("interactive") is False or (allowed is not None and key not in allowed)):
+            continue
+        control = param.get("type") or "number"
+        if control not in {"number", "choice", "checkbox", "textarea", "text"}:
+            continue
+        raw_choices = param.get("choices") if isinstance(param.get("choices"), list) else []
+        choices = tuple(dict.fromkeys(_parameter_choice_text(value) for value in raw_choices if value is not None)) if control == "choice" else ()
+        minimum, maximum, step = param.get("min"), param.get("max"), param.get("step")
+        numeric = [float(value) for value in (minimum, maximum, step, param.get("default"))
+                   if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)]
+        kind = "str"
+        if control == "number":
+            kind = "int" if numeric and all(value.is_integer() for value in numeric) else "float"
+        elif control == "checkbox":
+            kind, choices = "bool", ("false", "true")
+        elif control == "choice" and raw_choices:
+            if all(isinstance(value, bool) for value in raw_choices):
+                kind = "bool"
+            elif all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in raw_choices):
+                kind = "int" if all(float(value).is_integer() for value in raw_choices) else "float"
+        finite = lambda value: float(value) if isinstance(value, (int, float)) and math.isfinite(value) else None
+        options.append(AxisOption(
+            "param:" + key, kind, "parameter", choices_kind="preset_parameter" if choices else "",
+            param_key=key, display_label=str(param.get("label") or key), param_choices=choices,
+            minimum=finite(minimum), maximum=finite(maximum), step=finite(step),
+            current_value=params.get(key, param.get("default")),
+        ))
+        seen.add(key)
+    return options
+
+
+def _source_axis_options(mode, node=None, parameter_keys=None):
+    options = _axis_options_for_mode(mode)
+    source = node if isinstance(node, dict) else {}
+    preset = source.get("preset") if isinstance(source.get("preset"), dict) else {}
+    schema = source.get("schema") if isinstance(source.get("schema"), dict) else {}
+    fixed_prompt = str(preset.get("name") or "").casefold() == "onekeykontext" or (preset.get("prompt_mode") or schema.get("prompt_mode")) == "preset_fixed"
+    if fixed_prompt:
+        options = [option for option in options if option.label != "Prompt"]
+    if isinstance(parameter_keys, list):
+        options = [option for option in options if option.label not in {"Prompt", "Negative Prompt"}
+                   or ("prompt" if option.label == "Prompt" else "negative_prompt") in parameter_keys]
+    return options + _parameter_options(node, parameter_keys)
+
+
 def axis_options(payload=None):
     payload = payload or {}
     mode = payload.get("mode") or _mode_from_node(payload.get("source_node") or payload.get("preset_node") or {})
     include_choices = bool(payload.get("include_choices"))
-    options = _axis_options_for_mode(mode)
+    options = _source_axis_options(mode, _source_node_from_payload(payload), payload.get("parameter_keys"))
+    if payload.get("execution_mode") == "preset_runs":
+        options = [option for option in options if option.label != "Resolution Template"]
     return {
         "ok": True,
+        "parameter_comparison_version": 1,
         "script": XYZ_SCRIPT_NAME,
         "mode": mode or "txt2img",
         "options": [option.to_dict(include_choices=include_choices, choices_payload=payload) for option in options],
@@ -509,12 +608,12 @@ def _mode_from_node(node):
     return "txt2img"
 
 
-def _axis_option(label, mode):
+def _axis_option(label, mode, source_node=None, parameter_keys=None):
     wanted = str(label or "Nothing")
-    for option in _axis_options_for_mode(mode):
+    for option in _source_axis_options(mode, source_node, parameter_keys):
         if option.label == wanted:
             return option
-    return AXIS_BY_LABEL.get(wanted) or AXIS_BY_LABEL["Nothing"]
+    raise ValueError(f"Unknown or unavailable parameter: {wanted}")
 
 
 def _format_value(option, value):
@@ -530,17 +629,17 @@ def _format_value(option, value):
         text = f"{value:.8f}".rstrip("0").rstrip(".")
     else:
         text = str(value)
-    return f"{option.label}: {text}"
+    return f"{option.display_label or option.label}: {text}"
 
 
-def process_axis(axis, mode="txt2img"):
+def process_axis(axis, mode="txt2img", source_node=None, parameter_keys=None):
     axis = axis if isinstance(axis, dict) else {}
-    option = _axis_option(axis.get("type") or axis.get("label") or "Nothing", mode)
+    option = _axis_option(axis.get("type") or axis.get("label") or "Nothing", mode, source_node, parameter_keys)
     csv_mode = bool(axis.get("csv_mode"))
     if option.label == "Nothing":
         values = [0]
     elif option.choices_kind and not csv_mode and isinstance(axis.get("values"), list) and axis.get("values"):
-        values = [str(item) for item in axis.get("values")]
+        values = [str(item).lower() if isinstance(item, bool) else str(item) for item in axis.get("values")]
     elif option.prepare == "prompt_files":
         raw = axis.get("values") if isinstance(axis.get("values"), list) and axis.get("values") else csv_string_to_list_strip(axis.get("values_text") or "")
         values = _prompt_files_from_value(raw)
@@ -551,15 +650,38 @@ def process_axis(axis, mode="txt2img"):
         values = _expand_int_values(values)
     elif option.value_type == "float":
         values = _expand_float_values(values)
+    elif option.value_type == "bool":
+        if any(str(value).lower() not in {"true", "false", "0", "1"} for value in values):
+            raise ValueError(f"{option.display_label} requires true or false")
+        values = [str(value).lower() in {"true", "1"} for value in values]
     else:
         values = [str(item) for item in values]
 
     if option.label != "Nothing" and not values:
         raise ValueError(f"{option.label} axis has no values")
+    if len(values) > MAX_PREVIEW_VARIANTS:
+        raise ValueError("axis range exceeds the variant limit")
+    for value in values:
+        if option.label == "Aspect Ratio":
+            _parse_size(value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if not math.isfinite(value):
+                raise ValueError("axis values must be finite")
+            if option.minimum is not None and value < option.minimum or option.maximum is not None and value > option.maximum:
+                raise ValueError(f"{option.display_label or option.label} is outside its allowed range")
+            if option.step and option.step > 0:
+                ticks = (value - (option.minimum or 0)) / option.step
+                if not math.isclose(ticks, round(ticks), abs_tol=1e-7):
+                    raise ValueError(f"{option.display_label} does not match step {option.step}")
+        if option.param_choices:
+            text = _parameter_choice_text(value)
+            if text not in option.param_choices:
+                raise ValueError(f"{option.display_label} has an invalid choice: {text}")
 
     return {
         "axis": axis.get("axis") or "",
         "type": option.label,
+        "display_label": option.display_label or option.label,
         "values_text": axis.get("values_text") or (list_to_csv_string(axis.get("values")) if isinstance(axis.get("values"), list) else str(axis.get("values") or "")),
         "values": values,
         "resolved_values": values,
@@ -569,7 +691,8 @@ def process_axis(axis, mode="txt2img"):
 
 
 def _stable_seed_source(job):
-    text = json.dumps(job or {}, ensure_ascii=False, sort_keys=True, default=str)
+    seed_source = {"seed_nonce": job["seed_nonce"]} if isinstance(job, dict) and job.get("seed_nonce") else job or {}
+    text = json.dumps(seed_source, ensure_ascii=False, sort_keys=True, default=str)
     return int(hashlib.sha256(text.encode("utf-8")).hexdigest()[:8], 16)
 
 
@@ -672,16 +795,24 @@ def _apply_axis_patch(patch, axis_type, value):
         current = styles.get("style_selections")
         next_styles = csv_string_to_list_strip(value)
         styles["style_selections"] = (current if isinstance(current, list) else []) + next_styles
+        params["style_selections"] = styles["style_selections"]
     elif axis_type == "Resolution Template":
         resolution["template"] = str(value)
     elif axis_type == "Aspect Ratio":
         resolution["aspect_ratio"] = str(value)
+        resolution["width"], resolution["height"] = _parse_size(value)
+        resolution["use_input_aspect"] = False
+        resolution["random_aspect_ratio"] = False
     elif axis_type == "Random Size":
         resolution["random_aspect_ratio"] = _bool_value(value)
     elif axis_type == "Width":
         resolution["width"] = int(value)
+        resolution["use_input_aspect"] = False
+        resolution["random_aspect_ratio"] = False
     elif axis_type == "Height":
         resolution["height"] = int(value)
+        resolution["use_input_aspect"] = False
+        resolution["random_aspect_ratio"] = False
     elif axis_type == "Normalize":
         resolution["quantize"] = int(value)
     elif axis_type == "Resolution Scale":
@@ -699,7 +830,7 @@ def _apply_axis_patch(patch, axis_type, value):
         generation["scheduler_name"] = str(value)
 
 def _parse_size(value):
-    text = str(value or "").lower().replace(" ", "")
+    text = str(value or "").split("|", 1)[0].lower().replace(" ", "").replace("*", "x").replace("\u00d7", "x")
     if "x" not in text:
         raise ValueError(f'Invalid Size "{value}" for X/Y/Z Plot')
     left, right = text.split("x", 1)
@@ -730,9 +861,13 @@ def _build_variant_patch(x_axis, y_axis, z_axis, ix, iy, iz, seed, options):
     patch = {"params": {}, "generation_config": {"overrides": {}}, "models_config": {"overrides": {}}, "resolution_config": {"overrides": {}}, "styles_config": {"overrides": {}}}
     for axis, index in ((x_axis, ix), (y_axis, iy), (z_axis, iz)):
         value = (axis.get("values") or [0])[index]
-        _apply_axis_patch(patch, axis.get("type"), value)
-    if seed != -1:
-        patch.setdefault("params", {})["image_seed"] = seed
+        key = (axis.get("option") or {}).get("param_key")
+        if key:
+            patch["params"][key] = value
+        else:
+            _apply_axis_patch(patch, axis.get("type"), value)
+    patch.setdefault("params", {})["image_seed"] = seed
+    patch["params"]["seed_random"] = seed == -1
     return patch
 
 
@@ -753,15 +888,24 @@ def preview_job(payload, state_params=None):
     source_node = job.get("source_node") if isinstance(job.get("source_node"), dict) else payload.get("source_node") if isinstance(payload.get("source_node"), dict) else {}
     mode = job.get("mode") or payload.get("mode") or _mode_from_node(source_node)
     axes_raw = job.get("axes") if isinstance(job.get("axes"), list) else []
+    names = [str(axis.get("axis") or "").lower() for axis in axes_raw if isinstance(axis, dict)]
+    if len(names) != len(axes_raw) or any(name not in {"x", "y", "z"} for name in names) or len(set(names)) != len(names):
+        return {"ok": False, "error_code": "invalid_axes", "error": "Invalid or duplicate comparison axis"}
     axes_by_name = {str(axis.get("axis") or "").lower(): axis for axis in axes_raw if isinstance(axis, dict)}
     axes = []
     try:
         for name in ("x", "y", "z"):
             axis = dict(axes_by_name.get(name) or {})
             axis["axis"] = name
-            axes.append(process_axis(axis, mode=mode))
+            if job.get("execution_mode") == "preset_runs" and axis.get("type") == "Resolution Template":
+                raise ValueError("Resolution Template is a UI selector; compare Width, Height, or Aspect Ratio instead")
+            axis["csv_mode"] = bool((job.get("options") or {}).get("csv_mode"))
+            axes.append(process_axis(axis, mode=mode, source_node=source_node, parameter_keys=job.get("parameter_keys")))
+        selected = [axis["type"] for axis in axes if axis["type"] != "Nothing"]
+        if len(set(selected)) != len(selected):
+            raise ValueError("Each comparison axis must use a different parameter")
     except Exception as exc:
-        return {"ok": False, "error": "X/Y/Z axis values are invalid", "details": str(exc)}
+        return {"ok": False, "error_code": "invalid_axes", "error": "X/Y/Z axis values are invalid", "details": str(exc)}
 
     options = {
         "draw_legend": True,
@@ -790,16 +934,21 @@ def preview_job(payload, state_params=None):
     axes = [_resolve_seed_axis(axis, options["keep_minus_one"], rng) for axis in axes]
     x_axis, y_axis, z_axis = axes
     total = len(x_axis["values"]) * len(y_axis["values"]) * len(z_axis["values"])
-    if total > MAX_PREVIEW_VARIANTS:
-        return {"ok": False, "error": f"X/Y/Z plot expands to {total} variants; max preview is {MAX_PREVIEW_VARIANTS}"}
-
-    width, height = _preview_size(source_node)
-    grid_mp = round(total * width * height / 1000000)
-    max_mp = int(job.get("max_grid_mp") or payload.get("max_grid_mp") or DEFAULT_GRID_MAX_MP)
-    if grid_mp >= max_mp:
+    try:
+        limit = min(MAX_PREVIEW_VARIANTS, max(1, int(job.get("max_variants") or MAX_PREVIEW_VARIANTS)))
+        width, height = _preview_size(source_node)
+        grid_mp = round(total * width * height / 1000000)
+        max_mp = int(job.get("max_grid_mp") or payload.get("max_grid_mp") or DEFAULT_GRID_MAX_MP)
+        base_seed = int(source_node.get("params", {}).get("image_seed", -1) if isinstance(source_node.get("params"), dict) else -1)
+        if (source_node.get("params") or {}).get("seed_random") is True:
+            base_seed = -1
+    except (TypeError, ValueError, OverflowError) as exc:
+        return {"ok": False, "error_code": "invalid_settings", "error": "Invalid comparison settings", "details": str(exc)}
+    if total > limit:
+        return {"ok": False, "error_code": "too_many_variants", "variant_count": total, "max_variants": limit, "error": f"Comparison expands to {total} variants; maximum is {limit}"}
+    if grid_mp >= max_mp and job.get("execution_mode") != "preset_runs":
         return {"ok": False, "error": f"Resulting grid would be too large ({grid_mp} MPixels) (max configured size is {max_mp} MPixels)"}
 
-    base_seed = int(source_node.get("params", {}).get("image_seed", -1) if isinstance(source_node.get("params"), dict) else -1)
     if base_seed == -1 and not options["keep_minus_one"]:
         base_seed = rng.randrange(4294967294)
 
@@ -826,8 +975,10 @@ def preview_job(payload, state_params=None):
     processing_order = _processing_order(x_axis, y_axis, z_axis)
     return {
         "ok": True,
+        "parameter_comparison_version": 1,
         "script": XYZ_SCRIPT_NAME,
         "mode": mode,
+        "execution_mode": job.get("execution_mode") or "grid_preview",
         "source_node_id": source_node.get("id") or job.get("source_node_id") or "",
         "axes": [
             {key: value for key, value in axis.items() if key != "option"}

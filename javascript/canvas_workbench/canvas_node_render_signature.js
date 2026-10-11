@@ -87,6 +87,7 @@
                 return JSON.stringify({
                     type: node.type,
                     title: node.title,
+                    displayMode: node.display_mode || 'card',
                     mediaKey,
                     selected: node.selected_asset_index || 0,
                     assetCount: Array.isArray(node.assets) ? node.assets.length : 0,
@@ -99,6 +100,14 @@
                     locked: !!node.locked,
                     ignored: !!node.ignored
                 });
+            }
+            if (['xy_matrix', 'xyz_matrix'].includes(node.type)) {
+                return JSON.stringify({ type: node.type, title: node.title, xyz: node.xyz, status: node.status,
+                    results: (node.xyz?.variants || []).map(variant => {
+                        const result = getNode(variant.result_node_id);
+                        const asset = result?.assets?.[variant.asset_index || 0] || result?.asset;
+                        return [result?.id, result?.producer?.run_id, result?.status?.state, mediaAssetRenderKey(asset)];
+                    }) });
             }
             if (node.type === 'compare') {
                 return JSON.stringify({

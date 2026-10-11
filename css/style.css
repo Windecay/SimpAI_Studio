@@ -14919,6 +14919,8 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
 #pose_studio_scene_control.sai-pose-studio-scene-control {
     width: 100% !important;
     display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
     align-items: center !important;
     justify-content: stretch !important;
     padding: 0 !important;
@@ -14927,6 +14929,55 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
     overflow: hidden !important;
     isolation: isolate !important;
 }
+
+#pose_studio_scene_control [data-pose-studio-scene-flow],
+#pose_studio_scene_control [data-pose-studio-scene-status] {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--body-text-color-subdued, #9ca3af);
+    text-align: center;
+}
+
+#pose_studio_scene_control [data-pose-studio-scene-status]:empty {
+    display: none;
+}
+
+.sai-qwen-pose-image-guide {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 11px;
+    border: 1px solid #f59e0b55;
+    border-radius: 7px;
+    background: #f59e0b0d;
+    margin-bottom: 8px;
+    line-height: 1.45;
+}
+
+.sai-qwen-pose-image-guide strong { font-size: 13px; }
+.sai-qwen-pose-image-guide small { font-size: 12px; opacity: 0.8; }
+
+/* The guide adds a row above Gradio's fixed-height image surface. */
+#scene_input_image1:has(> .sai-qwen-pose-image-guide):not(.fullscreen) {
+    height: auto !important;
+    max-height: none !important;
+}
+
+#scene_input_image1:has(> .sai-qwen-pose-image-guide):not(.fullscreen) > :where(
+    .image-container, .upload-container, .wrap, .file-preview-holder
+) {
+    height: var(--simpai-upload-media-height, 180px) !important;
+    min-height: var(--simpai-upload-media-height, 180px) !important;
+    max-height: var(--simpai-upload-media-height, 180px) !important;
+}
+
+#scene_input_image1.fullscreen > .sai-qwen-pose-image-guide { display: none; }
+
+#scene_canvas:has([data-qwen-pose-image-guide]) [data-testid="block-label"],
+#scene_input_image1:has([data-qwen-pose-image-guide]) [data-testid="block-label"] { display: none; }
+#scene_canvas.sai-qwen-pose-await-character { cursor: not-allowed; }
+#scene_canvas.sai-qwen-pose-await-character .simpai-sketch { opacity: 0.45; pointer-events: none; }
 
 #pose_studio.sai-pose-studio-scene-entry .sai-pose-studio-scene-open,
 #pose_studio_scene_control .sai-pose-studio-scene-open,

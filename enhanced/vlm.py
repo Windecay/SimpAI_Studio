@@ -39,6 +39,7 @@ from modules.vlm_model_catalog import (
 )
 import logging
 from enhanced.llamacpp_vlm import llamacpp_vlm
+from modules.llama_cpp_cancellation import LlamaCppRequestCancelled
 from enhanced.comfy_textgen_vlm import comfy_textgen_vlm
 from enhanced.logger import format_name
 logger = logging.getLogger(format_name(__name__))
@@ -1482,7 +1483,7 @@ class VLM:
 
     def inference(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100,
                   repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None,
-                  reject_truncated=False):
+                  reject_truncated=False, cancel_check=None):
         # 设置为处理中状态
         VLM.set_processing_status(True)
         logger.debug("Starting VLM local inference...")
@@ -1521,7 +1522,10 @@ class VLM:
                     seed,
                     system_prompt=system_prompt,
                     enable_thinking=enable_thinking,
+                    cancel_check=cancel_check,
                 )
+        except LlamaCppRequestCancelled:
+            return "Stopped."
         finally:
             # 无论成功还是失败，都设置为非处理中状态
             VLM.set_processing_status(False)
@@ -1529,7 +1533,7 @@ class VLM:
 
     def inference_stream(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8,
                          top_k=100, repetition_penalty=1.05, seed=-1, system_prompt=None,
-                         on_delta=None, enable_thinking=None):
+                         on_delta=None, enable_thinking=None, cancel_check=None):
         """Stream text deltas for the llama.cpp backend, then return the full text."""
         callback = on_delta if callable(on_delta) else None
         VLM.set_processing_status(True)
@@ -1547,6 +1551,7 @@ class VLM:
                     seed=seed,
                     system_prompt=system_prompt,
                     enable_thinking=enable_thinking,
+                    cancel_check=cancel_check,
                 )
                 if callback and result:
                     callback(str(result))
@@ -1571,7 +1576,10 @@ class VLM:
                 system_prompt=system_prompt,
                 on_delta=callback,
                 enable_thinking=enable_thinking,
+                cancel_check=cancel_check,
             )
+        except LlamaCppRequestCancelled:
+            return "Stopped."
         finally:
             VLM.set_processing_status(False)
             logger.debug("VLM streaming inference completed")
@@ -1588,7 +1596,7 @@ class VLM:
 
     def chat(self, image, prompt, conversation_id="default", system_prompt="", save_state=True, max_history=24,
              max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100, repetition_penalty=1.05, seed=-1,
-             enable_thinking=None):
+             enable_thinking=None, cancel_check=None):
         if VLM.is_custom_version():
             return self.inference(
                 image,
@@ -1601,6 +1609,7 @@ class VLM:
                 seed=seed,
                 system_prompt=system_prompt,
                 enable_thinking=enable_thinking,
+                cancel_check=cancel_check,
             )
         VLM.set_processing_status(True)
         logger.debug("Starting VLM chat inference...")
@@ -1619,7 +1628,10 @@ class VLM:
                 repetition_penalty=repetition_penalty,
                 seed=seed,
                 enable_thinking=enable_thinking,
+                cancel_check=cancel_check,
             )
+        except LlamaCppRequestCancelled:
+            return "Stopped."
         finally:
             VLM.set_processing_status(False)
             logger.debug("VLM chat inference completed")
@@ -1628,7 +1640,7 @@ class VLM:
     @torch.inference_mode()
     def chat_local(self, image, prompt, conversation_id="default", system_prompt="", save_state=True, max_history=24,
                    max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100, repetition_penalty=1.05, seed=-1,
-                   enable_thinking=None):
+                   enable_thinking=None, cancel_check=None):
         try:
             self.set_processing_status(True)
             logger.debug("VLM chat_local started")
@@ -1684,6 +1696,7 @@ class VLM:
                     repetition_penalty=repetition_penalty,
                     seed=seed,
                     enable_thinking=enable_thinking,
+                    cancel_check=cancel_check,
                 )
 
             logger.info("Current VLM backend does not support persistent chat; falling back to one-shot inference.")
@@ -1698,6 +1711,7 @@ class VLM:
                 seed,
                 system_prompt=system_prompt,
                 enable_thinking=enable_thinking,
+                cancel_check=cancel_check,
             )
         finally:
             self.set_processing_status(False)
@@ -1706,7 +1720,7 @@ class VLM:
     @torch.no_grad()
     @torch.inference_mode()
     def inference_local(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100,
-                        repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None):
+                        repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None, cancel_check=None):
         try:
             # 设置处理状态为True
             self.set_processing_status(True)
@@ -1757,6 +1771,7 @@ class VLM:
                     seed=seed,
                     system_prompt=system_prompt,
                     enable_thinking=enable_thinking,
+                    cancel_check=cancel_check,
                 )
                 return res
 

@@ -4852,6 +4852,8 @@ with shared.gradio_root:
   <button type="button" class="sai-pose-studio-scene-open" data-pose-studio-scene-open title="Open Pose Studio Editor">
     <i class="fa-solid fa-pen-to-square"></i><span>Pose Studio</span>
   </button>
+  <span data-pose-studio-scene-flow></span>
+  <span data-pose-studio-scene-status></span>
 </div>
 """,
                                 elem_id="pose_studio_scene_control_html",
@@ -5050,6 +5052,14 @@ with shared.gradio_root:
                             if not isinstance(data, dict):
                                 data = {}
 
+                            if "scene_bridge_target" in data:
+                                declared_target = data["scene_bridge_target"]
+                                if declared_target not in ("scene_canvas_image", "scene_input_image1", "scene_input_image2"):
+                                    state_json = json.dumps({"ok": False, "error": "invalid_pose_target", "slot": None})
+                                    return skip_component_update(), skip_component_update(), skip_component_update(), state_json
+                                # Keep the image and destination in the same Gradio input update.
+                                target = declared_target
+
                             def normalize_source(value):
                                 text = str(value or "").strip()
                                 if not text:
@@ -5095,7 +5105,7 @@ with shared.gradio_root:
                                 return skip_component_update(), skip_component_update(), skip_component_update(), state_json
                             if target == "scene_canvas_image":
                                 canvas_value = util.normalize_gradio_sketch_value({"image": image_value}, image_mode="RGBA")
-                                return gr_update(value=canvas_value), skip_component_update(), skip_component_update(), state_json
+                                return gr_update(value=scene_canvas_image.postprocess(canvas_value)), skip_component_update(), skip_component_update(), state_json
                             if target == "scene_input_image1":
                                 return skip_component_update(), gr_update(value=image_value), skip_component_update(), state_json
                             return skip_component_update(), skip_component_update(), gr_update(value=image_value), state_json
@@ -12326,7 +12336,7 @@ with shared.gradio_root:
         scene_canvas_image.change(fn=None, show_progress=False, queue=False, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_canvas", "change"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
         scene_input_image1.upload(fn=None, show_progress=False, queue=False, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "upload"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
         scene_input_image1.clear(lambda: None, queue=False, show_progress=False, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "clear"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
-        scene_input_image1.change(fn=None, show_progress=False, queue=False, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "change"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
+        scene_input_image1.change(fn=None, inputs=[scene_input_image1], show_progress=False, queue=False, js='(value)=>{if (typeof setQwenPoseCharacterImageValue === "function") setQwenPoseCharacterImageValue(value); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "change"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets(); return [];}')
         load_parameter_button.click(update_scene_input_readiness, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, state_is_generating], outputs=generate_button, show_progress=False, queue=False, js="(...args)=>{window.showSimpleAIPromptAgentHint?.(); return args;}") \
                         .then(lambda: None, js='()=>{refresh_scene_localization(); if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
 

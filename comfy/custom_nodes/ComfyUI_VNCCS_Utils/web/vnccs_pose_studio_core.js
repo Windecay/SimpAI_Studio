@@ -958,6 +958,8 @@ export class PoseViewerCore {
         this.armScale = 1.0;
         this.handScale = 1.0;
         this.boneLengthParams = {
+            shoulder_l: 0.5, shoulder_r: 0.5,
+            hip_l: 0.5, hip_r: 0.5,
             upper_arm_l: 0.5,
             upper_arm_r: 0.5,
             forearm_l: 0.5,
@@ -1408,6 +1410,7 @@ export class PoseViewerCore {
         if (this._needsRender) {
             this._needsRender = false;
             if (this.renderer) this.renderer.render(this.scene, this.camera);
+            this.options.onRender?.();
         }
 
         requestAnimationFrame(() => this.animate());
@@ -2452,6 +2455,7 @@ export class PoseViewerCore {
             this.updateHandScale(this.handScale);
         }
         this.applyBoneLengthScales();
+        this._cacheShapedRestBonePositions();
 
         this._initIKHelpers();
         this.requestRender();
@@ -2512,6 +2516,7 @@ export class PoseViewerCore {
             }
         }
 
+        this.shapedBoneRestPositions = {};
         this.initialBoneStates = {};
         for (const bone of this.boneList) {
             this.initialBoneStates[bone.name] = {
@@ -2701,6 +2706,16 @@ export class PoseViewerCore {
         return Math.max(0.25, Math.min(2.0, 0.5 + v));
     }
 
+    _cacheShapedRestBonePositions(boneNames = null) {
+        if (!this.shapedBoneRestPositions) this.shapedBoneRestPositions = {};
+        const names = boneNames ? new Set(boneNames) : null;
+        for (const bone of this.boneList || []) {
+            if (!names || names.has(bone.name)) {
+                this.shapedBoneRestPositions[bone.name] = bone.position.clone();
+            }
+        }
+    }
+
     _setBoneOffsetScale(childName, scale) {
         const bone = this.bones?.[childName];
         const initial = this.initialBoneStates?.[childName]?.position;
@@ -2709,6 +2724,18 @@ export class PoseViewerCore {
     }
 
     _boneLengthChildrenForGroup(group) {
+        if (group === 'shoulder_l') {
+            return ['upperarm_l'];
+        }
+        if (group === 'shoulder_r') {
+            return ['upperarm_r'];
+        }
+        if (group === 'hip_l') {
+            return ['thigh_l'];
+        }
+        if (group === 'hip_r') {
+            return ['thigh_r'];
+        }
         if (group === 'upper_arm') {
             return ['lowerarm_l', 'lowerarm_r'];
         }
@@ -2754,6 +2781,8 @@ export class PoseViewerCore {
     updateBoneLengthScale(group, value) {
         if (!this.boneLengthParams) {
             this.boneLengthParams = {
+                shoulder_l: 0.5, shoulder_r: 0.5,
+                hip_l: 0.5, hip_r: 0.5,
                 upper_arm_l: 0.5, upper_arm_r: 0.5,
                 forearm_l: 0.5, forearm_r: 0.5,
                 thigh_l: 0.5, thigh_r: 0.5,
@@ -2764,6 +2793,8 @@ export class PoseViewerCore {
         if (group === 'arm') group = 'upper_arm';
         if (group === 'leg') group = 'thigh';
         const validGroups = [
+            'shoulder_l', 'shoulder_r',
+            'hip_l', 'hip_r',
             'upper_arm', 'upper_arm_l', 'upper_arm_r',
             'forearm', 'forearm_l', 'forearm_r',
             'thigh', 'thigh_l', 'thigh_r',
@@ -2773,17 +2804,23 @@ export class PoseViewerCore {
         if (!validGroups.includes(group)) return;
         this.boneLengthParams[group] = Number.isFinite(Number(value)) ? Number(value) : 0.5;
         const scale = this._lengthSliderToScale(this.boneLengthParams[group]);
-        for (const childName of this._boneLengthChildrenForGroup(group)) {
+        const affectedChildren = this._boneLengthChildrenForGroup(group);
+        for (const childName of affectedChildren) {
             this._setBoneOffsetScale(childName, scale);
         }
         for (const bone of this.boneList) bone.updateMatrixWorld(true);
         if (this.skeleton) this.skeleton.update();
+        this._cacheShapedRestBonePositions(affectedChildren);
         this.updateIKEffectorPositions();
         this.requestRender();
     }
 
     applyBoneLengthScales() {
         if (!this.boneLengthParams) return;
+        this.updateBoneLengthScale('shoulder_l', this.boneLengthParams.shoulder_l ?? 0.5);
+        this.updateBoneLengthScale('shoulder_r', this.boneLengthParams.shoulder_r ?? 0.5);
+        this.updateBoneLengthScale('hip_l', this.boneLengthParams.hip_l ?? 0.5);
+        this.updateBoneLengthScale('hip_r', this.boneLengthParams.hip_r ?? 0.5);
         this.updateBoneLengthScale('upper_arm_l', this.boneLengthParams.upper_arm_l ?? this.boneLengthParams.upper_arm ?? this.boneLengthParams.arm ?? 0.5);
         this.updateBoneLengthScale('upper_arm_r', this.boneLengthParams.upper_arm_r ?? this.boneLengthParams.upper_arm ?? this.boneLengthParams.arm ?? 0.5);
         this.updateBoneLengthScale('forearm_l', this.boneLengthParams.forearm_l ?? this.boneLengthParams.forearm ?? this.boneLengthParams.arm ?? 0.5);
@@ -2841,6 +2878,7 @@ export class PoseViewerCore {
 
     getPose() {
         const bones = {};
+        const bonePositions = {};
         for (const b of this.boneList) {
             const rot = b.rotation;
             if (Math.abs(rot.x) > 1e-4 || Math.abs(rot.y) > 1e-4 || Math.abs(rot.z) > 1e-4) {
@@ -2849,6 +2887,13 @@ export class PoseViewerCore {
                     rot.y * 180 / Math.PI,
                     rot.z * 180 / Math.PI
                 ];
+            }
+            const shapedRest = this.shapedBoneRestPositions?.[b.name];
+            const initialRest = this.initialBoneStates?.[b.name]?.position;
+            const restPosition = shapedRest || initialRest;
+            if (restPosition && (b.position.distanceToSquared(restPosition) > 1e-10
+                || !b.userData.parentName || !this.bones[b.userData.parentName])) {
+                bonePositions[b.name] = [b.position.x, b.position.y, b.position.z];
             }
         }
 
@@ -2884,6 +2929,10 @@ export class PoseViewerCore {
 
         return {
             bones,
+            // SAM IK may translate joint roots (notably the two hip sockets).
+            // These local offsets are pose data and must survive editor commit.
+            bonePositions,
+            boneLengthParams: { ...this.boneLengthParams },
             modelRotation: [this.modelRotation.x, this.modelRotation.y, this.modelRotation.z],
             camera: {
                 posX: this.camera.position.x,
@@ -2944,12 +2993,22 @@ export class PoseViewerCore {
         if (!pose) return;
 
         const bones = pose.bones || {};
+        const bonePositions = pose.bonePositions || {};
+        if (pose.boneLengthParams) {
+            for (const [group, value] of Object.entries(pose.boneLengthParams)) {
+                if (Number.isFinite(value)) this.updateBoneLengthScale(group, value);
+            }
+        }
         const modelRot = pose.modelRotation || [0, 0, 0];
         const ikPositions = pose.ikEffectorPositions || {};
 
         // Reset all bones
         for (const b of this.boneList) {
             b.rotation.set(0, 0, 0);
+            const shapedRest = this.shapedBoneRestPositions?.[b.name];
+            const initialRest = this.initialBoneStates?.[b.name]?.position;
+            if (shapedRest) b.position.copy(shapedRest);
+            else if (initialRest) b.position.copy(initialRest);
         }
 
         // Apply bone rotations
@@ -2962,6 +3021,15 @@ export class PoseViewerCore {
                     rot[2] * Math.PI / 180
                 );
             }
+        }
+
+        // Restore pose translations after resetting to the shaped skeleton.
+        // A body-shape edit removes this field before pose reapplication.
+        for (const [bName, position] of Object.entries(bonePositions)) {
+            const bone = this.bones[bName];
+            if (!bone || !Array.isArray(position) || position.length < 3) continue;
+            const values = position.slice(0, 3).map(Number);
+            if (values.every(Number.isFinite)) bone.position.set(values[0], values[1], values[2]);
         }
 
         // Apply model rotation
@@ -3039,6 +3107,7 @@ export class PoseViewerCore {
         }
 
         // Update skeleton after all changes
+        this.skinnedMesh?.updateMatrixWorld?.(true);
         if (this.skeleton) {
             this.skeleton.update();
         }
@@ -3506,9 +3575,10 @@ export class PoseViewerCore {
         return this.refPlane !== null && this.refPlane !== undefined;
     }
 
-    updateCaptureCamera(width, height, zoom = 1.0, offsetX = 0, offsetY = 0, yawDeg = 0, pitchDeg = 0) {
+    updateCaptureCamera(width, height, zoom = 1.0, offsetX = 0, offsetY = 0, yawDeg = 0, pitchDeg = 0, distanceScale = 1.0) {
         if (!this.THREE || !this.captureCamera) return; // Not initialized yet
-        if (this._applySAMProjectionCaptureCamera(width, height, zoom, offsetX, offsetY, yawDeg, pitchDeg)) return;
+        const distance = Math.max(0.1, Math.min(5, Number(distanceScale) || 1));
+        if (this._applySAMProjectionCaptureCamera(width, height, zoom, offsetX, offsetY, yawDeg, pitchDeg, distance)) return;
 
         const baseTarget = this.meshCenter || new this.THREE.Vector3(0, 10, 0);
         // Apply offset (in world units, scaled by zoom for intuitive control)
@@ -3517,7 +3587,7 @@ export class PoseViewerCore {
             baseTarget.y - offsetY,
             baseTarget.z
         );
-        const dist = 45;
+        const dist = 45 * distance;
 
         // Positioning relative to offset target
         const yawRad = this.THREE.MathUtils.degToRad(Number(yawDeg) || 0);
@@ -3572,8 +3642,8 @@ export class PoseViewerCore {
         this.requestRender();
     }
 
-    snapToCaptureCamera(width, height, zoom = 1.0, offsetX = 0, offsetY = 0, yawDeg = 0, pitchDeg = 0) {
-        this.updateCaptureCamera(width, height, zoom, offsetX, offsetY, yawDeg, pitchDeg);
+    snapToCaptureCamera(width, height, zoom = 1.0, offsetX = 0, offsetY = 0, yawDeg = 0, pitchDeg = 0, distanceScale = 1.0) {
+        this.updateCaptureCamera(width, height, zoom, offsetX, offsetY, yawDeg, pitchDeg, distanceScale);
 
         // Disable damping for hard reset
         const prevDamping = this.orbit.enableDamping;
@@ -3998,11 +4068,11 @@ export class PoseViewerCore {
         };
     }
 
-    capture(width, height, zoom, bgColor, offsetX = 0, offsetY = 0, yawDeg = 0, pitchDeg = 0) {
+    capture(width, height, zoom, bgColor, offsetX = 0, offsetY = 0, yawDeg = 0, pitchDeg = 0, distanceScale = 1.0) {
         if (!this.initialized) return null;
 
         // Ensure camera is setup
-        this.updateCaptureCamera(width, height, zoom, offsetX, offsetY, yawDeg, pitchDeg);
+        this.updateCaptureCamera(width, height, zoom, offsetX, offsetY, yawDeg, pitchDeg, distanceScale);
 
         // Hide UI elements
         const markersVisible = this.jointMarkers[0]?.visible ?? true;
@@ -4167,7 +4237,7 @@ export class PoseViewerCore {
         return camera.position.clone().addScaledVector(forward, depth);
     }
 
-    _applySAMProjectionCaptureCamera(width, height, zoom = 1.0, offsetX = 0, offsetY = 0, yawDeg = 0, pitchDeg = 0) {
+    _applySAMProjectionCaptureCamera(width, height, zoom = 1.0, offsetX = 0, offsetY = 0, yawDeg = 0, pitchDeg = 0, distanceScale = 1.0) {
         const frame = this._samProjectionCameraFrame;
         if (!frame || !this.THREE || !this.captureCamera) return false;
         const cameraPosition = frame.cameraPosition;
@@ -4209,6 +4279,9 @@ export class PoseViewerCore {
             this.captureCamera.position.copy(orbitTarget).add(offset);
             this.captureCamera.lookAt(orbitTarget);
         }
+        const distanceTarget = this._getSAMProjectionViewTarget(this.captureCamera);
+        this.captureCamera.position.sub(distanceTarget).multiplyScalar(distanceScale).add(distanceTarget);
+        this.captureCamera.lookAt(distanceTarget);
         this.captureCamera.updateProjectionMatrix();
 
         if (this.refPlane) {
@@ -4241,7 +4314,7 @@ export class PoseViewerCore {
         return true;
     }
 
-    setSAMMeshOverlayData(meshData, poseData) {
+    setSAMMeshOverlayData(meshData, poseData, sourceFrame = null) {
         if (!this.THREE || !this.scene || !meshData || !Array.isArray(meshData.vertices)) return false;
 
         this.clearSAMMeshOverlay();
@@ -4260,12 +4333,16 @@ export class PoseViewerCore {
             ]
             : (named.pelvis || null);
         const neckSource = named.neck || named.neck_01 || null;
-        const pelvisWorld = this._getBoneWorldPositionForImport('pelvis') || this._getBoneWorldPositionForImport('spine_01');
+        const savedAnchor = sourceFrame?.pelvisWorld;
+        const restoreFrame = Array.isArray(savedAnchor) && savedAnchor.length === 3
+            && savedAnchor.every(Number.isFinite) && Number.isFinite(sourceFrame.scale) && sourceFrame.scale > 0;
+        const pelvisWorld = restoreFrame ? new this.THREE.Vector3(...savedAnchor)
+            : (this._getBoneWorldPositionForImport('pelvis') || this._getBoneWorldPositionForImport('spine_01'));
         const neckWorld = this._getBoneWorldPositionForImport('neck_01') || this._getBoneWorldPositionForImport('head');
         if (!pelvisSource || !pelvisWorld) return false;
 
-        let scale = 1.0;
-        if (neckSource && neckWorld) {
+        let scale = restoreFrame ? sourceFrame.scale : 1.0;
+        if (!restoreFrame && neckSource && neckWorld) {
             const sourceLen = Math.hypot(
                 neckSource[0] - pelvisSource[0],
                 neckSource[1] - pelvisSource[1],
@@ -4354,6 +4431,10 @@ export class PoseViewerCore {
         const named = this._buildSAM3DNamedPoints(overlayPose);
         const pointNames = new Set([
             'pelvis', 'neck', 'neck_01', 'neck_tail', 'head',
+            'spine_01', 'spine_02', 'spine_03',
+            'clavicle_l', 'clavicle_r',
+            'upperarm_l', 'upperarm_r', 'lowerarm_l', 'lowerarm_r', 'hand_l', 'hand_r',
+            'thigh_l', 'thigh_r', 'calf_l', 'calf_r', 'foot_l', 'foot_r',
             'canonical_nose', 'canonical_left_eye', 'canonical_right_eye',
             'canonical_left_ear', 'canonical_right_ear',
             'left_shoulder', 'right_shoulder',
@@ -4408,6 +4489,27 @@ export class PoseViewerCore {
         };
     }
 
+    _placeSAM3DHipRoots(worldKps) {
+        if (!this.THREE || !this.skinnedMesh || !this.bones || !worldKps) return false;
+        this.skinnedMesh.updateMatrixWorld(true);
+        let applied = false;
+        for (const side of ['l', 'r']) {
+            const thigh = this.bones[`thigh_${side}`];
+            const target = worldKps[side === 'l' ? 'left_hip' : 'right_hip'];
+            if (!thigh?.parent || !target) continue;
+
+            // Move the complete leg from its socket. This removes pelvis-width
+            // error before IK without changing thigh/shin lengths or translating
+            // the ankle independently from the rest of the leg.
+            thigh.parent.updateMatrixWorld(true);
+            thigh.position.copy(thigh.parent.worldToLocal(target.clone()));
+            thigh.updateMatrixWorld(true);
+            applied = true;
+        }
+        if (applied) this.skinnedMesh.updateMatrixWorld(true);
+        return applied;
+    }
+
     fitCurrentPoseToSAMMeshOverlay(shoulderYOffset = 0) {
         const worldKps = this._samMeshOverlayWorldKps;
         if (!worldKps?.pelvis || !this.bones || !this.skinnedMesh) return false;
@@ -4417,21 +4519,135 @@ export class PoseViewerCore {
 
         this._hmr2WorldKps = worldKps;
         this._drawHMR2Figure(worldKps);
-        this._applyImportPelvisAndTorso(worldKps, shoulderYOffset);
-        this._applySAM3DTargetIK(importTargets, {
-            normalizeLimbs: false,
-            drawNormalizedFigure: false,
-        });
+        // VNCCS eedaed79: fit joint roots and segment lengths before solving IK.
+        for (let pass = 0; pass < 6; pass++) {
+            this.fitSAM3DJointRootLengthsToWorldKps(worldKps);
+            this.fitSAM3DLimbLengthsToWorldKps(worldKps);
+            this._applyImportPelvisAndTorso(worldKps, shoulderYOffset);
+            this._placeSAM3DHipRoots(worldKps);
+            this._applySAM3DTargetIK(importTargets, {
+                includeSpine: pass === 0,
+                normalizeLimbs: false,
+                drawNormalizedFigure: false,
+            });
+        }
+        // Rotating the head cannot correct a different neck length or pivot.
+        for (const [name, target] of [['neck_01', worldKps.neck], ['head', worldKps.head]]) {
+            const bone = this.bones[name];
+            if (!bone?.parent || !target) continue;
+            bone.parent.updateMatrixWorld(true);
+            bone.position.copy(bone.parent.worldToLocal(target.clone()));
+            bone.updateMatrixWorld(true);
+        }
         this._applySAM3DHeadLineRetarget(worldKps);
         this._applySAM3DHandPointRetarget(worldKps);
         this._applySAM3DFootPointRetarget(worldKps);
 
         if (this.skeleton) this.skeleton.update();
         this.skinnedMesh.updateMatrixWorld(true);
+        this.updateIKEffectorPositions();
+        this.updatePoleTargetPositions();
         this.updateMarkers();
         this.requestRender();
         this.dispatchPoseChange();
         return true;
+    }
+
+    fitSAM3DJointRootLengthsToWorldKps(worldKps) {
+        if (!worldKps || !this.bones || !this.skinnedMesh) return null;
+        this.skinnedMesh.updateMatrixWorld(true);
+
+        const fitted = {};
+        const fitRoot = (group, parentName, childName, target) => {
+            const parent = this._getBoneWorldPositionForImport(parentName);
+            const child = this._getBoneWorldPositionForImport(childName);
+            if (!parent || !child || !target) return;
+            const currentLength = parent.distanceTo(child);
+            const currentScale = this._lengthSliderToScale(this.boneLengthParams?.[group] ?? 0.5);
+            const baseLength = currentScale > 1e-5 ? currentLength / currentScale : 0;
+            const targetLength = parent.distanceTo(target);
+            if (baseLength <= 1e-5 || targetLength <= 1e-5) return;
+            fitted[group] = Math.max(0, Math.min(1, targetLength / baseLength - 0.5));
+        };
+
+        fitRoot('shoulder_l', 'clavicle_l', 'upperarm_l', worldKps.left_shoulder);
+        fitRoot('shoulder_r', 'clavicle_r', 'upperarm_r', worldKps.right_shoulder);
+        fitRoot('hip_l', 'pelvis', 'thigh_l', worldKps.left_hip);
+        fitRoot('hip_r', 'pelvis', 'thigh_r', worldKps.right_hip);
+        for (const [group, value] of Object.entries(fitted)) {
+            this.updateBoneLengthScale(group, value);
+        }
+        return Object.keys(fitted).length ? fitted : null;
+    }
+
+    fitSAM3DLimbLengthsToWorldKps(worldKps) {
+        if (!worldKps || !this.bones || !this.skinnedMesh) return null;
+
+        this.skinnedMesh.updateMatrixWorld(true);
+
+        const measuredBaseLength = (rootBoneName, endBoneName, group) => {
+            const root = this._getBoneWorldPositionForImport(rootBoneName);
+            const end = this._getBoneWorldPositionForImport(endBoneName);
+            const currentLength = root && end ? root.distanceTo(end) : 0;
+            const currentSlider = Number(this.boneLengthParams?.[group]);
+            const currentScale = this._lengthSliderToScale(
+                Number.isFinite(currentSlider) ? currentSlider : 0.5,
+            );
+            if (currentLength <= 1e-5 || currentScale <= 1e-5) return 0;
+            return currentLength / currentScale;
+        };
+        const sliderValue = (targetLength, baseWorldLength) => {
+            if (targetLength <= 1e-5 || baseWorldLength <= 1e-5) return null;
+            const targetScale = targetLength / baseWorldLength;
+            return Math.max(0, Math.min(1, targetScale - 0.5));
+        };
+
+        const fitted = {};
+        const fitSide = (side) => {
+            const prefix = side === 'l' ? 'left' : 'right';
+            const shoulder = worldKps[`${prefix}_shoulder`];
+            const elbow = worldKps[`${prefix}_elbow`];
+            const wrist = worldKps[`${prefix}_wrist`];
+            if (!shoulder || !elbow || !wrist) return;
+
+            const targetUpper = shoulder.distanceTo(elbow);
+            const targetLower = elbow.distanceTo(wrist);
+            const upperGroup = `upper_arm_${side}`;
+            const lowerGroup = `forearm_${side}`;
+            const baseUpper = measuredBaseLength(`upperarm_${side}`, `lowerarm_${side}`, upperGroup);
+            const baseLower = measuredBaseLength(`lowerarm_${side}`, `hand_${side}`, lowerGroup);
+            const upperValue = sliderValue(targetUpper, baseUpper);
+            const lowerValue = sliderValue(targetLower, baseLower);
+            if (upperValue !== null) fitted[upperGroup] = upperValue;
+            if (lowerValue !== null) fitted[lowerGroup] = lowerValue;
+        };
+
+        fitSide('l');
+        fitSide('r');
+
+        const fitLeg = (side) => {
+            const prefix = side === 'l' ? 'left' : 'right';
+            const hip = worldKps[`${prefix}_hip`];
+            const knee = worldKps[`${prefix}_knee`];
+            const ankle = worldKps[`${prefix}_ankle`];
+            if (!hip || !knee || !ankle) return;
+
+            const thighGroup = `thigh_${side}`;
+            const shinGroup = `shin_${side}`;
+            const baseThigh = measuredBaseLength(`thigh_${side}`, `calf_${side}`, thighGroup);
+            const baseShin = measuredBaseLength(`calf_${side}`, `foot_${side}`, shinGroup);
+            const thighValue = sliderValue(hip.distanceTo(knee), baseThigh);
+            const shinValue = sliderValue(knee.distanceTo(ankle), baseShin);
+            if (thighValue !== null) fitted[thighGroup] = thighValue;
+            if (shinValue !== null) fitted[shinGroup] = shinValue;
+        };
+
+        fitLeg('l');
+        fitLeg('r');
+        for (const [group, value] of Object.entries(fitted)) {
+            this.updateBoneLengthScale(group, value);
+        }
+        return Object.keys(fitted).length ? fitted : null;
     }
 
     _estimateCurrentModelHeight() {
@@ -5129,6 +5345,18 @@ export class PoseViewerCore {
         return applied;
     }
 
+    _relocateSAM3DEyeTargetsToHead(worldKps, target, currentHeadPivot) {
+        if (!this.THREE || !target?.left || !target?.right || !currentHeadPivot) return target;
+        const sourceHeadPivot = worldKps?.head || worldKps?.neck_tail || worldKps?.neck;
+        if (!sourceHeadPivot) return target;
+
+        const translation = currentHeadPivot.clone().sub(sourceHeadPivot);
+        return {
+            left: target.left.clone().add(translation),
+            right: target.right.clone().add(translation),
+        };
+    }
+
     _applySAM3DEyePairRetarget(worldKps) {
         const head = this.bones?.head;
         if (!this.THREE || !head || !this.modelLandmarks) return false;
@@ -5141,10 +5369,15 @@ export class PoseViewerCore {
             const current = this._getCurrentMHFaceLandmarkPoints();
             if (!current?.left || !current?.right) break;
 
-            const targetMid = target.left.clone().add(target.right).multiplyScalar(0.5);
             const currentMid = current.left.clone().add(current.right).multiplyScalar(0.5);
             const headPivot = new this.THREE.Vector3();
             head.getWorldPosition(headPivot);
+            const relocatedTarget = this._relocateSAM3DEyeTargetsToHead(
+                worldKps,
+                target,
+                headPivot,
+            );
+            const targetMid = relocatedTarget.left.clone().add(relocatedTarget.right).multiplyScalar(0.5);
 
             const currentLook = currentMid.clone().sub(headPivot);
             const targetLook = targetMid.clone().sub(headPivot);
@@ -5165,7 +5398,7 @@ export class PoseViewerCore {
             rollAxis.normalize();
 
             const currentEyeAxis = afterLook.right.clone().sub(afterLook.left);
-            const targetEyeAxis = target.right.clone().sub(target.left);
+            const targetEyeAxis = relocatedTarget.right.clone().sub(relocatedTarget.left);
             currentEyeAxis.sub(rollAxis.clone().multiplyScalar(currentEyeAxis.dot(rollAxis)));
             targetEyeAxis.sub(rollAxis.clone().multiplyScalar(targetEyeAxis.dot(rollAxis)));
             if (currentEyeAxis.lengthSq() <= 1e-8 || targetEyeAxis.lengthSq() <= 1e-8) continue;
@@ -5179,13 +5412,14 @@ export class PoseViewerCore {
             const check = this._getCurrentMHFaceLandmarkPoints();
             if (!check?.left || !check?.right) continue;
             const checkMid = check.left.clone().add(check.right).multiplyScalar(0.5);
-            const midError = checkMid.distanceTo(targetMid);
+            const checkLook = checkMid.clone().sub(headPivot);
+            const lookError = (
+                checkLook.lengthSq() > 1e-8 && targetLook.lengthSq() > 1e-8
+                    ? 1 - Math.max(-1, Math.min(1, checkLook.normalize().dot(targetLook.clone().normalize())))
+                    : Number.POSITIVE_INFINITY
+            );
             const axisError = 1 - Math.max(-1, Math.min(1, check.right.clone().sub(check.left).normalize().dot(targetEyeAxis)));
-            if (midError < 0.02 && axisError < 0.002) break;
-        }
-
-        if (applied) {
-            this._applySAM3DEyeLinePitchTrim(1);
+            if (lookError < 0.002 && axisError < 0.002) break;
         }
 
         return applied;
@@ -6550,6 +6784,7 @@ export class PoseViewerCore {
                 bone.position.copy(this.initialBoneStates[bone.name].position);
             }
         }
+        this.applyBoneLengthScales();
         this.skinnedMesh.updateMatrixWorld(true);
         if (this.skeleton) this.skeleton.update();
 

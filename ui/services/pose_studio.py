@@ -1,5 +1,6 @@
 import base64
 import json
+import math
 import mimetypes
 import os
 import re
@@ -26,6 +27,10 @@ POSE_STUDIO_CHARACTER_CACHE: Dict[str, Any] = {
 }
 _PERSON_DETECTOR_LOCK = threading.Lock()
 _PERSON_DETECTOR_CACHE = {}
+
+
+class NoPeopleDetectedError(ValueError):
+    pass
 
 
 def _person_detector_path() -> Path:
@@ -57,15 +62,44 @@ def _detect_people(image_rgb):
         with torch.no_grad():
             boxes = _PERSON_DETECTOR_CACHE["infer"](_PERSON_DETECTOR_CACHE["model"], image_rgb[:, :, ::-1].copy())
     if boxes is None or len(boxes) == 0:
-        raise ValueError("No people detected in the reference image.")
+        raise NoPeopleDetectedError("No people detected in the reference image.")
     boxes = np.asarray(boxes, dtype=np.float32).reshape(-1, 4)
     height, width = image_rgb.shape[:2]
     boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, width)
     boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, height)
     boxes = boxes[np.isfinite(boxes).all(axis=1) & (boxes[:, 2] > boxes[:, 0]) & (boxes[:, 3] > boxes[:, 1])]
     if len(boxes) == 0:
-        raise ValueError("No people detected in the reference image.")
+        raise NoPeopleDetectedError("No people detected in the reference image.")
     return boxes[np.argsort((boxes[:, 0] + boxes[:, 2]) * 0.5, kind="stable")]
+
+
+def _select_people(boxes, image_shape, maximum, selection):
+    import numpy as np
+
+    boxes = np.asarray(boxes, dtype=np.float32).reshape(-1, 4)
+    if selection == "left_to_right":
+        order = np.argsort((boxes[:, 0] + boxes[:, 2]) * 0.5, kind="stable")
+    else:
+        height, width = image_shape[:2]
+        area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        cx = (boxes[:, 0] + boxes[:, 2]) / width - 1.0
+        cy = (boxes[:, 1] + boxes[:, 3]) / height - 1.0
+        centrality = 1.0 - 0.35 * np.minimum(np.hypot(cx, cy) / math.sqrt(2), 1.0)
+        order = np.argsort(-area * centrality, kind="stable")
+    return boxes[order[:maximum]]
+
+
+def _valid_person_regions(regions, maximum):
+    if not isinstance(regions, list) or not 1 <= len(regions) <= maximum:
+        return False
+    for box in regions:
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            return False
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 1 or not math.isfinite(v) for v in box):
+            return False
+        if box[0] >= box[2] or box[1] >= box[3]:
+            return False
+    return True
 
 
 def _repo_root() -> Path:
@@ -537,6 +571,12 @@ def import_reference_image(payload: Optional[Dict[str, Any]] = None, state_param
     max_people = payload.get("max_people", 2)
     if isinstance(max_people, bool) or not isinstance(max_people, int) or max_people < 1:
         return {"ok": False, "task_id": task_id, "error": "Maximum people must be a positive integer."}
+    selection = payload.get("person_selection", "subject")
+    if selection not in ("subject", "left_to_right"):
+        return {"ok": False, "task_id": task_id, "error": "Invalid person selection method."}
+    regions = payload.get("person_regions")
+    if "person_regions" in payload and not _valid_person_regions(regions, max_people):
+        return {"ok": False, "task_id": task_id, "error": "Person regions must be valid normalized boxes within the person limit."}
 
     try:
         reference_result = _reference_asset_from_payload(payload, state_params)
@@ -570,10 +610,19 @@ def import_reference_image(payload: Optional[Dict[str, Any]] = None, state_param
             progress.update("Step 1/6: Image uploaded. Preparing SAM 3D Body import...", 2)
             pil_image = Image.open(image_path).convert("RGB")
             image_rgb = np.asarray(pil_image)
-            progress.update("Detecting people in the reference image...", 3)
-            boxes = _detect_people(image_rgb)
-            detected_people = len(boxes)
-            boxes = boxes[:max_people]
+            if regions is not None:
+                height, width = image_rgb.shape[:2]
+                boxes = np.asarray(regions, dtype=np.float32) * [width, height, width, height]
+                if np.any(boxes[:, 2:] - boxes[:, :2] < 2):
+                    raise ValueError("Person regions must be at least 2 pixels wide and high.")
+                detected_people = None
+                selection = "manual"
+                progress.update("Reconstructing the manually selected people...", 3)
+            else:
+                progress.update("Detecting people in the reference image...", 3)
+                boxes = _detect_people(image_rgb)
+                detected_people = len(boxes)
+                boxes = _select_people(boxes, image_rgb.shape, max_people, selection)
             image_np = image_rgb.astype(np.float32) / 255.0
             image_tensor = torch.from_numpy(image_np).unsqueeze(0)
             pose_json = process_image_to_pose_json(image_tensor, bboxes=boxes)
@@ -591,6 +640,7 @@ def import_reference_image(payload: Optional[Dict[str, Any]] = None, state_param
             "max_people": max_people,
             "detected_people": detected_people,
             "parsed_people": len(boxes),
+            "selection_method": selection,
             "reference_asset": _safe_json_value(reference_asset),
             "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "lighting_enabled": False,
@@ -605,6 +655,9 @@ def import_reference_image(payload: Optional[Dict[str, Any]] = None, state_param
             pass
         error = _sam3d_error(exc)
         error["task_id"] = task_id
+        if isinstance(exc, NoPeopleDetectedError):
+            error["error_code"] = "no_people_detected"
+            error["stage"] = "person_detection"
         return error
 
 

@@ -3276,6 +3276,10 @@
                     bindNodeEvents,
                     restoreInlineTagCartAfterRender,
                     syncOutpaintOverlayPosition,
+                    pruneDetachedOverlays: () => {
+                        CANVAS_TOOLTIP_CONTROLLER?.pruneDetachedTooltip?.();
+                        CANVAS_HOVER_PREVIEW_CONTROLLER?.pruneDetachedHoverPreview?.();
+                    },
                     renderEdges,
                 },
                 presetSource: {
@@ -4585,7 +4589,12 @@
         })
         : {};
     CANVAS_NODE_STATE_CONTROLLER = typeof WORKBENCH_CANVAS_NODE_STATE.createCanvasNodeStateController === 'function'
-        ? WORKBENCH_CANVAS_NODE_STATE.createCanvasNodeStateController()
+        ? WORKBENCH_CANVAS_NODE_STATE.createCanvasNodeStateController({
+            assetSource: {
+                getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
+                assetMediaKind: (...args) => assetMediaKind(...args)
+            }
+        })
         : {};
     const UPLOAD_CONNECTION_CONTEXT_SOURCE = {
         projectSource: {
@@ -6531,6 +6540,7 @@
             handleMediaBrowserNodeClick: (...args) => CANVAS_MEDIA_BROWSER_INTERACTION_CONTROLLER.handleMediaBrowserNodeClick(...args),
             handleTimelineClick: (...args) => handleTimelineClick(...args),
             handleResultMetadataToggle: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.handleResultMetadataToggle?.(...args) || false,
+            positionResultMetadataPopover: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.positionResultMetadataPopover?.(...args),
             handleCanvasRelightLightButtonEvent: (...args) => handleCanvasRelightLightButtonEvent(...args),
             handlePresetParamResetClick: (...args) => handlePresetParamResetClick(...args),
             handleResultAssetClick: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.handleResultAssetClick?.(...args) || false,
@@ -14832,10 +14842,20 @@
             xyzMatrixEditorSource: {
                 nodeSource: {
                     getNode, buildXyzMatrixNode, buildXyzMatrixStatePatch,
+                    buildXyzExecutionPreset: (...args) => CANVAS_FACTORY_CONTEXT.buildXyzExecutionPreset?.(...args),
+                    getSelectedResultAsset,
+                    isImageCompareSource,
+                    createCompareNodeFromSources,
                     selectResultAsset: (...args) => CANVAS_RESULT_ASSET_CONTROLLER.selectResultAsset?.(...args) || null
                 },
-                presetSource: { getPresetThemeInfo },
+                presetSource: {
+                    getPresetThemeInfo,
+                    getVisiblePresetParams: node => CANVAS_PRESET_NODE_RENDERER.getVisiblePresetParams(node),
+                    getPromptTextSourceNode,
+                    computePresetRunFingerprint: node => CANVAS_PRESET_RUN_FINGERPRINT_CONTROLLER.computePresetRunFingerprint(node)
+                },
                 serializationSource: {
+                    cloneRunValue,
                     serializeClassicNodeForRun: node => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializeClassicNodeForRun?.(node) || {},
                     serializePresetForRun: node => CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER.serializePresetForRun?.(node) || {}
                 },
@@ -14844,6 +14864,7 @@
                 projectSource: {
                     getProject: () => project,
                     buildProjectNodeAppendPatch,
+                    buildProjectEdgeAppendPatch,
                     buildProjectBatchJobAppendPatch,
                     buildXyzBatchJob
                 },
@@ -14855,6 +14876,12 @@
                     }
                 },
                 renderSource: { renderAll, renderNodes, renderInspector },
+                identitySource: { uid },
+                runSource: {
+                    runPresetNode: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.runPresetNode(...args),
+                    findActiveResultNodeForPreset: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.findActiveResultNodeForPreset(...args),
+                    controlResultRun: (...args) => CANVAS_RESULT_RUN_ACTION_CONTROLLER.controlResultRun(...args)
+                },
                 modalSource: {
                     document,
                     getRoot: () => root,
@@ -14880,6 +14907,7 @@
                 nodeSource: { getNode },
                 stateSource: { defaultXyzPlotState: CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.defaultXyzPlotState },
                 axisSource: {
+                    localizeLabel: localizeCanvasLabel,
                     visibleXyzAxisOptions: CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.visibleXyzAxisOptions,
                     getXyzAxisOption: CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.getXyzAxisOption
                 },
@@ -14887,7 +14915,11 @@
             }
         })
         : {};
-    const XYZ_MATRIX_NODE_CONTEXT = { t, escapeHtml, getNode, renderNodeStateBadges, notConnectedText };
+    const XYZ_MATRIX_NODE_CONTEXT = {
+        t, escapeHtml, getNode, renderNodeStateBadges, notConnectedText, safeAssetDisplaySrc, assetMediaKind,
+        localizeLabel: localizeCanvasLabel,
+        isXyzMatrixRunning: node => CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.isXyzMatrixRunning(node)
+    };
 
     async function openXyzPlotPanel(node) {
         return CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.openXyzPlotPanel(node);
@@ -16843,6 +16875,7 @@
             deleteSelection,
             runPresetNodeFromUi,
             handleBatchAnyInspectorAction: (...args) => CANVAS_BATCH_ANY_INSPECTOR_CONTROLLER.handleBatchAnyInspectorAction(...args),
+            handleXyzMatrixAction: (...args) => CANVAS_XYZ_MATRIX_EDITOR_CONTROLLER.handleXyzMatrixAction(...args),
             openXyzPlotPanel,
             ensureStyleSelectorForPreset,
             openLivePortraitVideoExpressionPresetEditor,

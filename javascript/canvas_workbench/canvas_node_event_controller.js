@@ -72,6 +72,15 @@
 
             nodeEl.addEventListener('pointerdown', (evt) => call('handleNodePointerDown', undefined, nodeEl, node, evt));
 
+            if (node.type === 'result') {
+                const positionMetadata = (evt) => {
+                    const wrap = evt.target?.closest?.('[data-result-metadata]');
+                    if (wrap && !wrap.contains(evt.relatedTarget)) call('positionResultMetadataPopover', undefined, wrap);
+                };
+                nodeEl.addEventListener('pointerover', positionMetadata);
+                nodeEl.addEventListener('focusin', positionMetadata);
+            }
+
             nodeEl.addEventListener('click', (evt) => {
                 const textareaFromTitle = call('textareaEditorFieldFromTitleClick', null, evt.target);
                 if (textareaFromTitle) {
