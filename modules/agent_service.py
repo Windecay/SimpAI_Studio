@@ -311,6 +311,8 @@ class AgentService:
 
     def execute(self, name, arguments, context):
         _require_context(context)
+        if (context.authorization or {}).get("kind") == "inference_key":
+            raise AgentAPIError("inference_key_scope", "Use this inference key with the local Chat Completions endpoint.", 403)
         operation = OPERATIONS.get(name)
         if not operation:
             raise AgentAPIError("tool_not_found", "Unknown Studio operation.", 404)
@@ -360,6 +362,7 @@ class AgentService:
                 "local_llm": {"api_base": f"{API_PREFIX}/llm", "models_url": f"{API_PREFIX}/llm/models",
                               "completion_url": f"{API_PREFIX}/llm/chat/completions",
                               "format": "chat.completions", "inference_scope": "vlm.infer",
+                              "inference_api_keys": True, "key_management_url": f"{API_PREFIX}/connect#local-llm-api",
                               "local_only": True, "automatic_download": False},
                 "request_encoding": {"charset": "utf-8", "content_type": "application/json; charset=utf-8",
                                      "windows_shell": "Send UTF-8 bytes from a UTF-8 JSON file. Do not pipe Chinese source through the Windows PowerShell default encoding."},

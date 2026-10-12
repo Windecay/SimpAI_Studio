@@ -35,6 +35,10 @@
         const actionCall = (name, fallback, ...args) => typeof actionSource[name] === 'function'
             ? actionSource[name](...args)
             : fallback;
+        const utilitySource = sourceObject('utilitySource');
+        const parseDate = value => Number(typeof utilitySource.parseDate === 'function'
+            ? utilitySource.parseDate(value)
+            : 0) || 0;
         const getDefaultProjectId = () => String(projectCall('getDefaultProjectId', '') || '').trim();
         const t = (...args) => languageCall('t', args[0] || '', ...args);
         const getVlmAgentActionTargetId = (...args) => String(actionCall('getVlmAgentActionTargetId', '', ...args) || '').trim();

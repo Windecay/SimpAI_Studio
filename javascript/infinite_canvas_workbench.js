@@ -10688,6 +10688,9 @@
             isTerminalRunState,
             cloneRunValue,
         },
+        utilitySource: {
+            parseDate: value => Date.parse(value || ''),
+        },
         promptSource: {
             findCanvasAgentPresetInstructionOverride,
             normalizePresetName,

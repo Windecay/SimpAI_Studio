@@ -385,6 +385,11 @@ class AgentAuthorization:
             self._store = AuthorizationStore(private_store_directory() / (self.identity.service_id() + ".sqlite3"))
         return self._store
 
+    @property
+    def inference_keys(self):
+        from modules.inference_keys import InferenceKeyStore
+        return InferenceKeyStore(self.store)
+
     def rate_limit(self, key, limit):
         now = time.monotonic()
         with self._rate_lock:
@@ -431,6 +436,10 @@ class AgentAuthorization:
         header = request.headers.get("authorization", "")
         if not header:
             return self.browser_context(request)
+        parts = header.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer" and parts[1].startswith("sk-simpai-"):
+            from modules.inference_keys import request_context
+            return request_context(self, request, parts[1])
         secure_transport(request)
         parts = header.split()
         if len(parts) != 2 or parts[0].lower() != "bearer" or not re.fullmatch(r"agent_[A-Za-z0-9_-]{40,80}", parts[1]):
@@ -466,7 +475,11 @@ class AgentAuthorization:
 
     def chat_credential_context(self, credential_id, lang=""):
         # Used only by a server-created resolver for an already authenticated turn.
-        context = self._credential_context(self.store.lookup_credential(credential_id))
+        if credential_id.startswith("llmkey_"):
+            from modules.inference_keys import credential_context
+            context = credential_context(self, self.inference_keys.lookup(key_id=credential_id))
+        else:
+            context = self._credential_context(self.store.lookup_credential(credential_id))
         return self._chat_context(context, lang)
 
     def _chat_context(self, context, lang):

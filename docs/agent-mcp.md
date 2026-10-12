@@ -260,3 +260,9 @@ bd3f0e025500552f18de00b47aec0df1d3797ff035a6f46c13528df8dd61d39b
 API、VLM、授权、MCP、Harness、工作流、WD14、提示词及包安全联合为 `422 passed`，八条既有依赖弃用告警；五项配置与八项中英文桌面／移动浏览器检查通过。未启动真实服务／模型，未完成 GPU、本地模型质量、远程 HTTPS、OpenAI SDK 和第三方 MCP 客户端验收。支持 HTTP／Chat Completions 的 Agent 仍不需要部署 MCP，兼容 Base URL 及参数子集见 `agent-api-v1.md` 新增 A 节。
 
 最后 VLM 相关 40 项再次通过；16 个 Python 文件、安装脚本语法与相关文件空白检查通过，无剩余测试失败。这些是联合测试相关部分的复测，不能另行累计；新包发布与真实客户端／模型的未验收状态不变。
+
+## 2026-10-12：推理 API Key 与 MCP 的用途
+
+需要把 Studio 本地 llama.cpp 模型设为外部 Harness 的主模型时，直接使用 Chat Completions 接口。用户在 Studio Web 的“Agent / API 接入 → 本地 LLM API → 管理 Key”创建推理 Key，外部客户端填写页面提供的 Base URL、Key 和模型 ID。完整 Key 可以由当前登录用户多次查看和复制。
+
+推理 Key 仅授权模型列表与推理，不能代替本 MCP 适配器的配对凭据。外部 Harness 同时需要调用 Studio 生成工具时，模型推理连接与 MCP 工具连接分别配置。推理 Key 管理不是 MCP 工具，密钥只由客户端私密配置保管，不进入模型消息。用法与验证范围见 [推理 API Key](inference-api-keys.md)；不需要为这项功能重新打包 MCP。

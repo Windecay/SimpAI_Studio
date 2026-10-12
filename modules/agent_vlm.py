@@ -16,6 +16,7 @@ from PIL import Image, ImageOps
 
 from modules.agent_service import AgentAPIError, _require_context, identity_binding, require_scope
 from modules.agent_vlm_contract import ASSET_PATTERN, ChatCompletion
+from modules.agent_vlm_reasoning import ReasoningText
 
 
 _CAPACITY = threading.BoundedSemaphore(4)
@@ -27,6 +28,17 @@ PUBLIC_FIELDS = ("id", "ready", "capabilities", "context_limit", "missing_files"
 
 def fail(context, code, cn, en, status=422):
     raise AgentAPIError(code, cn if context.state.get("__lang") == "cn" else en, status)
+
+
+def local_context_limit(config, row, model_path):
+    from modules.vlm_model_catalog import _cached_gguf_metadata, _gguf_context_window
+    limit = config.get("max_n_ctx") or config.get("context_window")
+    if not limit:
+        default = int(row.get("context_window") or config.get("n_ctx") or 8192)
+        # Preset n_ctx is a loading default. Use the installed model header for
+        # its capacity, with the same API ceiling as dynamically discovered GGUFs.
+        limit = _gguf_context_window(_cached_gguf_metadata(model_path), default=default) if model_path else default
+    return min(32768, int(limit))
 
 
 def local_models(context):
@@ -56,8 +68,7 @@ def local_models(context):
         if row.get("vision_available"):
             capabilities.append("image")
         items.append({"id": row["id"], "ready": ready, "capabilities": capabilities,
-                      "context_limit": min(32768, int(config.get("max_n_ctx") or config.get("context_window")
-                                                     or row.get("context_window") or config.get("n_ctx") or 8192)),
+                      "context_limit": local_context_limit(config, row, selected),
                       "missing_files": missing,
                       "_config": config, "_revision": revision})
     return items
@@ -148,7 +159,8 @@ def local_events(spec, request, messages, check):
         messages = merge_hybrid_images(messages, llamacpp_vlm.current_chat_handler_name)
         messages = native_tool_history(messages, llamacpp_vlm.current_chat_handler_name)
         kwargs = {"max_tokens": request.max_tokens or request.max_completion_tokens or 1024,
-                  "temperature": request.temperature, "top_p": request.top_p}
+                  "temperature": request.temperature, "top_p": request.top_p,
+                  "enable_thinking": request.enable_thinking}
         for key in ("stop", "seed", "tool_choice"):
             value = getattr(request, key)
             if value is not None:
@@ -187,34 +199,17 @@ def merge_hybrid_images(messages, handler_name):
 
 
 class VisibleText:
-    """Hold incomplete control tags so hidden reasoning cannot escape as deltas."""
+    """Return only answer text when a caller explicitly disables reasoning."""
     def __init__(self):
-        self.raw = ""
-        self.sent = ""
+        self.parser = ReasoningText()
+        self.parser.content_mode()
+        self.length = 0
 
     def push(self, value="", final=False):
-        from modules.custom_llm_api import strip_reasoning_text
-        self.raw += value
-        if len(self.raw) > 131072:
+        self.length += len(value)
+        if self.length > 131072:
             raise AgentAPIError("vlm_output_limit", "Local model output exceeded its limit.", 502)
-        source = self.raw
-        thought = re.search(r"(?is)<\|channel\|?>\s*(?:analysis|thought|thinking|reasoning)\b", source)
-        if thought:
-            final_channel = re.search(r"(?is)<\|channel\|?>\s*(?:final|answer|response)\b", source[thought.end():])
-            source = (source[:thought.start()] + source[thought.end() + final_channel.end():]
-                      if final_channel else source[:thought.start()])
-        for name in ("think", "thinking", "analysis", "reasoning"):
-            source = re.sub(rf"(?is)<{name}\b[^>]*>.*?</{name}\s*>", "", source)
-            opening = re.search(rf"(?is)<{name}\b[^>]*>.*$", source)
-            if opening:
-                source = source[:opening.start()]
-        clean = strip_reasoning_text(source) if re.search(r"(?i)<(?:\|channel|\|message|think|analysis|reasoning|thinking)", source) else source
-        safe = clean if final else clean[:max(0, len(clean) - 64)]
-        if not safe.startswith(self.sent):
-            raise AgentAPIError("vlm_invalid_output", "Local model changed already delivered output.", 502)
-        delta = safe[len(self.sent):]
-        self.sent = safe
-        return delta
+        return self.parser.push(value, final=final).get("content", "")
 
 
 class LocalInference:
@@ -222,14 +217,20 @@ class LocalInference:
         self.backend = backend
 
     def models(self, request, context):
+        from modules.inference_keys import allowed_models
+        permitted = allowed_models(context)
         rows = self.backend.vlm_models(context)
         rows = [r for r in rows if request.query.lower() in r["id"].lower()
-                and (not request.installed_only or r["ready"])]
+                and (not request.installed_only or r["ready"]) and (not permitted or r["id"] in permitted)]
         return {"items": [{k: r[k] for k in PUBLIC_FIELDS} for r in rows[request.offset:request.offset + request.limit]],
                 "total": len(rows), "local_only": True, "automatic_download": False,
                 "completion_base": "/api/v1/llm", "inference_scope": "vlm.infer"}
 
     def _model(self, name, context):
+        from modules.inference_keys import allowed_models
+        permitted = allowed_models(context)
+        if permitted and name not in permitted:
+            fail(context, "inference_key_model_denied", "这个 Key 未获授权使用所选模型。", "This key cannot use the selected model.", 403)
         row = next((r for r in self.backend.vlm_models(context) if r["id"] == name), None)
         if row is None:
             fail(context, "vlm_model_not_found", "没有找到这个本地模型。", "Local model was not found.", 404)
@@ -251,6 +252,9 @@ class LocalInference:
 
     def _image(self, part, context):
         if part["type"] == "image_asset":
+            if (context.authorization or {}).get("kind") == "inference_key":
+                fail(context, "inference_key_asset_denied", "推理 Key 仅接受请求中携带的图片 data URL，不读取 Studio 私有素材。",
+                     "Inference keys accept image data URLs, not Studio asset IDs.", 403)
             asset = self.backend.asset(part["asset_id"], context)
             if not str(asset.get("mime") or "").startswith("image/"):
                 fail(context, "input_type_mismatch", "VLM 需要图片素材。", "VLM requires image assets.")
@@ -374,7 +378,20 @@ class LocalInference:
             if usage is not None:
                 result["usage"] = usage
             return result
-        visible = VisibleText()
+        allow_reasoning = request.enable_thinking is not False
+        visible = ReasoningText() if allow_reasoning else VisibleText()
+        output_chars = 0
+        final_produced = False
+
+        def text_delta(value="", final=False):
+            if isinstance(visible, VisibleText):
+                text = visible.push(value, final=final)
+                return {"content": text} if text else {}
+            parts = visible.push(value, final=final)
+            if not allow_reasoning:
+                parts.pop("reasoning_content", None)
+            return parts
+
         finish_reason, usage, produced, tool_chars = None, None, False, 0
         tool_outputs = {}
         with self._slot(check):
@@ -390,6 +407,10 @@ class LocalInference:
                     check()
                     if not isinstance(event, dict):
                         raise ValueError("Invalid completion event")
+                    if "_simpai_thinking_enabled" in event and request.enable_thinking is None:
+                        allow_reasoning = event["_simpai_thinking_enabled"] is not False
+                        if not allow_reasoning and isinstance(visible, ReasoningText):
+                            visible.content_mode()
                     if isinstance(event.get("usage"), dict):
                         usage = {key: int(event["usage"].get(key) or 0)
                                  for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
@@ -398,11 +419,22 @@ class LocalInference:
                             raise ValueError("Unexpected choice index")
                         delta = choice.get("delta") or {}
                         clean_delta = {}
+                        reasoning = next((delta[key] for key in ("reasoning_content", "reasoning", "reasoning_text")
+                                          if isinstance(delta.get(key), str) and delta[key]), "")
+                        output_chars += len(reasoning)
+                        if reasoning:
+                            if isinstance(visible, ReasoningText):
+                                visible.content_mode()
+                            if allow_reasoning:
+                                clean_delta["reasoning_content"] = reasoning
                         if isinstance(delta.get("content"), str):
-                            text = visible.push(delta["content"])
-                            if text:
-                                clean_delta["content"] = text
-                                produced = True
+                            output_chars += len(delta["content"])
+                            for key, text in text_delta(delta["content"]).items():
+                                clean_delta[key] = clean_delta.get(key, "") + text
+                        if output_chars > 131072:
+                            raise AgentAPIError("vlm_output_limit", "Local model output exceeded its limit.", 502)
+                        if clean_delta.get("content"):
+                            final_produced = True
                         if delta.get("tool_calls"):
                             if not request.tools or request.tool_choice == "none":
                                 raise ValueError("Undeclared function calls")
@@ -418,21 +450,27 @@ class LocalInference:
                                 row["name"] += (item.get("function") or {}).get("name") or ""
                                 row["arguments"] += (item.get("function") or {}).get("arguments") or ""
                             produced = True
+                            final_produced = True
                         if clean_delta:
+                            produced = True
                             yield chunk(clean_delta)
                         if choice.get("finish_reason") is not None:
                             finish_reason = choice["finish_reason"]
                 check(True)
-                text = visible.push(final=True)
-                if text:
+                parts = text_delta(final=True)
+                if parts:
                     produced = True
-                    yield chunk({"content": text})
+                    final_produced = final_produced or bool(parts.get("content"))
+                    yield chunk(parts)
                 if finish_reason not in {"stop", "length", "tool_calls", "content_filter"}:
                     fail(context, "vlm_incomplete_output", "本地模型没有返回完成状态。",
                          "Local model did not return a completion status.", 502)
                 if not produced and finish_reason != "content_filter":
                     fail(context, "vlm_empty_output", "本地模型没有返回可见结果。",
                          "Local model did not return visible output.", 502)
+                if not final_produced and finish_reason == "stop":
+                    fail(context, "vlm_empty_output", "模型仅返回思考，未返回最终回复。",
+                         "The model returned reasoning without a final answer.", 502)
                 declared = {tool.function.name for tool in request.tools or []}
                 selected = request.tool_choice.get("function", {}).get("name") if isinstance(request.tool_choice, dict) else None
                 if tool_outputs and finish_reason != "tool_calls":
@@ -463,7 +501,7 @@ class LocalInference:
     def complete(self, request, context, **controls):
         from modules.agent_vlm_contract import StreamOptions
         options = request.model_copy(update={"stream_options": StreamOptions(include_usage=True)})
-        output, text, calls, finish, usage = None, "", {}, None, None
+        output, text, reasoning, calls, finish, usage = None, "", "", {}, None, None
         for event in self.events(options, context, **controls):
             output = event
             if "usage" in event:
@@ -471,6 +509,7 @@ class LocalInference:
             for choice in event["choices"]:
                 delta = choice["delta"]
                 text += delta.get("content") or ""
+                reasoning += delta.get("reasoning_content") or ""
                 for call in delta.get("tool_calls", []):
                     index = call.get("index", 0)
                     row = calls.setdefault(index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
@@ -483,6 +522,8 @@ class LocalInference:
             fail(context, "vlm_invalid_tool_call", "模型返回的函数调用无效。",
                  "Model returned invalid function calls.", 502)
         message = {"role": "assistant", "content": text or None}
+        if reasoning:
+            message["reasoning_content"] = reasoning
         if calls:
             message["tool_calls"] = [calls[i] for i in sorted(calls)]
         return {"id": output["id"], "object": "chat.completion", "created": output["created"], "model": request.model,

@@ -13729,7 +13729,8 @@ def _redact_console_log_text(value):
     def replace_secret(match):
         return f"{match.group('prefix')}{match.group('quote')}[redacted]{match.group('quote')}"
 
-    return _CONSOLE_LOG_SECRET_RE.sub(replace_secret, text)
+    text = _CONSOLE_LOG_SECRET_RE.sub(replace_secret, text)
+    return re.sub(r"(?<![A-Za-z0-9_-])sk-simpai-[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])", "[redacted]", text)
 
 
 def _console_log_entries(limit=300, after=None):

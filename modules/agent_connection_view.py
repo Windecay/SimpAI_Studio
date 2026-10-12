@@ -3,10 +3,12 @@
 import html
 import json
 from pathlib import Path
+from modules.inference_key_view import KEY_STRINGS, KEY_STYLE, render_controls
 
 
 ROOT = Path(__file__).resolve().parents[1]
 STRINGS = (
+    *KEY_STRINGS,
     "Asset storage",
     "Before writing a model prompt, read prompts.guidance for the selected preset, then read its recommended skills. Use prompts.tags for Anima/Danbooru lookup and prompts.validate before preview/submission. Keep the original user instruction separate from the final model prompt.",
     "For image tag inference, check prompts.wd14_status and call prompts.wd14 with an owned image asset_id. Missing models are not downloaded automatically; candidate tags are not proof of identity or age.",
@@ -42,8 +44,8 @@ STRINGS = (
     "Configure a reachable HTTPS or loopback address, then reopen this page to create pairing and client configuration.",
     "Local LLM API", "Installed local models", "Authorize local VLM inference", "Tool index",
     "If tool_index_url is not provided, use the server's published tools_url instead of guessing an index endpoint.",
-    "Compatible Chat Completions clients use this base address. Models are discovered from Studio; credentials belong to the client's private connection layer.",
-    "Local text and vision inference requires vlm.infer authorization. Models must already be installed; inference does not download files, call cloud providers or delete media.",
+    "To use Studio's local models in another AI client, enter the Base URL above, an API key from below, and a model ID.",
+    "Install the local model in Studio before connecting.",
 )
 
 
@@ -69,6 +71,7 @@ def render_connection_page(lang, theme, nonce, prefix=""):
 main{{max-width:960px;margin:auto;padding:30px 24px 60px}}header{{display:flex;justify-content:space-between;align-items:start;gap:16px}}h1{{font-size:27px;margin:0}}h2,summary{{font-size:18px;font-weight:650}}h2{{margin:0 0 10px}}h3{{font-size:16px}}p{{margin:8px 0}}.muted{{color:var(--muted)}}
 section,details{{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:18px}}summary{{cursor:pointer}}a{{color:var(--accent)}}nav,.row,.tabs{{display:flex;gap:10px;flex-wrap:wrap;align-items:center}}nav{{margin-top:14px}}nav a{{padding:4px 0;margin-right:12px}}button,input,select{{font:inherit}}button,select{{color:var(--fg);background:var(--card);border:1px solid var(--border);border-radius:7px;padding:7px 12px;cursor:pointer}}button:hover{{border-color:var(--accent)}}button:disabled{{opacity:.5;cursor:default}}button[aria-pressed=true]{{color:var(--accent);border-color:var(--accent)}}input,textarea{{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)}}.row input{{flex:1;min-width:200px}}label{{display:block;margin-top:14px}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:var(--bg);border:1px solid var(--border);padding:14px;border-radius:8px;font:13px/1.6 ui-monospace,Consolas,monospace}}#copy-status{{min-height:1.5em}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:18px}}.grid section{{margin-top:18px}}@media(max-width:620px){{main{{padding:20px 14px}}.grid{{display:block}}section,details{{padding:16px}}h1{{font-size:23px}}header{{flex-wrap:wrap}}}}
 .scope-choice{{display:flex;gap:8px;align-items:center}}.scope-choice input{{width:16px;height:16px;margin:0;flex:none}}
+{KEY_STYLE}
 </style></head><body><main id="agent-connection-page">
 <header><div><h1>{t("Agent API / MCP")}</h1><p class="muted">{t("Connect an external agent to Studio")}</p></div>
 <select id="connect-language" aria-label="Language"><option value="cn">中文</option><option value="en">English</option></select></header>
@@ -81,10 +84,10 @@ section,details{{background:var(--card);border:1px solid var(--border);border-ra
 <nav>{''.join(f'<a data-connect-link="{key}" target="_blank" rel="noopener">{t(label)}</a>' for key, label in [('capabilities', 'Capabilities'), ('tools', 'Tool index'), ('openapi', 'OpenAPI'), ('authorization', 'Authorization')])}<a href="{html.escape(prefix, quote=True)}/api/v1/assets/manage?lang={lang}" target="_blank" rel="noopener">{t('Asset storage')}</a></nav></section>
 <div class="grid"><section><h2>{t("Built-in Agent")}</h2><p>{t("The built-in Harness calls Studio tools directly. It does not need this MCP adapter.")}</p><p>{t("The model decides whether to query tools and continue. The Harness returns results for another model turn, within its call and time limits.")}</p><p class="muted">{t("Generation and model downloads still follow user approval and session settings. Web search is not currently a built-in Studio tool.")}</p></section>
 <section><h2>{t("External Agent")}</h2><p>{t("Agents with HTTP tools can use the Agent API directly without deploying MCP.")}</p><pre id="connection-instructions"></pre>{copy_button("connection-instructions", "Copy instructions")}</section></div>
-<section><h2>{t("Local LLM API")}</h2><div class="row"><input id="llm-base" readonly aria-label="{t("Local LLM API")}">{copy_button("llm-base", "Copy address")}</div>
-<p>{t("Compatible Chat Completions clients use this base address. Models are discovered from Studio; credentials belong to the client's private connection layer.")}</p>
-<p class="muted">{t("Local text and vision inference requires vlm.infer authorization. Models must already be installed; inference does not download files, call cloud providers or delete media.")}</p>
-<a id="vlm-models-link" target="_blank" rel="noopener">{t("Installed local models")}</a></section>
+<section id="local-llm-api"><h2>{t("Local LLM API")}</h2><div class="row"><input id="llm-base" readonly aria-label="{t("Local LLM API")}">{copy_button("llm-base", "Copy address")}</div>
+<p>{t("To use Studio's local models in another AI client, enter the Base URL above, an API key from below, and a model ID.")}</p>
+<p class="muted">{t("Install the local model in Studio before connecting.")}</p>
+<a id="vlm-models-link" target="_blank" rel="noopener">{t("Installed local models")}</a>{render_controls(t)}</section>
 <details open><summary>{t("MCP client setup")}</summary><p>{t("The external MCP client starts a local Python process. That process connects to Studio over HTTP. The Studio URL is not an HTTP MCP endpoint.")}</p>
 <p class="muted">{t("On Windows, extract SimpAI_MCP_win.zip to this folder; setup downloads and verifies the independent runtime. No virtual environment is needed. Other systems use a compatible independent Python environment.")}</p>
 <label for="mcp-folder">{t("MCP adapter folder on the client computer")}</label><input id="mcp-folder" placeholder="C:/SimpAI-MCP" autocomplete="off" spellcheck="false">
@@ -100,4 +103,4 @@ section,details{{background:var(--card);border:1px solid var(--border);border-ra
 <p id="mcp-config-location" class="muted"></p>
 <pre id="mcp-config"></pre>{copy_button("mcp-config")}</details>
 <p id="copy-status" role="status" class="muted"></p>
-</main><script type="application/json" id="agent-connection-data">{config}</script><script src="{script_url}"></script></body></html>'''
+</main><script type="application/json" id="agent-connection-data">{config}</script><script src="{script_url}"></script><script src="{html.escape(prefix, quote=True)}/api/v1/connect/inference-key-script"></script></body></html>'''

@@ -79,11 +79,13 @@
         const decision = createController(
             modules.decision,
             'createCanvasAgentDecisionController',
-            Object.assign({}, decisionSource, {
-                rewriteSource: Object.assign({}, decisionSource.rewriteSource || {}, {
-                    rewriteCanvasAgentPromptWithLlm: (...args) => promptRewriteMethod('rewriteCanvasAgentPromptWithLlm', ...args)
+            {
+                decisionSource: Object.assign({}, decisionSource, {
+                    rewriteSource: Object.assign({}, decisionSource.rewriteSource || {}, {
+                        rewriteCanvasAgentPromptWithLlm: (...args) => promptRewriteMethod('rewriteCanvasAgentPromptWithLlm', ...args)
+                    })
                 })
-            })
+            }
         );
         const decisionMethod = (name, ...args) => method(decision, name)?.(...args);
 

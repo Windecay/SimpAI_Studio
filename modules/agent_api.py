@@ -327,6 +327,8 @@ def create_router(context_resolver, service=None, authorization=None):
                            routes=router.routes, servers=[{"url": prefix or "/"}])
 
     from modules.agent_vlm_api import add_routes as add_vlm_routes
+    from modules.inference_key_api import add_routes as add_inference_key_routes
+    add_inference_key_routes(router, service, authorization)
     from modules.asset_lifecycle_api import add_routes as add_storage_routes
     add_storage_routes(router, authorization)
     add_vlm_routes(router, service, authorization, call)

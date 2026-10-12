@@ -7,10 +7,11 @@ import logging
 import threading
 import time
 import inspect
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from PIL import Image
 
 from modules.llama_cpp_cancellation import llama_cpp_request_cancellation
+from modules.llama_cpp_usage import completion_token_usage, complete_token_usage
 from enhanced.logger import format_name
 logger = logging.getLogger(format_name(__name__))
 
@@ -823,29 +824,50 @@ class LlamaCppVLM:
                         if values:
                             gemma4_hparams[field] = values if len(values) > 1 else values[0]
 
-            return {
+            result = {
                 "gguf_architecture": gguf_architecture,
                 "embedding_length": embedding_length,
                 "head_count": head_count,
                 "head_count_kv": head_count_kv,
                 **gemma4_hparams,
             }
+            counts = gguf_int_values(reader.fields.get(f"{gguf_architecture}.block_count"))
+            if counts and counts[0] > 0:
+                try:
+                    blocks, ple, other = self._get_gguf_block_weight_bytes(
+                        path, int(counts[0]), first_reader=reader, require_ple=gguf_architecture == "qwen4exp")
+                    result.update(block_weight_bytes=blocks, ple_bytes=ple, other_gpu_bytes=other)
+                except Exception as exc:
+                    result["block_weight_bytes"] = []
+                    logger.warning("GGUF tensor estimate unavailable; using file sizes: %s", exc)
+            return result
         except Exception:
             return {}
 
     def _get_qwen4exp_block_weight_bytes(self, model_path, total_layers):
+        return self._get_gguf_block_weight_bytes(model_path, total_layers, require_ple=True)
+
+    def _get_gguf_block_weight_bytes(self, model_path, total_layers, first_reader=None, require_ple=False):
         from gguf import GGUFReader
 
+        if not 1 <= total_layers <= 4096:
+            raise ValueError("Invalid GGUF layer count")
         block_bytes = [0] * total_layers
         ple_bytes = 0
         other_gpu_bytes = 0
+        seen = set()
         for path in gguf_split_paths(model_path):
-            reader = GGUFReader(path)
+            # Metadata and tensor sizes are obtained from the same reader on
+            # the first load, avoiding a second tokenizer/tensor-index parse.
+            reader = first_reader if first_reader is not None and str(path) == str(model_path) else GGUFReader(path)
             for tensor in reader.tensors:
+                if tensor.name in seen:
+                    raise ValueError("Duplicate GGUF tensor across shards")
+                seen.add(tensor.name)
                 size = int(tensor.n_bytes)
                 if size <= 0:
                     raise ValueError("Invalid GGUF tensor size")
-                if tensor.name == "per_layer_token_embd.weight":
+                if require_ple and tensor.name == "per_layer_token_embd.weight":
                     ple_bytes += size
                 elif tensor.name.startswith("blk."):
                     parts = tensor.name.split(".", 2)
@@ -854,14 +876,16 @@ class LlamaCppVLM:
                         if index >= total_layers:
                             raise ValueError("GGUF block index exceeds layer count")
                         block_bytes[index] += size
+                    else:
+                        raise ValueError("Invalid GGUF block tensor name")
                 elif tensor.name != "token_embd.weight":
                     other_gpu_bytes += size
             if reader.tensors:
                 del tensor
             del reader
 
-        if not ple_bytes or not all(block_bytes):
-            raise ValueError("Qwen4Exp PLE or block tensors are missing")
+        if not all(block_bytes) or require_ple and not ple_bytes:
+            raise ValueError("GGUF block tensors or required PLE are missing")
         return block_bytes, ple_bytes, other_gpu_bytes
 
     def _resolve_mmproj_path(self, model_path, mmproj_name=None):
@@ -1004,6 +1028,12 @@ class LlamaCppVLM:
                 credit_gb += max(0.0, float(self.current_kv_cache_gb))
             if self.current_mmproj_size_gb:
                 credit_gb += max(0.0, float(self.current_mmproj_size_gb))
+            observed = self.current_vram_estimate.get("observed_allocation_gb")
+            if observed is not None and float(observed) > 0:
+                # A reserve/weight multiplier is not allocated GPU memory. Do
+                # not count it as reclaimable and repeatedly reload at the same
+                # layer count when an external client sends another turn.
+                credit_gb = min(credit_gb, float(observed))
             return credit_gb
         except Exception:
             return 0.0
@@ -1058,9 +1088,9 @@ class LlamaCppVLM:
             total_layers = self._get_layer_count(model_path)
             hparams = self._get_gguf_hparams(model_path)
             gguf_architecture = hparams.get("gguf_architecture")
-            block_weight_bytes = None
-            ple_bytes = 0
-            other_gpu_bytes = 0
+            block_weight_bytes = hparams.get("block_weight_bytes")
+            ple_bytes = hparams.get("ple_bytes", 0)
+            other_gpu_bytes = hparams.get("other_gpu_bytes", 0)
             n_embd = hparams.get("embedding_length")
             n_head = hparams.get("head_count")
             n_kv_heads = hparams.get("head_count_kv") or n_head
@@ -1137,15 +1167,14 @@ class LlamaCppVLM:
             return 0, estimate
 
         gguf_size_gb = sum(os.path.getsize(path) for path in gguf_split_paths(model_path)) / (1024 ** 3)
-        if gguf_architecture == "qwen4exp" and block_weight_bytes is None:
+        if gguf_architecture and block_weight_bytes is None:
             try:
-                block_weight_bytes, ple_bytes, other_gpu_bytes = (
-                    self._get_qwen4exp_block_weight_bytes(model_path, total_layers)
-                )
+                block_weight_bytes, ple_bytes, other_gpu_bytes = self._get_gguf_block_weight_bytes(
+                    model_path, total_layers, require_ple=gguf_architecture == "qwen4exp")
             except Exception as e:
-                logger.warning("Qwen4Exp GGUF tensor estimate unavailable; using file sizes: %s", e)
+                logger.warning("GGUF tensor estimate unavailable; using file sizes: %s", e)
                 block_weight_bytes = []
-        if gguf_architecture == "qwen4exp":
+        if gguf_architecture:
             estimate["block_weight_bytes"] = block_weight_bytes
             estimate["ple_bytes"] = ple_bytes
             estimate["other_gpu_bytes"] = other_gpu_bytes
@@ -1164,9 +1193,10 @@ class LlamaCppVLM:
                 offloaded_bytes += block_size
                 n_gpu_layers += 1
             logger.info(
-                "Qwen4Exp GPU layer weights: files=%.2fGB, PLE=%.2fGB, blocks=%.2fGB, "
+                "GGUF GPU layer weights: architecture=%s, files=%.2fGB, CPU PLE=%.2fGB, blocks=%.2fGB, "
                 "other_reserved=%.2fGB, "
                 "offloaded_blocks=%.2fGB",
+                gguf_architecture,
                 gguf_size_gb,
                 ple_bytes / (1024 ** 3),
                 sum(block_weight_bytes) / (1024 ** 3),
@@ -1699,6 +1729,11 @@ class LlamaCppVLM:
             self.current_external_vram_gb = post_load_vram_snapshot.get("external_vram_gb")
             self.current_external_process_count = post_load_vram_snapshot.get("external_process_count")
             self.current_vram_estimate = dict(auto_estimate)
+            before_free = auto_estimate.get("free_vram_gb")
+            if before_free is not None and self.current_post_load_free_vram_gb is not None:
+                observed = float(before_free) - self.current_post_load_free_vram_gb
+                if observed > 0:
+                    self.current_vram_estimate["observed_allocation_gb"] = observed
             free_gain_during_reload_gb = 0.0
             if (
                 upward_auto_reload
@@ -2274,15 +2309,36 @@ class LlamaCppVLM:
                 **request_kwargs,
             )
 
-    def completion_messages(self, messages, cancel_check=None, **kwargs):
+    def _api_default_thinking_mode(self):
+        """Read the native handler default without inheriting the Studio UI switch."""
+        if self._thinking_mode_enabled(None):
+            return True
+        handler_class = (type(self.chat_handler) if self.chat_handler is not None
+                         else self.get_chat_handler_class(self.current_chat_handler_name))
+        if handler_class is not None:
+            try:
+                parameters = inspect.signature(handler_class.__init__).parameters
+                for name in ("enable_thinking", "force_reasoning"):
+                    parameter = parameters.get(name)
+                    if parameter is not None and isinstance(parameter.default, bool):
+                        if name == "force_reasoning" and not parameter.default:
+                            return None
+                        return parameter.default
+            except (TypeError, ValueError):
+                pass
+        # A plain text model can define its own behavior in the GGUF template.
+        return None
+
+    def completion_messages(self, messages, cancel_check=None, enable_thinking=False, **kwargs):
         """Yield stateless API chunks without UI settings, history or tool execution."""
-        with self.lock, llama_cpp_request_cancellation(
+        with self.lock, completion_token_usage(self.llm) as token_usage, llama_cpp_request_cancellation(
             self.llm, cancel_check, on_cancel=self._clear_cancelled_completion,
         ) as cancellation_checkpoint:
             if self.llm is None:
                 raise RuntimeError("Local model is not loaded")
+            thinking = self._api_default_thinking_mode() if enable_thinking is None else enable_thinking
             messages = [dict(message) for message in messages]
-            guard = self._with_non_thinking_guard("", False)
+            guard = self._with_non_thinking_guard("", False) if enable_thinking is False else ""
             if guard:
                 if messages and messages[0].get("role") == "system":
                     content = messages[0].get("content")
@@ -2293,13 +2349,23 @@ class LlamaCppVLM:
                 else:
                     messages.insert(0, {"role": "system", "content": guard})
             try:
-                with self._request_thinking_mode(False):
-                    stream = self._create_request_chat_completion(
-                        messages=messages, enable_thinking=False, stream=True, **kwargs)
+                with self._request_thinking_mode(thinking) if thinking is not None else nullcontext():
+                    yield {"_simpai_thinking_enabled": thinking}
+                    if thinking is None:
+                        stream = create_text_only_chat_completion(self.llm, messages=messages, stream=True, **kwargs)
+                    else:
+                        stream = self._create_request_chat_completion(
+                            messages=messages, enable_thinking=thinking, stream=True, **kwargs)
                     try:
+                        supplied_usage = False
                         for chunk in stream:
                             cancellation_checkpoint()
+                            supplied_usage = supplied_usage or complete_token_usage(chunk.get("usage"))
                             yield chunk
+                        cancellation_checkpoint()
+                        usage = token_usage.result()
+                        if not supplied_usage and usage is not None:
+                            yield {"choices": [], "usage": usage}
                     finally:
                         if hasattr(stream, "close"):
                             stream.close()

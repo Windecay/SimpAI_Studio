@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import logging
 import queue
+import re
 import threading
 import time
 
@@ -15,7 +17,11 @@ from starlette.concurrency import run_in_threadpool
 from modules.agent_api_response import AgentJSONResponse as JSONResponse
 from modules.agent_service import AgentAPIError, _require_context, require_scope
 from modules.agent_vlm import MAX_BODY_BYTES
-from modules.agent_vlm_contract import ChatCompletion, VLMAnalyze, VLMChat, VLMModels, VLMStatus
+from modules.agent_vlm_contract import VLMAnalyze, VLMChat, VLMModels, VLMStatus
+from modules.agent_vlm_compat import CompatibleChatCompletion, model_limits
+
+
+logger = logging.getLogger(__name__)
 
 
 def live_resolver(authorization, request, context):
@@ -50,7 +56,28 @@ async def complete_http(request, payload, service, authorization, analyze=False)
 def error_payload(error):
     kind = ("authentication_error" if error.status == 401 else "permission_error" if error.status == 403
             else "invalid_request_error" if error.status < 500 else "server_error")
-    return {"error": {"message": error.message, "type": kind, "code": error.code, "param": None}}
+    return {"error": {"message": error.message, "type": kind, "code": error.code,
+                      "param": (error.details or {}).get("param")}}
+
+
+def validation_error(exception):
+    issues = []
+    for issue in exception.errors()[:8]:
+        path = ""
+        for part in issue.get("loc", ()):
+            if part == "body":
+                continue
+            if isinstance(part, int):
+                path += f"[{part}]"
+            else:
+                # Field names are useful; request values, credentials, and
+                # arbitrary unknown JSON keys must never enter the log.
+                name = part if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", str(part)) else "unknown_field"
+                path += ("." if path else "") + name
+        path = path or "body"
+        issues.append((path, issue.get("msg", "Invalid value")))
+    message = "Invalid chat completion request: " + "; ".join(f"{path}: {reason}" for path, reason in issues)
+    return AgentAPIError("invalid_request", message, 400, {"param": issues[0][0] if issues else "body"})
 
 
 class CompletionRoute(APIRoute):
@@ -67,8 +94,9 @@ class CompletionRoute(APIRoute):
                         chunks.append(chunk)
                     request._body = b"".join(chunks)
                 return await handler(request)
-            except RequestValidationError:
-                error = AgentAPIError("invalid_request", "Request does not match the local completion schema.", 400)
+            except RequestValidationError as exc:
+                error = validation_error(exc)
+                logger.warning("%s", error.message)
                 return JSONResponse(error_payload(error), status_code=400, headers={"Cache-Control": "no-store"})
             except AgentAPIError as error:
                 return JSONResponse(error_payload(error), status_code=error.status, headers={"Cache-Control": "no-store"})
@@ -110,14 +138,18 @@ def add_routes(router, service, authorization, call):
         rows = await run_in_threadpool(service.vlm.models, VLMModels(limit=100), context)
         return JSONResponse({"object": "list", "data": [
             {"id": row["id"], "object": "model", "created": 0, "owned_by": "SimpAI",
-             "capabilities": row["capabilities"]} for row in rows["items"]]},
+             "capabilities": row["capabilities"], **model_limits(row["context_limit"])} for row in rows["items"]]},
             headers={"Cache-Control": "no-store"})
 
     @compatible.post("/chat/completions", operation_id="simpai_llm_completion")
-    async def completion(request: Request, payload: ChatCompletion):
+    async def completion(request: Request, payload: CompatibleChatCompletion):
+        context = authorization.request_context(request)
+        service.vlm.guard(context)
+        status = await run_in_threadpool(service.vlm.status, VLMStatus(model=payload.model), context)
+        payload = payload.local_request(status["context_limit"],
+                                        default_vram_policy=(context.authorization or {}).get("vram_policy", "extreme"))
         if not payload.stream:
             return JSONResponse(await complete_http(request, payload, service, authorization), headers={"Cache-Control": "no-store"})
-        context = authorization.request_context(request)
         prepared = await run_in_threadpool(service.vlm.prepare, payload, context)
         cancel, ended = threading.Event(), threading.Event()
         events = queue.Queue(maxsize=8)

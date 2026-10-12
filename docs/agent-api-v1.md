@@ -145,7 +145,7 @@ SimpAI Studio 服务地址：<实际 Studio 服务地址，包含部署前缀>�
 
 双监听验证（2026-10-06）：启动与监听检查 19 项、授权/MCP 检查 70 项、Node 检查 5 项及 8 组页面检查通过；最后的 MCP 连接层复查 15 项通过。实际 Gradio 双监听的完整 device → 浏览器批准 → token → session → capabilities/tools 流程通过，身份由隔离测试服务提供。当前运行实例重启后，局域网和回环的服务标识一致，MCP 从公布的入口选择回环；真实 device 请求返回 201，授权页面返回 200，实际接入页已生成可用的回环配置。本次未代用户批准生产授权，也未输出或保存设备密钥和令牌。报告为 `outputs/agent_connection_20261006/live-loopback-report.json` 和 `live-loopback-browser.json`。
 
-本地模式使用服务器解析的本地工作区身份，不要求浏览器参与，也可通过配对获取受限凭据。多用户外部 Agent 使用浏览器批准的 Bearer 授权；Studio 浏览器内部沿用现有登录会话（`aitoken`，保持与登录时一致的 User-Agent）。私密连接层负责 access/refresh token 的保存、串行续期和撤销；v1 未提供长期机器 API Key。请求正文不能指定身份，任务权限沿用现有后端，素材与任务按用户隔离。
+本地模式使用服务器解析的本地工作区身份，不要求浏览器参与，也可通过配对获取受限凭据。多用户外部 Agent 使用浏览器批准的 Bearer 授权；Studio 浏览器内部沿用现有登录会话（`aitoken`，保持与登录时一致的 User-Agent）。私密连接层负责 access/refresh token 的保存、串行续期和撤销。通用 Agent 工具仍使用这套授权；本地模型接口另外提供推理专用 API Key，见本文 2026-10-12 节。请求正文不能指定身份，任务权限沿用现有后端，素材与任务按用户隔离。
 
 ## 常见调用顺序
 
@@ -361,7 +361,7 @@ UOV、Enhance、Scene 批量任务分别携带自己的取消事件，批量停�
 6. 所有媒体 API 请求使用 `Authorization: Bearer <access_token>`。查询 `session`，核对实际身份与存储命名空间后再上传素材和提交任务。
 7. access token 到期前由私密连接层串行调用 `refresh_url` 并原子保存新凭据。授权到期、撤销、身份环境变化或 refresh 重用时停止写入，重新请求授权，不自动改用浏览器 Cookie、guest 或 local。
 
-这是 Studio 专用浏览器配对与续期协议，不声明为完整 OAuth 2.0 授权服务器。已实现轮换 refresh token；B 类长期机器 API Key 与集群统一身份发行方尚未实现。授权不改变聊天面板的自动生成偏好，也不增加读取或修改浏览器画布的能力。
+这是 Studio 专用浏览器配对与续期协议，不声明为完整 OAuth 2.0 授权服务器。已实现轮换 refresh token；通用 Agent 工具的长期机器 API Key 与集群统一身份发行方尚未实现。2026-10-12 新增的长期 Key 仅用于本地模型推理，不能替代这里的工具授权。授权不改变聊天面板的自动生成偏好，也不增加读取或修改浏览器画布的能力。
 
 ### 私密连接层示例
 
@@ -437,7 +437,7 @@ def connect_agent(base, expected_did="", scopes=None):
 - 浏览器授权管理页显示整项授权的到期时间；撤销同时阻止 access 与 refresh。原有仅一小时的数据库记录按原到期时间迁移，不自动变成 30 天授权。
 - 数据库仅保存 refresh token 的哈希；授权目录仍由 Gradio 文件路由阻止访问。凭据不会进入工具目录、模型输入或普通响应日志。保留 HTTPS/真实回环 HTTP 限制及禁止缓存响应。
 
-前面的 `connect_agent` 示例只展示首次配对。长期连接需要保留批准响应中的完整私密凭据，再由 Harness 自身的连接层按上述协议自动续期；Studio 没有为任意第三方 Harness 安装客户端扩展，也没有实现长期机器 API Key 或集群统一身份发行方。
+前面的 `connect_agent` 示例只展示首次配对。通用工具的长期连接需要保留批准响应中的完整私密凭据，再由 Harness 自身的连接层按上述协议自动续期；Studio 没有为任意第三方 Harness 安装客户端扩展，也没有提供通用工具的长期机器 API Key 或集群统一身份发行方。直接使用本地模型作为推理服务时，可以使用推理专用 Key，无需沿用每小时续期流程。
 
 ### 内置工具循环
 
@@ -1011,7 +1011,7 @@ API／授权／MCP 连接层／Harness／提示词规范五文件回归为 `249 
 
 capabilities 的 `local_llm.api_base` 为 `/api/v1/llm`，`models_url` 和 `completion_url` 给出具体入口并保留反向代理前缀。客户端 Base URL 使用实际 Studio 地址加这个路径：
 
-- `GET /api/v1/llm/models` 返回 `{object:"list",data:[...]}`，要求已授权的 `read`。
+- `GET /api/v1/llm/models` 返回 `{object:"list",data:[...]}`，要求已授权的 `read`。每个模型还返回 `context_window` 和 `max_output_tokens`，供外部客户端设置上下文和输出预算。
 - `POST /api/v1/llm/chat/completions` 返回 `chat.completion` 或 SSE `chat.completion.chunk`，不带 Agent `ok/data` 外层。
 
 ```json
@@ -1034,9 +1034,17 @@ capabilities 的 `local_llm.api_base` 为 `/api/v1/llm`，`models_url` 和 `comp
 
 支持 temperature、top_p、seed、stop、n=1、max_tokens 或 max_completion_tokens，以及 text／json_object response_format。支持声明 function tools、tool_choice 与 assistant/tool 历史；函数调用由客户端处理，Studio 不执行，输出在结束前校验声明名称、ID、JSON 参数及完成状态。具体模型／handler 不支持函数格式时明确报错，不声称所有 GGUF 都已经具备工具能力。strict function schema、JSON schema response_format、多 choice、音频／视频及 Responses API 尚未支持，未知字段不静默忽略。
 
-服务扩展参数：vram_policy 为 cpu／relaxed／standard／extreme，默认 standard；n_ctx 默认 8192，范围 1024～32768 且不能超过模型公布限制；timeout_seconds 默认 120，范围 1～600。输出 token 上限 8192、消息上限 64、文本与工具 schema／历史参数合计 64000 字符、图片最多 4 张。兼容请求正文上限 16 MiB，单张内联图片解码最多 8 MiB、64 百万像素；素材文件最多 80 MiB。图像解码并发 2，请求等待／执行位置最多 4，过载返回 429。
+服务扩展参数：vram_policy 为 cpu／relaxed／standard／extreme。外部 `/llm/chat/completions` 优先使用请求显式值，省略或 null 时使用当前推理 Key 保存的默认策略；未配置时默认 GPU 优先（extreme）。内部 VLM 工具仍默认 standard。n_ctx 范围 1024～32768 且不能超过模型公布限制，外部兼容入口未指定时使用该模型公布的 API 上限，内部 VLM 工具仍默认 8192；timeout_seconds 默认 120，范围 1～600。实际输出 token 上限 8192、消息上限 64、文本与工具 schema／历史参数合计 64000 字符、图片最多 4 张。兼容请求正文上限 16 MiB，单张内联图片解码最多 8 MiB、64 百万像素；素材文件最多 80 MiB。图像解码并发 2，请求等待／执行位置最多 4，过载返回 429。
 
-SSE 返回 assistant role、可见文本／函数 delta、finish_reason，以及运行时可提供的 usage 末块，最后为 `[DONE]`。等待时每 10 秒发送 SSE keepalive 注释，不把等待当成模型结果。隐藏 reasoning 字段及分段 think／Harmony 思考频道不发送。中途错误返回 error 事件，不追加成功 finish；非流式错误使用标准 error 外层。`length` 与 `content_filter` 不应当成完整创作结果。
+外部兼容入口接受 `store:false`，对话仍由客户端保存；`store:true` 不支持。`max_tokens`／`max_completion_tokens` 是客户端请求的输出上限，较大的 SDK 默认值会限制为本地输出预算，并为输入留出上下文空间；llama.cpp 再按实际提示词 token 数限制剩余输出。不会为满足较大数值丢弃消息或工具定义。内部 VLM 工具仍使用原有严格参数限制。参数不兼容时返回具体字段与原因，`error.param` 指向首个问题；响应和日志不包含请求正文、消息内容或 Key。
+
+外部兼容入口支持按请求控制思考：`reasoning_effort:"none"`／`"off"` 关闭，`minimal`／`low`／`medium`／`high`／`xhigh`／`max` 启用；也支持 `enable_thinking` 或 `chat_template_kwargs.enable_thinking` 布尔值。多个选项必须一致，否则返回参数错误。各启用档位目前都表示启用模型思考，不另外分配不同档位的计算预算；思考与答案共用输出 token 上限。全部省略或为 null 时使用原生 handler／模型模板的默认行为，不继承 Studio 内部聊天的开关。内部 VLM 工具仍默认关闭，需显式设置 `enable_thinking` 才改变本次请求。
+
+SSE 返回 assistant role、最终回复 `content`、独立的 `reasoning_content`／函数 delta、finish_reason；请求带 `stream_options:{"include_usage":true}` 时，结束前返回一条 `choices:[]` 的 usage，最后为 `[DONE]`。普通回复始终携带本地生成路径的 usage。统计字段为 `prompt_tokens`、`completion_tokens`、`total_tokens`：输入按模型实际接收的完整 token 序列统计，包含模板、工具定义、历史与图像位置，缓存复用也不会缩小输入数；输出按实际生成 token 统计，包含思考与工具调用，并遵循底层的结束 token 规则。思考已计入输出总量，当前没有单独估计 reasoning/cache 命中细分数。
+
+普通回复通过 `message.reasoning_content` 返回思考，最终答案仍在 `message.content`。适配器分离跨 chunk 的 think 标签、Qwen 预填充思考前缀和 Gemma／Harmony 思考频道；显式关闭时不返回思考字段。后续 assistant 历史可携带 `reasoning_content`，参与相同的输入长度限制。请求结束、异常或取消后恢复原运行时开关与统计状态。
+
+等待时每 10 秒发送 SSE keepalive 注释，不把等待当成模型结果。中途错误返回 error 事件，不追加成功 finish；非流式错误使用标准 error 外层。只有思考且输出预算耗尽时保留 `finish_reason:length`，不能当作完成的答案；正常 stop 却没有答案／工具结果则返回错误。`length` 与 `content_filter` 不应当成完整创作结果。
 
 ### 身份与执行
 
@@ -1150,3 +1158,13 @@ VLM 与模型目录专项联合为 `69 passed`，18.22 秒。初次两项用例�
 用户可在浏览器管理页修改策略、保留素材、清理过期文件。已有 Bearer 的 `read`、`assets.write`、生成权限均不授权这些管理写操作。容量上限默认不限；用户设置上限后，新上传／生成超额时返回 `asset_storage_limit`，已存在素材的重复上传和已有任务的幂等重试继续按原规则处理。完整保护范围、UI 入口和验证记录见 [资产空间管理](asset-lifecycle.md)。
 
 空间不足时路由预览返回 `ready_to_submit=false`、`plan.status=storage_full` 和 `plan.storage_error.management_url`。资产统计尚未完成时，使用 `storage_check_incomplete`／`asset_storage_scan_incomplete` 表达检查未完成，不把它误报为容量超限。大目录会保存分批登记进度；重复查询可以继续登记。`scan_complete` 表示引用检查是否完整，`inventory_complete` 表示文件登记是否完成，只有引用检查完整的已登记资产才可能被清理。
+
+## 2026-10-12：外部 Harness 的推理 API Key
+
+在 Studio Web 的“Agent / API 接入 → 本地 LLM API → 管理 Key”中创建 Key，设置名称、有效期和模型范围。默认 90 天，界面可选 30／90／365 天或不过期。用户登录后可以多次查看完整 Key、复制和撤销；列表不自动返回完整值。capabilities 的 `local_llm.inference_api_keys=true` 表示支持，`local_llm.key_management_url` 给出界面入口。
+
+外部客户端使用实际 `local_llm.api_base` 和允许的模型 ID，通过 `Authorization: Bearer <API Key>` 请求 `GET /api/v1/llm/models` 或 `POST /api/v1/llm/chat/completions`。Key 不需要每小时刷新，但不能用于 Agent 工具、生成任务、上传、下载或私有素材 ID；图片使用请求自带的 data URL。模型范围在查询和推理时都生效。local 模式允许使用当前 HTTP／HTTPS 地址，多用户模式仍要求 HTTPS 或真实回环连接。
+
+认证保存哈希，完整值使用 AES-GCM 加密保存，Windows 下加密主密钥由 DPAPI 保护。查看和管理需要当前浏览器身份、同源请求、CSRF 和身份绑定；不提供对应 Agent 工具，也不允许推理 Key 或配对 Bearer 取回密钥。过期、撤销、权限及身份变化在推理过程中继续核对。详细使用及存储说明见 [推理 API Key](inference-api-keys.md)。
+
+验证：相关 Python 检查 `271 passed`，5 条已有依赖弃用告警；Node 检查 5 项；推理 Key 的实际 Chromium 检查 4 组，原接入页检查 8 组通过。独立 HTTP 客户端通过测试 Key 完成模型查询与两轮函数调用／结果回传，刷新后重复查看的完整值一致，撤销后返回 401。推理引擎和身份使用隔离测试实现，没有创建生产凭据、读取生产密钥、重启实际 Studio 或加载 GPU 模型。报告位于 `outputs/inference_keys_20261012/`。

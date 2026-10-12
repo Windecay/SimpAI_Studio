@@ -59,14 +59,17 @@ class Message(Model):
     content: str | list[ContentPart] | None = None
     tool_calls: list[ToolCall] | None = Field(default=None, max_length=32)
     tool_call_id: str | None = Field(default=None, max_length=96)
+    reasoning_content: str | None = Field(default=None, max_length=64000)
 
     @model_validator(mode="after")
     def role_fields(self):
+        if self.reasoning_content is not None and self.role != "assistant":
+            raise ValueError("Only assistant messages may contain reasoning_content.")
         if self.tool_calls and self.role != "assistant":
             raise ValueError("Only assistant messages may contain tool_calls.")
         if (self.role == "tool") != bool(self.tool_call_id):
             raise ValueError("Tool messages require tool_call_id; other roles cannot provide it.")
-        if self.content is None and not self.tool_calls:
+        if self.content is None and not self.tool_calls and not self.reasoning_content:
             raise ValueError("A message requires content or assistant tool_calls.")
         if isinstance(self.content, list) and (not self.content or len(self.content) > 16):
             raise ValueError("Content must contain 1 to 16 parts.")
@@ -127,14 +130,17 @@ class InferenceParameters(VLMStatus):
     n_ctx: int = Field(default=8192, ge=1024, le=32768)
     timeout_seconds: int = Field(default=120, ge=1, le=600)
 
-    @model_validator(mode="after")
-    def sampling(self):
+    def validate_sampling_options(self):
         if self.max_tokens is not None and self.max_completion_tokens is not None:
             raise ValueError("Use max_tokens or max_completion_tokens, not both.")
         if self.stop is not None:
             stops = [self.stop] if isinstance(self.stop, str) else self.stop
             if not 1 <= len(stops) <= 4 or any(not isinstance(s, str) or not s or len(s) > 128 for s in stops):
                 raise ValueError("Provide 1 to 4 stop strings of at most 128 characters.")
+
+    @model_validator(mode="after")
+    def sampling(self):
+        self.validate_sampling_options()
         if (self.max_tokens or self.max_completion_tokens or 1024) >= self.n_ctx:
             raise ValueError("Output token limit must leave room for the input context.")
         return self
@@ -148,11 +154,13 @@ class ChatCompletion(InferenceParameters):
     tools: list[Tool] | None = Field(default=None, max_length=32)
     tool_choice: Literal["auto", "none", "required"] | dict | None = None
     response_format: ResponseFormat | None = None
+    enable_thinking: bool | None = Field(default=False, description="Enable or disable model thinking; null uses the model default.")
 
     @model_validator(mode="after")
     def bounded_messages(self):
         text_chars = sum(len(m.content) if isinstance(m.content, str) else
                          sum(len(p.text or "") for p in m.content or []) for m in self.messages)
+        text_chars += sum(len(m.reasoning_content or "") for m in self.messages)
         text_chars += sum(len(json.dumps(t.model_dump(), allow_nan=False)) for t in self.tools or [])
         text_chars += sum(len(json.dumps(call.model_dump(), allow_nan=False))
                           for message in self.messages for call in message.tool_calls or [])

@@ -155,3 +155,19 @@ MCP 动态目录增加到 35 个工具。Windows 1.0.2 小包扩展本地推理�
 上传素材和结果副本现在有可配置的保留策略，默认未使用 30 天后清理。需要核对占用、期限或空间不足时，调用只读的 `simpai.assets.storage`，或使用 capabilities 返回的 `asset_storage_url`；以当前身份实际返回的策略为准。长期需要的素材应由用户保存到项目中或在管理页选择“保留”，不要假定素材 ID 永久有效。
 
 遇到 `asset_storage_limit`，通过返回的管理页或 capabilities 的 `asset_management_url` 引导用户调整空间；不能自行删除目录、其他身份的素材、模型或生成作品。已有 Bearer 读取／生成权限不能修改清理策略或执行删除，管理操作由当前 Studio 浏览器身份完成。自动清理保护项目／模板／备份引用和手动保留的资产，正在生成时暂停，旧文件获得完整初始保留期。完整行为和验收范围见 `docs/asset-lifecycle.md`。
+
+## 2026-10-12：推理专用 API Key
+
+Studio Web 的“Agent / API 接入 → 本地 LLM API → 管理 Key”支持创建推理 Key，设置名称、有效期和模型范围，并支持用户多次查看完整值、复制与撤销。用户将 Key 保存在外部客户端的私密设置中；模型不能读取 Key、浏览器 Cookie、授权数据库或加密文件，也不能调用私密管理接口取回密钥。
+
+外部 Harness 可直接使用 Studio 作为 Chat Completions 推理服务。使用服务公布的 `local_llm.api_base`、允许的模型 ID，以及私密连接层发送的 Bearer API Key。Key 只允许 `GET /api/v1/llm/models` 与 `POST /api/v1/llm/chat/completions`；Studio 工具和 MCP 继续使用原配对凭据。推理 Key 不能访问私有素材 ID，图片随请求发送 data URL。
+
+local 模式下推理 Key 可使用当前 HTTP／HTTPS 服务地址；多用户模式继续要求 HTTPS 或真正的本机回环连接。过期、撤销、账号权限和身份／目录变化会停止相应推理权限，不能退回匿名或其他身份重试。具体协议子集、加密存储及验证范围见 `docs/inference-api-keys.md`。
+
+外部推理客户端从 `/llm/models` 读取 `context_window` 和 `max_output_tokens`，不要使用固定容量猜测。兼容聊天入口接受 `store:false`，较大输出上限按本地预算限制；内部 VLM 工具仍使用严格参数范围。遇到 `invalid_request` 时读取 `error.param` 和具体字段说明。模型列表可读取不代表推理已成功，应完成聊天请求并收到有效回复后再报告连通。
+
+外部聊天思考由本次请求控制：`reasoning_effort:none/off` 关闭，其余受支持档位启用；也支持 `enable_thinking` 或 `chat_template_kwargs.enable_thinking`，多个选项必须一致。未指定时沿用模型原生默认，不把省略当作关闭。思考通过独立 `reasoning_content` 返回并可随 assistant 历史继续传递，答案使用 `content`；二者共用 token 预算。当前不同启用档位不对应不同计算预算，实际行为以模型能力为准。内部 VLM 工具默认仍关闭思考，外部请求不会改变 Studio 内部聊天的开关。
+
+外部推理请求未指定 `vram_policy` 时，使用推理 Key 在 Web 管理页保存的默认显存策略，初始为 GPU 优先（extreme）；客户端显式值优先。可选 GPU 优先、均衡、多留空余显存和 CPU。已有 Key 无需重建，策略修改从下一次请求生效。Key 管理仍是浏览器操作，不接受 Bearer 修改，也不改变内部 VLM 工具的 standard 默认值。GPU 层数和速度应以当前实际运行结果为准，不能把预算估算当作性能验收。
+
+外部流式推理需要 token 统计时发送 `stream_options:{"include_usage":true}`，读取流末的 `usage`；普通回复直接返回输入、输出与总 token。输入包含实际模板、工具、历史、图像位置和缓存前缀；输出包含思考及工具调用。当前不单独估计思考或缓存命中子项，不把缺少细分字段解释为完全没有思考或缓存。客户端计时可能包含加载与预填充，不能将它的显示速度直接等同于纯解码速度。
