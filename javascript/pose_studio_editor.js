@@ -214,13 +214,22 @@
         });
     }
 
-    async function resolveReferenceSize(options) {
+    async function resolveInitialCanvasSize(options) {
+        const editorState = options?.editorState || {};
+        // A restored pose and camera must keep the frame used by the previous export.
+        for (const params of [editorState.camera_export_params, editorState.export_params]) {
+            const savedSize = normalizeImageSize(params?.view_width, params?.view_height);
+            if (savedSize) return savedSize;
+        }
+        const stateSize = normalizeImageSize(editorState.reference_size?.width, editorState.reference_size?.height);
+        if (stateSize && (hasStoredPoseForEditing(options?.poseData, editorState) || hasStoredPose(editorState.person_scene))) {
+            return stateSize;
+        }
         const explicit = normalizeImageSize(options?.referenceWidth, options?.referenceHeight);
         if (explicit) return explicit;
         const asset = options?.referenceAsset || {};
         const assetSize = normalizeImageSize(asset.width, asset.height);
         if (assetSize) return assetSize;
-        const stateSize = normalizeImageSize(options?.editorState?.reference_size?.width, options?.editorState?.reference_size?.height);
         if (stateSize) return stateSize;
         return await readImageSize(options?.referenceImageDataUrl || options?.referenceSrc || '');
     }
@@ -993,7 +1002,7 @@
     async function open(options) {
         closeActiveModal();
         options = options || {};
-        const referenceSize = await resolveReferenceSize(options);
+        const canvasSize = await resolveInitialCanvasSize(options);
         const theme = call(options, 'detectTheme') || detectPageTheme();
         const modal = document.createElement('div');
         modal.className = 'sai-canvas-modal sai-pose-studio-modal';
@@ -1211,10 +1220,10 @@
                 cam_pitch_deg: Number(editorState.camera_params.pitch_deg ?? exportParams.cam_pitch_deg)
             });
         }
-        if (referenceSize) {
-            exportParams.view_width = referenceSize.width;
-            exportParams.view_height = referenceSize.height;
-            editorState = Object.assign({}, editorState, { reference_size: referenceSize });
+        if (canvasSize) {
+            exportParams.view_width = canvasSize.width;
+            exportParams.view_height = canvasSize.height;
+            editorState = Object.assign({}, editorState, { reference_size: canvasSize });
         }
         let referenceAsset = options.referenceAsset || null;
         let referenceAssetSource = options.referenceAssetSource || null;

@@ -2,55 +2,195 @@
     "supported_tasks": ["image_view_synthesis"],
     "default_engine": {
         "backend_engine": "Qwen",
-        "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
-        "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+        "disvisible": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection"
+        ],
+        "disinteractive": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection"
+        ],
         "available_aspect_ratios_selection": "Flux",
         "scene_frontend": {
             "version": "m1.1",
-            "theme": ["QwenGaussianStudio"],
+            "theme": [
+                "QwenGaussianStudio",
+                "QwenGaussianStudio Turbo"
+            ],
             "theme_title": "Qwen Image 2.1 Gaussian Viewpoint",
             "theme_labels": {
-                "QwenGaussianStudio": {"en": "Qwen Image 2.1 Gaussian Viewpoint", "zh": "Qwen2.1 \u9ad8\u65af\u81ea\u7531\u89c6\u89d2"}
+                "QwenGaussianStudio": "Standard",
+                "QwenGaussianStudio Turbo": "Turbo"
             },
             "director_capability": {
-                "image_policy": "required", "audio_policy": "forbidden", "video_policy": "forbidden",
-                "min_images": 2, "max_images": 2, "image_modes": ["reference_set"],
-                "audio_output": "silent", "mixed_segments": false
+                "image_policy": "required",
+                "audio_policy": "forbidden",
+                "video_policy": "forbidden",
+                "min_images": 2,
+                "max_images": 2,
+                "image_modes": [
+                    "reference_set"
+                ],
+                "audio_output": "silent",
+                "mixed_segments": false
             },
-                "disable_canvas_mask": true,
-                "disvisible": ["scene_additional_prompt", "scene_video", "scene_audio","scene_input_image2","scene_refiner_model",
-                "scene_var_number","scene_var_number2", "scene_var_number3","scene_var_number4","scene_switch_option1", "scene_switch_option2", "scene_additional_prompt_2", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
-                ,"scene_switch_option3","scene_switch_option4","sam3_input_video","sam3_mask_video"],
-            "disinteractive": ["scene_input_image1"],
+            "disable_canvas_mask": true,
+            "disvisible": [
+                "scene_additional_prompt",
+                "scene_video",
+                "scene_audio",
+                "scene_input_image2",
+                "scene_refiner_model",
+                "scene_var_number",
+                "scene_var_number2",
+                "scene_var_number3",
+                "scene_var_number4",
+                "scene_switch_option1",
+                "scene_switch_option2",
+                "scene_additional_prompt_2",
+                "scene_var_number5",
+                "scene_var_number6",
+                "scene_var_number7",
+                "scene_var_number8",
+                "scene_var_number9",
+                "scene_var_number10",
+                "scene_switch_option3",
+                "scene_switch_option4",
+                "sam3_input_video",
+                "sam3_mask_video"
+            ],
+            "disinteractive": [
+                "scene_input_image1"
+            ],
             "task_method": {
-                "QwenGaussianStudio": "qwenedit_gaussian_cn"
+                "QwenGaussianStudio": "qwenedit_gaussian_cn",
+                "QwenGaussianStudio Turbo": "qwenedit_gaussian_cn"
             },
             "prompt": {
-                "QwenGaussianStudio": "Change the camera angle from <image2> to <image1>."
+                "QwenGaussianStudio": "Change the camera angle from <image2> to <image1>.",
+                "QwenGaussianStudio Turbo": "Change the camera angle from <image2> to <image1>."
             },
-            "overwrite_step": {"QwenGaussianStudio": 8},
-            "overwrite_step_min": 1,
-            "overwrite_step_max": 50,
-            "var_number": {"QwenGaussianStudio": 1024},
+            "overwrite_step": {
+                "QwenGaussianStudio": 25,
+                "QwenGaussianStudio Turbo": 8
+            },
+            "overwrite_step_min": {
+                "QwenGaussianStudio": 1,
+                "QwenGaussianStudio Turbo": 8
+            },
+            "overwrite_step_max": {
+                "QwenGaussianStudio": 50,
+                "QwenGaussianStudio Turbo": 8
+            },
+            "var_number": {
+                "QwenGaussianStudio": 1024,
+                "QwenGaussianStudio Turbo": 1024
+            },
             "var_number_title": "Reference Resolution (0 = Original)",
             "var_number_min": 0,
             "var_number_max": 4096,
             "var_number_step": 32,
             "image_preprocessor_method": {
-                    "QwenGaussianStudio": [["-normalization"]]
+                "QwenGaussianStudio": [
+                    [
+                        "-normalization"
+                    ]
+                ],
+                "QwenGaussianStudio Turbo": [
+                    [
+                        "-normalization"
+                    ]
+                ]
             },
             "resolution_control": {
-            "mode": "image_keep_input_area",
-            "source": "scene_canvas",
-            "base_width": 1024,
-            "base_height": 1024,
-            "quantize": 32,
-            "interactive": true,
-            "frontend_preprocess": false,
-            "preprocess_target": "none",
-            "preprocess_fit": "proportional"
+                "mode": "image_keep_input_area",
+                "source": "scene_canvas",
+                "base_width": 1024,
+                "base_height": 1024,
+                "quantize": 32,
+                "interactive": true,
+                "frontend_preprocess": false,
+                "preprocess_target": "none",
+                "preprocess_fit": "proportional"
             },
-            "aspect_ratio": ["origin|Original", "1024|1:1", "1536|1:1", "2048|1:1"]
+            "aspect_ratio": [
+                "origin|Original",
+                "1024|1:1",
+                "1536|1:1",
+                "2048|1:1"
+            ],
+            "steps_readonly": {
+                "QwenGaussianStudio": false,
+                "QwenGaussianStudio Turbo": true
+            },
+            "sampler": {
+                "QwenGaussianStudio": "euler",
+                "QwenGaussianStudio Turbo": "euler"
+            },
+            "scheduler": {
+                "QwenGaussianStudio": "simple",
+                "QwenGaussianStudio Turbo": "simple"
+            },
+            "sampling_sigmas": {
+                "QwenGaussianStudio": "",
+                "QwenGaussianStudio Turbo": "1,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0"
+            },
+            "theme_disinteractive": {
+                "QwenGaussianStudio Turbo": [
+                    "scene_steps",
+                    "overwrite_step",
+                    "sampler_name",
+                    "scheduler_name"
+                ]
+            },
+            "loras": {
+                "QwenGaussianStudio": [
+                    [
+                        "QI2.1_AnyAngle.safetensors",
+                        1.0
+                    ],
+                    [
+                        "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
+                        0.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ]
+                ],
+                "QwenGaussianStudio Turbo": [
+                    [
+                        "QI2.1_AnyAngle.safetensors",
+                        1.0
+                    ],
+                    [
+                        "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ]
+                ]
+            }
         }
     },
     "default_model": "qwen_image_2.1_int8_convrot.safetensors",
@@ -65,7 +205,7 @@
         ],
         [
             "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
-            1.0
+            0.0
         ],
         [
             "None",
@@ -89,7 +229,7 @@
     "default_aspect_ratio": "1024*1024",
     "default_resolution_quantize_step": 32,
     "default_image_number": 1,
-    "default_overwrite_step": 8,
+    "default_overwrite_step": 25,
     "default_prompt": "Change the camera angle from <image2> to <image1>.",
     "default_prompt_negative": "",
     "checkpoint_downloads": {},

@@ -306,6 +306,7 @@ def _superprompt_input_image_count(input_images):
 
 def _superprompt_payload_from_state(state, target_override=None, use_scene_agent_prompt=True, input_image_count=0):
     target, agent_prompt = _superprompt_target_from_state(state)
+    state_data = state if isinstance(state, dict) else {}
     if isinstance(target_override, dict) and target_override:
         target = dict(target_override)
         target.setdefault("source", "main_webui_prompt_action")
@@ -314,6 +315,7 @@ def _superprompt_payload_from_state(state, target_override=None, use_scene_agent
     return {
         "project_id": "main_webui",
         "node_id": "canvas_agent_prompt_rewrite:main_webui_superprompt",
+        "stage": {"__lang": state_data.get("__lang") or "en"},
         "agent_context": {
             "prompt_generation_targets": {
                 "text_to_image": target,

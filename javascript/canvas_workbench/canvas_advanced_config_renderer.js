@@ -41,10 +41,18 @@
                 ? { overwrite_step: overwriteStepFixedValue }
                 : values;
             const overwriteStepDisabled = overwriteStepReadonly ? ' disabled aria-disabled="true"' : '';
+            const samplerProps = call('getSceneGenerationConfigPropsForConfigNode', {}, node, 'sampler_name') || {};
+            const schedulerProps = call('getSceneGenerationConfigPropsForConfigNode', {}, node, 'scheduler_name') || {};
             const guidance = call('configNumberValue', 4, values, ['guidance_scale', 'cfg_scale'], 4);
             const overwriteStep = call('boundedConfigNumberValue', -1, overwriteStepValues, ['overwrite_step', 'steps'], -1, overwriteStepBounds);
-            const sampler = call('configTextValue', 'dpmpp_2m_sde_gpu', values, ['sampler_name', 'sampler'], 'dpmpp_2m_sde_gpu');
-            const scheduler = call('configTextValue', 'karras', values, ['scheduler_name', 'scheduler'], 'karras');
+            const sampler = samplerProps.interactive === false && samplerProps.value !== undefined
+                ? samplerProps.value
+                : call('configTextValue', 'dpmpp_2m_sde_gpu', values, ['sampler_name', 'sampler'], 'dpmpp_2m_sde_gpu');
+            const scheduler = schedulerProps.interactive === false && schedulerProps.value !== undefined
+                ? schedulerProps.value
+                : call('configTextValue', 'karras', values, ['scheduler_name', 'scheduler'], 'karras');
+            const samplerDisabled = samplerProps.interactive === false ? ' disabled aria-disabled="true"' : '';
+            const schedulerDisabled = schedulerProps.interactive === false ? ' disabled aria-disabled="true"' : '';
             const samplerChoices = call('mergeChoices', [sampler], [
                 sampler,
                 ...getSelectOptionsFromDom('sampler_name', call('getSamplerChoices', []))
@@ -66,8 +74,10 @@
   <label class="sai-node-field sai-node-range"><span>${escapeHtml(translate('Guidance Scale', '引导强度'))}</span><div class="sai-range-pair"><input data-config-param="guidance_scale" type="range" min="0.01" max="100" step="0.01" value="${escapeHtml(guidance)}"><input data-config-param="guidance_scale" type="number" min="0.01" max="100" step="0.01" value="${escapeHtml(guidance)}"></div></label>
   <label class="sai-node-field sai-node-range sai-collapsed-keep"><span>${escapeHtml(translate('Forced Sampling Steps', '强制采样步数'))}</span><div class="sai-range-pair"><input data-config-param="overwrite_step" type="range" min="${escapeHtml(overwriteStepBounds.min)}" max="${escapeHtml(overwriteStepBounds.max)}" step="${escapeHtml(overwriteStepBounds.step)}" value="${escapeHtml(overwriteStep)}"${overwriteStepDisabled}><input data-config-param="overwrite_step" type="number" min="${escapeHtml(overwriteStepBounds.min)}" max="${escapeHtml(overwriteStepBounds.max)}" step="${escapeHtml(overwriteStepBounds.step)}" value="${escapeHtml(overwriteStep)}"${overwriteStepDisabled}></div></label>
   <div class="sai-inspector-grid2">
-    <label class="sai-node-field"><span>${escapeHtml(translate('Sampler', '采样器'))}</span><select data-config-param="sampler_name">${optionHtml(samplerChoices, sampler)}</select></label>
-    <label class="sai-node-field"><span>${escapeHtml(translate('Scheduler', '调度器'))}</span><select data-config-param="scheduler_name">${optionHtml(schedulerChoices, scheduler)}</select></label>
+    <label class="sai-node-field"><span>${escapeHtml(translate('Sampler', '采样器'))}</span><select data-config-param="sampler_name"${samplerDisabled}>${optionHtml(samplerChoices, sampler)}</select></label>
+    ${schedulerProps.visible === false
+        ? `<div class="sai-node-field"><span>${escapeHtml(call('localizeCanvasLabel', schedulerProps.label, schedulerProps.label))}</span></div>`
+        : `<label class="sai-node-field"><span>${escapeHtml(translate('Scheduler', '调度器'))}</span><select data-config-param="scheduler_name"${schedulerDisabled}>${optionHtml(schedulerChoices, scheduler)}</select></label>`}
   </div>
 </div>
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="config" title="${escapeHtml(translate('Config output', '配置输出'))}"></button>`;

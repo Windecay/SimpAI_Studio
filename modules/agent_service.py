@@ -539,6 +539,8 @@ class AgentService:
                 continue
             props = (info.get("generation_config_props") or {}).get(key) or {}
             field = {"type": kind, "title": translations.get(label, label), "default": value}
+            if props.get("interactive") is False:
+                field["readOnly"] = True
             if key == "overwrite_step":
                 field["minimum"] = props.get("min", 1)
                 if props.get("max") is not None:
@@ -564,7 +566,12 @@ class AgentService:
                 "prompt_reference_format": "<imageN>" if qwen21 else "<Picture N>" if "minimax_h3" in method else "natural_language",
                 "parameters": parameters,
                 "parameter_schema": {"type": "object", "properties": properties, "additionalProperties": False},
-                "generation_defaults": copy.deepcopy(entry.get("generation_config") or {}),
+                "generation_defaults": {
+                    **copy.deepcopy(entry.get("generation_config") or {}),
+                    **{key: copy.deepcopy(defaults[key]) for key in (
+                        "overwrite_step", "sampler_name", "scheduler_name"
+                    ) if key in defaults},
+                },
                 "resolution_defaults": copy.deepcopy(entry.get("resolution_config") or {})}
         if spec["prompt_mode"] == "preset_fixed":
             spec["prompt_policy"] = {"mode": "preset_fixed", "editable": False,
@@ -956,6 +963,11 @@ class AgentService:
                 "resolution_config": {"mode": "preset_default", "defaults": resolution, "overrides": {}},
                 "generation_config": {"mode": "preset_default", "defaults": copy.deepcopy(entry.get("generation_config") or {}), "overrides": {}},
                 "model_requirements": {"model_list": copy.deepcopy(entry.get("model_list") or []), "has_model_probe": bool(entry.get("has_model_probe")), "source": entry.get("source", "")}}
+        node["models_config"]["defaults"].update(copy.deepcopy(theme_info.get("models_config_defaults") or {}))
+        node["generation_config"]["defaults"].update({
+            key: copy.deepcopy(params[key])
+            for key in ("overwrite_step", "sampler_name", "scheduler_name") if key in params
+        })
         if not request:
             return node
         params.update((plan or {}).get("parameter_overrides") or {})

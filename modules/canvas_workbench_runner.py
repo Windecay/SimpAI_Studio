@@ -1747,6 +1747,19 @@ def build_canvas_task_args_preview(payload, materialized_inputs, state_params):
     styles_config = _merged_config_values(_styles_config(preset_node))
     scene_defaults = _scene_theme_defaults(preset_node, runtime)
     scene_params = {**scene_defaults, **params}
+    schema = preset_node.get("schema") if isinstance(preset_node.get("schema"), dict) else {}
+    theme = runtime.get("scene_theme") or schema.get("default_theme")
+    theme_info = (schema.get("per_theme") or {}).get(theme) or {}
+    model_defaults = theme_info.get("models_config_defaults") or {}
+    model_overrides = _model_config(preset_node).get("overrides") or {}
+    for key, value in model_defaults.items():
+        if key not in model_overrides:
+            models[key] = copy.deepcopy(value)
+    for key, props in (theme_info.get("generation_config_props") or {}).items():
+        if props.get("interactive") is False:
+            fixed_value = props.get("value", scene_defaults.get(key))
+            if fixed_value is not None:
+                generation_api_overrides[key] = fixed_value
     identity = _state_identity(payload, state_params)
 
     enabled_loras = _enabled_loras(models)
@@ -1792,6 +1805,8 @@ def build_canvas_task_args_preview(payload, materialized_inputs, state_params):
         "scene_refiner_model": models.get("refiner_model") or "",
         "canvas_scene_schema": copy.deepcopy(preset_node.get("schema") or {}),
     }
+    if "sampling_sigmas" in scene_defaults:
+        params_backend["sampling_sigmas"] = scene_defaults["sampling_sigmas"]
     logging.getLogger("canvas_workbench").info(
         "[VLM KeepLoaded] runner params scene run_id=%s task_method=%s keep_vlm_model_loaded=%s",
         payload.get("run_id"),

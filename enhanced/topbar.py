@@ -1362,13 +1362,17 @@ def _scene_list_value(value):
     return []
 
 
-def _scene_standard_steps_readonly(scene_frontend):
+def _scene_standard_steps_readonly(scene_frontend, theme=None):
     if not isinstance(scene_frontend, dict):
         return False
     disvisible = set(_scene_list_value(scene_frontend.get("disvisible", [])))
     disinteractive = set(_scene_list_value(scene_frontend.get("disinteractive", [])))
+    readonly = scene_frontend.get("steps_readonly", False)
+    if isinstance(readonly, dict):
+        readonly = readonly.get(theme or next(iter(readonly), ""), False)
     return (
-        "scene_steps" in disvisible
+        readonly is True
+        or "scene_steps" in disvisible
         or "scene_steps" in disinteractive
         or "overwrite_step" in disinteractive
     )
@@ -1380,7 +1384,7 @@ def _canvas_scene_generation_step_props(scene_frontend, theme=None):
         "max": _canvas_scene_generation_step_bound(scene_frontend, theme, "max", 200),
         "step": _canvas_scene_generation_step_bound(scene_frontend, theme, "step", 1),
     }
-    if _scene_standard_steps_readonly(scene_frontend):
+    if _scene_standard_steps_readonly(scene_frontend, theme):
         props["interactive"] = False
         step_value = _canvas_scene_generation_step(scene_frontend, theme, None)
         if step_value is not None:
@@ -1670,6 +1674,13 @@ def _build_canvas_scene_schema(scene_frontend, _include_theme_params=True):
         if scene_step_default is not None:
             defaults.setdefault("overwrite_step", scene_step_default)
             defaults.setdefault("scene_steps", scene_step_default)
+        for control, key in (("sampler_name", "sampler"), ("scheduler_name", "scheduler")):
+            value = _canvas_scene_value(scene_frontend, key, theme, None)
+            if value is not None:
+                defaults[control] = value
+        sampling_sigmas = _canvas_scene_value(scene_frontend, "sampling_sigmas", theme, None)
+        if sampling_sigmas is not None:
+            defaults["sampling_sigmas"] = sampling_sigmas
         if "image_number" in scene_frontend:
             defaults.setdefault("scene_image_number", _canvas_scene_value(scene_frontend, "image_number", theme, 1))
         if "prompt" in scene_frontend:
@@ -1689,6 +1700,23 @@ def _build_canvas_scene_schema(scene_frontend, _include_theme_params=True):
                 "overwrite_step": _canvas_scene_generation_step_props(scene_frontend, theme),
             },
         }
+        theme_loras = _canvas_scene_value(scene_frontend, "loras", theme, None)
+        if isinstance(theme_loras, (list, tuple)):
+            per_theme[theme]["models_config_defaults"] = {
+                "loras": _build_canvas_lora_defaults({"default_loras": list(theme_loras)}),
+            }
+        disabled = scene_frontend.get("theme_disinteractive", {})
+        disabled = disabled.get(theme, []) if isinstance(disabled, dict) else []
+        for control in ("sampler_name", "scheduler_name"):
+            if control in defaults:
+                per_theme[theme]["generation_config_props"][control] = {
+                    "interactive": control not in disabled,
+                    "value": defaults[control],
+                }
+        if sampling_sigmas:
+            per_theme[theme]["generation_config_props"]["scheduler_name"].update(
+                visible=False, label="Fixed 8-step sigmas",
+            )
         if scene_frontend.get("theme_disvisible"):
             per_theme[theme]["disvisible"] = _scene_disvisible_with_optional_inputs(scene_frontend, theme)
         if _include_theme_params:
@@ -2606,6 +2634,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         engine_type=state_params.get("engine_type", "image"),
         ))
     _forward_preset_native_process(state_params, backend_params)
+    backend_params.pop("sampling_sigmas", None)
     state_upscale_model = str(state_params.get("upscale_model") or "").replace("\\", os.sep).replace("/", os.sep).lstrip(os.sep)
     if state_upscale_model:
         if state_upscale_model.lower() not in ("auto", "default") or "upscale_model" not in backend_params:
@@ -2646,6 +2675,9 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
     if 'scene_frontend' in state_params and not h3_director_active:
         scene_frontend = state_params['scene_frontend']
         scene_theme = _resolve_scene_generation_theme(state_params, scene_frontend, scene_theme)
+        sampling_sigmas = modules.flags.get_value_by_scene_theme(state_params, scene_theme, "sampling_sigmas", None)
+        if sampling_sigmas is not None:
+            backend_params["sampling_sigmas"] = sampling_sigmas
         disvisible = _scene_disvisible_with_optional_inputs(scene_frontend, scene_theme)
         disvisible = set(disvisible)
 
@@ -4357,7 +4389,13 @@ def _resolve_engine_disinteractive_for_state(state):
         scene_frontend = engine_data.get("scene_frontend", None)
         if not isinstance(scene_frontend, dict):
             scene_frontend = state.get("scene_frontend", None)
-        if _scene_standard_steps_readonly(scene_frontend) and "overwrite_step" not in result:
+        theme = state.get("scene_theme") or state.get("__scene_theme")
+        theme_disabled = scene_frontend.get("theme_disinteractive", {}) if isinstance(scene_frontend, dict) else {}
+        if isinstance(theme_disabled, dict):
+            for control in theme_disabled.get(theme, []):
+                if control not in result:
+                    result.append(control)
+        if _scene_standard_steps_readonly(scene_frontend, theme) and "overwrite_step" not in result:
             result.append("overwrite_step")
         return result
     except Exception:
@@ -4530,6 +4568,11 @@ def _build_scene_default_payload(scene_frontend, scene_theme, overwrite_step_def
         key = f"switch_option{index}"
         payload[f"scene_switch_option{index}"] = bool(_scene_value_by_theme(scene_frontend, scene_theme, key, False))
 
+    for control, key in (("sampler_name", "sampler"), ("scheduler_name", "scheduler")):
+        value = _scene_value_by_theme(scene_frontend, scene_theme, key, None)
+        if value is not None:
+            payload[control] = value
+
     aspect_ratios = _scene_value_by_theme(scene_frontend, scene_theme, "aspect_ratio", [])
     try:
         aspect_ratios = modules.flags.normalize_scene_aspect_ratio_list(aspect_ratios)
@@ -4544,7 +4587,7 @@ def _build_scene_control_props(scene_frontend, scene_theme):
     if not isinstance(scene_frontend, dict):
         return {}
     props = {}
-    steps_readonly = _scene_standard_steps_readonly(scene_frontend)
+    steps_readonly = _scene_standard_steps_readonly(scene_frontend, scene_theme)
     for control_name, key, _default in _scene_number_default_specs():
         control_props = {}
         label_default = "Scene Steps" if key == "scene_steps" else None
@@ -4571,6 +4614,11 @@ def _build_scene_control_props(scene_frontend, scene_theme):
             props[control_name] = control_props
             if key == "scene_steps":
                 props["overwrite_step"] = dict(control_props)
+    disabled = scene_frontend.get("theme_disinteractive", {})
+    disabled = disabled.get(scene_theme, []) if isinstance(disabled, dict) else []
+    for control, key in (("sampler_name", "sampler"), ("scheduler_name", "scheduler")):
+        if _scene_value_by_theme(scene_frontend, scene_theme, key, None) is not None:
+            props[control] = {"interactive": control not in disabled}
     return props
 
 

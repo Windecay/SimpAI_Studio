@@ -5866,6 +5866,7 @@
                 getGradioApp: () => typeof gradioApp === 'function' ? gradioApp() : null,
                 getSamplerChoices: () => ADVANCED_SAMPLER_CHOICES,
                 getSchedulerChoices: () => ADVANCED_SCHEDULER_CHOICES,
+                localizeCanvasLabel: (...args) => localizeCanvasLabel(...args),
                 optionHtml: (...args) => optionHtml(...args),
                 escapeHtml: (...args) => escapeHtml(...args),
                 t: (...args) => t(...args),
@@ -10950,6 +10951,7 @@
                 applyClassicEnhanceRegionValues,
                 normalizeClassicInpaintMode,
                 getInpaintModeDefaults,
+                applyConfigNodeToPreset,
             },
             patchSource: {
                 buildNodeParamsPatch,

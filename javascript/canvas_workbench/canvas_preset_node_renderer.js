@@ -78,6 +78,13 @@
             return value && typeof value === 'object' ? value : {};
         };
 
+        function themeLabel(schema, theme) {
+            const label = schema.theme_labels?.[theme] || theme;
+            return localizeCanvasLabel(typeof label === 'object'
+                ? t(label.en || theme, label.cn || label.zh || label.en || theme)
+                : label);
+        }
+
         function renderPresetModelStatusHtml(node) {
             const status = node?.model_status && typeof node.model_status === 'object' ? node.model_status : {};
             const state = typeof presetModelStatusState === 'function'
@@ -470,7 +477,7 @@
       <div class="sai-inspector-kv"><span>${escapeHtml(t('Task Method', '任务方式'))}</span><b>${escapeHtml(taskMethod || '')}</b></div>
       ${renderPresetModelStatusHtml(node)}
       <button type="button" class="sai-inline-config-btn" data-inspector-action="check-models"><i class="fa-solid fa-cloud-arrow-down"></i><span>${escapeHtml(t('Check/download models', '检查/下载模型'))}</span></button>
-      ${themes.length ? `<label>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}<select data-inspector-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(localizeCanvasLabel(item))}</option>`).join('')}</select></label>` : ''}
+      ${themes.length ? `<label>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}<select data-inspector-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(themeLabel(schema, item))}</option>`).join('')}</select></label>` : ''}
     </div>
     <div class="sai-inspector-section">
       <h3>${escapeHtml(t('Parameters', '参数'))}</h3>
@@ -692,7 +699,7 @@ ${renderStyleTransferPresetController(node)}
 ${renderLivePortraitVideoExpressionPresetController(node)}
 ${renderLtx23GuidePresetController(node)}
 ${renderMiniMaxH3StoryboardPresetController(node)}
-${themes.length ? `<label class="sai-node-field sai-node-theme"><span>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}</span><select data-node-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(localizeCanvasLabel(item))}</option>`).join('')}</select></label>` : ''}
+${themes.length ? `<label class="sai-node-field sai-node-theme"><span>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}</span><select data-node-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(themeLabel(schema, item))}</option>`).join('')}</select></label>` : ''}
 <div class="sai-preset-slots">
 ${uploadSlots.map((slotInfo, index) => {
             const slot = slotInfo.key;

@@ -20049,7 +20049,8 @@
         if (configured && typeof configured === 'object') {
             return localText(configured.en || configured.zh || theme, configured.zh || configured.en || theme);
         }
-        return String(configured || theme || '');
+        const label = String(configured || theme || '');
+        return localText(label, window.localization?.[label] || label);
     }
 
     function creativePresetDeclaresTaskRoute(entry, task) {

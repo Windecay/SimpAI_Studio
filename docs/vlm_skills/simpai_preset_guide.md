@@ -580,10 +580,15 @@ SimpAI UI guide skill:
   character-second order. Use `<image 1>` for the pose and `<image 2>` for the
   character; do not use H3 `<Picture N>` labels.
 - The default prompt is: `replace the pose of <image 2> with the pose of <image 1>. keep the character of <image 2>`.
-  Preserve image2's identity, appearance, clothing, accessories, original
-  background, camera, lighting, and style. Do not copy image1's character,
-  mannequin appearance, clothing, background, or lighting. User-requested
-  changes take precedence over the source pose; do not invent additional edits.
+  Image1 supplies the target pose, camera viewpoint, shot size, subject scale
+  and placement, and visible crop, including visual edits made in Pose Studio.
+  Preserve image2's identity, clothing, accessories, environment appearance,
+  lighting, and style; allow its background viewpoint and visible area to follow
+  the target framing. Do not force image1's close-up into image2's full-body
+  composition or preserve the source camera unless explicitly requested.
+  Do not copy image1's mannequin appearance, background, or lighting.
+  Use the localized `qwen_image21_pose` guidance for compatible preservation
+  requirements. Explicit user constraints take precedence.
 - Defaults: 25 steps, CFG 1, Euler / simple, reference resolution 1024, and
   `VNCCS_QI2_PoseStudioV1.1.safetensors` at strength 1.0. No 2511 Lightning LoRA.
 - Follow `state.__lang` for guidance and display names: Chinese `Qwen2.1姿势`,

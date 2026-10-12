@@ -2,73 +2,216 @@
     "supported_tasks": ["image_pose_transfer"],
     "default_engine": {
         "backend_engine": "Qwen",
-            "disvisible": ["input_image_checkbox","refiner_model", "prompt_panel_checkbox", "performance_selection"],
-            "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+        "disvisible": [
+            "input_image_checkbox",
+            "refiner_model",
+            "prompt_panel_checkbox",
+            "performance_selection"
+        ],
+        "disinteractive": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection"
+        ],
         "available_aspect_ratios_selection": "Flux",
         "scene_frontend": {
             "version": "m1.1",
-                "theme": ["QwenPose"],
-                "theme_labels": {
-                    "QwenPose": {"en": "Qwen2.1 Pose", "zh": "Qwen2.1\u59ff\u52bf"}
-                },
-                "theme_title": "QwenPose Editor",
-                "disable_canvas_mask": true,
-                "pose_studio_reference_slots": ["scene_input_image1"],
-                "pose_studio_output_slot": "scene_canvas_image",
-                "prompt_action_media": {
-                    "image_roles": ["pose_reference", "character_reference"]
-                },
-                "director_capability": {
-                    "image_policy": "required",
-                    "audio_policy": "forbidden",
-                    "video_policy": "forbidden",
-                    "min_images": 2,
-                    "max_images": 2,
-                    "image_modes": ["reference_set"],
-                    "audio_output": "silent",
-                    "mixed_segments": false
-                },
-                "disvisible": ["scene_additional_prompt", "scene_video", "scene_audio","scene_input_image2","scene_refiner_model",
-                "scene_var_number2", "scene_var_number3","scene_var_number4","scene_switch_option1", "scene_switch_option2", "scene_additional_prompt_2", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
-                ,"scene_switch_option3","scene_switch_option4","sam3_input_video","sam3_mask_video"],
+            "theme": [
+                "QwenPose",
+                "QwenPose Turbo"
+            ],
+            "theme_labels": {
+                "QwenPose": "Standard",
+                "QwenPose Turbo": "Turbo"
+            },
+            "theme_title": "QwenPose Editor",
+            "disable_canvas_mask": true,
+            "pose_studio_reference_slots": [
+                "scene_input_image1"
+            ],
+            "pose_studio_output_slot": "scene_canvas_image",
+            "prompt_action_media": {
+                "image_roles": [
+                    "pose_reference",
+                    "character_reference"
+                ]
+            },
+            "director_capability": {
+                "image_policy": "required",
+                "audio_policy": "forbidden",
+                "video_policy": "forbidden",
+                "min_images": 2,
+                "max_images": 2,
+                "image_modes": [
+                    "reference_set"
+                ],
+                "audio_output": "silent",
+                "mixed_segments": false
+            },
+            "disvisible": [
+                "scene_additional_prompt",
+                "scene_video",
+                "scene_audio",
+                "scene_input_image2",
+                "scene_refiner_model",
+                "scene_var_number2",
+                "scene_var_number3",
+                "scene_var_number4",
+                "scene_switch_option1",
+                "scene_switch_option2",
+                "scene_additional_prompt_2",
+                "scene_var_number5",
+                "scene_var_number6",
+                "scene_var_number7",
+                "scene_var_number8",
+                "scene_var_number9",
+                "scene_var_number10",
+                "scene_switch_option3",
+                "scene_switch_option4",
+                "sam3_input_video",
+                "sam3_mask_video"
+            ],
             "task_method": {
-                "QwenPose": "qwenedit_pose_cn"
+                "QwenPose": "qwenedit_pose_cn",
+                "QwenPose Turbo": "qwenedit_pose_cn"
             },
             "prompt": {
-                "QwenPose": "replace the pose of <image 2> with the pose of <image 1>. keep the character of <image 2>"
+                "QwenPose": "replace the pose of <image 2> with the pose of <image 1>. keep the character of <image 2>",
+                "QwenPose Turbo": "replace the pose of <image 2> with the pose of <image 1>. keep the character of <image 2>"
             },
             "agent_prompt": {
-                "QwenPose": "Write one self-contained Qwen Image 2.1 pose-editing instruction using exactly two ordered images and return only the final prompt in the user's language. Treat <image 1> as the pose reference exported by Pose Studio into the Studio canvas. Treat <image 2> as the character and original scene in the first extra image slot. Replace the pose of <image 2> with the pose of <image 1>, including visible body orientation, limb positions, and gestures. Keep the character of <image 2>. Preserve <image 2>'s identity, appearance, clothing, worn accessories, background, surrounding people and objects, camera view, lighting, and visual style unless the user explicitly requests another change. Preserve only details the user has not asked to change; do not require preserving the source pose. Do not copy <image 1>'s character, clothing, mannequin appearance, background, or lighting. Keep the image order unchanged and use <image 1> and <image 2>, not H3 <Picture N> labels. Do not invent missing references, objects, text, masks, video, or audio. Do not add output-size instructions, explanations, or JSON."
+                "QwenPose": "Write one concise Qwen Image 2.1 pose-editing instruction using exactly two ordered images and return only the final prompt in the user's language. Treat <image 1> as the pose reference and target camera framing exported by Pose Studio into the Studio canvas. Treat <image 2> as the character and original scene in the first extra image slot. Replace the pose of <image 2> with the pose of <image 1>. Match visible body orientation, head direction, limb positions, gestures, camera viewpoint, perspective, shot size, subject scale and placement, and visible crop from <image 1>. Camera changes made in Pose Studio are part of the requested transfer even when the text only says pose transfer. A close-up or upper-body reference must remain that close-up or upper-body crop; do not adapt it back to the source full-length framing or invent off-frame limbs. Keep the character of <image 2>: preserve identity, facial features, hairstyle, natural body proportions, clothing design, accessories, environment appearance, lighting, and photographic or illustration style. Allow the environment's viewpoint and visible area, clothing folds, and carried items to follow the target pose and framing. Preserve only compatible details; do not require preserving the source pose, camera view, composition, full-length framing, or exact background-object positions. Explicit user constraints take precedence. Describe only visible differences; do not invent a pronounced head tilt or a precise camera angle. Avoid exhaustive source-object lists and blanket instructions such as do not alter any other details when the view changes. Do not copy <image 1>'s mannequin identity, gray material, white background, or lighting. Keep the image order unchanged and use <image 1> and <image 2>, not H3 <Picture N> labels. Do not invent missing references, objects, text, masks, video, or audio. Do not add pixel dimensions, explanations, or JSON.",
+                "QwenPose Turbo": "Write one concise Qwen Image 2.1 pose-editing instruction using exactly two ordered images and return only the final prompt in the user's language. Treat <image 1> as the pose reference and target camera framing exported by Pose Studio into the Studio canvas. Treat <image 2> as the character and original scene in the first extra image slot. Replace the pose of <image 2> with the pose of <image 1>. Match visible body orientation, head direction, limb positions, gestures, camera viewpoint, perspective, shot size, subject scale and placement, and visible crop from <image 1>. Camera changes made in Pose Studio are part of the requested transfer even when the text only says pose transfer. A close-up or upper-body reference must remain that close-up or upper-body crop; do not adapt it back to the source full-length framing or invent off-frame limbs. Keep the character of <image 2>: preserve identity, facial features, hairstyle, natural body proportions, clothing design, accessories, environment appearance, lighting, and photographic or illustration style. Allow the environment's viewpoint and visible area, clothing folds, and carried items to follow the target pose and framing. Preserve only compatible details; do not require preserving the source pose, camera view, composition, full-length framing, or exact background-object positions. Explicit user constraints take precedence. Describe only visible differences; do not invent a pronounced head tilt or a precise camera angle. Avoid exhaustive source-object lists and blanket instructions such as do not alter any other details when the view changes. Do not copy <image 1>'s mannequin identity, gray material, white background, or lighting. Keep the image order unchanged and use <image 1> and <image 2>, not H3 <Picture N> labels. Do not invent missing references, objects, text, masks, video, or audio. Do not add pixel dimensions, explanations, or JSON."
             },
             "prompt_skill_docs": {
                 "image_edit": {
-                    "en": ["qwen_image21_i2i_en.md"],
-                    "cn": ["qwen_image21_i2i_cn.md"]
+                    "en": [
+                        "qwen_image21_pose_en.md"
+                    ],
+                    "cn": [
+                        "qwen_image21_pose_cn.md"
+                    ]
                 }
             },
             "image_preprocessor_method": {
-                    "QwenPose": [["-normalization"]]
+                "QwenPose": [
+                    [
+                        "-normalization"
+                    ]
+                ],
+                "QwenPose Turbo": [
+                    [
+                        "-normalization"
+                    ]
+                ]
             },
             "var_number_title": "Reference Resolution (0 = Original)",
             "var_number_min": 0,
             "var_number_max": 4096,
             "var_number_step": 32,
-            "var_number": {"QwenPose": 1024},
-            "overwrite_step": {"QwenPose": 8},
-            "overwrite_step_min": 1,
-            "overwrite_step_max": 50,
-            "resolution_control": {
-            "mode": "image_keep_input_area",
-            "source": "scene_canvas",
-            "base_width": 1024,
-            "base_height": 1024,
-            "quantize": 32,
-            "interactive": true,
-            "frontend_preprocess": true,
-            "preprocess_target": "image",
-            "preprocess_fit": "proportional"
+            "var_number": {
+                "QwenPose": 1024,
+                "QwenPose Turbo": 1024
             },
-            "aspect_ratio": ["1024|1:1", "1536|1:1", "2048|1:1","origin|Original"]
+            "overwrite_step": {
+                "QwenPose": 25,
+                "QwenPose Turbo": 8
+            },
+            "overwrite_step_min": {
+                "QwenPose": 1,
+                "QwenPose Turbo": 8
+            },
+            "overwrite_step_max": {
+                "QwenPose": 50,
+                "QwenPose Turbo": 8
+            },
+            "resolution_control": {
+                "mode": "image_keep_input_area",
+                "source": "scene_canvas",
+                "base_width": 1024,
+                "base_height": 1024,
+                "quantize": 32,
+                "interactive": true,
+                "frontend_preprocess": true,
+                "preprocess_target": "image",
+                "preprocess_fit": "proportional"
+            },
+            "aspect_ratio": [
+                "1024|1:1",
+                "1536|1:1",
+                "2048|1:1",
+                "origin|Original"
+            ],
+            "steps_readonly": {
+                "QwenPose": false,
+                "QwenPose Turbo": true
+            },
+            "sampler": {
+                "QwenPose": "euler",
+                "QwenPose Turbo": "euler"
+            },
+            "scheduler": {
+                "QwenPose": "simple",
+                "QwenPose Turbo": "simple"
+            },
+            "sampling_sigmas": {
+                "QwenPose": "",
+                "QwenPose Turbo": "1,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0"
+            },
+            "theme_disinteractive": {
+                "QwenPose Turbo": [
+                    "scene_steps",
+                    "overwrite_step",
+                    "sampler_name",
+                    "scheduler_name"
+                ]
+            },
+            "loras": {
+                "QwenPose": [
+                    [
+                        "VNCCS_QI2_PoseStudioV1.1.safetensors",
+                        1.0
+                    ],
+                    [
+                        "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
+                        0.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ]
+                ],
+                "QwenPose Turbo": [
+                    [
+                        "VNCCS_QI2_PoseStudioV1.1.safetensors",
+                        1.0
+                    ],
+                    [
+                        "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ]
+                ]
+            }
         }
     },
     "default_model": "qwen_image_2.1_int8_convrot.safetensors",
@@ -83,7 +226,7 @@
         ],
         [
             "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
-            1.0
+            0.0
         ],
         [
             "None",
@@ -107,7 +250,7 @@
     "default_aspect_ratio": "1024*1024",
     "default_resolution_quantize_step": 32,
     "default_image_number": 1,
-    "default_overwrite_step": 8,
+    "default_overwrite_step": 25,
     "default_prompt": "replace the pose of <image 2> with the pose of <image 1>. keep the character of <image 2>",
     "default_prompt_negative": "",
     "checkpoint_downloads": {},

@@ -443,7 +443,6 @@
         }
 
         function generationConfigValueForPresetSchema(preset, key, value) {
-            if (key !== 'overwrite_step') return value;
             const props = getSceneGenerationConfigPropsForPresetNode(preset, key);
             if (!props || props.interactive !== false) return value;
             const fixedValue = props.value ?? getSceneGenerationConfigDefaultForPresetNode(preset, key);
@@ -482,6 +481,32 @@
                 )
             }));
             const defaults = presetThemeDefaults(node, theme);
+            const nextThemeInfo = getSceneThemeInfoForPresetNode(node);
+            const generationDefaults = {};
+            ['overwrite_step', 'sampler_name', 'scheduler_name'].forEach((key) => {
+                if (Object.prototype.hasOwnProperty.call(defaults, key)) {
+                    generationDefaults[key] = defaults[key];
+                }
+            });
+            if (Object.keys(generationDefaults).length) {
+                const config = cloneRunValue(node.generation_config, {}) || {};
+                config.overrides = Object.assign({}, config.overrides || {}, generationDefaults);
+                Object.assign(node, buildNodeFieldPatch(node, 'generation_config', config));
+                const external = config.source_node_id ? getNode(config.source_node_id) : null;
+                if (external?.type === 'config' && external.config_kind === 'advanced') {
+                    configCall('applyConfigNodeToPreset', undefined, external);
+                }
+            }
+            const themeLoras = nextThemeInfo.models_config_defaults?.loras;
+            if (Array.isArray(themeLoras)) {
+                const config = cloneRunValue(node.models_config, {}) || {};
+                const rows = cloneRunValue(config.overrides?.loras ?? config.defaults?.loras, []) || [];
+                themeLoras.forEach((row, index) => {
+                    if (row && row.model && row.model !== 'None') rows[index] = cloneRunValue(row, {});
+                });
+                config.overrides = Object.assign({}, config.overrides || {}, { loras: rows });
+                Object.assign(node, buildNodeFieldPatch(node, 'models_config', config));
+            }
             const paramsPatch = {};
             const visibleParams = presetThemeCall('getVisiblePresetParams', [], node) || [];
             visibleParams.forEach((param) => {

@@ -4,7 +4,7 @@
       "prompt": "", "additional_prompt": "",
       "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
       "inpaint_image": "None", "inpaint_mask": "None",
-      "width": 1024, "height": 1024, "cfg": 1, "steps": 8,
+      "width": 1024, "height": 1024, "cfg": 1, "steps": 25,
       "var_number": 0, "var_number2": 32, "var_number3": 0, "var_number4": 0,
       "var_number5": 0, "var_number6": 0, "var_number7": 15, "var_number8": 15,
       "var_number9": 15, "var_number10": 15,
@@ -34,7 +34,7 @@
     "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}
   },
   "turbo_lora": {
-    "inputs": {"lora_name": "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors", "strength_model": 1, "model": ["6", 0]},
+    "inputs": {"lora_name": "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors", "strength_model": 0.0, "model": ["6", 0]},
     "class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_2"}
   },
   "simpai_lora_stack_main": {
@@ -77,8 +77,20 @@
     "class_type": "KSampler", "_meta": {"title": "Qwen Outpaint Sampler"}
   },
   "12": {
-    "inputs": {"samples": ["11", 0], "vae": ["5", 0]},
-    "class_type": "VAEDecode", "_meta": {"title": "VAE Decode"}
+    "inputs": {
+      "samples": [
+        "simpai_sampling_output",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
   },
   "13": {
     "inputs": {"image": ["12", 0]}, "class_type": "SplitImageWithAlpha"
@@ -90,5 +102,81 @@
   "15": {
     "inputs": {"images": ["14", 0]},
     "class_type": "SaveImageWebsocket", "_meta": {"title": "SaveImageWebsocket"}
+  },
+  "simpai_sampling_sigmas": {
+    "inputs": {
+      "sigmas": "1,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "SimpAI Sampling Sigmas"
+    }
+  },
+  "simpai_sampler_select": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Turbo Euler"
+    }
+  },
+  "simpai_sampler_custom": {
+    "inputs": {
+      "model": [
+        "7",
+        0
+      ],
+      "add_noise": true,
+      "noise_seed": [
+        "2",
+        0
+      ],
+      "cfg": [
+        "1",
+        8
+      ],
+      "positive": [
+        "10",
+        0
+      ],
+      "negative": [
+        "10",
+        1
+      ],
+      "sampler": [
+        "simpai_sampler_select",
+        0
+      ],
+      "sigmas": [
+        "simpai_sampling_sigmas",
+        0
+      ],
+      "latent_image": [
+        "10",
+        2
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "Turbo Sampling"
+    }
+  },
+  "simpai_sampling_output": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "11",
+        0
+      ],
+      "on_true": [
+        "simpai_sampler_custom",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "SimpAI Sampling Branch"
+    }
   }
 }

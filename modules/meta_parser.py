@@ -139,6 +139,9 @@ def scene_localized_text(state, scenes, key, default="", theme=None):
         theme = _resolve_scene_theme_name(scenes, theme or state.get("scene_theme") or state.get("__scene_theme"))
         if theme in value:
             value = value[theme]
+        if isinstance(value, dict):
+            lang = str(state.get("__lang") or "en").lower()
+            value = value.get("en", default) if lang.startswith("en") else value.get("cn", value.get("zh", value.get("en", default)))
     return localized_ui_text(state, default if value is None else value)
 
 
@@ -154,23 +157,33 @@ def _scene_frontend_from_state_or_scene(state_or_scene):
     return state_or_scene
 
 
-def _scene_disinteractive_list(scenes):
+def _scene_disinteractive_list(scenes, theme=None):
     if not isinstance(scenes, dict):
         return []
     raw = scenes.get("disinteractive", [])
-    if isinstance(raw, list):
-        return [str(item) for item in raw]
-    if isinstance(raw, str):
-        return [item.strip() for item in raw.split(",") if item.strip()]
-    return []
+    result = [str(item) for item in raw] if isinstance(raw, list) else (
+        [item.strip() for item in raw.split(",") if item.strip()] if isinstance(raw, str) else []
+    )
+    themed = scenes.get("theme_disinteractive", {})
+    if isinstance(themed, dict):
+        for item in themed.get(theme, []):
+            if str(item) not in result:
+                result.append(str(item))
+    return result
 
 
-def _scene_standard_steps_readonly(state_or_scene):
+def _scene_standard_steps_readonly(state_or_scene, theme=None):
     scenes = _scene_frontend_from_state_or_scene(state_or_scene)
-    hidden = set(scene_disvisible_with_optional_inputs(scenes))
-    disabled = set(_scene_disinteractive_list(scenes))
+    if theme is None and isinstance(state_or_scene, dict):
+        theme = state_or_scene.get("scene_theme") or state_or_scene.get("__scene_theme")
+    readonly = scenes.get("steps_readonly", False)
+    if isinstance(readonly, dict):
+        readonly = readonly.get(theme or next(iter(readonly), ""), False)
+    hidden = set(scene_disvisible_with_optional_inputs(scenes, theme))
+    disabled = set(_scene_disinteractive_list(scenes, theme))
     return (
-        "scene_steps" in hidden
+        readonly is True
+        or "scene_steps" in hidden
         or "scene_steps" in disabled
         or "overwrite_step" in disabled
     )
@@ -536,11 +549,29 @@ def switch_scene_theme_standard_generation_defaults(state, theme=None):
     if isinstance(state, dict) and resolved_theme:
         state["scene_theme"] = resolved_theme
     update = _scene_generation_step_update_props(state, resolved_theme)
-    update["interactive"] = not _scene_standard_steps_readonly(state)
+    update["interactive"] = not _scene_standard_steps_readonly(state, resolved_theme)
+    sigmas = modules.flags.get_value_by_scene_theme(state, resolved_theme, "sampling_sigmas", "")
+    update["info"] = localized_ui_text(state, "Fixed 8-step sigmas") if sigmas else None
     if step_value is None:
         return gr_update(**update)
     update["value"] = step_value
     return gr_update(**update)
+
+def switch_scene_theme_standard_sampling_defaults(state, theme=None):
+    scenes = state.get("scene_frontend", {}) if isinstance(state, dict) else {}
+    resolved_theme = _resolve_scene_theme_name(scenes, theme)
+    disabled = set(_scene_disinteractive_list(scenes, resolved_theme))
+    sigmas = modules.flags.get_value_by_scene_theme(state, resolved_theme, "sampling_sigmas", "")
+    updates = []
+    for control, key in (("sampler_name", "sampler"), ("scheduler_name", "scheduler")):
+        value = modules.flags.get_value_by_scene_theme(state, resolved_theme, key, None)
+        update = gr_update() if value is None else gr_update(
+            value=value, interactive=control not in disabled,
+        )
+        if control == "scheduler_name" and "sampling_sigmas" in scenes:
+            update["visible"] = not bool(sigmas)
+        updates.append(update)
+    return updates
 
 
 def switch_scene_theme_select_with_standard_generation_defaults(state, theme=None):
@@ -622,7 +653,7 @@ def switch_scene_theme(state, image_number, canvas_image, input_image1, addition
     scenes = state.get("scene_frontend",{})
     theme = _resolve_scene_theme_name(scenes, theme)
     visible = scene_disvisible_with_optional_inputs(scenes, theme)
-    inter = scenes.get('disinteractive', [])
+    inter = _scene_disinteractive_list(scenes, theme)
     input_image_number = 1 if 'scene_canvas_image' not in visible or 'scene_input_image1' not in visible else 0
     input_image_number = 2 if 'scene_canvas_image' not in visible and 'scene_input_image1' not in visible else input_image_number
     refer_image_number = sum(1 for slot in SCENE_INPUT_IMAGE_SLOTS if slot not in visible)
@@ -924,16 +955,19 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         return gr_update(value=value, visible=control_name not in visible_items, interactive=control_name not in interactive_items)
 
     def _layout_overwrite_step_update(value, visible_items, interactive_items):
-        readonly = is_scene_frontend and _scene_standard_steps_readonly(enginedata_dict)
+        readonly = is_scene_frontend and _scene_standard_steps_readonly(enginedata_dict, scene_theme_default)
         update = {
             "visible": "overwrite_step" not in visible_items,
             "interactive": "overwrite_step" not in interactive_items and not readonly,
             "minimum": -1,
             "maximum": 200,
             "step": 1,
+            "info": None,
         }
         if is_scene_frontend:
             update.update(_scene_generation_step_update_props(enginedata_dict, scene_theme_default))
+            if modules.flags.get_value_by_scene_theme(enginedata_dict, scene_theme_default, "sampling_sigmas", ""):
+                update["info"] = localized_ui_text(state_params, "Fixed 8-step sigmas")
         if value is not None:
             update["value"] = value
         return gr_update(**update)
@@ -941,7 +975,10 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     def _layout_dropdown_value_visible_inter(choices, value, control_name, visible_items, interactive_items):
         update = {
             "choices": choices,
-            "visible": control_name not in visible_items,
+            "visible": control_name not in visible_items and not (
+                is_scene_frontend and control_name == "scheduler_name"
+                and modules.flags.get_value_by_scene_theme(enginedata_dict, scene_theme_default, "sampling_sigmas", "")
+            ),
             "interactive": control_name not in interactive_items,
         }
         if value is not None:
@@ -1023,6 +1060,12 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     preset_guidance_scale = _preset_float_value('guidance_scale', 'Guidance Scale')
     preset_sampler = _preset_str_value('sampler', 'Sampler')
     preset_scheduler = _preset_str_value('scheduler', 'Scheduler')
+    if is_scene_frontend:
+        scenes = enginedata_dict.get("scene_frontend", {})
+        scene_state = {"scene_frontend": scenes}
+        preset_sampler = modules.flags.get_value_by_scene_theme(scene_state, scene_theme_default, "sampler", preset_sampler)
+        preset_scheduler = modules.flags.get_value_by_scene_theme(scene_state, scene_theme_default, "scheduler", preset_scheduler)
+        inter = list(dict.fromkeys([*inter, *_scene_disinteractive_list(scenes, scene_theme_default)]))
 
     results = [params_backend]
     mobile_advanced_collapsed = bool(state_params.get("__is_mobile", False))
@@ -1157,7 +1200,11 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             themes = [theme for theme in themes if isinstance(theme, str) and theme]
         theme_default = scene_theme_default if scene_theme_default in themes else (themes[0] if themes else None)
         themes_title = scene_localized_text(state_params, scenes, 'theme_title', '')
-        scene_theme_update = get_layout_update_label_and_choice_visible_inter(themes_title, themes, theme_default, 'scene_theme', visible, inter)
+        theme_choices = [
+            (scene_localized_text(state_params, scenes, 'theme_labels', theme, theme=theme), theme)
+            for theme in themes
+        ] if scenes.get('theme_labels') else themes
+        scene_theme_update = get_layout_update_label_and_choice_visible_inter(themes_title, theme_choices, theme_default, 'scene_theme', visible, inter)
         results.append(scene_theme_update)
         if simpai_ui_trace_enabled():
             try:

@@ -154,6 +154,15 @@
                         undefined, configNode, 'overwrite_step');
                     if (fixedStep !== undefined) defaults.overwrite_step = fixedStep;
                 }
+                for (const [key, alias] of [['sampler_name', 'sampler'], ['scheduler_name', 'scheduler']]) {
+                    const props = call(sceneSource, 'getSceneGenerationConfigPropsForConfigNode', {}, configNode, key) || {};
+                    if (props.interactive !== false) continue;
+                    delete overrides[key];
+                    delete overrides[alias];
+                    const fixedValue = props.value ?? call(sceneSource,
+                        'getSceneGenerationConfigDefaultForConfigNode', undefined, configNode, key);
+                    if (fixedValue !== undefined) defaults[key] = fixedValue;
+                }
             }
             Object.assign(preset, buildPresetConfigPatch(preset, {
                 configKey,

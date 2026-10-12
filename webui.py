@@ -12421,8 +12421,9 @@ with shared.gradio_root:
             if not modules.meta_parser.scene_theme_event_matches_preset(state, source_preset):
                 topbar_params = topbar.update_topbar_js_params(state, include_canvas_catalogs=False)[0]
                 topbar_params["__scene_theme_event_rejected"] = True
-                return state, gr_update(), topbar_params
+                return state, gr_update(), topbar_params, gr_update(), gr_update()
             state, overwrite_step_update = modules.meta_parser.switch_scene_theme_select_with_standard_generation_defaults(state, selected_theme)
+            sampling_updates = modules.meta_parser.switch_scene_theme_standard_sampling_defaults(state, selected_theme)
             if state_rehydrated:
                 topbar_params = dict(event_context) if isinstance(event_context, dict) else {}
                 topbar_params.update(
@@ -12448,10 +12449,10 @@ with shared.gradio_root:
             else:
                 topbar_params = topbar.update_topbar_js_params(state, include_canvas_catalogs=False)[0]
             topbar_params["__scene_theme_event_rejected"] = False
-            return state, overwrite_step_update, topbar_params
+            return state, overwrite_step_update, topbar_params, *sampling_updates
 
         # Gradio 6 does not continue .then after a JS-only dependency.
-        scene_theme.input(switch_scene_theme_ui_state, inputs=[state_topbar, scene_theme, system_params], outputs=[state_topbar, overwrite_step, system_params], queue=False, show_progress=False, js='(state,theme,params)=>{try{const pending=(typeof topbarPendingPreset!=="undefined"&&topbarPendingPreset&&Date.now()<topbarPendingPresetUntil)?topbarPendingPreset:""; const latest=(typeof topbarLastPreset!=="undefined"&&topbarLastPreset)?topbarLastPreset:""; const source=String((state&&state.__preset)||pending||latest||(params&&params.__scene_theme_preset)||(params&&params.__preset)||"").trim(); return [state,theme,Object.assign({},params||{},{__scene_theme_event_preset:source})];}catch(e){console.warn("[UI-TRACE] scene_theme_event_context_failed",e);return [state,theme,params];}}') \
+        scene_theme.input(switch_scene_theme_ui_state, inputs=[state_topbar, scene_theme, system_params], outputs=[state_topbar, overwrite_step, system_params, sampler_name, scheduler_name], queue=False, show_progress=False, js='(state,theme,params)=>{try{const pending=(typeof topbarPendingPreset!=="undefined"&&topbarPendingPreset&&Date.now()<topbarPendingPresetUntil)?topbarPendingPreset:""; const latest=(typeof topbarLastPreset!=="undefined"&&topbarLastPreset)?topbarLastPreset:""; const source=String((state&&state.__preset)||pending||latest||(params&&params.__scene_theme_preset)||(params&&params.__preset)||"").trim(); return [state,theme,Object.assign({},params||{},{__scene_theme_event_preset:source})];}catch(e){console.warn("[UI-TRACE] scene_theme_event_context_failed",e);return [state,theme,params];}}') \
                    .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
                    .then(_sync_scene_model_params_for_theme, inputs=[state_topbar, model_params_state], outputs=[model_params_state] + model_bridge_rehydrate_targets + [models_js_panel, models_js_payload, models_nav_rehydrate_payload], queue=False, show_progress=False) \
                    .then(fn=lambda model_state: None, inputs=[model_params_state], outputs=None, js="(modelState)=>{try{window.simpleaiApplyPresetModelsPanelState?.({seq:String(Date.now()),model_state:modelState});}catch(e){console.warn('[UI-TRACE] scene_theme_models_panel_apply_failed',e);}return [modelState];}", queue=False, show_progress=False) \

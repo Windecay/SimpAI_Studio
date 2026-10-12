@@ -83,6 +83,11 @@ def _model_type_from_name(model_name):
 def get_comfy_task(user_did, task_class, task_name, task_method, default_params, input_images, options=None):
     #print(f'task_class:{task_class}, task_name:{task_name}, task_method:{task_method}')
     total_steps = default_params.pop("display_steps", default_params['steps'])
+    sampling_sigmas = default_params.get("sampling_sigmas")
+    if sampling_sigmas is not None:
+        default_params["use_sampling_sigmas"] = bool(sampling_sigmas)
+        if sampling_sigmas:
+            total_steps = default_params["steps"] = len(sampling_sigmas.split(",")) - 1
     progress_profile = build_progress_profile(task_method, default_params, total_steps)
     if progress_profile is not None:
         total_steps = progress_profile.total_steps
@@ -125,6 +130,9 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         else:
             default_params.pop("i2i_clip_type", None)
     comfy_params = ComfyTaskParams(default_params, user_did)
+    if sampling_sigmas is not None:
+        comfy_params.update_mapping_rule("sampling_sigmas", "ManualSigmas:SimpAI Sampling Sigmas:sigmas")
+        comfy_params.update_mapping_rule("use_sampling_sigmas", "ComfySwitchNode:SimpAI Sampling Branch:switch")
     if "qwen_image21" in task_method_l:
         comfy_params.update_mapping_rule("pe_model", "SimpAIQwenImage21TextGenerate:Qwen Image 2.1 PE:pe_model")
     if "scene_" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):

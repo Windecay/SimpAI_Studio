@@ -325,6 +325,28 @@
       "reason": "Qwen Image 2.1 PE 图像编辑范围、多图角色、源图保留和比例规则，按 SimpAI 运行时整理。"
     },
     {
+      "key": "qwen_image21_pose_en",
+      "title": "Qwen Image 2.1 Pose and Camera Transfer",
+      "doc": "qwen_image21_pose_en.md",
+      "language": "en",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/qwen_image21_pose_en.md",
+      "reason": "QwenPose image roles, visible pose and camera framing transfer, and compatible source preservation."
+    },
+    {
+      "key": "qwen_image21_pose_cn",
+      "title": "Qwen Image 2.1 姿态与相机视图迁移",
+      "doc": "qwen_image21_pose_cn.md",
+      "language": "cn",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/qwen_image21_pose_cn.md",
+      "reason": "QwenPose 的图片角色、可见姿态与相机视图迁移，以及与目标构图兼容的原图保留要求。"
+    },
+    {
       "key": "runtime_canvas_snapshot",
       "title": "Runtime Canvas Snapshot",
       "doc": "",

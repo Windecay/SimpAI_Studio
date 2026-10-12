@@ -4,7 +4,7 @@
       "prompt": "Change the camera angle from <image2> to <image1>.", "additional_prompt": "",
       "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
       "inpaint_image": "None", "inpaint_mask": "None",
-      "width": 1024, "height": 1024, "cfg": 3, "steps": 8,
+      "width": 1024, "height": 1024, "cfg": 3, "steps": 25,
       "var_number": 1024, "var_number2": 0, "var_number3": 0, "var_number4": 0,
       "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
       "var_number9": 0, "var_number10": 0,
@@ -65,9 +65,20 @@
     "_meta": {"title": "KSampler"}
   },
   "11": {
-    "inputs": {"samples": ["10", 0], "vae": ["5", 0]},
+    "inputs": {
+      "samples": [
+        "simpai_sampling_output",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
     "class_type": "VAEDecode",
-    "_meta": {"title": "VAE Decode"}
+    "_meta": {
+      "title": "VAE Decode"
+    }
   },
   "12": {
     "inputs": {"images": ["11", 0]},
@@ -140,7 +151,7 @@
     "_meta": {"title": "lora_1"}
   },
   "41": {
-    "inputs": {"model": ["40", 0], "lora_name": "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors", "strength_model": 1},
+    "inputs": {"model": ["40", 0], "lora_name": "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors", "strength_model": 0.0},
     "class_type": "LoraLoaderModelOnly",
     "_meta": {"title": "lora_2"}
   },
@@ -191,5 +202,81 @@
     },
     "class_type": "SimpAILoraStack",
     "_meta": {"title": "lora_stack_main"}
+  },
+  "simpai_sampling_sigmas": {
+    "inputs": {
+      "sigmas": "1,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "SimpAI Sampling Sigmas"
+    }
+  },
+  "simpai_sampler_select": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Turbo Euler"
+    }
+  },
+  "simpai_sampler_custom": {
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "add_noise": true,
+      "noise_seed": [
+        "2",
+        0
+      ],
+      "cfg": [
+        "1",
+        8
+      ],
+      "positive": [
+        "7",
+        0
+      ],
+      "negative": [
+        "7",
+        1
+      ],
+      "sampler": [
+        "simpai_sampler_select",
+        0
+      ],
+      "sigmas": [
+        "simpai_sampling_sigmas",
+        0
+      ],
+      "latent_image": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "Turbo Sampling"
+    }
+  },
+  "simpai_sampling_output": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "10",
+        0
+      ],
+      "on_true": [
+        "simpai_sampler_custom",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "SimpAI Sampling Branch"
+    }
   }
 }
