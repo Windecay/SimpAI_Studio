@@ -110,32 +110,27 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
     rules = (
         f"Hidden state director. Return JSON only; prose values use {language}. "
         f"Speaker={speaker}; user intent={intent}.\n"
-        "Use table target_ref/actor_ref only, never invented IDs or paths. "
-        "P0 is the player, never an NPC. An alias in dialogue is not a new entity. "
-        "Choose the affected entity, not automatically the speaker or actor. "
-        "For multi-target effects update exactly the named recipients; do not broadcast effects. "
-        "current_action describes its target's own action; state_text describes its target's condition. "
-        "Begin current_action with the target's table name. "
-        "Never copy spoken questions or threats into state_text. A question addressed to P0 is not "
-        "P0's condition. Describe the speaker's actual action in current_action, or omit a state patch. "
-        "Second person means P0 only without another addressee. "
-        "Do not infer a player target from operator pronouns or NPC dialogue when the player is absent. "
-        "Absent entities stay unchanged; only explicit unquoted user control naming the player may update "
-        "the absent player. Player status allows present/absent only. Selecting a speaker does not grant presence. "
-        "present_character_ids uses C refs only; P0 presence belongs in P0.status. "
-        "Story-control instructions establish facts without requiring the reply to repeat them; "
-        "story-control intent alone does not change presence.\n"
-        "Audit every new plot consequence against current state after each exchange, even without a direct "
-        "request for a state update. Interpret custom fields by meaning; action ability means capacity to act, "
-        "not obedience. No invented effects, thoughts, names or fields. Hypotheticals, questions, quoted "
-        "commands and attempts are not established outcomes. Do not replay old effects. "
-        "Use only listed fields; state_fields items use exact field_id and value. "
-        "Use set for new incremental facts; replace only with a complete concise current snapshot when old "
-        "text contradicts established facts; remove explicitly ended text states. Never clear state_fields. "
-        "Remove superseded claims in each changed field: no 'uninjured' after injury or 'bleeding' after it stops. "
-        "Treatment does not mean healed. Do not repeat unchanged facts in incremental patches. "
-        "Preserve unrelated traits and ongoing effects. Appearance changes belong to appearance. "
-        "evidence_id must quote the numbered latest-exchange source; never invent evidence.\n"
+        "Write turn_facts.observations FIRST: preserve exact spoken answers/instructions and their "
+        "present listeners before auditing state patches. A present addressee hears an ordinary spoken "
+        "reply; confusion alone is not deafness. Exclude explicit unconscious/deaf/distant listeners.\n"
+        "Use table target_ref/actor_ref only; no invented IDs/paths. P0 is the player, never an NPC; "
+        "dialogue aliases are not new entities. Choose the affected entity, not automatically the speaker or actor. "
+        "Multi-target effects update exactly named recipients, never all entities. "
+        "current_action is the target's own action and starts with its table name; state_text is its condition, "
+        "never spoken questions/threats. Second person means P0 only without another addressee. "
+        "Absent entities stay unchanged; only explicit unquoted user control naming P0 can update absent P0. "
+        "Never infer absent P0 from operator pronouns/NPC dialogue. Player status is present/absent only. "
+        "Selecting a speaker grants no presence. present_character_ids uses C refs; P0 uses P0.status. "
+        "Story control establishes facts without reply repetition but does not itself change presence.\n"
+        "Audit each new consequence against current state even without an update request. "
+        "Custom fields keep their meaning: action ability is capacity, not obedience. No invented effects, "
+        "thoughts/names/fields. Hypotheticals, questions, quoted commands and attempts are not outcomes. "
+        "Never replay old effects. Use listed fields only; state_fields uses exact field_id,value. "
+        "set adds incremental facts; replace needs a complete concise snapshot to correct contradictory text; "
+        "remove explicitly ended text states. Never clear state_fields. Remove superseded claims "
+        "(no uninjured after injury or bleeding after it stops); treatment is not healed. "
+        "Do not repeat unchanged facts; preserve unrelated traits/ongoing effects. Appearance uses appearance. "
+        "evidence_id references numbered latest-exchange source, never invented evidence.\n"
         + (
             "A separate numeric adjudicator owns ALL numeric fields. Do not output numeric state_fields; "
             "record physical/mental effects in text and turn_facts, including each affected recipient.\n"
@@ -145,14 +140,19 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         )
         + "Each patches item uses op,target_ref,field,value,evidence_id. "
         "Return patches and compact turn_facts (actions with actor_ref,target_ref,action,result,evidence_id; "
-        "state_changes with target_ref,fields,summary,evidence_id). Empty arrays are valid after auditing. "
-        "Do not write memory/world-book/chapter/image content. Set resource_signals flags only for durable "
-        "events, reusable lore, chapter changes or distinctive visual moments respectively."
+        "state_changes with target_ref,fields,summary,evidence_id; observations with text,known_by_refs,evidence_id). "
+        "Observations preserve concrete answers (names, places), never just 'confirmed details', "
+        "even without state changes. known_by_refs uses actual present witnesses. "
+        "Unspoken thoughts, offstage facts and private whispers are not shared with unrelated entities. "
+        "Every observation needs evidence_id; operator control alone grants no knowledge. "
+        "Empty arrays are valid after auditing. "
+        "No memory/world-book/chapter/image content; resource_signals flags durable events, lore, "
+        "chapter or distinctive visual changes."
     )
     shape = {
-        "patches": [],
-        "turn_facts": {"actions": [], "state_changes": [], "appearance_changes": [],
+        "turn_facts": {"observations": [], "actions": [], "state_changes": [], "appearance_changes": [],
                        "scene_changes": [], "durable_facts": [], "unchanged_entity_ids": []},
+        "patches": [],
         "resource_signals": {"memory": False, "world_book": False, "chapter": False, "visual": False},
     }
     sections = [
@@ -180,7 +180,10 @@ def resolve_evidence(row, catalog):
     raw = row.get("evidence_id", row.get("evidence_ids"))
     if isinstance(raw, str):
         raw = raw.strip()
-        if raw.startswith("["):
+        span = re.fullmatch(r"(user|reply)_(\d+)\s*[-\u2013]\s*\1_(\d+)", raw)
+        if span and 0 <= int(span[3]) - int(span[2]) < 8:
+            raw = [f"{span[1]}_{index}" for index in range(int(span[2]), int(span[3]) + 1)]
+        elif raw.startswith("["):
             try:
                 raw = json.loads(raw)
             except (ValueError, TypeError):
@@ -243,6 +246,13 @@ def decode_response(text, session, table, user_message="", assistant_reply=""):
         if not isinstance(value, dict):
             return value
         result = {key: convert(item) for key, item in value.items() if not key.startswith("_director_")}
+        if "known_by_refs" in result:
+            references = result.pop("known_by_refs")
+            result["known_by"] = [
+                by_ref[ref]["id"] for ref in references[:21]
+                if isinstance(ref, str) and ref in by_ref
+                and by_ref[ref]["type"] in {"player", "character"} and by_ref[ref].get("present")
+            ] if isinstance(references, list) else []
         for prefix in ("target", "actor"):
             key = f"{prefix}_ref"
             candidate = result.get(key)

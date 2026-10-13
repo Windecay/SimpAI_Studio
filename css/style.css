@@ -28190,6 +28190,159 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   }
 }
 
+.describe-vlm-chat-input-tools {
+  grid-column: 1 / 2;
+  grid-row: 3;
+  align-self: end;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  position: relative;
+  z-index: 3;
+  margin: 0 8px 8px 0;
+}
+
+.describe-vlm-chat-compose:has(.describe-vlm-chat-attachments[hidden]) .describe-vlm-chat-input-tools {
+  grid-row: 2;
+}
+
+.describe-vlm-chat-input-tools .describe-vlm-chat-thinking-toggle,
+.describe-vlm-chat-input-tools .describe-vlm-chat-context-usage {
+  margin: 0;
+}
+
+.describe-vlm-chat-input-tools > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  border-radius: 7px !important;
+}
+
+.describe-vlm-chat-input-tools > button[hidden],
+.describe-vlm-chat-input-assistant-menu[hidden],
+.describe-vlm-chat-input-polish-feedback[hidden],
+.describe-vlm-chat-input-polish-feedback [hidden] {
+  display: none !important;
+}
+
+.describe-vlm-chat-input-tools .describe-vlm-chat-input-polish {
+  color: #e6b578 !important;
+  background: color-mix(in srgb, #e6b578 9%, var(--describe-chat-panel-deep)) !important;
+}
+
+.describe-vlm-chat-input-polish.is-active {
+  color: #f3ca96 !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #e6b578 38%, transparent);
+}
+
+.describe-vlm-chat-input-tools > .describe-vlm-chat-input-assistant-menu-toggle {
+  width: 20px !important;
+  min-width: 20px !important;
+  margin-left: -4px;
+  color: var(--describe-chat-muted) !important;
+}
+
+.describe-vlm-chat-input-assistant-menu {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  right: 0;
+  min-width: 154px;
+  padding: 4px;
+  z-index: 4;
+  border: 1px solid var(--describe-chat-line-soft);
+  border-radius: 7px;
+  background: var(--describe-chat-panel-deep);
+  box-shadow: 0 3px 14px #0003;
+}
+
+.describe-vlm-chat-input-assistant-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100% !important;
+  min-height: 32px !important;
+  padding: 5px 8px !important;
+  border: 0 !important;
+  background: transparent !important;
+  text-align: left;
+  font-size: 12px;
+}
+
+.describe-vlm-chat-input-assistant-menu button:hover,
+.describe-vlm-chat-input-assistant-menu button:focus-visible {
+  background: color-mix(in srgb, #e6b578 12%, var(--describe-chat-panel-deep)) !important;
+}
+
+.describe-vlm-chat-input-polish-feedback {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  right: 0;
+  width: max-content;
+  max-width: min(440px, calc(100vw - 136px));
+  padding: 5px 8px;
+  border: 1px solid var(--describe-chat-line-soft);
+  border-radius: 7px;
+  background: var(--describe-chat-panel-deep);
+  box-shadow: 0 3px 14px #0003;
+  color: var(--describe-chat-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.describe-vlm-chat-input-polish-feedback > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.describe-vlm-chat-input-polish-feedback button {
+  flex: 0 0 24px;
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  padding: 0 !important;
+}
+
+.describe-vlm-chat-input-polish-feedback [data-describe-vlm-chat-input-polish-apply] {
+  color: var(--describe-chat-accent) !important;
+}
+
+.describe-vlm-chat-input-polish-feedback.is-error {
+  color: #f0a7a7;
+}
+
+.describe-vlm-chat-input-polish-feedback pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 5px 0 2px;
+  color: var(--describe-chat-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .describe-vlm-chat-input-tools {
+    gap: 5px;
+    margin: 0 6px 6px 0;
+  }
+
+  .describe-vlm-chat-input-tools > button {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+  }
+}
+
 html.simpai-h3-director #scene_director_compose,
 html:not(.simpai-h3-director) .simpai-h3-director-only {
   display: none !important;

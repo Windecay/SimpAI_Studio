@@ -14,7 +14,7 @@
       "title": {"en": "VOSR2 Image Upscale", "cn": "VOSR2 图像放大"},
       "priority": 950,
       "keywords": ["vosr2", "vosr", "图像超分", "图片超分", "图像放大", "图片放大", "image upscale", "image super-resolution"],
-      "sections": ["2026-10-03 VOSR2 Image Upscale / VOSR2 图像放大"]
+      "sections": ["VOSR2 Image Upscale"]
     },
     {
       "key": "h3",
@@ -25,28 +25,28 @@
         "h3", "minimax", "minimax h3", "minimax-h3", "r2v", "r2c", "r2i",
         "h3预设", "h3预置", "h3文生", "h3图生", "h3多参", "h3续写", "h3图编", "h3视频放大"
       ],
-      "sections": ["2026-08-24 MiniMax H3 Preset Family / H3 全系列"]
+      "sections": ["MiniMax H3 Preset Family"]
     },
     {
       "key": "face_swap",
       "title": {"en": "Face Swap", "cn": "换脸"},
       "priority": 900,
       "keywords": ["face swap", "faceswap", "换脸", "qwenfaceswap", "reactor", "swapface"],
-      "sections": ["2026-08-24 Face Swap And Motion Routed Leaf / 换脸与动作路由叶子"]
+      "sections": ["Face Swap And Motion"]
     },
     {
       "key": "detail_enhance",
       "title": {"en": "Detail Enhance", "cn": "细节增强"},
       "priority": 880,
       "keywords": ["enhance", "detail enhance", "增强修图", "修手", "修脸", "修眼", "手指", "面部修复"],
-      "sections": ["2026-07-30 Classic AIO Enhance Routing", "Image Editing / Retouching"]
+      "sections": ["Detail Enhancement", "Image Editing / Retouching"]
     },
     {
       "key": "private_profiles",
       "title": {"en": "Private Parameter Profiles", "cn": "私人参数预设"},
       "priority": 850,
       "keywords": ["parameter profile", "private profile", "参数预设", "私人参数", "保存的参数"],
-      "sections": ["2026-07-30 Private Parameter Profiles"]
+      "sections": ["Private Parameter Profiles"]
     },
     {
       "key": "model_readiness",
@@ -63,7 +63,7 @@
         "video", "视频", "t2v", "i2v", "文生视频", "图生视频", "动起来", "动画化",
         "dasiwa", "ltx", "bernini", "nvidia-vsr", "scail", "wan animate", "wan swap", "视频编辑", "视频超分", "视频放大", "视频续写"
       ],
-      "sections": ["2026-08-24 Video Workflow Routed Leaf / 视频工作流叶子"]
+      "sections": ["Video Generation And Editing"]
     },
     {
       "key": "qwen_pose",
@@ -71,7 +71,7 @@
       "priority": 710,
       "exclusive": true,
       "keywords": ["qwenpose", "qwen姿势", "qwen pose", "qwen2.1姿势", "qwen2.1 姿势", "qwen2.1 pose", "qwen 2.1 pose", "qwen 2.1 姿势"],
-      "sections": ["2026-10-04 Qwen2.1 Pose Editing / Qwen2.1 姿势编辑"]
+      "sections": ["Qwen2.1 Pose Editing"]
     },
     {
       "key": "qwen_outfit_swap",
@@ -79,7 +79,7 @@
       "priority": 705,
       "exclusive": true,
       "keywords": ["qwenoutfitswap", "qwen outfit swap", "outfitswap", "qwenreplace", "qwen replace", "qwen替换", "qwen换装", "换装", "试衣", "outfit swap", "clothing transfer", "virtual try-on"],
-      "sections": ["2026-10-05 Qwen Outfit Swap Sampling Mask / Qwen换装采样范围"]
+      "sections": ["Qwen Outfit Swap"]
     },
     {
       "key": "qwen_erase",
@@ -87,14 +87,14 @@
       "priority": 704,
       "exclusive": true,
       "keywords": ["qweneraser", "qwen eraser", "qwen erase", "qwen擦除", "qwen 擦除", "qwen2.1擦除", "qwen2.1 擦除"],
-      "sections": ["2026-10-05 Qwen Erase Preset"]
+      "sections": ["Qwen Erase"]
     },
     {
       "key": "pose_camera",
       "title": {"en": "Pose And Camera", "cn": "姿势与视角"},
       "priority": 700,
       "keywords": ["pose", "姿势", "姿态", "camera angle", "viewpoint", "视角", "角度", "multiangle", "gaussian", "高斯", "expression", "表情", "liveportrait"],
-      "sections": ["Face, Body, Pose, And Camera"]
+      "sections": ["Pose And Camera"]
     },
     {
       "key": "image_editing",
@@ -143,21 +143,21 @@
       "title": {"en": "Missing Media Recovery", "cn": "缺少素材处理"},
       "priority": 580,
       "keywords": ["needs_media", "missing media", "缺少图片", "缺少视频", "缺少素材", "上传图片", "上传视频", "附件"],
-      "sections": ["2026-07-30 Missing-media Recovery"]
+      "sections": ["Missing Media"]
     },
     {
       "key": "workflow_routing",
       "title": {"en": "Preset Routing And Follow-ups", "cn": "Preset 路由与后续编辑"},
       "priority": 560,
       "keywords": ["another one", "follow-up", "继续编辑", "再来一个", "沿用", "preset family", "预设系列"],
-      "sections": ["2026-07-30 Preset Family Routing And Follow-up Edits"]
+      "sections": ["Preset Routing And Follow-up Edits"]
     },
     {
       "key": "overview",
       "title": {"en": "Preset Guide Overview", "cn": "Preset 向导概览"},
       "priority": 0,
       "keywords": [],
-      "sections": ["2026-08-24 Preset Guide Routed Overview / 分层路由索引"]
+      "sections": ["Preset Guide Overview"]
     }
   ]
 }

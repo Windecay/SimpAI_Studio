@@ -259,7 +259,7 @@ class SimpAIQwen21EraseCrop:
                 "image": ("IMAGE",),
                 "prompt": ("STRING", {"default": "", "multiline": True}),
                 "max_resolution": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 32}),
-                "context_pixels": ("INT", {"default": 150, "min": 32, "max": 2048}),
+                "context_pixels": ("INT", {"default": 512, "min": 32, "max": 2048}),
             },
             "optional": {"mask_image": ("IMAGE",)},
         }
@@ -269,7 +269,7 @@ class SimpAIQwen21EraseCrop:
     FUNCTION = "prepare"
     CATEGORY = "SimpAI/image"
 
-    def prepare(self, image, prompt, max_resolution=0, context_pixels=150, mask_image=None):
+    def prepare(self, image, prompt, max_resolution=0, context_pixels=512, mask_image=None):
         if image is None:
             raise ValueError("Qwen erasing requires a source image.")
         source = image[:1]
@@ -285,8 +285,9 @@ class SimpAIQwen21EraseCrop:
         has_mask = len(rows) > 0
         x0, y0, x1, y1 = 0, 0, width, height
         if has_mask:
-            pad_x = max(context_pixels, min(512, math.ceil((int(columns[-1]) - int(columns[0]) + 1) / 4)))
-            pad_y = max(context_pixels, min(512, math.ceil((int(rows[-1]) - int(rows[0]) + 1) / 4)))
+            # Keep enough background visible even when the selection itself is large.
+            pad_x = max(context_pixels, math.ceil((int(columns[-1]) - int(columns[0]) + 1) / 2))
+            pad_y = max(context_pixels, math.ceil((int(rows[-1]) - int(rows[0]) + 1) / 2))
             x0, x1 = max(0, int(columns[0]) - pad_x), min(width, int(columns[-1]) + pad_x + 1)
             y0, y1 = max(0, int(rows[0]) - pad_y), min(height, int(rows[-1]) + pad_y + 1)
         crop = source[:, y0:y1, x0:x1]

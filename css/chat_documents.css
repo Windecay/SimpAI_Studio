@@ -1,0 +1,27 @@
+.describe-vlm-chat-documents { display: grid; gap: 4px; min-width: 0; width: 100%; margin: 5px 0; }
+.describe-vlm-chat-attachments .describe-vlm-chat-documents { max-height: 160px; overflow-y: auto; }
+.describe-vlm-chat-document-row { display: flex; gap: 6px; min-width: 0; align-items: center; border-bottom: 1px solid rgb(130 140 160 / 25%); }
+.describe-vlm-chat-document-row button { color: inherit; background: transparent; border: 0; padding: 6px; }
+.describe-vlm-chat-document-row .describe-vlm-chat-document-open { display: flex; gap: 9px; flex: 1; min-width: 0; text-align: left; align-items: center; }
+.describe-vlm-chat-document-open > i { color: #58b7c2; flex: 0 0 auto; }
+.describe-vlm-chat-document-open > span { display: grid; gap: 2px; min-width: 0; }
+.describe-vlm-chat-document-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.describe-vlm-chat-document-row small { color: var(--describe-chat-muted, #a4a8b4); font-size: 11px; }
+.describe-vlm-chat-document-preview {
+  box-sizing: border-box;
+  width: min(720px, calc(100vw - 20px));
+  height: min(720px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 14px;
+  border: 1px solid #707782;
+  border-radius: 6px;
+  color: var(--describe-chat-text, #e4e5e9);
+  background: var(--describe-chat-bg, #23252c);
+}
+.describe-vlm-chat-document-preview[open] { display: flex; flex-direction: column; gap: 8px; }
+.describe-vlm-chat-document-preview::backdrop { background: rgb(0 0 0 / 55%); }
+.describe-vlm-chat-document-preview header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.describe-vlm-chat-document-preview header strong { min-width: 0; overflow-wrap: anywhere; }
+.describe-vlm-chat-document-preview header button { flex: 0 0 32px; width: 32px; height: 32px; padding: 0; color: inherit; background: transparent; border: 1px solid #707782; border-radius: 4px; }
+.describe-vlm-chat-document-preview pre { min-height: 0; flex: 1; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: 13px/1.6 Consolas, monospace; }
+.describe-vlm-chat-document-preview small { color: #a4a8b4; }

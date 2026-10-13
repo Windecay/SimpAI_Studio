@@ -13918,6 +13918,7 @@ def _canvas_workbench_standalone_html(request: Request):
     css_paths = [
         webpath("css/video_region_selector.css"),
         webpath("css/style.css"),
+        webpath("css/chat_documents.css"),
         webpath("css/studio_help.css"),
         webpath("css/fa_all.min_6.5.2.css"),
         webpath("css/font_awesome_fix.css"),
@@ -13935,6 +13936,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/vlm_tool_runtime.js"),
         webpath("javascript/vendor/markdown-it/markdown-it-15.0.2.min.js"),
         webpath("javascript/chat_rich_text.js"),
+        webpath("javascript/chat_documents.js"),
         webpath("javascript/describe_vlm_chat.js"),
         webpath("javascript/webui_danbooru_autocomplete.js"),
         webpath("javascript/papaparse.min_5.4.1.js"),
@@ -17814,8 +17816,15 @@ async def describe_image_vlm_chat_cancel_endpoint(payload: dict = Body(default={
             f"{conversation_id}:context-summary",
             request_id,
         )
+        polish_canvas_result = canvas_vlm_runtime.request_canvas_vlm_cancel(
+            "", "", f"{conversation_id}:input-polish:{request_id}", request_id,
+        )
+        draft_canvas_result = canvas_vlm_runtime.request_canvas_vlm_cancel(
+            "", "", f"{conversation_id}:player-draft:{request_id}", request_id,
+        )
         result["canvas_cancelled"] = bool(
             canvas_result.get("cancelled") or summary_canvas_result.get("cancelled")
+            or polish_canvas_result.get("cancelled") or draft_canvas_result.get("cancelled")
         )
         return JSONResponse(result, status_code=200)
     except Exception as e:

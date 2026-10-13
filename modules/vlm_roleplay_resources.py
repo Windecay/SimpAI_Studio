@@ -7,6 +7,8 @@ import hashlib
 import json
 import re
 
+from modules import vlm_roleplay_cognition
+
 
 KINDS = ("memory", "world_book", "chapter")
 MAX_RESOURCE_SOURCE_CHARS = 1_000_000
@@ -369,7 +371,7 @@ def prompt_contract(plan, session, lang="cn"):
         "One object's origin or a single trace does not establish a repeatable world mechanism. "
         "Possession/return of a key and personal promises belong ONLY in memory, never world_book. "
         "Do NOT duplicate existing facts with new wording: use unchanged plus existing_ids. "
-        "Confirming or recalling an existing promise/rule/wound is unchanged, not a new memory. Preserve private knowledge.",
+        "Recalling existing facts is unchanged. known_by must list actual original witnesses; private thoughts stay with their owner.",
         f"chapter: write a cumulative summary of at most {MAX_CHAPTER_SUMMARY_WRITE_CHARS} characters, "
         "keeping established events and unresolved goals. "
         "Keep the current objective in the summary unless the source explicitly completes or replaces it. "
@@ -513,6 +515,13 @@ def validate_response(plan, response, session):
                         clean.pop(key, None)
             if kind == "memory":
                 if not existing:
+                    clean["known_by"] = vlm_roleplay_cognition.resolve_actor_ids(session, clean.get("known_by") or [])
+                    visibility = _text(clean.get("visibility"), 40).lower() or (
+                        "private" if clean.get("type") == "secret" else "public"
+                    )
+                    clean["visibility"] = (
+                        visibility if clean["known_by"] and visibility in {"public", "restricted", "private"} else "private"
+                    )
                     clean["chapter_id"] = task["chapter_id"]
                     clean["turn_id"] = task["turn_id"]
             target = accepted["chapter_update"]["summaries"] if kind == "chapter" else accepted[output_key]

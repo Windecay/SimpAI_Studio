@@ -34,6 +34,7 @@ class ChatStreamSession:
         self.events = deque()
         self.event_bytes = 0
         self.text_parts = []
+        self.reasoning_parts = []
         self.assistant_messages = {}
         self.status = None
         self.result_event = None
@@ -64,8 +65,11 @@ class ChatStreamSession:
             event_type = event.get("type")
             if event_type == "delta":
                 self.text_parts.append(str(event.get("text") or ""))
+            elif event_type == "reasoning_delta":
+                self.reasoning_parts.append(str(event.get("text") or ""))
             elif event_type == "reset":
                 self.text_parts.clear()
+                self.reasoning_parts.clear()
             elif event_type == "assistant_message":
                 message = event.get("message") or {}
                 if message.get("id"):
@@ -88,7 +92,7 @@ class ChatStreamSession:
             event_type = str(delta.get("type") or "").strip().lower()
             if event_type == "reset":
                 self.emit({"type": "reset"})
-            elif event_type in {"status", "progress", "assistant_message"}:
+            elif event_type in {"status", "progress", "assistant_message", "reasoning_delta"}:
                 self.emit({**delta, "type": event_type})
         elif delta:
             self.emit({"type": "delta", "text": str(delta)})
@@ -113,6 +117,8 @@ class ChatStreamSession:
                 }
                 if self.assistant_messages:
                     snapshot["messages"] = list(self.assistant_messages.values())
+                if self.reasoning_parts:
+                    snapshot["reasoning_text"] = "".join(self.reasoning_parts)
                 replay.append((
                     snapshot_sequence,
                     json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")),

@@ -1,5 +1,6 @@
 import base64
 import copy
+import hashlib
 import io
 import json
 import logging
@@ -20,6 +21,7 @@ import modules.describe_media as describe_media
 import modules.model_loader as model_loader
 import modules.util as util
 import modules.vlm_api_profiles as vlm_api_profiles
+import modules.vlm_roleplay_reply as vlm_roleplay_reply
 import shared
 from enhanced.vlm import VLM, vlm
 from enhanced.llamacpp_vlm import llamacpp_vlm
@@ -976,13 +978,15 @@ def canvas_custom_llm_run(
     if int(params.get("seed", -1)) >= 0:
         request_payload["seed"] = int(params.get("seed"))
     logger.info(
-        "Custom VLM request: model=%s, provider=%s, api_format=%s, stream=%s, thinking_requested=%s, thinking_parameters=%s",
+        "Custom VLM request: model=%s, provider=%s, api_format=%s, stream=%s, thinking_requested=%s, thinking_parameters=%s, request_id=%s, messages_sha256=%s",
         model, params.get("custom_provider") or "custom", api_format, stream_enabled, enable_thinking,
         {
             key: request_payload[key]
             for key in ("reasoning", "reasoning_effort", "enable_thinking", "thinking", "chat_template_kwargs")
             if key in request_payload
         },
+        request_id,
+        hashlib.sha256(json.dumps(messages, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest(),
     )
     main_started = time.monotonic()
     streamed_reasoning = ""
@@ -991,6 +995,8 @@ def canvas_custom_llm_run(
         streamed_meta = {}
         terminal_response = None
         last_stream_event = {}
+        stream_done = False
+        responses_events = False
         try:
             stream_url, stream_request_payload = prepare_completion_request(base_url, api_format, request_payload)
             for event in request_stream(
@@ -1007,13 +1013,31 @@ def canvas_custom_llm_run(
                         "request_id": request_id,
                         "error": "Stopped.",
                     }
-                if not isinstance(event, dict) or event.get("_done"):
+                if not isinstance(event, dict):
+                    continue
+                if event.get("_done"):
+                    stream_done = True
                     continue
                 last_stream_event = event
+                responses_events = responses_events or str(event.get("type") or "").startswith("response.")
                 completed = extract_stream_completion_response(event)
                 if completed is not None:
                     terminal_response = completed
-                streamed_reasoning += extract_stream_reasoning_delta(event)
+                elif not event.get("type") and (
+                    event.get("status") in {"completed", "incomplete", "failed"}
+                    or (
+                        isinstance(event.get("choices"), list) and event["choices"]
+                        and isinstance(event["choices"][0], dict)
+                        and isinstance(event["choices"][0].get("message"), dict)
+                        and event.get("object") != "chat.completion.chunk"
+                    )
+                ):
+                    # Some compatible services return one complete JSON object despite stream=true.
+                    terminal_response = event
+                reasoning_delta = extract_stream_reasoning_delta(event)
+                if reasoning_delta:
+                    streamed_reasoning += reasoning_delta
+                    stream_callback({"type": "reasoning_delta", "text": reasoning_delta})
                 delta = extract_stream_text_delta(event)
                 if delta:
                     streamed_parts.append(delta)
@@ -1025,6 +1049,10 @@ def canvas_custom_llm_run(
                     finish_reason = choices[0].get("finish_reason")
                     if finish_reason:
                         streamed_meta["finish_reason"] = finish_reason
+            if terminal_response is None and not streamed_meta.get("finish_reason") and (
+                not stream_done or responses_events
+            ):
+                raise RuntimeError("The API stream ended before its completion event.")
             text_from_stream = "".join(streamed_parts)
             if not text_from_stream and last_stream_event:
                 text_from_stream = canvas_extract_openai_text(terminal_response or last_stream_event)
@@ -1049,7 +1077,15 @@ def canvas_custom_llm_run(
             return {
                 "ok": False,
                 "error": "Custom API streaming failed",
+                "code": "custom_api_stream_interrupted",
                 "details": str(exc),
+                "partial_text": "".join(streamed_parts),
+                "completion": {
+                    "status": "interrupted", "reason": "stream_interrupted",
+                    "output_limited": False, "max_tokens": max_tokens,
+                    "thinking_requested": enable_thinking,
+                    **extract_reasoning_display_metadata({}, streamed_reasoning),
+                },
                 "version": str(params.get("custom_profile_version") or "Custom"),
                 "provider": params.get("custom_provider") or "custom",
                 "model": model,
@@ -1073,6 +1109,25 @@ def canvas_custom_llm_run(
     completion.update(extract_reasoning_display_metadata(response, streamed_reasoning))
     completion = _canvas_vlm_enrich_completion(completion, main_elapsed)
     text = canvas_extract_openai_text(response).strip()
+    if (
+        params.get("describe_roleplay_enabled")
+        and params.get("roleplay_request_kind", "character") in {"character", "character_reply", "reply", ""}
+        and str(os.environ.get("SIMPAI_UI_TRACE", "")).strip().lower() in {"1", "true", "yes", "on", "debug"}
+        and vlm_roleplay_reply.incomplete_reply_reason(text)
+    ):
+        safe_request = {key: value for key, value in request_payload.items() if key in {
+            "model", "messages", "temperature", "top_p", "max_tokens", "stream", "seed",
+            "reasoning", "reasoning_effort", "enable_thinking", "thinking", "chat_template_kwargs",
+        }}
+        logger.info(
+            "[RoleplayReply] replay_snapshot request_id=%s api_format=%s request=%s response=%s",
+            request_id, api_format,
+            json.dumps(safe_request, ensure_ascii=False, separators=(",", ":")),
+            json.dumps({
+                "text": text, "streamed_text": "".join(streamed_parts) if stream_enabled else None,
+                "completion": {key: value for key, value in completion.items() if key != "reasoning_text"},
+            }, ensure_ascii=False, separators=(",", ":")),
+        )
 
     def review_llm_fn(messages, review_payload):
         review_request = prepare_custom_request({
@@ -1804,6 +1859,9 @@ def canvas_vlm_run(payload, stream_callback=None):
             text_budget,
             preserve_contract=bool(params.get("describe_roleplay_director") or params.get("describe_image_context") or params.get("describe_skill_draft") or params.get("describe_harness")),
         )
+        if params.get("describe_input_polish") or params.get("describe_player_draft") or params.get("describe_player_proxy"):
+            # Unsent drafts need their complete bounded instructions and context.
+            current_prompt = str(base_prompt or "").strip()
         sections = []
         system_text = ""
         system_prompt = params.get("system_prompt")

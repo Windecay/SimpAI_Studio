@@ -201,6 +201,8 @@ def javascript_html():
     describe_vlm_chat_path = webpath('javascript/describe_vlm_chat.js')
     chat_markdown_path = webpath('javascript/vendor/markdown-it/markdown-it-15.0.2.min.js')
     chat_rich_text_path = webpath('javascript/chat_rich_text.js')
+    chat_documents_path = webpath('javascript/chat_documents.js')
+    chat_documents_css_path = webpath('css/chat_documents.css')
     webui_danbooru_autocomplete_path = webpath('javascript/webui_danbooru_autocomplete.js')
     scene_prompt_recommendations_path = webpath('javascript/scene_prompt_recommendations.js')
     prompt_actions_path = webpath('javascript/prompt_actions.js')
@@ -248,9 +250,11 @@ def javascript_html():
                 ],
             },
             'describeVlmChat': {
+                'css': [chat_documents_css_path],
                 'js': [
                     chat_markdown_path,
                     chat_rich_text_path,
+                    chat_documents_path,
                     describe_vlm_chat_path,
                 ],
             },

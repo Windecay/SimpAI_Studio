@@ -13,7 +13,10 @@ from modules import vlm_roleplay as rp
 def evidence_catalog(user_message: str, assistant_reply: str) -> dict[str, str]:
     result = {}
     for prefix, source, limit in (("user", user_message, 12000), ("reply", assistant_reply, 16000)):
-        sentences = [text.strip() for text in re.split(r"(?<=[。！？!?；;])|\n+", rp._text(source, limit)) if text.strip()]
+        sentences = [
+            text.strip() for text in re.split(r"(?<=[。！？!?；;])|\n+", rp._text(source, limit))
+            if any(character.isalnum() for character in text)
+        ]
         result.update({f"{prefix}_{index + 1}": text for index, text in enumerate(sentences)})
     return result
 

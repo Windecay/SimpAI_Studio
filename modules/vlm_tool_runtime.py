@@ -209,6 +209,20 @@ def _tool_select_image_context(arguments, context):
 def create_default_registry():
     registry = ToolRegistry()
     from modules import vlm_web_runtime
+    from modules import vlm_document_runtime
+
+    registry.register(
+        "vlm.list_documents", "Find attached reference documents by filename.",
+        {"type": "object", "properties": {"query": {"type": "string"}, "offset": {"type": "integer"}}, "additionalProperties": False},
+        vlm_document_runtime.list_documents, read_only=True, side_effect="read_session",
+    )
+    registry.register(
+        "vlm.read_document", "Read an attached document by ref; use next_offset or query for more.",
+        {"type": "object", "required": ["ref"],
+         "properties": {"ref": {"type": "string"}, "offset": {"type": "integer"}, "query": {"type": "string"}},
+         "additionalProperties": False},
+        vlm_document_runtime.read_document, read_only=True, side_effect="read_session",
+    )
 
     registry.register(
         "web.read",

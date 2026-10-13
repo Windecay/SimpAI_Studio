@@ -76,6 +76,11 @@ Documents:
   guide sections from the current request and `state.__lang`; they do not load
   the complete guide into one model context.
 
+Maintain the Preset Guide by current task or Preset family. Update the existing
+section when behavior changes, and update the route manifest if its heading changes.
+Development history, superseded designs, experiments, and test results belong in
+separate development documents under `docs/`, not in this runtime guide.
+
 Related acceptance checklist:
 - `../vlm-agent-prompt-acceptance.md`: repeatable checks for prompt target
   recognition, final prompt quality, confirmation-card safety, and manual

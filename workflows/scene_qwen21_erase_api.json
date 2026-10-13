@@ -600,7 +600,7 @@
         "1",
         10
       ],
-      "context_pixels": 150,
+      "context_pixels": 512,
       "mask_image": [
         "simpai_qwen21_canvas_mask_select",
         0
