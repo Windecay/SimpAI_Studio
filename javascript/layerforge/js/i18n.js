@@ -4,6 +4,17 @@
     const params = new URLSearchParams(window.location.search || '');
     const rawLang = String(params.get('__lang') || 'en').trim().toLowerCase();
     const lang = rawLang.startsWith('en') ? 'en' : 'cn';
+    const stage = { __lang: lang };
+    let translations = {};
+    const ready = stage.__lang === 'en' ? Promise.resolve() : fetch('/file=language/cn.json', {
+        signal: AbortSignal.timeout(10000)
+    }).then((response) => {
+        if (!response.ok) throw new Error(`LayerForge translations: HTTP ${response.status}`);
+        return response.json();
+    }).then((dictionary) => { translations = dictionary; });
+    function text(key) {
+        return stage.__lang === 'en' ? key : (translations[key] || key);
+    }
 
     const PAIRS = [
         ['LayerForge Editor', 'LayerForge 编辑器'],
@@ -404,7 +415,7 @@
     window.confirm = (message) => nativeConfirm(translateText(message));
 
     document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
-    window.LayerForgeI18n = { getLang, t, translateText, localizeElement };
+    window.LayerForgeI18n = { getLang, t, text, ready, translateText, localizeElement };
     localizeElement(document.documentElement);
 
     const observer = new MutationObserver((mutations) => {

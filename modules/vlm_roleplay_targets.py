@@ -9,6 +9,7 @@ from collections import Counter
 
 from modules import vlm_roleplay as rp
 from modules import vlm_roleplay_numeric as numeric
+from modules import vlm_roleplay_outline as outline
 
 
 def entity_table(session, speaker_id=""):
@@ -155,6 +156,18 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         "patches": [],
         "resource_signals": {"memory": False, "world_book": False, "chapter": False, "visual": False},
     }
+    outline_task = outline.director_task(session)
+    if outline_task:
+        shape["outline_progress"] = {
+            "node_id": outline_task["node_id"], "revision": outline_task["revision"],
+            "status": "unchanged", "evidence": "", "note": "",
+        }
+        rules += (
+            "\nIndependently evaluate the current outline criterion after state attribution. "
+            "Fill outline_progress even when patches is empty. Use completed only for an established "
+            "criterion, blocked for an explicit obstruction, otherwise unchanged. "
+            "Keep the provided node_id and integer revision; use an exact assistant quote as evidence."
+        )
     sections = [
         "JSON shape (fill only established changes):", _json(shape),
         "Authoritative request entity table:",
@@ -162,6 +175,8 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         "Numbered latest-exchange evidence:",
         _json(numeric.evidence_catalog(user_message, assistant_reply)),
     ]
+    if outline_task:
+        sections += ["Private current-outline progress review (not story facts):", _json(outline_task)]
     if review:
         sections += [
             "Focused review: " + str(review),

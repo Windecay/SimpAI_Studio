@@ -14,6 +14,7 @@ import modules.config as config
 import modules.flags as flags
 import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
 import modules.prompt_actions as prompt_actions
+from modules import video_prompt_context, video_prompt_sampling
 import modules.util as util
 import enhanced.translator as translator
 import enhanced.superprompter as superprompter
@@ -1422,6 +1423,17 @@ class VLM:
         except Exception as exc:
             return {"ok": False, "error": "Custom LLM model list failed", "details": str(exc)}
 
+    def estimate_video_image_bytes(self, image):
+        url = _custom_vlm_image_to_data_url(image)
+        if not url:
+            raise video_prompt_context.VideoPromptContextError("A video request image could not be encoded.")
+        return len(url.encode("utf-8")) + 256
+
+    def prepare_video_input(self, images):
+        if len(images) > 1 and not (VLM.is_llamacpp or VLM.backend == "comfy_textgen" or VLM.is_custom_version()):
+            raise video_prompt_context.VideoPromptContextError("The selected backend accepts one image only.")
+        return images if len(images) > 1 else images[0]
+
     def inference_custom(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, seed=-1,
                          system_prompt=None, enable_thinking=None, reject_truncated=False):
         missing = VLM.get_custom_missing_settings()
@@ -2114,18 +2126,22 @@ class VLM:
     ):
         service_info = self.prompt_action_service_info(action_id, state)
         try:
-            result = self._run_prompt_action(
-                action_id,
-                input_text,
-                prompt_prefix,
-                input_images,
-                state,
-                translation_methods,
-                options=options,
-                video_path=video_path,
-                video_first_frame_path=video_first_frame_path,
-                scene_resources=scene_resources,
-            )
+            with video_prompt_context.inference_slot(
+                self, enabled=(prompt_actions.get_prompt_action(action_id) or {}).get("media_policy")
+                in {"main_video_auto", "main_video_required"},
+            ):
+                result = self._run_prompt_action(
+                    action_id,
+                    input_text,
+                    prompt_prefix,
+                    input_images,
+                    state,
+                    translation_methods,
+                    options=options,
+                    video_path=video_path,
+                    video_first_frame_path=video_first_frame_path,
+                    scene_resources=scene_resources,
+                )
         except PromptActionOutputLimitError:
             language = str((state or {}).get("__lang") or "cn").lower() if isinstance(state, dict) else "cn"
             result = {
@@ -2145,6 +2161,17 @@ class VLM:
                     "The original prompt was preserved."
                     if language.startswith("en") else
                     "详细扩写结果仍然过短或格式不完整，已保留原提示词。"
+                ),
+            }
+        except (video_prompt_context.VideoPromptContextError, video_prompt_sampling.VideoSamplingError) as error:
+            logger.warning("Prompt-action video analysis failed: %s", error)
+            language = str((state or {}).get("__lang") or "cn").lower() if isinstance(state, dict) else "cn"
+            result = {
+                "ok": False, "text": str(input_text or ""), "action_id": action_id,
+                "error": (
+                    "Video sampling or segment analysis did not complete. The original prompt was preserved."
+                    if language.startswith("en") else
+                    "视频采样或分段分析未完成，已保留原提示词。"
                 ),
             }
         if not isinstance(result, dict):
@@ -2394,6 +2421,12 @@ class VLM:
             options=media_options,
             resource_context=resource_context,
         )
+        if media_meta.get("video_used"):
+            prepared_images, media_meta = video_prompt_context.analyze_video(
+                self, prepared_images, media_meta,
+                instruction="\n\n".join((original, str(action_options.get("instruction") or ""))),
+                output_chinese=not str(action_options.get("language") or state_data.get("__lang") or "cn").startswith("en"),
+            )
         for key in ("language", "h3_storyboard_form", "storyboard_form"):
             if key in action_options:
                 media_meta[key] = action_options.get(key)
@@ -2403,6 +2436,15 @@ class VLM:
                 "video_requested",
                 "video_used",
                 "sampled_frames",
+                "video_sampled_frames_total",
+                "video_analyzed_frames",
+                "video_analysis_segments",
+                "video_request_mode",
+                "video_request_groups",
+                "sampling_strategy",
+                "sampling_limited",
+                "change_frames",
+                "max_sample_gap_seconds",
                 "duration_seconds",
                 "used_first_frame_only",
                 "cache_hit",
@@ -2502,6 +2544,8 @@ class VLM:
                 "error": "Prompt action returned no text.",
                 "media": public_media,
             }
+        if media_meta.get("video_request_mode") == "direct":
+            public_media["video_analyzed_frames"] = int(media_meta.get("sampled_frames") or 0)
         compiler_validation = None
         effective_target_kind = str(
             action_options.get("target_kind") or action.get("target_kind") or ""

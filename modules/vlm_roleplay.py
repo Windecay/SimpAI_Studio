@@ -21,6 +21,7 @@ import modules.vlm_agent_router as vlm_agent_router
 import modules.vlm_autoplay_guidance as vlm_autoplay_guidance
 import modules.vlm_roleplay_cognition as vlm_roleplay_cognition
 import modules.vlm_roleplay_resources as vlm_roleplay_resources
+import modules.vlm_roleplay_outline as vlm_roleplay_outline
 from modules.custom_llm_api import strip_reasoning_text
 
 
@@ -3640,6 +3641,7 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
         "active_character_id": active_character_id,
         "persona": persona,
         "story_state": state,
+        "story_outline": vlm_roleplay_outline.normalize(source.get("story_outline"), characters),
         "story_origin": _normalize_story_origin(source.get("story_origin")),
         "active_branch_id": branch_id,
         "active_turn_id": _text(source.get("active_turn_id"), 200),
@@ -3683,7 +3685,7 @@ def build_character_setup_prompt(lang: Any = "cn") -> str:
         "You are helping the user create the assistant's roleplay character through conversation.",
         "First establish the ASSISTANT character's name, never confuse it with the player's name.",
         "If the user supplies a name for you, accept it. If they ask you to decide or start a story, "
-        "choose a fitting name. Otherwise ask a short naming question with two or three suggestions.",
+        "choose a fitting name. Otherwise ask a short naming question with a few suggestions.",
         "Once a name is agreed or delegated, set character.name and speak as that character. "
         "Your name will immediately become the assistant display name and saved character name.",
         "Include only character details explicitly agreed or delegated by the user. "
@@ -3691,8 +3693,13 @@ def build_character_setup_prompt(lang: Any = "cn") -> str:
         "Ask at most one or two questions per reply. Do not mention JSON or internal processing.",
         "Return one JSON object, no markdown: "
         '{"reply":"visible conversational reply","character":{"name":"","identity":"",'
-        '"appearance":"","background":"","personality":"","speech_style":""}}',
-        "Leave character.name empty while awaiting the user's naming choice.",
+        '"appearance":"","background":"","personality":"","speech_style":""},"options":[]}',
+        "When awaiting a naming choice, put each suggested name in options as a plain string. "
+        "The number of suggestions can vary. The user can also type a different choice. "
+        "Do not treat these unchosen names as an agreed name or fill character.name with one.",
+        "Always include both reply and character, including character.name. "
+        "Leave character.name empty while awaiting the user's naming choice. "
+        "A greeting or the player's own name is not permission to choose an assistant name.",
         "Reply in English." if lang == "en" else "Reply in Chinese.",
     ])
 
@@ -4922,16 +4929,31 @@ def build_roleplay_context(
         required_specs.append(("present_characters", character_rows, len(character_rows)))
 
     system_budget = limits["system_chars"]
+    outline_material = (
+        vlm_roleplay_outline.actor_material(normalized, resolved_speaker_id)
+        if audience_key == "character" and not _director_instruction_is_read_only(query) else None
+    )
+    outline_block = _context_block("outline_direction", outline_material) if outline_material else None
+    outline_reserve = outline_block["chars"] if outline_block else 0
+    if outline_reserve > system_budget // 2:
+        raise ValueError("outline_direction_context_budget")
     has_keyword_memory = audience_key in {"character", "player_proxy"} and any(
         item.get("keywords") or item.get("id") in requested_memory_ids
         for item in resources.get("memories") or []
     )
     memory_reserve = min(900, max(500, system_budget // 5)) if has_keyword_memory else 0
     chapter_reserve = min(260, system_budget // 8) if has_keyword_memory else 0
+    if outline_block:
+        optional_budget = max(0, system_budget - outline_reserve - system_budget // 2)
+        memory_reserve = min(memory_reserve, optional_budget)
+        chapter_reserve = min(chapter_reserve, max(0, optional_budget - memory_reserve))
     blocks = _fit_required_context_blocks(
-        required_specs, system_budget - memory_reserve - chapter_reserve,
+        required_specs, system_budget - memory_reserve - chapter_reserve - outline_reserve,
     )
     used_system_chars = sum(block["chars"] for block in blocks)
+    if outline_block and used_system_chars + outline_block["chars"] <= system_budget:
+        blocks.append(outline_block)
+        used_system_chars += outline_block["chars"]
 
     def add_optional_list(block_id: str, rows: list[Any], total_items: int, *, keep_tail: bool = False) -> None:
         nonlocal used_system_chars
@@ -5092,6 +5114,7 @@ def roleplay_context_prompt_sections(context: Any) -> list[str]:
         "chapter": "Active chapter summary and unresolved goals",
         "world_book": "Triggered world-book entries",
         "memories": "Relevant long-term memories",
+        "outline_direction": "Author-approved direction for your current next attempt, not established facts",
     }
     sections = []
     for block in source.get("blocks", []):
@@ -6350,6 +6373,7 @@ def parse_director_response(text: Any, session: Any = None) -> dict[str, Any]:
         "chapter_summary": _text(data.get("chapter_summary"), 4000),
         "turn_facts": normalize_turn_facts(data.get("turn_facts")),
         "resource_signals": normalize_director_resource_signals(data.get("resource_signals"), session),
+        "outline_progress": data.get("outline_progress") if isinstance(data.get("outline_progress"), dict) else None,
         "warnings": warnings,
     }
 
@@ -9096,6 +9120,7 @@ def _director_instruction_is_read_only(value: Any) -> bool:
         return True
     resource_query = bool(re.search(
         r"(?:^|[。！？!?；;\n])\s*(?:(?:请|帮我|请帮我)\s*)?"
+        r"(?:(?:只|仅)(?:想)?\s*)?"
         r"(?:(?:查询|查一下|检索|读取|查看|回忆|还记得|记得吗|之前记下|刚才记下)"
         r"[^。！？!?；;\n]{0,48}(?:记忆|记录|约定|内容|世界书|设定|资料|状态)"
         r"|根据(?:记忆|世界书|设定))",

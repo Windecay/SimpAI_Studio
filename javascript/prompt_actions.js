@@ -672,12 +672,12 @@
     function videoContextLabel(slot) {
         return slot === "scene_reference_video" || slot === "scene_reference_video2"
             ? text(
-                "Use the reference video for visual expansion (up to 8 frames)",
-                "扩写时读取参考视频（最多 8 帧）",
+                "Use the reference video for visual expansion",
+                "扩写时读取参考视频",
             )
             : text(
-                "Use the main video for visual expansion (up to 8 frames)",
-                "扩写时读取主要传入视频（最多 8 帧）",
+                "Use the main video for visual expansion",
+                "扩写时读取主要传入视频",
             );
     }
 

@@ -12174,6 +12174,8 @@ with shared.gradio_root:
         def trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt=""):
             describe_images = []
             try:
+                if img is None:
+                    raise describe_media.DescribeMediaError("media_required")
                 media_kind = describe_media.media_type(img)
                 if img is not None and not media_kind:
                     raise ValueError("Choose a supported image or video file.")
@@ -12190,15 +12192,13 @@ with shared.gradio_root:
                 if img is None or media_kind == "video" or (not output_tags and not output_artist and len(describe_images) == 0):
                     use_multi_frame = bool(media_kind == "video" and VLM.is_llamacpp and not VLM.is_custom_version())
                     visual_input, media_meta = describe_media.prepare_visual_input(img, use_multi_frame=use_multi_frame) if img is not None else (None, {"media_type": "image"})
-                    instruction = describe_media.build_instruction(
+                    describe_images.append(describe_media.run_description(
+                        vlm, visual_input,
                         media_kind or "image",
-                        output_tags=bool(output_tags and media_kind != "video"),
                         output_chinese=bool(output_chinese),
-                        output_artist=bool(output_artist and media_kind == "image"),
                         additional_prompt=describe_prompt,
                         media_meta=media_meta,
-                    )
-                    describe_images.append(vlm.interrogate(visual_input, prompt=instruction))
+                    ))
 
                 if len(describe_images) == 0:
                     describe_image = skip_component_update()
@@ -12207,6 +12207,8 @@ with shared.gradio_root:
 
                     if (output_tags or output_artist) and output_chinese:
                         describe_image = vlm.translate_cn(describe_image)
+            except describe_media.DescribeMediaError:
+                raise
             except ValueError as exc:
                 gr.Warning(str(exc))
                 describe_image = skip_component_update()
@@ -12219,6 +12221,28 @@ with shared.gradio_root:
 
             return describe_image, skip_component_update()
 
+        def trigger_describe_with_feedback(img, output_tags, output_chinese, output_artist, describe_prompt="", state_params=None):
+            try:
+                return trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt)
+            except describe_media.DescribeMediaError as error:
+                if error.code == "media_required":
+                    message = _studio_text(
+                        state_params, "Upload an image or video to describe. The original prompt was preserved.",
+                        "请上传要反推的图片或视频，原提示词已保留。",
+                    )
+                elif error.code == "quality_failed":
+                    message = _studio_text(
+                        state_params, "The description did not meet the detail, language or format requirements. The original prompt was preserved.",
+                        "反推结果的详细程度、语言或格式未达到要求，原提示词已保留。",
+                    )
+                else:
+                    message = _studio_text(
+                        state_params, "Media description did not complete. The original prompt was preserved.",
+                        "媒体反推未完成，原提示词已保留。",
+                    )
+                gr.Warning(message)
+                return skip_component_update(), skip_component_update()
+
         def describe_with_generating_check(state_is_generating, img, output_tags, output_chinese, output_artist, describe_prompt, state_params, version, api_name, provider, api_format, base_url, model, api_key, supports_images):
             is_worker_processing = modules.async_worker.worker_processing is not None
             has_pending_tasks = modules.async_worker.pending_tasks > 0
@@ -12226,6 +12250,12 @@ with shared.gradio_root:
             if check_generating_state(state_is_generating, has_pending_tasks, is_worker_processing):
                 logger.info("Generation is in progress or pending, skipping image description")
                 return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params)
+
+            if img is None:
+                describe_image, style_update = trigger_describe_with_feedback(
+                    img, output_tags, output_chinese, output_artist, describe_prompt, state_params,
+                )
+                return describe_image, style_update, *_describe_clear_missing_model_outputs(state_params)
 
             version = _vlm_resolve_version(version)
             custom_settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
@@ -12242,7 +12272,9 @@ with shared.gradio_root:
                 if missing_model_outputs is not None:
                     return skip_component_update(), skip_component_update(), *missing_model_outputs
 
-            describe_image, style_update = trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt)
+            describe_image, style_update = trigger_describe_with_feedback(
+                img, output_tags, output_chinese, output_artist, describe_prompt, state_params,
+            )
             return describe_image, style_update, *_describe_clear_missing_model_outputs(state_params)
 
         describe_event = describe_btn.click(describe_with_generating_check,
@@ -12655,7 +12687,9 @@ with shared.gradio_root:
                     if missing_model_outputs is not None:
                         return skip_component_update(), skip_component_update(), *missing_model_outputs
 
-                describe_image, style_update = trigger_describe(img, output_tags, output_chinese, output_artist)
+                describe_image, style_update = trigger_describe_with_feedback(
+                    img, output_tags, output_chinese, output_artist, state_params=state_params,
+                )
                 return describe_image, style_update, *_describe_clear_missing_model_outputs(state_params)
 
             def bind_auto_describe_button(button, image_component, trace_name):
@@ -17822,9 +17856,13 @@ async def describe_image_vlm_chat_cancel_endpoint(payload: dict = Body(default={
         draft_canvas_result = canvas_vlm_runtime.request_canvas_vlm_cancel(
             "", "", f"{conversation_id}:player-draft:{request_id}", request_id,
         )
+        outline_canvas_result = canvas_vlm_runtime.request_canvas_vlm_cancel(
+            "", "", f"{conversation_id}:outline-draft:{request_id}", request_id,
+        )
         result["canvas_cancelled"] = bool(
             canvas_result.get("cancelled") or summary_canvas_result.get("cancelled")
             or polish_canvas_result.get("cancelled") or draft_canvas_result.get("cancelled")
+            or outline_canvas_result.get("cancelled")
         )
         return JSONResponse(result, status_code=200)
     except Exception as e:

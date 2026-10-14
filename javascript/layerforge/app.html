@@ -28,11 +28,13 @@
             overflow: hidden;
         }
         #toolbar {
-            height: 40px;
+            min-height: 40px;
+            flex-shrink: 0;
+            flex-wrap: wrap;
             background-color: #2d2d2d;
             display: flex;
             align-items: center;
-            padding: 0 10px;
+            padding: 6px 10px;
             border-bottom: 1px solid #3d3d3d;
             gap: 6px;
         }
@@ -41,9 +43,13 @@
             color: white;
             border: none;
             padding: 5px 15px;
-            margin-right: 10px;
+            margin-right: 0;
             cursor: pointer;
             border-radius: 4px;
+            white-space: nowrap;
+            min-height: 30px;
+            font-size: 12px;
+            flex-shrink: 0;
         }
         .btn:hover {
             background-color: #4d4d4d;
@@ -74,6 +80,81 @@
         #status-text {
             white-space: nowrap;
         }
+        #toolbar [hidden] {
+            display: none !important;
+        }
+        #annotation-tools, #annotation-options, #annotation-marker-controls {
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        #annotation-tools {
+            border-left: 1px solid #555;
+            padding-left: 6px;
+        }
+        .annotation-tool {
+            width: 34px;
+            height: 30px;
+            padding: 5px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .annotation-tool img, .annotation-tool canvas {
+            width: 20px;
+            height: 20px;
+        }
+        .annotation-marker-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 19px;
+            height: 19px;
+            border: 1px solid currentColor;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        #annotation-options input, #annotation-options select {
+            box-sizing: border-box;
+            height: 30px;
+            border: 1px solid #666;
+            border-radius: 4px;
+            background: #3d3d3d;
+            color: #fff;
+            font: 12px sans-serif;
+        }
+        #annotation-options input[type="number"] {
+            width: 60px;
+            padding-left: 6px;
+        }
+        #annotation-color {
+            width: 36px;
+            padding: 2px;
+        }
+        #annotation-fill-control {
+            display: inline-flex;
+            align-items: center;
+            font-size: 12px;
+            white-space: nowrap;
+            gap: 3px;
+        }
+        .annotation-field {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+            font-size: 12px;
+        }
+        #annotation-fill-control input {
+            width: 14px;
+            height: 14px;
+        }
+        #annotation-text {
+            width: 210px;
+            padding: 0 8px;
+        }
 
         @media (max-width: 700px) {
             #toolbar {
@@ -95,6 +176,13 @@
                 padding: 7px 10px;
                 margin-right: 6px;
                 white-space: nowrap;
+            }
+            #annotation-tools .btn {
+                margin-right: 0;
+                padding: 5px;
+            }
+            #annotation-text {
+                width: 165px;
             }
             #paint-size {
                 width: 110px !important;
@@ -130,13 +218,14 @@
     </div>
     <div id="editor-container"></div>
 
-    <script src="/file=javascript/layerforge/js/i18n.js?v=patch1"></script>
+    <script src="/file=javascript/layerforge/js/i18n.js?v=patch2"></script>
     <script type="module">
         import { createCanvasWidget } from '/file=javascript/layerforge/js/CanvasView.js?v=patch63';
         import { app } from '/file=javascript/layerforge/js/comfy_shim.js?v=patch26';
         import { createEmptyImage } from '/file=javascript/layerforge/js/utils/ImageUtils.js?v=patch26';
         import { saveImage } from '/file=javascript/layerforge/js/db.js?v=patch26';
         import { generateUUID, createCanvas } from '/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26';
+        import { AnnotationTool } from '/file=javascript/layerforge/js/AnnotationTool.js?v=patch2';
 
         window.comfy_api_url = "http://127.0.0.1:8188";
         
@@ -167,6 +256,7 @@
         };
 
         let canvasInstance = null;
+        let annotationTool = null;
         let paintEnabled = false;
         let paintColor = '#ffffff';
         let paintSize = 18;
@@ -211,6 +301,7 @@
 
         async function init() {
             try {
+                await window.LayerForgeI18n.ready;
                 const result = await createCanvasWidget(mockNode, mockWidget, app);
                 canvasInstance = result.canvas;
                 const syncPaintLayerReference = (resetPaintBitmap = true) => {
@@ -240,9 +331,12 @@
                     if (typeof original !== 'function')
                         continue;
                     canvasInstance[methodName] = (...args) => {
+                        const previousMarkers = canvasInstance.layers.filter((layer) => layer.annotation?.kind === 'marker')
+                            .map((layer) => `${layer.id}:${layer.annotation.number}`).join(',');
                         const result = original.apply(canvasInstance, args);
                         try {
                             syncPaintLayerReference();
+                            annotationTool?.syncAfterHistory(previousMarkers);
                         }
                         catch {
                         }
@@ -314,6 +408,7 @@
                         }
                         try {
                             canvasInstance.render();
+                            annotationTool?.render();
                         }
                         catch {
                         }
@@ -423,7 +518,7 @@
                     drawBrushCursor(clientX, clientY);
                 };
 
-                const overlayToolActive = () => paintEnabled || penSelectionActive;
+                const overlayToolActive = () => paintEnabled || penSelectionActive || !!annotationTool?.mode;
 
                 const updateOverlayToolState = () => {
                     const active = overlayToolActive();
@@ -493,6 +588,9 @@
                 };
 
                 const setPaintEnabled = (enabled) => {
+                    if (enabled && annotationTool?.mode) {
+                        annotationTool.setMode(null);
+                    }
                     if (enabled && penSelectionActive) {
                         setPenSelectionActive(false);
                     }
@@ -905,6 +1003,9 @@
                 };
 
                 function setPenSelectionActive(enabled) {
+                    if (enabled && annotationTool?.mode) {
+                        annotationTool.setMode(null);
+                    }
                     if (enabled && paintEnabled) {
                         setPaintEnabled(false);
                     }
@@ -1172,6 +1273,30 @@
                     canvasInstance.render();
                 };
 
+                annotationTool = new AnnotationTool(canvasInstance, {
+                    overlay, clearOverlay, getWorldFromClient,
+                    onActivate: () => {
+                        setPaintEnabled(false);
+                        setPenSelectionActive(false);
+                        if (canvasInstance.maskTool.isActive) {
+                            result.panel.querySelector('#mask-mode-btn')?.click();
+                        }
+                    },
+                    onActiveChange: () => {
+                        updateOverlayToolState();
+                        updateCanvasPointerLock();
+                    },
+                    onError: (error) => {
+                        console.error('LayerForge annotation failed:', error);
+                        setStatusText(`Error: ${error.message}`);
+                    }
+                });
+                const activateMask = canvasInstance.maskTool.activate.bind(canvasInstance.maskTool);
+                canvasInstance.maskTool.activate = (...args) => {
+                    if (annotationTool.mode) annotationTool.setMode(null);
+                    return activateMask(...args);
+                };
+
                 overlay.addEventListener('pointerdown', async (e) => {
                     if (!overlayToolActive())
                         return;
@@ -1203,6 +1328,13 @@
                     }
                     if (penSelectionActive) {
                         await handlePenSelectionPointerDown(e);
+                        return;
+                    }
+                    if (annotationTool.mode) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        updateOverlaySize();
+                        annotationTool.pointerDown(e);
                         return;
                     }
                     e.preventDefault();
@@ -1325,11 +1457,18 @@
                             if (penSelectionActive) {
                                 renderPenSelectionOverlay();
                             }
+                            else if (annotationTool.mode) {
+                                annotationTool.render();
+                            }
                         }
                         return;
                     }
                     if (penSelectionActive) {
                         handlePenSelectionPointerMove(e);
+                        return;
+                    }
+                    if (annotationTool.mode) {
+                        annotationTool.pointerMove(e);
                         return;
                     }
                     if (paintPointers.has(e.pointerId)) {
@@ -1402,6 +1541,9 @@
                         if (penSelectionActive) {
                             renderPenSelectionOverlay();
                         }
+                        else if (annotationTool.mode) {
+                            annotationTool.render();
+                        }
                         else {
                             clearOverlay();
                         }
@@ -1419,6 +1561,10 @@
                         }
                         catch {
                         }
+                        return;
+                    }
+                    if (annotationTool.mode) {
+                        annotationTool.pointerUp(e);
                         return;
                     }
                     paintPointers.delete(e.pointerId);
@@ -1469,6 +1615,10 @@
                         penPreviewPoint = null;
                         renderPenSelectionOverlay();
                     }
+                    else if (annotationTool.mode) {
+                        annotationTool.hover = null;
+                        annotationTool.render();
+                    }
                     else {
                         clearOverlay();
                     }
@@ -1479,6 +1629,13 @@
                     e.preventDefault();
                     e.stopPropagation();
                 }, { passive: false });
+                overlay.addEventListener('dblclick', (e) => {
+                    if (annotationTool.mode !== 'shape' || annotationTool.shape !== 'polygon')
+                        return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    annotationTool.finishPolygon();
+                });
                 overlay.addEventListener('wheel', (e) => {
                     if (!overlayToolActive())
                         return;
@@ -1490,16 +1647,24 @@
                         penPreviewPoint = getPaintPoint(e);
                         renderPenSelectionOverlay();
                     }
+                    else if (annotationTool.mode) {
+                        annotationTool.render();
+                    }
                     else {
                         refreshBrushCursor(e.clientX, e.clientY);
                     }
                 }, { passive: false });
 
                 window.addEventListener('keydown', async (e) => {
-                    if (!penSelectionActive)
-                        return;
                     const tag = String(e.target?.tagName || '').toLowerCase();
                     if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable)
+                        return;
+                    if (annotationTool.keyDown(e)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                    }
+                    if (!penSelectionActive)
                         return;
                     if (e.key === 'Escape') {
                         e.preventDefault();
@@ -1522,7 +1687,7 @@
                             setStatusText(`钢笔选区：${penSelectionPoints.length} 个点`);
                         }
                     }
-                });
+                }, { capture: true });
 
                 let pendingOverlayResize = false;
                 const scheduleOverlayResize = () => {
@@ -1534,6 +1699,9 @@
                         updateOverlaySize();
                         if (penSelectionActive) {
                             renderPenSelectionOverlay();
+                        }
+                        else if (annotationTool.mode) {
+                            annotationTool.render();
                         }
                     });
                 };
@@ -1560,6 +1728,7 @@
                                     paintLayer = null;
                                     paintCanvas = null;
                                     paintCtx = null;
+                                    annotationTool.reset();
                                     penSelectionPoints = [];
                                     penPreviewPoint = null;
                                     if (penSelectionActive) {
@@ -1675,6 +1844,7 @@
                         if (penSelectionActive && penSelectionPoints.length >= 3) {
                             await commitPenSelectionPath();
                         }
+                        await annotationTool.flush();
                         
                         const blob = await canvasInstance.canvasLayers.getFlattenedCanvasAsBlob();
                         

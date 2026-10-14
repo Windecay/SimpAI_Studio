@@ -32,6 +32,8 @@ import modules.vlm_input_polish as vlm_input_polish
 import modules.vlm_player_draft as vlm_player_draft
 import modules.vlm_autoplay_guidance as vlm_autoplay_guidance
 import modules.vlm_roleplay_reply as vlm_roleplay_reply
+import modules.vlm_roleplay_outline as vlm_roleplay_outline
+import modules.vlm_reply_options as vlm_reply_options
 from modules.agent_service import AgentContext
 from modules.pe_models import qwen_pe_vlm_task
 
@@ -1033,6 +1035,8 @@ def _normalize_history(messages, limit=24, budget=6000):
         if role not in {"user", "assistant", "system"}:
             continue
         content = str(item.get("content") or item.get("reply") or "").strip()
+        if role == "assistant":
+            content = vlm_reply_options.extract(content)["text"]
         image_placeholder = _history_image_placeholder(item)
         if image_placeholder:
             content = f"{content}\n{image_placeholder}".strip()
@@ -2278,19 +2282,24 @@ def _describe_chat_system_prompt(options, lang):
         )
     if media_only:
         sections.append(_media_only_system_note(lang))
-    if chat_mode != "guide" and options.get("enable_prompt_skills"):
+    if chat_mode not in {"guide", "roleplay"} and options.get("enable_prompt_skills"):
         sections.append(_prompt_skill_section(options, lang))
     elif chat_mode == "guide":
         sections.append(
             "Return practical workflow guidance only. If the user needs prompt text, suggest switching to Prompt Assistant mode."
         )
-    elif chat_mode != "creative":
+    elif chat_mode not in {"creative", "roleplay"}:
         sections.append(
             "Prompt-writing skill is available, but it is not active for this turn. "
             "Return plain conversational text and no action JSON unless the user's next message asks for prompt text."
         )
     if user_extension:
         sections.append(user_extension)
+    if chat_mode == "chat" or (
+        chat_mode == "roleplay"
+        and options.get("roleplay_request_kind", "character") in {"character", "character_reply", "reply"}
+    ):
+        sections.append(vlm_reply_options.SYSTEM_PROMPT)
     return "\n\n".join(section for section in sections if section).strip()
 
 
@@ -2501,6 +2510,14 @@ def build_runtime_payload(payload):
     roleplay_active = prompt_options.get("chat_mode") == "roleplay"
     roleplay_request_kind = str(prompt_options.get("roleplay_request_kind") or "character").strip().lower()
     player_proxy_request = roleplay_active and roleplay_request_kind in {"player_proxy", "proxy", "autoplay_player"}
+    if (roleplay_active and roleplay_request_kind in {"", "character", "character_reply", "reply"}
+            and not vlm_roleplay._director_instruction_is_read_only(message)):
+        session = prompt_options["roleplay_session"]
+        session["story_outline"] = vlm_roleplay_outline.prepare_turn(
+            session.get("story_outline"), message,
+            str(payload.get("user_message_id") or request_id),
+            session.get("story_state", {}).get("scene", {}).get("present_character_ids") or [],
+        )
     if player_proxy_request:
         guidance = vlm_autoplay_guidance.normalize_guidance(
             prompt_options["roleplay_session"].get("autoplay_config", {}).get("guidance"),
@@ -2528,18 +2545,26 @@ def build_runtime_payload(payload):
         context_query = message
         if player_proxy_request and guidance["enabled"]:
             context_query = "\n".join((message, guidance["goal"]))
-        roleplay_context = vlm_roleplay.build_roleplay_context(
-            prompt_options.get("roleplay_session") or {},
-            payload.get("history_full") or payload.get("history") or [],
-            context_query,
-            prompt_options.get("roleplay_speaker_id") or "",
-            audience=(
-                "player_proxy"
-                if roleplay_request_kind in {"player_proxy", "proxy", "autoplay_player"}
-                else "character"
-            ),
-            n_ctx=roleplay_context_n_ctx,
-        )
+        try:
+            roleplay_context = vlm_roleplay.build_roleplay_context(
+                prompt_options.get("roleplay_session") or {},
+                payload.get("history_full") or payload.get("history") or [],
+                context_query,
+                prompt_options.get("roleplay_speaker_id") or "",
+                audience=(
+                    "player_proxy"
+                    if roleplay_request_kind in {"player_proxy", "proxy", "autoplay_player"}
+                    else "character"
+                ),
+                n_ctx=roleplay_context_n_ctx,
+            )
+        except ValueError as exc:
+            if str(exc) != "outline_direction_context_budget":
+                raise
+            return {"ok": False, "error": "outline_direction_context_budget", "details": (
+                "Current character directions are too long for the selected context. Shorten them or increase context."
+                if lang == "en" else "当前角色剧情材料超出上下文预算，请精简该角色材料或增加上下文。"
+            )}
         client_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
         try:
             client_omitted = max(0, int(client_context.get("omitted") or 0))
@@ -3800,6 +3825,25 @@ def _run_roleplay_director(
             for warning in applied.get("warnings", [])
         ):
             incomplete_stages.append("state_validation")
+        ensure_active()
+        if (not vlm_roleplay._director_instruction_is_read_only(user_message)
+                and vlm_roleplay_outline.actor_material(normalized_session, resolved_speaker_id)
+                and not (result.get("completion") or {}).get("output_limited")):
+            outline, outline_change = vlm_roleplay_outline.apply_review(
+                applied["session"].get("story_outline"),
+                parsed.get("outline_progress"), assistant_reply,
+                turn_id=str(payload.get("user_message_id") or request_id),
+                session=applied["session"],
+            )
+            applied["session"]["story_outline"] = outline
+            if outline_change:
+                applied["outline_review"] = outline_change
+                if outline_change["status"] != "rejected":
+                    applied.setdefault("resource_changes", []).append({
+                        "kind": "outline", "op": "update", "field": "status",
+                        "value": outline_change["status"], **outline_change,
+                    })
+                    applied["event"]["resource_changes"] = applied["resource_changes"]
         state_changes = vlm_roleplay.build_roleplay_state_changes(
             before_session,
             applied.get("session"),
@@ -7180,6 +7224,67 @@ def _run_context_summary(payload, stream_callback=None):
         clear_describe_vlm_chat_cancel(conversation_id, request_id)
 
 
+def _run_outline_draft(payload, stream_callback=None):
+    conversation_id = str(payload.get("conversation_id") or "")
+    request_id = str(payload.get("request_id") or "")
+    cancelled = lambda: is_describe_vlm_chat_cancelled(conversation_id, request_id)
+    try:
+        if not isinstance(payload.get("roleplay_session"), dict):
+            raise ValueError("outline_session_required")
+        session = vlm_roleplay.normalize_roleplay_session(payload["roleplay_session"])
+        source = payload.get("outline_source")
+        data = vlm_roleplay_outline.draft_request(session, source, _payload_lang(payload))
+        n_ctx = _n_ctx_override(payload.get("n_ctx")) or _n_ctx_override(payload.get("context_window")) or 8192
+        prompt = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        if len(prompt) > max(6000, min(48000, int(n_ctx * 1.4))):
+            raise ValueError("outline_context_budget")
+    except ValueError as exc:
+        return {"ok": False, "code": str(exc), "failure_stage": "outline_draft"}
+    if cancelled():
+        return {"ok": False, "cancelled": True, "code": "outline_cancelled"}
+    model_payload = {
+        key: payload[key] for key in (
+            "version", "custom_api", "vram_policy", "kv_cache_type", "n_ctx", "context_window",
+            "load_mtp", "unload_after_chat", "user_did", "lang", "__lang", "conversation_id", "request_id",
+            "agent_routing", "agent_routing_local_version", "agent_routing_api_profile",
+            "agent_routing_api_profile_version",
+        ) if key in payload
+    }
+    model_payload.update({"chat_mode": "raw", "message": source, "max_tokens": min(4096, n_ctx // 2)})
+    built = build_runtime_payload(model_payload)
+    if not built.get("ok"):
+        return _describe_vlm_chat_failure(built, "outline_draft")
+    runtime = built["runtime_payload"]
+    runtime["chat_messages"] = []
+    runtime["chat_messages_full"] = []
+    runtime["params"].update({
+        "user_system_prompt": vlm_roleplay_outline.SYSTEM_PROMPT, "prompt": prompt,
+        "save_context": False, "reset_context": True, "max_history": 1,
+        "disable_streaming": True, "roleplay_request_kind": "outline_draft",
+        "roleplay_agent_routing": payload.get("agent_routing") or session.get("agent_routing"),
+        "enable_thinking": False, "disable_thinking": True, "temperature": 0.55,
+        "_harness_deadline": time.monotonic() + 180,
+        "conversation_id": f"{conversation_id}:outline-draft:{request_id}",
+    })
+    runtime["conversation_id"] = runtime["params"]["conversation_id"]
+    result = _run_vlm_with_agent_router(
+        runtime, model_payload, vlm_agent_router.ROLE_DIRECTOR_STATE, session,
+        **({"stream_callback": stream_callback} if callable(stream_callback) else {}),
+    )
+    if cancelled() or (isinstance(result, dict) and result.get("cancelled")):
+        return {"ok": False, "cancelled": True, "code": "outline_cancelled"}
+    if not isinstance(result, dict) or not result.get("ok"):
+        return _describe_vlm_chat_failure(result, "outline_draft")
+    try:
+        draft = vlm_roleplay_outline.parse_draft(result, session, source)
+    except ValueError as exc:
+        return {"ok": False, "code": str(exc), "failure_stage": "outline_draft"}
+    return {
+        "ok": True, "outline_draft": draft, "conversation_id": conversation_id, "request_id": request_id,
+        "response_source": _response_source_from_result(result),
+    }
+
+
 def _run_player_draft(payload, stream_callback=None):
     n_ctx = _n_ctx_override(payload.get("n_ctx")) or _n_ctx_override(payload.get("context_window")) or 8192
     try:
@@ -7508,6 +7613,11 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
     conversation_id = str(payload.get("conversation_id") or "").strip()
     request_id = str(payload.get("request_id") or "").strip()
     request_kind = str(payload.get("request_kind") or "").strip().lower()
+    if request_kind == "roleplay_outline_draft":
+        try:
+            return _run_outline_draft(payload, stream_callback=stream_callback)
+        finally:
+            clear_describe_vlm_chat_cancel(conversation_id, request_id)
     if request_kind == "roleplay_player_draft":
         try:
             return _run_player_draft(payload, stream_callback=stream_callback)
@@ -7717,7 +7827,9 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
         return _review_roleplay_player_proxy(result, runtime_payload, payload, roleplay_context, stream_callback)
 
     if params.get("describe_roleplay_enabled") and roleplay_request_kind in {"character", "character_reply", "reply", ""}:
-        if not str(result.get("text") or result.get("raw_text") or "").strip():
+        suggested = vlm_reply_options.extract(result.get("text") or result.get("raw_text") or "")
+        result = {**result, "text": suggested["text"], "reply_options": suggested["options"]}
+        if not suggested["text"] and not suggested["options"]:
             return _describe_vlm_chat_failure({
                 **result, "ok": False, "error": "empty_response",
                 "details": (
@@ -7736,20 +7848,33 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
                 or (metadata.get("usage") or {}).get("completion_tokens"),
                 len(str(attempt.get("text") or attempt.get("partial_text") or "")),
             )
-        result = vlm_roleplay_reply.guard_incomplete_reply(result, trace=trace_reply)
+        if suggested["text"]:
+            result = vlm_roleplay_reply.guard_incomplete_reply(result, trace=trace_reply)
         if not result.get("ok"):
             return _describe_vlm_chat_failure(result, "reply_integrity")
 
     if params.get("describe_roleplay_enabled") and roleplay_request_kind == "character_setup":
         data = _extract_json_object(result.get("raw_text") or "")
-        if not isinstance(data, dict) or not isinstance(data.get("character"), dict):
+        if not isinstance(data, dict) or not isinstance(data.get("reply"), str) or not data["reply"].strip():
             data = _extract_json_object(result.get("text") or "")
         card = data.get("character") if isinstance(data, dict) else None
+        # An unanswered naming question may omit the still-empty character fields.
+        if card is None:
+            card = {}
+        if isinstance(card, dict) and card.get("name") is None:
+            card = {**card, "name": ""}
         if (
             not isinstance(data, dict) or not isinstance(data.get("reply"), str) or not data["reply"].strip()
             or not isinstance(card, dict) or not isinstance(card.get("name"), str)
             or len(card["name"].strip()) > 200
         ):
+            logger.warning(
+                "[RoleplaySetup] invalid_response request_id=%s raw_chars=%s text_chars=%s "
+                "reply_type=%s character_type=%s name_type=%s",
+                request_id, len(str(result.get("raw_text") or "")), len(str(result.get("text") or "")),
+                type(data.get("reply")).__name__ if isinstance(data, dict) else "missing",
+                type(card).__name__, type(card.get("name")).__name__ if isinstance(card, dict) else "missing",
+            )
             return _describe_vlm_chat_failure({
                 "ok": False, "error": "roleplay_character_setup_invalid",
                 "details": (
@@ -7757,10 +7882,11 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
                     if _payload_lang(payload) == "en" else "未能读取角色创建结果，请重试；角色资料未被修改。"
                 ),
             }, "roleplay_setup_parse")
-        session = vlm_roleplay.apply_character_setup(params.get("roleplay_session"), data.get("character"))
+        session = vlm_roleplay.apply_character_setup(params.get("roleplay_session"), card)
+        suggested = vlm_reply_options.extract(data["reply"], data.get("options"))
         response = dict(result)
         response.update({
-            "text": data["reply"].strip(), "raw_text": "",
+            "text": suggested["text"], "raw_text": "", "reply_options": suggested["options"],
             "limited_actions": [], "agent_actions": [],
             "roleplay_session": session,
             "roleplay_state_version": session["state_version"],
@@ -7952,6 +8078,12 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
         preferred_parameter_profile=params.get("describe_creative_preference_parameter_profile") or "",
         extract_reply_fields=params.get("describe_chat_mode") not in {"raw", "roleplay"},
     )
+    option_data = parsed.get("raw_json") if isinstance(parsed.get("raw_json"), dict) else {}
+    suggested = vlm_reply_options.extract(
+        parsed.get("reply") or "",
+        option_data.get("options") or result.get("reply_options"),
+    )
+    parsed["reply"] = suggested["text"]
     if params.get("describe_generation_actions_enabled"):
         previous_prompt = _latest_history_creative_prompt(
             payload.get("history_full") or payload.get("history")
@@ -8049,7 +8181,7 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
     result = dict(result)
     original_text = str(result.get("text") or "")
     roleplay_update = None
-    if params.get("describe_roleplay_enabled") and params.get("roleplay_request_kind") not in {
+    if parsed["reply"] and params.get("describe_roleplay_enabled") and params.get("roleplay_request_kind") not in {
         "player_proxy",
         "proxy",
         "autoplay_player",
@@ -8079,7 +8211,8 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
             turn_intent=params.get("roleplay_turn_intent") or payload.get("roleplay_turn_intent") or "",
             stream_callback=stream_callback,
         )
-    result["text"] = parsed.get("reply") or original_text
+    result["text"] = parsed["reply"]
+    result["reply_options"] = suggested["options"]
     if result["text"] != original_text and not result.get("raw_text"):
         result["raw_text"] = original_text
     result["limited_actions"] = parsed.get("actions") or []
@@ -8126,7 +8259,9 @@ def _clear_describe_vlm_chat_runtime_cancel(conversation_id, request_id, request
         else f"{conversation_id}:input-polish:{request_id}"
         if request_kind == "input_polish"
         else f"{conversation_id}:player-draft:{request_id}"
-        if request_kind == "roleplay_player_draft" else conversation_id
+        if request_kind == "roleplay_player_draft"
+        else f"{conversation_id}:outline-draft:{request_id}"
+        if request_kind == "roleplay_outline_draft" else conversation_id
     )
     try:
         canvas_vlm_runtime = sys.modules.get("modules.canvas_vlm_runtime")

@@ -549,7 +549,7 @@
         const source = Array.isArray(value) ? value : [];
         return source.slice(0, 40).map((item) => {
             if (!item || typeof item !== 'object') return null;
-            const kind = ['world', 'memory', 'chapter'].includes(String(item.kind || '').trim().toLowerCase())
+            const kind = ['world', 'memory', 'chapter', 'outline'].includes(String(item.kind || '').trim().toLowerCase())
                 ? String(item.kind).trim().toLowerCase()
                 : '';
             const operation = String(item.op || item.action || 'update').trim().toLowerCase().slice(0, 40);
@@ -571,7 +571,8 @@
         const kindLabel = {
             world: localText('World book', '世界书'),
             memory: localText('Memory', '记忆'),
-            chapter: localText('Chapter', '章节')
+            chapter: localText('Chapter', '章节'),
+            outline: roleplayDictionaryText('Private outline')
         }[change.kind] || localText('Story resource', '故事资源');
         const operationLabel = {
             add: localText('Added', '新增'),
@@ -590,9 +591,11 @@
         const rows = changes.slice(0, 8).map((change) => {
             const name = change.title || change.id;
             const suffix = change.field && change.value
-                ? ` · ${change.field}: ${change.value}`
+                ? change.kind === 'outline'
+                    ? ` · ${roleplayDictionaryText({ completed: 'Completed', blocked: 'Blocked' }[change.value] || 'Progress')}`
+                    : ` · ${change.field}: ${change.value}`
                 : '';
-            return `<li><b>${escapeHtml(roleplayResourceChangeLabel(change))}</b><span title="${escapeHtml(`${name}${suffix}`)}">${escapeHtml(`${name}${suffix}`)}</span></li>`;
+            return `<li><b>${escapeHtml(roleplayResourceChangeLabel(change))}</b><span title="${escapeHtml(`${name}${suffix}`)}">${escapeHtml(`${name}${suffix}`)}</span>${change.kind === 'outline' ? `<button type="button" class="describe-vlm-chat-outline-correction" data-roleplay-outline-open${normalizeChatMode(state.chatMode) === 'roleplay' ? '' : ' hidden'} title="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>` : ''}</li>`;
         }).join('');
         const hiddenCount = Math.max(0, changes.length - 8);
         const more = hiddenCount
@@ -689,6 +692,7 @@
             chapter: 'Active chapter summary',
             world_book: 'Triggered world book',
             memories: 'Relevant long-term memories',
+            outline_direction: 'Current character direction',
             recent_dialogue: 'Recent dialogue'
         };
         return roleplayDictionaryText(labels[String(blockId || '').trim()] || String(blockId || ''));
@@ -1224,6 +1228,7 @@
 
     function applyVisibleRoleplayResourceStores(session, modal) {
         const target = session && typeof session === 'object' ? session : normalizeRoleplaySession(null);
+        if (!roleplayFormCanWriteTo(modal, target)) return target;
         const branchId = String(target.active_branch_id || 'main');
         const worldEntries = visibleRoleplayResourceRows(modal, 'world').map((row) => normalizeRoleplayWorldBookEntry({
             id: row.getAttribute('data-resource-id'),
@@ -1908,6 +1913,42 @@
         return merged;
     }
 
+    function normalizeRoleplayOutline(value, characterIds = null) {
+        const source = value && typeof value === 'object' ? value : {};
+        const text = (value, limit) => typeof value === 'string' ? value.trim().slice(0, limit) : '';
+        const allowed = characterIds ? new Set(characterIds) : null;
+        const seen = new Set();
+        const nodes = (Array.isArray(source.nodes) ? source.nodes : []).slice(0, 12).flatMap((row, index) => {
+            if (!row || typeof row !== 'object') return [];
+            const id = text(row.id, 120).replace(/[^A-Za-z0-9_.:@-]/g, '') || `beat_${index + 1}`;
+            if (seen.has(id)) return [];
+            seen.add(id);
+            return [{
+                id, title: text(row.title, 160), summary: text(row.summary, 1200),
+                trigger_mode: ['after_previous', 'keyword', 'manual'].includes(row.trigger_mode) ? row.trigger_mode : 'after_previous',
+                trigger_text: text(row.trigger_text, 200), complete_when: text(row.complete_when, 500),
+                requires_confirmation: row.requires_confirmation === true,
+                briefs: Object.fromEntries(Object.entries(row.briefs || {}).slice(0, 20)
+                    .filter(([id, value]) => (!allowed || allowed.has(id)) && text(value, 600))
+                    .map(([id, value]) => [id, text(value, 600)]))
+            }];
+        });
+        const currentId = seen.has(source.current_node_id) ? source.current_node_id : '';
+        const progress = Object.fromEntries(nodes.map(node => {
+            const row = source.progress?.[node.id] || {};
+            let status = ['pending', 'active', 'completed', 'blocked', 'skipped'].includes(row.status) ? row.status : 'pending';
+            if (status === 'active' && node.id !== currentId) status = 'pending';
+            return [node.id, { status, evidence: text(row.evidence, 600), turn_id: text(row.turn_id, 200), note: text(row.note, 400) }];
+        }));
+        return {
+            schema: 'simpai.vlm_roleplay.outline', version: 1, enabled: source.enabled === true,
+            revision: Math.max(0, Math.min(2000000000, Math.floor(Number(source.revision) || 0))),
+            title: text(source.title, 200), source: text(source.source, 24000),
+            nodes, progress, current_node_id: currentId,
+            last_completed_turn_id: text(source.last_completed_turn_id, 200)
+        };
+    }
+
     function normalizeRoleplaySession(value, conversationId = '') {
         const source = value && typeof value === 'object' ? value : {};
         const characterSource = source.character || source.character_card || {};
@@ -2119,6 +2160,7 @@
                 world_book_entry_ids: cleanList(source.story_origin?.world_book_entry_ids, MAX_ROLEPLAY_WORLD_BOOK_ENTRIES)
             },
             active_turn_id: String(source.active_turn_id || '').slice(0, 200),
+            story_outline: normalizeRoleplayOutline(source.story_outline, Object.keys(characterCards)),
             state_version: Math.max(0, Math.round(Number(source.state_version) || Number(stateSource.state_version) || 0)),
             director_config: Object.assign({
                 autonomy: 'assisted',
@@ -2176,6 +2218,372 @@
             merged[key] = mergeRoleplayValuePreservingMissing(base[key], incomingValue[key]);
         });
         return merged;
+    }
+
+    let roleplayOutlineEditor = null;
+
+    function normalizeRoleplayOutlineUndo(value) {
+        if (!value || typeof value !== 'object' || !value.before || typeof value.before !== 'object'
+            || typeof value.applied !== 'string' || value.applied.length > 80000) return null;
+        return { before: normalizeRoleplayOutline(value.before), applied: value.applied };
+    }
+
+    function closeRoleplayOutline() {
+        const editor = roleplayOutlineEditor;
+        if (!editor) return;
+        if (editor.request) {
+            editor.request.controller.abort();
+            window.clearTimeout(editor.request.timer);
+            notifyBackendChatCancel(editor.ownerId, editor.request.id).catch(() => {});
+        }
+        editor.element.remove();
+        roleplayOutlineEditor = null;
+        editor.opener?.focus();
+    }
+
+    function outlineEditorIsCurrent(editor) {
+        return roleplayOutlineEditor === editor && state.conversationId === editor.ownerId
+            && normalizeChatMode(state.chatMode) === 'roleplay';
+    }
+
+    function outlineEditorFeedback(editor, key, error = false) {
+        if (!outlineEditorIsCurrent(editor)) return;
+        const element = editor.element.querySelector('[data-outline-status]');
+        element.textContent = roleplayDictionaryText(key);
+        element.dataset.error = error ? 'true' : 'false';
+    }
+
+    function renderRoleplayOutlineEditor(editor) {
+        if (!outlineEditorIsCurrent(editor)) return;
+        const element = editor.element;
+        const plan = editor.draft;
+        const text = key => escapeHtml(roleplayDictionaryText(key));
+        const statuses = { pending: 'Pending beat', active: 'Current beat', completed: 'Completed', blocked: 'Blocked', skipped: 'Skipped' };
+        const options = (values, value) => Object.entries(values).map(([id, label]) =>
+            `<option value="${id}"${id === value ? ' selected' : ''}>${text(label)}</option>`).join('');
+        element.querySelector('[data-outline-title]').value = plan.title;
+        element.querySelector('[data-outline-source]').value = plan.source;
+        element.querySelector('[data-outline-enabled]').checked = plan.enabled;
+        element.querySelector('[data-outline-nodes]').innerHTML = plan.nodes.map((node, index) =>
+            `<button type="button" data-outline-select="${escapeHtml(node.id)}"${editor.beforeCandidate ? ' data-outline-generated="true"' : ''} aria-pressed="${editor.selectedId === node.id}"><b>${index + 1}</b><span>${escapeHtml(node.title || roleplayDictionaryText('Untitled beat'))}<small>${text(statuses[plan.progress[node.id]?.status || 'pending'])}</small></span></button>`).join('');
+        const node = plan.nodes.find(row => row.id === editor.selectedId);
+        const form = element.querySelector('[data-outline-node-editor]');
+        if (!node) {
+            form.innerHTML = `<p class="describe-vlm-chat-outline-empty">${text('Add a beat or generate an outline draft.')}</p>`;
+        } else {
+            const status = plan.progress[node.id] || { status: 'pending', evidence: '', note: '' };
+            const label = (key, field, value, rows = 0, limit = 1200) =>
+                `<label><span>${text(key)}</span>${rows ? `<textarea data-outline-field="${field}" rows="${rows}" maxlength="${limit}">${escapeHtml(value || '')}</textarea>` : `<input data-outline-field="${field}" value="${escapeHtml(value || '')}" maxlength="${limit}">`}</label>`;
+            const actorOptions = selected => Object.values(editor.session.characters).map(card =>
+                `<option value="${escapeHtml(card.id)}"${selected === card.id ? ' selected' : ''}>${escapeHtml(card.name || card.id)}</option>`).join('');
+            form.innerHTML = `
+              <div class="describe-vlm-chat-outline-node-head"><strong>${text('Beat details')}</strong><div><button type="button" data-outline-move="-1" title="${text('Move beat up')}" aria-label="${text('Move beat up')}"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i></button><button type="button" data-outline-move="1" title="${text('Move beat down')}" aria-label="${text('Move beat down')}"><i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button><button type="button" data-outline-activate><i class="fa-solid fa-play" aria-hidden="true"></i><span>${text('Make current')}</span></button><button type="button" data-outline-delete title="${text('Delete beat')}" aria-label="${text('Delete beat')}"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></div></div>
+              ${label('Beat title', 'title', node.title, 0, 160)}
+              ${label('Private plot notes', 'summary', node.summary, 2)}
+              <div class="describe-vlm-chat-outline-field-pair"><label><span>${text('Activation')}</span><select data-outline-field="trigger_mode">${options({ after_previous: 'After previous beat', keyword: 'When input contains a phrase', manual: 'Manual activation' }, node.trigger_mode)}</select></label>
+              <label><span>${text('Progress')}</span><select data-outline-progress>${options(statuses, status.status)}</select></label></div>
+              ${node.trigger_mode === 'keyword' ? label('Trigger phrase', 'trigger_text', node.trigger_text, 0, 200) : ''}
+              <label class="describe-vlm-chat-outline-check"><input type="checkbox" data-outline-field="requires_confirmation"${node.requires_confirmation ? ' checked' : ''}><span>${text('Require manual activation before a major player decision')}</span></label>
+              ${label('Complete only when', 'complete_when', node.complete_when, 2, 500)}
+              <div class="describe-vlm-chat-outline-node-head"><strong>${text('Character directions')}</strong><button type="button" data-outline-brief-add title="${text('Add character direction')}" aria-label="${text('Add character direction')}"><i class="fa-solid fa-plus" aria-hidden="true"></i></button></div>
+              <small>${text('Only the assigned character receives this text while present and this beat is active.')}</small>
+              ${Object.entries(node.briefs).map(([id, value]) => `<div class="describe-vlm-chat-outline-brief"><div><select data-outline-brief-owner="${escapeHtml(id)}" aria-label="${text('Character')}">${actorOptions(id)}</select><button type="button" data-outline-brief-remove="${escapeHtml(id)}" title="${text('Remove direction')}" aria-label="${text('Remove direction')}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div><textarea data-outline-brief="${escapeHtml(id)}" rows="2" maxlength="600" aria-label="${text('Character direction')}">${escapeHtml(value)}</textarea></div>`).join('')}
+              ${status.evidence ? `<details class="describe-vlm-chat-outline-evidence"><summary>${text('Completion evidence')}</summary><p>${escapeHtml(status.evidence)}</p><small>${escapeHtml(status.note || '')}</small></details>` : ''}`;
+        }
+        element.querySelector('[data-outline-generate]').disabled = !!editor.request;
+        element.querySelector('[data-outline-candidate-undo]').hidden = !editor.beforeCandidate;
+        element.querySelector('[data-outline-stop]').hidden = !editor.request;
+        element.querySelector('[data-outline-apply]').disabled = !!editor.request;
+        const undo = editor.runtime.roleplayOutlineUndo;
+        element.querySelector('[data-outline-undo]').disabled = !undo
+            || JSON.stringify(editor.runtime.roleplaySession.story_outline) !== undo.applied;
+        element.querySelector('[data-outline-count]').textContent = `${plan.nodes.length}/12`;
+    }
+
+    function applyRoleplayOutline(editor) {
+        if (!outlineEditorIsCurrent(editor) || editor.request) return false;
+        const runtime = editor.runtime;
+        const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        if (runtime.busy || session.state_version !== editor.baseVersion
+            || JSON.stringify(session.story_outline) !== editor.baseOutline) {
+            outlineEditorFeedback(editor, 'The story changed. Reopen the outline before applying.', true);
+            return false;
+        }
+        const draft = normalizeRoleplayOutline(editor.draft, Object.keys(session.characters));
+        if (JSON.stringify(draft).length > 80000) {
+            outlineEditorFeedback(editor, 'The outline is too large. Shorten plot notes or character directions.', true);
+            return false;
+        }
+        if (draft.enabled && (!draft.nodes.length || draft.nodes.some(node =>
+            !node.title || (node.trigger_mode === 'keyword' && !node.trigger_text)))) {
+            outlineEditorFeedback(editor, 'Add beat titles and any required trigger phrases before enabling.', true);
+            return false;
+        }
+        stopRoleplayAutoplayRuntime(runtime);
+        draft.revision = session.story_outline.revision + 1;
+        runtime.roleplayOutlineUndo = { before: session.story_outline, applied: JSON.stringify(draft) };
+        session.story_outline = draft;
+        session.state_version += 1;
+        session.story_state.state_version = session.state_version;
+        runtime.roleplaySession = session;
+        state.roleplaySession = session;
+        runtime.persistenceDirty = true;
+        editor.session = session;
+        editor.draft = cloneRoleplayDraftValue(draft);
+        editor.beforeCandidate = null;
+        editor.baseVersion = session.state_version;
+        editor.baseOutline = JSON.stringify(draft);
+        scheduleConversationPersist(runtime, 'roleplay_outline_apply', 'soon');
+        syncRoleplayControls(document.getElementById('describe_vlm_chat_modal'));
+        renderRoleplayOutlineEditor(editor);
+        outlineEditorFeedback(editor, 'Outline applied. Future plot notes remain private.');
+        return true;
+    }
+
+    async function generateRoleplayOutline(editor) {
+        if (!outlineEditorIsCurrent(editor) || editor.request) return;
+        const source = editor.draft.source;
+        if (!source.trim()) return outlineEditorFeedback(editor, 'Describe the story direction before generating.', true);
+        if (editor.runtime.busy) return outlineEditorFeedback(editor, 'Wait for the current reply before generating an outline.', true);
+        stopRoleplayAutoplayRuntime(editor.runtime);
+        const version = readSelectedVlmVersion();
+        const routing = roleplayAgentRequestRouting(editor.runtime.roleplaySession);
+        const request = { id: uid('outline_draft'), controller: new AbortController(), source,
+            version, baseVersion: editor.runtime.roleplaySession.state_version,
+            draftKey: JSON.stringify(editor.draft), routeKey: JSON.stringify(editor.runtime.roleplaySession.agent_routing) };
+        editor.request = request;
+        request.timer = window.setTimeout(() => {
+            if (editor.request !== request) return;
+            editor.request = null;
+            request.controller.abort();
+            notifyBackendChatCancel(editor.ownerId, request.id).catch(() => {});
+            renderRoleplayOutlineEditor(editor);
+            outlineEditorFeedback(editor, 'Outline drafting timed out. Your draft is kept.', true);
+        }, 180000);
+        renderRoleplayOutlineEditor(editor);
+        outlineEditorFeedback(editor, 'Drafting a private outline...');
+        let response;
+        try {
+            response = await postJson('/describe-image/vlm-chat-run', {
+                request_kind: 'roleplay_outline_draft', request_id: request.id, conversation_id: editor.ownerId,
+                outline_source: source, message: source, chat_mode: 'roleplay',
+                roleplay_request_kind: 'form_draft',
+                ...routing, version, custom_api: readDescribeCustomApi(version),
+                n_ctx: currentVlmNctx(version), context_window: vlmContextWindowForVersion(version),
+                vram_policy: state.vramPolicy, kv_cache_type: state.kvCacheType,
+                load_mtp: !!state.mtpEnabled, unload_after_chat: !!editor.runtime.unloadAfterChat,
+                __lang: state.__lang, lang: state.__lang
+            }, { signal: request.controller.signal });
+        } catch (error) {
+            response = { ok: false };
+        } finally {
+            window.clearTimeout(request.timer);
+        }
+        if (!outlineEditorIsCurrent(editor) || editor.request !== request) return;
+        editor.request = null;
+        if (request.draftKey !== JSON.stringify(editor.draft) || version !== readSelectedVlmVersion()
+            || request.routeKey !== JSON.stringify(editor.runtime.roleplaySession.agent_routing)
+            || request.baseVersion !== editor.runtime.roleplaySession.state_version) {
+            renderRoleplayOutlineEditor(editor);
+            return outlineEditorFeedback(editor, 'The story or request changed. Your draft was not replaced.', true);
+        }
+        if (!response?.ok || !response.outline_draft) {
+            renderRoleplayOutlineEditor(editor);
+            const messages = {
+                outline_output_limited: 'Outline output was truncated. Your draft is kept.',
+                outline_context_budget: 'The outline exceeds the selected context budget. Shorten it or increase context.',
+                outline_draft_invalid: 'The model returned an invalid outline. Your draft is kept.'
+            };
+            return outlineEditorFeedback(editor, messages[response?.code] || 'Outline drafting failed. Your draft is kept.', true);
+        }
+        editor.beforeCandidate = cloneRoleplayDraftValue(editor.draft);
+        editor.draft = normalizeRoleplayOutline(response.outline_draft, Object.keys(editor.session.characters));
+        editor.draft.enabled = editor.beforeCandidate.enabled;
+        editor.selectedId = editor.draft.nodes[0]?.id || '';
+        renderRoleplayOutlineEditor(editor);
+        editor.element.querySelector('[data-outline-candidate-undo]').hidden = false;
+        outlineEditorFeedback(editor, 'Draft ready. Review each character direction before applying.');
+    }
+
+    function openRoleplayOutline(opener = null) {
+        if (normalizeChatMode(state.chatMode) !== 'roleplay') return;
+        closeRoleplayOutline();
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        const runtime = currentConversationRuntime();
+        const session = syncRoleplaySessionFromVisibleFormForSend(modal, runtime)
+            || normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        const element = document.createElement('section');
+        const text = key => escapeHtml(roleplayDictionaryText(key));
+        element.className = 'describe-vlm-chat-outline';
+        element.setAttribute('role', 'dialog');
+        element.setAttribute('aria-modal', 'true');
+        element.setAttribute('aria-label', roleplayDictionaryText('Private outline'));
+        element.innerHTML = `
+          <header><strong><i class="fa-solid fa-route" aria-hidden="true"></i>${text('Private outline')}</strong><button type="button" data-outline-close title="${text('Close')}" aria-label="${text('Close')}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+          <div class="describe-vlm-chat-outline-body">
+            <div class="describe-vlm-chat-outline-field-pair"><label><span>${text('Outline title')}</span><input data-outline-title maxlength="200"></label><label class="describe-vlm-chat-outline-check"><input data-outline-enabled type="checkbox"><span>${text('Use this outline')}</span></label></div>
+            <label><span>${text('Story direction and boundaries')}</span><textarea data-outline-source rows="3" maxlength="24000"></textarea></label>
+            <div class="describe-vlm-chat-outline-tools"><button type="button" data-outline-generate><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>${text('Generate beat draft')}</span></button><button type="button" data-outline-stop hidden><i class="fa-solid fa-stop" aria-hidden="true"></i><span>${text('Stop')}</span></button><button type="button" data-outline-import><i class="fa-solid fa-file-import" aria-hidden="true"></i><span>${text('Import')}</span></button><button type="button" data-outline-export><i class="fa-solid fa-file-export" aria-hidden="true"></i><span>${text('Export')}</span></button><button type="button" data-outline-candidate-undo hidden><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>${text('Discard generated draft')}</span></button><input type="file" data-outline-file accept=".txt,.md,.json,text/plain,text/markdown,application/json" hidden></div>
+            <small>${text('Future plot notes are private. Only current character directions can enter a reply. Loading an outline does not start autoplay.')}</small>
+            <div class="describe-vlm-chat-outline-workbench"><aside><div class="describe-vlm-chat-outline-node-head"><strong>${text('Story beats')} <small data-outline-count></small></strong><button type="button" data-outline-add title="${text('Add beat')}" aria-label="${text('Add beat')}"><i class="fa-solid fa-plus" aria-hidden="true"></i></button></div><nav data-outline-nodes aria-label="${text('Story beats')}"></nav></aside><div data-outline-node-editor></div></div>
+          </div>
+          <footer><small data-outline-status role="status" aria-live="polite">${text('Changes are drafts until you apply them.')}</small><div><button type="button" data-outline-undo><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>${text('Undo last apply')}</span></button><button type="button" data-outline-apply><i class="fa-solid fa-check" aria-hidden="true"></i><span>${text('Apply outline')}</span></button></div></footer>`;
+        const editor = {
+            element, ownerId: runtime.conversationId, runtime, session, opener,
+            draft: cloneRoleplayDraftValue(session.story_outline), baseVersion: session.state_version,
+            baseOutline: JSON.stringify(session.story_outline), selectedId: session.story_outline.current_node_id || session.story_outline.nodes[0]?.id || ''
+        };
+        roleplayOutlineEditor = editor;
+        modal.querySelector('.describe-vlm-chat-panel').append(element);
+        element.addEventListener('keydown', event => {
+            if (event.key === 'Escape') { event.stopPropagation(); closeRoleplayOutline(); }
+            if (event.key === 'Tab') {
+                const controls = [...element.querySelectorAll('button,input,textarea,select')]
+                    .filter(control => !control.disabled && control.getClientRects().length);
+                const first = controls[0], last = controls.at(-1);
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+            }
+        });
+        element.addEventListener('input', event => {
+            event.stopPropagation();
+            const input = event.target;
+            const node = editor.draft.nodes.find(row => row.id === editor.selectedId);
+            if (input.matches('[data-outline-title]')) editor.draft.title = input.value;
+            if (input.matches('[data-outline-source]')) editor.draft.source = input.value;
+            if (input.matches('[data-outline-enabled]')) editor.draft.enabled = input.checked;
+            if (node && input.dataset.outlineField) {
+                node[input.dataset.outlineField] = input.type === 'checkbox' ? input.checked : input.value;
+                if (input.tagName === 'SELECT') renderRoleplayOutlineEditor(editor);
+            }
+            if (node && input.hasAttribute('data-outline-brief')) node.briefs[input.dataset.outlineBrief] = input.value;
+            outlineEditorFeedback(editor, 'Changes are drafts until you apply them.');
+        });
+        element.addEventListener('change', async event => {
+            event.stopPropagation();
+            const input = event.target;
+            const node = editor.draft.nodes.find(row => row.id === editor.selectedId);
+            if (node && input.hasAttribute('data-outline-progress')) {
+                if (input.value === 'active') Object.values(editor.draft.progress).forEach(progress => { if (progress.status === 'active') progress.status = 'pending'; });
+                editor.draft.progress[node.id] = { status: input.value, evidence: '', turn_id: '', note: '' };
+                if (input.value === 'active') editor.draft.current_node_id = node.id;
+                renderRoleplayOutlineEditor(editor);
+            }
+            if (node && input.hasAttribute('data-outline-brief-owner')) {
+                const oldId = input.dataset.outlineBriefOwner;
+                if (input.value !== oldId && !Object.hasOwn(node.briefs, input.value)) {
+                    node.briefs[input.value] = node.briefs[oldId];
+                    delete node.briefs[oldId];
+                }
+                renderRoleplayOutlineEditor(editor);
+            }
+            if (input.matches('[data-outline-file]') && input.files?.[0]) {
+                const file = input.files[0];
+                const beforeImport = JSON.stringify(editor.draft);
+                if (file.size > 256000) return outlineEditorFeedback(editor, 'Outline file is too large.', true);
+                const content = await file.text();
+                if (!outlineEditorIsCurrent(editor)) return;
+                if (beforeImport !== JSON.stringify(editor.draft)) return outlineEditorFeedback(editor, 'The story or request changed. Your draft was not replaced.', true);
+                if (/\.json$/i.test(file.name)) {
+                    try {
+                        const data = JSON.parse(content);
+                        if (data.schema !== 'simpai.vlm_roleplay.outline' || !Array.isArray(data.nodes) || data.nodes.length > 12
+                            || Object.keys(data.nodes.flatMap(row => Object.keys(row.briefs || {})).reduce((ids, id) => ({ ...ids, [id]: true }), {})).some(id => !session.characters[id])) throw new Error();
+                        editor.draft = normalizeRoleplayOutline(data, Object.keys(session.characters));
+                        editor.draft.enabled = false;
+                        editor.draft.current_node_id = '';
+                        editor.draft.progress = Object.fromEntries(editor.draft.nodes.map(node => [node.id, { status: 'pending', evidence: '', note: '', turn_id: '' }]));
+                    } catch (error) {
+                        return outlineEditorFeedback(editor, 'Invalid outline JSON or unknown character IDs.', true);
+                    }
+                } else {
+                    if (content.length > 24000) return outlineEditorFeedback(editor, 'Outline file is too large.', true);
+                    editor.draft.source = content;
+                }
+                editor.selectedId = editor.draft.nodes[0]?.id || '';
+                editor.beforeCandidate = null;
+                renderRoleplayOutlineEditor(editor);
+                outlineEditorFeedback(editor, 'Outline imported as a draft. Review before applying.');
+            }
+        });
+        element.addEventListener('click', event => {
+            const button = event.target.closest('button');
+            if (!button) return;
+            event.stopPropagation();
+            const node = editor.draft.nodes.find(row => row.id === editor.selectedId);
+            if (button.hasAttribute('data-outline-close')) return closeRoleplayOutline();
+            if (button.hasAttribute('data-outline-generate')) return void generateRoleplayOutline(editor);
+            if (button.hasAttribute('data-outline-stop') && editor.request) {
+                const request = editor.request;
+                editor.request = null;
+                window.clearTimeout(request.timer);
+                request.controller.abort();
+                notifyBackendChatCancel(editor.ownerId, request.id).catch(() => {});
+                renderRoleplayOutlineEditor(editor);
+                return outlineEditorFeedback(editor, 'Outline drafting stopped. Your draft is kept.');
+            }
+            if (button.hasAttribute('data-outline-apply')) return void applyRoleplayOutline(editor);
+            if (button.hasAttribute('data-outline-undo')) {
+                const undo = runtime.roleplayOutlineUndo;
+                if (!undo || runtime.busy || JSON.stringify(runtime.roleplaySession.story_outline) !== undo.applied) return;
+                editor.draft = cloneRoleplayDraftValue(undo.before);
+                if (applyRoleplayOutline(editor)) {
+                    runtime.roleplayOutlineUndo = null;
+                    renderRoleplayOutlineEditor(editor);
+                    outlineEditorFeedback(editor, 'Previous outline restored.');
+                }
+                return;
+            }
+            if (button.hasAttribute('data-outline-candidate-undo') && editor.beforeCandidate) {
+                editor.draft = editor.beforeCandidate;
+                editor.beforeCandidate = null;
+                editor.selectedId = editor.draft.nodes[0]?.id || '';
+                button.hidden = true;
+            }
+            if (button.hasAttribute('data-outline-import')) return element.querySelector('[data-outline-file]').click();
+            if (button.hasAttribute('data-outline-export')) {
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(new Blob([JSON.stringify(editor.draft, null, 2)], { type: 'application/json' }));
+                link.href = url; link.download = 'simpai-story-outline.json'; link.click();
+                window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+                return;
+            }
+            if (button.hasAttribute('data-outline-select')) editor.selectedId = button.dataset.outlineSelect;
+            if (node && button.hasAttribute('data-outline-move')) {
+                const index = editor.draft.nodes.indexOf(node);
+                const destination = index + Number(button.dataset.outlineMove);
+                if (destination >= 0 && destination < editor.draft.nodes.length) {
+                    editor.draft.nodes.splice(index, 1);
+                    editor.draft.nodes.splice(destination, 0, node);
+                }
+            }
+            if (button.hasAttribute('data-outline-add') && editor.draft.nodes.length < 12) {
+                const id = uid('beat');
+                editor.draft.nodes.push({ id, title: '', summary: '', trigger_mode: 'after_previous', trigger_text: '', complete_when: '', requires_confirmation: false, briefs: {} });
+                editor.draft.progress[id] = { status: 'pending', evidence: '', turn_id: '', note: '' };
+                editor.selectedId = id;
+            }
+            if (node && button.hasAttribute('data-outline-delete')) {
+                editor.draft.nodes = editor.draft.nodes.filter(row => row.id !== node.id);
+                delete editor.draft.progress[node.id];
+                if (editor.draft.current_node_id === node.id) editor.draft.current_node_id = '';
+                editor.selectedId = editor.draft.nodes[0]?.id || '';
+            }
+            if (node && button.hasAttribute('data-outline-activate')) {
+                Object.values(editor.draft.progress).forEach(progress => { if (progress.status === 'active') progress.status = 'pending'; });
+                editor.draft.current_node_id = node.id;
+                editor.draft.progress[node.id] = { status: 'active', evidence: '', turn_id: '', note: '' };
+            }
+            if (node && button.hasAttribute('data-outline-brief-add')) {
+                const id = Object.keys(session.characters).find(id => !Object.hasOwn(node.briefs, id));
+                if (id) node.briefs[id] = '';
+            }
+            if (node && button.hasAttribute('data-outline-brief-remove')) delete node.briefs[button.dataset.outlineBriefRemove];
+            renderRoleplayOutlineEditor(editor);
+            outlineEditorFeedback(editor, 'Changes are drafts until you apply them.');
+        });
+        renderRoleplayOutlineEditor(editor);
+        element.querySelector('[data-outline-title]').focus();
     }
 
     function roleplaySessionStateVersion(value) {
@@ -3858,6 +4266,7 @@
             roleplaySession: normalizeRoleplaySession(source.roleplaySession || source.roleplay_session, conversationId),
             roleplayBranches: normalizeRoleplayBranches(source.roleplayBranches || source.roleplay_branches, conversationId),
             roleplayFormDraftUndo: normalizeRoleplayFormDraftReview(source.roleplayFormDraftUndo),
+            roleplayOutlineUndo: normalizeRoleplayOutlineUndo(source.roleplayOutlineUndo),
             roleplayPanelOpen: !!source.roleplayPanelOpen,
             roleplayTurnIntent: normalizeRoleplayTurnIntentSetting(source.roleplayTurnIntent || source.roleplay_turn_intent),
             roleplayReplySpeakerId: String(source.roleplayReplySpeakerId || source.roleplay_reply_speaker_id || '').trim().slice(0, 160),
@@ -3908,6 +4317,8 @@
             creativeDirectorBusy: !!source.creativeDirectorBusy,
             creativeDirectorAbortController: source.creativeDirectorAbortController || null,
             creativeDirectorRequestId: String(source.creativeDirectorRequestId || ''),
+            replyOptionsPanels: source.replyOptionsPanels || Object.create(null),
+            replyOptionDraft: source.replyOptionDraft || null,
             roleplayVisualQueueBusy: false,
             persistenceRevision: Math.max(0, Math.round(Number(source.persistenceRevision ?? source.persistence_revision) || 0)),
             persistenceSavedAt: String(source.persistenceSavedAt ?? source.saved_at ?? '').trim().slice(0, 80),
@@ -3951,6 +4362,8 @@
         if (!runtime || forceRefresh || refreshFromSource) {
             const refreshedSource = Object.assign({}, source || {}, { conversationId: id });
             if (runtime && refreshFromSource && !forceRefresh) {
+                refreshedSource.replyOptionsPanels = runtime.replyOptionsPanels;
+                refreshedSource.replyOptionDraft = runtime.replyOptionDraft;
                 refreshedSource.messages = Array.isArray(source?.archiveMessages)
                     ? source.archiveMessages
                     : (Array.isArray(runtime.messages) && runtime.messages.length ? runtime.messages : source?.messages);
@@ -4646,6 +5059,7 @@
     }
 
     function resetInputPolish(modal = document.getElementById('describe_vlm_chat_modal')) {
+        closeRoleplayOutline();
         cancelInputPolish({ silent: true });
         inputPolishResult = null;
         inputPolishFeedback = null;
@@ -4823,6 +5237,86 @@
         return window.SimpAIChatRichText.render(content, {
             emphasizeDialogue: !!state.dialogueEmphasis && normalizeChatMode(runtime?.chatMode || state.chatMode) === 'roleplay'
         });
+    }
+
+    function assistantReplyOptions(content, values = [], streaming = false) {
+        return window.SimpAIChatRichText?.replyOptions(content, values, streaming)
+            || { text: String(content || ''), options: [] };
+    }
+
+    function normalizeReplyOptions(values) {
+        return window.SimpAIChatRichText?.normalizeReplyOptions(values) || [];
+    }
+
+    function renderReplyOptions(message, runtime, interactive = false) {
+        if (message.role !== 'assistant' || message.pending) return '';
+        const choices = normalizeReplyOptions(message.reply_options);
+        if (!choices.length) return '';
+        const latest = runtime.messages?.filter(item => item.role !== 'system').at(-1);
+        const enabled = interactive && latest === message && !runtime.busy;
+        const variantId = String(activeRoleplayMessageVariant(message)?.id || '');
+        const title = roleplayDictionaryText('Use this option');
+        const groupName = `${runtime.conversationId}:${message.id}:${variantId}`;
+        const panelKey = JSON.stringify([message.id, variantId]);
+        const panelState = runtime.replyOptionsPanels?.[panelKey];
+        const selectedChoice = choices.includes(panelState?.selected) ? panelState.selected : '';
+        const expanded = panelState ? !!panelState.open : enabled;
+        const selectionLabel = selectedChoice
+            ? roleplayDictionaryText('Selected: {option}').replace('{option}', selectedChoice) : '';
+        return `<details class="describe-vlm-chat-reply-options" data-reply-options-key="${escapeHtml(panelKey)}" data-option-conversation="${escapeHtml(runtime.conversationId)}" data-reply-options-open="${expanded}"${expanded ? ' open' : ''}>
+  <summary title="${escapeHtml(roleplayDictionaryText('Expand or collapse options'))}"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Suggested actions'))} · ${choices.length}</span><small data-reply-options-selection title="${escapeHtml(selectedChoice)}">${escapeHtml(selectionLabel)}</small></summary>
+  <div role="radiogroup" aria-label="${escapeHtml(roleplayDictionaryText('Suggested actions'))}">${choices.map((choice, index) => {
+      const selected = selectedChoice === choice;
+      return `<label title="${escapeHtml(title)}"><input type="radio" name="${escapeHtml(groupName)}" data-describe-vlm-chat-reply-option="${index}" data-option-message="${escapeHtml(message.id)}" data-option-conversation="${escapeHtml(runtime.conversationId)}" data-option-revision="${Number(message.revision) || 1}" data-option-variant="${escapeHtml(variantId)}"${selected ? ' checked' : ''}${enabled ? '' : ' disabled'}><span>${escapeHtml(choice)}</span></label>`;
+  }).join('')}</div>
+</details>`;
+    }
+
+    function rememberReplyOptionsPanel(panel, expanded = panel.open) {
+        const runtime = currentConversationRuntime();
+        if (!panel.isConnected || panel.dataset.optionConversation !== runtime.conversationId
+            || panel.dataset.replyOptionsOpen === String(expanded)) return;
+        const key = panel.dataset.replyOptionsKey;
+        if (!key) return;
+        runtime.replyOptionsPanels ||= Object.create(null);
+        runtime.replyOptionsPanels[key] = { ...runtime.replyOptionsPanels[key], open: expanded };
+        panel.dataset.replyOptionsOpen = String(expanded);
+    }
+
+    function useReplyOption(button) {
+        const runtime = currentConversationRuntime();
+        if (button.disabled || runtime.busy || button.dataset.optionConversation !== runtime.conversationId) return false;
+        const message = runtime.messages?.filter(item => item.role !== 'system').at(-1);
+        if (!message || message.pending || message.role !== 'assistant'
+            || message.id !== button.dataset.optionMessage
+            || (Number(message.revision) || 1) !== Number(button.dataset.optionRevision)
+            || String(activeRoleplayMessageVariant(message)?.id || '') !== button.dataset.optionVariant) return false;
+        const choice = normalizeReplyOptions(message.reply_options)[Number(button.dataset.describeVlmChatReplyOption)];
+        if (!choice) return false;
+        const input = document.querySelector('#describe_vlm_chat_modal [data-describe-vlm-chat-input]');
+        if (!input) return false;
+        const current = String(input.value || '');
+        const prefix = current === runtime.replyOptionDraft?.value ? runtime.replyOptionDraft.prefix : current;
+        const value = prefix.trim() ? `${prefix.trimEnd()}\n${choice}` : choice;
+        runtime.replyOptionDraft = {
+            prefix, value, messageId: message.id,
+            variantId: button.dataset.optionVariant, index: Number(button.dataset.describeVlmChatReplyOption)
+        };
+        if (normalizeChatMode(runtime.chatMode) === 'roleplay') pauseRoleplayForUserInput(runtime);
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        const panel = button.closest('details.describe-vlm-chat-reply-options');
+        if (panel) {
+            runtime.replyOptionsPanels ||= Object.create(null);
+            runtime.replyOptionsPanels[panel.dataset.replyOptionsKey] = { open: false, selected: choice };
+            const summary = panel.querySelector('[data-reply-options-selection]');
+            summary.textContent = roleplayDictionaryText('Selected: {option}').replace('{option}', choice);
+            summary.title = choice;
+            panel.dataset.replyOptionsOpen = 'false';
+            panel.open = false;
+        }
+        setConversationStatus(runtime, roleplayDictionaryText('Option added to input.'));
+        return true;
     }
 
     function normalizeChatDocuments(values, options = {}) {
@@ -9635,6 +10129,7 @@
 
     function applyVisibleRoleplayCharacterFields(session, modal, preserveEmpty = false) {
         const normalized = normalizeRoleplaySession(session);
+        if (!roleplayFormCanWriteTo(modal, normalized)) return normalized;
         const activeId = normalized.active_character_id || normalized.character.id;
         const card = Object.assign({}, normalized.characters?.[activeId] || normalized.character);
         const read = (selector) => {
@@ -9759,7 +10254,8 @@
     function roleplayFormSnapshotForRuntime(runtime, session) {
         const snapshot = runtime?.roleplayFormSnapshot;
         const activeId = String(session?.active_character_id || session?.character?.id || '').trim();
-        return snapshot && snapshot.active_character_id === activeId ? snapshot : null;
+        return snapshot && snapshot.conversation_id === runtime?.conversationId
+            && snapshot.active_character_id === activeId ? snapshot : null;
     }
 
     function roleplayFormValueAtPath(source, path) {
@@ -9821,6 +10317,7 @@
     function syncRoleplayPresenceControls(modal, runtime = null) {
         if (!modal) return;
         const target = runtime || currentConversationRuntime();
+        if (!target || !isCurrentConversationRuntime(target)) return;
         const session = normalizeRoleplaySession(target?.roleplaySession, target?.conversationId);
         const participantSummary = modal.querySelector('[data-describe-vlm-chat-roleplay-participant-summary]');
         if (participantSummary) participantSummary.outerHTML = renderRoleplayParticipantSummary(target);
@@ -9964,10 +10461,22 @@
         return true;
     }
 
+    function roleplayFormCanWriteTo(modal, target) {
+        const panel = modal?.querySelector('[data-describe-vlm-chat-roleplay-panel]');
+        const session = target?.roleplaySession || target;
+        const conversationId = String(target?.conversationId || session?.conversation_id || '');
+        const characterId = String(session?.active_character_id || session?.character?.id || '');
+        return !!panel && !panel.hidden && conversationId === String(state.conversationId || '')
+            && panel.dataset.roleplayFormConversationId === conversationId
+            && panel.dataset.roleplayFormCharacterId === characterId;
+    }
+
     function syncRoleplayStrip(modal, runtimeOverride = null) {
         if (!modal) return;
-        const active = normalizeChatMode(state.chatMode) === 'roleplay';
         const runtime = runtimeOverride || currentConversationRuntime();
+        if (!isCurrentConversationRuntime(runtime)) return;
+        const active = normalizeChatMode(state.chatMode) === 'roleplay';
+        modal.querySelectorAll('.describe-vlm-chat-outline-correction').forEach(button => { button.hidden = !active; });
         const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
         const rawAutoplayState = normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState);
         const autoplayState = normalizeRoleplayAutoplayState(Object.assign({}, rawAutoplayState, {
@@ -10101,19 +10610,30 @@
         const synced = syncRoleplayStrip(modal, runtimeOverride);
         if (!synced) return;
         const { active, runtime, session, autoplayState } = synced;
+        if (roleplayOutlineEditor && (!active || roleplayOutlineEditor.ownerId !== runtime.conversationId)) closeRoleplayOutline();
+        const outline = session.story_outline;
+        const currentBeat = outline.nodes.find(node => node.id === outline.current_node_id);
+        modal.querySelectorAll('[data-roleplay-outline-open]').forEach(button => {
+            button.title = roleplayDictionaryText('Private outline')
+                + (outline.enabled && currentBeat ? `: ${currentBeat.title}` : '');
+        });
         syncRoleplayGuidanceControls(modal, runtime);
         if (!active || !state.roleplayPanelOpen) {
             const hiddenResourceManager = modal.querySelector('[data-describe-vlm-chat-roleplay-resources]');
             if (hiddenResourceManager) clearRoleplayResourceManager(hiddenResourceManager);
             return;
         }
+        const panel = modal.querySelector('[data-describe-vlm-chat-roleplay-panel]');
+        const formOwnerChanged = panel.dataset.roleplayFormConversationId !== runtime.conversationId
+            || panel.dataset.roleplayFormCharacterId !== session.active_character_id;
+        if (formOwnerChanged) delete runtime.roleplayFormSnapshot;
         const setValue = (selector, value, path) => {
             const element = modal.querySelector(selector);
             const nextValue = String(value || '');
             if (
                 element
-                && document.activeElement !== element
-                && !roleplayFormValueHasPendingEdit(runtime, session, path, nextValue)
+                && (formOwnerChanged || (document.activeElement !== element
+                    && !roleplayFormValueHasPendingEdit(runtime, session, path, nextValue)))
             ) element.value = nextValue;
         };
         renderRoleplayCharacterSelector(modal, session);
@@ -10136,8 +10656,8 @@
         const stateFields = modal.querySelector('[data-describe-vlm-chat-roleplay-state-fields]');
         if (
             stateFields
-            && !stateFields.contains(document.activeElement)
-            && !roleplayFormValueHasPendingEdit(runtime, session, ['character_state', 'state_fields'], activeCharacterRuntime.state_fields)
+            && (formOwnerChanged || (!stateFields.contains(document.activeElement)
+                && !roleplayFormValueHasPendingEdit(runtime, session, ['character_state', 'state_fields'], activeCharacterRuntime.state_fields)))
         ) {
             delete stateFields.dataset.roleplayStateFieldsCleared;
             renderRoleplayCharacterStateFields(modal, activeCharacterRuntime.state_fields);
@@ -10149,16 +10669,16 @@
         const playerStatus = modal.querySelector('[data-describe-vlm-chat-roleplay-player-status]');
         if (
             playerStatus
-            && document.activeElement !== playerStatus
-            && !roleplayFormValueHasPendingEdit(runtime, session, ['player', 'status'], playerState.status)
+            && (formOwnerChanged || (document.activeElement !== playerStatus
+                && !roleplayFormValueHasPendingEdit(runtime, session, ['player', 'status'], playerState.status)))
         ) playerStatus.value = playerState.status;
         setValue('[data-describe-vlm-chat-roleplay-player-current-appearance]', playerState.appearance, ['player', 'current_appearance']);
         setValue('[data-describe-vlm-chat-roleplay-player-state-text]', playerState.state_text, ['player', 'state_text']);
         const playerStateFields = modal.querySelector('[data-describe-vlm-chat-roleplay-player-state-fields]');
         if (
             playerStateFields
-            && !playerStateFields.contains(document.activeElement)
-            && !roleplayFormValueHasPendingEdit(runtime, session, ['player', 'state_fields'], playerState.state_fields)
+            && (formOwnerChanged || (!playerStateFields.contains(document.activeElement)
+                && !roleplayFormValueHasPendingEdit(runtime, session, ['player', 'state_fields'], playerState.state_fields)))
         ) {
             delete playerStateFields.dataset.roleplayStateFieldsCleared;
             renderRoleplayPlayerStateFields(modal, playerState.state_fields);
@@ -10172,7 +10692,7 @@
             .map((input) => String(input.value || '').trim())
             .filter(Boolean)
             .slice(0, MAX_ROLEPLAY_CHARACTERS);
-        if (!roleplayFormValueHasPendingEdit(runtime, session, ['scene', 'present_character_ids'], visiblePresence)) {
+        if (formOwnerChanged || !roleplayFormValueHasPendingEdit(runtime, session, ['scene', 'present_character_ids'], visiblePresence)) {
             renderRoleplaySceneCharacterSelector(modal, session);
         }
         const autoplay = modal.querySelector('[data-describe-vlm-chat-roleplay-autoplay-mode]');
@@ -10190,11 +10710,11 @@
             const select = modal.querySelector(`[data-describe-vlm-chat-roleplay-agent-route="${role}"]`);
             if (select) {
                 const route = agentRouting.routes[role] || {};
-                if (document.activeElement !== select) select.value = route.mode || 'auto';
+                if (formOwnerChanged || document.activeElement !== select) select.value = route.mode || 'auto';
             }
         });
         const localVersion = modal.querySelector('[data-describe-vlm-chat-roleplay-agent-local-version]');
-        if (localVersion && document.activeElement !== localVersion) {
+        if (localVersion && (formOwnerChanged || document.activeElement !== localVersion)) {
             localVersion.innerHTML = renderRoleplayLocalModelOptions(session);
             const target = String(agentRouting.profiles?.local_main?.version || '').trim()
                 || ROLEPLAY_LOCAL_MODEL_FOLLOW_UI;
@@ -10202,14 +10722,14 @@
             localVersion.value = available ? target : ROLEPLAY_LOCAL_MODEL_FOLLOW_UI;
         }
         const apiVersion = modal.querySelector('[data-describe-vlm-chat-roleplay-agent-api-version]');
-        if (apiVersion && document.activeElement !== apiVersion) {
+        if (apiVersion && (formOwnerChanged || document.activeElement !== apiVersion)) {
             apiVersion.innerHTML = renderRoleplayApiProfileOptions(session);
             const selected = roleplaySelectedApiProfileVersion(session);
             const available = Array.from(apiVersion.options || []).some((option) => option.value === selected);
             apiVersion.value = available ? selected : (apiVersion.options?.[0]?.value || '');
         }
         const fallbackEnabled = modal.querySelector('[data-describe-vlm-chat-roleplay-agent-fallback]');
-        if (fallbackEnabled && document.activeElement !== fallbackEnabled) {
+        if (fallbackEnabled && (formOwnerChanged || document.activeElement !== fallbackEnabled)) {
             const apiRoles = ROLEPLAY_AGENT_ROLES.filter((role) => agentRouting.routes?.[role]?.mode === 'api');
             fallbackEnabled.disabled = !apiRoles.length;
             fallbackEnabled.checked = !!apiRoles.length && apiRoles.every((role) => agentRouting.routes?.[role]?.fallback_enabled === true);
@@ -10217,7 +10737,7 @@
         syncRoleplayCharacterLibraryControls(modal);
         const resourceManager = modal.querySelector('[data-describe-vlm-chat-roleplay-resources]');
         const shouldRenderResourceManager = active && state.roleplayPanelOpen;
-        if (resourceManager && shouldRenderResourceManager && !resourceManager.contains(document.activeElement)) {
+        if (resourceManager && shouldRenderResourceManager && (formOwnerChanged || !resourceManager.contains(document.activeElement))) {
             renderRoleplayResourceManager(modal, runtime);
         } else if (resourceManager && !shouldRenderResourceManager) {
             clearRoleplayResourceManager(resourceManager);
@@ -10230,11 +10750,14 @@
         syncRoleplayBranchControls(modal, runtime);
         renderRoleplayFormDraftReview(modal, runtime);
         renderRoleplayContextViewer(modal, runtime);
+        panel.dataset.roleplayFormConversationId = runtime.conversationId;
+        panel.dataset.roleplayFormCharacterId = session.active_character_id;
         runtime.roleplayFormSnapshot = captureRoleplayFormSnapshot(modal, runtime, runtime.roleplayFormSnapshot);
     }
 
     function applyVisibleRoleplayPersonaFields(session, modal, preserveEmpty = true) {
         const target = session && typeof session === 'object' ? session : normalizeRoleplaySession(null);
+        if (!roleplayFormCanWriteTo(modal, target)) return target;
         const persona = target.persona && typeof target.persona === 'object'
             ? target.persona
             : (target.persona = {});
@@ -10257,6 +10780,9 @@
     function applyRoleplayForm(modal, runtime = null, options = {}) {
         if (!modal) return null;
         const target = runtime || currentConversationRuntime();
+        if (!roleplayFormCanWriteTo(modal, target)) {
+            return normalizeRoleplaySession(target.roleplaySession, target.conversationId);
+        }
         let session = syncRoleplaySessionFromVisibleFormForSend(modal, target)
             || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const read = (selector) => String(modal.querySelector(selector)?.value || '').trim();
@@ -13256,6 +13782,7 @@
     function syncRoleplayAgentRoutingFromVisibleForm(modal, runtime = null) {
         const target = runtime || currentConversationRuntime();
         if (!modal || !target?.roleplaySession) return null;
+        if (!roleplayFormCanWriteTo(modal, target)) return null;
         const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const routing = normalizeRoleplayAgentRouting(session.agent_routing);
         ROLEPLAY_AGENT_ROLES.forEach((role) => {
@@ -13284,16 +13811,14 @@
     function syncRoleplaySessionFromVisibleFormForSend(modal, runtime = null, options = {}) {
         const target = runtime || currentConversationRuntime();
         if (!modal || !target?.roleplaySession) return null;
+        if (!roleplayFormCanWriteTo(modal, target)) return null;
         const includePresence = options.includePresence !== false;
         let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const read = (selector) => {
             const field = modal.querySelector(selector);
             return field ? String(field.value || '').trim() : null;
         };
-        const snapshot = runtime?.roleplayFormSnapshot
-            && runtime.roleplayFormSnapshot.active_character_id === session.active_character_id
-            ? runtime.roleplayFormSnapshot
-            : null;
+        const snapshot = roleplayFormSnapshotForRuntime(target, session);
         const snapshotValue = (path) => path.reduce(
             (value, key) => value === undefined || value === null ? undefined : value[key],
             snapshot
@@ -13442,7 +13967,8 @@
         if (!modal || !runtime?.roleplaySession) return previous || null;
         const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
         const activeId = session.active_character_id || session.character?.id || '';
-        const previousSnapshot = previous?.active_character_id === activeId ? previous : null;
+        const previousSnapshot = previous?.conversation_id === runtime.conversationId
+            && previous?.active_character_id === activeId ? previous : null;
         const read = (selector, fallback, path) => {
             const field = modal.querySelector(selector);
             const previousValue = previousSnapshot
@@ -13492,6 +14018,7 @@
                     ? sessionPresence
                     : previousPresence;
         return {
+            conversation_id: runtime.conversationId,
             active_character_id: activeId,
             character: {
                 name: read('[data-describe-vlm-chat-roleplay-character-name]', character.name, ['character', 'name']),
@@ -14538,6 +15065,7 @@
     <span class="describe-vlm-chat-roleplay-state" data-describe-vlm-chat-roleplay-state aria-live="polite"></span>
     <div class="describe-vlm-chat-roleplay-participant-summary" data-describe-vlm-chat-roleplay-participant-summary aria-live="polite"></div>
     <div class="describe-vlm-chat-roleplay-autoplay-controls" role="group" aria-label="${escapeHtml(localText('Autoplay controls', '托管控制'))}">
+      <button type="button" data-roleplay-outline-open title="${escapeHtml(roleplayDictionaryText('Private outline'))}" aria-label="${escapeHtml(roleplayDictionaryText('Private outline'))}"><i class="fa-solid fa-route" aria-hidden="true"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-play title="${escapeHtml(localText('Start autoplay', '开始托管'))}" aria-label="${escapeHtml(localText('Start autoplay', '开始托管'))}"><i class="fa-solid fa-play"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-step title="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}" aria-label="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}"><i class="fa-solid fa-forward-step"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-pause title="${escapeHtml(localText('Pause autoplay', '暂停托管'))}" aria-label="${escapeHtml(localText('Pause autoplay', '暂停托管'))}"><i class="fa-solid fa-pause"></i></button>
@@ -14549,6 +15077,7 @@
     <div class="describe-vlm-chat-roleplay-panel-head">
       <strong>${escapeHtml(localText('Roleplay settings', '角色扮演设置'))}</strong>
       <div class="describe-vlm-chat-roleplay-panel-head-actions">
+        <button type="button" data-roleplay-outline-open><i class="fa-solid fa-route" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Private outline'))}</span></button>
         <button type="button" class="describe-vlm-chat-roleplay-example" data-describe-vlm-chat-roleplay-example title="${escapeHtml(localText('Load an adventure example template in a new conversation', '在新对话中载入冒险示例模板'))}" aria-label="${escapeHtml(localText('Load example template', '载入示例模板'))}"><i class="fa-solid fa-book-open"></i><span>${escapeHtml(localText('Example template', '示例模板'))}</span></button>
         <button type="button" data-describe-vlm-chat-roleplay-close title="${escapeHtml(t('Close', '关闭'))}" aria-label="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
       </div>
@@ -15109,8 +15638,9 @@
 
     function normalizeRoleplayMessageVariant(value, index = 0, conversationId = '') {
         if (!value || typeof value !== 'object') return null;
-        const content = String(value.content || '').slice(0, MAX_PERSISTED_TEXT);
-        if (!content) return null;
+        const suggested = assistantReplyOptions(value.content, value.reply_options);
+        const content = suggested.text.slice(0, MAX_PERSISTED_TEXT);
+        if (!content && !suggested.options.length) return null;
         const actions = Array.isArray(value.actions)
             ? value.actions.slice(0, 20).map(normalizePersistedAction).filter(Boolean)
             : [];
@@ -15120,6 +15650,7 @@
             id: String(value.id || uid(`roleplay_variant_${index}`)).slice(0, 240),
             revision: Math.max(1, Math.round(Number(value.revision) || 1)),
             content,
+            reply_options: suggested.options,
             actions,
             completion: normalizeChatCompletion(value.completion),
             response_source: normalizeResponseSource(value.response_source || value),
@@ -15558,6 +16089,7 @@
     function visibleReplyFromResponse(response, completion) {
         const text = String(response?.text || '').trim();
         if (text) return text;
+        if (normalizeReplyOptions(response?.reply_options).length) return '';
         const rawText = String(response?.raw_text || response?.rawText || '').trim();
         if (rawText) return rawText;
         if (completion?.output_limited) {
@@ -15570,7 +16102,10 @@
         if (!message || typeof message !== 'object') return null;
         const role = message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user';
         const id = String(message.id || uid(`describe_vlm_chat_${role}`)).slice(0, 240);
-        const content = String(message.content || '').slice(0, MAX_PERSISTED_TEXT);
+        const suggested = role === 'assistant'
+            ? assistantReplyOptions(message.content, message.reply_options)
+            : { text: String(message.content || ''), options: [] };
+        const content = suggested.text.slice(0, MAX_PERSISTED_TEXT);
         const images = Array.isArray(message.images)
             ? message.images.slice(0, MAX_ATTACHMENTS).map((image) => normalizePersistedMessageImage(image, options.thumbBudget))
             : [];
@@ -15594,13 +16129,14 @@
                 options.conversationId || message.roleplay_session?.conversation_id || ''
             )).filter(Boolean)
             : [];
-        if (!content && !images.length && !actions.length && !mediaAssets.length && !documents.length) return null;
+        if (!content && !suggested.options.length && !images.length && !actions.length && !mediaAssets.length && !documents.length) return null;
         const legacyRoleplayControl = !!message.roleplay_control_only;
         const normalized = {
             id,
             revision: Math.max(1, Math.round(Number(message.revision) || 1)),
             role,
             content,
+            reply_options: suggested.options,
             actions,
             response_source: normalizeResponseSource(message.response_source || message),
             roleplay_state_changes: normalizeRoleplayStateChanges(message.roleplay_state_changes),
@@ -15625,6 +16161,7 @@
         if (message.text_edit_previous && typeof message.text_edit_previous.content === 'string') {
             normalized.text_edit_previous = {
                 content: message.text_edit_previous.content.slice(0, MAX_PERSISTED_TEXT),
+                reply_options: normalizeReplyOptions(message.text_edit_previous.reply_options),
                 variant_id: String(message.text_edit_previous.variant_id || '').slice(0, 240)
             };
         }
@@ -16028,6 +16565,7 @@
             active_branch_id: String(source.active_branch_id || 'main').slice(0, 160),
             active_turn_id: String(source.active_turn_id || '').slice(0, 200),
             state_version: Math.max(0, Math.round(Number(source.state_version) || 0)),
+            story_outline: normalizeRoleplayOutline(source.story_outline),
             director_config: source.director_config && typeof source.director_config === 'object'
                 ? Object.assign({}, source.director_config)
                 : {},
@@ -16141,6 +16679,7 @@
             active_branch_id: String(source.active_branch_id || 'main').slice(0, 160),
             active_turn_id: String(source.active_turn_id || '').slice(0, 200),
             state_version: Math.max(0, Math.round(Number(source.state_version) || 0)),
+            story_outline: normalizeRoleplayOutline(source.story_outline),
             autoplay_config: {
                 mode: String(source.autoplay_config?.mode || 'manual').slice(0, 40),
                 speaker_mode: String(source.autoplay_config?.speaker_mode || 'auto').slice(0, 40),
@@ -16238,12 +16777,14 @@
         const resourceChanges = normalizeRoleplayResourceChanges(message.roleplay_resource_changes);
         const imageCount = Math.max(0, Number(message.image_count) || (Array.isArray(message.images) ? message.images.length : 0));
         const documents = Array.isArray(message.documents) ? normalizeChatDocuments(message.documents, { metadataOnly: true }) : [];
-        if (!content && !stateChanges.length && !resourceChanges.length && !imageCount && !documents.length) return null;
+        const replyOptions = role === 'assistant' ? normalizeReplyOptions(message.reply_options) : [];
+        if (!content && !replyOptions.length && !stateChanges.length && !resourceChanges.length && !imageCount && !documents.length) return null;
         const compact = {
             id: String(message.id || uid(`describe_vlm_chat_${role}`)).slice(0, 240),
             revision: Math.max(1, Math.round(Number(message.revision) || 1)),
             role,
             content,
+            reply_options: replyOptions,
             actions: [],
             variants: [],
             response_source: normalizeResponseSource(message.response_source || message),
@@ -16515,6 +17056,7 @@
             variant?.id,
             variant?.revision,
             variant?.content,
+            JSON.stringify(variant?.reply_options || []),
             variant?.state_version,
             variant?.turn_id,
             JSON.stringify(roleplayMessageKnowledgeFields(variant || {})),
@@ -16530,6 +17072,7 @@
             message?.revision,
             message?.role,
             message?.content,
+            JSON.stringify(message?.reply_options || []),
             message?.created_at,
             message?.state_version,
             message?.turn_id,
@@ -17045,6 +17588,7 @@
                 roleplaySession: restoredSession,
                 roleplayBranches: archiveSource.roleplayBranches,
                 roleplayFormDraftUndo: archiveSource.roleplayFormDraftUndo,
+                roleplayOutlineUndo: archiveSource.roleplayOutlineUndo,
                 roleplayPanelOpen: settingsSource.roleplayPanelOpen,
                 roleplayAutoplayState: settingsSource.roleplayAutoplayState,
                 customSystemPrompt: settingsSource.customSystemPrompt,
@@ -17223,7 +17767,8 @@
         }, roleplayHasData ? {
             roleplay_session: roleplayData.session,
             roleplay_branches: roleplayData.branches,
-            roleplay_form_draft_undo: normalizeRoleplayFormDraftReview(target.roleplayFormDraftUndo)
+            roleplay_form_draft_undo: normalizeRoleplayFormDraftReview(target.roleplayFormDraftUndo),
+            roleplay_outline_undo: normalizeRoleplayOutlineUndo(target.roleplayOutlineUndo)
         } : {});
     }
 
@@ -17324,6 +17869,7 @@
             roleplaySession: roleplayData?.session || normalizeRoleplaySession(expandedData.roleplay_session, conversationId),
             roleplayBranches: roleplayData?.branches || normalizeRoleplayBranches(expandedData.roleplay_branches, conversationId),
             roleplayFormDraftUndo: normalizeRoleplayFormDraftReview(expandedData.roleplay_form_draft_undo),
+            roleplayOutlineUndo: normalizeRoleplayOutlineUndo(expandedData.roleplay_outline_undo),
             roleplayPanelOpen: !!expandedData.roleplay_panel_open,
             roleplayAutoplayState: normalizeRoleplayAutoplayState(expandedData.roleplay_autoplay_state),
             contextSummary: String(expandedData.context_summary || '').slice(0, CONTEXT_SUMMARY_MAX_CHARS),
@@ -17729,6 +18275,7 @@
             roleplaySession: restored.roleplaySession,
             roleplayBranches: restored.roleplayBranches,
             roleplayFormDraftUndo: restored.roleplayFormDraftUndo,
+            roleplayOutlineUndo: restored.roleplayOutlineUndo,
             roleplayPanelOpen: restored.roleplayPanelOpen,
             roleplayAutoplayState: restored.roleplayAutoplayState,
             customSkillNames: restored.customSkillNames,
@@ -17909,7 +18456,7 @@
   <header><span><small>#${index + 1}</small><strong>${escapeHtml(title)}</strong>${message.text_edited_at ? `<small>${escapeHtml(text('Text edited'))}</small>` : ''}</span><span>
     ${canUndo ? `<button type="button" data-history-undo="${escapeHtml(message.id)}" title="${escapeHtml(text('Undo text edit'))}" aria-label="${escapeHtml(text('Undo text edit'))}"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
     <button type="button" data-history-edit="${escapeHtml(message.id)}" title="${escapeHtml(text('Edit message text'))}" aria-label="${escapeHtml(text('Edit message text'))}"><i class="fa-solid fa-pen"></i></button>
-  </span></header>${renderDocumentAttachments(message.documents)}<div class="describe-vlm-chat-rich-text" data-describe-vlm-message-body>${renderChatMessageText(message.content, runtime)}</div></article>`;
+  </span></header>${renderDocumentAttachments(message.documents)}<div class="describe-vlm-chat-rich-text" data-describe-vlm-message-body>${renderChatMessageText(message.content, runtime)}</div>${renderReplyOptions(message, runtime)}</article>`;
         }).join('') || `<p class="describe-vlm-history-empty">${escapeHtml(text('No matching messages'))}</p>`;
         if (viewer.windowEnd === viewer.pages - 1 && rows.length) {
             list.insertAdjacentHTML('beforeend', `<p><small>${escapeHtml(text('End of conversation history'))}</small></p>`);
@@ -17990,15 +18537,18 @@
         if (undo && message.text_edit_previous.variant_id !== String(variant?.id || '')) return;
         const edited = Object.assign({}, message, {
             content,
+            reply_options: undo ? normalizeReplyOptions(message.text_edit_previous?.reply_options)
+                : content === message.content ? normalizeReplyOptions(message.reply_options) : [],
             revision: (Number(message.revision) || 1) + 1,
             text_edited_at: new Date().toISOString()
         });
         if (undo) delete edited.text_edit_previous;
         else if (content !== message.content) edited.text_edit_previous = {
-            content: message.content, variant_id: String(variant?.id || '')
+            content: message.content, reply_options: normalizeReplyOptions(message.reply_options),
+            variant_id: String(variant?.id || '')
         };
         if (variant) edited.variants = message.variants.map((item, index) => index === (message.active_variant_index || 0)
-            ? Object.assign({}, item, { content, revision: (Number(item.revision) || 1) + 1 }) : item);
+            ? Object.assign({}, item, { content, reply_options: edited.reply_options, revision: (Number(item.revision) || 1) + 1 }) : item);
         viewer.unsavedWrite = true;
         const replace = rows => (rows || []).map(item => item.id === edited.id ? edited : item);
         if (viewer.branchId === String(runtime.roleplaySession?.active_branch_id || 'main')) {
@@ -19048,7 +19598,9 @@
         const pendingIndex = messages.findIndex((item) => item?.pending);
         const pending = pendingIndex >= 0 ? messages[pendingIndex] : null;
         if (!pending) return false;
-        pending.content = cleanPendingAssistantStreamText(content);
+        const suggested = assistantReplyOptions(cleanPendingAssistantStreamText(content), [], true);
+        pending.content = suggested.text;
+        pending.reply_options = suggested.options;
         pending.streaming = true;
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) {
@@ -19113,8 +19665,9 @@
         const id = `${requestId}:${message.id}`;
         const messages = runtime.messages;
         if (!Array.isArray(messages) || messages.some(item => item?.id === id)) return false;
+        const suggested = assistantReplyOptions(message.text);
         const assistant = {
-            id, revision: 1, role: 'assistant', content: message.text,
+            id, revision: 1, role: 'assistant', content: suggested.text, reply_options: suggested.options,
             response_source: responseSource, actions: []
         };
         const pendingIndex = messages.findIndex(item => item?.pending);
@@ -20067,6 +20620,7 @@
         runtime.messages = runtime.messages.slice(0, index + 1);
         const liveMessage = runtime.messages[index];
         liveMessage.content = variant.content;
+        liveMessage.reply_options = normalizeReplyOptions(variant.reply_options);
         liveMessage.actions = variant.actions;
         liveMessage.completion = variant.completion || null;
         liveMessage.response_source = variant.response_source || null;
@@ -23893,6 +24447,7 @@
   ${resourceChangesHtml}
   ${completionWarningHtml}
   ${actionHtml}
+  ${renderReplyOptions(message, runtime, true)}
 </div>`;
         }).join('') + renderQueuedConversationMessages(runtime);
         log.querySelectorAll('.describe-vlm-chat-reasoning').forEach(element => {
@@ -25658,11 +26213,13 @@
                         'The model ended the reply early. Received text is kept; story state was not updated.'
                     )}`
                 : describeVlmChatFailure(response);
+        const suggested = assistantReplyOptions(reply, response?.ok ? response.reply_options : []);
         const assistant = {
             id: pendingMessageId || uid('describe_vlm_chat_assistant'),
             revision: Math.max(1, Math.round(Number(pendingIndex >= 0 ? messages[pendingIndex]?.revision : 1) || 1)),
             role: 'assistant',
-            content: reply,
+            content: suggested.text,
+            reply_options: response?.ok ? suggested.options : [],
             image_context_reads: imageContextReads,
             completion,
             response_source: normalizeResponseSource(response?.response_source || response, {
@@ -25767,6 +26324,7 @@
             const variant = normalizeRoleplayMessageVariant({
                 id: uid('roleplay_variant'),
                 content: assistant.content,
+                reply_options: assistant.reply_options,
                 actions: assistant.actions,
                 completion: assistant.completion,
                 response_source: assistant.response_source,
@@ -26492,6 +27050,10 @@
         setStatus(t('Prompt updated.', '提示词已更新。'));
     }
 
+    document.addEventListener('toggle', (evt) => {
+        if (evt.target.matches?.('details.describe-vlm-chat-reply-options')) rememberReplyOptionsPanel(evt.target);
+    }, true);
+
     document.addEventListener('change', (evt) => {
         if (evt.target?.matches?.('[data-roleplay-guidance]')) {
             updateRoleplayGuidanceFromForm(document.getElementById('describe_vlm_chat_modal'), syncCurrentRuntimeFromState());
@@ -26724,7 +27286,27 @@
         }
     });
 
+    document.addEventListener('change', (evt) => {
+        const replyOption = evt.target.closest?.('[data-describe-vlm-chat-reply-option]');
+        if (replyOption) useReplyOption(replyOption);
+    });
+
     document.addEventListener('click', (evt) => {
+        const optionsSummary = evt.target.closest?.('details.describe-vlm-chat-reply-options > summary');
+        if (optionsSummary) {
+            rememberReplyOptionsPanel(optionsSummary.parentElement, !optionsSummary.parentElement.open);
+            return;
+        }
+        const selectedOption = evt.target.closest?.('input[data-describe-vlm-chat-reply-option]');
+        if (selectedOption?.checked) {
+            const draft = currentConversationRuntime().replyOptionDraft;
+            if (draft?.messageId === selectedOption.dataset.optionMessage
+                && draft?.variantId === selectedOption.dataset.optionVariant
+                && draft?.index === Number(selectedOption.dataset.describeVlmChatReplyOption)) {
+                useReplyOption(selectedOption);
+                return;
+            }
+        }
         const documentOpen = evt.target.closest?.('[data-describe-vlm-chat-document-open]');
         if (documentOpen) {
             previewChatDocument(documentOpen.getAttribute('data-describe-vlm-chat-document-open'));
@@ -27165,6 +27747,10 @@
             const runtime = syncCurrentRuntimeFromState();
             runtime.roleplayGuidanceReview = null;
             syncRoleplayGuidanceControls(modal, runtime);
+            return;
+        }
+        if (evt.target.closest('[data-roleplay-outline-open]')) {
+            openRoleplayOutline(evt.target.closest('[data-roleplay-outline-open]'));
             return;
         }
         if (evt.target.closest('[data-roleplay-guidance-clear]')) {
