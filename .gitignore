@@ -210,3 +210,6 @@ comfy/user/default/prompt-assistant/rules/kontext_presets.json
 comfy/user/default/prompt-assistant/rules/system_prompts.json
 comfy/custom_nodes/ComfyUI-Prompt-Assistant/js/version.js
 comfy/user/default/prompt-assistant/tags/默认标签.csv
+
+/tests/.tmp*/
+/tests/_tmp*/

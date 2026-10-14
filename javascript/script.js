@@ -3783,6 +3783,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'advanced_column', group: 'topbar-panel' },
         { id: 'scene_panel', group: 'scene' },
         { id: 'scene_primary_row', group: 'scene' },
+        { id: 'scene_batch_accordion', group: 'scene' },
         { key: 'scene_canvas_image', elemId: 'scene_canvas', group: 'scene' },
         { id: 'scene_input_image1', group: 'scene' },
         { id: 'scene_input_image2', group: 'scene' },
@@ -4025,9 +4026,14 @@ document.addEventListener("DOMContentLoaded", function() {
             : (sceneFrontend && Object.prototype.hasOwnProperty.call(sceneFrontend, 'disvisible')
                 ? sceneFrontend.disvisible
                 : []);
-        return Array.isArray(source)
+        const hidden = Array.isArray(source)
             ? new Set(source.map(String))
             : new Set(String(source || '').split(',').map((x) => x.trim()).filter(Boolean));
+        if (!hasResolved) {
+            const extra = sceneFrontend?.theme_disvisible?.[sceneThemeValue(sceneFrontend, params)];
+            if (Array.isArray(extra)) extra.forEach((id) => hidden.add(String(id)));
+        }
+        return hidden;
     }
 
     function syncSceneFrontendVisibility() {
@@ -4042,6 +4048,7 @@ document.addEventListener("DOMContentLoaded", function() {
         setVisible('scene_cloud_image_api', isScene && preset === 'GeneralAPIImage');
         if (!isScene) {
             setVisible('scene_additional_prompt', false);
+            setVisible('scene_batch_accordion', false);
             if (typeof window.simpaiSetLtxGuideControlVisible === 'function') {
                 window.simpaiSetLtxGuideControlVisible(false, params || {});
             } else {
@@ -4071,6 +4078,16 @@ document.addEventListener("DOMContentLoaded", function() {
         const taskMethodLower = sceneTaskMethodValue(sceneFrontend || {}, theme, params || {}).toLowerCase();
         const engineLower = String((params && (params.backend_engine || params.engine)) || '').toLowerCase();
         const disvisible = sceneDisvisibleSet(sceneFrontend || {}, params || {});
+        const batchInputs = ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2'];
+        const enabledInputs = Array.isArray(sceneFrontend?.divisible) ? sceneFrontend.divisible : [];
+        for (let index = 3; index <= 8; index += 1) {
+            const id = `scene_input_image${index}`;
+            if (Array.isArray(params.__scene_disvisible) || enabledInputs.includes(id)) {
+                batchInputs.push(id);
+            }
+        }
+        setVisible('scene_batch_accordion', !disvisible.has('scene_batch')
+            && batchInputs.some((id) => !disvisible.has(id)));
         if (typeof window.syncSceneCanvasMaskMode === 'function') {
             window.syncSceneCanvasMaskMode(params || {});
         }

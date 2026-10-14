@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import modules.vlm_agent_router as vlm_agent_router
+import modules.vlm_autoplay_guidance as vlm_autoplay_guidance
 import modules.vlm_roleplay_cognition as vlm_roleplay_cognition
 import modules.vlm_roleplay_resources as vlm_roleplay_resources
 from modules.custom_llm_api import strip_reasoning_text
@@ -3560,6 +3561,7 @@ def _normalize_autoplay_config(value: Any) -> dict[str, Any]:
         "duplicate_window": max(1, min(8, int(source.get("duplicate_window") or 4))),
         "duplicate_similarity": max(0.7, min(1.0, float(source.get("duplicate_similarity") or 0.86))),
         "max_without_state_change": max(1, min(20, int(source.get("max_without_state_change") or 4))),
+        "guidance": vlm_autoplay_guidance.normalize_guidance(source.get("guidance")),
     }
 
 
@@ -5179,6 +5181,7 @@ def build_player_proxy_prompt(
     n_ctx: Any = None,
 ) -> str:
     normalized = normalize_roleplay_session(session)
+    guidance = normalized["autoplay_config"]["guidance"]
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     player_state = normalized["story_state"].get("player_state", _normalize_player_state())
     if player_state.get("status") == "absent":
@@ -5193,6 +5196,8 @@ def build_player_proxy_prompt(
             "The player is present. Write one plausible player message for the next turn, following the player's "
             "natural-language current state and state fields."
         )
+    if guidance["enabled"]:
+        context_query = "\n".join((str(context_query or ""), guidance["goal"])).strip()
     built_context = context if isinstance(context, dict) and context.get("schema") == CONTEXT_SCHEMA else build_roleplay_context(
         normalized,
         history,
@@ -5206,12 +5211,18 @@ def build_player_proxy_prompt(
             f"Reply language: {reply_language}.",
             turn_instruction,
             "The input author is the player (or story controller when absent), never the NPC receiving it. "
-            "Historical messages marked other_character are that character's words, not yours. "
-            "Return only one complete next input, without explanation or a heading.",
+            "Historical messages marked other_character are that character's words, not yours.",
+            (
+                "Return one unsent proposal using the directed-autoplay JSON format below."
+                if guidance["enabled"] else "Return only one complete next input, without explanation or a heading."
+            ),
             (
                 "Use the author reference to direct the present NPC scene; do not send the offstage player "
                 "on an errand or bring them back without an explicit user request."
                 if player_state.get("status") == "absent" else
+                "Use only the player's known information. The operator's current goal sets the immediate task; "
+                "long-term persona goals are background, not a reason to ignore the current request."
+                if guidance["enabled"] else
                 "Use only the player's known information and current goals."
             ),
             "React to the latest approved answer or observation. Do not ask again for an answer already given, "
@@ -5224,8 +5235,15 @@ def build_player_proxy_prompt(
             "Do not mention that you are an AI, director, proxy, or simulation.",
             "Do not decide the character's private thoughts or actions.",
             "Do not make irreversible choices listed in proxy_policy.require_confirmation_for.",
+            vlm_autoplay_guidance.prompt(guidance),
             "Semantic state levels guide behavior, not wording. Do not write state-field labels, ratios, percentages, or a status/stat panel unless exact values were requested.",
-            "Context Builder blocks follow. Current runtime state overrides older dialogue and static setup text.",
+            (
+                "Context Builder blocks follow. Current runtime state is the authority for established facts, "
+                "not a replacement for the operator's immediate task. Earlier dialogue and long-term goals "
+                "must not silently replace the current operator guidance."
+                if guidance["enabled"] else
+                "Context Builder blocks follow. Current runtime state overrides older dialogue and static setup text."
+            ),
             *roleplay_context_prompt_sections(built_context),
         ]
     ).strip()

@@ -2139,7 +2139,8 @@
                 queue_mode: 'background',
                 chapter_goal: ''
             }, source.autoplay_config && typeof source.autoplay_config === 'object' ? source.autoplay_config : {}, {
-                speaker_mode: normalizeRoleplaySpeakerMode(source.autoplay_config?.speaker_mode)
+                speaker_mode: normalizeRoleplaySpeakerMode(source.autoplay_config?.speaker_mode),
+                guidance: normalizeRoleplayGuidance(source.autoplay_config?.guidance)
             }),
             visual_config: Object.assign({
                 enabled: false,
@@ -2236,6 +2237,11 @@
             }
         });
         merged.characters = characters;
+        const currentGuidance = normalizeRoleplayGuidance(current.autoplay_config?.guidance);
+        const incomingGuidance = normalizeRoleplayGuidance(incoming.autoplay_config?.guidance);
+        if (currentGuidance.revision >= incomingGuidance.revision) {
+            merged.autoplay_config = Object.assign({}, merged.autoplay_config, { guidance: currentGuidance });
+        }
         const requestedActiveId = String(incomingSource.active_character_id || '').trim();
         const activeCharacterId = requestedActiveId && characters[requestedActiveId]
             ? requestedActiveId
@@ -3151,11 +3157,14 @@
             : '';
         const presentZoneLabel = localText('Characters present in the scene. Drop a participant here.', '当前在场角色。将角色拖到这里入场。');
         const absentZoneLabel = localText('Characters absent from the scene. Drop a participant here.', '当前离场角色。将角色拖到这里离场。');
+        const guidance = normalizeRoleplayGuidance(session.autoplay_config?.guidance);
+        const guidanceLabel = localText('Goal: ', '目标：') + (guidance.goal.slice(0, 120) || localText('Not set', '未设置'));
         return `<div class="describe-vlm-chat-roleplay-participant-summary" data-describe-vlm-chat-roleplay-participant-summary aria-live="polite">
   <span class="describe-vlm-chat-roleplay-participant-group is-presence-drop-zone" data-describe-vlm-chat-roleplay-presence-zone="present" role="group" aria-label="${escapeHtml(presentZoneLabel)}" title="${escapeHtml(presentZoneLabel)}"><b>${escapeHtml(localText('Present', '在场'))}</b><span>${renderRoleplayParticipantChips(present, localText('None', '无'), { activeSpeakerId: nextSpeakerId })}</span></span>
   <span class="describe-vlm-chat-roleplay-participant-group is-absent is-presence-drop-zone" data-describe-vlm-chat-roleplay-presence-zone="absent" role="group" aria-label="${escapeHtml(absentZoneLabel)}" title="${escapeHtml(absentZoneLabel)}"><b>${escapeHtml(localText('Absent', '离场'))}</b><span>${renderRoleplayParticipantChips(absent, localText('None', '无'), { activeSpeakerId: nextSpeakerId })}</span></span>
   <span class="describe-vlm-chat-roleplay-current-speaker"><b>${escapeHtml(roleplayDictionaryText('Next reply'))}</b><span data-describe-vlm-chat-roleplay-next-speaker>${escapeHtml(nextSpeaker?.name || localText('Not selected', '未选择'))}</span></span>
   ${playerNotice}
+  <button type="button" class="describe-vlm-chat-roleplay-guidance-pill" data-roleplay-guidance-open data-roleplay-guidance-inline title="${escapeHtml(guidance.goal)}" aria-label="${escapeHtml(localText('Edit autoplay guidance', '修改托管指引'))}"${guidance.enabled ? '' : ' hidden'}><span>${escapeHtml(guidanceLabel)}</span></button>
 </div>`;
     }
 
@@ -3191,6 +3200,145 @@
         )).join('');
     }
 
+    function normalizeRoleplayGuidance(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const keywords = Array.isArray(source.pause_keywords) ? source.pause_keywords
+            : typeof source.pause_keywords === 'string' ? source.pause_keywords.split(/\r?\n/) : [];
+        return {
+            enabled: source.enabled === true,
+            revision: Math.max(0, Math.min(2000000000, Math.floor(Number(source.revision) || 0))),
+            goal: typeof source.goal === 'string' ? source.goal.trim().slice(0, 4000) : '',
+            style: typeof source.style === 'string' ? source.style.trim().slice(0, 1000) : '',
+            pause_keywords: [...new Set(keywords.filter(item => typeof item === 'string')
+                .map(item => item.trim().slice(0, 120)).filter(Boolean))].slice(0, 20),
+            confirm_important: source.confirm_important !== false
+        };
+    }
+
+    function roleplayGuidanceKey(runtime) {
+        return JSON.stringify(normalizeRoleplayGuidance(runtime?.roleplaySession?.autoplay_config?.guidance));
+    }
+
+    function roleplayGuidanceReviewKey(runtime) {
+        const session = runtime?.roleplaySession || {};
+        const messages = Array.isArray(runtime?.messages) ? runtime.messages : [];
+        return JSON.stringify([
+            runtime?.conversationId, runtime?.chatMode, runtime?.roleplayTurnIntent, runtime?.requestToken,
+            session.id, session.active_branch_id, session.state_version, session.active_character_id,
+            session.persona, session.story_state,
+            messages.length, messages.slice(-36).map(message => [
+                message.id, message.role, message.content, message.roleplay_speaker_id,
+                message.roleplay_input_type, message.roleplay_known_by, message.roleplay_observations
+            ]),
+            readSelectedVlmVersion(), session.agent_routing, roleplayGuidanceKey(runtime)
+        ]);
+    }
+
+    function syncRoleplayGuidanceControls(modal, runtime = currentConversationRuntime()) {
+        const guidance = normalizeRoleplayGuidance(runtime?.roleplaySession?.autoplay_config?.guidance);
+        for (const field of ['enabled', 'goal', 'style', 'pause_keywords', 'confirm_important']) {
+            const control = modal?.querySelector(`[data-roleplay-guidance="${field}"]`);
+            if (!control || document.activeElement === control) continue;
+            if (control.type === 'checkbox') control.checked = !!guidance[field];
+            else control.value = field === 'pause_keywords' ? guidance[field].join('\n') : guidance[field];
+        }
+        const summary = modal?.querySelector('[data-roleplay-guidance-summary]');
+        if (summary) {
+            summary.hidden = normalizeChatMode(runtime?.chatMode) !== 'roleplay' || !guidance.enabled;
+            const goal = modal.querySelector('[data-roleplay-guidance-current]');
+            if (goal) {
+                goal.textContent = localText('Directed autoplay: ', '定向托管：') + (
+                    guidance.goal.slice(0, 120) || localText('Set a goal before starting.', '请填写目标后开始。')
+                );
+                goal.title = guidance.goal;
+            }
+        }
+        const inline = modal?.querySelector('[data-roleplay-guidance-inline]');
+        if (inline) {
+            inline.hidden = normalizeChatMode(runtime?.chatMode) !== 'roleplay' || !guidance.enabled;
+            const label = inline.querySelector('span');
+            if (label) label.textContent = localText('Goal: ', '目标：')
+                + (guidance.goal.slice(0, 120) || localText('Not set', '未设置'));
+            inline.title = guidance.goal;
+        }
+        const panel = modal?.querySelector('[data-roleplay-guidance-review]');
+        if (!panel) return;
+        const review = runtime?.roleplayGuidanceReview;
+        panel.hidden = !review || normalizeChatMode(runtime?.chatMode) !== 'roleplay';
+        if (!review) return;
+        const candidate = panel.querySelector('[data-roleplay-guidance-candidate]');
+        if (candidate && document.activeElement !== candidate && candidate.dataset.reviewId !== review.id) {
+            candidate.value = review.text;
+            candidate.dataset.reviewId = review.id;
+        }
+        const explanation = panel.querySelector('[data-roleplay-guidance-reason]');
+        if (explanation) {
+            const labels = {
+                model_requested_confirmation: localText('The proxy requested confirmation.', '代理要求确认。'),
+                pause_keyword: localText('A pause keyword was found.', '草稿含有暂停关键词。'),
+                player_policy: localText('A player-policy boundary was found.', '草稿涉及玩家策略的限制。'),
+                commitment: localText('A commitment needs review.', '草稿涉及承诺。'),
+                transaction: localText('A transaction needs review.', '草稿涉及交易。'),
+                revelation: localText('A disclosure needs review.', '草稿涉及泄密。'),
+                irreversible: localText('An irreversible choice needs review.', '草稿涉及不可逆选择。')
+            };
+            explanation.textContent = review.key !== roleplayGuidanceReviewKey(runtime)
+                ? localText('The context changed. Dismiss this outdated candidate.', '上下文已变化，请关闭这份过期草稿。')
+                : (review.reasons || []).map(reason => labels[reason] || '').filter(Boolean).join(' ');
+        }
+        const adopt = panel.querySelector('[data-roleplay-guidance-adopt]');
+        if (adopt) adopt.disabled = !!runtime.busy || review.key !== roleplayGuidanceReviewKey(runtime);
+    }
+
+    function updateRoleplayGuidanceFromForm(modal, runtime = currentConversationRuntime(), clear = false) {
+        const target = runtime || currentConversationRuntime();
+        const previous = normalizeRoleplayGuidance(target.roleplaySession?.autoplay_config?.guidance);
+        const control = field => modal?.querySelector(`[data-roleplay-guidance="${field}"]`);
+        const next = normalizeRoleplayGuidance(clear ? {} : {
+            ...previous,
+            enabled: control('enabled')?.checked ?? previous.enabled,
+            goal: control('goal')?.value ?? previous.goal,
+            style: control('style')?.value ?? previous.style,
+            pause_keywords: control('pause_keywords')?.value ?? previous.pause_keywords,
+            confirm_important: control('confirm_important')?.checked ?? previous.confirm_important
+        });
+        if (JSON.stringify(previous) === JSON.stringify(next)) return false;
+        next.revision = Math.min(2000000000, previous.revision + 1);
+        pauseRoleplayForUserInput(target);
+        target.roleplayGuidanceReview = null;
+        target.roleplaySession = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
+        target.roleplaySession.autoplay_config.guidance = next;
+        target.persistenceDirty = true;
+        if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
+        scheduleConversationPersist(target, 'roleplay_guidance_edit', 'soon');
+        syncRoleplayGuidanceControls(modal, target);
+        return true;
+    }
+
+    function adoptRoleplayGuidanceCandidate(modal, runtime = currentConversationRuntime()) {
+        const review = runtime?.roleplayGuidanceReview;
+        if (!review || runtime.busy || review.key !== roleplayGuidanceReviewKey(runtime)) return false;
+        const candidate = modal?.querySelector('[data-roleplay-guidance-candidate]');
+        const input = modal?.querySelector('[data-describe-vlm-chat-input]');
+        const text = String(candidate?.value || '').trim();
+        if (!input || !text || text.length > 4000) return false;
+        if (String(input.value || '').trim() && String(input.value).trim() !== text) {
+            setConversationStatus(runtime, localText(
+                'The input already contains a draft. Keep it or clear it before adopting this candidate.',
+                '输入框已有草稿，请保留或清空后再采用待确认草稿。'
+            ));
+            return false;
+        }
+        writePolishedInput(input, text);
+        runtime.roleplayGuidanceReview = null;
+        syncRoleplayGuidanceControls(modal, runtime);
+        setConversationStatus(runtime, localText(
+            'Candidate placed in the input. Review it and send manually.',
+            '草稿已放入输入框，请核对后手动发送。'
+        ));
+        return true;
+    }
+
     function normalizeRoleplayAutoplayState(value) {
         const source = value && typeof value === 'object' ? value : {};
         const phase = ['idle', 'running', 'paused', 'stopped', 'completed', 'error'].includes(String(source.phase || '').trim().toLowerCase())
@@ -3203,6 +3351,7 @@
             continuous: !!source.continuous,
             request_id: String(source.request_id || '').trim().slice(0, 240),
             abort_controller: source.abort_controller || null,
+            reason: String(source.reason || '').trim().slice(0, 200),
             error: String(source.error || '').trim().slice(0, 500)
         };
     }
@@ -9952,6 +10101,7 @@
         const synced = syncRoleplayStrip(modal, runtimeOverride);
         if (!synced) return;
         const { active, runtime, session, autoplayState } = synced;
+        syncRoleplayGuidanceControls(modal, runtime);
         if (!active || !state.roleplayPanelOpen) {
             const hiddenResourceManager = modal.querySelector('[data-describe-vlm-chat-roleplay-resources]');
             if (hiddenResourceManager) clearRoleplayResourceManager(hiddenResourceManager);
@@ -10127,6 +10277,10 @@
         session.autoplay_config.mode = String(modal.querySelector('[data-describe-vlm-chat-roleplay-autoplay-mode]')?.value || 'manual');
         session.autoplay_config.target_turns = Math.max(1, Math.min(100, Math.round(Number(modal.querySelector('[data-describe-vlm-chat-roleplay-target-turns]')?.value) || 5)));
         session.autoplay_config.continuous = !!modal.querySelector('[data-describe-vlm-chat-roleplay-continuous]')?.checked;
+        if (modal.querySelector('[data-roleplay-guidance="enabled"]')) {
+            updateRoleplayGuidanceFromForm(modal, target);
+            session.autoplay_config.guidance = normalizeRoleplayGuidance(target.roleplaySession?.autoplay_config?.guidance);
+        }
         session.autoplay_config.speaker_mode = normalizeRoleplaySpeakerMode(
             modal.querySelector('[data-describe-vlm-chat-roleplay-speaker-mode]')?.value
         );
@@ -11698,7 +11852,14 @@
     }
 
     function describeVlmChatFailure(response) {
-        const detail = roleplayDictionaryText(String(response?.details || response?.error || '').trim())
+        const guidanceErrors = {
+            autoplay_guidance_changed_or_empty: localText('Guidance changed or the goal is empty. Check it before restarting autoplay.', '指引已变化或目标为空，请检查后重新开始托管。'),
+            autoplay_guidance_goal_required: localText('Directed autoplay requires a goal.', '定向托管需要填写目标。'),
+            autoplay_guidance_output_limited: localText('The proposal reached the output limit and was not sent.', '草稿达到输出上限，没有发送。'),
+            autoplay_guidance_proposal_invalid: localText('The proxy did not return a valid proposal. Autoplay stopped without sending it.', '代理返回的草稿格式无效，托管已停止，没有发送。')
+        };
+        const detail = guidanceErrors[String(response?.error || '')]
+            || roleplayDictionaryText(String(response?.details || response?.error || '').trim())
             || t('The VLM chat request failed.', 'VLM 对话请求失败。');
         if (response?.cancelled) return detail;
         const stageLabels = {
@@ -11707,6 +11868,7 @@
             skill_budget_check: t('skill and context budget check', '技能与上下文预算检查'),
             cancel_check: t('cancel check', '取消检查'),
             vlm_runtime: t('VLM runtime', 'VLM 运行'),
+            player_proxy: localText('player proxy', '玩家代理'),
             creative_action_parse: roleplayDictionaryText('generation card preparation'),
             endpoint_exception: t('server endpoint', '服务接口')
         };
@@ -14568,6 +14730,20 @@
         <label><span>${escapeHtml(localText('Speaking strategy', '发言策略'))}</span><select data-describe-vlm-chat-roleplay-speaker-mode><option value="auto">${escapeHtml(localText('Automatic', '自动'))}</option><option value="current">${escapeHtml(localText('Current character only', '仅当前角色'))}</option><option value="multi">${escapeHtml(localText('Multiple characters in order', '多人顺序'))}</option></select></label>
         <label><span>${escapeHtml(localText('Target turns', '目标轮数'))}</span><input data-describe-vlm-chat-roleplay-target-turns type="number" min="1" max="100" step="1"></label>
         <label class="describe-vlm-chat-roleplay-check"><input data-describe-vlm-chat-roleplay-continuous type="checkbox"><span>${escapeHtml(localText('Continue until stopped', '持续播放，直到手动停止'))}</span></label>
+        <details class="describe-vlm-chat-roleplay-section" data-roleplay-guidance-settings>
+          <summary>${escapeHtml(localText('Directed autoplay settings', '定向托管设置'))}</summary>
+          <label class="describe-vlm-chat-roleplay-check"><input data-roleplay-guidance="enabled" type="checkbox"><span>${escapeHtml(localText('Use persistent guidance', '使用持续指引'))}</span></label>
+          <label><span>${escapeHtml(localText('Current goal and boundaries', '当前目标与行动边界'))}</span><textarea data-roleplay-guidance="goal" rows="3" maxlength="4000" placeholder="${escapeHtml(localText('Search for the exit; do not agree to cooperate.', '寻找出口；不要答应合作。'))}"></textarea></label>
+          <label><span>${escapeHtml(localText('Tone and style', '语气与风格'))}</span><input data-roleplay-guidance="style" type="text" maxlength="1000"></label>
+          <label><span>${escapeHtml(localText('Pause when these words occur (one per line)', '遇到这些词或短语时暂停（每行一项）'))}</span><textarea data-roleplay-guidance="pause_keywords" rows="2"></textarea></label>
+          <label class="describe-vlm-chat-roleplay-check"><input data-roleplay-guidance="confirm_important" type="checkbox" checked><span>${escapeHtml(localText('Pause for major commitments, trades, secret disclosures and irreversible choices', '重大承诺、交易、泄密及不可逆选择前暂停'))}</span></label>
+          <small>${escapeHtml(localText('Editing pauses autoplay. Guidance does not change character knowledge or enable autoplay by itself.', '修改指引会暂停托管。指引不会改变角色认知，也不会自行开启托管。'))}</small>
+          <small>${escapeHtml(localText('Important-choice checks use conservative rules; ambiguous natural-language boundaries may still be missed.', '重要选择检查使用保守规则，含糊的自然语言限制仍可能有遗漏。'))}</small>
+          <div class="describe-vlm-chat-roleplay-guidance-actions">
+            <button type="button" data-roleplay-guidance-clear><i class="fa-solid fa-eraser" aria-hidden="true"></i><span>${escapeHtml(localText('Clear guidance', '清除指引'))}</span></button>
+            <button type="button" data-roleplay-guidance-use-input><i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i><span>${escapeHtml(localText('Use current input as persistent guidance', '将当前输入用作持续指引'))}</span></button>
+          </div>
+        </details>
         <label class="describe-vlm-chat-roleplay-check"><input data-describe-vlm-chat-roleplay-visual-enabled type="checkbox"><span>${escapeHtml(localText('Offer story images at key moments', '在关键时刻生成故事场照'))}</span></label>
       </div>
       <div class="describe-vlm-chat-roleplay-section describe-vlm-chat-roleplay-branch-section" data-describe-vlm-chat-roleplay-branch-section>
@@ -14591,9 +14767,17 @@
     </div>
   </section>
   <div class="describe-vlm-chat-chat-area">
+    <div class="describe-vlm-chat-guidance-summary" data-roleplay-guidance-summary hidden><span data-roleplay-guidance-current></span><button type="button" data-roleplay-guidance-open>${escapeHtml(localText('Edit guidance', '修改指引'))}</button></div>
     <div data-describe-vlm-help-status></div>
     <div class="describe-vlm-chat-preference-mount" data-describe-vlm-chat-preference-mount hidden></div>
     <div class="describe-vlm-chat-log" data-describe-vlm-chat-log></div>
+    <div class="describe-vlm-chat-guidance-review" data-roleplay-guidance-review hidden>
+      <strong>${escapeHtml(localText('Autoplay candidate requires your review', '托管草稿需要你确认'))}</strong>
+      <small data-roleplay-guidance-reason role="status"></small>
+      <textarea data-roleplay-guidance-candidate rows="3" maxlength="4000" aria-label="${escapeHtml(localText('Edit the candidate before sending', '发送前编辑草稿'))}"></textarea>
+      <small>${escapeHtml(localText('Adopting does not send or authorize future choices. Review and send manually.', '采用不会发送，也不会授权以后的选择。请核对后手动发送。'))}</small>
+      <div><button type="button" data-roleplay-guidance-adopt>${escapeHtml(localText('Place in input', '放入输入框'))}</button><button type="button" data-roleplay-guidance-dismiss>${escapeHtml(localText('Dismiss candidate', '关闭草稿'))}</button></div>
+    </div>
   </div>
   <div class="describe-vlm-chat-status" data-describe-vlm-chat-status></div>
   <div class="describe-vlm-chat-compose">
@@ -15961,7 +16145,8 @@
                 mode: String(source.autoplay_config?.mode || 'manual').slice(0, 40),
                 speaker_mode: String(source.autoplay_config?.speaker_mode || 'auto').slice(0, 40),
                 target_turns: Math.max(1, Math.min(100, Math.round(Number(source.autoplay_config?.target_turns) || 5))),
-                continuous: !!source.autoplay_config?.continuous
+                continuous: !!source.autoplay_config?.continuous,
+                guidance: normalizeRoleplayGuidance(source.autoplay_config?.guidance)
             },
             visual_config: { enabled: !!source.visual_config?.enabled },
             world_book: { schema: 'simpai.vlm_roleplay.world_book', version: 1, enabled: true, entries: [], metadata: {} },
@@ -19401,6 +19586,7 @@
         const restored = normalizeRoleplaySession(snapshot, runtime.conversationId);
         // Model selection belongs to the conversation settings, not to story history.
         restored.agent_routing = current.agent_routing;
+        restored.autoplay_config.guidance = current.autoplay_config.guidance;
         return restored;
     }
 
@@ -24668,6 +24854,7 @@
 
     async function _performSendMessage(options = {}) {
         const runtime = options.runtime || syncCurrentRuntimeFromState();
+        const autoplayRunId = String(runtime.roleplayAutoplayRunId || '');
         const sendStartedAt = vlmChatPerformanceNow();
         if (runtime.busy) return;
         if (isCurrentConversationRuntime(runtime)) resetInputPolish();
@@ -25506,11 +25693,13 @@
         }
         const roleplaySessionPayload = response?.roleplay_session || response?.roleplay?.session;
         if (response?.ok && selectedMode === 'roleplay' && roleplaySessionPayload) {
+            const activeGuidance = normalizeRoleplayGuidance(runtime.roleplaySession?.autoplay_config?.guidance);
             runtime.roleplaySession = mergeRoleplaySessionCharacterCards(
                 roleplaySessionBefore,
                 roleplaySessionPayload,
                 runtime.conversationId
             );
+            runtime.roleplaySession.autoplay_config.guidance = activeGuidance;
             const serverStateChanges = response?.roleplay_state_changes || response?.roleplay?.state_changes;
             assistant.roleplay_state_changes = normalizeRoleplayStateChanges(serverStateChanges).length
                 ? normalizeRoleplayStateChanges(serverStateChanges)
@@ -25568,18 +25757,7 @@
             assistant.roleplay_visual_snapshot = response.roleplay_visual_snapshot || {};
         }
         if (response?.roleplay_autoplay_decision && selectedMode === 'roleplay') {
-            const decision = response.roleplay_autoplay_decision;
-            const currentAutoplay = normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState);
-            const nextPhase = ['paused', 'completed', 'error'].includes(String(decision.phase || ''))
-                ? String(decision.phase)
-                : currentAutoplay.phase;
-            updateRoleplayAutoplayState(runtime, {
-                phase: nextPhase,
-                target_turns: Number(decision.target_turns) || currentAutoplay.target_turns,
-                continuous: decision.continuous !== undefined ? !!decision.continuous : currentAutoplay.continuous,
-                reason: String(decision.reason || ''),
-                error: String(decision.director_error || ''),
-            }, '', { syncControls: false });
+            applyRoleplayAutoplayDecision(runtime, response.roleplay_autoplay_decision, autoplayRunId);
         }
         userMessage.media_assets = Array.isArray(response?.input_media_assets)
             ? response.input_media_assets.filter(item => userMessage._image_payloads.some(image => image.id === item.ref))
@@ -25759,6 +25937,22 @@
         return target.roleplayAutoplayState;
     }
 
+    function applyRoleplayAutoplayDecision(runtime, decision, ownerRunId) {
+        const current = normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState);
+        if (current.phase !== 'running' || String(runtime.roleplayAutoplayRunId || '') !== ownerRunId) return false;
+        const nextPhase = ['paused', 'completed', 'error'].includes(String(decision.phase || ''))
+            ? String(decision.phase)
+            : current.phase;
+        updateRoleplayAutoplayState(runtime, {
+            phase: nextPhase,
+            target_turns: Number(decision.target_turns) || current.target_turns,
+            continuous: decision.continuous !== undefined ? !!decision.continuous : current.continuous,
+            reason: String(decision.reason || ''),
+            error: String(decision.director_error || '')
+        }, '', { syncControls: false });
+        return true;
+    }
+
     function roleplayAutoplayWait(milliseconds = 320) {
         return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, milliseconds)));
     }
@@ -25767,6 +25961,9 @@
         const target = runtime || currentConversationRuntime();
         const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const playerAbsent = session.story_state.player_state?.status === 'absent';
+        const guidance = normalizeRoleplayGuidance(session.autoplay_config?.guidance);
+        const guidanceKey = roleplayGuidanceKey(target);
+        const contextKey = roleplayGuidanceReviewKey(target);
         const history = buildRollingHistory(18, 10000, target.messages, { preserveKnowledge: true });
         const fullHistory = buildRollingHistory(36, 14000, target.messages, { preserveKnowledge: true });
         const version = readSelectedVlmVersion();
@@ -25784,6 +25981,7 @@
             request_kind: 'roleplay_player_proxy',
             roleplay_request_kind: 'player_proxy',
             roleplay_autoplay: true,
+            roleplay_guidance_revision: guidance.revision,
             message: playerAbsent
                 ? localText(
                     'Continue the story with one concise plot-control instruction. Do not write player dialogue.',
@@ -25821,6 +26019,13 @@
             max_tokens: Math.min(1200, Math.max(256, effectiveChatMaxTokens('roleplay')))
         }, { signal: controller.signal });
         const live = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
+        if (live.request_id !== requestId) return '';
+        if (roleplayGuidanceKey(target) !== guidanceKey || roleplayGuidanceReviewKey(target) !== contextKey) {
+            updateRoleplayAutoplayState(target, {
+                phase: 'paused', request_id: '', abort_controller: null, reason: 'guidance_or_context_changed'
+            }, localText('Autoplay paused: guidance or context changed.', '托管已暂停：指引或上下文发生变化。'));
+            return '';
+        }
         if (live.request_id === requestId) {
             target.roleplayAutoplayState = normalizeRoleplayAutoplayState(Object.assign({}, live, {
                 request_id: '',
@@ -25829,6 +26034,23 @@
         }
         if (response?.aborted || response?.cancelled || normalizeRoleplayAutoplayState(target.roleplayAutoplayState).phase !== 'running') return '';
         if (response?.roleplay_proxy_review?.status === 'paused') {
+            const review = response.roleplay_proxy_review;
+            if (review.reason === 'guidance_confirmation') {
+                target.roleplayGuidanceReview = {
+                    id: uid('roleplay_guidance_review'), text: String(review.candidate_text || '').slice(0, 4000),
+                    key: roleplayGuidanceReviewKey(target),
+                    reasons: Array.isArray(review.reasons) ? review.reasons : []
+                };
+                updateRoleplayAutoplayState(target, {
+                    phase: 'paused', request_id: '', abort_controller: null,
+                    reason: 'guidance_confirmation', error: ''
+                }, localText(
+                    'Directed autoplay paused for review. Edit the candidate before sending it.',
+                    '定向托管已暂停，请核对或编辑待确认草稿后再发送。'
+                ));
+                syncRoleplayGuidanceControls(document.getElementById('describe_vlm_chat_modal'), target);
+                return '';
+            }
             updateRoleplayAutoplayState(target, {
                 phase: 'paused', request_id: '', abort_controller: null,
                 reason: 'duplicate_player_input', error: ''
@@ -25860,6 +26082,15 @@
             return '';
         }
         const text = visibleReplyFromResponse(response, normalizeChatCompletion(response?.completion));
+        if (guidance.enabled && (
+            response?.roleplay_proxy_review?.status !== 'accepted'
+            || response?.roleplay_proxy_review?.guidance_revision !== guidance.revision
+            || response?.roleplay_proxy_review?.candidate_text !== String(text || '').trim()
+        )) {
+            updateRoleplayAutoplayState(target, { phase: 'paused', reason: 'guidance_changed' },
+                localText('Autoplay paused: guidance changed or was not confirmed.', '托管已暂停：指引已变化或未完成核对。'));
+            return '';
+        }
         if (!text || !text.trim()) {
             updateRoleplayAutoplayState(target, {
                 phase: 'error',
@@ -25976,11 +26207,30 @@
 
     async function runRoleplayAutoplay(runtime = currentConversationRuntime(), options = {}) {
         const target = runtime || currentConversationRuntime();
+        if (target.busy) return false;
         const stepOnly = !!options.stepOnly;
         const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         target.roleplaySession = session;
         const current = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
         if (current.phase === 'running') return false;
+        const guidance = normalizeRoleplayGuidance(session.autoplay_config?.guidance);
+        if (target.roleplayGuidanceReview) {
+            setConversationStatus(target, localText('Review or dismiss the pending candidate first.', '请先处理或关闭待确认草稿。'));
+            return false;
+        }
+        if (guidance.enabled && !guidance.goal) {
+            setConversationStatus(target, localText('Set a directed-autoplay goal, or disable persistent guidance.', '请填写定向托管目标，或关闭持续指引。'));
+            return false;
+        }
+        const input = isCurrentConversationRuntime(target)
+            ? document.getElementById('describe_vlm_chat_modal')?.querySelector('[data-describe-vlm-chat-input]') : null;
+        if (String(input?.value || '').trim()) {
+            setConversationStatus(target, localText(
+                'There is unsent input. Send it, clear it, or explicitly use it as persistent guidance.',
+                '输入框有未发送内容，请先发送、清空，或明确将其用作持续指引。'
+            ));
+            return false;
+        }
         if (roleplayNeedsCharacterSetup(session)) {
             setConversationStatus(target, localText(
                 'Talk with the assistant to name your character before starting autoplay.',
@@ -26000,7 +26250,9 @@
             ? Math.max(current.completed_turns + 1, 1)
             : configuredTarget;
         const version = readSelectedVlmVersion();
-        if (!(await ensureSelectedVlmModelReady(version))) return false;
+        const readyContextKey = roleplayGuidanceReviewKey(target);
+        const runId = uid('roleplay_autoplay_run');
+        target.roleplayAutoplayRunId = runId;
         updateRoleplayAutoplayState(target, {
             phase: 'running',
             completed_turns: startingCompletedTurns,
@@ -26010,8 +26262,22 @@
             error: '',
             request_id: '',
             abort_controller: null
-        }, localText('Autoplay is running.', '托管剧情正在运行。'));
+        }, localText('Preparing autoplay...', '正在准备托管……'));
+        const ready = await ensureSelectedVlmModelReady(version);
+        if (target.roleplayAutoplayRunId !== runId
+            || normalizeRoleplayAutoplayState(target.roleplayAutoplayState).phase !== 'running') return false;
+        if (!ready) {
+            updateRoleplayAutoplayState(target, { phase: 'paused', reason: 'model_not_ready' });
+            return false;
+        }
+        if (roleplayGuidanceReviewKey(target) !== readyContextKey || String(input?.value || '').trim()) {
+            updateRoleplayAutoplayState(target, { phase: 'paused', reason: 'guidance_or_context_changed' },
+                localText('Autoplay paused: guidance or context changed.', '托管已暂停：指引或上下文发生变化。'));
+            return false;
+        }
+        updateRoleplayAutoplayState(target, {}, localText('Autoplay is running.', '托管剧情正在运行。'));
         while (true) {
+            if (target.roleplayAutoplayRunId !== runId) return false;
             const live = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
             if (live.phase !== 'running' || (!live.continuous && live.completed_turns >= targetTurns)) break;
             if (!ensureRoleplaySceneReady(target, document.getElementById('describe_vlm_chat_modal'))) {
@@ -26019,21 +26285,34 @@
                     localText('Autoplay paused: no character is present.', '托管已暂停：当前没有在场角色。'));
                 break;
             }
+            const turnGuidanceKey = roleplayGuidanceKey(target);
             const proxyText = await requestRoleplayPlayerProxy(target);
+            if (target.roleplayAutoplayRunId !== runId) return false;
             const afterProxy = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
             if (!proxyText || afterProxy.phase !== 'running') break;
-            const speakerMode = normalizeRoleplaySpeakerMode(session.autoplay_config?.speaker_mode);
+            const turnContextKey = roleplayGuidanceReviewKey(target);
+            const speakerMode = normalizeRoleplaySpeakerMode(target.roleplaySession?.autoplay_config?.speaker_mode);
             const speakerIds = await requestRoleplaySpeakerPlan(target, {
                 speakerMode,
                 currentSpeakerId: roleplayReplySpeakerIdForRuntime(target, target.roleplaySession)
             });
             const afterPlan = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
+            if (target.roleplayAutoplayRunId !== runId) return false;
             if (!speakerIds.length || afterPlan.phase !== 'running') break;
+            if (turnGuidanceKey !== roleplayGuidanceKey(target) || turnContextKey !== roleplayGuidanceReviewKey(target)) {
+                updateRoleplayAutoplayState(target, { phase: 'paused', reason: 'guidance_changed' });
+                break;
+            }
             let response = null;
             let lastSpeakerId = '';
             let responseFailure = false;
             let autoplayStopped = false;
             for (let speakerIndex = 0; speakerIndex < speakerIds.length; speakerIndex += 1) {
+                if (turnGuidanceKey !== roleplayGuidanceKey(target)) {
+                    updateRoleplayAutoplayState(target, { phase: 'paused', reason: 'guidance_changed' });
+                    autoplayStopped = true;
+                    break;
+                }
                 if (normalizeRoleplayAutoplayState(target.roleplayAutoplayState).phase !== 'running') {
                     autoplayStopped = true;
                     break;
@@ -26053,6 +26332,7 @@
                     suppressUserMessage: speakerIndex > 0,
                     runtime: target
                 });
+                if (target.roleplayAutoplayRunId !== runId) return false;
                 if (normalizeRoleplayAutoplayState(target.roleplayAutoplayState).phase !== 'running') {
                     autoplayStopped = true;
                     break;
@@ -26097,6 +26377,7 @@
             if ((!continuous && completed >= targetTurns) || stepOnly) break;
             await roleplayAutoplayWait(360);
         }
+        if (target.roleplayAutoplayRunId !== runId) return false;
         const finished = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
         if (finished.phase === 'running') {
             updateRoleplayAutoplayState(target, { phase: 'idle', target_turns: targetTurns });
@@ -26113,7 +26394,10 @@
         if (runtime.roleplayPanelOpen || state.roleplayPanelOpen) {
             applyRoleplayForm(document.getElementById('describe_vlm_chat_modal'), runtime);
         }
-        runRoleplayAutoplay(runtime, { stepOnly }).catch((error) => {
+        const task = runRoleplayAutoplay(runtime, { stepOnly });
+        const runId = runtime.roleplayAutoplayRunId;
+        task.catch((error) => {
+            if (runtime.roleplayAutoplayRunId !== runId) return;
             updateRoleplayAutoplayState(runtime, {
                 phase: 'error',
                 error: String(error?.message || error || '').slice(0, 500)
@@ -26209,6 +26493,10 @@
     }
 
     document.addEventListener('change', (evt) => {
+        if (evt.target?.matches?.('[data-roleplay-guidance]')) {
+            updateRoleplayGuidanceFromForm(document.getElementById('describe_vlm_chat_modal'), syncCurrentRuntimeFromState());
+            return;
+        }
         const dialogueEmphasis = evt.target.closest?.('[data-describe-vlm-chat-dialogue-emphasis]');
         if (dialogueEmphasis) {
             state.dialogueEmphasis = dialogueEmphasis.checked;
@@ -26402,7 +26690,12 @@
     });
 
     document.addEventListener('input', (evt) => {
+        if (evt.target?.matches?.('[data-roleplay-guidance]')) {
+            updateRoleplayGuidanceFromForm(document.getElementById('describe_vlm_chat_modal'), syncCurrentRuntimeFromState());
+            return;
+        }
         if (evt.target?.matches?.('[data-describe-vlm-chat-input]')) {
+            pauseRoleplayForUserInput(syncCurrentRuntimeFromState());
             inputPolishRevision += 1;
             if (inputPolishResult?.kind === 'applied') {
                 if (inputPolishResult.purpose === 'player_draft') {
@@ -26864,7 +27157,36 @@
             toggleFloatingPanelMaximize(modal.querySelector('.describe-vlm-chat-panel'));
             return;
         }
-        if (evt.target.closest('[data-describe-vlm-chat-roleplay-open]')) {
+        if (evt.target.closest('[data-roleplay-guidance-adopt]')) {
+            adoptRoleplayGuidanceCandidate(modal, syncCurrentRuntimeFromState());
+            return;
+        }
+        if (evt.target.closest('[data-roleplay-guidance-dismiss]')) {
+            const runtime = syncCurrentRuntimeFromState();
+            runtime.roleplayGuidanceReview = null;
+            syncRoleplayGuidanceControls(modal, runtime);
+            return;
+        }
+        if (evt.target.closest('[data-roleplay-guidance-clear]')) {
+            updateRoleplayGuidanceFromForm(modal, syncCurrentRuntimeFromState(), true);
+            return;
+        }
+        if (evt.target.closest('[data-roleplay-guidance-use-input]')) {
+            const input = modal.querySelector('[data-describe-vlm-chat-input]');
+            const text = String(input?.value || '').trim();
+            if (!text || text.length > 4000) {
+                setConversationStatus(syncCurrentRuntimeFromState(), localText(
+                    'Use nonempty input of at most 4000 characters.', '请输入不超过 4000 字符的指引。'
+                ));
+                return;
+            }
+            modal.querySelector('[data-roleplay-guidance="goal"]').value = text;
+            modal.querySelector('[data-roleplay-guidance="enabled"]').checked = true;
+            updateRoleplayGuidanceFromForm(modal, syncCurrentRuntimeFromState());
+            writePolishedInput(input, '');
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-roleplay-open], [data-roleplay-guidance-open]')) {
             const openedAt = vlmChatPerformanceNow();
             const runtime = syncCurrentRuntimeFromState();
             if (describeCompactViewport()) state.settingsPanelOpen = false;
@@ -26875,6 +27197,11 @@
             runtime.persistenceDirty = true;
             if (describeCompactViewport()) syncChatSettingsControls(modal);
             else syncRoleplayControls(modal);
+            if (evt.target.closest('[data-roleplay-guidance-open]')) {
+                const settings = modal.querySelector('[data-roleplay-guidance-settings]');
+                if (settings) settings.open = true;
+                modal.querySelector('[data-roleplay-guidance="goal"]')?.focus();
+            }
             markVlmChatPerformance('vlm_chat.roleplay.open', runtime, {
                 duration_ms: Math.max(0, vlmChatPerformanceNow() - openedAt)
             });

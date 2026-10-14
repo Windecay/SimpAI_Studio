@@ -72,7 +72,6 @@
               "scene_video_duration",
               "sam3_input_video",
               "sam3_mask_video",
-              "scene_batch",
               "minimax_h3_storyboard_control"
           ],
           "task_method": {

@@ -30,6 +30,7 @@ import modules.vlm_harness as vlm_harness
 import modules.vlm_document_runtime as vlm_document_runtime
 import modules.vlm_input_polish as vlm_input_polish
 import modules.vlm_player_draft as vlm_player_draft
+import modules.vlm_autoplay_guidance as vlm_autoplay_guidance
 import modules.vlm_roleplay_reply as vlm_roleplay_reply
 from modules.agent_service import AgentContext
 from modules.pe_models import qwen_pe_vlm_task
@@ -2132,6 +2133,9 @@ def _describe_chat_system_prompt(options, lang):
                 )
             )
             sections.append(
+                "Autoplay player-proxy turn: return one unsent proposal in the directed-autoplay JSON format. "
+                "Do not update story state."
+                if roleplay_session.get("autoplay_config", {}).get("guidance", {}).get("enabled") else
                 "Autoplay player-proxy turn: return only one plausible message from the player persona. "
                 "Do not write the character's reply, do not update story state, and do not mention this proxy instruction."
             )
@@ -2498,6 +2502,14 @@ def build_runtime_payload(payload):
     roleplay_request_kind = str(prompt_options.get("roleplay_request_kind") or "character").strip().lower()
     player_proxy_request = roleplay_active and roleplay_request_kind in {"player_proxy", "proxy", "autoplay_player"}
     if player_proxy_request:
+        guidance = vlm_autoplay_guidance.normalize_guidance(
+            prompt_options["roleplay_session"].get("autoplay_config", {}).get("guidance"),
+        )
+        if guidance["enabled"] and (
+            not guidance["goal"] or type(payload.get("roleplay_guidance_revision")) is not int
+            or payload["roleplay_guidance_revision"] != guidance["revision"]
+        ):
+            return {"ok": False, "error": "autoplay_guidance_changed_or_empty"}
         # NPC persona and formatting instructions must not change who authors the next user input.
         for key in ("custom_system_prompt", "base_system_prompt_content", "user_system_prompt_content",
                     "custom_skill_catalog"):
@@ -2513,10 +2525,13 @@ def build_runtime_payload(payload):
         "proxy",
         "autoplay_player",
     }:
+        context_query = message
+        if player_proxy_request and guidance["enabled"]:
+            context_query = "\n".join((message, guidance["goal"]))
         roleplay_context = vlm_roleplay.build_roleplay_context(
             prompt_options.get("roleplay_session") or {},
             payload.get("history_full") or payload.get("history") or [],
-            message,
+            context_query,
             prompt_options.get("roleplay_speaker_id") or "",
             audience=(
                 "player_proxy"
@@ -2742,6 +2757,10 @@ def build_runtime_payload(payload):
     if player_proxy_request and isinstance(selected_roleplay_history, list):
         proxy_session = prompt_options["roleplay_session"]
         player_absent = proxy_session["story_state"]["player_state"]["status"] == "absent"
+        proxy_task = None
+        visible_answers = [
+            item for item in selected_roleplay_history if item.get("role") == "assistant"
+        ]
         if player_absent:
             # The controller can reference visible NPC prose; it is not offstage player knowledge.
             source_history = payload.get("history_full") or payload.get("history") or []
@@ -2751,6 +2770,7 @@ def build_runtime_payload(payload):
                      or item.get("roleplay_turn_intent") == "story_control")
             ][-6:]
             author_history = _normalize_history(author_history, limit=6, budget=4000)
+            visible_answers = [item for item in author_history if item.get("role") == "assistant"]
             selected_roleplay_history = [
                 {"role": "user", "content": json.dumps({
                     "speaker_side": "other_character" if item["role"] == "assistant" else "story_controller",
@@ -2759,7 +2779,7 @@ def build_runtime_payload(payload):
                 for item in author_history
             ]
             scene = proxy_session["story_state"]["scene"]
-            params["prompt"] = json.dumps({
+            proxy_task = {
                 "task": "compose_story_control", "player_present": False,
                 "guidance": message,
                 "scene": {key: scene.get(key) for key in ("location", "current_event")},
@@ -2767,7 +2787,7 @@ def build_runtime_payload(payload):
                     {"id": character_id, "name": proxy_session["characters"][character_id]["name"]}
                     for character_id in scene["present_character_ids"] if character_id in proxy_session["characters"]
                 ],
-            }, ensure_ascii=False, separators=(",", ":"))
+            }
         else:
             selected_roleplay_history = [
                 {"role": "user", "content": json.dumps({
@@ -2776,6 +2796,19 @@ def build_runtime_payload(payload):
                 }, ensure_ascii=False, separators=(",", ":"))}
                 for item in selected_roleplay_history
             ]
+            if guidance["enabled"]:
+                proxy_task = {"task": "compose_player_turn", "player_present": True, "guidance": message}
+        if proxy_task is not None:
+            references = [
+                {"speaker_side": "other_character", "text": item["content"],
+                 "author_reference": player_absent, "not_player_knowledge": player_absent}
+                for item in visible_answers[-3:]
+                if isinstance(item.get("content"), str) and len(item["content"]) <= 800
+            ]
+            params["prompt"] = json.dumps(
+                vlm_autoplay_guidance.apply_to_task(proxy_task, guidance, references),
+                ensure_ascii=False, separators=(",", ":"),
+            )
     runtime_payload = {
         "project_id": "describe_image_chat",
         "node_id": "describe_vlm_chat",
@@ -7403,6 +7436,7 @@ def _run_creative_result_review(payload, stream_callback=None):
 
 def _review_roleplay_player_proxy(result, runtime, payload, context, stream_callback=None):
     session = vlm_roleplay.normalize_roleplay_session(runtime["params"].get("roleplay_session"))
+    guidance = session["autoplay_config"]["guidance"]
     history = context.get("history", {}).get("messages") or []
     if session["story_state"]["player_state"]["status"] == "absent":
         history = [
@@ -7418,7 +7452,21 @@ def _review_roleplay_player_proxy(result, runtime, payload, context, stream_call
         if not isinstance(result, dict) or not result.get("ok"):
             return _describe_vlm_chat_failure(result, "player_proxy")
         try:
-            text = vlm_player_draft.result_text(result)
+            guidance_review = {}
+            if guidance["enabled"]:
+                guidance_review = vlm_autoplay_guidance.review(
+                    result, guidance, session["persona"].get("proxy_policy"),
+                )
+                if guidance_review["status"] == "paused":
+                    return _attach_response_source({
+                        **result, "text": "", "raw_text": "", "limited_actions": [], "agent_actions": [],
+                        "roleplay_proxy_review": {
+                            **guidance_review, "reason": "guidance_confirmation", "attempt_count": attempt + 1,
+                        },
+                    }, result)
+                text = vlm_player_draft.result_text({**result, "text": guidance_review["candidate_text"]})
+            else:
+                text = vlm_player_draft.result_text(result)
         except ValueError as exc:
             return _describe_vlm_chat_failure({
                 "ok": False, "error": str(exc), "completion": result.get("completion"),
@@ -7427,7 +7475,7 @@ def _review_roleplay_player_proxy(result, runtime, payload, context, stream_call
             history, text, window=session["autoplay_config"]["duplicate_window"],
             entity_names=[card.get("name") for card in session["characters"].values()],
         )
-        review = {"status": "paused" if repeated["duplicate"] else "accepted",
+        review = {**guidance_review, "status": "paused" if repeated["duplicate"] else "accepted",
                   "reason": "duplicate_player_input" if repeated["duplicate"] else "",
                   "attempt_count": attempt + 1, "similarity": repeated["similarity"]}
         logger.info(

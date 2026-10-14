@@ -264,6 +264,20 @@ def _scene_batch_disvisible(state_params):
     enabled = scenes.get("divisible", []) if isinstance(scenes, dict) else []
     enabled = set(str(item) for item in enabled) if isinstance(enabled, list) else set()
     disvisible = [str(item) for item in disvisible]
+    themes = scenes.get("theme", []) if isinstance(scenes, dict) else []
+    theme = None
+    if isinstance(state_params, dict):
+        theme = state_params.get("scene_theme") or state_params.get("__scene_theme")
+    if not theme:
+        if isinstance(themes, list) and themes:
+            theme = themes[0]
+        elif isinstance(themes, str):
+            theme = themes
+    theme_hidden = scenes.get("theme_disvisible", {}) if isinstance(scenes, dict) else {}
+    if isinstance(theme_hidden, dict):
+        extra_hidden = theme_hidden.get(theme, [])
+        if isinstance(extra_hidden, list):
+            disvisible.extend(str(item) for item in extra_hidden)
     for slot in tuple(f"scene_input_image{index}" for index in range(3, 9)):
         if slot not in disvisible and slot not in enabled:
             disvisible.append(slot)
@@ -442,14 +456,8 @@ def refresh_scene_batch_target(state_params, current_value):
 
 
 def refresh_scene_batch_accordion(state_params):
-    scenes = state_params.get("scene_frontend") if isinstance(state_params, dict) else None
-    if not isinstance(scenes, dict):
-        return gr_update(visible=False, open=False)
-    disvisible = _scene_batch_disvisible(state_params)
-    if "scene_batch" in disvisible:
-        return gr_update(visible=False, open=False)
-    visible = any(slot not in disvisible for slot in _SCENE_BATCH_TARGET_SLOTS)
-    return gr_update(visible=visible, open=False)
+    # The mounted scene controller owns visibility, including fast preset navigation.
+    return gr_update(open=False)
 
 
 def _ensure_backend_ctrl(ctrls_values, state):

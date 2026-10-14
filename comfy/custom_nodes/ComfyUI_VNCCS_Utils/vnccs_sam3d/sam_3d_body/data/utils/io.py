@@ -153,7 +153,13 @@ def _pil_load(path: str, image_format: str) -> Image.Image:
 
 
 def _cv2_load(path: str, image_format: str) -> np.ndarray:
-    img = cv2.imread(path)
+    # Python file I/O handles Windows Unicode paths that cv2.imread cannot open.
+    try:
+        with open(path, "rb") as image_file:
+            encoded = np.frombuffer(image_file.read(), dtype=np.uint8)
+    except OSError:
+        return None
+    img = cv2.imdecode(encoded, cv2.IMREAD_COLOR) if encoded.size else None
     if img is not None and image_format.lower() == "rgb":
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     return img

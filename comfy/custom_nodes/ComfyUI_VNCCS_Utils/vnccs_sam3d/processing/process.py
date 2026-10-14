@@ -1511,9 +1511,14 @@ class SAM3DBodyProcessToJson:
             )
 
         with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-            cv2.imwrite(tmp.name, img_bgr)
             tmp_path = tmp.name
         try:
+            encoded_ok, encoded_image = cv2.imencode('.jpg', img_bgr)
+            if not encoded_ok:
+                raise OSError("Failed to encode temporary pose image as JPEG")
+            # Avoid OpenCV's filename handling for non-ASCII Windows TEMP paths.
+            with open(tmp_path, 'wb') as image_file:
+                image_file.write(encoded_image.tobytes())
             progress.update("Step 4/6: Running SAM 3D Body pose reconstruction...", 60)
             outputs = estimator.process_one_image(
                 tmp_path,

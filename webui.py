@@ -4977,7 +4977,7 @@ with shared.gradio_root:
                                 scene_input_image6 = gr.Image(label='Upload prompt image(7)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image6")
                                 scene_input_image7 = gr.Image(label='Upload prompt image(8)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image7")
                                 scene_input_image8 = gr.Image(label='Upload prompt image(9)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image8")
-                        with gr.Accordion("📦 Batch", open=False, elem_id="scene_batch_accordion") as scene_batch_accordion:
+                        with gr.Accordion("📦 Batch", open=False, visible=True, elem_id="scene_batch_accordion", elem_classes=["simpai-mounted-hidden"]) as scene_batch_accordion:
                             scene_batch_target = gr.Radio(label="Batch Target", choices=[("Upload and canvas(1)", "scene_canvas_image")] + [(f"Upload prompt image({index + 1})", f"scene_input_image{index}") for index in range(1, 9)], value="scene_input_image1", elem_id="scene_batch_target")
                             scene_batch_folder = gr.Textbox(label="Folder(Local Path)", placeholder="e.g. D:\\images\\inputs")
                             scene_batch_files = gr.File(label="Upload images", file_count="multiple", file_types=[".png", ".jpg", ".jpeg", ".webp", ".bmp"], type="filepath")
