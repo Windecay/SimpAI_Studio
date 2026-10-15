@@ -1857,7 +1857,7 @@ def canvas_vlm_run(payload, stream_callback=None):
         current_prompt = canvas_vlm_agent._canvas_vlm_stateless_prompt_text(
             base_prompt,
             text_budget,
-            preserve_contract=bool(params.get("describe_roleplay_director") or params.get("describe_image_context") or params.get("describe_skill_draft") or params.get("describe_harness")),
+            preserve_contract=bool(params.get("describe_roleplay_director") or params.get("describe_roleplay_turn_task") or params.get("describe_image_context") or params.get("describe_skill_draft") or params.get("describe_harness")),
         )
         if params.get("describe_input_polish") or params.get("describe_player_draft") or params.get("describe_player_proxy"):
             # Unsent drafts need their complete bounded instructions and context.

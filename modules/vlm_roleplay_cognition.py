@@ -113,6 +113,7 @@ def filter_history(history: Any, session: dict[str, Any], actor_id: str) -> list
                 "role": "assistant", "content": "\n".join(public_text)[:2400],
                 "roleplay_speaker_id": item.get("roleplay_speaker_id") or item.get("speaker_id") or "",
                 "roleplay_known_by": [actor_id], "roleplay_visibility": "restricted",
+                "roleplay_observation_only": True,
             })
         else:
             result.append({"pending": True})

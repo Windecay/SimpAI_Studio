@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LayerForge Editor</title>
     <link rel="stylesheet" href="/file=javascript/layerforge/js/css/blend_mode_menu.css?v=patch26">
-    <link rel="stylesheet" href="/file=javascript/layerforge/js/css/canvas_view.css?v=patch26">
+    <link rel="stylesheet" href="/gradio_api/file=javascript/layerforge/js/css/canvas_view.css?v=patch67">
     <link rel="stylesheet" href="/file=javascript/layerforge/js/css/custom_shape_menu.css?v=patch26">
     <link rel="stylesheet" href="/file=javascript/layerforge/js/css/layerforge_mask_editor.css?v=patch63">
-    <link rel="stylesheet" href="/file=javascript/layerforge/js/css/layers_panel.css?v=patch26">
+    <link rel="stylesheet" href="/gradio_api/file=javascript/layerforge/js/css/layers_panel.css?v=patch66">
     <style>
         body {
             margin: 0;
@@ -27,6 +27,7 @@
             position: relative;
             overflow: hidden;
         }
+        .painterCanvasContainer { isolation: isolate; }
         #toolbar {
             min-height: 40px;
             flex-shrink: 0;
@@ -155,6 +156,12 @@
             width: 210px;
             padding: 0 8px;
         }
+        #layer-mask-paint-controls { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        #layer-mask-paint-controls label { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+        #layer-mask-paint-controls input { width: 80px; }
+        #layer-mask-paint-controls .mask-swatch { width: 28px; height: 28px; padding: 3px; border: 1px solid #777; }
+        .mask-swatch span { display: block; width: 100%; height: 100%; border-radius: 2px; }
+        .mask-swatch[aria-pressed="true"] { outline: 2px solid #72b7ff; }
 
         @media (max-width: 700px) {
             #toolbar {
@@ -218,14 +225,15 @@
     </div>
     <div id="editor-container"></div>
 
-    <script src="/gradio_api/file=javascript/layerforge/js/i18n.js?v=patch3"></script>
+    <script src="/gradio_api/file=javascript/layerforge/js/i18n.js?v=patch5"></script>
     <script type="module">
-        import { createCanvasWidget } from '/file=javascript/layerforge/js/CanvasView.js?v=patch63';
+        import { createCanvasWidget } from '/gradio_api/file=javascript/layerforge/js/CanvasView.js?v=patch67';
         import { app } from '/file=javascript/layerforge/js/comfy_shim.js?v=patch26';
         import { createEmptyImage } from '/file=javascript/layerforge/js/utils/ImageUtils.js?v=patch26';
         import { saveImage } from '/file=javascript/layerforge/js/db.js?v=patch26';
         import { generateUUID, createCanvas } from '/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26';
         import { AnnotationTool } from '/gradio_api/file=javascript/layerforge/js/AnnotationTool.js?v=patch3';
+        import { isEditingText, nextBrushSize } from '/gradio_api/file=javascript/layerforge/js/KeyboardUtils.js?v=patch1';
 
         window.comfy_api_url = "http://127.0.0.1:8188";
         
@@ -279,6 +287,8 @@
         let pinchLastMid = null;
         let previousCanvasPointerEvents = null;
         let isPanning = false;
+        let spacePanActive = false;
+        let handToolActive = false;
         let panPointerId = null;
         let panStart = null;
         let lastMouseClient = null;
@@ -304,6 +314,9 @@
                 await window.LayerForgeI18n.ready;
                 const result = await createCanvasWidget(mockNode, mockWidget, app);
                 canvasInstance = result.canvas;
+                const layerMasks = canvasInstance.layerMasks;
+                let layerMaskStroke = null;
+                let layerMaskUi = null;
                 const syncPaintLayerReference = (resetPaintBitmap = true) => {
                     if (!canvasInstance || !paintLayer)
                         return;
@@ -478,7 +491,7 @@
                 };
 
                 const drawBrushCursor = (clientX, clientY) => {
-                    if (!overlayCtx || !canvasInstance || !paintEnabled)
+                    if (!overlayCtx || !canvasInstance || (!paintEnabled && !layerMasks.isEditing))
                         return;
                     const p = getOverlayPointFromClient(clientX, clientY);
                     if (!p)
@@ -511,21 +524,32 @@
                 };
 
                 const refreshBrushCursor = (clientX, clientY) => {
-                    if (!paintEnabled || isPanning)
+                    if ((!paintEnabled && !layerMasks.isEditing) || isPanning || spacePanActive || handToolActive)
                         return;
                     updateOverlaySize();
                     clearOverlay();
                     drawBrushCursor(clientX, clientY);
                 };
 
-                const overlayToolActive = () => paintEnabled || penSelectionActive || !!annotationTool?.mode;
+                const overlayToolActive = () => paintEnabled || layerMasks.isEditing || penSelectionActive || !!annotationTool?.mode || spacePanActive || handToolActive || isPanning;
 
                 const updateOverlayToolState = () => {
                     const active = overlayToolActive();
-                    paintToggle.classList.toggle('btn-primary', paintEnabled);
+                    const editingMask = layerMasks.isEditing;
+                    paintToggle.classList.toggle('btn-primary', paintEnabled || editingMask && !layerMasks.erasing);
+                    paintEraserToggle.classList.toggle('btn-primary', editingMask ? layerMasks.erasing : paintEnabled && paintTool === 'eraser');
+                    paintToggle.textContent = window.LayerForgeI18n.translateText(editingMask ? 'Layer mask brush' : 'Color Brush');
+                    if (layerMaskUi) {
+                        layerMaskUi.container.hidden = !editingMask;
+                        layerMaskUi.black.setAttribute('aria-pressed', String(!layerMasks.restore && !layerMasks.erasing));
+                        layerMaskUi.white.setAttribute('aria-pressed', String(layerMasks.restore || layerMasks.erasing));
+                        paintColorInput.hidden = editingMask || !!annotationTool?.mode;
+                        paintNewLayerBtn.hidden = editingMask || !!annotationTool?.mode;
+                        paintClearLayerBtn.hidden = editingMask || !!annotationTool?.mode;
+                    }
                     penSelectionToggle.classList.toggle('btn-primary', penSelectionActive);
                     overlay.style.pointerEvents = active ? 'auto' : 'none';
-                    overlay.style.cursor = active ? (isPanning ? 'grabbing' : 'crosshair') : '';
+                    overlay.style.cursor = active ? (isPanning ? 'grabbing' : spacePanActive || handToolActive ? 'grab' : 'crosshair') : '';
                 };
 
                 const updateCanvasPointerLock = () => {
@@ -575,6 +599,7 @@
                                 target.layer.originalHeight = editLayerCanvas.height;
                             }
                         }
+                        if (target.layer?.layerMask) layerMasks.invalidate(target.layer.id);
                         canvasInstance.render();
                     });
                 };
@@ -588,6 +613,8 @@
                 };
 
                 const setPaintEnabled = (enabled) => {
+                    if (enabled) layerMasks.setEditing(false);
+                    if (enabled) handToolActive = false;
                     if (enabled && annotationTool?.mode) {
                         annotationTool.setMode(null);
                     }
@@ -637,12 +664,22 @@
                     }
                 });
                 paintToggle.addEventListener('click', () => {
+                    if (layerMasks.activeLayer) {
+                        layerMasks.erasing = false;
+                        layerMasks.activate(layerMasks.activeLayer);
+                        return;
+                    }
                     setPaintEnabled(!paintEnabled);
                     if (paintEnabled && lastMouseClient) {
                         refreshBrushCursor(lastMouseClient.clientX, lastMouseClient.clientY);
                     }
                 });
                 paintEraserToggle.addEventListener('click', () => {
+                    if (layerMasks.activeLayer) {
+                        layerMasks.erasing = true;
+                        layerMasks.activate(layerMasks.activeLayer);
+                        return;
+                    }
                     if (!paintEnabled) {
                         setPaintEnabled(true);
                     }
@@ -1003,6 +1040,8 @@
                 };
 
                 function setPenSelectionActive(enabled) {
+                    if (enabled) layerMasks.setEditing(false);
+                    if (enabled) handToolActive = false;
                     if (enabled && annotationTool?.mode) {
                         annotationTool.setMode(null);
                     }
@@ -1276,6 +1315,8 @@
                 annotationTool = new AnnotationTool(canvasInstance, {
                     overlay, clearOverlay, getWorldFromClient,
                     onActivate: () => {
+                        layerMasks.selectImage();
+                        handToolActive = false;
                         setPaintEnabled(false);
                         setPenSelectionActive(false);
                         if (canvasInstance.maskTool.isActive) {
@@ -1293,14 +1334,115 @@
                 });
                 const activateMask = canvasInstance.maskTool.activate.bind(canvasInstance.maskTool);
                 canvasInstance.maskTool.activate = (...args) => {
+                    layerMasks.selectImage();
+                    handToolActive = false;
                     if (annotationTool.mode) annotationTool.setMode(null);
+                    updateOverlayToolState();
+                    updateCanvasPointerLock();
                     return activateMask(...args);
+                };
+
+                const maskControls = document.createElement('span');
+                maskControls.id = 'layer-mask-paint-controls';
+                maskControls.hidden = true;
+                const makeMaskSwatch = (id, title, color, restore) => {
+                    const button = document.createElement('button');
+                    button.id = id;
+                    button.type = 'button';
+                    button.className = 'btn mask-swatch';
+                    button.title = window.LayerForgeI18n.text(title);
+                    button.setAttribute('aria-label', button.title);
+                    const swatch = document.createElement('span');
+                    swatch.style.background = color;
+                    button.append(swatch);
+                    button.onclick = () => {
+                        layerMasks.restore = restore;
+                        layerMasks.erasing = false;
+                        updateOverlayToolState();
+                        canvasInstance.canvas.focus({ preventScroll: true });
+                    };
+                    maskControls.append(button);
+                    return button;
+                };
+                const blackMaskSwatch = makeMaskSwatch('layer-mask-hide', 'Hide with black', '#000000', false);
+                const whiteMaskSwatch = makeMaskSwatch('layer-mask-reveal', 'Reveal with white', '#ffffff', true);
+                const maskSlider = (id, title, property) => {
+                    const label = document.createElement('label');
+                    label.textContent = window.LayerForgeI18n.text(title);
+                    const input = document.createElement('input');
+                    Object.assign(input, { id, type: 'range', min: '0', max: '1', step: '0.05', value: layerMasks[property] });
+                    input.setAttribute('aria-label', label.textContent);
+                    input.oninput = () => { layerMasks[property] = Number(input.value); };
+                    label.append(input);
+                    maskControls.append(label);
+                    return input;
+                };
+                const layerMaskOpacity = maskSlider('layer-mask-opacity', 'Layer mask strength', 'opacity');
+                const layerMaskHardness = maskSlider('layer-mask-hardness', 'Layer mask hardness', 'hardness');
+                paintSizeInput.after(maskControls);
+                layerMaskUi = { container: maskControls, black: blackMaskSwatch, white: whiteMaskSwatch };
+
+                const cancelLayerMaskGesture = () => {
+                    const stroke = layerMaskStroke;
+                    layerMaskStroke = null;
+                    if (stroke && overlay.hasPointerCapture(stroke.pointerId)) overlay.releasePointerCapture(stroke.pointerId);
+                    layerMasks.cancelStroke();
+                };
+                layerMasks.onTargetChange = (activate) => {
+                    if (!layerMasks.isEditing) cancelLayerMaskGesture();
+                    if (activate) {
+                        handToolActive = false;
+                        setPaintEnabled(false);
+                        setPenSelectionActive(false);
+                        annotationTool.setMode(null);
+                        if (canvasInstance.maskTool.isActive) result.panel.querySelector('#mask-mode-btn')?.click();
+                        canvasInstance.canvas.focus({ preventScroll: true });
+                    }
+                    updateOverlayToolState();
+                    updateCanvasPointerLock();
+                    clearOverlay();
+                };
+                const paintMaskPoints = (state) => {
+                    if (!state.ready || state !== layerMaskStroke) return;
+                    for (const point of state.points.splice(0)) {
+                        layerMasks.drawStroke(state.last || point, point, paintSize);
+                        state.last = point;
+                    }
+                };
+                const beginLayerMaskGesture = (event) => {
+                    if (layerMaskStroke) return;
+                    const layer = layerMasks.activeLayer;
+                    const point = layerMasks.pointForLayer(layer, getWorldFromClient(event.clientX, event.clientY));
+                    if (!point) return;
+                    canvasInstance.canvas.focus({ preventScroll: true });
+                    overlay.setPointerCapture(event.pointerId);
+                    const state = { layer, pointerId: event.pointerId, points: [point], last: null, ready: false };
+                    layerMaskStroke = state;
+                    state.pending = layerMasks.beginStroke(layer).then((stroke) => {
+                        if (!stroke || state !== layerMaskStroke) return;
+                        state.ready = true;
+                        paintMaskPoints(state);
+                    }).catch((error) => {
+                        cancelLayerMaskGesture();
+                        setStatusText(window.LayerForgeI18n.text('Layer mask operation failed') + ': ' + error.message);
+                    });
+                };
+                const endLayerMaskGesture = async (cancelled = false) => {
+                    const state = layerMaskStroke;
+                    if (!state) return;
+                    await state.pending;
+                    if (state !== layerMaskStroke) return;
+                    paintMaskPoints(state);
+                    layerMaskStroke = null;
+                    if (cancelled) layerMasks.cancelStroke();
+                    else layerMasks.commitStroke();
+                    if (overlay.hasPointerCapture(state.pointerId)) overlay.releasePointerCapture(state.pointerId);
                 };
 
                 overlay.addEventListener('pointerdown', async (e) => {
                     if (!overlayToolActive())
                         return;
-                    if (e.pointerType === 'mouse' && e.button === 1) {
+                    if ((e.pointerType === 'mouse' && e.button === 1) || (e.button === 0 && (spacePanActive || handToolActive))) {
                         e.preventDefault();
                         e.stopPropagation();
                         updateOverlaySize();
@@ -1335,6 +1477,12 @@
                         e.stopPropagation();
                         updateOverlaySize();
                         annotationTool.pointerDown(e);
+                        return;
+                    }
+                    if (layerMasks.isEditing) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        beginLayerMaskGesture(e);
                         return;
                     }
                     e.preventDefault();
@@ -1471,6 +1619,15 @@
                         annotationTool.pointerMove(e);
                         return;
                     }
+                    if (layerMasks.isEditing) {
+                        if (layerMaskStroke?.pointerId === e.pointerId) {
+                            const point = layerMasks.pointForLayer(layerMaskStroke.layer, getWorldFromClient(e.clientX, e.clientY));
+                            if (point) layerMaskStroke.points.push(point);
+                            paintMaskPoints(layerMaskStroke);
+                        }
+                        refreshBrushCursor(e.clientX, e.clientY);
+                        return;
+                    }
                     if (paintPointers.has(e.pointerId)) {
                         paintPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
                     }
@@ -1567,6 +1724,11 @@
                         annotationTool.pointerUp(e);
                         return;
                     }
+                    if (layerMaskStroke?.pointerId === e.pointerId) {
+                        await endLayerMaskGesture(e.type === 'pointercancel');
+                        refreshBrushCursor(e.clientX, e.clientY);
+                        return;
+                    }
                     paintPointers.delete(e.pointerId);
                     try {
                         overlay.releasePointerCapture(e.pointerId);
@@ -1658,39 +1820,193 @@
                     }
                 }, { passive: false });
 
+                const maskEditorVisible = () => {
+                    const editor = document.querySelector('.layerforge-mask-editor-overlay');
+                    return editor && editor.style.display !== 'none';
+                };
+                const refreshNavigation = () => {
+                    updateOverlayToolState();
+                    updateCanvasPointerLock();
+                    clearOverlay();
+                    if (annotationTool.mode) annotationTool.render();
+                    else if (penSelectionActive) renderPenSelectionOverlay();
+                };
+                const selectNavigationTool = (hand = false) => {
+                    layerMasks.setEditing(false);
+                    setPaintEnabled(false);
+                    setPenSelectionActive(false);
+                    annotationTool.setMode(null);
+                    if (canvasInstance.maskTool.isActive) result.panel.querySelector('#mask-mode-btn')?.click();
+                    canvasInstance.shapeTool.deactivate();
+                    handToolActive = hand;
+                    refreshNavigation();
+                    canvasInstance.canvas.focus({ preventScroll: true });
+                };
+                const changeActiveBrushSize = (direction, hardness = false) => {
+                    let input;
+                    if (layerMasks.isEditing) {
+                        input = hardness ? layerMaskHardness : paintSizeInput;
+                    } else if (canvasInstance.maskTool.isActive) {
+                        input = result.panel.querySelector(hardness ? '#brush-hardness-slider' : '#brush-size-slider');
+                    } else if (!hardness) {
+                        input = annotationTool.mode === 'marker' ? annotationTool.sizeInput
+                            : annotationTool.mode ? annotationTool.widthInput : paintSizeInput;
+                    }
+                    if (!input) return;
+                    input.value = hardness ? Math.max(0, Math.min(1, Number(input.value) + direction * 0.1))
+                        : nextBrushSize(input.value, direction, Number(input.max) || 200);
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                };
+
                 window.addEventListener('keydown', async (e) => {
-                    const tag = String(e.target?.tagName || '').toLowerCase();
-                    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable)
-                        return;
-                    if (annotationTool.keyDown(e)) {
-                        e.preventDefault();
-                        e.stopPropagation();
+                    if (e.defaultPrevented || isEditingText(e) || e.target?.closest?.('.painter-tooltip') || maskEditorVisible()) return;
+                    if (e.code === 'Space' && e.target?.closest?.('button')) return;
+                    const command = e.ctrlKey || e.metaKey;
+                    const key = e.key.toLowerCase();
+                    const consume = () => { e.preventDefault(); e.stopPropagation(); };
+                    if (e.key === 'Escape' && layerMaskStroke) {
+                        consume();
+                        cancelLayerMaskGesture();
                         return;
                     }
-                    if (!penSelectionActive)
+                    if (layerMaskStroke && command && ['z', 'j', 'd'].includes(key)) {
+                        consume();
+                        if (key !== 'j') cancelLayerMaskGesture();
                         return;
-                    if (e.key === 'Escape') {
-                        e.preventDefault();
+                    }
+                    if (layerMasks.activeLayer && !command && !e.altKey && !canvasInstance.maskTool.isActive
+                        && !annotationTool.mode && !penSelectionActive && (e.key === 'Delete' || e.key === 'Backspace')) {
+                        consume();
+                        layerMasks.remove(layerMasks.activeLayer);
+                        return;
+                    }
+                    if (e.code === 'Space' && !command && !e.altKey) {
+                        spacePanActive = true;
+                        refreshNavigation();
+                        consume();
+                        return;
+                    }
+                    if (annotationTool.keyDown(e)) {
+                        consume();
+                        return;
+                    }
+                    if (penSelectionActive && e.key === 'Escape') {
+                        consume();
                         penSelectionPoints = [];
                         penPreviewPoint = null;
                         renderPenSelectionOverlay();
                         setStatusText('钢笔选区：单击添加点，双击或点击首点完成');
+                        return;
                     }
-                    else if (e.key === 'Enter') {
+                    if (penSelectionActive && e.key === 'Enter') {
                         if (penSelectionPoints.length >= 3) {
-                            e.preventDefault();
+                            consume();
                             await commitPenSelectionPath();
                         }
+                        return;
                     }
-                    else if (e.key === 'Backspace' || e.key === 'Delete') {
+                    if (penSelectionActive && (e.key === 'Backspace' || e.key === 'Delete')) {
                         if (penSelectionPoints.length) {
-                            e.preventDefault();
+                            consume();
                             penSelectionPoints = penSelectionPoints.slice(0, -1);
                             renderPenSelectionOverlay();
                             setStatusText(`钢笔选区：${penSelectionPoints.length} 个点`);
+                            return;
                         }
                     }
+                    if (command && !e.altKey) {
+                        if (key === 'z') {
+                            consume();
+                            if (e.shiftKey) canvasInstance.redo();
+                            else canvasInstance.undo();
+                        } else if (key === 'j' && !e.shiftKey) {
+                            consume();
+                            if (canvasInstance.canvasSelection.selectedLayers.length) {
+                                canvasInstance.canvasSelection.duplicateSelectedLayers();
+                                canvasInstance.saveState();
+                            }
+                        } else if (key === 'd' && !e.shiftKey) {
+                            consume();
+                            annotationTool.cancelDraft();
+                            penSelectionPoints = [];
+                            penPreviewPoint = null;
+                            canvasInstance.updateSelection([]);
+                            refreshNavigation();
+                        } else if (key === '0' || key === '1') {
+                            consume();
+                            if (key === '0') canvasInstance.fitWorldRectToView(canvasInstance.outputAreaBounds);
+                            else {
+                                const view = canvasInstance.getViewPixelSize();
+                                const viewport = canvasInstance.viewport;
+                                viewport.x += view.width / (2 * viewport.zoom) - view.width / 2;
+                                viewport.y += view.height / (2 * viewport.zoom) - view.height / 2;
+                                viewport.zoom = 1;
+                                canvasInstance.onViewportChange?.();
+                                canvasInstance.render();
+                            }
+                            refreshNavigation();
+                        } else if (key === '+' || key === '=' || key === '-') {
+                            consume();
+                            const rect = canvasInstance.canvas.getBoundingClientRect();
+                            performWheelZoom(rect.left + rect.width / 2, rect.top + rect.height / 2, key === '-' ? 1 / 1.1 : 1.1);
+                            refreshNavigation();
+                        }
+                        return;
+                    }
+                    if (command || e.altKey) return;
+                    if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+                        consume();
+                        changeActiveBrushSize(e.code === 'BracketLeft' ? -1 : 1, e.shiftKey);
+                        return;
+                    }
+                    if (e.repeat || isPainting || annotationTool.gesture || layerMaskStroke) return;
+                    if (key === 'v' && !e.shiftKey) selectNavigationTool();
+                    else if (key === 'h' && !e.shiftKey) selectNavigationTool(true);
+                    else if ((key === 'b' || key === 'e') && !e.shiftKey) {
+                        if (layerMasks.activeLayer) {
+                            layerMasks.erasing = key === 'e';
+                            layerMasks.activate(layerMasks.activeLayer);
+                        } else if (key === 'b' && canvasInstance.maskTool.isActive) {
+                            handToolActive = false;
+                            refreshNavigation();
+                        } else {
+                            if (canvasInstance.maskTool.isActive) result.panel.querySelector('#mask-mode-btn')?.click();
+                            setPaintEnabled(true);
+                            setPaintTool(key === 'e' ? 'eraser' : 'brush');
+                        }
+                    } else if ((key === 'x' || key === 'd') && layerMasks.activeLayer && !e.shiftKey) {
+                        layerMasks.restore = key === 'x' ? !layerMasks.restore : false;
+                        layerMasks.erasing = false;
+                        updateOverlayToolState();
+                    } else if (key === 'p' && !e.shiftKey) setPenSelectionActive(true);
+                    else if (key === 'u') {
+                        if (e.shiftKey) {
+                            const select = annotationTool.shapeSelect;
+                            select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
+                            select.dispatchEvent(new Event('change'));
+                        }
+                        annotationTool.setMode('shape');
+                    } else if (e.key === 'Escape' && handToolActive) selectNavigationTool();
+                    else return;
+                    consume();
                 }, { capture: true });
+
+                window.addEventListener('keyup', (e) => {
+                    if (e.code !== 'Space' || !spacePanActive) return;
+                    spacePanActive = false;
+                    refreshNavigation();
+                }, { capture: true });
+                window.addEventListener('blur', () => {
+                    cancelLayerMaskGesture();
+                    spacePanActive = false;
+                    if (isPanning) {
+                        if (overlay.hasPointerCapture(panPointerId)) overlay.releasePointerCapture(panPointerId);
+                        isPanning = false;
+                        panPointerId = null;
+                        panStart = null;
+                    }
+                    refreshNavigation();
+                });
 
                 let pendingOverlayResize = false;
                 const scheduleOverlayResize = () => {
@@ -1720,6 +2036,7 @@
                         
                         if (event.data.type === 'LOAD_IMAGE' && canvasInstance && canvasInstance.layers) {
                             canvasInstance.layers = [];
+                            layerMasks.historyChanged();
                             canvasInstance.render();
                         }
 
@@ -1848,6 +2165,7 @@
                             await commitPenSelectionPath();
                         }
                         await annotationTool.flush();
+                        await endLayerMaskGesture();
                         
                         const blob = await canvasInstance.canvasLayers.getFlattenedCanvasAsBlob();
                         

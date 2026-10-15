@@ -6,7 +6,7 @@
     const lang = rawLang.startsWith('en') ? 'en' : 'cn';
     const stage = { __lang: lang };
     let translations = {};
-    const ready = stage.__lang === 'en' ? Promise.resolve() : fetch('/gradio_api/file=language/cn.json?v=layerforge_annotations_20261015', {
+    const ready = stage.__lang === 'en' ? Promise.resolve() : fetch('/gradio_api/file=language/cn.json?v=layerforge_masks_20261015', {
         cache: 'no-cache',
         signal: AbortSignal.timeout(10000)
     }).then((response) => {
@@ -356,7 +356,7 @@
 
     function translateCore(value) {
         const text = String(value || '');
-        const exact = lang === 'en' ? cnToEn.get(text) : enToCn.get(text);
+        const exact = lang === 'en' ? cnToEn.get(text) : (translations[text] ?? enToCn.get(text));
         if (exact !== undefined) return exact;
         for (const [pattern, replacement] of dynamicRules) {
             const sourceIsChinese = /[\u4e00-\u9fff]/.test(pattern.source);

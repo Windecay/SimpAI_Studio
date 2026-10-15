@@ -17458,6 +17458,10 @@ def _roleplay_endpoint_user_did(payload, request):
     return str(source.get("user_did") or source.get("__user_did") or "guest").strip() or "guest"
 
 
+from modules.vlm_story_packs_api import create_router as create_story_packs_router
+app.include_router(create_story_packs_router(_roleplay_endpoint_user_did))
+
+
 @app.post("/describe-image/vlm-roleplay/draft-from-system-prompt")
 async def describe_image_vlm_roleplay_draft_endpoint(payload: dict = Body(default={})):
     payload = payload if isinstance(payload, dict) else {}

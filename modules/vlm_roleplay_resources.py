@@ -133,28 +133,55 @@ def evidence_is_unsupported_generalization(evidence, content):
 def chapter_intent(user_message, assistant_reply=""):
     """Only explicit control text or standalone chapter markers advance chapters."""
     source = _text(user_message, 12000)
-    chapter_words = r"(?:本章|这一章|本章节|当前章节|这一章节|章节|篇章|chapter)"
-    ending = rf"(?:{chapter_words}\s*(?:已经|已|到此|正式)?\s*(?:结束|完成|完结|end(?:ed|s)?|completed)|(?:结束|完成)\s*{chapter_words}|end\s+(?:this|the|current)\s+chapter)"
-    next_chapter = r"(?:下一章|新章节|开新章|开启新章|开始新章|(?:start|begin|open)\s+(?:a\s+)?new\s+chapter|next\s+chapter)"
-    relevant = re.search(rf"{chapter_words}|{next_chapter}", source, re.I)
-    if relevant and re.search(
-        r"不要|别|不许|暂不|尚未|还没|并未|没有结束|未结束|"
-        r"\b(?:not|don't|never|without)\b|如果|假设|是否|吗|怎么办|如何|[?？]",
-        source, re.I,
-    ):
-        # Ending without opening another chapter is an explicit, useful exception.
-        if re.search(ending, source, re.I) and re.search(
-            r"(?:不要|别|不再|暂不).{0,8}(?:下一章|新章)|without.{0,24}new chapter",
-            source, re.I,
-        ) and not re.search(r"如果|假设|是否|[?？]", source):
-            return {"status": "completed"}
-        return {}
-    if re.search(rf"{chapter_words}\s*(?:标记|设置|设定)(?:为|成)\s*(?:completed|已完成|结束)", source, re.I):
+    numbered = r"(?:第[零〇一二两三四五六七八九十百千\d]+章|chapter\s+\d+)"
+    chapter_words = rf"(?:本章|这一章|本章节|当前章节|这一章节|章节|篇章|{numbered}|chapter)"
+    quoted_title = r'(?:\s*[“"「《‘][^”"」》’\r\n]{1,240}[”"」》’])?'
+    reference = chapter_words + quoted_title
+    ending = rf"(?:{reference}\s*(?:已经|已|到此|正式)?\s*(?:结束|完成|完结|end(?:ed|s)?|completed)|(?:结束|完成)\s*{reference}|end\s+(?:this|the|current)\s+chapter)"
+    next_chapter = rf"(?:下一章|新章节|开新章|开启新章|开始新章|(?:开始|开启|进入|转入|切换到)\s*{numbered}|(?:start|begin|open)\s+(?:a\s+)?(?:new\s+chapter|chapter\s+\d+)|next\s+chapter)"
+    finale_pattern = r"(?:全书完|全文完|故事结束|故事完结|大结局|the story ends|story complete)"
+    quoted_control = False
+    if not re.match(r"^\s*(?:剧情控制|作者指令|OOC)\s*[:：]", source, re.I):
+        for quoted in reversed(list(re.finditer(r'“[^”\n]*”|「[^」\n]*」|"[^"\n]*"', source))):
+            if re.search(rf"{ending}|{next_chapter}|{finale_pattern}", quoted.group(), re.I):
+                source = source[:quoted.start()] + " " * len(quoted.group()) + source[quoted.end():]
+                quoted_control = True
+    ended = finale = completed = advance = denied_advance = False
+    blocked = quoted_control
+    title = ""
+    # Negation is scoped to chapter clauses, not unrelated instructions such as
+    # "do not reveal the secret" after an explicit chapter transition.
+    for sentence in re.split(r"(?<=[。！？!?；;\n])|(?<=\.)\s+", source):
+        relevant = re.search(rf"{chapter_words}|{next_chapter}|{finale_pattern}", sentence, re.I)
+        if not relevant:
+            continue
+        if re.search(r"如果|假设|是否|吗|怎么办|如何|[?？]|\bif\b", sentence, re.I):
+            blocked = True
+            continue
+        for clause in re.split(r"[，,]|但是|(?<!不)但", sentence):
+            if not re.search(rf"{chapter_words}|{next_chapter}|{finale_pattern}", clause, re.I):
+                continue
+            if re.search(r"不要|别|不许|暂不|不再|尚未|还没|并未|没有结束|未结束|\b(?:not|don't|never|without)\b", clause, re.I):
+                denied_advance |= bool(re.search(next_chapter, clause, re.I))
+                blocked = True
+                continue
+            finale |= bool(re.search(finale_pattern, clause, re.I))
+            completed |= bool(re.search(rf"{chapter_words}\s*(?:标记|设置|设定)(?:为|成)\s*(?:completed|已完成|结束)", clause, re.I))
+            ended |= bool(re.search(ending, clause, re.I))
+            next_match = re.search(next_chapter, clause, re.I)
+            if next_match:
+                advance = True
+                title_match = re.match(
+                    r'\s*(?:[:：]\s*([^\n。！？!?；;]+)|[“"「《‘]([^”"」》’\n]+)[”"」》’])',
+                    clause[next_match.end():],
+                )
+                if title_match:
+                    title = (title_match.group(1) or title_match.group(2)).strip(' “”"「」《》‘’')[:240]
+    if finale or completed or (ended and denied_advance and not advance):
         return {"status": "completed"}
-    finale = re.search(r"(?:全书完|全文完|故事结束|故事完结|大结局|the story ends|story complete)", source, re.I)
-    advance = re.search(next_chapter, source, re.I)
-    ended = re.search(ending, source, re.I)
-    if not (finale or advance or ended):
+    if not (advance or ended):
+        if blocked:
+            return {}
         marker = re.search(
             r"(?im)^\s*(?:【|\[|#{1,3}\s*)\s*(?:本章|这一章|章节|篇章|chapter)\s*"
             r"(?:结束|完|end(?:ed)?|completed)(?:[，,：:].{0,30})?\s*(?:】|\])?\s*$",
@@ -162,13 +189,9 @@ def chapter_intent(user_message, assistant_reply=""):
         )
         if not marker:
             return {}
-    if finale:
-        return {"status": "completed"}
     result = {"new_chapter": True, "status": "active"}
-    if advance:
-        title = re.search(rf"{next_chapter}\s*[:：]\s*([^\n。！？!?；;]+)", source, re.I)
-        if title:
-            result["title"] = title.group(1).strip()[:240]
+    if title:
+        result["title"] = title
     return result
 
 
@@ -326,6 +349,7 @@ def build_plan(session, signals, user_message, assistant_reply, turn_id, *, read
         task["attempt_count"] = min(MAX_RESOURCE_TASK_ATTEMPTS, task["attempt_count"] + 1)
     return {"tasks": batch, "pending": pending,
             "chapter_update": intent, "turn_id": turn_id, "read_only": read_only,
+            "previous_chapter_id": current_id,
             "visual": signals.get("visual") is True, "failed": review["failed"]}
 
 
@@ -578,7 +602,17 @@ def verify_commit(plan, report, session):
         active = next((item for item in session.get("chapters", {}).get("items", [])
                        if item["id"] == session.get("active_chapter_id")), {})
         if intent.get("new_chapter"):
-            lifecycle_ok = active.get("start_turn_id") == plan["turn_id"]
+            previous_ids = (
+                {plan["previous_chapter_id"]} if plan.get("previous_chapter_id")
+                else {task["chapter_id"] for task in plan["tasks"] if task["kind"] == "chapter"}
+            )
+            lifecycle_ok = (
+                active.get("start_turn_id") == plan["turn_id"]
+                and active.get("id") not in previous_ids
+                and (not intent.get("title") or active.get("title") == intent["title"])
+                and all(item.get("status") == "completed" for item in session.get("chapters", {}).get("items", [])
+                        if item["id"] in previous_ids)
+            )
         else:
             lifecycle_ok = active.get("status") == "completed"
     if not lifecycle_ok:

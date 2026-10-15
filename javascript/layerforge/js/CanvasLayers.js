@@ -484,6 +484,7 @@ export class CanvasLayers {
     _drawLayer(ctx, layer, options = {}) {
         if (!layer.image)
             return;
+        layer = this.canvas.layerMasks.renderLayer(layer);
         const { offsetX = 0, offsetY = 0 } = options;
         ctx.save();
         const centerX = layer.x + layer.width / 2 - offsetX;
@@ -535,7 +536,7 @@ export class CanvasLayers {
             // Score each cache entry to find the best match
             let bestScore = -1;
             for (const [key, image] of this.processedImageCache.entries()) {
-                if (key.startsWith(layer.id + '_')) {
+                if (key.startsWith(layer.id + '_') && key.endsWith('_' + this.getLayerContentKey(layer))) {
                     let score = 0;
                     // Extract blend area and crop info from cache key
                     const keyParts = key.split('_');
@@ -729,7 +730,10 @@ export class CanvasLayers {
         const cropKey = layer.cropBounds ?
             `${layer.cropBounds.x},${layer.cropBounds.y},${layer.cropBounds.width},${layer.cropBounds.height}` :
             'nocrop';
-        return `${layer.id}_${blendArea}_${cropKey}_${layer.width}_${layer.height}`;
+        return `${layer.id}_${blendArea}_${cropKey}_${layer.width}_${layer.height}_${this.getLayerContentKey(layer)}`;
+    }
+    getLayerContentKey(layer) {
+        return `${layer.imageId || 'image'}:${this.canvas.layerMasks.renderKey(layer)}`;
     }
     /**
      * Get processed image with all effects applied (blend area, crop, etc.)
@@ -839,6 +843,7 @@ export class CanvasLayers {
      * Create a new processed image with all effects applied
      */
     createProcessedImage(layer) {
+        layer = this.canvas.layerMasks.renderLayer(layer);
         const blendArea = layer.blendArea ?? 0;
         const needsBlendAreaEffect = blendArea > 0;
         // Create a canvas for the processed image
@@ -1485,6 +1490,7 @@ export class CanvasLayers {
      */
     async _generateCanvasBlob(options = {}) {
         const { layers = this.canvas.layers, useOutputBounds = true, applyMask = false, enableLogging = false, customBounds } = options;
+        await this.canvas.layerMasks.prepare(layers);
         return new Promise((resolve, reject) => {
             let bounds;
             if (customBounds) {
@@ -1615,6 +1621,7 @@ export class CanvasLayers {
         });
     }
     async getFlattenedMaskAsBlob() {
+        await this.canvas.layerMasks.prepare();
         return new Promise((resolve, reject) => {
             const bounds = this.canvas.outputAreaBounds;
             const { canvas: maskCanvas, ctx: maskCtx } = createCanvas(bounds.width, bounds.height, '2d', { willReadFrequently: true });
@@ -1684,6 +1691,7 @@ export class CanvasLayers {
         }
         log.info(`Fusing ${this.canvas.canvasSelection.selectedLayers.length} selected layers`);
         try {
+            await this.canvas.layerMasks.prepare(this.canvas.canvasSelection.selectedLayers);
             this.canvas.saveState();
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             this.canvas.canvasSelection.selectedLayers.forEach((layer) => {

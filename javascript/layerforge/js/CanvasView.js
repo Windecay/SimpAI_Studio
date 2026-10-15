@@ -4,7 +4,7 @@ import { app } from "/file=javascript/layerforge/js/comfy_shim.js?v=patch26";
 import { $el } from "/file=javascript/layerforge/js/comfy_shim.js?v=patch26";
 import { api } from "/file=javascript/layerforge/js/api_shim.js?v=patch26";
 import { addStylesheet, getUrl, loadTemplate } from "/file=javascript/layerforge/js/utils/ResourceManager.js?v=patch26";
-import { Canvas } from "/file=javascript/layerforge/js/Canvas.js?v=patch63";
+import { Canvas } from "/gradio_api/file=javascript/layerforge/js/Canvas.js?v=patch66";
 import { clearAllCanvasStates } from "/file=javascript/layerforge/js/db.js?v=patch26";
 import { ImageCache } from "/file=javascript/layerforge/js/ImageCache.js?v=patch26";
 import { createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
@@ -40,40 +40,113 @@ export async function createCanvasWidget(node, widget, app) {
     const helpTooltip = $el("div.painter-tooltip", {
         id: `painter-help-tooltip-${node.id}`,
     });
+    const helpText = (key) => window.LayerForgeI18n?.text?.(key) || key;
+    const tooltipTitle = $el('span.painter-tooltip-title', { id: `painter-help-title-${node.id}` });
+    const tooltipClose = $el('button.painter-tooltip-close', {
+        type: 'button',
+        textContent: '\u00d7',
+        title: helpText('Close'),
+    });
+    tooltipClose.setAttribute('aria-label', helpText('Close'));
+    const tooltipContent = $el('div.painter-tooltip-content', { tabIndex: 0 });
+    helpTooltip.setAttribute('role', 'dialog');
+    helpTooltip.setAttribute('aria-modal', 'false');
+    helpTooltip.setAttribute('aria-labelledby', tooltipTitle.id);
+    helpTooltip.append($el('div.painter-tooltip-header', {}, [tooltipTitle, tooltipClose]), tooltipContent);
+    let tooltipAnchor = null;
+    let tooltipPinned = false;
+    let tooltipHtml = '';
+    let tooltipHideTimer = null;
     const [standardShortcuts, maskShortcuts, systemClipboardTooltip, clipspaceClipboardTooltip] = await Promise.all([
-        loadTemplate('./templates/standard_shortcuts.html'),
-        loadTemplate('./templates/mask_shortcuts.html'),
+        loadTemplate('/gradio_api/file=javascript/layerforge/js/templates/standard_shortcuts.html?v=patch64'),
+        loadTemplate('/gradio_api/file=javascript/layerforge/js/templates/mask_shortcuts.html?v=patch64'),
         loadTemplate('./templates/system_clipboard_tooltip.html'),
         loadTemplate('./templates/clipspace_clipboard_tooltip.html')
     ]);
     document.body.appendChild(helpTooltip);
-    const showTooltip = (buttonElement, content) => {
-        helpTooltip.innerHTML = content;
-        helpTooltip.style.visibility = 'hidden';
-        helpTooltip.style.display = 'block';
-        const buttonRect = buttonElement.getBoundingClientRect();
+    const tooltipVisible = () => helpTooltip.style.display === 'flex';
+    const cancelTooltipHide = () => {
+        clearTimeout(tooltipHideTimer);
+        tooltipHideTimer = null;
+    };
+    const positionTooltip = () => {
+        if (!tooltipVisible() || !tooltipAnchor?.isConnected) return;
+        const viewport = window.visualViewport;
+        const viewportWidth = viewport?.width || window.innerWidth;
+        const viewportHeight = viewport?.height || window.innerHeight;
+        const viewportLeft = viewport?.offsetLeft || 0;
+        const viewportTop = viewport?.offsetTop || 0;
+        const margin = 10;
+        helpTooltip.style.maxWidth = `${Math.max(1, viewportWidth - margin * 2)}px`;
+        const buttonRect = tooltipAnchor.getBoundingClientRect();
+        const below = Math.max(0, viewportTop + viewportHeight - margin - buttonRect.bottom - 5);
+        const above = Math.max(0, buttonRect.top - viewportTop - margin - 5);
+        const placeBelow = below >= above;
+        helpTooltip.style.maxHeight = `${Math.max(1, placeBelow ? below : above)}px`;
         const tooltipRect = helpTooltip.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
         let left = buttonRect.left;
-        let top = buttonRect.bottom + 5;
-        if (left + tooltipRect.width > viewportWidth) {
-            left = viewportWidth - tooltipRect.width - 10;
+        let top = placeBelow ? buttonRect.bottom + 5 : buttonRect.top - tooltipRect.height - 5;
+        if (left + tooltipRect.width > viewportLeft + viewportWidth - margin) {
+            left = viewportLeft + viewportWidth - tooltipRect.width - margin;
         }
-        if (top + tooltipRect.height > viewportHeight) {
-            top = buttonRect.top - tooltipRect.height - 5;
-        }
-        if (left < 10)
-            left = 10;
-        if (top < 10)
-            top = 10;
+        left = Math.max(viewportLeft + margin, left);
+        top = Math.max(viewportTop + margin, top);
         helpTooltip.style.left = `${left}px`;
         helpTooltip.style.top = `${top}px`;
+    };
+    const showTooltip = (buttonElement, content, pinned = false, title = 'Keyboard shortcuts') => {
+        cancelTooltipHide();
+        if (tooltipPinned && tooltipAnchor !== buttonElement && !pinned) return;
+        const sameContent = tooltipAnchor === buttonElement && tooltipHtml === content;
+        if (tooltipAnchor && tooltipAnchor !== buttonElement) tooltipAnchor.setAttribute('aria-expanded', 'false');
+        if (!sameContent) {
+            tooltipContent.innerHTML = content;
+            tooltipContent.scrollTop = 0;
+        }
+        tooltipHtml = content;
+        tooltipPinned = pinned || (sameContent && tooltipPinned);
+        tooltipAnchor = buttonElement;
+        tooltipTitle.textContent = helpText(title);
+        tooltipAnchor.setAttribute('aria-expanded', 'true');
+        helpTooltip.dataset.pinned = String(tooltipPinned);
+        helpTooltip.style.visibility = 'hidden';
+        helpTooltip.style.display = 'flex';
+        positionTooltip();
         helpTooltip.style.visibility = 'visible';
+        if (pinned) tooltipContent.focus({ preventScroll: true });
     };
-    const hideTooltip = () => {
+    const hideTooltip = (restoreFocus = false) => {
+        cancelTooltipHide();
+        const anchor = tooltipAnchor;
+        anchor?.setAttribute('aria-expanded', 'false');
         helpTooltip.style.display = 'none';
+        tooltipAnchor = null;
+        tooltipPinned = false;
+        helpTooltip.dataset.pinned = 'false';
+        if (restoreFocus && anchor?.isConnected) anchor.focus({ preventScroll: true });
     };
+    const scheduleTooltipHide = () => {
+        cancelTooltipHide();
+        if (!tooltipPinned) tooltipHideTimer = setTimeout(() => hideTooltip(), 180);
+    };
+    tooltipClose.onclick = () => hideTooltip(true);
+    helpTooltip.addEventListener('mouseenter', cancelTooltipHide);
+    helpTooltip.addEventListener('mouseleave', scheduleTooltipHide);
+    helpTooltip.addEventListener('wheel', (event) => event.stopPropagation(), { passive: true });
+    document.addEventListener('pointerdown', (event) => {
+        if (tooltipVisible() && !helpTooltip.contains(event.target) && !tooltipAnchor?.contains(event.target)) hideTooltip();
+    }, { capture: true });
+    window.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || !tooltipVisible()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        hideTooltip(true);
+    }, { capture: true });
+    window.addEventListener('resize', positionTooltip, { passive: true });
+    window.visualViewport?.addEventListener('resize', positionTooltip, { passive: true });
+    document.addEventListener('scroll', (event) => {
+        if (!helpTooltip.contains(event.target)) positionTooltip();
+    }, { capture: true, passive: true });
     const controlPanel = $el("div.painterControlPanel", {}, [
         $el("div.controls.painter-controls", {
             style: {
@@ -101,12 +174,20 @@ export async function createCanvasWidget(node, widget, app) {
                     title: "等比缩放",
                 }),
                 $el("button.painter-button.icon-button", {
+                    id: `help-shortcuts-btn-${node.id}`,
                     textContent: "?",
+                    title: helpText('Keyboard shortcuts'),
+                    ariaHasPopup: 'dialog',
+                    ariaExpanded: 'false',
                     onmouseenter: (e) => {
                         const content = canvas.maskTool.isActive ? maskShortcuts : standardShortcuts;
-                        showTooltip(e.target, content);
+                        showTooltip(e.currentTarget, content);
                     },
-                    onmouseleave: hideTooltip
+                    onmouseleave: scheduleTooltipHide,
+                    onclick: (e) => {
+                        if (tooltipVisible() && tooltipAnchor === e.currentTarget && tooltipPinned) hideTooltip(true);
+                        else showTooltip(e.currentTarget, canvas.maskTool.isActive ? maskShortcuts : standardShortcuts, true);
+                    }
                 }),
                 $el("button.painter-button.primary", {
                     textContent: "添加图像",
@@ -194,17 +275,17 @@ export async function createCanvasWidget(node, widget, app) {
                         // Helper function to update tooltip content if it's currently visible
                         const updateTooltipIfVisible = () => {
                             // Only update if tooltip is currently visible
-                            if (helpTooltip.style.display === 'block') {
+                            if (tooltipVisible() && tooltipAnchor === switchEl) {
                                 const tooltipContent = getCurrentTooltipContent();
-                                showTooltip(switchEl, tooltipContent);
+                                showTooltip(switchEl, tooltipContent, tooltipPinned, 'Clipboard help');
                             }
                         };
                         // Tooltip logic
                         switchEl.addEventListener("mouseenter", (e) => {
                             const tooltipContent = getCurrentTooltipContent();
-                            showTooltip(switchEl, tooltipContent);
+                            showTooltip(switchEl, tooltipContent, false, 'Clipboard help');
                         });
-                        switchEl.addEventListener("mouseleave", hideTooltip);
+                        switchEl.addEventListener("mouseleave", scheduleTooltipHide);
                         // Dynamic icon update on toggle
                         const input = switchEl.querySelector('input[type="checkbox"]');
                         const knobIcon = switchEl.querySelector('.switch-knob .switch-icon');
@@ -2342,7 +2423,7 @@ const canvasNodeInstances = new Map();
 app.registerExtension({
     name: "Comfy.LayerForgeNode",
     init() {
-        addStylesheet(getUrl('./css/canvas_view.css'));
+        addStylesheet('/gradio_api/file=javascript/layerforge/js/css/canvas_view.css?v=patch67');
         const originalQueuePrompt = app.queuePrompt;
         app.queuePrompt = async function (number, prompt) {
             log.info("Preparing to queue prompt...");

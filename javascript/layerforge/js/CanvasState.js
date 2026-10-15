@@ -3,6 +3,8 @@ import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerU
 import { showAlertNotification } from "/file=javascript/layerforge/js/utils/NotificationUtils.js?v=patch26";
 import { generateUUID, cloneLayers, getStateSignature, debounce, createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
 const log = createModuleLogger('CanvasState');
+const layerStateSignature = (layers) => getStateSignature(layers) + JSON.stringify(layers.map((layer) =>
+    layer.layerMask ? [layer.layerMask.id, layer.layerMask.enabled !== false] : null));
 export class CanvasState {
     constructor(canvas) {
         this.canvas = canvas;
@@ -76,6 +78,7 @@ export class CanvasState {
             this.canvas.canvasLayers.updateOutputAreaSize(this.canvas.width, this.canvas.height, false);
             const loadedLayers = await this._loadLayers(savedState.layers);
             this.canvas.layers = loadedLayers.filter((l) => l !== null);
+            await this.canvas.layerMasks.prepare(this.canvas.layers);
             this.canvas.updateSelectionAfterHistory();
             this.canvas.render();
             return true;
@@ -123,7 +126,10 @@ export class CanvasState {
     _loadLayerFromImageId(layerData, index, resolve) {
         if (this.canvas.imageCache.has(layerData.imageId)) {
             const imageData = this.canvas.imageCache.get(layerData.imageId);
-            if (imageData) {
+            if (typeof imageData === 'string') {
+                this._createLayerFromSrc(layerData, imageData, index, resolve);
+            }
+            else if (imageData) {
                 const imageSrc = URL.createObjectURL(new Blob([imageData.data]));
                 this._createLayerFromSrc(layerData, imageSrc, index, resolve);
             }
@@ -287,10 +293,10 @@ If you see dark images or masks in the output, make sure node_id is set to ${cor
             this.layersUndoStack.pop();
         }
         const currentState = cloneLayers(this.canvas.layers);
-        const currentStateSignature = getStateSignature(currentState);
+        const currentStateSignature = layerStateSignature(currentState);
         if (this.layersUndoStack.length > 0) {
             const lastState = this.layersUndoStack[this.layersUndoStack.length - 1];
-            if (getStateSignature(lastState) === currentStateSignature) {
+            if (layerStateSignature(lastState) === currentStateSignature) {
                 return;
             }
         }
@@ -349,6 +355,7 @@ If you see dark images or masks in the output, make sure node_id is set to ${cor
         const prevState = this.layersUndoStack[this.layersUndoStack.length - 1];
         this.canvas.layers = cloneLayers(prevState);
         this.canvas.updateSelectionAfterHistory();
+        this.canvas.layerMasks.historyChanged();
         this.canvas.render();
         this.canvas.updateHistoryButtons();
     }
@@ -360,6 +367,7 @@ If you see dark images or masks in the output, make sure node_id is set to ${cor
             this.layersUndoStack.push(nextState);
             this.canvas.layers = cloneLayers(nextState);
             this.canvas.updateSelectionAfterHistory();
+            this.canvas.layerMasks.historyChanged();
             this.canvas.render();
             this.canvas.updateHistoryButtons();
         }

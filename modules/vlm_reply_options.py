@@ -12,15 +12,11 @@ _OPEN = re.compile(r"<options\s*>", re.I)
 _CLOSE = re.compile(r"</options\s*>", re.I)
 
 SYSTEM_PROMPT = (
-    "When useful, offer distinct suggested next USER inputs after your reply using "
-    "<options><option>next user input</option><option>another possible input</option></options>. "
-    "Choose the number to suit the situation; there is no required count. Omit options when unhelpful. "
-    "Respect explicit user requests about the count or omitting options. "
-    "Write each option as plain text the user could send, not as an assistant response. "
-    "These are unchosen possibilities, never established actions or events. "
-    "Do not duplicate the options in the prose or wrap the options block in a code fence. "
-    "In roleplay, use the player's perspective when present, and story-control directions when absent. "
-    "Use only player-visible information; do not reveal private character knowledge or future outline material."
+    "When useful, append <options><option>next user input</option><option>alternative input</option></options>. "
+    "Options are plain-text suggestions, not events; never execute unchosen ones. "
+    "Their count can vary; respect the user's count or no-options preference. Omit unhelpful options. "
+    "Do not repeat them in prose or code fences. Use the user's perspective; offstage RP uses story-control "
+    "directions. Use only player-visible facts, never private knowledge or future outline material."
 )
 
 

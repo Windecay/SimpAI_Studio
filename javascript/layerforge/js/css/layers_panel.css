@@ -222,6 +222,41 @@
     color: #ffffff;
 }
 
+.layer-mask-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 6px;
+    flex-shrink: 0;
+}
+.layer-mask-controls[hidden] { display: none; }
+.layer-mask-controls label { display: flex; align-items: center; gap: 4px; flex: 1; font-size: 11px; }
+.layer-row.has-layer-mask .layer-thumbnail { width: 36px; height: 36px; }
+.layer-mask-thumbnail {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    flex: 0 0 38px;
+    background: #000;
+    border: 1px solid #777;
+    border-radius: 2px;
+    cursor: pointer;
+    overflow: hidden;
+}
+.layer-mask-thumbnail canvas { display: block; width: 100%; height: 100%; }
+.layer-mask-thumbnail.is-active, .layer-thumbnail.is-image-target { outline: 2px solid #9dccff; outline-offset: 1px; }
+.layer-mask-thumbnail.is-disabled::after {
+    content: '';
+    position: absolute;
+    width: 150%;
+    height: 2px;
+    background: #ff5656;
+    top: 50%;
+    left: -25%;
+    transform: rotate(-45deg);
+}
+
 .layer-name.editing {
     background: #4a4a4a;
     border: 1px solid #6a6a6a;

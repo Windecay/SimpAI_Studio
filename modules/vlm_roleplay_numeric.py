@@ -190,6 +190,51 @@ def _coordinated_recipients(session: dict, evidence: str) -> set[str]:
     }
 
 
+def _explicit_effect_evidence(session: dict, entity_id: str, field: dict, value: str,
+                              evidence: str, instruction: str, speaker_id: str) -> tuple[str, str]:
+    """Use the named user's effect when a result list has several recipients."""
+    if entity_id not in rp._director_entity_mentions(session, evidence):
+        return evidence, ""
+    semantic = rp._state_field_semantic_key(field["label"])
+    all_effects = rp._extract_numeric_effects(session, instruction, speaker_id=speaker_id)
+    effects = [
+        effect for effect in all_effects
+        if effect.get("semantic_key") == semantic and entity_id in effect.get("target_ids", [])
+    ]
+    # Bare name/value lists carry no field name. Their meaning must agree with
+    # the explicit effect, rather than borrowing a patient's value for a caster.
+    names = {key: card.get("name") or key for key, card in session["characters"].items()}
+    names[session["persona"]["id"]] = session["persona"].get("name") or session["persona"]["id"]
+    name = names.get(entity_id, "")
+    if name and list(names.values()).count(name) == 1:
+        match = re.search(r"(?:^|[，,、：:])\s*" + re.escape(name) +
+                          r"\s*(?P<value>-?\d+(?:\.\d+)?(?:\s*/\s*-?\d+(?:\.\d+)?)?%?)"
+                          r"\s*(?:不变)?(?=$|[，,、；;。.!?])", evidence)
+        if match:
+            stated = rp._coerce_numeric_state_value(field["current_value"], match["value"])
+            if stated != value:
+                return evidence, "numeric_explicit_value_mismatch"
+            if all_effects and not effects:
+                return evidence, "numeric_explicit_field_or_recipient_mismatch"
+    if len(effects) == 1 and rp._apply_numeric_delta(field["current_value"], effects[0]["delta"]) == value:
+        return effects[0]["evidence"], ""
+    return evidence, ""
+
+
+def _has_mana_effect(evidence: str) -> bool:
+    resource = r"(?:魔力|法力|\bmana\b|\bmp\b|magic(?:al)?\s+(?:energy|power|resource))"
+    effect = (r"(?:消耗|耗尽|耗费|减少|下降|损失|枯竭|恢复|回复|回升|补充|增加|流失|透支|"
+              r"spent|spends?|consum\w*|drain\w*|deplet\w*|recover\w*|restor\w*|replenish\w*)")
+    for clause in re.split(r"[，,。；;.!?\n]", evidence):
+        if re.search(r"(?:无需|无须|不必|不用|没有|并未|不会|不|未)\s*(?:消耗|耗费)|"
+                     r"\b(?:no|without)\s+(?:mana\s+)?(?:cost|consumption)", clause, re.IGNORECASE):
+            continue
+        if re.search(resource + r".{0,28}" + effect + "|" + effect + r".{0,28}" + resource,
+                     clause, re.IGNORECASE):
+            return True
+    return False
+
+
 def parse_settlement(text: Any, session: Any, catalog: list[dict], user_message: str,
                      assistant_reply: str, *, speaker_id: str = "") -> dict:
     """Validate coverage, source quotes and exact targets before producing patches."""
@@ -279,9 +324,11 @@ def parse_settlement(text: Any, session: Any, catalog: list[dict], user_message:
                     decision["status"] = "unchanged"
                     continue
                 evidence = _evidence_sentence(evidence, user_message, assistant_reply)
-                if not error and basis == "estimated" and rp._state_field_semantic_key(field["label"]) == "mana" and not re.search(
-                    r"魔力|法力|\bmana\b|\bmp\b|magic(?:al)?\s+(?:energy|power|resource)", evidence, re.IGNORECASE,
-                ):
+                if not error and basis == "explicit":
+                    evidence, error = _explicit_effect_evidence(
+                        normalized, entity_id, field, value, evidence, user_message, speaker_id,
+                    )
+                if not error and basis == "estimated" and rp._state_field_semantic_key(field["label"]) == "mana" and not _has_mana_effect(evidence):
                     decision["status"] = "unchanged"
                     decision["correction"] = "no_magical_resource_effect"
                     report["warnings"].append({**decision, "reason": "numeric_unestablished_mana_cost_ignored"})

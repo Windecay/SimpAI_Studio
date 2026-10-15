@@ -5,7 +5,7 @@ import { showErrorNotification } from "/file=javascript/layerforge/js/utils/Noti
 import { processImageToMask } from "/file=javascript/layerforge/js/utils/MaskProcessingUtils.js?v=patch26";
 import { convertToImage } from "/file=javascript/layerforge/js/utils/ImageUtils.js?v=patch26";
 import { updateNodePreview } from "/file=javascript/layerforge/js/utils/PreviewUtils.js?v=patch26";
-import { layerForgeMaskEditor } from "/file=javascript/layerforge/js/LayerForgeMaskEditor.js?v=patch63";
+import { layerForgeMaskEditor } from "/gradio_api/file=javascript/layerforge/js/LayerForgeMaskEditor.js?v=patch64";
 
 const log = createModuleLogger('MaskEditorIntegration');
 

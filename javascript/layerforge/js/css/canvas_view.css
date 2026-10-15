@@ -448,18 +448,56 @@
     border: 1px solid #444;
     border-top: 2px solid #4a90e2;
     border-radius: 6px;
-    padding: 12px 18px;
+    padding: 0;
     z-index: 9999;
     font-size: 12px;
     line-height: 1.5;
-    width: auto;
-    max-width: min(450px, calc(100vw - 30px));
+    box-sizing: border-box;
+    width: 450px;
+    max-width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+    flex-direction: column;
+    overflow: hidden;
     box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-    pointer-events: none;
+    pointer-events: auto;
     transform-origin: top left;
     transition: transform 0.2s ease;
     will-change: transform;
 }
+
+.painter-tooltip-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 10px 6px 14px;
+    border-bottom: 1px solid #444;
+    flex: 0 0 auto;
+}
+.painter-tooltip-title { font-weight: 600; color: #76b8ff; }
+.painter-tooltip-close {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    color: #eee;
+    background: transparent;
+    font: 22px/1 sans-serif;
+    cursor: pointer;
+}
+.painter-tooltip-close:hover { background: #484848; }
+.painter-tooltip-content {
+    min-height: 0;
+    padding: 8px 14px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    flex: 1 1 auto;
+    scrollbar-gutter: stable;
+    outline-offset: -2px;
+}
+.painter-tooltip-content td:last-child { overflow-wrap: anywhere; }
 
 .painter-tooltip.scale-down {
     transform: scale(0.9);
@@ -503,8 +541,8 @@
 @media (max-width: 600px) {
     .painter-tooltip {
         font-size: 11px;
-        padding: 8px 12px;
     }
+    .painter-tooltip-content { padding: 6px 10px; }
     .painter-tooltip table td {
         padding: 2px 4px;
     }
@@ -528,8 +566,8 @@
 @media (max-width: 400px) {
     .painter-tooltip {
         font-size: 10px;
-        padding: 6px 8px;
     }
+    .painter-tooltip-content { padding: 6px 8px; }
     .painter-tooltip table td {
         padding: 1px 3px;
     }
@@ -550,21 +588,21 @@
     }
 }
 
-.painter-tooltip::-webkit-scrollbar {
+.painter-tooltip-content::-webkit-scrollbar {
     width: 8px;
 }
 
-.painter-tooltip::-webkit-scrollbar-track {
+.painter-tooltip-content::-webkit-scrollbar-track {
     background: #2a2a2a;
     border-radius: 4px;
 }
 
-.painter-tooltip::-webkit-scrollbar-thumb {
+.painter-tooltip-content::-webkit-scrollbar-thumb {
     background: #555;
     border-radius: 4px;
 }
 
-.painter-tooltip::-webkit-scrollbar-thumb:hover {
+.painter-tooltip-content::-webkit-scrollbar-thumb:hover {
     background: #666;
 }
 

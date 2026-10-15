@@ -1,4 +1,6 @@
 import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
+import { isEditingText } from "/gradio_api/file=javascript/layerforge/js/KeyboardUtils.js?v=patch1";
+import { showErrorNotification } from "/file=javascript/layerforge/js/utils/NotificationUtils.js?v=patch26";
 import { iconLoader, LAYERFORGE_TOOLS } from "/file=javascript/layerforge/js/utils/IconLoader.js?v=patch26";
 import { createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
 import { addStylesheet, getUrl } from "/file=javascript/layerforge/js/utils/ResourceManager.js?v=patch26";
@@ -20,7 +22,7 @@ export class CanvasLayersPanel {
         // Preload icons
         this.initializeIcons();
         // Load CSS for layers panel
-        addStylesheet(getUrl('./css/layers_panel.css'));
+        addStylesheet('/gradio_api/file=javascript/layerforge/js/css/layers_panel.css?v=patch66');
         log.info('CanvasLayersPanel initialized');
     }
     async initializeIcons() {
@@ -106,8 +108,14 @@ export class CanvasLayersPanel {
                 <div class="master-visibility-toggle" title="切换所有图层可见性"></div>
                 <span class="layers-panel-title">图层</span>
                 <div class="layers-panel-controls">
+                    <button class="layers-btn" id="add-layer-mask-btn" type="button"></button>
                     <button class="layers-btn" id="delete-layer-btn" title="删除图层"></button>
                 </div>
+            </div>
+            <div class="layer-mask-controls" hidden>
+                <label><input id="layer-mask-enabled" type="checkbox"><span></span></label>
+                <button class="layers-btn" id="invert-layer-mask-btn" type="button"></button>
+                <button class="layers-btn" id="delete-layer-mask-btn" type="button"></button>
             </div>
             <div class="layers-container" id="layers-container">
                 <!-- Lista warstw będzie renderowana tutaj -->
@@ -144,6 +152,7 @@ export class CanvasLayersPanel {
         this.setupMasterVisibilityToggle();
         // Dodaj listener dla klawiatury, aby usuwanie działało z panelu
         this.container.addEventListener('keydown', (e) => {
+            if (e.defaultPrevented || isEditingText(e)) return;
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 e.preventDefault();
                 e.stopPropagation();
@@ -243,6 +252,37 @@ export class CanvasLayersPanel {
             log.info('Delete layer button clicked');
             this.deleteSelectedLayers();
         });
+        const t = (key) => window.LayerForgeI18n?.text?.(key) || key;
+        const selectedLayer = () => this.canvas.canvasSelection.selectedLayers.length === 1
+            ? this.canvas.canvasSelection.selectedLayers[0] : null;
+        const buttons = [
+            ['add-layer-mask-btn', 'Add layer mask', LAYERFORGE_TOOLS.MASK, (layer) => this.canvas.layerMasks.add(layer)],
+            ['invert-layer-mask-btn', 'Invert layer mask', LAYERFORGE_TOOLS.BLEND_MODE, (layer) => this.canvas.layerMasks.invert(layer)],
+            ['delete-layer-mask-btn', 'Delete layer mask', LAYERFORGE_TOOLS.DELETE, (layer) => this.canvas.layerMasks.remove(layer)]
+        ];
+        for (const [id, title, icon, action] of buttons) {
+            const button = this.container.querySelector('#' + id);
+            button.title = t(title);
+            button.setAttribute('aria-label', t(title));
+            button.append(this.createIconElement(icon, 16));
+            button.onclick = async () => {
+                const layer = selectedLayer();
+                if (!layer) return;
+                try {
+                    if (id !== 'add-layer-mask-btn') this.canvas.layerMasks.activate(layer);
+                    await action(layer);
+                }
+                catch (error) { showErrorNotification(t('Layer mask operation failed') + ': ' + error.message); }
+            };
+        }
+        const enabled = this.container.querySelector('#layer-mask-enabled');
+        enabled.nextElementSibling.textContent = t('Layer mask enabled');
+        enabled.onchange = () => {
+            const layer = selectedLayer();
+            if (!layer?.layerMask) return;
+            this.canvas.layerMasks.activate(layer);
+            this.canvas.layerMasks.toggle(layer);
+        };
         // Initial button state update
         this.updateButtonStates();
     }
@@ -333,6 +373,8 @@ export class CanvasLayersPanel {
         layerRow.draggable = true;
         layerRow.dataset.layerIndex = String(index);
         const isSelected = this.canvas.canvasSelection.selectedLayers.includes(layer);
+        layerRow.dataset.layerId = layer.id;
+        layerRow.classList.toggle('has-layer-mask', !!layer.layerMask);
         if (isSelected) {
             layerRow.classList.add('selected');
         }
@@ -347,8 +389,9 @@ export class CanvasLayersPanel {
         layerRow.innerHTML = `
             <div class="layer-visibility-toggle" data-layer-index="${index}" title="切换图层可见性"></div>
             <div class="layer-thumbnail" data-layer-index="${index}"></div>
-            <span class="layer-name" data-layer-index="${index}">${layer.name}</span>
+            <span class="layer-name" data-layer-index="${index}"></span>
         `;
+        layerRow.querySelector('.layer-name').textContent = layer.name;
         // Add visibility icon
         const visibilityToggle = layerRow.querySelector('.layer-visibility-toggle');
         if (visibilityToggle) {
@@ -358,6 +401,34 @@ export class CanvasLayersPanel {
         const thumbnailContainer = layerRow.querySelector('.layer-thumbnail');
         if (thumbnailContainer) {
             this.generateThumbnail(layer, thumbnailContainer);
+            thumbnailContainer.onclick = () => this.canvas.layerMasks.selectImage();
+        }
+        if (layer.layerMask) {
+            const maskButton = document.createElement('button');
+            maskButton.type = 'button';
+            maskButton.className = 'layer-mask-thumbnail';
+            maskButton.title = window.LayerForgeI18n?.text?.('Edit layer mask') || 'Edit layer mask';
+            maskButton.setAttribute('aria-label', maskButton.title);
+            maskButton.classList.toggle('is-disabled', layer.layerMask.enabled === false);
+            const thumbnail = document.createElement('canvas');
+            thumbnail.width = thumbnail.height = 36;
+            maskButton.append(thumbnail);
+            thumbnailContainer.after(maskButton);
+            const ctx = thumbnail.getContext('2d');
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 36, 36);
+            this.canvas.layerMasks.load(layer.layerMask).then((image) => {
+                if (!maskButton.isConnected) return;
+                ctx.drawImage(image, 0, 0, 36, 36);
+            }).catch(() => {});
+            maskButton.addEventListener('mousedown', (event) => event.stopPropagation());
+            maskButton.addEventListener('dblclick', (event) => event.stopPropagation());
+            maskButton.addEventListener('dragstart', (event) => event.preventDefault());
+            maskButton.onclick = (event) => {
+                event.stopPropagation();
+                this.canvas.layerMasks.activate(layer);
+                if (event.shiftKey) this.canvas.layerMasks.toggle(layer);
+            };
         }
         this.setupLayerEventListeners(layerRow, layer, index);
         return layerRow;
@@ -647,6 +718,7 @@ export class CanvasLayersPanel {
     updateButtonStates() {
         if (!this.container)
             return;
+        this.updateMaskControls();
         const deleteBtn = this.container.querySelector('#delete-layer-btn');
         const hasSelectedLayers = this.canvas.canvasSelection.selectedLayers.length > 0;
         if (deleteBtn) {
@@ -664,6 +736,21 @@ export class CanvasLayersPanel {
     onSelectionChanged() {
         this.updateSelectionAppearance();
         this.updateButtonStates();
+    }
+    updateMaskControls() {
+        if (!this.container) return;
+        const selected = this.canvas.canvasSelection.selectedLayers;
+        const layer = selected.length === 1 ? selected[0] : null;
+        const add = this.container.querySelector('#add-layer-mask-btn');
+        if (add) add.disabled = !layer;
+        const controls = this.container.querySelector('.layer-mask-controls');
+        controls.hidden = !layer?.layerMask;
+        this.container.querySelector('#layer-mask-enabled').checked = layer?.layerMask?.enabled !== false;
+        this.layersContainer.querySelectorAll('.layer-row').forEach((row) => {
+            const active = row.dataset.layerId === this.canvas.layerMasks.activeLayerId;
+            row.querySelector('.layer-mask-thumbnail')?.classList.toggle('is-active', active);
+            row.querySelector('.layer-thumbnail')?.classList.toggle('is-image-target', row.classList.contains('selected') && !active);
+        });
     }
     destroy() {
         if (this.container && this.container.parentNode) {

@@ -1,4 +1,5 @@
 import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
+import { isEditingText } from "/gradio_api/file=javascript/layerforge/js/KeyboardUtils.js?v=patch1";
 import { snapToGrid, getSnapAdjustment } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
 const log = createModuleLogger('CanvasInteractions');
 export class CanvasInteractions {
@@ -685,6 +686,7 @@ export class CanvasInteractions {
         return targetHeight / oldHeight;
     }
     handleKeyDown(e) {
+        if (e.defaultPrevented || isEditingText(e)) return;
         if (e.key === 'Control')
             this.interaction.isCtrlPressed = true;
         if (e.key === 'Meta')
@@ -741,7 +743,7 @@ export class CanvasInteractions {
             const step = mods.shift ? 10 : 1;
             let needsRender = false;
             // Używamy e.code dla spójności i niezależności od układu klawiatury
-            const movementKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'BracketLeft', 'BracketRight'];
+            const movementKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
             if (movementKeys.includes(e.code)) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -754,10 +756,6 @@ export class CanvasInteractions {
                     this.canvas.canvasSelection.selectedLayers.forEach((l) => l.y -= step);
                 if (e.code === 'ArrowDown')
                     this.canvas.canvasSelection.selectedLayers.forEach((l) => l.y += step);
-                if (e.code === 'BracketLeft')
-                    this.canvas.canvasSelection.selectedLayers.forEach((l) => l.rotation -= step);
-                if (e.code === 'BracketRight')
-                    this.canvas.canvasSelection.selectedLayers.forEach((l) => l.rotation += step);
                 needsRender = true;
             }
             if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -786,7 +784,7 @@ export class CanvasInteractions {
         if (this.canvas.shapeTool.isActive && (!this.interaction.isShiftPressed || !this.interaction.isSPressed)) {
             this.canvas.shapeTool.deactivate();
         }
-        const movementKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'BracketLeft', 'BracketRight'];
+        const movementKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
         if (movementKeys.includes(e.code) && this.interaction.keyMovementInProgress) {
             this.canvas.requestSaveState(); // Użyj opóźnionego zapisu
             this.interaction.keyMovementInProgress = false;

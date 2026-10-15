@@ -199,6 +199,8 @@ def javascript_html():
     canvas_workbench_utils_path = webpath('javascript/canvas_workbench/utils.js')
     canvas_workbench_api_path = webpath('javascript/canvas_workbench/api.js')
     describe_vlm_chat_path = webpath('javascript/describe_vlm_chat.js')
+    vlm_story_packs_path = webpath('javascript/vlm_story_packs.js')
+    vlm_story_packs_css_path = webpath('css/vlm_story_packs.css')
     chat_markdown_path = webpath('javascript/vendor/markdown-it/markdown-it-15.0.2.min.js')
     chat_rich_text_path = webpath('javascript/chat_rich_text.js')
     chat_documents_path = webpath('javascript/chat_documents.js')
@@ -250,11 +252,12 @@ def javascript_html():
                 ],
             },
             'describeVlmChat': {
-                'css': [chat_documents_css_path],
+                'css': [chat_documents_css_path, vlm_story_packs_css_path],
                 'js': [
                     chat_markdown_path,
                     chat_rich_text_path,
                     chat_documents_path,
+                    vlm_story_packs_path,
                     describe_vlm_chat_path,
                 ],
             },

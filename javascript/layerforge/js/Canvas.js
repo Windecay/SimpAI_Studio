@@ -3,18 +3,19 @@ import { api } from "/file=javascript/layerforge/js/api_shim.js?v=patch26";
 import { MaskTool } from "/file=javascript/layerforge/js/MaskTool.js?v=patch26";
 import { ShapeTool } from "/file=javascript/layerforge/js/ShapeTool.js?v=patch26";
 import { CustomShapeMenu } from "/file=javascript/layerforge/js/CustomShapeMenu.js?v=patch26";
-import { CanvasState } from "/file=javascript/layerforge/js/CanvasState.js?v=patch26";
-import { CanvasInteractions } from "/file=javascript/layerforge/js/CanvasInteractions.js?v=patch26";
-import { CanvasLayers } from "/file=javascript/layerforge/js/CanvasLayers.js?v=patch26";
-import { CanvasLayersPanel } from "/file=javascript/layerforge/js/CanvasLayersPanel.js?v=patch26";
+import { CanvasState } from "/gradio_api/file=javascript/layerforge/js/CanvasState.js?v=patch66";
+import { CanvasInteractions } from "/gradio_api/file=javascript/layerforge/js/CanvasInteractions.js?v=patch64";
+import { CanvasLayers } from "/gradio_api/file=javascript/layerforge/js/CanvasLayers.js?v=patch66";
+import { CanvasLayersPanel } from "/gradio_api/file=javascript/layerforge/js/CanvasLayersPanel.js?v=patch66";
 import { CanvasRenderer } from "/file=javascript/layerforge/js/CanvasRenderer.js?v=patch63";
 import { CanvasIO } from "/file=javascript/layerforge/js/CanvasIO.js?v=patch26";
 import { ImageReferenceManager } from "/file=javascript/layerforge/js/ImageReferenceManager.js?v=patch26";
 import { BatchPreviewManager } from "/file=javascript/layerforge/js/BatchPreviewManager.js?v=patch26";
 import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
 import { debounce, createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
-import { MaskEditorIntegration } from "/file=javascript/layerforge/js/MaskEditorIntegration.js?v=patch63";
-import { CanvasSelection } from "/file=javascript/layerforge/js/CanvasSelection.js?v=patch26";
+import { MaskEditorIntegration } from "/gradio_api/file=javascript/layerforge/js/MaskEditorIntegration.js?v=patch64";
+import { CanvasSelection } from "/gradio_api/file=javascript/layerforge/js/CanvasSelection.js?v=patch66";
+import { LayerMasks } from "/gradio_api/file=javascript/layerforge/js/LayerMasks.js?v=patch2";
 const useChainCallback = (original, next) => {
     if (original === undefined || original === null) {
         return next;
@@ -98,6 +99,7 @@ export class Canvas {
             height: this.height
         };
         this.maskTool = new MaskTool(this, { onStateChange: this.onStateChange });
+        this.layerMasks = new LayerMasks(this);
         this.shapeTool = new ShapeTool(this);
         this.customShapeMenu = new CustomShapeMenu(this);
         this.maskEditorIntegration = new MaskEditorIntegration(this);
@@ -249,9 +251,10 @@ export class Canvas {
      * Zapisuje obecny stan
      * @param {boolean} replaceLast - Czy zastąpić ostatni stan w historii
      */
-    saveState(replaceLast = false) {
+    saveState(replaceLast = false, target = 'auto') {
         log.debug('Saving canvas state', { replaceLast, layersCount: this.layers.length });
-        this.canvasState.saveState(replaceLast);
+        if (target === 'layers') this.canvasState.saveLayersState(replaceLast);
+        else this.canvasState.saveState(replaceLast);
         this.incrementOperationCount();
         this._notifyStateChange();
     }

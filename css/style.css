@@ -4267,11 +4267,18 @@ html.preset-store-open body {
     overscroll-behavior: none !important;
 }
 
-html.preset-store-open #gradio-status-monitor,
-html.describe-vlm-chat-open #gradio-status-monitor {
+html.preset-store-open #gradio-status-monitor {
     visibility: hidden !important;
     opacity: 0 !important;
     pointer-events: none !important;
+}
+
+@media (max-width: 640px) {
+    html.describe-vlm-chat-open #gradio-status-monitor {
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
 }
 
 .simpleai-floating-host > .preset_store:not([hidden]):not(.hidden):not(.hide) {
@@ -23856,6 +23863,105 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
     }
 }
 
+.describe-vlm-chat-preset-search-menu {
+    position: fixed;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 6px;
+    overflow: hidden;
+    border: 1px solid var(--describe-chat-line, #494c56);
+    border-radius: 5px;
+    background: var(--describe-chat-panel, #242529);
+    color: var(--describe-chat-text, #f3f4f8);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+    font-size: 13px;
+    letter-spacing: 0;
+}
+
+.describe-vlm-chat-preset-search-menu input {
+    flex: 0 0 36px;
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    box-sizing: border-box;
+    padding: 0 9px;
+    border: 1px solid var(--describe-chat-line, #494c56);
+    border-radius: 4px;
+    outline: none;
+    background: var(--describe-chat-panel-deep, #1f2024);
+    color: var(--describe-chat-text, #f3f4f8);
+    font: inherit;
+    color-scheme: dark;
+}
+
+.describe-vlm-chat-preset-search-menu input:focus {
+    border-color: #fbbf24;
+}
+
+.describe-vlm-chat-preset-search-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+.describe-vlm-chat-preset-search-list button {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 6px 8px;
+    overflow-wrap: anywhere;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+}
+
+.describe-vlm-chat-preset-search-list button.is-selected {
+    color: #fbbf24;
+}
+
+.describe-vlm-chat-preset-search-list button.is-active,
+.describe-vlm-chat-preset-search-list button:hover:not(:disabled) {
+    background: var(--describe-chat-button-hover, #4c4f5a);
+}
+
+.describe-vlm-chat-preset-search-list button:disabled,
+.describe-vlm-chat-preset-search-empty {
+    color: var(--describe-chat-muted, #a4a8b4);
+}
+
+.describe-vlm-chat-preset-search-list button:disabled {
+    cursor: default;
+}
+
+.describe-vlm-chat-preset-search-empty {
+    padding: 10px 8px;
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+    .describe-vlm-chat-preset-search-menu input {
+        font-size: 16px;
+    }
+
+    .describe-vlm-chat-preset-search-list button {
+        min-height: 38px;
+    }
+}
+
 .describe-vlm-chat-preference .describe-vlm-chat-generation-title b {
     margin-left: auto;
     min-width: 0;
@@ -29665,6 +29771,100 @@ html.simpai-h3-director #scene_director_editor .h3-timeline-gap:focus-visible {
 .describe-vlm-chat-outline button:hover,
 .describe-vlm-chat-roleplay-panel-head-actions [data-roleplay-outline-open]:hover {
   background: var(--describe-chat-button-hover, #4c4f5a);
+}
+
+.describe-vlm-chat-outline-indicator[data-outline-tone="active"] {
+  --describe-outline-accent: #6cce94;
+  --describe-outline-line: rgba(74, 181, 118, 0.5);
+  --describe-outline-background: rgba(38, 115, 68, 0.25);
+}
+
+.describe-vlm-chat-outline-indicator[data-outline-tone="waiting"],
+.describe-vlm-chat-outline-live-status[data-outline-tone="waiting"] {
+  --describe-outline-accent: #e4b969;
+  --describe-outline-line: rgba(212, 157, 63, 0.65);
+  --describe-outline-background: rgba(139, 94, 24, 0.3);
+}
+
+.describe-vlm-chat-outline-indicator[data-outline-tone="blocked"],
+.describe-vlm-chat-outline-live-status[data-outline-tone="blocked"] {
+  --describe-outline-accent: #e49491;
+  --describe-outline-line: rgba(203, 104, 100, 0.6);
+  --describe-outline-background: rgba(137, 54, 51, 0.25);
+}
+
+.describe-vlm-chat-outline-indicator[data-outline-tone="ready"] {
+  --describe-outline-accent: #79c5dc;
+  --describe-outline-line: rgba(72, 155, 180, 0.5);
+  --describe-outline-background: rgba(37, 102, 121, 0.24);
+}
+
+.describe-vlm-chat-outline-indicator[data-outline-tone="completed"] {
+  --describe-outline-accent: #abbcd2;
+  --describe-outline-line: rgba(139, 157, 182, 0.5);
+  --describe-outline-background: rgba(94, 116, 144, 0.22);
+}
+
+.describe-vlm-chat-panel .describe-vlm-chat-outline-indicator[data-outline-state] {
+  border-color: var(--describe-outline-line, var(--describe-chat-line, #494c56));
+  background: var(--describe-outline-background, var(--describe-chat-button, #3b3d46));
+  color: var(--describe-chat-text, #f3f4f8);
+  white-space: nowrap;
+}
+
+.describe-vlm-chat-outline-indicator[data-outline-state] > i {
+  color: var(--describe-outline-accent, inherit);
+}
+
+.describe-vlm-chat-panel .describe-vlm-chat-outline-indicator[data-outline-state]:hover {
+  filter: brightness(1.12);
+}
+
+.describe-vlm-chat-roleplay-autoplay-controls .describe-vlm-chat-outline-indicator[data-outline-state] {
+  width: auto;
+  max-width: 132px;
+  gap: 5px;
+  padding-inline: 6px;
+}
+
+.describe-vlm-chat-outline-indicator [data-roleplay-outline-status] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.describe-vlm-chat-outline-indicator [data-roleplay-outline-status][hidden] {
+  display: none !important;
+}
+
+.describe-vlm-chat-roleplay-panel-head-actions [data-roleplay-outline-status]::before {
+  content: "\00b7  ";
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-panel-head-actions .describe-vlm-chat-outline-indicator {
+  width: auto;
+  padding-inline: 6px;
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-panel-head-actions [data-roleplay-outline-status] {
+  display: inline;
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-panel-head-actions [data-roleplay-outline-status]::before {
+  content: none;
+}
+
+.describe-vlm-chat-outline-live-status {
+  margin-bottom: 10px;
+  padding-left: 9px;
+  border-left: 3px solid var(--describe-outline-line, var(--describe-chat-line, #494c56));
+  color: var(--describe-chat-text, #f3f4f8);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .describe-vlm-chat-outline [data-outline-apply],

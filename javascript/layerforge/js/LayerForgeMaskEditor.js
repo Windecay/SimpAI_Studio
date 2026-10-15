@@ -1,4 +1,5 @@
 import { createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
+import { isEditingText, nextBrushSize } from "/gradio_api/file=javascript/layerforge/js/KeyboardUtils.js?v=patch1";
 
 export class LayerForgeMaskEditor {
     constructor() {
@@ -31,6 +32,24 @@ export class LayerForgeMaskEditor {
         
         this.history = [];
         this.historyIndex = -1;
+        this.spacePanActive = false;
+        this.handToolActive = false;
+        this.boundHandlePointerDown = (event) => this.handlePointerDown(event);
+        this.boundHandlePointerMove = (event) => this.handlePointerMove(event);
+        this.boundHandlePointerUp = (event) => this.handlePointerUp(event);
+        this.boundHandleKeyDown = (event) => this.handleKeyDown(event);
+        this.boundHandleKeyUp = (event) => {
+            if (event.code === 'Space') {
+                this.spacePanActive = false;
+                this.updateToolCursor();
+            }
+        };
+        this.boundHandleBlur = () => {
+            this.spacePanActive = false;
+            this.handlePointerUp();
+            this.updateToolCursor();
+        };
+        this.boundHandleWheel = (event) => this.handleWheel(event);
         
         this.injectCSS();
     }
@@ -197,14 +216,15 @@ export class LayerForgeMaskEditor {
         this.overlay.appendChild(this.container);
         document.body.appendChild(this.overlay);
         
-        // Event Listeners for Overlay (for global events)
-        window.addEventListener('keydown', this.handleKeyDown.bind(this));
-        this.overlay.addEventListener('wheel', this.handleWheel.bind(this), { passive: false });
     }
 
     async open(imageUrl, maskImage = null, maskContext = null) {
         this.createUI();
         this.overlay.style.display = 'flex';
+        this.spacePanActive = false;
+        this.handToolActive = false;
+        this.isDragging = false;
+        this.isDrawing = false;
         
         this.scale = 1;
         this.panX = 0;
@@ -312,8 +332,8 @@ export class LayerForgeMaskEditor {
             this.maskCtx.drawImage(mImg, maskX, maskY);
             this.refreshMaskDisplay();
             
-            this.saveState();
         }
+        this.saveState();
 
         const cursor = createCanvas(this.width, this.height);
         this.cursorCanvas = cursor.canvas;
@@ -324,9 +344,14 @@ export class LayerForgeMaskEditor {
         this.updateTransform();
         this.refreshMaskDisplay();
         
-        this.cursorCanvas.addEventListener('pointerdown', this.handlePointerDown.bind(this));
-        window.addEventListener('pointermove', this.handlePointerMove.bind(this));
-        window.addEventListener('pointerup', this.handlePointerUp.bind(this));
+        this.cursorCanvas.addEventListener('pointerdown', this.boundHandlePointerDown);
+        window.addEventListener('pointermove', this.boundHandlePointerMove);
+        window.addEventListener('pointerup', this.boundHandlePointerUp);
+        window.addEventListener('keydown', this.boundHandleKeyDown, { capture: true });
+        window.addEventListener('keyup', this.boundHandleKeyUp, { capture: true });
+        window.addEventListener('blur', this.boundHandleBlur);
+        this.overlay.addEventListener('wheel', this.boundHandleWheel, { passive: false });
+        this.setTool('brush');
         
         return new Promise((resolve) => {
             this.resolvePromise = resolve;
@@ -355,8 +380,9 @@ export class LayerForgeMaskEditor {
             }
             window.removeEventListener('pointermove', this.boundHandlePointerMove);
             window.removeEventListener('pointerup', this.boundHandlePointerUp);
-            window.removeEventListener('keydown', this.boundHandleKeyDown);
-            window.removeEventListener('keyup', this.boundHandleKeyUp);
+            window.removeEventListener('keydown', this.boundHandleKeyDown, { capture: true });
+            window.removeEventListener('keyup', this.boundHandleKeyUp, { capture: true });
+            window.removeEventListener('blur', this.boundHandleBlur);
             if (this.overlay) {
                 this.overlay.removeEventListener('wheel', this.boundHandleWheel);
             }
@@ -377,9 +403,16 @@ export class LayerForgeMaskEditor {
     }
     
     setTool(tool) {
+        this.handToolActive = false;
         this.isEraser = (tool === 'eraser');
         this.brushBtn.classList.toggle('active', !this.isEraser);
         this.eraserBtn.classList.toggle('active', this.isEraser);
+        this.updateToolCursor();
+    }
+
+    updateToolCursor() {
+        if (this.cursorCanvas) this.cursorCanvas.style.cursor = this.isDragging ? 'grabbing'
+            : this.spacePanActive || this.handToolActive ? 'grab' : 'crosshair';
     }
     
     clearMask() {
@@ -448,8 +481,9 @@ export class LayerForgeMaskEditor {
     }
     
     handlePointerDown(e) {
-        if (e.button === 1 || e.altKey) { // Middle click or Alt+Left
+        if (e.button === 1 || (e.button === 0 && (e.altKey || this.spacePanActive || this.handToolActive))) {
             this.isDragging = true;
+            this.updateToolCursor();
             this.lastMouseX = e.clientX;
             this.lastMouseY = e.clientY;
             e.preventDefault();
@@ -580,19 +614,52 @@ export class LayerForgeMaskEditor {
             }
         }
         this.isDragging = false;
+        this.updateToolCursor();
     }
     
     handleKeyDown(e) {
-        if (this.overlay && this.overlay.style.display !== 'none') {
-            if (e.key === 'z' && e.ctrlKey) {
-                e.preventDefault();
-                this.undo();
+        if (!this.overlay || this.overlay.style.display === 'none' || e.defaultPrevented || isEditingText(e)) return;
+        const key = e.key.toLowerCase();
+        const command = e.ctrlKey || e.metaKey;
+        if (command && !e.altKey && key === 'z') {
+            if (e.shiftKey) this.redo();
+            else this.undo();
+        } else if (command && !e.altKey && (key === '0' || key === '1')) {
+            this.scale = key === '1' ? 1 : Math.min(10, window.innerWidth * 0.95 / this.width, window.innerHeight * 0.9 / this.height);
+            this.panX = 0;
+            this.panY = 0;
+            this.updateTransform();
+        } else if (command || e.altKey) {
+            return;
+        } else if (e.code === 'Space') {
+            this.spacePanActive = true;
+            this.updateToolCursor();
+        } else if (key === 'b' && !e.shiftKey) this.setTool('brush');
+        else if (key === 'e' && !e.shiftKey) this.setTool('eraser');
+        else if (key === 'h' && !e.shiftKey) {
+            this.handToolActive = true;
+            this.brushBtn.classList.remove('active');
+            this.eraserBtn.classList.remove('active');
+            this.updateToolCursor();
+        } else if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+            const direction = e.code === 'BracketLeft' ? -1 : 1;
+            if (e.shiftKey) {
+                this.brushHardness = Math.max(0, Math.min(1, this.brushHardness + direction * 0.1));
+                this.hardnessSlider.value = this.brushHardness;
+            } else {
+                this.brushSize = nextBrushSize(this.brushSize, direction);
+                this.sizeSlider.value = this.brushSize;
             }
-        }
+            if (this.lastCursorPosition) this.updateCursor(this.lastCursorPosition.x, this.lastCursorPosition.y);
+        } else if (e.key === 'Escape') this.close(null);
+        else return;
+        e.preventDefault();
+        e.stopPropagation();
     }
     
     updateCursor(x, y) {
         if (!this.cursorCtx) return;
+        this.lastCursorPosition = { x, y };
         this.cursorCtx.clearRect(0, 0, this.width, this.height);
         
         this.cursorCtx.beginPath();
@@ -635,16 +702,24 @@ export class LayerForgeMaskEditor {
     }
     
     undo() {
-        if (this.historyIndex > 0) {
-            this.historyIndex--;
-            const img = new Image();
-            img.src = this.history[this.historyIndex];
-            img.onload = () => {
-                this.maskCtx.clearRect(0, 0, this.width, this.height);
-                this.maskCtx.drawImage(img, 0, 0);
-                this.refreshMaskDisplay();
-            };
-        }
+        if (this.historyIndex > 0) this.restoreHistory(this.historyIndex - 1);
+    }
+
+    redo() {
+        if (this.historyIndex < this.history.length - 1) this.restoreHistory(this.historyIndex + 1);
+    }
+
+    restoreHistory(index) {
+        this.historyIndex = index;
+        const target = this.maskCanvas;
+        const img = new Image();
+        img.onload = () => {
+            if (this.historyIndex !== index || this.maskCanvas !== target) return;
+            this.maskCtx.clearRect(0, 0, this.width, this.height);
+            this.maskCtx.drawImage(img, 0, 0);
+            this.refreshMaskDisplay();
+        };
+        img.src = this.history[index];
     }
 }
 

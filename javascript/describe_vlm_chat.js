@@ -1952,6 +1952,83 @@
         };
     }
 
+    function roleplayOutlineStatus(session) {
+        const plan = normalizeRoleplayOutline(session?.story_outline, Object.keys(session?.characters || {}));
+        const current = plan.nodes.find(node => node.id === plan.current_node_id);
+        const present = new Set(session?.story_state?.scene?.present_character_ids || []);
+        const describe = (key, values = {}) => roleplayDictionaryText(key)
+            .replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match);
+        const result = (state, tone, label, detail, node = null, attention = false) => ({
+            state, tone, label: label ? roleplayDictionaryText(label) : '',
+            detail: describe(detail, {
+                title: node?.title || roleplayDictionaryText('Untitled beat'), phrase: node?.trigger_text || ''
+            }),
+            nodeId: node?.id || '', attention
+        });
+        if (!plan.nodes.length) {
+            return result('empty', 'neutral', '', 'No outline configured. Open to create or import story beats.');
+        }
+        if (!plan.enabled) {
+            return result('disabled', 'neutral', 'Outline disabled', 'This outline is disabled. No outline directions are being used.', current);
+        }
+        const currentStatus = current && plan.progress[current.id]?.status;
+        if (currentStatus === 'blocked') {
+            return result('blocked', 'blocked', 'Outline blocked',
+                'Beat blocked: {title}. No outline directions are active. Open the outline to adjust or reactivate this beat.', current, true);
+        }
+        const directionStatus = node => {
+            const assigned = Object.keys(node.briefs);
+            if (!assigned.length) {
+                return result('needs_directions', 'waiting', 'Outline needs directions',
+                    'Beat "{title}" has no character directions. Assign directions and apply the outline.', node, true);
+            }
+            if (!assigned.some(id => present.has(id))) {
+                return result('waiting_cast', 'waiting', 'Outline waiting for cast',
+                    'Beat "{title}" is waiting for an assigned character to enter the scene. No outline directions are active.', node, true);
+            }
+            return null;
+        };
+        if (currentStatus === 'active') {
+            return directionStatus(current) || result('active', 'active', 'Outline in progress',
+                'Current beat: {title}. Directions apply only to assigned characters who are present.', current);
+        }
+        const start = current && ['completed', 'skipped'].includes(currentStatus) ? plan.nodes.indexOf(current) + 1 : 0;
+        const next = plan.nodes.slice(start).find(node => !['completed', 'skipped'].includes(plan.progress[node.id]?.status));
+        if (!next) {
+            return result('completed', 'completed', 'Outline completed',
+                'All beats are completed or skipped. No outline directions are active; open to add another beat.', current);
+        }
+        if (next.requires_confirmation || next.trigger_mode === 'manual') {
+            return result('waiting_activation', 'waiting', 'Outline needs activation',
+                'Waiting to open: {title}. No outline directions are active. Select Make current, then Apply outline.', next, true);
+        }
+        if (next.trigger_mode === 'keyword') {
+            return result('waiting_trigger', 'waiting', 'Outline waiting for trigger',
+                'Waiting for input containing "{phrase}" to open: {title}. No outline directions are active.', next, true);
+        }
+        return directionStatus(next) || result('ready', 'ready', 'Outline continues next turn',
+            'The next beat "{title}" will start before the next story turn, using the assigned characters who are present.', next);
+    }
+
+    function syncRoleplayOutlineIndicators(modal, session) {
+        const status = roleplayOutlineStatus(session);
+        const name = roleplayDictionaryText('Private outline');
+        const key = JSON.stringify([name, status.state, status.tone, status.label, status.detail]);
+        modal.querySelectorAll('.describe-vlm-chat-outline-indicator').forEach(button => {
+            if (button.__roleplayOutlineStatusKey === key) return;
+            button.dataset.outlineState = status.state;
+            button.dataset.outlineTone = status.tone;
+            const title = `${name}${status.label ? ` · ${status.label}` : ''}\n${status.detail}`;
+            if (button.title !== title) button.title = title;
+            button.setAttribute('aria-label', `${name}${status.label ? ` · ${status.label}` : ''}`);
+            button.setAttribute('aria-description', status.detail);
+            const label = button.querySelector('[data-roleplay-outline-status]');
+            if (label.textContent !== status.label) label.textContent = status.label;
+            label.hidden = !status.label;
+            button.__roleplayOutlineStatusKey = key;
+        });
+    }
+
     function normalizeRoleplaySession(value, conversationId = '') {
         const source = value && typeof value === 'object' ? value : {};
         const characterSource = source.character || source.character_card || {};
@@ -2264,6 +2341,11 @@
         const statuses = { pending: 'Pending beat', active: 'Current beat', completed: 'Completed', blocked: 'Blocked', skipped: 'Skipped' };
         const options = (values, value) => Object.entries(values).map(([id, label]) =>
             `<option value="${id}"${id === value ? ' selected' : ''}>${text(label)}</option>`).join('');
+        const liveStatus = roleplayOutlineStatus(editor.runtime.roleplaySession);
+        const notice = element.querySelector('[data-outline-live-status]');
+        notice.hidden = !liveStatus.attention;
+        notice.dataset.outlineTone = liveStatus.tone;
+        notice.textContent = liveStatus.detail;
         element.querySelector('[data-outline-title]').value = plan.title;
         element.querySelector('[data-outline-source]').value = plan.source;
         element.querySelector('[data-outline-enabled]').checked = plan.enabled;
@@ -2424,6 +2506,7 @@
         element.innerHTML = `
           <header><strong><i class="fa-solid fa-route" aria-hidden="true"></i>${text('Private outline')}</strong><button type="button" data-outline-close title="${text('Close')}" aria-label="${text('Close')}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
           <div class="describe-vlm-chat-outline-body">
+            <div class="describe-vlm-chat-outline-live-status" data-outline-live-status hidden role="status"></div>
             <div class="describe-vlm-chat-outline-field-pair"><label><span>${text('Outline title')}</span><input data-outline-title maxlength="200"></label><label class="describe-vlm-chat-outline-check"><input data-outline-enabled type="checkbox"><span>${text('Use this outline')}</span></label></div>
             <label><span>${text('Story direction and boundaries')}</span><textarea data-outline-source rows="3" maxlength="24000"></textarea></label>
             <div class="describe-vlm-chat-outline-tools"><button type="button" data-outline-generate><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>${text('Generate beat draft')}</span></button><button type="button" data-outline-stop hidden><i class="fa-solid fa-stop" aria-hidden="true"></i><span>${text('Stop')}</span></button><button type="button" data-outline-import><i class="fa-solid fa-file-import" aria-hidden="true"></i><span>${text('Import')}</span></button><button type="button" data-outline-export><i class="fa-solid fa-file-export" aria-hidden="true"></i><span>${text('Export')}</span></button><button type="button" data-outline-candidate-undo hidden><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>${text('Discard generated draft')}</span></button><input type="file" data-outline-file accept=".txt,.md,.json,text/plain,text/markdown,application/json" hidden></div>
@@ -2434,7 +2517,8 @@
         const editor = {
             element, ownerId: runtime.conversationId, runtime, session, opener,
             draft: cloneRoleplayDraftValue(session.story_outline), baseVersion: session.state_version,
-            baseOutline: JSON.stringify(session.story_outline), selectedId: session.story_outline.current_node_id || session.story_outline.nodes[0]?.id || ''
+            baseOutline: JSON.stringify(session.story_outline),
+            selectedId: roleplayOutlineStatus(session).nodeId || session.story_outline.current_node_id || session.story_outline.nodes[0]?.id || ''
         };
         roleplayOutlineEditor = editor;
         modal.querySelector('.describe-vlm-chat-panel').append(element);
@@ -5688,6 +5772,10 @@
     }
 
     function renderChatEmptyState(runtime) {
+        if (normalizeChatMode(runtime?.chatMode || state.chatMode) === 'roleplay') {
+            const configured = Object.values(runtime?.roleplaySession?.characters || {}).some(card => card?.name || card?.identity);
+            return `<div class="describe-vlm-chat-roleplay-start"><strong>${escapeHtml(roleplayDictionaryText(configured ? 'Your story is ready' : 'Start a new story'))}</strong><div><button type="button" data-roleplay-story-packs><i class="fa-solid fa-book-open" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Choose a story pack'))}</span></button><button type="button" data-describe-vlm-chat-roleplay-open><i class="fa-solid fa-user-pen" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText(configured ? 'Review cast and scene' : 'Create manually'))}</span></button></div></div>`;
+        }
         if (normalizeChatMode(runtime?.chatMode || state.chatMode) !== 'chat') {
             return `<div class="describe-vlm-chat-empty">${escapeHtml(t('No chat yet.', '暂无对话。'))}</div>`;
         }
@@ -8627,7 +8715,7 @@
   </header>
   <div class="describe-vlm-chat-character-library-body">
     <aside class="describe-vlm-chat-character-library-sidebar">
-      <div class="describe-vlm-chat-character-library-sidebar-actions"><button type="button" data-roleplay-character-library-new><i class="fa-solid fa-plus"></i><span>${escapeHtml(localText('New character', '新建角色'))}</span></button><button type="button" data-roleplay-character-library-import title="${escapeHtml(localText('Import Tavern character card', '导入酒馆角色卡'))}" aria-label="${escapeHtml(localText('Import Tavern character card', '导入酒馆角色卡'))}"><i class="fa-solid fa-file-import"></i><span>${escapeHtml(localText('Import card', '导入卡片'))}</span></button><input type="file" accept=".png,.json,image/png,application/json" data-roleplay-character-library-import-file hidden></div>
+      <div class="describe-vlm-chat-character-library-sidebar-actions"><button type="button" data-roleplay-character-library-new><i class="fa-solid fa-plus"></i><span>${escapeHtml(localText('New character', '新建角色'))}</span></button><button type="button" data-roleplay-character-library-import title="${escapeHtml(roleplayDictionaryText('Choose a Tavern character card PNG or JSON to import its character settings, openings and embedded world book. Use Import conversation for chat archives.'))}" aria-label="${escapeHtml(localText('Import Tavern character card', '导入酒馆角色卡'))}"><i class="fa-solid fa-file-import"></i><span>${escapeHtml(localText('Import card', '导入卡片'))}</span></button><input type="file" accept=".png,.json,image/png,application/json" data-roleplay-character-library-import-file hidden></div>
       <label class="describe-vlm-chat-character-library-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" data-roleplay-character-library-search placeholder="${escapeHtml(localText('Search characters', '搜索角色'))}" aria-label="${escapeHtml(localText('Search characters', '搜索角色'))}"></label>
       <div class="describe-vlm-chat-character-library-list" data-roleplay-character-library-list></div>
     </aside>
@@ -8706,7 +8794,7 @@
         </section>
         <div class="describe-vlm-chat-character-library-editor-actions">
           <div class="describe-vlm-chat-character-library-editor-status"><span data-roleplay-character-library-save-state role="status" aria-live="polite"></span><span data-roleplay-character-library-feedback aria-live="polite"></span></div>
-          <div class="describe-vlm-chat-character-library-editor-action-buttons"><button type="button" data-roleplay-character-library-export-json title="${escapeHtml(localText('Export character JSON', '导出角色 JSON'))}"><i class="fa-solid fa-file-code"></i><span>${escapeHtml(localText('Export JSON', '导出 JSON'))}</span></button><button type="button" data-roleplay-character-library-export-png title="${escapeHtml(localText('Export Tavern PNG with the current character image', '用当前角色立绘导出酒馆 PNG'))}"><i class="fa-solid fa-image"></i><span>${escapeHtml(localText('Export PNG', '导出 PNG'))}</span></button><button type="button" data-roleplay-character-library-save><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(localText('Save character', '保存角色'))}</span></button></div>
+          <div class="describe-vlm-chat-character-library-editor-action-buttons"><button type="button" data-roleplay-character-library-export-json title="${escapeHtml(roleplayDictionaryText('Download this character card as JSON for sharing or later import, without the conversation history.'))}"><i class="fa-solid fa-file-code"></i><span>${escapeHtml(localText('Export JSON', '导出 JSON'))}</span></button><button type="button" data-roleplay-character-library-export-png title="${escapeHtml(roleplayDictionaryText('Embed this character card in the current portrait and download a Tavern PNG. A character image is required.'))}"><i class="fa-solid fa-image"></i><span>${escapeHtml(localText('Export PNG', '导出 PNG'))}</span></button><button type="button" data-roleplay-character-library-save title="${escapeHtml(roleplayDictionaryText('Save the character card to your account\'s reusable character library.'))}"><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(localText('Save character', '保存角色'))}</span></button></div>
         </div>
       </div>
     </main>
@@ -10504,6 +10592,7 @@
         state.roleplaySession = session;
         state.roleplayTurnIntent = runtime.roleplayTurnIntent;
         state.roleplayAutoplayState = autoplayState;
+        syncRoleplayOutlineIndicators(modal, session);
         const strip = modal.querySelector('[data-describe-vlm-chat-roleplay-strip]');
         const panel = modal.querySelector('[data-describe-vlm-chat-roleplay-panel]');
         if (strip) strip.hidden = !active;
@@ -10625,12 +10714,6 @@
         if (!synced) return;
         const { active, runtime, session, autoplayState } = synced;
         if (roleplayOutlineEditor && (!active || roleplayOutlineEditor.ownerId !== runtime.conversationId)) closeRoleplayOutline();
-        const outline = session.story_outline;
-        const currentBeat = outline.nodes.find(node => node.id === outline.current_node_id);
-        modal.querySelectorAll('[data-roleplay-outline-open]').forEach(button => {
-            button.title = roleplayDictionaryText('Private outline')
-                + (outline.enabled && currentBeat ? `: ${currentBeat.title}` : '');
-        });
         syncRoleplayGuidanceControls(modal, runtime);
         if (!active || !state.roleplayPanelOpen) {
             const hiddenResourceManager = modal.querySelector('[data-describe-vlm-chat-roleplay-resources]');
@@ -15381,7 +15464,8 @@
     <span class="describe-vlm-chat-roleplay-state" data-describe-vlm-chat-roleplay-state aria-live="polite"></span>
     <div class="describe-vlm-chat-roleplay-participant-summary" data-describe-vlm-chat-roleplay-participant-summary aria-live="polite"></div>
     <div class="describe-vlm-chat-roleplay-autoplay-controls" role="group" aria-label="${escapeHtml(localText('Autoplay controls', '托管控制'))}">
-      <button type="button" data-roleplay-outline-open title="${escapeHtml(roleplayDictionaryText('Private outline'))}" aria-label="${escapeHtml(roleplayDictionaryText('Private outline'))}"><i class="fa-solid fa-route" aria-hidden="true"></i></button>
+      <button type="button" data-roleplay-story-packs title="${escapeHtml(roleplayDictionaryText('Preview reusable characters, player, scene, world book and outline, then start an independent story. Built-in examples are available here.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Story packs'))}"><i class="fa-solid fa-book-open" aria-hidden="true"></i></button>
+      <button type="button" class="describe-vlm-chat-outline-indicator" data-roleplay-outline-open title="${escapeHtml(roleplayDictionaryText('Private outline'))}" aria-label="${escapeHtml(roleplayDictionaryText('Private outline'))}"><i class="fa-solid fa-route" aria-hidden="true"></i><span data-roleplay-outline-status hidden></span></button>
       <button type="button" data-describe-vlm-chat-roleplay-play title="${escapeHtml(localText('Start autoplay', '开始托管'))}" aria-label="${escapeHtml(localText('Start autoplay', '开始托管'))}"><i class="fa-solid fa-play"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-step title="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}" aria-label="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}"><i class="fa-solid fa-forward-step"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-pause title="${escapeHtml(localText('Pause autoplay', '暂停托管'))}" aria-label="${escapeHtml(localText('Pause autoplay', '暂停托管'))}"><i class="fa-solid fa-pause"></i></button>
@@ -15394,8 +15478,8 @@
       <button type="button" class="describe-vlm-chat-settings-back" data-describe-vlm-chat-roleplay-settings-back title="${escapeHtml(roleplayDictionaryText('Back to chat settings'))}" aria-label="${escapeHtml(roleplayDictionaryText('Back to chat settings'))}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
       <strong>${escapeHtml(localText('Roleplay settings', '角色扮演设置'))}</strong>
       <div class="describe-vlm-chat-roleplay-panel-head-actions">
-        <button type="button" data-roleplay-outline-open><i class="fa-solid fa-route" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Private outline'))}</span></button>
-        <button type="button" class="describe-vlm-chat-roleplay-example" data-describe-vlm-chat-roleplay-example title="${escapeHtml(localText('Load an adventure example template in a new conversation', '在新对话中载入冒险示例模板'))}" aria-label="${escapeHtml(localText('Load example template', '载入示例模板'))}"><i class="fa-solid fa-book-open"></i><span>${escapeHtml(localText('Example template', '示例模板'))}</span></button>
+        <button type="button" data-roleplay-story-packs title="${escapeHtml(roleplayDictionaryText('Preview reusable characters, player, scene, world book and outline, then start an independent story. Built-in examples are available here.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Story packs'))}"><i class="fa-solid fa-book-open" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Story packs'))}</span></button>
+        <button type="button" class="describe-vlm-chat-outline-indicator" data-roleplay-outline-open title="${escapeHtml(roleplayDictionaryText('Plan story beats and character directions for this conversation, and adjust their progress.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Private outline'))}"><i class="fa-solid fa-route" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Private outline'))}</span><span data-roleplay-outline-status hidden></span></button>
         <button type="button" data-describe-vlm-chat-roleplay-close title="${escapeHtml(t('Close', '关闭'))}" aria-label="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
       </div>
     </div>
@@ -15438,7 +15522,7 @@
         <div class="describe-vlm-chat-roleplay-character-library" data-describe-vlm-chat-roleplay-character-library>
           <label><span>${escapeHtml(localText('Character library', '角色库'))}</span><select data-describe-vlm-chat-roleplay-character-library-select aria-label="${escapeHtml(localText('Character library', '角色库'))}"><option value="">${escapeHtml(localText('Character library', '角色库'))}</option></select></label>
           <div class="describe-vlm-chat-roleplay-character-library-actions">
-            <button type="button" data-roleplay-character-library-open title="${escapeHtml(localText('Manage character library', '管理角色库'))}" aria-label="${escapeHtml(localText('Manage character library', '管理角色库'))}"><i class="fa-solid fa-address-book"></i></button>
+            <button type="button" data-roleplay-character-library-open title="${escapeHtml(roleplayDictionaryText('Manage reusable character cards, then add them to a story. Each story keeps its own character states.'))}" aria-label="${escapeHtml(localText('Manage character library', '管理角色库'))}"><i class="fa-solid fa-address-book"></i></button>
             <button type="button" data-describe-vlm-chat-roleplay-character-library-load title="${escapeHtml(localText('Add selected character to this story', '将所选角色加入当前故事'))}" aria-label="${escapeHtml(localText('Add selected character to this story', '将所选角色加入当前故事'))}"><i class="fa-solid fa-user-plus"></i></button>
             <button type="button" data-describe-vlm-chat-roleplay-character-library-save title="${escapeHtml(localText('Save current character to library', '将当前角色保存到角色库'))}" aria-label="${escapeHtml(localText('Save current character to library', '将当前角色保存到角色库'))}"><i class="fa-solid fa-floppy-disk"></i></button>
             <button type="button" data-describe-vlm-chat-roleplay-character-library-delete title="${escapeHtml(localText('Delete selected library character', '删除所选角色库角色'))}" aria-label="${escapeHtml(localText('Delete selected library character', '删除所选角色库角色'))}"><i class="fa-solid fa-trash"></i></button>
@@ -15557,7 +15641,7 @@
           <button type="button" data-resource-tab="chapter" role="tab" aria-selected="false" aria-expanded="false"><i class="fa-solid fa-bookmark"></i><span>${escapeHtml(localText('Chapters', '章节'))}</span><b data-resource-count="chapter">0</b></button>
         </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="world" role="tabpanel" hidden>
-          <div class="describe-vlm-chat-roleplay-resource-toolbar"><label><span>${escapeHtml(localText('New entry', '新条目'))}</span><input data-describe-vlm-chat-roleplay-world-book-draft-context type="text" maxlength="5000" placeholder="${escapeHtml(localText('Describe the lore, rule, place, faction, or item', '描述要生成的设定、规则、地点、势力或物品'))}" aria-label="${escapeHtml(localText('World book generation request', '世界书生成要求'))}"></label><button type="button" data-describe-vlm-chat-roleplay-draft="world_book" title="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}" aria-label="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button><button type="button" data-resource-import="world" title="${escapeHtml(localText('Import Tavern world book', '导入酒馆世界书'))}" aria-label="${escapeHtml(localText('Import Tavern world book', '导入酒馆世界书'))}"><i class="fa-solid fa-file-import"></i></button><input type="file" accept=".json,.png,application/json,image/png" data-resource-import-file="world" hidden><button type="button" data-resource-add="world" title="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}" aria-label="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}"><i class="fa-solid fa-plus"></i></button></div>
+          <div class="describe-vlm-chat-roleplay-resource-toolbar"><label><span>${escapeHtml(localText('New entry', '新条目'))}</span><input data-describe-vlm-chat-roleplay-world-book-draft-context type="text" maxlength="5000" placeholder="${escapeHtml(localText('Describe the lore, rule, place, faction, or item', '描述要生成的设定、规则、地点、势力或物品'))}" aria-label="${escapeHtml(localText('World book generation request', '世界书生成要求'))}"></label><button type="button" data-describe-vlm-chat-roleplay-draft="world_book" title="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}" aria-label="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button><button type="button" data-resource-import="world" title="${escapeHtml(roleplayDictionaryText('Import world book entries from a world book JSON or a PNG/JSON character card with embedded lore. This does not add the character to the story.'))}" aria-label="${escapeHtml(localText('Import Tavern world book', '导入酒馆世界书'))}"><i class="fa-solid fa-file-import"></i></button><input type="file" accept=".json,.png,application/json,image/png" data-resource-import-file="world" hidden><button type="button" data-resource-add="world" title="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}" aria-label="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}"><i class="fa-solid fa-plus"></i></button></div>
           <div data-resource-list="world"></div>
         </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="memory" role="tabpanel" hidden>
@@ -15631,9 +15715,9 @@
     <div class="describe-vlm-chat-compose-toolbar">
       <div class="describe-vlm-chat-compose-tools" aria-label="${escapeHtml(t('Chat tools', '对话工具'))}">
         <button type="button" data-describe-vlm-chat-import-prompt title="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}" aria-label="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}"><i class="fa-solid fa-file-import"></i></button>
-        <button type="button" data-describe-vlm-chat-save title="${escapeHtml(t('Save conversation', '保存对话'))}" aria-label="${escapeHtml(t('Save conversation', '保存对话'))}"><i class="fa-solid fa-download"></i></button>
+        <button type="button" data-describe-vlm-chat-save title="${escapeHtml(roleplayDictionaryText('Download the full conversation and roleplay progress as a SimpAI JSON archive for backup or transfer.'))}" aria-label="${escapeHtml(t('Save conversation', '保存对话'))}"><i class="fa-solid fa-download"></i></button>
         <button type="button" data-describe-vlm-chat-history title="${escapeHtml(roleplayDictionaryText('Full conversation history'))}" aria-label="${escapeHtml(roleplayDictionaryText('Full conversation history'))}"><i class="fa-solid fa-book-open"></i></button>
-        <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
+        <button type="button" data-describe-vlm-chat-import title="${escapeHtml(roleplayDictionaryText('Restore a SimpAI JSON chat archive exported with Save conversation. Use Story packs for starting setups and Character library for character cards.'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
         <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
       </div>
        <label class="describe-vlm-chat-roleplay-turn-intent" data-describe-vlm-chat-roleplay-turn-intent-wrap hidden title="${escapeHtml(roleplayDictionaryText('Choose how roleplay input is interpreted. This selection remains active until you change it.'))}"><i class="fa-solid fa-compass" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Input mode'))}</span><select data-describe-vlm-chat-roleplay-turn-intent aria-label="${escapeHtml(roleplayDictionaryText('Roleplay input mode'))}">${renderRoleplayTurnIntentOptions(state.roleplayTurnIntent)}</select></label>
@@ -19078,6 +19162,7 @@
 
     function closeModal() {
         const modal = ensureModal();
+        closeCreativePresetSearch();
         resetInputPolish(modal);
         setChatMediaDropFeedback(false);
         cancelVlmSkillDraft(modal);
@@ -19195,6 +19280,222 @@
             duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt)
         });
         setStatus(t('New conversation started.', '已新建对话。'));
+    }
+
+    let roleplayStoryPacks = null;
+    let roleplayStoryPackOwner = '';
+    let roleplayStoryPackIdentity = '';
+
+    function roleplayStoryPackError(error) {
+        const code = String(error?.message || error || '');
+        const labels = {
+            story_pack_character_required: 'Add a character before saving a story pack.',
+            story_pack_name_required: 'Give the story pack a name.',
+            story_pack_library_full: 'The story pack library is full. Delete unused packs before saving.',
+            story_pack_unknown_character: 'The story outline refers to an unknown character.',
+            story_pack_images_missing: 'A reference image is unavailable. Restore it or turn off reference images.',
+            story_pack_invalid_image: 'A reference image is invalid.',
+            story_pack_image_too_large: 'Each story pack image must be smaller than 8 MB.',
+            story_pack_too_many_images: 'A story pack allows up to 40 reference images.',
+            story_pack_too_large: 'The story pack is larger than 48 MB.',
+            story_pack_invalid: 'This is not a supported story pack file.',
+            story_pack_storage_error: 'The story pack could not be saved.',
+            story_pack_invalid_id: 'The story pack was not found.',
+            story_pack_not_found: 'The story pack was not found.',
+            story_pack_service_unavailable: 'Restart Studio and refresh the page to load story packs.',
+            story_pack_conversation_changed: 'The active conversation changed. Reopen story packs.'
+        };
+        const message = roleplayDictionaryText(labels[code] || (error instanceof SyntaxError
+            ? 'This is not a supported story pack file.' : 'The story pack operation failed.'));
+        return code === 'story_pack_invalid' || error instanceof SyntaxError
+            ? message + ' ' + roleplayDictionaryText('Choose a .story.json exported from Story packs. Import character cards through Character library and chat archives through Import conversation.')
+            : message;
+    }
+
+    function assertRoleplayStoryPackContext() {
+        const runtime = currentConversationRuntime();
+        if (runtime.conversationId !== roleplayStoryPackOwner
+            || String(creativeUserContext()?.user_did || '') !== roleplayStoryPackIdentity) {
+            roleplayStoryPacks?.close();
+            throw new Error('story_pack_conversation_changed');
+        }
+        return runtime;
+    }
+
+    function roleplayStoryPackSourceSession() {
+        const runtime = assertRoleplayStoryPackContext();
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        return syncRoleplaySessionFromVisibleFormForSend(modal, runtime)
+            || normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+    }
+
+    async function captureRoleplayStoryPack(signal, includeImages = true) {
+        const session = cloneRoleplayDraftValue(roleplayStoryPackSourceSession());
+        const ids = new Set([
+            ...(session.visual_config.reference_asset_ids || []), ...(session.persona.reference_asset_ids || [])
+        ]);
+        for (const [id, card] of Object.entries(session.characters)) {
+            [card.avatar_asset_id, ...card.reference_asset_ids,
+                ...(session.story_state.characters[id]?.current_appearance_asset_ids || [])]
+                .filter(Boolean).forEach(value => ids.add(value));
+        }
+        const assets = {};
+        if (includeImages && ids.size) {
+            if (ids.size > 40) throw new Error('story_pack_too_many_images');
+            await loadRoleplayReferenceLibrary(document.getElementById('describe_vlm_chat_modal'));
+            for (const id of ids) {
+                if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+                const source = roleplayReferencePreviewUrl(id);
+                if (!source) throw new Error('story_pack_images_missing');
+                const response = await fetch(source, { signal, credentials: 'same-origin' });
+                if (!response.ok) throw new Error('story_pack_images_missing');
+                const blob = await response.blob();
+                if (blob.size > 8 * 1024 * 1024) throw new Error('story_pack_image_too_large');
+                assets[id] = { name: roleplayReferenceAssetLabel(id), data_url: await blobToDataUrl(blob) };
+            }
+        }
+        return {
+            name: session.story_state.scene.location || session.character.name || roleplayDictionaryText('Untitled story pack'),
+            description: session.story_state.scene.scene_goal,
+            session, assets, opening: session.character.first_message || '',
+            narration_prompt: currentConversationRuntime().customSystemPrompt || '', suggested_actions: []
+        };
+    }
+
+    async function startRoleplayStoryPack(pack, signal) {
+        assertRoleplayStoryPackContext();
+        const settings = cloneRoleplayDraftValue(pack.settings);
+        const mapping = {};
+        for (const [id, asset] of Object.entries(pack.assets)) {
+            if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+            assertRoleplayStoryPackContext();
+            const response = await creativeCanvasApi()?.materializeAsset({
+                project_id: 'describe_vlm_chat', node_id: 'roleplay_story_pack',
+                asset_source: { node_id: 'roleplay_story_pack', asset: { data_url: asset.data_url, mime: asset.mime, name: asset.name } },
+                user_context: creativeUserContext()
+            }, { signal });
+            if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+            assertRoleplayStoryPackContext();
+            if (!response?.ok || !response.asset_ref?.asset_id) throw new Error('story_pack_images_missing');
+            mapping[id] = response.asset_ref.asset_id;
+            registerRoleplayGeneratedAsset(response.asset_ref);
+        }
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        assertRoleplayStoryPackContext();
+        const current = syncCurrentRuntimeFromState();
+        const refs = values => (values || []).map(id => mapping[id]).filter(Boolean);
+        settings.persona.reference_asset_ids = refs(settings.persona.reference_asset_ids);
+        for (const [id, card] of Object.entries(settings.characters)) {
+            card.avatar_asset_id = mapping[card.avatar_asset_id] || '';
+            card.reference_asset_ids = refs(card.reference_asset_ids);
+            settings.character_states[id].current_appearance_asset_ids = refs(settings.character_states[id].current_appearance_asset_ids);
+        }
+        pauseRoleplayAutoplayOnConversationLeave(current);
+        if (current.persistenceDirty || current.messages.length) scheduleConversationPersist(current, 'story_pack_previous', 'soon');
+        const conversationId = uid('describe_vlm_chat_story_pack');
+        const runtime = createEmptyConversationRuntime(Object.assign({}, current, { chatMode: 'roleplay' }), conversationId);
+        runtime.chatMode = 'roleplay';
+        runtime.roleplaySession = normalizeRoleplaySession({
+            id: uid('roleplay_session'), conversation_id: conversationId,
+            characters: settings.characters, character: settings.characters[settings.active_character_id],
+            active_character_id: settings.active_character_id, persona: settings.persona,
+            story_state: { scene: settings.scene, player_state: settings.player_state, characters: settings.character_states },
+            world_book: settings.world_book, story_outline: settings.story_outline, director_config: settings.director_config,
+            agent_routing: current.roleplaySession?.agent_routing,
+            visual_config: { enabled: false, reference_asset_ids: refs(settings.scene_reference_asset_ids) }
+        }, conversationId);
+        runtime.autoAttachPreviousImage = false;
+        runtime.roleplayPanelOpen = false;
+        runtime.roleplayBranches = [];
+        if (pack.narration_prompt) {
+            runtime.customSystemPrompt = pack.narration_prompt;
+            runtime.systemPromptManualOverride = true;
+        }
+        const session = runtime.roleplaySession;
+        if (pack.opening && session.story_state.scene.present_character_ids.includes(session.active_character_id)) {
+            const messageId = uid('story_pack_opening');
+            session.story_origin = Object.assign({}, session.story_origin, {
+                character_id: session.active_character_id, character_name: session.character.name,
+                started: true, opening_message_id: messageId
+            });
+            runtime.messages = [{
+                id: messageId, role: 'assistant',
+                content: resolveRoleplayOpeningNames(pack.opening, session, session.character),
+                reply_options: (pack.suggested_actions || []).slice(0, 6),
+                roleplay_speaker_id: session.active_character_id, roleplay_speaker_name: session.character.name,
+                roleplay_known_by: [...session.story_state.scene.present_character_ids,
+                    ...(session.story_state.player_state.status === 'present' ? [session.persona.id] : [])],
+                roleplay_visibility: 'restricted',
+                roleplay_session_before: cloneRoleplayDraftValue(session),
+                roleplay_session_after: cloneRoleplayDraftValue(session), created_at: new Date().toISOString()
+            }];
+        }
+        runtime.persistenceDirty = true;
+        upsertRoleplayBranchSnapshot(runtime, { branch_id: 'main', reason: 'story_pack', fork_turn_id: '' });
+        state.conversationRuntimes.set(conversationId, runtime);
+        applyConversationRuntime(runtime);
+        state.persistenceRestored = true;
+        state.conversationCatalogActiveId = conversationId;
+        scheduleConversationPersist(runtime, 'story_pack', 'soon');
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        syncChatSettingsControls(modal);
+        syncBusyControls(modal);
+        renderPendingImages();
+        renderMessages();
+        setChatInputValue('');
+        setStatus(roleplayDictionaryText('New story started from "{name}".').replace('{name}', pack.name));
+        modal?.querySelector('[data-describe-vlm-chat-input]')?.focus();
+    }
+
+    function openRoleplayStoryPacks(opener = null) {
+        if (normalizeChatMode(state.chatMode) !== 'roleplay') return;
+        if (!window.SimpAIStoryPacks) {
+            setStatus(roleplayDictionaryText('Restart Studio and refresh the page to load story packs.'), true);
+            return;
+        }
+        roleplayStoryPackOwner = currentConversationRuntime().conversationId;
+        roleplayStoryPackIdentity = String(creativeUserContext()?.user_did || '');
+        if (!roleplayStoryPacks) {
+            roleplayStoryPacks = window.SimpAIStoryPacks.create({
+                t: roleplayDictionaryText, escapeHtml,
+                mount: () => document.querySelector('#describe_vlm_chat_modal .describe-vlm-chat-panel'),
+                errorText: roleplayStoryPackError,
+                modelLabel: () => describeVlmModelDisplayLabel(readSelectedVlmVersion()),
+                download: downloadRoleplayCharacterLibraryBlob, capture: captureRoleplayStoryPack, start: startRoleplayStoryPack,
+                api: async (operation, payload, signal) => {
+                    assertRoleplayStoryPackContext();
+                    const response = await postJson('/describe-image/vlm-roleplay/story-packs/' + operation,
+                        Object.assign({}, payload, { user_did: creativeUserContext()?.user_did || '' }), { signal });
+                    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+                    assertRoleplayStoryPackContext();
+                    if (response?.error === 'HTTP 404' && ['list', 'prepare', 'save'].includes(operation)) {
+                        throw new Error('story_pack_service_unavailable');
+                    }
+                    if (!response?.ok) throw new Error(response?.error || 'story_pack_invalid');
+                    return response;
+                },
+                example: () => {
+                    const session = buildRoleplayExampleTemplateSession();
+                    const id = session.active_character_id;
+                    session.story_outline = {
+                        enabled: true, title: roleplayDictionaryText('Moonlit ruins'),
+                        nodes: [
+                            { id: 'inspect_gate', title: roleplayDictionaryText('Inspect the moon seal'),
+                                trigger_mode: 'after_previous', complete_when: roleplayDictionaryText('The guide explains the moon seal rule.'),
+                                briefs: { [id]: roleplayDictionaryText('Point out the moonlit seal and explain its danger. Wait for the player to choose an approach.') } },
+                            { id: 'enter_ruins', title: roleplayDictionaryText('Enter the ruins'),
+                                trigger_mode: 'manual', requires_confirmation: true,
+                                complete_when: roleplayDictionaryText('The player explicitly agrees to enter the ruins.'),
+                                briefs: { [id]: roleplayDictionaryText('Offer to enter together and wait for the player. Do not decide their answer.') } }
+                        ]
+                    };
+                    return { name: roleplayDictionaryText('Moonlit ruins'), description: roleplayDictionaryText('Adventure example'),
+                        session, opening: buildRoleplayExampleIntroMessage(session).content, assets: {},
+                        suggested_actions: ['Examine the moon seal', 'Ask Erin about the missing person', 'Check the footprints'].map(roleplayDictionaryText) };
+                }
+            });
+        }
+        roleplayStoryPacks.open(opener);
     }
 
     function buildRoleplayExampleTemplateSession(conversationId = '') {
@@ -19416,56 +19717,6 @@
             roleplay_session_after: session,
             created_at: new Date().toISOString()
         };
-    }
-
-    function startRoleplayExampleTemplate() {
-        const startedAt = vlmChatPerformanceNow();
-        ensureConversationCatalogLoaded();
-        const current = syncCurrentRuntimeFromState();
-        pauseRoleplayAutoplayOnConversationLeave(current);
-        if (current.persistenceDirty || current.messages.length) {
-            scheduleConversationPersist(current, 'roleplay_example_previous', 'soon');
-        }
-        const conversationId = uid('describe_vlm_chat_example');
-        const runtime = createEmptyConversationRuntime(Object.assign({}, current, { chatMode: 'roleplay' }), conversationId);
-        runtime.chatMode = 'roleplay';
-        runtime.roleplaySession = buildRoleplayExampleTemplateSession(conversationId);
-        runtime.roleplayBranches = [];
-        runtime.roleplayPanelOpen = true;
-        runtime.roleplayAutoplayState = normalizeRoleplayAutoplayState({ phase: 'idle', target_turns: 5, continuous: false });
-        runtime.messages = [buildRoleplayExampleIntroMessage(runtime.roleplaySession)];
-        runtime.persistenceDirty = true;
-        upsertRoleplayBranchSnapshot(runtime, {
-            branch_id: 'main',
-            reason: 'example_template',
-            fork_turn_id: ''
-        });
-        state.conversationRuntimes.set(conversationId, runtime);
-        applyConversationRuntime(runtime);
-        state.persistenceRestored = true;
-        state.persistenceDirty = true;
-        state.conversationCatalogActiveId = conversationId;
-        scheduleConversationPersist(runtime, 'roleplay_example', 'soon');
-        const modal = document.getElementById('describe_vlm_chat_modal');
-        syncChatSettingsControls(modal);
-        syncBusyControls(modal);
-        renderPendingImages();
-        renderMessages();
-        syncRoleplayControls(modal, runtime);
-        markVlmChatPerformance('vlm_chat.conversation.new', runtime, {
-            duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt),
-            source: 'roleplay_example'
-        });
-        setStatus(localText(
-            'Example roleplay template loaded in a new conversation.',
-            '已在新对话中载入角色扮演示例模板。'
-        ));
-        setConversationStatus(runtime, localText(
-            'You can start by describing what Lin Che does at the ruin gate.',
-            '你可以直接输入林澈在遗迹入口的行动。'
-        ));
-        modal?.querySelector('[data-describe-vlm-chat-input]')?.focus?.();
-        return true;
     }
 
     function deleteConversation(conversationId) {
@@ -21448,11 +21699,31 @@
         return counts;
     }
 
+    function creativeGeneralBackgroundEditRequest(value) {
+        const source = String(value || '');
+        const positive = pattern => Array.from(source.matchAll(new RegExp(pattern.source, 'gi'))).some(match => {
+            const prefix = source.slice(Math.max(0, match.index - 18), match.index);
+            return !/(?:不要|不需要|不用|无需|别|不|\b(?:not|never|don't|do not)\b)[^，。；,;.!?！？\n]{0,10}$/i.test(prefix);
+        });
+        if (positive(/透明(?:背景|底色|通道)|(?:背景|底色)[^，。；,;\n]{0,6}透明|\btransparent\s+(?:background|png)\b|\balpha\s+(?:channel|matte)\b/)) return false;
+        return positive(/(?:更换|替换|换掉|改换|换成|改成|改为)[^，。；,;.!?！？\n]{0,12}(?:背景|墙面)|(?:背景|墙面)[^，。；,;.!?！？\n]{0,12}(?:换成|改成|改为|变成|替换为|替换成|设置为)|(?:移除|去除|擦除|删除)(?:处|后)[^，。；,;.!?！？\n]{0,12}(?:补全|填补|重建|修复)[^，。；,;.!?！？\n]{0,8}背景|\b(?:replace|change|swap|repaint)\b[^,;.!?\n]{0,30}\b(?:background|wall)\b|\b(?:fill|reconstruct|rebuild)\b[^,;.!?\n]{0,24}\bbackground\b/);
+    }
+
     function creativeActionTask(action, media = Array.isArray(action?.media_inputs) ? action.media_inputs : []) {
         const counts = creativeMediaCounts(media);
         const stableRequest = String(action?.requested_task || action?.task_request?.task || '').trim();
         const requested = String(stableRequest || action?.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
         const normalized = CREATIVE_TASK_ALIASES[requested] || requested;
+        const generalTask = counts.image > 1 ? 'multi_image_edit' : 'image_edit';
+        const instruction = String(action?.prompt || action?.task_request?.instruction || '');
+        if (['image_background_removal', 'image_object_removal'].includes(normalized)
+            && creativeGeneralBackgroundEditRequest(instruction)) return generalTask;
+        if (['image_object_removal', 'image_relight', 'image_style_transfer'].includes(normalized) && counts.image > 0) {
+            const required = creativeRequiredMediaCounts(null, normalized);
+            if (Object.keys(required).every(kind => counts[kind] >= required[kind])
+                && !state.creativePresetCatalog.some(entry => creativePresetHasTaskRoute(entry, normalized, media))
+                && creativeCompatiblePresetEntry(generalTask, media, instruction)) return generalTask;
+        }
         if (!CREATIVE_GENERATION_TASKS.has(normalized)) {
             if (counts.video > 0) return 'video_audio_to_video';
             if (counts.audio > 0) return counts.image > 0 ? 'image_audio_to_video' : 'audio_to_video';
@@ -21469,6 +21740,35 @@
         if (normalized === 'image_edit' && counts.image > 1) return 'multi_image_edit';
         if (normalized === 'multi_image_edit' && counts.image === 1 && !stableRequest) return 'image_edit';
         return normalized;
+    }
+
+    function repairCreativeImageEditRoute(action) {
+        if (action?.type !== 'generate_image' || !['awaiting_confirmation', 'no_compatible_route'].includes(action.generation?.state)) return false;
+        const inputs = Array.isArray(action.media_inputs) ? action.media_inputs : [];
+        const task = creativeActionTask(action, inputs);
+        const original = String(action.requested_task || action.task_request?.task || action.execution_plan?.task || action.task || '');
+        if (!['image_edit', 'multi_image_edit'].includes(task) || task === original || !inputs.length) return false;
+        const refs = action.task_request?.media_refs || action.media_refs || [];
+        if (Array.isArray(refs) && refs.some(ref => !inputs.some(input => input.ref === ref))) return false;
+        const current = creativePresetEntry(action.preset);
+        const keepCurrent = current && (String(current.name || '').toLowerCase() !== 'onekeykontext'
+            || ['user', 'session_preference'].includes(action.preset_source));
+        const entry = keepCurrent && creativePresetHasTaskRoute(current, task, inputs) ? current
+            : creativeCompatiblePresetEntry(task, inputs, action.prompt);
+        if (!entry) return false;
+        const candidate = { ...action, task, requested_task: task };
+        const plan = creativeExecutionPlanForEntry(candidate, entry,
+            action.preset_source === 'user' ? 'request_hint'
+                : action.preset_source === 'session_preference' ? 'session_preference' : 'automatic');
+        if (['no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible', 'needs_media'].includes(plan.status)) return false;
+        plan.task_fallback_from = original;
+        action.task = action.requested_task = task;
+        if (action.task_request) action.task_request = { ...action.task_request, task };
+        action.preset = entry.name;
+        action.execution_plan = plan;
+        action.generation.state = plan.status === 'ready' ? 'awaiting_confirmation' : plan.status;
+        action.generation.error = '';
+        return true;
     }
 
     function creativeTaskAllowedMediaTypes(task) {
@@ -22114,11 +22414,11 @@
         return true;
     }
 
-    function renderCreativePreferencePanel() {
+    function renderCreativePreferencePanel(draft = null) {
         const preference = normalizeCreativePreference(state.creativePreference);
         const initiative = normalizeCreativeInitiative(state.creativeInitiative);
-        const selectedPreset = String(preference.preset || '');
-        const selectedParameterProfile = String(preference.parameter_profile || '');
+        const selectedPreset = String(draft?.preset ?? preference.preset ?? '');
+        const selectedParameterProfile = String(draft?.parameter_profile ?? preference.parameter_profile ?? '');
         const presetRows = state.creativePresetCatalog.filter(entry => !isRetiredCreativePreset(entry.name || entry.display_name));
         if (selectedPreset && !presetRows.some((entry) => entry.name === selectedPreset)) {
             presetRows.unshift({ name: selectedPreset, display_name: selectedPreset });
@@ -22127,7 +22427,8 @@
             `<option value="">${escapeHtml(localText('Choose a Preset...', '选择 Preset...'))}</option>`,
             ...presetRows.map((entry) => `<option value="${escapeHtml(entry.name)}" ${entry.name === selectedPreset ? 'selected' : ''}>${escapeHtml(entry.display_name || entry.name)}</option>`)
         ].join('');
-        const presetApplied = Boolean(selectedPreset);
+        const presetApplied = Boolean(selectedPreset) && selectedPreset === String(preference.preset || '')
+            && selectedParameterProfile === String(preference.parameter_profile || '');
         const applyLabel = presetApplied ? localText('Preset active', '已使用') : localText('Use Preset', '使用 Preset');
         const styleButton = (style, icon, en, cn) => {
             const active = preference.style === style ? 'is-active' : '';
@@ -22165,6 +22466,7 @@
         mount.hidden = !creativeMode;
         if (!creativeMode) {
             mount.innerHTML = '';
+            syncCreativePresetSearch(modal);
             return;
         }
         if (!state.creativePresetCatalogLoaded && !state.creativePresetCatalogLoading) {
@@ -22172,10 +22474,17 @@
         }
         if (state.creativePreferenceExpanded) {
             const scrollTop = mount.querySelector('.describe-vlm-chat-preference')?.scrollTop || 0;
+            const previousPreset = mount.querySelector('[data-describe-vlm-chat-preference-preset]');
+            const draft = previousPreset && mount.dataset.preferenceConversation === state.conversationId ? {
+                preset: previousPreset.value,
+                parameter_profile: mount.querySelector('[data-describe-vlm-chat-preference-parameter-profile]')?.value || ''
+            } : null;
             mount.classList.add('is-expanded');
-            mount.innerHTML = renderCreativePreferencePanel();
+            mount.innerHTML = renderCreativePreferencePanel(draft);
+            mount.dataset.preferenceConversation = state.conversationId;
             const panel = mount.querySelector('.describe-vlm-chat-preference');
             if (panel) panel.scrollTop = scrollTop;
+            syncCreativePresetSearch(modal);
             return;
         }
         mount.classList.remove('is-expanded');
@@ -22195,6 +22504,263 @@
         state.persistenceDirty = true;
         renderCreativePreferenceMount();
         scheduleConversationPersist(runtime, 'creative_preference_visibility');
+        syncCreativePresetSearch(document.getElementById('describe_vlm_chat_modal'));
+    }
+
+    const CREATIVE_PRESET_SELECTORS = '[data-describe-vlm-chat-preference-preset], [data-describe-vlm-chat-generation-preset]';
+    let creativePresetSearch = null;
+    let creativePresetOpeningClick = false;
+
+    function creativePresetSearchMatch(option, query) {
+        const normalize = value => String(value || '').normalize('NFKC').toLowerCase()
+            .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+        const terms = normalize(query).split(/\s+/).filter(Boolean);
+        if (!terms.length) return true;
+        if (!option.value) return false;
+        const names = [option.label || option.textContent, option.value].map(normalize);
+        return terms.every(term => names.some(name => {
+            if (name.includes(term)) return true;
+            let index = 0;
+            for (const letter of name.replace(/\s+/g, '')) {
+                if (letter === term[index]) index += 1;
+            }
+            return index === term.length;
+        }));
+    }
+
+    function closeCreativePresetSearch(restoreFocus = false) {
+        const current = creativePresetSearch;
+        if (!current) return;
+        creativePresetSearch = null;
+        current.select.setAttribute('aria-expanded', 'false');
+        current.select.removeAttribute('aria-controls');
+        current.menu.remove();
+        if (restoreFocus && current.select.isConnected) current.select.focus({ preventScroll: true });
+    }
+
+    function positionCreativePresetSearch() {
+        const current = creativePresetSearch;
+        if (!current) return;
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (!current.select.isConnected || modal?.hidden || !current.select.getClientRects().length) {
+            closeCreativePresetSearch();
+            return;
+        }
+        const rect = current.select.getBoundingClientRect();
+        const panel = current.select.closest('.describe-vlm-chat-panel')?.getBoundingClientRect();
+        const viewport = describeViewportRect();
+        const leftLimit = Math.max(viewport.left + 8, panel ? panel.left + 8 : 0);
+        const rightLimit = Math.min(viewport.left + viewport.width - 8, panel ? panel.right - 8 : Infinity);
+        const topLimit = viewport.top + 8;
+        const bottomLimit = viewport.top + viewport.height - 8;
+        const below = bottomLimit - rect.bottom - 4;
+        const above = rect.top - topLimit - 4;
+        const width = Math.max(0, Math.min(Math.max(280, rect.width), rightLimit - leftLimit));
+        current.menu.style.width = width + 'px';
+        current.menu.style.maxHeight = Math.max(0, Math.min(340, bottomLimit - topLimit, Math.max(80, below, above))) + 'px';
+        const height = current.menu.getBoundingClientRect().height;
+        current.menu.style.left = Math.max(leftLimit, Math.min(rect.left, rightLimit - width)) + 'px';
+        const top = below >= height || below >= above ? rect.bottom + 4 : rect.top - height - 4;
+        current.menu.style.top = Math.max(topLimit, Math.min(top, bottomLimit - height)) + 'px';
+    }
+
+    function highlightCreativePresetSearch(index, scroll = true) {
+        const current = creativePresetSearch;
+        if (!current) return;
+        const rows = Array.from(current.list.querySelectorAll('[data-chat-preset-option]:not(:disabled)'));
+        current.activeIndex = rows.length ? Math.max(0, Math.min(index, rows.length - 1)) : -1;
+        rows.forEach((row, position) => row.classList.toggle('is-active', position === current.activeIndex));
+        const active = rows[current.activeIndex];
+        if (active) {
+            current.input.setAttribute('aria-activedescendant', active.id);
+            if (scroll) {
+                const row = active.getBoundingClientRect();
+                const list = current.list.getBoundingClientRect();
+                if (row.top < list.top) current.list.scrollTop -= list.top - row.top;
+                else if (row.bottom > list.bottom) current.list.scrollTop += row.bottom - list.bottom;
+            }
+        } else current.input.removeAttribute('aria-activedescendant');
+    }
+
+    function renderCreativePresetSearch(reset = false) {
+        const current = creativePresetSearch;
+        if (!current) return;
+        const activeValue = current.list.querySelector('.is-active')?.dataset.chatPresetOption;
+        const rows = Array.from(current.select.options).filter(option => creativePresetSearchMatch(option, current.input.value));
+        const fragment = document.createDocumentFragment();
+        rows.forEach((option, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.tabIndex = -1;
+            button.id = 'describe-vlm-preset-option-' + index;
+            button.dataset.chatPresetOption = option.value;
+            button.role = 'option';
+            button.disabled = option.disabled;
+            button.setAttribute('aria-selected', option.selected ? 'true' : 'false');
+            button.classList.toggle('is-selected', option.selected);
+            button.textContent = option.label || option.textContent;
+            button.title = button.textContent;
+            fragment.appendChild(button);
+        });
+        if (!rows.length) {
+            const empty = document.createElement('div');
+            empty.className = 'describe-vlm-chat-preset-search-empty';
+            empty.role = 'status';
+            empty.textContent = roleplayDictionaryText('No matching presets');
+            fragment.appendChild(empty);
+        }
+        const scrollTop = current.list.scrollTop;
+        current.list.replaceChildren(fragment);
+        current.list.scrollTop = reset ? 0 : scrollTop;
+        const enabled = rows.filter(option => !option.disabled);
+        const wanted = reset ? (current.input.value ? null : current.select.value) : activeValue;
+        highlightCreativePresetSearch(Math.max(0, enabled.findIndex(option => option.value === wanted)), false);
+        positionCreativePresetSearch();
+    }
+
+    function syncCreativePresetSearch(modal) {
+        const current = creativePresetSearch;
+        if (!current) return;
+        const select = current.kind === 'preference'
+            ? modal?.querySelector('[data-describe-vlm-chat-preference-preset]')
+            : Array.from(modal?.querySelectorAll('[data-describe-vlm-chat-generation-preset]') || [])
+                .find(node => node.getAttribute('data-describe-vlm-chat-generation-preset') === current.ref);
+        const message = current.kind === 'generation' ? creativeActionFromRef(current.ref)?.message : null;
+        if (current.owner !== state.conversationId || !select || select.disabled
+            || (current.kind === 'generation' && message?.id !== current.messageId)) {
+            closeCreativePresetSearch();
+            return;
+        }
+        current.select = select;
+        select.setAttribute('aria-expanded', 'true');
+        select.setAttribute('aria-controls', current.list.id);
+        renderCreativePresetSearch();
+    }
+
+    function chooseCreativePresetSearch(value) {
+        const current = creativePresetSearch;
+        if (!current || current.owner !== state.conversationId || current.select.disabled) return;
+        const select = current.select;
+        if (!Array.from(select.options).some(option => option.value === value && !option.disabled)) return;
+        closeCreativePresetSearch(true);
+        select.value = value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function openCreativePresetSearch(select, event, query = '') {
+        if (!select || select.disabled) return;
+        closeCreativePresetSearch();
+        const menu = document.createElement('div');
+        menu.className = 'describe-vlm-chat-preset-search-menu';
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.autocomplete = 'off';
+        search.spellcheck = false;
+        search.maxLength = 200;
+        search.value = query;
+        search.placeholder = roleplayDictionaryText('Search presets');
+        search.setAttribute('aria-label', search.placeholder);
+        search.setAttribute('role', 'combobox');
+        search.setAttribute('aria-autocomplete', 'list');
+        search.setAttribute('aria-expanded', 'true');
+        const list = document.createElement('div');
+        list.id = 'describe-vlm-chat-preset-search-list';
+        list.className = 'describe-vlm-chat-preset-search-list';
+        list.role = 'listbox';
+        list.setAttribute('aria-label', search.placeholder);
+        search.setAttribute('aria-controls', list.id);
+        menu.append(search, list);
+        document.getElementById('describe_vlm_chat_modal').appendChild(menu);
+        const ref = select.getAttribute('data-describe-vlm-chat-generation-preset');
+        creativePresetSearch = {
+            menu, input: search, list, select, activeIndex: -1, owner: state.conversationId,
+            kind: ref === null ? 'preference' : 'generation', ref,
+            messageId: ref === null ? '' : creativeActionFromRef(ref)?.message?.id
+        };
+        select.setAttribute('aria-expanded', 'true');
+        select.setAttribute('aria-controls', list.id);
+        search.addEventListener('input', () => renderCreativePresetSearch(true));
+        search.addEventListener('keydown', evt => {
+            if (evt.isComposing || evt.keyCode === 229) return;
+            if (evt.key === 'Escape' || evt.key === 'Tab') {
+                if (evt.key === 'Escape') evt.preventDefault();
+                evt.stopPropagation();
+                closeCreativePresetSearch(true);
+            } else if (evt.key === 'ArrowDown' || evt.key === 'ArrowUp') {
+                evt.preventDefault();
+                highlightCreativePresetSearch(creativePresetSearch.activeIndex + (evt.key === 'ArrowDown' ? 1 : -1));
+            } else if (evt.key === 'Enter') {
+                evt.preventDefault();
+                const option = list.querySelector('.is-active:not(:disabled)');
+                if (option) chooseCreativePresetSearch(option.dataset.chatPresetOption);
+            }
+        });
+        let touchPick = null;
+        menu.addEventListener('pointerdown', evt => {
+            creativePresetOpeningClick = false;
+            const option = evt.target.closest('[data-chat-preset-option]:not(:disabled)');
+            touchPick = evt.pointerType === 'touch' && option
+                ? { id: evt.pointerId, x: evt.clientX, y: evt.clientY, value: option.dataset.chatPresetOption } : null;
+            if (evt.pointerType === 'mouse' && option) evt.preventDefault();
+        });
+        menu.addEventListener('pointerup', evt => {
+            const pick = touchPick;
+            touchPick = null;
+            const option = evt.target.closest('[data-chat-preset-option]:not(:disabled)');
+            if (!pick || pick.id !== evt.pointerId || option?.dataset.chatPresetOption !== pick.value
+                || Math.hypot(evt.clientX - pick.x, evt.clientY - pick.y) > 8) return;
+            evt.preventDefault();
+            evt.stopPropagation();
+            chooseCreativePresetSearch(pick.value);
+        });
+        menu.addEventListener('pointercancel', () => { touchPick = null; });
+        menu.addEventListener('click', evt => {
+            const option = evt.target.closest('[data-chat-preset-option]');
+            if (option && !option.disabled && !creativePresetOpeningClick) chooseCreativePresetSearch(option.dataset.chatPresetOption);
+        });
+        menu.addEventListener('pointermove', evt => {
+            if (evt.pointerType !== 'mouse') return;
+            const option = evt.target.closest('[data-chat-preset-option]:not(:disabled)');
+            if (option) highlightCreativePresetSearch(Array.from(list.querySelectorAll('[data-chat-preset-option]:not(:disabled)')).indexOf(option), false);
+        });
+        renderCreativePresetSearch(true);
+        const keyboard = event?.type === 'keydown';
+        if (keyboard || (!window.matchMedia?.('(pointer: coarse)')?.matches && event?.pointerType !== 'touch')) {
+            search.focus({ preventScroll: true });
+        }
+    }
+
+    function handleCreativePresetSelectPointer(event) {
+        const select = event.target?.closest?.(CREATIVE_PRESET_SELECTORS);
+        if (select && !select.disabled) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (creativePresetSearch?.select === select) closeCreativePresetSearch(true);
+            else openCreativePresetSearch(select, event);
+            creativePresetOpeningClick = true;
+            window.setTimeout(() => { creativePresetOpeningClick = false; }, 500);
+        } else if (creativePresetSearch && !creativePresetSearch.menu.contains(event.target)) {
+            closeCreativePresetSearch();
+        }
+    }
+
+    function handleCreativePresetSelectClick(event) {
+        const select = event.target?.closest?.(CREATIVE_PRESET_SELECTORS);
+        if (!select) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!creativePresetOpeningClick) openCreativePresetSearch(select, event);
+        creativePresetOpeningClick = false;
+    }
+
+    function handleCreativePresetSelectKey(event) {
+        const select = event.target?.closest?.(CREATIVE_PRESET_SELECTORS);
+        if (!select || select.disabled || event.isComposing || event.ctrlKey || event.metaKey) return;
+        if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key) || event.key.length === 1) {
+            event.preventDefault();
+            event.stopPropagation();
+            openCreativePresetSearch(select, event, event.key.length === 1 && event.key !== ' ' ? event.key : '');
+        }
     }
 
     function creativeGenerationForAction(action) {
@@ -22219,6 +22785,7 @@
             action.generation = { state: 'awaiting_confirmation', assets: [] };
         }
         if (!Array.isArray(action.generation.assets)) action.generation.assets = [];
+        repairCreativeImageEditRoute(action);
         return action.generation;
     }
 
@@ -22311,7 +22878,7 @@
                 prepared.push({ type: 'set_prompt', target: 'main_prompt', prompt: String(action.prompt || ''), label: String(action.label || '') });
                 return;
             }
-            const plan = normalizeCreativeExecutionPlan(action.execution_plan);
+            let plan = normalizeCreativeExecutionPlan(action.execution_plan);
             const requestedRefs = plan?.media_bindings?.length
                 ? plan.media_bindings.map((binding) => binding.ref)
                 : Array.isArray(action.media_refs) ? action.media_refs.map((ref) => String(ref || '')).filter(Boolean) : [];
@@ -22334,6 +22901,7 @@
             action.task = plan?.task || creativeActionTask(action, action.media_inputs);
             const generation = creativeGenerationForAction(action);
             clampCreativeActionMediaInputs(action);
+            plan = action.execution_plan;
             if (requestedRefs.some((ref) => !mediaByRef.has(ref))) {
                 generation.state = 'needs_media';
                 generation.error = roleplayDictionaryText('An attached input could not be restored. Generation has been stopped.');
@@ -24653,6 +25221,7 @@
         if (!state.messages.length) {
             log.innerHTML = `${renderChatEmptyState(runtime)}${renderQueuedConversationMessages(runtime)}`;
             renderRoleplayInlineGenerationResults(modal);
+            syncCreativePresetSearch(modal);
             return;
         }
         const isRoleplay = normalizeChatMode(state.chatMode) === 'roleplay';
@@ -24783,6 +25352,7 @@
             log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
         }
         restoreRoleplaySpeakerCardStates(log, speakerCardStates);
+        syncCreativePresetSearch(modal);
     }
 
     function historyTextForMessage(message) {
@@ -25405,6 +25975,12 @@
     function containModalWheel(evt) {
         const modal = document.getElementById('describe_vlm_chat_modal');
         if (!modal || modal.hidden) return;
+        const presetMenu = creativePresetSearch?.menu;
+        if (presetMenu?.contains(evt.target)) {
+            if (!closestScrollableForWheel(evt.target, modal, evt, presetMenu)) evt.preventDefault();
+            evt.stopPropagation();
+            return;
+        }
         const historyDialog = conversationHistoryViewer?.dialog;
         if (historyDialog?.open && historyDialog.contains(evt.target)) {
             if (!closestScrollableForWheel(evt.target, modal, evt, historyDialog)) {
@@ -25480,6 +26056,12 @@
         const deltaX = modalTouchPoint && touch ? modalTouchPoint.x - touch.clientX : 0;
         const deltaY = modalTouchPoint && touch ? modalTouchPoint.y - touch.clientY : 0;
         modalTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : modalTouchPoint;
+        const presetMenu = creativePresetSearch?.menu;
+        if (presetMenu?.contains(evt.target)) {
+            if (!closestScrollableForWheel(evt.target, modal, { deltaX, deltaY }, presetMenu)) evt.preventDefault();
+            evt.stopPropagation();
+            return;
+        }
         if (insideCharacterLibrary) {
             const panel = characterLibraryModal.querySelector('.describe-vlm-chat-character-library-panel');
             const scroller = closestScrollableForWheel(evt.target, characterLibraryModal, { deltaX, deltaY }, panel);
@@ -28137,8 +28719,8 @@
             loadRoleplayReferenceLibrary(modal).catch(() => {});
             return;
         }
-        if (evt.target.closest('[data-describe-vlm-chat-roleplay-example]')) {
-            startRoleplayExampleTemplate();
+        if (evt.target.closest('[data-roleplay-story-packs]')) {
+            openRoleplayStoryPacks(evt.target.closest('[data-roleplay-story-packs]'));
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-roleplay-draft-keep]')) {
@@ -29249,6 +29831,19 @@
         }
     });
 
+    document.addEventListener('pointerdown', handleCreativePresetSelectPointer, true);
+    document.addEventListener('click', handleCreativePresetSelectClick, true);
+    document.addEventListener('keydown', handleCreativePresetSelectKey, true);
+    document.addEventListener('focusin', event => {
+        if (creativePresetSearch && event.target !== creativePresetSearch.select
+            && !creativePresetSearch.menu.contains(event.target)) closeCreativePresetSearch();
+    }, true);
+    document.addEventListener('scroll', event => {
+        if (creativePresetSearch && !creativePresetSearch.menu.contains(event.target)) positionCreativePresetSearch();
+    }, true);
+    window.addEventListener('resize', positionCreativePresetSearch);
+    window.visualViewport?.addEventListener('resize', positionCreativePresetSearch);
+    window.visualViewport?.addEventListener('scroll', positionCreativePresetSearch);
     document.addEventListener('pointerdown', handleModalPointerDown, true);
     document.addEventListener('pointerup', handleModalPointerUp, true);
     document.addEventListener('pointercancel', resetModalPointerState, true);
