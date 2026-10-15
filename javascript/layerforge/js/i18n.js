@@ -6,7 +6,8 @@
     const lang = rawLang.startsWith('en') ? 'en' : 'cn';
     const stage = { __lang: lang };
     let translations = {};
-    const ready = stage.__lang === 'en' ? Promise.resolve() : fetch('/file=language/cn.json', {
+    const ready = stage.__lang === 'en' ? Promise.resolve() : fetch('/gradio_api/file=language/cn.json?v=layerforge_annotations_20261015', {
+        cache: 'no-cache',
         signal: AbortSignal.timeout(10000)
     }).then((response) => {
         if (!response.ok) throw new Error(`LayerForge translations: HTTP ${response.status}`);

@@ -2892,5 +2892,9 @@
   "Expand or collapse options": "展开或收起选项",
   "Selected: {option}": "已选：{option}",
   "Use the reference video for visual expansion": "扩写时读取参考视频",
-  "Use the main video for visual expansion": "扩写时读取主要传入视频"
+  "Use the main video for visual expansion": "扩写时读取主要传入视频",
+  "Chat settings": "对话设置",
+  "Collapse chat settings": "收起对话设置",
+  "Collapse roleplay settings": "收起角色扮演设置",
+  "Back to chat settings": "返回对话设置"
 }

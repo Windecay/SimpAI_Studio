@@ -10,6 +10,9 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;'));
     const getUiLang = UTILS.getUiLang || (() => 'en');
+    const mobileChatSettingsDrawers = new WeakMap();
+    const CHAT_SETTINGS_COMPACT_WIDTH = 640;
+    const CHAT_SETTINGS_ANIMATION_MS = 200;
 
     const MAX_REFERENCE_IMAGES = 9;
     const MAX_REFERENCE_VIDEOS = 3;
@@ -4822,7 +4825,8 @@
     }
 
     function visibleRoleplayPanel(modal = document.getElementById('describe_vlm_chat_modal')) {
-        return modal?.querySelector('[data-describe-vlm-chat-roleplay-panel]:not([hidden])') || null;
+        const panel = modal?.querySelector('[data-describe-vlm-chat-roleplay-panel]:not([hidden])');
+        return panel && !panel.inert ? panel : null;
     }
 
     function setRoleplayActionStatus(runtime, modal, area, message, isError = false) {
@@ -5649,7 +5653,13 @@
             const activeTab = tabs.querySelector('.describe-vlm-chat-conversation-tab.is-active');
             if (activeTab) {
                 window.requestAnimationFrame(() => {
-                    if (activeTab.isConnected) activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                    if (!activeTab.isConnected) return;
+                    if (describeCompactChatSettings(modal)) {
+                        const bounds = tabs.getBoundingClientRect();
+                        const active = activeTab.getBoundingClientRect();
+                        tabs.scrollLeft += active.left < bounds.left ? active.left - bounds.left
+                            : active.right > bounds.right ? active.right - bounds.right : 0;
+                    } else activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
                 });
             }
         }
@@ -6485,9 +6495,10 @@
 
     function syncChatSettingsControls(modal) {
         if (!modal) return;
-        if (describeCompactViewport() && state.settingsPanelOpen && state.roleplayPanelOpen) {
+        if (describeCompactChatSettings(modal) && state.settingsPanelOpen && state.roleplayPanelOpen) {
             closeRoleplayPanelForMobile();
         }
+        syncMobileChatSettingsDrawer(modal);
         syncConversationControls(modal);
         const mode = modal.querySelector('[data-describe-vlm-chat-mode]');
         const maxTokens = modal.querySelector('[data-describe-vlm-chat-max-tokens]');
@@ -6507,13 +6518,15 @@
         const modeHint = modal.querySelector('[data-describe-vlm-chat-mode-hint]');
         const settings = modal.querySelector('.describe-vlm-chat-controls');
         const settingsToggle = modal.querySelector('[data-describe-vlm-chat-settings-toggle]');
-        if (settings) settings.classList.toggle('is-collapsed', !state.settingsPanelOpen);
+        if (settings) settings.classList.toggle('is-collapsed', !state.settingsPanelOpen
+            && (!describeCompactChatSettings(modal) || chatSettingsSurfaceElement(modal, 'general')?.hidden));
         if (settingsToggle) {
-            settingsToggle.setAttribute('aria-expanded', state.settingsPanelOpen ? 'true' : 'false');
-            settingsToggle.classList.toggle('is-active', state.settingsPanelOpen);
+            const open = state.settingsPanelOpen || (describeCompactChatSettings(modal) && state.roleplayPanelOpen);
+            settingsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            settingsToggle.classList.toggle('is-active', open);
             settingsToggle.title = localText(
-                state.settingsPanelOpen ? 'Hide chat settings' : 'Open chat settings',
-                state.settingsPanelOpen ? '收起对话设置' : '打开对话设置'
+                open ? 'Hide chat settings' : 'Open chat settings',
+                open ? '收起对话设置' : '打开对话设置'
             );
             settingsToggle.setAttribute('aria-label', settingsToggle.title);
         }
@@ -6580,6 +6593,7 @@
         syncRoleplayControls(modal);
         syncChatSettingsSummary(modal);
         syncInputPolishControls(modal);
+        syncMobileChatSettingsDrawerBounds(modal, modal.querySelector('.describe-vlm-chat-panel'));
     }
 
     function roleplayCharacterEntriesFromNormalized(normalized) {
@@ -10466,7 +10480,7 @@
         const session = target?.roleplaySession || target;
         const conversationId = String(target?.conversationId || session?.conversation_id || '');
         const characterId = String(session?.active_character_id || session?.character?.id || '');
-        return !!panel && !panel.hidden && conversationId === String(state.conversationId || '')
+        return !!panel && !panel.hidden && !panel.inert && conversationId === String(state.conversationId || '')
             && panel.dataset.roleplayFormConversationId === conversationId
             && panel.dataset.roleplayFormCharacterId === characterId;
     }
@@ -10493,7 +10507,7 @@
         const strip = modal.querySelector('[data-describe-vlm-chat-roleplay-strip]');
         const panel = modal.querySelector('[data-describe-vlm-chat-roleplay-panel]');
         if (strip) strip.hidden = !active;
-        if (panel) panel.hidden = !active || !state.roleplayPanelOpen;
+        if (panel) syncChatSettingsSurface(modal, 'roleplay', active && state.roleplayPanelOpen);
         const summary = modal.querySelector('[data-describe-vlm-chat-roleplay-summary-text]');
         const status = modal.querySelector('[data-describe-vlm-chat-roleplay-state]');
         const participantSummary = modal.querySelector('[data-describe-vlm-chat-roleplay-participant-summary]');
@@ -14447,15 +14461,297 @@
         return window.innerWidth <= 640 || (viewportWidth > 0 && viewportWidth <= 640);
     }
 
+    function describeCompactChatSettings(modal = document.getElementById('describe_vlm_chat_modal')) {
+        const panel = modal?.querySelector?.('.describe-vlm-chat-panel');
+        const width = panel?.getBoundingClientRect?.().width
+            || (state.windowLayout?.resized ? state.windowLayout.width : window.innerWidth);
+        return width <= CHAT_SETTINGS_COMPACT_WIDTH;
+    }
+
+    function chatSettingsDrawerState(modal) {
+        let controller = mobileChatSettingsDrawers.get(modal);
+        if (!controller) {
+            controller = { placements: null, compact: undefined, surfaces: {}, preferredHeights: {}, drag: null, frame: 0 };
+            mobileChatSettingsDrawers.set(modal, controller);
+        }
+        return controller;
+    }
+
+    function chatSettingsSurfaceElement(modal, kind) {
+        return modal?.querySelector?.(kind === 'roleplay'
+            ? '[data-describe-vlm-chat-roleplay-panel]' : '[data-describe-vlm-chat-mobile-settings]');
+    }
+
+    function chatSettingsSurfaceHeight(modal, kind) {
+        const controller = chatSettingsDrawerState(modal);
+        const surface = chatSettingsSurfaceElement(modal, kind);
+        const maximum = Math.max(0, controller.maxHeight || 0);
+        const natural = kind === 'roleplay' ? maximum
+            : Math.min(maximum, (surface.querySelector('[data-describe-vlm-chat-mobile-settings-body]')?.scrollHeight || 0) + 33);
+        return Math.min(maximum, controller.preferredHeights[kind] || natural);
+    }
+
+    function animateChatSettingsSurface(modal, kind) {
+        const controller = chatSettingsDrawerState(modal);
+        const surface = chatSettingsSurfaceElement(modal, kind);
+        const visual = controller.surfaces[kind];
+        if (!surface || !visual || controller.drag?.kind === kind) return;
+        const open = visual.open;
+        const height = open ? chatSettingsSurfaceHeight(modal, kind) : 0;
+        if (visual.targetHeight === height && (visual.animation || (!open && surface.hidden))) return;
+        const from = surface.hidden ? 0 : surface.getBoundingClientRect().height;
+        visual.animation?.cancel();
+        visual.targetHeight = height;
+        surface.hidden = false;
+        surface.inert = !open;
+        surface.style.height = `${height}px`;
+        surface.dataset.chatSettingsOpen = open ? '1' : '0';
+        const finish = () => {
+            visual.animation = null;
+            surface.hidden = !visual.open;
+            if (!visual.open) surface.style.removeProperty('height');
+            if (kind === 'general' && !visual.open) {
+                surface.querySelector('.describe-vlm-chat-controls')?.classList.add('is-collapsed');
+            }
+            delete surface.dataset.chatSettingsAnimating;
+        };
+        const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (reducedMotion || Math.abs(from - height) < 1 || typeof surface.animate !== 'function') {
+            finish();
+            return;
+        }
+        surface.dataset.chatSettingsAnimating = '1';
+        const navigation = controller.navigation;
+        const shift = (kind === 'roleplay' ? 1 : -1) * 24;
+        const frames = navigation ? [
+            { height: `${open ? height : from}px`, opacity: open ? 0.7 : 1, transform: `translateX(${open ? shift : 0}px)` },
+            { height: `${open ? height : from}px`, opacity: open ? 1 : 0.7, transform: `translateX(${open ? 0 : shift}px)` }
+        ] : [
+            { height: `${from}px`, opacity: from > 0 ? 1 : 0.7 },
+            { height: `${height}px`, opacity: open ? 1 : 0.7 }
+        ];
+        const animation = surface.animate(frames, {
+            duration: CHAT_SETTINGS_ANIMATION_MS, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+        });
+        visual.animation = animation;
+        animation.onfinish = () => { if (visual.animation === animation) finish(); };
+    }
+
+    function syncChatSettingsSurface(modal, kind, open) {
+        const surface = chatSettingsSurfaceElement(modal, kind);
+        if (!surface) return;
+        const controller = chatSettingsDrawerState(modal);
+        if (!controller.compact) {
+            const visual = controller.surfaces[kind];
+            if (visual) {
+                visual.animation?.cancel();
+                visual.animation = null;
+            }
+            delete controller.surfaces[kind];
+            surface.hidden = kind === 'general' || !open;
+            surface.inert = false;
+            surface.style.removeProperty('height');
+            delete surface.dataset.chatSettingsOpen;
+            delete surface.dataset.chatSettingsAnimating;
+            return;
+        }
+        const visual = controller.surfaces[kind] || (controller.surfaces[kind] = {
+            open: !surface.hidden, targetHeight: 0, animation: null
+        });
+        if (visual.open === open && !(open && surface.hidden)) return;
+        visual.open = open;
+        surface.inert = !open;
+        surface.dataset.chatSettingsOpen = open ? '1' : '0';
+        if (open) {
+            if (surface.hidden) surface.style.height = '0px';
+            surface.hidden = false;
+        }
+        if (!controller.frame) {
+            controller.frame = window.requestAnimationFrame(() => {
+                controller.frame = 0;
+                syncMobileChatSettingsDrawerBounds(modal, modal.querySelector('.describe-vlm-chat-panel'));
+                Object.keys(controller.surfaces).forEach(key => animateChatSettingsSurface(modal, key));
+                delete controller.navigation;
+            });
+        }
+    }
+
+    function collapseChatSettingsDrawer(modal) {
+        state.settingsPanelOpen = false;
+        closeRoleplayPanelForMobile();
+        syncChatSettingsControls(modal);
+        modal.querySelector('.describe-vlm-chat-head [data-describe-vlm-chat-settings-toggle]')?.focus({ preventScroll: true });
+    }
+
+    function installChatSettingsDrawerDrag(modal, handle, kind) {
+        if (!handle || handle.dataset.drawerDragBound) return;
+        handle.dataset.drawerDragBound = '1';
+        let swipedPointer = null;
+        handle.addEventListener('pointerdown', (event) => {
+            const controller = chatSettingsDrawerState(modal);
+            if (!controller.compact || controller.drag || !event.isPrimary || event.button !== 0) return;
+            if (handle.matches('[data-describe-vlm-chat-settings-toggle]') && state.roleplayPanelOpen) return;
+            if (handle.matches('.describe-vlm-chat-roleplay-panel-head')
+                && event.target.closest('button, input, select, textarea')) return;
+            const surface = chatSettingsSurfaceElement(modal, kind);
+            controller.drag = {
+                kind, id: event.pointerId, x: event.clientX, y: event.clientY,
+                startHeight: surface.hidden ? 0 : surface.getBoundingClientRect().height,
+                height: surface.hidden ? 0 : surface.getBoundingClientRect().height, moved: false,
+                wasOpen: kind === 'general' ? state.settingsPanelOpen : state.roleplayPanelOpen
+            };
+            const visual = controller.surfaces[kind];
+            if (visual?.animation) {
+                visual.animation.cancel();
+                visual.animation = null;
+                visual.targetHeight = -1;
+                surface.style.height = `${controller.drag.startHeight}px`;
+            }
+            try { handle.setPointerCapture(event.pointerId); } catch (error) {}
+        });
+        handle.addEventListener('pointermove', (event) => {
+            const controller = chatSettingsDrawerState(modal);
+            const drag = controller.drag;
+            if (!drag || drag.id !== event.pointerId || drag.kind !== kind) return;
+            const delta = event.clientY - drag.y;
+            if (!drag.moved && drag.startHeight === 0 && delta <= 0) return;
+            if (!drag.moved && (Math.abs(delta) < 4 || Math.abs(delta) <= Math.abs(event.clientX - drag.x))) return;
+            if (!drag.moved) {
+                drag.moved = true;
+                if (kind === 'general' && !state.settingsPanelOpen) {
+                    state.settingsPanelOpen = true;
+                    closeRoleplayPanelForMobile();
+                    syncChatSettingsControls(modal);
+                }
+                const visual = controller.surfaces[kind];
+                visual?.animation?.cancel();
+                if (visual) visual.animation = null;
+            }
+            drag.height = Math.max(0, Math.min(controller.maxHeight, drag.startHeight + delta));
+            const surface = chatSettingsSurfaceElement(modal, kind);
+            surface.hidden = false;
+            surface.style.height = `${drag.height}px`;
+            surface.dataset.chatSettingsDragging = '1';
+            event.preventDefault();
+        }, { passive: false });
+        const finish = (event, cancelled = false) => {
+            const controller = chatSettingsDrawerState(modal);
+            const drag = controller.drag;
+            if (!drag || drag.id !== event.pointerId || drag.kind !== kind) return;
+            controller.drag = null;
+            if (!drag.moved) {
+                if (cancelled) animateChatSettingsSurface(modal, kind);
+                return;
+            }
+            swipedPointer = { id: event.pointerId, at: Date.now() };
+            const surface = chatSettingsSurfaceElement(modal, kind);
+            delete surface.dataset.chatSettingsDragging;
+            const close = cancelled ? !drag.wasOpen : drag.height < Math.min(90, controller.maxHeight * 0.25);
+            if (close) collapseChatSettingsDrawer(modal);
+            else {
+                controller.preferredHeights[kind] = cancelled ? drag.startHeight
+                    : Math.max(Math.min(180, controller.maxHeight), drag.height);
+                if (controller.surfaces[kind]) controller.surfaces[kind].targetHeight = -1;
+                animateChatSettingsSurface(modal, kind);
+            }
+            event.preventDefault();
+        };
+        handle.addEventListener('pointerup', event => finish(event));
+        handle.addEventListener('pointercancel', event => finish(event, true));
+        handle.addEventListener('click', (event) => {
+            if (!swipedPointer || event.pointerId !== swipedPointer.id || Date.now() - swipedPointer.at >= 400) return;
+            swipedPointer = null;
+            event.preventDefault();
+            event.stopPropagation();
+        });
+    }
+
+    function syncMobileChatSettingsDrawer(modal) {
+        const drawer = modal?.querySelector?.('[data-describe-vlm-chat-mobile-settings]');
+        if (!drawer) return;
+        const compact = describeCompactChatSettings(modal);
+        const panel = modal.querySelector('.describe-vlm-chat-panel');
+        const body = drawer.querySelector('[data-describe-vlm-chat-mobile-settings-body]');
+        const controller = chatSettingsDrawerState(modal);
+        const changed = controller.compact !== compact;
+        if (compact && controller.compact === false) {
+            state.settingsPanelOpen = false;
+            const runtime = currentConversationRuntime();
+            if (state.roleplayPanelOpen) runtime.roleplayPanelSuspendedByLayout = true;
+            state.roleplayPanelOpen = false;
+            runtime.roleplayPanelOpen = false;
+        }
+        controller.compact = compact;
+        if (compact && !controller.placements) {
+            controller.placements = [
+                '.describe-vlm-chat-model-pill',
+                '.describe-vlm-chat-conversation-bar',
+                '.describe-vlm-chat-roleplay-strip',
+                '.describe-vlm-chat-controls'
+            ].map((selector) => {
+                const node = modal.querySelector(selector);
+                const anchor = document.createComment('mobile chat settings position');
+                node.before(anchor);
+                return { node, anchor };
+            });
+        }
+        if (panel.dataset.describeVlmMobileSettings !== (compact ? '1' : '0')) {
+            for (const { node, anchor } of controller.placements || []) {
+                if (compact) body.appendChild(node);
+                else anchor.after(node);
+            }
+            panel.dataset.describeVlmMobileSettings = compact ? '1' : '0';
+        }
+        syncChatSettingsSurface(modal, 'general', compact && state.settingsPanelOpen);
+        const backdrop = modal.querySelector('[data-describe-vlm-chat-settings-backdrop]');
+        if (backdrop) backdrop.hidden = !compact || !(state.settingsPanelOpen || state.roleplayPanelOpen);
+        const toggle = modal.querySelector('.describe-vlm-chat-head [data-describe-vlm-chat-settings-toggle]');
+        if (toggle) {
+            if (compact) toggle.setAttribute('aria-controls', drawer.id);
+            else toggle.removeAttribute('aria-controls');
+            const icon = toggle.querySelector('i');
+            if (icon) icon.className = compact
+                ? `fa-solid fa-chevron-${state.settingsPanelOpen || state.roleplayPanelOpen ? 'up' : 'down'}`
+                : 'fa-solid fa-sliders';
+        }
+        const roleplayClose = modal.querySelector('.describe-vlm-chat-roleplay-panel-head [data-describe-vlm-chat-roleplay-close]');
+        if (roleplayClose) {
+            const label = compact ? roleplayDictionaryText('Collapse roleplay settings') : t('Close', '关闭');
+            roleplayClose.title = label;
+            roleplayClose.setAttribute('aria-label', label);
+            const icon = roleplayClose.querySelector('i');
+            if (icon) icon.className = compact ? 'fa-solid fa-chevron-up' : 'fa-solid fa-xmark';
+        }
+        installChatSettingsDrawerDrag(modal, toggle, 'general');
+        installChatSettingsDrawerDrag(modal, drawer.querySelector('[data-describe-vlm-chat-mobile-settings-handle]'), 'general');
+        installChatSettingsDrawerDrag(modal, modal.querySelector('.describe-vlm-chat-roleplay-panel-head'), 'roleplay');
+        installChatSettingsDrawerDrag(modal, modal.querySelector('[data-describe-vlm-chat-roleplay-drawer-handle]'), 'roleplay');
+        return changed;
+    }
+
+    function syncMobileChatSettingsDrawerBounds(modal, panel) {
+        if (panel?.dataset.describeVlmMobileSettings !== '1') return;
+        const head = modal.querySelector('.describe-vlm-chat-head')?.getBoundingClientRect();
+        const compose = modal.querySelector('.describe-vlm-chat-compose')?.getBoundingClientRect();
+        if (!head || !compose) return;
+        const panelTop = panel.getBoundingClientRect().top;
+        const controller = chatSettingsDrawerState(modal);
+        controller.maxHeight = Math.max(0, compose.top - head.bottom - 6);
+        panel.style.setProperty('--describe-vlm-mobile-drawer-top', `${Math.max(0, head.bottom - panelTop)}px`);
+        panel.style.setProperty('--describe-vlm-mobile-drawer-height', `${controller.maxHeight}px`);
+        Object.keys(controller.surfaces).forEach(kind => {
+            if (controller.surfaces[kind].open) animateChatSettingsSurface(modal, kind);
+        });
+    }
+
     function closeRoleplayPanelForMobile(runtime = null) {
-        if (!describeCompactViewport()) return false;
+        if (!describeCompactChatSettings()) return false;
         const target = runtime || currentConversationRuntime();
         const wasOpen = !!(state.roleplayPanelOpen || target?.roleplayPanelOpen);
         if (target) {
             target.roleplayPanelOpen = false;
             if (wasOpen) {
-                delete target.roleplayReferenceDraft;
-                delete target.roleplayFormSnapshot;
+                target.roleplayPanelSuspendedByLayout = true;
             }
         }
         state.roleplayPanelOpen = false;
@@ -14503,6 +14799,7 @@
         modal.style.setProperty('--describe-vlm-keyboard-inset', `${metrics.inset}px`);
         modal.style.setProperty('--describe-vlm-visual-height', `${Math.round(metrics.height)}px`);
         modal.style.setProperty('--describe-vlm-visual-bottom', `${Math.round(metrics.bottom)}px`);
+        syncMobileChatSettingsDrawerBounds(modal, panel);
         if (metrics.open && document.activeElement && panel.contains(document.activeElement)) {
             if (describeKeyboardSyncFrame) window.cancelAnimationFrame(describeKeyboardSyncFrame);
             describeKeyboardSyncFrame = window.requestAnimationFrame(() => {
@@ -14577,7 +14874,7 @@
         const maxW = Math.max(1, window.innerWidth - margin - safeLeft);
         const maxH = Math.max(1, window.innerHeight - margin - safeTop);
         return {
-            minW: Math.min(420, maxW),
+            minW: Math.min(320, maxW),
             minH: Math.min(420, maxH),
             maxW,
             maxH
@@ -14588,7 +14885,7 @@
         const maxW = Math.max(1, window.innerWidth - margin * 2);
         const maxH = Math.max(1, window.innerHeight - margin * 2);
         return {
-            minW: Math.min(420, maxW),
+            minW: Math.min(320, maxW),
             minH: Math.min(420, maxH),
             maxW,
             maxH
@@ -14757,6 +15054,7 @@
 
     function syncFloatingPanelViewportMode(modal, panel) {
         if (!modal || !panel || isFloatingModalHidden(modal)) return;
+        syncMobileChatSettingsDrawer(modal);
         if (applyCompactFloatingPanelLayout(panel)) {
             syncDescribeKeyboardState(modal, panel);
             syncFloatingMaximizeControl(panel);
@@ -14792,6 +15090,17 @@
         window.visualViewport?.addEventListener?.('scroll', schedule);
         panel.addEventListener('focusin', schedule);
         panel.addEventListener('focusout', () => window.setTimeout(schedule, 0));
+        if (typeof ResizeObserver === 'function') {
+            const drawerBoundsObserver = new ResizeObserver(() => {
+                if (isFloatingModalHidden(modal)) return;
+                if (syncMobileChatSettingsDrawer(modal)) syncChatSettingsControls(modal);
+                if (panel.dataset.describeVlmMobileSettings === '1' && !isFloatingModalHidden(modal)) {
+                    syncMobileChatSettingsDrawerBounds(modal, panel);
+                }
+            });
+            [panel, panel.querySelector('.describe-vlm-chat-head'), panel.querySelector('.describe-vlm-chat-compose')]
+                .forEach((node) => { if (node) drawerBoundsObserver.observe(node); });
+        }
     }
 
     function installDescribeFloatingDrag(modal, panel) {
@@ -14951,6 +15260,7 @@
 
         const panel = modal.querySelector('.describe-vlm-chat-panel');
         if (panel) {
+            syncMobileChatSettingsDrawer(modal);
             panel.classList.add('sai-floating-card', 'modal-content', 'simpleai-resizable-popup');
             installDescribeFloatingDrag(modal, panel);
             installDescribeFloatingResize(modal, panel);
@@ -14969,6 +15279,7 @@
                 keepFloatingPanelInViewport(panel);
             }
             syncFloatingMaximizeControl(panel);
+            syncMobileChatSettingsDrawerBounds(modal, panel);
         }
         return modal;
     }
@@ -15008,6 +15319,11 @@
       <span class="describe-vlm-chat-settings-summary-runtime"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i><span data-describe-vlm-chat-runtime-summary-value>${escapeHtml(localText('Waiting for model status', '等待模型状态'))}</span></span>
     </div>
   </div>
+  <div class="describe-vlm-chat-settings-backdrop" data-describe-vlm-chat-settings-backdrop hidden aria-hidden="true"></div>
+  <section class="describe-vlm-chat-mobile-settings" id="describe_vlm_chat_mobile_settings" data-describe-vlm-chat-mobile-settings hidden aria-label="${escapeHtml(roleplayDictionaryText('Chat settings'))}">
+    <div class="describe-vlm-chat-mobile-settings-body" data-describe-vlm-chat-mobile-settings-body></div>
+    <button type="button" class="describe-vlm-chat-mobile-settings-handle" data-describe-vlm-chat-mobile-settings-handle title="${escapeHtml(roleplayDictionaryText('Collapse chat settings'))}" aria-label="${escapeHtml(roleplayDictionaryText('Collapse chat settings'))}"><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button>
+  </section>
   <div class="describe-vlm-chat-conversation-bar">
     <label class="describe-vlm-chat-sidebar-mode"><span>${escapeHtml(t('Mode', '模式'))}</span><select data-describe-vlm-chat-mode aria-label="${escapeHtml(t('Chat Mode', '对话模式'))}">
       <option value="chat" ${state.chatMode === 'chat' ? 'selected' : ''}>${escapeHtml(t('Free Chat', '自由对话'))}</option>
@@ -15075,6 +15391,7 @@
   </div>
   <section class="describe-vlm-chat-roleplay-panel" data-describe-vlm-chat-roleplay-panel hidden aria-label="${escapeHtml(localText('Roleplay settings', '角色扮演设置'))}">
     <div class="describe-vlm-chat-roleplay-panel-head">
+      <button type="button" class="describe-vlm-chat-settings-back" data-describe-vlm-chat-roleplay-settings-back title="${escapeHtml(roleplayDictionaryText('Back to chat settings'))}" aria-label="${escapeHtml(roleplayDictionaryText('Back to chat settings'))}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
       <strong>${escapeHtml(localText('Roleplay settings', '角色扮演设置'))}</strong>
       <div class="describe-vlm-chat-roleplay-panel-head-actions">
         <button type="button" data-roleplay-outline-open><i class="fa-solid fa-route" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Private outline'))}</span></button>
@@ -15294,6 +15611,7 @@
       <button type="button" data-describe-vlm-chat-roleplay-stop><i class="fa-solid fa-stop"></i><span>${escapeHtml(localText('Stop', '停止'))}</span></button>
       <button type="button" data-describe-vlm-chat-roleplay-save><i class="fa-solid fa-check"></i><span>${escapeHtml(localText('Apply', '应用'))}</span></button>
     </div>
+    <button type="button" class="describe-vlm-chat-mobile-settings-handle" data-describe-vlm-chat-roleplay-drawer-handle title="${escapeHtml(roleplayDictionaryText('Collapse roleplay settings'))}" aria-label="${escapeHtml(roleplayDictionaryText('Collapse roleplay settings'))}"><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button>
   </section>
   <div class="describe-vlm-chat-chat-area">
     <div class="describe-vlm-chat-guidance-summary" data-roleplay-guidance-summary hidden><span data-roleplay-guidance-current></span><button type="button" data-roleplay-guidance-open>${escapeHtml(localText('Edit guidance', '修改指引'))}</button></div>
@@ -27723,16 +28041,34 @@
         }
         if (evt.target.closest('[data-describe-vlm-chat-skill-indicator]')) {
             state.settingsPanelOpen = true;
-            if (describeCompactViewport()) closeRoleplayPanelForMobile();
+            if (describeCompactChatSettings(modal)) closeRoleplayPanelForMobile();
             syncChatSettingsControls(modal);
             refreshVlmSkillCatalog(false).catch(() => {});
             return;
         }
-        if (evt.target.closest('[data-describe-vlm-chat-settings-toggle]')) {
+        if (evt.target.closest('[data-describe-vlm-chat-settings-backdrop], [data-describe-vlm-chat-roleplay-drawer-handle]')) {
+            collapseChatSettingsDrawer(modal);
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-roleplay-settings-back]')) {
+            chatSettingsDrawerState(modal).navigation = 'back';
+            closeRoleplayPanelForMobile();
+            state.settingsPanelOpen = true;
+            syncChatSettingsControls(modal);
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-settings-toggle], [data-describe-vlm-chat-mobile-settings-handle]')) {
+            if (describeCompactChatSettings(modal) && state.roleplayPanelOpen) {
+                collapseChatSettingsDrawer(modal);
+                return;
+            }
             const nextOpen = !state.settingsPanelOpen;
             state.settingsPanelOpen = nextOpen;
             if (nextOpen) closeRoleplayPanelForMobile();
             syncChatSettingsControls(modal);
+            if (!nextOpen && evt.target.closest('[data-describe-vlm-chat-mobile-settings-handle]')) {
+                modal.querySelector('.describe-vlm-chat-head [data-describe-vlm-chat-settings-toggle]')?.focus({ preventScroll: true });
+            }
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-maximize]')) {
@@ -27775,13 +28111,19 @@
         if (evt.target.closest('[data-describe-vlm-chat-roleplay-open], [data-roleplay-guidance-open]')) {
             const openedAt = vlmChatPerformanceNow();
             const runtime = syncCurrentRuntimeFromState();
-            if (describeCompactViewport()) state.settingsPanelOpen = false;
-            delete runtime.roleplayFormSnapshot;
-            runtime.roleplayReferenceDraft = createRoleplayReferenceDraft(runtime.roleplaySession);
+            if (describeCompactChatSettings(modal)) {
+                state.settingsPanelOpen = false;
+                chatSettingsDrawerState(modal).navigation = 'forward';
+            }
+            if (!runtime.roleplayPanelSuspendedByLayout) {
+                delete runtime.roleplayFormSnapshot;
+                runtime.roleplayReferenceDraft = createRoleplayReferenceDraft(runtime.roleplaySession);
+            }
+            delete runtime.roleplayPanelSuspendedByLayout;
             runtime.roleplayPanelOpen = true;
             state.roleplayPanelOpen = true;
             runtime.persistenceDirty = true;
-            if (describeCompactViewport()) syncChatSettingsControls(modal);
+            if (describeCompactChatSettings(modal)) syncChatSettingsControls(modal);
             else syncRoleplayControls(modal);
             if (evt.target.closest('[data-roleplay-guidance-open]')) {
                 const settings = modal.querySelector('[data-roleplay-guidance-settings]');
@@ -27808,6 +28150,10 @@
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-roleplay-close]')) {
+            if (describeCompactChatSettings(modal)) {
+                collapseChatSettingsDrawer(modal);
+                return;
+            }
             const runtime = syncCurrentRuntimeFromState();
             delete runtime.roleplayReferenceDraft;
             delete runtime.roleplayFormSnapshot;
@@ -28093,7 +28439,8 @@
             runtime.roleplayPanelOpen = false;
             state.roleplayPanelOpen = false;
             scheduleConversationPersist(runtime, 'roleplay_settings_apply', 'soon');
-            syncRoleplayControls(modal);
+            if (describeCompactChatSettings(modal)) syncChatSettingsControls(modal);
+            else syncRoleplayControls(modal);
             markVlmChatPerformance('vlm_chat.roleplay.apply', runtime, {
                 duration_ms: Math.max(0, vlmChatPerformanceNow() - appliedAt)
             });
@@ -28769,7 +29116,7 @@
             if (state.chatMode === 'roleplay' && ['chat', 'raw'].includes(previousMode)) {
                 prepareRoleplayChatContinuation(runtime);
             }
-            if (state.chatMode === 'roleplay' && describeCompactViewport()) {
+            if (state.chatMode === 'roleplay' && describeCompactChatSettings()) {
                 state.settingsPanelOpen = false;
             }
             if (

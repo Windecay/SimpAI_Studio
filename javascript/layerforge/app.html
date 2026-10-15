@@ -218,14 +218,14 @@
     </div>
     <div id="editor-container"></div>
 
-    <script src="/file=javascript/layerforge/js/i18n.js?v=patch2"></script>
+    <script src="/gradio_api/file=javascript/layerforge/js/i18n.js?v=patch3"></script>
     <script type="module">
         import { createCanvasWidget } from '/file=javascript/layerforge/js/CanvasView.js?v=patch63';
         import { app } from '/file=javascript/layerforge/js/comfy_shim.js?v=patch26';
         import { createEmptyImage } from '/file=javascript/layerforge/js/utils/ImageUtils.js?v=patch26';
         import { saveImage } from '/file=javascript/layerforge/js/db.js?v=patch26';
         import { generateUUID, createCanvas } from '/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26';
-        import { AnnotationTool } from '/file=javascript/layerforge/js/AnnotationTool.js?v=patch2';
+        import { AnnotationTool } from '/gradio_api/file=javascript/layerforge/js/AnnotationTool.js?v=patch3';
 
         window.comfy_api_url = "http://127.0.0.1:8188";
         
@@ -1628,6 +1628,9 @@
                         return;
                     e.preventDefault();
                     e.stopPropagation();
+                    if (annotationTool.mode === 'shape' && annotationTool.shape === 'polygon') {
+                        annotationTool.finishPolygon();
+                    }
                 }, { passive: false });
                 overlay.addEventListener('dblclick', (e) => {
                     if (annotationTool.mode !== 'shape' || annotationTool.shape !== 'polygon')
