@@ -4,8 +4,43 @@ import pytest
 import torch
 from torch import nn
 
-from comfy.ldm.minimax.model import MiniMaxH3Model, PackedLayout, time_shift_sigma
+from comfy.ldm.minimax.model import MLP, MiniMaxH3Model, PackedLayout, time_shift_sigma
 from comfy.model_sampling import CONST
+from comfy.ops import manual_cast
+
+
+@pytest.mark.parametrize("tokens", [0, 7, 8, 9, 25])
+def test_mlp_fused_linear_preserves_chunk_output_and_size(tokens):
+    torch.manual_seed(42)
+    model = MLP(12, 20, operations=manual_cast)
+    model.load_state_dict({name: torch.randn_like(value) for name, value in model.state_dict().items()})
+    model.chunk_tokens = 8
+    x = torch.randn(tokens, 12)
+    seen = []
+    model.fc1.register_forward_pre_hook(lambda module, inputs: seen.append(inputs[0].shape[0]))
+    with torch.set_grad_enabled(False):
+        gate, up = nn.functional.linear(x, model.fc1.weight).chunk(2, dim=-1)
+        expected = nn.functional.linear(nn.functional.silu(gate) * up, model.fc2.weight)
+        actual = model(x)
+    torch.testing.assert_close(actual, expected)
+    assert actual.shape == x.shape
+    assert actual.dtype == x.dtype
+    assert max(seen) <= model.chunk_tokens
+    assert sum(seen) == tokens
+
+
+def test_mlp_fused_linear_preserves_gradient_path():
+    model = MLP(12, 20, operations=manual_cast)
+    model.load_state_dict({name: torch.randn_like(value) for name, value in model.state_dict().items()})
+    model.chunk_tokens = 8
+    x = torch.randn(25, 12, requires_grad=True)
+    seen = []
+    model.fc1.register_forward_pre_hook(lambda module, inputs: seen.append(inputs[0].shape[0]))
+    model(x).sum().backward()
+    assert seen == [25]
+    assert x.grad is not None
+    assert model.fc1.weight.grad is not None
+    assert model.fc2.weight.grad is not None
 
 
 def make_model(video_output, audio_output):

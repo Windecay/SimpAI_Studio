@@ -160,3 +160,58 @@
 - 修改前专项基线为 57 passed、27 subtests passed，另有一个既有 Forge 失败：`test_forge_launch_skips_cuda_only_installs_in_compatibility_mode` 仍期待 Kitchen `0.2.33`，生产文件已经声明 `0.2.37`。本次不修改该 Forge 测试或生产文件。
 - 最终专项验证为 135 passed、27 subtests passed，仍有上述 1 个既有 Forge 失败。覆盖 Simple API/平台/版本筛选、实际文件测速与缓存、环境隔离、三个入口、依赖缺包重新检查、慢网络阈值、真实子进程停滞/持续低速终止/换源与安装阶段保护，以及 llama.cpp/local base 回归。HTTP 测试仅使用自动关闭的本机临时服务器，子进程仅输出模拟下载进度，没有执行 pip 安装。
 - 修改的 Python 文件语法检查通过，已跟踪文件及两个新增文件的 Git whitespace 检查通过。未执行互联网镜像测速、真实依赖安装、Studio/Comfyd 启动或重启、GPU/浏览器验证、E 盘同步、暂存、提交或推送；保留其他任务的现有改动。
+
+## 2026-10-07 Studio 私有改动同步与上游合并
+
+- 以用户已提交的 `bb29d84e` 为基准，从 Studio `72a1d0cb` 同步私有依赖安装换源、`/simpai/workflows/validate` 预检查、`simpai_require_all_outputs` 严格提交及 VOSR2 目录映射。1195 个共享文件内容一致；不同的 CI、说明文档、旧 Stability 文件和 Studio 专属测试不作为后端修复复制。
+- 合并官方 `origin/master` 从 `3c169c2c` 到 `c9d8a6e6` 的 30 个提交，保留未提交 merge。本次只修改 ComfyUI2，不同步回 Studio、不安装依赖、不启动服务。
+- 解决 H3 MLP、Linear 算子、服务端、依赖声明和入口测试的五处冲突。H3 VAE 全文件与本次官方版本一致；此前的 MLP 4096-token 分批属于 Transformer 显存优化，保留分批行为并改用新的 Linear `input_act` 接口。将原有 tensor subclass 绕过 FP16 快速路径的判断保留在 `linear_input_act` 的调度入口。
+- Comfyd 私有入口同步工作流 WebSocket 元数据、队列空闲时立即恢复资源扫描、本地节点禁用配置及治理初始化顺序；继续默认关闭 Memory compiler，不改变 offload 参数契约。依赖路由仍由 Studio 的 `modules/package_index_router.py` 提供，不复制 Studio 模块目录到 ComfyUI 核心。
+
+### 新增行为与依赖
+
+- 更多模型采用统一 attention 容器和按模型配置的 attention 后端，新增 Kitchen SOL 配置；Linear 将激活、RMSNorm 和残差融合参数统一到层的调用接口。H3 VAE 空间融合算法未再次改动。
+- Qwen 3.5 文本生成调整低显存权重驻留顺序，逐 token 解码时可从主机 embedding 表读取所需行。实际速度、显存和 GPU 内核表现尚未验证。
+- 资源扫描使用较短的写事务，空闲时恢复扫描，支持跨磁盘上传；新增本地资产导出、视频元数据和统一 3D 输出。相机信息与相机角度节点、动态输入校验和懒执行调度同步上游。
+- 新增 `--disabled-nodes-config`，以及默认关闭的本地签名治理策略；策略文件从本地读取，没有新增联网检查。付费节点同步 ElevenLabs v4、Nano Banana 2.1 等上游变化。
+- 源码版本为 ComfyUI `0.39.0`，frontend 从 `1.53.10` 更新为 `1.55.14`，workflow templates 从 `0.11.76` 更新为 `0.11.77`，新增 `cryptography`。embedded docs `0.5.13`、Kitchen `0.2.37`、aimdo `0.5.5` 不变。当前嵌入式环境已安装 cryptography `46.0.5`，frontend/templates 尚为原版本，本次未安装任何包。
+
+### 验证与 Studio 同步前事项
+
+- 在 ComfyUI2 checkout 使用 Studio 嵌入式 Python 验证，CPU 测试进程关闭可选 Triton 导入，保留真实 Kitchen eager 运算。核心、H3/VAE、混合精度、compiler、预启动和工作流校验 170 项通过；治理、资源扫描、资产导出同步逻辑、临时数据库、相机、3D 和任务线程 366 项通过，共 536 项。GGUF 对照中的两个普通权重用例通过，累计 538 项。
+- **已复现不兼容**：以本仓库新 `comfy.ops` 加载 Studio 现有 `ComfyUI-GGUF`，Q8_0、Q4_K、Q6_K 三项 CPU 用例均报 `GGMLOps.Linear.forward_ggml_cast_weights() got an unexpected keyword argument 'input_act'`。错误在普通 Linear 调用就会发生；部署前必须适配该节点对新激活/残差参数的处理，不能只忽略参数。本次没有修改 Studio 节点包。
+- 六个治理子进程用例在嵌入式 Python 中报 `No module named 'app'` 或 `No module named 'helper'`，属于子解释器搜索路径隔离造成的测试失败，不能算通过；两个用例按自身条件跳过。环境缺少 pytest-asyncio、pytest-aiohttp、pytest-mock，67 个带 asyncio 标记的用例未执行，动态输入异步专项也未执行。
+- 私有安装路由、compiler 和 pip 环境处理的四个函数与 Studio AST 一致；实际加载共享路由模块成功，使用模拟安装调用验证不适用的 marker 被跳过、缺包交给路由模块，无联网或 pip 安装。新增 H3 测试比较分批与完整计算结果，并检查分批大小和梯度；新增工作流与线程测试覆盖严格输出、元数据和扫描恢复。
+- 以上测试不代表真实 GPU、长视频、浏览器、服务启动或完整工作流通过。Studio 内容和暂存区保持原样，本仓库结果仅暂存，不新增提交或推送。
+
+## 2026-10-15 上游追加同步与 Flux3-image
+
+- 在已有 `c9d8a6e6` 未提交合并和暂存内容上追加官方上游至 `20b46065`；保存原 index、暂存补丁和树快照，不更改 HEAD，不自动提交或同步 Studio。
+- 上游新增 Flux3-image 模型检测、文本编码、LoRA 映射和条件节点；同步 MiniMax-H3 LightVAE、LoRA stack、资源预览及资源库启动错误处理。源码版本为 ComfyUI `0.40.0`。
+- 处理 H3 MLP、LoRA、执行器和 requirements 四处冲突：保留 H3 4096-token 分批并使用当前 Linear wrapper；保留私有缓存清理和安静日志；关闭资源库时使用上游 NoAssets。
+- 私有入口同步预览目录、资源库启动错误分类、依赖检查和新版 aimdo 初始化；保留 compiler 默认关闭、CUDA graphs 随 compiler 禁用及现有私有启动流程。
+- 依赖声明更新为 frontend `1.55.17`、workflow templates `0.11.82`、embedded docs `0.5.14`、aimdo `0.5.6`；Kitchen 仍为 `0.2.37`，移除上游不再使用的 cryptography，保留私有依赖。本次不安装依赖、不下载模型、不启动服务或执行用户数据库迁移。
+
+### 验证与未验证范围
+
+- 本次追加 44 个上游提交。更新前比较 718 个共享 Python/requirements 文件，其中 67 处内容差异已检查分类；关键私有模型管理、路径和 `simpai_*.py` 辅助模块一致，Studio 的旧 attention/入口/服务代码不覆盖当前新接口。Studio index 及本次比较的差异文件哈希保持不变。
+- Flux3 检测、打包权重宽度、6 个小尺寸 CPU 前向组合、条件预处理复用、布局提示词、LoRA 配置，以及 H3 MLP、compiler、私有数据库提示、预启动和线程专项共 77 项通过。
+- 资源预览、数据库启动错误、独立临时数据库迁移、NoAssets 与 H3 VAE 专项共 29 项通过、5 项按平台条件跳过；两组合计 106 passed、5 skipped。194 个改动 Python 文件、1 份 JSON 和 requirements 语法检查通过。
+- 首次 CPU 测试收集时 Kitchen 的 CUDA 能力探测报 `Invalid device id`；随后仅在测试进程禁用 CUDA 探测及可选 Triton 导入，保留真实 Kitchen CPU 运算。未修改生产探测代码或已安装包，CPU 结果不能证明正常 GPU 启动或真实 Flux3 模型生成已通过。
+- 当前实际环境为 aimdo `0.5.5`、Kitchen `0.2.37`、frontend `1.53.10`、workflow templates `0.11.76`、embedded docs `0.5.13`；未安装新的依赖声明。pytest-asyncio、pytest-mock、pytest-aiohttp 仍缺失，没有执行依赖这些插件的专项。
+- 未执行 Studio 部署、GPU、浏览器、真实模型、长视频或完整工作流验证；用户数据库未迁移。结果仅暂存，不提交、不推送，原暂存内容及未提交合并继续保留。
+
+### Studio 开发端同步
+
+- 按暂存清单核对 202 项后端运行、迁移、测试和说明文件，将其中 201 项内容更新复制到 Studio 的 `comfy` 目录。排除源仓库的 CI、AGENTS 和 Git 配置，不复制模型、预置、用户目录或 custom_nodes。
+- Studio 根 requirements、启动器和更新器声明同步 frontend `1.55.17`、workflow templates `0.11.82`、embedded docs `0.5.14`、aimdo `0.5.6`；后端 requirements 同步源版本。保留 Studio 推理 Key 加密所需的 cryptography。
+- Kitchen 仍为 `0.2.37`，两份 requirements、Studio 启动器、更新器与 Forge 两个入口均已核对，不为 Forge 添加 Comfy 前端或 aimdo 依赖。compiler 默认关闭及 offload 参数契约不变。
+- 调整 Studio 的启动/依赖与资源库 AST 合同以匹配当前入口接口；不修改 Forge 预览界面。修改前基线为 86 passed、33 subtests passed，另有一个既有 Forge 合同失败；未因这次同步更改该 Forge 行为。
+- 此阶段仅同步代码和依赖声明，不安装依赖、不启动或重启 Studio/Comfyd，不执行用户数据库迁移，不提交或推送。
+
+### Studio 验证结果
+
+- 在 Studio checkout 执行启动、依赖、更新器、资源库和三个指定 Forge 合同，86 passed、33 subtests passed，另有 1 个修改前已存在的 Forge 合同失败；模型/私有入口专项 77 passed，资源预览/临时数据库/H3 VAE 专项 29 passed、5 skipped。合计 192 passed、33 subtests passed、5 skipped，不重复累计基线和单独诊断。
+- 既有失败为 `test_source_backend_streaming_progress_and_anima_defaults_contract`：测试期待 `elements.livePreview.style.display = "block"`，现有页面使用 `"flex"`。Forge 两个依赖入口、该合同文件和预览界面未修改，未把此失败计为通过。
+- 202 项后端文件与源内容逐一一致；198 个 Python 文件、1 份 JSON、1 份 TOML 及依赖声明校验通过。两仓库 HEAD 不变，源仓库继续保留未提交合并；本次文件按明确清单暂存。
+- 当前实际安装的 frontend/templates/docs/aimdo 仍为 `1.53.10` / `0.11.76` / `0.5.13` / `0.5.5`，Kitchen 为 `0.2.37`；新版本仅更新声明。测试使用 CPU 隔离，不代表真实 Flux3 权重、GPU、浏览器、长视频或完整工作流已通过。

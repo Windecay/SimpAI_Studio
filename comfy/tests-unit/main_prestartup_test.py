@@ -10,6 +10,7 @@ import time
 
 import folder_paths
 import pytest
+from app import governance
 
 
 def _load_execute_prestartup_script(entrypoint):
@@ -20,6 +21,7 @@ def _load_execute_prestartup_script(entrypoint):
     namespace = {
         "args": SimpleNamespace(disable_all_custom_nodes=False, whitelist_custom_nodes=[], enable_manager=False),
         "folder_paths": folder_paths,
+        "governance": governance,
         "importlib": importlib,
         "logging": logging,
         "os": os,
@@ -69,3 +71,15 @@ def test_execute_prestartup_script_keeps_all_timing_entries(monkeypatch, tmp_pat
     joined = "\n".join(messages)
     assert str(pack_one) in joined
     assert str(pack_two) in joined
+
+
+@pytest.mark.parametrize("entrypoint", ["main.py", "main_comfyd.py"])
+def test_policy_refusal_prevents_prestartup_execution(monkeypatch, tmp_path, entrypoint):
+    pack = _make_pack(tmp_path, "blocked_pack")
+    execute = _load_prestartup_script_for_paths(monkeypatch, [str(tmp_path)], entrypoint)
+    monkeypatch.setattr(governance, "pack_refusal", lambda path: "Blocked pack")
+    loaded = []
+    monkeypatch.setattr(governance, "pack_module_spec", lambda *args: loaded.append(args))
+    execute()
+    assert pack.is_dir()
+    assert loaded == []

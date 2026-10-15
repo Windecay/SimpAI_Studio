@@ -159,11 +159,11 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
         }
 
         for requirement in [
-            "comfyui-frontend-package==1.51.10",
-            "comfyui-workflow-templates==0.11.59",
-            "comfyui-embedded-docs==0.5.11",
-            "comfy-kitchen==0.2.33",
-            "comfy-aimdo==0.5.3",
+            "comfyui-frontend-package==1.55.17",
+            "comfyui-workflow-templates==0.11.82",
+            "comfyui-embedded-docs==0.5.14",
+            "comfy-kitchen==0.2.37",
+            "comfy-aimdo==0.5.6",
             "av>=17.0.0",
             "PyOpenGL>=3.1.8",
             "comfy-angle",
@@ -172,6 +172,12 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             self.assertIn(requirement, active_comfy_requirements)
 
         for stale_requirement in [
+            "comfyui-workflow-templates==0.11.65",
+            "comfyui-frontend-package==1.51.10",
+            "comfyui-workflow-templates==0.11.59",
+            "comfyui-embedded-docs==0.5.11",
+            "comfy-kitchen==0.2.33",
+            "comfy-aimdo==0.5.3",
             "comfyui-workflow-templates==0.11.55",
             "comfy-aimdo==0.5.2",
             "comfyui-frontend-package==1.51.9",
@@ -206,11 +212,11 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             self.assertNotIn(stale_requirement, active_comfy_requirements)
 
         for launcher_requirement in [
-            "('comfyui-frontend-package', '1.51.10', None)",
-            "('comfyui-workflow-templates', '0.11.59', None)",
-            "('comfyui-embedded-docs', '0.5.11', None)",
-            "('comfy-kitchen', '0.2.33', None)",
-            "('comfy-aimdo', '0.5.3', None)",
+            "('comfyui-frontend-package', '1.55.17', None)",
+            "('comfyui-workflow-templates', '0.11.82', None)",
+            "('comfyui-embedded-docs', '0.5.14', None)",
+            "('comfy-kitchen', '0.2.37', None)",
+            "('comfy-aimdo', '0.5.6', None)",
             "('av', '17.0.0', None)",
             "('PyOpenGL', None, '>=3.1.8')",
             "('comfy-angle', None, None)",
@@ -218,20 +224,31 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             self.assertIn(launcher_requirement, self.launch_content)
 
         for updater_requirement in [
-            '("comfyui-frontend-package", "1.51.10", None)',
-            '("comfyui-workflow-templates", "0.11.59", None)',
-            '("comfyui-embedded-docs", "0.5.11", None)',
-            '("comfy-kitchen", "0.2.33", None)',
-            '("comfy-aimdo", "0.5.3", None)',
+            '("comfyui-frontend-package", "1.55.17", None)',
+            '("comfyui-workflow-templates", "0.11.82", None)',
+            '("comfyui-embedded-docs", "0.5.14", None)',
+            '("comfy-kitchen", "0.2.37", None)',
+            '("comfy-aimdo", "0.5.6", None)',
             '("av", "17.0.0", None)',
             '("PyOpenGL", None, ">=3.1.8")',
             '("comfy-angle", None, None)',
         ]:
             self.assertIn(updater_requirement, self.simpleai_update_content)
 
+        for relative_path, declaration in [
+            ("forge_neo/webui/modules/launch_utils.py", '("comfy-kitchen", "0.2.37", None)'),
+            ("forge_neo/runtime_backend/source_runtime.py", '("comfy-kitchen", "0.2.37"),'),
+        ]:
+            with self.subTest(path=relative_path):
+                path = os.path.join(os.path.dirname(__file__), "..", relative_path)
+                with open(path, encoding="utf-8") as f:
+                    self.assertIn(declaration, f.read())
+
         self.assertIn("def _package_requirement_met", self.launch_content)
-        self.assertIn("packaging_specifiers.SpecifierSet(version_specifier)", self.launch_content)
-        self.assertIn('pip install -U "{install_spec}"', self.launch_content)
+        self.assertIn('importlib_metadata.distributions(name=package)', self.launch_content)
+        self.assertIn('packaging_specifiers.SpecifierSet(version_specifier or "")', self.launch_content)
+        self.assertIn('["install", "-U", install_spec]', self.launch_content)
+        self.assertIn("return install_with_routing(", self.launch_content)
         self.assertIn("version_specifier=update_pkg_specifier", self.launch_content)
         self.assertIn('OPTIONAL_ACCEL_REQUIREMENTS_FILE = os.environ.get("OPTIONAL_ACCEL_REQUIREMENTS_FILE", "requirements-optional-accel.txt")', self.launch_content)
         self.assertIn('success = install_package_with_retry("bitsandbytes", bnb_version)', self.launch_content)
@@ -241,7 +258,11 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
         self.assertIn("SIMPLEAI_BASE_WHEEL_SHA256", self.launch_content)
         self.assertIn("simpleai_base-0.3.53-cp313-cp313-win_amd64.whl", self.launch_content)
         self.assertIn("e181a55ff32a2f49115db1399762fee8d8f7ca2622f4ecfccf85097b182b15e9", self.launch_content)
-        self.assertIn('ver_required = "0.3.53"', self.launch_content)
+        self.assertIn('ver_required = "0.3.57"', self.launch_content)
+        self.assertIn('"resolve_sstoken"', self.launch_content)
+        self.assertIn('"revoke_sstoken"', self.launch_content)
+        self.assertIn('"get_local_mode_vars"', self.launch_content)
+        self.assertIn('"set_local_mode_vars"', self.launch_content)
         self.assertIn("def _remote_sha256_from_headers", self.launch_content)
         self.assertIn('requests.head(url, allow_redirects=True, timeout=(5, 20))', self.launch_content)
         build_launcher_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build_launcher.py"))
@@ -258,6 +279,42 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
         self.assertIn("has_update_whl, has_valid_base_wheel = _ensure_simpleai_base_wheel(base_url, base_path, base_file)", self.launch_content)
         self.assertIn("if has_valid_base_wheel:", self.launch_content)
         self.assertIn("安装包未通过完整性校验，已阻止安装", self.launch_content)
+
+    def test_launch_has_offline_hashes_for_all_identity_wheels(self):
+        tree = ast.parse(self.launch_content)
+        tree.body = [
+            node for node in tree.body
+            if (
+                isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id == "SIMPLEAI_BASE_WHEEL_SHA256" for target in node.targets)
+            ) or (
+                isinstance(node, ast.FunctionDef)
+                and node.name == "_expected_simpleai_base_wheel_sha256"
+            )
+        ]
+        namespace = {"_remote_sha256_from_headers": lambda url: None}
+        exec(compile(tree, "<identity-wheel-hashes>", "exec"), namespace)
+        hashes = namespace["SIMPLEAI_BASE_WHEEL_SHA256"]
+        expected_hash = namespace["_expected_simpleai_base_wheel_sha256"]
+        for version in ("0.3.54", "0.3.55", "0.3.56", "0.3.57"):
+            for abi in ("cp312", "cp313"):
+                for platform_tag in ("win_amd64", "macosx_11_0_arm64", "manylinux_2_17_x86_64.manylinux2014_x86_64"):
+                    filename = f"simpleai_base-{version}-{abi}-{abi}-{platform_tag}.whl"
+                    with self.subTest(filename=filename):
+                        self.assertIn(filename, hashes)
+                        self.assertEqual(len(hashes[filename]), 64)
+                        self.assertEqual(len(bytes.fromhex(hashes[filename])), 32)
+                        self.assertEqual(expected_hash("unavailable", filename), hashes[filename])
+        self.assertEqual(
+            hashes["simpleai_base-0.3.55-cp313-cp313-win_amd64.whl"],
+            "150d77ab5336f262c26583ab1627d46516fa47a97e451ae356551ad93858ad8a",
+        )
+        self.assertEqual(
+            hashes["simpleai_base-0.3.56-cp313-cp313-win_amd64.whl"],
+            "226a8b557edff00942e886da6214c7bf17d7b9b733542d2dde1bb028200e7610",
+        )
+        namespace["_remote_sha256_from_headers"] = lambda url: "A" * 64
+        self.assertEqual(expected_hash("available", filename), "A" * 64)
 
     def test_comfyd_direct_entry_installs_cuda13_onnxruntime_only_for_cu130(self):
         self.assertIn("def install_onnxruntime_gpu_cuda13_for_comfyd", self.comfyd_content)

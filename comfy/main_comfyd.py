@@ -579,10 +579,12 @@ import shutil
 import importlib.metadata
 import folder_paths
 import time
+from app import governance
 from app.logger import setup_logger
-from app.database.db import dependencies_available, init_db, lock_holder_db_path
+from app.database.db import dependencies_available, get_database_url, get_db_path, init_db, lock_holder_db_path, missing_dependencies
+from app.assets.event_log import error_kind
+from utils.install_util import get_missing_requirements_message
 from app.assets.lifecycle import cleanup_temp_filesystem
-from app.assets.manager import AssetManager, default_asset_manager
 import itertools
 import utils.extra_config
 import simpai_extra_paths
@@ -616,6 +618,9 @@ if __name__ == "__main__":
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         logging.warning("Windows defaults to single GPU mode due to an NVIDIA issue; use --cuda-device all to enable all GPUs. / Windows 因 NVIDIA 相关问题默认使用单 GPU；使用 --cuda-device all 可启用所有 GPU。")
 
+    if args.enable_asset_hashing and args.disable_assets:
+        logging.warning("--enable-asset-hashing is ignored while assets are disabled; use --enable-assets without --disable-assets. / 当前未启用资源库，--enable-asset-hashing 不生效；请使用 --enable-assets，并移除 --disable-assets。")
+
     if args.disable_api_nodes:
         logging.warning("--disable-api-nodes is deprecated and currently behaves like --offline. Use --offline or --disable-partner-nodes. / --disable-api-nodes 已弃用，当前等同于 --offline；请使用 --offline 或 --disable-partner-nodes。")
 
@@ -637,15 +642,7 @@ import comfy_aimdo.control
 
 if enables_dynamic_vram():
     simple_vram_headroom = None if args.reserve_vram is None else int(args.reserve_vram * 1024 ** 3)
-    try:
-        comfy_aimdo.control.init(simple_vram_headroom=simple_vram_headroom, nvml_pressure=not args.disable_nvml_pressure)
-    except TypeError:
-        # comfy-aimdo 0.4.10 protocol.
-        try:
-            comfy_aimdo.control.init(simple_vram_headroom=simple_vram_headroom)
-        except TypeError:
-            # comfy-aimdo 0.4.9 protocol.
-            comfy_aimdo.control.init()
+    comfy_aimdo.control.init(simple_vram_headroom=simple_vram_headroom, nvml_pressure=not args.disable_nvml_pressure)
 
 if os.name == "nt":
     os.environ['MIMALLOC_PURGE_DELAY'] = '0'
@@ -692,16 +689,6 @@ def handle_comfyui_manager_unavailable():
     msg += "\n"
     logging.warning(msg)
     args.enable_manager = False
-
-
-if args.enable_manager:
-    if importlib.util.find_spec("comfyui_manager"):
-        import comfyui_manager
-
-        if not comfyui_manager.__file__ or not comfyui_manager.__file__.endswith('__init__.py'):
-            handle_comfyui_manager_unavailable()
-    else:
-        handle_comfyui_manager_unavailable()
 
 
 def write_simpai_extra_model_paths_from_config(yaml_path):
@@ -751,6 +738,11 @@ def apply_custom_paths():
         logging.info(f"Setting input directory to: {input_dir}")
         folder_paths.set_input_directory(input_dir)
 
+    if args.previews_directory:
+        previews_dir = os.path.abspath(args.previews_directory)
+        logging.info(f"Setting previews directory / 预览目录: {previews_dir}")
+        folder_paths.set_previews_directory(previews_dir)
+
     if args.user_directory:
         user_dir = os.path.abspath(args.user_directory)
         logging.info(f"Setting user directory to: {user_dir}")
@@ -762,7 +754,7 @@ def execute_prestartup_script():
     def execute_script(script_path):
         module_name = os.path.splitext(script_path)[0]
         try:
-            spec = importlib.util.spec_from_file_location(module_name, script_path)
+            spec = governance.pack_module_spec(module_name, script_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             return True
@@ -784,6 +776,11 @@ def execute_prestartup_script():
                 if comfyui_manager.should_be_disabled(module_path):
                     continue
 
+            refusal = governance.pack_refusal(module_path)
+            if refusal is not None:
+                logging.warning(refusal)
+                continue
+
             script_path = os.path.join(module_path, "prestartup_script.py")
             if os.path.exists(script_path):
                 if args.disable_all_custom_nodes and possible_module not in args.whitelist_custom_nodes:
@@ -802,8 +799,18 @@ def execute_prestartup_script():
             logging.info("{:6.1f} seconds{}: {}".format(n[0], import_message, n[1]))
         logging.info("")
 
+governance.initialize()
 apply_custom_paths()
 init_mime_types()
+
+if args.enable_manager:
+    if importlib.util.find_spec("comfyui_manager"):
+        import comfyui_manager
+
+        if not comfyui_manager.__file__ or not comfyui_manager.__file__.endswith('__init__.py'):
+            handle_comfyui_manager_unavailable()
+    else:
+        handle_comfyui_manager_unavailable()
 
 if args.enable_manager:
     comfyui_manager.prestartup()
@@ -824,6 +831,7 @@ import comfy.utils
 
 import execution
 import server
+from app.assets.manager import AssetManager, default_asset_manager
 from protocol import BinaryEventTypes
 import nodes
 import comfy.model_management
@@ -927,6 +935,7 @@ def prompt_worker(q, server_instance, asset_manager):
                 execution_start_time = time.perf_counter()
                 prompt_id = item[1]
                 server_instance.last_prompt_id = prompt_id
+                server_instance.workflow_metadata = item[3].get("workflow_metadata", {})
 
                 sensitive = item[5]
                 extra_data = item[3].copy()
@@ -959,8 +968,12 @@ def prompt_worker(q, server_instance, asset_manager):
                                 status_str='success' if e.success else 'error',
                                 completed=e.success,
                                 messages=e.status_messages), process_item=remove_sensitive)
+                if q.get_tasks_remaining() == 0:
+                    asset_manager.resume_background_scan()
+                    background_scan_paused = False
                 if server_instance.client_id is not None:
                     server_instance.send_sync("executing", {"node": None, "prompt_id": prompt_id}, server_instance.client_id)
+                server_instance.workflow_metadata = {}
 
                 current_time = time.perf_counter()
                 execution_time = current_time - execution_start_time
@@ -1062,22 +1075,61 @@ def setup_database(asset_manager):
         init_db()
         asset_manager.startup()
     except Exception as e:
-        if "database is locked" in str(e) or "Could not acquire lock on database" in str(e):
-            logging.error(
-                "Database is locked. Another ComfyUI process is already using this database.\n"
-                "To resolve this, specify a separate database file for this instance:\n"
-                "  --database-url sqlite:///path/to/another.db"
-            )
-            sys.exit(1)
-        logging.error(
-            f"Failed to initialize database: {e}\n"
-            "The --enable-assets flag requires a working database connection.\n"
-            "To resolve this, try one of the following:\n"
-            "  1. Install the latest requirements: pip install -r requirements.txt\n"
-            "  2. Specify an alternative database URL: --database-url sqlite:///path/to/your.db\n"
-            "  3. Use an in-memory database: --database-url sqlite:///:memory:"
-        )
-        sys.exit(1)
+        failure, message = database_failure_message(e, get_database_url())
+        if failure != "unsupported_url":
+            logging.debug("Asset database startup failed", exc_info=True)
+        stop_startup(failure, message)
+
+
+WITHOUT_ASSETS = "Or start ComfyUI without the assets system: --disable-assets / 或使用 --disable-assets 关闭资源库后启动。"
+
+
+def stop_startup(kind, message):
+    logging.error(f"ASSETS_STARTUP_FAILED: {kind}\n{message}")
+    sys.exit(1)
+
+
+def database_failure_message(error, db_url):
+    if not (db_url.startswith("sqlite:///") or db_url == "sqlite://"):
+        return "unsupported_url", ("--database-url must start with sqlite:///, like sqlite:///path/to/comfyui.db, "
+                                   f"or be left out to use the default database.\n{WITHOUT_ASSETS}")
+    location = get_db_path() if db_url.startswith("sqlite:///") else db_url
+    kind = error_kind(error)
+    detail = getattr(error, "orig", None) or error
+    if "Could not acquire lock on database" in str(error):
+        failure = "in_use"
+        what = f"Another ComfyUI is already using this database: '{location}'."
+        fix = "Close the other ComfyUI and start this one again. / 请关闭占用数据库的 ComfyUI 后重试。"
+    elif kind in ("database_locked", "file_locked"):
+        failure = "locked"
+        what = f"The asset database '{location}' is locked by another program ({detail})."
+        fix = "Close any program that has it open, such as another ComfyUI or a database viewer, and start again. / 请关闭占用数据库的程序后重试。"
+    elif "Can't locate revision" in str(error):
+        failure = "newer_revision"
+        what = f"The asset database '{location}' was last used by a newer version of ComfyUI ({detail})."
+        fix = "Update ComfyUI, or move that file aside and start again to create a new database. / 请更新 ComfyUI，或备份并移走此数据库后重试。"
+    elif isinstance(error, (FileExistsError, NotADirectoryError)):
+        failure = "path_blocked"
+        what = f"A file is in the way of the folder for the asset database '{location}' ({detail})."
+        fix = "Move that file, or choose another folder. / 请移走阻挡目录创建的文件，或选择其他目录。"
+    elif kind in ("read_only", "unable_to_open") or isinstance(error, OSError):
+        failure = "not_writable"
+        what = f"ComfyUI can't create, open or write the asset database '{location}' ({detail})."
+        fix = ("Make sure its folder is a writable directory, the database path is a writable file (or doesn't exist yet), "
+               "and no other program has it open. / 请检查目录和数据库的写入权限，并关闭占用它的程序。")
+    elif kind == "database_corrupt":
+        failure = "corrupt"
+        what = f"The asset database '{location}' is corrupt ({detail})."
+        fix = "Back up and move that file aside, then start again to rebuild the asset catalog. / 请备份并移走损坏的数据库，再启动以重建资源库。"
+    else:
+        failure = "other"
+        what = f"Could not open or upgrade the asset database '{location}': {detail}"
+        fix = ("If the database is damaged, back it up and move it aside, then start again. "
+               "Run with --verbose DEBUG for the full error. / 请使用 --verbose DEBUG 查看完整错误；数据库损坏时请备份并移走后重试。")
+    lines = [what, fix]
+    if failure in ("in_use", "locked") and args.database_url is None:
+        lines.append("Or give this ComfyUI its own database: --database-url sqlite:///path/to/another.db / 可用 --database-url 指定独立数据库。")
+    return failure, "\n".join(lines + [WITHOUT_ASSETS])
 
 
 def warn_if_database_in_use():
@@ -1102,6 +1154,11 @@ def start_comfyui(asyncio_loop=None):
         temp_dir = os.path.join(os.path.abspath(args.temp_directory), "temp")
         logging.info(f"Setting temp directory to: {temp_dir}")
         folder_paths.set_temp_directory(temp_dir)
+
+    if not args.disable_assets and not dependencies_available():
+        missing = ", ".join(missing_dependencies()) or "run with --verbose DEBUG / 请使用 --verbose DEBUG 查看导入错误"
+        stop_startup("missing_packages", f"The assets system needs packages that could not be imported / 资源库依赖无法导入: {missing}.\n"
+                                         f"{get_missing_requirements_message()}\n{WITHOUT_ASSETS}")
     asset_manager: AssetManager = default_asset_manager()
     feature_flags.SERVER_FEATURE_FLAGS["assets"] = asset_manager.enabled
     if not asset_manager.enabled:
@@ -1127,6 +1184,8 @@ def start_comfyui(asyncio_loop=None):
         init_custom_nodes=(not args.disable_all_custom_nodes) or len(args.whitelist_custom_nodes) > 0,
         init_api_nodes=not args.disable_partner_nodes
     ))
+    disabled_nodes = governance.load_disabled_nodes(args.disabled_nodes_config) if args.disabled_nodes_config else set()
+    governance.apply_disabled_nodes(disabled_nodes)
 
     # Re-apply Comfy's cuDNN benchmark policy after custom-node imports. Benchmark
     # mode can request near-card-sized autotune workspaces, and some custom nodes set it at import time.
