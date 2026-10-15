@@ -76,10 +76,16 @@ def signature(value=None):
     return hashlib.sha256(encoded).hexdigest()[:24]
 
 
-def prompt(value=None):
+def prompt(value=None, turn_intent=""):
     guidance = normalize_guidance(value)
     if not guidance["enabled"]:
         return ""
+    message_instruction = (
+        "The message must contain only one story-control direction for the next turn, not a line "
+        "or action spoken by the player. Preserve the player's scene presence. "
+        if turn_intent == "story_control" else
+        "The message must contain only the next direct question or attempted action. "
+    )
     return (
         "DIRECTED AUTOPLAY: the following is the operator's persistent guidance, not dialogue, "
         "player knowledge, a completed action, or permission to control other characters. "
@@ -92,8 +98,8 @@ def prompt(value=None):
         "Respect proxy_policy and pause for unclear or important choices; never claim they already happened. "
         "Return JSON ONLY with exactly these fields: "
         '{"message":"one next user input","needs_confirmation":false,"reason":""}. '
-        "The message must contain only the next direct question or attempted action. "
-        "Put contextual explanations and your rationale only in reason, not in message. "
+        + message_instruction
+        + "Put contextual explanations and your rationale only in reason, not in message. "
         "Do not prepend a since/because justification to the message to rationalize changing the goal. "
         "Set needs_confirmation=true for a major commitment, transaction, secret disclosure, "
         "irreversible choice or any action whose permission is unclear. "
@@ -119,6 +125,12 @@ def apply_to_task(task, value=None, references=None):
             "it is not an established story fact or part of the user's input."
         ),
     })
+    if result.get("task") == "compose_story_control":
+        result["message_contract"] = (
+            "Write only one unsent story-control direction for the NPC scene. Do not write player dialogue, "
+            "thoughts or actions, decide character reactions, or claim the proposed event already happened. "
+            "Preserve the player's current presence. Put rationale only in reason; it is not an established fact."
+        )
     if references:
         result["recent_author_visible_answers"] = references
         result["reference_rule"] = (

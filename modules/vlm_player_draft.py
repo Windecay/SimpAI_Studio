@@ -62,7 +62,7 @@ def request_data(payload, lang="cn", n_ctx=8192):
     session = vlm_roleplay.normalize_roleplay_session(raw_session)
     player = session["story_state"]["player_state"]
     present = player.get("status") != "absent"
-    intent = "story_control" if not present or payload.get("roleplay_turn_intent") == "story_control" else "character"
+    intent = vlm_roleplay.normalize_roleplay_turn_intent(payload.get("roleplay_turn_intent"), player)
     history = payload.get("history_full") or payload.get("history") or []
     context = vlm_roleplay.build_roleplay_context(
         session, history, instruction, audience="player_proxy", n_ctx=n_ctx,

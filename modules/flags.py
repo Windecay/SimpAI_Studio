@@ -193,6 +193,24 @@ def get_value_by_scene_theme(state, theme, key, default):
         return value.get(theme, next(iter(value.values()), default))
     return value
 
+
+def get_scene_slider_props(state, theme, key):
+    if key == "video_duration":
+        defaults = (0.1, 60.0, 0.1)
+    elif key in ("var_number3", "var_number4", "var_number5", "var_number6"):
+        defaults = (0.0, 1.0, 0.05)
+    elif key in ("var_number", "var_number2", "var_number7", "var_number8", "var_number9", "var_number10"):
+        defaults = (0, 10, 1)
+    else:
+        return {}
+    return {
+        prop: get_value_by_scene_theme(state, theme, f"{key}_{suffix}", default)
+        for prop, suffix, default in zip(
+            ("minimum", "maximum", "step"), ("min", "max", "step"), defaults
+        )
+    }
+
+
 scene_ui_all = ['theme', 'additional_promt', 'additional_promt_2', 'aspect_ratio', 'image_number', 'input_image1', 'canvas_image', 'var_number']
 
 

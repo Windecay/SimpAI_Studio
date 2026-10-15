@@ -726,13 +726,13 @@ def switch_scene_theme(state, image_number, canvas_image, input_image1, addition
     var_number_min = scenes.get('var_number_min', 0)
     var_number_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number', 0)
     var_number = var_number_default if switch_flag else var_number
-    results.append(get_scene_safe_update('scene_var_number', var_number, visible, inter, label=var_number_title, minimum=var_number_min, maximum=var_number_max))
+    results.append(get_scene_safe_update('scene_var_number', var_number, visible, inter, label=var_number_title, minimum=var_number_min, maximum=var_number_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number_step', 1)))
 
     var_number2_title = scene_localized_text(state, scenes, 'var_number2_title', 'Int Value 2')
     var_number2_min = scenes.get('var_number2_min', 0)
     var_number2_max = scenes.get('var_number2_max', 10)
     var_number2_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number2', 1)
-    results.append(get_scene_safe_update('scene_var_number2', var_number2_default if switch_flag else var_number2, visible, inter, label=var_number2_title, minimum=var_number2_min, maximum=var_number2_max))
+    results.append(get_scene_safe_update('scene_var_number2', var_number2_default if switch_flag else var_number2, visible, inter, label=var_number2_title, minimum=var_number2_min, maximum=var_number2_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number2_step', 1)))
 
     var_number3_title = scene_localized_text(state, scenes, 'var_number3_title', 'Float Value 1')
     var_number3_min = scenes.get('var_number3_min', 0.0)
@@ -762,13 +762,13 @@ def switch_scene_theme(state, image_number, canvas_image, input_image1, addition
     var_number7_min = scenes.get('var_number7_min', 0)
     var_number7_max = scenes.get('var_number7_max', 10)
     var_number7_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number7', 0)
-    results.append(get_scene_safe_update('scene_var_number7', var_number7_default if switch_flag else var_number7, visible, inter, label=var_number7_title, minimum=var_number7_min, maximum=var_number7_max))
+    results.append(get_scene_safe_update('scene_var_number7', var_number7_default if switch_flag else var_number7, visible, inter, label=var_number7_title, minimum=var_number7_min, maximum=var_number7_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number7_step', 1)))
 
     var_number8_title = scene_localized_text(state, scenes, 'var_number8_title', 'Int Value 4')
     var_number8_min = scenes.get('var_number8_min', 0)
     var_number8_max = scenes.get('var_number8_max', 10)
     var_number8_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number8', 0)
-    results.append(get_scene_safe_update('scene_var_number8', var_number8_default if switch_flag else var_number8, visible, inter, label=var_number8_title, minimum=var_number8_min, maximum=var_number8_max))
+    results.append(get_scene_safe_update('scene_var_number8', var_number8_default if switch_flag else var_number8, visible, inter, label=var_number8_title, minimum=var_number8_min, maximum=var_number8_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number8_step', 1)))
 
     var_number9_title = scene_localized_text(state, scenes, 'var_number9_title', 'Int Value 5', theme=theme)
     var_number9_min = scenes.get('var_number9_min', 0)
@@ -780,7 +780,7 @@ def switch_scene_theme(state, image_number, canvas_image, input_image1, addition
     var_number10_min = scenes.get('var_number10_min', 0)
     var_number10_max = scenes.get('var_number10_max', 10)
     var_number10_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number10', 0)
-    results.append(get_scene_safe_update('scene_var_number10', var_number10_default if switch_flag else var_number10, visible, inter, sync_visibility=True, label=var_number10_title, minimum=var_number10_min, maximum=var_number10_max))
+    results.append(get_scene_safe_update('scene_var_number10', var_number10_default if switch_flag else var_number10, visible, inter, sync_visibility=True, label=var_number10_title, minimum=var_number10_min, maximum=var_number10_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number10_step', 1)))
 
     scene_steps_title = scene_localized_text(state, scenes, 'scene_steps_title', 'Scene Steps')
     scene_steps_min = _scene_generation_step_bound(state, theme, "min", scenes.get('scene_steps_min', 1))
@@ -1268,6 +1268,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             label=var_number_title,
             minimum=var_number_min,
             maximum=var_number_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number_step', 1),
         ))
 
         var_number2_title = scene_localized_text(state_params, scenes, 'var_number2_title', 'Int Value 2')
@@ -1281,6 +1282,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             label=var_number2_title,
             minimum=var_number2_min,
             maximum=var_number2_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number2_step', 1),
         ))
 
         var_number3_title = scene_localized_text(state_params, scenes, 'var_number3_title', 'Float Value 1')
@@ -1350,6 +1352,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             label=var_number7_title,
             minimum=var_number7_min,
             maximum=var_number7_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number7_step', 1),
         ))
 
         var_number8_title = scene_localized_text(state_params, scenes, 'var_number8_title', 'Int Value 4')
@@ -1363,6 +1366,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             label=var_number8_title,
             minimum=var_number8_min,
             maximum=var_number8_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number8_step', 1),
         ))
 
         var_number9_title = scene_localized_text(state_params, scenes, 'var_number9_title', 'Int Value 5', theme=theme_default)
@@ -1392,6 +1396,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             sync_visibility=True,
             minimum=var_number10_min,
             maximum=var_number10_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number10_step', 1),
         ))
 
         scene_steps_title = scene_localized_text(state_params, scenes, 'scene_steps_title', 'Scene Steps')

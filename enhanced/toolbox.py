@@ -982,6 +982,7 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
     scene_frontend = engine.get("scene_frontend")
     if isinstance(scene_frontend, dict):
         scene_frontend = copy.deepcopy(scene_frontend)
+        state_params["__scene_theme_revision"] = int(state_params.get("__scene_theme_revision", 0) or 0) + 1
         theme = ui_values.get("scene_theme")
         themes = scene_frontend.get("theme", [])
         if not isinstance(themes, list):

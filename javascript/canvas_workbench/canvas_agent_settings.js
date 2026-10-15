@@ -523,8 +523,10 @@
                 setCanvasAgentSettingsPatch({
                     customProvider: value,
                     customApiName: value === 'custom' ? (current.customApiName || provider.label) : provider.label,
-                    customBaseUrl: value === 'custom' ? (current.customBaseUrl || provider.baseUrl || '') : (provider.baseUrl || ''),
-                    customApiFormat: provider.format || 'openai_compatible',
+                    customBaseUrl: provider.baseUrl || current.customBaseUrl || '',
+                    customApiFormat: provider.baseUrl
+                        ? (provider.format || 'openai_compatible')
+                        : (current.customApiFormat || provider.format || 'openai_compatible'),
                     customSupportsImages: provider.supportsImages !== false,
                     customApiCollapsed: false
                 });

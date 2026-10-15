@@ -27418,7 +27418,7 @@
     async function requestRoleplayPlayerProxy(runtime) {
         const target = runtime || currentConversationRuntime();
         const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        const playerAbsent = session.story_state.player_state?.status === 'absent';
+        const turnIntent = effectiveRoleplayTurnIntent(target.roleplayTurnIntent, session);
         const guidance = normalizeRoleplayGuidance(session.autoplay_config?.guidance);
         const guidanceKey = roleplayGuidanceKey(target);
         const contextKey = roleplayGuidanceReviewKey(target);
@@ -27438,9 +27438,10 @@
         const response = await postJson('/describe-image/vlm-chat-run', {
             request_kind: 'roleplay_player_proxy',
             roleplay_request_kind: 'player_proxy',
+            roleplay_turn_intent: turnIntent,
             roleplay_autoplay: true,
             roleplay_guidance_revision: guidance.revision,
-            message: playerAbsent
+            message: turnIntent === 'story_control'
                 ? localText(
                     'Continue the story with one concise plot-control instruction. Do not write player dialogue.',
                     '基于当前剧情，生成一句简短的剧情控制指令，不要写成玩家台词。'
@@ -27594,6 +27595,7 @@
         const response = await postJson('/describe-image/vlm-chat-run', {
             request_kind: 'roleplay_speaker_plan',
             roleplay_request_kind: 'speaker_plan',
+            roleplay_turn_intent: effectiveRoleplayTurnIntent(options.roleplayTurnIntent || target.roleplayTurnIntent, session),
             roleplay_autoplay: true,
             roleplay_speaker_mode: mode,
             roleplay_speaker_id: currentId,
@@ -27744,6 +27746,7 @@
                 break;
             }
             const turnGuidanceKey = roleplayGuidanceKey(target);
+            const turnIntent = effectiveRoleplayTurnIntent(target.roleplayTurnIntent, target.roleplaySession);
             const proxyText = await requestRoleplayPlayerProxy(target);
             if (target.roleplayAutoplayRunId !== runId) return false;
             const afterProxy = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
@@ -27752,6 +27755,7 @@
             const speakerMode = normalizeRoleplaySpeakerMode(target.roleplaySession?.autoplay_config?.speaker_mode);
             const speakerIds = await requestRoleplaySpeakerPlan(target, {
                 speakerMode,
+                roleplayTurnIntent: turnIntent,
                 currentSpeakerId: roleplayReplySpeakerIdForRuntime(target, target.roleplaySession)
             });
             const afterPlan = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
@@ -27782,6 +27786,7 @@
                 response = await sendMessage({
                     messageOverride: proxyText,
                     roleplayRequestKind: 'character',
+                    roleplayTurnIntent: turnIntent,
                     roleplayAutoplay: true,
                     roleplaySpeakerMode: speakerMode,
                     roleplaySpeakerId: speakerId,
@@ -29717,8 +29722,10 @@
             renderMessages();
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-roleplay-turn-intent]')) {
+            const turnIntent = normalizeRoleplayTurnIntentSetting(evt.target.value);
             const runtime = syncCurrentRuntimeFromState();
-            runtime.roleplayTurnIntent = normalizeRoleplayTurnIntentSetting(evt.target.value);
+            pauseRoleplayForUserInput(runtime);
+            runtime.roleplayTurnIntent = turnIntent;
             runtime.persistenceDirty = true;
             state.roleplayTurnIntent = runtime.roleplayTurnIntent;
             saveConversationSnapshot(runtime);

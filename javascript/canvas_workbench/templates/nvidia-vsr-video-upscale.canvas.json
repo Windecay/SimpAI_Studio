@@ -365,7 +365,8 @@
             "visible": true,
             "interactive": true,
             "min": 1,
-            "max": 4
+            "max": 4,
+            "step": 1
           },
           {
             "key": "scene_var_number2",

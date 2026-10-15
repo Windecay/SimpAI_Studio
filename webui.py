@@ -181,6 +181,11 @@ MAIN_VLM_CUSTOM_PROVIDERS = [
     {"key": "tencent", "label": "腾讯云", "base_url": "https://api.hunyuan.cloud.tencent.com/v1", "format": "openai_compatible", "supports_images": True},
     {"key": "ppio", "label": "PPIO", "base_url": "https://api.ppinfra.com/v3/openai", "format": "openai_compatible", "supports_images": True},
     {"key": "ollama_cloud", "label": "Ollama Cloud", "base_url": "https://ollama.com/v1", "format": "openai_compatible", "supports_images": True},
+    {"key": "strata", "label": "Strata", "base_url": "", "format": "openai_compatible", "supports_images": True},
+    {"key": "llamacpp", "label": "llama.cpp", "base_url": "", "format": "openai_compatible", "supports_images": True},
+    {"key": "lmstudio", "label": "LM Studio", "base_url": "", "format": "openai_compatible", "supports_images": True},
+    {"key": "vllm", "label": "vLLM", "base_url": "", "format": "openai_compatible", "supports_images": True},
+    {"key": "sglang", "label": "SGLang", "base_url": "", "format": "openai_compatible", "supports_images": True},
     {"key": "custom", "label": "Custom OpenAI API", "label_cn": "自定义 OpenAI API", "base_url": "", "format": "openai_compatible", "supports_images": True},
 ]
 MAIN_VLM_CUSTOM_API_FORMAT_CHOICES = [
@@ -431,6 +436,7 @@ def _apply_main_vlm_custom_settings(settings):
     settings = settings or {}
     VLM.set_custom_config(
         api_name=settings.get("api_name", "Custom"),
+        provider=settings.get("provider", "custom"),
         base_url=settings.get("base_url", ""),
         model=settings.get("model", ""),
         api_key=settings.get("api_key", ""),
@@ -9530,11 +9536,11 @@ with shared.gradio_root:
                             _main_vlm_custom_message_html(text, "missing"),
                         )
                     provider_data = _main_vlm_provider_by_key(provider)
-                    selected_api_format = api_format if provider_data["key"] == "custom" else provider_data.get("format")
+                    selected_api_format = api_format if not provider_data.get("base_url") else provider_data.get("format")
                     settings = _main_vlm_settings_from_inputs(api_name, provider, selected_api_format, base_url, model, api_key, supports_images)
                     if provider_data["key"] != "custom":
                         settings["api_name"] = _main_vlm_provider_label(provider_data, state)
-                        settings["base_url"] = provider_data.get("base_url") or ""
+                        settings["base_url"] = provider_data.get("base_url") or settings["base_url"]
                         settings["supports_images"] = provider_data.get("supports_images", True) is not False
                     _apply_main_vlm_custom_settings(settings)
                     version = _vlm_resolve_version(version)

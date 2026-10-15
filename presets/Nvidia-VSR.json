@@ -72,6 +72,7 @@
             },
             "var_number_min": 1,
             "var_number_max": 4,
+            "var_number_step": 1,
             "var_number2_title": "Save quality (lower = better, larger file size)",
             "var_number2": {
                 "Nvidia-VSR Super Resolution": 19

@@ -2074,6 +2074,7 @@ def _describe_chat_system_prompt(options, lang):
             options.get("roleplay_session") or {}, options.get("history") or [], lang,
             options.get("message") or "", options.get("roleplay_context") or {},
             options.get("roleplay_n_ctx"),
+            turn_intent=options.get("roleplay_turn_intent") or "",
         )
 
     sections = [
@@ -2140,13 +2141,14 @@ def _describe_chat_system_prompt(options, lang):
                     options.get("message") or "",
                     options.get("roleplay_context") or {},
                     options.get("roleplay_n_ctx"),
+                    turn_intent=options.get("roleplay_turn_intent") or "",
                 )
             )
             sections.append(
                 "Autoplay player-proxy turn: return one unsent proposal in the directed-autoplay JSON format. "
                 "Do not update story state."
                 if roleplay_session.get("autoplay_config", {}).get("guidance", {}).get("enabled") else
-                "Autoplay player-proxy turn: return only one plausible message from the player persona. "
+                "Autoplay player-proxy turn: return only one next user input in the selected input mode. "
                 "Do not write the character's reply, do not update story state, and do not mention this proxy instruction."
             )
         elif roleplay_request_kind in {"speaker_plan", "roleplay_speaker_plan", "autoplay_speaker_plan"}:
@@ -2157,6 +2159,7 @@ def _describe_chat_system_prompt(options, lang):
                     options.get("roleplay_speaker_id") or "",
                     options.get("roleplay_last_speaker_id") or "",
                     lang,
+                    turn_intent=options.get("roleplay_turn_intent") or "",
                 )
             )
         else:
@@ -2800,12 +2803,13 @@ def build_runtime_payload(payload):
     if player_proxy_request and isinstance(selected_roleplay_history, list):
         proxy_session = prompt_options["roleplay_session"]
         player_absent = proxy_session["story_state"]["player_state"]["status"] == "absent"
+        story_control = prompt_options["roleplay_turn_intent"] == "story_control"
         proxy_task = None
         visible_answers = [
             item for item in selected_roleplay_history if item.get("role") == "assistant"
         ]
-        if player_absent:
-            # The controller can reference visible NPC prose; it is not offstage player knowledge.
+        if story_control:
+            # Author-visible prose is separate from the player's approved knowledge in either presence state.
             source_history = payload.get("history_full") or payload.get("history") or []
             author_history = [
                 item for item in source_history if isinstance(item, dict) and not item.get("pending")
@@ -2823,7 +2827,7 @@ def build_runtime_payload(payload):
             ]
             scene = proxy_session["story_state"]["scene"]
             proxy_task = {
-                "task": "compose_story_control", "player_present": False,
+                "task": "compose_story_control", "input_type": "story_control", "player_present": not player_absent,
                 "guidance": message,
                 "scene": {key: scene.get(key) for key in ("location", "current_event")},
                 "present_characters": [
@@ -2840,11 +2844,11 @@ def build_runtime_payload(payload):
                 for item in selected_roleplay_history
             ]
             if guidance["enabled"]:
-                proxy_task = {"task": "compose_player_turn", "player_present": True, "guidance": message}
+                proxy_task = {"task": "compose_player_turn", "input_type": "character", "player_present": True, "guidance": message}
         if proxy_task is not None:
             references = [
                 {"speaker_side": "other_character", "text": item["content"],
-                 "author_reference": player_absent, "not_player_knowledge": player_absent}
+                 "author_reference": story_control, "not_player_knowledge": story_control}
                 for item in visible_answers[-3:]
                 if isinstance(item.get("content"), str) and len(item["content"]) <= 800
             ]
@@ -7683,8 +7687,12 @@ def _run_creative_result_review(payload, stream_callback=None):
 def _review_roleplay_player_proxy(result, runtime, payload, context, stream_callback=None):
     session = vlm_roleplay.normalize_roleplay_session(runtime["params"].get("roleplay_session"))
     guidance = session["autoplay_config"]["guidance"]
+    turn_intent = vlm_roleplay.normalize_roleplay_turn_intent(
+        runtime["params"].get("roleplay_turn_intent") or payload.get("roleplay_turn_intent"),
+        session["story_state"]["player_state"],
+    )
     history = context.get("history", {}).get("messages") or []
-    if session["story_state"]["player_state"]["status"] == "absent":
+    if turn_intent == "story_control":
         history = [
             item for item in payload.get("history_full") or payload.get("history") or []
             if isinstance(item, dict) and item.get("role") == "user"
@@ -7739,10 +7747,10 @@ def _review_roleplay_player_proxy(result, runtime, payload, context, stream_call
             "prompt": runtime["params"]["prompt"] + "\n\n" + (
                 "The previous UNSENT candidate was rejected for repeating a recent player input. "
                 "It is not an established story event. React to the latest approved answer, "
-                "and propose a different next attempt toward the player's goals. Do not re-ask answered "
+                "and propose a different next input in the original input mode. Do not re-ask answered "
                 "questions or claim NPC reactions. Do not escalate injury or danger just to avoid repetition.\n"
                 "Rejected candidate: " + json.dumps(text[:800], ensure_ascii=False)
-            ),
+            ) + "\nKeep input_type=" + turn_intent + ". Preserve the player's current scene presence.",
         }
         result = _run_vlm_with_agent_router(
             retry, payload, vlm_agent_router.ROLE_PLAYER_PROXY, session, stream_callback=stream_callback,

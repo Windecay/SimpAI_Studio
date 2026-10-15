@@ -27,6 +27,7 @@ from enhanced.vlm import VLM, vlm
 from enhanced.llamacpp_vlm import llamacpp_vlm
 from modules.access_mode import user_can_download_models
 from modules.custom_llm_api import (
+    apply_sampling_settings,
     apply_thinking_settings,
     api_format_supported,
     custom_llm_url,
@@ -857,6 +858,10 @@ def canvas_custom_llm_run(
         return {"ok": False, "error": "Custom API settings are incomplete.", "details": "API Base URL and Model are required."}
 
     def prepare_custom_request(request):
+        request = apply_sampling_settings(
+            request, params, base_url=base_url, api_format=api_format,
+            provider=params.get("custom_provider") or "", api_key=api_key,
+        )
         return apply_thinking_settings(
             request, enable_thinking, base_url=base_url, api_format=api_format,
             provider=params.get("custom_provider") or "",
@@ -978,11 +983,17 @@ def canvas_custom_llm_run(
     if int(params.get("seed", -1)) >= 0:
         request_payload["seed"] = int(params.get("seed"))
     logger.info(
-        "Custom VLM request: model=%s, provider=%s, api_format=%s, stream=%s, thinking_requested=%s, thinking_parameters=%s, request_id=%s, messages_sha256=%s",
+        "Custom VLM request: model=%s, provider=%s, api_format=%s, stream=%s, thinking_requested=%s, thinking_parameters=%s, sampling_parameters=%s, request_id=%s, messages_sha256=%s",
         model, params.get("custom_provider") or "custom", api_format, stream_enabled, enable_thinking,
         {
             key: request_payload[key]
             for key in ("reasoning", "reasoning_effort", "enable_thinking", "thinking", "chat_template_kwargs")
+            if key in request_payload
+        },
+        {
+            key: request_payload[key]
+            for key in ("temperature", "top_p", "top_k", "repetition_penalty", "repeat_penalty",
+                        "penalty_last_n", "repeat_last_n", "presence_penalty", "frequency_penalty")
             if key in request_payload
         },
         request_id,

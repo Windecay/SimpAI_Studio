@@ -707,8 +707,10 @@
             if (key === 'custom_provider') {
                 const provider = getVlmCustomProvider(value);
                 paramsPatch.custom_api_name = value === 'custom' ? (nextParams.custom_api_name || provider.label) : provider.label;
-                paramsPatch.custom_base_url = value === 'custom' ? (nextParams.custom_base_url || provider.baseUrl || '') : (provider.baseUrl || '');
-                paramsPatch.custom_api_format = provider.format || 'openai_compatible';
+                paramsPatch.custom_base_url = provider.baseUrl || nextParams.custom_base_url || '';
+                paramsPatch.custom_api_format = provider.baseUrl
+                    ? (provider.format || 'openai_compatible')
+                    : (nextParams.custom_api_format || provider.format || 'openai_compatible');
                 paramsPatch.custom_supports_images = provider.supportsImages !== false;
                 Object.assign(node, buildVlmParamsPatch(node, { paramsPatch, deleteKeys }));
                 Object.assign(node, buildVlmCustomModelChoicesPatch(node, []));

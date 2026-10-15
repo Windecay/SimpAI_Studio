@@ -36,6 +36,12 @@
         { key: 'tencent', label: t('Tencent Cloud', '腾讯云'), baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1', format: 'openai_compatible', supportsImages: true },
         { key: 'ppio', label: 'PPIO', baseUrl: 'https://api.ppinfra.com/v3/openai', format: 'openai_compatible', supportsImages: true },
         { key: 'ollama_cloud', label: 'Ollama Cloud', baseUrl: 'https://ollama.com/v1', format: 'openai_compatible', supportsImages: true },
+        { key: 'strata', label: 'Strata', baseUrl: '', format: 'openai_compatible', supportsImages: true },
+        { key: 'llamacpp', label: 'llama.cpp', baseUrl: '', format: 'openai_compatible', supportsImages: true },
+        { key: 'lmstudio', label: 'LM Studio', baseUrl: '', format: 'openai_compatible', supportsImages: true },
+        { key: 'vllm', label: 'vLLM', baseUrl: '', format: 'openai_compatible', supportsImages: true },
+        { key: 'sglang', label: 'SGLang', baseUrl: '', format: 'openai_compatible', supportsImages: true },
+        { key: 'ollama_local', label: 'Ollama', baseUrl: '', format: 'openai_compatible', supportsImages: true },
         { key: 'custom', label: 'Custom OpenAI API', baseUrl: '', format: 'openai_compatible', supportsImages: true }
     ];
 

@@ -1,7 +1,10 @@
+import hashlib
 import json
 import logging
+import math
 import re
 import socket
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -15,6 +18,29 @@ RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
 DEFAULT_MAX_ATTEMPTS = 3
 _RETRY_BACKOFF_BASE_SECONDS = 0.35
 _RETRY_BACKOFF_MAX_SECONDS = 8.0
+_NATIVE_SAMPLING_CACHE = {}
+_NATIVE_SAMPLING_LOCK = threading.Lock()
+_DEFAULT_REPEAT_WINDOW = 1024
+_EXTENDED_SAMPLING_KEYS = (
+    "top_k", "repetition_penalty", "penalty_last_n", "presence_penalty", "frequency_penalty",
+)
+_SAMPLING_WIRE_KEYS = (*_EXTENDED_SAMPLING_KEYS, "repeat_penalty", "repeat_last_n")
+_STANDARD_PENALTIES = ("presence_penalty", "frequency_penalty")
+_NATIVE_PROVIDER_ALIASES = {
+    "llama_cpp": "llamacpp", "llama.cpp": "llamacpp",
+    "lm_studio": "lmstudio", "lmstudio_local": "lmstudio",
+}
+_SAMPLING_HOST_PROVIDERS = {
+    "api.openai.com": "openai", "generativelanguage.googleapis.com": "google",
+    "api.deepseek.com": "deepseek", "api.x.ai": "xai",
+    "api.z.ai": "zai", "open.bigmodel.cn": "zai",
+    "api.minimax.io": "minimax_global", "api.moonshot.ai": "kimi_global",
+    "ark.ap-southeast.bytepluses.com": "byteplus",
+    "openrouter.ai": "openrouter", "api.openrouter.ai": "openrouter",
+    "api.novita.ai": "novita", "api.siliconflow.cn": "siliconflow",
+    "api.siliconflow.com": "siliconflow", "api.hunyuan.cloud.tencent.com": "tencent",
+    "api.ppinfra.com": "ppio", "ollama.com": "ollama_cloud", "api.ollama.com": "ollama_cloud",
+}
 
 
 class CustomLLMRequestError(RuntimeError):
@@ -63,6 +89,185 @@ def models_url(base_url):
     base = str(base_url or "").strip().rstrip("/")
     base = re.sub(r"/(?:responses|chat/completions)$", "", base, flags=re.IGNORECASE)
     return custom_llm_url(base, "/models")
+
+
+def _native_sampling_defaults(base_url, *, api_key="", provider="", model=""):
+    provider = str(provider or "custom").strip().lower()
+    provider = _NATIVE_PROVIDER_ALIASES.get(provider, provider)
+    if provider in {"strata", "llamacpp", "llama_cpp", "llama.cpp", "lmstudio", "lm_studio", "vllm", "sglang"}:
+        return {"_backend": {
+            "llama_cpp": "llamacpp", "llama.cpp": "llamacpp", "lm_studio": "lmstudio",
+        }.get(provider, provider)}
+    parsed = urllib.parse.urlsplit(str(base_url or "").strip())
+    if (
+        provider not in {"", "custom", "openai", "llamacpp", "llama_cpp", "lmstudio", "lm_studio"}
+        or parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.hostname.lower() in {
+            "api.openai.com", "api.deepseek.com", "api.z.ai", "open.bigmodel.cn",
+            "openrouter.ai", "ollama.com", "api.ollama.com",
+        }
+        or parsed.hostname.lower().endswith(".aliyuncs.com")
+    ):
+        return None
+    path = re.sub(r"/(?:responses|chat/completions)/?$", "", parsed.path.rstrip("/"))
+    path = re.sub(r"/v\d+(?:beta)?$", "", path, flags=re.IGNORECASE)
+    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    if model:
+        query = [(key, value) for key, value in query if key != "model"] + [("model", str(model))]
+    props_url = urllib.parse.urlunsplit((
+        parsed.scheme, parsed.netloc, path + "/props", urllib.parse.urlencode(query), "",
+    ))
+    credential_digest = hashlib.sha256(str(api_key or "").encode("utf-8")).digest()
+    cache_key = (props_url, credential_digest)
+    now = time.monotonic()
+    with _NATIVE_SAMPLING_LOCK:
+        cached = _NATIVE_SAMPLING_CACHE.get(cache_key)
+        if cached is not None and cached[0] > now:
+            return None if cached[1] is None else dict(cached[1])
+    defaults = None
+    try:
+        props = request_json(
+            props_url, api_key=api_key, method="GET", timeout=2, max_attempts=1,
+        )
+        if isinstance(props, dict):
+            generation = props.get("default_generation_settings")
+            params = generation.get("params") if isinstance(generation, dict) else None
+            build = str(props.get("build_info") or "")
+            backend = (
+                "strata" if re.match(r"^Strata\s+\S+", build) else
+                "llamacpp" if "llama.cpp" in build.lower() or
+                isinstance(params, dict) and "repeat_penalty" in params and "top_k" in params else None
+            )
+            if backend:
+                # Do not cache templates, model paths, or credentials.
+                defaults = {
+                    "_backend": backend,
+                    **{key: params[key] for key in ("repeat_last_n", "penalty_last_n")
+                       if isinstance(params, dict) and key in params},
+                }
+    except Exception as exc:
+        logging.getLogger(__name__).info(
+            "Custom API sampling discovery unavailable: status=%s error=%s; using provider sampling policy",
+            getattr(exc, "status", None), type(exc).__name__,
+        )
+    with _NATIVE_SAMPLING_LOCK:
+        if len(_NATIVE_SAMPLING_CACHE) >= 64:
+            _NATIVE_SAMPLING_CACHE.pop(next(iter(_NATIVE_SAMPLING_CACHE)))
+        _NATIVE_SAMPLING_CACHE[cache_key] = (
+            time.monotonic() + (120 if defaults is not None else 15), defaults,
+        )
+    return None if defaults is None else dict(defaults)
+
+
+def _sampling_policy(base_url, api_format, provider, api_key, model):
+    provider = str(provider or "custom").strip().lower()
+    provider = _NATIVE_PROVIDER_ALIASES.get(provider, provider)
+    host = (urllib.parse.urlsplit(str(base_url or "")).hostname or "").lower()
+    if provider in {"", "custom", "openai"}:
+        provider = _SAMPLING_HOST_PROVIDERS.get(host, provider)
+        if host.startswith("dashscope") and host.endswith(".aliyuncs.com"):
+            provider = "alibaba"
+    defaults = None
+    if provider in {"", "custom", "openai", "strata", "llamacpp", "llama_cpp", "llama.cpp",
+                    "lmstudio", "lm_studio", "vllm", "sglang"}:
+        defaults = _native_sampling_defaults(
+            base_url, api_key=api_key, provider=provider, model=model,
+        )
+    if defaults is not None:
+        provider = defaults.get("_backend", "strata")
+    provider = _NATIVE_PROVIDER_ALIASES.get(provider, provider)
+    responses = normalize_api_format(api_format) == OPENAI_RESPONSES
+    aliases = {}
+    window = False
+    reason = "not supported by the selected provider/API format"
+    if provider in {"", "custom", "strata", "llamacpp"}:
+        # Generic Custom is an explicit extension-capable endpoint. Discovery is
+        # useful for aliases/defaults, but its failure must not discard settings.
+        allowed = _EXTENDED_SAMPLING_KEYS
+        window = True
+        if provider == "llamacpp":
+            aliases = {"repetition_penalty": "repeat_penalty", "penalty_last_n": "repeat_last_n"}
+    elif provider == "lmstudio":
+        allowed = ("top_k", "repetition_penalty", *_STANDARD_PENALTIES)
+        aliases = {"repetition_penalty": "repeat_penalty"}
+    elif provider in {"vllm", "sglang", "novita"}:
+        allowed = ("top_k", "repetition_penalty", *_STANDARD_PENALTIES)
+    elif provider == "openrouter":
+        allowed = ("top_k", *_STANDARD_PENALTIES) if responses else (
+            "top_k", "repetition_penalty", *_STANDARD_PENALTIES,
+        )
+    elif provider == "alibaba":
+        allowed = () if responses else ("top_k", "repetition_penalty", "presence_penalty")
+    elif provider == "siliconflow":
+        allowed = () if responses else ("top_k", "frequency_penalty")
+        reason = "SiliconFlow's documented Chat API exposes frequency_penalty instead of this native field"
+    elif provider == "deepseek":
+        allowed = () if responses else _STANDARD_PENALTIES
+        reason = "DeepSeek does not expose this native sampling field"
+    elif provider in {"ollama", "ollama_local", "ollama_cloud"}:
+        allowed = _STANDARD_PENALTIES
+        reason = "Ollama's OpenAI adapter exposes presence/frequency penalties, not native repeat/top_k options"
+    else:
+        allowed = () if responses else _STANDARD_PENALTIES
+    return provider or "custom", allowed, aliases, window, defaults or {}, reason
+
+
+def apply_sampling_settings(payload, params, *, base_url="", api_format=None, provider="", api_key=""):
+    prepared = dict(payload or {})
+    source = dict(params or {})
+    incoming = dict(prepared)
+    for container in (source, incoming):
+        for alias, canonical in (("repeat_penalty", "repetition_penalty"), ("repeat_last_n", "penalty_last_n")):
+            if container.get(canonical) is None and container.get(alias) is not None:
+                container[canonical] = container[alias]
+    requested = {key: source[key] for key in _EXTENDED_SAMPLING_KEYS if source.get(key) is not None}
+    requested.update({key: incoming[key] for key in _EXTENDED_SAMPLING_KEYS if incoming.get(key) is not None})
+    if not requested:
+        return prepared
+    for key in _SAMPLING_WIRE_KEYS:
+        prepared.pop(key, None)
+    backend, allowed, aliases, default_window, defaults, reason = _sampling_policy(
+        base_url, api_format, provider, api_key, prepared.get("model") or "",
+    )
+    for key in allowed:
+        if key not in requested:
+            continue
+        value = requested[key]
+        try:
+            number = float(value)
+            if isinstance(value, bool) or not math.isfinite(number):
+                raise ValueError
+            if key == "repetition_penalty" and number <= 0:
+                raise ValueError
+            if key in {"top_k", "penalty_last_n"}:
+                if not number.is_integer() or number < 0:
+                    raise ValueError
+                value = int(number)
+            else:
+                value = number
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"Invalid sampling parameter: {key}") from exc
+        prepared[aliases.get(key, key)] = value
+    penalties_active = (
+        prepared.get(aliases.get("repetition_penalty", "repetition_penalty"), 1.0) != 1.0
+        or bool(prepared.get("presence_penalty"))
+        or bool(prepared.get("frequency_penalty"))
+    )
+    window_key = aliases.get("penalty_last_n", "penalty_last_n")
+    if default_window and penalties_active and window_key not in prepared:
+        window = defaults.get("penalty_last_n", defaults.get("repeat_last_n"))
+        prepared[window_key] = (
+            window if isinstance(window, int) and not isinstance(window, bool) and window > 0
+            else _DEFAULT_REPEAT_WINDOW
+        )
+    unsupported = {key: reason for key in requested if key not in allowed}
+    logging.getLogger(__name__).info(
+        "Custom API sampling policy: backend=%s requested=%s sent=%s unsupported=%s",
+        backend, sorted(requested),
+        {key: prepared[key] for key in _SAMPLING_WIRE_KEYS if key in prepared}, unsupported,
+    )
+    return prepared
 
 
 def _response_preview(body, limit=300):
@@ -600,7 +805,8 @@ def chat_payload_to_responses(payload):
     max_tokens = payload.get("max_output_tokens", payload.get("max_tokens"))
     if max_tokens is not None:
         result["max_output_tokens"] = int(max_tokens)
-    for key in ("temperature", "top_p"):
+    # apply_sampling_settings filters backend extensions before this conversion.
+    for key in ("temperature", "top_p", *_SAMPLING_WIRE_KEYS):
         if payload.get(key) is not None:
             result[key] = payload[key]
     for key in ("reasoning", "enable_thinking", "thinking"):

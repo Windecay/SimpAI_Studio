@@ -5273,17 +5273,27 @@ def build_player_proxy_prompt(
     context_query: Any = "",
     context: Any = None,
     n_ctx: Any = None,
+    turn_intent: Any = "",
 ) -> str:
     normalized = normalize_roleplay_session(session)
     guidance = normalized["autoplay_config"]["guidance"]
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     player_state = normalized["story_state"].get("player_state", _normalize_player_state())
+    effective_intent = normalize_roleplay_turn_intent(turn_intent, player_state)
     if player_state.get("status") == "absent":
         turn_instruction = (
             "The player is absent. Write one concise story-control instruction for the next turn. "
             "You are the story controller, not the offstage player. Do not write dialogue, thoughts, "
             "or actions as the player. Keep the player absent. Author-visible reference data guides "
             "the present NPC scene and does not grant the player knowledge."
+        )
+    elif effective_intent == "story_control":
+        turn_instruction = (
+            "The player is present. The operator selected story_control input. Write one concise "
+            "story-control instruction for the next turn, not player dialogue, thoughts or actions. "
+            "The input author is the story controller. Keep the player present unless the operator "
+            "explicitly requests a presence change. Author-visible references guide the NPC scene "
+            "and do not grant the player knowledge."
         )
     else:
         turn_instruction = (
@@ -5303,17 +5313,19 @@ def build_player_proxy_prompt(
         [
             "You are the player proxy for SimpAI Studio Autoplay Story mode. Compose the next USER INPUT.",
             f"Reply language: {reply_language}.",
+            f"Input type for this turn: {effective_intent}. Player presence does not choose the input type when present.",
             turn_instruction,
-            "The input author is the player (or story controller when absent), never the NPC receiving it. "
+            "The input author is the player in character mode or the story controller in story_control mode, "
+            "never the NPC receiving it. "
             "Historical messages marked other_character are that character's words, not yours.",
             (
                 "Return one unsent proposal using the directed-autoplay JSON format below."
                 if guidance["enabled"] else "Return only one complete next input, without explanation or a heading."
             ),
             (
-                "Use the author reference to direct the present NPC scene; do not send the offstage player "
-                "on an errand or bring them back without an explicit user request."
-                if player_state.get("status") == "absent" else
+                "Use author-visible references only to propose the next scene direction, not as player "
+                "knowledge. Preserve the player's current presence unless the operator requests a change."
+                if effective_intent == "story_control" else
                 "Use only the player's known information. The operator's current goal sets the immediate task; "
                 "long-term persona goals are background, not a reason to ignore the current request."
                 if guidance["enabled"] else
@@ -5327,9 +5339,14 @@ def build_player_proxy_prompt(
             "Do not replace an answered memory check with another routine memory check, or rehearse the "
             "same pain/fear at the beginning of each turn. A repeated check needs new evidence of confusion.",
             "Do not mention that you are an AI, director, proxy, or simulation.",
-            "Do not decide the character's private thoughts or actions.",
+            (
+                "Propose an NPC or scene direction without claiming that it has already happened. "
+                "Do not decide private player thoughts, feelings or irreversible choices."
+                if effective_intent == "story_control" else
+                "Do not decide the character's private thoughts or actions."
+            ),
             "Do not make irreversible choices listed in proxy_policy.require_confirmation_for.",
-            vlm_autoplay_guidance.prompt(guidance),
+            vlm_autoplay_guidance.prompt(guidance, turn_intent=effective_intent),
             "Semantic state levels guide behavior, not wording. Do not write state-field labels, ratios, percentages, or a status/stat panel unless exact values were requested.",
             (
                 "Context Builder blocks follow. Current runtime state is the authority for established facts, "
@@ -5349,6 +5366,7 @@ def build_speaker_plan_prompt(
     current_speaker_id: Any = "",
     last_speaker_id: Any = "",
     lang: str = "cn",
+    turn_intent: Any = "",
 ) -> str:
     normalized = normalize_roleplay_session(session)
     mode = normalize_speaker_mode(speaker_mode)
@@ -5356,6 +5374,7 @@ def build_speaker_plan_prompt(
     current_id = _director_resolve_speaker_id(normalized, current_speaker_id)
     last_id = _id(last_speaker_id, "character") if _text(last_speaker_id, 160) else ""
     scene = normalized["story_state"].get("scene", {})
+    effective_intent = normalize_roleplay_turn_intent(turn_intent, normalized["story_state"].get("player_state"))
     present_ids = _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
     candidate_ids = [
         character_id
@@ -5392,6 +5411,9 @@ def build_speaker_plan_prompt(
         "Use only character ids listed in the candidate list. Do not invent ids and do not include any character who is not present in the current scene. An enemy may speak when it is configured and present.",
         "If the player must make a choice or the scene should wait for player input, set stop_for_player to true and return an empty speakers list.",
         "When the player runtime status is absent, the latest user text is plot control; still choose only scene characters who can act.",
+        f"Current user input type: {effective_intent}. "
+        "For story_control, the operator directs the scene; do not treat that instruction as player dialogue "
+        "or infer a player departure merely from this input mode.",
         f"Configured speaker mode: {mode}.",
         f"Current character id: {current_id}.",
         f"Previous speaker id: {last_id or '(none)'}.",
@@ -11044,7 +11066,10 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
         return {
             "ok": True,
             "action": action,
-            "prompt": build_player_proxy_prompt(normalized, payload.get("history") or [], payload.get("lang") or "cn"),
+            "prompt": build_player_proxy_prompt(
+                normalized, payload.get("history") or [], payload.get("lang") or "cn",
+                turn_intent=payload.get("roleplay_turn_intent") or payload.get("turn_intent") or "",
+            ),
             "session": normalized,
         }
 

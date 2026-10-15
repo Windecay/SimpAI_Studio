@@ -59,6 +59,7 @@ from modules.util import HWC3, resize_image, is_chinese
 from enhanced.simpleai import comfyd, p2p_task
 from modules.custom_llm_api import (
     OPENAI_CHAT_COMPLETIONS,
+    apply_sampling_settings,
     apply_thinking_settings,
     api_format_supported,
     custom_llm_url,
@@ -562,6 +563,7 @@ class VLM:
     image_max_tokens = 0
     current_version = ""
     custom_api_name = "Custom"
+    custom_provider = "custom"
     custom_api_format = OPENAI_CHAT_COMPLETIONS
     custom_base_url = ""
     custom_model = ""
@@ -858,12 +860,17 @@ class VLM:
         api_key=None,
         api_format=None,
         supports_images=None,
+        provider=None,
     ):
         with cls.lock:
             if api_name is not None:
                 cls.custom_api_name = str(api_name or "").strip() or "Custom"
             if base_url is not None:
+                if provider is None and str(base_url or "").strip() != cls.custom_base_url:
+                    cls.custom_provider = "custom"
                 cls.custom_base_url = str(base_url or "").strip()
+            if provider is not None:
+                cls.custom_provider = str(provider or "custom").strip() or "custom"
             if model is not None:
                 cls.custom_model = str(model or "").strip()
             if api_key is not None:
@@ -918,6 +925,7 @@ class VLM:
     def get_custom_settings(cls):
         return {
             "api_name": cls.custom_api_name,
+            "provider": cls.custom_provider,
             "api_format": cls.custom_api_format,
             "base_url": cls.custom_base_url,
             "model": cls.custom_model,
@@ -1435,7 +1443,9 @@ class VLM:
         return images if len(images) > 1 else images[0]
 
     def inference_custom(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, seed=-1,
-                         system_prompt=None, enable_thinking=None, reject_truncated=False):
+                         system_prompt=None, enable_thinking=None, reject_truncated=False, *,
+                         top_k=None, repetition_penalty=None, penalty_last_n=None,
+                         presence_penalty=None, frequency_penalty=None):
         missing = VLM.get_custom_missing_settings()
         if missing:
             raise RuntimeError(f"Custom VLM settings incomplete: {', '.join(missing)}")
@@ -1469,6 +1479,14 @@ class VLM:
             "max_tokens": int(max_tokens),
             "stream": False,
         }
+        request_payload = apply_sampling_settings(
+            request_payload,
+            {"top_k": top_k, "repetition_penalty": repetition_penalty,
+             "penalty_last_n": penalty_last_n, "presence_penalty": presence_penalty,
+             "frequency_penalty": frequency_penalty},
+            base_url=settings["base_url"], api_format=settings["api_format"],
+            provider=settings.get("provider") or "", api_key=settings["api_key"],
+        )
         request_payload = apply_thinking_settings(
             request_payload, enable_thinking, base_url=settings["base_url"],
             api_format=settings["api_format"], provider=settings.get("provider") or "",
@@ -1509,6 +1527,8 @@ class VLM:
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
                     seed=seed,
                     system_prompt=system_prompt,
                     enable_thinking=enable_thinking,

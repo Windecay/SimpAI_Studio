@@ -1534,9 +1534,10 @@ def _canvas_param_schema(scene_frontend, key, title_key=None, default_key=None, 
         "visible": True,
         "interactive": key not in disinteractive,
     }
-    min_value = _canvas_scene_value(scene_frontend, f"{base}_min", theme, None)
-    max_value = _canvas_scene_value(scene_frontend, f"{base}_max", theme, None)
-    step_value = _canvas_scene_value(scene_frontend, f"{base}_step", theme, None)
+    slider_props = modules.flags.get_scene_slider_props({"scene_frontend": scene_frontend}, theme, base) if param_type == "number" else {}
+    min_value = _canvas_scene_value(scene_frontend, f"{base}_min", theme, slider_props.get("minimum"))
+    max_value = _canvas_scene_value(scene_frontend, f"{base}_max", theme, slider_props.get("maximum"))
+    step_value = _canvas_scene_value(scene_frontend, f"{base}_step", theme, slider_props.get("step"))
     if min_value is not None:
         item["min"] = min_value
     if max_value is not None:
@@ -4558,9 +4559,10 @@ def _build_scene_default_payload(scene_frontend, scene_theme, overwrite_step_def
             fallback = overwrite_step_default if overwrite_step_default is not None else default
             value = _canvas_scene_generation_step(scene_frontend, scene_theme, fallback)
         else:
-            minimum = _scene_value_by_theme(scene_frontend, scene_theme, f"{key}_min", None)
-            maximum = _scene_value_by_theme(scene_frontend, scene_theme, f"{key}_max", None)
-            step = _scene_value_by_theme(scene_frontend, scene_theme, f"{key}_step", None)
+            slider_props = modules.flags.get_scene_slider_props({"scene_frontend": scene_frontend}, scene_theme, key)
+            minimum = slider_props["minimum"]
+            maximum = slider_props["maximum"]
+            step = slider_props["step"]
             value = _scene_value_by_theme(scene_frontend, scene_theme, key, default)
         payload[control_name] = _coerce_scene_default_number(value, minimum, maximum, step)
 
@@ -4588,6 +4590,7 @@ def _build_scene_control_props(scene_frontend, scene_theme):
         return {}
     props = {}
     steps_readonly = _scene_standard_steps_readonly(scene_frontend, scene_theme)
+    disabled = set(meta_parser._scene_disinteractive_list(scene_frontend, scene_theme))
     for control_name, key, _default in _scene_number_default_specs():
         control_props = {}
         label_default = "Scene Steps" if key == "scene_steps" else None
@@ -4597,9 +4600,11 @@ def _build_scene_control_props(scene_frontend, scene_theme):
             maximum = _canvas_scene_generation_step_bound(scene_frontend, scene_theme, "max", 200)
             step = _canvas_scene_generation_step_bound(scene_frontend, scene_theme, "step", 1)
         else:
-            minimum = _scene_value_by_theme(scene_frontend, scene_theme, f"{key}_min", None)
-            maximum = _scene_value_by_theme(scene_frontend, scene_theme, f"{key}_max", None)
-            step = _scene_value_by_theme(scene_frontend, scene_theme, f"{key}_step", None)
+            slider_props = modules.flags.get_scene_slider_props({"scene_frontend": scene_frontend}, scene_theme, key)
+            minimum = slider_props["minimum"]
+            maximum = slider_props["maximum"]
+            step = slider_props["step"]
+            control_props["interactive"] = control_name not in disabled
         if label is not None:
             control_props["label"] = label
         if minimum is not None:

@@ -64,9 +64,8 @@ let topbarLastOptimisticTs = 0;
 let topbarLastOptimisticBar = null;
 let topbarOptimisticRaf = 0;
 let scenePresetDefaultSyncToken = 0;
-let scenePresetDefaultSyncStartedAt = 0;
 let scenePresetDefaultSyncApplying = false;
-let scenePresetUserEditAt = 0;
+let scenePresetDefaultUserState = null;
 let galleryMediaSwitchLockedMode = null;
 let galleryMediaSwitchLockedUntil = 0;
 let galleryMediaSwitchStatusSyncSeq = 0;
@@ -4827,14 +4826,15 @@ function syncScenePresetResetDefaultFromCurrentParams(root, controlId) {
         : (topbarLastSystemParams && typeof topbarLastSystemParams === "object" ? topbarLastSystemParams : null);
     if (!params || !params.__is_scene_frontend || isStaleSystemParamsForPreset(params)) return false;
     const defaults = params.__scene_defaults;
-    if (!defaults || typeof defaults !== "object" || !Object.prototype.hasOwnProperty.call(defaults, controlId)) {
+    const defaultKey = scenePresetDefaultControlKey(controlId);
+    if (!defaults || typeof defaults !== "object" || !Object.prototype.hasOwnProperty.call(defaults, defaultKey)) {
         return false;
     }
     const propsByControl = params.__scene_control_props && typeof params.__scene_control_props === "object"
         ? params.__scene_control_props
         : {};
-    rememberScenePresetResetDefault(root, controlId, defaults[controlId]);
-    const props = propsByControl[controlId];
+    rememberScenePresetResetDefault(root, controlId, defaults[defaultKey]);
+    const props = propsByControl[controlId] || propsByControl[defaultKey];
     if (props && typeof props === "object") {
         for (const input of getScenePresetDefaultInputs(root, scenePresetDefaultInputSelector(controlId))) {
             applyScenePresetControlProps(input, props);
@@ -4849,15 +4849,35 @@ function applyScenePresetDefaultValue(controlId, value, props, currentValue = va
     const isCheckbox = controlId.indexOf("scene_switch_option") === 0;
     const selector = scenePresetDefaultInputSelector(controlId);
     const inputs = getScenePresetDefaultInputs(root, selector);
+    const incompleteNumber = currentValue === "" && inputs.some(input => input.type === "number" || input.type === "range");
     let changed = rememberScenePresetResetDefault(root, controlId, value);
     for (const input of orderScenePresetValueInputs(inputs)) {
         changed += applyScenePresetControlProps(input, props);
-        if (setNativeInputValue(input, currentValue, isCheckbox ? "checkbox" : "value")) {
+        if (!incompleteNumber && setNativeInputValue(input, currentValue, isCheckbox ? "checkbox" : "value")) {
             changed += 1;
         }
     }
     changed += syncScenePresetRangeEndpointLabels(root, props);
     return changed;
+}
+
+function scenePresetDefaultControlKey(controlId) {
+    if (controlId === "overwrite_step") return "scene_steps";
+    if (controlId === "image_number") return "scene_image_number";
+    return controlId;
+}
+
+function getScenePresetDefaultUserState(systemParams) {
+    const context = JSON.stringify([
+        String(systemParams.user_did || ""),
+        normalizePresetName(systemParams.__preset),
+        String(systemParams.__scene_theme || systemParams.scene_theme || ""),
+        sceneThemeRevision(systemParams),
+    ]);
+    if (!scenePresetDefaultUserState || scenePresetDefaultUserState.context !== context) {
+        scenePresetDefaultUserState = { context, values: new Map() };
+    }
+    return scenePresetDefaultUserState;
 }
 
 function applyScenePresetDefaults(system_params, traceLabel) {
@@ -4891,6 +4911,12 @@ function applyScenePresetDefaults(system_params, traceLabel) {
         ? system_params.__scene_control_props
         : {};
     const regionValues = window.SimpAIVideoRegionSelector?.getSelectedControlValues?.(system_params) || {};
+    // Retain edits when a delayed component update brings back preset defaults.
+    const userState = getScenePresetDefaultUserState(system_params);
+    const currentValueFor = (controlId, value, props) => {
+        const key = scenePresetDefaultControlKey(controlId);
+        return props?.interactive !== false && userState.values.has(key) ? userState.values.get(key) : value;
+    };
 
     let changed = 0;
     scenePresetDefaultSyncApplying = true;
@@ -4898,13 +4924,16 @@ function applyScenePresetDefaults(system_params, traceLabel) {
         for (const controlId of SCENE_PRESET_DEFAULT_CONTROL_IDS) {
             if (!Object.prototype.hasOwnProperty.call(defaults, controlId)) continue;
             changed += applyScenePresetDefaultValue(
-                controlId, defaults[controlId], propsByControl[controlId], regionValues[controlId] ?? defaults[controlId]);
+                controlId, defaults[controlId], propsByControl[controlId],
+                regionValues[controlId] ?? currentValueFor(controlId, defaults[controlId], propsByControl[controlId]));
         }
         if (Object.prototype.hasOwnProperty.call(defaults, "scene_steps")) {
-            changed += applyScenePresetDefaultValue("overwrite_step", defaults.scene_steps, propsByControl.overwrite_step || null);
+            changed += applyScenePresetDefaultValue("overwrite_step", defaults.scene_steps, propsByControl.overwrite_step || null,
+                currentValueFor("overwrite_step", defaults.scene_steps, propsByControl.overwrite_step));
         }
         if (Object.prototype.hasOwnProperty.call(defaults, "scene_image_number")) {
-            changed += applyScenePresetDefaultValue("image_number", defaults.scene_image_number, null);
+            changed += applyScenePresetDefaultValue("image_number", defaults.scene_image_number, null,
+                currentValueFor("image_number", defaults.scene_image_number));
         }
     } finally {
         scenePresetDefaultSyncApplying = false;
@@ -4924,7 +4953,7 @@ function applyScenePresetDefaults(system_params, traceLabel) {
 
 function findScenePresetResetTarget(button) {
     if (!button || !button.closest) return null;
-    for (const controlId of SCENE_PRESET_DEFAULT_CONTROL_IDS) {
+    for (const controlId of [...SCENE_PRESET_DEFAULT_CONTROL_IDS, "overwrite_step", "image_number"]) {
         const root = button.closest(`#${controlId}`);
         if (!root) continue;
         return { controlId, root };
@@ -4941,6 +4970,9 @@ function resetScenePresetControlToStoredDefault(root, controlId) {
     const value = isCheckbox ? root.dataset.simpleaiScenePresetDefaultValue === "true" : (root.dataset.simpleaiScenePresetDefaultValue || "");
     const inputs = getScenePresetDefaultInputs(root, scenePresetDefaultInputSelector(controlId));
     if (!inputs.length) return false;
+    if (scenePresetDefaultUserState) {
+        scenePresetDefaultUserState.values.delete(scenePresetDefaultControlKey(controlId));
+    }
 
     scenePresetDefaultSyncApplying = true;
     try {
@@ -4961,20 +4993,19 @@ function resetScenePresetControlToStoredDefault(root, controlId) {
 
 function scheduleScenePresetDefaultSync(system_params, traceLabel) {
     if (!system_params || typeof system_params !== "object") return;
-    if (!system_params.__is_scene_frontend || !system_params.__scene_defaults) return;
     if (isStaleSystemParamsForPreset(system_params)) return;
+    if (!system_params.__is_scene_frontend) {
+        scenePresetDefaultSyncToken += 1;
+        scenePresetDefaultUserState = null;
+        return;
+    }
+    if (!system_params.__scene_defaults) return;
     const token = ++scenePresetDefaultSyncToken;
-    const startedAt = Date.now();
-    scenePresetDefaultSyncStartedAt = startedAt;
     const delays = system_params.__preset_switched
         ? [0, 80, 240, 700, 1400, 2600]
         : [0, 160, 500];
     const run = (delay) => {
         if (token !== scenePresetDefaultSyncToken) return;
-        if (scenePresetUserEditAt > startedAt) {
-            try { simpaiUiTrace("log", "[UI-TRACE] scene_preset_defaults.skip_user_edit", { trace: traceLabel || "", delay }); } catch (e) {}
-            return;
-        }
         const current = window.simpleaiTopbarSystemParams
             || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
             || null;
@@ -5010,12 +5041,17 @@ function bindScenePresetDefaultUserEditGuard() {
         return;
     }
     window.__simpleai_scene_default_guard_bound = true;
-    const selector = SCENE_PRESET_DEFAULT_CONTROL_IDS.map((id) => `#${id}`).join(", ");
+    const selector = [...SCENE_PRESET_DEFAULT_CONTROL_IDS, "overwrite_step", "image_number"].map((id) => `#${id}`).join(", ");
     const onEdit = (event) => {
         if (scenePresetDefaultSyncApplying) return;
         const target = event && event.target ? event.target : null;
-        if (!target || !target.closest || !target.closest(selector)) return;
-        scenePresetUserEditAt = Date.now();
+        const root = target?.closest?.(selector);
+        if (!root) return;
+        const params = window.simpleaiTopbarSystemParams || topbarLastSystemParams;
+        if (!params?.__is_scene_frontend || isStaleSystemParamsForPreset(params)) return;
+        const value = target.type === "checkbox" ? target.checked : target.value;
+        if (value === undefined) return;
+        getScenePresetDefaultUserState(params).values.set(scenePresetDefaultControlKey(root.id), value);
     };
     app.addEventListener("input", onEdit, true);
     app.addEventListener("change", onEdit, true);
@@ -5433,7 +5469,6 @@ function markSimpleAISceneThemeChanged(theme, systemParamsOverride) {
     const nextTheme = incomingTheme || String(theme || "").trim();
     if (!nextTheme) return false;
     scenePresetDefaultSyncToken += 1;
-    scenePresetUserEditAt = Date.now();
     const current = window.simpleaiTopbarSystemParams
         || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
         || null;
