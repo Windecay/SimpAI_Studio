@@ -63,6 +63,12 @@ def test_flux3_layout_prompt_keeps_empty_prompt_unchanged():
     assert Flux3LayoutPrompt.execute("Place <obj_1> here", []).result == ("Place <obj_1> here",)
 
 
+def test_flux3_layout_prompt_display_name_preserves_workflow_id():
+    schema = Flux3LayoutPrompt.define_schema()
+    assert schema.node_id == "Flux3LayoutPrompt"
+    assert schema.display_name == "FLUX 3 Image Layout Prompt"
+
+
 def test_flux3_layout_prompt_serializes_text_and_boxes():
     prompt = "Place <obj_1> above <obj_2>"
     elements = [

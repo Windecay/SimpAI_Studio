@@ -4277,13 +4277,13 @@ packages = {'base_package': {'id': 1,
  'moss_image_package': {
      'id': 48,
      'name': '[48]MOSS-Image 文生图',
-     'note': 'MOSS-Image SFT 文生图，包含 INT8 DiT、Qwen3.5-9B W4A8 编码器与 BF16 VAE / MOSS-Image SFT text-to-image with INT8 DiT, Qwen3.5-9B W4A8 encoder and BF16 VAE.',
+     'note': 'MOSS-Image SFT 原生文生图，仅使用 Comfy-Org 官方 DiT、W4A8 编码器和 Flux2 VAE；旧社区权重须校验替换，不匹配文件沿用 .corrupted 处理；需支持原生 MOSS 的 Comfyd。魔搭首选、HF 备用 / Native MOSS-Image SFT requires Comfy-Org weights and a MOSS-capable Comfyd. Replace community weights through existing validation and .corrupted handling. ModelScope primary, Hugging Face alternative.',
      'files': [
-         'diffusion_models,moss_image_sft_int8_convrot.safetensors,5413724040,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors',
-         'text_encoders,qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors,5428937108,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/text_encoders/qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors',
-         'vae,moss_image_vae_bf16.safetensors,124774710,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/moss_image_vae_bf16.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/vae/moss_image_vae_bf16.safetensors',
+         'diffusion_models,moss_image_sft_int8_convrot.safetensors,5413698958,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors',
+         'text_encoders,qwen3.5_9b_w4a8_gptq.safetensors,7343591088,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors',
+         'vae,flux2-vae.safetensors,336211292,0,https://www.modelscope.cn/models/Comfy-Org/flux2-klein-4B/resolve/master/split_files/vae/flux2-vae.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/vae/flux2-vae.safetensors',
      ],
-     'info_links': ['https://modelscope.cn/models/windecay/SimpAI_dev', 'https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI', 'https://github.com/OpenMOSS/MOSS-Image'],
+     'info_links': ['https://modelscope.cn/models/Comfy-Org/MOSS-Image', 'https://huggingface.co/Comfy-Org/MOSS-Image', 'https://github.com/OpenMOSS/MOSS-Image'],
      'preset_sample': [],
  },
 }

@@ -32,8 +32,8 @@
         }
     },
     "default_model": "moss_image_sft_int8_convrot.safetensors",
-    "default_clip_model": "qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors",
-    "default_vae": "moss_image_vae_bf16.safetensors",
+    "default_clip_model": "qwen3.5_9b_w4a8_gptq.safetensors",
+    "default_vae": "flux2-vae.safetensors",
     "default_refiner": "None",
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
@@ -57,8 +57,8 @@
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "diffusion_models,moss_image_sft_int8_convrot.safetensors,5413724040,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors",
-        "text_encoders,qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors,5428937108,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/text_encoders/qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors",
-        "vae,moss_image_vae_bf16.safetensors,124774710,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/moss_image_vae_bf16.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/vae/moss_image_vae_bf16.safetensors"
+        "diffusion_models,moss_image_sft_int8_convrot.safetensors,5413698958,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors",
+        "text_encoders,qwen3.5_9b_w4a8_gptq.safetensors,7343591088,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors",
+        "vae,flux2-vae.safetensors,336211292,0,https://www.modelscope.cn/models/Comfy-Org/flux2-klein-4B/resolve/master/split_files/vae/flux2-vae.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/vae/flux2-vae.safetensors"
     ]
 }

@@ -215,3 +215,40 @@
 - 既有失败为 `test_source_backend_streaming_progress_and_anima_defaults_contract`：测试期待 `elements.livePreview.style.display = "block"`，现有页面使用 `"flex"`。Forge 两个依赖入口、该合同文件和预览界面未修改，未把此失败计为通过。
 - 202 项后端文件与源内容逐一一致；198 个 Python 文件、1 份 JSON、1 份 TOML 及依赖声明校验通过。两仓库 HEAD 不变，源仓库继续保留未提交合并；本次文件按明确清单暂存。
 - 当前实际安装的 frontend/templates/docs/aimdo 仍为 `1.53.10` / `0.11.76` / `0.5.13` / `0.5.5`，Kitchen 为 `0.2.37`；新版本仅更新声明。测试使用 CPU 隔离，不代表真实 Flux3 权重、GPU、浏览器、长视频或完整工作流已通过。
+
+### 2026-10-16 启动数据库产物忽略规则
+
+- Studio 根 `.gitignore` 增加 `comfy/user` 下的 `*.db-wal`、`*.db-shm` 和 `*.db.bkp`，覆盖资源库运行状态与迁移备份文件，避免提交本机数据库数据。
+- 规则不扩大到整个用户目录或全局备份后缀，保留工作流 JSON 和 Python 文件的正常跟踪；不删除或移动数据库、WAL、SHM 及备份文件。
+- 本次仅调整忽略规则和开发记录，不改变 PE/MTP 开关、现有预置或放大流程，不安装依赖或下载模型。
+
+### PE 与像素空间二采核查
+
+- 忽略规则通过 7 项正反路径检查，SQLite 伴生文件被忽略，工作流 JSON、Python 和目录外 `.bkp` 仍可见。没有读取或删除用户数据库内容。
+- 官方 PE-T2I/PE-I2I 当前公开索引各含 760 个张量，未包含 MTP/nextn 头；现有 PE 原生与 GGUF 路径显式关闭 MTP，目录筛选也排除带 MTP 标记的文件。GGUF 节点当前禁止媒体输入与 MTP 组合，不将普通 Qwen3.5 支持等同于现有 PE 已启用。
+- H3 Upscale 已有 RTX 像素放大、视频 VAE 编码和 H3 重绘路径。LightVAE 解码后经 RTX 放大再编码可作为二采对照方案，需保留原编码器、音频和视频时间布局；本次不实现或切换该流程。
+- PE/RTX 路径 CPU/Mock 专项为 105 passed、2 failed。失败分别是 PE 缓存测试 Mock 仍接受 3 参数而生产接口已为 4 参数，以及 H3 保存测试期待 CRF 18、当前 HEAD 工作流为 16。未修改这些测试或工作流，也未将失败计为通过；未执行模型下载或 GPU 测速。
+
+## 2026-10-16 上游追加同步至 ComfyUI 0.41.0
+
+- 官方 `origin/master` 从 `20b46065` 更新至 `bdc63e72`，新增 7 个提交；在原有未提交 merge 上继续合并，没有产生新的文件冲突，HEAD 仍为 `bb29d84e`。保存更新前的 index、树、合并记录和未暂存文档，保留此前 210 项暂存内容。
+- 源码版本更新为 ComfyUI `0.41.0`，`comfy_version.py` 标记为 `bdc63e72`。同步 FLUX 3 Image 节点显示名称与量化格式说明；节点 ID 和工作流接口不变，新增专项检查布局节点的显示名称和原有 ID。
+- workflow templates 声明从 `0.11.82` 更新为 `0.11.86`，frontend `1.55.17`、embedded docs `0.5.14`、Kitchen `0.2.37`、aimdo `0.5.6` 不变。当前环境已安装模板仍为 `0.11.82`，本次仅更新依赖声明，不执行安装。
+- 这 7 个提交未修改上游 `main.py`，因此 `main_comfyd.py` 保持原样；继续默认关闭 Memory compiler、同时关闭 CUDA graphs，不改变 DynamicVRAM、aimdo、SLA 或 offload 参数策略。
+- 按仓库“不新增联网请求”要求，不纳入新增 Krea 3 云端图片上传和生成节点；`comfy_api_nodes/apis/krea.py` 与 `comfy_api_nodes/nodes_krea.py` 保持本次更新前内容。该项属于明确排除的上游差异，不能宣称完整同步了该云端功能。
+- 更新前比较 903 个共享文件，运行代码一致，仅 `.coderabbit.yaml` 不同；Studio 后续自定义节点改动不复制到核心仓库。本次不写入 Studio，保留其已有两份测试文件修改和暂存区。
+- 从 ComfyUI2 源目录以 CPU 隔离执行 Flux3、H3 模型与 VAE、混合精度、设备管理、私有启动入口、预启动、任务线程和工作流校验，共 69 passed，无失败。测试关闭可选 Triton 和 CUDA 探测，不代表 GPU、真实权重、浏览器、长视频或完整服务已通过。
+- 开发记录只在文档末尾追加；原有 41 行未暂存记录保持未暂存，本次记录单独暂存。未同步 Studio、安装依赖、下载模型、启动或重启服务、执行用户数据库迁移、创建提交或推送。
+- 最终静态检查覆盖 195 个改动 Python 文件、1 份 JSON、pyproject 版本、requirements 语法和 Git whitespace，全部通过；原有无关 index 条目、Studio HEAD、暂存区及已比较文件哈希保持不变。
+
+## 2026-10-16 提前集成 MOSS-Image PR 17095 并同步 Studio
+
+- 按用户请求获取官方仓库 PR `#17095`，集成 `76d935d15c0f0cb577db7db5ab2d9b561290af30` 的 3 个提交、9 个文件。检查时 PR 尚未合入官方 master；基于此前 `bdc63e72` 的暂存树继续合并，无文件冲突、无新增提交，两仓库 HEAD 保持原样。
+- 新增原生 MOSS-Image DiT 检测与加载、Qwen3.5-9B 最后一层文本条件、独立及融合 QKV 权重、融合权重的 LoRA 映射、模型预取和布局提示词节点。布局节点支持按对象、角色和文字描述建立中心原点像素坐标；没有新增依赖、联网逻辑或模型下载。
+- 后端仍为 ComfyUI `0.41.0`，私有版本标记改为 PR 实际代码 `76d935d1`，不将其描述为官方已发布版本。`main.py` 和 `main_comfyd.py` 无需调整，compiler 默认关闭、CUDA graphs 禁用和现有 offload 策略保持不变；此前排除的 Krea 3 云端功能继续不纳入。
+- 对比 903 个共享文件后，按暂存内容检查 207 个后端文件，只复制其中 19 个变化文件到 Studio 开发端，同时包含上次尚未部署的 0.41.0 更新。同步基于 index 版本，不将源文档中原有 41 行未暂存记录复制或一起暂存。
+- Studio 两份 requirements、启动器、更新器与对应合同对齐 workflow templates `0.11.86`。frontend `1.55.17`、docs `0.5.14`、Kitchen `0.2.37`、aimdo `0.5.6` 不变，Kitchen 六处运行声明均核对；模板实际安装版本仍为 `0.11.82`，本次未安装依赖。
+- 新增 19 项 MOSS 专项，覆盖打包权重检测、FP32/BF16 小模型前向、QKV 等价性、训练梯度、replace patch、LoRA、文本编码路由、提示词模板、布局坐标和节点注册。源仓库与 Studio 各 88 项 CPU 测试通过；新增 LoRA 用例首次因测试对象缺少 model_config 失败，调整测试对象后全部通过，未因此修改生产代码。
+- Studio 同步前后专项均为 85 passed、26 subtests passed、1 failed。唯一失败仍为既有 Forge 预览合同期待 display 为 block、页面实际为 flex，没有新增失败；该页面与合同文件保持原样。
+- 保留已有 moss-image 自定义节点、MOSS 预置、工作流和模型文件。现有预置继续使用原实现，不能据此视为测试了 PR；原生路径使用标准 UNETLoader、CLIPLoader 的 moss_image 类型和相应 FLUX.2 VAE，布局提示词节点为 MOSSImageLayoutPrompt。两种实现未自动替换或进行真实权重输出对比。
+- 本次只同步开发代码和依赖声明，未安装包、下载模型、重启服务、执行用户数据库迁移、同步 E 盘应用、创建提交或推送。CPU 测试不能代替真实 GPU、量化权重、完整工作流或界面验收，加载新代码需要之后重新加载后端。

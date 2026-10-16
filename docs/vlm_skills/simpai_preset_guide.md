@@ -557,8 +557,17 @@ SimpAI UI guide skill:
   on-image wording in its original language inside quotes. Do not insert H3/Qwen
   image-reference labels or convert the prompt to Danbooru tags.
 - Defaults: 1024 x 1024, Euler, 50 steps, CFG 3, `sgm_uniform`, shift 5 and
-  unconditional skip layer 22. The workflow uses separate INT8 DiT, Qwen3.5-9B
-  W4A8 text encoder and BF16 VAE files, with native Comfy memory management.
+  unconditional skip layer 22. The workflow uses Comfy's native MOSS support:
+  official fused-QKV INT8 DiT and Comfy-Org Qwen3.5-9B W4A8 text encoder with
+  `CLIPLoader(type=moss_image)`, and the shared Flux2 VAE. Retain native
+  `multiplier=1`; a legacy `ModelSamplingSD3` override produces an invalid
+  timestep range.
+- Use the official filenames `moss_image_sft_int8_convrot.safetensors` and
+  `qwen3.5_9b_w4a8_gptq.safetensors`, not local aliases or the older community
+  encoder. The community DiT shares the official name but has a different size;
+  it is not accepted just because its filename exists. Existing model checking
+  and `.corrupted` handling apply; ask the user to validate and replace weights
+  through the normal download flow. A native MOSS-capable Comfyd is required.
 - Read installed components and current download sources from the live preset
   and model-status tools. Existing local weights can be used independently of
   repository publication; a usage question does not authorize a download.
