@@ -859,5 +859,7 @@
     "Flux3 Image Edit [up to 9 images]": "Flux3 Image Edit [up to 9 images]",
     "Reference Megapixels": "Reference Megapixels",
     "Flux3 Prompt Upsampler": "Flux3 Prompt Upsampler",
-    "Flux3 Text Encoder": "Flux3 Text Encoder"
+    "Flux3 Text Encoder": "Flux3 Text Encoder",
+    "MOSS-Image": "MOSS-Image Text to Image",
+    "MOSS-Image\u2B07": "MOSS-Image Text to Image\u2B07"
 }

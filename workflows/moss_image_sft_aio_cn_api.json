@@ -1,0 +1,120 @@
+{
+    "728": {
+        "class_type": "GeneralInput",
+        "_meta": {"title": "GeneralInput"},
+        "inputs": {
+            "prompt": "",
+            "negative_prompt": "",
+            "width": 1024,
+            "height": 1024,
+            "cfg": 3.0,
+            "steps": 50,
+            "refiner_step": 50,
+            "sampler": "euler",
+            "scheduler": "sgm_uniform",
+            "denoise": 1.0,
+            "clip_skip": -1,
+            "inpaint_disable_initial_latent": false,
+            "wavespeed_strength": 0.0,
+            "save_final_enhanced_image_only": false
+        }
+    },
+    "417": {
+        "class_type": "SeedInput",
+        "_meta": {"title": "SeedInput"},
+        "inputs": {"seed": 0}
+    },
+    "1": {
+        "class_type": "MOSSImageUNETLoader",
+        "_meta": {"title": "base_model"},
+        "inputs": {
+            "unet_name": "moss_image_sft_int8_convrot.safetensors",
+            "weight_dtype": "default"
+        }
+    },
+    "20": {
+        "class_type": "MOSSImageCLIPLoader",
+        "_meta": {"title": "clip_model"},
+        "inputs": {
+            "clip_name": "qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors",
+            "device": "default"
+        }
+    },
+    "21": {
+        "class_type": "VAELoader",
+        "_meta": {"title": "vae_model"},
+        "inputs": {"vae_name": "moss_image_vae_bf16.safetensors"}
+    },
+    "simpai_lora_stack_main": {
+        "class_type": "SimpAILoraStack",
+        "_meta": {"title": "lora_stack_main"},
+        "inputs": {
+            "model": ["1", 0],
+            "clip": ["20", 0],
+            "stack_json": "{\"version\":1,\"items\":[]}",
+            "branch": "main"
+        }
+    },
+    "4": {
+        "class_type": "CLIPTextEncode",
+        "_meta": {"title": "Positive Prompt"},
+        "inputs": {"text": ["728", 0], "clip": ["simpai_lora_stack_main", 1]}
+    },
+    "5": {
+        "class_type": "CLIPTextEncode",
+        "_meta": {"title": "Negative Prompt"},
+        "inputs": {"text": ["728", 1], "clip": ["simpai_lora_stack_main", 1]}
+    },
+    "6": {
+        "class_type": "EmptyFlux2LatentImage",
+        "_meta": {"title": "Empty Flux2 Latent"},
+        "inputs": {"width": ["728", 2], "height": ["728", 3], "batch_size": 1}
+    },
+    "15": {
+        "class_type": "ModelSamplingSD3",
+        "_meta": {"title": "MOSS Sampling Shift"},
+        "inputs": {"shift": 5.0, "model": ["simpai_lora_stack_main", 0]}
+    },
+    "moss_attention": {
+        "class_type": "ModelAttentionBackend",
+        "_meta": {"title": "MOSS Attention Backend"},
+        "inputs": {"model": ["15", 0], "attention": "comfy kitchen attention"}
+    },
+    "13": {
+        "class_type": "SkipLayerGuidanceDiTSimple",
+        "_meta": {"title": "MOSS Unconditional Skip Layer 22"},
+        "inputs": {
+            "model": ["moss_attention", 0],
+            "double_layers": "",
+            "single_layers": "22",
+            "start_percent": 0.0,
+            "end_percent": 1.0
+        }
+    },
+    "16": {
+        "class_type": "KSampler",
+        "_meta": {"title": "MOSS Sampler"},
+        "inputs": {
+            "seed": ["417", 0],
+            "steps": ["728", 5],
+            "cfg": ["728", 4],
+            "sampler_name": ["728", 7],
+            "scheduler": ["728", 8],
+            "denoise": ["728", 9],
+            "model": ["13", 0],
+            "positive": ["4", 0],
+            "negative": ["5", 0],
+            "latent_image": ["6", 0]
+        }
+    },
+    "17": {
+        "class_type": "VAEDecode",
+        "_meta": {"title": "VAE Decode"},
+        "inputs": {"samples": ["16", 0], "vae": ["21", 0]}
+    },
+    "18": {
+        "class_type": "SaveImageWebsocket",
+        "_meta": {"title": "SaveImageWebsocket"},
+        "inputs": {"images": ["17", 0]}
+    }
+}

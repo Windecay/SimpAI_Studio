@@ -56,6 +56,7 @@ def resolve_engine_class_display(template_engine, task_method):
             'sd15_aio': 'SD15',
             'il_v_pre_aio': 'Illustrious',
             'anima_aio': 'Anima',
+            'moss_image_sft_aio_cn': 'MOSS-Image',
             'krea2_aio_cn': 'Krea2',
             'krea2_edit_cn': 'Krea2',
             'krea2_a2r_cn': 'Krea2',

@@ -3065,5 +3065,7 @@
   "Flux3 Image Edit [up to 9 images]": "Flux3 图像编辑 [最多9张图]",
   "Reference Megapixels": "参考图像素量（MP）",
   "Flux3 Prompt Upsampler": "Flux3 提示词扩写",
-  "Flux3 Text Encoder": "Flux3 文本编码器"
+  "Flux3 Text Encoder": "Flux3 文本编码器",
+  "MOSS-Image": "MOSS-Image文生图",
+  "MOSS-Image\u2B07": "MOSS-Image文生图\u2B07"
 }

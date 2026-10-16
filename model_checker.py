@@ -4274,6 +4274,18 @@ packages = {'base_package': {'id': 1,
      'info_links': ['https://modelscope.cn/models/black-forest-labs/flux-3-image-klein-comfy'],
      'preset_sample': [],
  },
+ 'moss_image_package': {
+     'id': 48,
+     'name': '[48]MOSS-Image 文生图',
+     'note': 'MOSS-Image SFT 文生图，包含 INT8 DiT、Qwen3.5-9B W4A8 编码器与 BF16 VAE / MOSS-Image SFT text-to-image with INT8 DiT, Qwen3.5-9B W4A8 encoder and BF16 VAE.',
+     'files': [
+         'diffusion_models,moss_image_sft_int8_convrot.safetensors,5413724040,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors',
+         'text_encoders,qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors,5428937108,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/text_encoders/qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors',
+         'vae,moss_image_vae_bf16.safetensors,124774710,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/moss_image_vae_bf16.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/vae/moss_image_vae_bf16.safetensors',
+     ],
+     'info_links': ['https://modelscope.cn/models/windecay/SimpAI_dev', 'https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI', 'https://github.com/OpenMOSS/MOSS-Image'],
+     'preset_sample': [],
+ },
 }
 MANUAL_DOWNLOAD_MAP = {
 }

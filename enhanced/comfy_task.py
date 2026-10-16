@@ -140,6 +140,12 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
     if "flux3" in task_method_l:
         comfy_params.update_mapping_rule("pe_model", "SimpAIPromptExpand:Flux3 Prompt Upsampler:pe_model")
         comfy_params.update_mapping_rule("pe_applied_prompt", "SimpAIPromptExpand:Flux3 Prompt Upsampler:applied_prompt")
+    if task_method_l == "moss_image_sft_aio_cn":
+        comfy_params.update_mapping_rule("base_model", "MOSSImageUNETLoader:base_model:unet_name")
+        comfy_params.update_mapping_rule("clip_model", "MOSSImageCLIPLoader:clip_model:clip_name")
+        comfy_params.update_mapping_rule("vae_model", "VAELoader:vae_model:vae_name")
+        comfy_params.update_mapping_rule("sampler", "GeneralInput:GeneralInput:sampler")
+        comfy_params.update_mapping_rule("scheduler", "GeneralInput:GeneralInput:scheduler")
     if "scene_" in task_method_l or "flux3" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):
         comfy_params.update_mapping_rule("sampler", "GeneralInput:GeneralInput:sampler")
         comfy_params.update_mapping_rule("scheduler", "GeneralInput:GeneralInput:scheduler")

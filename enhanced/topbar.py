@@ -272,6 +272,7 @@ def is_preset_file_allowed(p):
 PRESET_MISSING_MARKER = "\u2B07"
 PRESET_STORE_ORDER = [
     "Z-imageT",
+    "MOSS-Image",
     "Krea2-Turbo",
     "Krea2-ImageEdit",
     "Krea2-A2R",

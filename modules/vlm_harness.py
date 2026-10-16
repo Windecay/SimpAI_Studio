@@ -6,6 +6,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 from modules.agent_service import AgentAPIError, AgentContext
 from modules import vlm_skill_runtime, vlm_tool_runtime
@@ -23,6 +24,7 @@ class HarnessLimits:
     context_chars: int = 12000
     result_chars: int = 4000
     max_continuation_repairs: int = 2
+    max_tool_repairs: int = 2
 
 
 class HarnessStopped(RuntimeError):
@@ -99,6 +101,49 @@ def _parse_message(text):
             or len(message["text"]) > 16000 or not isinstance(message["continue"], bool)):
         raise HarnessStopped("invalid_assistant_message")
     return {"text": message["text"].strip(), "continue": message["continue"]}
+
+
+def _has_unframed_tool_request(text):
+    """Detect misplaced control objects without executing JSON found in prose."""
+    text = str(text or "")
+    decoder = json.JSONDecoder()
+    markers = re.compile(r'`+|~{3,}|["{\[]')
+    offset = 0
+    while match := markers.search(text, offset):
+        marker = match.group()
+        if marker.startswith(("`", "~")):
+            end = text.find(marker, match.end())
+            if end < 0:
+                return False
+            offset = end + len(marker)
+            continue
+        try:
+            value, offset = decoder.raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            if marker == "{" and re.match(r'\{\s*"tool_calls"\s*:', text[match.start():]):
+                return True
+            offset = match.end()
+            continue
+        # Skip whole strings, arrays and reference objects, including their nested JSON.
+        if isinstance(value, dict):
+            if "tool_calls" in value:
+                return True
+            if isinstance(value.get("reply"), str) and isinstance(value.get("actions"), list):
+                if _has_unframed_tool_request(value["reply"]):
+                    return True
+    return False
+
+
+def _web_log_url(value):
+    if not isinstance(value, str):
+        return ""
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return ""
+        return urlunsplit((parsed.scheme, parsed.netloc.rsplit("@", 1)[-1], parsed.path, "", ""))[:2048]
+    except ValueError:
+        return ""
 
 
 def _bounded_result(result, budget):
@@ -189,11 +234,23 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
     rounds = 0
     continuation_open = False
     continuation_repairs = 0
+    tool_repairs = 0
     reply_format_pending = False
 
+    def log_step(phase, **detail):
+        logger.info("Studio Agent step: %s", _json({
+            "conversation_id": str(payload.get("conversation_id") or "")[:256],
+            "request_id": str(payload.get("request_id") or "")[:256],
+            "phase": phase, "round": rounds, **detail,
+        }))
+
     def summary(state):
+        log_step("finished", state=state, tool_calls=len(trace), delivered_messages=len(messages),
+                 continuation_repairs=continuation_repairs, tool_repairs=tool_repairs,
+                 elapsed_ms=round(max(0, clock() - started) * 1000, 2))
         return {"rounds": rounds, "tool_calls": trace, "state": state,
                 **({"continuation_repairs": continuation_repairs} if continuation_repairs else {}),
+                **({"tool_repairs": tool_repairs} if tool_repairs else {}),
                 **({"messages": list(messages)} if messages else {}),
                 **({"parameter_profiles": list(discovered_profiles.values())} if discovered_profiles and state == "completed" else {})}
 
@@ -315,6 +372,7 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
             if rounds > 1 and callable(stream_callback):
                 stream_callback({"type": "reset"})
             emit("agent_model", round=rounds)
+            log_step("model_started")
             system_prompt = (
                 str(original_params.get("user_system_prompt") or original_params.get("system_prompt") or "")
                 + "\n\n"
@@ -327,6 +385,8 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
                 "Before ending, check that all parts and the number of separate replies requested by the user are complete. "
                 "End this response immediately after the JSON object. The host, not the model, starts the next call. "
                 "Use one final output message only. Never put the envelope in commentary or add another output message. "
+                "Tool requests must be top-level JSON, never mixed with prose or placed inside assistant_message text "
+                "or reply fields. Put literal JSON examples in fenced code blocks inside a visible reply. "
                 "The final reply still follows the original response format and user preferences below. "
                 "For existing tasks, use actual queue/run statuses returned by Studio tools; a new generation proposal "
                 "has not been submitted until the interface executes it. "
@@ -382,20 +442,47 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
             # boundaries; a tool request must not become part of visible prose.
             native = result.get("harness_output_messages")
             blocks = [item.strip() for item in native if isinstance(item, str) and item.strip()] if isinstance(native, list) else []
+            log_step("model_returned", response_chars=len(text), native_messages=len(blocks),
+                     response_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest())
             message, calls, prelude = None, None, []
             parse_error, repair_draft = "", text
             try:
                 for block in blocks or [text]:
                     message = _parse_message(block)
                     calls = None if message is not None else _parse_calls(block, limits.max_batch)
+                    if calls is None and _has_unframed_tool_request(message["text"] if message is not None else block):
+                        raise HarnessStopped("misplaced_tool_calls")
                     if message is not None or calls is not None:
                         break
                     prelude.append(block)
             except HarnessStopped as exc:
-                if exc.code != "invalid_assistant_message":
+                if exc.code not in {"invalid_assistant_message", "misplaced_tool_calls"}:
                     raise
                 parse_error, repair_draft = exc.code, block
             result = {key: value for key, value in result.items() if key != "harness_output_messages"}
+            log_step("parsed", kind=parse_error or ("tool_calls" if calls is not None else
+                     "assistant_message" if message is not None else "reply"),
+                     requested_tools=len(calls or []), prelude_messages=len(prelude))
+            if parse_error == "misplaced_tool_calls":
+                if tool_repairs >= limits.max_tool_repairs:
+                    raise HarnessStopped("tool_protocol_failed")
+                if rounds == limits.max_rounds:
+                    raise HarnessStopped("harness_step_limit")
+                tool_repairs += 1
+                transcript.append({"tool_call_repair": {
+                    "reason": (
+                        "The previous draft mixed a tool request with prose or put it inside a visible reply. "
+                        "That draft was NOT displayed and its tool requests were NOT executed. "
+                        'To request tools, return ONLY {"tool_calls":[{"id":"call-1","name":"exact name","arguments":{}}]}. '
+                        "Do not wrap tool requests in assistant_message or reply text, and do not include an answer "
+                        "before receiving their results. To show a literal JSON example instead, put it in a fenced "
+                        "code block inside a visible reply. Do not repeat already delivered messages."
+                    ),
+                    "draft": str(repair_draft)[:limits.result_chars],
+                    "delivered_messages": len(messages),
+                }})
+                log_step("tool_repair", reason=parse_error, repair=tool_repairs)
+                continue
             if parse_error or ((continuation_open or reply_format_pending)
                                and message is None and calls is None and not _structured_final_reply(text)):
                 if continuation_repairs >= limits.max_continuation_repairs:
@@ -450,6 +537,9 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
                 if call_id in completed and completed[call_id][0] != signature:
                     raise HarnessStopped("tool_call_id_conflict")
                 cached = call_id in completed
+                tool_started = clock()
+                web_url = {"url": _web_log_url(arguments.get("url"))} if name == "web.read" else {}
+                log_step("tool_started", name=name, id=call_id, cached=cached, **web_url)
                 emit("agent_tool_started", name=name, round=rounds)
                 tool = registry.get(name)
                 available = {item["name"] for item in _catalog(registry, context)}
@@ -467,6 +557,9 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
                     context["web_result_chars"] = max(600, limits.result_chars - 100)
                     context["document_result_chars"] = max(600, limits.result_chars - 100)
                     output = registry.execute(name, arguments, context=context, tool_call_id=call_id)
+                log_step("tool_finished", name=name, id=call_id, cached=cached, ok=bool(output.get("ok")),
+                         code=output.get("result", {}).get("code", ""),
+                         duration_ms=round(max(0, clock() - tool_started) * 1000, 2), **web_url)
                 check()
                 completed[call_id] = (signature, output)
                 trace.append({"id": call_id, "name": name, "ok": bool(output.get("ok")),
@@ -494,6 +587,10 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
             "harness_timeout": ("The agent reached its time limit. Received replies have been kept.", "Agent 已达到时间限制，已收到的回复会保留。"),
             "harness_step_limit": ("The agent reached its step limit. Received replies have been kept.", "Agent 已达到调用次数限制，已收到的回复会保留。"),
             "harness_context_limit": ("The request exceeds the agent's context budget.", "当前请求超过 Agent 的上下文容量。"),
+            "invalid_tool_calls": ("The model returned an invalid tool request. No calls from that request were executed.",
+                                   "模型返回的工具请求格式无效，该请求中的工具未执行。"),
+            "tool_protocol_failed": ("The model still mixed tool requests with its reply after retrying. Received replies have been kept.",
+                                     "模型重试后仍将工具请求混入回复，已停止本次处理并保留收到的回复。"),
             "invalid_assistant_message": ("The agent's continuation reply could not be read. Please retry.", "无法读取 Agent 的连续回复，请重试。"),
             "continuation_protocol_failed": ("The model did not return a valid continuation status after retrying. Received replies have been kept.",
                                              "模型重试后仍未返回有效的续答状态，已保留收到的回复。"),

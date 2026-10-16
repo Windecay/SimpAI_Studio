@@ -1,0 +1,64 @@
+{
+    "supported_tasks": ["text_to_image"],
+    "interaction_requirements": [],
+    "default_engine": {
+        "backend_engine": "Comfy",
+        "engine_type": "image",
+        "disvisible": [
+            "backend_selection", "input_image_checkbox", "prompt_panel_checkbox",
+            "performance_selection", "refiner_model", "upscale_model"
+        ],
+        "disinteractive": [
+            "input_image_checkbox", "performance_selection", "refiner_model"
+        ],
+        "available_aspect_ratios_selection": "Custom",
+        "custom_aspect_ratios": [
+            "1024*1024", "1152*896", "896*1152", "1216*832",
+            "832*1216", "1536*1024", "1024*1536"
+        ],
+        "backend_params": {
+            "task_method": "moss_image_sft_aio_cn"
+        },
+        "resolution_control": {
+            "mode": "standard",
+            "source": "none",
+            "base_width": 1024,
+            "base_height": 1024,
+            "quantize": 16,
+            "interactive": true,
+            "frontend_preprocess": false,
+            "preprocess_target": "none",
+            "preprocess_fit": "scale"
+        }
+    },
+    "default_model": "moss_image_sft_int8_convrot.safetensors",
+    "default_clip_model": "qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors",
+    "default_vae": "moss_image_vae_bf16.safetensors",
+    "default_refiner": "None",
+    "default_refiner_switch": 0.5,
+    "default_upscale_model": "default",
+    "default_loras": [
+        ["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0]
+    ],
+    "default_cfg_scale": 3.0,
+    "default_sample_sharpness": 0.0,
+    "default_sampler": "euler",
+    "default_scheduler": "sgm_uniform",
+    "default_performance": "Speed",
+    "default_styles": [],
+    "default_aspect_ratio": "1024*1024",
+    "default_resolution_quantize_step": 16,
+    "default_image_number": 1,
+    "default_overwrite_step": 50,
+    "default_prompt": "",
+    "default_prompt_negative": "",
+    "checkpoint_downloads": {},
+    "embeddings_downloads": {},
+    "lora_downloads": {},
+    "vae_downloads": {},
+    "model_list": [
+        "diffusion_models,moss_image_sft_int8_convrot.safetensors,5413724040,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors",
+        "text_encoders,qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors,5428937108,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/text_encoders/qwen3.5_9b_moss_image_sft_w4a8_gptq.safetensors",
+        "vae,moss_image_vae_bf16.safetensors,124774710,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/moss_image_vae_bf16.safetensors,https://huggingface.co/nif0/MOSS-Image-SFT-ComfyUI/resolve/main/vae/moss_image_vae_bf16.safetensors"
+    ]
+}

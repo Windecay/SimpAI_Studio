@@ -153,6 +153,13 @@
       "sections": ["Preset Routing And Follow-up Edits"]
     },
     {
+      "key": "moss_image",
+      "title": {"en": "MOSS-Image Text-To-Image", "cn": "MOSS-Image 文生图"},
+      "priority": 715,
+      "keywords": ["moss-image", "moss image", "moss_image", "moss文生图"],
+      "sections": ["MOSS-Image Text-To-Image", "Prompt Language / Model Routing"]
+    },
+    {
       "key": "overview",
       "title": {"en": "Preset Guide Overview", "cn": "Preset 向导概览"},
       "priority": 0,

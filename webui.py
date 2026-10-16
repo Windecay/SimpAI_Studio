@@ -8263,7 +8263,7 @@ with shared.gradio_root:
                                         with gr.Row():
                                             describe_result_history = gr.Dropdown(label='Description history', choices=[], interactive=True, scale=4, min_width=240, elem_id='describe_result_history')
                                             describe_history_refresh = gr.Button(value='Refresh records', size='sm', min_width=100)
-                                        describe_result_status = gr.Markdown(label='Description status', show_label=True, sanitize_html=True, elem_id='describe_result_status')
+                                        describe_result_status = gr.Markdown(label='Description status', show_label=False, sanitize_html=True, elem_id='describe_result_status')
                                         describe_result_attempt = gr.Dropdown(label='Model call', choices=[], interactive=True)
                                         describe_result_raw = gr.Textbox(label='Original model output', interactive=False, lines=8, max_lines=24, buttons=["copy"], elem_id='describe_result_raw')
                                         describe_result_reasoning = gr.Textbox(label='Reasoning output', interactive=False, lines=5, max_lines=16, visible=False, buttons=["copy"])

@@ -1,0 +1,16 @@
+[project]
+name = "moss-image"
+version = "0.1.1"
+description = "Native MOSS-Image model loaders for ComfyUI"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/OpenMOSS/MOSS-Image"
+Documentation = "https://github.com/OpenMOSS/MOSS-Image/blob/main/comfyui/README.md"
+
+[tool.comfy]
+PublisherId = "mosi"
+DisplayName = "MOSS-Image"
+Banner = "https://raw.githubusercontent.com/OpenMOSS/MOSS-Image/main/assets/teaser.webp"

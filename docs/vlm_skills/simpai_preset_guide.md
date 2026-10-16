@@ -546,3 +546,20 @@ SimpAI UI guide skill:
 - If critical information is missing, ask one concise clarifying question before
   recommending.
 - Keep answers practical and concise in the user's UI language.
+
+## MOSS-Image Text-To-Image
+
+- `MOSS-Image` is a text-to-image-only preset based on MOSS-Image-SFT. It does not
+  accept reference images, masks, video or audio, and does not provide an AIO
+  detail-enhancement route. Use a compatible editing preset for follow-up edits.
+- Write natural Chinese or English descriptions of the complete desired scene:
+  subject, composition, appearance, environment and lighting. Preserve requested
+  on-image wording in its original language inside quotes. Do not insert H3/Qwen
+  image-reference labels or convert the prompt to Danbooru tags.
+- Defaults: 1024 x 1024, Euler, 50 steps, CFG 3, `sgm_uniform`, shift 5 and
+  unconditional skip layer 22. The workflow uses separate INT8 DiT, Qwen3.5-9B
+  W4A8 text encoder and BF16 VAE files, with native Comfy memory management.
+- Read installed components and current download sources from the live preset
+  and model-status tools. Existing local weights can be used independently of
+  repository publication; a usage question does not authorize a download.
+- Visible preset labels follow the current `state.__lang`, not browser locale.
