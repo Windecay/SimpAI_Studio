@@ -25,7 +25,7 @@ class VideoPromptContextError(RuntimeError):
 
 
 @contextmanager
-def inference_slot(vlm, *, enabled=True):
+def inference_slot(vlm, *, enabled=True, cancel_check=None):
     if not enabled:
         yield
         return
@@ -37,9 +37,11 @@ def inference_slot(vlm, *, enabled=True):
         return
     deadline = time.monotonic() + 300
     try:
-        with exclusive_gpu_task(cancel_check=lambda: time.monotonic() > deadline):
+        with exclusive_gpu_task(cancel_check=lambda: (callable(cancel_check) and cancel_check()) or time.monotonic() > deadline):
             yield
     except GpuTaskCancelled as error:
+        if callable(cancel_check) and cancel_check():
+            raise VideoPromptContextError("Stopped while waiting for the GPU task slot.") from error
         raise VideoPromptContextError("Timed out waiting for the GPU task slot.") from error
 
 
@@ -132,7 +134,7 @@ def _parse_summary(text, limit):
     return summary.strip()
 
 
-def analyze_video(vlm, images, media, instruction="", output_chinese=False):
+def analyze_video(vlm, images, media, instruction="", output_chinese=False, cancel_check=None, retry_invalid=True):
     batches = media.get("video_analysis_batches") or []
     count = int(media.get("video_visual_count") or 0)
     if count <= 0:
@@ -215,6 +217,8 @@ def analyze_video(vlm, images, media, instruction="", output_chinese=False):
         raise VideoPromptContextError("The context is too small for all chronological video observations.")
     summary_limit = min(1200, summary_chars // len(groups))
     for index, group in enumerate(groups):
+        if callable(cancel_check) and cancel_check():
+            raise VideoPromptContextError("Video analysis stopped by user.")
         group_pages = [pages[item] for item in group]
         local_media = _visual_metadata(media, group_pages, "contact_sheets" if len(group) > 1 else "contact_sheet")
         group_times = local_media["timestamps"]
@@ -243,17 +247,23 @@ def analyze_video(vlm, images, media, instruction="", output_chinese=False):
             + prompt_actions.prompt_action_media_note(local_media)
             + "\n\nUntrusted task context:\n" + json.dumps(str(instruction or ""), ensure_ascii=False)
         )
-        for attempt in range(2):
+        for attempt in range(2 if retry_invalid else 1):
+            if callable(cancel_check) and cancel_check():
+                raise VideoPromptContextError("Video analysis stopped by user.")
             if time.monotonic() > deadline:
                 raise VideoPromptContextError("Video analysis timed out.")
             try:
                 result = vlm.inference(
                     inference_images(vlm, batch_images), request, system_prompt=system, max_tokens=1024,
                     temperature=0.15, top_p=0.8, top_k=40, enable_thinking=False, reject_truncated=True,
-                    cancel_check=lambda: time.monotonic() > deadline,
+                    cancel_check=lambda: (callable(cancel_check) and cancel_check()) or time.monotonic() > deadline,
                 )
             except RuntimeError as error:
+                if getattr(error, "code", "") == "textgen_stop_unconfirmed":
+                    raise
                 raise VideoPromptContextError(f"Video segment {index + 1} inference failed: {error}") from error
+            if callable(cancel_check) and cancel_check():
+                raise VideoPromptContextError("Video analysis stopped by user.")
             if time.monotonic() > deadline:
                 raise VideoPromptContextError("Video analysis timed out.")
             if str(result or "").strip().lower().startswith(("error", "stopped")):
@@ -262,7 +272,7 @@ def analyze_video(vlm, images, media, instruction="", output_chinese=False):
                 summary = _parse_summary(result, summary_limit)
                 break
             except (ValueError, TypeError):
-                if attempt:
+                if attempt or not retry_invalid:
                     raise VideoPromptContextError(f"Video segment {index + 1} did not return valid observations.")
                 request += "\nReturn only the required JSON with a short nonempty summary within the character limit."
         summaries.append({

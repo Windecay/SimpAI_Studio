@@ -21,6 +21,7 @@ from urllib.parse import quote, urlencode
 from pydantic import ValidationError
 
 from modules.agent_api_contract import API_PREFIX, API_VERSION, MAX_ASSET_BYTES, OPERATIONS
+from modules.pe_models import pe_supported_task
 
 
 PROJECT_ID = "agent_api"
@@ -1125,6 +1126,8 @@ class AgentService:
             plan["status"] = "needs_parameter_profile"
             plan["parameter_profile_options"] = self.parameter_profiles(ParameterProfileQuery(preset_id=entry["name"]), context)
         node["params"]["prompt"] = chat._normalize_creative_qwen21_image_references(node["params"]["prompt"], plan, manifest)
+        if request.prompt and pe_supported_task(spec["task_method"]):
+            node["params"]["pe_applied_prompt"] = node["params"]["prompt"]
         from modules.agent_prompting import validate
         final_prompt = node["params"].get("prompt") or ""
         check_encoding(final_prompt, "prompt")

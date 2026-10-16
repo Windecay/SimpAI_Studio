@@ -22,6 +22,7 @@ import ldm_patched.modules.model_management
 import modules.default_pipeline as pipeline
 import enhanced.all_parameters as ads
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
+from modules.pe_models import is_pe_model_name, pe_supported_task
 from modules.llama_cpp_runtime import (
     normalize_llama_cpp_kv_cache_type,
     normalize_llama_cpp_n_ctx,
@@ -64,11 +65,13 @@ from modules.custom_llm_api import (
     api_format_supported,
     custom_llm_url,
     extract_response_metadata,
+    extract_response_reasoning_text,
     extract_response_text,
     models_url,
     prepare_completion_request,
     request_json,
 )
+from modules import generation_capture
 
 DEFAULT_VLM_VERSION = "Qwen3.5-9B-abliterated-Q4_K_M"
 
@@ -1388,6 +1391,18 @@ class VLM:
         ldm_patched.modules.model_management.print_memory_info("after load vlm model")
         return
 
+    @classmethod
+    def can_reuse_prompt_encoder(cls, pe_model, task_method):
+        name = str(pe_model or "").replace("\\", "/").casefold()
+        current = str(cls.clip_name or "").replace("\\", "/").casefold()
+        return (
+            pe_supported_task(task_method)
+            and is_pe_model_name(name)
+            and cls.backend == "comfy_textgen"
+            and cls.clip_type == "stable_diffusion"
+            and name == current
+        )
+
     def free_model(self):
         llamacpp_vlm.free_model()
         if VLM.backend == "comfy_textgen":
@@ -1445,7 +1460,7 @@ class VLM:
     def inference_custom(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, seed=-1,
                          system_prompt=None, enable_thinking=None, reject_truncated=False, *,
                          top_k=None, repetition_penalty=None, penalty_last_n=None,
-                         presence_penalty=None, frequency_penalty=None):
+                         presence_penalty=None, frequency_penalty=None, cancel_check=None):
         missing = VLM.get_custom_missing_settings()
         if missing:
             raise RuntimeError(f"Custom VLM settings incomplete: {', '.join(missing)}")
@@ -1502,14 +1517,32 @@ class VLM:
             settings["api_format"],
             request_payload,
         )
-        response = _custom_llm_request_json(
+        request_json_fn = _custom_llm_request_json
+        request_control = {}
+        if callable(cancel_check):
+            from modules.custom_llm_api import request_json_cancelable
+            request_json_fn = request_json_cancelable
+            request_control["cancel_check"] = cancel_check
+        response = request_json_fn(
             request_url,
             request_payload,
             api_key=settings["api_key"],
             method="POST",
             timeout=180,
+            **request_control,
         )
-        if reject_truncated and extract_response_metadata(response)["output_limited"]:
+        metadata = extract_response_metadata(response)
+        if generation_capture.is_active():
+            usage = response.get("usage") if isinstance(response, dict) else None
+            usage = usage if isinstance(usage, dict) else {}
+            generation_capture.publish({
+                "raw_output": extract_response_text(response),
+                "reasoning_output": extract_response_reasoning_text(response),
+                "max_tokens": max_tokens,
+                "generated_tokens": usage.get("completion_tokens", usage.get("output_tokens")),
+                "hit_token_limit": bool(metadata["output_limited"]),
+            })
+        if reject_truncated and metadata["output_limited"]:
             raise PromptActionOutputLimitError("The model reached its output token limit.")
         return _extract_openai_compatible_text(response).strip()
 
@@ -1533,6 +1566,7 @@ class VLM:
                     system_prompt=system_prompt,
                     enable_thinking=enable_thinking,
                     reject_truncated=reject_truncated,
+                    cancel_check=cancel_check,
                 )
             if system_prompt is None and ads.get_admin_default('p2p_active_checkbox') and ads.get_admin_default('p2p_remote_process').lower()=='out':
                 if isinstance(image, (list, tuple)):
@@ -1825,6 +1859,14 @@ class VLM:
                 effective_prompt = f"{str(system_prompt).strip()}\n\n{prompt}"
             msgs = [{'role': 'user', 'content': [image, effective_prompt]}]
 
+            generation_control = {}
+            if callable(cancel_check):
+                from transformers import StoppingCriteriaList
+                if cancel_check():
+                    raise LlamaCppRequestCancelled("Stopped by user.")
+                generation_control["stopping_criteria"] = StoppingCriteriaList([
+                    lambda input_ids, scores, **kwargs: bool(cancel_check()),
+                ])
             res = VLM.model_runtime.chat(
                 image=None,
                 msgs=msgs,
@@ -1835,7 +1877,8 @@ class VLM:
                 repetition_penalty=repetition_penalty,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                seed=seed
+                seed=seed,
+                **generation_control,
             )
 
             if hasattr(torch, 'cuda') and torch.cuda.is_available():
@@ -2614,12 +2657,12 @@ class VLM:
         else:
             return translator.convert(input_text, method)
 
-    def translate_cn(self, input_text, method=None):
+    def translate_cn(self, input_text, method=None, cancel_check=None):
         if is_chinese(input_text):
             return input_text
         if VLM.get_enable() and self.model_exists() and method in [None, 'Big Model']:
             logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for translation to Chinese")
-            return self.inference(None, prompt=f'{VLM.prompt_translator_cn}{input_text}')
+            return self.inference(None, prompt=f'{VLM.prompt_translator_cn}{input_text}', cancel_check=cancel_check)
         else:
             return translator.convert(input_text, method, 'cn')
 

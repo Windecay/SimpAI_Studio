@@ -469,6 +469,8 @@ def _canvas_vlm_prompt_rewrite_target_family(target_key, target=None):
         return "natural_en"
     if key == "natural_zh":
         return "natural_zh"
+    if key == "flux3_natural" or "flux3" in task_method or "flux 3" in target_name:
+        return "flux3"
     if key == "qwen_natural" or key.startswith("qwen"):
         return "qwen"
     if key == "flux_t5_en":
@@ -649,6 +651,13 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         format_rule = "Final prompt: coherent natural-language video prompt; preserve Chinese for Chinese user requests. Emphasize visible motion, camera movement, temporal continuity, and stable subject details."
     elif target_family == "audio":
         format_rule = "Final prompt: coherent natural-language audio-effects prompt; preserve Chinese for Chinese user requests. Describe audible events synchronized to visible video, without camera or visual-style instructions."
+    elif target_family == "flux3":
+        format_rule = (
+            "Final prompt: English natural-language prose for FLUX 3. "
+            "Preserve on-image wording verbatim in its original language inside straight double quotes. "
+            "For edits describe the change and preservation clause; for a new scene describe the full frame. "
+            "Use natural ordinal image references, not Qwen or H3 tags."
+        )
     elif target_family in {"flux", "natural_en"}:
         format_rule = "Final prompt: fluent English natural-language image prompt. No Chinese characters."
     elif target_family == "natural_zh":
@@ -6204,6 +6213,7 @@ CANVAS_ANIMA_RATING_TAGS = {"safe", "sensitive", "nsfw", "explicit"}
 CANVAS_ANIMA_PERIOD_TAGS = {"newest", "recent", "mid", "early", "old"}
 CANVAS_ANIMA_ARTIST_BLOCKLIST = {"@anima", "@anima_(togashi)", "@anima_\\(togashi\\)"}
 CANVAS_NATURAL_PROMPT_TARGET_KEYS = {
+    "flux3_natural",
     "krea2",
     "krea2_turbo",
     "qwen_natural",
@@ -7598,7 +7608,7 @@ def _canvas_refine_natural_prompt_action(action, payload, params, prompt, target
     if not final_prompt:
         final_prompt = candidate_prompt
     normalized_target_key = str(target_key or "").strip().lower()
-    if (normalized_target_key == "flux_t5_en" or "flux" in normalized_target_key) and re.search(r"[\u3400-\u9fff]", final_prompt):
+    if normalized_target_key != "flux3_natural" and (normalized_target_key == "flux_t5_en" or "flux" in normalized_target_key) and re.search(r"[\u3400-\u9fff]", final_prompt):
         issues.append({"code": "natural_refine_flux_chinese", "message": "Refined FLUX/T5 prompt contained Chinese, so the original prompt was kept."})
         final_prompt = candidate_prompt
     if (

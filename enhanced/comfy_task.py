@@ -103,7 +103,7 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
                 audio = None
         if not audio:
             raise ValueError("该任务必须传入音频(audio)")
-    if "scene_" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):
+    if "scene_" in task_method_l or "flux3" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):
         base_model = default_params.get("base_model")
         if base_model and base_model != "auto":
             is_safetensors_model = _model_type_from_name(base_model) == 1
@@ -135,7 +135,12 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("use_sampling_sigmas", "ComfySwitchNode:SimpAI Sampling Branch:switch")
     if "qwen_image21" in task_method_l:
         comfy_params.update_mapping_rule("pe_model", "SimpAIQwenImage21TextGenerate:Qwen Image 2.1 PE:pe_model")
-    if "scene_" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):
+        comfy_params.update_mapping_rule("pe_model", "SimpAIPromptExpand:Qwen Image 2.1 PE:pe_model")
+        comfy_params.update_mapping_rule("pe_applied_prompt", "SimpAIPromptExpand:Qwen Image 2.1 PE:applied_prompt")
+    if "flux3" in task_method_l:
+        comfy_params.update_mapping_rule("pe_model", "SimpAIPromptExpand:Flux3 Prompt Upsampler:pe_model")
+        comfy_params.update_mapping_rule("pe_applied_prompt", "SimpAIPromptExpand:Flux3 Prompt Upsampler:applied_prompt")
+    if "scene_" in task_method_l or "flux3" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):
         comfy_params.update_mapping_rule("sampler", "GeneralInput:GeneralInput:sampler")
         comfy_params.update_mapping_rule("scheduler", "GeneralInput:GeneralInput:scheduler")
         comfy_params.update_mapping_rule("negative_prompt", "SceneInput:SceneInput:negative_prompt")

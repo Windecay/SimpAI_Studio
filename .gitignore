@@ -173,6 +173,9 @@ comfy/user/default/workflows/z_image_turbo_aio_cn_flow.json
 /ui/components/*.pyi
 /comfy/user/**/*.log
 /comfy/user/**/*.db
+/comfy/user/**/*.db-wal
+/comfy/user/**/*.db-shm
+/comfy/user/**/*.db.bkp
 /comfy/user/**/*.db-lock
 /comfy/user/**/*.db.lock
 /comfy/user/**/.DS_Store

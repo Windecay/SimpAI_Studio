@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Flux3 Image Edit</title>
+<style>body{margin:0;font:12px/1.6 sans-serif}p{margin:0 0 6px}</style></head>
+<body>
+<p id="description">FLUX 3 Image Klein distilled INT8: text-to-image, single-image edits and up to nine independent reference images. Euler / Simple, 16 steps, CFG 1. Mask editing is disabled; the generated image is returned directly.</p>
+<p id="expansion">The W4A8 prompt upsampler is enabled by default. INT8 PUP and Qwen PE can also be selected. A prompt expanded and applied by the prompt assistant bypasses workflow expansion while that text is unchanged. The generation encoder shares the existing Qwen3-VL 4B FP8 file used by Krea2.</p>
+<script>
+const stage = Object.fromEntries(new URLSearchParams(location.search));
+stage.__lang = stage.__lang === 'en' ? 'en' : 'cn';
+document.documentElement.lang = stage.__lang === 'en' ? 'en' : 'zh-CN';
+document.body.style.color = stage.__theme === 'dark' ? '#f9fafb' : '#1f2937';
+if (stage.__lang === 'cn') {
+    document.getElementById('description').textContent = 'FLUX 3 Image Klein 蒸馏 INT8：支持文生图、单图编辑和最多九张独立参考图。默认 Euler / Simple、16 步、CFG 1。蒙版编辑已关闭，直接输出生成结果。';
+    document.getElementById('expansion').textContent = '默认启用 W4A8 提示词扩写模型，也可选择 INT8 PUP 或 Qwen PE。提示助手扩写并应用后，文本未改变时跳过工作流内扩写。生图编码器默认复用 Krea2 已有的 Qwen3-VL 4B FP8 文件。';
+}
+</script>
+</body></html>

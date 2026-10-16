@@ -43,6 +43,7 @@ import modules.canvas_vlm_runtime as canvas_vlm_runtime
 import modules.describe_vlm_chat as describe_vlm_chat
 import modules.vlm_roleplay as vlm_roleplay
 import modules.describe_media as describe_media
+from modules import describe_media_control
 import modules.cloud_image as cloud_image
 from modules.localization import localized_text
 import modules.vlm_api_profiles as vlm_api_profiles
@@ -879,6 +880,8 @@ def _apply_model_params_state_to_task_args(args, model_state):
             params["upscale_model"] = state_upscale_model or "default"
         params["lora_stack"] = modules.lora_stack.normalize_stack(model_state.get("lora_stack"))
         params["lora_stack_target"] = model_state.get("lora_stack_target", "auto")
+        params["pe_model"] = model_state.get("pe_model", "None")
+        params["pe_applied_prompt"] = model_state.get("pe_applied_prompt", "")
         args[params_index] = params
     return args
 
@@ -2886,7 +2889,7 @@ def _model_params_state_from_models_payload(payload, fallback_state=None):
                 weight = current[2]
             loras[index] = [bool(enabled), str(model_name or "None"), weight]
 
-    return _model_params_state_with_scene_context(_model_params_state_payload(
+    state = _model_params_state_with_scene_context(_model_params_state_payload(
         pick("base_model"),
         pick("refiner_model"),
         pick("refiner_switch"),
@@ -2898,6 +2901,8 @@ def _model_params_state_from_models_payload(payload, fallback_state=None):
         data.get("lora_stack_target", fallback.get("lora_stack_target", "auto")),
         pick("pe_model"),
     ), fallback_state=fallback)
+    state["pe_applied_prompt"] = str(data.get("pe_applied_prompt", ""))
+    return state
 
 
 def _apply_model_params_state_to_backend_params(backend_params, model_state):
@@ -2916,6 +2921,7 @@ def _apply_model_params_state_to_backend_params(backend_params, model_state):
     params["lora_stack"] = modules.lora_stack.normalize_stack(model_state.get("lora_stack"))
     params["lora_stack_target"] = model_state.get("lora_stack_target", "auto")
     params["pe_model"] = model_state.get("pe_model", "None")
+    params["pe_applied_prompt"] = model_state.get("pe_applied_prompt", "")
     return params
 
 
@@ -8212,9 +8218,27 @@ with shared.gradio_root:
                                         describe_output_chinese = gr.Checkbox(label='Output in Chinese', value=False, visible=True, min_width=50, elem_id='describe_output_chinese')
                                         describe_output_artist = gr.Checkbox(label='Artist', value=False, visible=True, min_width=50, elem_id='describe_output_artist')
                                     describe_image_size = gr.Button(value='Original Size / Recommended Size', elem_id='describe_image_size', visible=False)
-                                    with gr.Row():
+                                    with gr.Row(elem_id='describe_action_row'):
                                         describe_btn = gr.Button(value='⚡ Execute Instruction')
                                         unload_btn = gr.Button(value='🗑️Unload Models', min_width=150)
+                                    describe_request_id = gr.State("")
+                                    describe_dispatch = gr.JSON(value=None, visible=False)
+                                    describe_request_active = gr.State(False)
+                                    describe_stop_id = gr.State("")
+                                    describe_stop_poll = gr.Timer(value=0.5, active=False)
+                                    describe_result_report = gr.State({})
+                                    describe_job_report = gr.JSON(value=None, visible=False)
+                                    with gr.Accordion(label='Description results', open=False, elem_id='describe_results') as describe_results:
+                                        with gr.Row():
+                                            describe_result_history = gr.Dropdown(label='Description history', choices=[], interactive=True, scale=4, min_width=240, elem_id='describe_result_history')
+                                            describe_history_refresh = gr.Button(value='Refresh records', size='sm', min_width=100)
+                                        describe_result_status = gr.Markdown(label='Description status', show_label=True, sanitize_html=True, elem_id='describe_result_status')
+                                        describe_result_attempt = gr.Dropdown(label='Model call', choices=[], interactive=True)
+                                        describe_result_raw = gr.Textbox(label='Original model output', interactive=False, lines=8, max_lines=24, buttons=["copy"], elem_id='describe_result_raw')
+                                        describe_result_reasoning = gr.Textbox(label='Reasoning output', interactive=False, lines=5, max_lines=16, visible=False, buttons=["copy"])
+                                        describe_result_candidate = gr.Textbox(label='Candidate prompt', interactive=True, lines=6, max_lines=18, buttons=["copy"], elem_id='describe_result_candidate')
+                                        describe_result_apply = gr.Button(value='Use this description')
+                                        describe_result_download = gr.File(label='Description record', interactive=False, visible=False)
                                     describe_vlm_chat_prompt_bridge = gr.Textbox(value='', visible='hidden', elem_id='describe_vlm_chat_prompt_bridge', elem_classes=['sai-gradio-hidden-bridge'])
                                     describe_vlm_chat_apply_prompt_btn = gr.Button('Apply Describe VLM chat prompt', visible='hidden', elem_id='describe_vlm_chat_apply_prompt_btn', elem_classes=['sai-gradio-hidden-bridge'])
                                     describe_vlm_model_select_bridge = gr.Textbox(value='', visible='hidden', elem_id='describe_vlm_model_select_bridge', elem_classes=['sai-gradio-hidden-bridge'])
@@ -12177,9 +12201,10 @@ with shared.gradio_root:
                 gr_update(visible=True, value=_missing_model_text("download_all", state_params)),
             ]
 
-        def trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt=""):
+        def trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt="", report=None):
             describe_images = []
             try:
+                describe_media_control.check()
                 if img is None:
                     raise describe_media.DescribeMediaError("media_required")
                 media_kind = describe_media.media_type(img)
@@ -12198,12 +12223,14 @@ with shared.gradio_root:
                 if img is None or media_kind == "video" or (not output_tags and not output_artist and len(describe_images) == 0):
                     use_multi_frame = bool(media_kind == "video" and VLM.is_llamacpp and not VLM.is_custom_version())
                     visual_input, media_meta = describe_media.prepare_visual_input(img, use_multi_frame=use_multi_frame) if img is not None else (None, {"media_type": "image"})
+                    describe_media_control.check()
                     describe_images.append(describe_media.run_description(
                         vlm, visual_input,
                         media_kind or "image",
                         output_chinese=bool(output_chinese),
                         additional_prompt=describe_prompt,
                         media_meta=media_meta,
+                        report=report,
                     ))
 
                 if len(describe_images) == 0:
@@ -12212,7 +12239,8 @@ with shared.gradio_root:
                     describe_image = ', '.join(describe_images)
 
                     if (output_tags or output_artist) and output_chinese:
-                        describe_image = vlm.translate_cn(describe_image)
+                        describe_image = vlm.translate_cn(describe_image, cancel_check=describe_media_control.cancel_check())
+                describe_media_control.check()
             except describe_media.DescribeMediaError:
                 raise
             except ValueError as exc:
@@ -12227,9 +12255,9 @@ with shared.gradio_root:
 
             return describe_image, skip_component_update()
 
-        def trigger_describe_with_feedback(img, output_tags, output_chinese, output_artist, describe_prompt="", state_params=None):
+        def trigger_describe_with_feedback(img, output_tags, output_chinese, output_artist, describe_prompt="", state_params=None, report=None):
             try:
-                return trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt)
+                return trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt, report=report)
             except describe_media.DescribeMediaError as error:
                 if error.code == "media_required":
                     message = _studio_text(
@@ -12238,8 +12266,23 @@ with shared.gradio_root:
                     )
                 elif error.code == "quality_failed":
                     message = _studio_text(
-                        state_params, "The description did not meet the detail, language or format requirements. The original prompt was preserved.",
-                        "反推结果的详细程度、语言或格式未达到要求，原提示词已保留。",
+                        state_params, "The description needs review. Its output is available in Description results. The original prompt was preserved.",
+                        "反推结果需要复核，返回内容已保留在反推结果中，原提示词已保留。",
+                    )
+                elif error.code == "output_limit":
+                    message = _studio_text(
+                        state_params, "The token limit was reached. The returned output is available in Description results. The original prompt was preserved.",
+                        "已达到 token 上限，返回内容已保留在反推结果中，原提示词已保留。",
+                    )
+                elif error.code == "cancelled":
+                    message = _studio_text(
+                        state_params, "Description stopped. The original prompt was preserved.",
+                        "反推已停止，原提示词已保留。",
+                    )
+                elif error.code == "stop_unconfirmed":
+                    message = _studio_text(
+                        state_params, "The backend did not confirm the stop. Check its task queue before retrying. The original prompt was preserved.",
+                        "后端未确认停止，请查看后端任务队列后再决定是否重试。原提示词已保留。",
                     )
                 else:
                     message = _studio_text(
@@ -12249,19 +12292,19 @@ with shared.gradio_root:
                 gr.Warning(message)
                 return skip_component_update(), skip_component_update()
 
-        def describe_with_generating_check(state_is_generating, img, output_tags, output_chinese, output_artist, describe_prompt, state_params, version, api_name, provider, api_format, base_url, model, api_key, supports_images):
+        def _describe_with_generating_check(state_is_generating, img, output_tags, output_chinese, output_artist, describe_prompt, state_params, version, api_name, provider, api_format, base_url, model, api_key, supports_images, report):
             is_worker_processing = modules.async_worker.worker_processing is not None
             has_pending_tasks = modules.async_worker.pending_tasks > 0
 
             if check_generating_state(state_is_generating, has_pending_tasks, is_worker_processing):
                 logger.info("Generation is in progress or pending, skipping image description")
-                return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params)
+                return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params), report
 
             if img is None:
                 describe_image, style_update = trigger_describe_with_feedback(
-                    img, output_tags, output_chinese, output_artist, describe_prompt, state_params,
+                    img, output_tags, output_chinese, output_artist, describe_prompt, state_params, report=report,
                 )
-                return describe_image, style_update, *_describe_clear_missing_model_outputs(state_params)
+                return describe_image, style_update, *_describe_clear_missing_model_outputs(state_params), report
 
             version = _vlm_resolve_version(version)
             custom_settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
@@ -12272,22 +12315,297 @@ with shared.gradio_root:
                     "The configured custom model does not accept image or video input.",
                     "当前自定义模型不接受图像或视频输入。",
                 ))
-                return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params)
+                return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params), report
             if _describe_requires_vlm(img, output_tags, output_chinese, output_artist):
                 missing_model_outputs = _describe_vlm_missing_model_outputs(state_params, version, custom_settings)
                 if missing_model_outputs is not None:
-                    return skip_component_update(), skip_component_update(), *missing_model_outputs
+                    return skip_component_update(), skip_component_update(), *missing_model_outputs, report
 
             describe_image, style_update = trigger_describe_with_feedback(
-                img, output_tags, output_chinese, output_artist, describe_prompt, state_params,
+                img, output_tags, output_chinese, output_artist, describe_prompt, state_params, report=report,
             )
-            return describe_image, style_update, *_describe_clear_missing_model_outputs(state_params)
+            return describe_image, style_update, *_describe_clear_missing_model_outputs(state_params), report
 
-        describe_event = describe_btn.click(describe_with_generating_check,
-                           inputs=[state_is_generating, describe_input_image, describe_output_tags, describe_output_chinese, describe_output_artist, describe_prompt, state_topbar, describe_vlm_model] + main_vlm_custom_inputs,
-                           outputs=[prompt, style_selections, missing_model_modal, missing_model_title, missing_model_list, missing_model_total_progress, missing_model_btn],
+        def _description_record_owner(state_params, request):
+            if request is None:
+                return identity_access.current_user_did(state_params)
+            if is_local_mode():
+                try:
+                    token = getattr(shared, "token", None)
+                    method = getattr(token, "get_default_workspace_did", None) or getattr(token, "get_guest_did", None)
+                    return str(method() or "") if callable(method) else ""
+                except Exception:
+                    return ""
+            return _get_request_identity_did(request)
+
+        def _description_record_root(state_params, request):
+            user_did = _description_record_owner(state_params, request)
+            if not user_did:
+                raise PermissionError(_studio_text(state_params, "Sign in to archive description results.", "请登录后保存反推记录。"))
+            return modules.config.get_user_path_outputs(user_did)
+
+        def _description_request_key(state_params, request):
+            return (_description_record_owner(state_params, request), getattr(request, "session_hash", "") or "")
+
+        def prepare_description_request(state_params, request: gr.Request):
+            try:
+                return describe_media_control.prepare(_description_request_key(state_params, request)).id
+            except describe_media_control.DescriptionBusy:
+                raise gr.Error(_studio_text(
+                    state_params, "A description is already running in this page. Stop it or wait for it to finish.",
+                    "当前页面已有反推任务，请等待完成或点击停止反推。",
+                ))
+
+        def description_button_updates(state_params, active):
+            if active:
+                return [gr_update(value=_studio_text(state_params, "Stop", "停止"), variant="secondary", interactive=True) for _ in range(4)]
+            return [
+                gr_update(value=_studio_text(state_params, "⚡ Execute Instruction", "⚡ 执行指令"), variant="secondary", interactive=True),
+                *[gr_update(value=_studio_text(state_params, "Describe Image", "图像内容反推"), variant="secondary", interactive=True) for _ in range(3)],
+            ]
+
+        def toggle_description_request(active, description_id, state_params, request: gr.Request):
+            if active:
+                stopped = stop_description(state_params, request)
+                return [
+                    description_id, {"id": description_id, "execute": False}, *stopped, True,
+                    *description_button_updates(state_params, True),
+                ]
+            identifier = prepare_description_request(state_params, request)
+            return [
+                identifier, {"id": identifier, "execute": True}, identifier, skip_component_update(), skip_component_update(),
+                gr_update(active=False), True, *description_button_updates(state_params, True),
+            ]
+
+        def finish_description_buttons(description_id, state_params, request: gr.Request):
+            key = _description_request_key(state_params, request)
+            entry = describe_media_control.get(key, description_id)
+            if entry is not None and entry.done.is_set() and describe_media_control.is_current(key, description_id):
+                return [False, *description_button_updates(state_params, False)]
+            return [skip_component_update()] * 5
+
+        def _archive_description_report(report, state_params, request):
+            from modules import describe_media_records
+            if request is None or not report.get("id") or (not report.get("attempts") and report.get("error") not in ("cancelled", "stop_unconfirmed")):
+                return
+            try:
+                if report.get("owner_did") and report["owner_did"] != _description_record_owner(state_params, request):
+                    raise PermissionError("Description identity changed before archiving.")
+                path = describe_media_records.save_record(report, _description_record_root(state_params, request))
+                report["archive_file"] = os.path.basename(path)
+            except Exception as error:
+                report["archive_error"] = str(error)
+                logger.warning("Description archive failed before returning UI output: %s", error)
+
+        def _execute_description_callback(callback, state_params, description_id, request):
+            from enhanced.comfy_textgen_vlm import ComfyTextgenInterrupted, comfy_textgen_vlm
+            key = _description_request_key(state_params, request) if description_id else None
+            entry = describe_media_control.get(key, description_id) if description_id else None
+            if description_id and (entry is None or entry.done.is_set() or not describe_media_control.is_current(key, description_id)):
+                return (*[skip_component_update()] * 7, None)
+            if entry is not None:
+                report = entry.report
+            else:
+                report = {"owner_did": _description_record_owner(state_params, request)} if request is not None else {}
+            try:
+                if entry is None:
+                    return callback(report)
+                with (describe_media_control.running(entry),
+                      comfy_textgen_vlm.request_control(cancel_check=entry.cancel.is_set)):
+                    result = callback(report)
+                    if report.get("error") != "stop_unconfirmed":
+                        describe_media_control.check()
+            except (describe_media_control.DescriptionStopped, ComfyTextgenInterrupted) as error:
+                if getattr(error, "code", "") == "textgen_stop_unconfirmed":
+                    report.update(error="stop_unconfirmed", accepted=False)
+                elif report.get("error") != "stop_unconfirmed":
+                    report.update(error="cancelled", accepted=False)
+                result = (*[skip_component_update()] * 7, report)
+            finally:
+                if entry is not None and describe_media_control.finalize(entry) and report.get("error") != "stop_unconfirmed":
+                    report.update(error="cancelled", accepted=False)
+                    result = (*[skip_component_update()] * 7, report)
+                _archive_description_report(report, state_params, request)
+                if entry is not None:
+                    describe_media_control.complete(entry)
+            return result
+
+        def describe_with_generating_check(state_is_generating, img, output_tags, output_chinese, output_artist, describe_prompt, state_params, version, api_name, provider, api_format, base_url, model, api_key, supports_images, dispatch=None, request: gr.Request = None):
+            description_id = ""
+            if dispatch is not None:
+                if not isinstance(dispatch, dict) or dispatch.get("execute") is not True or not isinstance(dispatch.get("id"), str) or not dispatch["id"]:
+                    return (*[skip_component_update()] * 7, None)
+                description_id = dispatch["id"]
+            return _execute_description_callback(
+                lambda report: _describe_with_generating_check(
+                    state_is_generating, img, output_tags, output_chinese, output_artist, describe_prompt,
+                    state_params, version, api_name, provider, api_format, base_url, model, api_key, supports_images, report,
+                ), state_params, description_id, request,
+            )
+
+        def stop_description(state_params, request: gr.Request):
+            entry = describe_media_control.stop(_description_request_key(state_params, request))
+            if entry is None:
+                return [skip_component_update()] * 3 + [gr_update(active=True)]
+            if entry.done.is_set():
+                _archive_description_report(entry.report, state_params, request)
+            return [
+                entry.id, gr_update(open=True),
+                _studio_text(state_params, "Stopping description…", "正在停止反推…"),
+                gr_update(active=True),
+            ]
+
+        def poll_description_stop(description_id, state_params, request: gr.Request):
+            key = _description_request_key(state_params, request)
+            entry = describe_media_control.get(key, description_id)
+            if entry is None or not describe_media_control.is_current(key, description_id):
+                return [
+                    *[skip_component_update()] * 11, gr_update(active=False), False,
+                    *description_button_updates(state_params, False),
+                ]
+            if not entry.done.is_set():
+                return [skip_component_update()] * 17
+            return [
+                *publish_description_record(entry.report, state_params, request),
+                skip_component_update(), skip_component_update(), gr_update(active=False),
+                False, *description_button_updates(state_params, False),
+            ]
+
+        def _description_record_view(report, state_params, index=-1, path=None, archive_error=""):
+            from modules import describe_media_records
+            entries = report.get("attempts") or []
+            if not entries:
+                return [
+                    gr_update(visible=True, open=True),
+                    describe_media_records.status_text(report, language=(state_params or {}).get("__lang", "cn"), archive_error=archive_error),
+                    gr_update(choices=[], value=None), "", gr_update(value="", visible=False),
+                    "", gr_update(value=path, visible=bool(path)),
+                ]
+            index = max(0, min(len(entries) - 1, int(index) if index not in (None, "", -1) else len(entries) - 1))
+            entry = entries[index]
+            status = describe_media_records.status_text(report, index, (state_params or {}).get("__lang", "cn"), archive_error)
+            choices = [(_studio_text(state_params, "Model call ", "模型调用 ") + str(i + 1), str(i)) for i in range(len(entries))]
+            candidate = entry.get("candidate", entry.get("returned_output", entry.get("raw_output", "")))
+            return [
+                gr_update(visible=True, open=True), status,
+                gr_update(choices=choices, value=str(index)),
+                str(entry.get("raw_output") or ""),
+                gr_update(value=str(entry.get("reasoning_output") or ""), visible=bool(entry.get("reasoning_output"))),
+                str(candidate or ""), gr_update(value=path, visible=bool(path)),
+            ]
+
+        def publish_description_record(report, state_params, request: gr.Request = None):
+            from modules import describe_media_records
+            if not isinstance(report, dict) or (not report.get("attempts") and report.get("error") not in ("cancelled", "stop_unconfirmed")):
+                return [skip_component_update()] * 9
+            if request is not None and report.get("owner_did") != _description_record_owner(state_params, request):
+                return _clear_description_record_view(_studio_text(
+                    state_params, "Identity changed. Previous records remain in their owner's history.",
+                    "身份已变化，原记录仍保留在对应身份的历史中。",
+                ))
+            path, names, archive_error = None, [], ""
+            try:
+                root = _description_record_root(state_params, request)
+                path = describe_media_records.save_record(report, root)
+                names = describe_media_records.list_records(root)
+            except Exception as error:
+                logger.warning("Description archive failed: %s", error)
+                archive_error = str(error)
+            view = _description_record_view(report, state_params, len(report["attempts"]) - 1, path, archive_error)
+            return [report, view[0], view[1], gr_update(choices=names, value=os.path.basename(path) if path else None), *view[2:]]
+
+        def publish_current_description_record(report, state_params, request: gr.Request = None):
+            if not isinstance(report, dict) or not describe_media_control.is_current(_description_request_key(state_params, request), report.get("id")):
+                return [skip_component_update()] * 9
+            return publish_description_record(report, state_params, request)
+
+        def load_description_record(name, state_params, request: gr.Request = None):
+            from modules import describe_media_records
+            if not name:
+                return [skip_component_update()] * 8
+            try:
+                report, path = describe_media_records.load_record(_description_record_root(state_params, request), name)
+                return [report, *_description_record_view(report, state_params, len(report.get("attempts") or []) - 1, path)]
+            except Exception as error:
+                gr.Warning(str(error))
+                return [skip_component_update()] * 8
+
+        def refresh_description_records(state_params, request: gr.Request = None):
+            from modules import describe_media_records
+            try:
+                names = describe_media_records.list_records(_description_record_root(state_params, request))
+                return gr_update(choices=names)
+            except Exception as error:
+                gr.Warning(str(error))
+                return skip_component_update()
+
+        def _clear_description_record_view(message=""):
+            return [{}, gr_update(open=False), message, gr_update(choices=[], value=None),
+                    gr_update(choices=[], value=None), "", gr_update(value="", visible=False),
+                    "", gr_update(value=None, visible=False)]
+
+        def clear_description_for_identity(report, state_params, request: gr.Request = None):
+            if isinstance(report, dict) and report.get("id") and request is not None:
+                if report.get("owner_did") != _description_record_owner(state_params, request):
+                    return _clear_description_record_view(_studio_text(
+                        state_params, "Identity changed. Previous records remain in their owner's history.",
+                        "身份已变化，原记录仍保留在对应身份的历史中。",
+                    ))
+            return [skip_component_update()] * 9
+
+        describe_record_outputs = [
+            describe_result_report, describe_results, describe_result_status, describe_result_history,
+            describe_result_attempt, describe_result_raw, describe_result_reasoning,
+            describe_result_candidate, describe_result_download,
+        ]
+        describe_history_refresh.click(refresh_description_records, inputs=[state_topbar], outputs=describe_result_history, queue=False, show_progress=False)
+        state_topbar.change(
+            clear_description_for_identity, inputs=[describe_result_report, state_topbar],
+            outputs=describe_record_outputs, queue=False, show_progress=False,
+        )
+        describe_result_history.input(
+            load_description_record, inputs=[describe_result_history, state_topbar],
+            outputs=[describe_result_report, describe_results, describe_result_status, describe_result_attempt,
+                     describe_result_raw, describe_result_reasoning, describe_result_candidate, describe_result_download],
+            queue=False, show_progress=False,
+        )
+        describe_result_attempt.input(
+            lambda report, state, index: _description_record_view(report, state, index)[:-1],
+            inputs=[describe_result_report, state_topbar, describe_result_attempt],
+            outputs=[describe_results, describe_result_status, describe_result_attempt, describe_result_raw,
+                     describe_result_reasoning, describe_result_candidate],
+            queue=False, show_progress=False,
+        )
+        describe_result_apply.click(
+            lambda text: str(text) if str(text or "").strip() else skip_component_update(),
+            inputs=[describe_result_candidate], outputs=prompt, queue=False, show_progress=False,
+        )
+
+        describe_toggle_outputs = [
+            describe_request_id, describe_dispatch, describe_stop_id, describe_results,
+            describe_result_status, describe_stop_poll, describe_request_active,
+            describe_btn, describe_uov_button, describe_inpaint_button, describe_enhance_button,
+        ]
+        describe_button_outputs = [
+            describe_request_active, describe_btn, describe_uov_button, describe_inpaint_button, describe_enhance_button,
+        ]
+        describe_prepare_event = describe_btn.click(
+            toggle_description_request, inputs=[describe_request_active, describe_request_id, state_topbar],
+            outputs=describe_toggle_outputs, queue=False, show_progress=False,
+        )
+        describe_event = describe_prepare_event.success(describe_with_generating_check,
+                           inputs=[state_is_generating, describe_input_image, describe_output_tags, describe_output_chinese, describe_output_artist, describe_prompt, state_topbar, describe_vlm_model] + main_vlm_custom_inputs + [describe_dispatch],
+                           outputs=[prompt, style_selections, missing_model_modal, missing_model_title, missing_model_list, missing_model_total_progress, missing_model_btn, describe_job_report],
                            show_progress=True,
-                           queue=True)
+                           queue=True, trigger_mode="multiple")
+        describe_event = describe_event.then(
+            finish_description_buttons, inputs=[describe_request_id, state_topbar],
+            outputs=describe_button_outputs, queue=False, show_progress=False, trigger_mode="multiple",
+        )
+        describe_event = describe_event.then(
+            publish_current_description_record, inputs=[describe_job_report, state_topbar],
+            outputs=describe_record_outputs, queue=False, show_progress=False, trigger_mode="multiple",
+        )
         describe_event = describe_event.then(
             fn=lambda html: None,
             inputs=[missing_model_list],
@@ -12677,11 +12995,10 @@ with shared.gradio_root:
             .then(update_scene_media_readiness, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=generate_button, queue=False, show_progress=False)
 
         if args_manager.args.enable_auto_describe_image:
-            def trigger_auto_describe(img, current_prompt, output_tags, output_chinese, output_artist, state_params, version, api_name, provider, api_format, base_url, model, api_key, supports_images, state_is_generating=True):
-
+            def _trigger_auto_describe(img, current_prompt, output_tags, output_chinese, output_artist, state_params, version, api_name, provider, api_format, base_url, model, api_key, supports_images, state_is_generating=True, report=None):
                 if img is None:
                     logger.info("Image is None, skipping image description")
-                    return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params)
+                    return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params), report
 
                 if isinstance(img, dict):
                     img = img['image']
@@ -12691,20 +13008,48 @@ with shared.gradio_root:
                 if _describe_requires_vlm(img, output_tags, output_chinese, output_artist):
                     missing_model_outputs = _describe_vlm_missing_model_outputs(state_params, version, custom_settings)
                     if missing_model_outputs is not None:
-                        return skip_component_update(), skip_component_update(), *missing_model_outputs
+                        return skip_component_update(), skip_component_update(), *missing_model_outputs, report
 
                 describe_image, style_update = trigger_describe_with_feedback(
-                    img, output_tags, output_chinese, output_artist, state_params=state_params,
+                    img, output_tags, output_chinese, output_artist, state_params=state_params, report=report,
                 )
-                return describe_image, style_update, *_describe_clear_missing_model_outputs(state_params)
+                return describe_image, style_update, *_describe_clear_missing_model_outputs(state_params), report
+
+            def trigger_auto_describe(img, current_prompt, output_tags, output_chinese, output_artist, state_params, version, api_name, provider, api_format, base_url, model, api_key, supports_images, dispatch=None, state_is_generating=True, request: gr.Request = None):
+                description_id = ""
+                if dispatch is not None:
+                    if not isinstance(dispatch, dict) or dispatch.get("execute") is not True or not isinstance(dispatch.get("id"), str) or not dispatch["id"]:
+                        return (*[skip_component_update()] * 7, None)
+                    description_id = dispatch["id"]
+                return _execute_description_callback(
+                    lambda report: _trigger_auto_describe(
+                        img, current_prompt, output_tags, output_chinese, output_artist, state_params,
+                        version, api_name, provider, api_format, base_url, model, api_key, supports_images,
+                        state_is_generating, report,
+                    ), state_params, description_id, request,
+                )
 
             def bind_auto_describe_button(button, image_component, trace_name):
-                auto_describe_event = button.click(
+                prepare_event = button.click(
+                    toggle_description_request, inputs=[describe_request_active, describe_request_id, state_topbar],
+                    outputs=describe_toggle_outputs,
+                    queue=False, show_progress=False,
+                )
+                auto_describe_event = prepare_event.success(
                     trigger_auto_describe,
-                    inputs=[image_component, prompt, describe_output_tags, describe_output_chinese, describe_output_artist, state_topbar, describe_vlm_model] + main_vlm_custom_inputs,
-                    outputs=[prompt, style_selections, missing_model_modal, missing_model_title, missing_model_list, missing_model_total_progress, missing_model_btn],
+                    inputs=[image_component, prompt, describe_output_tags, describe_output_chinese, describe_output_artist, state_topbar, describe_vlm_model] + main_vlm_custom_inputs + [describe_dispatch],
+                    outputs=[prompt, style_selections, missing_model_modal, missing_model_title, missing_model_list, missing_model_total_progress, missing_model_btn, describe_job_report],
                     show_progress=True,
                     queue=True,
+                    trigger_mode="multiple",
+                )
+                auto_describe_event = auto_describe_event.then(
+                    finish_description_buttons, inputs=[describe_request_id, state_topbar],
+                    outputs=describe_button_outputs, queue=False, show_progress=False, trigger_mode="multiple",
+                )
+                auto_describe_event = auto_describe_event.then(
+                    publish_current_description_record, inputs=[describe_job_report, state_topbar],
+                    outputs=describe_record_outputs, queue=False, show_progress=False, trigger_mode="multiple",
                 )
                 auto_describe_event = auto_describe_event.then(
                     fn=lambda html: None,
@@ -12738,6 +13083,14 @@ with shared.gradio_root:
             enhance_input_image.change(lambda img: gr_update(visible=img is not None), inputs=enhance_input_image, outputs=describe_enhance_button, show_progress=False, queue=False)
 
             bind_auto_describe_button(describe_enhance_button, enhance_input_image, "enhance")
+
+        describe_stop_poll.tick(
+            poll_description_stop, inputs=[describe_stop_id, state_topbar],
+            outputs=[
+                *describe_record_outputs, prompt, style_selections, describe_stop_poll, describe_request_active,
+                describe_btn, describe_uov_button, describe_inpaint_button, describe_enhance_button,
+            ], queue=False, show_progress=False,
+        )
 
     note_box_outputs = [params_note_info, params_note_close_button, params_note_input_name, params_note_delete_button, params_note_regen_button, params_note_preset_button, params_note_box, state_topbar]
     gallery_delete_capture_js = r'''(state,target)=>{

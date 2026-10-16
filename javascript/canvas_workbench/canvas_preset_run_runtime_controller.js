@@ -924,6 +924,7 @@
             const params = payload?.preset_node?.params;
             if (!prompt || !params || typeof params !== 'object') return payload;
             params.prompt = prompt;
+            params.pe_applied_prompt = prompt;
             if (params.director_timeline && typeof params.director_timeline === 'object') {
                 params.prompt_override = prompt;
                 params.director_prompt_override = prompt;

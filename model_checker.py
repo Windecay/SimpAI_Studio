@@ -4261,6 +4261,19 @@ packages = {'base_package': {'id': 1,
                               'vosr2,VOSR2/dinov2_vitl14_pretrain.pth,1217586395,0,https://modelscope.cn/models/LULALULALU/VOSR_CKPT/resolve/c8b0ae70beb01a011a74e4d5cfa242f52645a77a/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth,https://huggingface.co/CSWRY/VOSR/resolve/f24b3061b7f350b81e1907bdcfc27f71fb4ff3f3/torch_cache/checkpoints/dinov2_vitl14_pretrain.pth'],
                     'info_links': ['https://github.com/cswry/VOSR'],
                     'preset_sample': []},
+ 'flux3_klein_package': {
+     'id': 47,
+     'name': '[47]Flux3-KleinEdit',
+     'note': 'Flux3 蒸馏 INT8 图像编辑与文生图，复用 Krea2 的 Qwen3-VL 4B FP8 编码器，包含 Flux2 VAE 和 W4A8 PUP。',
+     'files': [
+         'diffusion_models,flux3_image_klein_sd_int8_convrot.safetensors,5827874779,0,https://modelscope.cn/models/black-forest-labs/flux-3-image-klein-comfy/resolve/master/diffusion_models/flux3_image_klein_sd_int8_convrot.safetensors,https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3_image_klein_sd_int8_convrot.safetensors',
+         'text_encoders,qwen3vl_4b_fp8_scaled.safetensors,5242467968,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/text_encoders/qwen3vl_4b_fp8_scaled.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors',
+         'vae,flux2-vae.safetensors,336211292,0,https://modelscope.cn/models/black-forest-labs/flux-3-image-klein-comfy/resolve/master/vae/flux2-vae.safetensors,https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors',
+         'text_encoders,qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors,6724090780,0,https://modelscope.cn/models/black-forest-labs/flux-3-image-klein-comfy/resolve/master/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors,https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors',
+     ],
+     'info_links': ['https://modelscope.cn/models/black-forest-labs/flux-3-image-klein-comfy'],
+     'preset_sample': [],
+ },
 }
 MANUAL_DOWNLOAD_MAP = {
 }

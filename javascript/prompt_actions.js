@@ -1239,6 +1239,7 @@
     window.completeSimpleAIPromptAction = function completeSimpleAIPromptAction(value) {
         const result = parseResult(value);
         const target = pendingPromptField;
+        const completedActionId = pendingActionId;
         const directRequest = pendingDirectRequest;
         const service = resolvedAgentService(result, pendingAgentService);
         pending = false;
@@ -1270,6 +1271,10 @@
                 renderModal();
                 setAgentStatus(service, "error", text("The target prompt is no longer available.", "目标提示词已不可用。"));
                 return;
+            }
+            if (["smart_expand", "detailed_expand"].includes(completedActionId)
+                    && target === fieldById("positive_prompt")) {
+                window.simpleaiMarkPromptExpanded?.(String(result.text ?? previousPrompt));
             }
             rememberPrompt(target, history);
             lastAppliedPromptField = target;

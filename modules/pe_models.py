@@ -5,6 +5,14 @@ import re
 PE_CATALOGS = ("clip", "text_encoders", "LLM")
 
 
+def is_flux3_pup_model(name):
+    filename = str(name).replace("\\", "/").rsplit("/", 1)[-1].casefold()
+    return bool(re.search(r"flux[._-]?3_prompt_upsampler(?:[._-]|$)", filename)) and (
+        filename.endswith((".safetensors", ".gguf")) and not _is_projector(filename)
+        and not re.search(r"(?:^|[-_.])mtp(?:[-_.]|$)", filename)
+    )
+
+
 def _is_projector(name):
     filename = os.path.basename(str(name).replace("\\", "/")).casefold()
     return "mmproj" in filename or "projector" in filename or bool(
@@ -18,7 +26,7 @@ def is_pe_model_name(name):
     stem, extension = os.path.splitext(filename)
     pe_directory = any(re.search(r"(?:^|[-_.\s])pe(?:$|[-_.\s])", part, re.I) for part in parts[:-1])
     return (
-        ("pe" in stem.casefold() or pe_directory)
+        ("pe" in stem.casefold() or pe_directory or is_flux3_pup_model(name))
         and extension.casefold() in {".safetensors", ".gguf"}
         and not _is_projector(filename)
         and not re.search(r"(?:^|[-_.])mtp(?:[-_.]|$)", stem, re.I)
@@ -41,6 +49,26 @@ def qwen_pe_vlm_task(version):
     if "qwen" not in name.casefold() or not re.search(r"(?:^|[-_.\s/])pe(?:$|[-_.\s/])", name, re.I):
         return None
     return pe_model_task(name) if is_pe_model_name(name) else None
+
+
+def prompt_expander_vlm_task(version):
+    prefix = "comfy:text_encoders:"
+    if str(version or "").startswith(prefix) and is_flux3_pup_model(str(version)[len(prefix):]):
+        return "flux3"
+    return qwen_pe_vlm_task(version)
+
+
+def prompt_expander_template(task):
+    return "flux3_pup.md" if task == "flux3" else f"qwen21_pe_{task}.md"
+
+
+def pe_supported_task(task_method):
+    method = str(task_method or "").lower()
+    return "qwen_image21" in method or "flux3" in method
+
+
+def prompt_was_expanded(prompt, applied_prompt):
+    return bool(str(applied_prompt or "").strip()) and str(prompt or "").strip() == str(applied_prompt).strip()
 
 
 def scan_pe_model_files(catalog, roots):

@@ -7,7 +7,7 @@ import threading
 import time
 
 from modules.llama_cpp_runtime import LLAMA_CPP_N_CTX_MAX
-from modules.pe_models import qwen_pe_vlm_task
+from modules.pe_models import prompt_expander_template, prompt_expander_vlm_task
 
 
 CATALOG_SCHEMA = "simpai.vlm-model-catalog.v1"
@@ -864,11 +864,11 @@ def _scan_text_encoder_items(text_encoder_roots, claimed_paths):
         if recipe.get("architecture") not in CHAT_CATALOG_TEXT_ENCODER_ARCHITECTURES:
             continue
         version_id = f"comfy:text_encoders:{relative_path}"
-        pe_task = qwen_pe_vlm_task(version_id)
+        pe_task = prompt_expander_vlm_task(version_id)
         pe_metadata = {
             "prompt_enhancer_task": pe_task,
             "recommended_chat_mode": "raw",
-            "default_system_prompt_template_id": f"qwen21_pe_{pe_task}.md",
+            "default_system_prompt_template_id": prompt_expander_template(pe_task),
         } if pe_task else {}
         capabilities = list(recipe["capabilities"])
         config = {

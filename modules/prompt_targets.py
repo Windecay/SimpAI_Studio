@@ -10,6 +10,8 @@ def prompt_target_key(backend_engine, task_method, target_text):
         return "anima_aio"
     if any(token in haystack for token in ("il_v_pre", "illustrious", "chenkin", "noob", "newbie", "pony", "animagine", "sd15_aio")):
         return "sdxl_danbooru"
+    if re.search(r"flux[ ._-]?3", haystack):
+        return "flux3_natural"
     if "flux2" in haystack or "flux.2" in haystack or "flux 2" in haystack:
         return "qwen_natural"
     if "flux" in haystack:

@@ -75,6 +75,7 @@
             if (!text) return '';
             const key = String(target?.key || '').toLowerCase();
             const hasChinese = /[\u3400-\u9fff]/.test(text);
+            if (key === 'flux3_natural') return text;
             if (key === 'outpaint_instruction') {
                 return 'seamless outpainting, natural image-border expansion, preserve the original subject, preserve lighting and perspective, match camera angle and composition, match style, color palette, texture, and depth, coherent background continuation, clean seamless edges';
             }

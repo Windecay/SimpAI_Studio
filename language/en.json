@@ -1,5 +1,15 @@
 {
   "MiniMax H3 Video Transition [Upload two videos to generate a transition between them]": "MiniMax H3 Video Transition [Upload two videos to generate a transition between them]",
+  "Description results": "Description results",
+  "Description history": "Description history",
+  "Refresh records": "Refresh records",
+  "Description status": "Description status",
+  "Model call": "Model call",
+  "Original model output": "Original model output",
+  "Reasoning output": "Reasoning output",
+  "Candidate prompt": "Candidate prompt",
+  "Use this description": "Use this description",
+  "Description record": "Description record",
   "GeneralAPIImage":"General API Image",
   "Mask feathering": "Mask feathering",
   "MiniMax-H3(Swap-SAM3)": "MiniMax-H3 SAM3 Face Swap",
@@ -842,5 +852,12 @@
     "QwenGaussian\u2B07": "Qwen Free Viewpoint+\u2B07",
     "Image 1 original -> Gaussian Studio -> Image 2 camera render": "Image 1 original -> Gaussian Studio -> Image 2 camera render",
     "Original image (Image 1)": "Original image (Image 1)",
-    "Gaussian camera render (Image 2)": "Gaussian camera render (Image 2)"
+    "Gaussian camera render (Image 2)": "Gaussian camera render (Image 2)",
+    "Flux3-KleinEdit": "Flux3 Image Edit",
+    "Flux3-KleinEdit\u2B07": "Flux3 Image Edit\u2B07",
+    "Flux3 Image Edit": "Flux3 Image Edit",
+    "Flux3 Image Edit [up to 9 images]": "Flux3 Image Edit [up to 9 images]",
+    "Reference Megapixels": "Reference Megapixels",
+    "Flux3 Prompt Upsampler": "Flux3 Prompt Upsampler",
+    "Flux3 Text Encoder": "Flux3 Text Encoder"
 }

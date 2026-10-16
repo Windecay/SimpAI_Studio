@@ -36,7 +36,7 @@ import modules.vlm_roleplay_reply as vlm_roleplay_reply
 import modules.vlm_roleplay_outline as vlm_roleplay_outline
 import modules.vlm_reply_options as vlm_reply_options
 from modules.agent_service import AgentContext
-from modules.pe_models import qwen_pe_vlm_task
+from modules.pe_models import prompt_expander_vlm_task
 
 
 logger = logging.getLogger(__name__)
@@ -1604,7 +1604,7 @@ def _prompt_mode_from_options(options):
 def _prompt_options_from_payload(payload, lang):
     raw_options = payload.get("prompt_options") if isinstance(payload.get("prompt_options"), dict) else {}
     chat_mode = _normalize_chat_mode(payload.get("chat_mode") or payload.get("describe_chat_mode"))
-    pe_task = qwen_pe_vlm_task(payload.get("version"))
+    pe_task = prompt_expander_vlm_task(payload.get("version"))
     if pe_task and chat_mode in {"chat", "prompt", "raw"}:
         chat_mode = "raw"
     prompt_n_ctx = (
@@ -5872,6 +5872,8 @@ def _creative_action_prompt_target(action, preset_capabilities=None):
             capability.get("purpose"),
         )
     )
+    if re.search(r"(?:^|[^a-z0-9])flux[._ -]?3(?:[^a-z0-9]|$)", descriptor, re.I):
+        return "flux3_natural"
     multilingual_target = (
         any(re.search(r"(?:^|[_-])cn$", method) for method in task_methods)
         or "qwen" in text_encoder

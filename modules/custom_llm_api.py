@@ -53,6 +53,61 @@ class CustomLLMRequestError(RuntimeError):
         self.retry_after = retry_after
 
 
+class CustomLLMRequestCancelled(RuntimeError):
+    code = "cancelled"
+
+
+def request_json_cancelable(url, payload=None, api_key="", method="POST", timeout=120, cancel_check=None):
+    """Close this request's connection when its caller cancels."""
+    import asyncio
+    import httpx
+
+    async def request():
+        if callable(cancel_check) and cancel_check():
+            raise CustomLLMRequestCancelled("API request stopped by user.")
+        headers = {"Accept": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            task = asyncio.create_task(client.request(method, url, json=payload, headers=headers))
+            try:
+                while not task.done():
+                    if callable(cancel_check) and cancel_check():
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
+                        raise CustomLLMRequestCancelled("API request stopped by user.")
+                    await asyncio.wait([task], timeout=0.1)
+                response = await task
+                if response.is_error:
+                    raise CustomLLMRequestError(
+                        f"HTTP {response.status_code}: {_response_preview(response.text)}",
+                        status=response.status_code,
+                    )
+                if not response.content:
+                    return {}
+                try:
+                    return response.json()
+                except ValueError as error:
+                    raise CustomLLMRequestError(
+                        f"API returned non-JSON response: {_response_preview(response.text)}",
+                        status=response.status_code,
+                    ) from error
+            except httpx.RequestError as error:
+                raise CustomLLMRequestError(f"API request failed: {error}") from error
+            finally:
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+
+    return asyncio.run(request())
+
+
 def normalize_api_format(value):
     api_format = str(value or OPENAI_CHAT_COMPLETIONS).strip() or OPENAI_CHAT_COMPLETIONS
     return api_format
@@ -556,10 +611,13 @@ def strip_reasoning_text(text):
 
 
 class PEOutputFormatError(ValueError):
-    """The response has a prompt wrapper but no reliably recoverable prompt."""
+    """The response cannot reliably be used as an expanded prompt."""
 
 
 _PE_PROMPT_KEYS = ("rewritten_prompt", "final_prompt", "positive_prompt", "prompt")
+_PE_FUNCTION_WORDS = frozenset(
+    "a an the and or of to in on by with for at from as is it".split()
+)
 
 
 def _pe_output_surface(text):
@@ -592,7 +650,7 @@ def _pe_output_surface(text):
     return output.strip()
 
 
-def clean_pe_output(text, *, strict_json=True):
+def _unwrap_pe_output(text, *, strict_json):
     output = _pe_output_surface(text)
     if not output.startswith("{"):
         return output
@@ -635,6 +693,19 @@ def clean_pe_output(text, *, strict_json=True):
                 return _pe_output_surface(value[key])
     if strict_json:
         raise PEOutputFormatError("PE JSON has no usable image prompt field.")
+    return output
+
+
+def clean_pe_output(text, *, strict_json=True):
+    output = _unwrap_pe_output(text, strict_json=strict_json)
+    if len(output) >= 256:
+        words = re.findall(r"[^\W\d_]+", output.casefold())
+        if not words and not any(char.isalnum() for char in output):
+            raise PEOutputFormatError("PE returned only punctuation instead of an image prompt.")
+        # This failure contains no descriptive words. Do not reject normal prose
+        # merely because requested lettering or reference labels repeat often.
+        if len(words) >= 64 and set(words) <= _PE_FUNCTION_WORDS:
+            raise PEOutputFormatError("PE returned repetitive function words instead of an image prompt.")
     return output
 
 

@@ -10,7 +10,8 @@ from PIL import Image
 import shared
 from enhanced.logger import format_name
 from modules.custom_llm_api import strip_reasoning_text, clean_pe_output, PEOutputFormatError
-from modules.pe_models import qwen_pe_vlm_task
+from modules.pe_models import prompt_expander_vlm_task, qwen_pe_vlm_task
+from modules import generation_capture
 
 import logging
 
@@ -200,6 +201,8 @@ class ComfyTextgenVLM:
         thinking=False,
         use_default_template=True,
         system_prompt=None,
+        capture_output=False,
+        trace_node=False,
     ):
         image_names = list(image_names or [])
         workflow = {
@@ -257,13 +260,19 @@ class ComfyTextgenVLM:
             textgen_inputs["image"] = image_output
         if use_default_template and str(system_prompt or "").strip():
             textgen_inputs["system_prompt"] = str(system_prompt).strip()
-        workflow[textgen_id] = {"class_type": "TextGenerate", "inputs": textgen_inputs}
+        workflow[textgen_id] = {"class_type": "SimpAITextGenerate" if trace_node else "TextGenerate", "inputs": textgen_inputs}
 
         preview_id = str(next_id)
         workflow[preview_id] = {
             "class_type": "PreviewAny",
             "inputs": {"source": [textgen_id, 0]},
         }
+        if capture_output:
+            workflow[str(next_id + 1)] = {
+                "class_type": "PreviewAny",
+                "inputs": {"source": [textgen_id, 1]},
+                "_meta": {"title": "Text Encoder Reasoning"},
+            }
         return workflow, preview_id
 
     def _history_error(self, item):
@@ -300,6 +309,25 @@ class ComfyTextgenVLM:
         with comfyd.task_session():
             return self._execute_workflow_in_session(workflow, preview_id, timeout)
 
+    def _capture_result(self, workflow, preview_id, item, prompt_id, text):
+        if not generation_capture.is_active():
+            return
+        textgen_id = workflow[str(preview_id)]["inputs"]["source"][0]
+        inputs = workflow[textgen_id]["inputs"]
+        record = {
+            "prompt_id": prompt_id, "raw_output": text, "reasoning_output": "",
+            "max_tokens": inputs["max_length"], "thinking": inputs["thinking"],
+        }
+        trace = (item.get("outputs", {}).get(textgen_id) or {}).get("simpai_textgen") or []
+        if trace and isinstance(trace[0], dict):
+            record.update(trace[0])
+        else:
+            for node_id, node in workflow.items():
+                if node.get("_meta", {}).get("title") == "Text Encoder Reasoning":
+                    record["reasoning_output"] = self._extract_preview_text(item, node_id) or ""
+                    break
+        generation_capture.publish(record)
+
     def _execute_workflow_in_session(self, workflow, preview_id, timeout=600):
         _, comfyclient_pipeline = self._runtime()
         self._check_request()
@@ -318,8 +346,9 @@ class ComfyTextgenVLM:
                 if isinstance(item, dict):
                     text = self._extract_preview_text(item, preview_id)
                     if text is not None:
+                        self._capture_result(workflow, preview_id, item, prompt_id, text)
                         clip_name = workflow.get("1", {}).get("inputs", {}).get("clip_name", "")
-                        if qwen_pe_vlm_task(f"comfy:text_encoders:{clip_name}"):
+                        if prompt_expander_vlm_task(f"comfy:text_encoders:{clip_name}"):
                             return text
                         return strip_reasoning_text(text)
                     status = item.get("status")
@@ -376,7 +405,7 @@ class ComfyTextgenVLM:
     ):
         with self.lock:
             self._check_request()
-            self._ensure_server()
+            object_info = self._ensure_server()
             effective_prompt = str(prompt or "").strip()
             image_names = self._upload_images(image)
             self._check_request()
@@ -394,9 +423,12 @@ class ComfyTextgenVLM:
                 thinking=thinking,
                 use_default_template=use_default_template,
                 system_prompt=system_prompt,
+                capture_output=generation_capture.is_active(),
+                trace_node=generation_capture.is_active() and isinstance(object_info, dict)
+                and "SimpAITextGenerate" in object_info,
             )
             text = self._execute_workflow(workflow, preview_id)
-            if qwen_pe_vlm_task(f"comfy:text_encoders:{clip_name}"):
+            if prompt_expander_vlm_task(f"comfy:text_encoders:{clip_name}"):
                 try:
                     return clean_pe_output(text, strict_json=False)
                 except PEOutputFormatError as error:

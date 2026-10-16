@@ -1491,7 +1491,7 @@ def worker():
                         prompt_accepted_callback=mark_comfy_prompt_accepted,
                         process_alive_callback=comfyd.is_running,
                     )
-                if imgs and "qwen_image21" in str(async_task.task_method or "").lower():
+                if imgs and any(key in str(async_task.task_method or "").lower() for key in ("qwen_image21", "flux3")):
                     capture_pe_result(
                         comfypipeline, async_task.simpleai_comfy_prompt_id,
                         params_backend.get("pe_model"), task,
@@ -2125,7 +2125,11 @@ def worker():
             ))
         
         keep_vlm_model_loaded = getattr(async_task, 'keep_vlm_model_loaded', False)
-        if not keep_vlm_model_loaded and not is_cpu_only_llama_model_loaded(llamacpp_vlm):
+        selected_pe = async_task.params_backend.get("pe_model")
+        reuse_prompt_encoder = selected_pe not in (None, "", "None") and vlm.can_reuse_prompt_encoder(
+            selected_pe, async_task.task_method,
+        )
+        if not keep_vlm_model_loaded and not reuse_prompt_encoder and not is_cpu_only_llama_model_loaded(llamacpp_vlm):
             logger.info(
                 '[VLM KeepLoaded] auto free_model before diffusion task_id=%s task_method=%s task_class=%s keep_vlm_model_loaded=%s translated=%s source=async_worker.process_prompt',
                 getattr(async_task, 'task_id', None),

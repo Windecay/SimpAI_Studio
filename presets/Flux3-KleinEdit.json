@@ -1,0 +1,110 @@
+{
+  "supported_tasks": [
+    "text_to_image", "image_edit", "multi_image_edit", "image_restore",
+    "image_object_removal", "image_object_transfer", "image_relight",
+    "image_style_transfer", "image_face_swap", "image_pose_transfer",
+    "image_anime_to_real", "image_view_synthesis", "image_expression_transfer"
+  ],
+  "interaction_requirements": [],
+  "prompt_agent_required": false,
+  "default_engine": {
+    "backend_engine": "Flux",
+    "backend_params": {
+      "pe_model": "qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors"
+    },
+    "engine_type": "image",
+    "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection", "negative_prompt"],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "m1.1",
+      "theme": ["Flux3 Image Edit"],
+      "theme_title": "Flux3 Image Edit [up to 9 images]",
+      "disable_canvas_mask": true,
+      "director_capability": {
+        "image_policy": "optional",
+        "audio_policy": "forbidden",
+        "video_policy": "forbidden",
+        "min_images": 0,
+        "max_images": 9,
+        "image_modes": ["none", "reference_set"],
+        "audio_output": "silent",
+        "mixed_segments": false
+      },
+      "divisible": [
+        "scene_input_image3", "scene_input_image4", "scene_input_image5",
+        "scene_input_image6", "scene_input_image7", "scene_input_image8"
+      ],
+      "disvisible": [
+        "scene_additional_prompt", "scene_additional_prompt_2",
+        "scene_var_number", "scene_var_number2", "scene_var_number4",
+        "scene_var_number5", "scene_var_number6", "scene_var_number7",
+        "scene_var_number8", "scene_var_number9", "scene_var_number10",
+        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
+        "scene_refiner_model", "scene_video", "scene_reference_video", "scene_audio",
+        "scene_video_duration", "sam3_input_video", "sam3_mask_video", "minimax_h3_storyboard_control"
+      ],
+      "task_method": {"Flux3 Image Edit": "flux3_klein_edit_cn"},
+      "prompt_skill_docs": {
+        "text_to_image": {"en": ["flux3_prompting_en.md"], "cn": ["flux3_prompting_cn.md"]},
+        "image_edit": {"en": ["flux3_prompting_en.md"], "cn": ["flux3_prompting_cn.md"]}
+      },
+      "prompt": {"Flux3 Image Edit": ""},
+      "agent_prompt": {
+        "Flux3 Image Edit": "Write one English prompt for FLUX 3 Image Klein from the user's request and actual references. With no images, describe the complete intended frame. For a local edit, describe the concrete operation and resulting appearance, then one compact preservation clause; do not recaption the entire unchanged scene. For a new composition, state what each reference supplies and the requested arrangement. Images arrive as the canvas when present, followed by non-empty reference slots; empty slots do not consume a number. Use natural references such as the first image and second image. Determine base and donor roles from the request. Do not use Qwen <image1>, H3 <Picture 1>, bounding boxes or masks. Preserve exact on-image wording in its original language, including Chinese, inside straight double quotes. Do not add unrequested subjects, lettering, crops, style changes or numeric size instructions. Return only the final prompt, with no reasoning, JSON or Markdown."
+      },
+      "var_number3_title": "Reference Megapixels",
+      "var_number3_min": 0.01,
+      "var_number3_max": 16,
+      "var_number3_step": 0.1,
+      "var_number3": {"Flux3 Image Edit": 1.0},
+      "resolution_control": {
+        "mode": "image_keep_input_area",
+        "source": "scene_canvas",
+        "base_width": 1024,
+        "base_height": 1024,
+        "quantize": 16,
+        "interactive": true,
+        "frontend_preprocess": false,
+        "preprocess_target": "none",
+        "preprocess_fit": "proportional"
+      },
+      "aspect_ratio": ["1024|1:1", "1536|1:1", "2048|1:1", "origin|Original"],
+      "image_preprocessor_method": [["-normalization"]],
+      "overwrite_step": {"Flux3 Image Edit": 16},
+      "overwrite_step_min": 1,
+      "overwrite_step_max": 50,
+      "sampler": {"Flux3 Image Edit": "euler"},
+      "scheduler": {"Flux3 Image Edit": "simple"}
+    }
+  },
+  "default_model": "flux3_image_klein_sd_int8_convrot.safetensors",
+  "default_clip_model": "qwen3vl_4b_fp8_scaled.safetensors",
+  "default_vae": "flux2-vae.safetensors",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_loras": [["None", 1], ["None", 1], ["None", 1], ["None", 1], ["None", 1]],
+  "default_cfg_scale": 1,
+  "default_sample_sharpness": 2,
+  "default_sampler": "euler",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "1024*1024",
+  "default_resolution_quantize_step": 16,
+  "default_image_number": 1,
+  "default_overwrite_step": 16,
+  "default_prompt": "",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,flux3_image_klein_sd_int8_convrot.safetensors,5827874779,0,https://modelscope.cn/models/black-forest-labs/flux-3-image-klein-comfy/resolve/master/diffusion_models/flux3_image_klein_sd_int8_convrot.safetensors,https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3_image_klein_sd_int8_convrot.safetensors",
+    "text_encoders,qwen3vl_4b_fp8_scaled.safetensors,5242467968,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/text_encoders/qwen3vl_4b_fp8_scaled.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+    "vae,flux2-vae.safetensors,336211292,0,https://modelscope.cn/models/black-forest-labs/flux-3-image-klein-comfy/resolve/master/vae/flux2-vae.safetensors,https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors",
+    "text_encoders,qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors,6724090780,0,https://modelscope.cn/models/black-forest-labs/flux-3-image-klein-comfy/resolve/master/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors,https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors"
+  ]
+}

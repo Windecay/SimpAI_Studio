@@ -347,6 +347,28 @@
       "reason": "QwenPose 的图片角色、可见姿态与相机视图迁移，以及与目标构图兼容的原图保留要求。"
     },
     {
+      "key": "flux3_prompting_en",
+      "title": "Flux3 Image Prompting",
+      "doc": "flux3_prompting_en.md",
+      "language": "en",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/flux3_prompting_en.md",
+      "reason": "Flux3 text-to-image and reference editing prompts, optional expansion, and exact visible text."
+    },
+    {
+      "key": "flux3_prompting_cn",
+      "title": "Flux3 图像提示词",
+      "doc": "flux3_prompting_cn.md",
+      "language": "cn",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/flux3_prompting_cn.md",
+      "reason": "Flux3 文生图、参考图编辑、可选扩写与画面文字保留规则。"
+    },
+    {
       "key": "runtime_canvas_snapshot",
       "title": "Runtime Canvas Snapshot",
       "doc": "",

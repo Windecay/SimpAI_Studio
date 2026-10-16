@@ -1,0 +1,114 @@
+{
+  "1": {
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "", "additional_prompt": "",
+      "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
+      "inpaint_image": "None", "inpaint_mask": "None",
+      "width": 1024, "height": 1024, "cfg": 1, "steps": 16,
+      "var_number": 0, "var_number2": 0, "var_number3": 1.0, "var_number4": 0,
+      "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
+      "var_number9": 0, "var_number10": 0,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "model_type": 1, "model_type2": 1, "clip_type": 1,
+      "negative_prompt": "", "sampler": "euler", "scheduler": "simple", "video_duration": 0,
+      "ip_image4": "None", "ip_image5": "None", "ip_image6": "None", "ip_image7": "None"
+    }
+  },
+  "2": {"class_type": "SeedInput", "_meta": {"title": "SeedInput"}, "inputs": {"seed": 0}},
+  "3": {
+    "class_type": "UNETLoader", "_meta": {"title": "base_model"},
+    "inputs": {"unet_name": "flux3_image_klein_sd_int8_convrot.safetensors", "weight_dtype": "default"}
+  },
+  "4": {
+    "class_type": "CLIPLoader", "_meta": {"title": "clip_model"},
+    "inputs": {"clip_name": "qwen3vl_4b_fp8_scaled.safetensors", "type": "flux3", "device": "default"}
+  },
+  "5": {
+    "class_type": "VAELoader", "_meta": {"title": "vae_model"},
+    "inputs": {"vae_name": "flux2-vae.safetensors"}
+  },
+  "7": {
+    "class_type": "CLIPTextEncode", "_meta": {"title": "Flux3 Text Encoding"},
+    "inputs": {"clip": ["simpai_lora_stack_main", 1], "text": ["simpai_flux3_pup", 0]}
+  },
+  "13": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["7", 0]}},
+  "14": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {"width": ["1", 6], "height": ["1", 7], "batch_size": 1}
+  },
+  "15": {
+    "class_type": "ReferenceMultiLatent", "_meta": {"title": "Flux3 Ordered References"},
+    "inputs": {
+      "positive": ["7", 0], "negative": ["13", 0], "vae": ["5", 0],
+      "resolution": "resize", "resolution.megapixels": ["1", 12],
+      "images.image0": ["22", 0], "images.image1": ["25", 0], "images.image2": ["28", 0],
+      "images.image3": ["31", 0], "images.image4": ["34", 0], "images.image5": ["37", 0],
+      "images.image6": ["40", 0], "images.image7": ["43", 0], "images.image8": ["46", 0]
+    }
+  },
+  "simpai_flux3_pup": {
+    "class_type": "SimpAIPromptExpand", "_meta": {"title": "Flux3 Prompt Upsampler"},
+    "inputs": {
+      "prompt": ["1", 0], "pe_model": "qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors",
+      "target": "flux3", "seed": ["2", 0], "max_length": 3584, "applied_prompt": "",
+      "images.image_1": ["22", 0], "images.image_2": ["25", 0], "images.image_3": ["28", 0],
+      "images.image_4": ["31", 0], "images.image_5": ["34", 0], "images.image_6": ["37", 0],
+      "images.image_7": ["40", 0], "images.image_8": ["43", 0], "images.image_9": ["46", 0]
+    }
+  },
+  "10": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["simpai_lora_stack_main", 0], "seed": ["2", 0], "steps": ["1", 9],
+      "cfg": ["1", 8], "sampler_name": ["1", 30], "scheduler": ["1", 31], "denoise": 1,
+      "positive": ["15", 0], "negative": ["15", 1], "latent_image": ["14", 0]
+    }
+  },
+  "11": {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["5", 0]}},
+  "12": {"class_type": "SaveImageWebsocket", "_meta": {"title": "SaveImageWebsocket"}, "inputs": {"images": ["11", 0]}},
+  "17": {"class_type": "noneNode", "inputs": {}},
+  "18": {"class_type": "easy string", "inputs": {"value": "None"}},
+  "20": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 4], "image": "None"}},
+  "21": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 4], "b": ["18", 0]}},
+  "22": {"class_type": "easy ifElse", "inputs": {"boolean": ["21", 0], "on_true": ["17", 0], "on_false": ["20", 0]}},
+  "23": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 2], "image": "None"}},
+  "24": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 2], "b": ["18", 0]}},
+  "25": {"class_type": "easy ifElse", "inputs": {"boolean": ["24", 0], "on_true": ["17", 0], "on_false": ["23", 0]}},
+  "26": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 3], "image": "None"}},
+  "27": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 3], "b": ["18", 0]}},
+  "28": {"class_type": "easy ifElse", "inputs": {"boolean": ["27", 0], "on_true": ["17", 0], "on_false": ["26", 0]}},
+  "29": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 27], "image": "None"}},
+  "30": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 27], "b": ["18", 0]}},
+  "31": {"class_type": "easy ifElse", "inputs": {"boolean": ["30", 0], "on_true": ["17", 0], "on_false": ["29", 0]}},
+  "32": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 28], "image": "None"}},
+  "33": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 28], "b": ["18", 0]}},
+  "34": {"class_type": "easy ifElse", "inputs": {"boolean": ["33", 0], "on_true": ["17", 0], "on_false": ["32", 0]}},
+  "35": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 33], "image": "None"}},
+  "36": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 33], "b": ["18", 0]}},
+  "37": {"class_type": "easy ifElse", "inputs": {"boolean": ["36", 0], "on_true": ["17", 0], "on_false": ["35", 0]}},
+  "38": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 34], "image": "None"}},
+  "39": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 34], "b": ["18", 0]}},
+  "40": {"class_type": "easy ifElse", "inputs": {"boolean": ["39", 0], "on_true": ["17", 0], "on_false": ["38", 0]}},
+  "41": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 35], "image": "None"}},
+  "42": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 35], "b": ["18", 0]}},
+  "43": {"class_type": "easy ifElse", "inputs": {"boolean": ["42", 0], "on_true": ["17", 0], "on_false": ["41", 0]}},
+  "44": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 36], "image": "None"}},
+  "45": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 36], "b": ["18", 0]}},
+  "46": {"class_type": "easy ifElse", "inputs": {"boolean": ["45", 0], "on_true": ["17", 0], "on_false": ["44", 0]}},
+  "56": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}, "inputs": {"model": ["3", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "57": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_2"}, "inputs": {"model": ["56", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "58": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_3"}, "inputs": {"model": ["57", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "59": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_4"}, "inputs": {"model": ["58", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "60": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_5"}, "inputs": {"model": ["59", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "61": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_6"}, "inputs": {"model": ["60", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "62": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_7"}, "inputs": {"model": ["61", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "63": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_8"}, "inputs": {"model": ["62", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "64": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_9"}, "inputs": {"model": ["63", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "65": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_10"}, "inputs": {"model": ["64", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "simpai_lora_stack_main": {
+    "class_type": "SimpAILoraStack", "_meta": {"title": "lora_stack_main"},
+    "inputs": {"model": ["65", 0], "clip": ["4", 0], "stack_json": "{\"version\":1,\"items\":[]}", "branch": "main"}
+  }
+}

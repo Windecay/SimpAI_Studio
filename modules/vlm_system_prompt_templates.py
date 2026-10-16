@@ -27,6 +27,7 @@ H3_PROMPT_WRITING_TEMPLATES = {
     },
 }
 PE_PROMPT_TEMPLATES = {
+    "flux3_pup.md": "Flux3 Prompt Upsampler",
     "qwen21_pe_t2i.md": "Qwen2.1 PE - Text-to-image expansion",
     "qwen21_pe_i2i.md": "Qwen2.1 PE - Image editing",
 }

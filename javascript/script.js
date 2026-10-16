@@ -1339,6 +1339,14 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         };
     }
 
+    window.simpleaiMarkPromptExpanded = function (prompt) {
+        window.simpleaiAppliedPrompt = {
+            prompt: String(prompt || ''),
+            preset: String(window.simpleaiTopbarSystemParams?.__preset || ''),
+            taskMethod: modelsPanelCatalogSignature().taskMethod
+        };
+    };
+
     function catalogMatchesModelsPanelSignature(catalog, signature = modelsPanelCatalogSignature()) {
         if (!catalog || typeof catalog !== 'object') return false;
         if (catalog.__simpai_signature_key === signature.key) return true;
@@ -1897,7 +1905,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         panel.querySelectorAll('[data-simpai-lora-enabled]').forEach(syncLoraRowInteractivity);
         syncModelsPanelRefinerAvailability(panel);
         // PE availability belongs to the active task, not the asynchronous file catalog.
-        const peEnabled = modelsPanelCatalogSignature().taskMethod.includes('qwen_image21');
+        const peEnabled = /qwen_image21|flux3/i.test(modelsPanelCatalogSignature().taskMethod);
         const peField = panel.querySelector('[data-simpai-model-card="pe"]');
         if (peField) peField.hidden = !peEnabled;
     }
@@ -1985,6 +1993,11 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
 
     function collectModelsPanelPayload(panel) {
         const payload = { loras: [] };
+        const applied = window.simpleaiAppliedPrompt;
+        payload.pe_applied_prompt = applied
+            && applied.taskMethod === modelsPanelCatalogSignature().taskMethod
+            && applied.preset === String(window.simpleaiTopbarSystemParams?.__preset || '')
+            ? applied.prompt : '';
         Object.assign(payload, window.SimpAILoraStackEditor?.read(panel.querySelector('[data-simpai-lora-stack]')) || {});
         panel.querySelectorAll('[data-simpai-model-field]').forEach((field) => {
             const key = field.dataset.simpaiModelField;

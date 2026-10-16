@@ -54,12 +54,12 @@
   },
   "simpai_qwen21_pe": {
     "inputs": {
-      "prompt": ["1", 0], "pe_model": "None", "seed": ["2", 0],
+      "prompt": ["1", 0], "pe_model": "None", "seed": ["2", 0], "max_length": 8192, "applied_prompt": "",
       "images.image_1": ["22", 0], "images.image_2": ["25", 0], "images.image_3": ["28", 0],
       "images.image_4": ["31", 0], "images.image_5": ["34", 0], "images.image_6": ["37", 0],
       "images.image_7": ["40", 0], "images.image_8": ["43", 0], "images.image_9": ["46", 0]
     },
-    "class_type": "SimpAIQwenImage21TextGenerate",
+    "class_type": "SimpAIPromptExpand",
     "_meta": {"title": "Qwen Image 2.1 PE"}
   },
   "8": {

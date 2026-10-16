@@ -224,7 +224,7 @@
         }
 
         function applyCanvasAgentPromptToGenerator(node, prompt) {
-            const paramsPatch = { prompt };
+            const paramsPatch = { prompt, pe_applied_prompt: prompt };
             if (node.type === 'preset') {
                 const visibleKeys = new Set(getVisiblePresetParams(node).map(param => param.key));
                 if (visibleKeys.has('scene_additional_prompt') && !visibleKeys.has('prompt')) {

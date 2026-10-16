@@ -13025,7 +13025,7 @@
         const version = readSelectedVlmVersion();
         const catalog = Array.isArray(state.vlmModelCatalog) ? state.vlmModelCatalog : [];
         const model = catalog.find((item) => item.id === version);
-        if (!['t2i', 'i2i'].includes(model?.prompt_enhancer_task)
+        if (!['t2i', 'i2i', 'flux3'].includes(model?.prompt_enhancer_task)
             || !['chat', 'prompt', 'raw'].includes(normalizeChatMode(state.chatMode))) return false;
         const conversationId = state.conversationId;
         const prompt = state.customSystemPrompt;
@@ -13040,7 +13040,8 @@
         if (readSelectedVlmVersion() !== version || state.conversationId !== conversationId
             || state.chatMode !== 'raw' || state.customSystemPrompt !== prompt
             || state.systemPromptTemplateId !== templateId) return false;
-        const id = `qwen21_pe_${model.prompt_enhancer_task}.md`;
+        const id = model.default_system_prompt_template_id
+            || `qwen21_pe_${model.prompt_enhancer_task}.md`;
         if (state.systemPromptTemplates.some((item) => item.id === id)) applySystemPromptTemplate(id, modal);
         return true;
     }
@@ -27950,6 +27951,7 @@
     function applyPromptAction(action) {
         if (!action?.prompt) return;
         const nextPrompt = optimisticPrompt(action);
+        window.simpleaiMarkPromptExpanded?.(nextPrompt);
         setComponentValue('describe_vlm_chat_prompt_bridge', JSON.stringify({ type: 'set_prompt', prompt: nextPrompt }));
         clickComponentButton('describe_vlm_chat_apply_prompt_btn');
         setStatus(t('Prompt updated.', '提示词已更新。'));

@@ -29,6 +29,7 @@ except Exception:
 
 CANVAS_EXTRA_BACKEND_ARGS = (
     "pe_model",
+    "pe_applied_prompt",
     "lora_stack",
     "lora_stack_target",
     "upscale_model",
@@ -1421,6 +1422,7 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
     params_backend["lora_stack"] = copy.deepcopy(models.get("lora_stack", []))
     params_backend["lora_stack_target"] = models.get("lora_stack_target", "auto")
     params_backend["pe_model"] = models.get("pe_model", "None")
+    params_backend["pe_applied_prompt"] = params.get("pe_applied_prompt", "")
     director_runtime = _director_runtime_from_params(params)
     if director_runtime:
         params_backend["director_timeline"] = director_runtime
@@ -1817,6 +1819,7 @@ def build_canvas_task_args_preview(payload, materialized_inputs, state_params):
     params_backend["lora_stack"] = copy.deepcopy(models.get("lora_stack", []))
     params_backend["lora_stack_target"] = models.get("lora_stack_target", "auto")
     params_backend["pe_model"] = models.get("pe_model", "None")
+    params_backend["pe_applied_prompt"] = params.get("pe_applied_prompt", "")
     if scene_steps is not None:
         params_backend["steps"] = scene_steps
     if generation_api_overrides.get("guidance_scale") is not None:

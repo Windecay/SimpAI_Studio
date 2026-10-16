@@ -278,6 +278,7 @@ PRESET_STORE_ORDER = [
     "Z-TTP",
     "Flux2-Klein",
     "Flux2-KleinEdit",
+    "Flux3-KleinEdit",
     "Flux2-AngleLight",
     "Flux2-A2R",
     "Flux1-dev",
@@ -2585,6 +2586,7 @@ def _apply_scene_video_backend_params(backend_params, video, mask_video, referen
 
 _GENERATION_MODEL_STATE_FIELDS = (
     "pe_model",
+    "pe_applied_prompt",
     "lora_stack",
     "lora_stack_target",
     "base_model",
@@ -2605,6 +2607,8 @@ def _generation_model_state_with_payload(current_state=None, payload=None):
         except Exception:
             data = None
     if isinstance(data, dict):
+        if "pe_applied_prompt" in data:
+            result["pe_applied_prompt"] = str(data.get("pe_applied_prompt") or "")
         for key in _GENERATION_MODEL_STATE_FIELDS:
             value = data.get(key)
             if value not in (None, ""):
@@ -3263,7 +3267,11 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         notify_compat_fallback_once(state_params, state_params["__preset"], user_did=user_did)
 
     superprompter.remove_superprompt()
-    if not is_cpu_only_llama_model_loaded(llamacpp_vlm):
+    selected_pe = (selected_model_state or {}).get("pe_model", backend_params.get("pe_model"))
+    reuse_prompt_encoder = selected_pe not in (None, "", "None") and vlm.can_reuse_prompt_encoder(
+        selected_pe, backend_params.get("task_method"),
+    )
+    if not reuse_prompt_encoder and not is_cpu_only_llama_model_loaded(llamacpp_vlm):
         vlm.free_model()
     try:
         import extras.wd14tagger

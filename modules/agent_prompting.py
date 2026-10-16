@@ -137,6 +137,8 @@ def guidance(entry, spec, lang):
             "guidance_url": f"{API_PREFIX}/prompts/guidance?" + urlencode({"preset_id": entry["name"], "theme": spec["theme"], "lang": lang}),
             "generation_defaults": {"styles": entry.get("default_styles") or [], "prompt": entry.get("default_prompt") or "", "negative_prompt": entry.get("default_prompt_negative") or ""},
             "workflow": "Read the selected skills, use local tag lookup when available, write the final prompt in the required language, then validate and preview. Put the user's original request in instruction and the final model prompt in prompt. Do not infer model limits from an unreviewed output."}
+    if key == "flux3_natural":
+        result.update(preferred_prompt_language="en", requires_final_prompt=False)
     if spec.get("prompt_policy", {}).get("mode") == "preset_fixed":
         result.update({"automatic_routing": False, "format": "preset_fixed", "requires_final_prompt": False,
                        "prompt_policy": spec["prompt_policy"], "skills": [], "skill_ids": [],

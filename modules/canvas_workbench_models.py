@@ -7,7 +7,7 @@ import modules.config as config
 import modules.model_loader as model_loader
 from enhanced import parameter_profiles
 from modules.access_mode import is_local_mode, user_can_download_models
-from modules.pe_models import PE_CATALOGS, is_pe_model_name, pe_model_rows, scan_pe_model_files
+from modules.pe_models import PE_CATALOGS, is_pe_model_name, pe_model_rows, pe_supported_task, scan_pe_model_files
 
 
 MODEL_CATALOG_CACHE = {}
@@ -276,7 +276,7 @@ def get_model_catalog_for_preset(payload):
             "lora_filenames": ["None"] + _normalize_list(lora_filenames),
             "vae_filenames": ["Default (model)"] + _normalize_list(vae_filenames),
             "clip_filenames": ["Default (model)"] + _normalize_list(clip_filenames),
-            "pe_enabled": "qwen_image21" in str(task_method or ""),
+            "pe_enabled": pe_supported_task(task_method),
             "upscale_model_filenames": ["default"] + _normalize_list(getattr(config, "upscale_model_filenames", []) or []),
         }
         MODEL_CATALOG_CACHE[signature] = copy.deepcopy(catalog)
