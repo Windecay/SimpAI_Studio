@@ -20,7 +20,7 @@ from torch.hub import download_url_to_file
 
 import logging
 from enhanced.logger import format_name
-from modules import vosr2_model_files
+from modules import vosr2_model_files, model_download_access
 logger = logging.getLogger(format_name(__name__))
 
 thread_pool = ThreadPoolExecutor(max_workers=6)
@@ -244,6 +244,8 @@ def get_download_queue_snapshot():
                     "percent": percent,
                     "status": status,
                     "error": error,
+                    "requires_access": bool(progress.get("requires_access")),
+                    "access_url": str(progress.get("access_url") or ""),
                     "active": active,
                     "created_at": float(meta.get("created_at") or 0.0),
                 }
@@ -365,6 +367,18 @@ async def download_file_with_progress(
             logger.error(f"重定向 URL: {e.response.headers.get('Location')}")
             if progress_key in download_progress:
                 download_progress[progress_key]["error"] = str(e)
+            requirement = await model_download_access.access_requirement(url, e.response, client)
+            if _is_download_cancelled(progress_key):
+                download_progress.get(progress_key, {}).pop("error", None)
+                _mark_download_cancelled(progress_key, file_name)
+                raise DownloadCancelled(f"Download stopped: {progress_key}") from e
+            if requirement:
+                _mark_download_error(progress_key, str(e), file_name)
+                download_progress[progress_key]["requires_access"] = True
+                download_progress[progress_key].setdefault("access_url", requirement["access_url"])
+                raise model_download_access.DownloadAccessRequired(
+                    str(e), model_download_access.repository_key(url),
+                ) from e
             raise
         except Exception as e:
             logger.error(f"下载过程中发生错误: {e}")
@@ -421,13 +435,20 @@ def load_file_from_url(
         logger.info(f'正在下载文件: "{url}"。如果速度慢，建议自行用工具下载后保存到: {cached_file}。')
         def _download_with_progress_from_urls():
             last_error = None
+            blocked_repositories = set()
             for candidate_url in download_urls:
                 candidate_url = _apply_hf_mirror(candidate_url)
+                if model_download_access.repository_key(candidate_url) in blocked_repositories:
+                    continue
                 try:
                     anyio.run(download_file_with_progress, candidate_url, cached_file, expected_size, effective_task_id)
                     return
                 except DownloadCancelled:
                     raise
+                except model_download_access.DownloadAccessRequired as e:
+                    last_error = e
+                    blocked_repositories.add(e.repository)
+                    logger.warning("Model repository requires access approval: %s", candidate_url)
                 except Exception as e:
                     last_error = e
                     logger.warning("模型下载地址失败，准备尝试下一个地址: %s", candidate_url)

@@ -3339,6 +3339,9 @@ with shared.gradio_root:
                         "action": "Action",
                         "missing": "Missing",
                         "error": "Error",
+                        "requires_access": "Access approval required",
+                        "apply_access": "Apply for access",
+                        "approval_help": "After approval, download the file on the official site into its model directory, then refresh the model list.",
                         "download": "Download",
                         "download_all": "Download all",
                         "retry": "Retry",
@@ -3365,6 +3368,9 @@ with shared.gradio_root:
                         "action": "操作",
                         "missing": "缺失",
                         "error": "错误",
+                        "requires_access": "需申请授权",
+                        "apply_access": "前往申请",
+                        "approval_help": "授权通过后，请在官网手动下载到对应模型目录，再刷新模型列表。",
                         "download": "下载",
                         "download_all": "全部下载",
                         "retry": "重试",
@@ -3392,6 +3398,18 @@ with shared.gradio_root:
                 def _missing_model_text(key, state_params=None):
                     lang = _missing_model_lang(state_params)
                     return _MISSING_MODEL_TEXTS.get(lang, {}).get(key) or _MISSING_MODEL_TEXTS["en"].get(key) or key
+
+                def _missing_model_approval_link(status, state_params=None):
+                    from modules.model_download_access import approval_url
+                    if not isinstance(status, dict) or not status.get("requires_access") or status.get("cancelled"):
+                        return ""
+                    page = approval_url(status.get("access_url"))
+                    if not page:
+                        return ""
+                    return (
+                        f'<a class="missing-model-approval-link" href="{html.escape(page, quote=True)}" '
+                        f'target="_blank" rel="noopener noreferrer">{html.escape(_missing_model_text("apply_access", state_params))}</a>'
+                    )
 
                 def _missing_model_title_update(state_params=None):
                     return gr_update(value=_missing_model_text("title", state_params))
@@ -3697,6 +3715,8 @@ with shared.gradio_root:
                     for item in queue_rows:
                         status = str(item.get("status") or "queued")
                         status_text = _missing_model_text(status, state_params)
+                        if item.get("requires_access") and status == "error":
+                            status_text = _missing_model_text("requires_access", state_params)
                         if status_text == status and status == "done":
                             status_text = "Done" if _missing_model_lang(state_params) == "en" else "已完成"
                         try:
@@ -3713,7 +3733,7 @@ with shared.gradio_root:
                         error_text = str(item.get("error") or "")
                         status_title = f' title="{html.escape(error_text)}"' if error_text else ""
                         task_id = str(item.get("task_id") or "")
-                        queue_action_html = ""
+                        queue_action_html = _missing_model_approval_link(item, state_params)
                         if status in ("queued", "downloading", "installing") and task_id:
                             if str(item.get("kind") or "model") == "resource":
                                 queue_payload = json.dumps(
@@ -3790,6 +3810,9 @@ with shared.gradio_root:
                             if status.get("cancelled"):
                                 status_html = f'<span class="mm-row-status cancelled">{html.escape(_missing_model_text("stopped", state_params))}</span>'
                                 button_text = _missing_model_text("retry", state_params)
+                            elif status.get("requires_access"):
+                                err_msg = html.escape(str(status.get("error", "")))
+                                status_html = f'<span class="mm-row-status error" title="{err_msg}">{html.escape(_missing_model_text("requires_access", state_params))}</span>'
                             elif "error" in status:
                                 err_msg = html.escape(str(status.get("error", "")))
                                 status_html = f'<span class="mm-row-status error" title="{err_msg}">{html.escape(_missing_model_text("error", state_params))}</span>'
@@ -3819,14 +3842,24 @@ with shared.gradio_root:
                             row_payload,
                             ensure_ascii=False,
                         )
+                        action_html = _missing_model_approval_link(status, state_params)
+                        approval_help = ""
+                        if action_html:
+                            approval_help = f'<div class="mm-model-meta">{html.escape(_missing_model_text("approval_help", state_params))}</div>'
+                        else:
+                            action_html = (
+                                f'<button type="button" class="{html.escape(button_class)}" data-model-payload="{html.escape(payload, quote=True)}"'
+                                f'{button_disabled}>{html.escape(button_text)}</button>'
+                            )
                         rows.append(
                             '<div class="missing-model-row" data-status-key="{status_key}">'
                             '<div class="mm-model-main">'
                             '<div class="mm-model-name" title="{full_name}">{model_name}</div>'
                             '<div class="mm-model-meta"><span>{cata}</span><span>{human_size}</span></div>'
+                            '{approval_help}'
                             '</div>'
                             '<div class="mm-model-status">{status_html}</div>'
-                            '<button type="button" class="{button_class}" data-model-payload="{payload}"{button_disabled}>{button_text}</button>'
+                            '{action_html}'
                             '</div>'
                         .format(
                                 status_key=html.escape(status_key),
@@ -3835,10 +3868,8 @@ with shared.gradio_root:
                                 cata=html.escape(str(cata or "")),
                                 human_size=html.escape(str(human_size or "")),
                                 status_html=status_html,
-                                payload=html.escape(payload, quote=True),
-                                button_class=html.escape(button_class),
-                                button_disabled=button_disabled,
-                                button_text=html.escape(button_text),
+                                approval_help=approval_help,
+                                action_html=action_html,
                             )
                         )
                     head_html = (

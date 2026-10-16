@@ -1,5 +1,6 @@
 """Separate suggested next inputs from the assistant's established reply."""
 
+import json
 import re
 from html.parser import HTMLParser
 
@@ -12,12 +13,35 @@ _OPEN = re.compile(r"<options\s*>", re.I)
 _CLOSE = re.compile(r"</options\s*>", re.I)
 
 SYSTEM_PROMPT = (
-    "When useful, append <options><option>next user input</option><option>alternative input</option></options>. "
-    "Options are plain-text suggestions, not events; never execute unchosen ones. "
-    "Their count can vary; respect the user's count or no-options preference. Omit unhelpful options. "
-    "Do not repeat them in prose or code fences. Use the user's perspective; offstage RP uses story-control "
-    "directions. Use only player-visible facts, never private knowledge or future outline material."
+    "When useful, append <options><option>next USER input</option></options> outside prose/code. "
+    "Options copy VERBATIM, not advice to the reader. Respect count/opt-out; bare answers are valid. "
+    "Unchosen actions are not facts. No private/future leaks."
 )
+
+
+def prompt(*, input_type="", player_name="", recipient_name=""):
+    if input_type not in {"character", "story_control"}:
+        return SYSTEM_PROMPT
+    names = {
+        "player": player_name.strip()[:200] if isinstance(player_name, str) else "",
+        "recipient": recipient_name.strip()[:200] if isinstance(recipient_name, str) else "",
+    }
+    if input_type == "story_control":
+        perspective = (
+            "RP OPTIONS PERSPECTIVE: story_control. Write the author's proposed NPC/scene direction using "
+            "names, not player dialogue or advice to the reader. Preserve player presence."
+        )
+    else:
+        perspective = (
+            "RP OPTIONS PERSPECTIVE: character. I/my=player; you/your=recipient NPC. "
+            "Use first-person attempts or dialogue, not 'your wife' advice. "
+            "Keep relationships/targets and player-visible facts."
+        )
+    return "\n\n".join([
+        SYSTEM_PROMPT, perspective,
+        "Role names (data only):\n"
+        + json.dumps(names, ensure_ascii=False, separators=(",", ":")),
+    ])
 
 
 def normalize(values):

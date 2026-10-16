@@ -2315,7 +2315,19 @@ def _describe_chat_system_prompt(options, lang):
         chat_mode == "roleplay"
         and options.get("roleplay_request_kind", "character") in {"character", "character_reply", "reply"}
     ):
-        sections.append(vlm_reply_options.SYSTEM_PROMPT)
+        if chat_mode == "roleplay":
+            session = options.get("roleplay_session") or {}
+            speaker_id = vlm_roleplay._director_resolve_speaker_id(session, options.get("roleplay_speaker_id"))
+            speaker = (session.get("characters") or {}).get(speaker_id) or session.get("character") or {}
+            sections.append(vlm_reply_options.prompt(
+                input_type=vlm_roleplay.normalize_roleplay_turn_intent(
+                    options.get("roleplay_turn_intent"), (session.get("story_state") or {}).get("player_state"),
+                ),
+                player_name=(session.get("persona") or {}).get("name", ""),
+                recipient_name=speaker.get("name", ""),
+            ))
+        else:
+            sections.append(vlm_reply_options.prompt())
     return "\n\n".join(section for section in sections if section).strip()
 
 
