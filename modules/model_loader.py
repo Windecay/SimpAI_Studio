@@ -43,6 +43,12 @@ PREVIOUS_DEFAULT_MODEL_FIELDS = (
 RESOURCE_BUNDLE_TYPE = "archive"
 RESOURCE_TASK_PREFIX = "resource/"
 RESOURCE_CACHE_DIR_NAME = ".resource_downloads"
+DOWNLOAD_RETRY_DELAYS = (1.0, 2.0, 4.0)
+RETRYABLE_DOWNLOAD_ERRORS = (
+    httpx.TimeoutException,
+    httpx.NetworkError,
+    httpx.RemoteProtocolError,
+)
 
 
 class DownloadCancelled(Exception):
@@ -259,6 +265,54 @@ async def download_file_with_progress(
         task_id: Optional[str] = None,
         refresh_models_info: bool = True,
 ):
+    file_name = os.path.basename(file_path)
+    progress_key = task_id or file_name
+
+    def check_cancelled():
+        if _is_download_cancelled(progress_key):
+            _mark_download_cancelled(progress_key, file_name)
+            raise DownloadCancelled(f"Download stopped: {progress_key}")
+
+    for attempt in range(len(DOWNLOAD_RETRY_DELAYS) + 1):
+        check_cancelled()
+        try:
+            await _download_file_attempt(url, file_path, size, task_id, refresh_models_info)
+            return
+        except RETRYABLE_DOWNLOAD_ERRORS as error:
+            check_cancelled()
+            if attempt == len(DOWNLOAD_RETRY_DELAYS):
+                _mark_download_error(progress_key, str(error), file_name)
+                raise
+            delay = DOWNLOAD_RETRY_DELAYS[attempt]
+            with task_lock:
+                progress = dict(download_progress.get(progress_key) or {})
+                progress.pop("error", None)
+                progress.pop("requires_access", None)
+                progress.pop("access_url", None)
+                progress.update({
+                    "file_name": file_name, "retrying": True,
+                    "retry_attempt": attempt + 1, "last_error": str(error),
+                })
+                download_progress[progress_key] = progress
+            logger.warning(
+                "下载传输中断，%.1f 秒后从断点重试当前地址（%s/%s）: %s; %s",
+                delay, attempt + 1, len(DOWNLOAD_RETRY_DELAYS), url, error,
+            )
+            remaining = delay
+            while remaining > 0:
+                check_cancelled()
+                interval = min(0.1, remaining)
+                await anyio.sleep(interval)
+                remaining -= interval
+
+
+async def _download_file_attempt(
+        url: str,
+        file_path: str,
+        size: int = 0,
+        task_id: Optional[str] = None,
+        refresh_models_info: bool = True,
+):
     global download_progress
     file_name = os.path.basename(file_path)
     progress_key = task_id or file_name
@@ -310,7 +364,7 @@ async def download_file_with_progress(
                     except Exception:
                         total_size = 0
                 download_progress[progress_key] = {
-                    "percent": 0.0 if total_size > 0 else 0.0,
+                    "percent": max(0.0, min(100.0, resume_size / total_size * 100)) if total_size > 0 else 0.0,
                     "current": resume_size,
                     "total": total_size,
                     "file_name": file_name,
@@ -360,6 +414,9 @@ async def download_file_with_progress(
         except DownloadCancelled:
             logger.info("下载任务已停止: %s", progress_key)
             _mark_download_cancelled(progress_key, file_name)
+            raise
+        except RETRYABLE_DOWNLOAD_ERRORS:
+            # The wrapper marks failure only after the same-source retries are exhausted.
             raise
         except httpx.HTTPStatusError as e:
             logger.error(f"下载失败: {e}")

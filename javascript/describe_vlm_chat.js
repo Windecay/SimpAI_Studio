@@ -14770,7 +14770,6 @@
             controller.placements = [
                 '.describe-vlm-chat-model-pill',
                 '.describe-vlm-chat-conversation-bar',
-                '.describe-vlm-chat-roleplay-strip',
                 '.describe-vlm-chat-controls'
             ].map((selector) => {
                 const node = modal.querySelector(selector);
@@ -14818,10 +14817,14 @@
         const head = modal.querySelector('.describe-vlm-chat-head')?.getBoundingClientRect();
         const compose = modal.querySelector('.describe-vlm-chat-compose')?.getBoundingClientRect();
         if (!head || !compose) return;
+        const strip = modal.querySelector('[data-describe-vlm-chat-roleplay-strip]');
+        const stripBottom = strip && !strip.hidden && strip.parentElement === panel
+            ? strip.getBoundingClientRect().bottom : 0;
+        const drawerTop = Math.max(head.bottom, stripBottom);
         const panelTop = panel.getBoundingClientRect().top;
         const controller = chatSettingsDrawerState(modal);
-        controller.maxHeight = Math.max(0, compose.top - head.bottom - 6);
-        panel.style.setProperty('--describe-vlm-mobile-drawer-top', `${Math.max(0, head.bottom - panelTop)}px`);
+        controller.maxHeight = Math.max(0, compose.top - drawerTop - 6);
+        panel.style.setProperty('--describe-vlm-mobile-drawer-top', `${Math.max(0, drawerTop - panelTop)}px`);
         panel.style.setProperty('--describe-vlm-mobile-drawer-height', `${controller.maxHeight}px`);
         Object.keys(controller.surfaces).forEach(kind => {
             if (controller.surfaces[kind].open) animateChatSettingsSurface(modal, kind);
@@ -15182,7 +15185,8 @@
                     syncMobileChatSettingsDrawerBounds(modal, panel);
                 }
             });
-            [panel, panel.querySelector('.describe-vlm-chat-head'), panel.querySelector('.describe-vlm-chat-compose')]
+            [panel, panel.querySelector('.describe-vlm-chat-head'), panel.querySelector('.describe-vlm-chat-roleplay-strip'),
+                panel.querySelector('.describe-vlm-chat-compose')]
                 .forEach((node) => { if (node) drawerBoundsObserver.observe(node); });
         }
     }

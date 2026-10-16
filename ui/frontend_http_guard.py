@@ -4,6 +4,7 @@ import logging
 import os
 import select
 import socket
+import time
 from collections.abc import MutableMapping
 from urllib.parse import urlsplit
 
@@ -15,7 +16,9 @@ _H11_DATA_ORIGINAL_ATTR = "_simpai_original_data_received"
 _PROACTOR_ACCEPT_GUARD_SENTINEL = "_simpai_frontend_threaded_accept_guard"
 _PROACTOR_ACCEPT_ORIGINAL_ATTR = "_simpai_original_accept"
 _ASYNCIO_CONNECTION_RESET_FILTER_SENTINEL = "_simpai_frontend_asyncio_connection_reset_filter"
+_WARNING_INTERVAL_SECONDS = 600.0
 _PROTOCOL_WARNING_COUNTS: dict[str, int] = {}
+_PROTOCOL_WARNING_LAST_LOGGED_AT: dict[str, float] = {}
 _FRONTEND_HTTP_GUARD_CONFIG = {"host": "127.0.0.1", "port": ""}
 
 
@@ -121,14 +124,22 @@ class FrontendInvalidHttpRequestFilter(logging.Filter):
         self.host = host or "127.0.0.1"
         self.port = str(port or "")
         self.count = 0
+        self._last_warning_at: float | None = None
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if str(record.getMessage()) != "Invalid HTTP request received.":
+        if record.levelno != logging.WARNING or record.getMessage() != "Invalid HTTP request received.":
             return True
 
         self.count += 1
-        if self.count > 3 and self.count % 20 != 0:
+        now = time.monotonic()
+        if self._last_warning_at is not None and now - self._last_warning_at < _WARNING_INTERVAL_SECONDS:
             return False
+        self._last_warning_at = now
+
+        if self.count > 1:
+            record.msg = "[SimpAI-frontHTTP] Repeated invalid HTTP requests to the Gradio frontend. count=%s"
+            record.args = (self.count,)
+            return True
 
         url = f"http://{self.host}:{self.port}" if self.port else f"http://{self.host}"
         bypass_hint = _frontend_bypass_hint(self.host)
@@ -136,7 +147,7 @@ class FrontendInvalidHttpRequestFilter(logging.Filter):
             "[SimpAI-frontHTTP] Invalid request reached the Gradio frontend port. "
             "Most cases are HTTPS/WSS or a proxy hitting the HTTP-only local URL. "
             "Use %s and bypass proxy/HTTPS upgrade for %s. "
-            "非法请求到达 Gradio 前端端口，常见原因是 HTTPS/WSS 或代理打到了 HTTP 本机地址。count=%s"
+            "Repeats are summarized at most once every 10 minutes. count=%s"
         )
         record.args = (url, bypass_hint, self.count)
         return True
@@ -155,7 +166,12 @@ def classify_frontend_invalid_http_bytes(data: bytes) -> str:
 def _should_log_protocol_warning(kind: str) -> tuple[bool, int]:
     count = _PROTOCOL_WARNING_COUNTS.get(kind, 0) + 1
     _PROTOCOL_WARNING_COUNTS[kind] = count
-    return count == 1 or count % 100 == 0, count
+    now = time.monotonic()
+    last_logged_at = _PROTOCOL_WARNING_LAST_LOGGED_AT.get(kind)
+    if last_logged_at is not None and now - last_logged_at < _WARNING_INTERVAL_SECONDS:
+        return False, count
+    _PROTOCOL_WARNING_LAST_LOGGED_AT[kind] = now
+    return True, count
 
 
 def _is_benign_windows_proactor_connection_reset(record: logging.LogRecord) -> bool:
@@ -278,7 +294,13 @@ def patch_uvicorn_h11_protocol_probe(host: str | None = None, port: int | str | 
         kind = classify_frontend_invalid_http_bytes(data[:24] if data else b"")
         if kind:
             should_log, count = _should_log_protocol_warning(kind)
-            if should_log:
+            if should_log and count > 1:
+                logging.getLogger("uvicorn.error").warning(
+                    "[SimpAI-frontHTTP] Repeated %s on the HTTP-only Gradio frontend. count=%s",
+                    kind,
+                    count,
+                )
+            elif should_log:
                 current_host = _FRONTEND_HTTP_GUARD_CONFIG.get("host") or "127.0.0.1"
                 current_port = _FRONTEND_HTTP_GUARD_CONFIG.get("port") or ""
                 url = f"http://{current_host}:{current_port}" if current_port else f"http://{current_host}"
@@ -289,12 +311,11 @@ def patch_uvicorn_h11_protocol_probe(host: str | None = None, port: int | str | 
                 logging.getLogger("uvicorn.error").warning(
                     "[SimpAI-frontHTTP] %s reached the HTTP-only Gradio frontend port. "
                     "Open %s and bypass proxy/HTTPS upgrade for %s. "
-                    "Further identical protocol mismatch logs are throttled. "
-                    "检测到 %s 打到 HTTP 前端端口，请使用 HTTP 地址，并为对应地址关闭代理或 HTTPS 自动升级；同类提示已限频。client=%s server=%s %s count=%s",
+                    "Repeats are summarized at most once every 10 minutes. "
+                    "client=%s server=%s %s count=%s",
                     kind,
                     url,
                     bypass_hint,
-                    kind,
                     client,
                     server,
                     process_hint,

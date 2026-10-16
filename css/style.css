@@ -5481,6 +5481,7 @@ html.describe-vlm-chat-resizing * {
 
 .describe-vlm-chat-model-pill {
   display: inline-flex;
+  box-sizing: border-box;
   align-items: center;
   justify-self: start;
   max-width: 100%;
@@ -24660,7 +24661,7 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 
 @container (max-width: 780px) {
   .describe-vlm-chat-settings-summary {
-    grid-row: 3;
+    grid-row: 2;
     align-items: flex-start;
     flex-wrap: wrap;
     gap: 2px 8px;
@@ -25920,11 +25921,11 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 
 .describe-vlm-chat-panel {
   /* Keep the base grid aligned with the explicit chat/status/compose rows. */
-  grid-template-rows: auto auto minmax(180px, 1fr) auto auto;
+  grid-template-rows: max-content auto minmax(0, 1fr) auto auto;
 }
 
 .describe-vlm-chat-panel:has(.describe-vlm-chat-roleplay-strip:not([hidden])) {
-  grid-template-rows: auto auto auto minmax(180px, 1fr) auto auto;
+  grid-template-rows: max-content auto max-content minmax(0, 1fr) auto auto;
 }
 
 .describe-vlm-chat-roleplay-strip {
@@ -25957,11 +25958,11 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 /* An expanded settings row can be taller than the fixed desktop window.
    Let the conversation row yield space before the composer can overflow. */
 .describe-vlm-chat-panel:has(.describe-vlm-chat-controls:not(.is-collapsed)) {
-  grid-template-rows: auto auto minmax(120px, 1fr) auto auto;
+  grid-template-rows: max-content auto minmax(0, 1fr) auto auto;
 }
 
 .describe-vlm-chat-panel:has(.describe-vlm-chat-controls:not(.is-collapsed)):has(.describe-vlm-chat-roleplay-strip:not([hidden])) {
-  grid-template-rows: auto auto auto minmax(120px, 1fr) auto auto;
+  grid-template-rows: max-content auto max-content minmax(0, 1fr) auto auto;
 }
 
 @media (max-width: 640px) {
@@ -28165,7 +28166,7 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 
   .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] {
     grid-template-columns: minmax(0, 1fr) !important;
-    grid-template-rows: auto minmax(72px, 1fr) auto auto !important;
+    grid-template-rows: max-content minmax(0, 1fr) auto auto !important;
   }
 
   .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] > .describe-vlm-chat-head {
@@ -28352,10 +28353,39 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   }
 
   .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-strip {
-    grid-area: auto !important;
+    grid-area: 2 / 1 !important;
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
     grid-template-rows: 28px 25px;
+    gap: 3px 4px;
     min-height: 0;
-    padding: 0 0 8px;
+    padding: 4px 8px;
+  }
+
+  .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"]:has(> .describe-vlm-chat-roleplay-strip:not([hidden])) {
+    grid-template-rows: max-content max-content minmax(0, 1fr) auto auto !important;
+  }
+
+  .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"]:has(> .describe-vlm-chat-roleplay-strip:not([hidden])) > .describe-vlm-chat-chat-area {
+    grid-area: 3 / 1 !important;
+  }
+
+  .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"]:has(> .describe-vlm-chat-roleplay-strip:not([hidden])) > .describe-vlm-chat-status {
+    grid-area: 4 / 1 !important;
+  }
+
+  .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"]:has(> .describe-vlm-chat-roleplay-strip:not([hidden])) > .describe-vlm-chat-compose {
+    grid-area: 5 / 1 !important;
+  }
+
+  .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-strip .describe-vlm-chat-roleplay-summary,
+  .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-strip .describe-vlm-chat-roleplay-more,
+  .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-autoplay-controls button {
+    height: 28px;
+    min-height: 28px;
+  }
+
+  .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-strip .describe-vlm-chat-roleplay-state {
+    display: none;
   }
 
   .describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-participant-summary {
