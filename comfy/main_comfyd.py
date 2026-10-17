@@ -597,6 +597,9 @@ from comfy_execution.progress import get_progress_state
 from comfy_execution.utils import get_executing_context
 from comfy_api import feature_flags
 
+if dependencies_available():
+    from sqlalchemy.engine import URL
+
 if __name__ == "__main__":
     os.environ['TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL'] = '1'
     os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
@@ -747,6 +750,16 @@ def apply_custom_paths():
         user_dir = os.path.abspath(args.user_directory)
         logging.info(f"Setting user directory to: {user_dir}")
         folder_paths.set_user_directory(user_dir)
+
+
+def _configure_comfyd_database():
+    if args.database_url is not None or not dependencies_available():
+        return
+    db_path = os.path.join(folder_paths.get_user_directory(), "comfyd.db")
+    args.database_url = URL.create("sqlite", database=db_path).render_as_string()
+    logging.info("Comfyd asset database: %s", db_path)
+
+
 def execute_prestartup_script():
     if args.disable_all_custom_nodes and len(args.whitelist_custom_nodes) == 0:
         return
@@ -801,6 +814,7 @@ def execute_prestartup_script():
 
 governance.initialize()
 apply_custom_paths()
+_configure_comfyd_database()
 init_mime_types()
 
 if args.enable_manager:

@@ -160,7 +160,7 @@ PRESET_DEFAULTS = {
     "lumina": {"steps": 32, "width": 1024, "height": 1024, "cfg_scale": 4.0, "sampler": "Res Multistep", "scheduler": "Simple"},
     "zit": {"steps": 9, "width": 1024, "height": 1024, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "Beta"},
     "anima": {"steps": 32, "width": 1024, "height": 1024, "cfg_scale": 4.0, "sampler": "ER SDE", "scheduler": "Simple"},
-    "moss": {"steps": 50, "width": 1024, "height": 1024, "cfg_scale": 3.0, "sampler": "Euler", "scheduler": "SGM Uniform"},
+    "moss": {"steps": 8, "width": 1024, "height": 1024, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "SGM Uniform"},
 }
 
 PRESET_ENGINE = {

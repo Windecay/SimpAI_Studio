@@ -233,6 +233,7 @@ def model_lora_keys_unet(model, key_map={}):
                 targets.extend((name[:-3] + part, (key, (0, index * width, width))) for index, part in enumerate(("q", "k", "v")))
             for name, target in targets:
                 key_map[name] = target
+                key_map[f"diffusion_model.{name}"] = target
                 key_map[f"transformer.{name}"] = target
                 key_map[f"lycoris_{name.replace('.', '_')}"] = target
 
