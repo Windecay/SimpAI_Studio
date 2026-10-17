@@ -121,6 +121,7 @@ inpaint_engine_versions = {
     "qwen_aio_cn": ['Qwen_Inpaint'],
     "z_image_turbo_aio_cn": ['LanPaint', 'None'],
     "krea2_aio_cn": ['AnyPaint', 'None'],
+    "moss_image_sft_aio_cn": ['None'],
     "anima_aio": ['anima_inpainting', 'None']
     }
 inpaint_engine_model_names = {

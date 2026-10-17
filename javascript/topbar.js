@@ -63,6 +63,11 @@ let topbarUiActionTrace = [];
 let topbarLastOptimisticTs = 0;
 let topbarLastOptimisticBar = null;
 let topbarOptimisticRaf = 0;
+let topbarNavDrawerState = {
+    root: null, row: null, handle: null, rows: 2, maxRows: 2,
+    rowHeight: 28, gap: 2, padding: 7, drag: null, frame: 0,
+    resizeObserver: null, mutationObserver: null,
+};
 let scenePresetDefaultSyncToken = 0;
 let scenePresetDefaultSyncApplying = false;
 let scenePresetDefaultUserState = null;
@@ -2984,6 +2989,7 @@ async function set_language(newLocale) {
         topbarLocalizationAppliedLocale = locale_lang;
         localizeWholePage();
         localizePresetStoreUi();
+        scheduleTopbarNavDrawerUpdate();
         try { syncFinishedGalleryBrowserLocalizedControls(); } catch (e) {}
         try {
             if (finishedGalleryBrowserState && Number.isFinite(Number(finishedGalleryBrowserState.loaded))) {
@@ -3627,6 +3633,152 @@ function getTopbarBarButtons() {
     }).map(([, button]) => button);
 }
 
+function scheduleTopbarNavDrawerUpdate() {
+    if (topbarNavDrawerState.frame) return;
+    topbarNavDrawerState.frame = requestAnimationFrame(() => {
+        topbarNavDrawerState.frame = 0;
+        updateTopbarNavDrawer();
+    });
+}
+
+function updateTopbarNavDrawer() {
+    const state = topbarNavDrawerState;
+    const { root, row, handle } = state;
+    if (!root || !row || !handle || !root.isConnected || row.clientWidth <= 0) return;
+    const rowRect = row.getBoundingClientRect();
+    const style = getComputedStyle(row);
+    const buttons = Array.from(row.querySelectorAll(".bar_store, .bar_button"))
+        .filter((button) => button.offsetHeight > 0 && button.textContent.trim());
+    const positions = buttons.map((button) => ({
+        button,
+        top: Math.round(button.getBoundingClientRect().top - rowRect.top + row.scrollTop),
+        height: button.offsetHeight,
+    }));
+    const rowTops = [...new Set(positions.map((item) => item.top))].sort((a, b) => a - b);
+    const totalRows = Math.max(1, rowTops.length);
+    state.rowHeight = positions[0]?.height || 28;
+    state.gap = parseFloat(style.rowGap) || 0;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
+    state.padding = paddingTop + paddingBottom;
+    const pitch = state.rowHeight + state.gap;
+    const viewportRows = Math.floor((window.innerHeight - rowRect.top - 80 - state.padding) / pitch);
+    state.maxRows = Math.min(totalRows, Math.max(2, viewportRows));
+    const visibleRows = Math.min(state.rows, state.maxRows);
+    const minHeight = state.rowHeight + state.padding;
+    const maxHeight = state.maxRows * pitch - state.gap + state.padding;
+    const height = state.drag
+        ? Math.max(minHeight, Math.min(maxHeight, state.drag.height))
+        : visibleRows * pitch - state.gap + state.padding;
+    const heightText = `${height}px`;
+    if (row.style.getPropertyValue("--topbar-visible-height") !== heightText) {
+        row.style.setProperty("--topbar-visible-height", heightText);
+    }
+    const visibleTop = row.scrollTop + paddingTop;
+    const visibleBottom = row.scrollTop + row.clientHeight - paddingBottom;
+    const overflow = positions.filter((item) =>
+        item.top < visibleTop - 1 || item.top + item.height > visibleBottom + 1);
+    root.dataset.hasOverflow = String(overflow.length > 0);
+    root.dataset.resizable = String(totalRows > 1);
+    root.dataset.visibleRows = String(visibleRows);
+    root.dataset.dragging = String(!!state.drag);
+    const stage = window.simpleaiTopbarSystemParams || {};
+    const activePreset = normalizePresetName(topbarPendingPreset || stage.__preset || topbarLastPreset);
+    root.dataset.activeHidden = String(overflow.some(({ button }) =>
+        normalizePresetName(getTopbarNavButtonOriginalText(button)) === activePreset));
+    const translate = (key) => String(stage.__lang || "cn").toLowerCase().startsWith("en")
+        ? key : topbarTranslateText(key);
+    handle.hidden = totalRows <= 1;
+    handle.setAttribute("aria-valuemax", String(state.maxRows));
+    handle.setAttribute("aria-valuenow", String(visibleRows));
+    handle.setAttribute("aria-valuetext", translate("Visible rows: {rows}").replace("{rows}", String(visibleRows)));
+    handle.setAttribute("aria-label", translate("Resize preset drawer"));
+    handle.title = translate("Drag to change the number of visible rows");
+    const count = handle.querySelector(".topbar-drawer-count");
+    if (count) count.textContent = overflow.length ? `+${overflow.length}` : "";
+}
+
+function finishTopbarNavDrawerDrag(cancelled = false) {
+    const state = topbarNavDrawerState;
+    const drag = state.drag;
+    if (!drag) return;
+    state.rows = cancelled ? drag.startRows : Math.max(1, Math.min(state.maxRows,
+        Math.round((drag.height - state.padding + state.gap) / (state.rowHeight + state.gap))));
+    state.drag = null;
+    document.body.classList.remove("simpleai-navbar-resizing");
+    if (state.handle.hasPointerCapture(drag.pointerId)) state.handle.releasePointerCapture(drag.pointerId);
+    updateTopbarNavDrawer();
+}
+
+function bindTopbarNavDrawer() {
+    const app = typeof gradioApp === "function" ? gradioApp() : document;
+    const root = app.querySelector("#topbar_nav");
+    const row = root && root.querySelector("#topbar_row");
+    const handle = root && root.querySelector("#topbar_drawer_handle");
+    if (!root || !row || !handle) return;
+    if (topbarNavDrawerState.row !== row || topbarNavDrawerState.handle !== handle) {
+        finishTopbarNavDrawerDrag(true);
+        if (topbarNavDrawerState.resizeObserver) topbarNavDrawerState.resizeObserver.disconnect();
+        if (topbarNavDrawerState.mutationObserver) topbarNavDrawerState.mutationObserver.disconnect();
+        Object.assign(topbarNavDrawerState, { root, row, handle });
+        if (!handle.dataset.drawerBound) {
+            handle.dataset.drawerBound = "1";
+            handle.addEventListener("pointerdown", (event) => {
+                if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+                updateTopbarNavDrawer();
+                const state = topbarNavDrawerState;
+                state.drag = {
+                    pointerId: event.pointerId, startY: event.clientY,
+                    startRows: state.rows, startHeight: row.clientHeight, height: row.clientHeight,
+                };
+                handle.setPointerCapture(event.pointerId);
+                handle.focus({ preventScroll: true });
+                document.body.classList.add("simpleai-navbar-resizing");
+                event.preventDefault();
+            });
+            handle.addEventListener("pointermove", (event) => {
+                const state = topbarNavDrawerState;
+                if (!state.drag || event.pointerId !== state.drag.pointerId) return;
+                state.drag.height = state.drag.startHeight + event.clientY - state.drag.startY;
+                scheduleTopbarNavDrawerUpdate();
+            });
+            handle.addEventListener("pointerup", (event) => {
+                if (topbarNavDrawerState.drag?.pointerId === event.pointerId) finishTopbarNavDrawerDrag();
+            });
+            const cancelDrag = (event) => {
+                if (topbarNavDrawerState.drag?.pointerId === event.pointerId) finishTopbarNavDrawerDrag(true);
+            };
+            handle.addEventListener("pointercancel", cancelDrag);
+            handle.addEventListener("lostpointercapture", cancelDrag);
+            window.addEventListener("blur", () => finishTopbarNavDrawerDrag(true));
+            window.addEventListener("resize", scheduleTopbarNavDrawerUpdate);
+            row.addEventListener("scroll", scheduleTopbarNavDrawerUpdate, { passive: true });
+            handle.addEventListener("keydown", (event) => {
+                const state = topbarNavDrawerState;
+                const currentRows = Math.min(state.rows, state.maxRows);
+                if (event.key === "ArrowDown") state.rows = Math.min(state.maxRows, currentRows + 1);
+                else if (event.key === "ArrowUp") state.rows = Math.max(1, currentRows - 1);
+                else if (event.key === "Home") state.rows = 1;
+                else if (event.key === "End") state.rows = state.maxRows;
+                else if (event.key === "Escape") {
+                    finishTopbarNavDrawerDrag(true);
+                    state.rows = 2;
+                } else return;
+                updateTopbarNavDrawer();
+                event.preventDefault();
+            });
+        }
+        topbarNavDrawerState.resizeObserver = new ResizeObserver(scheduleTopbarNavDrawerUpdate);
+        topbarNavDrawerState.resizeObserver.observe(row);
+        topbarNavDrawerState.mutationObserver = new MutationObserver(scheduleTopbarNavDrawerUpdate);
+        topbarNavDrawerState.mutationObserver.observe(row, {
+            childList: true, subtree: true, characterData: true,
+            attributes: true, attributeFilter: ["style", "class", "hidden"],
+        });
+    }
+    scheduleTopbarNavDrawerUpdate();
+}
+
 function getTopbarActiveGradient(baseColor, highlightAlpha) {
     const alpha = Number.isFinite(highlightAlpha) ? highlightAlpha : 0.24;
     const midAlpha = Math.max(0, alpha * 0.42);
@@ -3713,6 +3865,7 @@ function applyTopbarNavStyles(preset, theme, nav_name_list) {
             }
         }
     }
+    bindTopbarNavDrawer();
     return { foundCount, activeCount, totalCount };
 }
 
@@ -10657,11 +10810,14 @@ function ensurePresetStoreDisplayNavListMinimum(navList) {
 }
 
 function getPresetStoreDraftLimit() {
+    const stage = window.simpleaiTopbarSystemParams || {};
+    const limit = Number(stage.__nav_button_limit);
+    if (Number.isFinite(limit) && limit > 0) return Math.floor(limit);
     try {
         const buttons = getTopbarBarButtons();
         if (buttons && buttons.length > 0) return buttons.length;
     } catch (e) {}
-    return 15;
+    return 60;
 }
 
 function setPresetStoreDraftFromNav(navList, force = false) {
@@ -14685,6 +14841,7 @@ document.addEventListener("DOMContentLoaded", function() {
     bindSceneAudioPointerReleaseGuard();
     ensurePreviewGeneratingFitObserver();
     bindMainLayoutResponsiveStack();
+    bindTopbarNavDrawer();
     setTimeout(bindFinishedGalleryBrowserControls, 300);
     setTimeout(bindFinishedGalleryBrowserControls, 1200);
     setTimeout(ensurePreviewGeneratingFitObserver, 300);
@@ -14701,6 +14858,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
 if (typeof onAfterUiUpdate === "function") {
     onAfterUiUpdate(() => {
+        bindTopbarNavDrawer();
         bindSimpleAIPresetSwitchGalleryClearControls();
         bindFinishedGalleryBrowserControls();
         bindSceneAudioPointerReleaseGuard();

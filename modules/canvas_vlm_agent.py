@@ -658,10 +658,13 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         format_rule = "Final prompt: coherent natural-language audio-effects prompt; preserve Chinese for Chinese user requests. Describe audible events synchronized to visible video, without camera or visual-style instructions."
     elif target_family == "moss_image":
         format_rule = (
-            "Final prompt: a detailed MOSS-Image caption, English by default unless another language is requested. "
+            "Final prompt: a detailed MOSS-Image caption in the language of the user's original request. "
+            "Chinese input must produce Chinese descriptive prose; English input must produce English prose. "
+            "An explicitly requested output language takes priority over matching the input. "
             "Keep visible wording verbatim in its original language. "
             "For an existing compiled Layout, preserve its schema, boxes, roles, exact text and optional fields; "
-            "only revise the requested captions. Use the regional JSON editor for new spatial layouts."
+            "only revise the requested captions in their original language and retain structural field names as-is. "
+            "Use the regional JSON editor for new spatial layouts."
         )
     elif target_family == "flux3":
         format_rule = (

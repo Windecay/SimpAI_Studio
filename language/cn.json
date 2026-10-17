@@ -3120,5 +3120,8 @@
   "Disable random output dimensions before editing a layout.": "编辑布局前请关闭随机出图尺寸。",
   "Output dimensions are unavailable.": "暂时无法读取出图尺寸。",
   "The prompt or preset changed. Reopen the layout editor.": "提示词或预置已改变，请重新打开布局编辑器。",
-  "Layout dimensions must match the output size": "布局尺寸须与出图尺寸一致"
+  "Layout dimensions must match the output size": "布局尺寸须与出图尺寸一致",
+  "Resize preset drawer": "调整预设抽屉高度",
+  "Drag to change the number of visible rows": "上下拖动调整显示行数",
+  "Visible rows: {rows}": "显示 {rows} 行"
 }

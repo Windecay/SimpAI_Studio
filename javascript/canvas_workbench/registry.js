@@ -248,7 +248,8 @@
         'wan_aio_cn': ['VACE'],
         'qwen_aio_cn': ['Qwen_Inpaint'],
         'z_image_turbo_aio_cn': ['LanPaint', 'None'],
-        'krea2_aio_cn': ['AnyPaint', 'None']
+        'krea2_aio_cn': ['AnyPaint', 'None'],
+        'moss_image_sft_aio_cn': ['None']
     };
 
     const DEFAULT_NODE_SIZES = {

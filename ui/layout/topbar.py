@@ -31,31 +31,40 @@ def create_topbar_layout(
     get_wildcards_list,
     preset_samples,
 ) -> TopbarLayoutRefs:
-    with gr.Row(elem_id="topbar_row"):
-        start_timestamp = gr.Textbox(visible=False)
-        bar_store_button = gr.Button(
-            value="PresetStore",
-            size="sm",
-            min_width=50,
-            elem_id="bar_store",
-            elem_classes="bar_store",
-        )
-        bar_buttons = []
-        for i in range(button_num):
-            bar_buttons.append(
-                gr.Button(
-                    value="default" if i == 0 else "",
-                    size="sm",
-                    visible=True,
-                    min_width=40,
-                    elem_id=f"bar{i}",
-                    elem_classes="bar_button",
-                )
+    with gr.Column(elem_id="topbar_nav", min_width=0):
+        with gr.Row(elem_id="topbar_row"):
+            start_timestamp = gr.Textbox(visible=False)
+            bar_store_button = gr.Button(
+                value="PresetStore",
+                size="sm",
+                min_width=50,
+                elem_id="bar_store",
+                elem_classes="bar_store",
             )
-            if i == 5:
-                gr.HTML(value="", elem_classes="topbar_line_break")
-        root_blocks.load(get_start_timestamp, outputs=start_timestamp, queue=False, api_name="get_start_timestamp")
-        root_blocks.load(get_wildcards_list, outputs=start_timestamp, queue=False)
+            bar_buttons = []
+            for i in range(button_num):
+                bar_buttons.append(
+                    gr.Button(
+                        value="default" if i == 0 else "",
+                        size="sm",
+                        visible=True if i == 0 else "hidden",
+                        min_width=40,
+                        elem_id=f"bar{i}",
+                        elem_classes="bar_button",
+                    )
+                )
+            root_blocks.load(get_start_timestamp, outputs=start_timestamp, queue=False, api_name="get_start_timestamp")
+            root_blocks.load(get_wildcards_list, outputs=start_timestamp, queue=False)
+        gr.HTML(
+            value="""<div id="topbar_drawer_handle" role="separator" tabindex="0" hidden
+  aria-label="Resize preset drawer" aria-controls="topbar_row" aria-orientation="horizontal"
+  aria-valuemin="1" aria-valuemax="60" aria-valuenow="2">
+  <span class="topbar-drawer-grip" aria-hidden="true"></span>
+  <span class="topbar-drawer-count" aria-hidden="true"></span>
+</div>""",
+            elem_id="topbar_drawer_control",
+            padding=False,
+        )
 
     with gr.Row(visible=False, elem_classes="preset_store") as preset_store:
         gr.HTML(
@@ -86,11 +95,6 @@ def create_topbar_layout(
     </div>
     <div id="preset_store_nav_draft" class="preset-store-nav-draft" aria-label="Navbar draft"></div>
     <div id="preset_store_status" class="preset-store-status" hidden></div>
-    <div class="preset-store-editor-actions">
-      <button id="preset_store_reset_draft" class="preset-store-filter" type="button">Reset</button>
-      <button id="preset_store_apply_draft" class="preset-store-filter is-active" type="button">Apply to Navbar</button>
-      <button id="preset_store_apply_draft_close" class="preset-store-filter is-active" type="button">Apply to Navbar and Close</button>
-    </div>
   </div>
   <div id="preset_store_user_pool_head" class="preset-store-pool-head preset-store-user-pool-head" hidden>
     <span id="preset_store_user_pool_label">User presets</span>
@@ -102,7 +106,11 @@ def create_topbar_layout(
     <span id="preset_store_pool_count" class="preset-store-draft-count">0</span>
   </div>
   <div id="preset_store_candidate_pool" class="preset-store-candidate-pool" aria-label="Preset pool"></div>
-
+  <div class="preset-store-editor-actions">
+    <button id="preset_store_reset_draft" class="preset-store-filter" type="button">Reset</button>
+    <button id="preset_store_apply_draft" class="preset-store-filter is-active" type="button">Apply to Navbar</button>
+    <button id="preset_store_apply_draft_close" class="preset-store-filter is-active" type="button">Apply to Navbar and Close</button>
+  </div>
 </div>
 """,
             elem_id="preset_store_tools_html",

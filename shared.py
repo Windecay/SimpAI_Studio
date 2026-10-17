@@ -16,6 +16,7 @@ torch_device = ''
 
 upstream_did = ''
 
-BUTTON_NUM = 15
+BUTTON_NUM = 60
+DEFAULT_NAV_BUTTON_NUM = 15
 
 gpu_arch = ''

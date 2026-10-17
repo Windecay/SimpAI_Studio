@@ -164,6 +164,10 @@ class SimpAIAIOInpaintFlux2(_SimpAIAIOInpaintBase):
     FAMILY = "flux2"
 
 
+class SimpAIAIOInpaintMoss(_SimpAIAIOInpaintBase):
+    FAMILY = "moss_image"
+
+
 class SimpAIAIOInpaintSDXL(_SimpAIAIOInpaintBase):
     FAMILY = "sdxl"
 
@@ -311,6 +315,7 @@ class SimpAIAIOInpaintAnima(_SimpAIAIOInpaintBase):
 NODE_CLASS_MAPPINGS = {
     "SimpAIAIOInpaintFlux": SimpAIAIOInpaintFlux,
     "SimpAIAIOInpaintFlux2": SimpAIAIOInpaintFlux2,
+    "SimpAIAIOInpaintMoss": SimpAIAIOInpaintMoss,
     "SimpAIAIOInpaintSDXL": SimpAIAIOInpaintSDXL,
     "SimpAIAIOInpaintQwen": SimpAIAIOInpaintQwen,
     "SimpAIAIOInpaintWan": SimpAIAIOInpaintWan,

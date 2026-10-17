@@ -593,9 +593,9 @@ def _filter_existing_presets(presets, user_did=None):
 def _nav_button_limit(limit=None):
     try:
         value = int(limit if limit is not None else shared.BUTTON_NUM)
-        return value if value > 0 else 15
+        return value if value > 0 else 60
     except Exception:
-        return 15
+        return 60
 
 def _is_nav_preset_value_present(value):
     if value is None:
@@ -691,7 +691,7 @@ def _coerce_nav_preset_list(presets, user_did=None, fallback_preset=None, limit=
     return _canonicalize_nav_preset_names(existing_presets)[:limit]
 
 def _build_default_nav_preset_list(user_did=None, fallback_preset=None, limit=None):
-    limit = _nav_button_limit(limit)
+    limit = _nav_button_limit(shared.DEFAULT_NAV_BUTTON_NUM if limit is None else limit)
     path_preset = os.path.abspath(f'./presets/')
     candidates = []
     if fallback_preset:
@@ -4818,6 +4818,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __identity_session_seq=int(state.get("__identity_session_seq", 0) or 0),
         __identity_session_days=session_cookie_days(state),
         __preset_store_seq=int(state.get("__preset_store_seq", 0) or 0),
+        __nav_button_limit=_nav_button_limit(),
         __preset_store_save_result=state.get("__preset_store_save_result"),
         __theme=state.get("__theme"),
         __is_scene_frontend=("scene_frontend" in state),

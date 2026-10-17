@@ -252,3 +252,20 @@
 - Studio 同步前后专项均为 85 passed、26 subtests passed、1 failed。唯一失败仍为既有 Forge 预览合同期待 display 为 block、页面实际为 flex，没有新增失败；该页面与合同文件保持原样。
 - 保留已有 moss-image 自定义节点、MOSS 预置、工作流和模型文件。现有预置继续使用原实现，不能据此视为测试了 PR；原生路径使用标准 UNETLoader、CLIPLoader 的 moss_image 类型和相应 FLUX.2 VAE，布局提示词节点为 MOSSImageLayoutPrompt。两种实现未自动替换或进行真实权重输出对比。
 - 本次只同步开发代码和依赖声明，未安装包、下载模型、重启服务、执行用户数据库迁移、同步 E 盘应用、创建提交或推送。CPU 测试不能代替真实 GPU、量化权重、完整工作流或界面验收，加载新代码需要之后重新加载后端。
+
+## 2026-10-17 官方优化更新与 Studio 同步
+
+- 从干净的 `9aa838053` 合并官方 `origin/master` 至 `4d7b594592c0c4ff1b95c6dbb5783a308797bd90`，新增 5 个提交，保留未提交 merge；源码版本仍为 `0.41.0`，私有版本标记更新为 `4d7b59459`。Git 直连失败后，通过当前 Windows 系统代理完成拉取，没有修改全局 Git 配置。
+- Moss 改用上游融合 SITU 激活与 INT8 线性计算；Qwen 3.x 更新小矩阵执行、固定及 INT8 KV cache、延迟提交的 DeltaNet 状态和 MTP 回退处理。Quiver 仅同步退役 Arrow 1.x 选项的移除，没有新增联网功能。
+- 处理 Moss 文件和 Linear 调度的两处冲突，保留 GGUF/tensor subclass 的反量化路径，并保留 xformers、cuDNN、H3 分批、VAE、路径和任务服务的已有私有修正。上游本次未修改 `main.py`，私有入口保持原样；compiler 默认关闭及 CUDA graphs、DynamicVRAM、aimdo、offload 策略不变。
+- Kitchen 声明升至 `0.2.38`；frontend `1.55.17`、workflow templates `0.11.86`、embedded docs `0.5.14`、aimdo `0.5.6` 不变。同步后端与 Studio 两份 requirements、启动器、更新器及对应合同；Forge 共用环境的两个启动入口只对齐同一个 Kitchen 版本，避免之后启动时降级。
+- 更新前审计 1,283 个核心文件候选，共享运行代码一致，保留两边不同的 CI、说明、工作流文件和 Studio 独有内容。Studio 原有 24 项暂存及其他开发改动按 index 条目和文件哈希保护；不复制 custom_nodes、模型、素材、用户目录或 Studio 预置。
+
+### 验证
+
+- 更新前：源仓库核心与私有启动 CPU 基线 `67 passed`；Studio 启动、依赖与资源库基线 `87 passed, 26 subtests passed`。
+- 使用官方 PyPI Kitchen `0.2.38` wheel 解压出的独立测试目录验证，不覆盖嵌入式 Python 的已安装包。wheel SHA256 为 `420364e48f5cad46c20948c668fe3befd8692a5f7baf25e8ddbd434ee3806e9c`。
+- 合并后源仓库与 Studio 核心各 `90 passed`，覆盖 Moss、Qwen 解码/MTP/attention 配置、H3、compiler、私有启动和工作流预检查。Studio 集成检查为 `121 passed, 26 subtests passed, 6 skipped`，包括依赖、图像输入、Moss attention 和指定 Forge 合同；其中 6 项 CUDA 分支由 CPU 隔离主动跳过。
+- 另外在真实 CUDA 环境执行 GGUF Q8_0/Q4_K/Q6_K 的 GELU/SITU 激活、残差与 FP16 调度检查，`14 passed`，覆盖前述跳过项。该检查使用小张量，不能代替真实 GGUF 模型的完整工作流验收。
+- 使用 Studio 参数映射和当前保存的 Moss 工作流，在独立进程中以官方 INT8 DiT、W4A8 编码器、Flux2 VAE 完成两组 1024×1024、50 步、seed 42 的实际出图。PyTorch 与 Kitchen attention 均返回有限 latent 和非空图像；累计 8,300 次 SITU 调用全部采用融合路径，Kitchen 例的 4,350 次 attention 调用全部进入对应 CUDA 内核。
+- 两组采样分别约 20.533 秒和 14.707 秒；两者都使用本次更新后的源码，只对比 attention 设置，不能据此宣称上游更新前后的加速比例。图片已人工检查，保留中文便签和厨房场景；这不是广泛画质或文字准确率评测。

@@ -19,6 +19,7 @@ AIO_UOV_PREVIEW_NODE_CLASS_TYPES = {
     "SimpAIAIOUOVAnima",
     "SimpAIAIOUOVChenkin",
     "SimpAIAIOUOVKrea2",
+    "SimpAIAIOUOVMoss",
 }
 
 
@@ -41,6 +42,7 @@ def _register_runtime_preview_nodes():
         "SimpAIAIOInpaintZImage",
         "SimpAIAIOInpaintAnima",
         "SimpAIAIOInpaintKrea2",
+        "SimpAIAIOInpaintMoss",
     })
     # Dynamic UltimateSDUpscale events use the outer AIO node as display_node.
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.update(AIO_UOV_PREVIEW_NODE_CLASS_TYPES)
@@ -103,7 +105,7 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
                 audio = None
         if not audio:
             raise ValueError("该任务必须传入音频(audio)")
-    if "scene_" in task_method_l or "flux3" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):
+    if "scene_" in task_method_l or "flux3" in task_method_l or task_method_l == "moss_image_sft_aio_cn" or task_class in ("Qwen", "Wan", "Z-image"):
         base_model = default_params.get("base_model")
         if base_model and base_model != "auto":
             is_safetensors_model = _model_type_from_name(base_model) == 1

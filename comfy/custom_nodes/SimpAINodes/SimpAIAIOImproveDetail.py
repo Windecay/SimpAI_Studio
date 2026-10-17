@@ -127,7 +127,7 @@ class SimpAIAIOApplyRegion:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "image": ("IMAGE",), "mask": ("MASK",), "family": (["flux", "flux2", "sdxl", "qwen", "wan", "z_image", "anima", "krea2"],),
+            "image": ("IMAGE",), "mask": ("MASK",), "family": (["flux", "flux2", "sdxl", "qwen", "wan", "z_image", "anima", "krea2", "moss_image"],),
             "model": ("MODEL", {"lazy": True}), "positive": ("CONDITIONING", {"lazy": True}),
             "negative": ("CONDITIONING", {"lazy": True}), "vae": ("VAE", {"lazy": True}),
             "region": ("SIMPAI_AIO_REGION_CONFIG",), "seed": ("INT", {"default": 0}), "steps": ("INT", {"default": 20}),
@@ -172,7 +172,7 @@ class SimpAIAIOApplyRegion:
             engine=region["engine"], invert_mask=False, mix_reference=False,
             disable_initial_latent=region["disable_initial_latent"], denoise=region["denoise"],
         )
-        inpaint_node = {"flux": "SimpAIAIOInpaintFlux", "flux2": "SimpAIAIOInpaintFlux2", "sdxl": "SimpAIAIOInpaintSDXL", "qwen": "SimpAIAIOInpaintQwen", "wan": "SimpAIAIOInpaintWan", "z_image": "SimpAIAIOInpaintZImage", "anima": "SimpAIAIOInpaintFlux", "krea2": "SimpAIAIOInpaintKrea2"}[family]
+        inpaint_node = {"flux": "SimpAIAIOInpaintFlux", "flux2": "SimpAIAIOInpaintFlux2", "sdxl": "SimpAIAIOInpaintSDXL", "qwen": "SimpAIAIOInpaintQwen", "wan": "SimpAIAIOInpaintWan", "z_image": "SimpAIAIOInpaintZImage", "anima": "SimpAIAIOInpaintFlux", "krea2": "SimpAIAIOInpaintKrea2", "moss_image": "SimpAIAIOInpaintMoss"}[family]
         selected_model = inpaint_model if _engine_enabled(region) and inpaint_model is not None else model
         inputs = dict(model=selected_model, positive=positive, negative=negative, vae=vae, inpaint=config.out(0), seed=seed,
                       steps=steps, cfg=cfg, sampler_name=sampler_name, scheduler=scheduler,
@@ -279,6 +279,7 @@ class _SimpAIAIOImproveDetailBase:
             "z_image": "SimpAIAIOUOVZImage",
             "anima": "SimpAIAIOUOVAnima",
             "krea2": "SimpAIAIOUOVKrea2",
+            "moss_image": "SimpAIAIOUOVMoss",
         }[self.FAMILY]
 
     def _inpaint_node(self):
@@ -290,6 +291,7 @@ class _SimpAIAIOImproveDetailBase:
             "z_image": "SimpAIAIOInpaintZImage",
             "anima": "SimpAIAIOInpaintFlux",
             "krea2": "SimpAIAIOInpaintKrea2",
+            "moss_image": "SimpAIAIOInpaintMoss",
         }[self.FAMILY]
 
     def _apply_uov(self, graph, image, model, clip, positive, negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch=None):
@@ -438,6 +440,10 @@ class SimpAIAIOImproveDetailKrea2(_SimpAIAIOImproveDetailBase):
     FAMILY = "krea2"
 
 
+class SimpAIAIOImproveDetailMoss(_SimpAIAIOImproveDetailBase):
+    FAMILY = "moss_image"
+
+
 NODE_CLASS_MAPPINGS = {
     "SimpAIAIOPrepareRegionInpaint": SimpAIAIOPrepareRegionInpaint,
     "SimpAIAIOFinishRegionInpaint": SimpAIAIOFinishRegionInpaint,
@@ -450,6 +456,7 @@ NODE_CLASS_MAPPINGS = {
     "SimpAIAIOImproveDetailZImage": SimpAIAIOImproveDetailZImage,
     "SimpAIAIOImproveDetailAnima": SimpAIAIOImproveDetailAnima,
     "SimpAIAIOImproveDetailKrea2": SimpAIAIOImproveDetailKrea2,
+    "SimpAIAIOImproveDetailMoss": SimpAIAIOImproveDetailMoss,
 }
 
 

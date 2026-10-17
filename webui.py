@@ -7549,7 +7549,7 @@ with shared.gradio_root:
                                     describe_uov_button = gr.Button(value='Describe Image', variant='secondary', size='sm', visible=False)
                             with gr.Column():
                                 with gr.Group():
-                                    mixing_image_prompt_and_vary_upscale = gr.Checkbox(label='Mixing Image Prompt and Vary/Upscale', value=False)
+                                    mixing_image_prompt_and_vary_upscale = gr.Checkbox(label='Mixing Image Prompt and Vary/Upscale', value=False, elem_id='mixing_image_prompt_and_vary_upscale')
                                     uov_method = gr.Radio(label='Upscale or Variation:', choices=flags.uov_list, value=modules.config.default_uov_method if modules.config.default_uov_method in flags.uov_list else flags.disabled)
                                     with gr.Row():
                                         uov_image_size = gr.Textbox(label='OriginalSize | FinalSize', lines=1, max_lines=1, interactive=False, elem_classes=['uov_image_size', 'simpleai-status-textbox'])
@@ -7574,7 +7574,7 @@ with shared.gradio_root:
                     
                     with gr.Tab(label='Inpaint or Outpaint', id='inpaint_tab', elem_id='inpaint_tab') as inpaint_tab:
                         with gr.Row():
-                            mixing_image_prompt_and_inpaint = gr.Checkbox(label='Mixing Image Prompt and Inpaint', value=False, container=False)
+                            mixing_image_prompt_and_inpaint = gr.Checkbox(label='Mixing Image Prompt and Inpaint', value=False, container=False, elem_id='mixing_image_prompt_and_inpaint')
                             inpaint_advanced_masking_checkbox = gr.Checkbox(label='Enable Advanced Masking Features', value=modules.config.default_inpaint_advanced_masking_checkbox, container=False, elem_id='inpaint_advanced_masking_checkbox')
                             invert_mask_checkbox = gr.Checkbox(label='Invert Mask When Generating', value=modules.config.default_invert_mask_checkbox, container=False)
                         with gr.Row():
@@ -8269,7 +8269,7 @@ with shared.gradio_root:
                                         describe_result_reasoning = gr.Textbox(label='Reasoning output', interactive=False, lines=5, max_lines=16, visible=False, buttons=["copy"])
                                         describe_result_candidate = gr.Textbox(label='Candidate prompt', interactive=True, lines=6, max_lines=18, buttons=["copy"], elem_id='describe_result_candidate')
                                         describe_result_apply = gr.Button(value='Use this description')
-                                        describe_result_download = gr.File(label='Description record', interactive=False, visible=False)
+                                        describe_result_download = gr.File(label='Description record', type='filepath', interactive=False, visible=False)
                                     describe_vlm_chat_prompt_bridge = gr.Textbox(value='', visible='hidden', elem_id='describe_vlm_chat_prompt_bridge', elem_classes=['sai-gradio-hidden-bridge'])
                                     describe_vlm_chat_apply_prompt_btn = gr.Button('Apply Describe VLM chat prompt', visible='hidden', elem_id='describe_vlm_chat_apply_prompt_btn', elem_classes=['sai-gradio-hidden-bridge'])
                                     describe_vlm_model_select_bridge = gr.Textbox(value='', visible='hidden', elem_id='describe_vlm_model_select_bridge', elem_classes=['sai-gradio-hidden-bridge'])
@@ -9585,7 +9585,7 @@ with shared.gradio_root:
                     if not _main_vlm_can_manage_profiles(state, request):
                         text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
                         return (
-                            gr_update(), dropdown_update(), gr_update(), gr_update(),
+                            skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(),
                             _describe_vlm_dropdown_update(version, state, request),
                             _vlm_model_status_html(version, state),
                             _main_vlm_custom_message_html(text, "missing"),
@@ -9616,7 +9616,7 @@ with shared.gradio_root:
                     version = _vlm_resolve_version(version)
                     if not _main_vlm_can_manage_profiles(state, request):
                         text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
-                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION, state), _main_vlm_custom_message_html(text, "missing")
+                        return skip_component_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION, state), _main_vlm_custom_message_html(text, "missing")
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
                     result = VLM.list_custom_models(settings["base_url"], settings["api_key"])
                     if not result.get("ok"):
@@ -9755,14 +9755,14 @@ with shared.gradio_root:
                     state = _main_vlm_state_from_request(state, request)
                     if not _main_vlm_can_manage_profiles(state, request):
                         text = _main_vlm_text(state, "Only the administrator can save shared VLM API configurations.", "只有管理员可以保存共享 VLM API 配置。")
-                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION, state), gr_update(visible=False), _main_vlm_custom_message_html(text, "missing"), gr_update(value=VLM.DEFAULT_VERSION)
+                        return skip_component_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION, state), gr_update(visible=False), _main_vlm_custom_message_html(text, "missing"), gr_update(value=VLM.DEFAULT_VERSION)
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
                     _apply_main_vlm_custom_settings(settings)
                     missing = VLM.get_custom_missing_settings()
                     if missing:
                         version = _main_vlm_selected_version_from_state(state, request=request)
                         text = _main_vlm_text(state, f"Configuration is incomplete: {', '.join(missing)}", f"配置不完整：{', '.join(missing)}")
-                        return dropdown_update(), _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version, state), gr_update(visible=True), _main_vlm_custom_message_html(text, "missing"), _describe_vlm_dropdown_update(version, state, request)
+                        return skip_component_update(), _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version, state), gr_update(visible=True), _main_vlm_custom_message_html(text, "missing"), _describe_vlm_dropdown_update(version, state, request)
                     profile_id = "" if profile_id == MAIN_VLM_EMPTY_PROFILE_VALUE else profile_id
                     profile = vlm_api_profiles.upsert_profile(settings, profile_id=profile_id)
                     version = vlm_api_profiles.profile_version(profile["id"])
@@ -12509,7 +12509,7 @@ with shared.gradio_root:
                 return [
                     gr_update(visible=True, open=True),
                     describe_media_records.status_text(report, language=(state_params or {}).get("__lang", "cn"), archive_error=archive_error),
-                    gr_update(choices=[], value=None), "", gr_update(value="", visible=False),
+                    dropdown_update(choices=[], value=None), "", gr_update(value="", visible=False),
                     "", gr_update(value=path, visible=bool(path)),
                 ]
             index = max(0, min(len(entries) - 1, int(index) if index not in (None, "", -1) else len(entries) - 1))
@@ -12519,7 +12519,7 @@ with shared.gradio_root:
             candidate = entry.get("candidate", entry.get("returned_output", entry.get("raw_output", "")))
             return [
                 gr_update(visible=True, open=True), status,
-                gr_update(choices=choices, value=str(index)),
+                dropdown_update(choices=choices, value=str(index)),
                 str(entry.get("raw_output") or ""),
                 gr_update(value=str(entry.get("reasoning_output") or ""), visible=bool(entry.get("reasoning_output"))),
                 str(candidate or ""), gr_update(value=path, visible=bool(path)),
@@ -12543,7 +12543,7 @@ with shared.gradio_root:
                 logger.warning("Description archive failed: %s", error)
                 archive_error = str(error)
             view = _description_record_view(report, state_params, len(report["attempts"]) - 1, path, archive_error)
-            return [report, view[0], view[1], gr_update(choices=names, value=os.path.basename(path) if path else None), *view[2:]]
+            return [report, view[0], view[1], dropdown_update(choices=names, value=os.path.basename(path) if path else None), *view[2:]]
 
         def publish_current_description_record(report, state_params, request: gr.Request = None):
             if not isinstance(report, dict) or not describe_media_control.is_current(_description_request_key(state_params, request), report.get("id")):
@@ -12571,8 +12571,8 @@ with shared.gradio_root:
                 return skip_component_update()
 
         def _clear_description_record_view(message=""):
-            return [{}, gr_update(open=False), message, gr_update(choices=[], value=None),
-                    gr_update(choices=[], value=None), "", gr_update(value="", visible=False),
+            return [{}, gr_update(open=False), message, dropdown_update(choices=[], value=None),
+                    dropdown_update(choices=[], value=None), "", gr_update(value="", visible=False),
                     "", gr_update(value=None, visible=False)]
 
         def clear_description_for_identity(report, state_params, request: gr.Request = None):
@@ -12808,7 +12808,7 @@ with shared.gradio_root:
             if not modules.meta_parser.scene_theme_event_matches_preset(state, source_preset):
                 topbar_params = topbar.update_topbar_js_params(state, include_canvas_catalogs=False)[0]
                 topbar_params["__scene_theme_event_rejected"] = True
-                return state, gr_update(), topbar_params, gr_update(), gr_update()
+                return state, skip_component_update(), topbar_params, skip_component_update(), skip_component_update()
             state, overwrite_step_update = modules.meta_parser.switch_scene_theme_select_with_standard_generation_defaults(state, selected_theme)
             sampling_updates = modules.meta_parser.switch_scene_theme_standard_sampling_defaults(state, selected_theme)
             if state_rehydrated:
@@ -13220,8 +13220,9 @@ with shared.gradio_root:
 
     def _refresh_krea2_aio_inputs(state_params):
         is_krea2 = isinstance(state_params, dict) and state_params.get('task_method') == 'krea2_aio_cn'
+        is_moss = isinstance(state_params, dict) and state_params.get('task_method') == 'moss_image_sft_aio_cn'
         updates = [gr_update(visible=not is_krea2 or index == 0) for index in range(len(ip_image_columns))]
-        updates += [gr_update(visible=not is_krea2, **({'value': False} if is_krea2 else {})) for _ in range(3)]
+        updates += [gr_update(visible=not (is_krea2 or is_moss), **({'value': False} if is_krea2 or is_moss else {})) for _ in range(3)]
         return updates
 
     state_topbar.change(

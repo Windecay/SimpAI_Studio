@@ -162,7 +162,7 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             "comfyui-frontend-package==1.55.17",
             "comfyui-workflow-templates==0.11.86",
             "comfyui-embedded-docs==0.5.14",
-            "comfy-kitchen==0.2.37",
+            "comfy-kitchen==0.2.38",
             "comfy-aimdo==0.5.6",
             "av>=17.0.0",
             "PyOpenGL>=3.1.8",
@@ -172,6 +172,7 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             self.assertIn(requirement, active_comfy_requirements)
 
         for stale_requirement in [
+            "comfy-kitchen==0.2.37",
             "comfyui-workflow-templates==0.11.65",
             "comfyui-frontend-package==1.51.10",
             "comfyui-workflow-templates==0.11.59",
@@ -215,7 +216,7 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             "('comfyui-frontend-package', '1.55.17', None)",
             "('comfyui-workflow-templates', '0.11.86', None)",
             "('comfyui-embedded-docs', '0.5.14', None)",
-            "('comfy-kitchen', '0.2.37', None)",
+            "('comfy-kitchen', '0.2.38', None)",
             "('comfy-aimdo', '0.5.6', None)",
             "('av', '17.0.0', None)",
             "('PyOpenGL', None, '>=3.1.8')",
@@ -227,7 +228,7 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             '("comfyui-frontend-package", "1.55.17", None)',
             '("comfyui-workflow-templates", "0.11.86", None)',
             '("comfyui-embedded-docs", "0.5.14", None)',
-            '("comfy-kitchen", "0.2.37", None)',
+            '("comfy-kitchen", "0.2.38", None)',
             '("comfy-aimdo", "0.5.6", None)',
             '("av", "17.0.0", None)',
             '("PyOpenGL", None, ">=3.1.8")',
@@ -236,8 +237,8 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             self.assertIn(updater_requirement, self.simpleai_update_content)
 
         for relative_path, declaration in [
-            ("forge_neo/webui/modules/launch_utils.py", '("comfy-kitchen", "0.2.37", None)'),
-            ("forge_neo/runtime_backend/source_runtime.py", '("comfy-kitchen", "0.2.37"),'),
+            ("forge_neo/webui/modules/launch_utils.py", '("comfy-kitchen", "0.2.38", None)'),
+            ("forge_neo/runtime_backend/source_runtime.py", '("comfy-kitchen", "0.2.38"),'),
         ]:
             with self.subTest(path=relative_path):
                 path = os.path.join(os.path.dirname(__file__), "..", relative_path)

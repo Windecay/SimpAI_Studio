@@ -549,12 +549,16 @@ SimpAI UI guide skill:
 
 ## MOSS-Image Text-To-Image
 
-- `MOSS-Image` is a text-to-image-only preset based on MOSS-Image-SFT. It does not
-  accept reference images, masks, video or audio, and does not provide an AIO
-  detail-enhancement route. Use a compatible editing preset for follow-up edits.
+- `MOSS-Image` uses MOSS-Image-SFT for text-to-image, image variation, upscale
+  and masked detail refinement. Enhance supports an uploaded source, three
+  detected regions, and upscale before or after refinement. It does not support reference-image control,
+  ControlNet, video or audio. Do not route free-form reference-image editing to it.
+  The inpaint engine is `None`; refinement uses the current model with a noise
+  mask and Differential Diffusion, without a separate inpaint model.
 - Use the official MOSS prompt skill returned by `simpai.prompts.guidance`.
-  Ordinary scenes use a caption: English descriptive prose by default, or the
-  language explicitly requested by the user. Preserve visible wording in its
+  Ordinary scenes use a caption in the original request's language: Chinese
+  input stays Chinese and English input stays English unless the user explicitly
+  requests another output language. Preserve visible wording in its
   original language, including punctuation and line breaks. Do not insert
   H3/Qwen image-reference labels or convert the prompt to Danbooru tags.
 - For text placement, several panels or controlled object relationships, use
@@ -572,6 +576,12 @@ SimpAI UI guide skill:
   `CLIPLoader(type=moss_image)`, and the shared Flux2 VAE. Retain native
   `multiplier=1`; a legacy `ModelSamplingSD3` override produces an invalid
   timestep range.
+- Model loaders use the same placeholder and lazy safetensors/GGUF branches
+  as other basic workflows. Native-format diffusion GGUF files with the
+  `moss_image` architecture are recognized. Keep the official native text
+  encoder unless an independently supported text-encoder format is available.
+  Fast upscale loads only the selected upscale model; unused diffusion and
+  GGUF branches are not executed.
 - Use the official filenames `moss_image_sft_int8_convrot.safetensors` and
   `qwen3.5_9b_w4a8_gptq.safetensors`, not local aliases or the older community
   encoder. The community DiT shares the official name but has a different size;

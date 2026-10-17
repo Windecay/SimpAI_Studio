@@ -20,6 +20,7 @@ QUALITY_PROMPTS = {
     "anima": _TAG_QUALITY_PROMPT,
     "flux": _GENERIC_QUALITY_PROMPT,
     "flux2": _GENERIC_QUALITY_PROMPT,
+    "moss_image": "A clear, high-resolution image with natural textures, clean edges and fine detail.",
     "qwen": _GENERIC_QUALITY_PROMPT,
     "sdxl": _TAG_QUALITY_PROMPT,
     "wan": _WAN_QUALITY_PROMPT,
@@ -238,6 +239,7 @@ SimpAIAIOUOVQwen = _family_node("SimpAIAIOUOVQwen", "qwen")
 SimpAIAIOUOVWan = _family_node("SimpAIAIOUOVWan", "wan")
 SimpAIAIOUOVZImage = _family_node("SimpAIAIOUOVZImage", "z_image")
 SimpAIAIOUOVFlux2 = _family_node("SimpAIAIOUOVFlux2", "flux2")
+SimpAIAIOUOVMoss = _family_node("SimpAIAIOUOVMoss", "moss_image")
 
 
 class SimpAIAIOUOVKrea2(_SimpAIAIOUOVBase):
@@ -348,6 +350,7 @@ NODE_CLASS_MAPPINGS = {
         SimpAIAIOUOVWan,
         SimpAIAIOUOVZImage,
         SimpAIAIOUOVFlux2,
+        SimpAIAIOUOVMoss,
         SimpAIAIOUOVKrea2,
         SimpAIAIOUOVAnima,
         SimpAIAIOUOVChenkin,

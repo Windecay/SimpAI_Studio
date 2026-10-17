@@ -169,9 +169,17 @@ class QwenImage21(ModelTemplate):
         ("txt_in.text_norm.weight",)
     ]
 
+
+class ModelMOSSImage(ModelTemplate):
+    arch = "moss_image"
+    keys_detect = [
+        ("shared_block_modulation.weight", "layers.0.proj.ffn_up_gate.weight")
+    ]
+
+
 arch_list = [ModelFlux, ModelSD3, ModelAura, ModelHiDream, CosmosPredict2, 
              ModelLTXV, ModelHyVid, ModelWan, ModelSDXL, ModelSD1, ModelLumina2,
-             ModelIdeogram4, ModelKrea2, ModelMiniMax, QwenImage21]
+             ModelIdeogram4, ModelKrea2, ModelMiniMax, QwenImage21, ModelMOSSImage]
 
 def is_model_arch(model, state_dict):
     # check if model is correct

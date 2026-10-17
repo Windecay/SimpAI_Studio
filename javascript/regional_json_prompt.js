@@ -53,9 +53,21 @@
                 result = layout(Math.floor(low * 4) / 4);
             }
         }
-        const visibleHeight = result.fits ? height : Math.max(0, height - (reservedCorner?.height || 0) * 2);
-        const visibleLines = Math.max(0, Math.floor(visibleHeight / result.lineHeight));
-        if (!result.fits && visibleLines) {
+        if (!result.fits && reservedCorner) {
+            const belowHeight = height - reservedCorner.height;
+            const besideWidth = width - reservedCorner.width;
+            if (belowHeight >= 8 * 1.35) {
+                return { ...fitPreviewText(value, width, belowHeight, measure),
+                    offsetY: reservedCorner.height / 2 };
+            }
+            if (besideWidth > 0) {
+                return { ...fitPreviewText(value, besideWidth, height, measure),
+                    offsetX: reservedCorner.width / 2 };
+            }
+        }
+        const visibleLines = Math.max(0, Math.floor(height / result.lineHeight));
+        if (!result.fits && visibleLines && (result.lines.length > visibleLines
+            || result.lines.some(line => measure(line, result.fontSize) > width))) {
             const suffix = measure('...', result.fontSize) <= width ? '...' : '';
             result.lines = result.lines.slice(0, visibleLines);
             let last = result.lines[result.lines.length - 1];
@@ -317,30 +329,38 @@
                 ctx.fillStyle = `${color}20`; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
                 ctx.strokeStyle = color; ctx.lineWidth = (index === selected ? 2.5 : 1.5) * unit;
                 ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
-                ctx.fillStyle = color; ctx.fillRect(x0, y0, 25 * unit, 22 * unit);
-                ctx.fillStyle = '#ffffff'; ctx.font = `600 ${12 * unit}px sans-serif`;
-                ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-                ctx.fillText(String(index + 1), x0 + 7 * unit, y0 + 15 * unit);
-                const padding = 8 * unit;
+                const boxWidth = (x1 - x0) / unit, boxHeight = (y1 - y0) / unit;
+                const badgeWidth = Math.min(25, boxWidth / 2);
+                const badgeHeight = Math.min(22, boxHeight / 3);
+                const badgeFont = Math.min(12, badgeHeight * 0.7, badgeWidth / String(index + 1).length);
+                ctx.fillStyle = color; ctx.fillRect(x0, y0, badgeWidth * unit, badgeHeight * unit);
+                ctx.fillStyle = '#ffffff'; ctx.font = `600 ${badgeFont * unit}px sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+                ctx.fillText(String(index + 1), x0 + badgeWidth * unit / 2,
+                    y0 + (badgeHeight + badgeFont * 0.7) * unit / 2);
+                const paddingPixels = Math.min(8, boxWidth / 16, boxHeight / 16);
+                const badgeGap = Math.min(4, paddingPixels);
+                const padding = paddingPixels * unit;
                 const contentWidth = Math.max(0, x1 - x0 - padding * 2);
                 const contentHeight = Math.max(0, y1 - y0 - padding * 2);
                 if (contentWidth > 0 && contentHeight > 0) {
                     ctx.save();
                     ctx.beginPath(); ctx.rect(x0 + padding, y0 + padding, contentWidth, contentHeight); ctx.clip();
-                    // Keep a 4px gap around the 25x22px region number.
                     const textLayout = fitPreviewText(
                         item.label === 'text' ? item.text || item.caption : item.caption,
                         contentWidth / unit, contentHeight / unit, (text, fontSize) => {
                             ctx.font = `${fontSize * unit}px sans-serif`;
                             return ctx.measureText(text).width / unit;
-                        }, { width: 21, height: 18 });
+                        }, { width: badgeWidth + badgeGap - paddingPixels, height: badgeHeight + badgeGap - paddingPixels });
                     ctx.font = `${textLayout.fontSize * unit}px sans-serif`;
                     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                     ctx.fillStyle = item.label === 'text' ? color : '#30343a';
                     const lineHeight = textLayout.lineHeight * unit;
-                    const firstLineY = (y0 + y1) / 2 - (textLayout.lines.length - 1) * lineHeight / 2;
+                    const centerX = (x0 + x1) / 2 + (textLayout.offsetX || 0) * unit;
+                    const firstLineY = (y0 + y1) / 2 + (textLayout.offsetY || 0) * unit
+                        - (textLayout.lines.length - 1) * lineHeight / 2;
                     textLayout.lines.forEach((line, lineIndex) => {
-                        ctx.fillText(line, (x0 + x1) / 2, firstLineY + lineIndex * lineHeight);
+                        ctx.fillText(line, centerX, firstLineY + lineIndex * lineHeight);
                     });
                     ctx.restore();
                 }

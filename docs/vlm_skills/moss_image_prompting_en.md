@@ -10,7 +10,11 @@ Use a caption for ordinary scenes, photographs and illustrations. A detailed
 image does not automatically need Layout. Describe concrete visible choices:
 subject, count, appearance, action, setting, framing, medium, light, materials,
 palette and mood. Preserve requested relationships, exclusions and style.
-Default to English descriptive prose, honoring an explicitly requested language.
+By default, match the language of the user's original request: Chinese input
+must produce Chinese descriptive prose, and English input must produce English
+prose. An explicitly requested output language takes priority. Do not translate
+Chinese descriptions into English because the UI, this reference or JSON field
+names use English.
 Keep visible wording verbatim in its original language, including punctuation,
 capitalization and line breaks. Do not mistake quoted instructions for lettering.
 Avoid generic quality tags, arbitrary word budgets, invented event facts,
@@ -41,7 +45,8 @@ Do not calculate centered coordinates yourself or paste the editable draft
 directly into the positive prompt. Apply it through the editor.
 
 When revising a supplied compiled Layout, preserve its boxes, roles, exact text
-and optional fields unless the user asks to change them. Return only the revised
-compiled JSON. Keep dimensions unchanged. Do not turn Layout into generic prose.
+and optional fields unless the user asks to change them. Keep the language of
+the original captions and retain structural field names as-is. Return only the
+revised compiled JSON. Keep dimensions unchanged. Do not turn Layout into generic prose.
 Check subject counts, exact text, readable scale and consistent spatial relations.
 Only the caption or compiled Layout belongs in the positive prompt.

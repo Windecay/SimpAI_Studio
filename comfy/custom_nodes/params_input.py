@@ -198,8 +198,9 @@ class LoadInputImage:
         else:
             width = 1024
             height = 1024
-            img = np.zeros((width, height), dtype=np.uint8)
-            return (img, img, width, height)
+            image = torch.zeros((1, height, width, 3), dtype=torch.float32)
+            mask = torch.zeros((1, height, width), dtype=torch.float32)
+            return (image, mask, width, height)
 
         output_images = []
         output_masks = []

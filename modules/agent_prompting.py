@@ -141,7 +141,7 @@ def guidance(entry, spec, lang):
     if key == "flux3_natural":
         result.update(preferred_prompt_language="en", requires_final_prompt=False)
     if key == "moss_image":
-        result.update(preferred_prompt_language="en", format="caption_or_layout_json", requires_final_prompt=False)
+        result.update(preferred_prompt_language="user_language", format="caption_or_layout_json", requires_final_prompt=False)
     if spec.get("prompt_policy", {}).get("mode") == "preset_fixed":
         result.update({"automatic_routing": False, "format": "preset_fixed", "requires_final_prompt": False,
                        "prompt_policy": spec["prompt_policy"], "skills": [], "skill_ids": [],

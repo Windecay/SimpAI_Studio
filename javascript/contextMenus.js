@@ -40,7 +40,7 @@ var contextMenuInit = function() {
 
         const contextMenu = document.createElement('nav');
         contextMenu.id = "context-menu";
-        contextMenu.style.background = baseStyle.background;
+        contextMenu.style.background = baseStyle.getPropertyValue('--block-background-fill');
         contextMenu.style.color = baseStyle.color;
         contextMenu.style.fontFamily = baseStyle.fontFamily;
         contextMenu.style.top = posy + 'px';
