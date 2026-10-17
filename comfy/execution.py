@@ -532,6 +532,9 @@ async def execute(server: "ExecutionServer", dynprompt, caches, current_item, ex
         elif unique_id in pending_subgraph_results:
             cached_results = pending_subgraph_results[unique_id]
             resolved_outputs = []
+            output_ui = {}
+            inherit_ui = _is_intermediate_output(dynprompt, unique_id) and unique_id not in ui_outputs
+            ui_sources = set()
             for is_subgraph, result in cached_results:
                 if not is_subgraph:
                     resolved_outputs.append(result)
@@ -543,12 +546,17 @@ async def execute(server: "ExecutionServer", dynprompt, caches, current_item, ex
                             node_cached = execution_list.get_cache(source_node, unique_id)
                             for o in node_cached.outputs[source_output]:
                                 resolved_output.append(o)
+                            # Retain linked intermediate UI on the expansion cache entry.
+                            if inherit_ui and source_node not in ui_sources:
+                                ui_sources.add(source_node)
+                                if node_cached.ui and _is_intermediate_output(dynprompt, source_node):
+                                    for key, values in node_cached.ui["output"].items():
+                                        output_ui.setdefault(key, []).extend(values)
 
                         else:
                             resolved_output.append(r)
                     resolved_outputs.append(tuple(resolved_output))
             output_data = merge_result_data(resolved_outputs, class_def)
-            output_ui = []
             del pending_subgraph_results[unique_id]
             has_subgraph = False
         else:

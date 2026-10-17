@@ -59,8 +59,15 @@ def _resolve_model(name):
     raise FileNotFoundError("PE model is missing or its required adjacent mmproj is unavailable.")
 
 
-def _clean_output(text):
-    return _output_module.clean_pe_output(text)
+def _clean_output(text, target):
+    if target == "flux3":
+        return _output_module.clean_pe_output(text)
+    return _output_module.strip_pe_reasoning(text)
+
+
+def _is_moss_layout_prompt(prompt, target):
+    # Preserve incomplete layout text too, because generation preflight only warns.
+    return target == "moss_image" and str(prompt).lstrip().startswith("{")
 
 
 def _prompt_output(prompt, model, status):
@@ -179,7 +186,7 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
                 io.Autogrow.Input("images", optional=True, template=io.Autogrow.TemplatePrefix(
                     io.Image.Input("image", optional=True), prefix="image_", min=0, max=100,
                 )),
-                io.Combo.Input("target", options=["qwen_image21", "flux3"], default="qwen_image21", optional=True),
+                io.Combo.Input("target", options=["qwen_image21", "flux3", "moss_image"], default="qwen_image21", optional=True),
                 io.Clip.Input("clip", optional=True),
                 io.String.Input("applied_prompt", default="", optional=True, multiline=True),
             ],
@@ -191,6 +198,8 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
                 target="qwen_image21", clip=None, applied_prompt=""):
         if pe_model in (None, "", "None"):
             return _prompt_output(prompt, pe_model, "disabled")
+        if _is_moss_layout_prompt(prompt, target):
+            return _prompt_output(prompt, pe_model, "skipped_layout")
         if prompt_was_expanded(prompt, applied_prompt):
             return _prompt_output(prompt, pe_model, "skipped_assistant")
         try:
@@ -223,19 +232,12 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
                 raise
             logging.warning("[SimpAI Prompt Expansion] Skipping %r: %s Using the original prompt.", pe_model, error)
             return _prompt_output(prompt, pe_model, "unavailable")
-        try:
-            rewritten = _clean_output(text)
-        except PEOutputFormatError as error:
+        rewritten = _clean_output(text, target)
+        if not rewritten.strip():
             if target == "flux3":
-                raise
-            logging.warning(
-                "[SimpAI Prompt Expansion] Invalid output: model=%s error=%s raw_output=%s Using the original prompt.",
-                pe_model, error, json.dumps(str(text), ensure_ascii=False),
-            )
-            return _prompt_output(prompt, pe_model, "invalid_output")
-        if target == "flux3" and not rewritten:
-            raise PEOutputFormatError("Flux3 prompt upsampler returned no prompt.")
-        return _prompt_output(rewritten or prompt, pe_model, "rewritten" if rewritten else "empty_output")
+                raise PEOutputFormatError("Flux3 prompt upsampler returned no prompt.")
+            return _prompt_output(prompt, pe_model, "empty_output")
+        return _prompt_output(rewritten, pe_model, "rewritten")
 
 
 class SimpAIPromptExpand(io.ComfyNode):
@@ -258,7 +260,8 @@ class SimpAIPromptExpand(io.ComfyNode):
     @classmethod
     def execute(cls, prompt, pe_model, seed, max_length=4096, images=None,
                 target="qwen_image21", clip=None, applied_prompt=""):
-        if pe_model in (None, "", "None") or prompt_was_expanded(prompt, applied_prompt) or clip is not None:
+        if (pe_model in (None, "", "None") or _is_moss_layout_prompt(prompt, target)
+                or prompt_was_expanded(prompt, applied_prompt) or clip is not None):
             return SimpAIQwenImage21TextGenerate.execute(prompt, pe_model, seed, max_length, images, target, clip, applied_prompt)
         try:
             row = _resolve_model(pe_model)

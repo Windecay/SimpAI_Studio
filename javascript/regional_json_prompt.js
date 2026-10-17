@@ -101,7 +101,7 @@
                 'Dimensions must be multiples of 16 between 16 and 16384', name);
         }
     }
-    function validateDraft(draft, allowEmpty = false, editing = false) {
+    function validateDraft(draft, allowEmpty = false, editing = false, { unfinished = false } = {}) {
         const required = ['width', 'height', 'summary', 'items', 'bbox_coord_space', 'bbox_format'];
         fields(draft, required, required, 'Layout');
         dimensions(draft.width, draft.height);
@@ -121,7 +121,9 @@
             fields(item, ['label', 'caption', 'bbox', 'text', 'tags', 'palette'], ['label', 'caption', 'bbox'], location);
             requireValue(roles.includes(item.label), 'Invalid region type', location);
             nonempty(item.caption, `${location}.caption`, editing);
-            if (item.label === 'text' || Object.hasOwn(item, 'text')) nonempty(item.text, `${location}.text`, editing);
+            if (item.label === 'text' || Object.hasOwn(item, 'text')) {
+                nonempty(item.text, `${location}.text`, editing || item.label !== 'text');
+            }
             for (const key of ['tags', 'palette']) {
                 if (Object.hasOwn(item, key)) strings(item[key], `${location}.${key}`);
             }
@@ -129,13 +131,18 @@
                 && item.bbox.every(value => typeof value === 'number' && Number.isFinite(value)),
             'Expected four finite coordinates', `${location}.bbox`);
             const [x0, y0, x1, y1] = item.bbox;
-            requireValue(0 <= x0 && x0 < x1 && x1 <= draft.width && 0 <= y0 && y0 < y1 && y1 <= draft.height,
+            requireValue(unfinished || (0 <= x0 && x0 < x1 && x1 <= draft.width && 0 <= y0 && y0 < y1 && y1 <= draft.height),
                 'Region is empty or outside the canvas', `${location}.bbox`);
         });
         return draft;
     }
-    function compile(draft) {
-        validateDraft(draft, true);
+    function modelRegion(item) {
+        const value = clone(item);
+        if (value.label !== 'text') delete value.text;
+        return value;
+    }
+    function compile(draft, { allowIncomplete = false } = {}) {
+        validateDraft(draft, true, allowIncomplete);
         if (!draft.items.length) return draft.summary.caption;
         // Match OpenMOSS compile_prompt.py and Comfy's MOSSImageLayoutPrompt.
         const edge = value => Number(value.toFixed(9));
@@ -147,7 +154,7 @@
             ];
             requireValue(bbox[0] < bbox[2] && bbox[1] < bbox[3],
                 'Region is empty or outside the canvas', 'bbox');
-            return { ...clone(item), bbox };
+            return { ...modelRegion(item), bbox };
         });
         return JSON.stringify({
             summary: clone(draft.summary), items, bbox_coord_space: 'abs_centralized', bbox_format: 'yxyx'
@@ -193,6 +200,78 @@
         return next;
     }
 
+    function optimizationRequest(draft, scope = 'all', selected = -1, instruction = '') {
+        validateDraft(draft, true, true);
+        requireValue(['all', 'summary', 'region'].includes(scope), 'Invalid optimization scope');
+        requireValue(scope !== 'region' || !!draft.items[selected], 'Select a region to optimize');
+        requireValue(draft.summary.caption.trim() || draft.items.some(item => item.caption.trim()
+            || (item.label === 'text' && item.text?.trim()))
+            || String(instruction).trim(), 'Enter a description or editing instruction');
+        return {
+            version: 1, scope, selected_id: scope === 'region' ? `r${selected + 1}` : null,
+            instruction: String(instruction).trim(), width: draft.width, height: draft.height,
+            summary: clone(draft.summary),
+            regions: draft.items.map((item, index) => ({ ...modelRegion(item), id: `r${index + 1}` })),
+        };
+    }
+    function mergeOptimization(draft, request, response) {
+        let value = typeof response === 'string' ? response.trim() : clone(response);
+        if (typeof value === 'string') {
+            value = value.replace(/^```(?:json)?\s*\n([\s\S]*)\n```$/i, '$1').trim();
+            value = JSON.parse(value);
+        }
+        const keys = request.scope === 'summary' ? ['summary']
+            : request.scope === 'region' ? ['regions'] : ['summary', 'regions'];
+        fields(value, keys, keys, 'Optimization result');
+        const next = clone(draft);
+        if (Object.hasOwn(value, 'summary')) {
+            nonempty(value.summary, 'summary', !!draft.items.length);
+            next.summary.caption = value.summary;
+        }
+        if (Object.hasOwn(value, 'regions')) {
+            const expected = new Set(request.scope === 'region' ? [request.selected_id] : request.regions.map(item => item.id));
+            requireValue(Array.isArray(value.regions) && value.regions.length === expected.size,
+                'Optimization must preserve every requested region');
+            const indices = new Map(request.regions.map((item, index) => [item.id, index]));
+            const seen = new Set();
+            value.regions.forEach(item => {
+                fields(item, ['id', 'caption'], ['id', 'caption'], 'Optimization region');
+                requireValue(typeof item.id === 'string' && expected.has(item.id) && !seen.has(item.id),
+                    'Optimization returned an unknown or duplicate region');
+                nonempty(item.caption, 'caption');
+                seen.add(item.id);
+                next.items[indices.get(item.id)].caption = item.caption;
+            });
+        }
+        return validateDraft(next, true, true);
+    }
+
+    function normalizeSnapshot(value) {
+        try {
+            if (value?.version !== 1) return null;
+            const layout = item => clone(validateDraft(item, true, true, { unfinished: true }));
+            const draft = layout(value.draft);
+            const history = items => (Array.isArray(items) ? items.slice(-60) : []).flatMap(item => {
+                try { return [layout(item)]; } catch (_) { return []; }
+            });
+            let optimizedSnapshot = '';
+            try {
+                if (value.optimizedSnapshot) optimizedSnapshot = JSON.stringify(layout(JSON.parse(value.optimizedSnapshot)));
+            } catch (_) {}
+            return {
+                version: 1, draft,
+                raw: typeof value.raw === 'string' ? value.raw : JSON.stringify(draft, null, 2),
+                rawDirty: value.rawDirty === true,
+                selected: Number.isInteger(value.selected) ? Math.max(-1, Math.min(value.selected, draft.items.length - 1)) : -1,
+                mode: value.mode === 'draw' ? 'draw' : 'select',
+                tab: value.tab === 'json' ? 'json' : 'layout',
+                undo: history(value.undo), redo: history(value.redo), optimizedSnapshot,
+                aiScope: ['all', 'region', 'summary'].includes(value.aiScope) ? value.aiScope : 'all',
+                aiInstruction: typeof value.aiInstruction === 'string' ? value.aiInstruction.slice(0, 4000) : '',
+            };
+        } catch (_) { return null; }
+    }
+
     let active = null;
     function open(options = {}) {
         active?.close();
@@ -208,10 +287,15 @@
             draft = { width: options.width, height: options.height, summary: { caption: '' }, items: [],
                 bbox_coord_space: 'abs', bbox_format: 'xyxy' };
         }
-        let selected = draft.items.length ? 0 : -1;
-        let mode = 'select', tab = initialError ? 'json' : 'layout', gesture = null, editingField = null;
-        let rawDirty = !!initialError;
-        const undo = [], redo = [];
+        const restored = normalizeSnapshot(options.snapshot);
+        if (restored) { draft = restored.draft; initialError = null; }
+        let selected = restored ? restored.selected : (draft.items.length ? 0 : -1);
+        let mode = restored?.mode || 'select', tab = restored?.tab || (initialError ? 'json' : 'layout');
+        let gesture = null, editingField = null;
+        let rawDirty = restored ? restored.rawDirty : !!initialError;
+        let optimizing = false, closed = false, aiPreview = null, aiGeneration = 0;
+        let optimizedSnapshot = restored?.optimizedSnapshot || '';
+        const undo = restored?.undo || [], redo = restored?.redo || [];
         const previousFocus = document.activeElement;
         const host = document.createElement('div');
         host.className = 'sai-rjp-overlay';
@@ -271,6 +355,23 @@
                 <button type="button" data-rjp-action="load-json"><i class="fa-solid fa-file-import" aria-hidden="true"></i> ${esc(t('Load JSON'))}</button>
                 ${icon('reset-json', 'rotate-left', 'Restore JSON from layout')}
               </div></div>
+            <div class="sai-rjp-ai-bar">
+              <select data-rjp-ai-scope aria-label="${esc(t('Optimization scope'))}">
+                <option value="all">${esc(t('All descriptions'))}</option>
+                <option value="region">${esc(t('Selected region'))}</option>
+                <option value="summary">${esc(t('Whole image description'))}</option>
+              </select>
+              <input data-rjp-ai-instruction type="text" maxlength="4000"
+                aria-label="${esc(t('Editing instruction'))}" placeholder="${esc(t('Editing instruction (optional)'))}">
+              ${icon('optimize', 'wand-magic-sparkles', 'Optimize with agent')}
+            </div>
+            <section class="sai-rjp-ai-preview" data-rjp-ai-preview hidden aria-label="${esc(t('Optimization preview'))}">
+              <div class="sai-rjp-ai-preview-heading"><h3>${esc(t('Optimization preview'))}</h3>
+                ${icon('apply-optimization', 'check', 'Apply suggestions')}
+                ${icon('discard-optimization', 'xmark', 'Discard suggestions')}
+              </div>
+              <div class="sai-rjp-ai-preview-list" data-rjp-ai-changes></div>
+            </section>
             <footer><div data-rjp-status role="status" aria-live="polite"></div>
               <div class="sai-rjp-footer-tools">
                 ${icon('import', 'file-import', 'Import layout JSON')}${icon('export', 'download', 'Download editable JSON')}
@@ -282,11 +383,26 @@
         const q = selector => host.querySelector(selector);
         const canvas = q('canvas'), viewport = q('.sai-rjp-viewport'), board = q('.sai-rjp-board');
         const raw = q('[data-rjp-json]');
-        raw.value = initialError ? String(options.value || '') : JSON.stringify(draft, null, 2);
-        function status(error = null) {
+        raw.value = restored ? restored.raw : (initialError ? String(options.value || '') : JSON.stringify(draft, null, 2));
+        q('[data-rjp-ai-scope]').value = restored?.aiScope || 'all';
+        q('[data-rjp-ai-instruction]').value = restored?.aiInstruction || '';
+        function persistDraft() {
+            if (closed || typeof options.onDraftChange !== 'function') return;
+            // Preserve unfinished edits without compiling them or saving API settings.
+            const snapshot = normalizeSnapshot({
+                version: 1, draft, raw: rawDirty ? raw.value : JSON.stringify(draft, null, 2),
+                rawDirty, selected, mode, tab, undo, redo, optimizedSnapshot,
+                aiScope: q('[data-rjp-ai-scope]').value,
+                aiInstruction: q('[data-rjp-ai-instruction]').value,
+            });
+            if (snapshot) {
+                try { options.onDraftChange(snapshot); } catch (_) {}
+            }
+        }
+        function status(error = null, isError = true) {
             const node = q('[data-rjp-status]');
             node.textContent = error ? `${t(error.message || String(error))}${error.field ? `: ${error.field}` : ''}` : '';
-            node.classList.toggle('is-error', !!error);
+            node.classList.toggle('is-error', !!error && isError);
         }
         function remember(snapshot = draft) {
             undo.push(clone(snapshot));
@@ -295,13 +411,91 @@
             editingField = null;
         }
         function updateOutput() {
-            try { q('[data-rjp-output]').value = compile(draft); status(); }
+            try {
+                q('[data-rjp-output]').value = compile(draft, { allowIncomplete: true });
+                if (!optimizing) {
+                    try {
+                        if (draft.items.length || draft.summary.caption.trim()) validateDraft(draft, true);
+                        status();
+                    }
+                    catch (error) {
+                        status({ message: 'Some descriptions or literal text are empty. You can still apply the prompt.',
+                            field: error.field }, false);
+                    }
+                }
+            }
             catch (error) {
                 q('[data-rjp-output]').value = '';
                 status(['Enter a description or literal text', 'Add a region'].includes(error.message) ? null : error);
             }
             q('[data-rjp-action="undo"]').disabled = !undo.length;
             q('[data-rjp-action="redo"]').disabled = !redo.length;
+        }
+        function renderAiPreview() {
+            q('[data-rjp-ai-preview]').hidden = !aiPreview;
+            q('[data-rjp-ai-changes]').innerHTML = aiPreview ? aiPreview.changes.map(change =>
+                `<div class="sai-rjp-ai-change"><strong>${esc(change.label)}</strong>
+                  <div><span>${esc(t('Original description'))}</span><p>${esc(change.before || t('Empty'))}</p></div>
+                  <div><span>${esc(t('Suggested'))}</span><p>${esc(change.after || t('Empty'))}</p></div>
+                </div>`
+            ).join('') : '';
+        }
+        function setOptimizing(value) {
+            optimizing = value;
+            q('[data-rjp-action="optimize"]').disabled = value;
+            q('[data-rjp-action="optimize"] i').className = value
+                ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles';
+            q('[data-rjp-ai-scope]').disabled = value;
+            q('[data-rjp-ai-instruction]').disabled = value;
+            q('[data-rjp-action="apply"]').disabled = value || applying;
+        }
+        function assertAiSnapshot(snapshot, request, selection) {
+            requireValue(!closed, 'The layout editor was closed');
+            options.assertContext?.();
+            requireValue(!rawDirty && JSON.stringify(draft) === snapshot
+                && (request.scope !== 'region' || selected === selection),
+            'The layout changed. Request new suggestions.');
+        }
+        async function optimize() {
+            if (optimizing || applying) return;
+            if (typeof options.onOptimize !== 'function') throw new Error('Agent optimization is unavailable in this view.');
+            if (rawDirty) loadRaw();
+            options.assertContext?.();
+            const selection = selected;
+            const request = optimizationRequest(draft, q('[data-rjp-ai-scope]').value || 'all', selected,
+                q('[data-rjp-ai-instruction]').value || '');
+            const snapshot = JSON.stringify(draft), originalDraft = clone(draft);
+            const generation = ++aiGeneration;
+            aiPreview = null;
+            renderAiPreview();
+            setOptimizing(true);
+            status({ message: 'Generating description suggestions...' }, false);
+            try {
+                const result = await options.onOptimize({ input: JSON.stringify(request), request: clone(request) });
+                if (closed || generation !== aiGeneration) return;
+                assertAiSnapshot(snapshot, request, selection);
+                if (result?.ok === false) throw new Error(result.error || 'Regional optimization failed.');
+                const next = mergeOptimization(originalDraft, request,
+                    typeof result === 'string' ? result : result?.text);
+                const changes = [];
+                if (next.summary.caption !== originalDraft.summary.caption) changes.push({
+                    label: t('Whole image description'), before: originalDraft.summary.caption, after: next.summary.caption,
+                });
+                next.items.forEach((item, index) => {
+                    if (item.caption !== originalDraft.items[index].caption) changes.push({
+                        label: `${index + 1} ${label(item.label)}`,
+                        before: originalDraft.items[index].caption, after: item.caption,
+                    });
+                });
+                requireValue(changes.length, 'No description changes were returned.');
+                aiPreview = { snapshot, request, selection, next, changes };
+                renderAiPreview();
+                status({ message: 'Suggestions are ready for review.' }, false);
+            } catch (error) {
+                if (!closed && generation === aiGeneration) throw error;
+            } finally {
+                if (!closed && generation === aiGeneration) setOptimizing(false);
+            }
         }
         function draw() {
             const width = Math.max(1, Math.min(viewport.clientWidth - 24,
@@ -396,9 +590,21 @@
                 host.querySelectorAll('[data-rjp-coordinate]').forEach(node => { node.value = item.bbox[Number(node.dataset.rjpCoordinate)]; });
             }
             updateOutput();
+            renderAiPreview();
             if (tab === 'layout') draw();
+            persistDraft();
         }
-        function close() {
+        function close(preserve = true) {
+            if (closed) return;
+            if (gesture) endGesture();
+            if (preserve) persistDraft();
+            else {
+                try { options.onDraftChange?.(null); } catch (_) {}
+            }
+            closed = true;
+            aiGeneration++;
+            aiPreview = null;
+            root.removeEventListener?.('pagehide', persistDraft);
             observer?.disconnect();
             host.remove();
             if (active?.host === host) active = null;
@@ -439,8 +645,25 @@
         let applying = false;
         async function action(name) {
             try {
-                if (name === 'apply' && applying) return;
+                if (closed || (name === 'apply' && (applying || optimizing))) return;
                 if (name === 'close') return close();
+                if (name === 'optimize') return await optimize();
+                if (name === 'discard-optimization') {
+                    aiPreview = null; renderAiPreview(); status();
+                }
+                if (name === 'apply-optimization' && aiPreview) {
+                    const preview = aiPreview;
+                    try { assertAiSnapshot(preview.snapshot, preview.request, preview.selection); }
+                    catch (error) { aiPreview = null; renderAiPreview(); throw error; }
+                    remember();
+                    draft = clone(preview.next);
+                    optimizedSnapshot = JSON.stringify(draft);
+                    raw.value = JSON.stringify(draft, null, 2);
+                    rawDirty = false;
+                    aiPreview = null;
+                    render();
+                    status({ message: 'Suggestions applied to layout.' }, false);
+                }
                 if (name === 'select' || name === 'draw') { mode = name; render(); }
                 if (name === 'add') addRegion();
                 if (name === 'undo' && undo.length) { redo.push(clone(draft)); draft = undo.pop(); selected = Math.min(selected, draft.items.length - 1); render(); }
@@ -474,14 +697,17 @@
                 }
                 if (name === 'copy' || name === 'apply') {
                     if (rawDirty) loadRaw();
-                    const prompt = compile(draft);
+                    const prompt = compile(draft, { allowIncomplete: true });
                     if (name === 'copy') await navigator.clipboard.writeText(prompt);
                     else {
                         const button = q('[data-rjp-action="apply"]');
                         applying = true;
                         button.disabled = true;
                         try {
-                            if (await options.onApply?.({ prompt, draft: clone(draft), width: draft.width, height: draft.height }) !== false) close();
+                            if (await options.onApply?.({
+                                prompt, draft: clone(draft), width: draft.width, height: draft.height,
+                                optimized: optimizedSnapshot === JSON.stringify(draft),
+                            }) !== false) close(false);
                         } finally {
                             applying = false;
                             button.disabled = false;
@@ -489,6 +715,7 @@
                     }
                 }
             } catch (error) { status(error); }
+            finally { persistDraft(); }
         }
         host.addEventListener('click', event => {
             const button = event.target.closest('button,[data-rjp-action="close"]');
@@ -500,11 +727,16 @@
             if (button.dataset.rjpRegion !== undefined) { selected = Number(button.dataset.rjpRegion); render(); }
         });
         function updateField(event) {
-            if (event.target === raw) { rawDirty = true; return; }
+            if (closed) return;
+            if (event.target === raw) { rawDirty = true; persistDraft(); return; }
+            if (event.target === q('[data-rjp-ai-scope]') || event.target === q('[data-rjp-ai-instruction]')) {
+                persistDraft(); return;
+            }
             const field = event.target.dataset.rjpField;
             const coordinate = event.target.dataset.rjpCoordinate;
             if (!field && coordinate === undefined) return;
-            if (editingField !== event.target) { remember(); editingField = event.target; }
+            const changedType = field === 'label' && draft.items[selected]?.label !== event.target.value;
+            if (editingField !== event.target || changedType) { remember(); editingField = event.target; }
             if (field === 'width' || field === 'height') {
                 const value = Number(event.target.value);
                 try { dimensions(field === 'width' ? value : draft.width, field === 'height' ? value : draft.height); draft[field] = value; }
@@ -536,6 +768,7 @@
                 updateOutput();
                 draw();
             }
+            persistDraft();
         }
         host.addEventListener('input', updateField);
         host.addEventListener('change', updateField);
@@ -545,8 +778,11 @@
             if (!file) return;
             try {
                 requireValue(file.size <= 2 * 1024 * 1024, 'Layout JSON is too large');
-                raw.value = await file.text(); rawDirty = true; loadRaw(); tab = 'layout'; render();
+                const text = await file.text();
+                if (closed) return;
+                raw.value = text; rawDirty = true; loadRaw(); tab = 'layout'; render();
             } catch (error) { tab = 'json'; render(); status(error); }
+            finally { persistDraft(); }
             event.target.value = '';
         });
         const point = event => {
@@ -624,12 +860,17 @@
         const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (tab === 'layout') draw(); }) : null;
         observer?.observe(viewport);
         active = { host, close };
+        root.addEventListener?.('pagehide', persistDraft);
         render();
         if (initialError) status(initialError);
+        else if (restored) status({ message: 'Draft restored.' }, false);
         q('[data-rjp-action="close"]').focus();
         return host;
     }
-    const api = { open, compile, parse, validateDraft, scaleDraft, regionColor, wrapPreviewText, fitPreviewText };
+    const api = {
+        open, compile, parse, validateDraft, scaleDraft, regionColor, wrapPreviewText, fitPreviewText,
+        optimizationRequest, mergeOptimization, normalizeSnapshot,
+    };
     root.SimpAIRegionalJsonPrompt = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

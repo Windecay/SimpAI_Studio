@@ -1905,7 +1905,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         panel.querySelectorAll('[data-simpai-lora-enabled]').forEach(syncLoraRowInteractivity);
         syncModelsPanelRefinerAvailability(panel);
         // PE availability belongs to the active task, not the asynchronous file catalog.
-        const peEnabled = /qwen_image21|flux3/i.test(modelsPanelCatalogSignature().taskMethod);
+        const peEnabled = /qwen_image21|flux3|^moss_image_sft_aio_cn$/i.test(modelsPanelCatalogSignature().taskMethod);
         const peField = panel.querySelector('[data-simpai-model-card="pe"]');
         if (peField) peField.hidden = !peEnabled;
     }

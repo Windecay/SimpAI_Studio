@@ -1078,6 +1078,61 @@
         syncPromptActionSpinner();
     }
 
+    const regionalPromptDrafts = new Map();
+    const anonymousRegionalPromptDrafts = new WeakMap();
+    const REGIONAL_DRAFT_STORAGE_KEY = "simpai.regionalPromptDrafts.v1";
+    const REGIONAL_DRAFT_LIMIT = 8;
+    const REGIONAL_DRAFT_CHAR_LIMIT = 2 * 1024 * 1024;
+    let regionalPromptDraftsLoaded = false;
+
+    function regionalDraftStore(field, persistent) {
+        if (persistent) {
+            if (!regionalPromptDraftsLoaded) {
+                regionalPromptDraftsLoaded = true;
+                try {
+                    const entries = JSON.parse(window.sessionStorage.getItem(REGIONAL_DRAFT_STORAGE_KEY));
+                    if (Array.isArray(entries)) {
+                        for (const entry of entries.slice(-REGIONAL_DRAFT_LIMIT)) {
+                            if (!Array.isArray(entry) || entry.length !== 2) continue;
+                            const [key, snapshot] = entry;
+                            const clean = window.SimpAIRegionalJsonPrompt.normalizeSnapshot(snapshot);
+                            if (typeof key === "string" && clean) regionalPromptDrafts.set(key, clean);
+                        }
+                    }
+                } catch (_) {}
+            }
+            return regionalPromptDrafts;
+        }
+        if (!anonymousRegionalPromptDrafts.has(field)) anonymousRegionalPromptDrafts.set(field, new Map());
+        return anonymousRegionalPromptDrafts.get(field);
+    }
+
+    function rememberRegionalDraft(store, key, snapshot, persistent) {
+        store.delete(key);
+        if (snapshot) {
+            const clean = window.SimpAIRegionalJsonPrompt.normalizeSnapshot(snapshot);
+            if (clean) {
+                let encoded = JSON.stringify(clean);
+                while (encoded.length > REGIONAL_DRAFT_CHAR_LIMIT && (clean.undo.length || clean.redo.length)) {
+                    if (clean.undo.length >= clean.redo.length) clean.undo.shift();
+                    else clean.redo.shift();
+                    encoded = JSON.stringify(clean);
+                }
+                store.set(key, clean);
+            }
+        }
+        while (store.size > REGIONAL_DRAFT_LIMIT) store.delete(store.keys().next().value);
+        while (store.size > 1 && JSON.stringify([...store]).length > REGIONAL_DRAFT_CHAR_LIMIT) {
+            store.delete(store.keys().next().value);
+        }
+        if (!persistent) return;
+        try {
+            const entries = [...store];
+            while (entries.length && JSON.stringify(entries).length > REGIONAL_DRAFT_CHAR_LIMIT) entries.shift();
+            window.sessionStorage.setItem(REGIONAL_DRAFT_STORAGE_KEY, JSON.stringify(entries));
+        } catch (_) {}
+    }
+
     function isMossPromptTarget(params = paramsSource()) {
         const preset = String(params.__preset || params.preset || "").trim();
         return /(?:^|[^a-z0-9])moss[._ -]?image(?:[^a-z0-9]|$)/i.test(
@@ -1258,7 +1313,12 @@
         const params = paramsSource();
         const preset = String(params.__preset || params.preset || "");
         const user = String(params.user_did || params.__user_did || "");
+        const task = String(params.task_method || "");
         const original = String(field.value || "");
+        const target = field === fieldById("positive_prompt") ? "positive_prompt" : String(field.id || "");
+        const persistent = !!user && !!target;
+        const drafts = regionalDraftStore(field, persistent);
+        const draftKey = JSON.stringify([window.location?.pathname || "", user, preset, task, target, original]);
         const localText = key => currentLang() === "en" ? key : (window.localization?.[key] || key);
         let host = null;
         const assertContext = () => {
@@ -1266,6 +1326,7 @@
             if (host?.isConnected === false || isGenerationActive() || !usablePromptField(field) || !isMossPromptTarget()
                     || preset !== String(current.__preset || current.preset || "")
                     || user !== String(current.user_did || current.__user_did || "")
+                    || task !== String(current.task_method || "")
                     || String(field.value || "") !== original) {
                 throw new Error(localText("The prompt or preset changed. Reopen the layout editor."));
             }
@@ -1274,6 +1335,23 @@
             const size = currentPromptImageSize();
             host = editor.open({
                 value: original, ...size, langState: params, currentSize: currentPromptImageSize,
+                snapshot: drafts.get(draftKey),
+                onDraftChange: snapshot => rememberRegionalDraft(drafts, draftKey, snapshot, persistent),
+                assertContext,
+                async onOptimize(request) {
+                    assertContext();
+                    if (typeof window.runSimpleAIPromptActionDirect !== "function") {
+                        throw new Error(localText("Agent optimization is unavailable in this view."));
+                    }
+                    const result = await window.runSimpleAIPromptActionDirect("smart_expand", request.input, {
+                        target_kind: "regional_prompt",
+                        language: currentLang(),
+                        use_scene_agent_prompt: false,
+                        use_video: false,
+                    });
+                    assertContext();
+                    return result;
+                },
                 onApply(result) {
                     assertContext();
                     const currentSize = currentPromptImageSize();
@@ -1294,6 +1372,9 @@
                         rememberPrompt(field, history);
                         lastAppliedPromptField = field;
                         lastAppliedHistory = history;
+                        if (result.optimized && field === fieldById("positive_prompt")) {
+                            window.simpleaiMarkPromptExpanded?.(result.prompt);
+                        }
                         if (typeof syncPositivePromptMetaState === "function") syncPositivePromptMetaState();
                         showSuccessToast({}, { agent_service_kind: "local_script" });
                         return true;

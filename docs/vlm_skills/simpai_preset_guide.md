@@ -570,10 +570,10 @@ SimpAI UI guide skill:
   object, character and text regions, including exact literal text. Compiled
   Layout JSON bypasses wildcard batches, inline LoRA tags, style templates and
   automatic expansion; the explicitly selected LoRA stack remains available.
-- Defaults: 1024 x 1024, Euler, 8 steps, CFG 1, `sgm_uniform`, shift 5 and
+- Defaults: 1024 x 1024, Euler, 12 steps, CFG 1, `sgm_uniform`, shift 5 and
   unconditional skip layer 22, with `lora.safetensors` from
   `lodestones/MOSS-Image-SFT-8-steps-dmd` enabled at model strength 1.0.
-  Sampling steps remain editable; 8 is a default, not a fixed limit.
+  Sampling steps remain editable; 12 is a default, not a fixed limit.
   To use the original undistilled settings, disable the DMD LoRA and select
   50 steps with CFG 3. The workflow uses Comfy's native MOSS support:
   official fused-QKV INT8 DiT and Comfy-Org Qwen3.5-9B W4A8 text encoder with
@@ -596,3 +596,22 @@ SimpAI UI guide skill:
   and model-status tools. Existing local weights can be used independently of
   repository publication; a usage question does not authorize a download.
 - Visible preset labels follow the current `state.__lang`, not browser locale.
+- Optional PE uses the same Qwen Image 2.1 prompt-expansion models and loading
+  behavior, with `None` as the default. Select an installed T2I PE model to
+  expand ordinary positive captions; negative prompts remain unchanged.
+  Disabled or unavailable PE preserves the original prompt, and an unchanged
+  prompt already expanded by the assistant is not expanded again. Compiled
+  regional Layout JSON is passed through without loading PE or altering its
+  coordinates and literal text; its recorded PE status is `skipped_layout`.
+- MOSS Layout validation is advisory during generation, matching H3. Malformed
+  JSON, missing fields and invalid boxes produce warnings without blocking
+  submission or rewriting the original prompt. JSON-like layout text also
+  skips PE when incomplete. Regional-editor draft/apply checks and the prompt
+  assistant's protection against invalid rewrites remain unchanged.
+- Inside the Regional window, agent optimization can coordinate all
+  descriptions, revise a selected region or fill the whole-image summary.
+  It uses the interface-selected VLM/API with an optional editing instruction.
+  Review suggested descriptions before applying them to the layout; Apply
+  Prompt remains a separate step. Geometry, types, palettes, tags and literal
+  text are not edited, and duplicate character names remain separate regions.
+  This is UI prompt editing, not automatic generation or a new Agent API tool.

@@ -99,6 +99,7 @@ import simpleai_base.api_params as api_params
 import modules.regen_manifest as regen_manifest
 from enhanced.simpleai import comfyd 
 from enhanced.vlm import VLM, vlm
+from modules.prompt_actions import normalize_prompt_action_options
 import enhanced.logger as studio_logger
 from enhanced.inference_artist import get_artist_tags_string
 import modules.model_loader as model_loader
@@ -10260,7 +10261,8 @@ with shared.gradio_root:
                         "error": "Generation is active.",
                     }, ensure_ascii=False)
                 try:
-                    sam3_source_video_path = sam3_video_mask.resolve_sam3_backend_video_path(
+                    regional_edit = normalize_prompt_action_options(action_options).get("target_kind") == "regional_prompt"
+                    sam3_source_video_path = "" if regional_edit else sam3_video_mask.resolve_sam3_backend_video_path(
                         sam3_input_video_value,
                         sam3_original_video_path_value,
                         sam3_trim_payload_value,
@@ -10283,7 +10285,7 @@ with shared.gradio_root:
                         state,
                         translation_method,
                         options=action_options,
-                        scene_resources={
+                        scene_resources={} if regional_edit else {
                             "scene_video": scene_video_value,
                             "scene_original_video_path": original_video_path,
                             "video_first_frame_path": video_first_frame_path,

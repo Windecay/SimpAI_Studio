@@ -8,8 +8,8 @@
             "width": 1024,
             "height": 1024,
             "cfg": 1.0,
-            "steps": 8,
-            "refiner_step": 8,
+            "steps": 12,
+            "refiner_step": 12,
             "sampler": "euler",
             "scheduler": "sgm_uniform",
             "denoise": 1.0,
@@ -151,10 +151,22 @@
             "branch": "main"
         }
     },
+    "simpai_moss_pe": {
+        "class_type": "SimpAIPromptExpand",
+        "_meta": {"title": "MOSS Image PE"},
+        "inputs": {
+            "prompt": ["728", 0],
+            "pe_model": "None",
+            "seed": ["417", 0],
+            "max_length": 8192,
+            "applied_prompt": "",
+            "target": "moss_image"
+        }
+    },
     "4": {
         "class_type": "CLIPTextEncode",
         "_meta": {"title": "Positive Prompt"},
-        "inputs": {"text": ["728", 0], "clip": ["simpai_lora_stack_main", 1]}
+        "inputs": {"text": ["simpai_moss_pe", 0], "clip": ["simpai_lora_stack_main", 1]}
     },
     "5": {
         "class_type": "CLIPTextEncode",

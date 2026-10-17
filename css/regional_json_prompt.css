@@ -71,6 +71,23 @@
 .sai-rjp-dialog [data-rjp-status] { flex: 1 1 160px; font-size: 12px; overflow-wrap: anywhere; }
 .sai-rjp-dialog [data-rjp-status].is-error { color: #d14b50; }
 .sai-rjp-dialog .sai-rjp-apply { background: var(--button-primary-background-fill, #ff8a00); color: var(--button-primary-text-color, #fff); border-color: var(--button-primary-border-color, #ff8a00); width: auto; }
+.sai-rjp-ai-bar {
+  display: grid; grid-template-columns: minmax(120px, auto) minmax(0, 1fr) 34px; gap: 8px;
+  flex: none; padding: 9px 14px; border-top: 1px solid var(--border-color-primary, #dce0e4);
+}
+.sai-rjp-ai-bar select { max-width: 200px; width: 100%; }
+.sai-rjp-ai-preview {
+  display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; max-height: min(240px, 32dvh);
+  border-top: 1px solid var(--border-color-primary, #dce0e4);
+}
+.sai-rjp-ai-preview-heading { display: flex; align-items: center; gap: 8px; padding: 8px 14px; flex: none; }
+.sai-rjp-ai-preview-list { overflow-y: auto; min-height: 0; padding: 0 14px 8px; }
+.sai-rjp-ai-change { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 12px; padding: 7px 0; }
+.sai-rjp-ai-change + .sai-rjp-ai-change { border-top: 1px solid var(--border-color-primary, #dce0e4); }
+.sai-rjp-ai-change > strong { grid-column: 1 / -1; font-size: 12px; }
+.sai-rjp-ai-change > div { min-width: 0; }
+.sai-rjp-ai-change span { font-size: 11px; opacity: .7; }
+.sai-rjp-ai-change p { margin: 3px 0; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 700px) {
   .sai-rjp-overlay { padding: 6px; }
   .sai-rjp-dialog { height: calc(100dvh - 12px); width: 100%; }
@@ -87,6 +104,11 @@
   .sai-rjp-region-form { gap: 7px; }
   .sai-rjp-dialog footer { padding: 8px; gap: 6px; }
   .sai-rjp-footer-tools { margin-left: auto; }
+  .sai-rjp-ai-bar { grid-template-columns: minmax(0, 1fr) 34px; padding: 8px; gap: 6px; }
+  .sai-rjp-ai-bar select { grid-column: 1 / -1; max-width: none; }
+  .sai-rjp-ai-preview { max-height: 27dvh; }
+  .sai-rjp-ai-preview-heading { padding: 6px 8px; }
+  .sai-rjp-ai-preview-list { padding: 0 8px 6px; }
 }
 .sai-rjp-input-host { position: relative; }
 .sai-rjp-input-host > textarea { padding-bottom: 48px !important; }

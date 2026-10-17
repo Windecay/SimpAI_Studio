@@ -390,23 +390,27 @@ def _superprompt_prompt_from_json_object(data):
     return ""
 
 
-def _superprompt_extract_json_prompt(text):
+def _superprompt_extract_json_prompt(text, *, preserve_moss_layout=False):
     source = str(text or "")
     if "{" not in source:
         return ""
     decoder = json.JSONDecoder()
     for match in re.finditer(r"\{", source):
         try:
-            data, _ = decoder.raw_decode(source, match.start())
+            data, end = decoder.raw_decode(source, match.start())
         except Exception:
             continue
+        if preserve_moss_layout and isinstance(data, dict) and {
+            "summary", "items", "bbox_coord_space", "bbox_format",
+        }.issubset(data):
+            return source[match.start():end]
         prompt = _superprompt_prompt_from_json_object(data)
         if prompt:
             return prompt
     return ""
 
 
-def _superprompt_clean_output(text, fallback=""):
+def _superprompt_clean_output(text, fallback="", *, preserve_moss_layout=False):
     output = str(text or "").strip()
     for prefix in getattr(VLM, "remove_prefixs", []):
         if output.startswith(prefix):
@@ -414,8 +418,11 @@ def _superprompt_clean_output(text, fallback=""):
     if output.startswith("```"):
         output = re.sub(r"^```(?:json|text|prompt)?\s*", "", output, flags=re.I).strip()
         output = re.sub(r"\s*```$", "", output).strip()
-    output = re.sub(r"(?is)<think\b[^>]*>.*?</think>", "", output).strip()
-    json_prompt = _superprompt_extract_json_prompt(output)
+    thinking = r"(?is)<think\b[^>]*>.*?</think>"
+    if preserve_moss_layout:
+        thinking = r"(?is)^\s*<think\b[^>]*>.*?</think>"
+    output = re.sub(thinking, "", output).strip()
+    json_prompt = _superprompt_extract_json_prompt(output, preserve_moss_layout=preserve_moss_layout)
     if json_prompt:
         output = json_prompt
     else:
@@ -2093,6 +2100,7 @@ class VLM:
                 )
                 cleaned = _superprompt_clean_output(
                     result, fallback="" if compiler or detail_policy else input_text,
+                    preserve_moss_layout=isinstance(target, dict) and target.get("key") == "moss_image",
                 )
                 if not detail_policy:
                     return cleaned
@@ -2175,7 +2183,12 @@ class VLM:
             _superprompt_image_input(input_images), prompt=fallback_prompt,
             enable_thinking=False, reject_truncated=True,
         )
-        return _superprompt_clean_output(result, fallback=input_text)
+        target = _superprompt_action_target_override(action_data, options, state)
+        if target is None:
+            target, _ = _superprompt_target_from_state(state)
+        return _superprompt_clean_output(
+            result, fallback=input_text, preserve_moss_layout=target.get("key") == "moss_image",
+        )
 
     def run_prompt_action(
         self,
@@ -2265,15 +2278,51 @@ class VLM:
             return {"ok": False, "text": original, "action_id": str(action_id or ""), "error": "Unknown prompt action."}
         if not original.strip() and str(action.get("id") or "") not in {"smart_expand", "detailed_expand"}:
             return {"ok": False, "text": original, "action_id": action["id"], "error": "Prompt is empty."}
-        state_data = prompt_actions.h3_director_prompt_state(
+        action_options = prompt_actions.normalize_prompt_action_options(options)
+        regional_edit = str(action_options.get("target_kind") or "") == "regional_prompt"
+        state_data = (state if isinstance(state, dict) else {}) if regional_edit else prompt_actions.h3_director_prompt_state(
             state if isinstance(state, dict) else {}, scene_resources, original,
         )
         mode = prompt_actions.prompt_action_mode(state_data)
         if mode not in action.get("modes", []):
             return {"ok": False, "text": original, "action_id": action["id"], "error": "Prompt action is unavailable in this mode."}
 
-        action_options = prompt_actions.normalize_prompt_action_options(options)
         handler = str(action.get("handler") or "")
+        if regional_edit:
+            from modules.moss_image_prompt import (
+                editor_optimization_output, editor_optimization_request, editor_optimization_system,
+            )
+            language = str(state_data.get("__lang") or "cn")
+            media = {"video_requested": False, "video_used": False, "sampled_frames": 0}
+            try:
+                target, _ = _superprompt_target_from_state(state_data)
+                if handler != "smart_expand" or target.get("key") != "moss_image":
+                    raise ValueError("Regional optimization is available only for the MOSS layout editor")
+                request = editor_optimization_request(original)
+                if not VLM.get_enable() or not self.model_exists():
+                    raise ValueError("The configured LLM is unavailable")
+                output = self.inference(
+                    None, original, system_prompt=editor_optimization_system(request, language),
+                    max_tokens=8192 if request["scope"] == "all" else 2048,
+                    temperature=0.4, top_p=0.85, seed=-1,
+                    enable_thinking=False, reject_truncated=True,
+                )
+                patch = editor_optimization_output(output, request)
+                return {
+                    "ok": True, "text": json.dumps(patch, ensure_ascii=False),
+                    "action_id": action["id"], "media": media,
+                }
+            except PromptActionOutputLimitError:
+                raise
+            except Exception as error:
+                return {
+                    "ok": False, "text": original, "action_id": action["id"], "media": media,
+                    "error": (
+                        f"Regional optimization failed; the layout was preserved: {error}"
+                        if language.startswith("en")
+                        else f"区域描述优化未完成，原布局已保留：{error}"
+                    ),
+                }
         structured_compiler = None
         if handler == "smart_expand":
             target_override = _superprompt_action_target_override(action, action_options, state_data)

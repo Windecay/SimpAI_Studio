@@ -692,6 +692,7 @@ def worker():
                               apply_wildcards, normalize_inpaint_mask_upload, generate_temp_filename)
     from modules.lora_params import sync_loras_to_params_backend
     from modules.comfy_pe_metadata import capture_pe_result, pe_metadata_rows
+    from modules.pe_models import pe_supported_task
     from modules.upscaler import perform_upscale
     from modules.flags import Performance
     from modules.meta_parser import get_metadata_parser, MetadataParser
@@ -1495,7 +1496,7 @@ def worker():
                         prompt_accepted_callback=mark_comfy_prompt_accepted,
                         process_alive_callback=comfyd.is_running,
                     )
-                if imgs and any(key in str(async_task.task_method or "").lower() for key in ("qwen_image21", "flux3")):
+                if imgs and pe_supported_task(async_task.task_method):
                     capture_pe_result(
                         comfypipeline, async_task.simpleai_comfy_prompt_id,
                         params_backend.get("pe_model"), task,
@@ -1624,7 +1625,7 @@ def worker():
             d.append(('Sampler', 'sampler', async_task.sampler_name))
             d.append(('Scheduler', 'scheduler', async_task.scheduler_name))
             d.append(('CLIP / Text Encoder', 'clip_model', async_task.clip_model_name))
-            if "qwen_image21" in str(async_task.task_method or "").lower():
+            if pe_supported_task(async_task.task_method):
                 d.extend(pe_metadata_rows(task, async_task.params_backend.get("pe_model")))
             d.append(('VAE', 'vae', async_task.vae_name))
             d.append(('Upscale Model', 'upscale_model', async_task.upscale_model_name))
@@ -2006,7 +2007,10 @@ def worker():
             and str(prompt).lstrip().startswith("{")
         )
         if moss_layout:
-            validate_moss_prompt(prompt)
+            try:
+                validate_moss_prompt(prompt)
+            except (ValueError, TypeError) as error:
+                logger.warning("MOSS Layout validation warning; continuing with the original prompt: %s", error)
             use_expansion = False
             use_style = False
         layout_prompt = prompt if moss_layout else None

@@ -620,11 +620,19 @@ _PE_FUNCTION_WORDS = frozenset(
 )
 
 
-def _pe_output_surface(text):
-    output = str(text or "").strip()
-    output = re.sub(r"^\s*<\|im_start\|>assistant\s*", "", output)
+def _pe_output_surface(text, *, preserve_content=False):
+    output = str(text or "")
+    if not preserve_content:
+        output = output.strip()
+    assistant_prefix = (
+        r"^\s*<\|im_start\|>assistant(?:\r?\n)?"
+        if preserve_content else r"^\s*<\|im_start\|>assistant\s*"
+    )
+    output = re.sub(assistant_prefix, "", output)
     for _ in range(2):
-        if output.startswith("```"):
+        if preserve_content and output.lstrip().startswith(("{", "```")):
+            break
+        if not preserve_content and output.startswith("```"):
             output = re.sub(r"^```(?:json|text|prompt)?\s*", "", output, flags=re.I)
             output = re.sub(r"\s*```$", "", output).strip()
         if not output.startswith("{"):
@@ -645,9 +653,19 @@ def _pe_output_surface(text):
             if boundary is not None:
                 # Strip the protocol prefix without interpreting markers inside the answer.
                 end = boundary.end()
-                output = (strip_reasoning_text(output[:end]) + output[end:]).strip()
+                output = (
+                    output[end:] if preserve_content else
+                    (strip_reasoning_text(output[:end]) + output[end:]).strip()
+                )
+    if preserve_content:
+        return re.sub(r"(?:<\|im_end\|>|<\|endoftext\|>)\s*$", "", output)
     output = re.sub(r"\s*(?:<\|im_end\|>|<\|endoftext\|>)\s*$", "", output)
     return output.strip()
+
+
+def strip_pe_reasoning(text):
+    """Keep the PE answer verbatim after removing reasoning/protocol wrappers."""
+    return _pe_output_surface(text, preserve_content=True)
 
 
 def _unwrap_pe_output(text, *, strict_json):
