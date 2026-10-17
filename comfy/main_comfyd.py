@@ -581,7 +581,7 @@ import folder_paths
 import time
 from app import governance
 from app.logger import setup_logger
-from app.database.db import dependencies_available, get_database_url, get_db_path, init_db, lock_holder_db_path, missing_dependencies
+from app.database.db import dependencies_available, get_database_url, get_default_database_url, get_db_path, init_db, lock_holder_db_path, missing_dependencies
 from app.assets.event_log import error_kind
 from utils.install_util import get_missing_requirements_message
 from app.assets.lifecycle import cleanup_temp_filesystem
@@ -596,9 +596,6 @@ import sys
 from comfy_execution.progress import get_progress_state
 from comfy_execution.utils import get_executing_context
 from comfy_api import feature_flags
-
-if dependencies_available():
-    from sqlalchemy.engine import URL
 
 if __name__ == "__main__":
     os.environ['TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL'] = '1'
@@ -755,9 +752,8 @@ def apply_custom_paths():
 def _configure_comfyd_database():
     if args.database_url is not None or not dependencies_available():
         return
-    db_path = os.path.join(folder_paths.get_user_directory(), "comfyd.db")
-    args.database_url = URL.create("sqlite", database=db_path).render_as_string()
-    logging.info("Comfyd asset database: %s", db_path)
+    args.database_url = get_default_database_url("comfyd.db")
+    logging.info("Comfyd asset database: %s", get_db_path())
 
 
 def execute_prestartup_script():
@@ -1141,8 +1137,13 @@ def database_failure_message(error, db_url):
         fix = ("If the database is damaged, back it up and move it aside, then start again. "
                "Run with --verbose DEBUG for the full error. / 请使用 --verbose DEBUG 查看完整错误；数据库损坏时请备份并移走后重试。")
     lines = [what, fix]
-    if failure in ("in_use", "locked") and args.database_url is None:
-        lines.append("Or give this ComfyUI its own database: --database-url sqlite:///path/to/another.db / 可用 --database-url 指定独立数据库。")
+    if failure in ("in_use", "locked"):
+        lines.append("For multiple instances, add a different fixed name to each startup command, "
+                     "for example: --instance-id instance-b. Reuse the same name after restarting.")
+        lines.append("If you specified --database-url, change or remove it first; "
+                     "--database-url takes precedence over --instance-id.")
+        if args.database_url is None:
+            lines.append("Or give this ComfyUI its own database: --database-url sqlite:///path/to/another.db / 可用 --database-url 指定独立数据库。")
     return failure, "\n".join(lines + [WITHOUT_ASSETS])
 
 

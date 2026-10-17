@@ -62,6 +62,8 @@ args_parser.parser.add_argument("--api-server-stop", action='store_true',
 
 args_parser.parser.add_argument("--backend-port", type=int, default=None,
                                 help="Set the port for backend server (ComfyUI). If port is in use, will automatically find an available port.")
+args_parser.parser.add_argument("--instance-id", type=str, default=None,
+                                help="Use a fixed instance name for a separate ComfyUI asset database.")
 
 args_parser.parser.set_defaults(
     enable_auto_describe_image=True,

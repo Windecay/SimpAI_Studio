@@ -572,8 +572,13 @@ def database_failure_message(error, db_url):
         fix = ("If the database is damaged, move that file aside and start again: ComfyUI creates a new "
                "database and rebuilds the asset catalog by rescanning your files. Run with --verbose DEBUG for the full error.")
     lines = [what, fix]
-    if failure in ("in_use", "locked") and args.database_url is None:
-        lines.append("Or give this ComfyUI its own database: --database-url sqlite:///path/to/another.db")
+    if failure in ("in_use", "locked"):
+        lines.append("For multiple instances, add a different fixed name to each startup command, "
+                     "for example: --instance-id instance-b. Reuse the same name after restarting.")
+        lines.append("If you specified --database-url, change or remove it first; "
+                     "--database-url takes precedence over --instance-id.")
+        if args.database_url is None:
+            lines.append("Or give this ComfyUI its own database: --database-url sqlite:///path/to/another.db")
     return failure, "\n".join(lines + [WITHOUT_ASSETS])
 
 

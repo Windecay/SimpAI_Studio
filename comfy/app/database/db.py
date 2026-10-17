@@ -82,9 +82,16 @@ def get_database_url():
     if args.database_url is not None:
         return args.database_url
 
+    return get_default_database_url()
+
+
+def get_default_database_url(filename="comfyui.db"):
     import folder_paths
 
-    db_path = os.path.join(folder_paths.get_user_directory(), "comfyui.db")
+    if args.instance_id is not None:
+        stem, extension = os.path.splitext(filename)
+        filename = f"{stem}.instance-{args.instance_id}{extension}"
+    db_path = os.path.join(folder_paths.get_user_directory(), filename)
     # Built by SQLAlchemy so its own parser reads the path back intact: 2.1+ decodes %xx, and every version
     # stops the path at ? (which only 2.1+ quotes).
     return URL.create("sqlite", database=db_path).render_as_string()
@@ -103,7 +110,7 @@ def get_db_path():
 
 
 def copy_legacy_default_db(db_path):
-    if args.database_url is not None:
+    if args.database_url is not None or args.instance_id is not None:
         return
 
     legacy_db_path = get_legacy_default_db_path()
@@ -191,7 +198,10 @@ def _acquire_file_lock(db_path):
             raise RuntimeError(
                 f"Could not acquire lock on database '{db_path}'. "
                 "Another ComfyUI process may already be using it. "
-                "Use --database-url to specify a separate database file."
+                "For multiple instances, use different fixed names, for example --instance-id instance-b, "
+                "and reuse the same name after restarting. "
+                "If you specified --database-url, change or remove it first; "
+                "--database-url takes precedence over --instance-id."
             )
 
 
@@ -270,6 +280,7 @@ def _init_file_db(db_url):
     # process-exclusive.
     _acquire_file_lock(db_path)
     try:
+        logging.info("Asset database: %s", db_path)
         copy_legacy_default_db(db_path)
         db_exists = os.path.exists(db_path)
         _migrate_and_bind(db_url, db_path, db_exists)

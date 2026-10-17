@@ -276,6 +276,15 @@ parser.add_argument(
 database_default_path = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "user", "comfyui.db")
 )
+
+
+def is_valid_instance_id(value):
+    if not value or len(value) > 64 or any(not char.isalnum() and char not in "_-" for char in value):
+        raise argparse.ArgumentTypeError("Instance ID must contain 1-64 letters, numbers, underscores or hyphens.")
+    return value
+
+
+parser.add_argument("--instance-id", type=is_valid_instance_id, default=None, help="Use a fixed instance name for a separate asset database. Reuse the name after restarting; --database-url takes precedence.")
 parser.add_argument("--database-url", type=str, default=None, help="Specify the database URL, e.g. for an in-memory database you can use 'sqlite:///:memory:'. Defaults to 'comfyui.db' in the effective user directory.")
 parser.add_argument("--enable-assets", action="store_true", help="Enable the assets system (API routes, database synchronization, and background scanning). Off by default.")
 parser.add_argument("--disable-assets", action="store_true", help="Disable the assets system, even when --enable-assets is also given.")

@@ -698,6 +698,7 @@ def _build_comfyd_launch_args(argv=None):
         _append_comfyd_arg(mapped, "--disable-comfy-compiler")
 
     value_mappings = (
+        ("--instance-id", "instance_id", "--instance-id"),
         ("--gpu-device-id", "gpu_device_id", "--cuda-device"),
         ("--preview-option", "preview_option", "--preview-method"),
         ("--reserve-vram", "reserve_vram", "--reserve-vram"),

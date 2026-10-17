@@ -353,11 +353,31 @@ def requirements_met(requirements_file):
                 met_diff.update({package:'-'})
                 result = False
                 continue
-           
-            if version_required=='' and version_installed:
+
+            if not isinstance(version_installed, str) or not version_installed.strip():
+                met_diff.update({package:'-'})
+                logger.warning(
+                    "Invalid installed version for %s: %r. Package metadata may be incomplete.",
+                    package, version_installed,
+                )
+                result = False
                 continue
-            
-            if packaging.version.parse(version_required) != packaging.version.parse(version_installed):
+
+            if version_required=='':
+                continue
+
+            try:
+                versions_match = packaging.version.parse(version_required) == packaging.version.parse(version_installed)
+            except packaging.version.InvalidVersion as e:
+                met_diff.update({package:version_installed})
+                logger.warning(
+                    "Cannot compare versions for %s: installed=%r, required=%r (%s)",
+                    package, version_installed, version_required, e,
+                )
+                result = False
+                continue
+
+            if not versions_match:
                 met_diff.update({package:version_installed})
                 logger.info(f"Version mismatch for {package}: Installed version {version_installed} does not meet requirement {version_required}")
                 result = False
@@ -367,12 +387,9 @@ def requirements_met(requirements_file):
 def is_installed_version(package, version_required):
     try:
         version_installed = importlib.metadata.version(package)
+        return packaging.version.parse(version_required) == packaging.version.parse(version_installed)
     except Exception:
         return False
-    
-    if packaging.version.parse(version_required) != packaging.version.parse(version_installed):
-        return False
-    return True
 
 
 def delete_folder_content(folder, prefix=None):

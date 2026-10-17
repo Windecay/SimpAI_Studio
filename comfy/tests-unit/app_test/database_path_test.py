@@ -37,6 +37,39 @@ def test_explicit_database_url_is_preserved(monkeypatch):
     assert db.get_database_url() == database_url
 
 
+def test_named_instance_uses_the_effective_user_directory(monkeypatch, tmp_path):
+    monkeypatch.setattr(db.args, "database_url", None)
+    monkeypatch.setattr(db.args, "instance_id", "studio-a")
+    monkeypatch.setattr("folder_paths.get_user_directory", lambda: str(tmp_path))
+
+    assert db.get_db_path() == str(tmp_path / "comfyui.instance-studio-a.db")
+    assert not list(tmp_path.iterdir())
+
+
+def test_explicit_database_url_overrides_instance_name(monkeypatch):
+    monkeypatch.setattr(db.args, "database_url", "sqlite:///:memory:")
+    monkeypatch.setattr(db.args, "instance_id", "studio-a")
+
+    assert db.get_database_url() == "sqlite:///:memory:"
+
+
+def test_named_instance_does_not_relocate_the_default_database(monkeypatch, tmp_path):
+    legacy_db = tmp_path / "legacy" / "comfyui.db"
+    legacy_db.parent.mkdir()
+    legacy_db.write_bytes(b"existing catalog")
+    target_db = tmp_path / "user" / "comfyui.instance-studio-a.db"
+    target_db.parent.mkdir()
+    monkeypatch.setattr(db.args, "database_url", None)
+    monkeypatch.setattr(db.args, "instance_id", "studio-a")
+    monkeypatch.setattr(db, "get_legacy_default_db_path", lambda: str(legacy_db))
+
+    db.copy_legacy_default_db(str(target_db))
+
+    assert legacy_db.read_bytes() == b"existing catalog"
+    assert not target_db.exists()
+    assert not legacy_db.with_suffix(".db.bak").exists()
+
+
 def test_explicit_url_at_legacy_default_location_is_honoured(monkeypatch):
     url = f"sqlite:///{database_default_path}"
 
