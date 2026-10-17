@@ -12504,6 +12504,7 @@ with shared.gradio_root:
 
         def _description_record_view(report, state_params, index=-1, path=None, archive_error=""):
             from modules import describe_media_records
+            from modules.describe_media import clean_description_output
             entries = report.get("attempts") or []
             if not entries:
                 return [
@@ -12517,6 +12518,10 @@ with shared.gradio_root:
             status = describe_media_records.status_text(report, index, (state_params or {}).get("__lang", "cn"), archive_error)
             choices = [(_studio_text(state_params, "Model call ", "模型调用 ") + str(i + 1), str(i)) for i in range(len(entries))]
             candidate = entry.get("candidate", entry.get("returned_output", entry.get("raw_output", "")))
+            try:
+                candidate = clean_description_output(candidate)
+            except ValueError:
+                pass
             return [
                 gr_update(visible=True, open=True), status,
                 dropdown_update(choices=choices, value=str(index)),

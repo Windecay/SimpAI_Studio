@@ -225,21 +225,21 @@ def render_resolution_control_html(
 
 
 def create_main_resolution_control() -> ResolutionControl:
+    selection = gr.Textbox(value="", visible="hidden", elem_id="aspect_ratios_selection")
+    random_checkbox = gr.Checkbox(label="Random Aspect Ratio", value=False, visible="hidden", elem_id="random_aspect_ratio_checkbox")
+    use_override_checkbox = gr.Checkbox(label="Resolution Box", value=False, visible="hidden", elem_id="use_resolution_override_checkbox")
+    original_input_checkbox = gr.Checkbox(label="Original Input", value=False, visible="hidden", elem_id="resolution_original_input_checkbox")
+    edit_mode = gr.Textbox(value=flags.default_resolution_edit_mode, visible="hidden", elem_id="resolution_edit_mode")
+    multiplier = gr.Slider(
+        label="Resolution Multiply",
+        minimum=1.0,
+        maximum=2.0,
+        step=0.1,
+        value=flags.default_resolution_multiplier,
+        visible="hidden",
+        elem_id="resolution_multiplier",
+    )
     with gr.Accordion(label="Resolution", open=False, elem_id="aspect_ratios_accordion") as container:
-        selection = gr.Textbox(value="", visible="hidden", elem_id="aspect_ratios_selection")
-        random_checkbox = gr.Checkbox(label="Random Aspect Ratio", value=False, visible="hidden", elem_id="random_aspect_ratio_checkbox")
-        use_override_checkbox = gr.Checkbox(label="Resolution Box", value=False, visible="hidden", elem_id="use_resolution_override_checkbox")
-        original_input_checkbox = gr.Checkbox(label="Original Input", value=False, visible="hidden", elem_id="resolution_original_input_checkbox")
-        edit_mode = gr.Textbox(value=flags.default_resolution_edit_mode, visible="hidden", elem_id="resolution_edit_mode")
-        multiplier = gr.Slider(
-            label="Resolution Multiply",
-            minimum=1.0,
-            maximum=2.0,
-            step=0.1,
-            value=flags.default_resolution_multiplier,
-            visible="hidden",
-            elem_id="resolution_multiplier",
-        )
         html_component = gr.HTML(
             value=render_resolution_control_html(
                 elem_id="resolution_control_widget",

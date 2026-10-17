@@ -30153,3 +30153,11 @@ html.simpai-h3-director #scene_director_editor .h3-timeline-gap:focus-visible {
     white-space: nowrap;
   }
 }
+
+#describe_results button[data-description-copy-state="copied"] {
+  color: #22c55e;
+}
+
+#describe_results button[data-description-copy-state="failed"] {
+  color: #ef4444;
+}

@@ -1146,21 +1146,109 @@
         const widgets = typeof _rc_getResolutionWidgets === "function" ? _rc_getResolutionWidgets()
             : Array.from(document.querySelectorAll(".simpai-resolution-control"));
         const widget = widgets.find(node => node.getClientRects().length) || widgets[0];
-        if (widget?.querySelector('[data-role="random-toggle"]')?.checked) {
+        if (widget?.querySelector('[data-role="random-toggle"]')?.checked
+                || rootById("random_aspect_ratio_checkbox")?.querySelector('input[type="checkbox"]')?.checked) {
             throw new Error(currentLang() === "en" ? "Disable random output dimensions before editing a layout."
                 : window.localization?.["Disable random output dimensions before editing a layout."] || "Disable random output dimensions before editing a layout.");
         }
         const info = widget?.__rc_render_info;
         if (info?.effectiveW > 0 && info?.effectiveH > 0) return { width: info.effectiveW, height: info.effectiveH };
+        const effectiveSize = (width, height) => {
+            const multiplier = Math.max(1, Number(readControlValue("resolution_multiplier")) || 1);
+            const step = Math.max(1, Number(readControlValue("resolution_quantize_step")) || 1);
+            const quantize = value => typeof _rc_quantize === "function" ? _rc_quantize(value, step)
+                : Math.max(step, Math.round(value / step) * step);
+            return { width: quantize(width * multiplier), height: quantize(height * multiplier) };
+        };
         const width = Number(readControlValue("overwrite_width"));
         const height = Number(readControlValue("overwrite_height"));
-        if (width > 0 && height > 0) return { width, height };
-        const selected = rootById("aspect_ratios_selection")?.querySelector("input:checked,select");
+        if (width > 0 && height > 0) return effectiveSize(width, height);
+        const selected = rootById("aspect_ratios_selection")?.querySelector("input:checked,select,textarea");
+        const selection = selected?.value || readControlValue("aspect_ratios_selection");
+        if (!selection && !widget) {
+            const accordion = rootById("aspect_ratios_accordion");
+            const label = accordion?.querySelector('summary, .label-wrap, [role="button"], button');
+            const displayed = String(label?.textContent || "").match(/(\d+)\s*[*x\u00d7]\s*(\d+)/);
+            if (displayed) return { width: Number(displayed[1]), height: Number(displayed[2]) };
+        }
         const params = paramsSource();
-        const match = String(selected?.value || params.aspect_ratios_selection || params.default_aspect_ratio || "").match(/(\d+)\s*[*x\u00d7]\s*(\d+)/);
-        if (match) return { width: Number(match[1]), height: Number(match[2]) };
+        const match = String(selection || params.aspect_ratios_selection || params.default_aspect_ratio || "").match(/(\d+)\s*[*x\u00d7]\s*(\d+)/);
+        if (match) return effectiveSize(Number(match[1]), Number(match[2]));
         throw new Error(currentLang() === "en" ? "Output dimensions are unavailable."
             : window.localization?.["Output dimensions are unavailable."] || "Output dimensions are unavailable.");
+    }
+
+    async function setPromptImageSize(width, height, assertContext) {
+        if (![width, height].every(value => Number.isInteger(value) && value > 0 && value <= 16384 && value % 16 === 0)) {
+            throw new Error("Dimensions must be multiples of 16 between 16 and 16384");
+        }
+        const controls = ["resolution_multiplier", "resolution_quantize_step", "random_aspect_ratio_checkbox",
+            "resolution_original_input_checkbox", "use_resolution_override_checkbox",
+            "overwrite_width", "overwrite_height", "aspect_ratios_selection"];
+        const ready = () => controls.every(id => fieldById(id));
+        const unavailable = () => new Error("Output dimensions are unavailable.");
+        if (!ready()) {
+            const accordion = rootById("aspect_ratios_accordion");
+            if (!accordion) throw unavailable();
+            if (typeof _rc_syncResolutionAccordionShellOpen === "function") {
+                _rc_syncResolutionAccordionShellOpen(true);
+            } else {
+                accordion.querySelector('summary, .label-wrap, [role="button"], button')?.click();
+            }
+            if (!ready()) await new Promise((resolve, reject) => {
+                const observer = new MutationObserver(() => {
+                    if (ready()) finish();
+                });
+                const timer = window.setTimeout(() => finish(unavailable()), 4000);
+                function finish(error) {
+                    observer.disconnect();
+                    window.clearTimeout(timer);
+                    if (error) reject(error);
+                    else resolve();
+                }
+                observer.observe(accordion, { childList: true, subtree: true });
+                if (ready()) finish();
+            });
+        }
+        assertContext();
+        const number = (id, value) => typeof _ro_setSliderValue === "function"
+            ? _ro_setSliderValue(id, value, { commit: true }) : setField(id, value);
+        const checkbox = (id, value) => {
+            if (typeof setGradioCheckboxValue === "function") return setGradioCheckboxValue(id, value);
+            const input = rootById(id)?.querySelector('input[type="checkbox"]');
+            if (!input) return false;
+            if (input.checked !== value) {
+                input.checked = value;
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                input.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            return true;
+        };
+        const currentStep = Number(readControlValue("resolution_quantize_step")) || 16;
+        const step = width % currentStep === 0 && height % currentStep === 0 ? currentStep : 16;
+        const template = readControlValue("aspect_ratios_selection").split(",").slice(1).join(",") || "SDXL";
+        const selection = typeof _rc_addRatio === "function" ? _rc_addRatio(width, height) : `${width}\u00d7${height}`;
+        const flags = new Set(["random_aspect_ratio_checkbox", "resolution_original_input_checkbox",
+            "use_resolution_override_checkbox"]);
+        const previous = Object.fromEntries(controls.map(id =>
+            [id, flags.has(id) ? fieldById(id).checked : readControlValue(id)]));
+        const write = values => controls.map(id => flags.has(id) ? checkbox(id, values[id])
+            : id === "aspect_ratios_selection" ? setField(id, values[id]) : number(id, values[id])).every(Boolean);
+        const sync = () => {
+            if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets({ force: true });
+        };
+        try {
+            if (!write({
+                resolution_multiplier: 1, resolution_quantize_step: step,
+                random_aspect_ratio_checkbox: false, resolution_original_input_checkbox: false,
+                use_resolution_override_checkbox: true, overwrite_width: width, overwrite_height: height,
+                aspect_ratios_selection: `${selection},${template}`,
+            })) throw unavailable();
+            sync();
+        } catch (error) {
+            try { assertContext(); write(previous); sync(); } catch (_) {}
+            throw error;
+        }
     }
 
     function openRegionalPromptEditor(targetField = null) {
@@ -1172,35 +1260,46 @@
         const user = String(params.user_did || params.__user_did || "");
         const original = String(field.value || "");
         const localText = key => currentLang() === "en" ? key : (window.localization?.[key] || key);
+        let host = null;
+        const assertContext = () => {
+            const current = paramsSource();
+            if (host?.isConnected === false || isGenerationActive() || !usablePromptField(field) || !isMossPromptTarget()
+                    || preset !== String(current.__preset || current.preset || "")
+                    || user !== String(current.user_did || current.__user_did || "")
+                    || String(field.value || "") !== original) {
+                throw new Error(localText("The prompt or preset changed. Reopen the layout editor."));
+            }
+        };
         try {
             const size = currentPromptImageSize();
-            const host = editor.open({
+            host = editor.open({
                 value: original, ...size, langState: params, currentSize: currentPromptImageSize,
                 onApply(result) {
-                    const current = paramsSource();
-                    if (isGenerationActive() || !usablePromptField(field) || !isMossPromptTarget()
-                            || preset !== String(current.__preset || current.preset || "")
-                            || user !== String(current.user_did || current.__user_did || "")
-                            || String(field.value || "") !== original) {
-                        throw new Error(localText("The prompt or preset changed. Reopen the layout editor."));
-                    }
+                    assertContext();
                     const currentSize = currentPromptImageSize();
-                    if (result.width !== currentSize.width || result.height !== currentSize.height) {
+                    const differentSize = result.width !== currentSize.width || result.height !== currentSize.height;
+                    const resizedInEditor = result.width !== size.width || result.height !== size.height;
+                    if (differentSize && !resizedInEditor) {
                         throw new Error(`${localText("Layout dimensions must match the output size")}: ${currentSize.width} x ${currentSize.height}`);
                     }
-                    const history = promptHistory(field, true);
-                    rememberPrompt(field, history);
-                    history.applying = true;
-                    let applied;
-                    try { applied = setPromptFieldValue(field, result.prompt); }
-                    finally { history.applying = false; }
-                    if (!applied) throw new Error(localText("The prompt or preset changed. Reopen the layout editor."));
-                    rememberPrompt(field, history);
-                    lastAppliedPromptField = field;
-                    lastAppliedHistory = history;
-                    if (typeof syncPositivePromptMetaState === "function") syncPositivePromptMetaState();
-                    showSuccessToast({}, { agent_service_kind: "local_script" });
-                    return true;
+                    const applyPrompt = () => {
+                        assertContext();
+                        const history = promptHistory(field, true);
+                        rememberPrompt(field, history);
+                        history.applying = true;
+                        let applied;
+                        try { applied = setPromptFieldValue(field, result.prompt); }
+                        finally { history.applying = false; }
+                        if (!applied) throw new Error(localText("The prompt or preset changed. Reopen the layout editor."));
+                        rememberPrompt(field, history);
+                        lastAppliedPromptField = field;
+                        lastAppliedHistory = history;
+                        if (typeof syncPositivePromptMetaState === "function") syncPositivePromptMetaState();
+                        showSuccessToast({}, { agent_service_kind: "local_script" });
+                        return true;
+                    };
+                    if (differentSize) return setPromptImageSize(result.width, result.height, assertContext).then(applyPrompt);
+                    return applyPrompt();
                 },
             });
             if (host) closeModal(false);

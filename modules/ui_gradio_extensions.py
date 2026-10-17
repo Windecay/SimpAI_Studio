@@ -176,6 +176,7 @@ def javascript_html():
     face_track_editor_js_path = webpath('javascript/face_track_editor.js')
     studio_performance_js_path = webpath('javascript/studio_performance.js')
     script_js_path = webpath('javascript/script.js')
+    describe_results_js_path = webpath('javascript/describe_results.js')
     model_browser_js_path = webpath('javascript/model_browser.js')
     context_menus_js_path = webpath('javascript/contextMenus.js')
     localization_js_path = webpath('javascript/localization.js')
@@ -347,6 +348,7 @@ def javascript_html():
     head += f'<link rel="stylesheet" href="{webpath("css/lora_stack.css")}">\n'
     head += f'<script type="text/javascript" src="{webpath("javascript/lora_stack.js")}"></script>\n'
     head += f'<script type="text/javascript" src="{script_js_path}"></script>\n'
+    head += f'<script type="text/javascript" src="{describe_results_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{studio_help_content_path}"></script>\n'
     head += f'<script type="text/javascript" src="{studio_help_path}"></script>\n'
     head += f'<script type="text/javascript" src="{agent_connection_path}"></script>\n'

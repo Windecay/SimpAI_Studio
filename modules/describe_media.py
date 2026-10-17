@@ -313,6 +313,20 @@ def _unwrap_description_quotes(text):
     return output
 
 
+def clean_description_output(text):
+    output = clean_pe_output(text, strict_json=False)
+    if output.startswith("{"):
+        try:
+            value = json.loads(output)
+        except json.JSONDecodeError:
+            value = None
+        if isinstance(value, dict):
+            if not isinstance(value.get("output"), str):
+                raise PEOutputFormatError("Description JSON has no usable prompt field.")
+            output = clean_pe_output(value["output"])
+    return _unwrap_description_quotes(output)
+
+
 def validate_description(text, policy):
     output = _unwrap_description_quotes(text)
     prose = re.sub(r'"[^"\n]*"|“[^”\n]*”', "", output)
@@ -472,7 +486,7 @@ def _run_description(vlm, visual_input, media_kind, *, output_chinese=False, add
     entry["returned_output"] = str(result or "")
     describe_media_control.check()
     try:
-        cleaned = _unwrap_description_quotes(clean_pe_output(result))
+        cleaned = clean_description_output(result)
         review = validate_description(cleaned, policy)
     except PEOutputFormatError as error:
         cleaned = str(result or "")

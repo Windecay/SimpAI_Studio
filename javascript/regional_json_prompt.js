@@ -436,8 +436,10 @@
             render();
             q('[data-rjp-field="caption"]').focus();
         }
+        let applying = false;
         async function action(name) {
             try {
+                if (name === 'apply' && applying) return;
                 if (name === 'close') return close();
                 if (name === 'select' || name === 'draw') { mode = name; render(); }
                 if (name === 'add') addRegion();
@@ -474,7 +476,17 @@
                     if (rawDirty) loadRaw();
                     const prompt = compile(draft);
                     if (name === 'copy') await navigator.clipboard.writeText(prompt);
-                    else if (await options.onApply?.({ prompt, draft: clone(draft), width: draft.width, height: draft.height }) !== false) close();
+                    else {
+                        const button = q('[data-rjp-action="apply"]');
+                        applying = true;
+                        button.disabled = true;
+                        try {
+                            if (await options.onApply?.({ prompt, draft: clone(draft), width: draft.width, height: draft.height }) !== false) close();
+                        } finally {
+                            applying = false;
+                            button.disabled = false;
+                        }
+                    }
                 }
             } catch (error) { status(error); }
         }
