@@ -603,7 +603,7 @@ class Qwen3VL_4B(BaseLlama, nn.Module):
 class Qwen3VL(BaseLlama, nn.Module):
     def __init__(self, config_dict):
         super().__init__()
-        from backend.nn.llm.qwen35 import QWEN3VL_VISION, Qwen3VLVisionModel
+        from backend.nn.llm.qwen35 import QWEN3VL_VISION, QWEN3VL_VISION_COMMON, Qwen3VLVisionModel
 
         model_config = config_dict
         text_config = config_dict.get("text_config", config_dict)
@@ -622,15 +622,16 @@ class Qwen3VL(BaseLlama, nn.Module):
             vision_config["out_hidden_size"] = config.hidden_size
         elif config.hidden_size == 4096:
             vision_config = {
-                **QWEN3VL_VISION,
-                "hidden_size": 1152,
-                "intermediate_size": 4304,
-                "depth": 27,
-                "deepstack_visual_indexes": [8, 16, 24],
+                **QWEN3VL_VISION_COMMON,
+                **QWEN3VL_VISION["qwen3vl_8b"],
                 "out_hidden_size": config.hidden_size,
             }
         else:
-            vision_config = {**QWEN3VL_VISION, "out_hidden_size": config.hidden_size}
+            vision_config = {
+                **QWEN3VL_VISION_COMMON,
+                **QWEN3VL_VISION["qwen3vl_4b"],
+                "out_hidden_size": config.hidden_size,
+            }
         self.visual = Qwen3VLVisionModel(vision_config)
 
     def preprocess_embed(self, embed, device):

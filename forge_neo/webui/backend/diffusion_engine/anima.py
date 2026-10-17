@@ -41,7 +41,7 @@ class Anima(ForgeDiffusionEngine):
 
         unet = UnetPatcher.from_model(model=huggingface_components["transformer"], diffusers_scheduler=None, k_predictor=k_predictor, config=estimated_config)
 
-        self.text_processing_engine_anima = AnimaTextProcessingEngine(
+        self.text_processing_engine_qwen = AnimaTextProcessingEngine(
             text_encoder=clip.cond_stage_model.qwen3_06b,
             qwen_tokenizer=clip.tokenizer.qwen3_06b,
             t5_tokenizer=clip.tokenizer.t5xxl,
@@ -68,11 +68,11 @@ class Anima(ForgeDiffusionEngine):
                     self.ini_latent = None
                 dynamic_args.ref_latents = references.copy()
 
-        return self.text_processing_engine_anima(prompt)
+        return self.text_processing_engine_qwen(prompt)
 
     @torch.inference_mode()
-    def get_prompt_lengths_on_ui(self, prompt):
-        token_count = len(self.text_processing_engine_anima.tokenize([prompt])[0][0])
+    def get_prompt_lengths_on_ui(self, prompt: str) -> tuple[int, int]:
+        token_count = len(self.text_processing_engine_qwen.tokenize(prompt)[0])
         return token_count, max(512, token_count)
 
     @torch.inference_mode()

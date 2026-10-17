@@ -266,7 +266,7 @@ class FakeInitialModel:
     def cond_stage_model(self):
         return None
 
-    def get_prompt_lengths_on_ui(self, prompt):
+    def get_prompt_lengths_on_ui(self, prompt: str) -> tuple[int, int]:
         r = len(prompt.strip("!?,. ").replace(" ", ",").replace(".", ",").replace("!", ",").replace("?", ",").split(","))
         return r, math.ceil(max(r, 1) / 75) * 75
 

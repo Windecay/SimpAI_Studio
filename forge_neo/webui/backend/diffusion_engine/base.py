@@ -75,6 +75,10 @@ class ForgeDiffusionEngine:
     def get_learned_conditioning(self, prompt: list[str]):
         raise NotImplementedError
 
+    @abstractmethod
+    def get_prompt_lengths_on_ui(self, prompt: str) -> tuple[int, int]:
+        raise NotImplementedError
+
     @torch.inference_mode()
     def encode_first_stage(self, x: torch.Tensor):
         if self.is_wan:  # otherwise image batch turns into video...
@@ -117,9 +121,6 @@ class ForgeDiffusionEngine:
         _log_source_tensor_stats("decoded_output", sample, model=type(self).__name__, channel_dim=(2 if self.is_wan else 1), enabled=trace_tensor_stats)
         return sample.to(x)
 
-    def get_prompt_lengths_on_ui(self, prompt):
-        return 0, 75
-
     def is_webui_legacy_model(self):
         return self.is_sd1 or self.is_sdxl
 
@@ -142,7 +143,7 @@ class ForgeDiffusionEngine:
         self.ref_latents.clear()
         memory_management.soft_empty_cache()
 
-    def set_shift(self, shift: float):
+    def set_shift(self, shift: float, *args, **kwargs):
         if not self.use_shift:
             return
         self.forge_objects.unet.model.predictor.set_parameters(shift=shift)

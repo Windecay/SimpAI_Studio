@@ -1,4 +1,4 @@
-# reference: https://github.com/Comfy-Org/ComfyUI/blob/v0.11.0/comfy/model_detection.py
+# https://github.com/Comfy-Org/ComfyUI/blob/v0.38.0/comfy/model_detection.py
 
 import logging
 
@@ -39,6 +39,19 @@ def calculate_transformer_depth(prefix, state_dict_keys, state_dict):
 
 def detect_unet_config(state_dict: dict, key_prefix: str) -> dict:
     state_dict_keys = list(state_dict.keys())
+
+    if f"{key_prefix}shared_block_modulation.weight" in state_dict and f"{key_prefix}layers.0.proj.ffn_up_gate.weight" in state_dict:
+        dim = int(state_dict[f"{key_prefix}video_embedder.weight"].shape[0])
+        head_dim = int(state_dict[f"{key_prefix}layers.0.q_norm.weight"].shape[0])
+        return {
+            "image_model": "moss_image", "dim": dim,
+            "ffn_dim": int(state_dict[f"{key_prefix}layers.0.proj.ffn_up_gate.weight"].shape[0]) // 2,
+            "num_heads": dim // head_dim,
+            "num_layers": count_blocks(state_dict_keys, f"{key_prefix}layers.{{}}."),
+            "latent_channels": int(state_dict[f"{key_prefix}video_embedder.weight"].shape[1]),
+            "text_dim": int(state_dict[f"{key_prefix}text_embedder.proj.weight"].shape[1]),
+            "fused_qkv": f"{key_prefix}layers.0.proj.qkv.weight" in state_dict,
+        }
 
     qwen21_keys = (
         "txt_in.text_norm.weight",

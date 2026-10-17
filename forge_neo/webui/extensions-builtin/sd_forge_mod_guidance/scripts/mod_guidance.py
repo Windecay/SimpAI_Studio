@@ -74,7 +74,7 @@ def load_clip(path: str):
     from backend.loader import HF
     from backend.nn.clip import IntegratedCLIP
     from backend.operations import using_forge_operations
-    from backend.text_processing.classic_engine import ClassicTextProcessingEngine
+    from backend.text_processing.sd_engine import ClipEngine
     from backend.utils import load_torch_file
 
     tokenizer_path = os.path.join(HF, "stabilityai", "stable-diffusion-xl-base-1.0", "tokenizer")
@@ -97,7 +97,7 @@ def load_clip(path: str):
     if len(missing) > 4:
         raise ValueError
 
-    return ClassicTextProcessingEngine(
+    return ClipEngine(
         text_encoder=text_encoder,
         tokenizer=tokenizer,
         embedding_dir=dynamic_args.embedding_dir,

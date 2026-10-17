@@ -20,6 +20,7 @@ from backend.sampling.condition import (
     compile_conditions,
     compile_weighted_conditions,
 )
+from modules import shared
 from modules.source_backend_timing import (
     log_tensor_stats,
     tensor_stats_enabled,
@@ -166,6 +167,8 @@ def _log_conditioning_tensors(conditioning, model_options, cond_or_uncond, batch
 
 
 def can_concat_cond(c1, c2):
+    if not shared.batch_cond_uncond:
+        return False
     if c1.input_x.shape != c2.input_x.shape:
         return False
 
@@ -255,8 +258,8 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
     while len(to_run) > 0:
         first = to_run[0]
         first_shape = first[0][0].shape
-        to_batch_temp = []
-        for x in range(len(to_run)):
+        to_batch_temp = [0]
+        for x in range(1, len(to_run)):
             if can_concat_cond(to_run[x][0], first[0]):
                 to_batch_temp += [x]
 
@@ -498,7 +501,7 @@ def sampling_prepare(unet: "UnetPatcher", x: torch.Tensor):
     log_source_stage_marker("sampling_prepare.total", input_shape=tuple(x.shape))
 
     shape = list(x.shape)
-    mem_shape = [2 * shape[0]] + shape[1:]
+    mem_shape = [(2 if shared.batch_cond_uncond else 1) * shape[0]] + shape[1:]
 
     log_source_stage_marker("sampling_prepare.memory_required", input_shape=tuple(mem_shape))
     memory_required_started = time.perf_counter()

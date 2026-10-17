@@ -61,10 +61,10 @@ class KModel(torch.nn.Module):
 
     def memory_required(self, input_shape: list[int]) -> float:
         """https://github.com/comfyanonymous/ComfyUI/blob/v0.3.64/comfy/model_base.py#L354"""
+        from backend import attention
+
         input_shapes = [input_shape]
         area = sum(map(lambda input_shape: input_shape[0] * math.prod(input_shape[2:]), input_shapes))
 
-        if memory_management.xformers_enabled() or memory_management.pytorch_attention_flash_attention():
-            return (area * memory_management.dtype_size(self.computation_dtype) * 0.01 * self.config.memory_usage_factor) * (1024 * 1024)
-        else:
-            return (area * 0.15 * self.config.memory_usage_factor) * (1024 * 1024)
+        _size = 8 if (attention.attention_function is attention.attention_basic) else memory_management.dtype_size(self.computation_dtype)
+        return (area * _size * 0.02 * self.config.memory_usage_factor) * (1024 * 1024)

@@ -22,10 +22,12 @@ class ForgeNeoSettingInfo:
     label_cn: str
 
 
-PRESET_ARCHES: tuple[str, ...] = ("anima", "flux", "klein", "krea2", "lumina", "qwen", "qwen21", "sd", "xl", "zit")
+PRESET_ARCHES: tuple[str, ...] = ("anima", "flux", "klein", "krea2", "lumina", "moss", "qwen", "qwen21", "sd", "xl", "zit")
 PRESET_DISPLAY_NAMES: dict[str, str] = {arch: arch.upper() for arch in PRESET_ARCHES}
 PRESET_DISPLAY_NAMES["qwen21"] = "Qwen Image 2.1"
+PRESET_DISPLAY_NAMES["moss"] = "MOSS-Image"
 PRESET_SAMPLERS: dict[str, str] = {
+    "moss": "Euler",
     "sd": "Euler a",
     "xl": "Euler a",
     "flux": "Euler",
@@ -38,6 +40,7 @@ PRESET_SAMPLERS: dict[str, str] = {
     "anima": "ER SDE",
 }
 PRESET_SCHEDULERS: dict[str, str] = {
+    "moss": "SGM Uniform",
     "sd": "Automatic",
     "xl": "Automatic",
     "flux": "Beta",
@@ -50,6 +53,7 @@ PRESET_SCHEDULERS: dict[str, str] = {
     "anima": "Simple",
 }
 PRESET_STEPS: dict[str, int] = {
+    "moss": 50,
     "sd": 32,
     "xl": 24,
     "flux": 20,
@@ -62,6 +66,7 @@ PRESET_STEPS: dict[str, int] = {
     "anima": 32,
 }
 PRESET_CFG: dict[str, float] = {
+    "moss": 3.0,
     "sd": 6.0,
     "xl": 4.5,
     "flux": 1.0,
@@ -75,6 +80,7 @@ PRESET_CFG: dict[str, float] = {
 }
 PRESET_DISTILL: dict[str, float] = {"flux": 3.0}
 PRESET_SHIFT: dict[str, float] = {
+    "moss": 5.0,
     "xl": -9.0,
     "lumina": 6.0,
     "zit": 9.0,

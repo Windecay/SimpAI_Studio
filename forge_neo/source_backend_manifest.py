@@ -99,15 +99,34 @@ SOURCE_BACKEND_LOCAL_PATCH_FILES = (
     "backend/regional_prompter_presets.json",
     "backend/sampling/__init__.py",
     "backend/text_processing/krea2_engine.py",
+    "backend/diffusion_engine/qwen_image21.py",
+    "backend/nn/qwen_image21.py",
+    "backend/nn/qwen_image21_vae.py",
+    "backend/text_processing/qwen_image21.py",
+    "backend/diffusion_engine/moss.py",
+    "backend/nn/moss.py",
+    "backend/nn/llm/qwen35_text.py",
+    "backend/text_processing/moss_engine.py",
+    "modules_forge/packages/huggingface_guess/detection.py",
+    "modules_forge/packages/huggingface_guess/model_list.py",
+    "modules_forge/packages/comfy/lora.py",
+    "backend/sampling/condition.py",
+    "modules/prompt_parser.py",
     "modules/k_model.py",
     "modules/k_prediction.py",
 )
 SOURCE_BACKEND_LOCAL_PATCH_PREFIXES = (
+    "backend/huggingface/OpenMOSS-Team/",
     # Keep the local Krea-2 Turbo model configuration if a future source tree
     # adds files at the same paths.
     "backend/huggingface/krea/Krea-2-Turbo/",
 )
 SOURCE_BACKEND_EXCLUDED_PATHS = (
+    # Qwen 2.1 uses the existing native qwen_image21 modules in this mirror.
+    "backend/diffusion_engine/qwen21.py",
+    "backend/nn/qwen21.py",
+    "backend/nn/qwen21_vae.py",
+    "backend/text_processing/qwen_image_21_engine.py",
     "backend/diffusion_engine/wan.py",
     "backend/diffusion_engine/ernie.py",
     "backend/nn/wan.py",

@@ -195,10 +195,9 @@ class QwenImage21Tests(unittest.TestCase):
         engine.process_tokens = lambda _tokens, _multipliers: (torch.randn(1, len(tokens), 12), [])
         prompts = prompt_parser.SdConditioning(["a red apple"], width=32, height=32)
 
-        with patch("backend.text_processing.qwen_image21.opts", SimpleNamespace(emphasis="None")):
-            scheduled = prompt_parser.get_multicond_learned_conditioning(
-                SimpleNamespace(get_learned_conditioning=engine), prompts, 2
-            )
+        scheduled = prompt_parser.get_multicond_learned_conditioning(
+            SimpleNamespace(get_learned_conditioning=engine), prompts, 2
+        )
         composition, batch = prompt_parser.reconstruct_multicond_batch(scheduled, 0)
         cond = compile_weighted_conditions(batch, composition)
         context = cond[0]["model_conds"]["c_crossattn"].cond

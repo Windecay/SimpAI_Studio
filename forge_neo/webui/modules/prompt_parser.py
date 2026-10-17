@@ -174,7 +174,11 @@ def get_learned_conditioning(model, prompts: SdConditioning | list[str], steps: 
     """
     res = []
 
-    prompt_schedules = get_learned_conditioning_prompt_schedules(prompts, steps, hires_steps)
+    prompt_schedules = (
+        [[(steps, text)] for text in prompts]
+        if getattr(model, "literal_prompt", False)
+        else get_learned_conditioning_prompt_schedules(prompts, steps, hires_steps)
+    )
     cache = {}
 
     for prompt, prompt_schedule in zip(prompts, prompt_schedules):
@@ -255,7 +259,11 @@ def get_multicond_learned_conditioning(model, prompts: SdConditioning | list[str
     For each prompt, the list is obtained by splitting the prompt using the AND separator.
     """
 
-    res_indexes, prompt_flat_list, _ = get_multicond_prompt_list(prompts)
+    if getattr(model, "literal_prompt", False):
+        res_indexes = [[(index, 1.0)] for index in range(len(prompts))]
+        prompt_flat_list = prompts
+    else:
+        res_indexes, prompt_flat_list, _ = get_multicond_prompt_list(prompts)
 
     learned_conditioning = get_learned_conditioning(model, prompt_flat_list, steps, hires_steps)
 
@@ -316,7 +324,7 @@ def reconstruct_cond_batch(c: list[list[ScheduledPromptConditioning]], current_s
     return res
 
 
-def stack_conds(tensors):
+def stack_conds(tensors, pad_value=None):
     try:
         result = torch.stack(tensors)
     except:
@@ -325,6 +333,11 @@ def stack_conds(tensors):
         token_count = max([x.shape[0] for x in tensors])
         for i in range(len(tensors)):
             if tensors[i].shape[0] != token_count:
+                if pad_value is not None:
+                    tensors[i] = torch.nn.functional.pad(
+                        tensors[i], (0, 0, 0, token_count - tensors[i].shape[0]), value=pad_value,
+                    )
+                    continue
                 last_vector = tensors[i][-1:]
                 last_vector_repeated = last_vector.repeat([token_count - tensors[i].shape[0], 1])
                 tensors[i] = torch.vstack([tensors[i], last_vector_repeated])
@@ -355,7 +368,7 @@ def reconstruct_multicond_batch(c: MulticondLearnedConditioning, current_step):
 
     if isinstance(tensors[0], dict):
         keys = list(tensors[0].keys())
-        stacked = {k: stack_conds([x[k] for x in tensors]) for k in keys}
+        stacked = {k: stack_conds([x[k] for x in tensors], pad_value=0 if k == "attention_mask" else None) for k in keys}
         stacked = DictWithShape(stacked)
     else:
         stacked = stack_conds(tensors).to(device=param.device, dtype=param.dtype)

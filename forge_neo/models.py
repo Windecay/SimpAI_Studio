@@ -10,10 +10,10 @@ from forge_neo.bootstrap import ensure_config
 
 SOURCE_PROJECT = "Haoming02/sd-webui-forge-classic"
 SOURCE_BRANCH = "neo"
-SOURCE_COMMIT = "bfa6f820"
+SOURCE_COMMIT = "46af880c"
 SOURCE_LICENSE = "AGPL-3.0"
 
-UI_PRESETS = ["sd", "xl", "flux", "klein", "qwen", "qwen21", "krea2", "lumina", "zit", "anima"]
+UI_PRESETS = ["sd", "xl", "flux", "klein", "qwen", "qwen21", "krea2", "lumina", "zit", "anima", "moss"]
 FORGE_NEO_LOCAL_CONFIG_KEYS = {"forge_preset"}
 LOW_BIT_CHOICES = ["Automatic", "Float8 e4m3fn", "Float8 e5m2", "NF4", "None"]
 MODEL_EXTENSIONS = {".pth", ".ckpt", ".bin", ".safetensors", ".fooocus.patch", ".patch", ".gguf", ".pt", ".onnx"}
@@ -160,6 +160,7 @@ PRESET_DEFAULTS = {
     "lumina": {"steps": 32, "width": 1024, "height": 1024, "cfg_scale": 4.0, "sampler": "Res Multistep", "scheduler": "Simple"},
     "zit": {"steps": 9, "width": 1024, "height": 1024, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "Beta"},
     "anima": {"steps": 32, "width": 1024, "height": 1024, "cfg_scale": 4.0, "sampler": "ER SDE", "scheduler": "Simple"},
+    "moss": {"steps": 50, "width": 1024, "height": 1024, "cfg_scale": 3.0, "sampler": "Euler", "scheduler": "SGM Uniform"},
 }
 
 PRESET_ENGINE = {
@@ -173,6 +174,7 @@ PRESET_ENGINE = {
     "lumina": "Flux",
     "zit": "Z-image",
     "anima": "SDXL",
+    "moss": "MOSS-Image",
 }
 
 XL_ILLUSTRIOUS2_PRESET_FILE = "Illustrious(OB).json"
@@ -188,6 +190,7 @@ SIMPAI_PRESET_MODEL_FILES = {
     "krea2": "Krea2-Turbo.json",
     "zit": "Z-imageT.json",
     "anima": "Anima.json",
+    "moss": "MOSS-Image.json",
 }
 
 

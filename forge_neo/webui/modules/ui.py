@@ -154,9 +154,11 @@ def update_token_counter(text, steps, styles, *, is_positive=True):
         assert get_prompt_lengths_on_ui is not None
     except Exception:
         return f"<span class='gr-box gr-text-input'>?/?</span>"
+    else:
+        from backend.text_processing.parsing import strip_emphasis
 
     flat_prompts = reduce(lambda list1, list2: list1 + list2, prompt_schedules)
-    prompts = [prompt_text for step, prompt_text in flat_prompts]
+    prompts = [strip_emphasis(prompt_text) for _, prompt_text in flat_prompts]
     token_count, max_length = max([get_prompt_lengths_on_ui(prompt) for prompt in prompts], key=lambda args: args[0])
     return f"<span class='gr-box gr-text-input'>{token_count}/{max_length}</span>"
 
@@ -195,6 +197,7 @@ def create_ui():
     reload_javascript()
 
     parameters_copypaste.reset()
+    main_entry.capture_callbacks()
 
     settings = ui_settings.UiSettings()
     settings.register_settings()
@@ -267,26 +270,20 @@ def create_ui():
                                 with FormRow(elem_id="txt2img_hires_fix_row3", variant="compact", visible=shared.opts.hires_fix_show_sampler) as hr_checkpoint_container:
                                     hr_checkpoint_name = gr.Dropdown(label="Hires Checkpoint", elem_id="hr_checkpoint", choices=["Use same checkpoint"] + modules.sd_models.checkpoint_tiles(use_short=True), value="Use same checkpoint", scale=2)
 
-                                    hr_checkpoint_refresh = ToolButton(value=refresh_symbol)
+                                    def _load_models():
+                                        checkpoints = shared.list_checkpoint_tiles(shared.opts.sd_checkpoint_dropdown_use_short)
+                                        modules = main_entry.module_list.keys() if shared.opts.sd_modules_dropdown_use_short else main_entry.module_map.values()
+                                        return [["Use same checkpoint"] + sorted(checkpoints), ["Use same choices"] + sorted(modules)]
 
-                                    def get_additional_modules():
-                                        modules_list = ["Use same choices"]
-                                        if main_entry.module_list == {}:
-                                            _, modules = main_entry.refresh_models()
-                                            modules_list += list(modules)
-                                        else:
-                                            modules_list += list(main_entry.module_list.keys())
-                                        return modules_list
-
-                                    modules_list = get_additional_modules()
-
-                                    def refresh_model_and_modules():
-                                        modules_list = get_additional_modules()
-                                        return gr.update(choices=["Use same checkpoint"] + modules.sd_models.checkpoint_tiles(use_short=True)), gr.update(choices=modules_list)
+                                    checkpoints_list, modules_list = _load_models()
 
                                     hr_additional_modules = gr.Dropdown(label="Hires VAE / Text Encoder", elem_id="hr_vae_te", choices=modules_list, value=["Use same choices"], multiselect=True, scale=3)
 
-                                    hr_checkpoint_refresh.click(fn=refresh_model_and_modules, outputs=[hr_checkpoint_name, hr_additional_modules], show_progress=False)
+                                    def _refresh_models():
+                                        checkpoints_list, modules_list = _load_models()
+                                        return [gr.update(choices=checkpoints_list), gr.update(choices=modules_list)]
+
+                                    main_entry.on_refresh_checkpoint(_refresh_models, outputs=[hr_checkpoint_name, hr_additional_modules])
 
                                 with FormRow(elem_id="txt2img_hires_fix_row3b", variant="compact", visible=shared.opts.hires_fix_show_sampler) as hr_sampler_container:
                                     hr_sampler_name = gr.Dropdown(label="Hires sampling method", elem_id="hr_sampler", choices=["Use same sampler"] + sd_samplers.visible_sampler_names(), value="Use same sampler")

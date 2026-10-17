@@ -1,4 +1,4 @@
-# reference: https://github.com/Comfy-Org/ComfyUI/blob/master/comfy/supported_models.py
+# reference: https://github.com/Comfy-Org/ComfyUI/blob/v0.38.0/comfy/supported_models.py
 
 from enum import Enum
 
@@ -564,6 +564,22 @@ class QwenImage(BASE):
             return {"qwen25_7b": "text_encoder"}
 
 
+class MOSSImage(BASE):
+    huggingface_repo = "OpenMOSS-Team/MOSS-Image-SFT"
+    unet_config = {"image_model": "moss_image"}
+    unet_extra_config = {}
+    sampling_settings = {"shift": 5.0, "multiplier": 1.0}
+    memory_usage_factor = 14.6
+    latent_format = latent.Flux2
+    supported_inference_dtypes = [torch.bfloat16, torch.float32]
+    vae_key_prefix = ["vae."]
+    text_encoder_key_prefix = ["text_encoders."]
+    unet_target = "transformer"
+
+    def clip_target(self, state_dict):
+        return {"qwen35_9b.transformer": "text_encoder"}
+
+
 class QwenImage21(BASE):
     huggingface_repo = "Qwen/Qwen-Image-2.1"
 
@@ -648,6 +664,7 @@ class ErnieImage(BASE):
 
 
 models = [
+    MOSSImage,
     SD15,
     SDXL,
     Mugen,

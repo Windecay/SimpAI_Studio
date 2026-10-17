@@ -175,6 +175,7 @@
             { type: "tab", panelId: "forge_neo_settings_flux", en: "FLUX", cn: "FLUX" },
             { type: "tab", panelId: "forge_neo_settings_klein", en: "KLEIN", cn: "KLEIN" },
             { type: "tab", panelId: "forge_neo_settings_krea2", en: "KREA2", cn: "KREA2" },
+            { type: "tab", panelId: "forge_neo_settings_moss", en: "MOSS-Image", cn: "MOSS-Image" },
             { type: "tab", panelId: "forge_neo_settings_lumina", en: "LUMINA", cn: "LUMINA" },
             { type: "tab", panelId: "forge_neo_settings_qwen", en: "QWEN", cn: "QWEN" },
             { type: "tab", panelId: "forge_neo_settings_sd_arch", en: "SD", cn: "SD" },
@@ -654,7 +655,7 @@
         return setComponentValue(document.querySelector(rootSelector), value);
     }
 
-    const forgeNeoPresetChoices = ["sd", "xl", "flux", "klein", "qwen", "qwen21", "krea2", "lumina", "zit", "anima"];
+    const forgeNeoPresetChoices = ["sd", "xl", "flux", "klein", "qwen", "qwen21", "krea2", "lumina", "zit", "anima", "moss"];
     let forgeNeoPresetRestoreDone = false;
 
     function normalizeForgeNeoPreset(value) {

@@ -1,13 +1,11 @@
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from backend.nn.llm.llama import Qwen3_06B
+# https://github.com/Comfy-Org/ComfyUI/blob/v0.36.0/comfy/text_encoders/anima.py
 
 import torch
 
 from backend import memory_management
 from backend.args import dynamic_args
-from backend.text_processing import emphasis, parsing
+from backend.text_processing import emphasis
+from backend.text_processing._comfy import INF, SDClipModel, SDTokenizer
 from modules.shared import opts
 from modules.source_backend_timing import log_tensor_stats
 
@@ -18,128 +16,73 @@ def _prepare_qwen_cuda_workspace(device):
     clear_workspace = getattr(torch._C, "_cuda_clearCublasWorkspaces", None)
     if clear_workspace is None or torch.cuda.get_device_properties(device).major < 10:
         return
-    # Repeated Qwen GEMMs after VAE use can overwrite resident weights on Blackwell.
-    # Recreate the BLAS workspace only after pending device work has completed.
+    # Preserve the Blackwell workspace reset before Qwen embeddings are evaluated.
     with torch.cuda.device(device):
         torch.cuda.synchronize(device)
         clear_workspace()
 
-
-class PromptChunk:
-    def __init__(self):
-        self.qwen_tokens = []
-        self.qwen_multipliers = []
-        self.t5_tokens = []
-        self.t5_multipliers = []
-
-
 class AnimaTextProcessingEngine:
     def __init__(self, text_encoder, qwen_tokenizer, t5_tokenizer):
-        self.emphasis = emphasis.get_current_option(opts.emphasis)()
-
-        self.text_encoder: "Qwen3_06B" = text_encoder
+        self.text_encoder = text_encoder
         self.trace_tensor_stats = bool(getattr(text_encoder, "trace_tensor_stats", False))
-        self.qwen_tokenizer = qwen_tokenizer
-        self.t5_tokenizer = t5_tokenizer
+        self.clip = SDClipModel(
+            text_encoder, layer="last", special_tokens={"pad": 151643},
+            layer_norm_hidden_state=False, enable_attention_masks=True, return_attention_masks=True,
+        )
+        self.qwen_tokenizer = SDTokenizer(qwen_tokenizer, pad_with_end=False, has_start_token=False, has_end_token=False, pad_to_max_length=False, max_length=INF, min_length=1, pad_token=151643)
+        self.t5_tokenizer = SDTokenizer(t5_tokenizer, pad_with_end=False, has_start_token=False, pad_to_max_length=False, max_length=INF, min_length=1)
 
-        self.id_pad = 151643
-        self.id_end = 1
+    @property
+    def emphasis(self) -> "emphasis.Emphasis":
+        return emphasis.get_current_option(opts.emphasis)()
 
     def _log_tensor_stats(self, name: str, tensor: torch.Tensor, **extra) -> None:
         log_tensor_stats(name, tensor, enabled=self.trace_tensor_stats, **extra)
 
     def tokenize(self, texts):
         return (
-            self.qwen_tokenizer(texts, truncation=False, add_special_tokens=False)["input_ids"],
-            self.t5_tokenizer(texts, truncation=False, add_special_tokens=False)["input_ids"],
+            self.qwen_tokenizer.tokenizer(texts)["input_ids"],
+            self.t5_tokenizer.tokenizer(texts)["input_ids"],
         )
 
-    def tokenize_line(self, line):
-        parsed = parsing.parse_prompt_attention(line, self.emphasis.name)
-        qwen_tokenized, t5_tokenized = self.tokenize([text for text, _ in parsed])
+    def __call__(self, texts: list[str]) -> list[torch.Tensor]:
+        mode = self.emphasis.name
+        if any(emphasis.uses_emphasis(text) for text in texts):
+            dynamic_args.last_extra_generation_params["Emphasis"] = mode
 
-        chunks = []
-        chunk = PromptChunk()
-
-        def next_chunk():
-            nonlocal chunk
-
-            if not chunk.qwen_tokens:
-                chunk.qwen_tokens.append(self.id_pad)
-                chunk.qwen_multipliers.append(1.0)
-
-            chunk.t5_tokens.append(self.id_end)
-            chunk.t5_multipliers.append(1.0)
-
-            chunks.append(chunk)
-            chunk = PromptChunk()
-
-        for tokens in qwen_tokenized:
-            position = 0
-            while position < len(tokens):
-                token = tokens[position]
-                chunk.qwen_tokens.append(token)
-                chunk.qwen_multipliers.append(1.0)
-                position += 1
-
-        for tokens, (text, weight) in zip(t5_tokenized, parsed):
-            position = 0
-            while position < len(tokens):
-                token = tokens[position]
-                chunk.t5_tokens.append(token)
-                chunk.t5_multipliers.append(weight)
-                position += 1
-
-        if not chunks:
-            next_chunk()
-
-        return chunks
-
-    def __call__(self, texts):
-        self.emphasis = emphasis.get_current_option(opts.emphasis)()
-        if any(emphasis.uses_emphasis(x) for x in texts):
-            dynamic_args.last_extra_generation_params["Emphasis"] = self.emphasis.name
-
-        zs = []
-        cache: dict[str, tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = {}
+        zs: list[torch.Tensor] = []
+        cache: dict[str, torch.Tensor] = {}
 
         for line in texts:
             if line in cache:
-                z, tok, mul = cache[line]
+                z = cache[line]
             else:
-                chunks: list[PromptChunk] = self.tokenize_line(line)
-                assert len(chunks) == 1
+                qwen_chunk = self.qwen_tokenizer.tokenize_with_weights(line, disable_weights=mode == "None")
+                t5_chunk = self.t5_tokenizer.tokenize_with_weights(line, disable_weights=mode == "None")
+                tokens = [[token for token, _ in row] for row in qwen_chunk]
+                cond = self.process_tokens(tokens, None)[0]
+                ids = torch.tensor([token for token, _ in t5_chunk[0]], dtype=torch.int)
+                weights = torch.tensor([1.0 if mode == "Ignore" else weight for _, weight in t5_chunk[0]])
 
-                for chunk in chunks:
-                    tokens = chunk.qwen_tokens
-                    multipliers = chunk.qwen_multipliers
+                z = self.anima_preprocess(cond, ids, weights)
+                cache[line] = z
 
-                    z: torch.Tensor = self.process_tokens([tokens], [multipliers])[0]
-                    tok = torch.tensor(chunk.t5_tokens, dtype=torch.int)
-                    mul = torch.tensor(chunk.t5_multipliers)
+            zs.append(z)
 
-                cache[line] = (z, tok, mul)
-
-            zs.append(self.anima_preprocess(z, tok, mul))
-
-        del cache
         return zs
 
-    def anima_preprocess(self, cross_attn: torch.Tensor, t5xxl_ids: torch.Tensor, t5xxl_weights: torch.Tensor) -> torch.Tensor:
+    def anima_preprocess(self, cross_attn, t5xxl_ids, t5xxl_weights):
         device = memory_management.text_encoder_device()
 
         self._log_tensor_stats("anima.conditioning.qwen_output", cross_attn)
         cross_attn = cross_attn.unsqueeze(0).to(device=device)
         t5xxl_ids = t5xxl_ids.unsqueeze(0).to(device=device)
-
         cross_attn = self.text_encoder.preprocess_text_embeds(cross_attn, t5xxl_ids)
         self._log_tensor_stats("anima.conditioning.llm_adapter_output", cross_attn)
         if t5xxl_weights is not None:
             cross_attn *= t5xxl_weights.unsqueeze(0).unsqueeze(-1).to(cross_attn)
         self._log_tensor_stats(
-            "anima.conditioning.weighted",
-            cross_attn,
-            weights_applied=t5xxl_weights is not None,
+            "anima.conditioning.weighted", cross_attn, weights_applied=t5xxl_weights is not None,
         )
 
         if cross_attn.shape[1] < 512:
@@ -151,41 +94,7 @@ class AnimaTextProcessingEngine:
         return cross_attn
 
     def process_embeds(self, batch_tokens):
-        device = memory_management.text_encoder_device()
-
-        embeds_out = []
-        attention_masks = []
-        num_tokens = []
-
-        for tokens in batch_tokens:
-            attention_mask = []
-            tokens_temp = []
-            other_embeds = []
-            eos = False
-            index = 0
-
-            for t in tokens:
-                try:
-                    token = int(t)
-                    attention_mask.append(0 if eos else 1)
-                    tokens_temp += [token]
-                    if not eos and token == self.id_pad:
-                        eos = True
-                except TypeError:
-                    other_embeds.append((index, t))
-                index += 1
-
-            tokens_embed = torch.tensor([tokens_temp], device=device, dtype=torch.long)
-            tokens_embed = self.text_encoder.get_input_embeddings()(tokens_embed)
-
-            index = 0
-            embeds_info = []
-
-            embeds_out.append(tokens_embed)
-            attention_masks.append(attention_mask)
-            num_tokens.append(sum(attention_mask))
-
-        return torch.cat(embeds_out), torch.tensor(attention_masks, device=device, dtype=torch.long), num_tokens, embeds_info
+        return self.clip.process_tokens(batch_tokens, memory_management.text_encoder_device())
 
     def process_tokens(self, batch_tokens, batch_multipliers):
         _prepare_qwen_cuda_workspace(memory_management.text_encoder_device())

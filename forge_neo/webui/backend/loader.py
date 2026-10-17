@@ -22,6 +22,7 @@ from backend.diffusion_engine.flux2 import Flux2
 from backend.diffusion_engine.krea2 import Krea2
 from backend.diffusion_engine.lumina import Lumina2
 from backend.diffusion_engine.mugen import Mugen
+from backend.diffusion_engine.moss import MOSSImage
 from backend.diffusion_engine.qwen import QwenImage
 from backend.diffusion_engine.qwen_image21 import QwenImage21
 from backend.diffusion_engine.sd15 import StableDiffusion
@@ -44,6 +45,7 @@ from backend.utils import (
 from modules_forge.packages.comfy.utils import convert_diffusers_mmdit
 
 possible_models: tuple["ForgeDiffusionEngine", ...] = (
+    MOSSImage,
     StableDiffusion,
     StableDiffusionXLRefiner,
     StableDiffusionXL,
@@ -141,6 +143,24 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
                     model = QwenImage21VAE(**model_config)
             load_state_dict(model, state_dict)
             return model
+        if cls_name == "Qwen3_5Model":
+            from backend.nn.llm.qwen35_text import Qwen35TextModel
+
+            config = read_arbitrary_config(config_path)
+            dtype = torch.bfloat16 if memory_management.should_use_bf16(memory_management.text_encoder_device()) else torch.float32
+            if backend.args.args.fp32_text_enc:
+                dtype = torch.float32
+            quant_config = detect_quantization(state_dict)
+            with no_init_weights():
+                with using_forge_operations(
+                    device=memory_management.cpu, dtype=dtype, manual_cast_enabled=True, bnb_dtype=quant_config,
+                ):
+                    model = Qwen35TextModel(config)
+            model.computation_dtype = dtype
+            missing, unexpected = model.load_state_dict(state_dict, strict=False)
+            if missing or unexpected:
+                raise ValueError(f"MOSS Qwen3.5 weights do not match: missing={missing[:8]}, unexpected={unexpected[:8]}")
+            return model
         if cls_name == "AutoencoderKL":
             assert isinstance(state_dict, dict) and len(state_dict) > 16, "You do not have VAE state dict!"
             from backend.nn.vae import IntegratedAutoencoderKL
@@ -175,14 +195,16 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
                 from backend.nn.wan_vae_2d import Qwen2DVAE as WanVAE
 
                 config = {}
+                dtype = memory_management.vae_dtype()
 
             else:
                 from backend.nn.wan_vae import WanVAE
 
                 config = WanVAE.load_config(config_path)
+                dtype = memory_management.vae_dtype(allowed_dtypes=[torch.bfloat16, torch.float16, torch.float32])
 
             with no_init_weights():
-                with using_forge_operations(device=memory_management.cpu, dtype=memory_management.vae_dtype(), bnb_dtype="vae"):
+                with using_forge_operations(device=memory_management.cpu, dtype=dtype, bnb_dtype="vae"):
                     model = WanVAE.from_config(config)
 
             load_state_dict(model, state_dict)
@@ -432,7 +454,7 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
 
             load_state_dict(model, state_dict, log_name=cls_name, ignore_errors=["transformer.encoder.embed_tokens.weight", "logit_scale"])
             return model
-        if cls_name in ["UNet2DConditionModel", "FluxTransformer2DModel", "Flux2Transformer2DModel", "ChromaTransformer2DModel", "QwenImageTransformer2DModel", "QwenImage21Transformer2DModel", "Krea2Transformer2DModel", "Lumina2Transformer2DModel", "ZImageTransformer2DModel", "CosmosTransformer3DModel"]:
+        if cls_name in ["UNet2DConditionModel", "FluxTransformer2DModel", "Flux2Transformer2DModel", "ChromaTransformer2DModel", "QwenImageTransformer2DModel", "QwenImage21Transformer2DModel", "Krea2Transformer2DModel", "MOSSImageTransformer", "Lumina2Transformer2DModel", "ZImageTransformer2DModel", "CosmosTransformer3DModel"]:
             assert isinstance(state_dict, dict) and len(state_dict) > 16, "You do not have model state dict!"
             pre_func: Callable[[torch.nn.Module], torch.nn.Module] = lambda mdl: mdl
             model_loader = None
@@ -475,6 +497,13 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
                 from backend.nn.krea2 import SingleStreamDiT
 
                 model_loader = lambda c: SingleStreamDiT(**c)
+            elif cls_name == "MOSSImageTransformer":
+                from backend.nn.moss import MOSSImageTransformer
+
+                for key in list(state_dict):
+                    if key == "rope.bands" or key.endswith(".comfy_attention.config"):
+                        state_dict.pop(key)
+                model_loader = lambda c: MOSSImageTransformer(**c)
             elif cls_name in ("Lumina2Transformer2DModel", "ZImageTransformer2DModel"):
                 if guess.nunchaku:
                     guess.unet_config.pop("filename")
@@ -587,6 +616,18 @@ def replace_state_dict(sd: dict[str, torch.Tensor], asd: dict[str, torch.Tensor]
     text_encoder_key_prefix = guess.text_encoder_key_prefix[0]
     is_krea2 = _is_krea2_config(guess)
     qwen3vl_added = False
+
+    if getattr(guess, "huggingface_repo", "") == "OpenMOSS-Team/MOSS-Image-SFT":
+        language_prefix = next(
+            (prefix for prefix in ("model.language_model.", "language_model.", "model.")
+             if f"{prefix}layers.0.linear_attn.in_proj_qkv.weight" in asd),
+            None,
+        )
+        if language_prefix is not None:
+            for key, value in asd.items():
+                if key.startswith(language_prefix):
+                    sd[f"{text_encoder_key_prefix}qwen35_9b.transformer.model.{key[len(language_prefix):]}"] = value
+            return sd
 
     if path.endswith("gguf"):
         from backend.loader_gguf import gguf_remapping
@@ -963,6 +1004,7 @@ def forge_loader(sd: os.PathLike, additional_state_dicts: list[os.PathLike] = No
 
     backend.args.dynamic_args.kontext = "kontext" in str(sd).lower()
     backend.args.dynamic_args.qwen_image21 = repo_name == "Qwen/Qwen-Image-2.1"
+    backend.args.dynamic_args.qwen21 = backend.args.dynamic_args.qwen_image21
     backend.args.dynamic_args.edit = ("qwen" in str(sd).lower() and "edit" in str(sd).lower()) or backend.args.dynamic_args.qwen_image21
     backend.args.dynamic_args.nunchaku = getattr(estimated_config, "nunchaku", False)
     backend.args.dynamic_args.klein = "klein" in repo_name

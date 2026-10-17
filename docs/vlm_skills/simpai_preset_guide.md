@@ -570,8 +570,12 @@ SimpAI UI guide skill:
   object, character and text regions, including exact literal text. Compiled
   Layout JSON bypasses wildcard batches, inline LoRA tags, style templates and
   automatic expansion; the explicitly selected LoRA stack remains available.
-- Defaults: 1024 x 1024, Euler, 50 steps, CFG 3, `sgm_uniform`, shift 5 and
-  unconditional skip layer 22. The workflow uses Comfy's native MOSS support:
+- Defaults: 1024 x 1024, Euler, 8 steps, CFG 1, `sgm_uniform`, shift 5 and
+  unconditional skip layer 22, with `lora.safetensors` from
+  `lodestones/MOSS-Image-SFT-8-steps-dmd` enabled at model strength 1.0.
+  Sampling steps remain editable; 8 is a default, not a fixed limit.
+  To use the original undistilled settings, disable the DMD LoRA and select
+  50 steps with CFG 3. The workflow uses Comfy's native MOSS support:
   official fused-QKV INT8 DiT and Comfy-Org Qwen3.5-9B W4A8 text encoder with
   `CLIPLoader(type=moss_image)`, and the shared Flux2 VAE. Retain native
   `multiplier=1`; a legacy `ModelSamplingSD3` override produces an invalid

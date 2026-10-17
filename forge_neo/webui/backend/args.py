@@ -163,6 +163,8 @@ class dynamic_args(metaclass=_DynamicArgsMeta):
     """Qwen-Image-2.1"""
     qwen_image21_image_slots: list[int] = []
     """Reference image insertion points for Qwen-Image-2.1"""
+    qwen21: bool = False
+    """Qwen-Image-2.1"""
     nunchaku: bool = False
     """Nunchaku (SVDQ) Models"""
     klein: bool = False
@@ -183,6 +185,8 @@ class dynamic_args(metaclass=_DynamicArgsMeta):
     """lq_latent & degrade_sigma for PiD"""
     context_handler: "IndexListContextHandler" = None
     """Context Handler for PiD"""
+    image_slots: list[int] = None
+    """Image Slots for Qwen-Image-2.1"""
     is_referencing: bool = False
     """Appending Reference Latent(s) (by. ImageStitch)"""
     ops: str = None
@@ -199,10 +203,17 @@ class dynamic_args(metaclass=_DynamicArgsMeta):
 
         cls.ref_latents.clear()
         cls.qwen_image21 = False
+        cls.qwen21 = False
         cls.qwen_image21_image_slots.clear()
         cls.concat_latent = None
         cls.lq_latent = [None, None]
         cls.context_handler = None
+        cls.image_slots = None
+
+    @classmethod
+    def can_reference(cls) -> bool:
+        return any(getattr(cls, key) for key in ("kontext", "edit", "qwen21", "klein", "wan", "anima", "krea2"))
+
 
 # Forge Neo compatibility helpers for direct source backend.
 def apply_preset(preset=None):
@@ -224,4 +235,3 @@ def apply_checkpoint(checkpoint):
     dynamic_args.klein = "klein" in text
     dynamic_args.anima = "anima" in text
     dynamic_args.wan = False
-

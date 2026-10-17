@@ -605,6 +605,23 @@ class Script(scripts.Script):
             (z_values_dropdown, lambda params: get_dropdown_update_from_params("Z", params)),
         )
 
+        def refresh_xyz_dropdowns(x_idx: int, y_idx: int, z_idx: int):
+
+            def get_choices(axis_idx: int):
+                if (axis := self.current_axis_options[axis_idx]).choices is not None:
+                    return gr.update(choices=axis.choices())
+                return gr.skip()
+
+            return [get_choices(x_idx), get_choices(y_idx), get_choices(z_idx)]
+
+        from modules_forge import main_entry
+
+        main_entry.on_refresh_checkpoint(
+            callback=refresh_xyz_dropdowns,
+            inputs=[x_type, y_type, z_type],
+            outputs=[x_values_dropdown, y_values_dropdown, z_values_dropdown],
+        )
+
         return [x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown, draw_legend, include_lone_images, include_sub_grids, no_fixed_seeds, vary_seeds_x, vary_seeds_y, vary_seeds_z, row_count, margin_size, csv_mode]
 
     def run(self, p, x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown, draw_legend, include_lone_images, include_sub_grids, no_fixed_seeds, vary_seeds_x, vary_seeds_y, vary_seeds_z, row_count, margin_size, csv_mode):

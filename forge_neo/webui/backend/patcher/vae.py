@@ -148,11 +148,13 @@ class VAE:
         self.input_channels = None
         self.pad_channel_value = None
 
+        self.output_channels = 3
+        self.upscale_index_formula = None
+        self.downscale_index_formula = None
+
         if not is_wan:
             self.upscale_ratio = 8
-            self.upscale_index_formula = None
             self.downscale_ratio = 8
-            self.downscale_index_formula = None
             self.latent_dim = 2
             self.latent_channels = int(model.z_dim) if is_qwen_image21 else (32 if is_mugen else int(model.config.latent_channels))  # 4 | 16 | 64
             self.memory_used_encode = lambda shape, dtype: (1767 * shape[2] * shape[3]) * memory_management.dtype_size(dtype)
@@ -165,6 +167,7 @@ class VAE:
                 self.pad_channel_value = 1.0
                 self.memory_used_encode = lambda shape, dtype: 1200 * shape[2] * shape[3] * memory_management.dtype_size(dtype)
                 self.memory_used_decode = lambda shape, dtype: 1800 * shape[2] * shape[3] * (16 * 16) * memory_management.dtype_size(dtype)
+                dtype = dtype or memory_management.vae_dtype(allowed_dtypes=[torch.bfloat16, torch.float16, torch.float32])
             elif is_flux2:
                 self.upscale_ratio = 16
                 self.downscale_ratio = 16
@@ -180,6 +183,8 @@ class VAE:
             self.latent_channels = int(model.config.z_dim)  # 16
             self.memory_used_encode = lambda shape, dtype: (1500 if shape[2] <= 4 else 6000) * shape[3] * shape[4] * memory_management.dtype_size(dtype)
             self.memory_used_decode = lambda shape, dtype: (2200 if shape[2] <= 4 else 7000) * shape[3] * shape[4] * (8 * 8) * memory_management.dtype_size(dtype)
+
+            dtype = dtype or memory_management.vae_dtype(allowed_dtypes=[torch.bfloat16, torch.float16, torch.float32])
 
         self.output_channels = 4 if is_qwen_image21 else 3
         self.first_stage_model = model.eval()
@@ -221,7 +226,7 @@ class VAE:
 
     def decode_tiled_(self, samples, tile_x=64, tile_y=64, overlap=16):
         decode_fn = lambda a: self.first_stage_model.decode(a.to(self.vae_dtype).to(self.device)).float()
-        output = self.process_output((tiled_scale(samples, decode_fn, tile_x // 2, tile_y * 2, overlap, upscale_amount=self.upscale_ratio, output_device=self.output_device) + tiled_scale(samples, decode_fn, tile_x * 2, tile_y // 2, overlap, upscale_amount=self.upscale_ratio, output_device=self.output_device) + tiled_scale(samples, decode_fn, tile_x, tile_y, overlap, upscale_amount=self.upscale_ratio, output_device=self.output_device)) / 3.0)
+        output = self.process_output((tiled_scale(samples, decode_fn, tile_x // 2, tile_y * 2, overlap, upscale_amount=self.upscale_ratio, out_channels=self.output_channels, output_device=self.output_device) + tiled_scale(samples, decode_fn, tile_x * 2, tile_y // 2, overlap, upscale_amount=self.upscale_ratio, out_channels=self.output_channels, output_device=self.output_device) + tiled_scale(samples, decode_fn, tile_x, tile_y, overlap, upscale_amount=self.upscale_ratio, out_channels=self.output_channels, output_device=self.output_device)) / 3.0)
         _log_source_tensor_stats("vae.tiled_process_output", output, vae_dtype=self.vae_dtype, channel_dim=1, enabled=self.trace_tensor_stats)
         return output
 

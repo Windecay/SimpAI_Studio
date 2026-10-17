@@ -1,4 +1,4 @@
-# https://github.com/Comfy-Org/ComfyUI/blob/v0.11.0/comfy/lora.py
+# https://github.com/Comfy-Org/ComfyUI/blob/v0.38.0/comfy/lora.py
 
 """
 This file is part of ComfyUI.
@@ -222,15 +222,34 @@ def model_lora_keys_unet(model, key_map={}):
             if k.endswith(".weight") and ".linear1." in k:
                 key_map["{}".format(k.replace(".linear1.weight", ".linear1_qkv"))] = (k, (0, 0, hidden_size * 3))
 
+    if "moss-image" in _model_name:
+        for key in sdk:
+            if not key.startswith("diffusion_model.") or not key.endswith(".weight"):
+                continue
+            name = key[len("diffusion_model."):-len(".weight")]
+            targets = [(name, key)]
+            if name.endswith(".proj.qkv"):
+                width = sd[key].shape[0] // 3
+                targets.extend((name[:-3] + part, (key, (0, index * width, width))) for index, part in enumerate(("q", "k", "v")))
+            for name, target in targets:
+                key_map[name] = target
+                key_map[f"transformer.{name}"] = target
+                key_map[f"lycoris_{name.replace('.', '_')}"] = target
+
     if "qwen" in _model_name:
         for k in sdk:
             if k.startswith("diffusion_model.") and k.endswith(".weight"):  # QwenImage lora format
                 key_lora = k[len("diffusion_model.") : -len(".weight")]
-                # Direct mapping for transformer_blocks format (QwenImage LoRA format)
-                key_map["{}".format(key_lora)] = k
-                # Support transformer prefix format
-                key_map["transformer.{}".format(key_lora)] = k
-                key_map["lycoris_{}".format(key_lora.replace(".", "_"))] = k  # SimpleTuner lycoris format
+                targets = [(key_lora, k)]
+                if key_lora.endswith(".img_mlp.gate_up"):  # Qwen Image 2.1 fuses gate_layer/proj at load; LoRAs address the halves
+                    half = sd[k].shape[0] // 2
+                    targets = [(key_lora.replace(".gate_up", ".gate_layer"), (k, (0, 0, half))), (key_lora.replace(".gate_up", ".proj"), (k, (0, half, half)))]
+                for key_lora, to in targets:
+                    # Direct mapping for transformer_blocks format (QwenImage LoRA format)
+                    key_map["{}".format(key_lora)] = to
+                    # Support transformer prefix format
+                    key_map["transformer.{}".format(key_lora)] = to
+                    key_map["lycoris_{}".format(key_lora.replace(".", "_"))] = to  # SimpleTuner lycoris format
 
     if "lumina" in _model_name or "z-image" in _model_name:
         diffusers_keys = z_image_to_diffusers(model.diffusion_model.config, output_prefix="diffusion_model.")

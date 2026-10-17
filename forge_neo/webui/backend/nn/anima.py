@@ -8,7 +8,7 @@
 import math
 import os
 import time
-from typing import Callable, Optional
+from typing import Callable, Final, Optional
 
 import comfy_kitchen as ck
 import torch
@@ -22,6 +22,12 @@ from backend.attention import attention_function
 from backend.memory_management import is_device_mps
 from backend.operations import scaled_dot_product_attention
 from backend.utils import pad_to_patch_size
+
+BLOCK_MAPPINGS: Final[dict[tuple[int, int], list[int]]] = {
+    (28, 40): [0, 1, 1, 2, 3, 3, 4, 5, 5, 6, 7, 7, 8, 9, 9, 10, 11, 11, 12, 13, 14, 14, 15, 16, 16, 17, 18, 18, 19, 20, 20, 21, 22, 22, 23, 24, 24, 25, 26, 27],
+    (28, 52): [0, 1, 1, 1, 2, 3, 3, 3, 4, 5, 5, 5, 6, 7, 7, 7, 8, 9, 9, 9, 10, 11, 11, 11, 12, 13, 14, 14, 14, 15, 16, 16, 16, 17, 18, 18, 18, 19, 20, 20, 20, 21, 22, 22, 22, 23, 24, 24, 24, 25, 26, 27],
+    (40, 52): [0, 1, 2, 2, 3, 4, 5, 5, 6, 7, 8, 8, 9, 10, 11, 11, 12, 13, 14, 14, 15, 16, 17, 17, 18, 19, 20, 20, 21, 22, 23, 23, 24, 25, 26, 26, 27, 28, 29, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36, 37, 38, 39],
+}
 
 
 _SOURCE_BACKEND_ANIMA_FORWARD_CALLS = 0

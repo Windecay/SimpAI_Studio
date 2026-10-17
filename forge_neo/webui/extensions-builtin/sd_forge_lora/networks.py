@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from backend.args import dynamic_args
 from backend.anima_lora import remap_anima_lora_key_map
 from backend.logging import setup_logger
+from backend.nn.anima import BLOCK_MAPPINGS
 from backend.patcher.lora import load_lora, model_lora_keys_clip, model_lora_keys_unet
 from backend.utils import load_torch_file
 from modules import errors, scripts, sd_models, shared

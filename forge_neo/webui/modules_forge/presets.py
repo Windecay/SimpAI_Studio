@@ -12,6 +12,7 @@ class PresetArch(Enum):
     lumina = 8  # Lumina-Image-2.0
     zit = 9  # Z-Image-Turbo
     anima = 10  # Anima
+    moss = 11  # MOSS-Image
 
     @staticmethod
     def choices() -> list[str]:
@@ -19,6 +20,7 @@ class PresetArch(Enum):
 
 
 SAMPLERS = {
+    PresetArch.moss: "Euler",
     PresetArch.sd: "Euler a",
     PresetArch.xl: "Euler a",
     PresetArch.flux: "Euler",
@@ -32,6 +34,7 @@ SAMPLERS = {
 }
 
 SCHEDULERS = {
+    PresetArch.moss: "SGM Uniform",
     PresetArch.sd: "Automatic",
     PresetArch.xl: "Automatic",
     PresetArch.flux: "Beta",
@@ -45,6 +48,7 @@ SCHEDULERS = {
 }
 
 STEPS = {
+    PresetArch.moss: 50,
     PresetArch.sd: 32,
     PresetArch.xl: 24,
     PresetArch.flux: 20,
@@ -58,6 +62,7 @@ STEPS = {
 }
 
 CFG = {
+    PresetArch.moss: 3.0,
     PresetArch.sd: 6.0,
     PresetArch.xl: 4.5,
     PresetArch.flux: 1.0,
@@ -75,6 +80,7 @@ DISTILL = {
 }
 
 SHIFT = {
+    PresetArch.moss: 5.0,
     PresetArch.xl: -9.0,
     PresetArch.lumina: 6.0,
     PresetArch.zit: 9.0,

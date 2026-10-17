@@ -69,6 +69,7 @@ set_vram_to = VRAMState.NORMAL_VRAM
 cpu_state = CPUState.GPU
 
 VAE_ALWAYS_TILED: bool = False
+UNET_ALWAYS_OFFLOAD: bool = False
 
 FLOAT8_TYPES: list[torch.dtype] = []
 
@@ -470,7 +471,7 @@ elif is_intel_xpu():
 SUPPORT_FP8_OPS: bool = None
 
 if is_amd():
-    AMD_RDNA2_AND_OLDER_ARCH = ("gfx1030", "gfx1031", "gfx1010", "gfx1011", "gfx1012", "gfx906", "gfx900", "gfx803")
+    AMD_RDNA2_AND_OLDER_ARCH = ("gfx1030", "gfx1031", "gfx1032", "gfx1033", "gfx1034", "gfx1035", "gfx1036", "gfx1010", "gfx1011", "gfx1012", "gfx906", "gfx900", "gfx803")
 
     try:
         arch = torch.cuda.get_device_properties(get_torch_device()).gcnArchName
@@ -1041,7 +1042,7 @@ def load_models_gpu(models: list["ModelPatcher"], memory_required: float = 0, fo
 
             logger.info("Using adaptive low VRAM loading: free {:.2f} MB ({}), reserved {:.2f} MB, budget {}".format(current_free_mem / (1024 * 1024), _free_memory_source_name(torch_dev), reserved_model_memory / (1024 * 1024), _format_lowvram_budget(lowvram_model_memory)))
 
-        if vram_set_state is VRAMState.NO_VRAM:
+        if vram_set_state is VRAMState.NO_VRAM or (UNET_ALWAYS_OFFLOAD and type(loaded_model.model).__name__.startswith("Unet")):
             lowvram_model_memory = 0.1
 
         loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
@@ -1286,7 +1287,7 @@ def vae_offload_device() -> torch.device:
     return get_torch_device() if args.gpu_only else cpu
 
 
-def vae_dtype(device=None, allowed_dtypes=None) -> torch.dtype:
+def vae_dtype(device: torch.device = None, allowed_dtypes: list[torch.dtype] = [torch.bfloat16, torch.float32]) -> torch.dtype:
     if args.fp16_vae:
         return torch.float16
     if args.bf16_vae:
@@ -1294,8 +1295,11 @@ def vae_dtype(device=None, allowed_dtypes=None) -> torch.dtype:
     if args.fp32_vae:
         return torch.float32
 
-    if should_use_bf16(vae_device()):
-        return torch.bfloat16
+    for d in allowed_dtypes:
+        if d is torch.float16 and should_use_fp16(device or vae_device()):
+            return d
+        if d is torch.bfloat16 and should_use_bf16(device or vae_device()):
+            return d
 
     return torch.float32
 
@@ -1691,6 +1695,19 @@ def supports_mxfp8_compute(device: torch.device = None) -> bool:
 
     props = torch.cuda.get_device_properties(device)
     if props.major < 10:
+        return False
+
+    return True
+
+
+def supports_int8_compute(device: torch.device = None) -> bool:
+    if (device is not None and is_device_mps(device)) or mps_mode():
+        return False
+
+    if is_intel_xpu():
+        return False
+
+    if is_directml_enabled():
         return False
 
     return True

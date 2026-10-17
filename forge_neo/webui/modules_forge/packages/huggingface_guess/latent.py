@@ -1,4 +1,4 @@
-# reference: https://github.com/Comfy-Org/ComfyUI/blob/v0.9.0/comfy/latent_formats.py
+# reference: https://github.com/Comfy-Org/ComfyUI/blob/v0.38.0/comfy/latent_formats.py
 
 import torch
 
@@ -6,6 +6,7 @@ import torch
 class LatentFormat:
     scale_factor: float = 1.0
     latent_channels: int = 4
+    spacial_downscale_ratio = 8
     latent_rgb_factors: list[list[float]] = None
     latent_rgb_factors_bias: list[list[float]] = None
     taesd_decoder_name: str = None
@@ -117,6 +118,8 @@ class Wan21(LatentFormat):
 
 
 class QwenImage21(LatentFormat):
+    spacial_downscale_ratio = 16
+    taesd_decoder_name = "taeqi2_1_decoder"
     latent_rgb_factors = [
         [-0.0158, -0.0115, -0.0174], [ 0.0030,  0.0120,  0.0027], [ 0.0637,  0.0470, -0.0127], [ 0.0360,  0.0661, -0.0030],
         [ 0.0159,  0.0181,  0.0082], [ 0.0132,  0.0326,  0.0169], [ 0.0191,  0.0261,  0.0136], [-0.0146, -0.0276, -0.0361],
@@ -170,6 +173,7 @@ class QwenImage21(LatentFormat):
 class Flux2(LatentFormat):
     def __init__(self):
         self.latent_channels = 128
+        self.spacial_downscale_ratio = 16
         self.latent_rgb_factors = [
             [ 0.0058,  0.0113,  0.0073],
             [ 0.0495,  0.0443,  0.0836],
@@ -205,7 +209,7 @@ class Flux2(LatentFormat):
             [-0.0111, -0.0460, -0.0614],
         ]
         self.latent_rgb_factors_bias = [-0.0329, -0.0718, -0.0851]
-        self.latent_rgb_factors_reshape = lambda t: t.reshape(t.shape[ 0], 32, 2, 2, t.shape[-2], t.shape[-1]).permute(0, 1, 4, 2, 5, 3).reshape(t.shape[ 0], 32, t.shape[-2] * 2, t.shape[-1] * 2)
+        self.latent_rgb_factors_reshape = lambda t: t.reshape(t.shape[0], 32, 2, 2, t.shape[-2], t.shape[-1]).permute(0, 1, 4, 2, 5, 3).reshape(t.shape[0], 32, t.shape[-2] * 2, t.shape[-1] * 2)
         self.taesd_decoder_name = "taef2_decoder"
 
     def process_in(self, latent):

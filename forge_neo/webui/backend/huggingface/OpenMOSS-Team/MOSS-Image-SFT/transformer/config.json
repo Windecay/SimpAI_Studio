@@ -1,0 +1,9 @@
+{
+  "_class_name": "MOSSImageTransformer",
+  "dim": 3072,
+  "ffn_dim": 8192,
+  "num_heads": 24,
+  "num_layers": 42,
+  "text_dim": 4096,
+  "latent_channels": 128
+}

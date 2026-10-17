@@ -109,6 +109,10 @@ def compile_conditions(cond):
 
     result = dict(cross_attn=cross_attn, pooled_output=pooled_output, model_conds=dict(c_crossattn=ConditionCrossAttn(cross_attn), y=Condition(pooled_output)))
 
+    if "attention_mask" in cond:
+        result["model_conds"]["c_crossattn"] = Condition(cross_attn)
+        result["model_conds"]["attention_mask"] = Condition(cond["attention_mask"].squeeze(-1))
+
     if "guidance" in cond:
         result["model_conds"]["guidance"] = Condition(cond["guidance"])
 
