@@ -6,6 +6,8 @@ def prompt_target_key(backend_engine, task_method, target_text):
     haystack = f"{backend_engine} {task_method} {target_text}".lower()
     if "minimax" in haystack and "h3" in haystack:
         return "minimax_h3"
+    if re.search(r"(?:^|[^a-z0-9])moss[ ._-]?image(?:[^a-z0-9]|$)", haystack):
+        return "moss_image"
     if re.search(r"(?:^|[^a-z0-9])anima(?:[^a-z0-9]|$)", haystack):
         return "anima_aio"
     if any(token in haystack for token in ("il_v_pre", "illustrious", "chenkin", "noob", "newbie", "pony", "animagine", "sd15_aio")):
@@ -25,3 +27,9 @@ def prompt_target_key(backend_engine, task_method, target_text):
     if "_cn" in haystack or "中文" in haystack or "chinese" in haystack:
         return "natural_zh"
     return "natural_en"
+
+
+def prompt_skill_docs_for_target(key):
+    if key == "moss_image":
+        return {"default": {"en": ["moss_image_prompting_en.md"], "cn": ["moss_image_prompting_cn.md"]}}
+    return {}

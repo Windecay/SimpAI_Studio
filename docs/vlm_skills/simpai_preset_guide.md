@@ -552,10 +552,20 @@ SimpAI UI guide skill:
 - `MOSS-Image` is a text-to-image-only preset based on MOSS-Image-SFT. It does not
   accept reference images, masks, video or audio, and does not provide an AIO
   detail-enhancement route. Use a compatible editing preset for follow-up edits.
-- Write natural Chinese or English descriptions of the complete desired scene:
-  subject, composition, appearance, environment and lighting. Preserve requested
-  on-image wording in its original language inside quotes. Do not insert H3/Qwen
-  image-reference labels or convert the prompt to Danbooru tags.
+- Use the official MOSS prompt skill returned by `simpai.prompts.guidance`.
+  Ordinary scenes use a caption: English descriptive prose by default, or the
+  language explicitly requested by the user. Preserve visible wording in its
+  original language, including punctuation and line breaks. Do not insert
+  H3/Qwen image-reference labels or convert the prompt to Danbooru tags.
+- For text placement, several panels or controlled object relationships, use
+  the Regional button at the bottom of the Studio prompt field. The global
+  description is optional when regions are present. The editable draft
+  uses absolute top-left pixel boxes; applying it produces one-line
+  `abs_centralized` / `yxyx` Layout JSON for the positive prompt. Keep layout
+  and output dimensions identical and use multiples of 16. The editor accepts
+  object, character and text regions, including exact literal text. Compiled
+  Layout JSON bypasses wildcard batches, inline LoRA tags, style templates and
+  automatic expansion; the explicitly selected LoRA stack remains available.
 - Defaults: 1024 x 1024, Euler, 50 steps, CFG 3, `sgm_uniform`, shift 5 and
   unconditional skip layer 22. The workflow uses Comfy's native MOSS support:
   official fused-QKV INT8 DiT and Comfy-Org Qwen3.5-9B W4A8 text encoder with

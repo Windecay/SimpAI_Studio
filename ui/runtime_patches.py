@@ -102,6 +102,22 @@ _GRADIO_JS_PATCH_READER_CACHE: dict[str, Callable[[Path], str | None]] | None = 
 _BLOCK_GET_CONFIG_COMPAT_SENTINEL = "_simpai_gradio6_block_get_config_compat"
 _HEARTBEAT_ORIGINAL = "this.heartbeat_event = this.stream(heartbeat_url);"
 _HEARTBEAT_CLOSE_ORIGINAL = "    this.closed = true;\n    close_stream(this.stream_status, this.abort_controller);"
+_FILE_PREVIEW_ORIGINAL_KEY = "each(tbody, 23, () => get(normalized_files), (file) => file.url,"
+_FILE_PREVIEW_PATCHED_KEY = (
+    "each(tbody, 23, () => get(normalized_files), "
+    "(_file, simpleai_file_row_index) => simpleai_file_row_index,"
+)
+
+
+def _asset_needs_file_preview_patch(text: str) -> bool:
+    return "function FilePreview(" in text and _FILE_PREVIEW_ORIGINAL_KEY in text
+
+
+def _patch_file_preview_asset(text: str) -> str:
+    """Repeated uploads share a URL; each displayed row still needs a unique key."""
+    if not _asset_needs_file_preview_patch(text):
+        return text
+    return text.replace(_FILE_PREVIEW_ORIGINAL_KEY, _FILE_PREVIEW_PATCHED_KEY, 1)
 
 
 def _asset_needs_heartbeat_patch(text: str) -> bool:
@@ -642,6 +658,7 @@ def _read_patched_gradio_js_asset(path: Path) -> str | None:
             patched = _patch_connection_reload_asset(patched)
         if not heartbeat_disabled:
             patched = _patch_heartbeat_asset(patched)
+            patched = _patch_file_preview_asset(patched)
         if patched == text:
             return None
         _GRADIO_JS_PATCH_CACHE.clear()
@@ -682,8 +699,12 @@ def _discover_gradio_js_patch_readers() -> dict[str, Callable[[Path], str | None
             not _env_flag_enabled("SIMPAI_DISABLE_GRADIO_ASSET_PATCHES")
             and _asset_needs_heartbeat_patch(text)
         )
+        needs_file_preview = (
+            not _env_flag_enabled("SIMPAI_DISABLE_GRADIO_ASSET_PATCHES")
+            and _asset_needs_file_preview_patch(text)
+        )
         patch_count = sum((needs_app_tree, needs_image_drop, needs_connection_reload))
-        if patch_count > 1 or needs_heartbeat:
+        if patch_count > 1 or needs_heartbeat or needs_file_preview:
             readers[path.name] = _read_patched_gradio_js_asset
         elif needs_app_tree:
             readers[path.name] = _read_patched_app_tree_asset

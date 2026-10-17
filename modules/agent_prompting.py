@@ -97,7 +97,7 @@ def read_skill(request, context):
 
 def guidance(entry, spec, lang):
     from modules import minimax_h3_prompt_compiler as h3
-    from modules.prompt_targets import prompt_target_key
+    from modules.prompt_targets import prompt_target_key, prompt_skill_docs_for_target
     lang = "cn" if lang == "cn" else "en"
     schema = entry.get("schema") or {}
     info = (schema.get("per_theme") or {}).get(spec["theme"]) or {}
@@ -110,6 +110,7 @@ def guidance(entry, spec, lang):
               "backend_engine": entry.get("backend_engine") or "", "text_encoder": encoder,
               "prompt_skill_docs": schema.get("prompt_skill_docs") or {}}
     target["key"] = prompt_target_key(target["backend_engine"], method, f'{entry["name"]} {encoder} {model_hint}')
+    target["prompt_skill_docs"] = target["prompt_skill_docs"] or prompt_skill_docs_for_target(target["key"])
     compiler = h3.target_compiler({**target, "prompt_compiler": info.get("prompt_compiler") or schema.get("prompt_compiler")})
     if compiler:
         target["prompt_compiler"] = compiler
@@ -139,6 +140,8 @@ def guidance(entry, spec, lang):
             "workflow": "Read the selected skills, use local tag lookup when available, write the final prompt in the required language, then validate and preview. Put the user's original request in instruction and the final model prompt in prompt. Do not infer model limits from an unreviewed output."}
     if key == "flux3_natural":
         result.update(preferred_prompt_language="en", requires_final_prompt=False)
+    if key == "moss_image":
+        result.update(preferred_prompt_language="en", format="caption_or_layout_json", requires_final_prompt=False)
     if spec.get("prompt_policy", {}).get("mode") == "preset_fixed":
         result.update({"automatic_routing": False, "format": "preset_fixed", "requires_final_prompt": False,
                        "prompt_policy": spec["prompt_policy"], "skills": [], "skill_ids": [],

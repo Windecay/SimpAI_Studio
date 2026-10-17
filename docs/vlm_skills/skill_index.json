@@ -8,6 +8,32 @@
   },
   "areas": [
     {
+      "key": "moss_image_prompting_en",
+      "title": "MOSS-Image Prompting",
+      "doc": "moss_image_prompting_en.md",
+      "language": "en",
+      "ownership": "hybrid",
+      "source": {
+        "repository": "OpenMOSS/MOSS-Image",
+        "path": "skills/moss-image-prompt-enhancer",
+        "upstream_files": ["SKILL.md", "references/layout.md", "scripts/compile_prompt.py"]
+      },
+      "contract_summary": "MOSS caption or spatial Layout; preserve exact visible wording, use the regional editor for centered-coordinate conversion."
+    },
+    {
+      "key": "moss_image_prompting_cn",
+      "title": "MOSS-Image 提示词指引",
+      "doc": "moss_image_prompting_cn.md",
+      "language": "cn",
+      "ownership": "hybrid",
+      "source": {
+        "repository": "OpenMOSS/MOSS-Image",
+        "path": "skills/moss-image-prompt-enhancer",
+        "upstream_files": ["SKILL.md", "references/layout.md", "scripts/compile_prompt.py"]
+      },
+      "contract_summary": "MOSS 自然语言或区域 Layout；保留画面文字原文，由区域编辑器转换中心坐标。"
+    },
+    {
       "key": "ownership",
       "title": "Skill Ownership And Edit Boundaries",
       "doc": "skill_ownership.md",

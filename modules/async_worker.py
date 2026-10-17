@@ -1996,13 +1996,25 @@ def worker():
 
     def process_prompt(async_task, prompt, negative_prompt, base_model_additional_loras, image_number, disable_seed_increment, use_expansion, use_style,
                        use_synthetic_refiner, current_progress, advance_progress=False):
+        from modules.moss_image_prompt import validate_prompt as validate_moss_prompt
+        moss_layout = (
+            "moss_image" in str(async_task.task_method or "").lower().replace("-", "_")
+            and str(prompt).lstrip().startswith("{")
+        )
+        if moss_layout:
+            validate_moss_prompt(prompt)
+            use_expansion = False
+            use_style = False
+        layout_prompt = prompt if moss_layout else None
         lora_filenames = modules.util.remove_performance_lora(modules.config.lora_filenames,
                                                               async_task.performance_selection)
         prompt = prepare_stack_params(
-            prompt, async_task.params_backend, lora_filenames,
+            "" if moss_layout else prompt, async_task.params_backend, lora_filenames,
             supports_stack=async_task.task_class in flags.comfy_classes or async_task.task_class == 'Fooocus',
             lang=async_task.simpleai_lang,
         )
+        if moss_layout:
+            prompt = layout_prompt
         preserve_prompt_newlines = async_task.task_class in flags.comfy_classes
         if preserve_prompt_newlines:
             prompts = remove_empty_str([safe_str(prompt)], default='')
@@ -2043,12 +2055,16 @@ def worker():
                 '[Wildcards] Preserving plain bracket groups for MiniMax H3 prompt: task_method=%s',
                 async_task.task_method,
             )
-        prompt, wildcards_arrays, arrays_mult, seed_fixed = wildcards.compile_arrays(
-            prompt,
-            task_rng,
-            user_did=async_task.user_did,
-            allow_plain_bracket_arrays=allow_plain_bracket_arrays,
-        )
+        if moss_layout:
+            # JSON arrays and literal text must not become wildcard batches.
+            wildcards_arrays, arrays_mult, seed_fixed = [], 0, True
+        else:
+            prompt, wildcards_arrays, arrays_mult, seed_fixed = wildcards.compile_arrays(
+                prompt,
+                task_rng,
+                user_did=async_task.user_did,
+                allow_plain_bracket_arrays=allow_plain_bracket_arrays,
+            )
         needs_vlm_translation = (
             not async_task.task_method.lower().endswith('_cn')
             and async_task.task_class not in ['HyDiT', 'Wan', 'Qwen', 'Z-image']
@@ -2060,8 +2076,9 @@ def worker():
                 task_seed = async_task.seed % (constants.MAX_SEED + 1)
 
             task_rng = random.Random(task_seed)  # may bind to inpaint noise in the future
-            task_prompt = wildcards.apply_arrays(prompt, i, wildcards_arrays, arrays_mult)
-            task_prompt = wildcards.replace_wildcard(task_prompt, task_rng, user_did=async_task.user_did)
+            task_prompt = prompt if moss_layout else wildcards.apply_arrays(prompt, i, wildcards_arrays, arrays_mult)
+            if not moss_layout:
+                task_prompt = wildcards.replace_wildcard(task_prompt, task_rng, user_did=async_task.user_did)
             task_negative_prompt = wildcards.apply_wildcards(negative_prompt, task_rng, user_did=async_task.user_did)
             task_extra_positive_prompts = [wildcards.apply_wildcards(pmt, task_rng, user_did=async_task.user_did) for pmt in extra_positive_prompts]
             task_extra_negative_prompts = [wildcards.apply_wildcards(pmt, task_rng, user_did=async_task.user_did) for pmt in extra_negative_prompts]
@@ -2075,7 +2092,7 @@ def worker():
             positive_basic_workloads = []
             negative_basic_workloads = []
 
-            task_styles = async_task.style_selections.copy()
+            task_styles = [] if moss_layout else async_task.style_selections.copy()
             if use_style:
                 placeholder_replaced = False
 

@@ -220,7 +220,7 @@
             if (!state?.active) return '';
             const presetName = getCanvasAgentSettings().outpaintPreset || 'QwenOutpaint';
             const presets = [
-                ['QwenOutpaint', t('Qwen Outpaint', 'Qwen扩图')],
+                ['QwenOutpaint', t('Qwen Outpaint', 'Qwen2.1扩图')],
                 ['OneKey-Outpaint', t('Flux Outpaint', 'Flux扩图')]
             ];
             if (!presets.some(([name]) => name === presetName)) presets.push([presetName, presetName]);

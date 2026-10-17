@@ -5,6 +5,10 @@
     let modal = null;
     let toast = null;
     let boundButton = null;
+    let regionalPromptButton = null;
+    let regionalPromptField = null;
+    let regionalPromptObserver = null;
+    let regionalPromptFrame = 0;
     let pending = false;
     let pendingActionId = "";
     let pendingAgentService = null;
@@ -526,6 +530,7 @@
 
     function handlePresetSystemParamsUpdated(event) {
         const detail = event?.detail && typeof event.detail === "object" ? event.detail : null;
+        bindRegionalPromptButton(detail || paramsSource());
         syncPresetPromptAgentHint(detail || paramsSource());
     }
 
@@ -541,6 +546,7 @@
                 hidePresetPromptAgentHint();
                 return;
             }
+            bindRegionalPromptButton(latestParams);
             syncPresetPromptAgentHint(latestParams);
         }, 80);
     }
@@ -1072,6 +1078,137 @@
         syncPromptActionSpinner();
     }
 
+    function isMossPromptTarget(params = paramsSource()) {
+        const preset = String(params.__preset || params.preset || "").trim();
+        return /(?:^|[^a-z0-9])moss[._ -]?image(?:[^a-z0-9]|$)/i.test(
+            preset || String(params.task_method || ""),
+        );
+    }
+
+    function positionRegionalPromptButton() {
+        regionalPromptFrame = 0;
+        const button = regionalPromptButton, field = regionalPromptField;
+        if (!button?.isConnected || !field?.isConnected) return;
+        const host = field.parentElement.getBoundingClientRect();
+        const anchors = [rootById("tag_helper_btn"), field.parentElement.querySelector(".sai-vpe-entry")]
+            .map(node => node?.getBoundingClientRect()).filter(rect => rect?.width > 0 && rect.left >= host.left && rect.right <= host.right + 1);
+        const anchorLeft = anchors.length ? Math.min(...anchors.map(rect => rect.left)) : host.right;
+        button.style.right = `${Math.max(8, Math.ceil(host.right - anchorLeft + 8))}px`;
+    }
+
+    function scheduleRegionalPromptPosition() {
+        if (!regionalPromptFrame) regionalPromptFrame = requestAnimationFrame(positionRegionalPromptButton);
+    }
+
+    function bindRegionalPromptButton(params = paramsSource()) {
+        const field = fieldById("positive_prompt");
+        if (!field || field.readOnly || !isMossPromptTarget(params)) {
+            regionalPromptButton?.remove();
+            regionalPromptField?.parentElement?.classList.remove("sai-rjp-input-host");
+            regionalPromptObserver?.disconnect();
+            regionalPromptButton = null;
+            regionalPromptField = null;
+            return;
+        }
+        if (regionalPromptField !== field || !regionalPromptButton?.isConnected) {
+            regionalPromptButton?.remove();
+            regionalPromptField?.parentElement?.classList.remove("sai-rjp-input-host");
+            regionalPromptObserver?.disconnect();
+            regionalPromptField = field;
+            regionalPromptButton = document.createElement("button");
+            regionalPromptButton.type = "button";
+            regionalPromptButton.className = "sai-rjp-entry";
+            regionalPromptButton.innerHTML = '<i class="fa-solid fa-vector-square" aria-hidden="true"></i><span></span>';
+            regionalPromptButton.addEventListener("click", event => {
+                event.preventDefault(); event.stopPropagation();
+                openRegionalPromptEditor(field);
+            });
+            field.parentElement.classList.add("sai-rjp-input-host");
+            field.insertAdjacentElement("afterend", regionalPromptButton);
+            if (typeof ResizeObserver === "function") {
+                regionalPromptObserver = new ResizeObserver(scheduleRegionalPromptPosition);
+                regionalPromptObserver.observe(field);
+                const tags = rootById("tag_helper_btn");
+                if (tags) regionalPromptObserver.observe(tags);
+            }
+        }
+        const label = currentLang() === "en" ? "Regional Prompt"
+            : window.localization?.["Regional Prompt"] || "Regional Prompt";
+        regionalPromptButton.querySelector("span").textContent = currentLang() === "en" ? "Regional"
+            : window.localization?.["Regional"] || "Regional";
+        regionalPromptButton.title = label;
+        regionalPromptButton.setAttribute("aria-label", label);
+        regionalPromptButton.disabled = field.disabled || pending || isGenerationActive();
+        scheduleRegionalPromptPosition();
+    }
+
+    function currentPromptImageSize() {
+        const widgets = typeof _rc_getResolutionWidgets === "function" ? _rc_getResolutionWidgets()
+            : Array.from(document.querySelectorAll(".simpai-resolution-control"));
+        const widget = widgets.find(node => node.getClientRects().length) || widgets[0];
+        if (widget?.querySelector('[data-role="random-toggle"]')?.checked) {
+            throw new Error(currentLang() === "en" ? "Disable random output dimensions before editing a layout."
+                : window.localization?.["Disable random output dimensions before editing a layout."] || "Disable random output dimensions before editing a layout.");
+        }
+        const info = widget?.__rc_render_info;
+        if (info?.effectiveW > 0 && info?.effectiveH > 0) return { width: info.effectiveW, height: info.effectiveH };
+        const width = Number(readControlValue("overwrite_width"));
+        const height = Number(readControlValue("overwrite_height"));
+        if (width > 0 && height > 0) return { width, height };
+        const selected = rootById("aspect_ratios_selection")?.querySelector("input:checked,select");
+        const params = paramsSource();
+        const match = String(selected?.value || params.aspect_ratios_selection || params.default_aspect_ratio || "").match(/(\d+)\s*[*x\u00d7]\s*(\d+)/);
+        if (match) return { width: Number(match[1]), height: Number(match[2]) };
+        throw new Error(currentLang() === "en" ? "Output dimensions are unavailable."
+            : window.localization?.["Output dimensions are unavailable."] || "Output dimensions are unavailable.");
+    }
+
+    function openRegionalPromptEditor(targetField = null) {
+        const editor = window.SimpAIRegionalJsonPrompt;
+        const field = promptField(targetField || fieldById("positive_prompt"));
+        if (!editor || !field || pending || isGenerationActive() || !isMossPromptTarget()) return;
+        const params = paramsSource();
+        const preset = String(params.__preset || params.preset || "");
+        const user = String(params.user_did || params.__user_did || "");
+        const original = String(field.value || "");
+        const localText = key => currentLang() === "en" ? key : (window.localization?.[key] || key);
+        try {
+            const size = currentPromptImageSize();
+            const host = editor.open({
+                value: original, ...size, langState: params, currentSize: currentPromptImageSize,
+                onApply(result) {
+                    const current = paramsSource();
+                    if (isGenerationActive() || !usablePromptField(field) || !isMossPromptTarget()
+                            || preset !== String(current.__preset || current.preset || "")
+                            || user !== String(current.user_did || current.__user_did || "")
+                            || String(field.value || "") !== original) {
+                        throw new Error(localText("The prompt or preset changed. Reopen the layout editor."));
+                    }
+                    const currentSize = currentPromptImageSize();
+                    if (result.width !== currentSize.width || result.height !== currentSize.height) {
+                        throw new Error(`${localText("Layout dimensions must match the output size")}: ${currentSize.width} x ${currentSize.height}`);
+                    }
+                    const history = promptHistory(field, true);
+                    rememberPrompt(field, history);
+                    history.applying = true;
+                    let applied;
+                    try { applied = setPromptFieldValue(field, result.prompt); }
+                    finally { history.applying = false; }
+                    if (!applied) throw new Error(localText("The prompt or preset changed. Reopen the layout editor."));
+                    rememberPrompt(field, history);
+                    lastAppliedPromptField = field;
+                    lastAppliedHistory = history;
+                    if (typeof syncPositivePromptMetaState === "function") syncPositivePromptMetaState();
+                    showSuccessToast({}, { agent_service_kind: "local_script" });
+                    return true;
+                },
+            });
+            if (host) closeModal(false);
+        } catch (error) {
+            window.alert?.(error.message);
+        }
+    }
+
     function openModal(field = null) {
         activePromptField = promptField(field);
         if (isGenerationActive()) return;
@@ -1085,14 +1222,14 @@
         requestAnimationFrame(() => node.querySelector('[data-prompt-action="close"]')?.focus?.());
     }
 
-    function closeModal() {
+    function closeModal(restoreFocus = true) {
         stopPromptActionSpinner();
         if (!modal) return;
         modal.classList.remove("is-open");
         modal.setAttribute("aria-hidden", "true");
         const instruction = modal.querySelector('[data-role="instruction"]');
         if (instruction) instruction.value = "";
-        if (lastFocused?.focus) requestAnimationFrame(() => lastFocused.focus());
+        if (restoreFocus && lastFocused?.focus) requestAnimationFrame(() => lastFocused.focus());
     }
 
     function hiddenTriggerButton() {
@@ -1314,6 +1451,7 @@
     }
 
     function bindButton() {
+        bindRegionalPromptButton();
         const button = promptButton();
         setButtonLabel();
         updatePromptHistoryControls();
@@ -1418,6 +1556,7 @@
     window.addEventListener("simpai:preset-nav-completed", handlePresetNavigationCompleted);
     window.addEventListener("simpai:workspace-restored", handleWorkspaceRestored);
     window.addEventListener("resize", handlePresetPromptAgentHintViewportChange, { passive: true });
+    window.addEventListener("resize", scheduleRegionalPromptPosition, { passive: true });
     window.addEventListener("scroll", handlePresetPromptAgentHintViewportChange, { capture: true, passive: true });
     window.visualViewport?.addEventListener("resize", handlePresetPromptAgentHintViewportChange, { passive: true });
     window.visualViewport?.addEventListener("scroll", handlePresetPromptAgentHintViewportChange, { passive: true });

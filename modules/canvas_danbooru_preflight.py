@@ -147,6 +147,14 @@ def prompt_preflight_check(payload):
         if prompt:
             add("pass", "qwen_image21_outpaint", "Qwen 2.1 outpaint prompt is present.")
 
+    elif target_key_lower == "moss_image" and prompt:
+        from modules.moss_image_prompt import validate_prompt
+        try:
+            layout = validate_prompt(prompt, data.get("width"), data.get("height"))
+            add("pass", "moss_image_prompt", "MOSS Layout is valid." if layout else "MOSS caption is present.")
+        except (ValueError, TypeError) as error:
+            add("block", "moss_image_layout", str(error), "Open the regional JSON editor to review the layout.")
+
     elif target_key_lower == "outpaint_instruction" or action.lower() == "outpaint" or purpose.lower() == "outpaint":
         if has_chinese:
             add("block", "outpaint_chinese", "FLUX outpaint prompt contains Chinese characters.", "Translate the final prompt into concise English before submitting.")

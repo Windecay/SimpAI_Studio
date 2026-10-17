@@ -292,6 +292,9 @@ def _superprompt_target_from_state(state):
     if prompt_compiler:
         target["prompt_compiler"] = prompt_compiler
     prompt_skill_docs = scene_frontend.get("prompt_skill_docs") if isinstance(scene_frontend, dict) else None
+    if not prompt_skill_docs:
+        from modules.prompt_targets import prompt_skill_docs_for_target
+        prompt_skill_docs = prompt_skill_docs_for_target(target_key)
     if isinstance(prompt_skill_docs, dict) and prompt_skill_docs:
         target["prompt_skill_docs"] = copy.deepcopy(prompt_skill_docs)
     capability = prompt_actions.prompt_action_capability_from_state(scene_state)
@@ -2620,6 +2623,21 @@ class VLM:
         )
         if not effective_target_kind and not skip_compiler_validation:
             prompt_target, _agent_prompt = _superprompt_target_from_state(state_data)
+            if prompt_target.get("key") == "moss_image":
+                from modules.moss_image_prompt import validate_prompt
+                try:
+                    revised_layout = validate_prompt(cleaned)
+                    if original.lstrip().startswith("{") and validate_prompt(original) and not revised_layout:
+                        raise ValueError("Keep the existing Layout JSON instead of replacing it with a caption")
+                except (ValueError, TypeError) as error:
+                    language = str(state_data.get("__lang") or "cn")
+                    return {
+                        "ok": False, "text": original, "action_id": action["id"], "media": public_media,
+                        "error": (
+                            f"MOSS Layout is invalid; the original prompt was preserved: {error}"
+                            if language == "en" else f"MOSS 布局格式不完整，已保留原提示词：{error}"
+                        ),
+                    }
             compiler = minimax_h3_prompt_compiler.target_compiler(prompt_target)
             if compiler:
                 compiler_validation = minimax_h3_prompt_compiler.validate_prompt(

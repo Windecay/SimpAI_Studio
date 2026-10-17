@@ -405,6 +405,9 @@ def _canvas_vlm_payload_has_image_references(payload):
 def _canvas_prompt_skill_docs_for_target(target=None, mode="text_to_image", language=None):
     target = target if isinstance(target, dict) else {}
     raw = target.get(VLM_PROMPT_SKILL_DOCS_FIELD)
+    if not raw:
+        from modules.prompt_targets import prompt_skill_docs_for_target
+        raw = prompt_skill_docs_for_target(target.get("key"))
     if not isinstance(raw, dict):
         return []
     branch = raw.get(str(mode or "text_to_image"))
@@ -469,6 +472,8 @@ def _canvas_vlm_prompt_rewrite_target_family(target_key, target=None):
         return "natural_en"
     if key == "natural_zh":
         return "natural_zh"
+    if key == "moss_image":
+        return "moss_image"
     if key == "flux3_natural" or "flux3" in task_method or "flux 3" in target_name:
         return "flux3"
     if key == "qwen_natural" or key.startswith("qwen"):
@@ -651,6 +656,13 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         format_rule = "Final prompt: coherent natural-language video prompt; preserve Chinese for Chinese user requests. Emphasize visible motion, camera movement, temporal continuity, and stable subject details."
     elif target_family == "audio":
         format_rule = "Final prompt: coherent natural-language audio-effects prompt; preserve Chinese for Chinese user requests. Describe audible events synchronized to visible video, without camera or visual-style instructions."
+    elif target_family == "moss_image":
+        format_rule = (
+            "Final prompt: a detailed MOSS-Image caption, English by default unless another language is requested. "
+            "Keep visible wording verbatim in its original language. "
+            "For an existing compiled Layout, preserve its schema, boxes, roles, exact text and optional fields; "
+            "only revise the requested captions. Use the regional JSON editor for new spatial layouts."
+        )
     elif target_family == "flux3":
         format_rule = (
             "Final prompt: English natural-language prose for FLUX 3. "
@@ -672,7 +684,11 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
     parts = [
         "SimpAI prompt rewrite mode.",
         "Rewrite the user request into one generator-ready prompt.",
-        "Output the final prompt text only. No explanation, markdown, JSON, labels, metadata, policy notes, or internal state.",
+        (
+            "Output only the final caption or the revised compiled MOSS Layout JSON. No explanation or Markdown."
+            if target_family == "moss_image" else
+            "Output the final prompt text only. No explanation, markdown, JSON, labels, metadata, policy notes, or internal state."
+        ),
         "If the request is brief, expand it with visible subject, action/pose, setting, composition/camera, lighting, mood, and concrete visual details.",
         "Do not return the unchanged original request unless it is already a detailed generator prompt.",
         "Preserve explicit adult/R18 intent for clearly adult requests, but do not add stronger sexual actions, unrelated fetish content, or extra subjects.",
@@ -703,7 +719,8 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         if skill_text:
             parts.append(
                 "Target prompt skill docs. Use these as target-language and prompt-content guidance only. "
-                "Ignore any action JSON schema or chat-card protocol mentioned in the docs; "
+                + ("MOSS Layout JSON is a model prompt, not an action schema. " if target_family == "moss_image" else "")
+                + "Ignore any action JSON schema or chat-card protocol mentioned in the docs; "
                 "the main WebUI SuperPrompt button still returns final prompt text only:\n"
                 + skill_text
             )

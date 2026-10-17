@@ -845,6 +845,7 @@
                 minimax_h3_image_edit: t('MiniMax H3 / image editing prompt', 'MiniMax H3 / 图像编辑提示词'),
                 qwen_natural: t('Qwen / Chinese natural prompt', 'Qwen / 中文自然语言提示词'),
                 flux3_natural: t('Flux3 image prompt', 'Flux3 图像提示词'),
+                moss_image: t('MOSS-Image prompt', 'MOSS-Image 提示词'),
                 wan_video_cn: t('Wan / Chinese video prompt', 'Wan / 中文视频动态提示词'),
                 flux_t5_en: t('FLUX/T5XXL / English prompt', 'FLUX/T5XXL / 英文提示词'),
                 sdxl_danbooru: t('SDXL / Danbooru tags', 'SDXL / Danbooru 标签'),
@@ -878,6 +879,7 @@
             if (key === 'anima') return 'Final prompt target: Anima hybrid prompt. Write English Anima/Danbooru anchors first, then short English nltags control sentences when useful. Do not write a generic Qwen paragraph or Chinese prompt.';
             if (key === 'wan_video_cn') return 'Final prompt target: Wan / UMT5 Chinese video prompt. Write Chinese natural language focused on action progression, camera movement, temporal continuity, and what remains stable.';
             if (key === 'flux3_natural') return 'Final prompt target: FLUX 3. Write English prose while keeping on-image wording verbatim in its original language inside straight double quotes. Describe the complete frame for text-to-image, or the specific change and preservation clause for editing. Refer to the first image, second image and so on naturally, without Qwen or H3 labels.';
+            if (key === 'moss_image') return 'Final prompt target: MOSS-Image. Read the MOSS prompt skill. Default to an English caption while preserving exact visible wording in its original language. Preserve the geometry and literal text of an existing Layout JSON. New layouts use the regional JSON editor and the same generation dimensions.';
             if (key === 'flux_t5_en') return 'Final prompt target: FLUX/T5XXL English prompt. The final prompt must be English natural language only; no Chinese characters.';
             if (key === 'sdxl_danbooru') return 'Final prompt target: SDXL/Danbooru tags. Output only comma-separated canonical English tags such as 1girl, solo, long_hair, looking_at_viewer, best_quality. Prefer several short known tags over one descriptive phrase. Do not write prose, full sentences, captions, explanations, Chinese, or made-up long underscore tags.';
             if (key === 'outpaint_instruction') return 'Final prompt target: FLUX outpaint English prompt. Write concise English only for seamless image-border expansion. Preserve the original subject, lighting, perspective, camera angle, style, color palette, and texture. Do not output Chinese, Danbooru tags, or only the word outpaint.';
@@ -1004,7 +1006,9 @@
             if (key === 'unknown_default' && isH3ImageEdit) key = 'minimax_h3_image_edit';
             if (key === 'unknown_default' && hasH3Compiler) key = 'minimax_h3';
             if (key === 'unknown_default') {
-                if (/flux[._ -]?3/i.test(haystack)) {
+                if (/(?:^|[^a-z0-9])moss[._ -]?image(?:[^a-z0-9]|$)/i.test(haystack)) {
+                    key = 'moss_image';
+                } else if (/flux[._ -]?3/i.test(haystack)) {
                     key = 'flux3_natural';
                 } else if (/(?:qwen(?:[\s_-]*image)?[\s_-]*2[._-]?1|qwen_image21)/i.test(haystack)) {
                     key = purposeText.includes('edit') ? 'qwen_image21_i2i' : 'qwen_image21_t2i';
@@ -1037,6 +1041,9 @@
             };
             if (hasH3Compiler) target.prompt_compiler = promptCompiler;
             if (promptSkillDocs) target.prompt_skill_docs = promptSkillDocs;
+            else if (key === 'moss_image') target.prompt_skill_docs = {
+                default: { en: ['moss_image_prompting_en.md'], cn: ['moss_image_prompting_cn.md'] }
+            };
             target.label = canvasAgentPromptTargetLabel(target);
             return target;
         }

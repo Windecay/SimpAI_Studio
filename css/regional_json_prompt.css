@@ -1,0 +1,104 @@
+.sai-rjp-overlay {
+  position: fixed; inset: 0; z-index: 100030; display: grid; place-items: center; padding: 16px;
+  color: var(--body-text-color, #20242a); font: 14px/1.4 var(--font, sans-serif);
+}
+.sai-rjp-overlay [hidden] { display: none !important; }
+.sai-rjp-overlay * { box-sizing: border-box; letter-spacing: 0; }
+.sai-rjp-backdrop { position: absolute; inset: 0; background: #0009; }
+.sai-rjp-dialog {
+  position: relative; width: min(1120px, 100%); height: min(780px, calc(100dvh - 32px));
+  display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border-color-primary, #c9ced3);
+  border-radius: 8px; background: var(--body-background-fill, #fff); overflow: hidden;
+  box-shadow: 0 20px 64px #0005;
+}
+.sai-rjp-dialog header, .sai-rjp-toolbar, .sai-rjp-dialog footer, .sai-rjp-tools,
+.sai-rjp-dimensions, .sai-rjp-tabs, .sai-rjp-region-heading, .sai-rjp-footer-tools {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+}
+.sai-rjp-dialog header { padding: 12px 16px; border-bottom: 1px solid var(--border-color-primary, #dce0e4); }
+.sai-rjp-dialog h2 { font-size: 17px; margin: 0; flex: 1; overflow-wrap: anywhere; }
+.sai-rjp-dialog h3 { font-size: 14px; margin: 0; flex: 1; }
+.sai-rjp-toolbar { padding: 9px 16px; flex-wrap: wrap; border-bottom: 1px solid var(--border-color-primary, #dce0e4); }
+.sai-rjp-dialog button, .sai-rjp-dialog select {
+  border: 1px solid var(--border-color-primary, #ccd1d6); border-radius: 5px;
+  color: inherit; background: var(--button-secondary-background-fill, #f4f5f6); font: inherit;
+}
+.sai-rjp-dialog button { cursor: pointer; min-width: 32px; height: 32px; padding: 4px 8px; flex-shrink: 0; }
+.sai-rjp-dialog button[aria-pressed="true"], .sai-rjp-tabs [aria-selected="true"] {
+  background: var(--button-secondary-background-fill, #f4f5f6); border-color: var(--button-primary-border-color, #ff8a00);
+}
+.sai-rjp-dialog button:disabled { opacity: .4; cursor: default; }
+.sai-rjp-dialog button:hover:not(:disabled) { filter: brightness(.95); }
+.sai-rjp-dialog button:focus-visible, .sai-rjp-dialog canvas:focus-visible { outline: 2px solid var(--button-primary-border-color, #ff8a00); outline-offset: 2px; }
+.sai-rjp-dialog select { min-height: 32px; padding: 3px 6px; max-width: 150px; }
+.sai-rjp-dimensions { margin: 0 auto; }
+.sai-rjp-dimensions label { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.sai-rjp-dimensions input { width: 76px; }
+.sai-rjp-dialog input, .sai-rjp-dialog textarea {
+  width: 100%; min-width: 0; border: 1px solid var(--border-color-primary, #c9ced3); border-radius: 5px;
+  background: var(--input-background-fill, #fff); color: inherit; font: inherit; padding: 7px 8px; margin: 0;
+}
+.sai-rjp-dialog textarea { resize: vertical; line-height: 1.5; }
+.sai-rjp-dialog label { display: grid; gap: 5px; font-size: 12px; }
+.sai-rjp-dimensions label { display: flex; white-space: nowrap; }
+.sai-rjp-dialog .sai-rjp-dimensions input { width: 76px; }
+.sai-rjp-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; flex: 1; min-height: 0; }
+.sai-rjp-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; padding: 14px; }
+.sai-rjp-main > label { flex: none; }
+.sai-rjp-viewport { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 160px; overflow: hidden; background: var(--block-background-fill, #edf0f2); }
+.sai-rjp-board { position: relative; flex: none; box-shadow: 0 1px 8px #0003; }
+.sai-rjp-board canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.sai-rjp-main details { font-size: 12px; flex: none; }
+.sai-rjp-main summary { cursor: pointer; margin-bottom: 5px; }
+.sai-rjp-main [data-rjp-output] { max-height: 100px; font: 11px/1.5 monospace; }
+.sai-rjp-dialog aside { padding: 14px; border-left: 1px solid var(--border-color-primary, #dce0e4); min-width: 0; min-height: 0; overflow-y: auto; }
+.sai-rjp-regions { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; max-height: 170px; overflow-y: auto; }
+.sai-rjp-regions button {
+  display: flex; align-items: center; gap: 8px; text-align: left; min-height: 43px; height: auto; flex: none;
+  border-left: 3px solid var(--region-color); white-space: normal; overflow-wrap: anywhere;
+}
+.sai-rjp-regions button[aria-selected="true"] { background: var(--button-secondary-background-fill, #f4f5f6); border-color: var(--region-color); }
+.sai-rjp-regions button > span:first-child { width: 20px; flex: none; text-align: center; }
+.sai-rjp-regions button > span:last-child { min-width: 0; }
+.sai-rjp-regions small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 210px; opacity: .65; }
+.sai-rjp-region-form { display: grid; gap: 10px; }
+.sai-rjp-palette { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 5px; margin-top: 5px; }
+.sai-rjp-dialog .sai-rjp-palette input[type="color"] { height: 32px; padding: 3px; cursor: pointer; }
+.sai-rjp-coordinates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.sai-rjp-json { display: flex; flex-direction: column; align-items: flex-start; flex: 1; min-height: 0; gap: 10px; padding: 14px; }
+.sai-rjp-json textarea { flex: 1; resize: none; font: 12px/1.6 monospace; }
+.sai-rjp-dialog footer { padding: 10px 14px; border-top: 1px solid var(--border-color-primary, #dce0e4); flex-wrap: wrap; justify-content: space-between; }
+.sai-rjp-dialog [data-rjp-status] { flex: 1 1 160px; font-size: 12px; overflow-wrap: anywhere; }
+.sai-rjp-dialog [data-rjp-status].is-error { color: #d14b50; }
+.sai-rjp-dialog .sai-rjp-apply { background: var(--button-primary-background-fill, #ff8a00); color: var(--button-primary-text-color, #fff); border-color: var(--button-primary-border-color, #ff8a00); width: auto; }
+@media (max-width: 700px) {
+  .sai-rjp-overlay { padding: 6px; }
+  .sai-rjp-dialog { height: calc(100dvh - 12px); width: 100%; }
+  .sai-rjp-dialog header, .sai-rjp-toolbar { padding: 8px; gap: 6px; }
+  .sai-rjp-dialog h2 { font-size: 15px; }
+  .sai-rjp-dialog header select { max-width: 105px; font-size: 12px; }
+  .sai-rjp-dimensions { order: 3; flex-basis: 100%; margin: 0; justify-content: center; }
+  .sai-rjp-tabs { margin-left: auto; }
+  .sai-rjp-layout { display: flex; flex-direction: column; overflow-y: auto; }
+  .sai-rjp-main { min-height: 350px; flex: none; padding: 10px; }
+  .sai-rjp-viewport { min-height: 215px; }
+  .sai-rjp-dialog aside { border-left: 0; border-top: 1px solid var(--border-color-primary, #dce0e4); overflow: visible; flex: none; padding: 10px; }
+  .sai-rjp-regions { max-height: 110px; }
+  .sai-rjp-region-form { gap: 7px; }
+  .sai-rjp-dialog footer { padding: 8px; gap: 6px; }
+  .sai-rjp-footer-tools { margin-left: auto; }
+}
+.sai-rjp-input-host { position: relative; }
+.sai-rjp-input-host > textarea { padding-bottom: 48px !important; }
+.sai-rjp-entry,
+#positive_prompt .sai-rjp-entry {
+  position: absolute; right: calc(var(--sai-prompt-scrollbar-space, 0px) + 108px); bottom: 8px; z-index: 7;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; box-sizing: border-box;
+  width: 88px; min-width: 88px; max-width: 88px; height: 24px; min-height: 24px; max-height: 24px;
+  margin: 0; padding: 0 6px; border: 1px solid var(--border-color-primary, #c9ced3); border-radius: 4px;
+  background: var(--button-secondary-background-fill, #f4f5f6); color: var(--body-text-color, #20242a);
+  font-family: inherit !important; font-size: 12px !important; font-weight: 600 !important; line-height: 1 !important; letter-spacing: 0; cursor: pointer;
+}
+.sai-rjp-entry i { font-size: 12px; }
+.sai-rjp-entry:disabled { opacity: .4; cursor: default; }
+.sai-rjp-entry:focus-visible { outline: 2px solid var(--button-primary-border-color, #ff8a00); outline-offset: 2px; }
