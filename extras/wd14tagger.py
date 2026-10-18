@@ -112,12 +112,14 @@ def _interrogate(image, threshold, character_threshold, exclude_tags,
     if global_model is not None:
         model = global_model
     else:
+        options = ort.SessionOptions()
+        # Native ONNX warnings use UTF-16 on Windows and corrupt launcher logs.
+        options.log_severity_level = 3
         if cpu_only:
-            options = ort.SessionOptions()
             options.intra_op_num_threads = 4
             model = InferenceSession(model_onnx_filename, providers=["CPUExecutionProvider"], sess_options=options)
         else:
-            model = InferenceSession(model_onnx_filename, providers=_ort_providers())
+            model = InferenceSession(model_onnx_filename, providers=_ort_providers(), sess_options=options)
         global_model = model
 
     input = model.get_inputs()[0]

@@ -3155,5 +3155,14 @@
   "Canvas expanded from region bounds; original canvas size is unknown. Applying also updates the output size.": "已按区域范围扩大预览画布，原始画布尺寸未知；应用时会同步更新出图尺寸。",
   "Imported source canvas. Applying also updates the output size.": "已采用 JSON 中的画布尺寸；应用时会同步更新出图尺寸。",
   "Drag window": "拖动窗口",
-  "Resize window": "调整窗口大小"
+  "Resize window": "调整窗口大小",
+  "Canvas inferred from region bounds; original canvas size is unknown. Applying also updates the output size.": "已按区域范围推算预览画布，原始画布尺寸未知；应用时会同步更新出图尺寸。",
+  "Canvas size tools": "画布尺寸工具",
+  "Fit canvas to region bounds": "按区域范围重建画布",
+  "Lock region": "锁定区域",
+  "Unlock region": "解锁区域",
+  "Hide region on canvas (still included in generation)": "在画布中暂时隐藏（仍参与生成）",
+  "Show region on canvas": "在画布中显示区域",
+  "Region {number}": "区域 {number}",
+  "Position and palette": "坐标与配色"
 }

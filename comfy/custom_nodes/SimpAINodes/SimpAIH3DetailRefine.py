@@ -291,6 +291,7 @@ def face_pose_control(images, mask):
     if path is None:
         raise FileNotFoundError(f"Face pose control requires the installed model: {DWPOSE_MODEL}")
     options = ort.SessionOptions()
+    options.log_severity_level = 3
     options.intra_op_num_threads = 2
     options.inter_op_num_threads = 1
     model = ort.InferenceSession(path, providers=["CPUExecutionProvider"], sess_options=options)

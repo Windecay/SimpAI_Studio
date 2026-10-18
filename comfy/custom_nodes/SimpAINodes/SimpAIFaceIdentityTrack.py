@@ -381,6 +381,8 @@ def face_execution_settings():
         providers.insert(0, ("CUDAExecutionProvider", {
             "device_id": device_id, "cudnn_conv_algo_search": "DEFAULT"}))
     options = ort.SessionOptions()
+    # Keep native ONNX errors; report device selection through the Python logger.
+    options.log_severity_level = 3
     options.intra_op_num_threads = 2
     options.inter_op_num_threads = 1
     return device, device_id, dict(providers=providers, sess_options=options)

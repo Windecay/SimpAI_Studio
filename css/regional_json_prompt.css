@@ -47,7 +47,7 @@
 .sai-rjp-dialog label { display: grid; gap: 5px; font-size: 12px; }
 .sai-rjp-dimensions label { display: flex; white-space: nowrap; }
 .sai-rjp-dialog .sai-rjp-dimensions input { width: 76px; }
-.sai-rjp-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; flex: 1; min-height: 0; }
+.sai-rjp-layout { display: grid; grid-template-columns: minmax(0, 1fr) clamp(280px, 28%, 380px); flex: 1; min-height: 0; }
 .sai-rjp-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; padding: 14px; overflow-y: auto; }
 .sai-rjp-main > label { flex: none; }
 .sai-rjp-viewport { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 160px; overflow: hidden; background: var(--block-background-fill, #edf0f2); }
@@ -56,17 +56,34 @@
 .sai-rjp-main details { font-size: 12px; flex: none; }
 .sai-rjp-main summary { cursor: pointer; margin-bottom: 5px; }
 .sai-rjp-main [data-rjp-output] { max-height: 100px; font: 11px/1.5 monospace; }
-.sai-rjp-dialog aside { padding: 14px; border-left: 1px solid var(--border-color-primary, #dce0e4); min-width: 0; min-height: 0; overflow-y: auto; }
-.sai-rjp-regions { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; max-height: 170px; overflow-y: auto; }
-.sai-rjp-regions button {
-  display: flex; align-items: center; gap: 8px; text-align: left; min-height: 43px; height: auto; flex: none;
-  border-left: 3px solid var(--region-color); white-space: normal; overflow-wrap: anywhere;
+.sai-rjp-dialog aside {
+  display: flex; flex-direction: column; padding: 14px; min-width: 0; min-height: 0; overflow: hidden;
+  border-left: 1px solid var(--border-color-primary, #dce0e4);
 }
-.sai-rjp-regions button[aria-selected="true"] { background: var(--button-secondary-background-fill, #f4f5f6); border-color: var(--region-color); }
-.sai-rjp-regions button > span:first-child { width: 20px; flex: none; text-align: center; }
-.sai-rjp-regions button > span:last-child { min-width: 0; }
-.sai-rjp-regions small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 210px; opacity: .65; }
-.sai-rjp-region-form { display: grid; gap: 10px; }
+.sai-rjp-dialog aside > .sai-rjp-region-heading { flex: none; }
+.sai-rjp-regions {
+  display: flex; flex-direction: column; flex: 1 1 0; min-height: 72px; gap: 4px; margin: 8px 0; overflow-y: auto;
+}
+.sai-rjp-regions, .sai-rjp-region-form { scrollbar-width: thin; scrollbar-color: var(--border-color-primary, #a5adb5) transparent; }
+.sai-rjp-region-row { display: grid; grid-template-columns: minmax(0, 1fr) 32px 32px; align-items: center; gap: 4px; flex: none; }
+.sai-rjp-region-row > .sai-rjp-region-select {
+  display: flex; align-items: center; gap: 6px; text-align: left; min-width: 0; min-height: 38px; height: auto;
+  padding: 3px 6px; font-size: 12px; line-height: 16px; border-left: 3px solid var(--region-color); white-space: normal; overflow-wrap: anywhere;
+}
+.sai-rjp-regions .sai-rjp-region-select[aria-pressed="true"] { background: var(--button-secondary-background-fill, #f4f5f6); border-color: var(--region-color); }
+.sai-rjp-region-select > span:first-child { width: 20px; flex: none; text-align: center; }
+.sai-rjp-region-select > span:last-child { min-width: 0; overflow: hidden; }
+.sai-rjp-region-row.is-hidden > .sai-rjp-region-select { opacity: .55; }
+.sai-rjp-region-row small { display: block; font-size: 11px; line-height: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .65; }
+.sai-rjp-region-form {
+  display: grid; gap: 8px; flex: 0 1 auto; min-height: 0; max-height: 60%; overflow-y: auto;
+  padding-top: 10px; border-top: 1px solid var(--border-color-primary, #dce0e4);
+}
+.sai-rjp-region-form > * { min-width: 0; }
+.sai-rjp-region-form > .sai-rjp-region-heading { gap: 6px; }
+.sai-rjp-region-heading [data-rjp-count] { font-size: 12px; font-weight: normal; opacity: .65; }
+.sai-rjp-region-details summary { cursor: pointer; font-size: 12px; line-height: 28px; }
+.sai-rjp-region-geometry { display: grid; gap: 8px; padding-top: 6px; }
 .sai-rjp-palette { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 5px; margin-top: 5px; }
 .sai-rjp-dialog .sai-rjp-palette input[type="color"] { height: 32px; padding: 3px; cursor: pointer; }
 .sai-rjp-coordinates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
@@ -99,14 +116,14 @@
   .sai-rjp-dialog header, .sai-rjp-toolbar { padding: 8px; gap: 6px; }
   .sai-rjp-dialog h2 { font-size: 15px; }
   .sai-rjp-dialog header select { max-width: 105px; font-size: 12px; }
-  .sai-rjp-dimensions { order: 3; flex-basis: 100%; margin: 0; justify-content: center; }
+  .sai-rjp-dimensions { order: 3; flex-basis: 100%; margin: 0; justify-content: center; flex-wrap: wrap; }
   .sai-rjp-tabs { margin-left: auto; }
   .sai-rjp-layout { display: flex; flex-direction: column; overflow-y: auto; }
   .sai-rjp-main { min-height: 350px; flex: none; padding: 10px; }
   .sai-rjp-viewport { min-height: 215px; }
   .sai-rjp-dialog aside { border-left: 0; border-top: 1px solid var(--border-color-primary, #dce0e4); overflow: visible; flex: none; padding: 10px; }
-  .sai-rjp-regions { max-height: 110px; }
-  .sai-rjp-region-form { gap: 7px; }
+  .sai-rjp-regions { flex: none; min-height: 0; max-height: min(320px, 40dvh); }
+  .sai-rjp-region-form { flex: none; max-height: none; overflow: visible; gap: 7px; }
   .sai-rjp-dialog footer { padding: 8px; gap: 6px; }
   .sai-rjp-footer-tools { margin-left: auto; }
   .sai-rjp-ai-bar { grid-template-columns: minmax(0, 1fr) 34px; padding: 8px; gap: 6px; }

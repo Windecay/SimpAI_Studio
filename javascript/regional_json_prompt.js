@@ -189,7 +189,7 @@
         };
         return clone(validateDraft(draft, editing, editing));
     }
-    function importLayout(value, width, height) {
+    function importLayout(value, width, height, { fitToBounds = false } = {}) {
         dimensions(width, height);
         let input = value;
         if (typeof input === 'string') {
@@ -217,8 +217,12 @@
                     maxY = Math.max(maxY, Math.abs(item.bbox[0]), Math.abs(item.bbox[2]));
                 });
                 // This is a containing canvas, not a reconstruction of an unknown source size.
-                sourceWidth = Math.max(width, Math.ceil(maxX * 2 / 16) * 16);
-                sourceHeight = Math.max(height, Math.ceil(maxY * 2 / 16) * 16);
+                const boundWidth = Math.max(16, Math.ceil(maxX * 2 / 16) * 16);
+                const boundHeight = Math.max(16, Math.ceil(maxY * 2 / 16) * 16);
+                if (data.items.length && (fitToBounds || boundWidth > width || boundHeight > height)) {
+                    sourceWidth = boundWidth;
+                    sourceHeight = boundHeight;
+                }
                 dimensions(sourceWidth, sourceHeight);
                 estimatedCanvas = sourceWidth !== width || sourceHeight !== height;
             }
@@ -286,25 +290,36 @@
         return validateDraft(next, true, true);
     }
 
+    function normalizeRegionUi(value, count) {
+        return Array.from({ length: count }, (_, index) => ({
+            locked: value?.[index]?.locked === true,
+            hidden: value?.[index]?.hidden === true,
+        }));
+    }
+
     function normalizeSnapshot(value) {
         try {
             if (value?.version !== 1) return null;
             const layout = item => clone(validateDraft(item, true, true, { unfinished: true }));
             const draft = layout(value.draft);
             const history = items => (Array.isArray(items) ? items.slice(-60) : []).flatMap(item => {
-                try { return [layout(item)]; } catch (_) { return []; }
+                try {
+                    const draft = layout(item?.draft || item);
+                    return [{ draft, regionUi: normalizeRegionUi(item?.regionUi, draft.items.length) }];
+                } catch (_) { return []; }
             });
             let optimizedSnapshot = '';
             try {
                 if (value.optimizedSnapshot) optimizedSnapshot = JSON.stringify(layout(JSON.parse(value.optimizedSnapshot)));
             } catch (_) {}
             return {
-                version: 1, draft,
+                version: 1, draft, regionUi: normalizeRegionUi(value.regionUi, draft.items.length),
                 raw: typeof value.raw === 'string' ? value.raw : JSON.stringify(draft, null, 2),
                 rawDirty: value.rawDirty === true,
                 selected: Number.isInteger(value.selected) ? Math.max(-1, Math.min(value.selected, draft.items.length - 1)) : -1,
                 mode: value.mode === 'draw' ? 'draw' : 'select',
                 tab: value.tab === 'json' ? 'json' : 'layout',
+                detailsOpen: value.detailsOpen === true,
                 undo: history(value.undo), redo: history(value.redo), optimizedSnapshot,
                 aiScope: ['all', 'region', 'summary'].includes(value.aiScope) ? value.aiScope : 'all',
                 aiInstruction: typeof value.aiInstruction === 'string' ? value.aiInstruction.slice(0, 4000) : '',
@@ -332,6 +347,7 @@
         }
         const restored = normalizeSnapshot(options.snapshot);
         if (restored) { draft = restored.draft; initialError = null; }
+        let regionUi = normalizeRegionUi(restored?.regionUi, draft.items.length);
         let selected = restored ? restored.selected : (draft.items.length ? 0 : -1);
         let mode = restored?.mode || 'select', tab = restored?.tab || (initialError ? 'json' : 'layout');
         let gesture = null, editingField = null;
@@ -357,7 +373,10 @@
                 <label>${esc(t('Width'))}<input data-rjp-field="width" type="number" min="16" max="16384" step="16"></label>
                 <span aria-hidden="true">&times;</span>
                 <label>${esc(t('Height'))}<input data-rjp-field="height" type="number" min="16" max="16384" step="16"></label>
-                ${icon('scale', 'arrows-to-circle', 'Scale to current output size')}
+                <div class="sai-rjp-tools" role="group" aria-label="${esc(t('Canvas size tools'))}">
+                  ${icon('scale', 'arrows-to-circle', 'Scale to current output size')}
+                  ${icon('fit-canvas', 'crop-simple', 'Fit canvas to region bounds')}
+                </div>
               </div>
               <div class="sai-rjp-tabs" role="tablist">
                 <button type="button" role="tab" data-rjp-tab="layout">${esc(t('Layout'))}</button>
@@ -371,25 +390,31 @@
                 <details><summary>${esc(t('Compiled prompt'))}</summary><textarea data-rjp-output readonly rows="3" aria-label="${esc(t('Compiled prompt'))}"></textarea></details>
               </div>
               <aside>
-                <div class="sai-rjp-region-heading"><h3>${esc(t('Regions'))}</h3>
+                <div class="sai-rjp-region-heading"><h3>${esc(t('Regions'))} <span data-rjp-count></span></h3>
                   <select data-rjp-add-type aria-label="${esc(t('New region type'))}">${roles.map(role => `<option value="${role}">${esc(label(role))}</option>`).join('')}</select>
                   ${icon('add', 'plus', 'Add region')}</div>
-                <div class="sai-rjp-regions" role="listbox" aria-label="${esc(t('Regions'))}"></div>
+                <div class="sai-rjp-regions" role="list" aria-label="${esc(t('Regions'))}"></div>
                 <div class="sai-rjp-region-form">
                   <div class="sai-rjp-region-heading">
+                    <h3 data-rjp-selection></h3>
                     <select data-rjp-field="label" aria-label="${esc(t('Region type'))}">${roles.map(role => `<option value="${role}">${esc(label(role))}</option>`).join('')}</select>
                     ${icon('duplicate', 'clone', 'Duplicate region')}${icon('delete', 'trash-can', 'Delete region')}
                   </div>
-                  <label>${esc(t('Region description'))}<textarea data-rjp-field="caption" rows="3"></textarea></label>
+                  <label>${esc(t('Region description'))}<textarea data-rjp-field="caption" rows="2"></textarea></label>
                   <label data-rjp-text-wrap>${esc(t('Literal text'))}<textarea data-rjp-field="text" rows="2"></textarea></label>
-                  <div class="sai-rjp-coordinates">${['Left', 'Top', 'Right', 'Bottom'].map((name, index) =>
-                      `<label>${esc(t(name))}<input type="number" min="0" step="any" data-rjp-coordinate="${index}"></label>`).join('')}</div>
-                  <div><label for="sai-rjp-palette-values">${esc(t('Palette'))}</label>
-                    <div class="sai-rjp-palette">
-                      <input type="color" data-rjp-field="palette_color" data-rjp-palette-color aria-label="${esc(t('Palette color'))}">
-                      <input id="sai-rjp-palette-values" data-rjp-field="palette" type="text">
+                  <details class="sai-rjp-region-details" data-rjp-details>
+                    <summary>${esc(t('Position and palette'))}</summary>
+                    <div class="sai-rjp-region-geometry">
+                      <div class="sai-rjp-coordinates">${['Left', 'Top', 'Right', 'Bottom'].map((name, index) =>
+                          `<label>${esc(t(name))}<input type="number" min="0" step="any" data-rjp-coordinate="${index}"></label>`).join('')}</div>
+                      <div><label for="sai-rjp-palette-values">${esc(t('Palette'))}</label>
+                        <div class="sai-rjp-palette">
+                          <input type="color" data-rjp-field="palette_color" data-rjp-palette-color aria-label="${esc(t('Palette color'))}">
+                          <input id="sai-rjp-palette-values" data-rjp-field="palette" type="text">
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  </details>
                 </div>
               </aside>
             </div>
@@ -441,12 +466,14 @@
         raw.value = restored ? restored.raw : (initialError ? String(options.value || '') : JSON.stringify(draft, null, 2));
         q('[data-rjp-ai-scope]').value = restored?.aiScope || 'all';
         q('[data-rjp-ai-instruction]').value = restored?.aiInstruction || '';
+        q('[data-rjp-details]').open = restored?.detailsOpen || false;
         function persistDraft() {
             if (closed || typeof options.onDraftChange !== 'function') return;
             // Preserve unfinished edits without compiling them or saving API settings.
             const snapshot = normalizeSnapshot({
-                version: 1, draft, raw: rawDirty ? raw.value : JSON.stringify(draft, null, 2),
+                version: 1, draft, regionUi, raw: rawDirty ? raw.value : JSON.stringify(draft, null, 2),
                 rawDirty, selected, mode, tab, undo, redo, optimizedSnapshot,
+                detailsOpen: q('[data-rjp-details]').open,
                 aiScope: q('[data-rjp-ai-scope]').value,
                 aiInstruction: q('[data-rjp-ai-instruction]').value,
             });
@@ -465,12 +492,17 @@
             try { validateDraft(draft, true, true); } catch (_) { return; }
             status({
                 message: imported.estimatedCanvas
-                    ? 'Canvas expanded from region bounds; original canvas size is unknown. Applying also updates the output size.'
+                    ? 'Canvas inferred from region bounds; original canvas size is unknown. Applying also updates the output size.'
                     : 'Imported source canvas. Applying also updates the output size.',
                 field: `${draft.width} x ${draft.height}`,
             }, false);
         }
-        function remember(snapshot = draft) {
+        const capture = () => ({ draft: clone(draft), regionUi: clone(regionUi) });
+        function restore(snapshot) {
+            draft = clone(snapshot.draft);
+            regionUi = normalizeRegionUi(snapshot.regionUi, draft.items.length);
+        }
+        function remember(snapshot = capture()) {
             undo.push(clone(snapshot));
             if (undo.length > 60) undo.shift();
             redo.length = 0;
@@ -497,6 +529,7 @@
             }
             q('[data-rjp-action="undo"]').disabled = !undo.length;
             q('[data-rjp-action="redo"]').disabled = !redo.length;
+            q('[data-rjp-action="fit-canvas"]').disabled = !draft.items.length;
         }
         function renderAiPreview() {
             q('[data-rjp-ai-preview]').hidden = !aiPreview;
@@ -585,6 +618,7 @@
                 ctx.beginPath(); ctx.moveTo(0, draft.height * n / 8); ctx.lineTo(draft.width, draft.height * n / 8); ctx.stroke();
             }
             draft.items.forEach((item, index) => {
+                if (regionUi[index].hidden) return;
                 const [x0, y0, x1, y1] = item.bbox;
                 const color = regionColor(item, index);
                 ctx.fillStyle = `${color}20`; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
@@ -625,7 +659,7 @@
                     });
                     ctx.restore();
                 }
-                if (index === selected) {
+                if (index === selected && !regionUi[index].locked) {
                     for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) {
                         ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 4 * unit, y - 4 * unit, 8 * unit, 8 * unit);
                         ctx.strokeRect(x - 4 * unit, y - 4 * unit, 8 * unit, 8 * unit);
@@ -633,12 +667,29 @@
                 }
             });
         }
-        function renderRegionList() {
-            q('.sai-rjp-regions').innerHTML = draft.items.map((item, index) =>
-                `<button type="button" role="option" aria-selected="${index === selected}" data-rjp-region="${index}" style="--region-color:${regionColor(item, index)}"><span>${index + 1}</span><span>${esc(label(item.label))}<small>${esc(item.text || item.caption)}</small></span></button>`
-            ).join('');
+        function revealSelectedRegion() {
+            const list = q('.sai-rjp-regions');
+            const row = q(`[data-rjp-region="${selected}"]`)?.closest?.('.sai-rjp-region-row');
+            if (selected < 0 || !row || !list.clientHeight) return;
+            const bounds = list.getBoundingClientRect(), item = row.getBoundingClientRect();
+            if (item.top < bounds.top) list.scrollTop -= bounds.top - item.top;
+            else if (item.bottom > bounds.bottom) list.scrollTop += item.bottom - bounds.bottom;
         }
-        function render() {
+        function renderRegionList() {
+            const list = q('.sai-rjp-regions'), scrollTop = list.scrollTop || 0;
+            q('[data-rjp-count]').textContent = `(${draft.items.length})`;
+            list.innerHTML = draft.items.map((item, index) => {
+                const ui = regionUi[index];
+                const extra = flag => `data-rjp-index="${index}" aria-pressed="${ui[flag]}"`;
+                return `<div class="sai-rjp-region-row${ui.hidden ? ' is-hidden' : ''}" role="listitem" style="--region-color:${regionColor(item, index)}">
+                  <button type="button" class="sai-rjp-region-select" aria-pressed="${index === selected}" data-rjp-region="${index}"><span>${index + 1}</span><span>${esc(label(item.label))}<small>${esc(item.label === 'text' ? item.text || item.caption : item.caption)}</small></span></button>
+                  ${icon('lock', ui.locked ? 'lock' : 'lock-open', ui.locked ? 'Unlock region' : 'Lock region', extra('locked'))}
+                  ${icon('hide', ui.hidden ? 'eye-slash' : 'eye', ui.hidden ? 'Show region on canvas' : 'Hide region on canvas (still included in generation)', extra('hidden'))}
+                </div>`;
+            }).join('');
+            list.scrollTop = scrollTop;
+        }
+        function render({ revealSelected = true } = {}) {
             q('.sai-rjp-layout').hidden = tab !== 'layout';
             q('.sai-rjp-json').hidden = tab !== 'json';
             host.querySelectorAll('[data-rjp-tab]').forEach(node => node.setAttribute('aria-selected', String(node.dataset.rjpTab === tab)));
@@ -649,18 +700,29 @@
             renderRegionList();
             q('.sai-rjp-region-form').hidden = !draft.items[selected];
             const item = draft.items[selected];
+            q('[data-rjp-action="delete"]').disabled = !item || regionUi[selected].locked;
             if (item) {
+                q('[data-rjp-selection]').textContent = t('Region {number}').replace('{number}', selected + 1);
                 for (const key of ['label', 'caption', 'text']) q(`[data-rjp-field="${key}"]`).value = item[key] || '';
                 q('[data-rjp-field="palette"]').value = (item.palette || []).join(', ');
                 q('[data-rjp-palette-color]').value = regionColor(item, selected);
                 q('[data-rjp-text-wrap]').hidden = item.label !== 'text';
-                host.querySelectorAll('[data-rjp-coordinate]').forEach(node => { node.value = item.bbox[Number(node.dataset.rjpCoordinate)]; });
+                host.querySelectorAll('[data-rjp-coordinate]').forEach(node => {
+                    node.value = item.bbox[Number(node.dataset.rjpCoordinate)];
+                    node.disabled = regionUi[selected].locked;
+                });
             }
             updateOutput();
             renderAiPreview();
             if (tab === 'layout') draw();
+            if (revealSelected) revealSelectedRegion();
             persistDraft();
         }
+        q('[data-rjp-details]').addEventListener('toggle', () => {
+            if (closed) return;
+            revealSelectedRegion();
+            persistDraft();
+        });
         function close(preserve = true) {
             if (closed) return;
             if (gesture) endGesture();
@@ -686,7 +748,10 @@
         function loadRaw() {
             const result = importLayout(raw.value, draft.width, draft.height);
             const next = result.draft;
-            if (JSON.stringify(next) !== JSON.stringify(draft)) remember();
+            if (JSON.stringify(next) !== JSON.stringify(draft)) {
+                remember();
+                regionUi = normalizeRegionUi(null, next.items.length);
+            }
             draft = next;
             imported = result;
             selected = draft.items.length ? 0 : -1;
@@ -713,12 +778,13 @@
             const label = q('[data-rjp-add-type]').value;
             draft.items.push({ label, caption: '', ...(label === 'text' ? { text: '' } : {}),
                 bbox: [draft.width / 4, draft.height / 4, draft.width * 3 / 4, draft.height * 3 / 4] });
+            regionUi.push({ locked: false, hidden: false });
             selected = draft.items.length - 1;
             render();
             q('[data-rjp-field="caption"]').focus();
         }
         let applying = false;
-        async function action(name) {
+        async function action(name, index = selected) {
             try {
                 if (closed || (name === 'apply' && (applying || optimizing))) return;
                 if (name === 'close') return close();
@@ -741,14 +807,26 @@
                 }
                 if (name === 'select' || name === 'draw') { mode = name; render(); }
                 if (name === 'add') addRegion();
-                if (name === 'undo' && undo.length) { redo.push(clone(draft)); draft = undo.pop(); selected = Math.min(selected, draft.items.length - 1); render(); }
-                if (name === 'redo' && redo.length) { undo.push(clone(draft)); draft = redo.pop(); selected = Math.min(selected, draft.items.length - 1); render(); }
-                if ((name === 'delete' || name === 'duplicate') && draft.items[selected]) {
+                if ((name === 'lock' || name === 'hide') && Number.isInteger(index) && regionUi[index]) {
                     remember();
-                    if (name === 'delete') { draft.items.splice(selected, 1); selected = Math.min(selected, draft.items.length - 1); }
+                    const key = name === 'lock' ? 'locked' : 'hidden';
+                    regionUi[index][key] = !regionUi[index][key];
+                    render({ revealSelected: false });
+                    q(`[data-rjp-action="${name}"][data-rjp-index="${index}"]`)?.focus({ preventScroll: true });
+                }
+                if (name === 'undo' && undo.length) { redo.push(capture()); restore(undo.pop()); selected = Math.min(selected, draft.items.length - 1); render(); }
+                if (name === 'redo' && redo.length) { undo.push(capture()); restore(redo.pop()); selected = Math.min(selected, draft.items.length - 1); render(); }
+                if ((name === 'delete' || name === 'duplicate') && draft.items[selected]) {
+                    if (name === 'delete' && regionUi[selected].locked) return;
+                    if (name === 'duplicate') requireValue(draft.items.length < 200, 'Too many regions');
+                    remember();
+                    if (name === 'delete') {
+                        draft.items.splice(selected, 1); regionUi.splice(selected, 1);
+                        selected = Math.min(selected, draft.items.length - 1);
+                    }
                     else {
-                        requireValue(draft.items.length < 200, 'Too many regions');
-                        draft.items.splice(selected + 1, 0, clone(draft.items[selected])); selected++;
+                        draft.items.splice(selected + 1, 0, clone(draft.items[selected]));
+                        regionUi.splice(selected + 1, 0, { locked: false, hidden: false }); selected++;
                     }
                     render();
                 }
@@ -760,6 +838,24 @@
                     const next = scaleDraft(draft, size.width, size.height);
                     remember(); draft = next;
                     raw.value = JSON.stringify(draft, null, 2); render();
+                }
+                if (name === 'fit-canvas') {
+                    if (rawDirty) loadRaw();
+                    requireValue(draft.items.length, 'Add a region', 'items');
+                    const result = importLayout(compile(draft, { allowIncomplete: true }),
+                        draft.width, draft.height, { fitToBounds: true });
+                    const dx = (result.draft.width - draft.width) / 2;
+                    const dy = (result.draft.height - draft.height) / 2;
+                    if (dx || dy) {
+                        remember();
+                        const next = clone(draft);
+                        next.width = result.draft.width; next.height = result.draft.height;
+                        next.items.forEach(item => { item.bbox = item.bbox.map((value, index) => value + (index % 2 ? dy : dx)); });
+                        draft = next;
+                    }
+                    imported = { ...result, draft };
+                    raw.value = JSON.stringify(draft, null, 2); rawDirty = false;
+                    render(); importStatus();
                 }
                 if (name === 'import') q('[data-rjp-file]').click();
                 if (name === 'export') {
@@ -795,7 +891,8 @@
         host.addEventListener('click', event => {
             const button = event.target.closest('button,[data-rjp-action="close"]');
             if (!button) return;
-            if (button.dataset.rjpAction) void action(button.dataset.rjpAction);
+            if (button.dataset.rjpAction) void action(button.dataset.rjpAction,
+                button.dataset.rjpIndex === undefined ? selected : Number(button.dataset.rjpIndex));
             if (button.dataset.rjpTab) {
                 try { setTab(button.dataset.rjpTab); } catch (error) { status(error); }
             }
@@ -810,6 +907,16 @@
             const field = event.target.dataset.rjpField;
             const coordinate = event.target.dataset.rjpCoordinate;
             if (!field && coordinate === undefined) return;
+            if (coordinate !== undefined && regionUi[selected]?.locked) return;
+            // Blur repeats the last input as change; replacing rows here would discard the pending button click.
+            const currentItem = draft.items[selected], value = event.target.value;
+            if ((coordinate !== undefined && currentItem?.bbox[Number(coordinate)] === Number(value))
+                || (['width', 'height'].includes(field) && draft[field] === Number(value))
+                || (field === 'summary' && draft.summary.caption === value)
+                || (['label', 'caption', 'text'].includes(field) && (currentItem?.[field] || '') === value)
+                || (field === 'palette_color' && currentItem?.palette?.[0] === value)
+                || (field === 'palette' && JSON.stringify(currentItem?.palette || [])
+                    === JSON.stringify(value.split(',').map(entry => entry.trim()).filter(Boolean)))) return;
             const changedType = field === 'label' && draft.items[selected]?.label !== event.target.value;
             if (editingField !== event.target || changedType) { remember(); editingField = event.target; }
             if (field === 'width' || field === 'height') {
@@ -870,11 +977,11 @@
         canvas.addEventListener('pointerdown', event => {
             if (event.button !== 0) return;
             event.preventDefault();
-            const [x, y] = point(event), before = clone(draft);
+            const [x, y] = point(event), before = capture();
             let handle = null;
             const tolerance = 10 * draft.width / canvas.getBoundingClientRect().width;
             const box = draft.items[selected]?.bbox;
-            if (mode === 'select' && box) {
+            if (mode === 'select' && box && !regionUi[selected].hidden && !regionUi[selected].locked) {
                 handle = [[0, 1], [2, 1], [0, 3], [2, 3]].find(([xi, yi]) =>
                     Math.abs(x - box[xi]) <= tolerance && Math.abs(y - box[yi]) <= tolerance);
             }
@@ -882,11 +989,14 @@
                 if (draft.items.length >= 200) return;
                 const label = q('[data-rjp-add-type]').value;
                 draft.items.push({ label, caption: '', ...(label === 'text' ? { text: '' } : {}), bbox: [x, y, x, y] });
+                regionUi.push({ locked: false, hidden: false });
                 selected = draft.items.length - 1;
             } else if (!handle) {
-                selected = draft.items.findLastIndex(item => x >= item.bbox[0] && x <= item.bbox[2] && y >= item.bbox[1] && y <= item.bbox[3]);
+                selected = draft.items.findLastIndex((item, index) => !regionUi[index].hidden
+                    && x >= item.bbox[0] && x <= item.bbox[2] && y >= item.bbox[1] && y <= item.bbox[3]);
             }
-            gesture = selected < 0 ? null : { before, start: [x, y], bbox: [...draft.items[selected].bbox], handle, draw: mode === 'draw' };
+            gesture = selected < 0 || regionUi[selected].locked ? null
+                : { before, start: [x, y], bbox: [...draft.items[selected].bbox], handle, draw: mode === 'draw' };
             canvas.setPointerCapture(event.pointerId);
             render();
         });
@@ -909,8 +1019,8 @@
         function endGesture(cancel = false) {
             if (!gesture) return;
             const box = draft.items[selected]?.bbox;
-            if (cancel || !box || box[2] - box[0] < 1 || box[3] - box[1] < 1) draft = gesture.before;
-            else if (JSON.stringify(draft) !== JSON.stringify(gesture.before)) remember(gesture.before);
+            if (cancel || !box || box[2] - box[0] < 1 || box[3] - box[1] < 1) restore(gesture.before);
+            else if (JSON.stringify(draft) !== JSON.stringify(gesture.before.draft)) remember(gesture.before);
             selected = Math.min(selected, draft.items.length - 1);
             gesture = null;
             render();
