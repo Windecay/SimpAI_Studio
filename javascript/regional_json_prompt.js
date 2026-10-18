@@ -189,6 +189,46 @@
         };
         return clone(validateDraft(draft, editing, editing));
     }
+    function importLayout(value, width, height) {
+        dimensions(width, height);
+        let input = value;
+        if (typeof input === 'string') {
+            const fenced = input.trim().match(/^```(?:json)?[ \t]*\r?\n([\s\S]*)\r?\n```$/i);
+            if (fenced) input = fenced[1];
+        }
+        const text = typeof input === 'string' ? input.trim() : input;
+        const data = typeof text === 'string' && text.startsWith('{') ? JSON.parse(text)
+            : typeof text === 'object' && text !== null ? clone(text) : null;
+        let sourceWidth = width, sourceHeight = height, estimatedCanvas = false;
+        if (data?.bbox_coord_space === 'abs_centralized' && data.bbox_format === 'yxyx') {
+            const hasWidth = Object.hasOwn(data, 'width'), hasHeight = Object.hasOwn(data, 'height');
+            requireValue(hasWidth === hasHeight, 'Provide both source width and height');
+            if (hasWidth) {
+                dimensions(data.width, data.height);
+                sourceWidth = data.width; sourceHeight = data.height;
+                delete data.width; delete data.height;
+            } else {
+                requireValue(Array.isArray(data.items), 'Add a region', 'items');
+                let maxX = 0, maxY = 0;
+                data.items.forEach(item => {
+                    requireValue(Array.isArray(item.bbox) && item.bbox.length === 4 && item.bbox.every(Number.isInteger),
+                        'Compiled coordinates must be integers', 'bbox');
+                    maxX = Math.max(maxX, Math.abs(item.bbox[1]), Math.abs(item.bbox[3]));
+                    maxY = Math.max(maxY, Math.abs(item.bbox[0]), Math.abs(item.bbox[2]));
+                });
+                // This is a containing canvas, not a reconstruction of an unknown source size.
+                sourceWidth = Math.max(width, Math.ceil(maxX * 2 / 16) * 16);
+                sourceHeight = Math.max(height, Math.ceil(maxY * 2 / 16) * 16);
+                dimensions(sourceWidth, sourceHeight);
+                estimatedCanvas = sourceWidth !== width || sourceHeight !== height;
+            }
+        }
+        const draft = parse(data || input, sourceWidth, sourceHeight, { editing: true });
+        return {
+            draft, estimatedCanvas,
+            canvasChanged: draft.width !== width || draft.height !== height,
+        };
+    }
     function scaleDraft(draft, width, height) {
         dimensions(width, height);
         const next = clone(draft);
@@ -272,7 +312,7 @@
         } catch (_) { return null; }
     }
 
-    let active = null;
+    let active = null, windowFrame = null;
     function open(options = {}) {
         active?.close();
         const state = options.langState || root.simpleaiTopbarSystemParams || {};
@@ -280,8 +320,11 @@
         const label = role => t({ object: 'Object', character: 'Character', text: 'Text' }[role]);
         const icon = (action, glyph, title, extra = '') =>
             `<button type="button" data-rjp-action="${action}" title="${esc(t(title))}" aria-label="${esc(t(title))}" ${extra}><i class="fa-solid fa-${glyph}" aria-hidden="true"></i></button>`;
-        let draft, initialError = null;
-        try { draft = parse(options.value || '', options.width, options.height, { editing: true }); }
+        let draft, initialError = null, imported = null;
+        try {
+            imported = importLayout(options.value || '', options.width, options.height);
+            draft = imported.draft;
+        }
         catch (error) {
             initialError = error;
             draft = { width: options.width, height: options.height, summary: { caption: '' }, items: [],
@@ -381,6 +424,18 @@
             </footer><input type="file" accept=".json,application/json" data-rjp-file hidden>
           </section>`;
         const q = selector => host.querySelector(selector);
+        const dialog = q('.sai-rjp-dialog');
+        const compactWindow = () => root.innerWidth <= 700 || root.matchMedia?.('(pointer: coarse)')?.matches;
+        let popupFrame = null;
+        function syncWindowViewport() {
+            if (compactWindow()) {
+                popupFrame?.cancelInteraction?.();
+                for (const key of ['left', 'top', 'right', 'bottom', 'width', 'height', 'transform']) {
+                    dialog.style.removeProperty(key);
+                }
+                delete dialog.dataset.simpleaiResizeManaged;
+            } else popupFrame?.ensureWithinViewport?.(false);
+        }
         const canvas = q('canvas'), viewport = q('.sai-rjp-viewport'), board = q('.sai-rjp-board');
         const raw = q('[data-rjp-json]');
         raw.value = restored ? restored.raw : (initialError ? String(options.value || '') : JSON.stringify(draft, null, 2));
@@ -404,6 +459,17 @@
             node.textContent = error ? `${t(error.message || String(error))}${error.field ? `: ${error.field}` : ''}` : '';
             node.classList.toggle('is-error', !!error && isError);
         }
+        function importStatus() {
+            if (!imported?.canvasChanged) return;
+            if (draft.width === options.width && draft.height === options.height) return;
+            try { validateDraft(draft, true, true); } catch (_) { return; }
+            status({
+                message: imported.estimatedCanvas
+                    ? 'Canvas expanded from region bounds; original canvas size is unknown. Applying also updates the output size.'
+                    : 'Imported source canvas. Applying also updates the output size.',
+                field: `${draft.width} x ${draft.height}`,
+            }, false);
+        }
         function remember(snapshot = draft) {
             undo.push(clone(snapshot));
             if (undo.length > 60) undo.shift();
@@ -417,6 +483,7 @@
                     try {
                         if (draft.items.length || draft.summary.caption.trim()) validateDraft(draft, true);
                         status();
+                        importStatus();
                     }
                     catch (error) {
                         status({ message: 'Some descriptions or literal text are empty. You can still apply the prompt.',
@@ -604,6 +671,12 @@
             closed = true;
             aiGeneration++;
             aiPreview = null;
+            if (!compactWindow() && dialog.dataset.simpleaiResizeManaged === '1') {
+                const rect = dialog.getBoundingClientRect();
+                windowFrame = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+            }
+            popupFrame?.destroy?.();
+            root.removeEventListener?.('resize', syncWindowViewport);
             root.removeEventListener?.('pagehide', persistDraft);
             observer?.disconnect();
             host.remove();
@@ -611,9 +684,11 @@
             if (previousFocus?.isConnected) previousFocus.focus();
         }
         function loadRaw() {
-            const next = parse(raw.value, draft.width, draft.height, { editing: true });
+            const result = importLayout(raw.value, draft.width, draft.height);
+            const next = result.draft;
             if (JSON.stringify(next) !== JSON.stringify(draft)) remember();
             draft = next;
+            imported = result;
             selected = draft.items.length ? 0 : -1;
             initialError = null;
             rawDirty = false;
@@ -630,7 +705,7 @@
             if (loadError) {
                 status({ message: 'JSON could not be loaded. Your JSON edits are preserved; the previous layout is shown.',
                     field: loadError.field || loadError.message });
-            }
+            } else importStatus();
         }
         function addRegion() {
             requireValue(draft.items.length < 200, 'Too many regions');
@@ -677,7 +752,7 @@
                     }
                     render();
                 }
-                if (name === 'load-json') { loadRaw(); render(); }
+                if (name === 'load-json') { loadRaw(); render(); importStatus(); }
                 if (name === 'reset-json') { raw.value = JSON.stringify(draft, null, 2); rawDirty = false; status(); }
                 if (name === 'scale') {
                     if (rawDirty) loadRaw();
@@ -780,7 +855,7 @@
                 requireValue(file.size <= 2 * 1024 * 1024, 'Layout JSON is too large');
                 const text = await file.text();
                 if (closed) return;
-                raw.value = text; rawDirty = true; loadRaw(); tab = 'layout'; render();
+                raw.value = text; rawDirty = true; loadRaw(); tab = 'layout'; render(); importStatus();
             } catch (error) { tab = 'json'; render(); status(error); }
             finally { persistDraft(); }
             event.target.value = '';
@@ -857,6 +932,21 @@
             }
         });
         document.body.appendChild(host);
+        if (typeof root.installResizablePopup === 'function') {
+            popupFrame = root.installResizablePopup(dialog, {
+                modal: host, dragHandle: q('.sai-rjp-dialog > header'),
+                minWidth: 720, minHeight: 480, margin: 12,
+                disabled: compactWindow, isHidden: () => closed || host.isConnected === false,
+                resizeLabel: t('Resize window'),
+            });
+            q('#sai-rjp-title').title = t('Drag window');
+            if (windowFrame && !compactWindow()) {
+                for (const [key, value] of Object.entries(windowFrame)) dialog.style.setProperty(key, `${value}px`, 'important');
+                dialog.dataset.simpleaiResizeManaged = '1';
+            }
+            root.addEventListener?.('resize', syncWindowViewport);
+            syncWindowViewport();
+        }
         const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (tab === 'layout') draw(); }) : null;
         observer?.observe(viewport);
         active = { host, close };
@@ -864,11 +954,12 @@
         render();
         if (initialError) status(initialError);
         else if (restored) status({ message: 'Draft restored.' }, false);
-        q('[data-rjp-action="close"]').focus();
+        else importStatus();
+        q('button[data-rjp-action="close"]').focus();
         return host;
     }
     const api = {
-        open, compile, parse, validateDraft, scaleDraft, regionColor, wrapPreviewText, fitPreviewText,
+        open, compile, parse, importLayout, validateDraft, scaleDraft, regionColor, wrapPreviewText, fitPreviewText,
         optimizationRequest, mergeOptimization, normalizeSnapshot,
     };
     root.SimpAIRegionalJsonPrompt = api;

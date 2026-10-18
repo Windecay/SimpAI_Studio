@@ -8372,12 +8372,14 @@ function installResizablePopup(content, options = {}) {
     if (!resizeHandle) {
         resizeHandle = document.createElement('div');
         resizeHandle.className = 'simpleai-popup-resize-handle';
-        resizeHandle.title = 'Resize window';
-        resizeHandle.setAttribute('aria-label', 'Resize window');
         content.appendChild(resizeHandle);
     }
+    resizeHandle.title = options.resizeLabel || 'Resize window';
+    resizeHandle.setAttribute('aria-label', options.resizeLabel || 'Resize window');
 
     let resizing = false;
+    let dragging = false;
+    let destroyed = false;
     let resizeStartWidth = 0;
     let resizeStartHeight = 0;
     let resizeStartX = 0;
@@ -8414,7 +8416,7 @@ function installResizablePopup(content, options = {}) {
 
     const onResizeDown = (e) => {
         if (e.button !== 0) return;
-        if (isHidden() || disabled()) return;
+        if (destroyed || dragging || isHidden() || disabled()) return;
 
         const rect = syncCurrentRectToInline() || content.getBoundingClientRect();
         if (!rect || rect.width <= 0 || rect.height <= 0) return;
@@ -8438,9 +8440,70 @@ function installResizablePopup(content, options = {}) {
         resizeHandle.addEventListener('pointerdown', onResizeDown, { passive: false });
     }
 
-    window.addEventListener('resize', () => ensureWithinViewport(false));
+    const dragHandle = options.dragHandle || null;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    const onDragMove = (e) => {
+        if (!dragging) return;
+        const rect = content.getBoundingClientRect();
+        const maxLeft = Math.max(margin, window.innerWidth - margin - rect.width);
+        const maxTop = Math.max(margin, window.innerHeight - margin - rect.height);
+        setImportantStyle(content, 'left', `${Math.round(clamp((e.clientX ?? 0) - dragOffsetX, margin, maxLeft))}px`);
+        setImportantStyle(content, 'top', `${Math.round(clamp((e.clientY ?? 0) - dragOffsetY, margin, maxTop))}px`);
+        e.preventDefault();
+    };
+    const onDragUp = () => {
+        dragging = false;
+        delete content.dataset.simpleaiDragActive;
+        window.removeEventListener('pointermove', onDragMove, true);
+        window.removeEventListener('pointerup', onDragUp, true);
+        window.removeEventListener('pointercancel', onDragUp, true);
+        ensureWithinViewport(true);
+    };
+    const onDragDown = (e) => {
+        if (e.button !== 0 || destroyed || resizing || isHidden() || disabled()) return;
+        if (e.target?.closest?.('button,input,select,textarea,a,[role="button"],[contenteditable="true"]')) return;
+        const rect = syncCurrentRectToInline();
+        if (!rect) return;
+        dragging = true;
+        content.dataset.simpleaiDragActive = '1';
+        dragOffsetX = (e.clientX ?? 0) - rect.left;
+        dragOffsetY = (e.clientY ?? 0) - rect.top;
+        window.addEventListener('pointermove', onDragMove, true);
+        window.addEventListener('pointerup', onDragUp, true);
+        window.addEventListener('pointercancel', onDragUp, true);
+        e.preventDefault();
+    };
+    dragHandle?.addEventListener('pointerdown', onDragDown, { passive: false });
+    const cancelInteraction = () => {
+        resizing = false;
+        dragging = false;
+        clearResizeActive();
+        delete content.dataset.simpleaiDragActive;
+        window.removeEventListener('pointermove', onResizeMove, true);
+        window.removeEventListener('pointerup', onResizeUp, true);
+        window.removeEventListener('pointercancel', onResizeUp, true);
+        window.removeEventListener('pointermove', onDragMove, true);
+        window.removeEventListener('pointerup', onDragUp, true);
+        window.removeEventListener('pointercancel', onDragUp, true);
+    };
+    const onViewportResize = () => ensureWithinViewport(false);
+    window.addEventListener('resize', onViewportResize);
 
-    const state = { ensureWithinViewport, syncCurrentRectToInline, isInteracting: () => resizing };
+    const destroy = () => {
+        if (destroyed) return;
+        destroyed = true;
+        cancelInteraction();
+        window.removeEventListener('resize', onViewportResize);
+        resizeHandle.removeEventListener('pointerdown', onResizeDown);
+        dragHandle?.removeEventListener('pointerdown', onDragDown);
+        delete resizeHandle.dataset.simpleaiResizeBound;
+        delete content.__simpleaiResizeState;
+    };
+    const state = {
+        ensureWithinViewport, syncCurrentRectToInline, cancelInteraction, destroy,
+        isInteracting: () => resizing || dragging,
+    };
     content.__simpleaiResizeState = state;
     return state;
 }

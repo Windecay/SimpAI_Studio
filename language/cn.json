@@ -3150,5 +3150,10 @@
   "Suggestions are ready for review.": "修改建议已生成，尚未应用。",
   "Suggestions applied to layout.": "修改建议已应用到当前布局。",
   "Draft restored.": "已恢复未应用的草稿。",
-  "Some descriptions or literal text are empty. You can still apply the prompt.": "部分描述或文字原文未填写，仍可应用提示词。"
+  "Some descriptions or literal text are empty. You can still apply the prompt.": "部分描述或文字原文未填写，仍可应用提示词。",
+  "Provide both source width and height": "请同时提供原始画布的宽度和高度",
+  "Canvas expanded from region bounds; original canvas size is unknown. Applying also updates the output size.": "已按区域范围扩大预览画布，原始画布尺寸未知；应用时会同步更新出图尺寸。",
+  "Imported source canvas. Applying also updates the output size.": "已采用 JSON 中的画布尺寸；应用时会同步更新出图尺寸。",
+  "Drag window": "拖动窗口",
+  "Resize window": "调整窗口大小"
 }
