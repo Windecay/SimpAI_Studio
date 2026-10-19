@@ -8,28 +8,67 @@
   "content_preferences": {
     "nsfw": {
       "promote": {
-        "subject": ["black_hair_woman"],
+        "subject": [
+          "black_hair_woman", "nurse_shift_woman", "ballet_rehearsal_woman", "sleeper_train_woman",
+          "military_boudoir_woman", "geisha_teahouse_woman", "mermaid_lagoon_woman",
+          "flamenco_dancer_woman", "cyberpunk_woman"
+        ],
         "appearance": [
           "cinched_slim_waist", "prominent_hip_curve", "pear_curve_body", "hourglass_figure",
           "nipple_through_sheer", "body_oil_sheen", "wet_skin_lines", "glossy_lips",
           "bare_shoulders", "collarbone_dip", "lower_back_curve", "dimple_back",
-          "hip_bone_protrude", "smoky_eye_look", "dewy_skin_glow"
+          "hip_bone_protrude", "smoky_eye_look", "dewy_skin_glow",
+          "linen_sleepy_softness", "hotel_loose_updo", "swimwear_strap_tan_line",
+          "sunset_body_rim", "windblown_night_hair", "after_hours_loosened_look",
+          "fitting_room_side_waist", "dance_afterglow_sweat", "onsen_steam_skin",
+          "firelight_flushed_face", "monochrome_body_definition", "bridal_veil_half_face",
+          "sea_breeze_neck_line", "velvet_sheen_collarbone",
+          "nurse_loosened_hair", "ballet_bun_loose_strand", "sauna_heat_flush",
+          "spa_oil_sheen_skin", "pinup_red_lip_gloss", "wind_tangled_hair",
+          "curve_confidence_glow", "swim_goggle_hair_mark", "racer_helmet_hairline",
+          "sleeper_window_light_hair", "aquarium_blue_reflection",
+          "military_disciplined_hair", "mermaid_wet_glow", "geisha_painted_lips",
+          "neon_sign_color_skin", "bonfire_warm_flush", "cyberpunk_neon_hair_streak"
         ],
         "outfit": [
           "see_through_blouse", "mesh_fabric_top", "sheer_full_body_dress",
           "silk_slip_dress", "lace_lingerie_set", "black_stockings",
-          "suspender_stockings", "latex_fashion_dress", "corset_fashion"
+          "suspender_stockings", "latex_fashion_dress", "corset_fashion",
+          "linen_slip_dress_loose", "hotel_bathrobe_belt", "cabana_bikini_sheer_cover",
+          "fitting_room_unzipped_dress", "backstage_half_worn_costume", "dance_studio_bodysuit",
+          "ryokan_yukata_loose", "velvet_slip_dress", "bridal_offshoulder_veil",
+          "nurse_scrub_loose", "crew_uniform_unbuttoned", "secretary_pencil_skirt_slit",
+          "ballet_leotard_tights", "pole_short_set", "swim_training_suit",
+          "theatre_low_back_gown", "sauna_towel_only", "sequin_bodycon_dress",
+          "curve_fitted_dress", "wind_silk_dress_loose",
+          "military_open_uniform", "cheongsam_high_slit", "beach_volleyball_bikini",
+          "cyberpunk_latex_top", "flamenco_ruffle_dress", "maternity_sheer_wrap"
         ],
         "action": [
           "water_pour_shoulder", "sheet_pull_over", "blouse_unbutton_hint", "lotion_apply_leg",
           "bath_sponge_scrub", "bubble_bath_blow", "hair_flip_side", "lip_bite_look",
-          "strap_adjust", "waist_twist_look", "hip_turn_profile"
+          "strap_adjust", "waist_twist_look", "hip_turn_profile",
+          "linen_bed_recline", "hotel_curtain_pull", "fitting_room_turn_check",
+          "backstage_zip_up", "dance_barre_stretch", "velvet_sofa_whisper",
+          "yacht_deck_wind_hold", "cabin_blanket_tuck",
+          "ballet_barre_arabesque", "pole_climb_hold", "aerial_silk_inversion",
+          "racer_suit_zip_down", "sauna_ladle_pour", "car_window_wipe",
+          "wind_hold_hem", "curve_self_embrace", "sleeper_bunk_climb",
+          "military_cap_tilt", "flamenco_skirt_flick", "cyberpunk_rain_stand",
+          "masquerade_mask_remove", "maternity_belly_cradle"
         ],
         "camera": [
           "collarbone_jewelry_crop", "back_blade_crop", "waist_shadow_detail", "hip_fabric_silhouette",
           "covered_bust_line_crop", "covered_hip_profile", "covered_crotch_fabric_detail",
           "leg_cross_texture_closeup", "wet_swimwear_curve_detail", "covered_bust_robe_shadow",
-          "hand_rest_hip_swimwear", "cropped_bust_hip_triptych"
+          "hand_rest_hip_swimwear", "cropped_bust_hip_triptych",
+          "linen_sheet_foreground", "hotel_curtain_gap", "poolside_waterline",
+          "shore_backlit_profile", "fitting_room_three_quarter", "onsen_steam_low",
+          "firelight_face_closeup", "bridal_veil_gauze", "velvet_sofa_low",
+          "barre_mirror_line", "pool_lane_waterline", "mirror_elevator_frame",
+          "smoke_silhouette_frame", "mirror_multi_angle",
+          "neon_sign_frame", "ice_glow_low_angle", "dune_rim_wide",
+          "mask_eye_framing", "sports_action_track"
         ]
       },
       "demote": {
@@ -46,7 +85,50 @@
           "blonde_woman": 0.2,
           "freckled_redhead": 0.08,
           "loose_curls_woman": 0.15,
-          "wet_curly_woman": 0.25
+          "wet_curly_woman": 0.25,
+          "morning_linen_woman": 1.4,
+          "hotel_suite_woman": 1.2,
+          "poolside_cabana_woman": 1.3,
+          "sunset_shore_woman": 1.3,
+          "rooftop_wind_woman": 1.2,
+          "after_hours_office_woman": 1.3,
+          "fitting_room_woman": 1.3,
+          "backstage_quick_change_woman": 1.2,
+          "dance_studio_woman": 1.3,
+          "onsen_ryokan_woman": 1.2,
+          "snow_cabin_woman": 1.1,
+          "morning_kitchen_woman": 1.2,
+          "laundry_room_woman": 1.1,
+          "greenhouse_woman": 1.1,
+          "vintage_boudoir_woman": 1.2,
+          "sculpture_studio_model": 1.1,
+          "mirror_corridor_woman": 1.2,
+          "bridal_suite_woman": 1.3,
+          "yacht_deck_woman": 1.2,
+          "velvet_lounge_woman": 1.2,
+          "nurse_shift_woman": 1.3,
+          "ballet_rehearsal_woman": 1.3,
+          "sleeper_train_woman": 1.3,
+          "pinup_woman": 1.2,
+          "bohemian_woman": 1.2,
+          "confident_curve_woman": 1.2,
+          "sauna_room_woman": 1.2,
+          "spa_therapist_woman": 1.2,
+          "fine_art_model": 1.1,
+          "military_boudoir_woman": 1.3,
+          "geisha_teahouse_woman": 1.2,
+          "mermaid_lagoon_woman": 1.2,
+          "flamenco_dancer_woman": 1.2,
+          "cyberpunk_woman": 1.2,
+          "tennis_court_woman": 1.1,
+          "beach_volleyball_woman": 1.1,
+          "weightlifting_woman": 1.1,
+          "maternity_glow_woman": 1.1,
+          "infinity_pool_woman": 1.1,
+          "classic_car_pinup_woman": 1.2,
+          "violin_musician_woman": 1.1,
+          "painter_palette_woman": 1.1,
+          "wine_cellar_woman": 1.1
         },
         "appearance": {
           "cinched_slim_waist": 8,
@@ -69,7 +151,64 @@
           "dewy_skin_glow": 1,
           "velvet_skin_tone": 1,
           "long_straight_hair_waist": 1,
-          "swept_back_hair": 0.5
+          "swept_back_hair": 0.5,
+          "linen_sleepy_softness": 4,
+          "hotel_loose_updo": 3,
+          "swimwear_strap_tan_line": 6,
+          "sunset_body_rim": 5,
+          "windblown_night_hair": 3,
+          "after_hours_loosened_look": 3,
+          "fitting_room_side_waist": 6,
+          "backstage_half_makeup": 3,
+          "dance_afterglow_sweat": 5,
+          "onsen_steam_skin": 5,
+          "firelight_flushed_face": 4,
+          "kitchen_morning_bare_face": 2,
+          "laundry_warm_skin": 3,
+          "greenhouse_dewy_edges": 3,
+          "film_grain_skin_glow": 3,
+          "monochrome_body_definition": 6,
+          "corridor_repeated_reflection": 3,
+          "bridal_veil_half_face": 4,
+          "sea_breeze_neck_line": 4,
+          "velvet_sheen_collarbone": 5,
+          "nurse_loosened_hair": 3,
+          "ballet_bun_loose_strand": 3,
+          "sauna_heat_flush": 5,
+          "spa_oil_sheen_skin": 5,
+          "pinup_red_lip_gloss": 4,
+          "wind_tangled_hair": 3,
+          "curve_confidence_glow": 5,
+          "swim_goggle_hair_mark": 4,
+          "racer_helmet_hairline": 3,
+          "sleeper_window_light_hair": 3,
+          "aquarium_blue_reflection": 3,
+          "pole_grip_powder": 3,
+          "climber_chalk_dust": 3,
+          "boxer_wrap_marks": 3,
+          "theatre_stage_glow": 3,
+          "bohemian_loose_waves": 3,
+          "fine_art_shadow_study": 4,
+          "military_disciplined_hair": 4,
+          "mermaid_wet_glow": 5,
+          "geisha_painted_lips": 4,
+          "neon_sign_color_skin": 4,
+          "bonfire_warm_flush": 4,
+          "cyberpunk_neon_hair_streak": 4,
+          "flamenco_red_lip": 4,
+          "beach_salt_hair": 4,
+          "desert_sun_glow_skin": 3,
+          "fairytale_glitter_skin": 3,
+          "wine_cellar_red_lip_stain": 3,
+          "maternity_soft_glow": 3,
+          "classic_car_red_lips": 4,
+          "cheongsam_wave_hair": 4,
+          "valkyrie_braided_hair": 3,
+          "fallen_angel_bare_back": 4,
+          "gym_sweat_sheen": 4,
+          "skating_tight_bun": 3,
+          "fencing_helmet_hair": 3,
+          "masquerade_mask_eyes": 4
         },
         "outfit": {
           "see_through_blouse": 12,
@@ -88,7 +227,70 @@
           "sheer_pantyhose": 4,
           "garter_belt_set": 4,
           "thigh_high_socks": 3,
-          "bustier_corset": 12
+          "bustier_corset": 12,
+          "linen_slip_dress_loose": 5,
+          "hotel_bathrobe_belt": 5,
+          "cabana_bikini_sheer_cover": 7,
+          "shore_flowing_sheer_dress": 5,
+          "rooftop_wind_dress": 4,
+          "office_open_collar_blouse": 4,
+          "fitting_room_unzipped_dress": 6,
+          "backstage_half_worn_costume": 6,
+          "dance_studio_bodysuit": 5,
+          "ryokan_yukata_loose": 4,
+          "cabin_oversized_knit": 3,
+          "kitchen_old_tshirt_shorts": 3,
+          "laundry_loose_homewear": 3,
+          "greenhouse_sheer_linen_dress": 5,
+          "vintage_lace_and_robe": 4,
+          "sculpt_studio_black_bodysuit": 5,
+          "corridor_column_dress": 4,
+          "bridal_offshoulder_veil": 6,
+          "yacht_swimsuit_linen_shirt": 5,
+          "velvet_slip_dress": 6,
+          "nurse_scrub_loose": 5,
+          "crew_uniform_unbuttoned": 5,
+          "secretary_pencil_skirt_slit": 5,
+          "ballet_leotard_tights": 6,
+          "pole_short_set": 6,
+          "swim_training_suit": 5,
+          "theatre_low_back_gown": 6,
+          "sauna_towel_only": 6,
+          "sequin_bodycon_dress": 6,
+          "curve_fitted_dress": 5,
+          "wind_silk_dress_loose": 5,
+          "pinup_high_waist_shorts": 4,
+          "fine_art_drape_only": 5,
+          "military_open_uniform": 5,
+          "masquerade_masked_gown": 5,
+          "fallen_angel_draped_white": 5,
+          "valkyrie_armor_top": 5,
+          "mermaid_shell_top": 5,
+          "geisha_loose_kimono": 5,
+          "cheongsam_high_slit": 6,
+          "skating_costume_leotard": 5,
+          "beach_volleyball_bikini": 6,
+          "tennis_white_dress": 5,
+          "gym_sports_bra": 5,
+          "fencing_white_suit": 4,
+          "flamenco_ruffle_dress": 6,
+          "belly_dancer_coin_bra": 6,
+          "desert_flowing_scarf": 4,
+          "forest_knit_wrap": 4,
+          "waterfall_wet_slip": 6,
+          "coastal_flowing_dress": 5,
+          "diner_retro_uniform": 4,
+          "motel_sheer_robe": 5,
+          "carnival_sequin_top": 5,
+          "infinity_pool_white_swimsuit": 6,
+          "wine_cellar_slip_dress": 5,
+          "pinup_polka_dress": 4,
+          "cyberpunk_latex_top": 6,
+          "fairytale_tulle_gown": 5,
+          "maternity_sheer_wrap": 5,
+          "violin_deep_v_neck": 5,
+          "painter_overalls_open": 4,
+          "bonfire_knit_cover": 4
         },
         "action": {
           "water_pour_shoulder": 10,
@@ -101,7 +303,70 @@
           "bath_sponge_scrub": 4,
           "bubble_bath_blow": 4,
           "hair_flip_side": 4,
-          "strap_adjust": 4
+          "strap_adjust": 4,
+          "linen_bed_recline": 6,
+          "hotel_curtain_pull": 5,
+          "cabana_sunscreen_apply": 5,
+          "shore_hold_windblown_hair": 4,
+          "rooftop_rail_look_down": 4,
+          "office_heel_off": 5,
+          "fitting_room_turn_check": 6,
+          "backstage_zip_up": 5,
+          "dance_barre_stretch": 5,
+          "onsen_wooden_spoon": 3,
+          "cabin_blanket_tuck": 4,
+          "kitchen_water_glass": 3,
+          "laundry_warm_towel": 3,
+          "greenhouse_watering_bend": 5,
+          "vintage_boudoir_wait_shutter": 4,
+          "sculpt_studio_still_pose": 5,
+          "corridor_slow_walk": 4,
+          "bridal_veil_adjust": 5,
+          "yacht_deck_wind_hold": 5,
+          "velvet_sofa_whisper": 6,
+          "ballet_barre_arabesque": 5,
+          "pole_climb_hold": 5,
+          "aerial_silk_inversion": 5,
+          "racer_suit_zip_down": 5,
+          "sauna_ladle_pour": 4,
+          "car_window_wipe": 4,
+          "wind_hold_hem": 5,
+          "curve_self_embrace": 5,
+          "sleeper_bunk_climb": 4,
+          "mirror_turn_repeat": 5,
+          "gauze_veil_lift": 4,
+          "pinup_leg_line_pose": 5,
+          "fine_art_still_pose": 4,
+          "military_cap_tilt": 5,
+          "masquerade_mask_remove": 5,
+          "valkyrie_sword_rest": 4,
+          "mermaid_hair_wring": 5,
+          "geisha_fan_tease": 4,
+          "cheongsam_step_turn": 5,
+          "skating_spin_finish": 5,
+          "volleyball_serve_jump": 5,
+          "tennis_serve_stretch": 5,
+          "gym_deadlift_lift": 5,
+          "fencing_lunge_pose": 4,
+          "flamenco_skirt_flick": 6,
+          "belly_hip_isolate": 5,
+          "desert_scarf_hold_wind": 4,
+          "waterfall_face_lift": 5,
+          "coastal_cliff_look_down": 4,
+          "diner_counter_lean": 4,
+          "motel_sign_look_up": 4,
+          "carnival_ferris_look_up": 4,
+          "infinity_pool_edge_sit": 5,
+          "wine_glass_swirl": 4,
+          "pinup_leaning_hood": 5,
+          "cyberpunk_rain_stand": 5,
+          "fairytale_gown_twirl": 5,
+          "maternity_belly_cradle": 5,
+          "violin_bow_raise": 4,
+          "painter_brush_mouth": 4,
+          "bonfire_stick_poke": 4,
+          "forest_branch_lean": 4,
+          "fallen_angel_wing_fold": 4
         },
         "camera": {
           "collarbone_jewelry_crop": 0.57,
@@ -115,7 +380,34 @@
           "wet_swimwear_curve_detail": 0.52,
           "covered_bust_robe_shadow": 0.47,
           "hand_rest_hip_swimwear": 0.47,
-          "cropped_bust_hip_triptych": 0.52
+          "cropped_bust_hip_triptych": 0.52,
+          "linen_sheet_foreground": 0.6,
+          "hotel_curtain_gap": 0.6,
+          "poolside_waterline": 0.55,
+          "shore_backlit_profile": 0.6,
+          "rooftop_wind_wide": 0.5,
+          "fitting_room_three_quarter": 0.6,
+          "backstage_rack_frame": 0.55,
+          "dance_mirror_wall": 0.55,
+          "onsen_steam_low": 0.6,
+          "firelight_face_closeup": 0.6,
+          "corridor_vanishing_line": 0.55,
+          "bridal_veil_gauze": 0.6,
+          "velvet_sofa_low": 0.6,
+          "greenhouse_glass_layers": 0.55,
+          "barre_mirror_line": 0.6,
+          "pool_lane_waterline": 0.55,
+          "mirror_elevator_frame": 0.6,
+          "smoke_silhouette_frame": 0.6,
+          "mirror_multi_angle": 0.6,
+          "neon_sign_frame": 0.6,
+          "ice_glow_low_angle": 0.55,
+          "dune_rim_wide": 0.55,
+          "mask_eye_framing": 0.6,
+          "sports_action_track": 0.55,
+          "musician_instrument_crop": 0.5,
+          "firelight_low_warm": 0.55,
+          "military_gear_profile": 0.5
         }
       }
     }
@@ -169,14 +461,14 @@
       "id": "urban_day",
       "theme_ids": [
         "urban_story", "street_documentary", "workplace_story", "food_culture",
-        "architecture_poetry", "detective_mystery", "industrial_heritage"
+        "architecture_poetry", "detective_mystery", "industrial_heritage", "office_after_hours"
       ],
       "allow_specialties": ["urban", "transport", "surveillance", "reflection", "outdoor", "motion"],
       "preferred": {
-        "camera": ["environmental_portrait", "foreground_layers", "one_point_depth", "deep_focus_tableau", "candid_obstruction_50mm"],
-        "lighting": ["fluorescent_layers", "skylight_volume", "passing_headlight", "soft_window_light"],
+        "camera": ["environmental_portrait", "foreground_layers", "one_point_depth", "deep_focus_tableau", "candid_obstruction_50mm", "rooftop_wind_wide"],
+        "lighting": ["fluorescent_layers", "skylight_volume", "passing_headlight", "soft_window_light", "office_late_lamp"],
         "art": ["documentary_photo", "architectural_photo", "cinematic_still", "large_format_photo"],
-        "atmosphere": ["urban_alienation", "focused_craft", "working_rhythm", "layered_city_sound"]
+        "atmosphere": ["urban_alienation", "focused_craft", "working_rhythm", "layered_city_sound", "after_hours_quiet_tension"]
       }
     },
     {
@@ -220,13 +512,13 @@
     },
     {
       "id": "coastal_water",
-      "theme_ids": ["ocean_journey", "resort_swimwear", "wet_clothing"],
+      "theme_ids": ["ocean_journey", "resort_swimwear", "wet_clothing", "sunset_shore_silhouette"],
       "allow_specialties": ["water_surface", "underwater", "outdoor", "motion", "reflection"],
       "preferred": {
-        "camera": ["half_underwater", "puddle_low_angle", "panoramic_scale", "wide_centered_action"],
-        "lighting": ["pool_reflection", "golden_hour", "golden_back_rim", "pool_caustic_skin"],
-        "art": ["cinematic_still", "underwater_photography", "golden_hour_warm", "film_35mm"],
-        "atmosphere": ["wild_freedom", "summer_heat", "windblown_freedom", "reef_abundance"]
+        "camera": ["half_underwater", "puddle_low_angle", "panoramic_scale", "wide_centered_action", "shore_backlit_profile"],
+        "lighting": ["pool_reflection", "golden_hour", "golden_back_rim", "pool_caustic_skin", "shore_sunset_rim"],
+        "art": ["cinematic_still", "underwater_photography", "golden_hour_warm", "film_35mm", "shore_silhouette_film"],
+        "atmosphere": ["wild_freedom", "summer_heat", "windblown_freedom", "reef_abundance", "shore_sunset_stillness"]
       }
     },
     {
@@ -315,6 +607,208 @@
         "lighting": ["projected_pattern", "eclipse_rim", "prism_spectrum", "screen_matrix_glow", "starlight_only"],
         "art": ["retro_future", "concept_art", "glitch_aesthetic", "vaporwave_neon", "editorial_3d"],
         "atmosphere": ["precise_future", "cosmic_humility", "galactic_ceremony", "futuristic_cold"]
+      }
+    },
+    {
+      "id": "hospitality_escape",
+      "theme_ids": [
+        "hotel_suite_escape", "poolside_cabana", "yacht_sunset_deck",
+        "onsen_ryokan_night", "rooftop_wind_night"
+      ],
+      "allow_specialties": [
+        "hospitality", "private_indoor", "water_surface", "water_indoor",
+        "outdoor", "reflection", "portrait_editorial"
+      ],
+      "preferred": {
+        "camera": ["poolside_waterline", "shore_backlit_profile", "hotel_curtain_gap", "corridor_vanishing_line", "onsen_steam_low"],
+        "lighting": ["hotel_window_sheer", "poolside_reflected_ripple", "shore_sunset_rim", "onsen_steam_diffuse", "rooftop_city_bokeh"],
+        "art": ["hotel_suite_editorial", "poolside_sunlit_film", "shore_silhouette_film", "retro_boudoir_film"],
+        "atmosphere": ["hotel_escape_secrecy", "poolside_summer_languor", "shore_sunset_stillness", "onsen_steam_calm", "velvet_lounge_low_whisper"]
+      }
+    },
+    {
+      "id": "studio_gallery",
+      "theme_ids": [
+        "fitting_room_mirror", "monochrome_sculpt_studio", "mirror_corridor_walk",
+        "backstage_quick_change", "dance_studio_after"
+      ],
+      "allow_specialties": [
+        "studio_backstage", "portrait_editorial", "reflection", "stage",
+        "experimental", "motion"
+      ],
+      "preferred": {
+        "camera": ["fitting_room_three_quarter", "backstage_rack_frame", "dance_mirror_wall", "corridor_vanishing_line", "mirror_double_view", "mirror_third_person"],
+        "lighting": ["fitting_room_top_light", "backstage_bulb_string", "mirror_bounce", "soft_skin_rim", "hard_side_light"],
+        "art": ["monochrome_sculpt", "backstage_documentary", "high_fashion_editorial", "soft_glam_retouch", "mirror_reflection_art"],
+        "atmosphere": ["fitting_room_private_glance", "backstage_adrenaline", "body_confidence", "fashion_provocation", "backstage_hurry"]
+      }
+    },
+    {
+      "id": "home_cocoon",
+      "theme_ids": [
+        "morning_linen_glow", "kitchen_morning_light", "laundry_glow_room",
+        "greenhouse_humidity", "snow_cabin_firelight"
+      ],
+      "allow_specialties": ["home_cocoon", "private_indoor", "water_indoor", "outdoor", "reflection"],
+      "preferred": {
+        "camera": ["linen_sheet_foreground", "greenhouse_glass_layers", "onsen_steam_low", "bedside_oblique_view", "window_side_profile"],
+        "lighting": ["linen_morning_haze", "greenhouse_diffused_green", "cabin_fireplace_warm", "curtain_morning_soft", "soft_window_light"],
+        "art": ["linen_film_soft", "greenhouse_botanical", "no_retouch_natural", "film_35mm", "boudoir_film_soft"],
+        "atmosphere": ["linen_morning_slowness", "greenhouse_humid_hush", "cabin_firelight_intimacy", "warm_home_cocoon", "quiet_morning_slow"]
+      }
+    },
+    {
+      "id": "boudoir_noir",
+      "theme_ids": ["vintage_film_boudoir", "velvet_lounge_whisper", "bridal_suite_veil"],
+      "allow_specialties": [
+        "private_indoor", "reflection", "portrait_editorial", "historical"
+      ],
+      "preferred": {
+        "camera": ["firelight_face_closeup", "bridal_veil_gauze", "velvet_sofa_low", "collarbone_closeup", "curtain_foreground"],
+        "lighting": ["velvet_lounge_amber", "cabin_fireplace_warm", "boudoir_window_stripes", "bedside_lamp_warm", "candle_warm_shadow"],
+        "art": ["retro_boudoir_film", "bridal_soft_gauze", "boudoir_film_soft", "soft_focus_glow", "film_noir_grain"],
+        "atmosphere": ["velvet_lounge_low_whisper", "cabin_firelight_intimacy", "restrained_desire", "late_night_warmth", "adult_confidence"]
+      }
+    },
+    {
+      "id": "service_work_shift",
+      "theme_ids": [
+        "nurse_night_shift", "flight_attendant_galley", "police_after_shift",
+        "teacher_after_class", "secretary_desk_break", "barista_closing_time",
+        "bartender_last_call", "florist_morning_shop", "potter_wheel_studio",
+        "photographer_own_loft", "makeup_artist_mirror", "tailor_fitting_pins",
+        "librarian_after_hours", "dj_booth_night", "waitress_late_shift"
+      ],
+      "allow_specialties": [
+        "service", "private_indoor", "urban", "reflection", "portrait_editorial", "stage"
+      ],
+      "preferred": {
+        "camera": ["service_handheld_follow", "locker_row_frame", "counter_top_shot", "environmental_portrait"],
+        "lighting": ["service_fluorescent_night", "task_lamp_counter", "soft_window_light"],
+        "art": ["service_documentary", "documentary_photo", "cinematic_still"],
+        "atmosphere": ["after_shift_fatigue", "service_quiet_hours", "working_rhythm"]
+      }
+    },
+    {
+      "id": "athletic_body",
+      "theme_ids": [
+        "ballet_barre_rehearsal", "rhythmic_gymnastics_ribbon", "pole_dance_studio",
+        "aerial_silk_loft", "swim_lane_after", "freediving_surface_rest",
+        "rock_climbing_gym", "ski_slope_lodge", "motorsport_pit_lane",
+        "boxing_ring_corner", "roller_skate_night", "pilates_reformer",
+        "spa_massage_room", "surf_dawn_session", "archery_range_focus"
+      ],
+      "allow_specialties": [
+        "athletic", "motion", "sports", "water_surface", "outdoor", "reflection", "private_indoor"
+      ],
+      "preferred": {
+        "camera": ["barre_mirror_line", "apparatus_low_angle", "pool_lane_waterline", "wall_climb_wide", "pit_lane_tracking", "ring_rope_frame"],
+        "lighting": ["gym_window_cross", "pool_dawn_light", "snow_bounce_soft", "garage_work_lamp", "ring_top_beam"],
+        "art": ["athletic_motion_freeze", "cinematic_still", "film_35mm"],
+        "atmosphere": ["athletic_breath_rhythm", "competitive_focus_calm"]
+      }
+    },
+    {
+      "id": "transit_stay",
+      "theme_ids": [
+        "train_sleeper_cabin", "elevator_mirror_box", "motel_corridor_light",
+        "sauna_cedar_room", "bookstore_closed_hours", "night_market_stall",
+        "camping_tent_dawn", "cruise_ship_deck", "aquarium_tunnel_blue",
+        "vineyard_harvest_day", "lighthouse_keeper_room", "ferry_upper_deck",
+        "theatre_balcony_box", "car_backseat_rain", "resort_cabana_night"
+      ],
+      "allow_specialties": [
+        "transit", "private_indoor", "water_surface", "outdoor", "reflection", "urban"
+      ],
+      "preferred": {
+        "camera": ["sleeper_bunk_above", "mirror_elevator_frame", "aquarium_glass_back", "tent_opening_frame", "one_point_depth"],
+        "lighting": ["sleeper_window_streak", "neon_corridor_wash", "aquarium_blue_wash"],
+        "art": ["travel_film_grain", "neon_reflection_art", "film_35mm"],
+        "atmosphere": ["transit_transience", "small_room_closeness"]
+      }
+    },
+    {
+      "id": "texture_style_studio",
+      "theme_ids": [
+        "snowstorm_portrait", "wind_silk_drape", "color_smoke_studio",
+        "bubble_float_room", "petal_rain_soft", "sequin_light_shimmer",
+        "sheer_gauze_layers", "polaroid_scatter_floor", "mirror_multiple_reflection",
+        "rain_glass_pattern", "dark_academia_study", "pin_up_retro_glam",
+        "bohemian_free_spirit", "fine_art_body_study", "plus_size_confidence"
+      ],
+      "allow_specialties": [
+        "texture_studio", "experimental", "portrait_editorial", "reflection", "historical", "outdoor"
+      ],
+      "preferred": {
+        "camera": ["smoke_silhouette_frame", "mirror_multi_angle", "mirror_triptych"],
+        "lighting": ["petal_soft_diffuse", "projected_pattern", "prism_spectrum"],
+        "art": ["smoke_color_veil", "sequin_glitter_art", "gauze_layer_veil", "polaroid_instant_set", "artwork_study_shadow", "confident_natural_skin"],
+        "atmosphere": ["texture_playfulness", "bohemian_freeflow", "confident_self_possession", "dream_logic"]
+      }
+    },
+    {
+      "id": "roleplay_fantasy",
+      "theme_ids": [
+        "military_boudoir", "masquerade_ball", "fallen_angel", "valkyrie_warrior",
+        "mermaid_lagoon", "geisha_teahouse", "cheongsam_lane", "fairytale_glam"
+      ],
+      "allow_specialties": [
+        "roleplay_costume", "stage", "private_indoor", "portrait_editorial", "historical", "reflection"
+      ],
+      "preferred": {
+        "camera": ["mirror_triptych", "low_angle_24mm", "back_profile", "fisheye_immersive"],
+        "lighting": ["prism_spectrum", "bioluminescent_light", "candle_cluster", "stage_spot"],
+        "art": ["concept_art", "stained_glass", "high_fashion_editorial", "ink_wash"],
+        "atmosphere": ["mystical_awe", "otherworldly_glamour", "solemn_ritual", "royal_dignity"]
+      }
+    },
+    {
+      "id": "sport_action",
+      "theme_ids": [
+        "figure_skating", "beach_volleyball", "tennis_court", "gym_weightlifting",
+        "fencing_hall", "flamenco_dancer", "belly_dancer"
+      ],
+      "allow_specialties": [
+        "sports", "motion", "athletic", "stage", "private_indoor", "reflection"
+      ],
+      "preferred": {
+        "camera": ["panning_motion", "tracking_dolly", "wide_centered_action", "body_mount_front"],
+        "lighting": ["gym_top_light", "stage_spot", "noon_harsh_sun", "poolside_reflected_ripple"],
+        "art": ["athletic_motion_freeze", "hdr_drama", "film_35mm", "documentary_photo"],
+        "atmosphere": ["graceful_strength", "fierce_determination", "competitive_focus", "post_workout_energy"]
+      }
+    },
+    {
+      "id": "destination_scene",
+      "theme_ids": [
+        "desert_golden_hour", "forest_woodland", "waterfall_rainforest", "coastal_cliff",
+        "retro_diner", "neon_motel_sign", "carnival_fairground", "infinity_pool_rooftop",
+        "wine_cellar", "classic_car_pinup"
+      ],
+      "allow_specialties": [
+        "destination", "outdoor", "urban", "transit", "water_surface", "private_indoor", "reflection"
+      ],
+      "preferred": {
+        "camera": ["environmental_portrait", "through_trees", "puddle_low_angle", "corridor_vanishing_line"],
+        "lighting": ["golden_hour", "neon_reflection", "amber_streetlamp", "desert_bounce"],
+        "art": ["documentary_photo", "cinematic_still", "neon_reflection_art", "travel_film_grain"],
+        "atmosphere": ["road_freedom", "midnight_vitality", "windblown_freedom", "warm_daily"]
+      }
+    },
+    {
+      "id": "stylized_mood",
+      "theme_ids": [
+        "cyberpunk_neon_noir", "maternity_glow", "violin_musician",
+        "painter_palette", "bonfire_beach_night"
+      ],
+      "allow_specialties": [
+        "neon_city", "experimental", "portrait_editorial", "texture_studio", "outdoor", "reflection"
+      ],
+      "preferred": {
+        "camera": ["dutch_dynamic", "low_angle_24mm", "shallow_focus_detail", "mirror_triptych"],
+        "lighting": ["projected_pattern", "soft_skin_rim", "candle_warm_shadow", "amber_streetlamp"],
+        "art": ["editorial_3d", "soft_glam_retouch", "photogram", "double_exposure"],
+        "atmosphere": ["body_confidence", "adult_confidence", "dream_logic", "fashion_provocation"]
       }
     }
   ],
@@ -428,6 +922,66 @@
       "lighting": ["projected_pattern", "prism_spectrum", "double_shadow", "screen_matrix_glow"],
       "art": ["glitch_aesthetic", "double_exposure", "infrared_surreal", "tilt_shift_miniature", "magazine_cutout", "photogram"],
       "atmosphere": ["dream_logic", "energetic_chaos"]
+    },
+    "hospitality": {
+      "camera": ["hotel_curtain_gap", "poolside_waterline", "shore_backlit_profile", "corridor_vanishing_line", "onsen_steam_low", "velvet_sofa_low"],
+      "lighting": ["hotel_window_sheer", "poolside_reflected_ripple", "shore_sunset_rim", "onsen_steam_diffuse", "velvet_lounge_amber", "rooftop_city_bokeh"],
+      "art": ["hotel_suite_editorial", "poolside_sunlit_film", "shore_silhouette_film", "retro_boudoir_film"],
+      "atmosphere": ["hotel_escape_secrecy", "poolside_summer_languor", "shore_sunset_stillness", "onsen_steam_calm", "velvet_lounge_low_whisper"]
+    },
+    "studio_backstage": {
+      "camera": ["fitting_room_three_quarter", "backstage_rack_frame", "dance_mirror_wall", "corridor_vanishing_line"],
+      "lighting": ["fitting_room_top_light", "backstage_bulb_string"],
+      "art": ["monochrome_sculpt", "backstage_documentary"],
+      "atmosphere": ["fitting_room_private_glance", "backstage_adrenaline"]
+    },
+    "home_cocoon": {
+      "camera": ["linen_sheet_foreground", "greenhouse_glass_layers", "onsen_steam_low"],
+      "lighting": ["linen_morning_haze", "greenhouse_diffused_green", "cabin_fireplace_warm"],
+      "art": ["linen_film_soft", "greenhouse_botanical"],
+      "atmosphere": ["linen_morning_slowness", "greenhouse_humid_hush", "cabin_firelight_intimacy"]
+    },
+    "service": {
+      "camera": ["service_handheld_follow", "locker_row_frame", "counter_top_shot"],
+      "lighting": ["service_fluorescent_night", "task_lamp_counter"],
+      "art": ["service_documentary"],
+      "atmosphere": ["after_shift_fatigue", "service_quiet_hours"]
+    },
+    "athletic": {
+      "camera": ["barre_mirror_line", "apparatus_low_angle", "pool_lane_waterline", "wall_climb_wide", "pit_lane_tracking", "ring_rope_frame"],
+      "lighting": ["gym_window_cross", "pool_dawn_light", "snow_bounce_soft", "garage_work_lamp", "ring_top_beam"],
+      "art": ["athletic_motion_freeze"],
+      "atmosphere": ["athletic_breath_rhythm", "competitive_focus_calm"]
+    },
+    "transit": {
+      "camera": ["sleeper_bunk_above", "mirror_elevator_frame", "aquarium_glass_back", "tent_opening_frame"],
+      "lighting": ["sleeper_window_streak", "neon_corridor_wash", "aquarium_blue_wash"],
+      "art": ["travel_film_grain", "neon_reflection_art"],
+      "atmosphere": ["transit_transience", "small_room_closeness"]
+    },
+    "texture_studio": {
+      "camera": ["smoke_silhouette_frame", "mirror_multi_angle"],
+      "lighting": ["petal_soft_diffuse"],
+      "art": ["smoke_color_veil", "sequin_glitter_art", "gauze_layer_veil", "polaroid_instant_set", "artwork_study_shadow", "confident_natural_skin"],
+      "atmosphere": ["texture_playfulness", "bohemian_freeflow", "confident_self_possession"]
+    },
+    "roleplay_costume": {
+      "camera": ["low_angle_24mm", "mirror_triptych", "frame_within_frame"],
+      "lighting": ["prism_spectrum", "candle_cluster", "stage_spot"],
+      "art": ["concept_art", "high_fashion_editorial"],
+      "atmosphere": ["mystical_awe", "royal_dignity", "otherworldly_glamour"]
+    },
+    "neon_city": {
+      "camera": ["slow_shutter_trails", "puddle_low_angle", "ground_level_reflection"],
+      "lighting": ["neon_reflection", "pink_neon_rim", "red_light_district", "rain_window_light"],
+      "art": ["cyberpunk_neon_city", "vaporwave_neon", "wet_glass_macro"],
+      "atmosphere": ["midnight_vitality", "rain_soaked_stillness", "cool_dangerous"]
+    },
+    "destination": {
+      "camera": ["environmental_portrait", "panoramic_scale", "through_trees", "extreme_wide_horizon"],
+      "lighting": ["golden_hour", "dappled_canopy", "desert_bounce", "blue_hour"],
+      "art": ["documentary_photo", "macro_nature_photo", "travel_film_grain"],
+      "atmosphere": ["wild_freedom", "road_freedom", "summit_awe", "garden_rest"]
     }
   }
 }

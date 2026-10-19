@@ -555,7 +555,7 @@
             if (!current || !candidates.some((item) => item.id === current)) {
                 randomPanelState.builderValues[slotId] = pickContextualBuilderItem(
                     slotId,
-                    builderModeCandidates(slotId),
+                    candidates,
                     current,
                 )?.id || "";
             }
@@ -566,7 +566,7 @@
         const current = randomPanelState.builderValues[slotId] || "";
         randomPanelState.builderValues[slotId] = pickContextualBuilderItem(
             slotId,
-            builderModeCandidates(slotId),
+            builderCandidates(slotId),
             current,
         )?.id || "";
         if (normalize && (slotId === "theme" || slotId === "subject")) normalizeBuilderSelections(slotId);

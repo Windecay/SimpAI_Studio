@@ -5,14 +5,14 @@ pillow
 gguf
 tqdm
 
-# Optional bundled wheel requirements for standalone ComfyUI installations.
+# Optional mirrored wheel requirements for standalone ComfyUI installations.
 # Windows uses CUDA 13.0; Linux uses the published CUDA 12.8 build.
-llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.1+cu130-cp311-cp311-win_amd64.whl ; python_version == "3.11" and platform_system == "Windows" and platform_machine == "AMD64"
-llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.1+cu130-cp312-cp312-win_amd64.whl ; python_version == "3.12" and platform_system == "Windows" and platform_machine == "AMD64"
-llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.1+cu130-cp313-cp313-win_amd64.whl ; python_version == "3.13" and platform_system == "Windows" and platform_machine == "AMD64"
-llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.1+cu130-cp314-cp314-win_amd64.whl ; python_version == "3.14" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.3+cu130-cp311-cp311-win_amd64.whl#sha256=068f972d7aa4f37948eefb1d1e32d2ba354b1e2d1e6afd61dfb251a857e60c2a ; python_version == "3.11" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.3+cu130-cp312-cp312-win_amd64.whl#sha256=2eed2345281a771d40c208298b245eaa7d2f618cebc7bb64966589deb00db56f ; python_version == "3.12" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.3+cu130-cp313-cp313-win_amd64.whl#sha256=3b856321178bdc31479f1cebd114cbb4ac5215a2caef5a7634bff43ac493c888 ; python_version == "3.13" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.3+cu130-cp314-cp314-win_amd64.whl#sha256=32fc86c255a13de399ee5b501c773357796ba87e348bb07afa90bc648f9c1ef3 ; python_version == "3.14" and platform_system == "Windows" and platform_machine == "AMD64"
 
-llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.1+cu128-cp311-cp311-linux_x86_64.whl ; python_version == "3.11" and platform_system == "Linux" and platform_machine == "x86_64"
-llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.1+cu128-cp312-cp312-linux_x86_64.whl ; python_version == "3.12" and platform_system == "Linux" and platform_machine == "x86_64"
-llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.1+cu128-cp313-cp313-linux_x86_64.whl ; python_version == "3.13" and platform_system == "Linux" and platform_machine == "x86_64"
-llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.1+cu128-cp314-cp314-linux_x86_64.whl ; python_version == "3.14" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.3+cu128-cp311-cp311-linux_x86_64.whl#sha256=d9a9b9d8e152e68ac02a7c1aeb73efe42478476e26cf5a42e6fa915692a50867 ; python_version == "3.11" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.3+cu128-cp312-cp312-linux_x86_64.whl#sha256=13ebf28859932d2b6588a91284d6e00739674fa5c839cc334e2d02c9ed0ab28a ; python_version == "3.12" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.3+cu128-cp313-cp313-linux_x86_64.whl#sha256=c2612f363f9dd0566575766664ab63fbc5dcecd741f282ddb8b54700d8104f82 ; python_version == "3.13" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.4.3+cu128-cp314-cp314-linux_x86_64.whl#sha256=fbb5be7b2e39b174eb1064446ffce08685062f31c0a40a1d2fea1e12bc112635 ; python_version == "3.14" and platform_system == "Linux" and platform_machine == "x86_64"
