@@ -6,6 +6,7 @@
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[ch]);
     const roles = ['object', 'character', 'text'];
+    const referenceFits = ['contain', 'match', 'stretch', 'cover'];
     const regionColors = ['#ff8a00', '#5b9bd5', '#c96b91', '#c7a340', '#8c80c2', '#638d94'];
     function regionColor(item, index = 0) {
         const color = (item?.palette || []).find(value => /^#(?:[a-f0-9]{3}|[a-f0-9]{6})$/i.test(value));
@@ -101,10 +102,12 @@
                 'Dimensions must be multiples of 16 between 16 and 16384', name);
         }
     }
-    function validateDraft(draft, allowEmpty = false, editing = false, { unfinished = false } = {}) {
+    function validateDraft(draft, allowEmpty = false, editing = false, { unfinished = false, nativeSize = false } = {}) {
         const required = ['width', 'height', 'summary', 'items', 'bbox_coord_space', 'bbox_format'];
         fields(draft, required, required, 'Layout');
-        dimensions(draft.width, draft.height);
+        if (nativeSize) requireValue([draft.width, draft.height].every(value =>
+            Number.isInteger(value) && value > 0 && value <= 2048), 'Invalid reference image dimensions');
+        else dimensions(draft.width, draft.height);
         requireValue(draft.bbox_coord_space === 'abs' && draft.bbox_format === 'xyxy',
             'Editable layouts use abs and xyxy', 'Layout');
         fields(draft.summary, ['caption', 'meta', 'canvas', 'palette'], ['caption'], 'summary');
@@ -290,12 +293,66 @@
         return validateDraft(next, true, true);
     }
 
-    function referencePlacement(width, height, imageWidth, imageHeight) {
+    function referencePlacement(width, height, imageWidth, imageHeight, fit = 'contain') {
         requireValue([width, height, imageWidth, imageHeight].every(value => Number.isFinite(value) && value > 0),
             'Invalid reference image dimensions');
-        const scale = Math.min(width / imageWidth, height / imageHeight);
+        requireValue(referenceFits.includes(fit), 'Invalid reference fit mode');
+        if (fit === 'stretch' || fit === 'match') return { x: 0, y: 0, width, height };
+        const scale = Math[fit === 'cover' ? 'max' : 'min'](width / imageWidth, height / imageHeight);
         return { x: (width - imageWidth * scale) / 2, y: (height - imageHeight * scale) / 2,
             width: imageWidth * scale, height: imageHeight * scale };
+    }
+    function matchedReferenceSize(width, height, imageWidth, imageHeight) {
+        dimensions(width, height);
+        referencePlacement(width, height, imageWidth, imageHeight);
+        const scale = Math.min(Math.sqrt(width * height / (imageWidth * imageHeight)),
+            16384 / imageWidth, 16384 / imageHeight);
+        const align = value => Math.max(16, Math.min(16384, Math.round(value / 16) * 16));
+        return { width: align(imageWidth * scale), height: align(imageHeight * scale) };
+    }
+    function sourceBox(box, rect) {
+        return box.map((edge, index) => (edge - (index % 2 ? rect.y : rect.x)) / (index % 2 ? rect.height : rect.width));
+    }
+    function projectSourceBox(box, rect, width, height) {
+        const projected = box.map((edge, index) => edge * (index % 2 ? rect.height : rect.width) + (index % 2 ? rect.y : rect.x));
+        const bounded = projected.map((edge, index) =>
+            Number(Math.max(0, Math.min(index % 2 ? height : width, edge)).toFixed(9)));
+        const outside = bounded[2] - bounded[0] <= 1e-9 || bounded[3] - bounded[1] <= 1e-9;
+        return { bbox: outside ? [0, 0, 1, 1] : bounded, outside };
+    }
+    function reframeReference(draft, regionUi, reference, fromFit, toFit, width, height, nextReference = reference) {
+        validateDraft(draft, true, true);
+        dimensions(width, height);
+        const previous = referencePlacement(draft.width, draft.height, reference.width, reference.height, fromFit);
+        const nextRect = referencePlacement(width, height, nextReference.width, nextReference.height, toFit);
+        const next = clone(draft), flags = normalizeRegionUi(regionUi, draft.items.length);
+        next.width = width; next.height = height;
+        next.items.forEach((item, index) => {
+            const anchor = flags[index].sourceBox || sourceBox(item.bbox, previous);
+            const projected = projectSourceBox(anchor, nextRect, width, height);
+            item.bbox = projected.bbox;
+            flags[index].sourceBox = [...anchor];
+            if (projected.outside) flags[index].outside = true;
+            else delete flags[index].outside;
+        });
+        return { draft: next, regionUi: flags };
+    }
+    function visibleDraft(draft, regionUi) {
+        return { ...clone(draft), items: draft.items.filter((_, index) => !regionUi?.[index]?.outside).map(clone) };
+    }
+    function annotatedReferenceDraft(source, reference, width, height, fit) {
+        validateDraft(source, false, false, { nativeSize: true });
+        requireValue(source.width === reference.width && source.height === reference.height,
+            'Reference annotation dimensions do not match the image');
+        const rect = referencePlacement(width, height, reference.width, reference.height, fit);
+        const draft = { ...clone(source), width, height };
+        const regionUi = source.items.map((item, index) => {
+            const anchor = item.bbox.map((edge, axis) => edge / (axis % 2 ? source.height : source.width));
+            const projected = projectSourceBox(anchor, rect, width, height);
+            draft.items[index].bbox = projected.bbox;
+            return { locked: false, hidden: false, sourceBox: anchor, ...(projected.outside ? { outside: true } : {}) };
+        });
+        return { draft: validateDraft(draft), regionUi };
     }
     function generationRequest(draft, mode, instruction = '', reference = null) {
         validateDraft(draft, true, true);
@@ -307,6 +364,7 @@
             requireValue(reference?.source && /^data:image\/(?:png|jpeg|webp);base64,/.test(reference.source),
                 'Upload a reference image');
             request.image = reference.source;
+            request.image_fit = referenceFits.includes(reference.fit) ? reference.fit : 'contain';
         } else requireValue(request.instruction || draft.summary.caption.trim()
             || draft.items.some(item => item.caption.trim() || (item.label === 'text' && item.text?.trim())),
         'Enter a layout description');
@@ -318,7 +376,8 @@
             value = value.replace(/^```(?:json)?\s*\n([\s\S]*)\n```$/i, '$1').trim();
             value = JSON.parse(value);
         }
-        validateDraft(value);
+        const cropped = request.mode === 'image' && request.image_fit === 'cover';
+        validateDraft(value, cropped, cropped && value?.items?.length === 0);
         requireValue(value.width === request.draft.width && value.height === request.draft.height,
             'Layout dimensions must match the requested canvas');
         return clone(value);
@@ -418,7 +477,16 @@
         return Array.from({ length: count }, (_, index) => ({
             locked: value?.[index]?.locked === true,
             hidden: value?.[index]?.hidden === true,
+            ...(value?.[index]?.outside === true ? { outside: true } : {}),
+            ...(Array.isArray(value?.[index]?.sourceBox) && value[index].sourceBox.length === 4
+                && value[index].sourceBox.every(edge => typeof edge === 'number' && Number.isFinite(edge))
+                && value[index].sourceBox[0] < value[index].sourceBox[2] && value[index].sourceBox[1] < value[index].sourceBox[3]
+                ? { sourceBox: [...value[index].sourceBox] } : {}),
         }));
+    }
+    function referenceDimensions(value) {
+        return [value?.width, value?.height].every(edge => Number.isInteger(edge) && edge > 0 && edge <= 2048)
+            ? { width: value.width, height: value.height } : null;
     }
 
     function normalizeSnapshot(value) {
@@ -429,7 +497,15 @@
             const history = items => (Array.isArray(items) ? items.slice(-60) : []).flatMap(item => {
                 try {
                     const draft = layout(item?.draft || item);
-                    return [{ draft, regionUi: normalizeRegionUi(item?.regionUi, draft.items.length) }];
+                    const frame = {};
+                    if (referenceFits.includes(item?.referenceFit)) frame.referenceFit = item.referenceFit;
+                    const referenceSize = referenceDimensions(item?.referenceSize);
+                    if (referenceSize) frame.referenceSize = referenceSize;
+                    try {
+                        dimensions(item?.fixedCanvas?.width, item?.fixedCanvas?.height);
+                        frame.fixedCanvas = { width: item.fixedCanvas.width, height: item.fixedCanvas.height };
+                    } catch (_) {}
+                    return [{ draft, regionUi: normalizeRegionUi(item?.regionUi, draft.items.length), ...frame }];
                 } catch (_) { return []; }
             });
             let optimizedSnapshot = '';
@@ -438,7 +514,8 @@
             } catch (_) {}
             return {
                 version: 1, draft, regionUi: normalizeRegionUi(value.regionUi, draft.items.length),
-                raw: typeof value.raw === 'string' ? value.raw : JSON.stringify(draft, null, 2),
+                raw: typeof value.raw === 'string' ? value.raw
+                    : JSON.stringify(visibleDraft(draft, value.regionUi), null, 2),
                 rawDirty: value.rawDirty === true,
                 selected: Number.isInteger(value.selected) ? Math.max(-1, Math.min(value.selected, draft.items.length - 1)) : -1,
                 mode: value.mode === 'draw' ? 'draw' : 'select',
@@ -448,6 +525,13 @@
                 aiScope: ['all', 'region', 'summary'].includes(value.aiScope) ? value.aiScope : 'all',
                 aiInstruction: typeof value.aiInstruction === 'string' ? value.aiInstruction.slice(0, 4000) : '',
                 aiMode: ['text', 'image'].includes(value.aiMode) ? value.aiMode : 'optimize',
+                referenceFit: referenceFits.includes(value.referenceFit) ? value.referenceFit : 'contain',
+                fixedCanvas: (() => {
+                    try {
+                        dimensions(value.fixedCanvas?.width, value.fixedCanvas?.height);
+                        return { width: value.fixedCanvas.width, height: value.fixedCanvas.height };
+                    } catch (_) { return { width: draft.width, height: draft.height }; }
+                })(),
             };
         } catch (_) { return null; }
     }
@@ -470,7 +554,14 @@
             draft = { width: options.width, height: options.height, summary: { caption: '' }, items: [],
                 bbox_coord_space: 'abs', bbox_format: 'xyxy' };
         }
-        const restored = normalizeSnapshot(options.snapshot);
+        let appliedLayout = normalizeSnapshot(options.reference?.layoutState);
+        if (appliedLayout) {
+            try {
+                if (compile(visibleDraft(appliedLayout.draft, appliedLayout.regionUi), { allowIncomplete: true })
+                    !== compile(draft, { allowIncomplete: true })) appliedLayout = null;
+            } catch (_) { appliedLayout = null; }
+        }
+        const restored = normalizeSnapshot(options.snapshot) || appliedLayout;
         if (restored) { draft = restored.draft; initialError = null; }
         let regionUi = normalizeRegionUi(restored?.regionUi, draft.items.length);
         let selected = restored ? restored.selected : (draft.items.length ? 0 : -1);
@@ -480,6 +571,9 @@
         let optimizing = false, closed = false, aiPreview = null, aiGeneration = 0;
         let reference = null, referenceImage = null, referenceRevision = 0, loadingReference = false;
         let referenceAbort = null, referenceDragDepth = 0;
+        let referenceFit = restored?.referenceFit
+            || (referenceFits.includes(options.reference?.fit) ? options.reference.fit : 'contain');
+        let fixedCanvas = restored?.fixedCanvas || { width: draft.width, height: draft.height };
         let optimizedSnapshot = restored?.optimizedSnapshot || '';
         const undo = restored?.undo || [], redo = restored?.redo || [];
         const previousFocus = document.activeElement;
@@ -520,6 +614,12 @@
                   ${icon('upload-reference', 'image', 'Upload reference image')}
                   <span data-rjp-reference-name>${esc(t('Reference image'))}</span>
                   <div class="sai-rjp-reference-controls" data-rjp-reference-controls hidden>
+                    <select data-rjp-reference-fit aria-label="${esc(t('Reference image fit'))}">
+                      <option value="contain">${esc(t('Contain image'))}</option>
+                      <option value="match">${esc(t('Match image ratio'))}</option>
+                      <option value="stretch">${esc(t('Stretch to fill'))}</option>
+                      <option value="cover">${esc(t('Crop to fill'))}</option>
+                    </select>
                     ${icon('toggle-reference', 'eye', 'Show reference image')}
                     <label>${esc(t('Image opacity'))}<input data-rjp-reference-opacity type="range" min="0" max="100" step="1" value="50"></label>
                     ${icon('remove-reference', 'trash-can', 'Remove reference image')}
@@ -608,7 +708,8 @@
         }
         const canvas = q('canvas'), viewport = q('.sai-rjp-viewport'), board = q('.sai-rjp-board');
         const raw = q('[data-rjp-json]');
-        raw.value = restored ? restored.raw : (initialError ? String(options.value || '') : JSON.stringify(draft, null, 2));
+        const editableDraft = () => visibleDraft(draft, regionUi);
+        raw.value = restored ? restored.raw : (initialError ? String(options.value || '') : JSON.stringify(editableDraft(), null, 2));
         q('[data-rjp-ai-scope]').value = restored?.aiScope || 'all';
         q('[data-rjp-ai-instruction]').value = restored?.aiInstruction || '';
         q('[data-rjp-ai-mode]').value = restored?.aiMode || 'optimize';
@@ -617,8 +718,9 @@
             if (closed || typeof options.onDraftChange !== 'function') return;
             // Preserve unfinished edits without compiling them or saving API settings.
             const snapshot = normalizeSnapshot({
-                version: 1, draft, regionUi, raw: rawDirty ? raw.value : JSON.stringify(draft, null, 2),
+                version: 1, draft, regionUi, raw: rawDirty ? raw.value : JSON.stringify(editableDraft(), null, 2),
                 rawDirty, selected, mode, tab, undo, redo, optimizedSnapshot,
+                referenceFit, fixedCanvas,
                 detailsOpen: q('[data-rjp-details]').open,
                 aiScope: q('[data-rjp-ai-scope]').value,
                 aiInstruction: q('[data-rjp-ai-instruction]').value,
@@ -644,10 +746,26 @@
                 field: `${draft.width} x ${draft.height}`,
             }, false);
         }
-        const capture = () => ({ draft: clone(draft), regionUi: clone(regionUi) });
+        const capture = () => ({ draft: clone(draft), regionUi: clone(regionUi), referenceFit, fixedCanvas: { ...fixedCanvas },
+            ...(reference ? { referenceSize: referenceDimensions(reference) } : {}) });
         function restore(snapshot) {
             draft = clone(snapshot.draft);
             regionUi = normalizeRegionUi(snapshot.regionUi, draft.items.length);
+            if (referenceFits.includes(snapshot.referenceFit)) referenceFit = snapshot.referenceFit;
+            fixedCanvas = snapshot.fixedCanvas ? { ...snapshot.fixedCanvas } : { width: draft.width, height: draft.height };
+            if (reference && snapshot.referenceSize
+                && (snapshot.referenceSize.width !== reference.width || snapshot.referenceSize.height !== reference.height)) {
+                const size = referenceFit === 'match'
+                    ? matchedReferenceSize(fixedCanvas.width, fixedCanvas.height, reference.width, reference.height)
+                    : { width: draft.width, height: draft.height };
+                const next = reframeReference(draft, regionUi, snapshot.referenceSize, referenceFit,
+                    referenceFit, size.width, size.height, reference);
+                draft = next.draft; regionUi = next.regionUi;
+            }
+            referenceRevision++;
+            rememberReference();
+            rawDirty = false;
+            raw.value = JSON.stringify(editableDraft(), null, 2);
         }
         function remember(snapshot = capture()) {
             undo.push(clone(snapshot));
@@ -657,12 +775,15 @@
         }
         function updateOutput() {
             try {
-                q('[data-rjp-output]').value = compile(draft, { allowIncomplete: true });
+                q('[data-rjp-output]').value = compile(editableDraft(), { allowIncomplete: true });
                 if (!optimizing) {
                     try {
                         if (draft.items.length || draft.summary.caption.trim()) validateDraft(draft, true);
                         status();
                         importStatus();
+                        const outside = regionUi.filter(item => item.outside).length;
+                        if (outside) status({ message: 'Regions outside the canvas are temporarily excluded',
+                            field: String(outside) }, false);
                     }
                     catch (error) {
                         status({ message: 'Some descriptions or literal text are empty. You can still apply the prompt.',
@@ -702,6 +823,8 @@
             q('[data-rjp-reference-name]').textContent = reference?.name || t('Reference image');
             q('[data-rjp-reference-name]').title = reference?.name || '';
             q('[data-rjp-reference-opacity]').value = reference ? Math.round(reference.opacity * 100) : 50;
+            q('[data-rjp-reference-fit]').value = referenceFit;
+            q('[data-rjp-reference-fit]').disabled = !reference || optimizing || loadingReference || applying;
             const toggle = q('[data-rjp-action="toggle-reference"]');
             toggle.setAttribute('aria-pressed', String(reference?.visible === true));
             toggle.title = t(reference?.visible ? 'Hide reference image' : 'Show reference image');
@@ -710,15 +833,73 @@
                 ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
         }
         function rememberReference() {
-            try { options.onReferenceChange?.(reference ? { ...reference } : null); } catch (_) {}
+            try { options.onReferenceChange?.(reference ? { ...reference, fit: referenceFit } : null); } catch (_) {}
         }
-        async function setReference(value) {
+        function updateAnchor(index) {
+            if (!reference || !draft.items[index] || regionUi[index]?.outside) return;
+            const box = draft.items[index].bbox;
+            if (!box.every(Number.isFinite) || box[0] >= box[2] || box[1] >= box[3]) return;
+            regionUi[index].sourceBox = sourceBox(box,
+                referencePlacement(draft.width, draft.height, reference.width, reference.height, referenceFit));
+        }
+        function setFrame(fit, width, height, record = true) {
+            const next = reframeReference(draft, regionUi, reference, referenceFit, fit, width, height);
+            if (record) remember();
+            const optimized = optimizedSnapshot === JSON.stringify(draft);
+            draft = next.draft; regionUi = next.regionUi;
+            if (optimized) optimizedSnapshot = JSON.stringify(draft);
+            referenceFit = fit;
+            referenceRevision++;
+            aiPreview = null;
+            raw.value = JSON.stringify(editableDraft(), null, 2); rawDirty = false;
+            rememberReference();
+        }
+        function changeReferenceFit(fit) {
+            requireValue(referenceFits.includes(fit), 'Invalid reference fit mode');
+            if (fit === referenceFit) return;
+            requireValue(reference && !optimizing && !applying && !loadingReference, 'Reference fit cannot change during an operation');
+            if (rawDirty) loadRaw();
+            const previousFixed = { ...fixedCanvas };
+            let size = { width: draft.width, height: draft.height };
+            if (fit === 'match') size = matchedReferenceSize(draft.width, draft.height, reference.width, reference.height);
+            else if (referenceFit === 'match') size = fixedCanvas;
+            const fromFit = referenceFit, beforeSize = { width: draft.width, height: draft.height };
+            setFrame(fit, size.width, size.height);
+            fixedCanvas = fit === 'match' && fromFit !== 'match' ? beforeSize : previousFixed;
+            render();
+        }
+        function resizeReferenceCanvas(width, height, editedAxis) {
+            if (referenceFit === 'match') {
+                if (editedAxis === 'width') height = Math.max(16, Math.round(width * reference.height / reference.width / 16) * 16);
+                else if (editedAxis === 'height') width = Math.max(16, Math.round(height * reference.width / reference.height / 16) * 16);
+                else ({ width, height } = matchedReferenceSize(width, height, reference.width, reference.height));
+            }
+            dimensions(width, height);
+            setFrame(referenceFit, width, height, false);
+            fixedCanvas = { width, height };
+            for (const key of ['width', 'height']) q(`[data-rjp-field="${key}"]`).value = draft[key];
+            host.querySelectorAll('[data-rjp-coordinate]').forEach(node => {
+                if (draft.items[selected]) node.value = draft.items[selected].bbox[Number(node.dataset.rjpCoordinate)];
+            });
+        }
+        async function setReference(value, restoring = false) {
             const revision = ++referenceRevision;
             const image = value ? await decodeReference(value.source) : null;
             if (closed || revision !== referenceRevision) return;
-            reference = value ? { ...value, width: image.naturalWidth, height: image.naturalHeight,
+            const previous = reference;
+            const nextReference = value ? { ...value, width: image.naturalWidth, height: image.naturalHeight,
                 opacity: Number.isFinite(value.opacity) ? Math.max(0, Math.min(1, value.opacity)) : 0.5,
                 visible: value.visible !== false } : null;
+            if (nextReference && !restoring && (previous || referenceFit === 'match')) {
+                const size = referenceFit === 'match'
+                    ? matchedReferenceSize(fixedCanvas.width, fixedCanvas.height, nextReference.width, nextReference.height)
+                    : { width: draft.width, height: draft.height };
+                const next = reframeReference(draft, regionUi, previous || nextReference,
+                    referenceFit, referenceFit, size.width, size.height, nextReference);
+                draft = next.draft; regionUi = next.regionUi;
+                if (!rawDirty) raw.value = JSON.stringify(editableDraft(), null, 2);
+            }
+            reference = nextReference;
             referenceImage = image;
             renderReference();
             rememberReference();
@@ -734,6 +915,7 @@
             q('[data-rjp-ai-mode]').disabled = value;
             q('[data-rjp-action="upload-reference"]').disabled = value || loadingReference;
             q('[data-rjp-action="remove-reference"]').disabled = value;
+            q('[data-rjp-reference-fit]').disabled = value || !reference || loadingReference;
             q('[data-rjp-action="apply"]').disabled = value || applying;
         }
         function assertAiSnapshot(snapshot, request, selection) {
@@ -751,7 +933,9 @@
             if (rawDirty) loadRaw();
             options.assertContext?.();
             const selection = selected;
-            const request = optimizationRequest(draft, q('[data-rjp-ai-scope]').value || 'all', selected,
+            const indices = draft.items.flatMap((_, index) => regionUi[index].outside ? [] : [index]);
+            const contextDraft = editableDraft();
+            const request = optimizationRequest(contextDraft, q('[data-rjp-ai-scope]').value || 'all', indices.indexOf(selected),
                 q('[data-rjp-ai-instruction]').value || '');
             const snapshot = JSON.stringify(draft), originalDraft = clone(draft);
             const generation = ++aiGeneration;
@@ -764,8 +948,11 @@
                 if (closed || generation !== aiGeneration) return;
                 assertAiSnapshot(snapshot, request, selection);
                 if (result?.ok === false) throw new Error(result.error || 'Regional optimization failed.');
-                const next = mergeOptimization(originalDraft, request,
+                const visible = mergeOptimization(contextDraft, request,
                     typeof result === 'string' ? result : result?.text);
+                const next = clone(originalDraft);
+                next.summary = visible.summary;
+                indices.forEach((index, visibleIndex) => { next.items[index] = visible.items[visibleIndex]; });
                 const changes = [];
                 if (next.summary.caption !== originalDraft.summary.caption) changes.push({
                     label: t('Whole image description'), before: originalDraft.summary.caption, after: next.summary.caption,
@@ -791,8 +978,8 @@
             requireValue(typeof options.onGenerate === 'function', 'Agent optimization is unavailable in this view.');
             if (rawDirty) loadRaw();
             options.assertContext?.();
-            const request = generationRequest(draft, q('[data-rjp-ai-mode]').value,
-                q('[data-rjp-ai-instruction]').value, reference);
+            const request = generationRequest(editableDraft(), q('[data-rjp-ai-mode]').value,
+                q('[data-rjp-ai-instruction]').value, reference ? { ...reference, fit: referenceFit } : null);
             const snapshot = JSON.stringify(draft), imageRevision = referenceRevision;
             const generation = ++aiGeneration;
             aiPreview = null;
@@ -807,12 +994,15 @@
                     'The reference image changed. Generate the layout again.');
                 if (result?.ok === false) throw new Error(result.error || 'Layout generation failed.');
                 const next = generationResult(typeof result === 'string' ? result : result?.text, request);
+                const annotated = request.mode === 'image' && result?.source_layout
+                    ? annotatedReferenceDraft(result.source_layout, reference, next.width, next.height, referenceFit) : null;
                 remember();
-                draft = next;
-                regionUi = normalizeRegionUi(null, next.items.length);
-                selected = next.items.length ? 0 : -1;
+                draft = annotated?.draft || next;
+                regionUi = annotated?.regionUi || normalizeRegionUi(null, next.items.length);
+                selected = draft.items.length ? 0 : -1;
+                if (!annotated && reference) draft.items.forEach((_, index) => updateAnchor(index));
                 optimizedSnapshot = JSON.stringify(draft);
-                raw.value = JSON.stringify(draft, null, 2); rawDirty = false;
+                raw.value = JSON.stringify(editableDraft(), null, 2); rawDirty = false;
                 tab = 'layout';
                 render();
                 status({ message: 'Layout generated.' }, false);
@@ -841,14 +1031,14 @@
                 ctx.beginPath(); ctx.moveTo(0, draft.height * n / 8); ctx.lineTo(draft.width, draft.height * n / 8); ctx.stroke();
             }
             if (referenceImage && reference?.visible) {
-                const rect = referencePlacement(draft.width, draft.height, reference.width, reference.height);
+                const rect = referencePlacement(draft.width, draft.height, reference.width, reference.height, referenceFit);
                 ctx.save();
                 ctx.globalAlpha = reference.opacity;
                 ctx.drawImage(referenceImage, rect.x, rect.y, rect.width, rect.height);
                 ctx.restore();
             }
             draft.items.forEach((item, index) => {
-                if (regionUi[index].hidden) return;
+                if (regionUi[index].hidden || regionUi[index].outside) return;
                 const [x0, y0, x1, y1] = item.bbox;
                 const color = regionColor(item, index);
                 ctx.fillStyle = `${color}20`; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
@@ -911,8 +1101,8 @@
             list.innerHTML = draft.items.map((item, index) => {
                 const ui = regionUi[index];
                 const extra = flag => `data-rjp-index="${index}" aria-pressed="${ui[flag]}"`;
-                return `<div class="sai-rjp-region-row${ui.hidden ? ' is-hidden' : ''}" role="listitem" style="--region-color:${regionColor(item, index)}">
-                  <button type="button" class="sai-rjp-region-select" aria-pressed="${index === selected}" data-rjp-region="${index}"><span>${index + 1}</span><span>${esc(label(item.label))}<small>${esc(item.label === 'text' ? item.text || item.caption : item.caption)}</small></span></button>
+                return `<div class="sai-rjp-region-row${ui.hidden || ui.outside ? ' is-hidden' : ''}" role="listitem" style="--region-color:${regionColor(item, index)}">
+                  <button type="button" class="sai-rjp-region-select" aria-pressed="${index === selected}" data-rjp-region="${index}" ${ui.outside ? `title="${esc(t('Outside canvas; restored when the image fit changes'))}"` : ''}><span>${index + 1}</span><span>${esc(label(item.label))}${ui.outside ? ' <i class="fa-solid fa-crop-simple" aria-hidden="true"></i>' : ''}<small>${esc(item.label === 'text' ? item.text || item.caption : item.caption)}</small></span></button>
                   ${icon('lock', ui.locked ? 'lock' : 'lock-open', ui.locked ? 'Unlock region' : 'Lock region', extra('locked'))}
                   ${icon('hide', ui.hidden ? 'eye-slash' : 'eye', ui.hidden ? 'Show region on canvas' : 'Hide region on canvas (still included in generation)', extra('hidden'))}
                 </div>`;
@@ -939,7 +1129,7 @@
                 q('[data-rjp-text-wrap]').hidden = item.label !== 'text';
                 host.querySelectorAll('[data-rjp-coordinate]').forEach(node => {
                     node.value = item.bbox[Number(node.dataset.rjpCoordinate)];
-                    node.disabled = regionUi[selected].locked;
+                    node.disabled = regionUi[selected].locked || regionUi[selected].outside === true;
                 });
             }
             updateOutput();
@@ -981,14 +1171,42 @@
             if (active?.host === host) active = null;
             if (previousFocus?.isConnected) previousFocus.focus();
         }
-        function loadRaw() {
+        function loadRaw(replace = false) {
             const result = importLayout(raw.value, draft.width, draft.height);
-            const next = result.draft;
-            if (JSON.stringify(next) !== JSON.stringify(draft)) {
+            let next = result.draft;
+            const previousItems = draft.items;
+            const current = editableDraft();
+            if (replace || JSON.stringify(next) !== JSON.stringify(current)) {
                 remember();
-                regionUi = normalizeRegionUi(null, next.items.length);
-            }
+                if (!replace && next.width === draft.width && next.height === draft.height
+                    && next.items.length === current.items.length) {
+                    let visibleIndex = 0;
+                    next.items = draft.items.map((item, index) =>
+                        regionUi[index].outside ? clone(item) : next.items[visibleIndex++]);
+                } else if (!replace && next.width === draft.width && next.height === draft.height
+                    && regionUi.some(item => item.outside)) {
+                    const items = [], flags = [];
+                    let visibleIndex = 0;
+                    draft.items.forEach((item, index) => {
+                        if (regionUi[index].outside) {
+                            items.push(clone(item)); flags.push(clone(regionUi[index]));
+                        } else if (visibleIndex < next.items.length) {
+                            items.push(next.items[visibleIndex++]); flags.push({ locked: false, hidden: false });
+                        }
+                    });
+                    while (visibleIndex < next.items.length) {
+                        items.push(next.items[visibleIndex++]); flags.push({ locked: false, hidden: false });
+                    }
+                    next = validateDraft({ ...next, items }, true, true);
+                    regionUi = flags;
+                } else regionUi = normalizeRegionUi(null, next.items.length);
+            } else next = draft;
             draft = next;
+            draft.items.forEach((item, index) => {
+                if (!regionUi[index]?.sourceBox || JSON.stringify(item.bbox) !== JSON.stringify(previousItems[index]?.bbox))
+                    updateAnchor(index);
+            });
+            if (result.canvasChanged) fixedCanvas = { width: draft.width, height: draft.height };
             imported = result;
             selected = draft.items.length ? 0 : -1;
             initialError = null;
@@ -1000,7 +1218,7 @@
             if (tab === 'json' && next !== tab && rawDirty) {
                 try { loadRaw(); } catch (error) { loadError = error; }
             }
-            if (next === 'json' && tab !== 'json' && !rawDirty) raw.value = JSON.stringify(draft, null, 2);
+            if (next === 'json' && tab !== 'json' && !rawDirty) raw.value = JSON.stringify(editableDraft(), null, 2);
             tab = next;
             render();
             if (loadError) {
@@ -1016,6 +1234,7 @@
                 bbox: [draft.width / 4, draft.height / 4, draft.width * 3 / 4, draft.height * 3 / 4] });
             regionUi.push({ locked: false, hidden: false });
             selected = draft.items.length - 1;
+            updateAnchor(selected);
             render();
             q('[data-rjp-field="caption"]').focus();
         }
@@ -1043,7 +1262,7 @@
                     remember();
                     draft = clone(preview.next);
                     optimizedSnapshot = JSON.stringify(draft);
-                    raw.value = JSON.stringify(draft, null, 2);
+                    raw.value = JSON.stringify(editableDraft(), null, 2);
                     rawDirty = false;
                     aiPreview = null;
                     render();
@@ -1070,49 +1289,60 @@
                     }
                     else {
                         draft.items.splice(selected + 1, 0, clone(draft.items[selected]));
-                        regionUi.splice(selected + 1, 0, { locked: false, hidden: false }); selected++;
+                        regionUi.splice(selected + 1, 0, { ...clone(regionUi[selected]), locked: false, hidden: false }); selected++;
                     }
                     render();
                 }
                 if (name === 'load-json') { loadRaw(); render(); importStatus(); }
-                if (name === 'reset-json') { raw.value = JSON.stringify(draft, null, 2); rawDirty = false; status(); }
+                if (name === 'reset-json') { raw.value = JSON.stringify(editableDraft(), null, 2); rawDirty = false; status(); }
                 if (name === 'scale') {
                     if (rawDirty) loadRaw();
                     const size = options.currentSize?.() || { width: options.width, height: options.height };
-                    const next = scaleDraft(draft, size.width, size.height);
-                    remember(); draft = next;
-                    raw.value = JSON.stringify(draft, null, 2); render();
+                    remember();
+                    if (reference) resizeReferenceCanvas(size.width, size.height);
+                    else draft = scaleDraft(draft, size.width, size.height);
+                    raw.value = JSON.stringify(editableDraft(), null, 2); render();
                 }
                 if (name === 'fit-canvas') {
                     if (rawDirty) loadRaw();
-                    requireValue(draft.items.length, 'Add a region', 'items');
-                    const result = importLayout(compile(draft, { allowIncomplete: true }),
+                    requireValue(editableDraft().items.length, 'Add a region', 'items');
+                    const result = importLayout(compile(editableDraft(), { allowIncomplete: true }),
                         draft.width, draft.height, { fitToBounds: true });
                     const dx = (result.draft.width - draft.width) / 2;
                     const dy = (result.draft.height - draft.height) / 2;
                     if (dx || dy) {
                         remember();
-                        const next = clone(draft);
-                        next.width = result.draft.width; next.height = result.draft.height;
-                        next.items.forEach(item => { item.bbox = item.bbox.map((value, index) => value + (index % 2 ? dy : dx)); });
-                        draft = next;
+                        if (reference) {
+                            setFrame(referenceFit === 'match' ? 'contain' : referenceFit,
+                                result.draft.width, result.draft.height, false);
+                        } else {
+                            const next = clone(draft);
+                            next.width = result.draft.width; next.height = result.draft.height;
+                            next.items.forEach(item => { item.bbox = item.bbox.map((value, index) => value + (index % 2 ? dy : dx)); });
+                            draft = next;
+                        }
+                        fixedCanvas = { width: draft.width, height: draft.height };
+                        rememberReference();
                     }
                     imported = { ...result, draft };
-                    raw.value = JSON.stringify(draft, null, 2); rawDirty = false;
+                    raw.value = JSON.stringify(editableDraft(), null, 2); rawDirty = false;
                     render(); importStatus();
                 }
                 if (name === 'import') q('[data-rjp-file]').click();
                 if (name === 'export') {
                     if (rawDirty) loadRaw();
-                    validateDraft(draft, true, true);
-                    const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }));
+                    validateDraft(editableDraft(), true, true);
+                    const url = URL.createObjectURL(new Blob([JSON.stringify(editableDraft(), null, 2)], { type: 'application/json' }));
                     const link = document.createElement('a');
                     link.href = url; link.download = 'moss-layout.json'; link.click();
                     root.setTimeout(() => URL.revokeObjectURL(url), 1000);
                 }
                 if (name === 'copy' || name === 'apply') {
                     if (rawDirty) loadRaw();
-                    const prompt = compile(draft, { allowIncomplete: true });
+                    const output = editableDraft();
+                    requireValue(!draft.items.length || output.items.length || output.summary.caption.trim(),
+                        'All regions are outside the canvas');
+                    const prompt = compile(output, { allowIncomplete: true });
                     if (name === 'copy') await navigator.clipboard.writeText(prompt);
                     else {
                         const button = q('[data-rjp-action="apply"]');
@@ -1120,7 +1350,8 @@
                         button.disabled = true;
                         try {
                             if (await options.onApply?.({
-                                prompt, draft: clone(draft), width: draft.width, height: draft.height,
+                                prompt, draft: output, width: draft.width, height: draft.height,
+                                referenceLayout: { version: 1, ...capture() },
                                 optimized: optimizedSnapshot === JSON.stringify(draft),
                             }) !== false) close(false);
                         } finally {
@@ -1145,6 +1376,11 @@
         function updateField(event) {
             if (closed) return;
             if (event.target === raw) { rawDirty = true; persistDraft(); return; }
+            if (event.target === q('[data-rjp-reference-fit]')) {
+                try { changeReferenceFit(event.target.value); }
+                catch (error) { renderReference(); status(error); }
+                return;
+            }
             if (event.target === q('[data-rjp-reference-opacity]') && reference) {
                 reference.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
                 rememberReference(); draw(); return;
@@ -1158,7 +1394,7 @@
             const field = event.target.dataset.rjpField;
             const coordinate = event.target.dataset.rjpCoordinate;
             if (!field && coordinate === undefined) return;
-            if (coordinate !== undefined && regionUi[selected]?.locked) return;
+            if (coordinate !== undefined && (regionUi[selected]?.locked || regionUi[selected]?.outside)) return;
             // Blur repeats the last input as change; replacing rows here would discard the pending button click.
             const currentItem = draft.items[selected], value = event.target.value;
             if ((coordinate !== undefined && currentItem?.bbox[Number(coordinate)] === Number(value))
@@ -1172,7 +1408,12 @@
             if (editingField !== event.target || changedType) { remember(); editingField = event.target; }
             if (field === 'width' || field === 'height') {
                 const value = Number(event.target.value);
-                try { dimensions(field === 'width' ? value : draft.width, field === 'height' ? value : draft.height); draft[field] = value; }
+                try {
+                    const width = field === 'width' ? value : draft.width, height = field === 'height' ? value : draft.height;
+                    dimensions(width, height);
+                    if (reference) resizeReferenceCanvas(width, height, field);
+                    else { draft[field] = value; fixedCanvas = { width: draft.width, height: draft.height }; }
+                }
                 catch (error) {
                     if (event.type === 'change') render();
                     status(error); return;
@@ -1180,7 +1421,10 @@
             } else if (field === 'summary') draft.summary.caption = event.target.value;
             else if (draft.items[selected]) {
                 const item = draft.items[selected];
-                if (coordinate !== undefined) item.bbox[Number(coordinate)] = Number(event.target.value);
+                if (coordinate !== undefined) {
+                    item.bbox[Number(coordinate)] = Number(event.target.value);
+                    updateAnchor(selected);
+                }
                 else if (field === 'palette_color') {
                     item.palette = [event.target.value, ...(item.palette || []).slice(1)];
                     q('[data-rjp-field="palette"]').value = item.palette.join(', ');
@@ -1213,7 +1457,7 @@
                 requireValue(file.size <= 2 * 1024 * 1024, 'Layout JSON is too large');
                 const text = await file.text();
                 if (closed) return;
-                raw.value = text; rawDirty = true; loadRaw(); tab = 'layout'; render(); importStatus();
+                raw.value = text; rawDirty = true; loadRaw(true); tab = 'layout'; render(); importStatus();
             } catch (error) { tab = 'json'; render(); status(error); }
             finally { persistDraft(); }
             event.target.value = '';
@@ -1229,6 +1473,7 @@
             const timer = root.setTimeout(() => referenceAbort?.abort(), 15000);
             q('[data-rjp-action="upload-reference"]').disabled = true;
             q('[data-rjp-action="remove-reference"]').disabled = true;
+            renderReference();
             status({ message: 'Loading reference image...' }, false);
             try {
                 const file = typeof source === 'string' ? await referenceFileFromUrl(source, referenceAbort.signal) : source;
@@ -1254,6 +1499,7 @@
                 loadingReference = false;
                 q('[data-rjp-action="upload-reference"]').disabled = optimizing;
                 q('[data-rjp-action="remove-reference"]').disabled = optimizing;
+                if (!closed) renderReference();
             }
         }
         q('[data-rjp-reference-file]').addEventListener('change', async event => {
@@ -1336,7 +1582,7 @@
             let handle = null;
             const tolerance = 10 * draft.width / canvas.getBoundingClientRect().width;
             const box = draft.items[selected]?.bbox;
-            if (mode === 'select' && box && !regionUi[selected].hidden && !regionUi[selected].locked) {
+            if (mode === 'select' && box && !regionUi[selected].hidden && !regionUi[selected].outside && !regionUi[selected].locked) {
                 handle = [[0, 1], [2, 1], [0, 3], [2, 3]].find(([xi, yi]) =>
                     Math.abs(x - box[xi]) <= tolerance && Math.abs(y - box[yi]) <= tolerance);
             }
@@ -1347,7 +1593,7 @@
                 regionUi.push({ locked: false, hidden: false });
                 selected = draft.items.length - 1;
             } else if (!handle) {
-                selected = draft.items.findLastIndex((item, index) => !regionUi[index].hidden
+                selected = draft.items.findLastIndex((item, index) => !regionUi[index].hidden && !regionUi[index].outside
                     && x >= item.bbox[0] && x <= item.bbox[2] && y >= item.bbox[1] && y <= item.bbox[3]);
             }
             gesture = selected < 0 || regionUi[selected].locked ? null
@@ -1375,7 +1621,10 @@
             if (!gesture) return;
             const box = draft.items[selected]?.bbox;
             if (cancel || !box || box[2] - box[0] < 1 || box[3] - box[1] < 1) restore(gesture.before);
-            else if (JSON.stringify(draft) !== JSON.stringify(gesture.before.draft)) remember(gesture.before);
+            else if (JSON.stringify(draft) !== JSON.stringify(gesture.before.draft)) {
+                updateAnchor(selected);
+                remember(gesture.before);
+            }
             selected = Math.min(selected, draft.items.length - 1);
             gesture = null;
             render();
@@ -1417,7 +1666,7 @@
         active = { host, close };
         root.addEventListener?.('pagehide', persistDraft);
         render();
-        if (options.reference) void setReference(options.reference).catch(error => { if (!closed) status(error); });
+        if (options.reference) void setReference(options.reference, true).catch(error => { if (!closed) status(error); });
         if (initialError) status(initialError);
         else if (restored) status({ message: 'Draft restored.' }, false);
         else importStatus();
@@ -1427,7 +1676,8 @@
     const api = {
         open, compile, parse, importLayout, validateDraft, scaleDraft, regionColor, wrapPreviewText, fitPreviewText,
         optimizationRequest, mergeOptimization, normalizeSnapshot,
-        referencePlacement, generationRequest, generationResult,
+        referencePlacement, matchedReferenceSize, reframeReference, visibleDraft, annotatedReferenceDraft,
+        generationRequest, generationResult,
     };
     root.SimpAIRegionalJsonPrompt = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

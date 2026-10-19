@@ -61,6 +61,8 @@
   display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; flex: none;
 }
 .sai-rjp-reference-tools > span { flex: 1; min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.sai-rjp-reference-controls { flex-shrink: 1; }
+.sai-rjp-reference-controls select { max-width: 155px; font-size: 12px; }
 .sai-rjp-reference-controls label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .sai-rjp-dialog [data-rjp-reference-opacity] { width: 100px; padding: 0; accent-color: var(--button-primary-border-color, #ff8a00); }
 .sai-rjp-viewport { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 160px; overflow: hidden; background: var(--block-background-fill, #edf0f2); }

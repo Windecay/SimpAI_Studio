@@ -2319,10 +2319,11 @@ class VLM:
                         enable_thinking=False, reject_truncated=True,
                     )
                     generation_phase = "output"
-                    layout = editor_generation_output(output, request, image_size)
+                    layout, source_layout = editor_generation_output(output, request, image_size, return_source=True)
                     return {
                         "ok": True, "text": json.dumps(layout, ensure_ascii=False),
                         "action_id": action["id"], "media": {**media, "image_used": image is not None},
+                        **({"source_layout": source_layout} if source_layout is not None else {}),
                     }
                 request = editor_optimization_request(original)
                 if not VLM.get_enable() or not self.model_exists():

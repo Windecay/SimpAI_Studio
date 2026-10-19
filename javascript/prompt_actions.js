@@ -1392,7 +1392,8 @@
                         if (reference) {
                             const appliedKey = JSON.stringify([window.location?.pathname || "", user, preset, task, target, result.prompt]);
                             regionalPromptReferences.delete(appliedKey);
-                            regionalPromptReferences.set(appliedKey, reference);
+                            regionalPromptReferences.set(appliedKey, result.referenceLayout
+                                ? { ...reference, layoutState: result.referenceLayout } : reference);
                             while (regionalPromptReferences.size > 8) regionalPromptReferences.delete(regionalPromptReferences.keys().next().value);
                         }
                         rememberPrompt(field, history);
