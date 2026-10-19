@@ -6,6 +6,7 @@
     const STATUS_DRAG_SAFE_MARGIN = 3;
     const STATUS_EDGE_DOCK_THRESHOLD = 6;
     const STATUS_DESKTOP_DEFAULT_TOP = 0;
+    const STATUS_DOCK_HIDE_DELAY = 240;
 
     // ==================== 状态管理 ====================
     let state = {
@@ -106,9 +107,23 @@
     // ==================== DOM 元素创建 ====================
     const statusContainer = document.createElement('div');
     statusContainer.id = 'gradio-status-monitor';
+    statusContainer.tabIndex = 0;
+    statusContainer.setAttribute('aria-label', tr('System status'));
 
     const statusIndicator = document.createElement('div');
     statusIndicator.className = 'status-indicator';
+
+    const statusDockSummary = document.createElement('div');
+    statusDockSummary.className = 'status-monitor-tile status-dock-summary';
+    statusDockSummary.setAttribute('aria-hidden', 'true');
+
+    const statusDockConnection = document.createElement('span');
+    statusDockConnection.className = 'status-exception';
+    statusDockConnection.textContent = '●';
+
+    const statusDockQueue = document.createElement('span');
+    statusDockQueue.textContent = 'Q0';
+    statusDockSummary.append(statusDockConnection, statusDockQueue);
 
     const statusTiles = document.createElement('div');
     statusTiles.className = 'status-monitor-tiles';
@@ -399,6 +414,7 @@
     function setTransferExpanded(expanded, sync) {
         transferState.expanded = !!expanded;
         statusIndicator.classList.toggle('transfer-expanded', transferState.expanded);
+        syncStatusMonitorDockVisibility();
         updateTransferToggleText();
         if (!transferState.expanded) closeTransferPasteOverlay();
         requestAnimationFrame(updateTransferPanelLayout);
@@ -651,6 +667,42 @@
         #gradio-status-monitor.edge-docked .status-monitor-tile {
             width: 76px;
             flex: 0 0 76px;
+        }
+
+        .status-dock-summary {
+            display: none;
+        }
+
+        #gradio-status-monitor.edge-collapsed,
+        #gradio-status-monitor.edge-collapsed .status-indicator {
+            width: 24px;
+            max-width: 24px;
+        }
+
+        #gradio-status-monitor.edge-collapsed .status-monitor-tiles,
+        #gradio-status-monitor.edge-collapsed .transfer-panel {
+            display: none;
+        }
+
+        #gradio-status-monitor.edge-collapsed .status-dock-summary {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            width: 24px;
+            height: 40px;
+            flex: 0 0 auto;
+            padding: 3px 1px;
+            font-size: 8.5px;
+            font-weight: 700;
+            line-height: 12px;
+            white-space: nowrap;
+            cursor: grab;
+        }
+
+        .status-dock-summary > :first-child {
+            font-size: 11px;
         }
 
         .status-indicator.light,
@@ -1493,6 +1545,12 @@
         ]);
         if (renderKey === lastStatusRenderKey) return;
         lastStatusRenderKey = renderKey;
+        statusDockSummary.title = nextStatusTitle;
+        statusDockConnection.className = statusClass;
+        statusDockQueue.textContent = statusType === 'connected'
+            ? (queueNumber > 99 ? '99+' : `Q${queueNumber}`)
+            : shortText;
+        statusContainer.setAttribute('aria-label', `${tr('System status')}\n${nextStatusTitle}`);
         statusContent.replaceChildren();
 
         if (state.hasAdminAPI) {
@@ -1699,6 +1757,7 @@
                 if (e.target && e.target.closest && (e.target.closest('.transfer-panel') || e.target.closest('.transfer-toggle') || e.target.closest('.transfer-item') || e.target.closest('button'))) return;
                 e.preventDefault();
                 state.isDragging = true;
+                syncStatusMonitorDockVisibility();
                 
                 // 获取当前位置
                 const rect = statusContainer.getBoundingClientRect();
@@ -1719,6 +1778,7 @@
                 if (e.target && e.target.closest && (e.target.closest('.transfer-panel') || e.target.closest('.transfer-toggle') || e.target.closest('.transfer-item') || e.target.closest('button'))) return;
                 e.preventDefault();
                 state.isDragging = true;
+                syncStatusMonitorDockVisibility();
                 
                 // 获取当前位置
                 const rect = statusContainer.getBoundingClientRect();
@@ -1739,6 +1799,7 @@
                 if (e.target && e.target.closest && (e.target.closest('.transfer-panel') || e.target.closest('.transfer-toggle') || e.target.closest('.transfer-item') || e.target.closest('button'))) return;
                 e.preventDefault();
                 state.isDragging = true;
+                syncStatusMonitorDockVisibility();
                 
                 // 获取当前位置
                 const rect = statusContainer.getBoundingClientRect();
@@ -1850,6 +1911,40 @@
         scheduleHealthCheck(0);
     }
 
+    let statusDockHideTimer = 0;
+
+    function syncStatusMonitorDockVisibility() {
+        window.clearTimeout(statusDockHideTimer);
+        statusDockHideTimer = 0;
+        const docked = !!state.statusEdgeDockSide && !isMobileStatusLayout();
+        const expanded = state.isDragging
+            || transferState.expanded
+            || statusContainer.matches(':hover, :focus-visible')
+            || !!statusContainer.querySelector(':focus-visible');
+        statusContainer.classList.toggle('edge-collapsed', docked && !expanded);
+
+        if (docked && expanded) {
+            const rect = statusContainer.getBoundingClientRect();
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+            if (rect.bottom > viewportHeight - STATUS_DRAG_SAFE_MARGIN) {
+                statusContainer.style.top = `${Math.max(0, viewportHeight - rect.height - STATUS_DRAG_SAFE_MARGIN)}px`;
+                statusContainer.style.bottom = 'auto';
+            }
+        }
+    }
+
+    function scheduleStatusMonitorDockHide() {
+        window.clearTimeout(statusDockHideTimer);
+        statusDockHideTimer = window.setTimeout(syncStatusMonitorDockVisibility, STATUS_DOCK_HIDE_DELAY);
+    }
+
+    function initStatusMonitorDockAutoHide() {
+        statusContainer.addEventListener('pointerenter', syncStatusMonitorDockVisibility);
+        statusContainer.addEventListener('pointerleave', scheduleStatusMonitorDockHide);
+        statusContainer.addEventListener('focusin', syncStatusMonitorDockVisibility);
+        statusContainer.addEventListener('focusout', scheduleStatusMonitorDockHide);
+    }
+
     function finishStatusMonitorDrag() {
         statusContainer.classList.remove('dragging');
         updateStatusMonitorEdgeDock(true);
@@ -1857,7 +1952,9 @@
     }
 
     function clearStatusMonitorEdgeDock() {
-        statusContainer.classList.remove('edge-docked', 'edge-docked-left', 'edge-docked-right');
+        window.clearTimeout(statusDockHideTimer);
+        statusDockHideTimer = 0;
+        statusContainer.classList.remove('edge-docked', 'edge-docked-left', 'edge-docked-right', 'edge-collapsed');
         state.statusEdgeDockSide = '';
     }
 
@@ -1880,6 +1977,7 @@
         statusContainer.style.left = 'auto';
         statusContainer.style.right = `${STATUS_DRAG_SAFE_MARGIN}px`;
         statusContainer.style.bottom = 'auto';
+        syncStatusMonitorDockVisibility();
 
         const rect = statusContainer.getBoundingClientRect();
         const viewportHeight = window.innerHeight || document.documentElement.clientHeight || rect.bottom;
@@ -1906,7 +2004,10 @@
         statusContainer.classList.toggle('edge-docked-right', side === 'right');
         state.statusEdgeDockSide = side;
 
-        if (!anchorPosition) return;
+        if (!anchorPosition) {
+            syncStatusMonitorDockVisibility();
+            return;
+        }
 
         const rect = sourceRect || statusContainer.getBoundingClientRect();
         const dockRect = statusContainer.getBoundingClientRect();
@@ -1921,6 +2022,7 @@
             statusContainer.style.left = 'auto';
             statusContainer.style.right = `${STATUS_DRAG_SAFE_MARGIN}px`;
         }
+        syncStatusMonitorDockVisibility();
     }
 
     function updateStatusMonitorEdgeDock(anchorPosition) {
@@ -2642,11 +2744,8 @@
     function isTransferStationDropTarget(e) {
         const target = e && e.target ? e.target : null;
         const path = e && typeof e.composedPath === 'function' ? e.composedPath() : [];
-        return [transferPanel, transferToggleBtn, workEntryTile].some((el) => {
-            if (!el) return false;
-            if (path && path.includes && path.includes(el)) return true;
-            return !!(target && el.contains && el.contains(target));
-        });
+        // Expansion replaces the compact strip beneath the pointer during a drag.
+        return path.includes(statusContainer) || !!(target && statusContainer.contains(target));
     }
 
     function consumeTransferHoverEvent(e) {
@@ -3166,6 +3265,7 @@
 
         // 组装 DOM
         statusContainer.appendChild(statusIndicator);
+        statusIndicator.appendChild(statusDockSummary);
         statusIndicator.appendChild(statusTiles);
         statusTiles.appendChild(statusContent);
         if (enableTransferStation) {
@@ -3193,6 +3293,7 @@
             applyDefaultStatusMonitorDesktopPosition();
             
             // 初始化拖拽功能
+            initStatusMonitorDockAutoHide();
             initDragFeature();
             if (enableTransferStation) {
                 initImageTransferStation();
