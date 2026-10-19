@@ -286,8 +286,8 @@
             const defaults = {
                 input_node_id: null,
                 params: {
-                    threshold: 0.35,
-                    character_threshold: 0.85,
+                    threshold: null,
+                    character_threshold: null,
                     exclude_tags: ''
                 },
                 text: {
@@ -524,7 +524,7 @@
                 y: position.y,
                 w: 320,
                 h: 360,
-                title: opts.title || 'WD14 Tagger'
+                title: opts.title || 'Image Tagger'
             };
             return Object.assign(node, buildWd14StatePatch(node, {
                 inputNodeId: opts.input_node_id || null,

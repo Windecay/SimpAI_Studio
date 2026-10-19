@@ -593,9 +593,9 @@ def _filter_existing_presets(presets, user_did=None):
 def _nav_button_limit(limit=None):
     try:
         value = int(limit if limit is not None else shared.BUTTON_NUM)
-        return value if value > 0 else 60
+        return value if value > 0 else 69
     except Exception:
-        return 60
+        return 69
 
 def _is_nav_preset_value_present(value):
     if value is None:
@@ -5267,6 +5267,8 @@ def get_all_user_default(state):
     results += [ads.get_user_default("lora_auto_send_trigger_words", state, False)]
     use_model_filter = ads.get_user_default("use_model_filter_checkbox", state, True)
     results += [use_model_filter, use_model_filter]
+    from modules.image_tagger_settings import selected_model, selected_categories
+    results += [selected_model(state), selected_categories(state)]
     return results
 
 def get_preferred_output_format(state_params):
@@ -5360,6 +5362,11 @@ def restore_all_defaults(state_params):
             ads.cache_vars.pop(f"{user_session}_{key}", None)
         except Exception:
             pass
+
+    from modules.image_tagger_settings import save_model, save_categories
+    from modules.wd14_models import DEFAULT_MODEL_ID, DEFAULT_TAG_CATEGORIES
+    save_model(DEFAULT_MODEL_ID, state_params)
+    save_categories(DEFAULT_TAG_CATEGORIES, state_params)
 
     for key in admin_keys:
         try:

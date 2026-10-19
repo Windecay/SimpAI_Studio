@@ -938,11 +938,17 @@ capabilities 返回 `image_tagging_url` 和 `image_tagging_status_url`，保留�
 
 两个阈值范围均为 0～1；`limit` 范围为 1～256，默认 64；排除标签采用逗号分隔，空格与下划线等价。不接受任意文件路径、外部 URL、身份或下载参数。素材必须是图片，超过 64 百万像素拒绝推理。后端修正 EXIF 方向并转为 RGB，调用已有 WD14 预处理和模型实现。
 
-返回 `tags` 数组，每项包含规范名称 `tag`、`category`（general／character）和 `confidence`，同时返回 `prompt`、`model_id`、实际 `providers`、完整候选数量 `total` 和 `truncated`。`prompt` 与截断后的标签一致，保留原有下划线转空格与括号转义格式。没有启动生成；`automatic_download=false`、`generation_started=false`。
+返回 `tags` 数组，每项包含规范名称 `tag`、`category`（general／character／copyright／style／meta／rating）和 `confidence`，同时返回 `prompt`、`model_id`、实际 `providers`、完整候选数量 `total` 和 `truncated`。`prompt` 与截断后的标签一致，保留原有下划线转空格与括号转义格式。没有启动生成；`automatic_download=false`、`generation_started=false`。
 
-Agent 路径固定使用 `CPUExecutionProvider` 与四个推理线程，不申请 GPU。UI 原有四参数调用和 provider 选择仍保留；共享模型缓存按模型与 CPU／GPU 模式区分，互斥执行避免并发修改缓存。CSV 使用类别字段选择一般与角色标签，不依赖标签表中的排列位置。
+2026-10-19 更新：模型和输出类别由当前用户在“身份 → 应用 → 标签反推模型”中选择，状态与反推读取同一份用户设置。WD14 在 Agent 路径继续使用 `CPUExecutionProvider` 与四个推理线程；PixAI FP16 使用可用 GPU provider，与生成互斥，并在反推结束后释放会话。CSV 使用类别字段筛选，不依赖标签表中的排列位置。
 
-状态检查按既有兼容顺序选择已完整安装的 ONNX＋CSV；不会因首选模型缺失而下载它。没有完整模型返回 `409 wd14_model_missing`，附带状态及缺失文件；忙碌返回 `409 wd14_busy`，推理错误返回 `502 wd14_inference_failed`，不暴露服务器路径。当前没有独立 WD14 下载入口；Agent 不得调用原界面来绕过权限或下载确认。
+“输出标签类别”支持普通、角色、作品、画风、元信息和分级独立开关，默认仅开启普通和角色，与主界面、Canvas 共用。状态与反推响应的 `categories` 返回当前启用的类别 ID；没有新增请求级覆盖参数，调用仍为只读。角色使用 `character_threshold`，其余类别使用 `threshold`；全部关闭时返回空 `tags`、空 `prompt` 和 `total=0`。未达到阈值或模型未提供的类别不会产生标签。
+
+PixAI 的设备策略为 `auto`，没有 GPU provider 时可以使用 CPU；当前请求不支持指定设备。2026-10-19 的隔离 HTTP 路由与真实 CPU 权重测试已完成，7950X 上 WD14 首次约 6.2 秒、后续约 2.4 秒，PixAI 约 17 秒／次；PixAI 每次会话加载与释放也包含在请求耗时中。环境、测量范围和记录见 [PixAI 标签反推](pixai-tagger.md#agent-api-的-cpu-实测2026-10-19)。
+
+2026-10-19 更新：状态检查只检查当前用户选择的 ONNX＋CSV，缺失时不自动选择其他模型。没有完整模型返回 `409 wd14_model_missing`，附带状态及缺失文件；忙碌返回 `409 wd14_busy`，推理错误返回 `502 wd14_inference_failed`，不暴露服务器路径。用户可在应用设置中明确下载缺失文件，仍受模型下载权限限制；Agent 只读工具不下载，也不能代用户调用私密界面写接口。
+
+`threshold`、`character_threshold` 可省略或传 `null`，服务使用所选模型的默认值，并在响应中返回实际阈值。WD14 默认为 `0.35 / 0.85`，PixAI v1.0 FP16 为 `0.17 / 0.27`；明确提供的数值始终保留。PixAI 的目标文件为 `pixai-tagger-v1.0-fp16.onnx` 与同名 `.csv`，所有启用类别保持相同 API 标签格式。下载源和验证记录见 [PixAI 标签反推](pixai-tagger.md)。
 
 反推标签仅用于提示词候选，不能作为真实身份、年龄或图片中内容的确定证明。生成前仍按所选 preset 的 `prompts.guidance`／技能调整格式，必要时使用 `prompts.tags` 检索、`prompts.validate` 校验；调用反推不构成生成授权。
 

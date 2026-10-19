@@ -7,6 +7,9 @@ import numpy as np
 import csv
 import os
 import sys
+import hashlib
+import json
+from functools import lru_cache
 import onnxruntime as ort
 from onnxruntime import InferenceSession
 from PIL import Image
@@ -16,11 +19,18 @@ import folder_paths
 from .wd14_preprocess import (
     needs_wd14_timm_normalization,
     prepare_wd14_image,
+    prepare_pixai_image,
 )
 from .pysssss import get_ext_dir, get_comfy_dir, download_to_file, update_node_status, wait_for_async, get_extension_config, log
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
 
+PIXAI_MODEL_ID = "pixai-tagger-v1.0-fp16"
 config = get_extension_config()
+# User overrides may predate PixAI; retain their settings and add the pinned export.
+with open(get_ext_dir("pysssss.json"), encoding="utf-8") as handle:
+    builtin_config = json.load(handle)
+config.setdefault("models", {}).setdefault(PIXAI_MODEL_ID, builtin_config["models"][PIXAI_MODEL_ID])
+config.setdefault("downloads", {})[PIXAI_MODEL_ID] = builtin_config["downloads"][PIXAI_MODEL_ID]
 
 defaults = {
     "model": "wd-eva02-tagger-2026-canary-onnx-v2",
@@ -73,34 +83,59 @@ def get_installed_models():
     return sorted(models)
 
 
-async def tag(image, model_name, threshold=0.35, character_threshold=0.85, exclude_tags="", replace_underscore=True, trailing_comma=False, client_id=None, node=None):
+@lru_cache(maxsize=8)
+def _file_hash(path, size, mtime_ns, ctime_ns):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_pixai_file(path, ext):
+    spec = config["downloads"][PIXAI_MODEL_ID][ext]
+    stat = os.stat(path)
+    if (stat.st_size != spec["size"] or
+            _file_hash(os.path.abspath(path), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns) != spec["sha256"]):
+        raise RuntimeError("PixAI file failed SHA256 verification: " + os.path.basename(path))
+
+
+async def tag(image, model_name, threshold=None, character_threshold=None, exclude_tags="", replace_underscore=True, trailing_comma=False, client_id=None, node=None):
     if model_name.endswith(".onnx"):
         model_name = model_name[0:-5]
     model_path, csv_path = resolve_model_files(model_name)
     if model_path is None or csv_path is None:
         model_path, csv_path = await download_model(model_name, client_id, node)
 
-    model = InferenceSession(model_path, providers=defaults["ortProviders"])
+    pixai = model_name == PIXAI_MODEL_ID
+    threshold = (0.17 if pixai else 0.35) if threshold is None else threshold
+    character_threshold = (0.27 if pixai else 0.85) if character_threshold is None else character_threshold
+    if pixai:
+        verify_pixai_file(model_path, "onnx")
+        verify_pixai_file(csv_path, "csv")
+    options = ort.SessionOptions()
+    if pixai and any(provider in {"DmlExecutionProvider", "DirectMLExecutionProvider"} for provider in defaults["ortProviders"]):
+        options.enable_mem_pattern = False
+        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    model = InferenceSession(model_path, providers=defaults["ortProviders"], sess_options=options)
 
     input = model.get_inputs()[0]
-    image = prepare_wd14_image(
-        image,
-        input.shape,
-        normalize=needs_wd14_timm_normalization(model_name),
-    )
+    if pixai:
+        image = prepare_pixai_image(image, input.shape)
+    else:
+        image = prepare_wd14_image(
+            image,
+            input.shape,
+            normalize=needs_wd14_timm_normalization(model_name),
+        )
 
-    # Read all tags from csv and locate start of each category
     tags = []
-    general_index = None
-    character_index = None
-    with open(csv_path) as f:
+    categories = []
+    with open(csv_path, encoding="utf-8-sig", newline="") as f:
         reader = csv.reader(f)
         next(reader)
         for row in reader:
-            if general_index is None and row[2] == "0":
-                general_index = reader.line_num - 2
-            elif character_index is None and row[2] == "4":
-                character_index = reader.line_num - 2
+            categories.append(row[2])
             if replace_underscore:
                 tags.append(row[1].replace("_", " "))
             else:
@@ -115,9 +150,10 @@ async def tag(image, model_name, threshold=0.35, character_threshold=0.85, exclu
 
     result = list(zip(tags, probs[0]))
 
-    # rating = max(result[:general_index], key=lambda x: x[1])
-    general = [item for item in result[general_index:character_index] if item[1] > threshold]
-    character = [item for item in result[character_index:] if item[1] > character_threshold]
+    if not np.all(np.isfinite(probs)):
+        raise RuntimeError("Image tagger returned non-finite probabilities")
+    general = [item for item, category in zip(result, categories) if category == "0" and item[1] > threshold]
+    character = [item for item, category in zip(result, categories) if category == "4" and item[1] > character_threshold]
 
     all = character + general
     remove = [s.strip() for s in exclude_tags.lower().split(",")]
@@ -130,6 +166,32 @@ async def tag(image, model_name, threshold=0.35, character_threshold=0.85, exclu
 
 
 async def download_model(model, client_id, node):
+    if model == PIXAI_MODEL_ID:
+        files = list(resolve_model_files(model))
+        timeout = aiohttp.ClientTimeout(total=1800, connect=15, sock_read=60)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async def update_callback(perc):
+                update_node_status(client_id, node, f"Downloading {model}", perc)
+            for index, ext in enumerate(("onnx", "csv")):
+                if files[index] is not None:
+                    continue
+                target = os.path.join(models_dir, model + "." + ext)
+                temporary = target + ".download"
+                urls = config["downloads"][model][ext]["urls"]
+                for url_index, url in enumerate(urls):
+                    try:
+                        await download_to_file(url, temporary, update_callback, session=session)
+                        verify_pixai_file(temporary, ext)
+                        os.replace(temporary, target)
+                        files[index] = target
+                        break
+                    except (aiohttp.ClientError, OSError, RuntimeError, asyncio.TimeoutError):
+                        if os.path.isfile(temporary):
+                            os.remove(temporary)
+                        if url_index == len(urls) - 1:
+                            raise
+        update_node_status(client_id, node, None)
+        return tuple(files)
     hf_endpoint = os.getenv("HF_ENDPOINT", defaults["HF_ENDPOINT"])
     if not hf_endpoint.startswith("https://"):
         hf_endpoint = f"https://{hf_endpoint}"

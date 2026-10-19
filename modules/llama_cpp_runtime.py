@@ -174,6 +174,8 @@ def estimate_llama_cpp_kv_cache_gb(
     head_count_kv,
     kv_cache_type="f16",
     gemma4_hparams=None,
+    n_ubatch=LLAMA_CPP_GEMMA4_N_UBATCH,
+    swa_full=False,
 ):
     _, kv_type_config = llama_cpp_kv_cache_type_config(kv_cache_type)
     try:
@@ -199,7 +201,8 @@ def estimate_llama_cpp_kv_cache_gb(
                     raise ValueError
                 # Global layers keep the full context; bounded SWA adds a microbatch and pads to 256 tokens.
                 full_tokens = ((context_tokens + 31) // 32) * 32
-                swa_tokens = ((min(full_tokens, window + LLAMA_CPP_GEMMA4_N_UBATCH) + 255) // 256) * 256
+                swa_tokens = (full_tokens if swa_full else
+                              ((min(full_tokens, window + max(1, int(n_ubatch))) + 255) // 256) * 256)
                 kv_elements = 0
                 for is_swa, heads in zip(pattern, head_count_kv):
                     heads = int(heads)
@@ -253,6 +256,35 @@ def estimate_llama_cpp_kv_cache_gb(
             / 2.0
         )
         return max(0.5, fallback_gb), False
+
+
+def llama_cpp_batch_plan(budget, n_ctx, *, expert_cache=False):
+    """Bound activation buffers using the policy's available GPU budget.
+
+    This changes prefill chunking only: it never reduces the requested context,
+    output limit or image token budget. Keep the ordinary dense-model default.
+    """
+    available = max(0.0, float(budget.get("gpu_budget_gb", 0)))
+    if available < 4:
+        batch, microbatch = 256, 64
+    elif available < 8:
+        batch, microbatch = 512, 128
+    elif available < 12:
+        batch, microbatch = (1024 if expert_cache else 512), 256
+    else:
+        batch, microbatch = (2048 if expert_cache else 512), 512
+    batch = min(max(1, int(n_ctx)), batch)
+    return {"n_batch": batch, "n_ubatch": min(batch, microbatch)}
+
+
+def llama_cpp_batch_attempts(n_batch, n_ubatch):
+    """At most two smaller activation buffers before reducing GPU placement."""
+    attempts = [(int(n_batch), int(n_ubatch))]
+    for limit in (128, 64):
+        candidate = (min(int(n_batch), max(256, limit * 4)), min(int(n_ubatch), limit))
+        if candidate[1] < attempts[-1][1]:
+            attempts.append(candidate)
+    return attempts
 
 
 def llama_cpp_gpu_layer_attempts(target_layers, total_layers=None, include_nearby=False):

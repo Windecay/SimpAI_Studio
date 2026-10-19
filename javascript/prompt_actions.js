@@ -1079,6 +1079,7 @@
     }
 
     const regionalPromptDrafts = new Map();
+    const regionalPromptReferences = new Map();
     const anonymousRegionalPromptDrafts = new WeakMap();
     const REGIONAL_DRAFT_STORAGE_KEY = "simpai.regionalPromptDrafts.v1";
     const REGIONAL_DRAFT_LIMIT = 8;
@@ -1337,7 +1338,25 @@
                 value: original, ...size, langState: params, currentSize: currentPromptImageSize,
                 snapshot: drafts.get(draftKey),
                 onDraftChange: snapshot => rememberRegionalDraft(drafts, draftKey, snapshot, persistent),
+                reference: regionalPromptReferences.get(draftKey),
+                onReferenceChange(reference) {
+                    regionalPromptReferences.delete(draftKey);
+                    if (reference) regionalPromptReferences.set(draftKey, reference);
+                    while (regionalPromptReferences.size > 8) regionalPromptReferences.delete(regionalPromptReferences.keys().next().value);
+                },
                 assertContext,
+                async onGenerate(request) {
+                    assertContext();
+                    if (typeof window.runSimpleAIPromptActionDirect !== "function") {
+                        throw new Error(localText("Agent optimization is unavailable in this view."));
+                    }
+                    const result = await window.runSimpleAIPromptActionDirect("smart_expand", request.input, {
+                        target_kind: "regional_prompt", regional_operation: "generate",
+                        language: currentLang(), use_scene_agent_prompt: false, use_video: false,
+                    });
+                    assertContext();
+                    return result;
+                },
                 async onOptimize(request) {
                     assertContext();
                     if (typeof window.runSimpleAIPromptActionDirect !== "function") {
@@ -1369,6 +1388,13 @@
                         try { applied = setPromptFieldValue(field, result.prompt); }
                         finally { history.applying = false; }
                         if (!applied) throw new Error(localText("The prompt or preset changed. Reopen the layout editor."));
+                        const reference = regionalPromptReferences.get(draftKey);
+                        if (reference) {
+                            const appliedKey = JSON.stringify([window.location?.pathname || "", user, preset, task, target, result.prompt]);
+                            regionalPromptReferences.delete(appliedKey);
+                            regionalPromptReferences.set(appliedKey, reference);
+                            while (regionalPromptReferences.size > 8) regionalPromptReferences.delete(regionalPromptReferences.keys().next().value);
+                        }
                         rememberPrompt(field, history);
                         lastAppliedPromptField = field;
                         lastAppliedHistory = history;

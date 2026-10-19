@@ -56,9 +56,9 @@ def create_topbar_layout(
             root_blocks.load(get_start_timestamp, outputs=start_timestamp, queue=False, api_name="get_start_timestamp")
             root_blocks.load(get_wildcards_list, outputs=start_timestamp, queue=False)
         gr.HTML(
-            value="""<div id="topbar_drawer_handle" role="separator" tabindex="0" hidden
+            value=f"""<div id="topbar_drawer_handle" role="separator" tabindex="0" hidden
   aria-label="Resize preset drawer" aria-controls="topbar_row" aria-orientation="horizontal"
-  aria-valuemin="1" aria-valuemax="60" aria-valuenow="2">
+  aria-valuemin="1" aria-valuemax="{button_num}" aria-valuenow="2">
   <span class="topbar-drawer-grip" aria-hidden="true"></span>
   <span class="topbar-drawer-count" aria-hidden="true"></span>
 </div>""",

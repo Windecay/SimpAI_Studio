@@ -12,6 +12,13 @@
   box-shadow: 0 20px 64px #0005;
 }
 .sai-rjp-dialog[data-simpleai-resize-managed="1"] { position: fixed; }
+.sai-rjp-reference-drop {
+  position: absolute; inset: 8px; z-index: 30; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; padding: 24px; pointer-events: none; border: 2px dashed var(--button-primary-border-color, #ff8a00);
+  border-radius: 6px; background: var(--body-background-fill, #fff); opacity: .94; text-align: center;
+}
+.sai-rjp-reference-drop i { font-size: 28px; color: var(--button-primary-border-color, #ff8a00); }
+.sai-rjp-reference-drop strong { font-size: 15px; overflow-wrap: anywhere; }
 .sai-rjp-dialog.simpleai-resizable-popup > header { cursor: grab; touch-action: none; }
 .sai-rjp-dialog[data-simpleai-drag-active="1"] > header { cursor: grabbing; }
 .sai-rjp-dialog.simpleai-resizable-popup > footer { padding-right: 46px; }
@@ -50,6 +57,12 @@
 .sai-rjp-layout { display: grid; grid-template-columns: minmax(0, 1fr) clamp(280px, 28%, 380px); flex: 1; min-height: 0; }
 .sai-rjp-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; padding: 14px; overflow-y: auto; }
 .sai-rjp-main > label { flex: none; }
+.sai-rjp-reference-tools, .sai-rjp-reference-controls {
+  display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; flex: none;
+}
+.sai-rjp-reference-tools > span { flex: 1; min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.sai-rjp-reference-controls label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sai-rjp-dialog [data-rjp-reference-opacity] { width: 100px; padding: 0; accent-color: var(--button-primary-border-color, #ff8a00); }
 .sai-rjp-viewport { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 160px; overflow: hidden; background: var(--block-background-fill, #edf0f2); }
 .sai-rjp-board { position: relative; flex: none; box-shadow: 0 1px 8px #0003; }
 .sai-rjp-board canvas { display: block; width: 100%; height: 100%; touch-action: none; }
@@ -94,10 +107,11 @@
 .sai-rjp-dialog [data-rjp-status].is-error { color: #d14b50; }
 .sai-rjp-dialog .sai-rjp-apply { background: var(--button-primary-background-fill, #ff8a00); color: var(--button-primary-text-color, #fff); border-color: var(--button-primary-border-color, #ff8a00); width: auto; }
 .sai-rjp-ai-bar {
-  display: grid; grid-template-columns: minmax(120px, auto) minmax(0, 1fr) 34px; gap: 8px;
+  display: grid; grid-template-columns: minmax(120px, auto) minmax(100px, auto) minmax(0, 1fr) 34px; gap: 8px;
   flex: none; padding: 9px 14px; border-top: 1px solid var(--border-color-primary, #dce0e4);
 }
 .sai-rjp-ai-bar select { max-width: 200px; width: 100%; }
+.sai-rjp-ai-bar.is-layout-generation { grid-template-columns: minmax(120px, auto) minmax(0, 1fr) 34px; }
 .sai-rjp-ai-preview {
   display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; max-height: min(240px, 32dvh);
   border-top: 1px solid var(--border-color-primary, #dce0e4);
@@ -126,7 +140,7 @@
   .sai-rjp-region-form { flex: none; max-height: none; overflow: visible; gap: 7px; }
   .sai-rjp-dialog footer { padding: 8px; gap: 6px; }
   .sai-rjp-footer-tools { margin-left: auto; }
-  .sai-rjp-ai-bar { grid-template-columns: minmax(0, 1fr) 34px; padding: 8px; gap: 6px; }
+  .sai-rjp-ai-bar, .sai-rjp-ai-bar.is-layout-generation { grid-template-columns: minmax(0, 1fr) 34px; padding: 8px; gap: 6px; }
   .sai-rjp-ai-bar select { grid-column: 1 / -1; max-width: none; }
   .sai-rjp-ai-preview { max-height: 27dvh; }
   .sai-rjp-ai-preview-heading { padding: 6px 8px; }

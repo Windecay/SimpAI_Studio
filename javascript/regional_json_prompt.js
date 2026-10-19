@@ -290,6 +290,130 @@
         return validateDraft(next, true, true);
     }
 
+    function referencePlacement(width, height, imageWidth, imageHeight) {
+        requireValue([width, height, imageWidth, imageHeight].every(value => Number.isFinite(value) && value > 0),
+            'Invalid reference image dimensions');
+        const scale = Math.min(width / imageWidth, height / imageHeight);
+        return { x: (width - imageWidth * scale) / 2, y: (height - imageHeight * scale) / 2,
+            width: imageWidth * scale, height: imageHeight * scale };
+    }
+    function generationRequest(draft, mode, instruction = '', reference = null) {
+        validateDraft(draft, true, true);
+        requireValue(['text', 'image'].includes(mode), 'Invalid layout generation mode');
+        const request = { version: 1, mode, instruction: String(instruction).trim(), draft: clone(draft) };
+        request.draft.items = request.draft.items.map(modelRegion);
+        requireValue(request.instruction.length <= 4000, 'Layout generation instruction is too long');
+        if (mode === 'image') {
+            requireValue(reference?.source && /^data:image\/(?:png|jpeg|webp);base64,/.test(reference.source),
+                'Upload a reference image');
+            request.image = reference.source;
+        } else requireValue(request.instruction || draft.summary.caption.trim()
+            || draft.items.some(item => item.caption.trim() || (item.label === 'text' && item.text?.trim())),
+        'Enter a layout description');
+        return request;
+    }
+    function generationResult(response, request) {
+        let value = typeof response === 'string' ? response.trim() : clone(response);
+        if (typeof value === 'string') {
+            value = value.replace(/^```(?:json)?\s*\n([\s\S]*)\n```$/i, '$1').trim();
+            value = JSON.parse(value);
+        }
+        validateDraft(value);
+        requireValue(value.width === request.draft.width && value.height === request.draft.height,
+            'Layout dimensions must match the requested canvas');
+        return clone(value);
+    }
+    async function decodeReference(source) {
+        const image = new root.Image();
+        await new Promise((resolve, reject) => {
+            image.onload = resolve;
+            image.onerror = () => reject(new Error('Reference image could not be decoded'));
+            image.src = source;
+        });
+        return image;
+    }
+    async function readReferenceFile(file) {
+        let type = String(file.type || '').toLowerCase();
+        if (!type || type === 'application/octet-stream') {
+            type = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }[
+                String(file.name || '').split('.').pop().toLowerCase()
+            ] || '';
+            if (type) file = new root.File([file], file.name, { type });
+        }
+        requireValue(['image/png', 'image/jpeg', 'image/webp'].includes(type),
+            'Choose a PNG, JPEG or WebP reference image');
+        requireValue(file.size <= 20 * 1024 * 1024, 'Reference image file is too large');
+        const url = root.URL.createObjectURL(file);
+        try {
+            const image = await decodeReference(url);
+            requireValue(image.naturalWidth * image.naturalHeight <= 64000000,
+                'Reference image dimensions are too large');
+            const scale = Math.min(1, 1536 / Math.max(image.naturalWidth, image.naturalHeight));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+            canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+            const source = canvas.toDataURL('image/jpeg', 0.92);
+            requireValue(source.length <= 2800000, 'Reference image is too large');
+            return { source, width: canvas.width, height: canvas.height, name: file.name,
+                opacity: 0.5, visible: true };
+        } finally { root.URL.revokeObjectURL(url); }
+    }
+
+    function referenceTransferFiles(transfer) {
+        const files = Array.from(transfer?.files || []);
+        return files.length ? files : Array.from(transfer?.items || [])
+            .filter(item => item.kind === 'file').map(item => item.getAsFile?.()).filter(Boolean);
+    }
+    function referenceTransferUrl(transfer) {
+        if (typeof transfer?.getData !== 'function') return '';
+        const read = type => String(transfer.getData(type) || '').trim();
+        let source = read('application/x-simpleai-gallery-original-url');
+        if (!source && read('text/html')) {
+            const doc = new root.DOMParser().parseFromString(read('text/html'), 'text/html');
+            source = doc.querySelector('img[src]')?.getAttribute('src') || '';
+        }
+        if (!source) source = read('text/uri-list').split(/\r?\n/).find(line => line && !line.startsWith('#')) || '';
+        if (!source && /^(?:https?:|blob:|data:image\/|\/)/i.test(read('text/plain'))) source = read('text/plain');
+        if (!source) return '';
+        try {
+            const url = new root.URL(source, document.baseURI);
+            return /^(?:https?:|blob:)$/.test(url.protocol)
+                || /^data:image\/(?:png|jpeg|webp);base64,/i.test(source) ? url.href : '';
+        } catch (_) { return ''; }
+    }
+    async function referenceFileFromUrl(source, signal) {
+        const response = await root.fetch(source, { credentials: 'same-origin', signal });
+        requireValue(response.ok, 'Reference image could not be loaded');
+        requireValue(Number(response.headers.get('content-length') || 0) <= 20 * 1024 * 1024,
+            'Reference image file is too large');
+        const reader = response.body?.getReader();
+        let blob;
+        if (reader) {
+            const parts = [];
+            let size = 0;
+            try {
+                for (;;) {
+                    const chunk = await reader.read();
+                    if (chunk.done) break;
+                    size += chunk.value.byteLength;
+                    requireValue(size <= 20 * 1024 * 1024, 'Reference image file is too large');
+                    parts.push(chunk.value);
+                }
+                blob = new root.Blob(parts, { type: response.headers.get('content-type') || '' });
+            } finally { await reader.cancel().catch(() => {}); }
+        } else blob = await response.blob();
+        const mime = blob.type.split(';')[0];
+        let name = 'reference.' + ({ 'image/jpeg': 'jpg', 'image/webp': 'webp' }[mime] || 'png');
+        try {
+            const url = new root.URL(source, document.baseURI);
+            if (/^https?:$/.test(url.protocol)) name = decodeURIComponent(url.pathname.split('/').pop()) || name;
+        } catch (_) {}
+        return new root.File([blob], name, { type: mime });
+    }
+
     function normalizeRegionUi(value, count) {
         return Array.from({ length: count }, (_, index) => ({
             locked: value?.[index]?.locked === true,
@@ -323,6 +447,7 @@
                 undo: history(value.undo), redo: history(value.redo), optimizedSnapshot,
                 aiScope: ['all', 'region', 'summary'].includes(value.aiScope) ? value.aiScope : 'all',
                 aiInstruction: typeof value.aiInstruction === 'string' ? value.aiInstruction.slice(0, 4000) : '',
+                aiMode: ['text', 'image'].includes(value.aiMode) ? value.aiMode : 'optimize',
             };
         } catch (_) { return null; }
     }
@@ -353,6 +478,8 @@
         let gesture = null, editingField = null;
         let rawDirty = restored ? restored.rawDirty : !!initialError;
         let optimizing = false, closed = false, aiPreview = null, aiGeneration = 0;
+        let reference = null, referenceImage = null, referenceRevision = 0, loadingReference = false;
+        let referenceAbort = null, referenceDragDepth = 0;
         let optimizedSnapshot = restored?.optimizedSnapshot || '';
         const undo = restored?.undo || [], redo = restored?.redo || [];
         const previousFocus = document.activeElement;
@@ -360,6 +487,9 @@
         host.className = 'sai-rjp-overlay';
         host.innerHTML = `<div class="sai-rjp-backdrop" data-rjp-action="close"></div>
           <section class="sai-rjp-dialog" role="dialog" aria-modal="true" aria-labelledby="sai-rjp-title">
+            <div class="sai-rjp-reference-drop" data-rjp-reference-drop role="status" aria-live="polite" aria-hidden="true" hidden>
+              <i class="fa-solid fa-image" aria-hidden="true"></i><strong data-rjp-drop-label>${esc(t('Drop reference image here'))}</strong>
+            </div>
             <header><h2 id="sai-rjp-title">${esc(t('Regional Prompt'))}</h2>
               <select aria-label="${esc(t('Model'))}" data-rjp-model><option>MOSS-Image</option></select>
               ${icon('close', 'xmark', 'Close')}</header>
@@ -386,6 +516,15 @@
             <div class="sai-rjp-layout">
               <div class="sai-rjp-main">
                 <label>${esc(t('Whole image description (optional)'))}<textarea data-rjp-field="summary" rows="3"></textarea></label>
+                <div class="sai-rjp-reference-tools" role="group" aria-label="${esc(t('Reference image'))}">
+                  ${icon('upload-reference', 'image', 'Upload reference image')}
+                  <span data-rjp-reference-name>${esc(t('Reference image'))}</span>
+                  <div class="sai-rjp-reference-controls" data-rjp-reference-controls hidden>
+                    ${icon('toggle-reference', 'eye', 'Show reference image')}
+                    <label>${esc(t('Image opacity'))}<input data-rjp-reference-opacity type="range" min="0" max="100" step="1" value="50"></label>
+                    ${icon('remove-reference', 'trash-can', 'Remove reference image')}
+                  </div>
+                </div>
                 <div class="sai-rjp-viewport"><div class="sai-rjp-board"><canvas tabindex="0" aria-label="${esc(t('Region canvas'))}"></canvas></div></div>
                 <details><summary>${esc(t('Compiled prompt'))}</summary><textarea data-rjp-output readonly rows="3" aria-label="${esc(t('Compiled prompt'))}"></textarea></details>
               </div>
@@ -424,6 +563,11 @@
                 ${icon('reset-json', 'rotate-left', 'Restore JSON from layout')}
               </div></div>
             <div class="sai-rjp-ai-bar">
+              <select data-rjp-ai-mode aria-label="${esc(t('Agent operation'))}">
+                <option value="optimize">${esc(t('Optimize descriptions'))}</option>
+                <option value="text">${esc(t('Text to layout'))}</option>
+                <option value="image">${esc(t('Image to layout'))}</option>
+              </select>
               <select data-rjp-ai-scope aria-label="${esc(t('Optimization scope'))}">
                 <option value="all">${esc(t('All descriptions'))}</option>
                 <option value="region">${esc(t('Selected region'))}</option>
@@ -447,6 +591,7 @@
                 <button type="button" data-rjp-action="apply" class="sai-rjp-apply"><i class="fa-solid fa-check" aria-hidden="true"></i> ${esc(t('Apply prompt'))}</button>
               </div>
             </footer><input type="file" accept=".json,application/json" data-rjp-file hidden>
+            <input type="file" accept="image/png,image/jpeg,image/webp" data-rjp-reference-file hidden>
           </section>`;
         const q = selector => host.querySelector(selector);
         const dialog = q('.sai-rjp-dialog');
@@ -466,6 +611,7 @@
         raw.value = restored ? restored.raw : (initialError ? String(options.value || '') : JSON.stringify(draft, null, 2));
         q('[data-rjp-ai-scope]').value = restored?.aiScope || 'all';
         q('[data-rjp-ai-instruction]').value = restored?.aiInstruction || '';
+        q('[data-rjp-ai-mode]').value = restored?.aiMode || 'optimize';
         q('[data-rjp-details]').open = restored?.detailsOpen || false;
         function persistDraft() {
             if (closed || typeof options.onDraftChange !== 'function') return;
@@ -476,6 +622,7 @@
                 detailsOpen: q('[data-rjp-details]').open,
                 aiScope: q('[data-rjp-ai-scope]').value,
                 aiInstruction: q('[data-rjp-ai-instruction]').value,
+                aiMode: q('[data-rjp-ai-mode]').value,
             });
             if (snapshot) {
                 try { options.onDraftChange(snapshot); } catch (_) {}
@@ -540,6 +687,43 @@
                 </div>`
             ).join('') : '';
         }
+        function renderAiMode() {
+            const generating = q('[data-rjp-ai-mode]').value !== 'optimize';
+            q('.sai-rjp-ai-bar').classList.toggle('is-layout-generation', generating);
+            q('[data-rjp-ai-scope]').hidden = generating;
+            const button = q('[data-rjp-action="optimize"]');
+            const title = t(generating ? 'Generate layout with agent' : 'Optimize with agent');
+            button.title = title;
+            button.setAttribute('aria-label', title);
+            q('[data-rjp-ai-instruction]').placeholder = t(generating ? 'Layout description (optional for image)' : 'Editing instruction (optional)');
+        }
+        function renderReference() {
+            q('[data-rjp-reference-controls]').hidden = !reference;
+            q('[data-rjp-reference-name]').textContent = reference?.name || t('Reference image');
+            q('[data-rjp-reference-name]').title = reference?.name || '';
+            q('[data-rjp-reference-opacity]').value = reference ? Math.round(reference.opacity * 100) : 50;
+            const toggle = q('[data-rjp-action="toggle-reference"]');
+            toggle.setAttribute('aria-pressed', String(reference?.visible === true));
+            toggle.title = t(reference?.visible ? 'Hide reference image' : 'Show reference image');
+            toggle.setAttribute('aria-label', toggle.title);
+            q('[data-rjp-action="toggle-reference"] i').className = reference?.visible
+                ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
+        }
+        function rememberReference() {
+            try { options.onReferenceChange?.(reference ? { ...reference } : null); } catch (_) {}
+        }
+        async function setReference(value) {
+            const revision = ++referenceRevision;
+            const image = value ? await decodeReference(value.source) : null;
+            if (closed || revision !== referenceRevision) return;
+            reference = value ? { ...value, width: image.naturalWidth, height: image.naturalHeight,
+                opacity: Number.isFinite(value.opacity) ? Math.max(0, Math.min(1, value.opacity)) : 0.5,
+                visible: value.visible !== false } : null;
+            referenceImage = image;
+            renderReference();
+            rememberReference();
+            draw();
+        }
         function setOptimizing(value) {
             optimizing = value;
             q('[data-rjp-action="optimize"]').disabled = value;
@@ -547,6 +731,9 @@
                 ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles';
             q('[data-rjp-ai-scope]').disabled = value;
             q('[data-rjp-ai-instruction]').disabled = value;
+            q('[data-rjp-ai-mode]').disabled = value;
+            q('[data-rjp-action="upload-reference"]').disabled = value || loadingReference;
+            q('[data-rjp-action="remove-reference"]').disabled = value;
             q('[data-rjp-action="apply"]').disabled = value || applying;
         }
         function assertAiSnapshot(snapshot, request, selection) {
@@ -558,6 +745,8 @@
         }
         async function optimize() {
             if (optimizing || applying) return;
+            requireValue(!loadingReference, 'Reference image is still loading');
+            if (q('[data-rjp-ai-mode]').value !== 'optimize') return generateLayout();
             if (typeof options.onOptimize !== 'function') throw new Error('Agent optimization is unavailable in this view.');
             if (rawDirty) loadRaw();
             options.assertContext?.();
@@ -597,6 +786,40 @@
                 if (!closed && generation === aiGeneration) setOptimizing(false);
             }
         }
+        async function generateLayout() {
+            requireValue(!loadingReference, 'Reference image is still loading');
+            requireValue(typeof options.onGenerate === 'function', 'Agent optimization is unavailable in this view.');
+            if (rawDirty) loadRaw();
+            options.assertContext?.();
+            const request = generationRequest(draft, q('[data-rjp-ai-mode]').value,
+                q('[data-rjp-ai-instruction]').value, reference);
+            const snapshot = JSON.stringify(draft), imageRevision = referenceRevision;
+            const generation = ++aiGeneration;
+            aiPreview = null;
+            renderAiPreview();
+            setOptimizing(true);
+            status({ message: 'Generating layout...' }, false);
+            try {
+                const result = await options.onGenerate({ input: JSON.stringify(request), request: clone(request) });
+                if (closed || generation !== aiGeneration) return;
+                assertAiSnapshot(snapshot, request, selected);
+                requireValue(request.mode !== 'image' || imageRevision === referenceRevision,
+                    'The reference image changed. Generate the layout again.');
+                if (result?.ok === false) throw new Error(result.error || 'Layout generation failed.');
+                const next = generationResult(typeof result === 'string' ? result : result?.text, request);
+                remember();
+                draft = next;
+                regionUi = normalizeRegionUi(null, next.items.length);
+                selected = next.items.length ? 0 : -1;
+                optimizedSnapshot = JSON.stringify(draft);
+                raw.value = JSON.stringify(draft, null, 2); rawDirty = false;
+                tab = 'layout';
+                render();
+                status({ message: 'Layout generated.' }, false);
+            } finally {
+                if (!closed && generation === aiGeneration) setOptimizing(false);
+            }
+        }
         function draw() {
             const width = Math.max(1, Math.min(viewport.clientWidth - 24,
                 (viewport.clientHeight - 24) * draft.width / draft.height));
@@ -616,6 +839,13 @@
             for (let n = 1; n < 8; n++) {
                 ctx.beginPath(); ctx.moveTo(draft.width * n / 8, 0); ctx.lineTo(draft.width * n / 8, draft.height); ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(0, draft.height * n / 8); ctx.lineTo(draft.width, draft.height * n / 8); ctx.stroke();
+            }
+            if (referenceImage && reference?.visible) {
+                const rect = referencePlacement(draft.width, draft.height, reference.width, reference.height);
+                ctx.save();
+                ctx.globalAlpha = reference.opacity;
+                ctx.drawImage(referenceImage, rect.x, rect.y, rect.width, rect.height);
+                ctx.restore();
             }
             draft.items.forEach((item, index) => {
                 if (regionUi[index].hidden) return;
@@ -714,6 +944,8 @@
             }
             updateOutput();
             renderAiPreview();
+            renderAiMode();
+            renderReference();
             if (tab === 'layout') draw();
             if (revealSelected) revealSelectedRegion();
             persistDraft();
@@ -731,7 +963,11 @@
                 try { options.onDraftChange?.(null); } catch (_) {}
             }
             closed = true;
+            referenceAbort?.abort();
+            for (const [name, handler] of referenceEvents) root.removeEventListener?.(name, handler, true);
             aiGeneration++;
+            referenceRevision++;
+            referenceImage = null;
             aiPreview = null;
             if (!compactWindow() && dialog.dataset.simpleaiResizeManaged === '1') {
                 const rect = dialog.getBoundingClientRect();
@@ -789,6 +1025,14 @@
                 if (closed || (name === 'apply' && (applying || optimizing))) return;
                 if (name === 'close') return close();
                 if (name === 'optimize') return await optimize();
+                if (name === 'upload-reference' && !optimizing && !loadingReference && !applying) q('[data-rjp-reference-file]').click();
+                if (name === 'remove-reference' && !optimizing && !loadingReference) {
+                    await setReference(null);
+                }
+                if (name === 'toggle-reference' && reference) {
+                    reference.visible = !reference.visible;
+                    renderReference(); rememberReference(); draw();
+                }
                 if (name === 'discard-optimization') {
                     aiPreview = null; renderAiPreview(); status();
                 }
@@ -901,6 +1145,13 @@
         function updateField(event) {
             if (closed) return;
             if (event.target === raw) { rawDirty = true; persistDraft(); return; }
+            if (event.target === q('[data-rjp-reference-opacity]') && reference) {
+                reference.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
+                rememberReference(); draw(); return;
+            }
+            if (event.target === q('[data-rjp-ai-mode]')) {
+                aiPreview = null; renderAiPreview(); renderAiMode(); persistDraft(); return;
+            }
             if (event.target === q('[data-rjp-ai-scope]') || event.target === q('[data-rjp-ai-instruction]')) {
                 persistDraft(); return;
             }
@@ -967,6 +1218,110 @@
             finally { persistDraft(); }
             event.target.value = '';
         });
+        async function loadReference(source) {
+            if (closed) return;
+            if (optimizing || loadingReference || applying) {
+                status({ message: 'Wait for the current operation before adding a reference image.' }, false);
+                return;
+            }
+            loadingReference = true;
+            referenceAbort = new root.AbortController();
+            const timer = root.setTimeout(() => referenceAbort?.abort(), 15000);
+            q('[data-rjp-action="upload-reference"]').disabled = true;
+            q('[data-rjp-action="remove-reference"]').disabled = true;
+            status({ message: 'Loading reference image...' }, false);
+            try {
+                const file = typeof source === 'string' ? await referenceFileFromUrl(source, referenceAbort.signal) : source;
+                const value = await readReferenceFile(file);
+                if (closed) return;
+                options.assertContext?.();
+                await setReference(value);
+                if (closed) return;
+                q('[data-rjp-ai-mode]').value = 'image';
+                tab = 'layout';
+                render();
+                aiPreview = null; renderAiPreview(); renderAiMode();
+                status(); persistDraft();
+            } catch (error) {
+                if (!closed) status(referenceAbort.signal.aborted
+                    ? { message: 'Reference image loading timed out' }
+                    : ['TypeError', 'AbortError'].includes(error.name)
+                        ? { message: 'Reference image could not be loaded' } : error);
+            }
+            finally {
+                root.clearTimeout(timer);
+                referenceAbort = null;
+                loadingReference = false;
+                q('[data-rjp-action="upload-reference"]').disabled = optimizing;
+                q('[data-rjp-action="remove-reference"]').disabled = optimizing;
+            }
+        }
+        q('[data-rjp-reference-file]').addEventListener('change', async event => {
+            const file = event.target.files[0];
+            if (file) await loadReference(file);
+            event.target.value = '';
+        });
+        function showReferenceDrop(show) {
+            const overlay = q('[data-rjp-reference-drop]');
+            overlay.hidden = !show;
+            overlay.setAttribute('aria-hidden', String(!show));
+            q('[data-rjp-drop-label]').textContent = t(optimizing || loadingReference || applying
+                ? 'Wait for the current operation before adding a reference image.' : 'Drop reference image here');
+            if (!show) referenceDragDepth = 0;
+        }
+        function referenceTransferAvailable(transfer) {
+            return !!transfer && (transfer.files?.length
+                || Array.from(transfer.items || []).some(item => item.kind === 'file')
+                || Array.from(transfer.types || []).some(type => [
+                    'files', 'text/uri-list', 'text/html', 'application/x-simpleai-gallery-original-url',
+                ].includes(String(type).toLowerCase())));
+        }
+        function claimReferenceEvent(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation?.();
+        }
+        function handleReferenceDrag(event) {
+            if (closed || !host.contains(event.target) || !referenceTransferAvailable(event.dataTransfer)) return;
+            claimReferenceEvent(event);
+            event.dataTransfer.dropEffect = optimizing || loadingReference || applying ? 'none' : 'copy';
+            referenceDragDepth = event.type === 'dragenter' ? referenceDragDepth + 1 : Math.max(1, referenceDragDepth);
+            showReferenceDrop(true);
+        }
+        function clearReferenceDrop() { showReferenceDrop(false); }
+        const referenceEvents = [
+            ['dragenter', handleReferenceDrag], ['dragover', handleReferenceDrag],
+            ['dragleave', event => {
+                if (!host.contains(event.target)) return;
+                referenceDragDepth--;
+                if (referenceDragDepth <= 0 && !host.contains(event.relatedTarget)) clearReferenceDrop();
+            }],
+            ['drop', event => {
+                if (closed || !host.contains(event.target)) return;
+                const transfer = event.dataTransfer;
+                if (!referenceTransferAvailable(transfer)) return;
+                const files = referenceTransferFiles(transfer);
+                const image = files.find(file => /^image\//i.test(file.type)
+                    || (!file.type || file.type === 'application/octet-stream') && /\.(?:png|jpe?g|webp)$/i.test(file.name));
+                const source = image || (!files.length && referenceTransferUrl(transfer));
+                clearReferenceDrop();
+                if (!files.length && !source) return;
+                claimReferenceEvent(event);
+                if (source) void loadReference(source);
+                else status({ message: 'Choose a PNG, JPEG or WebP reference image' });
+            }],
+            ['paste', event => {
+                if (closed || event.defaultPrevented || !host.contains(event.target)) return;
+                const file = referenceTransferFiles(event.clipboardData).find(file => /^image\//i.test(file.type)
+                    || (!file.type || file.type === 'application/octet-stream') && /\.(?:png|jpe?g|webp)$/i.test(file.name));
+                if (!file) return;
+                claimReferenceEvent(event);
+                clearReferenceDrop();
+                void loadReference(file);
+            }],
+            ['dragend', clearReferenceDrop], ['blur', clearReferenceDrop],
+        ];
+        for (const [name, handler] of referenceEvents) root.addEventListener?.(name, handler, true);
         const point = event => {
             const rect = canvas.getBoundingClientRect();
             return [
@@ -1062,6 +1417,7 @@
         active = { host, close };
         root.addEventListener?.('pagehide', persistDraft);
         render();
+        if (options.reference) void setReference(options.reference).catch(error => { if (!closed) status(error); });
         if (initialError) status(initialError);
         else if (restored) status({ message: 'Draft restored.' }, false);
         else importStatus();
@@ -1071,6 +1427,7 @@
     const api = {
         open, compile, parse, importLayout, validateDraft, scaleDraft, regionColor, wrapPreviewText, fitPreviewText,
         optimizationRequest, mergeOptimization, normalizeSnapshot,
+        referencePlacement, generationRequest, generationResult,
     };
     root.SimpAIRegionalJsonPrompt = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

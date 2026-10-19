@@ -10,6 +10,19 @@
         return window.SimpAII18n?.localize(key, key, window.simpleaiTopbarSystemParams) || key;
     }
 
+    function updateTaggerTooltip(event) {
+        const field = event.composedPath().find(node => node?.id === 'describe_output_tags');
+        if (!field) return;
+        const source = field.getRootNode().querySelector('#describe_output_tags_tooltip textarea, #describe_output_tags_tooltip input');
+        const tooltip = source?.value || '';
+        for (const target of [field, ...field.querySelectorAll('label, input')]) {
+            if (target.title !== tooltip) target.title = tooltip;
+        }
+    }
+
+    document.addEventListener('pointerover', updateTaggerTooltip, true);
+    document.addEventListener('focusin', updateTaggerTooltip, true);
+
     async function copyText(value) {
         if (!value) return false;
         try {

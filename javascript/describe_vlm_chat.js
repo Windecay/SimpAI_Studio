@@ -14324,9 +14324,12 @@
         if (runtime.loaded && runtime.state === 'ready') {
             const gpuLayers = `${Number(runtime.gpu_layers) || 0}/${Number(runtime.total_layers) || 0}`;
             const cpuLayers = `${Number(runtime.cpu_layers) || 0}`;
+            const expertCache = runtime.moe_cache_active
+                ? `${t('GPU expert cache', undefined, state)} ${(Number(runtime.moe_cache_gb) || 0).toFixed(1)} GiB · ${t('Expert weights in RAM', undefined, state)}`
+                : '';
             return localText(
-                [policyPending, kvPending, nCtxStatus, mtpStatus, `KV ${currentKvCacheType}`, `GPU layers ${gpuLayers}`, `CPU layers ${cpuLayers}`, memory].filter(Boolean).join(' · '),
-                [policyPending, kvPending, nCtxStatus, mtpStatus, `KV ${currentKvCacheType}`, `GPU 层 ${gpuLayers}`, `CPU 层 ${cpuLayers}`, memory].filter(Boolean).join(' · ')
+                [policyPending, kvPending, nCtxStatus, mtpStatus, `KV ${currentKvCacheType}`, `GPU layers ${gpuLayers}`, `CPU layers ${cpuLayers}`, expertCache, memory].filter(Boolean).join(' · '),
+                [policyPending, kvPending, nCtxStatus, mtpStatus, `KV ${currentKvCacheType}`, `GPU 层 ${gpuLayers}`, `CPU 层 ${cpuLayers}`, expertCache, memory].filter(Boolean).join(' · ')
             );
         }
         return localText(

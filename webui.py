@@ -44,6 +44,7 @@ import modules.describe_vlm_chat as describe_vlm_chat
 import modules.vlm_roleplay as vlm_roleplay
 import modules.describe_media as describe_media
 from modules import describe_media_control
+from modules import image_tagger_settings
 import modules.cloud_image as cloud_image
 from modules.localization import localized_text
 import modules.vlm_api_profiles as vlm_api_profiles
@@ -64,6 +65,7 @@ from ui.bootstrap import apply_webui_assets, create_root_blocks, launch_root_app
 from ui.workspace_recovery import install_workspace_recovery
 from ui.frontend_http_guard import configure_frontend_http_guard
 from ui.update_helpers import dataset_update, dropdown_update, gr_update, skip_update as skip_component_update
+from ui.image_tagger_settings import create_image_tagger_settings
 from ui.studio_help import vlm_help_marker
 from ui.events.topbar import (
     bind_topbar_identity_events,
@@ -706,6 +708,21 @@ def _resolve_cloud_config_user_did(state_params=None, request=None):
     except Exception:
         pass
     return None
+
+
+def _image_tagger_request_state(state, request):
+    next_state = dict(state) if isinstance(state, dict) else {}
+    if is_local_mode():
+        did = canvas_workbench_request_identity.resolve_local_workspace_did(shared.token)
+    else:
+        session = _get_request_identity_session(request)
+        if session["status"] != "valid":
+            raise gr.Error("请登录后修改标签模型设置。" if next_state.get("__lang") == "cn"
+                           else "Sign in to change image tagger settings.")
+        did = session["did"]
+    next_state["user_did"] = did
+    next_state["user"] = shared.token.get_user_context(did)
+    return next_state
 
 
 def _main_vlm_state_from_request(state, request=None):
@@ -8247,6 +8264,7 @@ with shared.gradio_root:
                                         )
                                     with gr.Row(elem_id='describe_output_options_row'):
                                         describe_output_tags = gr.Checkbox(label='Output with tags', value=False, visible=True, min_width=50, elem_id='describe_output_tags')
+                                        describe_output_tags_tooltip = gr.Textbox(value='', visible='hidden', elem_id='describe_output_tags_tooltip')
                                         describe_output_chinese = gr.Checkbox(label='Output in Chinese', value=False, visible=True, min_width=50, elem_id='describe_output_chinese')
                                         describe_output_artist = gr.Checkbox(label='Artist', value=False, visible=True, min_width=50, elem_id='describe_output_artist')
                                     describe_image_size = gr.Button(value='Original Size / Recommended Size', elem_id='describe_image_size', visible=False)
@@ -9229,6 +9247,12 @@ with shared.gradio_root:
                                         value=ads.get_user_default("no_model_modal_checkbox", {}, False),
                                     )
 
+                                image_tagger_model, image_tagger_categories = create_image_tagger_settings(
+                                    state_topbar, _image_tagger_request_state,
+                                    refresh_events=(identity_tab.select, user_panel.select, shared.gradio_root.load),
+                                    tooltip_component=describe_output_tags_tooltip,
+                                )
+
                                 with gr.Group():
                                     image_tools_checkbox = gr.Checkbox(label='Enable ParamsTools', value=True, info='Management of published image sets, located in the middle toolbox on the right side of the image set.', elem_id='image_tools_checkbox')
                                     generate_image_grid = gr.Checkbox(label='Generate Image Grid for Each Batch',
@@ -10079,7 +10103,7 @@ with shared.gradio_root:
                 )
 
                 admin_ctrls = [comfyd_active_checkbox, fast_comfyd_checkbox, dynamic_vram_checkbox, disable_smart_memory_checkbox, cache_clear_on_finish_checkbox, reserved_vram, cache_ram_enable, cache_ram, vlm_checkbox, vlm_version, advanced_logs, wavespeed_strength, translation_methods, no_welcome_checkbox, missing_model_filter_checkbox]
-                user_app_ctrls = [backfill_prompt, image_tools_checkbox, disable_preview, disable_intermediate_results, disable_seed_increment, save_final_enhanced_image_only, style_preview_checkbox, generate_image_grid, black_out_nsfw, save_metadata_to_images, metadata_scheme, gallery_frost_enabled, no_model_modal_checkbox, lora_auto_send_trigger_words, use_model_filter_checkbox, model_filter_state]
+                user_app_ctrls = [backfill_prompt, image_tools_checkbox, disable_preview, disable_intermediate_results, disable_seed_increment, save_final_enhanced_image_only, style_preview_checkbox, generate_image_grid, black_out_nsfw, save_metadata_to_images, metadata_scheme, gallery_frost_enabled, no_model_modal_checkbox, lora_auto_send_trigger_words, use_model_filter_checkbox, model_filter_state, image_tagger_model, image_tagger_categories]
 
                 restore_all_defaults_btn.click(lambda: gr_update(visible=True), inputs=None, outputs=restore_defaults_panel, queue=False, show_progress=False)
                 restore_defaults_cancel_btn.click(lambda: gr_update(visible=False), inputs=None, outputs=restore_defaults_panel, queue=False, show_progress=False)
@@ -12234,7 +12258,7 @@ with shared.gradio_root:
                 gr_update(visible=True, value=_missing_model_text("download_all", state_params)),
             ]
 
-        def trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt="", report=None):
+        def trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt="", report=None, state_params=None):
             describe_images = []
             try:
                 describe_media_control.check()
@@ -12247,7 +12271,15 @@ with shared.gradio_root:
 
                 if normalized_image is not None and output_tags:
                     from extras.wd14tagger import default_interrogator as default_interrogator_anime
-                    describe_images.append(default_interrogator_anime(normalized_image))
+                    model_id = image_tagger_settings.selected_model(state_params)
+                    tagger_status = image_tagger_settings.model_status(state_params, model_id)
+                    if not tagger_status["ready"]:
+                        gr.Warning(_studio_text(state_params,
+                            "The selected image tagger is missing. Download it in Identity > Application settings.",
+                            "所选标签模型尚未安装，请在身份 → 应用设置中下载。"))
+                        return skip_component_update(), skip_component_update()
+                    describe_images.append(default_interrogator_anime(normalized_image, model_id=model_id, allow_download=False,
+                                                                     categories=tagger_status["categories"]))
 
                 if normalized_image is not None and output_artist:
                     artist_result = get_artist_tags_string(normalized_image, None)
@@ -12290,7 +12322,7 @@ with shared.gradio_root:
 
         def trigger_describe_with_feedback(img, output_tags, output_chinese, output_artist, describe_prompt="", state_params=None, report=None):
             try:
-                return trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt, report=report)
+                return trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt, report=report, state_params=state_params)
             except describe_media.DescribeMediaError as error:
                 if error.code == "media_required":
                     message = _studio_text(
@@ -17529,6 +17561,13 @@ async def canvas_workbench_wd14_tag_endpoint(payload: dict = Body(...)):
             from extras.wd14tagger import default_interrogator
 
             state_params = _canvas_workbench_state_params(payload)
+            model_id = image_tagger_settings.selected_model(state_params)
+            tagger_status = image_tagger_settings.model_status(state_params, model_id)
+            if not tagger_status["ready"]:
+                return {"ok": False, "error": "tagger_model_missing", "model_id": model_id,
+                        "details": _studio_text(state_params,
+                            "Download the selected image tagger in Identity > Application settings.",
+                            "请在身份 → 应用设置中下载所选标签模型。")}
             source = payload.get("asset_source") if isinstance(payload.get("asset_source"), dict) else {}
             resolved = canvas_workbench_assets.materialize_node_asset(payload.get("project_id") or "default", state_params, source)
             asset_ref = resolved.get("asset_ref") if isinstance(resolved, dict) else None
@@ -17537,19 +17576,23 @@ async def canvas_workbench_wd14_tag_endpoint(payload: dict = Body(...)):
                 return {"ok": False, "error": resolved.get("error") if isinstance(resolved, dict) else "image not found"}
             params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
             with PILImage.open(image_path) as image:
-                text = default_interrogator(
-                    image.convert("RGB"),
-                    threshold=float(params.get("threshold", 0.35)),
-                    character_threshold=float(params.get("character_threshold", 0.85)),
+                tagged = default_interrogator(
+                    image,
+                    threshold=params.get("threshold"),
+                    character_threshold=params.get("character_threshold"),
                     exclude_tags=str(params.get("exclude_tags", "")),
+                    model_id=model_id, allow_download=False, return_details=True,
+                    categories=tagger_status["categories"],
                 )
             return {
                 "ok": True,
-                "text": text,
+                "text": tagged["prompt"],
+                "model_id": tagged["model_id"],
+                "categories": tagged["categories"],
                 "asset_ref": asset_ref,
                 "params": {
-                    "threshold": float(params.get("threshold", 0.35)),
-                    "character_threshold": float(params.get("character_threshold", 0.85)),
+                    "threshold": tagged["threshold"],
+                    "character_threshold": tagged["character_threshold"],
                     "exclude_tags": str(params.get("exclude_tags", "")),
                 },
             }

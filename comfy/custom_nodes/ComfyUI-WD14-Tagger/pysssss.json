@@ -10,6 +10,7 @@
 		"HF_ENDPOINT": "https://hf-mirror.com"
 	},
 	"models": {
+		"pixai-tagger-v1.0-fp16": "{HF_ENDPOINT}/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8",
 		"wd-eva02-tagger-2026-canary-onnx-v2": "{HF_ENDPOINT}/Misaka41Z/wd-eva02-tagger-2026-canary-onnx-v2",
 		"wd-eva02-large-tagger-v3": "{HF_ENDPOINT}/SmilingWolf/wd-eva02-large-tagger-v3",
 		"wd-vit-tagger-v3": "{HF_ENDPOINT}/SmilingWolf/wd-vit-tagger-v3",
@@ -22,5 +23,25 @@
 		"wd-v1-4-vit-tagger-v2": "{HF_ENDPOINT}/SmilingWolf/wd-v1-4-vit-tagger-v2",
 		"wd-v1-4-swinv2-tagger-v2": "{HF_ENDPOINT}/SmilingWolf/wd-v1-4-swinv2-tagger-v2",
 		"wd-v1-4-vit-tagger": "{HF_ENDPOINT}/SmilingWolf/wd-v1-4-vit-tagger"
+	},
+	"downloads": {
+		"pixai-tagger-v1.0-fp16": {
+			"onnx": {
+				"size": 992916002,
+				"sha256": "cd668e6760bb58ec400ce1b0286e5c9133f83b543caac6a378406b7d56f8c303",
+				"urls": [
+					"https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/pixai-tagger-v1.0-fp16.onnx",
+					"https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/model_fp16.onnx"
+				]
+			},
+			"csv": {
+				"size": 804671,
+				"sha256": "a9455cbf0a910d4a3890739f2f70bd986278f4594285ef1049121a03896e2a6d",
+				"urls": [
+					"https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/pixai-tagger-v1.0-fp16.csv",
+					"https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/selected_tags.csv"
+				]
+			}
+		}
 	}
 }

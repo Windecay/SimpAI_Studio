@@ -10817,7 +10817,7 @@ function getPresetStoreDraftLimit() {
         const buttons = getTopbarBarButtons();
         if (buttons && buttons.length > 0) return buttons.length;
     } catch (e) {}
-    return 60;
+    return 69;
 }
 
 function setPresetStoreDraftFromNav(navList, force = false) {

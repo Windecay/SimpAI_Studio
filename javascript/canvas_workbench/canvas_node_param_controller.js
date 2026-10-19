@@ -204,7 +204,7 @@
             let nextValue = value;
             if (inputType === 'number') {
                 const parsed = Number(value);
-                nextValue = Number.isFinite(parsed) ? utilityCall('clamp', parsed, parsed, 0, 1) : value;
+                nextValue = String(value).trim() === '' ? null : Number.isFinite(parsed) ? utilityCall('clamp', parsed, parsed, 0, 1) : value;
             }
             Object.assign(node, buildWd14StatePatch(node, { paramsPatch: { [key]: nextValue } }));
             if (key === 'seed_random') {

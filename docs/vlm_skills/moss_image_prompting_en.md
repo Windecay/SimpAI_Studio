@@ -50,3 +50,23 @@ the original captions and retain structural field names as-is. Return only the
 revised compiled JSON. Keep dimensions unchanged. Do not turn Layout into generic prose.
 Check subject counts, exact text, readable scale and consistent spatial relations.
 Only the caption or compiled Layout belongs in the positive prompt.
+
+## In-Editor Composition and Image Annotation
+
+Text to layout and Image to layout replace only the undoable editor draft.
+Apply prompt explicitly writes the compiled result to the positive prompt.
+Optimize descriptions continues to preserve existing regions and geometry.
+Text composition uses the current canvas dimensions. Image annotation follows
+the official USERGUIDE image-recaptioning principles: describe visible evidence,
+preserve non-watermark wording, line breaks, reading order and typography exactly,
+and never guess unreadable text. The training annotation fields caption.long,
+caption.medium, caption.short, watermark and borders are not a generation Layout.
+Use the same flat regions for visible subjects and legible text.
+
+For image annotation, the internal model result uses abs/xyxy pixels on the
+uploaded image. Studio scales the regions proportionally and centers them on the
+target canvas, matching the reference overlay. Source dimensions need not be
+multiples of 16; final editable dimensions must satisfy generation requirements.
+The reference image, visibility and opacity never enter compiled prompts or
+exported layout JSON. Image annotation sends the uploaded image to the currently
+selected vision model.

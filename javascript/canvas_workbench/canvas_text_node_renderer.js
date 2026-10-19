@@ -324,7 +324,7 @@
             const state = node.status?.state || 'idle';
             return `
 <div class="sai-inspector-section">
-  <h3>${escapeHtml(t('WD14 Tagger', 'WD14 标签'))}</h3>
+  <h3>${escapeHtml(t('Image Tagger', '图片标签反推'))}</h3>
   <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Input', '输入'))}</span><b>${escapeHtml(inputNode?.title || notConnectedText())}</b></div>
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Status', '状态'))}</span><b>${escapeHtml(state)}</b></div>
@@ -332,8 +332,9 @@
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Parameters', '参数'))}</h3>
-  <label>${escapeHtml(t('General Threshold', '通用阈值'))}<input data-wd14-param="threshold" type="number" min="0" max="1" step="0.01" value="${escapeHtml(params.threshold ?? 0.35)}"></label>
-  <label>${escapeHtml(t('Character Threshold', '角色阈值'))}<input data-wd14-param="character_threshold" type="number" min="0" max="1" step="0.01" value="${escapeHtml(params.character_threshold ?? 0.85)}"></label>
+  <p>${escapeHtml(t('Uses your image tagger selection in Application settings. Leave thresholds empty for model defaults.', '使用应用设置中为当前用户选择的标签模型；阈值留空时使用模型默认值。'))}</p>
+  <label>${escapeHtml(t('General Threshold', '通用阈值'))}<input data-wd14-param="threshold" type="number" min="0" max="1" step="0.01" placeholder="${escapeHtml(t('Model default', '模型默认'))}" value="${escapeHtml(params.threshold ?? '')}"></label>
+  <label>${escapeHtml(t('Character Threshold', '角色阈值'))}<input data-wd14-param="character_threshold" type="number" min="0" max="1" step="0.01" placeholder="${escapeHtml(t('Model default', '模型默认'))}" value="${escapeHtml(params.character_threshold ?? '')}"></label>
   <label>${escapeHtml(t('Exclude Tags', '排除标签'))}<input data-wd14-param="exclude_tags"${danbooruAutocompleteAttrs('exclude_tags')} value="${escapeHtml(params.exclude_tags || '')}"></label>
 </div>
 <div class="sai-inspector-section">
@@ -353,8 +354,8 @@
             const state = node.status?.state || 'idle';
             return `
 <div class="sai-node-head">
-  <span class="sai-node-kind">WD14</span>
-  <span class="sai-node-title">${escapeHtml(node.title || 'WD14 Tagger')}</span>
+  <span class="sai-node-kind">${escapeHtml(t('Image Tagger', '图片标签反推'))}</span>
+  <span class="sai-node-title">${escapeHtml(node.title || 'Image Tagger')}</span>
   ${renderNodeStateBadges(node)}
   <button type="button" data-node-action="run-wd14" title="${escapeHtml(t('Run WD14', '运行 WD14'))}"><i class="fa-solid fa-play"></i></button>
   <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
@@ -364,8 +365,8 @@
   <i class="fa-solid fa-image"></i><span>${escapeHtml(t('Image', '图像'))}</span><b>${inputNode ? escapeHtml(inputNode.title || inputNode.id) : escapeHtml(notConnectedText())}</b>
 </div>
 <div class="sai-node-field-row">
-  <label><span>${escapeHtml(t('General', '通用'))}</span><input data-wd14-param="threshold" type="number" min="0" max="1" step="0.01" value="${escapeHtml(params.threshold ?? 0.35)}"></label>
-  <label><span>${escapeHtml(t('Character', '角色'))}</span><input data-wd14-param="character_threshold" type="number" min="0" max="1" step="0.01" value="${escapeHtml(params.character_threshold ?? 0.85)}"></label>
+  <label><span>${escapeHtml(t('General', '通用'))}</span><input data-wd14-param="threshold" type="number" min="0" max="1" step="0.01" placeholder="${escapeHtml(t('Model default', '模型默认'))}" value="${escapeHtml(params.threshold ?? '')}"></label>
+  <label><span>${escapeHtml(t('Character', '角色'))}</span><input data-wd14-param="character_threshold" type="number" min="0" max="1" step="0.01" placeholder="${escapeHtml(t('Model default', '模型默认'))}" value="${escapeHtml(params.character_threshold ?? '')}"></label>
 </div>
   <label class="sai-node-field"><span>${escapeHtml(t('Exclude Tags', '排除标签'))}</span><input data-wd14-param="exclude_tags"${danbooruAutocompleteAttrs('exclude_tags')} value="${escapeHtml(params.exclude_tags || '')}"></label>
 <label class="sai-node-field sai-text-node-field"><span>${escapeHtml(t('Output', '输出'))} ${state ? `<small>${escapeHtml(state)}</small>` : ''}</span>${renderTranslatableTextarea('data-text-value rows="6"', node.text?.value || '', { target: 'text-value', state: getTranslationFieldState(node, 'text-value', '', node.text?.value || '') })}</label>

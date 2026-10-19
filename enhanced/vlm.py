@@ -2291,13 +2291,39 @@ class VLM:
         if regional_edit:
             from modules.moss_image_prompt import (
                 editor_optimization_output, editor_optimization_request, editor_optimization_system,
+                editor_generation_output, editor_generation_request, editor_generation_system,
             )
             language = str(state_data.get("__lang") or "cn")
             media = {"video_requested": False, "video_used": False, "sampled_frames": 0}
+            generation_phase = "request"
             try:
                 target, _ = _superprompt_target_from_state(state_data)
                 if handler != "smart_expand" or target.get("key") != "moss_image":
                     raise ValueError("Regional optimization is available only for the MOSS layout editor")
+                if action_options.get("regional_operation") == "generate":
+                    request, image = editor_generation_request(original)
+                    if image is not None and "image" not in VLM.capabilities:
+                        raise ValueError("The selected model does not accept image input")
+                    if not VLM.get_enable() or not self.model_exists():
+                        raise ValueError("The configured LLM is unavailable")
+                    image_size = image.size if image is not None else None
+                    context = (
+                        {"caption_reference": request["draft"]["summary"]["caption"]}
+                        if image is not None else {"draft": request["draft"]}
+                    )
+                    user_input = json.dumps({"instruction": request["instruction"], **context}, ensure_ascii=False)
+                    generation_phase = "inference"
+                    output = self.inference(
+                        image, user_input, system_prompt=editor_generation_system(request, language, image_size),
+                        max_tokens=8192, temperature=0.4, top_p=0.85, seed=-1,
+                        enable_thinking=False, reject_truncated=True,
+                    )
+                    generation_phase = "output"
+                    layout = editor_generation_output(output, request, image_size)
+                    return {
+                        "ok": True, "text": json.dumps(layout, ensure_ascii=False),
+                        "action_id": action["id"], "media": {**media, "image_used": image is not None},
+                    }
                 request = editor_optimization_request(original)
                 if not VLM.get_enable() or not self.model_exists():
                     raise ValueError("The configured LLM is unavailable")
@@ -2315,11 +2341,25 @@ class VLM:
             except PromptActionOutputLimitError:
                 raise
             except Exception as error:
+                operation = action_options.get("regional_operation") == "generate"
+                generation_error_cn = {
+                    "The selected model does not accept image input": "当前模型不支持看图，请选择视觉模型。",
+                    "The configured LLM is unavailable": "当前 LLM 不可用，请检查模型配置。",
+                    "Reference image could not be decoded": "无法读取参考图，请重新上传。",
+                    "Enter a layout description": "请填写构图要求。",
+                }.get(str(error), {
+                    "request": "构图要求、画布尺寸或参考图无效。",
+                    "inference": "当前模型处理失败，请检查模型状态或连接。",
+                    "output": "模型返回的布局格式或区域坐标不符合要求。",
+                }[generation_phase])
+                if operation:
+                    logger.warning("Regional layout generation failed: %s", error)
                 return {
                     "ok": False, "text": original, "action_id": action["id"], "media": media,
                     "error": (
-                        f"Regional optimization failed; the layout was preserved: {error}"
+                        f"{'Layout generation' if operation else 'Regional optimization'} failed; the layout was preserved: {error}"
                         if language.startswith("en")
+                        else f"区域布局生成未完成，原布局已保留。{generation_error_cn}" if operation
                         else f"区域描述优化未完成，原布局已保留：{error}"
                     ),
                 }

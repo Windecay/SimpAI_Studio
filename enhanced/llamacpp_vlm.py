@@ -246,6 +246,8 @@ from modules.llama_cpp_runtime import (
     estimate_llama_cpp_kv_cache_gb,
     is_llama_cpp_memory_error,
     llama_cpp_gpu_budget,
+    llama_cpp_batch_plan,
+    llama_cpp_batch_attempts,
     llama_cpp_gpu_layer_attempts,
     llama_cpp_kv_cache_type_config,
     normalize_llama_cpp_n_ctx,
@@ -263,6 +265,7 @@ from modules.llama_cpp_multimodal import (
     should_merge_qwen_hybrid_images,
 )
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
+from modules.llama_cpp_moe import read_qwen_moe_layout, qwen_moe_cache_plan, available_host_memory_gb
 from modules.vlm_model_catalog import (
     gguf_int_values,
     gguf_split_paths,
@@ -789,6 +792,12 @@ class LlamaCppVLM:
 
     def _get_gguf_hparams(self, path):
         try:
+            moe_layout = read_qwen_moe_layout(path)
+            if moe_layout:
+                return moe_layout
+        except (OSError, ValueError, EOFError) as exc:
+            logger.warning("qwen4exp tensor index unavailable: %s", exc)
+        try:
             from gguf import GGUFReader
             reader = GGUFReader(path)
 
@@ -1012,6 +1021,13 @@ class LlamaCppVLM:
             return 0.0
         credit_gb = 0.0
         try:
+            if self.current_vram_estimate.get("moe_cache_active") or self.current_vram_estimate.get("moe_resident"):
+                estimate = self.current_vram_estimate
+                expected = sum(float(estimate.get(key, 0) or 0) for key in (
+                    "moe_cache_gb", "moe_expert_gpu_gb", "moe_dense_gpu_gb", "moe_runtime_reserve_gb",
+                    "moe_vision_reserve_gb", "moe_mtp_reserve_gb",
+                ))
+                return min(expected, float(estimate.get("observed_allocation_gb", expected)))
             block_bytes = self.current_vram_estimate.get("block_weight_bytes")
             loaded_layers = self.current_n_gpu_layers
             if block_bytes and loaded_layers not in (None, -1) and int(loaded_layers) > 0:
@@ -1059,6 +1075,8 @@ class LlamaCppVLM:
         loaded_model_credit_gb=0.0,
         vram_policy="extreme",
         kv_cache_type="f16",
+        mtp_path=None,
+        mtp_requested=False,
     ):
         memory_management = ldm_patched.modules.model_management
         kv_cache_type = normalize_llama_cpp_kv_cache_type(kv_cache_type)
@@ -1069,6 +1087,7 @@ class LlamaCppVLM:
             reclaimable_gb=loaded_model_credit_gb,
             policy=vram_policy,
         )
+        batch_plan = llama_cpp_batch_plan(budget, n_ctx)
         if (
             self.llm is not None
             and self.current_model_path == model_path
@@ -1084,6 +1103,7 @@ class LlamaCppVLM:
             block_weight_bytes = self.current_vram_estimate.get("block_weight_bytes")
             ple_bytes = self.current_vram_estimate.get("ple_bytes", 0)
             other_gpu_bytes = self.current_vram_estimate.get("other_gpu_bytes", 0)
+            hparams = dict(self.current_vram_estimate)
         else:
             total_layers = self._get_layer_count(model_path)
             hparams = self._get_gguf_hparams(model_path)
@@ -1102,27 +1122,72 @@ class LlamaCppVLM:
                 n_kv_heads,
                 kv_cache_type=kv_cache_type,
                 gemma4_hparams=hparams if hparams.get("architecture") == "gemma4" else None,
+                n_ubatch=batch_plan["n_ubatch"],
+            )
+        # Reused Gemma metadata must follow the new SWA microbatch as VRAM changes.
+        gemma4_swa_full = hparams.get("architecture") == "gemma4" and bool(mtp_requested)
+        if hparams.get("architecture") == "gemma4":
+            # A large model can leave little graph/vision space even on a 24 GB
+            # GPU. Size physical batches for the remaining model budget too.
+            factor = 1.05 if vram_policy == "extreme" else 1.15
+            full_weights_gb = (
+                sum(hparams.get("block_weight_bytes") or []) + hparams.get("other_gpu_bytes", 0)
+                + (os.path.getsize(mmproj_path) if mmproj_path else 0)
+            ) / (1024 ** 3) * factor
+            if mmproj_path:
+                # MTMD submits image batches up to n_batch with non-causal
+                # attention. Smaller n_ubatch can abort the native process.
+                batch_plan = {"n_batch": 512, "n_ubatch": 512}
+            elif full_weights_gb + kv_cache_gb > budget["gpu_budget_gb"]:
+                batch_plan["n_ubatch"] = min(batch_plan["n_ubatch"], 128)
+            kv_cache_gb, kv_cache_from_metadata = estimate_llama_cpp_kv_cache_gb(
+                n_ctx, total_layers, hparams.get("embedding_length"), hparams.get("head_count"),
+                hparams.get("head_count_kv"), kv_cache_type=kv_cache_type,
+                gemma4_hparams=hparams, n_ubatch=batch_plan["n_ubatch"],
+                swa_full=gemma4_swa_full,
             )
         _, kv_type_config = llama_cpp_kv_cache_type_config(kv_cache_type)
         offload_kqv = kv_cache_gb <= budget["gpu_budget_gb"]
         kv_cache_reserved_gb = (
             kv_cache_gb
-            if budget.get("reserve_kv_cache") and offload_kqv
+            if (budget.get("reserve_kv_cache") or hparams.get("architecture") == "gemma4") and offload_kqv
             else 0.0
         )
-        # The extreme policy gives the layer estimator the whole budget and
-        # lets the memory retry sequence handle KV-cache pressure. The other
-        # policies reserve the estimated KV cache before selecting layers.
+        # Gemma4 reserves KV even in extreme mode: a text load can succeed yet
+        # leave too little space for its lazily initialized visual projector.
+        # Other architectures retain the existing policy-specific KV behavior.
         available_vram_gb = budget["gpu_budget_gb"]
         if kv_cache_reserved_gb:
             available_vram_gb = max(0.0, available_vram_gb - kv_cache_reserved_gb)
+
+        # External drafts allocate weights/graphs in addition to the main model.
+        # Gemma's assistant shares KV, but still needs its own weights and graph.
+        mtp_reserve_gb = (
+            os.path.getsize(mtp_path) / (1024 ** 3) * 1.10 + 0.5
+            if mtp_requested and mtp_path else 0.0
+        )
+        available_vram_gb = max(0.0, available_vram_gb - mtp_reserve_gb)
+        vision_workspace_reserve_gb = 0.0
+        if mmproj_path and hparams.get("architecture") == "gemma4":
+            # Cold CUDA/context overhead is material when few weights fit on
+            # GPU; keep room for the first image as well as model loading.
+            vision_workspace_reserve_gb = 1.5 if budget["gpu_budget_gb"] < 8 else 1.0
+        available_vram_gb = max(0.0, available_vram_gb - vision_workspace_reserve_gb)
 
         weight_overhead = 1.05 if vram_policy == "extreme" else 1.15
         mmproj_size_gb = 0.0
         if mmproj_path:
             mmproj_size_gb = os.path.getsize(mmproj_path) * weight_overhead / (1024 ** 3)
         estimate = {
+            **{key: value for key, value in hparams.items() if key in {
+                "moe_dense_gpu_bytes", "moe_expert_bytes", "moe_expert_block_bytes",
+                "moe_expert_count", "moe_quant_types", "moe_metadata", "moe_model_bytes",
+                "architecture", "embedding_length", "head_count", "head_count_kv",
+                "sliding_window", "sliding_window_pattern", "key_length", "value_length",
+                "key_length_swa", "value_length_swa",
+            }},
             **budget,
+            **batch_plan,
             "loaded_model_credit_gb": max(0.0, float(loaded_model_credit_gb or 0.0)),
             "kv_cache_gb": kv_cache_gb,
             "kv_cache_type": kv_cache_type,
@@ -1133,6 +1198,9 @@ class LlamaCppVLM:
             ),
             "kv_cache_from_metadata": kv_cache_from_metadata,
             "kv_cache_reserved_gb": kv_cache_reserved_gb,
+            "swa_full": gemma4_swa_full,
+            "mtp_reserve_gb": mtp_reserve_gb,
+            "vision_workspace_reserve_gb": vision_workspace_reserve_gb,
             "offload_kqv": offload_kqv,
             "mmproj_size_gb": mmproj_size_gb,
             "available_vram_gb": available_vram_gb,
@@ -1212,6 +1280,35 @@ class LlamaCppVLM:
 
         n_gpu_layers = min(n_gpu_layers, total_layers)
         estimate["target_n_gpu_layers"] = n_gpu_layers
+        # Cache only reviewed qwen4exp layouts on NVIDIA. Keep explicit layer/CPU
+        # requests and bindings without expert-cache support on their existing path.
+        try:
+            supports_cache = {"n_cpu_moe", "moe_cache_size", "flash_attn_type", "load_mode", "lazy_mode"}.issubset(
+                inspect.signature(Llama.__init__).parameters
+            )
+        except (TypeError, ValueError):
+            supports_cache = False
+        if supports_cache and memory_management.is_nvidia() and (not mtp_requested or mtp_path):
+            host_available = available_host_memory_gb()
+            host_credit = 0.0
+            if self.llm is not None and self.current_model_path == model_path:
+                model_gb = float(hparams.get("moe_model_bytes", 0)) / 1024**3
+                host_before = self.current_vram_estimate.get("host_available_before_load_gb", host_available)
+                host_credit = min(model_gb, max(0, float(host_before) - host_available))
+            plan = qwen_moe_cache_plan(
+                hparams, budget, n_ctx, kv_cache_type,
+                mmproj_bytes=os.path.getsize(mmproj_path) if mmproj_path else 0,
+                mtp_bytes=os.path.getsize(mtp_path) if mtp_requested and mtp_path else 0,
+                available_ram_gb=host_available + host_credit,
+            )
+            if plan:
+                estimate.update(plan)
+                estimate["fallback_n_gpu_layers"] = n_gpu_layers
+                estimate["target_n_gpu_layers"] = total_layers
+                estimate["offload_kqv"] = True
+                logger.info("llama.cpp experts: mode=%s, cache=%.1f GiB, CPU expert layers=%s, batch=%s/%s",
+                            plan["moe_mode"], plan["moe_cache_gb"], plan["n_cpu_moe"], plan["n_batch"], plan["n_ubatch"])
+                return total_layers, estimate
         logger.info(f"Result: n_gpu_layers = {n_gpu_layers}")
         return n_gpu_layers, estimate
 
@@ -1345,8 +1442,11 @@ class LlamaCppVLM:
                             current_vram_snapshot.get("external_process_count"),
                         )
                     current_score = self._gpu_layer_score(self.current_n_gpu_layers, self.current_total_layers)
-                    if self.current_total_layers and current_score >= self.current_total_layers and not external_pressure:
-                        return
+                    current_cache = float(self.current_vram_estimate.get("moe_cache_gb", 0) or 0)
+                    if current_free_vram_gb is not None:
+                        external_pressure = external_pressure or current_free_vram_gb < float(
+                            self.current_vram_estimate.get("moe_reserve_gb", self.current_vram_estimate.get("reserve_gb", 1.0))
+                        )
                     try:
                         current_credit_gb = self._estimate_current_gpu_layer_credit_gb(model_path)
                         estimated_layers, auto_estimate = self._calculate_auto_n_gpu_layers(
@@ -1356,6 +1456,8 @@ class LlamaCppVLM:
                             loaded_model_credit_gb=current_credit_gb,
                             vram_policy=vram_policy,
                             kv_cache_type=effective_kv_cache_type,
+                            mtp_path=mtp_path,
+                            mtp_requested=mtp_attempt_allowed,
                         )
                     except Exception as e:
                         logger.warning(
@@ -1379,7 +1481,41 @@ class LlamaCppVLM:
                         current_free_vram_gb if current_free_vram_gb is not None else -1.0,
                         reload_threshold,
                     )
-                    if target_score > current_score:
+                    target_cache = float(auto_estimate.get("moe_cache_gb", 0) or 0)
+                    current_mode = self.current_vram_estimate.get("moe_mode", "layers")
+                    target_mode = auto_estimate.get("moe_mode", "layers")
+                    free_gain = (
+                        current_free_vram_gb - self.current_post_load_free_vram_gb
+                        if current_free_vram_gb is not None and self.current_post_load_free_vram_gb is not None else 0
+                    )
+                    mode_retry_ready = not self.current_vram_estimate.get("moe_plan_limited") or free_gain >= 2
+                    batch_up = auto_estimate.get("n_ubatch", 0) > self.current_vram_estimate.get("n_ubatch", 512)
+                    batch_down = auto_estimate.get("n_ubatch", 512) < self.current_vram_estimate.get("n_ubatch", 512)
+                    if current_mode != target_mode and (
+                        external_pressure or target_mode in ("cache", "resident") and mode_retry_ready
+                    ):
+                        n_gpu_layers = estimated_layers
+                        reload_reason = "automatic expert placement changed"
+                    elif batch_down and external_pressure or batch_up and free_gain >= 2:
+                        n_gpu_layers = estimated_layers
+                        reload_reason = "automatic prefill batch budget changed"
+                    elif current_cache:
+                        cache_growth = target_cache - current_cache
+                        cache_retry_ready = (
+                            not self.current_vram_estimate.get("moe_cache_limited")
+                            or current_free_vram_gb is not None
+                            and self.current_post_load_free_vram_gb is not None
+                            and current_free_vram_gb >= self.current_post_load_free_vram_gb + 2
+                        )
+                        if cache_growth >= 2 and cache_retry_ready:
+                            n_gpu_layers = estimated_layers
+                            reload_reason = "automatic expert cache budget improved"
+                        elif external_pressure and cache_growth <= -0.5:
+                            n_gpu_layers = estimated_layers
+                            reload_reason = "expert cache budget reduced by GPU memory pressure"
+                        else:
+                            return
+                    elif target_score > current_score:
                         layer_delta = target_score - current_score
                         if layer_delta < reload_threshold:
                             logger.debug(
@@ -1446,6 +1582,8 @@ class LlamaCppVLM:
                         loaded_model_credit_gb=0.0,
                         vram_policy=vram_policy,
                         kv_cache_type=effective_kv_cache_type,
+                        mtp_path=mtp_path,
+                        mtp_requested=mtp_attempt_allowed,
                     )
                 except Exception as e:
                     total_layers = self._get_layer_count(model_path)
@@ -1466,6 +1604,14 @@ class LlamaCppVLM:
             target_n_gpu_layers = n_gpu_layers
             if cpu_only:
                 auto_estimate = {"offload_kqv": False, "target_n_gpu_layers": 0}
+            auto_estimate.setdefault("n_batch", min(int(n_ctx), 512))
+            auto_estimate.setdefault("n_ubatch", min(int(n_ctx), 512))
+            auto_estimate.setdefault("swa_full", chat_handler_name == "Gemma4" and mtp_attempt_allowed)
+            if chat_handler_name == "Gemma4":
+                auto_estimate["swa_full"] = mtp_attempt_allowed
+                if mmproj_path:
+                    auto_estimate.update(n_batch=512, n_ubatch=512)
+            auto_estimate["host_available_before_load_gb"] = available_host_memory_gb()
 
             logger.info(f"Loading Main LLM from: {model_path}")
             if mtp_attempt_allowed:
@@ -1477,6 +1623,7 @@ class LlamaCppVLM:
 
             self._non_thinking_template_active = False
             self.thinking_text_chat_handler = None
+            handler_uses_gpu = not cpu_only and bool(n_gpu_layers or auto_estimate.get("offload_kqv", True))
             self._prepare_chat_handler(
                 handler_class,
                 mmproj_path=mmproj_path,
@@ -1484,34 +1631,74 @@ class LlamaCppVLM:
                 chat_handler_name=chat_handler_name,
                 image_min_tokens=image_min_tokens,
                 image_max_tokens=image_max_tokens,
-                use_gpu=not cpu_only,
+                use_gpu=handler_uses_gpu,
             )
 
             total_layers = auto_estimate.get("total_layers") or self._get_layer_count(model_path)
             offload_kqv = False if cpu_only else bool(auto_estimate.get("offload_kqv", True))
             load_attempts = [
-                (layer_count, offload_kqv)
+                (layer_count, offload_kqv, 0)
                 for layer_count in llama_cpp_gpu_layer_attempts(
-                    n_gpu_layers,
+                    auto_estimate.get("fallback_n_gpu_layers", n_gpu_layers),
                     total_layers,
                     include_nearby=True,
                 )
             ]
-            if offload_kqv and (0, False) not in load_attempts:
-                load_attempts.append((0, False))
+            if offload_kqv and (0, False, 0) not in load_attempts:
+                load_attempts.append((0, False, 0))
+            target_moe_cache = int(auto_estimate.get("moe_cache_size", 0) or 0)
+            fallback_cache = int(auto_estimate.get("moe_fallback_cache_size", target_moe_cache) or 0)
+            if fallback_cache:
+                cache_attempts = [int(fallback_cache * ratio) for ratio in (1, .75, .5, .25)]
+                load_attempts = [(total_layers, True, size) for size in cache_attempts if size >= 2 * 1024**3] + load_attempts
+            if auto_estimate.get("moe_resident"):
+                load_attempts.insert(0, (total_layers, True, 0))
+            batch_attempts = llama_cpp_batch_attempts(auto_estimate["n_batch"], auto_estimate["n_ubatch"])
+            if chat_handler_name == "Gemma4" and mmproj_path:
+                batch_attempts = [(512, 512)]
+            # Try smaller activations at the original placement first. Later
+            # placement retries keep the small batch, bounding the attempt count.
+            load_attempts = list(dict.fromkeys(
+                (*placement, *batch)
+                for index, placement in enumerate(load_attempts)
+                for batch in (batch_attempts if index == 0 else batch_attempts[-1:])
+            ))
 
             loaded_layers = None
             loaded_offload_kqv = None
             loaded_kv_cache_type = None
             loaded_mtp = False
+            loaded_moe_cache = 0
             oom_type = getattr(ldm_patched.modules.model_management, "OOM_EXCEPTION", None)
             quantization_fallback = False
             kv_cache_load_types = [effective_kv_cache_type]
             if effective_kv_cache_type != "f16":
                 kv_cache_load_types.append("f16")
+            rebuild_handler = False
             for kv_type_index, attempt_kv_cache_type in enumerate(kv_cache_load_types):
                 _, kv_type_config = llama_cpp_kv_cache_type_config(attempt_kv_cache_type)
-                for attempt_index, (attempt_layers, attempt_offload_kqv) in enumerate(load_attempts):
+                for attempt_index, (attempt_layers, attempt_offload_kqv, attempt_moe_cache, attempt_batch, attempt_ubatch) in enumerate(load_attempts):
+                    attempt_uses_gpu = not cpu_only and bool(attempt_layers or attempt_offload_kqv)
+                    if rebuild_handler or attempt_uses_gpu != handler_uses_gpu:
+                        # Leave the previous exception scope before collecting
+                        # partially initialized native models and their handlers.
+                        gc.collect()
+                        if self.chat_handler is not None:
+                            close_handler = getattr(self.chat_handler, "close", None)
+                            if callable(close_handler):
+                                close_handler()
+                            else:
+                                exit_stack = getattr(self.chat_handler, "_exit_stack", None)
+                                if exit_stack is not None:
+                                    exit_stack.close()
+                        self._prepare_chat_handler(
+                            handler_class, mmproj_path=mmproj_path, model_path=model_path,
+                            chat_handler_name=chat_handler_name,
+                            image_min_tokens=image_min_tokens, image_max_tokens=image_max_tokens,
+                            use_gpu=attempt_uses_gpu,
+                        )
+                        handler_uses_gpu = attempt_uses_gpu
+                        rebuild_handler = False
                     try:
                         attempt_loaded_mtp = False
                         llama_kwargs = {
@@ -1520,13 +1707,32 @@ class LlamaCppVLM:
                             "n_gpu_layers": attempt_layers,
                             "n_ctx": n_ctx,
                             "offload_kqv": attempt_offload_kqv,
+                            "n_batch": attempt_batch, "n_ubatch": attempt_ubatch,
                             "verbose": False,
                         }
-                        if cpu_only:
+                        if not attempt_uses_gpu:
                             llama_kwargs["op_offload"] = False
+                        attempt_resident = bool(auto_estimate.get("moe_resident") and attempt_layers == total_layers and not attempt_moe_cache)
+                        if attempt_resident:
+                            llama_kwargs.update(n_gpu_layers=-1, n_cpu_moe=0, moe_cache_size=0,
+                                                load_mode=0, lazy_mode=0, flash_attn_type=1)
+                        if attempt_moe_cache:
+                            # FP16 fallback must reserve its additional state before retrying.
+                            if attempt_kv_cache_type != effective_kv_cache_type:
+                                attempt_moe_cache = max(0, attempt_moe_cache - int(n_ctx / 8192 * .25 * 1024**3))
+                            llama_kwargs.update(
+                                n_gpu_layers=-1, n_cpu_moe=total_layers,
+                                moe_cache_size=attempt_moe_cache,
+                                load_mode=auto_estimate["load_mode"], lazy_mode=auto_estimate["lazy_mode"],
+                                n_threads=min(12, max(1, os.cpu_count() or 1)),
+                                n_threads_batch=min(12, max(1, os.cpu_count() or 1)),
+                                flash_attn_type=1,
+                            )
                         if chat_handler_name == "Gemma4":
-                            llama_kwargs["swa_full"] = False
-                            llama_kwargs["n_ubatch"] = LLAMA_CPP_GEMMA4_N_UBATCH
+                            # 0.4.3 cannot restore exact compact-SWA checkpoints
+                            # after Gemma4 assistant rejection. Full SWA uses
+                            # ordinary KV rollback and is budgeted above.
+                            llama_kwargs["swa_full"] = auto_estimate["swa_full"]
                         if qwen_hybrid_vision:
                             llama_kwargs["ctx_checkpoints"] = QWEN_HYBRID_CTX_CHECKPOINTS
                         if attempt_kv_cache_type != "f16":
@@ -1541,6 +1747,7 @@ class LlamaCppVLM:
                                 draft_n_max=2,
                                 draft_p_min=0.0,
                                 draft_model_path=mtp_path,
+                                draft_n_gpu_layers="auto" if attempt_uses_gpu else 0,
                             )
                             try:
                                 self.llm = Llama(**mtp_kwargs)
@@ -1573,7 +1780,7 @@ class LlamaCppVLM:
                                     chat_handler_name=chat_handler_name,
                                     image_min_tokens=image_min_tokens,
                                     image_max_tokens=image_max_tokens,
-                                    use_gpu=not cpu_only,
+                                    use_gpu=attempt_uses_gpu,
                                 )
                                 llama_kwargs["chat_handler"] = self.chat_handler
                                 mtp_kwargs.clear()
@@ -1601,22 +1808,29 @@ class LlamaCppVLM:
                         loaded_offload_kqv = attempt_offload_kqv
                         loaded_kv_cache_type = attempt_kv_cache_type
                         loaded_mtp = attempt_loaded_mtp
+                        loaded_moe_cache = attempt_moe_cache
+                        loaded_batch, loaded_ubatch = attempt_batch, attempt_ubatch
+                        loaded_resident = attempt_resident
                         break
                     except Exception as e:
                         self.llm = None
                         memory_error = is_llama_cpp_memory_error(e, oom_type)
                         has_next_attempt = attempt_index + 1 < len(load_attempts)
                         if memory_error and has_next_attempt:
-                            next_layers, next_offload_kqv = load_attempts[attempt_index + 1]
+                            next_layers, next_offload_kqv, next_cache, next_batch, next_ubatch = load_attempts[attempt_index + 1]
                             logger.warning(
-                                "llama.cpp memory allocation failed with n_gpu_layers=%s, offload_kqv=%s, kv_cache_type=%s; "
-                                "retrying with n_gpu_layers=%s, offload_kqv=%s",
+                                "llama.cpp memory allocation failed with n_gpu_layers=%s, offload_kqv=%s, kv_cache_type=%s, expert_cache=%.2f GiB; "
+                                "retrying with n_gpu_layers=%s, offload_kqv=%s, expert_cache=%.2f GiB, batch=%s/%s",
                                 attempt_layers,
                                 attempt_offload_kqv,
                                 attempt_kv_cache_type,
+                                attempt_moe_cache / 1024**3,
                                 next_layers,
                                 next_offload_kqv,
+                                next_cache / 1024**3,
+                                next_batch, next_ubatch,
                             )
+                            rebuild_handler = True
                             gc.collect()
                             if not cpu_only:
                                 ldm_patched.modules.model_management.soft_empty_cache(True)
@@ -1628,6 +1842,7 @@ class LlamaCppVLM:
                                 type(e).__name__,
                             )
                             quantization_fallback = True
+                            rebuild_handler = True
                             gc.collect()
                             if not cpu_only:
                                 ldm_patched.modules.model_management.soft_empty_cache(True)
@@ -1670,8 +1885,8 @@ class LlamaCppVLM:
                     target_n_gpu_layers,
                 )
 
-            if loaded_kv_cache_type != effective_kv_cache_type:
-                quantization_fallback = True
+            if loaded_kv_cache_type != effective_kv_cache_type or loaded_ubatch != auto_estimate["n_ubatch"]:
+                quantization_fallback = loaded_kv_cache_type != effective_kv_cache_type
                 try:
                     hparams = self._get_gguf_hparams(model_path)
                     fallback_kv_cache_gb, fallback_from_metadata = estimate_llama_cpp_kv_cache_gb(
@@ -1682,6 +1897,8 @@ class LlamaCppVLM:
                         hparams.get("head_count_kv") or hparams.get("head_count"),
                         kv_cache_type=loaded_kv_cache_type,
                         gemma4_hparams=hparams if hparams.get("architecture") == "gemma4" else None,
+                        n_ubatch=loaded_ubatch,
+                        swa_full=auto_estimate.get("swa_full", False),
                     )
                     auto_estimate["kv_cache_gb"] = fallback_kv_cache_gb
                     auto_estimate["kv_cache_from_metadata"] = fallback_from_metadata
@@ -1729,6 +1946,19 @@ class LlamaCppVLM:
             self.current_external_vram_gb = post_load_vram_snapshot.get("external_vram_gb")
             self.current_external_process_count = post_load_vram_snapshot.get("external_process_count")
             self.current_vram_estimate = dict(auto_estimate)
+            self.current_vram_estimate.update(
+                moe_mode="resident" if loaded_resident else "cache" if loaded_moe_cache else "layers",
+                moe_resident=loaded_resident,
+                moe_expert_gpu_gb=auto_estimate.get("moe_expert_gpu_gb", 0) if loaded_resident else 0,
+                moe_plan_limited=bool(auto_estimate.get("moe_resident") and not loaded_resident or target_moe_cache and loaded_moe_cache < target_moe_cache),
+                moe_cache_active=bool(loaded_moe_cache),
+                moe_cache_gb=loaded_moe_cache / 1024**3,
+                moe_cache_size=loaded_moe_cache,
+                moe_cache_limited=bool(target_moe_cache and loaded_moe_cache < target_moe_cache),
+                n_cpu_moe=total_layers if loaded_moe_cache else 0,
+                n_batch=loaded_batch, n_ubatch=loaded_ubatch,
+                batch_limited=loaded_ubatch < auto_estimate["n_ubatch"],
+            )
             before_free = auto_estimate.get("free_vram_gb")
             if before_free is not None and self.current_post_load_free_vram_gb is not None:
                 observed = float(before_free) - self.current_post_load_free_vram_gb
@@ -1951,6 +2181,14 @@ class LlamaCppVLM:
             "gpu_layers": gpu_layers if loaded else 0,
             "total_layers": total_layers if loaded else 0,
             "cpu_layers": max(0, total_layers - gpu_layers) if loaded else 0,
+            "moe_cache_active": bool(loaded and estimate.get("moe_cache_active")),
+            "moe_mode": estimate.get("moe_mode", "layers") if loaded else None,
+            "moe_resident": bool(loaded and estimate.get("moe_resident")),
+            "moe_cache_gb": estimate.get("moe_cache_gb", 0) if loaded else 0,
+            "cpu_expert_layers": estimate.get("n_cpu_moe", 0) if loaded else 0,
+            "n_batch": int(getattr(self.llm, "n_batch", 0) or 0) if loaded else 0,
+            "n_ubatch": int(getattr(getattr(self.llm, "context_params", None), "n_ubatch", 0) or 0) if loaded else 0,
+            "swa_full": bool(getattr(getattr(self.llm, "context_params", None), "swa_full", False)) if loaded else False,
             "target_gpu_layers": int(self.current_target_n_gpu_layers or 0) if loaded else 0,
             "offload_kqv": bool(self.current_offload_kqv) if loaded else False,
             "gpu_used_gb": max(0.0, gpu_total_gb - gpu_free_gb),

@@ -53,3 +53,22 @@ def prepare_wd14_image(image, input_shape, normalize=False):
     if layout == "NCHW":
         image_array = np.transpose(image_array, (0, 3, 1, 2))
     return image_array
+
+
+def prepare_pixai_image(image, input_shape):
+    layout, width, height = _get_model_layout(input_shape)
+    if layout != "NCHW" or (width, height) != (1008, 1008):
+        raise ValueError("PixAI FP16 expects NCHW input at 1008 x 1008")
+    if isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    if image.mode != "RGB":
+        rgba = image.convert("RGBA")
+        background = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+        image = Image.alpha_composite(background, rgba).convert("RGB")
+    scale = min(width / image.width, height / image.height)
+    size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+    image = image.resize(size, Image.Resampling.BICUBIC)
+    canvas = Image.new("RGB", (width, height), (0, 0, 0))
+    canvas.paste(image, ((width - size[0]) // 2, (height - size[1]) // 2))
+    pixels = (np.asarray(canvas, dtype=np.float32) / 255.0 - 0.5) / 0.5
+    return np.ascontiguousarray(pixels.transpose(2, 0, 1)[None])

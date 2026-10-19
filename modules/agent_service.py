@@ -233,10 +233,15 @@ class StudioBackend:
 
     def wd14_status(self, context):
         from modules.config import paths_clip_vision
-        from modules.wd14_models import installed_models
+        from modules.wd14_models import installed_models, PIXAI_MODEL_ID, default_thresholds
+        from modules.image_tagger_settings import selected_model, selected_categories
         models = installed_models(paths_clip_vision)
-        ready = next((row["model_id"] for row in models if row["ready"]), "")
-        return {"ready": bool(ready), "model_id": ready, "models": models}
+        model_id = selected_model(context.state if context else {})
+        selected = next(row for row in models if row["model_id"] == model_id)
+        threshold, character_threshold = default_thresholds(model_id)
+        return {**selected, "models": models, "threshold": threshold, "character_threshold": character_threshold,
+                "categories": selected_categories(context.state if context else {}),
+                "execution_provider": "auto" if model_id == PIXAI_MODEL_ID else "CPUExecutionProvider"}
 
     def vlm_models(self, context):
         from modules.agent_vlm import local_models
@@ -253,15 +258,19 @@ class StudioBackend:
     def wd14(self, asset, request, context):
         from PIL import Image, ImageOps
         from extras.wd14tagger import default_interrogator
+        from modules.image_tagger_settings import selected_model, selected_categories
+        from modules.wd14_models import PIXAI_MODEL_ID
+        model_id = selected_model(context.state if context else {})
         with Image.open(asset["path"]) as image:
             if image.width * image.height > 64 * 1024 * 1024:
                 message = ("WD14 图片超过 64 百万像素限制。" if context.state.get("__lang") == "cn"
                            else "WD14 input exceeds the 64-megapixel limit.")
                 raise AgentAPIError("image_too_large", message, 413)
-            return default_interrogator(ImageOps.exif_transpose(image).convert("RGB"),
+            return default_interrogator(ImageOps.exif_transpose(image),
                                         threshold=request.threshold, character_threshold=request.character_threshold,
                                         exclude_tags=request.exclude_tags, allow_download=False,
-                                        cpu_only=True, return_details=True)
+                                        cpu_only=model_id != PIXAI_MODEL_ID, return_details=True, model_id=model_id,
+                                        categories=selected_categories(context.state if context else {}))
 
     def workflow_node_catalog(self, context):
         import httpx
@@ -603,7 +612,7 @@ class AgentService:
     def wd14_status(self, request, context):
         status = self.backend.wd14_status(context)
         return {**status, "status": "ready" if status["ready"] else "needs_model",
-                "execution_provider": "CPUExecutionProvider", "automatic_download": False,
+                "execution_provider": status.get("execution_provider", "CPUExecutionProvider"), "automatic_download": False,
                 "status_url": f"{API_PREFIX}/prompts/wd14/status", "generation_started": False}
 
     def wd14(self, request, context):
@@ -614,8 +623,8 @@ class AgentService:
             raise AgentAPIError("input_type_mismatch", message, 422)
         status = self.wd14_status(None, context)
         if not status["ready"]:
-            message = ("WD14 模型或标签表尚未安装，未开始下载。" if context.state.get("__lang") == "cn"
-                       else "WD14 model or labels are not installed. No download was started.")
+            message = ("所选标签模型或标签表尚未安装，请在身份 → 应用设置中下载。" if context.state.get("__lang") == "cn"
+                       else "The selected tagger or labels are missing. Download them in Identity > Application settings.")
             raise AgentAPIError("wd14_model_missing", message, 409, status)
         try:
             result = self.backend.wd14(asset, request, context)
@@ -632,8 +641,10 @@ class AgentService:
         rows = result["tags"][:request.limit]
         prompt = ", ".join(row["tag"].replace("_", " ").replace("(", "\\(").replace(")", "\\)") for row in rows)
         return {"asset_id": request.asset_id, "model_id": result["model_id"], "providers": result["providers"],
+                "categories": result["categories"],
                 "tags": rows, "prompt": prompt, "total": len(result["tags"]), "truncated": len(result["tags"]) > len(rows),
-                "threshold": request.threshold, "character_threshold": request.character_threshold,
+                "threshold": result.get("threshold", request.threshold),
+                "character_threshold": result.get("character_threshold", request.character_threshold),
                 "automatic_download": False, "generation_started": False,
                 "limitations": ("仅为视觉候选标签，不能据此推断真实身份或确认年龄。" if context.state.get("__lang") == "cn"
                                 else "Candidate visual tags only; do not infer real identity or confirm age from tags.")}

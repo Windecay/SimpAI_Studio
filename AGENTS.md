@@ -171,3 +171,9 @@ local 模式下推理 Key 可使用当前 HTTP／HTTPS 服务地址；多用户�
 外部推理请求未指定 `vram_policy` 时，使用推理 Key 在 Web 管理页保存的默认显存策略，初始为 GPU 优先（extreme）；客户端显式值优先。可选 GPU 优先、均衡、多留空余显存和 CPU。已有 Key 无需重建，策略修改从下一次请求生效。Key 管理仍是浏览器操作，不接受 Bearer 修改，也不改变内部 VLM 工具的 standard 默认值。GPU 层数和速度应以当前实际运行结果为准，不能把预算估算当作性能验收。
 
 外部流式推理需要 token 统计时发送 `stream_options:{"include_usage":true}`，读取流末的 `usage`；普通回复直接返回输入、输出与总 token。输入包含实际模板、工具、历史、图像位置和缓存前缀；输出包含思考及工具调用。当前不单独估计思考或缓存命中子项，不把缺少细分字段解释为完全没有思考或缓存。客户端计时可能包含加载与预填充，不能将它的显示速度直接等同于纯解码速度。
+
+## 2026-10-19：用户级标签模型选择与 PixAI FP16
+
+用户在“身份 → 应用 → 标签反推模型”选择 WD14 或 PixAI，主界面、Canvas 与 Agent 标签工具读取同一份用户设置。旧工具名 `simpai.prompts.wd14_status`／`simpai.prompts.wd14` 保留；状态返回实际选择，缺失时不自动更换模型。阈值省略或为 null 时使用模型默认值，明确提供的数值保留。WD14 Agent 路径仍使用 CPU；PixAI 使用可用 GPU，并在完成后释放会话。
+
+PixAI 目标为 Mexes ONNX FP16，文件名为 `pixai-tagger-v1.0-fp16.onnx` 与同名 `.csv`。魔搭 `windecay/SimpAI_dev/SimpleModels/clip_vision` 为首选，固定 revision 的 HF 原仓库为备用。用户可在应用设置中明确下载缺失文件，仍需已有模型下载权限；Agent 只读工具不会下载，也不能代用户调用私密设置接口。使用当前状态和返回的 model_id，不假定工具名代表固定模型。详情及验收范围见 `docs/pixai-tagger.md`。

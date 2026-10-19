@@ -81,6 +81,19 @@ app.registerExtension({
 		pysssss.addStatusTagHandler(nodeType);
 
 		if (nodeData.name === "WD14Tagger|pysssss") {
+			const onNodeCreated = nodeType.prototype.onNodeCreated;
+			nodeType.prototype.onNodeCreated = function () {
+				const result = onNodeCreated?.apply(this, arguments);
+				const model = this.widgets.find(widget => widget.name === "model");
+				const callback = model?.callback;
+				if (model) model.callback = (value, ...args) => {
+					callback?.call(model, value, ...args);
+					const pixai = value === "pixai-tagger-v1.0-fp16";
+					this.widgets.find(widget => widget.name === "threshold").value = pixai ? 0.17 : 0.35;
+					this.widgets.find(widget => widget.name === "character_threshold").value = pixai ? 0.27 : 0.85;
+				};
+				return result;
+			};
 			const onExecuted = nodeType.prototype.onExecuted;
 			nodeType.prototype.onExecuted = function (message) {
 				const r = onExecuted?.apply?.(this, arguments);
