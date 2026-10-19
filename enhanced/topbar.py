@@ -2942,7 +2942,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         scene_task_method_value = meta_parser.get_scene_task_method(scene_frontend, scene_theme)
         if region_selector:
             video_effective = scene_video_effective
-        if "minimax_h3_transition" in str(scene_task_method_value):
+        if any(method in str(scene_task_method_value) for method in ("minimax_h3_transition", "minimax_h3_loop")):
             video_effective = scene_video_effective
         if scene_task_method_value == "wan_scail2_sam3_cn":
             mask_path = _clean_scene_reference_video_path(sam3_mask_video)

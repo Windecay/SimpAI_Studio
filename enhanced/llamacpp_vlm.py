@@ -274,6 +274,11 @@ from modules.vlm_model_catalog import (
 )
 import ldm_patched.modules.model_management
 
+
+class LlamaCppOutputLimitError(RuntimeError):
+    pass
+
+
 class LlamaCppVLM:
     def __init__(self):
         self.llm = None
@@ -351,12 +356,17 @@ class LlamaCppVLM:
             timings.get("predicted_per_second"),
             output_tokens / generation_seconds if output_tokens and generation_seconds else 0,
         )
+        choices = response.get("choices")
+        choice = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+        finish_reason = choice.get("finish_reason") or ""
         self.last_completion_stats = {
             "input_tokens": int(round(input_tokens)) if input_tokens else 0,
             "output_tokens": int(round(output_tokens)) if output_tokens else 0,
             "total_tokens": int(round(total_tokens)) if total_tokens else 0,
             "elapsed_seconds": round(elapsed, 3) if elapsed else 0,
             "tokens_per_second": round(tokens_per_second, 2) if tokens_per_second else 0,
+            "finish_reason": finish_reason,
+            "output_limited": finish_reason == "length",
         }
         if self.current_mtp_enabled:
             speculative = getattr(self.llm, "last_speculative_stats", None)
@@ -2685,7 +2695,7 @@ class LlamaCppVLM:
             finally:
                 self._clear_hybrid_cache_if_needed()
 
-    def inference(self, image, prompt, chat_handler_override=None, max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1, system_prompt=None, enable_thinking=None, cancel_check=None):
+    def inference(self, image, prompt, chat_handler_override=None, max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1, system_prompt=None, enable_thinking=None, cancel_check=None, *, response_format=None, reject_truncated=False):
         with self.lock, llama_cpp_request_cancellation(
             self.llm, cancel_check, on_cancel=self._clear_cancelled_completion,
         ) as cancellation_checkpoint:
@@ -2726,19 +2736,25 @@ class LlamaCppVLM:
                     top_k=top_k,
                     repeat_penalty=repetition_penalty,
                     seed=seed if seed != -1 else None,
+                    **({"response_format": response_format} if response_format is not None else {}),
                 )
                 cancellation_checkpoint()
                 result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
                 self._record_completion_stats(output, elapsed)
                 logger.info(
-                    "LlamaCpp Inference stats: elapsed=%.3fs, prompt_chars=%s, result_chars=%s, usage=%s",
+                    "LlamaCpp Inference stats: elapsed=%.3fs, prompt_chars=%s, result_chars=%s, usage=%s, finish_reason=%s",
                     elapsed,
                     self._messages_text_length(messages),
                     len(result),
                     output.get("usage") if isinstance(output, dict) else None,
+                    output["choices"][0].get("finish_reason"),
                 )
+                if reject_truncated and output["choices"][0].get("finish_reason") == "length":
+                    raise LlamaCppOutputLimitError("The model reached its output token limit.")
                 return result
+            except LlamaCppOutputLimitError:
+                raise
             except Exception as e:
                 cancellation_checkpoint()
                 context = self._runtime_context_summary(messages, max_tokens)

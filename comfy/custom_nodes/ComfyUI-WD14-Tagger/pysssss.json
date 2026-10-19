@@ -38,7 +38,7 @@
 				"size": 804671,
 				"sha256": "a9455cbf0a910d4a3890739f2f70bd986278f4594285ef1049121a03896e2a6d",
 				"urls": [
-					"https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/pixai-tagger-v1.0-fp16.csv",
+					"https://hf-mirror.com/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/selected_tags.csv",
 					"https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/selected_tags.csv"
 				]
 			}

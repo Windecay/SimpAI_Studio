@@ -757,7 +757,8 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     ).strip()
     masked_video_edit = _prompt_action_masked_video_edit(task_method)
     automatic_face_mask = _prompt_action_automatic_face_mask(task_method)
-    video_transition = "minimax_h3_transition" in task_method.lower()
+    video_loop = "minimax_h3_loop" in task_method.lower()
+    video_transition = video_loop or "minimax_h3_transition" in task_method.lower()
     declared_capability = prompt_action_capability_from_state(data) if scene_mode else {}
     capability = copy.deepcopy(declared_capability)
     media_profile = _prompt_action_media_profile(data) if scene_mode else {}
@@ -1214,12 +1215,15 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         if video_path:
             context["video_source"] = "masked_source_video"
     if video_transition:
+        following_path = main_video_path if video_loop else reference_video_path
         context.update({
             "is_video_transition": True,
-            "transition_sources_present": bool(main_video_path and reference_video_path),
+            "is_video_loop": video_loop,
+            "transition_sources_present": bool(main_video_path and following_path),
             "transition_sources": [
                 {"slot": "scene_video", "path": main_video_path, "edge": "tail", "role": "preceding source"},
-                {"slot": "scene_reference_video", "path": reference_video_path, "edge": "head", "role": "following source"},
+                {"slot": "scene_video" if video_loop else "scene_reference_video",
+                 "path": following_path, "edge": "head", "role": "following source"},
             ],
             "reference_video_present": False,
             "motion_picture_index": 0,
@@ -1718,7 +1722,10 @@ def prompt_action_media_note(media_meta):
     meta = media_meta if isinstance(media_meta, dict) else {}
     if meta.get("is_video_transition"):
         notes = [
-            "The two video uploads are transition source evidence, never numbered H3 references. "
+            ("Both contact sheets show the tail and head of the same uploaded loop source. "
+             "Describe continuous motion returning from its ending to its opening. "
+             if meta.get("is_video_loop") else "The two video uploads are transition source evidence, never numbered H3 references. ")
+            + "These source views are never numbered H3 references. "
             "Do not call either source <Video N> or <Picture N>. Read each contact sheet chronologically. "
             "Infer visible boundary pose, position, facing, velocity, camera movement and lighting; "
             "describe a continuous path connecting them without restarting either source or inventing unheard dialogue. "

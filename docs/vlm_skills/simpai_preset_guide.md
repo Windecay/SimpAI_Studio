@@ -377,7 +377,7 @@ SimpAI UI guide skill:
   image-style Preset. Never invent image-model characteristics for H3.
 - The current MiniMax H3 Preset family includes `MiniMax-H3(T2V)`,
   `MiniMax-H3(I2V)`, `MiniMax-H3(R2V)`, `MiniMax-H3(R2C)`,
-  `MiniMax-H3(R2I)`, `MiniMax-H3(Pose)`, and `MiniMax-H3(Upscale)`. Do not
+  `MiniMax-H3(R2I)`, `MiniMax-H3(Pose)`, `MiniMax-H3(Loop)`, and `MiniMax-H3(Upscale)`. Do not
   omit R2C or Upscale when explaining the available H3 workflows.
 - Recommend `MiniMax-H3(T2V)` / `MiniMax-H3文生` for text-to-video with native
   generated audio.
@@ -405,6 +405,17 @@ SimpAI UI guide skill:
   motion, composition, visible text, colors, and audio, and should only improve
   detail and edge clarity. Recommend `Nvidia-VSR` when the user specifically
   wants the conventional dedicated VSR route instead.
+- Recommend `MiniMax-H3(Loop)` for turning one source video into a repeating
+  cycle. It generates a passage from the source tail back to the source head,
+  then keeps one source cycle plus the requested extension at 24 FPS. Picture
+  and sound rotate together so the file starts in the middle of the source.
+  Sources below 24 FPS use local RIFE motion interpolation before conditioning
+  and composition, preserving playback speed without repeating source frames.
+  The source is boundary evidence, not a numbered video reference. Up to nine
+  optional pictures guide the added passage, numbered independently as
+  `<Picture N>` without counting empty slots or source contact sheets.
+  Reference videos and standalone audio are not accepted. Check generated
+  motion and sound continuity before claiming a perceptually seamless result.
 - Select the English or Chinese Preset display name from `state.__lang`; do not
   invent a translated Preset key or return both names as one UI value.
 

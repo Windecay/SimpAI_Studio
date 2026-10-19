@@ -9,6 +9,7 @@ from modules.model_path_utils import find_model_in_dirs
 DEFAULT_MODEL_ID = "wd-eva02-tagger-2026-canary-onnx-v2"
 PIXAI_MODEL_ID = "pixai-tagger-v1.0-fp16"
 PIXAI_HF_ROOT = "https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/"
+PIXAI_HF_MIRROR_ROOT = PIXAI_HF_ROOT.replace("https://huggingface.co/", "https://hf-mirror.com/")
 PIXAI_MS_ROOT = "https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/"
 
 
@@ -31,7 +32,7 @@ MODEL_SPECS = (
     (
         PIXAI_MODEL_ID,
         PIXAI_MS_ROOT + PIXAI_MODEL_ID + ".onnx," + PIXAI_HF_ROOT + "model_fp16.onnx",
-        PIXAI_MS_ROOT + PIXAI_MODEL_ID + ".csv," + PIXAI_HF_ROOT + "selected_tags.csv",
+        PIXAI_HF_MIRROR_ROOT + "selected_tags.csv," + PIXAI_HF_ROOT + "selected_tags.csv",
     ),
 )
 

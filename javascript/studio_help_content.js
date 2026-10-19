@@ -2420,6 +2420,10 @@
       "en": "Transition Overlap Per Side sets how much of each source clip is included at the two joins; it is not the duration of the inserted middle segment.",
       "cn": "“单侧过渡重叠时长”决定两个连接处各取多少原视频用于衔接，不是新增中间片段的时长。"
     },
+    "MiniMax-H3(Loop)": {
+      "en": "Loop Overlap Per Side controls gradual repainting at the source tail and head. Short videos use less context so these regions do not consume the same source positions twice.",
+      "cn": "“两端各自渐变重绘时长”控制原片结尾和开头各有多长参与衔接；短视频会自动缩短参考区间，避免重复使用同一段原片。"
+    },
     "MiniMax-H3(Upscale)": {
       "en": "Redraw strength controls how much the upscale pass may change the source picture. Higher values can add detail but also alter the original appearance; start with the preset default.",
       "cn": "“重绘强度”控制放大时可以多大程度改动原画面。数值越大可能增加细节，也可能改变原有外观，建议先使用预置默认值。"
@@ -2556,6 +2560,20 @@
         }
       ]
     },
+    "MiniMax-H3(Loop)": {
+      "intro": {
+        "en": "Add a continuous return passage from one video's ending to its opening, producing a single repeating cycle.",
+        "cn": "为一段视频生成从结尾回到开头的连续过渡，直接输出一个可重复播放的循环。"
+      },
+      "inputs": {
+        "en": "Required: one source video. Optional: up to 9 reference pictures, matching Video Transition. Its tail and head supply both ends of the generated passage; reference pictures guide the new passage.",
+        "cn": "必需：一段源视频；可选：最多 9 张参考图，与视频过渡相同。原片结尾和开头分别作为新过渡的两端，参考图用于指导新增片段。"
+      },
+      "keyPoint": {
+        "en": "Loop Extension Duration adds new footage; the final duration is the source plus that extension. Sources below 24 FPS are motion-interpolated to 24 FPS before generation. The source appears once. Picture and sound start from the middle of the source together, keeping the file boundary inside the original continuous footage.",
+        "cn": "“循环延续时长”是新增内容长度，成片时长为原视频加延续时长。低于 24 FPS 的原片会在生成前进行运动插帧，统一为 24 FPS。原片只保留一份，画面与声音同步从原片中间开始，让文件首尾对应原片中的连续位置。"
+      }
+    },
     "MiniMax-H3(Transition)": {
       "intro": {
         "en": "Generate a new audiovisual passage between two videos, moving from the end of the first clip to the start of the second.",
@@ -2633,6 +2651,7 @@
   "h3DurationPresets": [
     "MiniMax-H3(Avatar)",
     "MiniMax-H3(I2V)",
+    "MiniMax-H3(Loop)",
     "MiniMax-H3(Motion)",
     "MiniMax-H3(R2C)",
     "MiniMax-H3(R2V)",
@@ -2649,6 +2668,7 @@
     "MiniMax-H3(Avatar)",
     "MiniMax-H3(Edit)",
     "MiniMax-H3(I2V)",
+    "MiniMax-H3(Loop)",
     "MiniMax-H3(R2C)",
     "MiniMax-H3(R2V)",
     "MiniMax-H3(Swap)",

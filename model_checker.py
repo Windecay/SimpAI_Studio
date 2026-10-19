@@ -4291,10 +4291,10 @@ packages = {'base_package': {'id': 1,
  'pixai_tagger_package': {
      'id': 49,
      'name': '[49]PixAI Tagger v1.0 FP16',
-     'note': '图片标签反推模型，可在身份页的应用设置中按用户选择。包含 Mexes ONNX FP16 权重和配套标签表，魔搭首选、Hugging Face 备用。',
+     'note': '图片标签反推模型，可在身份页的应用设置中按用户选择。包含 Mexes ONNX FP16 权重和配套标签表，权重首选魔搭、标签表首选 hf-mirror，Hugging Face 备用。',
      'files': [
          'clip_vision,pixai-tagger-v1.0-fp16.onnx,992916002,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/pixai-tagger-v1.0-fp16.onnx,https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/model_fp16.onnx',
-         'clip_vision,pixai-tagger-v1.0-fp16.csv,804671,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/pixai-tagger-v1.0-fp16.csv,https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/selected_tags.csv',
+         'clip_vision,pixai-tagger-v1.0-fp16.csv,804671,0,https://hf-mirror.com/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/selected_tags.csv,https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/selected_tags.csv',
      ],
      'info_links': ['https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8'],
      'preset_sample': [],

@@ -536,7 +536,7 @@
         } catch (_) { return null; }
     }
 
-    let active = null, windowFrame = null;
+    let active = null, windowFrame = null, windowMaximized = false;
     function open(options = {}) {
         active?.close();
         const state = options.langState || root.simpleaiTopbarSystemParams || {};
@@ -586,6 +586,7 @@
             </div>
             <header><h2 id="sai-rjp-title">${esc(t('Regional Prompt'))}</h2>
               <select aria-label="${esc(t('Model'))}" data-rjp-model><option>MOSS-Image</option></select>
+              ${icon('maximize', 'maximize', 'Maximize window', 'aria-pressed="false"')}
               ${icon('close', 'xmark', 'Close')}</header>
             <div class="sai-rjp-toolbar">
               <div class="sai-rjp-tools" role="group" aria-label="${esc(t('Layout tools'))}">
@@ -696,15 +697,56 @@
         const q = selector => host.querySelector(selector);
         const dialog = q('.sai-rjp-dialog');
         const compactWindow = () => root.innerWidth <= 700 || root.matchMedia?.('(pointer: coarse)')?.matches;
-        let popupFrame = null;
+        let popupFrame = null, maximized = false, restoreFrame = null;
+        function setWindowFrame(frame) {
+            for (const [key, value] of Object.entries(frame)) dialog.style.setProperty(key, `${value}px`, 'important');
+            for (const [key, value] of Object.entries({ right: 'auto', bottom: 'auto', transform: 'none' }))
+                dialog.style.setProperty(key, value, 'important');
+            dialog.dataset.simpleaiResizeManaged = '1';
+        }
+        function syncMaximizeControl() {
+            const button = q('[data-rjp-action="maximize"]');
+            button.title = t(maximized ? 'Restore window' : 'Maximize window');
+            button.setAttribute('aria-label', button.title);
+            button.setAttribute('aria-pressed', String(maximized));
+            q('[data-rjp-action="maximize"] i').className = maximized
+                ? 'fa-solid fa-window-restore' : 'fa-solid fa-maximize';
+            if (popupFrame) q('#sai-rjp-title').title = maximized ? '' : t('Drag window');
+        }
         function syncWindowViewport() {
-            if (compactWindow()) {
+            if (maximized) {
+                popupFrame?.cancelInteraction?.();
+                setWindowFrame({ left: 0, top: 0, width: root.innerWidth, height: root.innerHeight });
+            } else if (compactWindow()) {
                 popupFrame?.cancelInteraction?.();
                 for (const key of ['left', 'top', 'right', 'bottom', 'width', 'height', 'transform']) {
                     dialog.style.removeProperty(key);
                 }
                 delete dialog.dataset.simpleaiResizeManaged;
             } else popupFrame?.ensureWithinViewport?.(false);
+        }
+        function toggleMaximize() {
+            popupFrame?.cancelInteraction?.();
+            if (maximized) {
+                maximized = false;
+                delete dialog.dataset.rjpMaximized;
+                if (restoreFrame && !compactWindow()) {
+                    const width = Math.min(restoreFrame.width, root.innerWidth - 24);
+                    const height = Math.min(restoreFrame.height, root.innerHeight - 24);
+                    setWindowFrame({ width, height,
+                        left: Math.max(12, Math.min(restoreFrame.left, root.innerWidth - width - 12)),
+                        top: Math.max(12, Math.min(restoreFrame.top, root.innerHeight - height - 12)) });
+                }
+            } else {
+                const rect = dialog.getBoundingClientRect();
+                restoreFrame = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+                maximized = true;
+                dialog.dataset.rjpMaximized = '1';
+            }
+            windowMaximized = maximized;
+            syncMaximizeControl();
+            syncWindowViewport();
+            if (tab === 'layout') draw();
         }
         const canvas = q('canvas'), viewport = q('.sai-rjp-viewport'), board = q('.sai-rjp-board');
         const raw = q('[data-rjp-json]');
@@ -1159,7 +1201,9 @@
             referenceRevision++;
             referenceImage = null;
             aiPreview = null;
-            if (!compactWindow() && dialog.dataset.simpleaiResizeManaged === '1') {
+            windowMaximized = maximized;
+            if (maximized && restoreFrame && (!compactWindow() || restoreFrame.width > 700)) windowFrame = { ...restoreFrame };
+            else if (!compactWindow() && dialog.dataset.simpleaiResizeManaged === '1') {
                 const rect = dialog.getBoundingClientRect();
                 windowFrame = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
             }
@@ -1243,6 +1287,7 @@
             try {
                 if (closed || (name === 'apply' && (applying || optimizing))) return;
                 if (name === 'close') return close();
+                if (name === 'maximize') return toggleMaximize();
                 if (name === 'optimize') return await optimize();
                 if (name === 'upload-reference' && !optimizing && !loadingReference && !applying) q('[data-rjp-reference-file]').click();
                 if (name === 'remove-reference' && !optimizing && !loadingReference) {
@@ -1650,7 +1695,7 @@
             popupFrame = root.installResizablePopup(dialog, {
                 modal: host, dragHandle: q('.sai-rjp-dialog > header'),
                 minWidth: 720, minHeight: 480, margin: 12,
-                disabled: compactWindow, isHidden: () => closed || host.isConnected === false,
+                disabled: () => maximized || compactWindow(), isHidden: () => closed || host.isConnected === false,
                 resizeLabel: t('Resize window'),
             });
             q('#sai-rjp-title').title = t('Drag window');
@@ -1658,9 +1703,11 @@
                 for (const [key, value] of Object.entries(windowFrame)) dialog.style.setProperty(key, `${value}px`, 'important');
                 dialog.dataset.simpleaiResizeManaged = '1';
             }
-            root.addEventListener?.('resize', syncWindowViewport);
-            syncWindowViewport();
         }
+        root.addEventListener?.('resize', syncWindowViewport);
+        syncMaximizeControl();
+        if (windowMaximized) toggleMaximize();
+        else syncWindowViewport();
         const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (tab === 'layout') draw(); }) : null;
         observer?.observe(viewport);
         active = { host, close };

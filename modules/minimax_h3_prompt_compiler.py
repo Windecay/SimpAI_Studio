@@ -246,6 +246,7 @@ def target_compiler(target):
 def normalize_context(context=None):
     data = context if isinstance(context, dict) else {}
     video_transition = _is_video_transition(data)
+    video_loop = _is_video_loop(data)
     automatic_face_mask = _is_automatic_face_mask(data)
     masked_image_edit = _is_masked_image_edit(data)
     descriptors = data.get("image_descriptors") if isinstance(data.get("image_descriptors"), list) else []
@@ -292,7 +293,7 @@ def normalize_context(context=None):
         "duration_seconds": duration,
         "image_count": image_count,
         "video_count": 0 if video_transition else video_count,
-        "audio_count": audio_count,
+        "audio_count": 0 if video_loop else audio_count,
         "image_descriptors": descriptors,
         "video_descriptors": [] if video_transition else video_descriptors,
         "video_reference_index": 0 if video_transition else _safe_count(data.get("video_reference_index")),
@@ -304,6 +305,7 @@ def normalize_context(context=None):
         or ("previous_segment" if _is_video_continuation(data) else ""),
         "is_video_continuation": _is_video_continuation(data),
         "is_video_transition": video_transition,
+        "is_video_loop": video_loop,
         "transition_sources_present": bool(data.get("transition_sources_present")),
         "is_masked_video_edit": _is_masked_video_edit(data),
         "automatic_face_mask": automatic_face_mask,
@@ -390,7 +392,22 @@ def context_note(context=None):
             f"- Analysis-only {analysis_label} images: {media['analysis_only_image_count']}. "
             "Read them for shot planning, but never name them as <Picture N> or treat them as H3 generation media."
         )
-    if media.get("is_video_transition"):
+    if media.get("is_video_loop"):
+        lines.append(
+            "- Single-video loop: the tail and head of the same source video are "
+            "initial-latent boundary data, not numbered reference videos or pictures. "
+            "Describe a continuous return from the ending action to the opening action, "
+            "preserving subject identity, scene, motion and camera direction. "
+            "The requested duration is only the added return passage. The output contains "
+            "one source cycle plus that passage, with picture and sound rotated together. "
+            "Source tail/head soundtracks are timed audio-latent boundary conditions; "
+            "the prompt writer sees contact sheets, not audible audio. "
+            "Separately uploaded pictures are optional numbered references; use only the "
+            "<Picture N> labels in the supplied inventory. Apply compatible reference details "
+            "within the added passage while preserving both source boundaries. "
+            "Do not invent dialogue, additional references or an unrelated scene."
+        )
+    elif media.get("is_video_transition"):
         lines.append(
             "- Two-source transition: the preceding video's tail and the following video's head are "
             "initial-latent boundary data, not numbered reference videos. Never name either source "
@@ -1656,9 +1673,15 @@ def validation_error_text(validation, limit=3):
     return "; ".join(errors[:max(1, int(limit or 1))])
 
 
+def _is_video_loop(context):
+    data = context if isinstance(context, dict) else {}
+    return bool(data.get("is_video_loop")) or "minimax_h3_loop" in str(data.get("task_method") or "").lower()
+
+
 def _is_video_transition(context):
     data = context if isinstance(context, dict) else {}
-    return bool(data.get("is_video_transition")) or "minimax_h3_transition" in str(data.get("task_method") or "").lower()
+    return (_is_video_loop(data) or bool(data.get("is_video_transition"))
+            or "minimax_h3_transition" in str(data.get("task_method") or "").lower())
 
 
 def context_from_task(task):
@@ -1676,6 +1699,7 @@ def context_from_task(task):
     is_video_continuation = _is_video_continuation(task_context)
     is_masked_video_edit = _is_masked_video_edit(task_context)
     is_video_transition = _is_video_transition(task_context)
+    is_video_loop = _is_video_loop(task_context)
     automatic_face_mask = _is_automatic_face_mask(task_context)
     language = getattr(task, "simpleai_lang", None) or params.get("__lang")
     state = getattr(task, "state", None)
@@ -1702,7 +1726,7 @@ def context_from_task(task):
     is_masked_image_edit = bool(masked_source_image_present and spatial_mask_present)
     images = [canvas_image, *reference_images]
     main_video = params.get("video")
-    reference_video = params.get("reference_video")
+    reference_video = None if is_video_loop else params.get("reference_video")
     reference_video2 = None if is_video_transition else params.get("reference_video2")
     video_descriptors = []
     if main_video and not is_masked_video_edit and not is_video_transition:
@@ -1747,7 +1771,8 @@ def context_from_task(task):
         or ("previous_segment" if is_video_continuation else ""),
         "is_video_continuation": is_video_continuation,
         "is_video_transition": is_video_transition,
-        "transition_sources_present": bool(main_video and reference_video) if is_video_transition else False,
+        "is_video_loop": is_video_loop,
+        "transition_sources_present": bool(main_video) if is_video_loop else bool(main_video and reference_video) if is_video_transition else False,
         "is_masked_video_edit": is_masked_video_edit,
         "automatic_face_mask": automatic_face_mask,
         "masked_source_video_present": bool(main_video) if is_masked_video_edit else False,
@@ -1766,7 +1791,7 @@ def context_from_task(task):
         "language": language,
         "reference_video_present": bool(not is_video_transition and (reference_video or reference_video2)),
         "reference_video_content_available": bool(not is_video_transition and (reference_video or reference_video2)),
-        "audio_count": sum(bool(params.get(key)) for key in ("audio", "audio2", "audio3")),
+        "audio_count": 0 if is_video_loop else sum(bool(params.get(key)) for key in ("audio", "audio2", "audio3")),
         "inventory_known": True,
     }
 

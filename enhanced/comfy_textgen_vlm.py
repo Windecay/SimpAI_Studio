@@ -30,11 +30,16 @@ class ComfyTextgenInterrupted(RuntimeError):
         super().__init__(message)
 
 
+class ComfyTextgenOutputLimitError(RuntimeError):
+    pass
+
+
 class ComfyTextgenVLM:
     def __init__(self):
         self.lock = threading.RLock()
         self.conversation_messages = {}
         self.conversation_system_prompts = {}
+        self.last_completion_stats = {}
         self._control = ContextVar("comfy_textgen_control", default=None)
 
     @contextmanager
@@ -310,8 +315,6 @@ class ComfyTextgenVLM:
             return self._execute_workflow_in_session(workflow, preview_id, timeout)
 
     def _capture_result(self, workflow, preview_id, item, prompt_id, text):
-        if not generation_capture.is_active():
-            return
         textgen_id = workflow[str(preview_id)]["inputs"]["source"][0]
         inputs = workflow[textgen_id]["inputs"]
         record = {
@@ -326,7 +329,11 @@ class ComfyTextgenVLM:
                 if node.get("_meta", {}).get("title") == "Text Encoder Reasoning":
                     record["reasoning_output"] = self._extract_preview_text(item, node_id) or ""
                     break
-        generation_capture.publish(record)
+        self.last_completion_stats = {
+            key: record[key] for key in ("max_tokens", "generated_tokens", "hit_token_limit") if key in record
+        }
+        if generation_capture.is_active():
+            generation_capture.publish(record)
 
     def _execute_workflow_in_session(self, workflow, preview_id, timeout=600):
         _, comfyclient_pipeline = self._runtime()
@@ -402,8 +409,10 @@ class ComfyTextgenVLM:
         system_prompt=None,
         thinking=False,
         use_default_template=True,
+        reject_truncated=False,
     ):
         with self.lock:
+            self.last_completion_stats = {}
             self._check_request()
             object_info = self._ensure_server()
             effective_prompt = str(prompt or "").strip()
@@ -424,10 +433,12 @@ class ComfyTextgenVLM:
                 use_default_template=use_default_template,
                 system_prompt=system_prompt,
                 capture_output=generation_capture.is_active(),
-                trace_node=generation_capture.is_active() and isinstance(object_info, dict)
+                trace_node=(generation_capture.is_active() or reject_truncated) and isinstance(object_info, dict)
                 and "SimpAITextGenerate" in object_info,
             )
             text = self._execute_workflow(workflow, preview_id)
+            if reject_truncated and self.last_completion_stats.get("hit_token_limit") is True:
+                raise ComfyTextgenOutputLimitError("The model reached its output token limit.")
             if prompt_expander_vlm_task(f"comfy:text_encoders:{clip_name}"):
                 try:
                     return clean_pe_output(text, strict_json=False)

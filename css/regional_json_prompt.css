@@ -12,6 +12,8 @@
   box-shadow: 0 20px 64px #0005;
 }
 .sai-rjp-dialog[data-simpleai-resize-managed="1"] { position: fixed; }
+.sai-rjp-dialog[data-rjp-maximized="1"] { position: fixed; border-radius: 0; }
+.sai-rjp-dialog[data-rjp-maximized="1"] > .simpleai-popup-resize-handle { display: none !important; }
 .sai-rjp-reference-drop {
   position: absolute; inset: 8px; z-index: 30; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 12px; padding: 24px; pointer-events: none; border: 2px dashed var(--button-primary-border-color, #ff8a00);
@@ -21,6 +23,7 @@
 .sai-rjp-reference-drop strong { font-size: 15px; overflow-wrap: anywhere; }
 .sai-rjp-dialog.simpleai-resizable-popup > header { cursor: grab; touch-action: none; }
 .sai-rjp-dialog[data-simpleai-drag-active="1"] > header { cursor: grabbing; }
+.sai-rjp-dialog[data-rjp-maximized="1"] > header { cursor: default; }
 .sai-rjp-dialog.simpleai-resizable-popup > footer { padding-right: 46px; }
 .sai-rjp-dialog > .simpleai-popup-resize-handle::before { filter: drop-shadow(0 0 1px #30343acc); }
 .sai-rjp-dialog header, .sai-rjp-toolbar, .sai-rjp-dialog footer, .sai-rjp-tools,
