@@ -4291,12 +4291,23 @@ packages = {'base_package': {'id': 1,
  'pixai_tagger_package': {
      'id': 49,
      'name': '[49]PixAI Tagger v1.0 FP16',
-     'note': '图片标签反推模型，可在身份页的应用设置中按用户选择。包含 Mexes ONNX FP16 权重和配套标签表，权重首选魔搭、标签表首选 hf-mirror，Hugging Face 备用。',
+     'note': '图片标签反推模型，可在身份页的应用设置中按用户选择。包含 Mexes ONNX FP16 权重和配套标签表。',
      'files': [
          'clip_vision,pixai-tagger-v1.0-fp16.onnx,992916002,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/pixai-tagger-v1.0-fp16.onnx,https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/model_fp16.onnx',
          'clip_vision,pixai-tagger-v1.0-fp16.csv,804671,0,https://hf-mirror.com/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/selected_tags.csv,https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8/resolve/0800778563144a0e6fdf41ddadd84aae3cb0dbcf/selected_tags.csv',
      ],
-     'info_links': ['https://huggingface.co/Mexes/pixai-tagger-v1.0-onnx-fp32-fp16-int8'],
+     'info_links': ['https://modelscope.cn/models/pixai-labs/pixai-tagger-v1.0'],
+     'preset_sample': [],
+ },
+ 'bonsai_package': {
+     'id': 50,
+     'name': '[50]Bonsai-2-Qwen3.8-27B-Q2_0-MTP',
+     'note': 'Bonsai 2 27B 转换模型，带MTP和官方Q8_0视觉投影。',
+     'files': [
+         'LLM,Bonsai/Ternary-Bonsai-2-27B-Converted-v2-Q2_0-MTP.gguf,8077329696,358969add43565908fcb6dc447cdc410b0fb3117b1bf47155693f1cebbb97e49,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Bonsai/Ternary-Bonsai-2-27B-Converted-v2-Q2_0-MTP.gguf,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/LLM/Bonsai/Ternary-Bonsai-2-27B-Converted-v2-Q2_0-MTP.gguf',
+         'LLM,Bonsai/Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf,629246976,6807ede61d570bb86ba34b756a0fa109edc33668604de867c6ea6d8f1d631903,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Bonsai/Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/LLM/Bonsai/Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf',
+     ],
+     'info_links': ['https://modelscope.cn/models/prism-ml/Ternary-Bonsai-2-27B-gguf'],
      'preset_sample': [],
  },
 }

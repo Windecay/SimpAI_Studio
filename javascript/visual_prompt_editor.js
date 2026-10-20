@@ -453,7 +453,7 @@
         host.className = 'sai-vpe-backdrop';
         const button = (action, icon, label) => `<button type="button" data-vpe-action="${action}" title="${escape(label)}" aria-label="${escape(label)}"><i class="fa-solid fa-${icon}"></i></button>`;
         host.innerHTML = `<section class="sai-vpe-dialog" role="dialog" aria-modal="true" aria-label="${escape(t('Characters & prompts', '角色与提示词'))}">
-<header><strong>${escape(t('Characters & prompts', '角色与提示词'))}</strong><div class="sai-vpe-actions">${button('undo', 'rotate-left', t('Undo', '撤销'))}${button('redo', 'rotate-right', t('Redo', '重做'))}${button('close', 'xmark', t('Close', '关闭'))}</div></header>
+<header><strong>${escape(t('Characters & prompts', '角色与提示词'))}</strong><div class="sai-vpe-actions">${root.SimpAIStudioHelp?.button('character_cards') || ''}${button('undo', 'rotate-left', t('Undo', '撤销'))}${button('redo', 'rotate-right', t('Redo', '重做'))}${button('close', 'xmark', t('Close', '关闭'))}</div></header>
 <div class="sai-vpe-body"><aside class="sai-vpe-library">
 <div class="sai-vpe-actions"><strong>${escape(t('Character library', '角色库'))}</strong>${button('new', 'plus', t('New audiovisual character', '新建视听角色'))}${button('refresh', 'arrows-rotate', t('Refresh', '刷新'))}</div>
 <select data-vpe-category aria-label="${escape(t('Category', '分类'))}"><option value="audiovisual">${escape(t('Audiovisual', '视听创作'))}</option><option value="roleplay">${escape(t('Roleplay', '角色扮演'))}</option><option value="all">${escape(t('All', '全部'))}</option></select>

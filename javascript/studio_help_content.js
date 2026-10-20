@@ -84,6 +84,10 @@
       "en": "Prompt tools",
       "cn": "提示词工具"
     },
+    "character_cards": {
+      "en": "Character cards and H3 references",
+      "cn": "角色卡与 H3 素材关联"
+    },
     "media": {
       "en": "Input media",
       "cn": "输入素材"
@@ -230,6 +234,7 @@
         "custom_skills",
         "setup",
         "prompt",
+        "character_cards",
         "image_tagger",
         "media",
         "sam3",
@@ -1364,7 +1369,7 @@
           ]
         ]
       ],
-      "links": ["agent", "custom_skills", "creative_tasks", "chat_documents", "chat_runtime"]
+      "links": ["agent", "custom_skills", "creative_tasks", "chat_documents", "chat_runtime", "character_cards"]
     },
     "custom_skills": {
       "intro": {
@@ -1882,8 +1887,99 @@
       ],
       "links": [
         "preset",
-        "setup"
+        "setup",
+        "character_cards"
       ]
+    },
+    "character_cards": {
+      "intro": {
+        "en": "Character cards store reusable names, appearance, pictures and voices. Open Visual prompt and characters to create or select a card in Character library, then use it with MiniMax H3 or another workflow that supports reference media.",
+        "cn": "角色卡保存可复用的名称、外观、图片和声音。在“可视化提示词与角色”的“角色库”中创建或选择角色，可用于 MiniMax H3 等支持参考素材的创作流程。"
+      },
+      "keywords": [
+        "H3角色卡", "H3 角色卡", "角色库", "视听角色", "角色设定图", "参考声音",
+        "character card", "character library", "audiovisual", "H3 character"
+      ],
+      "sections": [
+        [
+          {"en": "Use a card with H3", "cn": "在 H3 中使用角色卡"},
+          [
+            {
+              "en": "Select the H3 preset and mode required by your task. Click Visual prompt and characters beside the main prompt box to open Characters & prompts, then select a card in Character library. If a card is missing, check the Audiovisual, Roleplay or All category and the search field.",
+              "cn": "选择任务需要的 H3 预置和模式，点击主提示词框旁的“可视化提示词与角色”，打开“角色与提示词”。在“角色库”中选择卡片；找不到时检查“视听创作”“角色扮演”“全部”分类及搜索内容。"
+            },
+            {
+              "en": "Click Use character. Studio inserts the character name and associates compatible card images and audio with the current reference slots. Inspect Current references and the appearance/voice bindings, then write what the character does, says and where the action takes place.",
+              "cn": "点击“使用角色”，Studio 会插入角色名，并将卡片中适用的图片、声音关联到当前参考位置。检查“当前参考素材”和外观、声音绑定，再描述角色做什么、说什么，以及所在场景。"
+            },
+            {
+              "en": "Click Apply to write the prompt and bindings back to the main interface. Check the actual input slots before Generate. Merely selecting or viewing a card does not apply it, and Use character does not start generation.",
+              "cn": "点击“应用”将提示词和关联信息写回主界面，检查实际输入素材后再点击“生成”。仅选中或查看卡片不会应用它，“使用角色”也不会开始生成。"
+            }
+          ]
+        ],
+        [
+          {"en": "Create a reusable audiovisual character", "cn": "创建可复用的视听角色"},
+          [
+            {
+              "en": "In Character library, click New audiovisual character, enter Name and Appearance, then use Upload image or audio to add a portrait, character sheet or reference voice. Click Save character. A useful first card needs a name and a clear portrait; voice is optional.",
+              "cn": "在“角色库”点击“新建视听角色”，填写“名称”和“外观描述”，通过“上传图片或音频”添加人物照、角色设定图或参考声音，再点击“保存角色”。首次使用可以只准备名称和清晰人物图，声音按任务需要添加。"
+            },
+            {
+              "en": "With a saved portrait, choose Current image and Convert to four views, or click Convert this image to four views beside that image. The result is one white-background sheet with a close-up, front, side and back. Generate directly instead uses the appearance description. Both operations create an image task and require the selected preset's models.",
+              "cn": "已有角色照时，在“标准四视图 · 单张”选择“当前图片”，点击“当前图片转四视图”；也可点击图片旁的“将这张图片转为四视图”。结果是一张包含特写、正面、侧面、背面的白底设定图。“直接生成”根据外观描述生成。两种操作都会提交生图任务，需要所选预置的模型。"
+            },
+            {
+              "en": "Voice design uses QwenTTS. Enter Voice style and Sample text, then click Generate character voice and audition the result. Existing audio can also be uploaded and trimmed. Voice generation is optional and needs its own models; writing a voice description alone does not create reference audio.",
+              "cn": "“声音设计”使用 QwenTTS，填写“声音风格”和“试听文本”后点击“生成角色音色”，试听后使用；也可上传并裁剪已有音频。音色生成需要对应模型，仅填写声音描述不会产生参考音频。"
+            }
+          ]
+        ],
+        [
+          {"en": "Images, voices and preset limits", "cn": "图片、声音与预置限制"},
+          [
+            {
+              "en": "H3 binds images as <Picture n> and voices as <Audio n>. Character definitions carry those bindings; the visible description can simply use the character's name. Keep the generated reference numbers and the image/audio order consistent.",
+              "cn": "H3 使用 <Picture n> 关联图片，使用 <Audio n> 关联参考声音，角色定义中保存这些关系；正文可以直接使用角色名。不要随意修改引用编号或调换图片、音频顺序。"
+            },
+            {
+              "en": "Available media types and counts follow the selected preset and mode. H3 Motion Transfer accepts character pictures and uses the driving video's sound; independent card voices are skipped with a notice and remain saved on the card. A mode without reference inputs cannot use card media.",
+              "cn": "可关联的素材类型与数量以当前预置和模式为准。H3 动作迁移可以使用角色图片，声音沿用驱动视频；卡片中的独立音色会被跳过并显示说明，原音色仍保留在卡片中。不提供参考输入的模式不能使用卡片素材。"
+            },
+            {
+              "en": "Studio reuses references already present. If the remaining slots are full, free a compatible slot or reduce the card references, then try again; existing input is not silently replaced. If an input is removed or replaced, inspect and reapply the character bindings before generation.",
+              "cn": "已经存在的参考素材会复用。提示参考位置不足时，释放适用位置或减少角色素材后再使用，不会自动覆盖已有输入。移除或替换素材后，生成前需要检查并重新应用角色关联。"
+            }
+          ]
+        ],
+        [
+          {"en": "H3 storyboard dialogue", "cn": "H3 分镜与对白"},
+          [
+            {
+              "en": "In H3 Storyboard, open the character prompt editor for the intended shot or field. Use character, then Apply to storyboard; check that the card belongs to the intended editing target.",
+              "cn": "使用“H3 分镜表”时，在目标镜头或字段打开角色提示词编辑器，点击“使用角色”后选择“写回分镜表”，核对当前编辑位置。"
+            },
+            {
+              "en": "For a shot's dialogue, Speaker selects a bound character. The separate Reference voice control selects Character default, an individual bound audio reference, or None. Character default uses the card's voice; None disables that reference for the dialogue. Keep each speaker marker for multiple-speaker dialogue. Voice references guide generated speech but do not guarantee an identical voice.",
+              "cn": "镜头对白中的“说话人”用于选择已关联的角色。“参考声音”是另一个选项，用于选择“角色默认”、某一段已关联音频或“无”；“角色默认”使用卡片音色，“无”不使用该参考。多人对白保留各自说话人标记，不能用一个角色替代全部说话人。参考声音用于引导生成，不能保证音色完全一致。"
+            }
+          ]
+        ],
+        [
+          {"en": "Import Tavern cards and reuse them", "cn": "导入酒馆卡并复用"},
+          [
+            {
+              "en": "For a Tavern character card PNG or JSON, open VLM/LLM AI chat, select Roleplay and open Character library, then Import card. This imports character settings, openings and embedded world-book data. Import conversation is for chat archives.",
+              "cn": "酒馆角色卡 PNG 或 JSON 使用“VLM/LLM AI对话”中的“角色扮演 → 角色库 → 导入卡片”，导入角色设定、开场白及内嵌世界书。“导入对话”用于聊天存档。"
+            },
+            {
+              "en": "In Characters & prompts, choose Roleplay or All to find imported cards. Save audiovisual copy when adapting one for image/voice work; the original roleplay card stays available. A card's written identity or personality does not by itself supply a portrait or reference voice.",
+              "cn": "在“角色与提示词”中选择“角色扮演”或“全部”可查找导入的卡片，用于视听创作时可“保存为视听副本”，原角色扮演卡仍保留。文字身份、性格设定本身不等于已经添加人物图或参考音色。"
+            }
+          ]
+        ]
+      ],
+      "links": ["prompt", "media", "chat_modes", "models"]
     },
     "media": {
       "intro": {
@@ -1920,7 +2016,8 @@
         "image_enhance",
         "mask",
         "sam3",
-        "agent"
+        "agent",
+        "character_cards"
       ]
     },
     "image_prompt": {

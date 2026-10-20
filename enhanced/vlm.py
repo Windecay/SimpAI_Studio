@@ -98,9 +98,20 @@ GEMMA4_HERETIC_MODELSCOPE_BASE = (
 )
 GEMMA4_HERETIC_GGUF = "gemma-4-12B-it-heretic-QAT-UD-Q4_K_XL.gguf"
 GEMMA4_HERETIC_MMPROJ = "mmproj-BF16.gguf"
+BONSAI_VLM_VERSION = "Bonsai-2-27B-Q2_0-MTP"
+BONSAI_MODEL_DIR = "Bonsai"
+BONSAI_GGUF = "Ternary-Bonsai-2-27B-Converted-v2-Q2_0-MTP.gguf"
+BONSAI_MMPROJ = "Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf"
+BONSAI_MODELSCOPE_BASE = (
+    "https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Bonsai"
+)
+BONSAI_HUGGINGFACE_BASE = (
+    "https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/LLM/Bonsai"
+)
 COMFY_QWEN3VL_4B_FILE = "qwen3vl_4b_fp8_scaled.safetensors"
 VLM_VERSION_ALIASES = {
     "Gemma3-12B-TextEncoder": "Gemma4-12B-it-heretic-Q4_K_XL",
+    f"llamacpp:LLM:{BONSAI_MODEL_DIR}/{BONSAI_GGUF}": BONSAI_VLM_VERSION,
 }
 
 
@@ -156,6 +167,30 @@ def _gemma4_heretic_vlm_config():
         "architecture": "gemma4",
         "capabilities": ["text", "image"],
         "recommended": True,
+    }
+
+
+def _bonsai_vlm_config():
+    return {
+        "label": "Bonsai 2 Qwen3.8 27B Q2_0 MTP",
+        "model": BONSAI_MODEL_DIR,
+        "chat_handler": "Qwen3.8",
+        "gguf_file": BONSAI_GGUF,
+        "mmproj_file": BONSAI_MMPROJ,
+        "n_ctx": 8192,
+        "image_min_tokens": default_image_min_tokens_for_handler("Qwen3.8"),
+        "model_urls": {
+            name: f"{BONSAI_MODELSCOPE_BASE}/{name},{BONSAI_HUGGINGFACE_BASE}/{name}"
+            for name in (BONSAI_GGUF, BONSAI_MMPROJ)
+        },
+        "is_llamacpp": True,
+        "backend": "llamacpp",
+        "source_catalog": "LLM",
+        "architecture": "qwen3.8",
+        "capabilities": ["text", "image"],
+        "recommended": True,
+        "prompt_mtp_default": True,
+        "aliases": [f"llamacpp:LLM:{BONSAI_MODEL_DIR}/{BONSAI_GGUF}"],
     }
 
 
@@ -546,6 +581,7 @@ class VLM:
         "Qwen3.5-9B-abliterated-Q4_K_M": _huihui_qwen35_vlm_config("Q4_K_M"),
         "Qwen3.5-9B-abliterated-Q6_K": _huihui_qwen35_vlm_config("Q6_K"),
         "Qwen3.5-9B-abliterated-Q8_0": _huihui_qwen35_vlm_config("Q8_0"),
+        BONSAI_VLM_VERSION: _bonsai_vlm_config(),
         "Gemma4-12B-it-heretic-Q4_K_XL": _gemma4_heretic_vlm_config(),
         "Qwen3VL-4B-TextEncoder": _comfy_textgen_vlm_config(
             "Qwen 3 VL 4B · Reuse Text Encoder",
@@ -825,6 +861,7 @@ class VLM:
 
     @classmethod
     def get_version_config(cls, version, scan_catalog=True):
+        version = VLM_VERSION_ALIASES.get(version, version)
         if version in cls.VERSIONS:
             return cls.VERSIONS[version]
         if isinstance(version, str) and version.endswith("-Thinking"):
@@ -1278,7 +1315,7 @@ class VLM:
     def get_processing_status(cls):
         with cls.processing_lock:
             return cls.is_processing
-    def load_model(self, download=False):
+    def load_model(self, download=False, *, load_mtp=None):
         if VLM.is_custom_version():
             return
         if VLM.backend == "comfy_textgen":
@@ -1380,7 +1417,7 @@ class VLM:
                 mmproj_name=VLM.mmproj_file or None,
                 vram_policy=VLM.vram_policy,
                 kv_cache_type=VLM.kv_cache_type,
-                load_mtp=VLM.mtp_enabled,
+                load_mtp=VLM.mtp_enabled if load_mtp is None else bool(load_mtp),
             )
             return
 
@@ -1558,7 +1595,7 @@ class VLM:
 
     def inference(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100,
                   repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None,
-                  reject_truncated=False, cancel_check=None, *, response_format=None):
+                  reject_truncated=False, cancel_check=None, *, response_format=None, load_mtp=None):
         # 设置为处理中状态
         VLM.set_processing_status(True)
         logger.debug("Starting VLM local inference...")
@@ -1603,6 +1640,7 @@ class VLM:
                     cancel_check=cancel_check,
                     **({"response_format": response_format} if response_format is not None else {}),
                     **({"reject_truncated": True} if reject_truncated else {}),
+                    **({"load_mtp": load_mtp} if load_mtp is not None else {}),
                 )
         except LlamaCppOutputLimitError as error:
             raise PromptActionOutputLimitError(str(error)) from error
@@ -1803,7 +1841,7 @@ class VLM:
     @torch.inference_mode()
     def inference_local(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100,
                         repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None, cancel_check=None,
-                        *, response_format=None, reject_truncated=False):
+                        *, response_format=None, reject_truncated=False, load_mtp=None):
         try:
             # 设置处理状态为True
             self.set_processing_status(True)
@@ -1846,7 +1884,10 @@ class VLM:
 
             if VLM.is_llamacpp:
                 VLM.ensure_model_files_ready(VLM.current_version)
-                self.load_model(download=False)
+                self.load_model(
+                    download=False,
+                    **({"load_mtp": load_mtp} if load_mtp is not None else {}),
+                )
                 res = llamacpp_vlm.inference(
                     image=image,
                     prompt=prompt,
@@ -1940,6 +1981,14 @@ class VLM:
 
     def model_exists(self):
         return VLM.model_exists_for_version(VLM.current_version)
+
+    def _prompt_inference(self, image, *args, **kwargs):
+        """Apply the selected model's MTP default to this prompt operation only."""
+        if VLM.is_llamacpp:
+            config_data = VLM.get_version_config(VLM.current_version, scan_catalog=False) or {}
+            if config_data.get("prompt_mtp_default"):
+                kwargs.setdefault("load_mtp", image is None)
+        return self.inference(image, *args, **kwargs)
 
     def extended_prompt_with_skills(
         self,
@@ -2096,7 +2145,7 @@ class VLM:
             inference_image = _superprompt_image_input(input_images)
             request_prompt = user_prompt
             for attempt in range(2 if detail_policy else 1):
-                result = self.inference(
+                result = self._prompt_inference(
                     inference_image,
                     request_prompt,
                     max_tokens=1800 if compiler_mode == minimax_h3_prompt_compiler.MODE_REF2VA else (1200 if compiler else 2048),
@@ -2179,7 +2228,7 @@ class VLM:
                 logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for scene extended prompt")
                 media_note = prompt_actions.prompt_action_media_note(media_context)
                 legacy_prompt = "\n\n".join(part for part in (prompt_prompt, media_note, input_text) if str(part or "").strip())
-                return self.inference(
+                return self._prompt_inference(
                     _superprompt_image_input(input_images), prompt=legacy_prompt,
                     enable_thinking=False, reject_truncated=True,
                 )
@@ -2190,7 +2239,7 @@ class VLM:
         logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for standard extended prompt")
         media_note = prompt_actions.prompt_action_media_note(media_context)
         fallback_prompt = "\n\n".join(part for part in (media_note, f'{VLM.prompt_extend}{input_text}') if str(part or "").strip())
-        result = self.inference(
+        result = self._prompt_inference(
             _superprompt_image_input(input_images), prompt=fallback_prompt,
             enable_thinking=False, reject_truncated=True,
         )
@@ -2343,7 +2392,7 @@ class VLM:
                                 "Regional layout generation: compact format, mode=%s, backend=%s, retry=%s, constrained=%s",
                                 request["mode"], VLM.backend, bool(attempt), constrained,
                             )
-                            output = self.inference(
+                            output = self._prompt_inference(
                                 image, annotation_system + "\n" + user_input + retry_context,
                                 system_prompt=annotation_system, max_tokens=8192,
                                 temperature=0.2, top_p=0.9, top_k=40, repetition_penalty=1.0,
@@ -2378,7 +2427,7 @@ class VLM:
                                     )
                     else:
                         generation_phase = "inference"
-                        output = self.inference(
+                        output = self._prompt_inference(
                             image, user_input, system_prompt=editor_generation_system(request, language, image_size),
                             max_tokens=8192, temperature=0.4, top_p=0.85, seed=-1,
                             enable_thinking=False, reject_truncated=True,
@@ -2401,7 +2450,7 @@ class VLM:
                                 "Return the entire corrected layout JSON without commentary."
                             )
                             generation_phase = "inference"
-                            corrected = self.inference(
+                            corrected = self._prompt_inference(
                                 image, repair_input, system_prompt=repair_system,
                                 max_tokens=8192, temperature=0.1, top_p=0.85, seed=-1,
                                 enable_thinking=False, reject_truncated=True,
@@ -2418,7 +2467,7 @@ class VLM:
                 request = editor_optimization_request(original)
                 if not VLM.get_enable() or not self.model_exists():
                     raise ValueError("The configured LLM is unavailable")
-                output = self.inference(
+                output = self._prompt_inference(
                     None, original, system_prompt=editor_optimization_system(request, language),
                     max_tokens=8192 if request["scope"] == "all" else 2048,
                     temperature=0.4, top_p=0.85, seed=-1,
@@ -2503,12 +2552,12 @@ class VLM:
             if direction == "auto":
                 direction = "to_en" if is_chinese(original) else "to_cn"
             if direction == "to_en":
-                output = self.inference(
+                output = self._prompt_inference(
                     None, prompt=f'{VLM.prompt_translator}{original}',
                     enable_thinking=False, reject_truncated=True,
                 )
             elif direction == "to_cn":
-                output = self.inference(
+                output = self._prompt_inference(
                     None, prompt=f'{VLM.prompt_translator_cn}{original}',
                     enable_thinking=False, reject_truncated=True,
                 )
@@ -2857,7 +2906,7 @@ class VLM:
             return input_text
         if VLM.get_enable() and self.model_exists() and method in [None, 'Big Model']:
             logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for translation to English")
-            return self.inference(None, prompt=f'{VLM.prompt_translator}{input_text}')
+            return self._prompt_inference(None, prompt=f'{VLM.prompt_translator}{input_text}')
         else:
             return translator.convert(input_text, method)
 
@@ -2866,13 +2915,13 @@ class VLM:
             return input_text
         if VLM.get_enable() and self.model_exists() and method in [None, 'Big Model']:
             logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for translation to Chinese")
-            return self.inference(None, prompt=f'{VLM.prompt_translator_cn}{input_text}', cancel_check=cancel_check)
+            return self._prompt_inference(None, prompt=f'{VLM.prompt_translator_cn}{input_text}', cancel_check=cancel_check)
         else:
             return translator.convert(input_text, method, 'cn')
 
     def expand_tts_style_instruction(self, style_text):
         prompt = f"{VLM.prompt_tts_style_director}\n\nUser Input: {style_text}\n\nOutput:"
-        result = self.inference(None, prompt=prompt)
+        result = self._prompt_inference(None, prompt=prompt)
         return "" if result is None else str(result).strip()
        
 # 初始化模型版本

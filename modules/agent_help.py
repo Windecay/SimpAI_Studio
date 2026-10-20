@@ -209,6 +209,33 @@ def normalize(value):
     return unicodedata.normalize("NFKC", str(value or "")).casefold()
 
 
+def usage_topic(query, lang):
+    """Select declared help metadata for an explicit feature-usage question."""
+    query = normalize(query).strip()
+    if len(query) > 512 or not re.search(
+        r"怎么|如何|怎样|哪里|在哪|用法|\b(?:how|where)\b", query
+    ):
+        return None
+    try:
+        data = help_data()
+    except (OSError, ValueError):
+        return None
+    matched = []
+    for key, topic in data["topics"].items():
+        aliases = [text(data["titles"][key], lang), *(topic.get("keywords") or [])]
+        lengths = [
+            len(alias) for value in aliases
+            if len(alias := normalize(value).strip()) >= 3
+            and re.search(r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])", query)
+        ]
+        if lengths:
+            matched.append((max(lengths), "topic:" + key))
+    matched.sort(reverse=True)
+    if matched and (len(matched) == 1 or matched[0][0] > matched[1][0]):
+        return matched[0][1]
+    return None
+
+
 def search(documents, query, preset_id=""):
     query = normalize(query).strip()
     words = query.split()

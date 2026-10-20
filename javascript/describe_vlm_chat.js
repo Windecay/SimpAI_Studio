@@ -19946,7 +19946,7 @@
                 enabled: false,
                 frequency: 'key_moments',
                 queue_mode: 'background',
-                preferred_preset: 'MiniMax-H3(R2I)',
+                preferred_preset: '',
                 aspect_ratio: '16:9',
                 reference_asset_ids: []
             }
@@ -22551,11 +22551,9 @@
     function roleplayPreferredPresetEntry(action, task, inputCount = 0) {
         if (!roleplayAutomaticPresetAction(action)) return null;
         if (['user', 'session_preference'].includes(String(action?.preset_source || ''))) return null;
-        // Krea2-ImageEdit is intentionally not used for roleplay auto-routing.
-        // Character portraits and standalone scene references use Krea2-Turbo T2I;
-        // scene actions with reference images keep the existing compatible route.
+        // MOSS-Image is preferred only for roleplay without reference images.
         if (task !== 'text_to_image' || inputCount !== 0) return null;
-        const entry = creativePresetEntry('Krea2-Turbo');
+        const entry = creativePresetEntry('MOSS-Image');
         if (!entry || creativePresetModelReadiness(entry) === 'missing') return null;
         return creativePresetHasTaskRoute(entry, task, inputCount) ? entry : null;
     }

@@ -9,11 +9,22 @@ import re
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as ToolTimeoutError
+from difflib import get_close_matches
 
 from modules import vlm_skill_runtime, vlm_skill_authoring
 
 
 _IMAGE_REF_RE = re.compile(r"^chat-image:[A-Za-z0-9_.:-]+$")
+
+
+def unavailable_tool_result(name, available):
+    names = sorted(set(available))
+    suggestions = get_close_matches(str(name or ""), names, n=3, cutoff=0.6)
+    return {
+        "ok": False, "code": "tool_not_available",
+        "error": "Use an exact tool name from the current available catalog. No tool was executed.",
+        **({"suggested_tools": suggestions} if suggestions else {}),
+    }
 
 
 class ToolRegistry:
@@ -247,7 +258,10 @@ def create_default_registry():
         allowed = context.get("allowed_tool_names")
         tool = registry.get(name)
         if tool is None or (allowed is not None and name not in allowed):
-            return {"ok": False, "code": "tool_not_available", "error": "This tool is not available in the current turn."}
+            available = allowed if allowed is not None else {
+                item["name"] for item in registry.public_tools()
+            }
+            return unavailable_tool_result(name, available)
         return {key: value for key, value in tool.items() if key != "handler"}
 
     registry.register(
