@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -26,6 +27,7 @@ PROFILE_FOLDER = "generation_params"
 _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 _MISSING_MODEL_MARKER = "\u2B07"
 _PROFILE_WARNING_LIMIT = 6
+_UI_LOAD_LOCK = threading.Lock()
 
 _SCENE_PROFILE_CONTROL_KEYS = (
     "scene_theme",
@@ -197,6 +199,71 @@ def refresh_dropdown(context: Any = None, current_value: Any = None):
     choices = [entry["name"] for entry in _profile_entries(user_did, preset_name)]
     selected = _clean_name(current_value)
     return dropdown_update(choices=choices, value=selected if selected in choices else None, allow_custom_value=True)
+
+
+def _ui_load_request(value: Any) -> dict[str, Any]:
+    try:
+        request = json.loads(value) if isinstance(value, str) else value
+        revision = request.get("revision") if isinstance(request, dict) else None
+        if type(revision) is int and revision > 0:
+            return request
+    except (TypeError, ValueError):
+        pass
+    return {}
+
+
+def invalidate_ui_profile_load(load_guard: dict, client_request: Any):
+    revision = _ui_load_request(client_request).get("revision", 0)
+    with _UI_LOAD_LOCK:
+        if revision > 0 and revision >= load_guard.get("revision", 0):
+            load_guard.update(revision=revision, request=None)
+
+
+def start_ui_profile_load(name: Any, context: Any, load_guard: dict, client_request: Any) -> dict:
+    request = _ui_load_request(client_request)
+    revision = request.get("revision", 0)
+    profile_name = _clean_name(name)
+    preset_name = _get_preset_name(context)
+    if (
+        not profile_name
+        or request.get("name") != profile_name
+        or request.get("preset") not in (None, "", preset_name)
+    ):
+        invalidate_ui_profile_load(load_guard, request)
+        return {}
+    ticket = {
+        "revision": revision,
+        "name": profile_name,
+        "user_did": _get_user_did(context),
+        "preset": preset_name,
+        "client_request": request,
+    }
+    with _UI_LOAD_LOCK:
+        if revision <= load_guard.get("revision", 0):
+            return {}
+        load_guard.update(revision=revision, request=ticket)
+    return ticket
+
+
+def ui_profile_load_is_current(ticket: dict, context: Any, load_guard: dict) -> bool:
+    if not ticket:
+        return False
+    with _UI_LOAD_LOCK:
+        return (
+            load_guard.get("request") == ticket
+            and ticket.get("user_did") == _get_user_did(context)
+            and ticket.get("preset") == _get_preset_name(context)
+        )
+
+
+def invalidate_ui_profile_load_context(context: Any, load_guard: dict):
+    with _UI_LOAD_LOCK:
+        ticket = load_guard.get("request")
+        if ticket and (
+            ticket.get("user_did") != _get_user_did(context)
+            or ticket.get("preset") != _get_preset_name(context)
+        ):
+            load_guard["request"] = None
 
 
 def _state_preset_json(state_params: dict[str, Any], user_did: str, preset_name: str) -> dict[str, Any]:

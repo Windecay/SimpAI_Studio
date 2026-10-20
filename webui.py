@@ -7952,6 +7952,9 @@ with shared.gradio_root:
                             scale=1,
                             min_width=58,
                         )
+                    parameter_profile_load_guard = gr.State({})
+                    parameter_profile_client_request = gr.Textbox(value="", visible="hidden")
+                    parameter_profile_prompt_result = gr.Textbox(value="", visible="hidden")
                     resolution_control = create_main_resolution_control()
                     aspect_ratios_accordion = resolution_control.container
                     aspect_ratios_selection = resolution_control.selection
@@ -13766,15 +13769,48 @@ with shared.gradio_root:
         return _normalize_reset_params_model_bridge_result(result, state_params)
 
     def save_parameter_profile(profile_name, *values):
+        values, load_guard, client_request = values[:-2], values[-2], values[-1]
+        parameter_profiles.invalidate_ui_profile_load(load_guard, client_request)
         payload = dict(zip(parameter_profile_snapshot_names, values))
         return parameter_profiles.save_profile(profile_name, payload)
 
-    def load_parameter_profile_model_bridge_safe(profile_name, state_params, is_generating, inpaint_mode):
-        metadata, _ = parameter_profiles.load_profile_metadata(profile_name, state_params)
+    def delete_parameter_profile(profile_name, state_params, load_guard, client_request):
+        parameter_profiles.invalidate_ui_profile_load(load_guard, client_request)
+        return parameter_profiles.delete_profile(profile_name, state_params)
+
+    parameter_profile_prompt_indices = [
+        [index for index, output in enumerate(reset_image_params_outputs) if output is control]
+        for control in (prompt, negative_prompt)
+    ]
+
+    def load_parameter_profile_model_bridge_safe(profile_name, state_params, is_generating, inpaint_mode, load_guard, client_request):
+        skipped = [skip_component_update() for _ in range(len(reset_image_params_outputs) + 5)]
+        ticket = parameter_profiles.start_ui_profile_load(profile_name, state_params, load_guard, client_request)
+        if not ticket:
+            return skipped
+        # Loading changes the context; keep pending changes out of the live session.
+        user = state_params.get("user")
+        load_state = copy.deepcopy(state_params, {id(user): user})
+        metadata, _ = parameter_profiles.load_profile_metadata(profile_name, load_state)
         if metadata is None:
-            return [skip_component_update() for _ in range(len(reset_image_params_outputs) + 4)]
-        result = toolbox.reset_params_by_image_meta_with_state(metadata, state_params, is_generating, inpaint_mode)
-        return _normalize_reset_params_model_bridge_result(result, state_params) + parameter_profiles.resolution_extra_updates(metadata)
+            return skipped
+        result = toolbox.reset_params_by_image_meta_with_state(metadata, load_state, is_generating, inpaint_mode)
+        result = _normalize_reset_params_model_bridge_result(result, load_state) + parameter_profiles.resolution_extra_updates(metadata)
+        if not parameter_profiles.ui_profile_load_is_current(ticket, state_params, load_guard):
+            return skipped
+        prompt_values = []
+        for indices in parameter_profile_prompt_indices:
+            update = {"__type__": "update"}
+            for index in indices:
+                value = result[index]
+                if isinstance(value, dict) and value.get("__type__") == "update":
+                    update.update(value)
+                else:
+                    update["value"] = value
+                result[index] = skip_component_update()
+            prompt_values.append(update)
+        prompt_result = json.dumps({"request": ticket["client_request"], "values": prompt_values}, ensure_ascii=False)
+        return result + [prompt_result]
 
     system_params.change(
         parameter_profiles.refresh_dropdown,
@@ -13785,10 +13821,11 @@ with shared.gradio_root:
     )
     parameter_profile_save_evt = parameter_profile_save.click(
         save_parameter_profile,
-        inputs=[parameter_profile_select] + parameter_profile_snapshot_inputs,
+        inputs=[parameter_profile_select] + parameter_profile_snapshot_inputs + [parameter_profile_load_guard, parameter_profile_client_request],
         outputs=parameter_profile_select,
         queue=False,
         show_progress=False,
+        js="(...args)=>{args[args.length-1]=window.SimpAIParameterProfiles.invalidate(); return args;}",
     )
     parameter_profile_save_evt.then(
         None,
@@ -13796,26 +13833,52 @@ with shared.gradio_root:
         js="(name)=>{window.dispatchEvent(new CustomEvent('simpai:parameter-profiles-changed',{detail:{operation:'save',name:String(name||'')}}));}",
     )
     parameter_profile_delete_evt = parameter_profile_delete.click(
-        parameter_profiles.delete_profile,
-        inputs=[parameter_profile_select, system_params],
+        delete_parameter_profile,
+        inputs=[parameter_profile_select, system_params, parameter_profile_load_guard, parameter_profile_client_request],
         outputs=parameter_profile_select,
         queue=False,
         show_progress=False,
+        js="(...args)=>{args[args.length-1]=window.SimpAIParameterProfiles.invalidate(); return args;}",
     )
     parameter_profile_delete_evt.then(
         None,
         inputs=parameter_profile_select,
         js="(name)=>{window.dispatchEvent(new CustomEvent('simpai:parameter-profiles-changed',{detail:{operation:'delete',name:String(name||'')}}));}",
     )
-    parameter_profile_load_outputs = reset_image_params_outputs + [model_params_state, random_aspect_ratio_checkbox, use_resolution_override_checkbox, resolution_original_input_checkbox]
-    parameter_profile_load_evt = parameter_profile_select.change(
+    parameter_profile_load_outputs = reset_image_params_outputs + [model_params_state, random_aspect_ratio_checkbox, use_resolution_override_checkbox, resolution_original_input_checkbox, parameter_profile_prompt_result]
+    parameter_profile_load_evt = parameter_profile_select.input(
         load_parameter_profile_model_bridge_safe,
-        inputs=[parameter_profile_select, state_topbar, state_is_generating, inpaint_mode],
+        inputs=[parameter_profile_select, state_topbar, state_is_generating, inpaint_mode, parameter_profile_load_guard, parameter_profile_client_request],
         outputs=parameter_profile_load_outputs,
         queue=False,
         show_progress=False,
+        trigger_mode="multiple",
+        js="(...args)=>{args[args.length-1]=window.SimpAIParameterProfiles.begin(args[0]); return args;}",
     )
-    parameter_profile_load_evt.then(regen_update_system_params, inputs=state_topbar, outputs=system_params, queue=False, show_progress=False) \
+    parameter_profile_load_evt.success(
+        None,
+        inputs=parameter_profile_prompt_result,
+        outputs=[prompt, negative_prompt],
+        js="(result)=>window.SimpAIParameterProfiles.apply(result)",
+        queue=False,
+        show_progress=False,
+    )
+    gr.on(
+        triggers=[prompt.input, negative_prompt.input],
+        fn=parameter_profiles.invalidate_ui_profile_load,
+        inputs=[parameter_profile_load_guard, parameter_profile_client_request],
+        queue=False,
+        show_progress=False,
+        trigger_mode="always_last",
+        js="(guard,request)=>[guard,window.SimpAIParameterProfiles.invalidate()]",
+    )
+    state_topbar.change(
+        parameter_profiles.invalidate_ui_profile_load_context,
+        inputs=[state_topbar, parameter_profile_load_guard],
+        queue=False,
+        show_progress=False,
+    )
+    parameter_profile_load_evt.success(regen_update_system_params, inputs=state_topbar, outputs=system_params, queue=False, show_progress=False) \
             .then(lambda x: None, inputs=system_params, queue=False, show_progress=False, js='(params)=>{try{if(typeof refresh_topbar_status_js_for_preset_nav==="function") refresh_topbar_status_js_for_preset_nav(params); else refresh_topbar_status_js(params);}catch(e){console.warn("[UI-TRACE] parameter_profile_topbar_status_sync_failed", e);} try{if(typeof scheduleSceneAndAdvancedSync==="function") scheduleSceneAndAdvancedSync("parameter_profile_load", !!(params && params.__is_scene_frontend));}catch(e){console.warn("[UI-TRACE] parameter_profile_scene_sync_failed", e);} try{if(typeof syncResolutionControlWidgets==="function"){syncResolutionControlWidgets(); setTimeout(syncResolutionControlWidgets,80);}}catch(e){console.warn("[UI-TRACE] parameter_profile_resolution_sync_failed", e);}}') \
             .then(toggle_image_input_panel, inputs=[input_image_checkbox, qwen_tts_checkbox], outputs=[image_input_panel, engine_class_display] + layout_image_tab + [tts_panel, qwen_tts_checkbox], queue=False, show_progress=False)
 

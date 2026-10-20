@@ -177,3 +177,7 @@ local 模式下推理 Key 可使用当前 HTTP／HTTPS 服务地址；多用户�
 用户在“身份 → 应用 → 标签反推模型”选择 WD14 或 PixAI，主界面、Canvas 与 Agent 标签工具读取同一份用户设置。旧工具名 `simpai.prompts.wd14_status`／`simpai.prompts.wd14` 保留；状态返回实际选择，缺失时不自动更换模型。阈值省略或为 null 时使用模型默认值，明确提供的数值保留。WD14 Agent 路径仍使用 CPU；PixAI 使用可用 GPU，并在完成后释放会话。
 
 PixAI 目标为 Mexes ONNX FP16，文件名为 `pixai-tagger-v1.0-fp16.onnx` 与同名 `.csv`。魔搭 `windecay/SimpAI_dev/SimpleModels/clip_vision` 为首选，固定 revision 的 HF 原仓库为备用。用户可在应用设置中明确下载缺失文件，仍需已有模型下载权限；Agent 只读工具不会下载，也不能代用户调用私密设置接口。使用当前状态和返回的 model_id，不假定工具名代表固定模型。详情及验收范围见 `docs/pixai-tagger.md`。
+
+## 2026-10-20：MCP 图片读取
+
+使用 1.0.3 及以上 MCP 适配器查看上传图片、蒙版或生成结果时，调用 `simpai.assets.read` 并提供当前身份的图片 `asset_id`。它通过 `tools/call` 返回原生图片内容，不需要文件系统 `read` 工具或 `resources/read`。上传和任务结果里的 `read_image` 提供调用名称与参数；收到图片内容后才能判断画面，素材元数据或 URI 文本不代表已看图。

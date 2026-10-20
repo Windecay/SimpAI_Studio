@@ -87,6 +87,28 @@ def validate_prompt(prompt, width=None, height=None):
     return data
 
 
+def caption_output(text):
+    """Unwrap caption-only responses without discarding any spatial layout."""
+    source = str(text or "").strip()
+    if not source.startswith("{"):
+        _text(source, "caption")
+        return source
+    data = json.loads(source, object_pairs_hook=_object)
+    if isinstance(data, dict) and set(data) == {"caption"}:
+        caption = data["caption"]
+        if isinstance(caption, dict) and set(caption) <= {"long", "medium", "short"}:
+            for value in caption.values():
+                _text(value, "caption")
+            caption = next((caption[key] for key in ("long", "medium", "short") if key in caption), "")
+    elif (isinstance(data, dict) and set(data) == {"summary"}
+          and isinstance(data["summary"], dict) and set(data["summary"]) == {"caption"}):
+        caption = data["summary"]["caption"]
+    else:
+        raise ValueError("Expected a natural-language caption, not Layout or other JSON")
+    _text(caption, "caption")
+    return caption.strip()
+
+
 def editor_optimization_request(text):
     """Read caption-editing context without granting permission to change geometry."""
     if not isinstance(text, str) or len(text) > 120000:

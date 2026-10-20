@@ -8562,6 +8562,65 @@ function simpleaiLocalText(en, cn, source) {
     return String(lang.startsWith("en") ? (en ?? cn ?? "") : (cn ?? en ?? ""));
 }
 
+function createParameterProfileLoadGuard() {
+    let revision = 0;
+    let pending = null;
+    const skip = () => ({ __type__: 'update' });
+    const read = (id) => {
+        const root = typeof gradioApp === 'function' ? gradioApp() : document;
+        const field = root?.querySelector?.(`#${id} input, #${id} textarea`);
+        return String(field?.value ?? '');
+    };
+    const preset = () => String(window.simpleaiTopbarSystemParams?.__preset || '');
+    const invalidate = () => {
+        pending = null;
+        return JSON.stringify({ revision: ++revision });
+    };
+    return {
+        invalidate,
+        begin(name) {
+            const selected = String(name || '').trim();
+            if (selected !== read('parameter_profile_select').trim()) return '{}';
+            pending = {
+                revision: ++revision,
+                name: selected,
+                preset: preset(),
+                prompt: read('positive_prompt'),
+                negative_prompt: read('negative_prompt'),
+            };
+            return JSON.stringify(pending);
+        },
+        apply(raw) {
+            let result;
+            try { result = JSON.parse(raw); } catch (error) { return [skip(), skip()]; }
+            const request = result?.request;
+            if (!pending || request?.revision !== revision
+                || request.revision !== pending.revision || request.name !== pending.name
+                || request.name !== read('parameter_profile_select').trim()
+                || request.preset !== preset()
+                || request.prompt !== read('positive_prompt')
+                || request.negative_prompt !== read('negative_prompt')
+                || !Array.isArray(result.values) || result.values.length !== 2) {
+                return [skip(), skip()];
+            }
+            pending = null;
+            return result.values;
+        },
+    };
+}
+
+window.SimpAIParameterProfiles = createParameterProfileLoadGuard();
+document.addEventListener('input', (event) => {
+    if (event.target?.closest?.('#positive_prompt, #negative_prompt, #parameter_profile_select')) {
+        window.SimpAIParameterProfiles.invalidate();
+    }
+}, true);
+document.addEventListener('click', (event) => {
+    if (event.target?.closest?.('#parameter_profile_save, #parameter_profile_delete')) {
+        window.SimpAIParameterProfiles.invalidate();
+    }
+}, true);
+
 function initParameterProfilePlaceholder() {
     const root = gradioApp();
     const container = root?.querySelector?.('#parameter_profile_select') || document.getElementById('parameter_profile_select');

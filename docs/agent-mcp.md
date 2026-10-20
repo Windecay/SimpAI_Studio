@@ -103,7 +103,11 @@ Windows 使用当前系统用户的 DPAPI 加密，目录为 `%LOCALAPPDATA%/Sim
 
 工具目录包含当前 API 注册的操作，实际调用权限由 Studio 再次校验。适配器保留结构化结果和 `isError`，调用者应检查错误码。网络错误不自动重试生成或下载；生成重试必须使用相同 `request_id` 与正文。
 
-生成完成后，`simpai.runs.get` 的每个素材带有 `resource_uri`，例如 `simpai://assets/file%3A...`。MCP 客户端可通过 `resources/read` 获取原始媒体，Bearer 始终由私密连接层使用。资源模板为 `simpai://assets/{asset_id}`；只接受服务器素材 ID，不接受本地文件路径或任意远端 URL。单个资源读取上限为 80 MiB。
+查看图片时，调用 **`simpai.assets.read`**，参数为 `{"asset_id":"file:<返回的素材 ID>"}` 或上传结果的 `asset:<ID>`。适配器通过 `tools/call` 返回原生 MCP `ImageContent`，图片不会被放进普通 JSON 文本。它支持当前身份的上传图片、蒙版和生成结果，不需要客户端提供文件系统 `read` 工具或开放 `resources/read`。客户端仍需把图片内容传给支持视觉的模型，不能只展示或转述文字元数据。
+
+`simpai.assets.read` 是 1.0.3 适配器提供的只读工具，复用已有素材下载接口和 `read` 权限，不是新增的 Studio HTTP 工具，也不加载本地 VLM。它返回原始图片和 MIME，不重编码；单图上限为 10 MiB。上传结果与任务结果中的图片会附带 `read_image`，包含可直接使用的工具名称和参数；任务与上传工具说明、MCP 初始化说明也会指向该工具。
+
+生成完成后，`simpai.runs.get` 的每个素材仍带有 `resource_uri`，例如 `simpai://assets/file%3A...`。支持资源读取的 MCP 客户端可通过 `resources/read` 获取原始媒体，适用于较大原图、视频和音频，单个资源读取上限为 80 MiB。资源模板为 `simpai://assets/{asset_id}`。两种读取都只接受服务器素材 ID，不接受本地文件路径或任意远端 URL，Bearer 始终由私密连接层使用。
 
 上传沿用 API 的 base64 data URL 协议。大型素材的编码应由调用方连接层完成，避免将完整文件的 base64 内容放进模型上下文。
 
@@ -266,3 +270,11 @@ API、VLM、授权、MCP、Harness、工作流、WD14、提示词及包安全联
 需要把 Studio 本地 llama.cpp 模型设为外部 Harness 的主模型时，直接使用 Chat Completions 接口。用户在 Studio Web 的“Agent / API 接入 → 本地 LLM API → 管理 Key”创建推理 Key，外部客户端填写页面提供的 Base URL、Key 和模型 ID。完整 Key 可以由当前登录用户多次查看和复制。
 
 推理 Key 仅授权模型列表与推理，不能代替本 MCP 适配器的配对凭据。外部 Harness 同时需要调用 Studio 生成工具时，模型推理连接与 MCP 工具连接分别配置。推理 Key 管理不是 MCP 工具，密钥只由客户端私密配置保管，不进入模型消息。用法与验证范围见 [推理 API Key](inference-api-keys.md)；不需要为这项功能重新打包 MCP。
+
+## 2026-10-20：只使用工具的客户端看图与 1.0.3 小包
+
+旧适配器只通过 `resources/read` 提供媒体，并在普通工具结果中返回 URI 文本。客户端只向模型开放 MCP 工具时，没有图片读取工具可以调用；资源传输测试通过也不代表模型已经收到图片。
+
+1.0.3 新增适配器本地的 `simpai.assets.read`，通过原生图片内容返回当前身份的素材。该工具不转交 `/tools/call`，因此可以配合已经提供素材接口的旧 Studio 版本使用。工具发现、上传结果和生成结果均提供看图指引，既有 `resources/read` 保留。无效参数、路径、外部 URL、无权读取、素材不存在、非图片及超过 10 MiB 都会返回明确错误，不改用其他身份或泄露凭据。
+
+更新时只替换 `SimpAI_MCP_win.zip`，关闭客户端的 MCP 进程后将小包覆盖解压到已有适配器目录，再重新加载 MCP 连接。保留现有 `runtime`、客户端配置与授权记录；Python 运行环境及依赖不变，无需更新 Studio 大包。运行环境文件与 SHA256 以同目录的 `runtime-manifest.json` 为准。

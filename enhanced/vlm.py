@@ -430,6 +430,11 @@ def _superprompt_extract_json_prompt(text, *, preserve_moss_layout=False):
     if "{" not in source:
         return ""
     decoder = json.JSONDecoder()
+    if preserve_moss_layout and re.match(r'^\s*\{\s*"(?:summary|items|bbox_coord_space|bbox_format)"\s*:', source):
+        try:
+            decoder.raw_decode(source.lstrip())
+        except ValueError:
+            return source
     for match in re.finditer(r"\{", source):
         try:
             data, end = decoder.raw_decode(source, match.start())
@@ -437,7 +442,7 @@ def _superprompt_extract_json_prompt(text, *, preserve_moss_layout=False):
             continue
         if preserve_moss_layout and isinstance(data, dict) and {
             "summary", "items", "bbox_coord_space", "bbox_format",
-        }.issubset(data):
+        }.intersection(data):
             return source[match.start():end]
         prompt = _superprompt_prompt_from_json_object(data)
         if prompt:
@@ -2144,7 +2149,11 @@ class VLM:
             )
             inference_image = _superprompt_image_input(input_images)
             request_prompt = user_prompt
-            for attempt in range(2 if detail_policy else 1):
+            moss_caption_only = (
+                isinstance(target, dict) and target.get("key") == "moss_image"
+                and not input_text.lstrip().startswith("{")
+            )
+            for attempt in range(2 if detail_policy or moss_caption_only else 1):
                 result = self._prompt_inference(
                     inference_image,
                     request_prompt,
@@ -2159,9 +2168,27 @@ class VLM:
                     reject_truncated=True,
                 )
                 cleaned = _superprompt_clean_output(
-                    result, fallback="" if compiler or detail_policy else input_text,
+                    result, fallback="" if compiler or detail_policy or moss_caption_only else input_text,
                     preserve_moss_layout=isinstance(target, dict) and target.get("key") == "moss_image",
                 )
+                if moss_caption_only:
+                    from modules.moss_image_prompt import caption_output
+                    try:
+                        cleaned = caption_output(cleaned)
+                    except (ValueError, TypeError) as error:
+                        logger.info("MOSS caption expansion format review: attempt=%s error=%s",
+                                    attempt + 1, error)
+                        if attempt == 0:
+                            request_prompt = (
+                                f"{user_prompt}\n\nPrevious draft:\n{cleaned}\n\n"
+                                "Correct the output format. The original input is an ordinary MOSS caption. "
+                                "Return the complete expanded natural-language description only, in the input's "
+                                "language unless another language was requested. Preserve all original constraints "
+                                "and exact visible wording. Do not return JSON, summary/items fields, bounding "
+                                "boxes, coordinates, explanations or Markdown."
+                            )
+                            continue
+                        return cleaned
                 if not detail_policy:
                     return cleaned
                 review = prompt_actions.validate_prompt_action_detail(cleaned, detail_policy)
@@ -2859,18 +2886,28 @@ class VLM:
         if not effective_target_kind and not skip_compiler_validation:
             prompt_target, _agent_prompt = _superprompt_target_from_state(state_data)
             if prompt_target.get("key") == "moss_image":
-                from modules.moss_image_prompt import validate_prompt
+                from modules.moss_image_prompt import caption_output, validate_prompt
+                layout_input = original.lstrip().startswith("{")
                 try:
-                    revised_layout = validate_prompt(cleaned)
-                    if original.lstrip().startswith("{") and validate_prompt(original) and not revised_layout:
-                        raise ValueError("Keep the existing Layout JSON instead of replacing it with a caption")
+                    if layout_input:
+                        revised_layout = validate_prompt(cleaned)
+                        if validate_prompt(original) and not revised_layout:
+                            raise ValueError("Keep the existing Layout JSON instead of replacing it with a caption")
+                    else:
+                        cleaned = caption_output(cleaned)
                 except (ValueError, TypeError) as error:
+                    logger.warning("MOSS prompt expansion rejected: layout_input=%s error=%s", layout_input, error)
                     language = str(state_data.get("__lang") or "cn")
                     return {
                         "ok": False, "text": original, "action_id": action["id"], "media": public_media,
                         "error": (
-                            f"MOSS Layout is invalid; the original prompt was preserved: {error}"
-                            if language == "en" else f"MOSS 布局格式不完整，已保留原提示词：{error}"
+                            (f"MOSS Layout is invalid; the original prompt was preserved: {error}"
+                             if layout_input else
+                             f"MOSS caption expansion did not return a text description; the original prompt was preserved: {error}")
+                            if language == "en" else
+                            ("MOSS 布局格式不完整，已保留原提示词。"
+                             if layout_input else
+                             "MOSS 普通扩写未返回自然语言描述，已保留原提示词。")
                         ),
                     }
             compiler = minimax_h3_prompt_compiler.target_compiler(prompt_target)

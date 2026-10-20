@@ -58,3 +58,17 @@ Version 1.0.2 supports the server's local VLM tools and their bounded inference
 timeouts. Browser approval must explicitly include `vlm.infer`; ordinary read
 permission does not authorize inference. The MCP client may also need its own
 tool-call timeout adjusted. Model/runtime archives do not need to be replaced.
+
+Version 1.0.3 adds `simpai.assets.read`. Call it with an image `asset_id` from
+upload or `simpai.runs.get` to receive native MCP image content. It also reads
+owned masks and needs no filesystem `read` tool, `resources/read` support or
+local VLM inference. The client must pass image content to a vision-capable
+model. Original images up to 10 MiB are supported without re-encoding; use the
+resource URI for larger originals, video or audio.
+
+To update an existing 1.0.x installation, stop its MCP process and extract this
+small ZIP over the same adapter folder, then reload the MCP connection in your
+client. Keep `runtime`, your client configuration and the private authorization
+store. The runtime ZIP is unchanged and no new dependencies are installed.
+The existing Studio asset endpoint is reused, so this fix does not require a
+new Studio ZIP.

@@ -46,7 +46,7 @@ def add_file(archive, name, payload):
     archive.writestr(entry, payload, compresslevel=6)
 
 
-def build(python_root, sdk_root, output, version="1.0.2"):
+def build(python_root, sdk_root, output, version="1.0.3"):
     python_root, sdk_root, output = Path(python_root).resolve(), Path(sdk_root).resolve(), Path(output).resolve()
     if not (python_root / "python313.dll").is_file() or not (python_root / "python313.zip").is_file():
         raise ValueError("Supply a CPython 3.13 Windows x64 embedded distribution")

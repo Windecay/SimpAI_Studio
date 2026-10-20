@@ -292,8 +292,8 @@ class StudioConnection:
             return session
         raise ConnectionError("pairing_timeout")
 
-    def asset(self, asset_id):
-        if not re.fullmatch(r"(?:asset|file):[0-9a-f]{24,64}", asset_id):
+    def asset(self, asset_id, *, max_bytes=80 * 1024 * 1024):
+        if not isinstance(asset_id, str) or not re.fullmatch(r"(?:asset|file):[0-9a-f]{24,64}", asset_id):
             raise ConnectionError("invalid_asset_id")
         token, _ = self.authenticate()
         headers = {"Authorization": "Bearer " + token} if token else {}
@@ -305,9 +305,13 @@ class StudioConnection:
                 parts, size = [], 0
                 for part in response.iter_content(65536):
                     size += len(part)
-                    if size > 80 * 1024 * 1024:
-                        raise ConnectionError("asset_too_large")
+                    if size > max_bytes:
+                        raise ConnectionError("asset_too_large", {
+                            "code": "asset_too_large",
+                            "message": "The asset exceeds the read size limit.",
+                            "details": {"max_bytes": max_bytes},
+                        })
                     parts.append(part)
-                return b"".join(parts), response.headers.get("Content-Type", "application/octet-stream").split(";")[0]
+                return b"".join(parts), response.headers.get("Content-Type", "application/octet-stream").split(";")[0].strip().lower()
         except requests.RequestException:
             raise ConnectionError("studio_connection_failed") from None

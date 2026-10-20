@@ -534,11 +534,16 @@ def _canvas_vlm_markdown_section(content, heading):
     return match.group(0).strip() if match else ""
 
 
-def _canvas_vlm_prompt_rewrite_skill_excerpt(doc, target_key, target=None):
+def _canvas_vlm_prompt_rewrite_skill_excerpt(doc, target_key, target=None, *, caption_only=False):
     item = doc if isinstance(doc, dict) else {}
     content = str(item.get("content") or "").strip()
     if not content:
         return ""
+    if caption_only and _canvas_vlm_prompt_rewrite_target_family(target_key, target) == "moss_image":
+        caption = (_canvas_vlm_markdown_section(content, "## 普通描述")
+                   or _canvas_vlm_markdown_section(content, "## Caption"))
+        if caption:
+            return content.splitlines()[0] + "\n\n" + caption
     if str(item.get("path") or "").replace("\\", "/") != VLM_IMAGE_PROMPT_SKILL_FILE:
         return _canvas_vlm_prompt_rewrite_compact_text(
             content,
@@ -644,6 +649,7 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
     target_requires_anima = _canvas_is_anima_prompt_target_key(target_key, target_meta)
     target_requires_danbooru = target_key in CANVAS_DANBOORU_TARGET_KEYS
     target_family = _canvas_vlm_prompt_rewrite_target_family(target_key, target_meta)
+    moss_caption_only = target_family == "moss_image" and not str(prompt or "").lstrip().startswith("{")
     required_docs = _canvas_vlm_prompt_rewrite_required_docs(target_payload)
     qwen21_t2i = bool(
         {"qwen_image21_t2i_en.md", "qwen_image21_t2i_cn.md"}.intersection(required_docs)
@@ -662,9 +668,15 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
             "Chinese input must produce Chinese descriptive prose; English input must produce English prose. "
             "An explicitly requested output language takes priority over matching the input. "
             "Keep visible wording verbatim in its original language. "
-            "For an existing compiled Layout, preserve its schema, boxes, roles, exact text and optional fields; "
-            "only revise the requested captions in their original language and retain structural field names as-is. "
-            "Use the regional JSON editor for new spatial layouts."
+            + (
+                "The input is an ordinary caption. Return natural-language prose only, without JSON, "
+                "summary/items fields, bounding boxes or coordinates. Describing composition or text placement "
+                "does not request a new Layout. Use the regional JSON editor for new spatial layouts."
+                if moss_caption_only else
+                "The input is an existing compiled Layout. Preserve its schema, boxes, roles, exact text and "
+                "optional fields; only revise the requested captions in their original language and retain "
+                "structural field names as-is. Return the complete revised Layout JSON."
+            )
         )
     elif target_family == "flux3":
         format_rule = (
@@ -689,7 +701,7 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         "Rewrite the user request into one generator-ready prompt.",
         (
             "Output only the final caption or the revised compiled MOSS Layout JSON. No explanation or Markdown."
-            if target_family == "moss_image" else
+            if target_family == "moss_image" and not moss_caption_only else
             "Output the final prompt text only. No explanation, markdown, JSON, labels, metadata, policy notes, or internal state."
         ),
         "If the request is brief, expand it with visible subject, action/pose, setting, composition/camera, lighting, mood, and concrete visual details.",
@@ -716,7 +728,8 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         skill_text = "\n\n".join(
             f"### {doc['title']}\n{excerpt}"
             for doc in docs
-            for excerpt in [_canvas_vlm_prompt_rewrite_skill_excerpt(doc, target_key, target_meta)]
+            for excerpt in [_canvas_vlm_prompt_rewrite_skill_excerpt(
+                doc, target_key, target_meta, caption_only=moss_caption_only)]
             if excerpt
         )
         if skill_text:
