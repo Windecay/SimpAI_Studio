@@ -76,6 +76,84 @@ def _canvas_vlm_request_timeout(params, default):
     return default
 
 
+def _canvas_vlm_tavern_messages(params, current_message=None):
+    rows = params.get("describe_tavern_messages")
+    if not params.get("describe_roleplay_enabled") or params.get("roleplay_request_kind", "character") not in {
+        "", "character", "character_reply", "reply",
+    } or not isinstance(rows, list):
+        return None
+    messages = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("role") not in {"system", "user", "assistant"}:
+            continue
+        message = {"role": row["role"], "content": copy.deepcopy(row.get("content") or "")}
+        if row.get("name") in {"example_user", "example_assistant"}:
+            message["name"] = row["name"]
+        if row.get("_simpai_current_turn") and current_message is not None:
+            message["content"] = copy.deepcopy(current_message.get("content") or "")
+        messages.append(message)
+    return messages or None
+
+
+def _canvas_vlm_tavern_local_completion(messages, params, cancel_check, stream_callback=None):
+    if cancel_check():
+        return "", {}
+    kwargs = {
+        "max_tokens": int(params.get("max_tokens") or 4096),
+        "temperature": float(params.get("temperature", 0.82)),
+        "top_p": float(params.get("top_p", 0.9)),
+        "top_k": int(params.get("top_k", 40)),
+        "repeat_penalty": float(params.get("repetition_penalty", 1.05)),
+        "enable_thinking": _runtime_enable_thinking(params),
+    }
+    if int(params.get("seed", -1)) >= 0:
+        kwargs["seed"] = int(params["seed"])
+    for key in ("min_p", "frequency_penalty", "presence_penalty"):
+        if key in params:
+            kwargs[key] = float(params[key])
+    parts = []
+    reasoning = []
+    stats = {}
+    started = time.monotonic()
+    events = llamacpp_vlm.completion_messages(messages, cancel_check=cancel_check, **kwargs)
+    try:
+        for event in events:
+            if cancel_check():
+                break
+            if not isinstance(event, dict):
+                continue
+            thought = extract_stream_reasoning_delta(event)
+            if thought:
+                reasoning.append(thought)
+                if callable(stream_callback):
+                    stream_callback({"type": "reasoning_delta", "text": thought})
+            text = extract_stream_text_delta(event)
+            if text:
+                parts.append(text)
+                if callable(stream_callback):
+                    stream_callback(text)
+            if isinstance(event.get("usage"), dict):
+                stats["usage"] = event["usage"]
+            choices = event.get("choices") or []
+            if choices and choices[0].get("finish_reason"):
+                stats["finish_reason"] = choices[0]["finish_reason"]
+    finally:
+        events.close()
+    if not cancel_check() and not stats.get("finish_reason"):
+        raise RuntimeError("The local Tavern stream ended before its completion event.")
+    stats = {
+        **extract_response_metadata({
+            "choices": [{"message": {"role": "assistant", "content": "".join(parts)},
+                         "finish_reason": stats.get("finish_reason")}],
+            "usage": stats.get("usage", {}),
+        }),
+        **stats,
+    }
+    stats.update(extract_reasoning_display_metadata({}, "".join(reasoning)))
+    stats["elapsed"] = max(0, time.monotonic() - started)
+    return "".join(parts), stats
+
+
 def _canvas_vlm_cancel_key(project_id="", node_id="", conversation_id="", request_id=""):
     return (
         str(project_id or "").strip(),
@@ -862,10 +940,13 @@ def canvas_custom_llm_run(
             request, params, base_url=base_url, api_format=api_format,
             provider=params.get("custom_provider") or "", api_key=api_key,
         )
-        return apply_thinking_settings(
+        prepared = apply_thinking_settings(
             request, enable_thinking, base_url=base_url, api_format=api_format,
             provider=params.get("custom_provider") or "",
         )
+        if params.get("describe_tavern_messages") and api_format == "openai_responses":
+            prepared["_simpai_preserve_message_order"] = True
+        return prepared
 
     two_stage_intent_meta = None
     two_stage_requested = canvas_vlm_agent.two_stage_intent_enabled(payload, params, prompt)
@@ -969,6 +1050,10 @@ def canvas_custom_llm_run(
         messages.append({"role": "user", "content": [{"type": "text", "text": prompt}] + image_parts})
     else:
         messages.append({"role": "user", "content": prompt})
+    tavern_messages = _canvas_vlm_tavern_messages(params, messages[-1])
+    if tavern_messages is not None:
+        messages = tavern_messages
+        history_stats["tavern_preset"] = params.get("describe_tavern_preset", {})
 
     max_tokens = int(params.get("max_tokens", 1024))
     stream_enabled = bool(callable(stream_callback) and mode == "chat" and not params.get("disable_streaming"))
@@ -1171,6 +1256,9 @@ def canvas_custom_llm_run(
             retry_messages.append({"role": "user", "content": [{"type": "text", "text": retry_prompt}] + image_parts})
         else:
             retry_messages.append({"role": "user", "content": retry_prompt})
+        tavern_retry_messages = _canvas_vlm_tavern_messages(params, retry_messages[-1])
+        if tavern_retry_messages is not None:
+            retry_messages = tavern_retry_messages
         retry_max_tokens = max(max_tokens, 1024)
         retry_request = prepare_custom_request({
             "model": model,
@@ -1924,7 +2012,26 @@ def canvas_vlm_run(payload, stream_callback=None):
     rolling_context_stats = {"omitted": 0, "chars": 0, "max_history": 0, "budget": 0}
     completion_stats = {}
     stage_started = time.monotonic()
-    if mode == "chat" and not stateless_local_chat:
+    tavern_messages = _canvas_vlm_tavern_messages(params)
+    if tavern_messages is not None and not VLM.is_llamacpp:
+        return {
+            "ok": False, "error": "tavern_messages_backend_unsupported",
+            "details": (
+                "This model backend cannot send ordered Tavern messages. Use llama.cpp or a compatible API."
+                if params.get("describe_lang") == "en" else
+                "当前模型后端不支持按顺序发送酒馆消息，请使用 llama.cpp 或兼容聊天 API。"
+            ),
+        }
+    if tavern_messages is not None and VLM.is_llamacpp and mode == "chat":
+        if image_input is not None:
+            tavern_messages = _canvas_vlm_tavern_messages(
+                params, llamacpp_vlm._build_user_message(image_input, prompt),
+            )
+        text, completion_stats = _canvas_vlm_tavern_local_completion(
+            tavern_messages, params, cancel_local_inference, stream_callback,
+        )
+        rolling_context_stats["tavern_preset"] = params.get("describe_tavern_preset", {})
+    elif mode == "chat" and not stateless_local_chat:
         if bool(params.get("reset_context")):
             vlm.clear_conversation(conversation_id)
         system_prompt = params.get("system_prompt")

@@ -34,6 +34,7 @@ import modules.vlm_player_draft as vlm_player_draft
 import modules.vlm_autoplay_guidance as vlm_autoplay_guidance
 import modules.vlm_roleplay_reply as vlm_roleplay_reply
 import modules.vlm_roleplay_outline as vlm_roleplay_outline
+import modules.vlm_tavern as vlm_tavern
 import modules.vlm_reply_options as vlm_reply_options
 from modules.agent_service import AgentContext
 from modules.pe_models import prompt_expander_vlm_task
@@ -2494,8 +2495,29 @@ def _current_media_system_note(lang):
     )
 
 
+def _is_roleplay_player_form_request(payload):
+    return (
+        _normalize_chat_mode(payload.get("chat_mode") or payload.get("describe_chat_mode")) == "roleplay"
+        and str(payload.get("roleplay_request_kind") or "").strip().lower() in {
+            "form_draft", "roleplay_form_draft", "draft",
+        }
+        and str(payload.get("roleplay_form_target") or "").strip().lower() in {"persona", "player"}
+    )
+
+
 def build_runtime_payload(payload):
     payload = payload if isinstance(payload, dict) else {}
+    player_form_request = _is_roleplay_player_form_request(payload)
+    if player_form_request:
+        payload = dict(payload, history=[], history_full=[], skill_names=[])
+        for key in (
+            "system_prompt", "user_system_prompt", "custom_system_prompt",
+            "system_prompt_template_id", "vlm_system_prompt_template_id", "template_id",
+            "user_system_prompt_template_id", "vlm_user_system_prompt_template_id",
+            "base_system_prompt_content", "system_prompt_document",
+            "user_system_prompt_content", "user_prompt_document", "system_prompt_manual_override",
+        ):
+            payload.pop(key, None)
     conversation_id = _clean_text(payload.get("conversation_id")) or f"describe_vlm_chat:{int(time.time() * 1000)}"
     request_id = _clean_text(payload.get("request_id"))
     lang = _payload_lang(payload)
@@ -2522,6 +2544,8 @@ def build_runtime_payload(payload):
     skill_summaries = skill_context_data["summaries"]
     skill_catalog = skill_context_data["catalog"]
     skill_context = skill_context_data["loaded"]
+    if player_form_request:
+        skill_summaries, skill_catalog, skill_context = [], "", []
     skill_budget = _describe_public_skill_budget(skill_context_data["skill_report"])
     if not skill_budget.get("ok"):
         return _describe_skill_budget_failure(skill_budget, lang)
@@ -2736,7 +2760,7 @@ def build_runtime_payload(payload):
         "free_after": unload_after_chat,
         "conversation_id": conversation_id,
         "request_id": request_id,
-        "save_context": True,
+        "save_context": not player_form_request,
         "max_history": (
             int(roleplay_context.get("history", {}).get("messages") and len(roleplay_context["history"]["messages"]) or 1)
             if roleplay_context
@@ -2868,6 +2892,52 @@ def build_runtime_payload(payload):
                 vlm_autoplay_guidance.apply_to_task(proxy_task, guidance, references),
                 ensure_ascii=False, separators=(",", ":"),
             )
+    tavern_report = {}
+    if (roleplay_active and roleplay_request_kind in {"character", "character_reply", "reply", ""}
+            and vlm_tavern.has_actor_instructions(
+                prompt_options["roleplay_session"], roleplay_context.get("speaker_id", ""),
+            )):
+        tavern = vlm_tavern.build_actor_messages(
+            prompt_options["roleplay_session"], roleplay_context, system_prompt,
+            selected_roleplay_history or [], params["prompt"], latest_user_text=message,
+        )
+        tavern_report = tavern["report"]
+        preset_budget = _describe_context_text_budget_chars(roleplay_context_n_ctx)
+        if tavern_report["chars"] > preset_budget:
+            return {
+                "ok": False, "error": "tavern_preset_context_budget",
+                "details": (
+                    "The Tavern prompts exceed the selected context budget. Shorten the preset or increase context."
+                    if lang == "en" else "酒馆预设与当前故事资料超出上下文预算，请精简预设或增加上下文。"
+                ),
+                "tavern_preset": dict(tavern_report, budget_chars=preset_budget),
+            }
+        params["describe_tavern_messages"] = tavern["messages"]
+        params["describe_tavern_preset"] = dict(tavern_report, budget_chars=preset_budget)
+        roleplay_context["tavern_preset"] = params["describe_tavern_preset"]
+        report_content = json.dumps({
+            **params["describe_tavern_preset"],
+            "message_layout": [
+                {"role": row["role"], "chars": len(str(row["content"]))}
+                for row in tavern["messages"]
+            ],
+        }, ensure_ascii=False, indent=2)
+        roleplay_context.setdefault("blocks", []).append({
+            "id": "tavern_preset", "transport": "report", "content": report_content,
+            "chars": len(report_content), "items": len(tavern_report["applied_prompt_ids"]), "omitted": 0,
+        })
+        preset = vlm_tavern.normalize_preset(prompt_options["roleplay_session"].get("tavern_preset"))
+        if preset["enabled"] and preset["apply_sampling"]:
+            ranges = {
+                "temperature": (0, 2), "top_p": (0.001, 1), "top_k": (0, 1000),
+                "repetition_penalty": (0.1, 3), "min_p": (0, 1),
+                "frequency_penalty": (-2, 2), "presence_penalty": (-2, 2),
+            }
+            for key, value in preset["sampling"].items():
+                lower, upper = ranges[key]
+                params[key] = max(lower, min(upper, value))
+                if key == "top_k":
+                    params[key] = int(params[key])
     runtime_payload = {
         "project_id": "describe_image_chat",
         "node_id": "describe_vlm_chat",
@@ -2918,6 +2988,7 @@ def build_runtime_payload(payload):
                     )
                     if roleplay_context.get(key) not in (None, "")
                 } if roleplay_context else {},
+                "tavern_preset": tavern_report,
             },
         },
         "agent_context": None,

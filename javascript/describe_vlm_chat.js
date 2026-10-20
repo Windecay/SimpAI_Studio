@@ -43,7 +43,7 @@
     const MAX_ROLEPLAY_STATE_CHANGE_ROWS = 8;
     const MAX_ROLEPLAY_REFERENCE_BYTES = 80 * 1024 * 1024;
     const MAX_ROLEPLAY_WORLD_BOOK_ENTRIES = 400;
-    const MAX_ROLEPLAY_WORLD_BOOK_KEYS = 24;
+    const MAX_ROLEPLAY_WORLD_BOOK_KEYS = 256;
     const MAX_ROLEPLAY_MEMORIES = 120;
     const MAX_ROLEPLAY_CHAPTERS = 80;
     const IMAGE_COMPRESSION_CANDIDATES = [
@@ -686,6 +686,7 @@
     }
 
     function roleplayContextBlockLabel(blockId) {
+        if (blockId === 'tavern_preset') return localText('Tavern prompt assembly', '酒馆提示词组装');
         const labels = {
             scene: 'Current scene and continuity',
             speaker: 'Speaking character and runtime state',
@@ -809,7 +810,9 @@
         if (content) content.textContent = roleplayContextPrettyContent(selected);
         if (note) {
             const omitted = selected.id === 'recent_dialogue' ? report.history_omitted : selected.omitted;
-            note.textContent = selected.id === 'world_book'
+            note.textContent = selected.id === 'tavern_preset'
+                ? localText('Lists applied prompt IDs, message roles and compatibility notes. This report is not sent to the model.', '显示已应用条目、消息角色及兼容提示。这份报告不会发送给模型。')
+                : selected.id === 'world_book'
                 ? `${roleplayDictionaryText('Entries omitted by context budget')}: ${omitted} · ${roleplayDictionaryText('Entries shortened for this reply')}: ${selected.truncated_ids.length}`
                 : omitted > 0
                 ? localText(`${omitted} older item(s) omitted.`, `已省略 ${omitted} 项较早内容。`)
@@ -2029,8 +2032,61 @@
         });
     }
 
+    function normalizeRoleplayRegexScripts(value) {
+        if (!Array.isArray(value)) return [];
+        return value.slice(0, 256).filter(item => item && typeof item === 'object' && !Array.isArray(item)).map(item => {
+            const row = {};
+            for (const key of ['id', 'scriptName', 'findRegex', 'replaceString']) {
+                if (typeof item[key] === 'string') row[key] = item[key].slice(0, ['id', 'scriptName'].includes(key) ? 240 : 240000);
+            }
+            for (const key of ['disabled', 'markdownOnly', 'promptOnly', 'runOnEdit']) {
+                if (Object.prototype.hasOwnProperty.call(item, key)) {
+                    row[key] = typeof item[key] === 'string' ? ['true', '1', 'yes', 'on'].includes(item[key].trim().toLowerCase()) : !!item[key];
+                }
+            }
+            for (const key of ['substituteRegex', 'minDepth', 'maxDepth']) {
+                if (Object.prototype.hasOwnProperty.call(item, key) && (item[key] === null || Number.isFinite(item[key]))) row[key] = item[key];
+            }
+            if (Array.isArray(item.trimStrings)) row.trimStrings = item.trimStrings.slice(0, 256).filter(text => typeof text === 'string').map(text => text.slice(0, 4096));
+            if (Array.isArray(item.placement)) row.placement = item.placement.slice(0, 32).filter(Number.isInteger);
+            return row;
+        }).filter(item => Object.keys(item).length);
+    }
+
+    function normalizeRoleplayTavernPreset(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const prompts = (Array.isArray(source.prompts) ? source.prompts : []).slice(0, 256)
+            .filter(item => item && typeof item === 'object').map((item, index) => ({
+                identifier: String(item.identifier || `prompt_${index + 1}`).slice(0, 160),
+                name: String(item.name || item.identifier || '').slice(0, 240),
+                role: ['system', 'user', 'assistant'].includes(item.role) ? item.role : 'system',
+                content: String(item.content || ''),
+                marker: !!item.marker, enabled: item.enabled !== false,
+                injection_position: Number(item.injection_position) === 1 ? 1 : 0,
+                injection_depth: Math.max(0, Math.min(100, Math.floor(Number(item.injection_depth ?? 4) || 0))),
+                injection_order: Math.max(-10000, Math.min(10000, Number(item.injection_order ?? 100) || 0)),
+                forbid_overrides: !!item.forbid_overrides,
+                injection_trigger: Array.isArray(item.injection_trigger) ? item.injection_trigger.slice(0, 20) : []
+            }));
+        return {
+            schema: 'simpai.vlm_roleplay.tavern_preset', version: 1,
+            revision: Math.max(0, Math.min(2147483647, Math.floor(Number(source.revision) || 0))),
+            enabled: source.enabled === true,
+            name: String(source.name || '').slice(0, 240),
+            source_format: String(source.source_format || '').slice(0, 80),
+            source_name: String(source.source_name || '').slice(0, 240),
+            prompts, style: String(source.style || ''),
+            formats: source.formats && typeof source.formats === 'object' ? Object.assign({}, source.formats) : {},
+            sampling: source.sampling && typeof source.sampling === 'object' ? Object.assign({}, source.sampling) : {},
+            apply_sampling: source.apply_sampling === true,
+            regex_scripts: normalizeRoleplayRegexScripts(source.regex_scripts),
+            warnings: Array.isArray(source.warnings) ? source.warnings.map(String).slice(0, 40) : []
+        };
+    }
+
     function normalizeRoleplaySession(value, conversationId = '') {
         const source = value && typeof value === 'object' ? value : {};
+        const cardTextLimit = 240000;
         const characterSource = source.character || source.character_card || {};
         const personaSource = source.persona || source.player_persona || {};
         const stateSource = source.story_state || source.state || {};
@@ -2094,11 +2150,11 @@
                 name: String(sourceCard.name || '').slice(0, 200),
                 avatar_asset_id: String(sourceCard.avatar_asset_id || '').slice(0, 160),
                 reference_asset_ids: cleanList(sourceCard.reference_asset_ids, 5),
-                appearance: String(sourceCard.appearance || '').slice(0, MAX_PERSISTED_TEXT),
-                identity: String(sourceCard.identity || '').slice(0, MAX_PERSISTED_TEXT),
-                background: String(sourceCard.background || '').slice(0, MAX_PERSISTED_TEXT),
-                personality: String(sourceCard.personality || '').slice(0, MAX_PERSISTED_TEXT),
-                speech_style: String(sourceCard.speech_style || '').slice(0, MAX_PERSISTED_TEXT),
+                appearance: String(sourceCard.appearance || '').slice(0, cardTextLimit),
+                identity: String(sourceCard.identity || '').slice(0, cardTextLimit),
+                background: String(sourceCard.background || '').slice(0, cardTextLimit),
+                personality: String(sourceCard.personality || '').slice(0, cardTextLimit),
+                speech_style: String(sourceCard.speech_style || '').slice(0, cardTextLimit),
                 image_prompt: String(sourceCard.image_prompt || sourceCard.visual_prompt || '').slice(0, MAX_PERSISTED_TEXT),
                 negative_prompt: String(sourceCard.negative_prompt || '').slice(0, 4000),
                 initial_state_fields: Object.prototype.hasOwnProperty.call(sourceCard, 'initial_state_fields')
@@ -2141,7 +2197,7 @@
                     }).filter(Boolean).slice(0, MAX_ROLEPLAY_STATE_IMAGE_HISTORY)
                     : [],
                 behavior_rules: cleanList(sourceCard.behavior_rules, 40),
-                first_message: String(sourceCard.first_message || '').slice(0, MAX_PERSISTED_TEXT),
+                first_message: String(sourceCard.first_message || '').slice(0, cardTextLimit),
                 example_dialogues: Array.isArray(sourceCard.example_dialogues) ? sourceCard.example_dialogues.slice(0, 20) : [],
                 locked_fields: cleanList(sourceCard.locked_fields, 40)
             };
@@ -2241,6 +2297,7 @@
             },
             active_turn_id: String(source.active_turn_id || '').slice(0, 200),
             story_outline: normalizeRoleplayOutline(source.story_outline, Object.keys(characterCards)),
+            tavern_preset: normalizeRoleplayTavernPreset(source.tavern_preset),
             state_version: Math.max(0, Math.round(Number(source.state_version) || Number(stateSource.state_version) || 0)),
             director_config: Object.assign({
                 autonomy: 'assisted',
@@ -2736,6 +2793,14 @@
         const incomingGuidance = normalizeRoleplayGuidance(incoming.autoplay_config?.guidance);
         if (currentGuidance.revision >= incomingGuidance.revision) {
             merged.autoplay_config = Object.assign({}, merged.autoplay_config, { guidance: currentGuidance });
+        }
+        const currentPreset = current.tavern_preset;
+        const incomingPreset = incoming.tavern_preset;
+        const currentHasPreset = currentPreset && (
+            currentPreset.revision > 0 || currentPreset.enabled || currentPreset.style || currentPreset.prompts?.length
+        );
+        if (currentHasPreset && (!incomingPreset || currentPreset.revision >= incomingPreset.revision)) {
+            merged.tavern_preset = currentPreset;
         }
         const requestedActiveId = String(incomingSource.active_character_id || '').trim();
         const activeCharacterId = requestedActiveId && characters[requestedActiveId]
@@ -3725,7 +3790,8 @@
                 message.id, message.role, message.content, message.roleplay_speaker_id,
                 message.roleplay_input_type, message.roleplay_known_by, message.roleplay_observations
             ]),
-            readSelectedVlmVersion(), session.agent_routing, roleplayGuidanceKey(runtime)
+            readSelectedVlmVersion(), session.agent_routing, roleplayGuidanceKey(runtime),
+            session.tavern_preset?.revision || 0
         ]);
     }
 
@@ -7192,12 +7258,17 @@
                     : type === 'iTXt'
                         ? await readInternationalTextChunk(chunk)
                         : null;
-            if (value) metadata.push(value);
+            if (value) {
+                const keyEnd = chunk.indexOf(0);
+                const key = keyEnd >= 0 ? new TextDecoder('latin1').decode(chunk.slice(0, keyEnd)).trim().toLowerCase() : '';
+                metadata.push({ key, value });
+            }
             offset = end + 4;
             if (type === 'IEND') break;
         }
-        for (let index = metadata.length - 1; index >= 0; index -= 1) {
-            const candidate = metadata[index];
+        metadata.sort((first, second) => Number(first.key !== 'ccv3') - Number(second.key !== 'ccv3'));
+        for (const item of metadata) {
+            const candidate = item.value;
             const decoded = decodeTavernMetadataBase64(candidate);
             for (const text of [decoded, candidate]) {
                 if (!String(text || '').trim().startsWith('{')) continue;
@@ -7235,7 +7306,8 @@
         const localizedWarnings = warnings.map((warning) => {
             const text = String(warning);
             if (/Advanced world-book options preserved/i.test(text)) {
-                return localText('Advanced world-book options were preserved for review.', '世界书高级选项已保留，等待兼容处理。');
+                const fields = text.split(':').slice(1).join(':').trim();
+                return localText(`World-book options not executed: ${fields}.`, `尚未执行的世界书选项：${fields}。`);
             }
             if (/no usable content/i.test(text)) {
                 return localText('One world-book entry had no usable content.', '有一条世界书记录没有可用正文。');
@@ -7258,6 +7330,133 @@
         return warnings.length
             ? `${localText('Imported with notes:', '已导入，提示：')}${imported} ${localizedWarnings.join(' ')}`
             : `${localText('Imported successfully.', '导入成功。')}${imported}`;
+    }
+
+    function roleplayTavernWarningText(warning) {
+        const text = String(warning || '');
+        if (text.startsWith('unsupported_macro:')) return localText(
+            `Macro not evaluated: ${text.slice(18)}`, `未执行的宏：${text.slice(18)}`
+        );
+        if (text === 'context_serialization_not_applied' || text === 'instruct_sequences_not_applied') return localText(
+            'The model keeps its native chat template; text completion separators are not applied.',
+            '使用模型原生聊天模板，不应用 Text Completion 的控制符和消息分隔符。'
+        );
+        if (text === 'prompt_order_missing') return localText(
+            'No prompt order was provided; the file order is used.', '预设没有提示词顺序，使用文件中的顺序。'
+        );
+        if (text === 'generation_trigger_subset') return localText(
+            'Only normal character-reply triggers are used.', '只应用普通角色回复对应的触发设置。'
+        );
+        if (text === 'persona_uses_actor_visible_fields') return localText(
+            'Player-description markers use only what the speaking character may see.',
+            '玩家资料占位符只使用当前角色可见的内容。'
+        );
+        if (text === 'regex_scripts_preserved_not_executed') return localText(
+            'Regular-expression script settings are saved with the story; execution is not supported yet.',
+            '正则脚本配置会随故事保存，目前尚不执行。'
+        );
+        if (text.startsWith('preset_option_not_applied:')) return localText(
+            `Option not applied: ${text.slice(26)}`, `未应用的选项：${text.slice(26)}`
+        );
+        return text;
+    }
+
+    function renderRoleplayTavernPreset(modal, value, conversationId = '', force = false) {
+        const root = modal?.querySelector('[data-roleplay-tavern-preset]');
+        if (!root) return;
+        if (!force && root.dataset.presetOwner === conversationId && root.dataset.presetDirty === 'true') return;
+        const preset = normalizeRoleplayTavernPreset(value);
+        const key = JSON.stringify(preset);
+        if (!force && root.dataset.presetOwner === conversationId && root._presetKey === key) return;
+        root._preset = preset;
+        root._presetKey = key;
+        root.dataset.presetOwner = conversationId;
+        root.dataset.presetDirty = 'false';
+        const enabled = root.querySelector('[data-roleplay-preset-enabled]');
+        if (enabled) enabled.checked = preset.enabled;
+        const style = root.querySelector('[data-roleplay-preset-style]');
+        if (style) style.value = preset.style;
+        const sampling = root.querySelector('[data-roleplay-preset-sampling]');
+        if (sampling) sampling.checked = preset.apply_sampling;
+        const name = root.querySelector('[data-roleplay-preset-name]');
+        if (name) name.textContent = preset.name || localText('No imported preset', '尚未导入预设');
+        const notes = root.querySelector('[data-roleplay-preset-notes]');
+        if (notes) notes.textContent = preset.warnings.map(roleplayTavernWarningText).join('\n');
+        const entries = root.querySelector('[data-roleplay-preset-entries]');
+        if (entries) entries.innerHTML = preset.prompts.map((prompt, index) => `
+          <details class="describe-vlm-chat-tavern-prompt" data-roleplay-preset-row="${index}">
+            <summary><input type="checkbox" data-roleplay-preset-field="enabled" ${prompt.enabled ? 'checked' : ''} aria-label="${escapeHtml(localText('Enable prompt', '启用提示词'))}"><span>${escapeHtml(prompt.name || prompt.identifier)}</span></summary>
+            <div class="describe-vlm-chat-tavern-prompt-body">
+            <label><span>${escapeHtml(localText('Role', '消息角色'))}</span><select data-roleplay-preset-field="role">${['system', 'user', 'assistant'].map(role => `<option value="${role}" ${prompt.role === role ? 'selected' : ''}>${role}</option>`).join('')}</select></label>
+            <label><span>${escapeHtml(localText('Position', '插入位置'))}</span><select data-roleplay-preset-field="injection_position"><option value="0" ${prompt.injection_position === 0 ? 'selected' : ''}>${escapeHtml(localText('In preset order', '按预设顺序'))}</option><option value="1" ${prompt.injection_position === 1 ? 'selected' : ''}>${escapeHtml(localText('At chat depth', '按对话深度'))}</option></select></label>
+            <label data-roleplay-preset-depth ${prompt.injection_position === 1 ? '' : 'hidden'}><span>${escapeHtml(localText('Depth', '深度'))}</span><input type="number" min="0" max="100" data-roleplay-preset-field="injection_depth" value="${prompt.injection_depth}"></label>
+            <label data-roleplay-preset-depth ${prompt.injection_position === 1 ? '' : 'hidden'}><span>${escapeHtml(localText('Injection priority', '深度插入优先级'))}</span><input type="number" min="-10000" max="10000" data-roleplay-preset-field="injection_order" value="${prompt.injection_order}"></label>
+            ${prompt.marker ? `<small>${escapeHtml(localText('Filled from the current story; this is a marker.', '此项为占位条目，内容取自当前故事。'))}</small>` : `<textarea rows="5" data-roleplay-preset-field="content" aria-label="${escapeHtml(prompt.name || prompt.identifier)}">${escapeHtml(prompt.content)}</textarea>`}
+            <div class="describe-vlm-chat-roleplay-section-actions"><button type="button" data-roleplay-preset-move="-1" aria-label="${escapeHtml(localText('Move up', '上移'))}">↑</button><button type="button" data-roleplay-preset-move="1" aria-label="${escapeHtml(localText('Move down', '下移'))}">↓</button></div>
+            </div>
+          </details>`).join('');
+    }
+
+    function readRoleplayTavernPreset(modal, fallback, conversationId = '') {
+        const root = modal?.querySelector('[data-roleplay-tavern-preset]');
+        if (!root || root.dataset.presetOwner !== conversationId || !root._preset) return normalizeRoleplayTavernPreset(fallback);
+        const preset = normalizeRoleplayTavernPreset(root._preset);
+        preset.enabled = !!root.querySelector('[data-roleplay-preset-enabled]')?.checked;
+        preset.style = String(root.querySelector('[data-roleplay-preset-style]')?.value || '');
+        preset.apply_sampling = !!root.querySelector('[data-roleplay-preset-sampling]')?.checked;
+        root.querySelectorAll('[data-roleplay-preset-row]').forEach(row => {
+            const prompt = preset.prompts[Number(row.dataset.roleplayPresetRow)];
+            if (!prompt) return;
+            row.querySelectorAll('[data-roleplay-preset-field]').forEach(field => {
+                const key = field.dataset.roleplayPresetField;
+                prompt[key] = key === 'enabled' ? field.checked
+                    : ['injection_position', 'injection_depth', 'injection_order'].includes(key) ? Number(field.value)
+                        : String(field.value || '');
+            });
+        });
+        return normalizeRoleplayTavernPreset(preset);
+    }
+
+    async function importRoleplayTavernPresetFile(modal, file) {
+        const runtime = currentConversationRuntime();
+        if (!file || !runtime || !roleplayFormCanWriteTo(modal, runtime)) return false;
+        const conversationId = runtime.conversationId;
+        try {
+            if (file.size > 4 * 1024 * 1024) {
+                throw new Error(localText('The preset JSON exceeds 4 MiB.', '预设 JSON 超过 4 MiB。'));
+            }
+            const raw = await readTavernImportFile(file);
+            const response = await postJson('/describe-image/vlm-roleplay/import', {
+                kind: 'preset', preset: raw, filename: file.name || '', __lang: state.__lang, lang: state.__lang
+            });
+            if (currentConversationRuntime()?.conversationId !== conversationId || !roleplayFormCanWriteTo(modal, runtime)) return false;
+            if (!response?.ok || !response.preset) {
+                const errors = {
+                    character_card_file_detected: localText('This is a character card. Use Character library.', '这是角色卡，请从角色库导入。'),
+                    world_book_file_detected: localText('This is a world book. Use the World book panel.', '这是世界书，请从世界书面板导入。'),
+                    tavern_preset_format_unsupported: localText('Use a Chat Completion, System Prompt or Context preset. Instruction separators alone do not define a writing style.', '请使用 Chat Completion、System Prompt 或 Context 预设；只有指令分隔符的文件不包含文风要求。'),
+                    tavern_preset_order_ambiguous: localText('This preset has several character orders and no global order. Export the intended order separately.', '这个预设有多份角色顺序，没有全局顺序，请单独导出需要的那一份。'),
+                    tavern_preset_too_large: localText('The preset exceeds the import size limit.', '预设超过导入容量限制。')
+                };
+                throw new Error(errors[response?.error] || response?.error || localText('Preset import failed.', '预设导入失败。'));
+            }
+            renderRoleplayTavernPreset(modal, response.preset, conversationId, true);
+            const root = modal.querySelector('[data-roleplay-tavern-preset]');
+            if (root) {
+                root.dataset.presetDirty = 'true';
+                root.open = true;
+            }
+            setConversationStatus(runtime, localText(
+                `Imported ${response.preset.prompts.length} prompt entries. Review the notes and click Apply.`,
+                `已导入 ${response.preset.prompts.length} 个提示词条目，请查看兼容提示，点击“应用”后生效。`
+            ));
+            return true;
+        } catch (error) {
+            if (currentConversationRuntime()?.conversationId === conversationId) {
+                setConversationStatus(runtime, String(error?.message || error), true);
+            }
+            return false;
+        }
     }
 
     async function importRoleplayCharacterLibraryFile(modal, file) {
@@ -7283,8 +7482,8 @@
                 }
                 if (response?.error === 'tavern_preset_file_detected') {
                     throw new Error(localText(
-                        'This JSON is a Tavern preset, not a character card.',
-                        '这个 JSON 是酒馆预设，不是角色卡。'
+                        'This is a Tavern preset. Import it under Roleplay settings → Regex and presets.',
+                        '这是酒馆预设，请从“角色扮演设置 → 正则与预设”导入。'
                     ));
                 }
                 throw new Error(String(response?.error || localText('The character card could not be imported.', '角色卡导入失败。')));
@@ -7323,11 +7522,12 @@
         const existing = new Set(rows.map((row) => String(row.getAttribute('data-resource-id') || '').trim()).filter(Boolean));
         if (list.querySelector('.describe-vlm-chat-roleplay-resource-empty')) list.innerHTML = '';
         let imported = 0;
-        worldBook.entries.slice(0, MAX_ROLEPLAY_WORLD_BOOK_ENTRIES).forEach((entry, index) => {
+        worldBook.entries.slice(0, Math.max(0, MAX_ROLEPLAY_WORLD_BOOK_ENTRIES - rows.length)).forEach((entry, index) => {
             const normalized = normalizeRoleplayWorldBookEntry(entry, index);
             if (!normalized) return;
             let id = normalized.id;
-            while (existing.has(id)) id = `${normalized.id}_${imported + 2}`;
+            let suffix = 2;
+            while (existing.has(id)) id = `${normalized.id}_${suffix++}`;
             normalized.id = id;
             normalized.source = sourceName ? `tavern:${sourceName}` : 'tavern_import';
             list.insertAdjacentHTML('beforeend', renderRoleplayResourceWorldEntry(normalized, rows.length + imported));
@@ -7356,16 +7556,22 @@
             if (!response?.ok || !response.world_book) {
                 if (response?.error === 'tavern_preset_file_detected') {
                     throw new Error(localText(
-                        'This JSON is a Tavern preset, not a world book.',
-                        '这个 JSON 是酒馆预设，不是世界书。'
+                        'This is a Tavern preset. Import it under Roleplay settings → Regex and presets.',
+                        '这是酒馆预设，请从“角色扮演设置 → 正则与预设”导入。'
                     ));
                 }
                 throw new Error(String(response?.error || localText('The world book could not be imported.', '世界书导入失败。')));
             }
             const count = mergeImportedRoleplayWorldBook(modal, response.world_book, file.name || '');
-            setConversationStatus(runtime, count
+            const notes = response.warnings?.length ? ` ${roleplayImportWarningsText(response)}` : '';
+            const omitted = Math.max(0, response.world_book.entries.length - count);
+            const capacityNote = omitted ? localText(
+                ` ${omitted} entries were not added because the story world book is full.`,
+                ` 当前故事世界书容量已满，还有 ${omitted} 条未加入。`
+            ) : '';
+            setConversationStatus(runtime, (count
                 ? localText(`Imported ${count} world-book entries. Click Apply to use them.`, `已导入 ${count} 条世界书条目，点击“应用”后生效。`)
-                : localText('No usable world-book entries were found.', '没有找到可用的世界书条目。'), !count);
+                : localText('No usable world-book entries were added.', '没有加入可用的世界书条目。')) + notes + capacityNote, !count);
             return count > 0;
         } catch (error) {
             setConversationStatus(runtime, String(error?.message || localText('The world book could not be imported.', '世界书导入失败。')), true);
@@ -8137,6 +8343,14 @@
 
     function roleplayCharacterLibraryExportPayload(card, includeLocalAssets = true) {
         const source = normalizeRoleplayCharacterLibraryCard(card);
+        const tavern = source.import_metadata?.tavern || {};
+        const importedExtensions = tavern.extensions || {};
+        const raw = source.import_metadata?.raw || {};
+        const rawExtensions = raw.data?.extensions || raw.extensions || {};
+        const regexScripts = normalizeRoleplayRegexScripts(
+            Object.prototype.hasOwnProperty.call(importedExtensions, 'regex_scripts')
+                ? importedExtensions.regex_scripts : rawExtensions.regex_scripts
+        );
         const simpai = {
             schema: source.schema,
             version: source.version,
@@ -8168,6 +8382,8 @@
                 personality: source.personality,
                 scenario: source.background,
                 first_mes: source.first_message,
+                system_prompt: String(tavern.system_prompt || ''),
+                post_history_instructions: String(tavern.post_history_instructions || ''),
                 alternate_greetings: source.import_metadata?.tavern?.alternate_greetings || [],
                 group_only_greetings: source.import_metadata?.tavern?.group_only_greetings || [],
                 mes_example: examples.map((item) => `<START>\n${item}`).join('\n'),
@@ -8178,6 +8394,9 @@
                 negative_prompt: source.negative_prompt,
                 character_book: source.world_book,
                 extensions: {
+                    world: importedExtensions.world || '',
+                    depth_prompt: importedExtensions.depth_prompt || {},
+                    regex_scripts: regexScripts,
                     speech_style: source.speech_style,
                     image_prompt: source.image_prompt,
                     negative_prompt: source.negative_prompt,
@@ -10734,6 +10953,7 @@
             ) element.value = nextValue;
         };
         renderRoleplayCharacterSelector(modal, session);
+        renderRoleplayTavernPreset(modal, session.tavern_preset, runtime.conversationId);
         renderRoleplayStoryOpeningControls(modal, runtime, session);
         syncRoleplayCharacterGuidance(modal, session);
         setValue('[data-describe-vlm-chat-roleplay-character-name]', session.character.name, ['character', 'name']);
@@ -11363,7 +11583,7 @@
                         ? 'world_book'
                     : 'character';
         let requestText = roleplayFormDraftRequestText(kind, modal);
-        const sourcePrompt = roleplaySystemPromptSource(target, modal);
+        const sourcePrompt = kind === 'persona' ? '' : roleplaySystemPromptSource(target, modal);
         if (!sourcePrompt && !requestText) {
             requestText = kind === 'scene'
                 ? localText(
@@ -13925,6 +14145,20 @@
             const previous = snapshotValue(path);
             return !snapshot || previous === undefined || JSON.stringify(previous) !== JSON.stringify(value);
         };
+        const presetRoot = modal.querySelector('[data-roleplay-tavern-preset]');
+        if (presetRoot) {
+            const tavernPreset = readRoleplayTavernPreset(modal, session.tavern_preset, target.conversationId);
+            if (changedSinceSnapshot(['tavern_preset'], tavernPreset)) {
+                if (JSON.stringify(tavernPreset) !== JSON.stringify(session.tavern_preset)) {
+                    pauseRoleplayForUserInput(target);
+                    tavernPreset.revision = Math.min(2147483647, (session.tavern_preset?.revision || 0) + 1);
+                }
+                session.tavern_preset = tavernPreset;
+                presetRoot._preset = tavernPreset;
+                presetRoot._presetKey = JSON.stringify(tavernPreset);
+                presetRoot.dataset.presetDirty = 'false';
+            }
+        }
         const activeId = session.active_character_id || session.character?.id;
         const card = Object.assign({}, session.characters?.[activeId] || session.character || {});
         const characterName = read('[data-describe-vlm-chat-roleplay-character-name]');
@@ -14118,6 +14352,7 @@
         return {
             conversation_id: runtime.conversationId,
             active_character_id: activeId,
+            tavern_preset: JSON.parse(JSON.stringify(session.tavern_preset || null)),
             character: {
                 name: read('[data-describe-vlm-chat-roleplay-character-name]', character.name, ['character', 'name']),
                 appearance: read('[data-describe-vlm-chat-roleplay-character-appearance]', character.appearance, ['character', 'appearance']),
@@ -15695,6 +15930,20 @@
           <button type="button" data-describe-vlm-chat-roleplay-branch-delete title="${escapeHtml(localText('Delete selected branch', '删除选中的剧情分支'))}" aria-label="${escapeHtml(localText('Delete selected branch', '删除选中的剧情分支'))}"><i class="fa-solid fa-trash"></i></button>
         </div>
       </div>
+      <details class="describe-vlm-chat-roleplay-section describe-vlm-chat-tavern-preset" data-roleplay-tavern-preset>
+        <summary>${escapeHtml(localText('Regex and presets', '正则与预设'))}</summary>
+        <div class="describe-vlm-chat-tavern-preset-body">
+          <div class="describe-vlm-chat-roleplay-section-head"><strong data-roleplay-preset-name></strong><span class="describe-vlm-chat-roleplay-section-actions"><button type="button" data-roleplay-preset-import>${escapeHtml(localText('Import JSON', '导入 JSON'))}</button><button type="button" data-roleplay-preset-clear>${escapeHtml(localText('Clear', '清除'))}</button></span></div>
+          <input type="file" accept=".json,application/json" data-roleplay-preset-file hidden>
+          <label class="describe-vlm-chat-roleplay-check"><input type="checkbox" data-roleplay-preset-enabled><span>${escapeHtml(localText('Use this preset for character replies', '角色回复使用此预设'))}</span></label>
+          <small>${escapeHtml(localText('Import Chat Completion, System Prompt or Context JSON. Review enabled prompts, order and chat-depth placement. Changes take effect with Apply.', '支持 Chat Completion、System Prompt 和 Context JSON。可修改启用项、顺序及对话深度，点击“应用”后生效。'))}</small>
+          <label><span>${escapeHtml(localText('Additional writing style', '附加文风要求'))}</span><textarea rows="4" maxlength="64000" data-roleplay-preset-style placeholder="${escapeHtml(localText('Narrative perspective, tone, pacing, length, dialogue and description preferences', '叙述视角、语气、节奏、篇幅、对白及描写偏好'))}"></textarea></label>
+          <label class="describe-vlm-chat-roleplay-check"><input type="checkbox" data-roleplay-preset-sampling><span>${escapeHtml(localText('Also use imported sampling parameters', '同时使用导入的采样参数'))}</span></label>
+          <small>${escapeHtml(localText('Model, API, context size and output limit follow your interface selections. Writing style applies to actors; director and player-proxy requests keep their own instructions.', '模型、API、上下文和输出上限跟随界面选择。文风用于角色回复，导演与玩家代理继续使用各自的指令。'))}</small>
+          <pre class="describe-vlm-chat-tavern-notes" data-roleplay-preset-notes role="status" aria-live="polite"></pre>
+          <div data-roleplay-preset-entries></div>
+        </div>
+      </details>
     </div>
     <div class="describe-vlm-chat-roleplay-panel-actions">
       <button type="button" data-describe-vlm-chat-roleplay-play><i class="fa-solid fa-play"></i><span>${escapeHtml(localText('Play', '播放'))}</span></button>
@@ -16976,6 +17225,7 @@
             active_turn_id: String(source.active_turn_id || '').slice(0, 200),
             state_version: Math.max(0, Math.round(Number(source.state_version) || 0)),
             story_outline: normalizeRoleplayOutline(source.story_outline),
+            tavern_preset: normalizeRoleplayTavernPreset(source.tavern_preset),
             director_config: source.director_config && typeof source.director_config === 'object'
                 ? Object.assign({}, source.director_config)
                 : {},
@@ -19408,7 +19658,8 @@
             characters: settings.characters, character: settings.characters[settings.active_character_id],
             active_character_id: settings.active_character_id, persona: settings.persona,
             story_state: { scene: settings.scene, player_state: settings.player_state, characters: settings.character_states },
-            world_book: settings.world_book, story_outline: settings.story_outline, director_config: settings.director_config,
+            world_book: settings.world_book, story_outline: settings.story_outline,
+            tavern_preset: settings.tavern_preset, director_config: settings.director_config,
             agent_routing: current.roleplaySession?.agent_routing,
             visual_config: { enabled: false, reference_asset_ids: refs(settings.scene_reference_asset_ids) }
         }, conversationId);
@@ -28110,6 +28361,22 @@
             if (modal && file) importRoleplayWorldBookFile(modal, file).finally(() => { evt.target.value = ''; });
             return;
         }
+        const presetFile = evt.target.closest?.('[data-roleplay-preset-file]');
+        if (presetFile) {
+            const modal = document.getElementById('describe_vlm_chat_modal');
+            const file = Array.from(presetFile.files || [])[0];
+            if (modal && file) importRoleplayTavernPresetFile(modal, file).finally(() => { presetFile.value = ''; });
+            return;
+        }
+        const presetField = evt.target.closest?.('[data-roleplay-tavern-preset]');
+        if (presetField && evt.target.matches('[data-roleplay-preset-enabled], [data-roleplay-preset-field], [data-roleplay-preset-sampling]')) {
+            if (evt.target.matches('[data-roleplay-preset-field="injection_position"]')) {
+                evt.target.closest('[data-roleplay-preset-row]')?.querySelectorAll('[data-roleplay-preset-depth]')
+                    .forEach(label => { label.hidden = evt.target.value !== '1'; });
+            }
+            presetField.dataset.presetDirty = 'true';
+            return;
+        }
         const stateFile = evt.target.closest?.('[data-roleplay-character-library-state-file]');
         if (stateFile) {
             const modal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
@@ -28166,6 +28433,10 @@
     });
 
     document.addEventListener('input', (evt) => {
+        const presetRoot = evt.target.closest?.('[data-roleplay-tavern-preset]');
+        if (presetRoot) {
+            presetRoot.dataset.presetDirty = 'true';
+        }
         if (evt.target?.matches?.('[data-roleplay-guidance]')) {
             updateRoleplayGuidanceFromForm(document.getElementById('describe_vlm_chat_modal'), syncCurrentRuntimeFromState());
             return;
@@ -28812,6 +29083,29 @@
         if (resourceAdd) {
             const kind = String(resourceAdd.getAttribute('data-resource-add') || '').trim();
             addRoleplayResource(modal, kind, syncCurrentRuntimeFromState());
+            return;
+        }
+        if (evt.target.closest('[data-roleplay-preset-import]')) {
+            modal.querySelector('[data-roleplay-preset-file]')?.click();
+            return;
+        }
+        if (evt.target.closest('[data-roleplay-preset-clear]')) {
+            const runtime = currentConversationRuntime();
+            renderRoleplayTavernPreset(modal, null, runtime.conversationId, true);
+            modal.querySelector('[data-roleplay-tavern-preset]').dataset.presetDirty = 'true';
+            return;
+        }
+        const presetMove = evt.target.closest('[data-roleplay-preset-move]');
+        if (presetMove) {
+            const runtime = currentConversationRuntime();
+            const preset = readRoleplayTavernPreset(modal, runtime.roleplaySession?.tavern_preset, runtime.conversationId);
+            const index = Number(presetMove.closest('[data-roleplay-preset-row]')?.dataset.roleplayPresetRow);
+            const destination = index + Number(presetMove.dataset.roleplayPresetMove);
+            if (index >= 0 && destination >= 0 && destination < preset.prompts.length) {
+                [preset.prompts[index], preset.prompts[destination]] = [preset.prompts[destination], preset.prompts[index]];
+                renderRoleplayTavernPreset(modal, preset, runtime.conversationId, true);
+                modal.querySelector('[data-roleplay-tavern-preset]').dataset.presetDirty = 'true';
+            }
             return;
         }
         const resourceImport = evt.target.closest('[data-resource-import]');

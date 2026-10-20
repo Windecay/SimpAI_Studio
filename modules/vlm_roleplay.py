@@ -22,6 +22,8 @@ import modules.vlm_autoplay_guidance as vlm_autoplay_guidance
 import modules.vlm_roleplay_cognition as vlm_roleplay_cognition
 import modules.vlm_roleplay_resources as vlm_roleplay_resources
 import modules.vlm_roleplay_outline as vlm_roleplay_outline
+import modules.vlm_tavern as vlm_tavern
+import modules.vlm_tavern_world as vlm_tavern_world
 from modules.custom_llm_api import strip_reasoning_text
 
 
@@ -53,7 +55,7 @@ MAX_RUNTIME_STATE_TEXT = 4000
 MAX_STATE_TEXT_SEGMENTS = 8
 MAX_STATE_TEXT_SEGMENT_LENGTH = 520
 MAX_WORLD_BOOK_ENTRIES = 400
-MAX_WORLD_BOOK_KEYS = 24
+MAX_WORLD_BOOK_KEYS = 256
 MAX_CHAPTERS = 80
 MAX_IMPORT_WARNINGS = 40
 MAX_IMPORT_RAW_ITEMS = 512
@@ -215,12 +217,34 @@ def _bounded_json_value(value: Any, depth: int = 0) -> Any:
 
 def _normalize_import_metadata(value: Any = None) -> dict[str, Any]:
     source = _dict(value)
+    tavern_source = source.get("tavern") if isinstance(source.get("tavern"), dict) else {}
+    extensions = tavern_source.get("extensions") if isinstance(tavern_source.get("extensions"), dict) else {}
+    raw_card = source.get("raw") if isinstance(source.get("raw"), dict) else {}
+    for key in ("character_card", "characterCard", "card", "character"):
+        if isinstance(raw_card.get(key), dict) and not raw_card.get("name"):
+            raw_card = raw_card[key]
+            break
+    raw_data = raw_card.get("data")
+    if isinstance(raw_data, str):
+        try:
+            raw_data = json.loads(raw_data)
+        except json.JSONDecodeError:
+            raw_data = None
+    if isinstance(raw_data, dict):
+        raw_card = raw_data
+    raw_extensions = raw_card.get("extensions") if isinstance(raw_card.get("extensions"), dict) else {}
+    regex_source = extensions.get("regex_scripts") if "regex_scripts" in extensions else raw_extensions.get("regex_scripts")
+    tavern = _bounded_json_value(tavern_source)
+    if "regex_scripts" in extensions or "regex_scripts" in raw_extensions:
+        if not isinstance(tavern.get("extensions"), dict):
+            tavern["extensions"] = {}
+        tavern["extensions"]["regex_scripts"] = vlm_tavern.normalize_regex_scripts(regex_source)
     return {
         "source_format": _text(source.get("source_format"), 80),
         "source_name": _text(source.get("source_name"), 240),
         "warnings": _clean_string_list(source.get("warnings"), MAX_IMPORT_WARNINGS),
         "unsupported_fields": _clean_string_list(source.get("unsupported_fields"), MAX_IMPORT_WARNINGS),
-        "tavern": _bounded_json_value(source.get("tavern")) if source.get("tavern") is not None else {},
+        "tavern": tavern,
         "raw": _bounded_json_value(source.get("raw")) if source.get("raw") is not None else {},
     }
 
@@ -1716,11 +1740,11 @@ def default_character_card(value: Any = None) -> dict[str, Any]:
         "name": _text(source.get("name"), 200),
         "avatar_asset_id": _id(source.get("avatar_asset_id"), "asset") if source.get("avatar_asset_id") else "",
         "reference_asset_ids": _clean_asset_ids(source.get("reference_asset_ids")),
-        "appearance": _text(source.get("appearance")),
-        "identity": _text(source.get("identity")),
-        "background": _text(source.get("background")),
-        "personality": _text(source.get("personality")),
-        "speech_style": _text(source.get("speech_style")),
+        "appearance": _text(source.get("appearance"), MAX_IMPORT_RAW_TEXT),
+        "identity": _text(source.get("identity"), MAX_IMPORT_RAW_TEXT),
+        "background": _text(source.get("background"), MAX_IMPORT_RAW_TEXT),
+        "personality": _text(source.get("personality"), MAX_IMPORT_RAW_TEXT),
+        "speech_style": _text(source.get("speech_style"), MAX_IMPORT_RAW_TEXT),
         "image_prompt": _text(source.get("image_prompt") or source.get("visual_prompt"), 12000),
         "negative_prompt": _text(source.get("negative_prompt"), 4000),
         "initial_state_fields": _clean_state_fields(
@@ -1738,7 +1762,7 @@ def default_character_card(value: Any = None) -> dict[str, Any]:
         "import_metadata": _normalize_import_metadata(source.get("import_metadata")),
         "state_image_history": _normalize_character_state_image_history(source.get("state_image_history")),
         "behavior_rules": _clean_string_list(source.get("behavior_rules")),
-        "first_message": _text(source.get("first_message")),
+        "first_message": _text(source.get("first_message"), MAX_IMPORT_RAW_TEXT),
         "example_dialogues": _list(source.get("example_dialogues"), 20),
         "locked_fields": _clean_string_list(source.get("locked_fields"), 40),
         "created_at": _text(source.get("created_at"), 80) or _now(),
@@ -2090,7 +2114,8 @@ def build_roleplay_form_draft_prompt(
             }]))
             referenced_ids.add(card.get("id"))
     target_rule = (
-        "For a player persona, treat explicit current form details as facts. Preserve them and enrich only missing or thin details; do not replace the player's identity with a different concept."
+        "For a player persona, treat explicit current form details as facts. Preserve them and enrich only missing or thin details; do not replace the player's identity with a different concept. "
+        "The player is a separate entity from the assistant and NPCs. Do not copy their identity or acting instructions unless the user explicitly requests those details."
         if target_key == "persona"
         else "Keep any explicit current form details consistent while filling missing details."
     )
@@ -2131,7 +2156,12 @@ def build_roleplay_form_draft_prompt(
             f"You are the roleplay form assistant. Create one reviewable {subject} draft.",
             f"Reply language: {reply_language}.",
             "Return JSON only. Do not include markdown, explanations, or fields outside the requested shape.",
-            "Use the user's request and the supplied system prompt as source material. Fill missing details conservatively; do not invent unrelated lore.",
+            (
+                "Use only the explicit player-draft request and current player form as source material. "
+                "Main-chat persona, writing-style instructions and dialogue history are not player facts."
+                if target_key == "persona" else
+                "Use the user's request and the supplied system prompt as source material. Fill missing details conservatively; do not invent unrelated lore."
+            ),
             target_rule,
             "The UI will show the draft to the player. Do not claim that anything has been saved or applied.",
             "JSON shape:",
@@ -2764,6 +2794,10 @@ _TAVERN_CHARACTER_MARKER_FIELDS = (
     "character_book",
     "characterBook",
     "char_name",
+    "char_persona",
+    "char_greeting",
+    "world_scenario",
+    "example_dialogue",
     "speech_style",
     "talk_style",
 )
@@ -2806,10 +2840,13 @@ def _looks_like_tavern_preset(source: Any, envelope: Any = None) -> bool:
         return False
     if any(_has_import_value(payload.get(field)) for field in _TAVERN_CHARACTER_MARKER_FIELDS):
         return False
-    if _has_import_value(payload.get("name")) or _has_import_value(payload.get("char_name")):
-        return False
     keys = set(payload) | set(wrapper)
-    return len(keys & _TAVERN_PRESET_MARKER_FIELDS) >= 2
+    return (
+        isinstance(payload.get("prompts"), list)
+        or isinstance(payload.get("story_string"), str)
+        or isinstance(payload.get("content"), str) and ("post_history" in payload or "name" in payload)
+        or len(keys & _TAVERN_PRESET_MARKER_FIELDS) >= 2
+    )
 
 
 def _tavern_world_book_metadata(source: Any) -> dict[str, Any]:
@@ -2820,6 +2857,8 @@ def _tavern_world_book_metadata(source: Any) -> dict[str, Any]:
         ("description", ("description", "comment"), "text"),
         ("recursive_scanning", ("recursive_scanning", "recursiveScanning"), "bool"),
         ("scan_depth", ("scan_depth", "scanDepth"), "int"),
+        ("case_sensitive", ("case_sensitive", "caseSensitive"), "bool"),
+        ("match_whole_words", ("match_whole_words", "matchWholeWords"), "bool"),
         ("token_budget", ("token_budget", "tokenBudget"), "int"),
         ("is_creation", ("is_creation",), "bool"),
     ):
@@ -2856,21 +2895,8 @@ def _parse_tavern_json_bytes(data: bytes) -> Any:
 def _import_world_book_entry(value: Any, index: int = 0) -> tuple[dict[str, Any] | None, list[str]]:
     source = _dict(value)
     warnings: list[str] = []
-    advanced_fields = (
-        "scan_depth",
-        "position",
-        "depth",
-        "probability",
-        "group",
-        "group_weight",
-        "prevent_recursion",
-        "delay_until_recursion",
-        "exclude_recursion",
-        "sticky",
-        "cooldown",
-        "delay",
-    )
-    unsupported = [field for field in advanced_fields if field in source]
+    extensions = vlm_tavern_world.normalize_options(source)
+    unsupported = vlm_tavern_world.unsupported_options(extensions)
     if unsupported:
         warnings.append(f"Advanced world-book options preserved but not fully executed: {', '.join(unsupported)}")
     raw_keys = source.get("keys") or source.get("primary_keys") or source.get("key")
@@ -2890,37 +2916,11 @@ def _import_world_book_entry(value: Any, index: int = 0) -> tuple[dict[str, Any]
         priority = int(priority_value or 0)
     except (TypeError, ValueError):
         priority = 0
-    extensions = _dict(source.get("extensions"))
-    tavern_fields = (
-        "constant",
-        "selective",
-        "selectiveLogic",
-        "case_sensitive",
-        "match_whole_words",
-        "use_regex",
-        "scan_depth",
-        "position",
-        "depth",
-        "probability",
-        "group",
-        "group_weight",
-        "prevent_recursion",
-        "delay_until_recursion",
-        "exclude_recursion",
-        "sticky",
-        "cooldown",
-        "delay",
-        "insertion_order",
-        "disable",
-    )
-    for field in tavern_fields:
-        if field in source and field not in extensions:
-            extensions[field] = _bounded_json_value(source.get(field))
-    for field in unsupported:
-        extensions[field] = _bounded_json_value(source.get(field))
     entry = normalize_world_book_entry(
         {
-            "id": source.get("id") or source.get("uid") or f"world_{index + 1}",
+            "id": str(source["id"]) if source.get("id") is not None else (
+                str(source["uid"]) if source.get("uid") is not None else f"world_{index + 1}"
+            ),
             "title": source.get("title") or source.get("name") or source.get("comment") or f"World entry {index + 1}",
             "content": source.get("content") or source.get("text") or source.get("body"),
             "keys": keys,
@@ -2984,6 +2984,10 @@ def import_tavern_world_book(value: Any = None, filename: Any = "") -> dict[str,
         entry, entry_warnings = _import_world_book_entry(item, index)
         warnings.extend(entry_warnings)
         if entry:
+            entry["extensions"]["_tavern_book"] = {
+                key: value for key, value in metadata.items()
+                if key in {"recursive_scanning", "scan_depth", "case_sensitive", "match_whole_words"}
+            }
             entries.append(entry)
     if not entries:
         return {
@@ -3012,11 +3016,15 @@ def import_tavern_world_book(value: Any = None, filename: Any = "") -> dict[str,
     }
 
 
+def import_tavern_preset(value: Any = None, filename: Any = "") -> dict[str, Any]:
+    return vlm_tavern.import_preset(value, _text(filename, 240))
+
+
 def _parse_tavern_png_metadata(data: bytes) -> dict[str, Any] | None:
     """Read Tavern card metadata from tEXt, zTXt, or iTXt PNG chunks."""
     if not isinstance(data, (bytes, bytearray)) or bytes(data[:8]) != b"\x89PNG\r\n\x1a\n":
         return None
-    payloads: list[bytes] = []
+    payloads: list[tuple[str, bytes]] = []
     offset = 8
     raw = bytes(data)
     while offset + 12 <= len(raw):
@@ -3033,7 +3041,7 @@ def _parse_tavern_png_metadata(data: bytes) -> dict[str, Any] | None:
         if chunk_type == b"tEXt":
             key, separator, text = chunk.partition(b"\x00")
             if separator and key.decode("latin-1", "ignore").strip().lower() in {"chara", "ccv3", "character_card"}:
-                payloads.append(text)
+                payloads.append((key.decode("latin-1", "ignore").strip().lower(), text))
         elif chunk_type == b"zTXt":
             key, separator, compressed = chunk.partition(b"\x00")
             if (
@@ -3043,7 +3051,7 @@ def _parse_tavern_png_metadata(data: bytes) -> dict[str, Any] | None:
                 and compressed[:1] == b"\x00"
             ):
                 try:
-                    payloads.append(zlib.decompress(compressed[1:]))
+                    payloads.append((key.decode("latin-1", "ignore").strip().lower(), zlib.decompress(compressed[1:])))
                 except zlib.error:
                     pass
         elif chunk_type == b"iTXt":
@@ -3062,11 +3070,11 @@ def _parse_tavern_png_metadata(data: bytes) -> dict[str, Any] | None:
                             except zlib.error:
                                 text = None
                         if text is not None:
-                            payloads.append(text)
+                            payloads.append((key.decode("utf-8", "ignore").strip().lower(), text))
         offset = chunk_end + 4
         if chunk_type == b"IEND":
             break
-    for payload in reversed(payloads):
+    for _, payload in sorted(payloads, key=lambda item: item[0] != "ccv3"):
         parsed = _decode_tavern_metadata_payload(payload)
         if parsed is not None:
             return parsed
@@ -3188,14 +3196,12 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
     extensions = _dict(source.get("extensions") or envelope.get("extensions"))
     simpai_extension = _dict(extensions.get("simpai") or extensions.get("SimpAI"))
     depth_prompt = _dict(extensions.get("depth_prompt"))
-    system_prompt = _text(first_value("system_prompt"), 16000)
-    post_history_instructions = _text(first_value("post_history_instructions"), 16000)
-    if not system_prompt:
-        system_prompt = _text(depth_prompt.get("prompt"), 16000)
+    system_prompt = _text(first_value("system_prompt"), MAX_IMPORT_RAW_TEXT)
+    post_history_instructions = _text(first_value("post_history_instructions"), MAX_IMPORT_RAW_TEXT)
     alternate_greetings = _import_tavern_greetings(first_value("alternate_greetings"))
     group_only_greetings = _import_tavern_greetings(first_value("group_only_greetings"))
-    description = first_value("identity", "description", "persona")
-    scenario = first_value("background", "scenario")
+    description = first_value("identity", "description", "persona", "char_persona")
+    scenario = first_value("background", "scenario", "world_scenario")
     speech_style = first_value("speech_style", "talk_style", "speaking_style")
     if not speech_style:
         speech_style = next(
@@ -3302,6 +3308,8 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
             "keys": _clean_string_list(list(extensions.keys()), 80),
             "world": _text(extensions.get("world"), 240),
             "depth_prompt": _bounded_json_value(depth_prompt) if depth_prompt else {},
+            **({"regex_scripts": vlm_tavern.normalize_regex_scripts(extensions["regex_scripts"])}
+               if "regex_scripts" in extensions else {}),
         },
     }
     warnings = list(dict.fromkeys(warnings))
@@ -3313,7 +3321,7 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
         "tavern": tavern_metadata,
         "raw": _bounded_json_value(raw),
     }
-    first_message = first_value("first_message", "first_mes") or (alternate_greetings[0] if alternate_greetings else "")
+    first_message = first_value("first_message", "first_mes", "char_greeting") or (alternate_greetings[0] if alternate_greetings else "")
     if "initial_state_fields" in source:
         initial_state_fields = source["initial_state_fields"]
     elif "initial_state_fields" in simpai_extension:
@@ -3335,7 +3343,7 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
         "first_message": first_message,
         "initial_state_fields": initial_state_fields,
         "example_dialogues": _import_example_dialogues(
-            first_value("example_dialogues", "mes_example") or simpai_extension.get("example_dialogues")
+            first_value("example_dialogues", "mes_example", "example_dialogue") or simpai_extension.get("example_dialogues")
         ),
         "behavior_rules": _import_text_list(
             first_value("behavior_rules") or simpai_extension.get("behavior_rules"),
@@ -3642,6 +3650,7 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
         "persona": persona,
         "story_state": state,
         "story_outline": vlm_roleplay_outline.normalize(source.get("story_outline"), characters),
+        "tavern_preset": vlm_tavern.normalize_preset(source.get("tavern_preset")),
         "story_origin": _normalize_story_origin(source.get("story_origin")),
         "active_branch_id": branch_id,
         "active_turn_id": _text(source.get("active_turn_id"), 200),
@@ -3871,6 +3880,7 @@ def match_world_book_entries(
     *,
     limit: int = 20,
     include_hidden: bool = False,
+    history: Any = None,
 ) -> list[dict[str, Any]]:
     normalized = normalize_roleplay_session(session)
     actor_id = _text(speaker_id, 160)
@@ -3879,6 +3889,7 @@ def match_world_book_entries(
     rows: list[tuple[int, dict[str, Any]]] = []
     if not normalized.get("world_book", {}).get("enabled", True):
         return []
+    imported_entries = []
     for entry in normalized.get("world_book", {}).get("entries", []):
         if not entry.get("enabled") or not entry.get("content"):
             continue
@@ -3886,6 +3897,9 @@ def match_world_book_entries(
             continue
         chapter_ids = _clean_string_list(entry.get("chapter_ids"), MAX_CHAPTERS)
         if chapter_ids and active_chapter_id not in chapter_ids and not include_hidden:
+            continue
+        if vlm_tavern_world.is_imported(entry):
+            imported_entries.append(entry)
             continue
         extensions = _dict(entry.get("extensions"))
         use_regex = _as_bool(extensions.get("use_regex"), False)
@@ -3911,9 +3925,15 @@ def match_world_book_entries(
         selective = _as_bool(extensions.get("selective"), False)
         if selective and entry.get("secondary_keys"):
             selective_logic = _text(extensions.get("selectiveLogic"), 40).lower()
-            if selective_logic in {"1", "all", "and_all", "and all"}:
+            if selective_logic in {"3", "all", "and_all", "and all"}:
                 secondary_keys = _clean_string_list(entry.get("secondary_keys"), MAX_WORLD_BOOK_KEYS)
                 if secondary_hits < len(secondary_keys):
+                    continue
+            elif selective_logic in {"1", "not_all", "not all"}:
+                if secondary_hits >= len(entry["secondary_keys"]):
+                    continue
+            elif selective_logic in {"2", "not_any", "not any"}:
+                if secondary_hits:
                     continue
             elif secondary_hits <= 0:
                 continue
@@ -3922,6 +3942,41 @@ def match_world_book_entries(
         if chapter_ids and active_chapter_id in chapter_ids:
             score += 12
         rows.append((score, copy.deepcopy(entry)))
+    if imported_entries:
+        card = normalized.get("characters", {}).get(actor_id, normalized["character"])
+        persona = normalized["persona"]
+        if not include_hidden and actor_id not in normalized["characters"]:
+            card = (
+                vlm_roleplay_cognition.visible_card(normalized["character"])
+                if actor_id in vlm_roleplay_cognition.observer_ids(normalized) else {}
+            )
+        visible_persona = (
+            persona if include_hidden or actor_id == persona.get("id") else
+            vlm_roleplay_cognition.visible_card(persona)
+            if actor_id in vlm_roleplay_cognition.observer_ids(normalized)
+            and normalized["story_state"]["player_state"]["status"] == "present" else {}
+        )
+        tavern = card.get("import_metadata", {}).get("tavern", {})
+        values = {
+            "char": card.get("name", ""), "user": visible_persona.get("name", ""),
+            "description": card.get("identity", ""), "personality": card.get("personality", ""),
+            "scenario": card.get("background", ""),
+            "persona": "\n".join(str(visible_persona.get(key) or "") for key in ("identity", "appearance", "personality")),
+            "depthprompt": tavern.get("extensions", {}).get("depth_prompt", {}).get("prompt", ""),
+            "creatornotes": tavern.get("creator_notes", ""),
+        }
+        visible_history = (
+            history if include_hidden
+            else vlm_roleplay_cognition.filter_history(
+                history, normalized, actor_id or normalized["active_character_id"],
+            )
+        )
+        imported_matches = vlm_tavern_world.select_entries(
+            imported_entries, _text(query, 12000), visible_history or [],
+            normalized["world_book"].get("metadata", {}), values,
+        )
+        rows.extend((int(entry.get("extensions", {}).get("tavern_order", 0)), copy.deepcopy(entry))
+                    for entry in imported_matches)
     rows.sort(key=lambda item: (-item[0], str(item[1].get("updated_at") or "")))
     return [item for _, item in rows[: max(1, min(MAX_WORLD_BOOK_ENTRIES, int(limit or 20)))]]
 
@@ -3978,6 +4033,7 @@ def roleplay_context_resources(
     include_hidden: bool = False,
     world_limit: int = 20,
     memory_limit: int = 20,
+    history: Any = None,
 ) -> dict[str, Any]:
     normalized = normalize_roleplay_session(session)
     active_chapter = next(
@@ -3993,6 +4049,7 @@ def roleplay_context_resources(
             speaker_id,
             limit=world_limit,
             include_hidden=include_hidden,
+            history=history,
         ),
         "memories": query_roleplay_memories(
             normalized,
@@ -4638,6 +4695,15 @@ def _fit_world_book_context(entries: list[dict[str, Any]], budget: int) -> dict[
             "title": _context_text(entry.get("title"), 240),
             "content": _context_text(source, min(2400, share)),
         }
+        if vlm_tavern_world.is_imported(entry):
+            extensions = entry.get("extensions", {})
+            row["insertion"] = {
+                "position": extensions.get("position", 0),
+                "depth": extensions.get("depth", 4),
+                "role": extensions.get("role", 0),
+                "order": extensions.get("tavern_order", 100),
+                "unsupported_options": vlm_tavern_world.unsupported_options(extensions),
+            }
         candidate = _context_block("world_book", [*selected, row])
         if candidate["chars"] > budget:
             continue
@@ -4813,6 +4879,7 @@ def build_roleplay_context(
         world_limit=MAX_WORLD_BOOK_ENTRIES,
         memory_limit=max(1, limits["memories"]),
         include_hidden=not private_audience,
+        history=history,
     )
     requested_memory_ids = set(re.findall(r"@(?:记忆|memory)\[([^\]\r\n]{1,160})\]", _text(query, 5000), re.I))
     history_pack = _context_history(
@@ -5192,7 +5259,9 @@ def build_roleplay_system_prompt(
             else "Player persona:"
         ),
         "Context Builder blocks follow. Do not infer current state from omitted history or static setup text.",
-        *roleplay_context_prompt_sections(built_context),
+        *roleplay_context_prompt_sections(vlm_tavern.actor_context(
+            built_context, True,
+        ) if vlm_tavern.has_actor_instructions(normalized, resolved_speaker_id) else built_context),
     ]
     return "\n\n".join(part for part in sections if _text(part)).strip()
 
@@ -12715,6 +12784,7 @@ __all__ = [
     "normalize_world_book",
     "import_tavern_character_card",
     "import_tavern_world_book",
+    "import_tavern_preset",
     "normalize_memory_store",
     "normalize_chapter_store",
     "query_roleplay_memories",

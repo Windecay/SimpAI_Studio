@@ -28,6 +28,46 @@
       "en": "Agents in Studio",
       "cn": "Studio 智能体"
     },
+    "chat_modes": {
+      "en": "Chat modes and knowledge",
+      "cn": "聊天模式与知识读取"
+    },
+    "custom_skills": {
+      "en": "Custom skills / SKILL.md",
+      "cn": "自定义技能 / SKILL.md"
+    },
+    "chat_runtime": {
+      "en": "Context / VRAM / thinking / MTP",
+      "cn": "上下文 / 显存 / 思考 / MTP"
+    },
+    "chat_documents": {
+      "en": "TXT / MD / JSON attachments",
+      "cn": "TXT / MD / JSON 文档附件"
+    },
+    "creative_tasks": {
+      "en": "Creative tasks and image review",
+      "cn": "创作任务与图片复核"
+    },
+    "model_downloads": {
+      "en": "Missing models and downloads",
+      "cn": "模型缺失与下载"
+    },
+    "agent_connection": {
+      "en": "External Agent / MCP pairing",
+      "cn": "外部 Agent / MCP 配对接入"
+    },
+    "inference_api": {
+      "en": "Local LLM API / API keys",
+      "cn": "本地 LLM API / 推理 API Key"
+    },
+    "asset_storage": {
+      "en": "Asset storage and retention",
+      "cn": "素材空间与保留期限"
+    },
+    "web_tools": {
+      "en": "Public web reading / GitHub search",
+      "cn": "公开网页读取 / GitHub 搜索"
+    },
     "setup": {
       "en": "Set up an agent model",
       "cn": "配置智能体模型"
@@ -37,8 +77,8 @@
       "cn": "本地模型安装"
     },
     "api": {
-      "en": "API connection",
-      "cn": "API 连接"
+      "en": "External model API connection",
+      "cn": "为 Studio 配置外部 API"
     },
     "prompt": {
       "en": "Prompt tools",
@@ -140,6 +180,10 @@
       "en": "Describe media",
       "cn": "媒体内容反推"
     },
+    "image_tagger": {
+      "en": "WD14 / PixAI image tagger",
+      "cn": "WD14 / PixAI 标签反推器"
+    },
     "metadata": {
       "en": "Restore generation parameters",
       "cn": "生成参数提取"
@@ -182,12 +226,18 @@
         "styles",
         "models",
         "agent",
+        "chat_modes",
+        "custom_skills",
         "setup",
         "prompt",
+        "image_tagger",
         "media",
         "sam3",
         "metadata",
-        "application"
+        "application",
+        "agent_connection",
+        "inference_api",
+        "asset_storage"
       ]
     },
     "general": {
@@ -227,8 +277,8 @@
               "cn": "随机种子会改变起始噪声。需要对比参数时关闭“随机种子”并填写固定种子。复现还需要相同模型、预置、提示词、尺寸和采样设置，不同运行环境也可能带来差异。"
             },
             {
-              "en": "Output Format controls supported image output formats, not the video codec. Saving generation metadata is a separate option under My > Application.",
-              "cn": "存图格式控制受支持的图片输出格式，不是视频编码格式。是否保存生成参数，需要在“我的 > 应用”中单独设置。"
+              "en": "Output Format controls supported image output formats, not the video codec. Saving generation metadata is a separate option under Identity > Application.",
+              "cn": "存图格式控制受支持的图片输出格式，不是视频编码格式。是否保存生成参数，需要在“身份 → 应用”中单独设置。"
             }
           ]
         ]
@@ -446,8 +496,8 @@
     },
     "describe": {
       "intro": {
-        "en": "Describe Media asks a supported VLM to interpret uploaded media. It does not recover the exact prompt or generation settings originally used.",
-        "cn": "媒体内容反推使用受支持的 VLM 理解上传素材，不会还原素材原本使用的准确提示词或生成参数。"
+        "en": "Describe Media can interpret media with a VLM or infer image tags with WD14 / PixAI. Neither recovers the exact prompt or generation settings originally used.",
+        "cn": "媒体内容反推支持 VLM 素材描述和 WD14 / PixAI 图片标签反推，都不能还原素材原本使用的准确提示词或生成参数。"
       },
       "sections": [
         [
@@ -457,12 +507,16 @@
           },
           [
             {
-              "en": "Select a model with the required image or video input support. Files present or API configured are not proof that the model can process every media type.",
-              "cn": "选择支持所需图片或视频输入的模型。文件齐全或 API 配置完成，不代表模型支持所有素材类型。"
+              "en": "For VLM descriptions, select a model with the required image or video input support. Files present or API configured are not proof that the model can process every media type.",
+              "cn": "需要 VLM 描述时，选择支持所需图片或视频输入的模型。文件齐全或 API 配置完成，不代表模型支持所有素材类型。"
             },
             {
-              "en": "Tags, Chinese output and artist options change the requested description where supported. Review the output before using it as a generation prompt; descriptions can omit or misidentify details.",
-              "cn": "标签、中文输出和艺术家选项会在受支持时影响反推要求。用于生成前请检查文本，模型描述可能遗漏或误认细节。"
+              "en": "For an image, Output tags uses the image tagger selected in Identity > Application > Image tagger model. Hover over Output tags to see its name. Artist output is a separate tool. With neither tags nor artists selected, the image uses the VLM; video description also uses the VLM.",
+              "cn": "图片勾选“输出标签”时，使用“身份 → 应用 → 标签反推模型”中的选择；悬停“输出标签”可查看当前模型。艺术家输出是独立工具。图片未勾选标签和艺术家时使用 VLM，视频描述也使用 VLM。"
+            },
+            {
+              "en": "Chinese output can translate supported description or tag results. Review the text before generation; descriptions and tags can omit or misidentify details.",
+              "cn": "中文输出可翻译受支持的描述或标签结果。用于生成前请检查文本，描述和标签可能遗漏或误认细节。"
             },
             {
               "en": "An API-backed model may send the media to its provider and incur usage. Local models require sufficient resources. Use the chat entry for follow-up questions; use Metadata for embedded generation parameters.",
@@ -472,9 +526,112 @@
         ]
       ],
       "links": [
+        "image_tagger",
         "setup",
         "agent",
         "metadata"
+      ]
+    },
+    "image_tagger": {
+      "intro": {
+        "en": "Choose WD14 or PixAI Tagger v1.0 FP16 (pixai-tagger) in Identity > Application > Image tagger model. This is an image tagging tool; select chat and VLM models at their own entries.",
+        "cn": "在“身份 → 应用 → 标签反推模型”选择 WD14 或 PixAI Tagger v1.0 FP16（pixai-tagger）。它用于图片标签反推；对话和 VLM 模型在各自入口选择。"
+      },
+      "sections": [
+        [
+          {
+            "en": "Where to select the tagger",
+            "cn": "设置位置与生效范围"
+          },
+          [
+            {
+              "en": "Open Identity, select Application, then choose the Image tagger model. The initial default is WD14 EVA02 2026. The selection is saved for the current user and shared by main-page Output tags, Infinite Canvas image tag nodes, and Agent HTTP / MCP / built-in tag tools.",
+              "cn": "打开“身份”，选择“应用”，找到“标签反推模型”下拉菜单。初始默认为 WD14 EVA02 2026。选择按当前用户保存，主界面“输出标签”、无限画布标签节点和 Agent HTTP / MCP / 内置标签工具共用。"
+            },
+            {
+              "en": "Selecting PixAI here changes image tagging. Chat / Canvas Agent model selectors, generation model fields and PE model fields serve other tasks. Different signed-in identities keep separate tagger choices; local mode uses the local workspace preference.",
+              "cn": "在此选择 PixAI 后改变的是图片标签反推。对话／画布 Agent 模型选择器、生成模型和 PE 模型用于其他任务。不同登录身份分别保存标签模型选择，local 模式使用本机工作区偏好。"
+            }
+          ]
+        ],
+        [
+          {
+            "en": "Missing files and download",
+            "cn": "文件缺失与下载"
+          },
+          [
+            {
+              "en": "Selecting a model only saves the choice. If its files are missing, click Download missing tagger files in the same Application panel, wait for completion, then use Refresh tagger status. Studio does not automatically switch to another model when the selected one is missing.",
+              "cn": "选择模型只保存选择。文件缺失时，在同一应用设置区域点击“下载缺失的标签模型文件”，等待完成后点击“刷新标签模型状态”。所选模型缺失时不会自动改用其他模型。"
+            },
+            {
+              "en": "Downloading requires the current identity's model-download permission and an available local backend. When the button is disabled, check those conditions; changing a chat API or enabling automatic generation does not grant download permission. Agent tag tools do not download files or change your settings.",
+              "cn": "下载需要当前身份的模型下载权限，并且本地后端可用。按钮不可用时检查这两个条件；更换对话 API 或开启自动生成不会增加下载权限。Agent 标签工具不会下载文件或修改用户设置。"
+            },
+            {
+              "en": "PixAI needs both pixai-tagger-v1.0-fp16.onnx and pixai-tagger-v1.0-fp16.csv in a configured clip_vision model directory on the Studio computer. Use the built-in download for the registered files; an FP32 / INT8 export or a renamed unrelated ONNX file does not replace the required FP16 model and matching label table.",
+              "cn": "PixAI 需要 pixai-tagger-v1.0-fp16.onnx 和 pixai-tagger-v1.0-fp16.csv 两个文件，保存在运行 Studio 的电脑上已配置的 clip_vision 模型目录。可使用内置下载取得登记的文件；FP32／INT8 导出或其他重命名 ONNX 文件不能代替所需 FP16 模型及配套标签表。"
+            }
+          ]
+        ],
+        [
+          {
+            "en": "Output categories and missing tags",
+            "cn": "输出类别与缺少标签"
+          },
+          [
+            {
+              "en": "Output tag categories in the same panel offers general, character, copyright (work), style, meta and rating. Only general and character are enabled by default. Enable other categories when needed. Deselecting every category returns empty tags.",
+              "cn": "同一区域的“输出标签类别”提供普通标签、角色、作品、画风、元信息和分级六项，默认只开启普通与角色。需要作品等标签时勾选对应类别；全部取消会返回空标签。"
+            },
+            {
+              "en": "Categories are saved per user and retained when switching taggers. The selected model must provide that category and the score must reach its threshold. Character tags use the character threshold; every other category uses the general threshold.",
+              "cn": "类别按用户保存，切换模型时保留。模型必须提供相应类别，且置信度达到阈值才有输出。角色使用角色阈值，其余类别使用普通阈值。"
+            },
+            {
+              "en": "The CSV category determines filtering. Tags such as realistic, sketch, greyscale and watermark can belong to general even when style or meta is off. The style category does not enable the separate artist-output tool. User preferences do not change the category behavior of independent Comfy workflow nodes.",
+              "cn": "筛选以 CSV 类别为准。realistic、sketch、greyscale、watermark 等可能属于普通标签，即使关闭画风或元信息仍可能出现。画风类别不等于独立的艺术家输出工具。用户设置不改变独立 Comfy 工作流节点的类别行为。"
+            }
+          ]
+        ],
+        [
+          {
+            "en": "Thresholds and empty results",
+            "cn": "阈值与空结果"
+          },
+          [
+            {
+              "en": "Default general / character thresholds are PixAI 0.17 / 0.27 and WD14 0.35 / 0.85. Higher thresholds keep fewer candidates. In Canvas, a blank threshold uses the selected model's default; explicitly saved numbers, including 0, remain in effect after switching models. Clear them to restore model defaults.",
+              "cn": "普通／角色默认阈值分别为 PixAI 0.17／0.27、WD14 0.35／0.85。提高阈值会减少候选标签。Canvas 中阈值留空使用当前模型默认值；明确保存的数值（包括 0）在换模型后继续生效，清空后恢复模型默认。"
+            },
+            {
+              "en": "For empty or incomplete output, check the selected tagger's readiness, enabled categories and thresholds. In the Agent API, omit thresholds or send null to use model defaults. Candidate tags are not proof of real identity or age and still need review before use in a generation prompt.",
+              "cn": "结果为空或缺少标签时，检查所选模型是否就绪、类别是否开启和阈值设置。Agent API 省略阈值或传 null 时使用模型默认值。候选标签不能证明真实身份或年龄，用于生成提示词前仍需检查。"
+            }
+          ]
+        ],
+        [
+          {
+            "en": "Agent tools and device use",
+            "cn": "Agent 工具与设备"
+          },
+          [
+            {
+              "en": "The existing tool names simpai.prompts.wd14_status and simpai.prompts.wd14 serve the current user's WD14 or PixAI choice and categories. Read status for the actual model_id, categories and readiness, then tag an owned image asset_id when requested. A WD14 tool name does not mean the selected model is WD14.",
+              "cn": "既有工具名 simpai.prompts.wd14_status 和 simpai.prompts.wd14 共用当前用户选择的 WD14 或 PixAI 及类别。通过状态读取实际 model_id、类别和就绪情况，用户要求反推时再传入当前身份可读的图片 asset_id。工具名包含 WD14 不代表当前一定使用 WD14。"
+            },
+            {
+              "en": "The WD14 Agent path uses CPU. PixAI uses an available GPU provider and can use CPU when none is available; CPU is not necessarily faster with FP16. PixAI GPU tagging waits for other Studio generation work and releases its session afterward. The tag request has no per-request device selector.",
+              "cn": "WD14 的 Agent 路径使用 CPU。PixAI 使用可用 GPU provider，无可用 GPU provider 时可以使用 CPU；FP16 不代表 CPU 更快。PixAI GPU 反推会等待 Studio 已有生成任务，结束后释放会话。标签请求没有单次指定设备的选项。"
+            }
+          ]
+        ]
+      ],
+      "links": [
+        "application",
+        "describe",
+        "agent",
+        "prompt"
       ]
     },
     "metadata": {
@@ -544,8 +701,8 @@
     },
     "application": {
       "intro": {
-        "en": "My > Application contains display, output and workflow preferences. Some settings depend on your permissions or the current engine.",
-        "cn": "“我的 > 应用”包含显示、输出和流程偏好，部分设置受权限或当前引擎限制。"
+        "en": "Identity > Application contains display, output and workflow preferences. Some settings depend on your permissions or the current engine.",
+        "cn": "“身份 → 应用”包含显示、输出和流程偏好，部分设置受权限或当前引擎限制。"
       },
       "sections": [
         [
@@ -554,6 +711,10 @@
             "cn": "分清设置的作用"
           },
           [
+            {
+              "en": "Image tagger model selects WD14 or PixAI for image tags across the main page, Canvas and Agent tools. Output tag categories controls the included categories. Both are saved for the current user; missing tagger files can be downloaded explicitly in this panel when permission allows.",
+              "cn": "“标签反推模型”选择主界面、Canvas 和 Agent 标签工具使用的 WD14 或 PixAI；“输出标签类别”选择保留的类别。两者按当前用户保存，缺少的标签模型文件可在本区域有权限时明确下载。"
+            },
             {
               "en": "Language and theme change the interface. Hiding the welcome image or blurring gallery previews does not change generated content or encrypt saved files.",
               "cn": "语言和主题改变界面显示。隐藏欢迎图或模糊图库预览，不会改变生成内容，也不会加密保存的文件。"
@@ -578,6 +739,8 @@
         ]
       ],
       "links": [
+        "image_tagger",
+        "asset_storage",
         "profiles",
         "metadata",
         "system",
@@ -769,7 +932,9 @@
         "lora_stack",
         "upscale",
         "cfg",
-        "setup"
+        "setup",
+        "image_tagger",
+        "model_downloads"
       ]
     },
     "refiner": {
@@ -1120,6 +1285,10 @@
               "cn": "主界面对话：在“描述媒体”区域打开对话图标。向导模式提供使用建议；创作模式可以提交支持的生成任务。"
             },
             {
+              "en": "Free Chat, Guide and Creative modes can query the installed help knowledge base for Studio settings, taggers, controls and workflows. Image tagging uses the user's WD14 or PixAI setting independently of the chat model. Reading help does not start inference, generation or downloads.",
+              "cn": "自由对话、向导和创作模式都可以按需查询已有帮助，了解 Studio 设置、标签反推、控件和工作流。标签反推使用用户选择的 WD14 或 PixAI，与对话模型分别配置。阅读帮助不会启动推理、生成或下载。"
+            },
+            {
               "en": "Prompt tools: translate or refine the current prompt. Check the selected action before applying the result.",
               "cn": "提示词工具：翻译或优化当前提示词。应用结果前，检查所选操作及生成的文本。"
             },
@@ -1149,8 +1318,367 @@
       "links": [
         "setup",
         "prompt",
-        "preset"
+        "preset",
+        "image_tagger",
+        "chat_modes",
+        "custom_skills",
+        "creative_tasks",
+        "web_tools",
+        "agent_connection"
       ]
+    },
+    "chat_modes": {
+      "intro": {
+        "en": "Choose a mode in the chat window's mode selector. Modes change the task and context rules; they do not install or switch the underlying model.",
+        "cn": "在聊天窗口的模式选择器中切换。模式改变任务和上下文规则，模型仍需在模型入口选择与配置。"
+      },
+      "sections": [
+        [
+          {"en": "Which mode to use", "cn": "模式怎么选"},
+          [
+            {
+              "en": "Free Chat answers ordinary questions and can help prepare prompts when asked. It cannot submit image generation or editing; choose Creative Mode for supported generation tasks.",
+              "cn": "自由对话回答一般问题，也可在明确要求时帮助准备提示词。它不提交图片生成或编辑任务；需要直接生成时使用创作模式。"
+            },
+            {
+              "en": "Guide Mode explains Studio workflows and presets. It automatically includes relevant workflow-guide sections, currently up to about 3000 characters. Prompt Assistant focuses on preparing prompt text; neither mode submits generation.",
+              "cn": "向导模式解释 Studio 工作流与预置，会按当前问题自动加载相关工作流指南章节，目前最多约 3000 字符。提示词助手专注准备提示词文本，这两个模式都不提交生成任务。"
+            },
+            {
+              "en": "Creative Mode prepares supported generation tasks and their review cards. Roleplay has separate character and scene settings. Raw Model uses a simpler wrapper and does not use the normal Studio read-only tool loop.",
+              "cn": "创作模式准备受支持的生成任务及确认卡。角色扮演有独立的角色和场景设置。原始模型模式使用较简单的对话规则，不使用普通 Studio 只读工具循环。"
+            }
+          ]
+        ],
+        [
+          {"en": "How knowledge is read", "cn": "知识如何读取"},
+          [
+            {
+              "en": "Free Chat does not preload the workflow guide. When tools are available, Free Chat, Guide and Creative can search and read user help on demand. A tool index names available capabilities; a returned help excerpt or document supplies the actual facts.",
+              "cn": "自由对话默认不预载工作流指南。工具可用时，自由对话、向导和创作都可按需搜索并阅读用户帮助。工具索引用于发现能力，查询返回的帮助内容才提供具体知识。"
+            },
+            {
+              "en": "Manually selected custom skills add their bodies after the context check. Free Chat may also activate prompt rules for an explicit prompt request. Developer notes are not automatically added to this knowledge base.",
+              "cn": "手动选中的自定义 skill 在上下文检查通过后加载正文。自由对话遇到明确的提示词请求也可能启用提示词规则。开发记录不会自动加入这个知识库。"
+            }
+          ]
+        ]
+      ],
+      "links": ["agent", "custom_skills", "creative_tasks", "chat_documents", "chat_runtime"]
+    },
+    "custom_skills": {
+      "intro": {
+        "en": "Open chat settings and find Custom skills to enable SKILL.md guidance for the current conversation.",
+        "cn": "在聊天设置中找到“自定义技能”，为当前对话启用 SKILL.md 指导。"
+      },
+      "sections": [
+        [
+          {"en": "Choose, create and import", "cn": "选择、新建与导入"},
+          [
+            {
+              "en": "Refresh the SKILL.md list and select only the skills needed for this conversation. The active indicator shows the selected names. Conversation selections are independent; saving a skill file alone does not enable it everywhere.",
+              "cn": "刷新 SKILL.md 列表，勾选当前对话需要的技能；已启用指示器会显示名称。技能选择按对话保存，保存文件本身不会在所有对话中启用它。"
+            },
+            {
+              "en": "Use Create a custom skill, Upload SKILL.md, or Import package when available. Choose Personal or Shared project according to the offered permissions. Shared skills can be available to other users; personal skills belong to your identity.",
+              "cn": "可用时使用“新建自定义技能”“上传 SKILL.md”或“导入技能包”。按界面允许的权限选择个人或项目共享位置；共享技能可供其他用户使用，个人技能属于当前身份。"
+            },
+            {
+              "en": "Agent draft prepares editable guidance for review. Inspect the content, then save and select it. Importing a skill package does not install Python dependencies, models or executable plugins.",
+              "cn": "“Agent 编写”生成可编辑草稿，检查内容后保存并勾选。导入技能包不会安装 Python 依赖、模型或可执行插件。"
+            }
+          ]
+        ],
+        [
+          {"en": "Context and permissions", "cn": "上下文与权限"},
+          [
+            {
+              "en": "Selected skill bodies share context space with the system prompt, history and attachments. Each mode has a selection limit. If the preflight reports too many skills or an exceeded budget, reduce the selection or shorten the custom system prompt before sending.",
+              "cn": "选中的技能正文与系统提示词、历史和附件共用上下文。不同模式有数量上限；发送前检查提示数量或预算超限时，减少勾选或缩短自定义系统提示词后再发送。"
+            },
+            {
+              "en": "A skill can guide answers but cannot grant download, generation, identity-management or arbitrary file access. Knowledge help remains available without enabling a custom skill.",
+              "cn": "技能可以指导回答，不能授予下载、生成、身份管理或任意文件读取权限。不勾选自定义技能仍可查询程序自带帮助。"
+            }
+          ]
+        ]
+      ],
+      "links": ["chat_modes", "chat_runtime", "chat_documents", "access"]
+    },
+    "chat_runtime": {
+      "intro": {
+        "en": "The chat runtime controls include Context, VRAM policy, KV cache, thinking and MTP. Their effect depends on the selected backend and model.",
+        "cn": "聊天运行设置包含上下文、显存策略、KV cache、思考和 MTP，实际作用取决于所选后端及模型。"
+      },
+      "sections": [
+        [
+          {"en": "Memory and output length", "cn": "内存与输出长度"},
+          [
+            {
+              "en": "For local llama.cpp, leave Context blank to use the model default. More context can use more memory. Max output tokens caps the response, not the total context; history, skills, attachments and thinking also consume the available budget.",
+              "cn": "本地 llama.cpp 的上下文留空时使用模型默认值，增大上下文可能增加内存占用。“最大输出 Token”限制回复长度，不代表总上下文；历史、技能、附件和思考也占用可用预算。"
+            },
+            {
+              "en": "Choose GPU priority, Balanced VRAM, More free VRAM or CPU according to available resources. KV cache precision also affects memory. A selected policy is a request, not proof that every layer ran on the GPU; inspect the actual runtime status.",
+              "cn": "按资源情况选择 GPU 优先、均衡、多留空余显存或 CPU。KV cache 精度也影响内存。选择策略不代表所有层都已使用 GPU，应查看实际运行状态。"
+            }
+          ]
+        ],
+        [
+          {"en": "Thinking and acceleration", "cn": "思考与加速"},
+          [
+            {
+              "en": "Thinking requires model/backend support and shares the response token budget. Enabling it does not configure an LLM or enable generation. External API providers can use their own controls and limits.",
+              "cn": "思考功能需要模型和后端支持，并与回答共用输出 Token 预算。打开思考不会完成 LLM 配置或开启生成。外部 API 服务可能使用自己的控制方式与限制。"
+            },
+            {
+              "en": "The MTP switch requests supported speculative decoding for text-only local requests. Image and video requests use standard decoding. MTP is not supported by every model and does not guarantee a speed increase.",
+              "cn": "MTP 开关用于受支持的本地纯文本请求推测解码。图片和视频请求使用普通解码。并非所有模型都支持 MTP，开启后也不保证加速。"
+            }
+          ]
+        ]
+      ],
+      "links": ["setup", "local", "api", "custom_skills", "inference_api"]
+    },
+    "chat_documents": {
+      "intro": {
+        "en": "Attach TXT, MD or JSON through the chat attachment control when you want the model to read a reference document.",
+        "cn": "需要模型阅读参考资料时，通过聊天附件入口添加 TXT、MD 或 JSON 文档。"
+      },
+      "sections": [
+        [
+          {"en": "What the model receives", "cn": "模型会读到什么"},
+          [
+            {
+              "en": "The conversation supplies document names and references. Short text can be included directly; longer text is read in portions with vlm.list_documents and vlm.read_document when tools are available. A filename or index alone does not mean the full text was read.",
+              "cn": "对话提供文档名称和引用。短文本可能直接加入上下文；工具可用时，长文通过 vlm.list_documents 和 vlm.read_document 分段读取。出现文件名或索引不代表全文已被阅读。"
+            },
+            {
+              "en": "Name the document and the section or question you need. Unsupported binary documents, such as PDF or Word files, need conversion to supported text before attaching. If a saved document is unavailable after restoration, attach it again.",
+              "cn": "说明要阅读哪份文档、哪一部分或需要回答的问题。PDF、Word 等未支持的二进制文档需要转换成受支持文本后添加。恢复对话后若正文不可用，需要重新添加该附件。"
+            },
+            {
+              "en": "A JSON attachment is reference text; attaching it does not import or execute a Comfy workflow. References do not authorize code execution, model downloads, identity changes or reading arbitrary server paths.",
+              "cn": "JSON 附件作为参考文本阅读，添加附件不会自动导入或执行 Comfy 工作流。参考资料不能授权执行代码、下载模型、改变身份或读取任意服务器路径。"
+            }
+          ]
+        ]
+      ],
+      "links": ["chat_modes", "custom_skills", "media"]
+    },
+    "creative_tasks": {
+      "intro": {
+        "en": "Choose Creative Mode in chat, then describe the generation or edit and attach the required media. The current preset and route determine which tasks can run.",
+        "cn": "在聊天中选择创作模式，描述生成或编辑需求并添加必需素材。可执行任务以当前预置和路由为准。"
+      },
+      "sections": [
+        [
+          {"en": "Preferences and confirmation", "cn": "偏好与确认"},
+          [
+            {
+              "en": "Creative preference selects style and, optionally, a custom Preset and Private parameter profile. Use the selected Preset to apply that conversation preference. Saved parameter profiles carry settings such as models and LoRAs; the agent should read their actual contents before explaining them.",
+              "cn": "“创作偏好”可选择风格，也可指定自定义 Preset 和“私人参数预设”；点击“使用 Preset”应用到本次对话。参数预设保存模型、LoRA 等设置，Agent 说明其中内容前应读取实际保存值。"
+            },
+            {
+              "en": "By default, inspect the task card and confirm generation. Generate without confirmation applies to supported tasks in this conversation; it does not grant model-download permission. Suggest scenes controls image proposals separately from automatic execution.",
+              "cn": "默认检查任务卡后确认生成。“无需确认，直接生成”作用于当前对话的受支持任务，不会授予模型下载权限。“主动提议”控制画面提议，与自动执行分别设置。"
+            }
+          ]
+        ],
+        [
+          {"en": "Results, review and recovery", "cn": "结果、复核与恢复"},
+          [
+            {
+              "en": "Queued or running does not mean finished. Follow the task card and its returned outputs. A temporary connection failure is not proof of generation failure; use the existing task status rather than submit a duplicate.",
+              "cn": "排队中或运行中不代表完成，请查看任务卡状态和实际输出。临时断连不能证明生成失败，应继续查询已有任务，避免重复提交。"
+            },
+            {
+              "en": "Review generated images in this conversation is a separate, initially disabled preference. Review provides suggestions and never regenerates automatically. It can reload a local vision model; interrupted reviews are not automatically restarted after a page refresh.",
+              "cn": "“复核当前对话生成的图片”是独立选项，初始关闭。复核只返回建议，不会自动重新生成，可能重新加载本地视觉模型。页面刷新后不会自动重启已中断的复核。"
+            }
+          ]
+        ]
+      ],
+      "links": ["chat_modes", "profiles", "model_downloads", "media", "asset_storage"]
+    },
+    "model_downloads": {
+      "intro": {
+        "en": "Use the missing-model check for the selected preset or model. Choosing a preset, reading help or enabling automatic generation does not itself authorize a download.",
+        "cn": "通过所选预置或模型的缺失检查查看所需文件。选择预置、阅读帮助或开启自动生成，本身都不代表授权下载。"
+      },
+      "sections": [
+        [
+          {"en": "Download and continue a task", "cn": "下载后继续任务"},
+          [
+            {
+              "en": "In Creative Mode, a task with missing models can show Download and continue. Inspect the listed files and size, then confirm if your identity has model-download permission. The task rechecks readiness before continuing with its original prompt and media.",
+              "cn": "创作模式的缺模型任务可显示“确认下载并继续”。查看文件与大小，当前身份具备模型下载权限时再确认。文件就绪后会重新检查条件，使用原提示词和素材继续任务。"
+            },
+            {
+              "en": "Find an alternative checks compatible installed options without repeating a declined download. Alternatives must preserve the requested media roles and task requirements; an incomplete check does not prove that every alternative is unavailable.",
+              "cn": "“不下载，寻找替代方案”检查已安装且兼容的选择，不会反复要求同一任务下载。替代方案需要保留素材角色与任务要求，检查未完成不能当作所有方案都不可用。"
+            },
+            {
+              "en": "Downloading models uses shared node storage. Stopping a creative task does not cancel a shared model download. Failure, cancellation or timeout does not start generation; refreshing the page requires checking and confirming again.",
+              "cn": "模型下载使用节点共享目录，停止创作任务不会取消共享模型下载。失败、取消或超时不会开始生成；刷新页面后需要重新检查并确认。"
+            }
+          ]
+        ],
+        [
+          {"en": "Other models and permissions", "cn": "其他模型与权限"},
+          [
+            {
+              "en": "For chat models, use their own model-status and missing-file controls. For WD14 / PixAI, use Identity > Application > Image tagger model. Generation models, language models and taggers have different file requirements.",
+              "cn": "对话模型使用各自的状态与缺失文件入口；WD14／PixAI 使用“身份 → 应用 → 标签反推模型”。生成模型、语言模型和标签模型的文件要求不同。"
+            },
+            {
+              "en": "External Agent downloads require separate models.download authorization and the identity's existing permission. Agents should use discovered registered files and status results, not invent URLs, directories or permission changes.",
+              "cn": "外部 Agent 下载还需单独获批 models.download scope，并具备当前身份已有的下载权限。Agent 应使用服务公布的登记文件和状态，不自定下载地址、目录或修改权限。"
+            }
+          ]
+        ]
+      ],
+      "links": ["creative_tasks", "models", "local", "image_tagger", "access"]
+    },
+    "agent_connection": {
+      "intro": {
+        "en": "Open Agent / API access from the Studio footer to connect an external agent, inspect the actual Studio address and copy connection instructions.",
+        "cn": "从 Studio 底部打开“Agent / API 接入”，查看实际 Studio 地址并复制外部智能体接入说明。"
+      },
+      "sections": [
+        [
+          {"en": "HTTP, MCP and browser pairing", "cn": "HTTP、MCP 与浏览器配对"},
+          [
+            {
+              "en": "Agents with HTTP tools can call the Agent API directly. An MCP client starts the independent stdio adapter on its own computer; the Studio URL is not an HTTP MCP endpoint. The built-in chat agent needs no MCP adapter.",
+              "cn": "支持 HTTP 工具的 Agent 可直接调用 Agent API。MCP 客户端在自己的电脑上启动独立 stdio 适配器，不能把 Studio 地址直接当作 HTTP MCP 入口。内置聊天 Agent 无需 MCP 适配器。"
+            },
+            {
+              "en": "Read the service's auth/discovery first. Local mode uses the Studio workspace. Multi-user mode requires signing in and approving the requested permissions in a browser; opening the public connection page alone does not authorize the agent.",
+              "cn": "首次连接读取服务的 auth/discovery。local 模式使用 Studio 工作区；多用户模式需要在浏览器登录并批准所申请权限，仅打开公开接入页不会授权 Agent。"
+            },
+            {
+              "en": "Multi-user pairing needs HTTPS or a real loopback connection. Use a same-computer address only if the service publishes it and the service identity matches. Keep the deployment prefix; do not guess a port, use a ComfyD address or merely replace http with https.",
+              "cn": "多用户配对需要 HTTPS 或真实本机回环连接。同机入口应由服务公布，并核对服务标识一致。保留部署前缀，不猜端口、不用 ComfyD 地址，也不能只把 http 改成 https。"
+            }
+          ]
+        ],
+        [
+          {"en": "Credentials and inference", "cn": "凭据与推理"},
+          [
+            {
+              "en": "The private connection layer manages paired credentials and renewal. Passwords, identity QR codes, browser cookies and tokens stay out of model messages. Authorization expiry or identity changes require renewed authorization, without silently switching identity.",
+              "cn": "配对凭据和续期由私密连接层管理。身份口令、二维码、浏览器 Cookie 和令牌不交给模型。授权到期或身份变化时重新授权，不自动更换身份继续操作。"
+            },
+            {
+              "en": "For another AI client to use only Studio's local LLM, use Local LLM API and an inference API key instead. An inference key does not authorize Studio tools or MCP. Local VLM tools through paired Agent access require vlm.infer permission.",
+              "cn": "其他 AI 客户端只需使用 Studio 本地 LLM 时，使用“本地 LLM API”和推理 API Key。推理 Key 不授权 Studio 工具或 MCP；通过配对 Agent 使用本地 VLM 工具还需 vlm.infer 权限。"
+            }
+          ]
+        ]
+      ],
+      "links": ["inference_api", "asset_storage", "access", "model_downloads"]
+    },
+    "inference_api": {
+      "keywords": ["apikey", "API Key", "推理密钥", "本地推理服务"],
+      "intro": {
+        "en": "To use Studio's local model in another AI client, open Agent / API access > Local LLM API > Manage keys. Copy the displayed Base URL, an allowed model ID and your inference API key into that client's private settings.",
+        "cn": "要在其他 AI 客户端使用 Studio 本地模型，打开“Agent / API 接入 → 本地 LLM API → 管理 Key”，将页面显示的 Base URL、允许的模型 ID 和推理 API Key 填入客户端私密设置。"
+      },
+      "sections": [
+        [
+          {"en": "Address, model and API key", "cn": "地址、模型与 API Key"},
+          [
+            {
+              "en": "Use the displayed Chat Completions-compatible base, including its deployment prefix and /api/v1/llm. Install the local model in Studio first. Fetching the model list only checks discovery; test a chat request to verify inference.",
+              "cn": "使用页面公布的 Chat Completions 兼容地址，保留部署前缀和 /api/v1/llm。先在 Studio 安装本地模型；取得模型列表只证明可以查询，需完成聊天请求才能验证推理。"
+            },
+            {
+              "en": "Create a named key with an expiry and allowed model scope. After signing in, you can view or copy it again and revoke it. Keep the full key out of chat, screenshots and shared projects; the agent cannot retrieve private key-management data for you.",
+              "cn": "创建 Key 时设置名称、有效期和模型范围。登录后可再次查看、复制或撤销。完整 Key 不应放进聊天、截图或共享项目，Agent 不能代为读取私密 Key 管理数据。"
+            },
+            {
+              "en": "Inference keys allow model listing and Chat Completions only. They do not allow tools, uploads, downloads or private asset IDs; send images as data URLs. In multi-user mode use HTTPS or a real loopback address; LAN HTTP is insufficient.",
+              "cn": "推理 Key 只允许模型列表和 Chat Completions，不允许工具、上传、下载或私有素材 ID；图片随请求发送 data URL。多用户模式需要 HTTPS 或真实回环地址，局域网 HTTP 不满足要求。"
+            }
+          ]
+        ],
+        [
+          {"en": "Client options", "cn": "客户端参数"},
+          [
+            {
+              "en": "Read context_window and max_output_tokens from the model list. The key's default VRAM policy applies when the client omits vram_policy; an explicit client value takes priority. Changes apply to the next request without changing the key.",
+              "cn": "从模型列表读取 context_window 和 max_output_tokens。客户端省略 vram_policy 时使用 Key 保存的默认显存策略，显式参数优先；修改从下一请求生效，无需重建 Key。"
+            },
+            {
+              "en": "reasoning_effort none/off disables thinking; other supported values enable it, and omission follows the model default. Thinking uses reasoning_content and shares the token budget. For streaming usage, send stream_options.include_usage=true. Check error.param for invalid fields.",
+              "cn": "reasoning_effort 为 none/off 时关闭思考，其他支持值启用，省略时沿用模型默认。思考通过 reasoning_content 返回并共用 Token 预算。流式统计发送 stream_options.include_usage=true；字段错误时查看 error.param。"
+            }
+          ]
+        ]
+      ],
+      "links": ["agent_connection", "api", "local", "chat_runtime"]
+    },
+    "asset_storage": {
+      "intro": {
+        "en": "Open Asset storage from the Studio footer or Agent / API access to inspect temporary uploads, result copies, protected assets and the current identity's storage policy.",
+        "cn": "从 Studio 底部或“Agent / API 接入”打开“资产空间管理”，查看当前身份的临时上传、结果副本、受保护素材和保留策略。"
+      },
+      "sections": [
+        [
+          {"en": "Retention and protection", "cn": "保留与保护"},
+          [
+            {
+              "en": "The default retention is 30 days since last use; use restarts the period. Check the actual saved policy. For long-term use, save assets in a project or mark Keep rather than assume an asset ID is permanent.",
+              "cn": "默认在最后使用 30 天后到期，重新使用会重新计算保留期，以当前保存策略为准。长期需要的素材应保存到项目或选择“保留”，不要假定素材 ID 永久有效。"
+            },
+            {
+              "en": "Project, template and backup references, running tasks and manually kept assets are protected. Cleanup pauses during generation and when protection cannot be checked completely. Original generated works are not removed by temporary-asset cleanup.",
+              "cn": "项目、模板和备份引用、运行中任务及手动保留的素材受到保护。生成期间或保护检查不完整时暂停清理。临时素材清理不删除原始生成作品。"
+            }
+          ]
+        ],
+        [
+          {"en": "Space limits and management", "cn": "空间限制与管理"},
+          [
+            {
+              "en": "A storage limit can pause new uploads and generation without deleting recent or protected files early. In the management page, inspect eligible expired assets, adjust the limit or retention, or mark Keep. The displayed 0 limit means unlimited.",
+              "cn": "达到空间上限会阻止新上传和生成，不会提前删除近期或受保护文件。可在管理页查看可清理的过期素材、调整上限或期限，或选择“保留”。上限为 0 表示不限。"
+            },
+            {
+              "en": "Agents can inspect status with simpai.assets.storage and use its management_url. Cleanup and policy changes require the current Studio browser identity; paired read/generation permissions do not permit those writes. An incomplete scan is not proof that storage is full.",
+              "cn": "Agent 可用 simpai.assets.storage 查询状态，并使用返回的 management_url。清理与策略修改由当前 Studio 浏览器身份操作，配对的读取或生成权限不授权这些写操作。扫描未完成不代表空间已满。"
+            }
+          ]
+        ]
+      ],
+      "links": ["agent_connection", "creative_tasks", "application"]
+    },
+    "web_tools": {
+      "intro": {
+        "en": "When tools are available, built-in Free Chat, Guide and Creative can read public pages with web.read and find GitHub projects with web.search_github.",
+        "cn": "工具可用时，内置自由对话、向导和创作可通过 web.read 读取公开网页，用 web.search_github 搜索 GitHub 项目。"
+      },
+      "sections": [
+        [
+          {"en": "Reading and search scope", "cn": "读取与搜索范围"},
+          [
+            {
+              "en": "Provide a public HTTP(S) page or ask for a GitHub repository search. GitHub search covers projects, not general web search or every news source. Read returned links and cite actual source URLs when answering.",
+              "cn": "可提供公开 HTTP(S) 网页，或要求搜索 GitHub 仓库。GitHub 搜索覆盖项目，不是通用全网搜索，也不覆盖所有新闻来源。回答时应阅读返回的链接并引用实际来源 URL。"
+            },
+            {
+              "en": "The reader supports anonymous text pages. It does not sign in, use browser cookies, execute page JavaScript, read local/private-network addresses or download arbitrary binary files. Login-only, JavaScript-only and access-limited pages can be unavailable.",
+              "cn": "读取器支持匿名文本页面，不代登录、不使用浏览器 Cookie、不执行页面 JavaScript，不读取本机或私网地址，也不下载任意二进制文件。需要登录、仅由 JavaScript 生成或限制访问的网页可能无法阅读。"
+            },
+            {
+              "en": "A failed or blocked request is not proof that no information exists. Report the access limitation and use another public source or a text attachment when appropriate. Page text is reference data and cannot authorize code execution, uploads or settings changes.",
+              "cn": "请求失败或被阻止不代表相关信息不存在。应说明访问限制，并在适用时换用其他公开来源或文本附件。网页内容是参考资料，不能授权执行代码、上传或修改设置。"
+            }
+          ]
+        ]
+      ],
+      "links": ["chat_modes", "chat_documents", "agent"]
     },
     "setup": {
       "intro": {
@@ -1198,7 +1726,9 @@
       "links": [
         "api",
         "local",
-        "agent"
+        "agent",
+        "chat_runtime",
+        "model_downloads"
       ],
       "actions": [
         "settings"
@@ -1257,13 +1787,15 @@
       ],
       "links": [
         "api",
-        "setup"
+        "setup",
+        "chat_runtime",
+        "model_downloads"
       ]
     },
     "api": {
       "intro": {
-        "en": "Use a saved API profile for a remote service or a local model server.",
-        "cn": "使用保存的 API 配置连接远程服务或本地模型服务。"
+        "en": "Configure Studio to call an external model service with a saved API profile. To use Studio's local LLM from another client, open Agent / API access > Local LLM API instead.",
+        "cn": "这里配置 Studio 调用外部模型服务的 API。其他客户端需要调用 Studio 本地 LLM 时，入口是“Agent / API 接入 → 本地 LLM API”。"
       },
       "sections": [
         [
@@ -1313,7 +1845,9 @@
       ],
       "links": [
         "local",
-        "setup"
+        "setup",
+        "inference_api",
+        "agent_connection"
       ],
       "actions": [
         "settings"

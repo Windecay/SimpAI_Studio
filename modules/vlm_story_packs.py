@@ -28,7 +28,7 @@ _RUNTIME_FIELDS = (
     "emotion", "current_action", "inventory", "goals", "current_appearance_asset_ids",
 )
 _TAVERN_FIELDS = (
-    "system_prompt", "post_history_instructions", "alternate_greetings", "group_only_greetings",
+    "system_prompt", "post_history_instructions", "alternate_greetings", "group_only_greetings", "extensions",
 )
 
 
@@ -54,9 +54,18 @@ def settings_from_session(value):
         card = copy.deepcopy(source)
         card["state_image_history"] = []
         tavern = source.get("import_metadata", {}).get("tavern", {})
-        card["import_metadata"] = {"tavern": {
-            field: copy.deepcopy(tavern[field]) for field in _TAVERN_FIELDS if field in tavern
-        }}
+        card["import_metadata"] = {
+            "source_format": source.get("import_metadata", {}).get("source_format", ""),
+            "tavern": {
+                field: copy.deepcopy(tavern[field]) for field in _TAVERN_FIELDS if field in tavern
+            },
+        }
+        if isinstance(card["import_metadata"]["tavern"].get("extensions"), dict):
+            extensions = card["import_metadata"]["tavern"]["extensions"]
+            card["import_metadata"]["tavern"]["extensions"] = {
+                field: extensions[field] for field in ("keys", "world", "depth_prompt", "regex_scripts")
+                if field in extensions
+            }
         card["world_book"] = _world(card.get("world_book"))
         characters[key] = card
     if not characters:
@@ -84,6 +93,7 @@ def settings_from_session(value):
         "scene_reference_asset_ids": copy.deepcopy(session["visual_config"]["reference_asset_ids"]),
         "world_book": _world(session["world_book"]),
         "story_outline": fresh_outline,
+        "tavern_preset": copy.deepcopy(session["tavern_preset"]),
         "director_config": copy.deepcopy(session["director_config"]),
     }
 
@@ -100,6 +110,7 @@ def _session_from_settings(settings):
             "characters": settings.get("character_states"),
         },
         "world_book": settings.get("world_book"), "story_outline": settings.get("story_outline"),
+        "tavern_preset": settings.get("tavern_preset"),
         "director_config": settings.get("director_config"),
         "visual_config": {"reference_asset_ids": settings.get("scene_reference_asset_ids", [])},
     }

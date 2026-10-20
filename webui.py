@@ -17923,7 +17923,11 @@ async def describe_image_vlm_roleplay_import_endpoint(payload: dict = Body(defau
     payload = payload if isinstance(payload, dict) else {}
     kind = str(payload.get("kind") or payload.get("type") or "character_card").strip().lower()
     filename = str(payload.get("filename") or payload.get("name") or "").strip()
-    raw = payload.get("card") if kind in {"character", "character_card", "card"} else payload.get("world_book")
+    raw = (
+        payload.get("preset") if kind in {"preset", "tavern_preset", "prompt_preset"}
+        else payload.get("card") if kind in {"character", "character_card", "card"}
+        else payload.get("world_book")
+    )
     if raw is None:
         raw = payload.get("data")
     if raw is None and payload.get("content_base64"):
@@ -17933,10 +17937,14 @@ async def describe_image_vlm_roleplay_import_endpoint(payload: dict = Body(defau
             raw = None
     if raw is None:
         return JSONResponse({"ok": False, "error": "import_content_required"}, status_code=400)
-    if kind in {"world", "worldbook", "world_book", "lorebook"}:
+    if kind in {"preset", "tavern_preset", "prompt_preset"}:
+        result = await run_in_threadpool(vlm_roleplay.import_tavern_preset, raw, filename)
+    elif kind in {"world", "worldbook", "world_book", "lorebook"}:
         result = await run_in_threadpool(vlm_roleplay.import_tavern_world_book, raw, filename)
-    else:
+    elif kind in {"character", "character_card", "card"}:
         result = await run_in_threadpool(vlm_roleplay.import_tavern_character_card, raw, filename)
+    else:
+        return JSONResponse({"ok": False, "error": "import_kind_invalid"}, status_code=400)
     return JSONResponse(result, status_code=200 if result.get("ok") else 400)
 
 

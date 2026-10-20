@@ -30161,3 +30161,95 @@ html.simpai-h3-director #scene_director_editor .h3-timeline-gap:focus-visible {
 #describe_results button[data-description-copy-state="failed"] {
   color: #ef4444;
 }
+
+.describe-vlm-chat-tavern-preset {
+  grid-column: 1 / -1;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.describe-vlm-chat-tavern-preset > summary,
+.describe-vlm-chat-tavern-prompt > summary {
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-tavern-preset input,
+.describe-vlm-chat-tavern-preset select,
+.describe-vlm-chat-tavern-preset textarea,
+.describe-vlm-chat-tavern-preset button {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.describe-vlm-chat-tavern-preset small {
+  color: var(--describe-chat-muted, #a4a8b4);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-tavern-preset-body,
+.describe-vlm-chat-tavern-prompt-body {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.describe-vlm-chat-tavern-preset-body {
+  margin-top: 10px;
+}
+
+.describe-vlm-chat-tavern-preset [data-roleplay-preset-entries] {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.describe-vlm-chat-tavern-prompt {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border-color-primary, #8884);
+  border-radius: 6px;
+}
+
+.describe-vlm-chat-tavern-prompt-body {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 8px;
+}
+
+.describe-vlm-chat-tavern-prompt-body > textarea,
+.describe-vlm-chat-tavern-prompt-body > small,
+.describe-vlm-chat-tavern-prompt-body > .describe-vlm-chat-roleplay-section-actions {
+  grid-column: 1 / -1;
+}
+
+.describe-vlm-chat-tavern-prompt > summary > input {
+  width: 14px;
+  height: 14px;
+  min-height: 14px;
+  margin: 0 6px 0 0;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.describe-vlm-chat-tavern-prompt [hidden] {
+  display: none !important;
+}
+
+.describe-vlm-chat-tavern-notes {
+  max-width: 100%;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+
+.describe-vlm-chat-tavern-notes:empty {
+  display: none;
+}

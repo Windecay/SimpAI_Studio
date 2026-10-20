@@ -875,7 +875,9 @@ def chat_payload_to_responses(payload):
             continue
         role = str(message.get("role") or "user").strip() or "user"
         content = message.get("content", "")
-        if role in ("system", "developer"):
+        if payload.get("_simpai_preserve_message_order") and message.get("name") in {"example_user", "example_assistant"}:
+            content = f"[{message['name']}: example dialogue, not story events]\n{_content_text(content)}"
+        if role in ("system", "developer") and not payload.get("_simpai_preserve_message_order"):
             text = _content_text(content).strip()
             if text:
                 instructions.append(text)

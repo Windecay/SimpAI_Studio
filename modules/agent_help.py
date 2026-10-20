@@ -1,4 +1,4 @@
-"""Read existing Studio help as reference data, without JS execution or network I/O."""
+"""Read shipped user help as reference data; development notes are not indexed."""
 
 from functools import lru_cache
 import hashlib
@@ -72,7 +72,8 @@ def topic_document(key, lang, data=None):
         return None
     title = text(data["titles"][key], lang)
     return _document("topic:" + key, title, _markdown(title, topic["intro"], topic.get("sections", []), lang),
-                     lang, "studio_help", related=["topic:" + item for item in topic.get("links", [])])
+                     lang, "studio_help", related=["topic:" + item for item in topic.get("links", [])],
+                     **({"keywords": topic["keywords"]} if topic.get("keywords") else {}))
 
 
 def preset_document(entry, lang, theme="", data=None):
@@ -123,7 +124,10 @@ def preset_document(entry, lang, theme="", data=None):
 
 def guide_documents():
     from modules.vlm_preset_guide_router import _markdown_sections
-    source = GUIDE_CONTENT.read_text(encoding="utf-8-sig")
+    try:
+        source = GUIDE_CONTENT.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return []
     return [_document("guide:" + hashlib.sha256(heading.encode("utf-8")).hexdigest()[:16], heading, content,
                       "original", "preset_workflow_guide")
             for heading, content in _markdown_sections(source).items()]
@@ -208,6 +212,9 @@ def normalize(value):
 def search(documents, query, preset_id=""):
     query = normalize(query).strip()
     words = query.split()
+    # Prefer names in mixed-language questions over generic Chinese bigrams.
+    identifiers = set(re.findall(r"[a-z0-9]+(?:[._+-][a-z0-9]+)*", query)) - set(words)
+    words.extend(sorted(identifiers))
     # Chinese questions usually have no spaces. Include meaningful adjacent
     # characters so “蒙版怎么使用” can find the existing 蒙版 guidance.
     for phrase in re.findall(r"[\u3400-\u9fff]{4,}", query):
@@ -218,15 +225,17 @@ def search(documents, query, preset_id=""):
     for order, document in enumerate(documents):
         title = normalize(document["title"])
         content = normalize(document["content"])
-        matches = [word for word in words if word in title or word in content]
+        keywords = normalize(" ".join(document.get("keywords") or []))
+        matches = [word for word in words if word in title or word in content or word in keywords]
         if query and not matches:
             continue
         score = (40 if query and query in title else 0) + (15 if query and query in content else 0)
-        score += sum(8 if word in title else 2 for word in matches)
+        score += sum(8 if word in title or word in keywords else 2 for word in matches)
+        score += 8 * sum(word in identifiers for word in matches)
         if preset_id and document.get("preset_id") == preset_id:
             score += 30
         position = min((content.find(word) for word in matches if word in content), default=0)
-        summary = {key: value for key, value in document.items() if key not in {"content", "related"}}
+        summary = {key: value for key, value in document.items() if key not in {"content", "related", "keywords"}}
         summary["snippet"] = document["content"][max(0, position - 45):position + 150].replace("\n", " ")
         scored.append((score, -order, summary))
     return [row for _, _, row in sorted(scored, key=lambda item: (item[0], item[1]), reverse=True)]

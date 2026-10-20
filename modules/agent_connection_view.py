@@ -10,8 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 STRINGS = (
     *KEY_STRINGS,
     "Asset storage",
+    "For Studio usage and settings questions, search help.search with the feature name, then read help.read using a returned document ID. Continue with next_read for longer help. User help is reference material; current model status, preset schemas and permissions take precedence.",
     "Before writing a model prompt, read prompts.guidance for the selected preset, then read its recommended skills. Use prompts.tags for Anima/Danbooru lookup and prompts.validate before preview/submission. Keep the original user instruction separate from the final model prompt.",
-    "For image tag inference, check prompts.wd14_status and call prompts.wd14 with an owned image asset_id. Missing models are not downloaded automatically; candidate tags are not proof of identity or age.",
+    "For image tag inference, check prompts.wd14_status and call prompts.wd14 with an owned image asset_id. These legacy tool names use the current user's WD14 or PixAI selection and output categories from Identity > Application > Image tagger model. For settings and missing files, search help.search then read help.read. Missing models are not downloaded automatically; candidate tags are not proof of identity or age.",
     "Send JSON as UTF-8 bytes. In Windows PowerShell, read a UTF-8 JSON file with System.IO.File.ReadAllBytes and send application/json; charset=utf-8. Do not pipe Chinese Python source through the default PowerShell encoding. Compare preview source_instruction and prompt with the original text; question marks or replacement characters mean the request must be corrected before generation.",
     "Agent API / MCP", "Connect an external agent to Studio", "Studio address", "Copy address",
     "Connection instructions", "Copy instructions", "Capabilities", "Tools", "OpenAPI", "Authorization",
@@ -22,7 +23,7 @@ STRINGS = (
     "Connection mode could not be read. Check that Studio is still running.",
     "The built-in Harness calls Studio tools directly. It does not need this MCP adapter.",
     "The model decides whether to query tools and continue. The Harness returns results for another model turn, within its call and time limits.",
-    "Generation and model downloads still follow user approval and session settings. Web search is not currently a built-in Studio tool.",
+    "Generation and model downloads still follow user approval and session settings. Built-in tools can read public pages and search GitHub projects; they do not provide general web search.",
     "Agents with HTTP tools can use the Agent API directly without deploying MCP.",
     "The external MCP client starts a local Python process. That process connects to Studio over HTTP. The Studio URL is not an HTTP MCP endpoint.",
     "MCP adapter folder on the client computer", "Independent MCP Python interpreter", "Fill in the client-side MCP adapter folder to create the configuration.",
@@ -82,7 +83,7 @@ section,details{{background:var(--card);border:1px solid var(--border);border-ra
 <p>{t("Same computer: Studio must actually listen on 127.0.0.1 or ::1. The existing --listen 127.0.0.1 option allows local access only. If LAN access is also needed, --listen 0.0.0.0 listens on all interfaces, including loopback; choose this deliberately. Restart after changing the launch configuration and use the resulting port and deployment prefix.")}</p>
 <p>{t("Other computers: use an HTTPS endpoint configured by the administrator. Changing http to https does not enable TLS. Do not use a ComfyD or Forge port for Studio authorization.")}</p></div>
 <nav>{''.join(f'<a data-connect-link="{key}" target="_blank" rel="noopener">{t(label)}</a>' for key, label in [('capabilities', 'Capabilities'), ('tools', 'Tool index'), ('openapi', 'OpenAPI'), ('authorization', 'Authorization')])}<a href="{html.escape(prefix, quote=True)}/api/v1/assets/manage?lang={lang}" target="_blank" rel="noopener">{t('Asset storage')}</a></nav></section>
-<div class="grid"><section><h2>{t("Built-in Agent")}</h2><p>{t("The built-in Harness calls Studio tools directly. It does not need this MCP adapter.")}</p><p>{t("The model decides whether to query tools and continue. The Harness returns results for another model turn, within its call and time limits.")}</p><p class="muted">{t("Generation and model downloads still follow user approval and session settings. Web search is not currently a built-in Studio tool.")}</p></section>
+<div class="grid"><section><h2>{t("Built-in Agent")}</h2><p>{t("The built-in Harness calls Studio tools directly. It does not need this MCP adapter.")}</p><p>{t("The model decides whether to query tools and continue. The Harness returns results for another model turn, within its call and time limits.")}</p><p class="muted">{t("Generation and model downloads still follow user approval and session settings. Built-in tools can read public pages and search GitHub projects; they do not provide general web search.")}</p></section>
 <section><h2>{t("External Agent")}</h2><p>{t("Agents with HTTP tools can use the Agent API directly without deploying MCP.")}</p><pre id="connection-instructions"></pre>{copy_button("connection-instructions", "Copy instructions")}</section></div>
 <section id="local-llm-api"><h2>{t("Local LLM API")}</h2><div class="row"><input id="llm-base" readonly aria-label="{t("Local LLM API")}">{copy_button("llm-base", "Copy address")}</div>
 <p>{t("To use Studio's local models in another AI client, enter the Base URL above, an API key from below, and a model ID.")}</p>
