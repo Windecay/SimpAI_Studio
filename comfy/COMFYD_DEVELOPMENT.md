@@ -269,3 +269,32 @@
 - 另外在真实 CUDA 环境执行 GGUF Q8_0/Q4_K/Q6_K 的 GELU/SITU 激活、残差与 FP16 调度检查，`14 passed`，覆盖前述跳过项。该检查使用小张量，不能代替真实 GGUF 模型的完整工作流验收。
 - 使用 Studio 参数映射和当前保存的 Moss 工作流，在独立进程中以官方 INT8 DiT、W4A8 编码器、Flux2 VAE 完成两组 1024×1024、50 步、seed 42 的实际出图。PyTorch 与 Kitchen attention 均返回有限 latent 和非空图像；累计 8,300 次 SITU 调用全部采用融合路径，Kitchen 例的 4,350 次 attention 调用全部进入对应 CUDA 内核。
 - 两组采样分别约 20.533 秒和 14.707 秒；两者都使用本次更新后的源码，只对比 attention 设置，不能据此宣称上游更新前后的加速比例。图片已人工检查，保留中文便签和厨房场景；这不是广泛画质或文字准确率评测。
+
+## 2026-10-20 ComfyUI 0.42.0 合并与 Studio 开发端同步
+
+- 合并官方 `origin/master` 从 `4d7b59459` 至 `b1a247c9cf9dbfda4b2c0a0c1d50950667eeaa0c` 的 23 个提交，保留未提交 merge，HEAD 仍为 `8e903d1a`。源码版本更新为 `0.42.0`，私有版本标记为 `b1a247c9c`。
+- 本地更新包括 MOSS RoPE 和颜色区域/深度控制、H3 合并 PDD 权重识别、Qwen 思考模板与生成清理、CPU 量化计算能力判定、NAF/Trellis2 优化、网格重建和摄像头修复。MOSS 控制仍需对应 adapter LoRA，不将代码支持等同于普通权重自动获得控制能力。
+- 更新前比较 792 个共享文件，发现 Studio 中独立数据库、多实例命名和展开缓存的中间 UI 元数据修复尚未同步回源仓库。移植 `app/database/db.py`、`comfy/cli_args.py`、`execution.py`、`main.py` 和 `main_comfyd.py` 的有效私有差异，保留实例名及显式 database URL 优先级。
+- 私有入口继续默认关闭 Memory compiler 和 CUDA graphs，不更改 DynamicVRAM、aimdo、SLA 或 offload 参数策略；H3 MLP 4096-token 分批、GGUF 与 tensor subclass 的现有算子适配保留。
+- 依赖声明目标为 frontend `1.55.18`、workflow templates `0.11.89`、Kitchen `0.2.39`；docs `0.5.14`、aimdo `0.5.6` 不变。Studio 两份 requirements、启动器、更新器和 Forge 两个共享包安装入口均按此目标核对。
+- Studio 原有文档、提示词兼容、VOSR2、语言、异步任务和页面修改不属于同步清单，不覆盖或一起暂存；不复制 custom_nodes、模型、预置、用户数据或 E 盘应用。只同步开发代码和依赖声明，不安装包、重启服务、下载模型、创建提交或推送。
+
+### 验证
+
+- Studio 更新前集成基线为 `249 passed, 26 subtests passed, 1 failed`，失败仍是 Forge 预览合同期待 block、页面实际为 flex；数据库、PE 元数据与 GGUF 基线为 `99 passed, 6 skipped`，跳过项需要 CUDA。
+- 源仓库更新后 CPU 专项 `208 passed`，覆盖 MOSS 默认 RoPE 对照与控制图、H3 PDD 检测和原生宽度、LoRA 形状替换、CPU 能力判定、Qwen 模板与 embedding、功能标志及 partner token 的临时本机模拟请求。没有调用真实云端 API 或读取用户认证凭据。
+- 测试使用当前已安装的 Kitchen `0.2.38`；声明目标为 `0.2.39`，本次没有安装或替换包。CPU 结果不代表新版本 Kitchen GPU 内核、真实模型、网格质量或完整工作流已验收。
+- Studio 更新后核心专项 `208 passed`；启动、依赖、MOSS 与 Forge 集成专项 `249 passed, 26 subtests passed, 1 failed`；数据库、PE 元数据与 GGUF 专项 `99 passed, 6 skipped`。合计 `556 passed`，另有上述 subtests、6 个 CUDA 跳过项和 1 个更新前已存在的 Forge 失败；不重复累计基线和修正过程中的重测结果。
+- 集成检查首次暴露两个 Forge Kitchen 版本 subtest 仍期待 `0.2.38`，将其目标断言调整为 `0.2.39` 后复测通过；未修改 Forge 预览行为或把既有失败算作通过。
+- 55 个后端文件按暂存版本核对，实际复制 49 个变化文件；Studio README 的独立修改保留，仅源仓库合并两份上游 CI 配置。两仓库结果仅暂存，源端保留未提交合并，原有无关 index 与工作区修改不一起暂存。
+- 实际安装版本仍为 frontend `1.55.17`、templates `0.11.86`、Kitchen `0.2.38`；需要后续安装声明目标并重新加载后端才能使用完整新环境。本次未重启现有服务，也未执行真实付费 API、浏览器、GPU 模型、长视频或 3D 质量验收。
+
+## 2026-10-21 上游追加更新与 Studio 暂存同步
+
+- 从用户已提交的 `1e8bd7690` 合并官方 `origin/master` 至 `87ed5a066`，新增 8 个提交，无文件冲突，保留未提交 merge。更新前核对 1133 个共享文件内容一致，Studio 原有暂存、未暂存及未跟踪文件均记录 index 和内容哈希。
+- frontend 从 `1.55.18` 更新为 `1.57.1`，workflow templates 从 `0.11.89` 更新为 `0.11.93`；源码仍为 ComfyUI `0.42.0`，docs `0.5.14`、Kitchen `0.2.39`、aimdo `0.5.6` 不变。Studio 两份 requirements、启动检查、独立更新器和依赖合同一并对齐；Forge 既有 Kitchen 版本断言属于同一环境的依赖合同，一并暂存，不修改 Forge 运行行为。
+- 同步 top-p 的累计概率边界修正，H3 PDD 权重库只向基础 head 应用单 head LoRA，并正确处理相同切分的 bias。H3 VAE、MLP 分批、GGUF、显存、数据库与 offload 私有行为保持现有实现；上游本次没有修改 `main.py`，私有入口无需额外调整。
+- 新增本地 Fibo 2 模型检测、Qwen3-VL-4B 文本编码及条件节点。根据用户当次明确授权，纳入 FLUX 3 Max 文生视频、图生视频和 Bria FIBO 2.0 云端生成/编辑更新；此前针对其他云端功能的历史说明不视为这两项的排除要求。
+- 新云端节点只做注册和模拟请求检查，不读取认证信息、不调用真实云服务。没有下载模型、安装依赖、重启服务或执行用户数据库迁移；现有环境仍安装 frontend `1.55.18` 和 templates `0.11.89`。
+- 源仓库和 Studio 后端各 `84 passed`，包含 16 项本次新增检查；Studio 启动、更新器及依赖路由为 `87 passed, 33 subtests passed`。Studio 合计 171 项及 33 项子测试通过，不把源端的同组检查再次累计。CPU 测试进程关闭可选 Triton 与 CUDA 探测，不代表 GPU、真实权重或付费 API 已验收。
+- Fibo 小模型检查首次因隐藏维度低于固定 256 维时间条件而有 4 项失败，改用符合模型结构的 256 维测试对象后全部通过，没有为测试修改上游生产实现。Studio 的 pytest 原始日志为 84 项通过；外围打印日志时遇到 GBK/UTF-8 编码错误，保留原始日志单独读取核对。

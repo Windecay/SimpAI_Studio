@@ -12,7 +12,7 @@ from modules.patch import PatchSettings, patch_settings, patch_all
 from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress
 from modules.comfy_progress_filter import use_progress_profile
 from modules.comfy_prompt_compat import ComfyExecutionError
-from modules.gpu_task_lock import exclusive_task_lock
+from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task, exclusive_task_lock
 from modules.lora_stack import build_fooocus_stack, prepare_stack_params
 import modules.config
 
@@ -3470,8 +3470,8 @@ def worker():
 
             logger.info(f'Got async_tasks: {task.task_id}')
             try:
-                with exclusive_task_lock:
-                    with processing_lock:
+                with exclusive_gpu_task(cancel_check=lambda: task.last_stop in ('stop', 'skip')):
+                    with execution_control_lock, processing_lock:
                         executing_task_id = task.task_id
                     try:
                         if task.last_stop in ('stop', 'skip'):
@@ -3487,25 +3487,33 @@ def worker():
                                 finalize_task(task)
                             if task.task_class == 'Fooocus' and not args_manager.args.disable_backend:
                                 pipeline.prepare_text_encoder(async_call=True)
+                    except GpuTaskCancelled:
+                        raise
+                    except ComfyExecutionError as error:
+                        _restore_standard_streams_if_closed()
+                        task.backend_error = str(error)
+                        logger.exception("Comfy execution failed: task_id=%s prompt_id=%s", task.task_id, error.prompt_id)
+                        try:
+                            # Backend cleanup still belongs to this task's GPU slot.
+                            stop_processing(task, 0, "Failed")
+                        finally:
+                            task.yields.append(['finish', task.results])
+                    except:
+                        _restore_standard_streams_if_closed()
+                        try:
+                            traceback.print_exc()
+                        except Exception:
+                            pass
+                        if task.task_class != 'Cloud':
+                            task.yields.append(['finish', task.results])
                     finally:
-                        with processing_lock:
+                        # Finish any in-flight interrupt before another GPU owner can start.
+                        with execution_control_lock, processing_lock:
                             executing_task_id = None
-            except ComfyExecutionError as error:
-                _restore_standard_streams_if_closed()
-                task.backend_error = str(error)
-                logger.exception("Comfy execution failed: task_id=%s prompt_id=%s", task.task_id, error.prompt_id)
-                try:
-                    stop_processing(task, 0, "Failed")
-                finally:
-                    task.yields.append(['finish', task.results])
-            except:
-                _restore_standard_streams_if_closed()
-                try:
-                    traceback.print_exc()
-                except Exception:
-                    pass
-                if task.task_class != 'Cloud':
-                    task.yields.append(['finish', task.results])
+            except GpuTaskCancelled:
+                task.user_cancel_action = task.last_stop
+                task.processing = False
+                task.yields.append(['finish', task.results])
             finally:
                 async_tasks.task_done()
                 try:
@@ -3574,13 +3582,21 @@ def request_task_cancel(task, action):
     with processing_lock:
         task.last_stop = action
         task.user_cancel_action = action
-        # Keep the worker from advancing to another task while issuing an interrupt.
-        if executing_task_id == task.task_id and worker_processing == task.task_id and getattr(task, "processing", False):
-            if getattr(task, "task_class", None) == "ImportedWorkflow":
-                # Its executor sends a targeted stop and checks backend state
-                # before releasing the shared task lock.
+        if (executing_task_id != task.task_id or worker_processing != task.task_id
+                or not getattr(task, "processing", False)):
+            return
+        if getattr(task, "task_class", None) == "ImportedWorkflow":
+            # Its executor sends a targeted stop and checks backend state
+            # before releasing the shared task lock.
+            return
+    # Serialize interrupts with execution handoff, leaving queue operations available.
+    # When both locks are needed, execution_control_lock must be acquired first.
+    with execution_control_lock:
+        with processing_lock:
+            if (executing_task_id != task.task_id or worker_processing != task.task_id
+                    or not getattr(task, "processing", False)):
                 return
-            worker.interrupt_processing(task)
+        worker.interrupt_processing(task)
 
 
 def request_batch_cancel(cancel_event):
@@ -3604,36 +3620,6 @@ def get_processing_id():
     with processing_lock:
         return worker_processing
 
-def restart(task):
-    global thread, async_tasks, restart_lock
-
-    if not restart_lock.acquire(blocking=False):
-        print("另一个线程正在执行重启操作，跳过此次重启请求")
-        return
-
-    try:
-        if hasattr(thread, '_restarting') and thread._restarting:
-            print("线程已经在重启过程中，跳过此次重启请求")
-            return
-            
-        thread._restarting = True
-        
-        if thread.is_alive():
-            print("Thread is unresponsive! Restarting...")
-            stop_event.set()
-            thread.join(timeout=2)
-            stop_event.clear()
-        else:
-            print("Thread is not alive! Restarting...")
-        
-        initialize_worker_resources()
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
-        
-        thread._restarting = False
-    finally:
-        restart_lock.release()
-
 def start_worker():
     global thread
 
@@ -3648,16 +3634,6 @@ def start_worker():
     finally:
         restart_lock.release()
 
-def initialize_worker_resources():
-    global async_tasks, worker_processing, processing_lock, pending_tasks, tracked_tasks, cloud_tasks, executing_task_id
-    async_tasks = queue.Queue()  
-    worker_processing = None  
-    processing_lock = threading.Lock()
-    pending_tasks = 0
-    tracked_tasks = {}
-    cloud_tasks = {}
-    executing_task_id = None
-
 def _worker_not_ready_stop_processing(async_task, *_args, **_kwargs):
     if async_task is not None:
         async_task.processing = False
@@ -3671,12 +3647,12 @@ def _worker_not_ready_start_cloud_task(async_task):
 async_tasks = queue.Queue()
 worker_processing = None
 processing_lock = threading.Lock()
+execution_control_lock = threading.Lock()
 pending_tasks = 0
 tracked_tasks = {}
 cloud_tasks = {}
 executing_task_id = None
 restart_lock = threading.Lock()
-stop_event = threading.Event()
 
 thread = threading.Thread(target=worker, daemon=True)
 worker.stop_processing = _worker_not_ready_stop_processing

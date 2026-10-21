@@ -218,16 +218,20 @@ def install_prompt_cancel_support(comfyclient_pipeline):
         if not target_prompt_id:
             return interrupt()
 
-        endpoint = str(comfyclient_pipeline.server_address())
         try:
+            endpoint = str(comfyclient_pipeline.server_address())
             with httpx.Client(timeout=20.0) as client:
-                client.post(f"http://{endpoint}/queue", json={"delete": [target_prompt_id]})
-                client.post(f"http://{endpoint}/interrupt", json={"prompt_id": target_prompt_id})
-            logger.info("Cancelled Comfy prompt by id: %s", target_prompt_id)
+                client.post(
+                    f"http://{endpoint}/queue", json={"delete": [target_prompt_id]},
+                ).raise_for_status()
+                client.post(
+                    f"http://{endpoint}/interrupt", json={"prompt_id": target_prompt_id},
+                ).raise_for_status()
+            logger.info("Requested cancellation of Comfy prompt by id: %s", target_prompt_id)
             return
         except Exception as exc:
             logger.warning("Targeted Comfy prompt cancel failed for %s: %s", target_prompt_id, exc)
-            return interrupt()
+            return False
 
     interrupt_with_prompt_id._simpai_prompt_cancel_support = True
     interrupt_with_prompt_id._simpai_original_interrupt = interrupt

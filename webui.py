@@ -1526,9 +1526,11 @@ def generate_clicked(task: worker.AsyncTask, state):
             else:
                 loop_num += 1
                 if loop_num > MAX_LOOP_NUM:
-                    logger.info(f"[Generate] queue_restart_worker: loop_num={loop_num}, max_loop={MAX_LOOP_NUM}, {task_meta}")
-                    worker.restart(task)
-                    break
+                    logger.info(f"[Generate] queue_check_worker: loop_num={loop_num}, max_loop={MAX_LOOP_NUM}, {task_meta}")
+                    if worker.start_worker():
+                        break
+                    last_update_time = current_time
+                    loop_num = 0
             time.sleep(POLL_INTERVAL)
             qsize = worker.get_task_size()
     except GeneratorExit:

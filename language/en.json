@@ -864,5 +864,7 @@
     "MOSS-Image\u2B07": "MOSS-Image Text to Image\u2B07",
     "Resize preset drawer": "Resize preset drawer",
     "Drag to change the number of visible rows": "Drag to change the number of visible rows",
-    "Visible rows: {rows}": "Visible rows: {rows}"
+    "Visible rows: {rows}": "Visible rows: {rows}",
+    "Stopped before submission.": "Stopped before submission.",
+    "Skipped before submission.": "Skipped before submission."
 }

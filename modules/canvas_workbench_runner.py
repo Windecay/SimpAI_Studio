@@ -19,6 +19,7 @@ from modules import canvas_workbench_director
 from modules import minimax_h3_prompt_compiler
 from enhanced import parameter_profiles
 from modules.access_mode import user_can_generate
+from modules.localization import localized_text
 
 logger = logging.getLogger("canvas_workbench")
 
@@ -2479,6 +2480,8 @@ def _public_run_record(record, after_preview_serial=None):
     task = record.get("task")
     if task is not None:
         result["user_cancel_action"] = getattr(task, "user_cancel_action", None) or getattr(task, "last_stop", None)
+    elif record.get("user_cancel_action"):
+        result["user_cancel_action"] = record["user_cancel_action"]
     if record.get("gallery"):
         result["gallery"] = record.get("gallery")
     return result
@@ -2513,6 +2516,35 @@ def _build_gallery_refresh_info(record):
         }
 
 
+def _preparation_response(record):
+    """Read a preparation outcome while CANVAS_RUNS_LOCK is held."""
+    if CANVAS_RUNS.get(record["run_id"]) is not record:
+        return {"ok": False, "error": "run reservation no longer available", "run_id": record["run_id"]}
+    if record.get("state") in TERMINAL_RUN_STATES:
+        return _public_run_record(record)
+    return None
+
+
+def _discard_preparation(record):
+    with CANVAS_RUNS_LOCK:
+        if CANVAS_RUNS.get(record["run_id"]) is record:
+            if record.get("state") in TERMINAL_RUN_STATES:
+                return _public_run_record(record)
+            CANVAS_RUNS.pop(record["run_id"], None)
+    return None
+
+
+def _queue_prepared_task(record, task, fields, worker):
+    with CANVAS_RUNS_LOCK:
+        response = _preparation_response(record)
+        if response is not None:
+            return response
+        # Publish the task and accept cancellation against it as one transition.
+        worker.add_task(task)
+        record.update(fields)
+    return None
+
+
 @asset_lifecycle.serialized
 def run_workflow(payload, state_params):
     """Server-constructed imported task; shares queue, ownership and run polling."""
@@ -2541,9 +2573,17 @@ def run_workflow(payload, state_params):
         CANVAS_RUNS[run_id] = reservation
     try:
         asset_lifecycle.for_state(state_params, "agent_api").check_capacity()
+        with CANVAS_RUNS_LOCK:
+            response = _preparation_response(reservation)
+        if response is not None:
+            return response
         import modules.async_worker as worker
         if not worker.get_queue_snapshot()["worker"]["ready"]:
             raise RuntimeError("Studio task worker is not ready")
+        with CANVAS_RUNS_LOCK:
+            response = _preparation_response(reservation)
+        if response is not None:
+            return response
         task = worker.AsyncTask(args=[])
         task.task_class = "ImportedWorkflow"
         task.task_name = payload["workflow_request"]["workflow_id"]
@@ -2555,18 +2595,18 @@ def run_workflow(payload, state_params):
         task.simpleai_workflow_request = copy.deepcopy(payload["workflow_request"])
         task.simpleai_workflow_identity = payload["identity_binding"]
         task.simpleai_workflow_outputs = copy.deepcopy(payload["outputs"])
-        reservation.update({"task_id": task.task_id, "task": task, "state": "queued", "percent": 0.02,
+        fields = {"task_id": task.task_id, "task": task, "state": "queued", "percent": 0.02,
                             "message": "Queued imported workflow.", "input_count": len(task.simpleai_workflow_request["bindings"]),
                             "task_preview": {"workflow_id": task.task_name,
                                              "source_instruction": task.simpleai_workflow_request.get("instruction", ""),
-                                             "outputs": copy.deepcopy(payload["outputs"])}})
-        worker.add_task(task)
+                                              "outputs": copy.deepcopy(payload["outputs"])}}
+        response = _queue_prepared_task(reservation, task, fields, worker)
+        if response is not None:
+            return response
         return _public_run_record(reservation)
     except Exception as exc:
-        with CANVAS_RUNS_LOCK:
-            if CANVAS_RUNS.get(run_id) is reservation:
-                CANVAS_RUNS.pop(run_id, None)
-        return {"ok": False, "error": str(exc) if isinstance(exc, asset_lifecycle.StorageLimitError) else f"{type(exc).__name__}: {exc}"}
+        response = _discard_preparation(reservation)
+        return response or {"ok": False, "error": str(exc) if isinstance(exc, asset_lifecycle.StorageLimitError) else f"{type(exc).__name__}: {exc}"}
 
 
 @asset_lifecycle.serialized
@@ -2622,37 +2662,40 @@ def run_node(payload, state_params):
             return response
         CANVAS_RUNS[run_id] = reservation
 
-    def discard_reservation():
-        with CANVAS_RUNS_LOCK:
-            if CANVAS_RUNS.get(run_id) is reservation:
-                CANVAS_RUNS.pop(run_id, None)
-
     try:
         asset_lifecycle.for_state(state_params, payload.get("project_id") or "default").check_capacity()
-    except asset_lifecycle.StorageLimitError as exc:
-        discard_reservation()
-        return {"ok": False, "error": str(exc)}
+    except Exception as exc:
+        response = _discard_preparation(reservation)
+        return response or {"ok": False, "error": str(exc) if isinstance(exc, asset_lifecycle.StorageLimitError) else f"{type(exc).__name__}: {exc}"}
 
     try:
+        with CANVAS_RUNS_LOCK:
+            response = _preparation_response(reservation)
+        if response is not None:
+            return response
         import modules.async_worker as worker
 
         placeholder_node_id = payload.get("placeholder_node_id") or ""
         preset_node = payload.get("preset_node") if isinstance(payload.get("preset_node"), dict) else {}
         materialized_inputs, errors = _materialize_run_inputs(payload, state_params)
         if errors:
-            discard_reservation()
-            return {"ok": False, "error": "input materialization failed", "errors": errors}
+            response = _discard_preparation(reservation)
+            return response or {"ok": False, "error": "input materialization failed", "errors": errors}
         task_preview = _build_task_preview(preset_node, materialized_inputs)
         task_args_preview = build_canvas_task_args_preview(payload, materialized_inputs, state_params)
         async_args_preview = task_args_preview.get("async_args_preview") if isinstance(task_args_preview, dict) else {}
         if not async_args_preview.get("ok"):
-            discard_reservation()
-            return {"ok": False, "error": async_args_preview.get("error") or "AsyncTask args validation failed", "task_args_preview": task_args_preview}
+            response = _discard_preparation(reservation)
+            return response or {"ok": False, "error": async_args_preview.get("error") or "AsyncTask args validation failed", "task_args_preview": task_args_preview}
 
         models = _merged_config_values(_model_config(preset_node))
         enabled_loras = _enabled_loras(models)
         api_arg_overrides = task_args_preview.get("api_arg_overrides") or {}
         args = build_canvas_async_task_args(api_arg_overrides, enabled_loras, materialized_inputs, load_images=True)
+        with CANVAS_RUNS_LOCK:
+            response = _preparation_response(reservation)
+        if response is not None:
+            return response
         task = worker.AsyncTask(args=args)
         h3_validation = minimax_h3_prompt_compiler.validate_task_prompt(task)
         if h3_validation and not h3_validation.get("ok"):
@@ -2662,7 +2705,7 @@ def run_node(payload, state_params):
                 h3_validation.get("errors") or [],
             )
         record = reservation
-        record.update({
+        fields = {
             "task_id": task.task_id,
             "task": task,
             "preset_node_id": preset_node.get("id"),
@@ -2679,7 +2722,10 @@ def run_node(payload, state_params):
             "state_params": copy.deepcopy(state_params) if isinstance(state_params, dict) else {},
             "updated_ts": now,
             **({"prompt_compiler": h3_validation} if h3_validation else {}),
-        })
+        }
+        response = _queue_prepared_task(record, task, fields, worker)
+        if response is not None:
+            return response
         if h3_validation and not h3_validation.get("ok"):
             _add_run_event(record, "warning", "MiniMax H3 prompt structure warning; submission continued.", {
                 "mode": h3_validation.get("mode"),
@@ -2691,13 +2737,6 @@ def run_node(payload, state_params):
             "placeholder_node_id": placeholder_node_id,
             "client_context": client_context,
         })
-        with CANVAS_RUNS_LOCK:
-            CANVAS_RUNS[run_id] = record
-        try:
-            worker.add_task(task)
-        except Exception:
-            discard_reservation()
-            raise
         try:
             record["queue_size"] = worker.get_task_size()
         except Exception:
@@ -2705,8 +2744,8 @@ def run_node(payload, state_params):
         record["updated_ts"] = time.time()
         return _public_run_record(record)
     except Exception as err:
-        discard_reservation()
-        return {"ok": False, "error": f"{type(err).__name__}: {err}"}
+        response = _discard_preparation(reservation)
+        return response or {"ok": False, "error": f"{type(err).__name__}: {err}"}
 
 
 def poll_run(payload, state_params):
@@ -2733,8 +2772,11 @@ def poll_run(payload, state_params):
         record["queue_size"] = queue_size
         if record.get("state") not in TERMINAL_RUN_STATES:
             if task is None or not record.get("task_id"):
-                record["state"] = "preparing"
-                record["message"] = "Preparing AsyncTask."
+                with CANVAS_RUNS_LOCK:
+                    if (record.get("state") not in TERMINAL_RUN_STATES
+                            and (record.get("task") is None or not record.get("task_id"))):
+                        record["state"] = "preparing"
+                        record["message"] = "Preparing AsyncTask."
             else:
                 cancel_action = getattr(task, "user_cancel_action", None) or getattr(task, "last_stop", None)
                 if cancel_action == "stop":
@@ -2771,10 +2813,22 @@ def control_run(payload, state_params):
     try:
         with CANVAS_RUNS_LOCK:
             record = CANVAS_RUNS.get(run_id)
-        if not record:
-            return {"ok": False, "error": "run not found", "run_id": run_id}
-        if not _run_record_owned_by(record, identity):
-            return {"ok": False, "error": "run not found", "run_id": run_id}
+            if not record or not _run_record_owned_by(record, identity):
+                return {"ok": False, "error": "run not found", "run_id": run_id}
+            if record.get("task") is None:
+                if record.get("state") in TERMINAL_RUN_STATES:
+                    return _public_run_record(record)
+                if record.get("state") != "preparing":
+                    return {"ok": False, "error": "run task is missing", "run_id": run_id}
+                now = time.time()
+                message = localized_text(state_params, "Stopped before submission." if action == "stop" else "Skipped before submission.")
+                record.update({
+                    "state": "canceled" if action == "stop" else "skipped",
+                    "user_cancel_action": action, "percent": 0.0, "message": message,
+                    "updated_ts": now, "finished_ts": now,
+                })
+                _add_run_event(record, "warn", message, {"action": action})
+                return _public_run_record(record)
 
         # A finish yield may already be waiting when the stop request arrives.
         # Publish that completed result before marking the task for interruption.

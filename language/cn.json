@@ -3233,5 +3233,7 @@
   "Saved for your account. Character tags use the character threshold; other categories use the general threshold. Only categories provided by the selected model can appear.": "按当前用户保存。角色使用角色阈值，其余类别使用普通阈值；只输出所选模型支持的类别。",
   "Saved for your account. Used by image tag description, Infinite Canvas and Agent API.": "按当前用户保存，用于图片标签反推、无限画布和 Agent API。",
   "Download missing tagger files": "下载缺失的标签模型文件",
-  "Refresh tagger status": "刷新标签模型状态"
+  "Refresh tagger status": "刷新标签模型状态",
+  "Stopped before submission.": "已在提交前停止。",
+  "Skipped before submission.": "已在提交前跳过。"
 }

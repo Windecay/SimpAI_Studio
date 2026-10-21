@@ -1,5 +1,5 @@
-comfyui-frontend-package==1.55.17
-comfyui-workflow-templates==0.11.86
+comfyui-frontend-package==1.57.1
+comfyui-workflow-templates==0.11.93
 comfyui-embedded-docs==0.5.14
 transformers==4.57.6 #4.42.4 #
 huggingface_hub==0.35.1
@@ -112,7 +112,7 @@ blind-watermark
 qrcode
 pyzbar
 transparent-background
-comfy-kitchen==0.2.38
+comfy-kitchen==0.2.39
 comfy-aimdo==0.5.6
 facexlib
 insightface
