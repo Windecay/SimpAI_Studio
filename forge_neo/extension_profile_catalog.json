@@ -23,7 +23,9 @@
     "sd-webui-sam-matting",
     "sd-webui-see-through",
     "sd-webui-trellis2",
-    "sd-webui-style-organizer"
+    "sd-webui-style-organizer",
+    "sd-regional-boxes-neo",
+    "moss-image-forge-neo"
   ],
   "supported_prompt_extensions": [
     "sd-webui-tagcomplete-neo",
@@ -383,6 +385,36 @@
       "source_branch": "master",
       "source_commit": "5ff9f40",
       "source_commit_date": "2026-05-05 22:45:28 +0400"
+    },
+    {
+      "id": "sd-regional-boxes-neo",
+      "display_name": "Regional Boxes",
+      "family": "prompt-helper",
+      "support_level": "runtime-adapter",
+      "extension_dirname": "sd-regional-boxes-neo",
+      "adapter_scope": "api-adapter",
+      "remote_url": "https://github.com/eduardoabreu81/sd-regional-boxes-neo.git",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-regional-boxes-neo",
+      "source_branch": "main",
+      "source_commit": "a0f15a19618ebbd7d69c81525b651c1517aa1ddc",
+      "source_commit_date": "2026-10-17"
+    },
+    {
+      "id": "moss-image-forge-neo",
+      "display_name": "MOSS-Image",
+      "family": "generation-hook",
+      "support_level": "runtime-adapter",
+      "extension_dirname": "moss-image-forge-neo",
+      "adapter_scope": "api-adapter",
+      "remote_url": "https://github.com/eduardoabreu81/moss-image-forge-neo.git",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/moss-image-forge-neo",
+      "source_branch": "main",
+      "source_commit": "1143995d4354375fb887916c47eb96046e49a03e",
+      "source_commit_date": "2026-10-18"
     }
   ],
   "profiles": [
@@ -1442,6 +1474,90 @@
         "Forge Neo serves the Style Grid API routes locally because the source package imports WebUI modules at import time.",
         "Source JavaScript, CSS and React UI assets remain loaded from the installed extension directory."
       ]
+    },
+    {
+      "name": "sd-regional-boxes-neo",
+      "display_name": "Regional Boxes",
+      "family": "prompt-helper",
+      "support_level": "runtime-adapter",
+      "extension_dirname": "sd-regional-boxes-neo",
+      "adapter_scope": "api-adapter",
+      "remote_url": "https://github.com/eduardoabreu81/sd-regional-boxes-neo.git",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-regional-boxes-neo",
+      "source_branch": "main",
+      "source_commit": "a0f15a19618ebbd7d69c81525b651c1517aa1ddc",
+      "source_commit_date": "2026-10-17",
+      "required_files": [
+        "scripts/regional_boxes.py",
+        "lib_regional_boxes/marks.py",
+        "javascript/regional_boxes.js",
+        "style.css"
+      ],
+      "javascript_files": [],
+      "css_files": [],
+      "runtime_files": [
+        "forge_neo/layout_tools.py",
+        "forge_neo/layout_plugin_compat.py",
+        "javascript/forge_neo_layout.js"
+      ],
+      "routes": [
+        "/forge-neo/extensions/layout-plugins-status"
+      ],
+      "source_routes": [],
+      "source_callbacks": [
+        "Regional Boxes.before_process_init_images"
+      ],
+      "notes": [
+        "Uses the native regional layout editor for MOSS JSON and Qwen Image 2.1 marks.",
+        "Supports the original Regional Boxes alwayson script name and 0-1000 yxyx marks payload.",
+        "The native adapter draws input copies once; original Gradio 4 assets are not injected.",
+        "FLUX 3 coordinate mode requires separate model support and is not exposed by this adapter."
+      ]
+    },
+    {
+      "name": "moss-image-forge-neo",
+      "display_name": "MOSS-Image",
+      "family": "generation-hook",
+      "support_level": "runtime-adapter",
+      "extension_dirname": "moss-image-forge-neo",
+      "adapter_scope": "api-adapter",
+      "remote_url": "https://github.com/eduardoabreu81/moss-image-forge-neo.git",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/moss-image-forge-neo",
+      "source_branch": "main",
+      "source_commit": "1143995d4354375fb887916c47eb96046e49a03e",
+      "source_commit_date": "2026-10-18",
+      "required_files": [
+        "scripts/moss_image.py",
+        "forge_moss/native/patches.py",
+        "forge_moss/native/engine.py",
+        "forge_moss/native/settings.py",
+        "forge_moss/native/scheduler.py"
+      ],
+      "javascript_files": [],
+      "css_files": [],
+      "runtime_files": [
+        "forge_neo/layout_plugin_compat.py",
+        "forge_neo/webui/backend/nn/moss.py"
+      ],
+      "routes": [
+        "/forge-neo/extensions/layout-plugins-status"
+      ],
+      "source_routes": [],
+      "source_callbacks": [],
+      "notes": [
+        "Uses the built-in MOSS engine, quantization, LoRA mappings and native model preset.",
+        "Adds the extension's MOSS schedule and translates moss_uncond_skip_layers to native SLG options.",
+        "Original import-time model and sampler hooks remain disabled in the managed backend.",
+        "Installing this extension does not replace the current Studio preset defaults."
+      ]
     }
+  ],
+  "native_layout_profiles": [
+    "sd-regional-boxes-neo",
+    "moss-image-forge-neo"
   ]
 }

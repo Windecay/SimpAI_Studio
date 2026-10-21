@@ -349,8 +349,18 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
     border-color: var(--forge-neo-border) !important;
 }
 
-#forge_neo_root .block:has(.forge-neo-hidden-runtime) {
+#forge_neo_root .block:has(.forge-neo-hidden-runtime),
+#forge_neo_root .block:has([data-forge-layout-translations]),
+#forge_neo_root .block:has([data-forge-layout-status]:empty) {
     display: none !important;
+}
+
+#forge_neo_root .block:has([data-forge-layout-status]) {
+    min-height: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
 }
 
 #forge_neo_root [data-testid="status-tracker"] {

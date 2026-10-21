@@ -91,6 +91,8 @@ def install_aio_enhance_uov_progress_filter(comfyclient_pipeline):
         return False
 
     def should_count_progress_as_sampler_step(class_type, inputs, max_value, total_steps_known):
+        if class_type == "VOSR2Upscale":
+            return (_int_like(max_value) or 0) > 0
         if _is_aio_enhance_uov_upscale_setup_progress(class_type, inputs, max_value):
             return False
         return original(class_type, inputs, max_value, total_steps_known)

@@ -2090,6 +2090,40 @@ def _register_source_style_grid_adapter_script() -> dict[str, Any]:
     return {"loaded": True, "registered": 1, "path": str(script_path), "adapter": True}
 
 
+def _register_source_regional_boxes_adapter_script() -> dict[str, Any]:
+    from modules import scripts
+
+    repo_root = Path(__file__).resolve().parents[2]
+    script_path = repo_root / "forge_neo" / "layout_plugin_compat.py"
+    if _source_script_data_has_path(scripts, script_path):
+        return {"loaded": False, "already_loaded": True, "path": str(script_path)}
+    module_name = "_forge_neo_source_adapter_regional_boxes"
+    module = types.ModuleType(module_name)
+
+    class SourceRegionalBoxesScript(scripts.Script):
+        sorting_priority = 11
+        create_group = False
+
+        def title(self):
+            return "Regional Boxes"
+
+        def show(self, is_img2img):
+            return scripts.AlwaysVisible
+
+        def before_process_init_images(self, p, pp, data="", *args, **kwargs):
+            from forge_neo.layout_plugin_compat import apply_regional_boxes
+
+            apply_regional_boxes(p, data)
+
+    SourceRegionalBoxesScript.__module__ = module_name
+    module.SourceRegionalBoxesScript = SourceRegionalBoxesScript
+    sys.modules[module_name] = module
+    scripts.scripts_data.append(
+        scripts.ScriptClassData(SourceRegionalBoxesScript, str(script_path), str(repo_root), module)
+    )
+    return {"loaded": True, "registered": 1, "path": str(script_path), "adapter": True}
+
+
 def _adapt_source_style_grid_script_module(module: types.ModuleType) -> bool:
     script_class = getattr(module, "StyleGridScript", None)
     if not isinstance(script_class, type):
@@ -2885,6 +2919,39 @@ def _apply_source_model_settings(payload: dict[str, Any], main_entry: object) ->
     return result
 
 
+def _include_source_moss_guidance(payload: dict[str, Any]) -> None:
+    overrides = payload.get("override_settings")
+    if not isinstance(overrides, dict) or str(overrides.get("forge_preset", "")).lower() != "moss":
+        return
+    current = payload.get("alwayson_scripts")
+    scripts = dict(current) if isinstance(current, dict) else {}
+    if not any(str(name).strip().lower() == "skip layer guidance" for name in scripts):
+        scripts["Skip Layer Guidance"] = {"args": []}
+    payload["alwayson_scripts"] = scripts
+
+
+def _prepare_source_layout_plugins(payload: dict[str, Any]) -> dict[str, Any]:
+    from forge_neo.layout_plugin_compat import (
+        LAYOUT_PLUGIN_PAYLOAD_KEY, MOSS_IMAGE_EXTENSION, MOSS_SCHEDULER_ALIASES,
+        NATIVE_LAYOUT_EXTENSION_PROFILES, REGIONAL_BOXES_EXTENSION, register_moss_scheduler,
+    )
+
+    requested = payload.get(LAYOUT_PLUGIN_PAYLOAD_KEY)
+    active = [name for name in NATIVE_LAYOUT_EXTENSION_PROFILES
+              if isinstance(requested, list) and name in requested]
+    if any(payload.get(key) in MOSS_SCHEDULER_ALIASES for key in ("scheduler", "hr_scheduler")):
+        if MOSS_IMAGE_EXTENSION not in active:
+            raise ValueError("The MOSS-Image extension is not installed or enabled.")
+    registered = False
+    if MOSS_IMAGE_EXTENSION in active:
+        from modules import sd_schedulers, shared
+
+        registered = register_moss_scheduler(sd_schedulers, shared)
+    if "regional boxes" in _requested_source_script_names(payload) and REGIONAL_BOXES_EXTENSION not in active:
+        raise ValueError("The Regional Boxes extension is not installed or enabled.")
+    return {"enabled": active, "moss_scheduler_registered": registered, "original_script_hooks": False}
+
+
 def _payload_uses_source_scripts(payload: dict[str, Any]) -> bool:
     alwayson_scripts = payload.get("alwayson_scripts")
     if isinstance(alwayson_scripts, dict) and bool(alwayson_scripts):
@@ -2967,6 +3034,8 @@ def _prepare_source_script_opts(requested_names: set[str]) -> dict[str, Any]:
 
 def _ensure_source_adapter_scripts(requested_names: set[str], runner: object) -> dict[str, Any]:
     adapter_scripts: dict[str, Any] = {}
+    if "regional boxes" in requested_names and not _source_runner_has_requested_scripts(runner, {"regional boxes"}):
+        adapter_scripts["regional_boxes"] = _register_source_regional_boxes_adapter_script()
     if "tipo" in requested_names and not _source_runner_has_requested_scripts(runner, {"tipo"}):
         adapter_scripts["tipo"] = _ensure_source_tipo_script()
     if "dynamic prompts" in requested_names and not _source_runner_has_requested_scripts(runner, {"dynamic prompts"}):
@@ -3096,6 +3165,8 @@ def _normalize_source_controlnet_payload(payload: dict[str, Any]) -> dict[str, A
 
 def _source_script_api_defaults(script: object) -> list[Any]:
     title = _source_script_title(script).strip().lower()
+    if title == "regional boxes":
+        return [""]
     if title == "tipo":
         try:
             from kgen import models
@@ -3485,8 +3556,10 @@ def _ensure_source_infotext_paste_fields() -> dict[str, int]:
 
 
 def _ensure_source_api_script_defaults(api: object, *, mode: str, payload: dict[str, Any]) -> dict[str, Any]:
+    layout_plugins = _prepare_source_layout_plugins(payload)
+    _include_source_moss_guidance(payload)
     if not _payload_uses_source_scripts(payload):
-        return {"initialized": False, "reason": "no source scripts requested"}
+        return {"initialized": False, "reason": "no source scripts requested", "layout_plugins": layout_plugins}
 
     from modules import scripts
 
@@ -3542,6 +3615,7 @@ def _ensure_source_api_script_defaults(api: object, *, mode: str, payload: dict[
         "normalized_script_names": normalized_script_names,
         "dynamic_prompts_lookup": dynamic_lookup,
         "dynamic_prompts_selectable": dynamic_selectable,
+        "layout_plugins": layout_plugins,
     }
 
 
@@ -3565,6 +3639,10 @@ def _get_source_context(data_root: Path) -> dict[str, Any]:
     stage_started = _stage_started(0.08, "Source initialize.imports", "源后端 initialize.imports")
     initialize.imports()
     _stage_finished(0.09, "Source initialize.imports", "源后端 initialize.imports", stage_started)
+    from forge_neo.layout_plugin_compat import block_original_layout_plugins
+    from modules import shared
+
+    block_original_layout_plugins(shared.opts)
     stage_started = _stage_started(0.095, "Source initialize.check_versions", "源后端 initialize.check_versions")
     initialize.check_versions()
     _stage_finished(0.105, "Source initialize.check_versions", "源后端 initialize.check_versions", stage_started)

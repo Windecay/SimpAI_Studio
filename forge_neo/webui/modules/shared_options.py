@@ -234,6 +234,13 @@ options_templates.update(
             "sdxl_refiner_high_aesthetic_score": OptionInfo(6.0, "[SDXL] High Aesthetic Score", gr.Number),
             "sdxl_10": OptionRow(),
             "sdxl_zero_neg": OptionInfo(False, "[SDXL] Zero out the conditioning when negative prompt is empty").info("old behavior ; causes NaN when using SageAttention").needs_reload_ui(),
+            "divslg": OptionDiv(),
+            "slg_enable": OptionInfo(True, "[MOSS-Image] Enable Skip Layer Guidance", infotext="Skip Layer Guidance"),
+            "slg_single_layers": OptionInfo("22", "Layers to Skip", gr.Textbox, {"lines": 1, "max_lines": 1}, infotext="SLG Single Layers"),
+            "slg_1": OptionRow(),
+            "slg_start_percent": OptionInfo(0.0, "Start Percent", gr.Number, infotext="SLG Start Percent"),
+            "slg_end_percent": OptionInfo(1.0, "End Percent", gr.Number, infotext="SLG End Percent"),
+            "slg_0": OptionRow(),
             "divlumina": OptionDiv(),
             "neta_template_positive": OptionInfo(
                 "You are an assistant designed to generate anime images with the highest degree of image-text alignment based on danbooru tags. <Prompt Start>",

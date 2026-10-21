@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 import cv2
 import torch
 
@@ -97,6 +100,56 @@ add_supported_preprocessor(PreprocessorNone())
 add_supported_preprocessor(PreprocessorCanny())
 
 
+_CLIP_VISION_FILENAME_ALIASES = {
+    "clip-vit-h-14.safetensors": (
+        "CLIP-ViT-H-14.safetensors",
+        "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+        "clip_vision_h.safetensors",
+    ),
+    "clip-vit-bigg.safetensors": (
+        "CLIP-ViT-bigG.safetensors",
+        "CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors",
+        "clip_vision_g.safetensors",
+    ),
+}
+
+
+def _find_clipvision_file(filename):
+    filenames = _CLIP_VISION_FILENAME_ALIASES.get(filename.casefold(), (filename,))
+    roots = [preprocessor_dir, *os.environ.get("FORGE_NEO_SOURCE_BACKEND_CLIP_VISION_DIRS", "").split(os.pathsep)]
+    seen = set()
+    for value in roots:
+        if not value:
+            continue
+        root = Path(value).expanduser()
+        key = os.path.normcase(os.path.abspath(root))
+        if key in seen or not root.is_dir():
+            continue
+        seen.add(key)
+        # Preserve a user's existing preprocessor file before shared models.
+        for name in filenames:
+            candidate = root / name
+            try:
+                if candidate.is_file() and candidate.stat().st_size > 0:
+                    return str(candidate)
+            except OSError:
+                continue
+        for directory, subdirs, files in os.walk(root):
+            subdirs.sort(key=str.casefold)
+            by_name = {name.casefold(): name for name in sorted(files)}
+            for name in filenames:
+                actual_name = by_name.get(name.casefold())
+                if actual_name is None:
+                    continue
+                candidate = Path(directory) / actual_name
+                try:
+                    if candidate.is_file() and candidate.stat().st_size > 0:
+                        return str(candidate)
+                except OSError:
+                    continue
+    return None
+
+
 class PreprocessorClipVision(Preprocessor):
     global_cache = {}
 
@@ -115,7 +168,9 @@ class PreprocessorClipVision(Preprocessor):
         if self.clipvision is not None:
             return self.clipvision
 
-        ckpt_path = load_file_from_url(url=self.url, model_dir=preprocessor_dir, file_name=self.filename)
+        ckpt_path = _find_clipvision_file(self.filename)
+        if ckpt_path is None:
+            ckpt_path = load_file_from_url(url=self.url, model_dir=preprocessor_dir, file_name=self.filename)
 
         if ckpt_path in PreprocessorClipVision.global_cache:
             self.clipvision = PreprocessorClipVision.global_cache[ckpt_path]

@@ -106,6 +106,7 @@ from forge_neo.forge_couple_compat import (
 )
 from forge_neo.forge_canvas import ForgeCanvas
 from forge_neo.i18n import t
+from forge_neo.layout_tools import apply_qwen_layout, layout_config_html, layout_message
 from forge_neo.licenses import license_notice_html
 from forge_neo.localization import localization_template_html, save_localization_template
 from forge_neo.models import (
@@ -5522,9 +5523,18 @@ def _build_request(
     )
 
 
-def _generate_clicked(*values):
+def _generate_layout_clicked(layout_payload, *values):
+    return _generate_clicked(*values, layout_payload=layout_payload)
+
+
+def _generate_clicked(*values, layout_payload=""):
     state = values[0]
     request = _build_request(*values[1:])
+    try:
+        if layout_payload:
+            request = apply_qwen_layout(request, layout_payload, values[6])
+    except (ValueError, TypeError) as error:
+        raise gr.Error(layout_message(str(error), state)) from error
     result = worker.run(request, state)
     if result.status == "finished" and _has_generation_parameter_payload(result.infotext):
         _write_prompt_history(result.infotext)
@@ -12916,6 +12926,10 @@ def create_app() -> gr.Blocks:
         mode = gr.State("txt2img")
         with gr.Column(elem_id="forge_neo_root"):
             runtime_marker = gr.HTML(_runtime_marker_html(state_value["__lang"]))
+            gr.HTML(layout_config_html())
+            layout_marks = gr.Textbox(value="", show_label=False, elem_id="forge_neo_layout_marks",
+                                     elem_classes=["forge-neo-hidden-bridge"])
+            gr.HTML('<span data-forge-layout-status role="status" aria-live="polite"></span>')
             with gr.Row(elem_classes=["forge-neo-topbar"]):
                 preset = gr.Dropdown(UI_PRESETS, value=default_preset, label=_label("UI Preset", "界面预设"), scale=1, min_width=110, elem_id="forge_neo_preset")
                 preset_restore = gr.Textbox(value="", show_label=False, elem_id="forge_neo_preset_restore", elem_classes=["forge-neo-hidden-bridge"])
@@ -12993,6 +13007,7 @@ def create_app() -> gr.Blocks:
                                 paste_params = _tool_button("↙️", elem_id="forge_neo_paste_params")
                                 clear_prompt = _tool_button("🗑️", elem_id="forge_neo_clear_prompt")
                                 style_apply_quick = _tool_button("📋", elem_id="forge_neo_style_apply")
+                                _tool_button("▦", elem_id="forge_neo_layout")
                             txt_styles = _create_style_controls("", styles, apply_button=style_apply_quick)
                             txt_style_grid = _create_style_grid_bridge("")
 
@@ -13435,6 +13450,8 @@ def create_app() -> gr.Blocks:
                                 img_paste_params = _tool_button("↙️", elem_id="forge_neo_img2img_paste_params")
                                 img_clear_prompt = _tool_button("🗑️", elem_id="forge_neo_img2img_clear_prompt")
                                 img_style_apply_quick = _tool_button("📋", elem_id="forge_neo_img2img_style_apply")
+                                _tool_button("▦", elem_id="forge_neo_img2img_layout")
+                                _tool_button("⊘", elem_id="forge_neo_layout_clear")
                             img_styles = _create_style_controls("img2img", styles, apply_button=img_style_apply_quick)
                             img_style_grid = _create_style_grid_bridge("img2img")
 
@@ -13903,8 +13920,9 @@ def create_app() -> gr.Blocks:
                             )
 
                     img_generate.click(
-                        _generate_clicked,
+                        _generate_layout_clicked,
                         inputs=[
+                            layout_marks,
                             state,
                             mode_img,
                             preset,

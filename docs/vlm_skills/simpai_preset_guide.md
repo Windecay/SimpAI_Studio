@@ -469,6 +469,23 @@ SimpAI UI guide skill:
 - Follow `state.__lang`: English display name `VOSR2 Image Upscale`, Chinese
   display name `VOSR2 图像放大`; the catalog key remains `VOSR2`.
 
+## VOSR2 Video Upscale
+
+- `VOSR2-Video` is a frame-by-frame video upscale preset. It
+  requires a video and reuses the same matched model bundle as `VOSR2`.
+- Default to 2x and process all frames. The visible frame limit is 0 for the
+  complete input video; a positive value intentionally processes only that
+  many frames. Upscale changes pixel dimensions, not playback duration.
+  Do not describe a frame-limited result as the complete input video.
+- Preserve input frame order and frame rate, and retain source audio for the
+  processed segment. No frame interpolation or prompt is used.
+- This remains image-model inference on successive frames. Texture stability,
+  flicker, and detail changes require actual video review; do not claim native
+  temporal modeling or validated video quality from schema or media IO tests.
+- Follow `state.__lang`: English display name
+  `VOSR2 Video Upscale`, Chinese display name
+  `VOSR2 视频放大`; the catalog key remains `VOSR2-Video`.
+
 ## Infinite Canvas / Advanced Workflow
 
 - Recommend the main WebUI directly for a single simple generation, a one-off

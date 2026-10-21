@@ -53,7 +53,7 @@ PRESET_SCHEDULERS: dict[str, str] = {
     "anima": "Simple",
 }
 PRESET_STEPS: dict[str, int] = {
-    "moss": 8,
+    "moss": 12,
     "sd": 32,
     "xl": 24,
     "flux": 20,
@@ -389,6 +389,14 @@ FORGE_COUPLE_SETTINGS_SCHEMA: tuple[ForgeNeoSettingInfo, ...] = (
     ),
 )
 FORGE_COUPLE_SETTING_KEYS: tuple[str, ...] = tuple(info.key for info in FORGE_COUPLE_SETTINGS_SCHEMA)
+
+MOSS_SLG_SETTINGS_SCHEMA: tuple[ForgeNeoSettingInfo, ...] = (
+    ForgeNeoSettingInfo("slg_enable", True, "moss", "Enable Negative Skip Layer Guidance", "启用负向跳层引导"),
+    ForgeNeoSettingInfo("slg_single_layers", "22", "moss", "Layers to Skip", "跳过层号"),
+    ForgeNeoSettingInfo("slg_start_percent", 0.0, "moss", "SLG Start Percent", "跳层开始比例"),
+    ForgeNeoSettingInfo("slg_end_percent", 1.0, "moss", "SLG End Percent", "跳层结束比例"),
+)
+MOSS_SLG_SETTING_KEYS: tuple[str, ...] = tuple(info.key for info in MOSS_SLG_SETTINGS_SCHEMA)
 
 
 SETTINGS_SCHEMA: tuple[ForgeNeoSettingInfo, ...] = (
@@ -937,11 +945,12 @@ SETTINGS_SCHEMA: tuple[ForgeNeoSettingInfo, ...] = (
     ForgeNeoSettingInfo("svdq_attention", "nunchaku-fp16", "nunchaku", "Attention", "Attention"),
     ForgeNeoSettingInfo("svdq_use_pin_memory", False, "nunchaku", "Use Pinned Memory", "使用 Pinned Memory"),
     ForgeNeoSettingInfo("svdq_num_blocks_on_gpu", 60, "nunchaku", "Blocks on GPU", "GPU 上的 Blocks 数量"),
-) + FORGE_COUPLE_SETTINGS_SCHEMA + PRESET_SETTINGS_SCHEMA
+) + FORGE_COUPLE_SETTINGS_SCHEMA + MOSS_SLG_SETTINGS_SCHEMA + PRESET_SETTINGS_SCHEMA
 
 DEFAULT_SETTINGS: dict[str, Any] = {item.key: item.default for item in SETTINGS_SCHEMA}
 
 SECTION_LABELS: dict[str, tuple[str, str]] = {
+    "moss": ("MOSS-Image", "MOSS-Image"),
     "paths": ("Paths for Saving", "保存路径"),
     "saving": ("Saving Images/Grids", "图像/宫格保存"),
     "saving_videos": ("Saving Videos", "视频保存"),

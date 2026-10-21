@@ -26,7 +26,8 @@ CONFIG_PATH_KEYS = {
     "text_encoders": ("path_text_encoders", "path_clip"),
     "loras": ("path_loras",),
     "embeddings": ("path_embeddings",),
-    "controlnet": ("path_controlnet",),
+    "controlnet": ("path_controlnet", "path_ipadapter"),
+    "clip_vision": ("path_clip_vision", "path_ipadapter"),
     "upscale_models": ("path_upscale_models", "path_esrgan_models", "path_realesrgan_models", "path_swinir_models"),
 }
 REFERENCE_MODEL_DIRS = {
@@ -37,7 +38,8 @@ REFERENCE_MODEL_DIRS = {
     "text_encoders": ("text_encoder", "text_encoders", "clip"),
     "loras": ("Lora", "loras"),
     "embeddings": ("embeddings",),
-    "controlnet": ("controlnet", "ControlNet"),
+    "controlnet": ("controlnet", "ControlNet", "ipadapter"),
+    "clip_vision": ("clip_vision", "ipadapter"),
     "upscale_models": ("ESRGAN", "RealESRGAN", "SwinIR", "upscale_models"),
 }
 SIMPLEMODELS_DIRS = {
@@ -48,7 +50,8 @@ SIMPLEMODELS_DIRS = {
     "text_encoders": ("text_encoders", "clip"),
     "loras": ("loras", "Lora"),
     "embeddings": ("embeddings",),
-    "controlnet": ("controlnet", "ControlNet"),
+    "controlnet": ("controlnet", "ControlNet", "ipadapter"),
+    "clip_vision": ("clip_vision", "ipadapter"),
     "upscale_models": ("upscale_models", "ESRGAN", "RealESRGAN", "SwinIR"),
 }
 LAUNCHER_PATH_CATALOGS = {
@@ -146,7 +149,9 @@ SCHEDULER_TYPES = [
 
 
 def scheduler_types() -> list[str]:
-    return list(SCHEDULER_TYPES)
+    from forge_neo.layout_plugin_compat import MOSS_IMAGE_EXTENSION, active_layout_plugins
+
+    return [*SCHEDULER_TYPES, *(["MOSS"] if MOSS_IMAGE_EXTENSION in active_layout_plugins() else [])]
 
 
 PRESET_DEFAULTS = {
@@ -160,7 +165,7 @@ PRESET_DEFAULTS = {
     "lumina": {"steps": 32, "width": 1024, "height": 1024, "cfg_scale": 4.0, "sampler": "Res Multistep", "scheduler": "Simple"},
     "zit": {"steps": 9, "width": 1024, "height": 1024, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "Beta"},
     "anima": {"steps": 32, "width": 1024, "height": 1024, "cfg_scale": 4.0, "sampler": "ER SDE", "scheduler": "Simple"},
-    "moss": {"steps": 8, "width": 1024, "height": 1024, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "SGM Uniform"},
+    "moss": {"steps": 12, "width": 1024, "height": 1024, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "SGM Uniform"},
 }
 
 PRESET_ENGINE = {
@@ -509,6 +514,8 @@ def model_roots_for_catalog(catalog: str) -> list[str]:
     roots: list[str] = []
     model_cata_map = getattr(config, "model_cata_map", {}) or {}
     roots.extend(_as_list(model_cata_map.get(catalog)))
+    if catalog == "controlnet":
+        roots.extend(_as_list(model_cata_map.get("ipadapter")))
     for key in CONFIG_PATH_KEYS.get(catalog, ()):
         attr_name = f"paths_{key[5:]}" if key.startswith("path_") else key
         roots.extend(_as_list(getattr(config, attr_name, [])))

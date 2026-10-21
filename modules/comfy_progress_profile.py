@@ -103,6 +103,27 @@ def format_sampling_progress(step, total_steps, output_index, output_count, lang
     return f"采样步数 {step}/{total_steps}，{media_label} {output_index}/{output_count} ..."
 
 
+def format_vosr2_progress(step, total_steps, lang, media_type="image"):
+    # VOSR2 reports 100 progress units per image, including encode/decode.
+    total_frames = max(1, int(total_steps) // 100)
+    completed_frames = min(int(step) // 100, total_frames)
+    within_frame = int(step) % 100
+    stage = (
+        0 if within_frame < 10 else 1 if within_frame < 40 else
+        2 if within_frame < 80 else 3 if within_frame < 95 else 4
+    )
+    is_video = str(media_type or "").lower() == "video"
+    if str(lang or "").lower().startswith("en"):
+        stages = ("Encoding", "Extracting features", "Upscaling", "Decoding", "Aligning colors")
+        unit = "frames" if is_video else "images"
+        status = "Saving" if completed_frames == total_frames else stages[stage]
+        return f"VOSR2: {completed_frames}/{total_frames} {unit}, {status} ..."
+    stages = ("图像编码", "提取特征", "超分处理", "图像解码", "保持色彩")
+    unit = "帧" if is_video else "张"
+    status = "正在保存" if completed_frames == total_frames else stages[stage]
+    return f"VOSR2：已完成 {completed_frames}/{total_frames} {unit}，{status} ..."
+
+
 def build_progress_profile(task_method, params, base_steps, duration_probe=None, frame_rate_probe=None):
     method = str(task_method or "").lower()
     if not isinstance(params, dict):

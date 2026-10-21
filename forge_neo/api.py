@@ -1127,6 +1127,10 @@ def schedulers_payload() -> list[dict[str, Any]]:
         ]
 
     by_label = {str(row["label"]): row for row in SOURCE_SCHEDULER_API_ROWS}
+    by_label["MOSS"] = {
+        "name": "moss", "label": "MOSS", "aliases": ["MOSS-Image", "moss_image"],
+        "default_rho": -1.0, "need_inner_model": False,
+    }
     rows: list[dict[str, Any]] = []
     for label in scheduler_types():
         source_row = by_label.get(label)

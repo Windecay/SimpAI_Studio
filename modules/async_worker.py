@@ -9,7 +9,7 @@ import getpass
 import args_manager
 from extras.inpaint_mask import generate_mask_from_image, SAMOptions
 from modules.patch import PatchSettings, patch_settings, patch_all
-from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress
+from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress, format_vosr2_progress
 from modules.comfy_progress_filter import use_progress_profile
 from modules.comfy_prompt_compat import ComfyExecutionError
 from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task, exclusive_task_lock
@@ -2852,7 +2852,12 @@ def worker():
             percentage = int(current_progress + async_task.callback_steps)
             display_total_steps = clamp_progress_total(step, total_steps)
             progress_snapshot = getattr(async_task, "simpleai_progress_snapshot", None)
-            if progress_snapshot is not None and progress_snapshot.current_step == step:
+            if async_task.task_method in ("scene_vosr2", "scene_vosr2_video"):
+                percentage = min(percentage, 99)
+                progress_title = format_vosr2_progress(
+                    step, display_total_steps, async_task.simpleai_lang, async_task.content_type,
+                )
+            elif progress_snapshot is not None and progress_snapshot.current_step == step:
                 progress_title = format_profile_progress(
                     progress_snapshot,
                     current_task_id + 1,

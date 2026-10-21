@@ -27,7 +27,7 @@ class ScriptComments(scripts.Script):
         return scripts.AlwaysVisible
 
     def process(self, p: "StableDiffusionProcessing", *args):
-        if not shared.opts.enable_prompt_comments:
+        if not shared.opts.enable_prompt_comments or getattr(p.sd_model, "literal_prompt", False):
             return
 
         if shared.opts.save_prompt_comments:

@@ -93,6 +93,7 @@ SOURCE_BACKEND_LOCAL_PATCH_FILES = (
     "modules_forge/patch_basic.py",
     "modules_forge/main_entry.py",
     "modules_forge/presets.py",
+    "modules_forge/supported_preprocessor.py",
     # Local Krea-2 integration files are not present in the source WebUI.
     "backend/diffusion_engine/krea2.py",
     "backend/nn/krea2.py",
@@ -107,6 +108,11 @@ SOURCE_BACKEND_LOCAL_PATCH_FILES = (
     "backend/nn/moss.py",
     "backend/nn/llm/qwen35_text.py",
     "backend/text_processing/moss_engine.py",
+    "backend/moss_slg.py",
+    "modules/processing_scripts/slg.py",
+    "modules/processing_scripts/comments.py",
+    "modules/shared_options.py",
+    "modules/ui.py",
     "modules_forge/packages/huggingface_guess/detection.py",
     "modules_forge/packages/huggingface_guess/model_list.py",
     "modules_forge/packages/comfy/lora.py",
@@ -122,6 +128,10 @@ SOURCE_BACKEND_LOCAL_PATCH_PREFIXES = (
     "backend/huggingface/krea/Krea-2-Turbo/",
 )
 SOURCE_BACKEND_EXCLUDED_PATHS = (
+    # Keep the native fused-QKV/quantized MOSS engine and its tokenizer path.
+    "backend/diffusion_engine/moss_image.py",
+    "backend/nn/moss_image.py",
+    "backend/text_processing/moss_image_engine.py",
     # Qwen 2.1 uses the existing native qwen_image21 modules in this mirror.
     "backend/diffusion_engine/qwen21.py",
     "backend/nn/qwen21.py",
@@ -135,6 +145,8 @@ SOURCE_BACKEND_EXCLUDED_PATHS = (
     "backend/huggingface/ernie.tokenizer.json.xz",
 )
 SOURCE_BACKEND_EXCLUDED_PREFIXES = (
+    # Studio's layout bridge replaces the vanilla Forge DOM-based builder.
+    "extensions-builtin/sd_forge_json_builder/",
     "extensions-builtin/sd_forge_radial/",
     "backend/huggingface/Wan-AI/",
     "backend/huggingface/baidu/ERNIE-Image/",

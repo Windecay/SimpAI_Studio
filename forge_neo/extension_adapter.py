@@ -34,6 +34,11 @@ from forge_neo.regional_prompter_compat import (
     regional_prompter_default_args,
     regional_prompter_schema_payload,
 )
+from forge_neo.layout_plugin_compat import (
+    MOSS_IMAGE_EXTENSION,
+    NATIVE_LAYOUT_EXTENSION_PROFILES,
+    REGIONAL_BOXES_EXTENSION,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1027,6 +1032,52 @@ STYLE_ORGANIZER_PROFILE = ForgeNeoExtensionProfile(
     ),
 )
 
+REGIONAL_BOXES_PROFILE = ForgeNeoExtensionProfile(
+    name=REGIONAL_BOXES_EXTENSION,
+    display_name="Regional Boxes",
+    family="prompt-helper",
+    support_level="runtime-adapter",
+    adapter_scope="api-adapter",
+    remote_url="https://github.com/eduardoabreu81/sd-regional-boxes-neo.git",
+    source_branch="main",
+    source_commit="a0f15a19618ebbd7d69c81525b651c1517aa1ddc",
+    source_commit_date="2026-10-17",
+    required_files=("scripts/regional_boxes.py", "lib_regional_boxes/marks.py", "javascript/regional_boxes.js", "style.css"),
+    runtime_files=("forge_neo/layout_tools.py", "forge_neo/layout_plugin_compat.py", "javascript/forge_neo_layout.js"),
+    routes=("/forge-neo/extensions/layout-plugins-status",),
+    source_callbacks=("Regional Boxes.before_process_init_images",),
+    notes=(
+        "Uses the native regional layout editor for MOSS JSON and Qwen Image 2.1 marks.",
+        "Supports the original Regional Boxes alwayson script name and 0-1000 yxyx marks payload.",
+        "The native adapter draws input copies once; original Gradio 4 assets are not injected.",
+        "FLUX 3 coordinate mode requires separate model support and is not exposed by this adapter.",
+    ),
+)
+
+MOSS_IMAGE_PROFILE = ForgeNeoExtensionProfile(
+    name=MOSS_IMAGE_EXTENSION,
+    display_name="MOSS-Image",
+    family="generation-hook",
+    support_level="runtime-adapter",
+    adapter_scope="api-adapter",
+    remote_url="https://github.com/eduardoabreu81/moss-image-forge-neo.git",
+    source_branch="main",
+    source_commit="1143995d4354375fb887916c47eb96046e49a03e",
+    source_commit_date="2026-10-18",
+    required_files=(
+        "scripts/moss_image.py", "forge_moss/native/patches.py", "forge_moss/native/engine.py",
+        "forge_moss/native/settings.py", "forge_moss/native/scheduler.py",
+    ),
+    runtime_files=("forge_neo/layout_plugin_compat.py", "forge_neo/webui/backend/nn/moss.py"),
+    routes=("/forge-neo/extensions/layout-plugins-status",),
+    notes=(
+        "Uses the built-in MOSS engine, quantization, LoRA mappings and native model preset.",
+        "Adds the extension's MOSS schedule and translates moss_uncond_skip_layers to native SLG options.",
+        "Original import-time model and sampler hooks remain disabled in the managed backend.",
+        "Installing this extension does not replace the current Studio preset defaults.",
+    ),
+)
+
 PROMPT_EXTENSION_PROFILES = (TAGCOMPLETE_PROFILE, PROMPT_ALL_IN_ONE_PROFILE)
 API_ROUTE_EXTENSION_PROFILE_OBJECTS = (AUTO_PHOTOSHOP_PROFILE,)
 UI_HELPER_EXTENSION_PROFILE_OBJECTS = (ASPECT_RATIO_HELPER_PROFILE,)
@@ -1057,6 +1108,8 @@ EXTENSION_PROFILES = (
     *UI_TAB_EXTENSION_PROFILE_OBJECTS,
     *PROMPT_STYLE_EXTENSION_PROFILE_OBJECTS,
     *PROFILE_ONLY_EXTENSION_PROFILE_OBJECTS,
+    REGIONAL_BOXES_PROFILE,
+    MOSS_IMAGE_PROFILE,
 )
 SUPPORTED_EXTENSION_PROFILES = tuple(profile.name for profile in EXTENSION_PROFILES)
 PROMPT_EXTENSION_PROFILE_BY_NAME = {profile.name: profile for profile in PROMPT_EXTENSION_PROFILES}
@@ -1357,6 +1410,7 @@ def extension_adapter_manifest() -> dict[str, Any]:
         "catalog_path": str(CATALOG_PATH),
         "catalog": catalog,
         "supported": list(SUPPORTED_EXTENSION_PROFILES),
+        "native_layout_profiles": list(NATIVE_LAYOUT_EXTENSION_PROFILES),
         "supported_prompt_extensions": list(SUPPORTED_PROMPT_EXTENSIONS),
         "first_batch_profiles": list(FIRST_BATCH_PROMPT_EXTENSION_PROFILES),
         "priority_profiles": list(PRIORITY_EXTENSION_PROFILES),
@@ -1432,6 +1486,7 @@ def _profile_catalog_from_runtime() -> dict[str, Any]:
         "kind": "forge-neo-extension-profile-catalog",
         "install_extensions_root": "forge_neo/webui/extensions",
         "supported": list(SUPPORTED_EXTENSION_PROFILES),
+        "native_layout_profiles": list(NATIVE_LAYOUT_EXTENSION_PROFILES),
         "supported_prompt_extensions": list(SUPPORTED_PROMPT_EXTENSIONS),
         "first_batch_profiles": list(FIRST_BATCH_PROMPT_EXTENSION_PROFILES),
         "priority_profiles": list(PRIORITY_EXTENSION_PROFILES),
@@ -2774,6 +2829,18 @@ def install_extension_adapter_routes(app: Any) -> None:
     @app.get("/forge-neo/extensions/profile-catalog")
     async def _forge_neo_extension_profile_catalog():
         return extension_profile_catalog_payload()
+
+    @app.get("/forge-neo/extensions/layout-plugins-status")
+    async def _forge_neo_layout_plugins_status():
+        return {
+            "profiles": [row for row in extension_profile_statuses()
+                         if row["name"] in NATIVE_LAYOUT_EXTENSION_PROFILES],
+            "editor": "ForgeNeoLayout",
+            "entrypoints": {"txt2img": "forge_neo_layout", "img2img": "forge_neo_img2img_layout"},
+            "model_backend": "native",
+            "original_script_hooks": False,
+            "formats": ["moss-layout", "qwen21-marks", "regional-boxes-marks"],
+        }
 
     @app.get("/forge-neo/extensions/infinite-browsing-status")
     async def _forge_neo_infinite_browsing_status():

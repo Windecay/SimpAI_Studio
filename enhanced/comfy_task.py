@@ -52,6 +52,7 @@ def _register_runtime_preview_nodes():
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIH3DetailRefine")
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanVaceLatentLoop")
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanVaceLatentLoop")
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("VOSR2Upscale")
     install_aio_enhance_uov_progress_filter(comfyclient_pipeline)
     install_advanced_sampler_known_total_progress_filter(comfyclient_pipeline)
     install_progress_profile_reset_filter(comfyclient_pipeline)
@@ -94,6 +95,9 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
     if progress_profile is not None:
         total_steps = progress_profile.total_steps
     task_method_l = (task_method or "").lower()
+    if task_method_l in ("scene_vosr2", "scene_vosr2_video"):
+        # The node reports actual decoded frames and stages, independent of steps.
+        total_steps = None
     if "infinitetalk" in task_method_l:
         audio = default_params.get("audio")
         if isinstance(audio, str):

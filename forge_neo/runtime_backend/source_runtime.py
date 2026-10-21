@@ -159,6 +159,17 @@ def _source_backend_controlnet_dirs() -> list[str]:
     return _source_existing_dirs(values)
 
 
+def _source_backend_clip_vision_dirs() -> list[str]:
+    values = _source_env_dirs("FORGE_NEO_SOURCE_BACKEND_CLIP_VISION_DIRS")
+    try:
+        from forge_neo.models import model_roots_for_catalog
+
+        values.extend(model_roots_for_catalog("clip_vision"))
+    except Exception:
+        pass
+    return _source_existing_dirs(values)
+
+
 def _source_backend_model_dir_args() -> list[str]:
     try:
         from forge_neo.models import model_roots_for_catalog
@@ -1038,6 +1049,9 @@ class _SourceBackendSession:
         controlnet_dirs = _source_backend_controlnet_dirs()
         if controlnet_dirs:
             env["FORGE_NEO_SOURCE_BACKEND_CONTROLNET_DIRS"] = os.pathsep.join(controlnet_dirs)
+        clip_vision_dirs = _source_backend_clip_vision_dirs()
+        if clip_vision_dirs:
+            env["FORGE_NEO_SOURCE_BACKEND_CLIP_VISION_DIRS"] = os.pathsep.join(clip_vision_dirs)
         model_dir_args = _source_backend_model_dir_args()
         if model_dir_args:
             env["FORGE_NEO_SOURCE_BACKEND_MODEL_DIR_ARGS_JSON"] = json.dumps(model_dir_args, ensure_ascii=False)
@@ -1840,6 +1854,9 @@ def _source_backend_payload(request: object) -> dict[str, Any]:
     args = _source_apply_raw_request_model_values(args, request)
     args = _source_payload_without_ignored_api_fields(args, request)
     args = _source_payload_with_infotext_unset_fields(args, request)
+    from forge_neo.layout_plugin_compat import prepare_layout_plugin_payload
+
+    args = prepare_layout_plugin_payload(args, request)
     return {"mode": mode, "payload": args}
 
 

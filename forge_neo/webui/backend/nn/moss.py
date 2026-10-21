@@ -135,6 +135,7 @@ class MOSSImageTransformer(nn.Module):
             raise ValueError("MOSS conditional batch does not match the sampler branches.")
         outputs = []
         replacements = options.get("patches_replace", {}).get("dit", {})
+        sigmas = torch.as_tensor(options.get("sigmas", times), device=x.device).reshape(-1)
         for sample in range(batch):
             text = context[sample:sample + 1]
             if attention_mask is not None:
@@ -147,6 +148,10 @@ class MOSSImageTransformer(nn.Module):
             mod = modulation[sample:sample + 1].unbind(1)
             is_negative = branches[sample // (batch // len(branches))] == 1
             skip = options.get("moss_uncond_skip_layers", (22,)) if is_negative else ()
+            if skip and "moss_slg_sigma_start" in options:
+                sigma = float(sigmas[sample % sigmas.numel()])
+                if not options["moss_slg_sigma_end"] <= sigma <= options["moss_slg_sigma_start"]:
+                    skip = ()
             options.update(total_blocks=len(self.layers), block_type="single")
             for index, block in enumerate(self.layers):
                 if index in skip:

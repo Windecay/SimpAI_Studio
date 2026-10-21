@@ -304,8 +304,37 @@ class VOSR2Model:
         self.vision_layer_index = args["layer_dinov2b_list"][0]
         self.dinov2_size = args.get("dinov2_size", 448)
 
+    def prepare_inference(self, height: int, width: int, tile_size: int, vae_tile_size: int):
+        patchers = [self.dit_patcher, self.vae_patcher, self.vision_patcher]
+        device = self.dit_patcher.load_device
+        padded_h, padded_w = height + (-height) % 16, width + (-width) % 16
+        if tile_size == 0:
+            padded_h = padded_w = max(padded_h, padded_w)
+        vae_pixels = padded_h * padded_w
+        if vae_tile_size > 0:
+            vae_pixels = min(vae_tile_size, padded_h, padded_w) ** 2
+        dit_pixels = padded_h * padded_w
+        if tile_size > 0:
+            dit_pixels = min(tile_size, padded_h, padded_w) ** 2
+        # Comfy's conservative 2D VAE decode estimate, plus full-frame scratch.
+        working_memory = max(vae_pixels, dit_pixels) * 2178 * 4 + padded_h * padded_w * 3 * 4 * 8
+        required = sum(patcher.model_size() for patcher in patchers) * 1.1
+        required += max(
+            comfy.model_management.minimum_inference_memory(),
+            working_memory + comfy.model_management.extra_reserved_memory(),
+        )
+        available = comfy.model_management.get_free_memory(device)
+        available += sum(patcher.loaded_size() for patcher in patchers)
+        if device.type == "cpu" or available >= required:
+            comfy.model_management.load_models_gpu(
+                patchers, memory_required=working_memory, force_full_load=True,
+            )
+
     def _load(self, patcher):
-        comfy.model_management.load_models_gpu([patcher], force_full_load=True)
+        # Consult native residency every time: another node may have offloaded it.
+        if (patcher not in comfy.model_management.loaded_models()
+                or patcher.loaded_size() < patcher.model_size()):
+            comfy.model_management.load_models_gpu([patcher], force_full_load=True)
         return patcher.model, patcher.load_device
 
     def vision_features(self, lq_bchw_01: torch.Tensor) -> list:

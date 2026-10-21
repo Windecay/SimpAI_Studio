@@ -16,7 +16,8 @@ class MOSSTextProcessingEngine:
             return self.tokenize([texts])[0]
         return [
             self.tokenizer(
-                self.template.format(text.strip()), add_special_tokens=False,
+                text.strip() if text.strip().startswith("<|im_start|>") else self.template.format(text.strip()),
+                add_special_tokens=False,
                 truncation=True, max_length=self.max_length,
             )["input_ids"]
             for text in texts

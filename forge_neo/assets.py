@@ -27,6 +27,13 @@ def _asset_tag(kind: str, relative_path: str) -> str:
     return f'<link rel="stylesheet" href="{web_path}">'
 
 
+def _layout_icon_font_html() -> str:
+    # Font Awesome's relative ../webfonts URLs do not retain Gradio's file= prefix.
+    source = _asset_url("webfonts/fa-solid-900.woff2")
+    return ('<style>@font-face{font-family:"Font Awesome 6 Free";font-style:normal;'
+            f'font-weight:900;font-display:block;src:url("{source}") format("woff2")' + '}</style>')
+
+
 def javascript_html() -> str:
     from forge_neo.extension_adapter import extension_javascript_paths
 
@@ -35,6 +42,8 @@ def javascript_html() -> str:
             _asset_tag("js", "javascript/forge_canvas.js"),
             _asset_tag("js", "forge_neo/webui/javascript/inputAccordion.js"),
             _asset_tag("js", "javascript/forge_neo.js"),
+            _asset_tag("js", "javascript/regional_json_prompt.js"),
+            _asset_tag("js", "javascript/forge_neo_layout.js"),
             *[_asset_tag("js", path) for path in extension_javascript_paths()],
         ]
     )
@@ -47,6 +56,9 @@ def css_html() -> str:
         [
             _asset_tag("css", "css/forge_canvas.css"),
             _asset_tag("css", "css/forge_neo.css"),
+            _asset_tag("css", "css/fa_all.min_6.5.2.css"),
+            _layout_icon_font_html(),
+            _asset_tag("css", "css/regional_json_prompt.css"),
             *[_asset_tag("css", path) for path in extension_css_paths()],
         ]
     )

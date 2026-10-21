@@ -540,7 +540,11 @@
     function open(options = {}) {
         active?.close();
         const state = options.langState || root.simpleaiTopbarSystemParams || {};
-        const t = key => state.__lang === 'en' ? key : (root.localization?.[key] || key);
+        const t = key => options.translate?.(key) || (state.__lang === 'en' ? key : (root.localization?.[key] || key));
+        let outputModel = options.outputModel || 'moss';
+        const compileOutput = value => typeof options.compilePrompt === 'function'
+            ? options.compilePrompt(value, outputModel) : compile(value, { allowIncomplete: true });
+        const previewColor = (item, index) => options.regionColor?.(item, index, outputModel) || regionColor(item, index);
         const label = role => t({ object: 'Object', character: 'Character', text: 'Text' }[role]);
         const icon = (action, glyph, title, extra = '') =>
             `<button type="button" data-rjp-action="${action}" title="${esc(t(title))}" aria-label="${esc(t(title))}" ${extra}><i class="fa-solid fa-${glyph}" aria-hidden="true"></i></button>`;
@@ -585,7 +589,9 @@
               <i class="fa-solid fa-image" aria-hidden="true"></i><strong data-rjp-drop-label>${esc(t('Drop reference image here'))}</strong>
             </div>
             <header><h2 id="sai-rjp-title">${esc(t('Regional Prompt'))}</h2>
-              <select aria-label="${esc(t('Model'))}" data-rjp-model><option>MOSS-Image</option></select>
+              <select aria-label="${esc(t('Model'))}" data-rjp-model>${(options.outputModels
+                  || [{ value: 'moss', label: 'MOSS-Image' }]).map(item =>
+                  `<option value="${esc(item.value)}">${esc(t(item.label))}</option>`).join('')}</select>
               ${icon('maximize', 'maximize', 'Maximize window', 'aria-pressed="false"')}
               ${icon('close', 'xmark', 'Close')}</header>
             <div class="sai-rjp-toolbar">
@@ -687,6 +693,8 @@
             </section>
             <footer><div data-rjp-status role="status" aria-live="polite"></div>
               <div class="sai-rjp-footer-tools">
+                ${options.applyTargets ? `<select data-rjp-target aria-label="${esc(t('Send to'))}">${options.applyTargets.map(item =>
+                    `<option value="${esc(item.value)}">${esc(t(item.label))}</option>`).join('')}</select>` : ''}
                 ${icon('import', 'file-import', 'Import layout JSON')}${icon('export', 'download', 'Download editable JSON')}
                 ${icon('copy', 'copy', 'Copy compiled prompt')}
                 <button type="button" data-rjp-action="apply" class="sai-rjp-apply"><i class="fa-solid fa-check" aria-hidden="true"></i> ${esc(t('Apply prompt'))}</button>
@@ -756,6 +764,9 @@
         q('[data-rjp-ai-instruction]').value = restored?.aiInstruction || '';
         q('[data-rjp-ai-mode]').value = restored?.aiMode || 'optimize';
         q('[data-rjp-details]').open = restored?.detailsOpen || false;
+        q('[data-rjp-model]').value = outputModel;
+        if (options.applyTargets) q('[data-rjp-target]').value = options.applyTarget || options.applyTargets[0]?.value;
+        if (options.agentEnabled === false) q('.sai-rjp-ai-bar').hidden = true;
         function persistDraft() {
             if (closed || typeof options.onDraftChange !== 'function') return;
             // Preserve unfinished edits without compiling them or saving API settings.
@@ -817,7 +828,7 @@
         }
         function updateOutput() {
             try {
-                q('[data-rjp-output]').value = compile(editableDraft(), { allowIncomplete: true });
+                q('[data-rjp-output]').value = compileOutput(editableDraft());
                 if (!optimizing) {
                     try {
                         if (draft.items.length || draft.summary.caption.trim()) validateDraft(draft, true);
@@ -1082,7 +1093,7 @@
             draft.items.forEach((item, index) => {
                 if (regionUi[index].hidden || regionUi[index].outside) return;
                 const [x0, y0, x1, y1] = item.bbox;
-                const color = regionColor(item, index);
+                const color = previewColor(item, index);
                 ctx.fillStyle = `${color}20`; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
                 ctx.strokeStyle = color; ctx.lineWidth = (index === selected ? 2.5 : 1.5) * unit;
                 ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
@@ -1143,7 +1154,7 @@
             list.innerHTML = draft.items.map((item, index) => {
                 const ui = regionUi[index];
                 const extra = flag => `data-rjp-index="${index}" aria-pressed="${ui[flag]}"`;
-                return `<div class="sai-rjp-region-row${ui.hidden || ui.outside ? ' is-hidden' : ''}" role="listitem" style="--region-color:${regionColor(item, index)}">
+                return `<div class="sai-rjp-region-row${ui.hidden || ui.outside ? ' is-hidden' : ''}" role="listitem" style="--region-color:${previewColor(item, index)}">
                   <button type="button" class="sai-rjp-region-select" aria-pressed="${index === selected}" data-rjp-region="${index}" ${ui.outside ? `title="${esc(t('Outside canvas; restored when the image fit changes'))}"` : ''}><span>${index + 1}</span><span>${esc(label(item.label))}${ui.outside ? ' <i class="fa-solid fa-crop-simple" aria-hidden="true"></i>' : ''}<small>${esc(item.label === 'text' ? item.text || item.caption : item.caption)}</small></span></button>
                   ${icon('lock', ui.locked ? 'lock' : 'lock-open', ui.locked ? 'Unlock region' : 'Lock region', extra('locked'))}
                   ${icon('hide', ui.hidden ? 'eye-slash' : 'eye', ui.hidden ? 'Show region on canvas' : 'Hide region on canvas (still included in generation)', extra('hidden'))}
@@ -1387,7 +1398,7 @@
                     const output = editableDraft();
                     requireValue(!draft.items.length || output.items.length || output.summary.caption.trim(),
                         'All regions are outside the canvas');
-                    const prompt = compile(output, { allowIncomplete: true });
+                    const prompt = compileOutput(output);
                     if (name === 'copy') await navigator.clipboard.writeText(prompt);
                     else {
                         const button = q('[data-rjp-action="apply"]');
@@ -1396,6 +1407,7 @@
                         try {
                             if (await options.onApply?.({
                                 prompt, draft: output, width: draft.width, height: draft.height,
+                                outputModel, target: options.applyTargets ? q('[data-rjp-target]').value : undefined,
                                 referenceLayout: { version: 1, ...capture() },
                                 optimized: optimizedSnapshot === JSON.stringify(draft),
                             }) !== false) close(false);
@@ -1420,6 +1432,12 @@
         });
         function updateField(event) {
             if (closed) return;
+            if (event.target === q('[data-rjp-model]')) {
+                outputModel = event.target.value;
+                options.onOutputModelChange?.(outputModel);
+                render();
+                return;
+            }
             if (event.target === raw) { rawDirty = true; persistDraft(); return; }
             if (event.target === q('[data-rjp-reference-fit]')) {
                 try { changeReferenceFit(event.target.value); }

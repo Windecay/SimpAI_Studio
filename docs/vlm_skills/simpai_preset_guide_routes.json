@@ -10,6 +10,13 @@
   "default_routes": ["overview"],
   "routes": [
     {
+      "key": "vosr2_video",
+      "title": {"en": "VOSR2 Video Upscale", "cn": "VOSR2 视频放大"},
+      "priority": 960,
+      "keywords": ["vosr2-video", "vosr2 video", "vosr2视频", "vosr2 视频", "vosr视频", "vosr 视频"],
+      "sections": ["VOSR2 Video Upscale"]
+    },
+    {
       "key": "vosr2",
       "title": {"en": "VOSR2 Image Upscale", "cn": "VOSR2 图像放大"},
       "priority": 950,

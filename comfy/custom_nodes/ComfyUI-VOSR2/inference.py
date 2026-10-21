@@ -13,6 +13,7 @@ import logging
 
 import torch
 import torch.nn.functional as F
+from PIL import Image
 
 import comfy.utils
 import comfy.model_management
@@ -23,6 +24,7 @@ from .tiled_vae import _gaussian_weights, _make_tile_grid
 AE_FACTOR = 8
 DIT_PATCH_SIZE = 2
 PAD_MULTIPLE = AE_FACTOR * DIT_PATCH_SIZE  # 16
+PROGRESS_PER_IMAGE = 100
 
 
 def _pad_to_multiple(x: torch.Tensor, multiple: int):
@@ -72,18 +74,38 @@ def _resize_to_target(images_bhwc01: torch.Tensor, upscale: int, device) -> torc
     return F.interpolate(x, size=(target_h, target_w), mode="bicubic").clamp(0.0, 1.0)
 
 
-def _run_untiled_batch(model, resized01: torch.Tensor, seed: int, vae_tile_size: int, vae_tile_overlap: int) -> torch.Tensor:
+def _preview_image(image_bchw01: torch.Tensor) -> Image.Image:
+    height, width = image_bchw01.shape[-2:]
+    scale = min(1.0, 512 / max(height, width))
+    if scale < 1.0:
+        image_bchw01 = F.interpolate(
+            image_bchw01, size=(max(1, round(height * scale)), max(1, round(width * scale))),
+            mode="bilinear", align_corners=False,
+        )
+    pixels = image_bchw01[0].clamp(0, 1).mul(255).to(torch.uint8).movedim(0, -1).numpy()
+    return Image.fromarray(pixels)
+
+
+def _run_untiled_batch(model, resized01: torch.Tensor, seed: int, vae_tile_size: int,
+                       vae_tile_overlap: int, pbar, progress_offset: int) -> torch.Tensor:
     b, _, h, w = resized01.shape
     padded01 = _pad_to_multiple(resized01, PAD_MULTIPLE)
     padded01 = _pad_to_square(padded01)
     padded_pm1 = padded01 * 2.0 - 1.0
 
     lq_latent, latents_mean, latents_std = model.encode_tiled(padded_pm1, vae_tile_size, vae_tile_overlap)
+    pbar.update_absolute(progress_offset + 10)
+    comfy.model_management.throw_exception_if_processing_interrupted()
     venc_fea = model.vision_features(padded01)
+    pbar.update_absolute(progress_offset + 40)
+    comfy.model_management.throw_exception_if_processing_interrupted()
 
     noise = _generate_noise_batch(lq_latent.shape[1:], seed, b, lq_latent.device, lq_latent.dtype)
     sr_latent = model.denoise_one_step(lq_latent, noise, venc_fea)
+    pbar.update_absolute(progress_offset + 80)
+    comfy.model_management.throw_exception_if_processing_interrupted()
     decoded_pm1 = model.decode_tiled(sr_latent, latents_mean, latents_std, vae_tile_size, vae_tile_overlap)
+    pbar.update_absolute(progress_offset + 95)
 
     return decoded_pm1[:, :, :h, :w]
 
@@ -100,29 +122,34 @@ def _count_dit_tiles(h: int, w: int, tile_size: int, tile_overlap: int) -> int:
 
 
 def _run_tiled_single(model, resized01: torch.Tensor, seed: int, tile_size: int, tile_overlap: int,
-                       vae_tile_size: int, vae_tile_overlap: int, pbar: comfy.utils.ProgressBar = None) -> torch.Tensor:
+                       vae_tile_size: int, vae_tile_overlap: int, pbar,
+                       progress_offset: int) -> torch.Tensor:
     """Latent-space tiled DiT inference for one image (B=1). Ported from VOSR's tiled_latent_inference."""
     _, _, h, w = resized01.shape
     padded01 = _pad_to_multiple(resized01, PAD_MULTIPLE)
     padded_pm1 = padded01 * 2.0 - 1.0
 
     lq_latent, latents_mean, latents_std = model.encode_tiled(padded_pm1, vae_tile_size, vae_tile_overlap)
+    pbar.update_absolute(progress_offset + 10)
+    comfy.model_management.throw_exception_if_processing_interrupted()
     _, lc, lh, lw = lq_latent.shape
     lt_size, lt_overlap = _tile_params(tile_size, tile_overlap, lh, lw)
 
     if lh <= lt_size and lw <= lt_size:
         lq_sq = _pad_to_square(lq_latent)
         venc_fea = model.vision_features(padded01)
+        pbar.update_absolute(progress_offset + 40)
+        comfy.model_management.throw_exception_if_processing_interrupted()
         noise = _generate_noise(lq_sq.shape[1:], seed, lq_sq.device, lq_sq.dtype).unsqueeze(0)
         sr_latent = model.denoise_one_step(lq_sq, noise, venc_fea)[:, :, :lh, :lw]
-        if pbar is not None:
-            pbar.update_absolute(pbar.current + 1)
+        pbar.update_absolute(progress_offset + 80)
     else:
         h_pos = _make_tile_grid(lh, lt_size, lt_overlap)
         w_pos = _make_tile_grid(lw, lt_size, lt_overlap)
         g_weight = _gaussian_weights(lt_size, lt_size, lc, lq_latent.device)
 
         tile_venc = {}
+        tile_count = len(h_pos) * len(w_pos)
         for hi in h_pos:
             for wi in w_pos:
                 comfy.model_management.throw_exception_if_processing_interrupted()
@@ -130,12 +157,14 @@ def _run_tiled_single(model, resized01: torch.Tensor, seed: int, tile_size: int,
                 ph_e = min((hi + lt_size) * AE_FACTOR, padded01.shape[2])
                 pw_e = min((wi + lt_size) * AE_FACTOR, padded01.shape[3])
                 tile_venc[(hi, wi)] = model.vision_features(padded01[:, :, ph_s:ph_e, pw_s:pw_e])
+                pbar.update_absolute(progress_offset + 10 + 30 * len(tile_venc) // tile_count)
 
         noise = _generate_noise(lq_latent.shape[1:], seed, lq_latent.device, lq_latent.dtype).unsqueeze(0)
         z = noise
 
         u_acc = torch.zeros_like(lq_latent)
         w_acc = torch.zeros_like(lq_latent)
+        completed_tiles = 0
         for hi in h_pos:
             for wi in w_pos:
                 comfy.model_management.throw_exception_if_processing_interrupted()
@@ -144,12 +173,14 @@ def _run_tiled_single(model, resized01: torch.Tensor, seed: int, tile_size: int,
                 u_tile = model.dit_velocity(inp, 1.0, 0.0, tile_venc[(hi, wi)])
                 u_acc[:, :, hi:he, wi:we] += u_tile * g_weight
                 w_acc[:, :, hi:he, wi:we] += g_weight
-                if pbar is not None:
-                    pbar.update_absolute(pbar.current + 1)
+                completed_tiles += 1
+                pbar.update_absolute(progress_offset + 40 + 40 * completed_tiles // tile_count)
 
         sr_latent = z - u_acc / w_acc
 
+    comfy.model_management.throw_exception_if_processing_interrupted()
     decoded_pm1 = model.decode_tiled(sr_latent, latents_mean, latents_std, vae_tile_size, vae_tile_overlap)
+    pbar.update_absolute(progress_offset + 95)
     return decoded_pm1[:, :, :h, :w]
 
 
@@ -175,17 +206,12 @@ def run_vosr2(
     if vae_tile_size > 0 and vae_tile_overlap >= vae_tile_size:
         raise ValueError(f"VOSR2Upscale: vae_tile_overlap ({vae_tile_overlap}) must be smaller than vae_tile_size ({vae_tile_size}).")
     comfy.model_management.throw_exception_if_processing_interrupted()
-    if images_bhwc01.shape[0] > 1:
-        # Resize and restore one item at a time, including the initial RGB tensor.
-        return torch.cat([
-            run_vosr2(model, item.unsqueeze(0), upscale, seed + index, color_alignment,
-                      tile_size, tile_overlap, vae_tile_size, vae_tile_overlap).cpu()
-            for index, item in enumerate(images_bhwc01)
-        ], dim=0)
-
+    batch_size, source_h, source_w, _ = images_bhwc01.shape
+    h, w = source_h * upscale, source_w * upscale
+    pbar = comfy.utils.ProgressBar(batch_size * PROGRESS_PER_IMAGE)
+    pbar.update_absolute(1)
+    model.prepare_inference(h, w, tile_size, vae_tile_size)
     device = model.dit_patcher.load_device
-    resized01 = _resize_to_target(images_bhwc01, upscale, device)
-    b, _, h, w = resized01.shape
 
     if tile_size == 0 and (h > 512 or w > 512):
         logging.warning(
@@ -202,34 +228,30 @@ def run_vosr2(
             f"vae_tile_size > 0 (e.g. 1024) to bound peak VRAM."
         )
 
-    if tile_size > 0:
-        _, _, h, w = resized01.shape
-        total_tiles = b * _count_dit_tiles(h, w, tile_size, tile_overlap)
-        pbar = comfy.utils.ProgressBar(total_tiles)
-        # Tiling bounds peak VRAM per item, but a batch's items were still
-        # accumulating on GPU here until the final cat -- peak VRAM grew with
-        # batch_size x output resolution regardless of tile_size, defeating
-        # the point for large multi-item batches. Move each item off the GPU
-        # as soon as it's decoded so only one item's output is ever GPU-
-        # resident at a time.
-        #
-        # Color alignment also has to happen per item here, not on the
-        # concatenated batch afterward: wavelet/adain run a Gaussian blur
-        # over the whole tensor at once (color.py), so doing it post-concat
-        # means one CPU allocation sized to the *entire* batch's decoded
-        # output -- for large images/batches that's tens of GB of system
-        # RAM even though nothing is GPU-resident anymore. Aligning each
-        # item right after it's decoded caps that allocation at one item's
-        # size, matching the per-item VRAM bound above.
-        aligned_items = []
-        for i in range(b):
-            item_pm1 = _run_tiled_single(model, resized01[i:i + 1], seed + i, tile_size, tile_overlap, vae_tile_size, vae_tile_overlap, pbar=pbar).cpu()
-            item01 = (item_pm1.clamp(-1.0, 1.0) + 1.0) / 2.0
-            aligned_items.append(apply_color_alignment(item01, resized01[i:i + 1].cpu(), color_alignment))
-        aligned01 = torch.cat(aligned_items, dim=0)
-    else:
-        outputs_pm1 = _run_untiled_batch(model, resized01, seed, vae_tile_size, vae_tile_overlap)
+    aligned_items = []
+    for index in range(batch_size):
+        comfy.model_management.throw_exception_if_processing_interrupted()
+        offset = index * PROGRESS_PER_IMAGE
+        pbar.update_absolute(offset + 1)
+        # Bound resize, restoration and color-alignment memory to one frame.
+        resized01 = _resize_to_target(images_bhwc01[index:index + 1], upscale, device)
+        if tile_size > 0:
+            outputs_pm1 = _run_tiled_single(
+                model, resized01, seed + index, tile_size, tile_overlap,
+                vae_tile_size, vae_tile_overlap, pbar, offset,
+            ).cpu()
+            reference01 = resized01.cpu()
+        else:
+            outputs_pm1 = _run_untiled_batch(
+                model, resized01, seed + index, vae_tile_size, vae_tile_overlap, pbar, offset,
+            )
+            reference01 = resized01
+        comfy.model_management.throw_exception_if_processing_interrupted()
         decoded01 = (outputs_pm1.clamp(-1.0, 1.0) + 1.0) / 2.0
-        aligned01 = apply_color_alignment(decoded01, resized01, color_alignment)
+        aligned_items.append(apply_color_alignment(decoded01, reference01, color_alignment).cpu())
+        pbar.update_absolute(
+            offset + PROGRESS_PER_IMAGE, preview=("JPEG", _preview_image(aligned_items[-1]), 512),
+        )
+        del resized01, outputs_pm1, reference01, decoded01
 
-    return aligned01.movedim(1, -1)
+    return torch.cat(aligned_items, dim=0).movedim(1, -1)

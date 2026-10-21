@@ -8,6 +8,7 @@
     const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
     const translateFallback = (en, cn) => cn || en;
     const runningControllers = new Map();
+    const pendingStopRequests = new WeakMap();
 
     function call(context, name, fallback, ...args) {
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
@@ -39,7 +40,7 @@
         return {
             escapeHtml: pick(utilitySource, 'escapeHtml'),
             clamp: pick(utilitySource, 'clamp'),
-            t: pick(utilitySource, 't'),
+            t: pick(utilitySource, 't') || DEFAULT_UTILS.t,
             getProject: pick(scope, 'getProject'),
             getProjectId: pick(scope, 'getProjectId'),
             uid: pick(scope, 'uid'),
@@ -215,7 +216,8 @@
     }
 
     function isRunning(node) {
-        return String(node?.status?.state || '').toLowerCase() === 'running' || runningControllers.has(node?.id || '');
+        const state = String(node?.status?.state || '').toLowerCase();
+        return state === 'running' || state === 'unknown' || runningControllers.has(node?.id || '');
     }
 
     function displayTitle(node, context) {
@@ -857,13 +859,19 @@ ${running
             call(context, 'mutate', null);
             call(context, 'showToast', null, t('SAM3 mask video generated', 'SAM3 蒙版视频已生成', context));
             notifyMaskReady(current, response, context, { origin: editorPayload ? 'generated_points' : 'generated_prompt' });
-        } else if (response?.cancelled || controller.signal.aborted) {
+        } else if (response?.cancelled && !response?.aborted) {
             applyStatePatch(current, {
                 status: buildStatus('cancelled', response?.error || t('SAM3 mask generation stopped.', 'SAM3 蒙版生成已停止。', context), context)
             }, context);
             call(context, 'mutate', null);
             call(context, 'showToast', null, t('SAM3 mask generation stopped.', 'SAM3 蒙版生成已停止。', context));
             notifyMaskState(current, 'cancelled', response, context, { origin: 'generate' });
+        } else if (response?.aborted || controller.signal.aborted) {
+            const message = t('SAM3 connection was interrupted. The task may still be running.', null, context);
+            applyStatePatch(current, { status: buildStatus('unknown', message, context) }, context);
+            call(context, 'mutate', null);
+            call(context, 'showToast', null, message);
+            notifyMaskState(current, 'unknown', response, context, { origin: 'generate' });
         } else {
             applyStatePatch(current, {
                 status: buildStatus('failed', response?.details || response?.error || t('SAM3 video mask generation failed.', 'SAM3 视频蒙版生成失败。', context), context)
@@ -878,20 +886,32 @@ ${running
     async function stopNode(node, context) {
         if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用', context) };
         const controller = runningControllers.get(node.id);
-        if (controller && !controller.signal.aborted) controller.abort();
-        const response = await cancelSam3VideoMask({
-            project_id: projectId(context),
-            node_id: node.id
-        }, context);
-        const current = getNode(node.id, context);
-        if (current) {
-            applyStatePatch(current, {
-                status: buildStatus('cancelled', t('SAM3 stop requested.', '已请求停止 SAM3。', context), context)
+        const requestProjectId = projectId(context);
+        const request = {};
+        pendingStopRequests.set(node, request);
+        let response;
+        try {
+            response = await cancelSam3VideoMask({
+                project_id: requestProjectId,
+                node_id: node.id
             }, context);
-            call(context, 'mutate', null);
-            notifyMaskState(current, 'cancelled', response, context, { origin: 'stop' });
+        } catch (error) {
+            response = { ok: false, error: error?.message || String(error) };
         }
-        call(context, 'showToast', null, t('SAM3 stop requested.', '已请求停止 SAM3。', context));
+        if (pendingStopRequests.get(node) !== request) return response;
+        pendingStopRequests.delete(node);
+        const current = getNode(node.id, context);
+        if (current !== node || projectId(context) !== requestProjectId
+            || runningControllers.get(node.id) !== controller) return response;
+        const state = String(current.status?.state || '').toLowerCase();
+        if (state !== 'running' && state !== 'unknown') return response;
+        // Keep the generation response available: accepting a stop request is not a terminal result.
+        const message = response?.ok === true
+            ? t('SAM3 stop requested. Waiting for the task to finish.', null, context)
+            : t('SAM3 cancellation request failed. The task may still be running.', null, context);
+        applyStatePatch(current, { status: buildStatus(state, message, context) }, context);
+        call(context, 'mutate', null);
+        call(context, 'showToast', null, message);
         return response;
     }
 

@@ -134,17 +134,21 @@ def update_token_counter(text, steps, styles, *, is_positive=True):
         apply_styles = shared.prompt_styles.apply_styles_to_prompt if is_positive else shared.prompt_styles.apply_negative_styles_to_prompt
         text = apply_styles(text, styles)
 
-    text = comments.strip_comments(text).strip()
+    literal = getattr(sd_models.model_data.sd_model, "literal_prompt", False)
+    text = text.strip() if literal else comments.strip_comments(text).strip()
 
     try:
         text, _ = extra_networks.parse_prompt(text)
 
-        if is_positive:
+        if is_positive and not literal:
             _, prompt_flat_list, _ = prompt_parser.get_multicond_prompt_list([text])
         else:
             prompt_flat_list = [text]
 
-        prompt_schedules = prompt_parser.get_learned_conditioning_prompt_schedules(prompt_flat_list, steps)
+        prompt_schedules = (
+            [[[steps, text]]] if literal
+            else prompt_parser.get_learned_conditioning_prompt_schedules(prompt_flat_list, steps)
+        )
 
     except Exception:
         prompt_schedules = [[[steps, text]]]
@@ -158,7 +162,7 @@ def update_token_counter(text, steps, styles, *, is_positive=True):
         from backend.text_processing.parsing import strip_emphasis
 
     flat_prompts = reduce(lambda list1, list2: list1 + list2, prompt_schedules)
-    prompts = [strip_emphasis(prompt_text) for _, prompt_text in flat_prompts]
+    prompts = [prompt_text if literal else strip_emphasis(prompt_text) for _, prompt_text in flat_prompts]
     token_count, max_length = max([get_prompt_lengths_on_ui(prompt) for prompt in prompts], key=lambda args: args[0])
     return f"<span class='gr-box gr-text-input'>{token_count}/{max_length}</span>"
 

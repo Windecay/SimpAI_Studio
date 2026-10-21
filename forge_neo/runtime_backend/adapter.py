@@ -20,6 +20,7 @@ from forge_neo.bootstrap import ensure_shared_token
 from forge_neo.dynamic_prompts_compat import DYNAMIC_PROMPTS_SCRIPT_BASE_NAME, dynamic_prompts_arg_dict, dynamic_prompts_arg_list
 from forge_neo.forge_couple_compat import FORGE_COUPLE_SETTING_KEYS, forge_couple_arg_dict, forge_couple_arg_list
 from forge_neo.regional_prompter_compat import regional_prompter_arg_dict, regional_prompter_arg_list
+from forge_neo.settings import MOSS_SLG_SETTING_KEYS
 from forge_neo.tipo_compat import tipo_arg_list
 
 
@@ -48,6 +49,7 @@ SOURCE_SAVED_OVERRIDE_SETTING_KEYS = (
     "token_merging_downsample",
     "token_merging_no_rand",
     *FORGE_COUPLE_SETTING_KEYS,
+    *MOSS_SLG_SETTING_KEYS,
 )
 _XYZ_COMMON_AXIS_CHOICES = [
     "Nothing",
@@ -1620,6 +1622,9 @@ def source_api_payload(request: object) -> dict[str, Any]:
     args = _source_apply_raw_request_model_values(args, request)
     args = _source_payload_without_ignored_api_fields(args, request)
     args = _source_payload_with_infotext_unset_fields(args, request)
+    from forge_neo.layout_plugin_compat import prepare_layout_plugin_payload
+
+    args = prepare_layout_plugin_payload(args, request)
     return {
         "mode": mode,
         "endpoint": "/sdapi/v1/img2img" if mode == "img2img" else "/sdapi/v1/txt2img",
