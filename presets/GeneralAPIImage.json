@@ -31,6 +31,7 @@
                 "GeneralAPIImage": "cloud_image_generate"
             },
             "disable_canvas_mask": true,
+            "divisible": ["scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8"],
             "disvisible": ["scene_additional_prompt", "scene_additional_prompt_2", "scene_video", "scene_audio", "scene_var_number", "scene_var_number2", "scene_var_number3", "scene_var_number4", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10", "scene_steps", "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4", "sam3_input_video", "sam3_mask_video"],
             "aspect_ratio": ["1024*1024", "1024*1536", "1536*1024", "2048*1024", "1024*2048", "2048*2048"],
             "resolution_control": {

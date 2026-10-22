@@ -62,6 +62,7 @@ def sync_model_backend_params(
     manifest,
     base_model_name=_UNSET,
     refiner_model_name=_UNSET,
+    refiner_switch=_UNSET,
 ):
     if not isinstance(manifest, dict):
         return manifest
@@ -82,6 +83,12 @@ def sync_model_backend_params(
             snapshot[key] = json_safe(text)
         else:
             snapshot.pop(key, None)
+    if refiner_switch is not _UNSET:
+        ui_values = manifest.get("ui_values")
+        if not isinstance(ui_values, dict):
+            ui_values = {}
+            manifest["ui_values"] = ui_values
+        ui_values["refiner_switch"] = json_safe(refiner_switch)
     return manifest
 
 
@@ -118,8 +125,8 @@ def _unique_model_choice(items):
     return choices[0] if len(choices) == 1 else None
 
 
-def resolve_model_filename(value, choices):
-    original = str(value or "").strip()
+def resolve_model_filename(value, choices, *, fallback_value=None):
+    original = str(value or fallback_value or "").strip()
     if not original or original.casefold() in {"none", "auto", "default (model)"}:
         return original
 
@@ -142,6 +149,11 @@ def resolve_model_filename(value, choices):
     )
     if matched:
         return matched
+
+    if fallback_value and model_names_share_stem(original, fallback_value):
+        recorded = resolve_model_filename(fallback_value, [choice for choice, _ in candidates])
+        if recorded in {choice for choice, _ in candidates}:
+            return recorded
 
     stem_path = _model_name_without_extension(normalized).casefold()
     matched = _unique_model_choice(

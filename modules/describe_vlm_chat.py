@@ -2786,6 +2786,21 @@ def build_runtime_payload(payload):
         params["version"] = version
     if custom_params:
         params.update(custom_params)
+    if roleplay_active and roleplay_request_kind in {"character", "character_reply", "reply", ""}:
+        actor_prefix = vlm_roleplay.build_roleplay_system_prompt(
+            prompt_options["roleplay_session"], lang,
+            prompt_options.get("roleplay_speaker_id") or "",
+            prompt_options.get("roleplay_turn_intent") or "",
+            message, prompt_options.get("history") or [], roleplay_context, roleplay_context_n_ctx,
+            include_context=False,
+        )
+        prefix_start = system_prompt.find(actor_prefix)
+        if actor_prefix and prefix_start >= 0:
+            prefix = system_prompt[:prefix_start + len(actor_prefix)]
+            params["describe_prompt_cache_prefix"] = {
+                "chars": len(prefix),
+                "sha256": hashlib.sha256(prefix.encode("utf-8")).hexdigest(),
+            }
     system_budget = _describe_system_prompt_budget(dict(params, n_ctx=budget_n_ctx), version)
     system_prompt_over_budget = bool(
         system_budget.get("enforced")

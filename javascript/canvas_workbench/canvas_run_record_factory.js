@@ -80,6 +80,7 @@
             const previous = run || {};
             const ok = !!(response && response.ok);
             const state = response?.state || (ok ? 'queued' : 'failed');
+            const succeeded = ok && state !== 'failed' && !response?.output_error;
             const patch = {
                 state,
                 backend: 'async_task',
@@ -92,8 +93,8 @@
                 input_count: response?.input_count ?? (Array.isArray(response?.task_preview?.upload_fields)
                     ? response.task_preview.upload_fields.length
                     : previous.input_count || 0),
-                error: ok ? '' : (response?.error || 'unknown error'),
-                details: ok ? '' : (response?.details || ''),
+                error: succeeded ? '' : (response?.error?.message || response?.error || response?.output_error?.message || response?.message || 'unknown error'),
+                details: succeeded ? '' : (response?.details || ''),
                 errors: cloneRunValue(response?.errors || [], [])
             };
             if (response?.resolved_seed !== undefined && response?.resolved_seed !== null) {
@@ -194,6 +195,11 @@
                 error: run?.error || '',
                 details: run?.details || ''
             };
+            if (run?.connection_error) compactRun.connection_error = run.connection_error;
+            if (run?.request_identity) compactRun.request_identity = run.request_identity;
+            if (config.metadataSnapshot || run?.metadata_snapshot) {
+                compactRun.metadata_snapshot = cloneRunValue(config.metadataSnapshot || run.metadata_snapshot, {});
+            }
             if (run?.asset) {
                 compactRun.asset = cloneRunValue(run.asset, {});
                 if (compactAsset) compactAsset(compactRun.asset);

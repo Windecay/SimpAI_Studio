@@ -597,7 +597,7 @@ def _onethingai_result(payload, endpoint, session, headers, task, progressbar):
     ).geturl()
     deadline = time.monotonic() + ONETHINGAI_POLL_TIMEOUT
     while True:
-        if task.user_cancel_action == "stop":
+        if task.user_cancel_action in ("stop", "skip"):
             return None
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -606,7 +606,11 @@ def _onethingai_result(payload, endpoint, session, headers, task, progressbar):
                 "Timed out waiting for OneThingAI. The submitted task was not resubmitted.",
             ))
         progressbar(task, 30, _onethingai_text(lang, "Waiting for OneThingAI..."))
+        if task.user_cancel_action in ("stop", "skip"):
+            return None
         response = session.get(status_url, headers=headers, timeout=(min(15, remaining / 2), min(30, remaining / 2)))
+        if task.user_cancel_action in ("stop", "skip"):
+            return None
         if not response.ok:
             raise ValueError(_onethingai_http_error(response, lang))
         try:
@@ -861,9 +865,11 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
     try:
         progressbar(task, 10, "提交云端生图任务 ...")
         for request_index, prompt_request in enumerate(prompt_requests, 1):
-            if task.user_cancel_action == "stop":
+            if task.user_cancel_action in ("stop", "skip"):
                 break
             progressbar(task, 10 + int(request_index * 25 / len(prompt_requests)), f"提交第 {request_index} 个云端请求 ...")
+            if task.user_cancel_action in ("stop", "skip"):
+                break
             prompt = prompt_request["prompt"]
             rendered_negative_prompt = prompt_request["negative_prompt"]
             logger.info(
@@ -959,8 +965,8 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                 except ValueError as error:
                     request_errors.append(str(error))
                     continue
-                if task.user_cancel_action == "stop":
-                    return
+            if task.user_cancel_action in ("stop", "skip"):
+                break
             extracted = _extract_chat_images(response_data) if is_chat_response else _extract_images(response_data)
             if extracted:
                 results.extend(extracted)
@@ -970,13 +976,13 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                 message = _onethingai_text(getattr(task, "simpleai_lang", None), "OneThingAI returned no images.") if protocol == "onethingai_v2" else f"请求 {request_index}: API 返回中没有可识别的图片"
                 request_errors.append(message)
         if not results:
+            if task.user_cancel_action in ("stop", "skip"):
+                return
             raise RuntimeError("；".join(request_errors) if request_errors else "API 返回中没有可识别的图片")
         output_dir = config.get_user_path_outputs(task.user_did)
         paths = []
         download_errors = []
         for index, (kind, value) in enumerate(results, 1):
-            if task.user_cancel_action == "stop":
-                break
             progressbar(task, 35 + int(index * 60 / len(results)), f"保存第 {index} 张图片 ...")
             try:
                 raw = value if kind == "bytes" else _download_bytes(value, session)
@@ -994,8 +1000,12 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         if not paths:
             raise RuntimeError("；".join(download_errors) if download_errors else "生成结果未能保存到本地")
         if request_errors or download_errors:
-            logger.warning("Cloud image task completed partially: %s", "；".join(request_errors + download_errors))
+            task.cloud_error = "；".join(request_errors + download_errors)
+            logger.warning("Cloud image task completed partially: %s", task.cloud_error)
     finally:
         if hasattr(task, "rendered_negative_prompt"):
             delattr(task, "rendered_negative_prompt")
-        stop_processing(task, started_at, "Finished" if task.simpleai_generation_had_output else "Stopped")
+        status = "Finished" if task.simpleai_generation_had_output else "Stopped"
+        if task.user_cancel_action == "skip":
+            status = "Skipped"
+        stop_processing(task, started_at, status)

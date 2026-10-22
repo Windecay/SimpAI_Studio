@@ -194,6 +194,56 @@
             "end_percent": 1.0
         }
     },
+    "aio_image_ref1": {
+        "class_type": "LoadImage",
+        "_meta": {"title": "i2i_ip_image1"},
+        "inputs": {"image": "welcome.png"}
+    },
+    "aio_image_ref2": {
+        "class_type": "LoadImage",
+        "_meta": {"title": "i2i_ip_image2"},
+        "inputs": {"image": "welcome.png"}
+    },
+    "aio_image_ref3": {
+        "class_type": "LoadImage",
+        "_meta": {"title": "i2i_ip_image3"},
+        "inputs": {"image": "welcome.png"}
+    },
+    "aio_image_ref4": {
+        "class_type": "LoadImage",
+        "_meta": {"title": "i2i_ip_image4"},
+        "inputs": {"image": "welcome.png"}
+    },
+    "aio_ref_config_1": {
+        "class_type": "SimpAIAIOReferenceConfig",
+        "_meta": {"title": "SimpAI AIO Reference 1"},
+        "inputs": {"image": ["aio_image_ref1", 0], "mode": 0, "weight": 1.0, "stop_percent": 0.5, "skip_preprocessor": true, "skip_inactive": true}
+    },
+    "aio_ref_config_2": {
+        "class_type": "SimpAIAIOReferenceConfig",
+        "_meta": {"title": "SimpAI AIO Reference 2"},
+        "inputs": {"image": ["aio_image_ref2", 0], "mode": 0, "weight": 1.0, "stop_percent": 0.5, "skip_preprocessor": true, "skip_inactive": true}
+    },
+    "aio_ref_config_3": {
+        "class_type": "SimpAIAIOReferenceConfig",
+        "_meta": {"title": "SimpAI AIO Reference 3"},
+        "inputs": {"image": ["aio_image_ref3", 0], "mode": 0, "weight": 1.0, "stop_percent": 0.5, "skip_preprocessor": true, "skip_inactive": true}
+    },
+    "aio_ref_config_4": {
+        "class_type": "SimpAIAIOReferenceConfig",
+        "_meta": {"title": "SimpAI AIO Reference 4"},
+        "inputs": {"image": ["aio_image_ref4", 0], "mode": 0, "weight": 1.0, "stop_percent": 0.5, "skip_preprocessor": true, "skip_inactive": true}
+    },
+    "aio_moss_control": {
+        "class_type": "SimpAIAIOReferenceMoss",
+        "_meta": {"title": "MOSS Main Image Control"},
+        "inputs": {
+            "model": ["13", 0], "positive": ["4", 0], "negative": ["5", 0], "vae": ["21", 0],
+            "width": ["728", 2], "height": ["728", 3],
+            "reference_1": ["aio_ref_config_1", 0], "reference_2": ["aio_ref_config_2", 0],
+            "reference_3": ["aio_ref_config_3", 0], "reference_4": ["aio_ref_config_4", 0]
+        }
+    },
     "16": {
         "class_type": "KSampler",
         "_meta": {"title": "MOSS Sampler"},
@@ -204,9 +254,9 @@
             "sampler_name": ["728", 7],
             "scheduler": ["728", 8],
             "denoise": ["728", 9],
-            "model": ["13", 0],
-            "positive": ["4", 0],
-            "negative": ["5", 0],
+            "model": ["aio_moss_control", 0],
+            "positive": ["aio_moss_control", 1],
+            "negative": ["aio_moss_control", 2],
             "latent_image": ["6", 0]
         }
     },

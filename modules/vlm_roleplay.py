@@ -5215,6 +5215,8 @@ def build_roleplay_system_prompt(
     history: Any = None,
     context: Any = None,
     n_ctx: Any = None,
+    *,
+    include_context: bool = True,
 ) -> str:
     normalized = normalize_roleplay_session(session)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
@@ -5259,10 +5261,11 @@ def build_roleplay_system_prompt(
             else "Player persona:"
         ),
         "Context Builder blocks follow. Do not infer current state from omitted history or static setup text.",
-        *roleplay_context_prompt_sections(vlm_tavern.actor_context(
-            built_context, True,
-        ) if vlm_tavern.has_actor_instructions(normalized, resolved_speaker_id) else built_context),
     ]
+    if include_context:
+        sections.extend(roleplay_context_prompt_sections(vlm_tavern.actor_context(
+            built_context, True,
+        ) if vlm_tavern.has_actor_instructions(normalized, resolved_speaker_id) else built_context))
     return "\n\n".join(part for part in sections if _text(part)).strip()
 
 

@@ -163,14 +163,14 @@
             const config = options || {};
             const response = config.response || {};
             const previousProducer = resultNode?.producer || {};
-            const ok = config.ok !== undefined ? !!config.ok : !!response.ok;
+            const ok = (config.ok !== undefined ? !!config.ok : !!response.ok) && response.state !== 'failed' && !response.output_error;
             const producer = mergeResultObject(previousProducer, config.producerPatch || {});
             producer.run_id = config.runId || previousProducer.run_id || null;
             producer.task_id = config.taskId || response.task_id || previousProducer.task_id || null;
             const patch = {
                 producer,
                 error_details: ok ? null : {
-                    error: config.error || response.error || 'unknown error',
+                    error: config.error || response.error?.message || response.error || response.output_error?.message || response.message || 'unknown error',
                     details: config.details ?? response.details ?? '',
                     errors: cloneRunValue(config.errors !== undefined ? config.errors : (response.errors || []), [])
                 }

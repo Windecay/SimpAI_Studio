@@ -3794,6 +3794,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'image_input_panel', group: 'topbar-panel' },
         { id: 'mixing_image_prompt_and_vary_upscale', group: 'image-input' },
         { id: 'mixing_image_prompt_and_inpaint', group: 'image-input' },
+        { id: 'ip_auto_detect', group: 'image-input' },
         { id: 'tts_panel', group: 'topbar-panel' },
         { id: 'advanced_column', group: 'topbar-panel' },
         { id: 'scene_panel', group: 'scene' },
@@ -3903,30 +3904,30 @@ document.addEventListener("DOMContentLoaded", function() {
         const allowMixing = !isMoss && taskMethod !== 'krea2_aio_cn';
         setVisible('mixing_image_prompt_and_vary_upscale', allowMixing);
         setVisible('mixing_image_prompt_and_inpaint', allowMixing);
+        setVisible('ip_auto_detect', true);
+        const maxInputs = isMoss ? 2 : taskMethod === 'krea2_aio_cn' ? 1 : Infinity;
+        document.querySelectorAll('#ip_image_grid > .ip_image_cell').forEach((column, index) => {
+            if (!column.id || column.id.startsWith('ip_image_column_')) column.id = `ip_control_slot_${index + 1}`;
+            if (column.dataset.simpaiAioHidden) delete column.dataset.simpaiAioHidden;
+            visibility?.setVisible?.(column.id, index < maxInputs, { force: true });
+            const parameters = column.querySelector('.ip_control_parameters')
+                || Array.from(column.children).find(child => child.querySelector('input[type="radio"]'));
+            if (parameters) {
+                if (!parameters.id) parameters.id = `ip_control_parameters_${index + 1}`;
+                visibility?.setVisible?.(parameters.id, true);
+            }
+        });
         const tabs = document.getElementById('image_input_tabs');
         if (!tabs) return;
         const buttons = [
             ...tabs.querySelectorAll('[role="tab"][data-tab-id="ip_tab"]'),
             ...tabs.querySelectorAll(':scope > .tab-wrapper > .tab-container[aria-hidden="true"] > button:first-of-type'),
         ];
-        const ipSelected = Array.from(buttons).some(button => button.getAttribute('aria-selected') === 'true');
         for (const button of buttons) {
-            if (isMoss) {
-                button.dataset.simpaiMossHidden = '1';
-                button.style.setProperty('display', 'none', 'important');
-            } else if (button.dataset.simpaiMossHidden === '1') {
+            if (button.dataset.simpaiMossHidden === '1') {
                 delete button.dataset.simpaiMossHidden;
                 button.style.removeProperty('display');
             }
-        }
-        if (isMoss && ipSelected) {
-            let target = tabs.querySelector('[role="tab"][data-tab-id="uov_tab"]');
-            if (!target) {
-                const label = tabs.querySelector(':scope > .tab-wrapper > .tab-container[aria-hidden="true"] > button:nth-of-type(2)')?.textContent.trim();
-                target = Array.from(tabs.querySelectorAll(':scope > .tab-wrapper > .overflow-menu > .overflow-dropdown > button'))
-                    .find(button => label && button.textContent.trim() === label);
-            }
-            target?.click();
         }
     }
 
@@ -4278,6 +4279,11 @@ document.addEventListener("DOMContentLoaded", function() {
     }, true);
     document.addEventListener('change', (event) => {
         if (event.target?.closest?.('#input_image_checkbox, #qwen_tts_checkbox, #advanced_checkbox, #prompt_panel_checkbox, #wc_method, #inpaint_advanced_masking_checkbox, #inpaint_mask_model, [id^="enhance_mask_model_"]')) {
+            scheduleAllMountedDynamicVisibility();
+        }
+    }, true);
+    document.addEventListener('click', (event) => {
+        if (event.target?.closest?.('#scene_advanced_parameters_accordion > button')) {
             scheduleAllMountedDynamicVisibility();
         }
     }, true);

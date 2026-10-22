@@ -1350,7 +1350,7 @@ for image_count in range(default_controlnet_image_count):
     default_ip_types[image_count] = get_config_item_or_set_default(
         key=f'default_ip_type_{image_count}',
         default_value=modules.flags.default_ip,
-        validator=lambda x: x in modules.flags.ip_list,
+        validator=lambda x: x in modules.flags.ip_list or x == modules.flags.cn_color,
         expected_type=str
     )
 
@@ -2397,6 +2397,8 @@ def get_base_model_list(engine='Z-image', task_method=None, use_model_filter: bo
     return base_model_list
 
 def update_files(engine='Z-image', task_method=None, use_model_filter: bool = True, base_model: Optional[str] = None):
+    from modules.moss_control import CONTROL_LORA
+
     global modelsinfo, model_filenames, lora_filenames, vae_filenames, clip_filenames, upscale_model_filenames, wildcard_filenames
     if str(task_method or '').strip().casefold().removeprefix('scene_') == 'seedvr2':
         from enhanced.seedvr2 import list_local_models
@@ -2411,7 +2413,10 @@ def update_files(engine='Z-image', task_method=None, use_model_filter: bool = Tr
     model_filenames = get_base_model_list(engine, task_method, use_model_filter=use_model_filter)
     lora_filenames = modelsinfo.get_model_names('loras')
     lora_filenames_norm = [_normalize_model_name(n) for n in lora_filenames]
-    lora_filenames_norm = [n for n in lora_filenames_norm if not _is_placeholder_model_name(n)]
+    lora_filenames_norm = [
+        n for n in lora_filenames_norm
+        if not _is_placeholder_model_name(n) and n.rsplit("/", 1)[-1].casefold() != CONTROL_LORA
+    ]
     if use_model_filter:
         lora_filenames_norm = _refine_names_by_catalog(
             path_models_root,

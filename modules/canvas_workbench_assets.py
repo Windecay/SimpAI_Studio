@@ -747,6 +747,17 @@ def _asset_localized_text(state_params, en, cn):
     return en if lang.lower().startswith("en") else cn
 
 
+def output_delivery_error(state_params, gallery=False):
+    return {
+        "code": "gallery_publication_failed" if gallery else "asset_registration_failed",
+        "message": _asset_localized_text(
+            state_params,
+            "Video rendering finished, but gallery publication failed." if gallery else "Output asset registration failed.",
+            "视频合成已完成，但图库发布失败。" if gallery else "输出素材登记失败。",
+        ),
+    }
+
+
 def _materialize_video_last_frame(project_id, state_params, source, main_ref, node_id):
     transform = source.get("transform") if isinstance(source.get("transform"), dict) else {}
     if str(transform.get("kind") or "").strip().lower() != "video_last_frame":

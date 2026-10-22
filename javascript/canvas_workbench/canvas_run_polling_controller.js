@@ -40,6 +40,7 @@
 
             return new Promise((resolve) => {
                 let settled = false;
+                let requestErrors = 0;
                 const finish = (value) => {
                     if (settled) return;
                     settled = true;
@@ -69,12 +70,26 @@
                         try {
                             result = await opts.poll();
                         } catch (err) {
-                            result = failedResult(err);
+                            result = Object.assign(failedResult(err), err?.name === 'AbortError'
+                                ? { aborted: true } : { transport_error: true });
                         }
                         if (!canContinue()) {
                             finish({ ok: false, error: 'run no longer current' });
                             return;
                         }
+                        if (result?.transport_error && opts.maxRequestErrors > 0) {
+                            requestErrors += 1;
+                            const exhausted = requestErrors > opts.maxRequestErrors;
+                            const fallback = {
+                                ok: false, state: 'unknown', recoverable: true, run_id: runId,
+                                error: result.error, result
+                            };
+                            const outcome = typeof opts.onRequestError === 'function'
+                                ? (opts.onRequestError(result, exhausted) ?? fallback) : fallback;
+                            if (exhausted || !schedule(tick, intervalMs * Math.min(requestErrors, 3))) finish(outcome);
+                            return;
+                        }
+                        requestErrors = 0;
                         const state = typeof opts.getState === 'function'
                             ? opts.getState(result)
                             : (result?.state || 'failed');

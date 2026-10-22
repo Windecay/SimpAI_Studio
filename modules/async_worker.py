@@ -263,7 +263,7 @@ def external_exclusive_task():
     with processing_lock:
         pending_tasks += 1
     try:
-        with exclusive_task_lock:
+        with exclusive_gpu_task():
             yield
     finally:
         with processing_lock:
@@ -275,7 +275,7 @@ class AsyncTask:
         self.args = args
         self.yields = []
         self.results = []
-        from modules.flags import Performance, MetadataScheme, ip_list, disabled, task_class_mapping, default_vae, default_clip
+        from modules.flags import Performance, MetadataScheme, ip_list, cn_color, disabled, task_class_mapping, default_vae, default_clip
         from modules.lora_params import sync_loras_to_params_backend
         from modules.util import get_enabled_loras, normalize_gradio_inpaint_value
         import uuid
@@ -447,14 +447,15 @@ class AsyncTask:
         self.metadata_scheme = args.pop()
         self.metadata_scheme = MetadataScheme.FOOOCUS if self.metadata_scheme is None else MetadataScheme(self.metadata_scheme)
 
-        self.cn_tasks = {x: [] for x in ip_list}
+        self.cn_tasks = {x: [] for x in [*ip_list, cn_color]}
         self.cn_task_num = 0
         cn_items = args.pop()
         if self.params_backend.get('task_method') == 'krea2_aio_cn':
             # Other presets retain their hidden upload slots when switching to Krea2.
             cn_items = cn_items[:1]
         elif self.params_backend.get('task_method') == 'moss_image_sft_aio_cn':
-            cn_items = []
+            cn_items = [item for item in cn_items[:2] if item[3] in ('Depth', cn_color)
+                        and item[1] > 0 and item[2] != 0]
             self.mixing_image_prompt_and_vary_upscale = False
             self.mixing_image_prompt_and_inpaint = False
         for cn_item in cn_items:
@@ -1203,6 +1204,8 @@ def worker():
             finally:
                 with processing_lock:
                     cloud_tasks.pop(async_task.task_id, None)
+                release_batch(getattr(async_task, "simpleai_batch_cancel_event", None))
+                _notify_canvas_task_finished(async_task)
 
     def start_cloud_task(async_task: AsyncTask):
         async_task.processing = True
@@ -1578,6 +1581,12 @@ def worker():
         )
 
     def save_and_log(async_task, height, imgs, task, use_expansion, width, loras, goals, persist_image=True):
+        refiner_model_name = async_task.refiner_model_name
+        refiner_switch = async_task.refiner_switch
+        if async_task.task_class != 'Fooocus' and refiner_model_name == '':
+            refiner_model_name, refiner_switch = getattr(async_task, 'simpleai_refiner_metadata', None) or (
+                refiner_model_name, refiner_switch,
+            )
         for index, x in enumerate(imgs):
             scene_task = None
             if hasattr(async_task, 'scene_frontend'):
@@ -1606,14 +1615,14 @@ def worker():
                      modules.patch.patch_settings[pid].negative_adm_scale,
                      modules.patch.patch_settings[pid].adm_scaler_end))),
                  ('Base Model', 'base_model', async_task.base_model_name),
-                 ('Refiner Model', 'refiner_model', async_task.refiner_model_name),
-                 ('Refiner Switch', 'refiner_switch', async_task.refiner_switch)]
+                 ('Refiner Model', 'refiner_model', refiner_model_name),
+                 ('Refiner Switch', 'refiner_switch', refiner_switch)]
             if goals:
                 d.append(('Image2Image', 'image2image', ",".join(goals)))
             if scene_task:
                 d.append(('Scene Task', 'scene_task', scene_task))
 
-            if async_task.refiner_model_name != 'None':
+            if refiner_model_name != 'None':
                 if async_task.overwrite_switch > 0:
                     d.append(('Overwrite Switch', 'overwrite_switch', async_task.overwrite_switch))
                 if async_task.refiner_swap_method != flags.refiner_swap_method:
@@ -1646,14 +1655,15 @@ def worker():
                 metadata_parser = get_metadata_parser(async_task.metadata_scheme)
                 metadata_parser.set_data(task['log_positive_prompt'], task['positive'],
                                          task['log_negative_prompt'], task['negative'],
-                                         async_task.steps, async_task.base_model_name, async_task.refiner_model_name,
+                                         async_task.steps, async_task.base_model_name, refiner_model_name,
                                          loras, async_task.vae_name, '')
             
             if getattr(async_task, 'simpleai_regen_manifest', None):
                 regen_manifest.sync_model_backend_params(
                     async_task.simpleai_regen_manifest,
                     base_model_name=async_task.base_model_name,
-                    refiner_model_name=async_task.refiner_model_name,
+                    refiner_model_name=refiner_model_name,
+                    refiner_switch=refiner_switch,
                 )
                 if async_task.save_metadata_to_images:
                     logger.info(
@@ -1738,10 +1748,16 @@ def worker():
             skip_pre = async_task.skipping_cn_preprocessor or auto_skip
             if not skip_pre:
                 cn_img = preprocessors.zoe_depth(cn_img)
-            cn_img = resize_image(HWC3(cn_img), width=width, height=height)
+            cn_img = HWC3(cn_img)
+            if async_task.task_method != 'moss_image_sft_aio_cn':
+                cn_img = resize_image(cn_img, width=width, height=height)
             task[0] = core.numpy_to_pytorch(cn_img) if async_task.task_class in ['Fooocus'] else cn_img
             if async_task.debugging_cn_preprocessor:
                 yield_result(async_task, cn_img, current_progress, async_task.black_out_nsfw, do_not_show_finished_images=True)
+        for task in async_task.cn_tasks[flags.cn_color]:
+            task[0] = HWC3(task[0])
+            if async_task.debugging_cn_preprocessor:
+                yield_result(async_task, task[0], current_progress, async_task.black_out_nsfw, do_not_show_finished_images=True)
         for task in async_task.cn_tasks[flags.cn_ip]:
             cn_img, cn_stop, cn_weight = task
             cn_img = HWC3(cn_img)
@@ -1990,7 +2006,7 @@ def worker():
         if async_task.overwrite_step > 0:
             steps = async_task.overwrite_step
             async_task.original_steps = async_task.overwrite_step
-        switch = int(round(async_task.steps * async_task.refiner_switch))
+        switch = int(round(steps * async_task.refiner_switch))
         if async_task.overwrite_switch > 0:
             switch = async_task.overwrite_switch
         if async_task.overwrite_width > 0:
@@ -2078,7 +2094,7 @@ def worker():
             and async_task.task_class not in ['HyDiT', 'Wan', 'Qwen', 'Z-image']
         )
         for i in range(image_number if arrays_mult==0 else arrays_mult):
-            if arrays_mult==0 or not seed_fixed or not disable_seed_increment:
+            if not seed_fixed or not disable_seed_increment:
                 task_seed = (async_task.seed + i) % (constants.MAX_SEED + 1)  # randint is inclusive, % is not
             else:
                 task_seed = async_task.seed % (constants.MAX_SEED + 1)
@@ -2423,6 +2439,8 @@ def worker():
                         prompt, negative_prompt, final_scheduler_name, goals, height, img, mask,
                         preparation_steps, steps, switch, tiled, total_count, use_expansion, use_style,
                         use_synthetic_refiner, width, show_intermediate_results=True, persist_image=True):
+        steps, switch, _, _ = apply_overrides(async_task, steps, height, width)
+        async_task.steps = steps
         base_model_additional_loras = []
         inpaint_head_model_path = None
         inpaint_engine = 'None' if inpaint_engine is None or inpaint_engine == '' else str(inpaint_engine)
@@ -2652,6 +2670,10 @@ def worker():
                 async_task, base_model_additional_loras, clip_vision_path, controlnet_canny_path, controlnet_cpds_path, controlnet_pose_path,
                 goals, inpaint_head_model_path, inpaint_image, inpaint_mask, inpaint_parameterized, ip_adapter_face_path,
                 ip_adapter_path, ip_negative_path, skip_prompt_processing, use_synthetic_refiner)
+
+        if async_task.task_method == 'moss_image_sft_aio_cn':
+            from modules.moss_control import validate_task_controls
+            validate_task_controls(async_task, goals)
 
         if async_task.task_class in ['Fooocus']:
             # Load or unload CNs
@@ -2887,7 +2909,9 @@ def worker():
             #ldm_patched.modules.model_management.unload_and_free_everything()
             callback_function = callback_comfytask
 
+            async_task.simpleai_refiner_metadata = None
             if async_task.refiner_model_name is not None and async_task.refiner_model_name != 'None' and async_task.refiner_model_name != '':
+                async_task.simpleai_refiner_metadata = (async_task.refiner_model_name, async_task.refiner_switch)
                 async_task.params_backend['base_model2'] = async_task.refiner_model_name
                 async_task.params_backend['refiner_step'] = async_task.refiner_switch
             async_task.refiner_model_name = ''
@@ -2964,6 +2988,10 @@ def worker():
                          async_task.params_backend['display_steps'] = async_task.steps * max(round(async_task.scene_var_number * 5 / 6), 1)
             if "_aio" in async_task.task_method:
                 input_images = comfypipeline.ComfyInputImage([])
+                if async_task.task_method == 'moss_image_sft_aio_cn':
+                    async_task.params_backend['i2i_function'] = 0
+                    for index in range(1, 5):
+                        async_task.params_backend[f'i2i_ip_fn{index}'] = 0
                 is_safetensors_model = _model_type_from_name(async_task.base_model_name) == 1
                 if is_safetensors_model:
                     async_task.params_backend.pop('base_model_gguf', None)
@@ -3070,6 +3098,11 @@ def worker():
                         if i > 4:
                             break
                         push_cn_task(i, task, 5)
+                        i = i+1
+                    for task in async_task.cn_tasks[flags.cn_color]:
+                        if i > 4:
+                            break
+                        push_cn_task(i, task, 6)
                         i = i+1
                 if 'vary' in goals or 'upscale' in goals:
                     async_task.params_backend['i2i_function'] = 2 # iamge upscale and vary
@@ -3490,8 +3523,6 @@ def worker():
                             handler(task)
                             if task.task_class != 'Cloud':
                                 finalize_task(task)
-                            if task.task_class == 'Fooocus' and not args_manager.args.disable_backend:
-                                pipeline.prepare_text_encoder(async_call=True)
                     except GpuTaskCancelled:
                         raise
                     except ComfyExecutionError as error:
@@ -3503,14 +3534,24 @@ def worker():
                             stop_processing(task, 0, "Failed")
                         finally:
                             task.yields.append(['finish', task.results])
-                    except:
+                    except Exception as error:
                         _restore_standard_streams_if_closed()
-                        try:
-                            traceback.print_exc()
-                        except Exception:
-                            pass
+                        task.backend_error = str(error) or type(error).__name__
+                        logger.exception("Generation failed: task_id=%s", task.task_id)
                         if task.task_class != 'Cloud':
-                            task.yields.append(['finish', task.results])
+                            try:
+                                if task.processing:
+                                    stop_processing(task, 0, "Failed")
+                            finally:
+                                task.yields.append(['finish', task.results])
+                    else:
+                        # Preparing the next task cannot change an already published result.
+                        if (task.task_class == 'Fooocus' and task.last_stop not in ('stop', 'skip')
+                                and not args_manager.args.disable_backend):
+                            try:
+                                pipeline.prepare_text_encoder(async_call=True)
+                            except Exception:
+                                logger.exception("Text encoder preparation failed after task completion: task_id=%s", task.task_id)
                     finally:
                         # Finish any in-flight interrupt before another GPU owner can start.
                         with execution_control_lock, processing_lock:
@@ -3522,14 +3563,18 @@ def worker():
             finally:
                 async_tasks.task_done()
                 try:
-                    p2p_task.gc_p2p_task()
+                    try:
+                        p2p_task.gc_p2p_task()
+                    finally:
+                        with processing_lock:
+                            pending_tasks -= 1
+                            tracked_tasks.pop(task.task_id, None)
+                            worker_processing = None
+                        if pid in modules.patch.patch_settings:
+                            del modules.patch.patch_settings[pid]
+                        release_batch(getattr(task, "simpleai_batch_cancel_event", None))
                 finally:
-                    with processing_lock:
-                        pending_tasks -= 1
-                        tracked_tasks.pop(task.task_id, None)
-                        worker_processing = None
-                if pid in modules.patch.patch_settings:
-                    del modules.patch.patch_settings[pid]
+                    _notify_canvas_task_finished(task)
         except Exception as e:
             logger.error(f"Worker loop error: {str(e)}", exc_info=True)
             time.sleep(1)
@@ -3615,6 +3660,20 @@ def request_batch_cancel(cancel_event):
         request_task_cancel(task, "stop")
 
 
+def release_batch(cancel_event):
+    if cancel_event is None or not getattr(cancel_event, "simpleai_batch_closed", False):
+        return
+    with processing_lock:
+        for tasks in (tracked_tasks, cloud_tasks):
+            if any(getattr(task, "simpleai_batch_cancel_event", None) is cancel_event
+                   for task in tasks.values()):
+                return
+        from modules import batch_utils
+        batch_id = cancel_event.simpleai_batch_id
+        if batch_utils.BATCH_EVENTS.get(batch_id) is cancel_event:
+            batch_utils.clear_batch(batch_id)
+
+
 def get_task_size():
     global pending_tasks
     with processing_lock:
@@ -3624,6 +3683,19 @@ def get_processing_id():
     global worker_processing
     with processing_lock:
         return worker_processing
+
+
+def _notify_canvas_task_finished(task):
+    if not getattr(task, "simpleai_canvas_run_id", None):
+        return
+    try:
+        if not any(event[0] == "finish" for event in task.yields):
+            return
+        from modules.canvas_workbench_runner import _complete_task_run
+        _complete_task_run(task)
+    except Exception:
+        logger.exception("Canvas completion registration failed: task_id=%s", task.task_id)
+
 
 def start_worker():
     global thread

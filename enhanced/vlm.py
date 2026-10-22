@@ -14,6 +14,7 @@ import modules.config as config
 import modules.flags as flags
 import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
 import modules.prompt_actions as prompt_actions
+from modules.gpu_task_lock import serialize_gpu_task
 from modules import video_prompt_context, video_prompt_sampling
 import modules.util as util
 import enhanced.translator as translator
@@ -1844,6 +1845,7 @@ class VLM:
 
     @torch.no_grad()
     @torch.inference_mode()
+    @serialize_gpu_task
     def inference_local(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100,
                         repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None, cancel_check=None,
                         *, response_format=None, reject_truncated=False, load_mtp=None):

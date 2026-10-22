@@ -13,6 +13,7 @@ import re
 import tempfile
 import threading
 from graphlib import CycleError, TopologicalSorter
+from itertools import islice
 from pathlib import Path
 from urllib.parse import quote
 
@@ -269,9 +270,9 @@ class WorkflowStore:
     def get(self, request, context):
         record = self.load(request.workflow_id, context)
         source_format, graph = source_graph(record["source"])
-        rows = ([{**copy.deepcopy(node), "node_id": str(key)} for key, node in graph.items()]
-                if source_format == "comfy_api" else copy.deepcopy(graph))
-        rows = rows[request.offset:request.offset + request.limit]
+        rows = ([{**copy.deepcopy(node), "node_id": str(key)}
+                 for key, node in islice(graph.items(), request.offset, request.offset + request.limit)]
+                if source_format == "comfy_api" else copy.deepcopy(graph[request.offset:request.offset + request.limit]))
         total = len(graph)
         return {**self.summary(request.workflow_id, record), "nodes": rows,
                 "offset": request.offset, "total": total, "has_more": request.offset + len(rows) < total}

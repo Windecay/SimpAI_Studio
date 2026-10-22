@@ -14205,9 +14205,6 @@
             createImage: () => typeof Image === 'function' ? new Image() : null,
             createAbortController: () => typeof AbortController === 'function' ? new AbortController() : null
         },
-        utilitySource: {
-            structuredClone: (value) => typeof structuredClone === 'function' ? structuredClone(value) : undefined
-        },
         buildCanvasRunStatus,
         buildMediaEditAsset,
         buildSam3SourcePatch,

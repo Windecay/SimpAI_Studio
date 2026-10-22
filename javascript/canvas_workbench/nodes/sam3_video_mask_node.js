@@ -7,7 +7,7 @@
     const escapeHtmlFallback = (value) => String(value ?? '');
     const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
     const translateFallback = (en, cn) => cn || en;
-    const runningControllers = new Map();
+    const runningControllers = new WeakMap();
     const pendingStopRequests = new WeakMap();
 
     function call(context, name, fallback, ...args) {
@@ -217,7 +217,7 @@
 
     function isRunning(node) {
         const state = String(node?.status?.state || '').toLowerCase();
-        return state === 'running' || state === 'unknown' || runningControllers.has(node?.id || '');
+        return state === 'running' || state === 'unknown' || runningControllers.has(node);
     }
 
     function displayTitle(node, context) {
@@ -561,6 +561,7 @@ ${running
         }
         const asset = selectedResultAsset(source, context);
         const src = assetDisplaySrc(asset || {}, context);
+        const sourceEdit = sourceMediaEditForRun(asset, context);
         if (!src) {
             call(context, 'showToast', null, 'The connected source has no playable video asset.');
             return;
@@ -610,6 +611,7 @@ ${running
             negative: [],
             box: null,
             boxDraft: null,
+            start: 0,
             duration: 0,
             width: 0,
             height: 0,
@@ -672,9 +674,12 @@ ${running
         };
         const seekTo = (time, skipSlider) => {
             const duration = Math.max(0, Number(state.duration || 0));
-            const next = clamp(Number(time || 0), 0, duration || 0, context);
+            const end = state.start + duration;
+            // The trim end is exclusive; preview the last frame inside it.
+            const lastTime = sourceEdit ? Math.max(state.start, end - 0.001) : end;
+            const next = clamp(Number(time || 0), state.start, lastTime, context);
             if (timeLabel) timeLabel.textContent = `${next.toFixed(2)}s`;
-            if (timeSlider && !skipSlider) timeSlider.value = duration > 0 ? String(Math.round((next / duration) * 1000)) : '0';
+            if (timeSlider && !skipSlider) timeSlider.value = duration > 0 ? String(Math.round(((next - state.start) / duration) * 1000)) : '0';
             try {
                 video.currentTime = next;
             } catch (err) {
@@ -683,16 +688,18 @@ ${running
         };
 
         video.addEventListener('loadedmetadata', () => {
-            state.duration = Number.isFinite(video.duration) ? video.duration : 0;
+            const duration = Number.isFinite(video.duration) ? video.duration : 0;
+            state.start = sourceEdit ? Math.min(sourceEdit.trim_start, duration) : 0;
+            state.duration = Math.max(0, (sourceEdit ? Math.min(sourceEdit.trim_end, duration) : duration) - state.start);
             state.width = video.videoWidth || asset?.width || 640;
             state.height = video.videoHeight || asset?.height || 360;
-            seekTo(0);
+            seekTo(state.start);
         });
         video.addEventListener('seeked', draw);
         video.addEventListener('loadeddata', draw);
         timeSlider?.addEventListener('input', () => {
             const value = Number(timeSlider.value || 0) / 1000;
-            seekTo(value * Math.max(0, state.duration || 0), true);
+            seekTo(state.start + value * Math.max(0, state.duration || 0), true);
         });
         canvas?.addEventListener('contextmenu', (evt) => evt.preventDefault());
         canvas?.addEventListener('pointerdown', (evt) => {
@@ -800,11 +807,13 @@ ${running
             return { ok: false, error: t('SAM3 prompt/editor payload is empty.', 'SAM3 提示词和编辑器数据为空。', context) };
         }
         call(context, 'pushHistory', null, t('Generate SAM3 video mask', '生成 SAM3 视频蒙版', context));
+        const runId = call(context, 'uid', null, 'sam3run') || DEFAULT_UTILS.uid('sam3run');
+        const requestProjectId = projectId(context);
         Object.assign(node, call(context, 'buildSam3SourcePatch', {}, node, {
             inputNodeId: source.id
         }));
         applyStatePatch(node, {
-            status: buildStatus('running', t('Generating SAM3 mask video...', '正在生成 SAM3 蒙版视频...', context), context)
+            status: { ...buildStatus('running', t('Generating SAM3 mask video...', '正在生成 SAM3 蒙版视频...', context), context), run_id: runId }
         }, context);
         call(context, 'mutate', null);
         const controller = call(context, 'createAbortController', null);
@@ -815,7 +824,7 @@ ${running
             call(context, 'showToast', null, message);
             return { ok: false, error: message };
         }
-        runningControllers.set(node.id, controller);
+        runningControllers.set(node, controller);
         const params = cloneValue(node.params || {}, {}, context);
         const sourcePayload = serializeSourceWithMediaEdit(source, context);
         if (editorPayload) {
@@ -824,8 +833,9 @@ ${running
         }
         if (sourcePayload.edit) params.source_edit = sourcePayload.edit;
         const requestPayload = {
-            project_id: projectId(context),
+            project_id: requestProjectId,
             node_id: node.id,
+            run_id: runId,
             asset_source: sourcePayload.payload,
             params
         };
@@ -833,10 +843,11 @@ ${running
         try {
             response = await generateSam3VideoMask(requestPayload, { signal: controller.signal, context });
         } finally {
-            runningControllers.delete(node.id);
+            runningControllers.delete(node);
         }
         const current = getNode(node.id, context);
         if (!current) return response || { ok: false, error: t('SAM3 Video Mask node was removed', 'SAM3 视频蒙版节点已被删除', context) };
+        if (current !== node || projectId(context) !== requestProjectId || current.status?.run_id !== runId) return response;
         if (response?.ok) {
             const ref = response.mask_video || response.asset_ref || {};
             applyStatePatch(current, {
@@ -868,13 +879,14 @@ ${running
             notifyMaskState(current, 'cancelled', response, context, { origin: 'generate' });
         } else if (response?.aborted || controller.signal.aborted) {
             const message = t('SAM3 connection was interrupted. The task may still be running.', null, context);
-            applyStatePatch(current, { status: buildStatus('unknown', message, context) }, context);
+            applyStatePatch(current, { status: { ...buildStatus('unknown', message, context), run_id: runId } }, context);
             call(context, 'mutate', null);
             call(context, 'showToast', null, message);
             notifyMaskState(current, 'unknown', response, context, { origin: 'generate' });
         } else {
+            const message = response?.details || response?.error;
             applyStatePatch(current, {
-                status: buildStatus('failed', response?.details || response?.error || t('SAM3 video mask generation failed.', 'SAM3 视频蒙版生成失败。', context), context)
+                status: buildStatus('failed', message ? t(message, null, context) : t('SAM3 video mask generation failed.', 'SAM3 视频蒙版生成失败。', context), context)
             }, context);
             call(context, 'mutate', null);
             call(context, 'showToast', null, t(`SAM3 mask failed: ${current.status.message}`, `SAM3 蒙版失败：${current.status.message}`, context));
@@ -885,7 +897,8 @@ ${running
 
     async function stopNode(node, context) {
         if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用', context) };
-        const controller = runningControllers.get(node.id);
+        const controller = runningControllers.get(node);
+        const runId = node.status?.run_id;
         const requestProjectId = projectId(context);
         const request = {};
         pendingStopRequests.set(node, request);
@@ -893,7 +906,8 @@ ${running
         try {
             response = await cancelSam3VideoMask({
                 project_id: requestProjectId,
-                node_id: node.id
+                node_id: node.id,
+                run_id: runId
             }, context);
         } catch (error) {
             response = { ok: false, error: error?.message || String(error) };
@@ -902,14 +916,14 @@ ${running
         pendingStopRequests.delete(node);
         const current = getNode(node.id, context);
         if (current !== node || projectId(context) !== requestProjectId
-            || runningControllers.get(node.id) !== controller) return response;
+            || runningControllers.get(node) !== controller || current.status?.run_id !== runId) return response;
         const state = String(current.status?.state || '').toLowerCase();
         if (state !== 'running' && state !== 'unknown') return response;
         // Keep the generation response available: accepting a stop request is not a terminal result.
         const message = response?.ok === true
             ? t('SAM3 stop requested. Waiting for the task to finish.', null, context)
             : t('SAM3 cancellation request failed. The task may still be running.', null, context);
-        applyStatePatch(current, { status: buildStatus(state, message, context) }, context);
+        applyStatePatch(current, { status: { ...buildStatus(state, message, context), run_id: runId } }, context);
         call(context, 'mutate', null);
         call(context, 'showToast', null, message);
         return response;
@@ -918,6 +932,8 @@ ${running
     async function uploadMaskForNode(node, context) {
         if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用', context) };
         if (call(context, 'isNodeLocked', false, node)) return { ok: false, error: t('node is locked', '节点已锁定', context) };
+        if (isRunning(node)) return { ok: false, error: t('SAM3 mask generation is already running.', 'SAM3 蒙版正在生成。', context) };
+        const requestProjectId = projectId(context);
         const doc = call(context, 'getDocument', null);
         if (!doc?.createElement || !doc.body) {
             const message = t('SAM3 upload is unavailable.', 'SAM3 上传不可用。', context);
@@ -940,6 +956,9 @@ ${running
         const mime = file.type || (/\.(png|jpg|jpeg|webp|bmp)$/i.test(file.name || '') ? 'image/png' : 'video/mp4');
         const isImage = String(mime).toLowerCase().startsWith('image/');
         const meta = isImage ? await getImageDimensions(dataUrl, context) : await getMediaMetadata(dataUrl, 'video', context);
+        if (getNode(node.id, context) !== node || projectId(context) !== requestProjectId || isRunning(node)) {
+            return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用', context) };
+        }
         const source = inputSourceForNode(node, context);
         if (isImage && (!source || !isSource(source, context))) {
             call(context, 'showToast', null, t('Connect a source video before uploading an image mask.', '上传图片蒙版前请先连接源视频。', context));
@@ -947,19 +966,30 @@ ${running
         }
 
         call(context, 'pushHistory', null, t('Upload SAM3 mask video', '上传 SAM3 蒙版视频', context));
+        const runId = call(context, 'uid', null, 'sam3run') || DEFAULT_UTILS.uid('sam3run');
         if (source && isSource(source, context)) {
             Object.assign(node, call(context, 'buildSam3SourcePatch', {}, node, {
                 inputNodeId: source.id
             }));
         }
         applyStatePatch(node, {
-            status: buildStatus('running', t('Normalizing uploaded mask...', '正在处理上传的蒙版...', context), context)
+            status: { ...buildStatus('running', t('Normalizing uploaded mask...', '正在处理上传的蒙版...', context), context), run_id: runId }
         }, context);
         call(context, 'mutate', null);
+        const controller = call(context, 'createAbortController', null);
+        if (!controller) {
+            const message = t('SAM3 browser runtime is unavailable.', 'SAM3 浏览器运行时不可用。', context);
+            applyStatePatch(node, { status: buildStatus('failed', message, context) }, context);
+            call(context, 'mutate', null);
+            call(context, 'showToast', null, message);
+            return { ok: false, error: message };
+        }
+        runningControllers.set(node, controller);
         const sourcePayload = source && isSource(source, context) ? serializeSourceWithMediaEdit(source, context) : { payload: null, edit: null };
-        const response = await normalizeSam3MaskVideo({
-            project_id: projectId(context),
+        const requestPayload = {
+            project_id: requestProjectId,
             node_id: node.id,
+            run_id: runId,
             asset_source: sourcePayload.payload,
             params: sourcePayload.edit ? { source_edit: sourcePayload.edit } : {},
             mask_source: {
@@ -977,9 +1007,16 @@ ${running
                     data_url: dataUrl
                 }
             }
-        }, context);
+        };
+        let response;
+        try {
+            response = await normalizeSam3MaskVideo({ ...requestPayload, signal: controller.signal }, context);
+        } finally {
+            runningControllers.delete(node);
+        }
         const current = getNode(node.id, context);
         if (!current) return response || { ok: false, error: t('SAM3 Video Mask node was removed', 'SAM3 视频蒙版节点已被删除', context) };
+        if (current !== node || projectId(context) !== requestProjectId || current.status?.run_id !== runId) return response;
         if (response?.ok) {
             const ref = response.mask_video || response.asset_ref || {};
             applyStatePatch(current, {
@@ -1008,6 +1045,19 @@ ${running
             call(context, 'mutate', null);
             call(context, 'showToast', null, current.status.message);
             notifyMaskReady(current, response, context, { origin: 'upload' });
+        } else if (response?.cancelled && !response?.aborted) {
+            applyStatePatch(current, {
+                status: buildStatus('cancelled', response?.error || t('SAM3 mask generation stopped.', 'SAM3 蒙版生成已停止。', context), context)
+            }, context);
+            call(context, 'mutate', null);
+            call(context, 'showToast', null, current.status.message);
+            notifyMaskState(current, 'cancelled', response, context, { origin: 'upload' });
+        } else if (response?.aborted || controller.signal.aborted) {
+            const message = t('SAM3 connection was interrupted. The task may still be running.', null, context);
+            applyStatePatch(current, { status: { ...buildStatus('unknown', message, context), run_id: runId } }, context);
+            call(context, 'mutate', null);
+            call(context, 'showToast', null, message);
+            notifyMaskState(current, 'unknown', response, context, { origin: 'upload' });
         } else {
             applyStatePatch(current, {
                 status: buildStatus('failed', response?.details || response?.error || t('Uploaded mask normalization failed.', '上传的蒙版处理失败。', context), context)

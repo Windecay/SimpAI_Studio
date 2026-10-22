@@ -11,6 +11,7 @@ import time
 import re
 import random
 import tempfile
+import uuid
 import wave
 import functools
 import mimetypes
@@ -1817,30 +1818,37 @@ def generate_clicked(task: worker.AsyncTask, state):
                     if not args_manager.args.disable_enhance_output_sorting and is_fooocus:
                         product = sort_enhance_images(product, task)
 
-                    if not product:
-                        user_cancel_action = getattr(task, 'user_cancel_action', None)
-                        if user_cancel_action is None and getattr(task, 'last_stop', False) in ['stop', 'skip']:
-                            user_cancel_action = task.last_stop
-                        had_prior_output = bool(getattr(task, "simpleai_generation_had_output", False))
-                        backend_error_text = str(getattr(task, "backend_error", "") or "").strip()
-                        cloud_error_text = str(getattr(task, "cloud_error", "") or "").strip()
-                        if backend_error_text:
-                            ui_error_text = _studio_text(
-                                state, "Generation failed: {error}", "生成失败：{error}",
-                            ).format(error=backend_error_text)
-                        else:
-                            ui_error_text = cloud_error_text if getattr(task, "task_class", None) == "Cloud" and cloud_error_text else _studio_text(
-                                state,
-                                "Generation failed: backend returned no results. Check the console log for details.",
-                                "生成失败：后端没有返回结果。请查看控制台日志了解详情。",
-                            )
+                    user_cancel_action = getattr(task, 'user_cancel_action', None)
+                    if user_cancel_action is None and getattr(task, 'last_stop', False) in ['stop', 'skip']:
+                        user_cancel_action = task.last_stop
+                    backend_error_text = str(getattr(task, "backend_error", "") or "").strip()
+                    cloud_error_text = str(getattr(task, "cloud_error", "") or "").strip()
+                    ui_error_text = ""
+                    if user_cancel_action in ['stop', 'skip']:
+                        ui_error_text = _studio_text(state, "Generation skipped or stopped by user.", "生成已由用户跳过或停止。")
+                    elif backend_error_text:
+                        ui_error_text = _studio_text(
+                            state, "Generation failed: {error}", "生成失败：{error}",
+                        ).format(error=backend_error_text)
+                    elif getattr(task, "task_class", None) == "Cloud" and cloud_error_text:
+                        ui_error_text = cloud_error_text
+                    elif not product:
+                        ui_error_text = _studio_text(
+                            state,
+                            "Generation failed: backend returned no results. Check the console log for details.",
+                            "生成失败：后端没有返回结果。请查看控制台日志了解详情。",
+                        )
+                    if ui_error_text:
                         try:
                             if user_cancel_action in ['stop', 'skip']:
-                                gr.Info(_studio_text(state, "Generation skipped or stopped by user.", "生成已由用户跳过或停止。"))
+                                gr.Info(ui_error_text)
                             else:
                                 gr.Warning(ui_error_text)
                         except Exception as e:
                             logger.info(f"[Generate] gr.Info/Warning failed: {e}")
+
+                    if not product:
+                        had_prior_output = bool(getattr(task, "simpleai_generation_had_output", False))
                         if user_cancel_action in ['stop', 'skip']:
                             logger.info(f"[Generate] finish_empty_results_user_cancel: action={user_cancel_action}, {task_meta}")
                         else:
@@ -1877,7 +1885,9 @@ def generate_clicked(task: worker.AsyncTask, state):
                     task.simpleai_generation_had_output = True
 
                     stop_update, skip_update = controls_interactive_updates(True)
-                    yield tracked_component_update("progress_html", visible=False), \
+                    finish_progress_update = (progress_html_update(1, ui_error_text) if ui_error_text
+                                              else tracked_component_update("progress_html", visible=False))
+                    yield finish_progress_update, \
                         tracked_component_update("progress_window", visible=False, value=main_welcome_image), \
                         progress_gallery_results_update(product, force=True), \
                         tracked_component_update("progress_video", visible=False, value=None), \
@@ -4872,6 +4882,7 @@ with shared.gradio_root:
                             gr.HTML(value=sam3_video_mask.get_viewer_html(), elem_id="sam3_video_mask_html")
                             sam3_original_video_path = gr.State(None)
                             sam3_original_mask_path = gr.State(None)
+                            sam3_cancel_state = gr.State(None)
                             with gr.Row(elem_id="sam3_video_previews"):
                                 sam3_input_video = gr.Video(label="Video (Upload)", show_label=True, sources=["upload"], height=300, elem_id="sam3_input_video")
                                 sam3_mask_video = gr.Video(label="Mask Video (Preview / Upload)", show_label=True, sources=["upload"], height=300, elem_id="sam3_output_mask_video")
@@ -4884,6 +4895,9 @@ with shared.gradio_root:
                                 elem_classes=["sai-gradio-hidden-bridge"],
                             )
                             sam3_trim_payload = gr.Textbox(visible="hidden", elem_id="sam3_trim_payload", elem_classes=["sai-gradio-hidden-bridge"])
+                            sam3_source_meta = gr.Textbox(value="{}", visible="hidden", elem_id="sam3_source_meta", elem_classes=["sai-gradio-hidden-bridge"])
+                            sam3_editor_metadata_request = gr.Textbox(value="", visible="hidden", elem_id="sam3_editor_metadata_request", elem_classes=["sai-gradio-hidden-bridge"])
+                            sam3_editor_metadata_btn = gr.Button("SAM3 Editor Metadata", visible="hidden", elem_id="sam3_editor_metadata_btn", elem_classes=["sai-gradio-hidden-bridge"])
                             with gr.Accordion("💬 SAM3 Prompt Segmentation", open=False, visible=True):
                                 with gr.Column():
                                     sam3_prompt_text = gr.Textbox(label="Segmentation Prompt", show_label=True, max_lines=1, placeholder="e.g. woman, dress", elem_id="sam3_prompt_text", elem_classes=['danbooru-autocomplete-input'])
@@ -5515,7 +5529,7 @@ with shared.gradio_root:
                         def on_sam3_video_upload(video_path, state_params):
                             preview_path, original_path, source = sam3_video_mask.on_video_upload_with_preview(video_path, state_params)
                             meta = build_resolution_video_meta(original_path or video_path, "sam3_input_video", "sam3") if video_path is not None else "{}"
-                            return preview_path, original_path, source, meta, ""
+                            return preview_path, original_path, source, meta, "", meta
 
                         def on_sam3_mask_upload(mask_path, original_video_path, video_path, trim_payload, state_params):
                             if mask_path is None:
@@ -5590,24 +5604,44 @@ with shared.gradio_root:
                                 ))
                                 return current_mask_path, original_mask_path
 
-                        def sam3_generation_start_updates():
-                            sam3_video_mask.reset_sam3_cancel("webui")
-                            return gr_update(interactive=False), gr_update(visible=True)
+                        def sam3_generation_start_updates(request: gr.Request):
+                            owner = _canvas_workbench_payload_for_request(request, {})["user_context"]["user_did"]
+                            cancel_token = (owner, "webui", request.session_hash, uuid.uuid4().hex)
+                            sam3_video_mask.register_sam3_cancel(cancel_token)
+                            return gr_update(interactive=False), gr_update(visible=True), cancel_token
 
                         def sam3_generation_finish_updates():
                             return gr_update(interactive=True), gr_update(visible=False)
 
-                        def sam3_points_generate_wrapper(*args):
+                        def sam3_points_generate_wrapper(cancel_token, *args):
+                            event = sam3_video_mask.register_sam3_cancel(cancel_token)
+                            cancel_check = sam3_video_mask.make_sam3_cancel_check(event)
                             try:
-                                return sam3_video_mask.generate_mask_by_points(*args, unload_callback=unload_models_clicked, cancel_token="webui")
+                                cancel_check()
+                                return sam3_video_mask.generate_mask_by_points(*args, unload_callback=unload_models_clicked, cancel_check=cancel_check)
+                            except sam3_video_mask.Sam3Cancelled:
+                                gr.Warning(_studio_text(args[-1], "SAM3 mask generation cancelled.", "SAM3 生成已取消。"))
+                                return args[4]
                             finally:
-                                sam3_video_mask.clear_sam3_cancel("webui")
+                                sam3_video_mask.clear_sam3_cancel(cancel_token, event)
 
-                        def sam3_prompt_generate_wrapper(*args):
+                        def sam3_prompt_generate_wrapper(cancel_token, *args):
+                            event = sam3_video_mask.register_sam3_cancel(cancel_token)
+                            cancel_check = sam3_video_mask.make_sam3_cancel_check(event)
                             try:
-                                return sam3_video_mask.generate_mask_by_prompt(*args, unload_callback=unload_models_clicked, cancel_token="webui")
+                                cancel_check()
+                                return sam3_video_mask.generate_mask_by_prompt(*args, unload_callback=unload_models_clicked, cancel_check=cancel_check)
+                            except sam3_video_mask.Sam3Cancelled:
+                                gr.Warning(_studio_text(args[-1], "SAM3 mask generation cancelled.", "SAM3 生成已取消。"))
+                                return args[4]
                             finally:
-                                sam3_video_mask.clear_sam3_cancel("webui")
+                                sam3_video_mask.clear_sam3_cancel(cancel_token, event)
+
+                        def sam3_generation_stop_updates(cancel_token, state_params, request: gr.Request):
+                            if cancel_token:
+                                owner = _canvas_workbench_payload_for_request(request, {})["user_context"]["user_did"]
+                                cancel_token = (owner, "webui", request.session_hash, cancel_token[3])
+                            return sam3_video_mask.stop_webui_sam3_generation(state_params, cancel_token)
 
                         scene_video.upload(on_video_upload, inputs=[scene_video, state_topbar], outputs=[scene_video, scene_original_video_path, active_video_source, resolution_source_meta, scene_video_first_frame_path, scene_video_trim_payload], show_progress=True, queue=False) \
                             .then(rematch_sam3_mask_to_source, inputs=[scene_original_video_path, sam3_mask_video, sam3_original_mask_path, state_topbar], outputs=[sam3_mask_video, sam3_original_mask_path], show_progress=True) \
@@ -5812,25 +5846,36 @@ with shared.gradio_root:
                             show_progress=False,
                         )
                         
-                        sam3_input_video.upload(on_sam3_video_upload, inputs=[sam3_input_video, state_topbar], outputs=[sam3_input_video, sam3_original_video_path, active_video_source, resolution_source_meta, sam3_trim_payload], show_progress=True) \
+                        sam3_input_video.upload(on_sam3_video_upload, inputs=[sam3_input_video, state_topbar], outputs=[sam3_input_video, sam3_original_video_path, active_video_source, resolution_source_meta, sam3_trim_payload, sam3_source_meta], show_progress=True) \
                             .then(rematch_sam3_mask_to_source, inputs=[sam3_original_video_path, sam3_mask_video, sam3_original_mask_path, state_topbar], outputs=[sam3_mask_video, sam3_original_mask_path], show_progress=True) \
                             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("sam3_input_video", "upload");}')
                         sam3_mask_video.upload(on_sam3_mask_upload, inputs=[sam3_mask_video, sam3_original_video_path, sam3_input_video, sam3_trim_payload, state_topbar], outputs=[sam3_mask_video, sam3_original_mask_path], show_progress=True)
                         sam3_mask_video.clear(lambda: None, outputs=[sam3_original_mask_path], queue=False, show_progress=False)
                         sam3_mask_upload_file.upload(on_sam3_mask_upload, inputs=[sam3_mask_upload_file, sam3_original_video_path, sam3_input_video, sam3_trim_payload, state_topbar], outputs=[sam3_mask_video, sam3_original_mask_path], show_progress=True)
-                        sam3_points_evt = sam3_points_generate_btn.click(sam3_generation_start_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False) \
+                        sam3_editor_metadata_btn.click(
+                            sam3_video_mask.get_editor_video_metadata,
+                            inputs=[sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_editor_metadata_request],
+                            outputs=[sam3_source_meta],
+                            js='(...args)=>window.sam3MetadataInputs ? window.sam3MetadataInputs(...args) : args',
+                            queue=False, show_progress=False,
+                        ).then(
+                            fn=None, inputs=[sam3_source_meta], outputs=None,
+                            js='meta=>{window.sam3EditorMetadataReady?.(meta);}',
+                            queue=False, show_progress=False,
+                        )
+                        sam3_points_evt = sam3_points_generate_btn.click(sam3_generation_start_updates, outputs=[sam3_generate_btn, sam3_stop_btn, sam3_cancel_state], queue=False, show_progress=False) \
                             .then(
                                 sam3_points_generate_wrapper,
-                                inputs=[sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_editor_payload, sam3_mask_video, sam3_score_threshold_detection, sam3_new_det_thresh, sam3_fill_hole_area, sam3_recondition_every_nth_frame, sam3_postprocess_strength, sam3_invert_mask, state_topbar],
+                                inputs=[sam3_cancel_state, sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_editor_payload, sam3_mask_video, sam3_score_threshold_detection, sam3_new_det_thresh, sam3_fill_hole_area, sam3_recondition_every_nth_frame, sam3_postprocess_strength, sam3_invert_mask, state_topbar],
                                 outputs=[sam3_mask_video],
-                                js='(...args)=>{try{return window.sam3PointsGeneratePayload ? window.sam3PointsGeneratePayload(...args) : args;}catch(e){console.warn("[SAM3] points payload handoff failed", e); return args;}}',
+                                js='(cancelState,...args)=>{try{return [cancelState,...(window.sam3PointsGeneratePayload ? window.sam3PointsGeneratePayload(...args) : args)];}catch(e){console.warn("[SAM3] points payload handoff failed", e); return [cancelState,...args];}}',
                                 show_progress=True,
                             ) \
                             .then(sam3_generation_finish_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
-                        sam3_prompt_evt = sam3_generate_btn.click(sam3_generation_start_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False) \
-                            .then(sam3_prompt_generate_wrapper, inputs=[sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_prompt_text, sam3_mask_video, sam3_score_threshold_detection, sam3_new_det_thresh, sam3_fill_hole_area, sam3_recondition_every_nth_frame, sam3_postprocess_strength, sam3_invert_mask, state_topbar], outputs=[sam3_mask_video], show_progress=True) \
+                        sam3_prompt_evt = sam3_generate_btn.click(sam3_generation_start_updates, outputs=[sam3_generate_btn, sam3_stop_btn, sam3_cancel_state], queue=False, show_progress=False) \
+                            .then(sam3_prompt_generate_wrapper, inputs=[sam3_cancel_state, sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_prompt_text, sam3_mask_video, sam3_score_threshold_detection, sam3_new_det_thresh, sam3_fill_hole_area, sam3_recondition_every_nth_frame, sam3_postprocess_strength, sam3_invert_mask, state_topbar], outputs=[sam3_mask_video], show_progress=True) \
                             .then(sam3_generation_finish_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
-                        sam3_stop_btn.click(sam3_video_mask.stop_webui_sam3_generation, inputs=[state_topbar], outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
+                        sam3_stop_btn.click(sam3_generation_stop_updates, inputs=[sam3_cancel_state, state_topbar], outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
 
                         with gr.Row(elem_id="scene_image_number_row"):
                             scene_image_number = gr.Slider(label='Image Number', minimum=1, maximum=5, step=1, value=1, elem_id="scene_image_number")
@@ -7371,7 +7416,7 @@ with shared.gradio_root:
                             ip_image_elem_ids = []
 
                             def _ip_make_auto_detect_fn(elem_id: str):
-                                def _fn(image_np, selected_type, enabled):
+                                def _fn(image_np, selected_type, enabled, state_params):
                                     if image_np is None:
                                         return '', skip_component_update(), skip_component_update(), skip_component_update()
                                     type_for_highlight = selected_type
@@ -7392,7 +7437,9 @@ with shared.gradio_root:
 
                                     if enabled and detect_control_hint_type_and_default_params is not None:
                                         try:
-                                            detected, stop, weight = detect_control_hint_type_and_default_params(image_np)
+                                            state_params = state_params if isinstance(state_params, dict) else {}
+                                            allowed = topbar.get_allowed_ip_types(state_params.get('engine', 'Fooocus'), state_params.get('task_method'))
+                                            detected, stop, weight = detect_control_hint_type_and_default_params(image_np, allowed_types=allowed)
                                         except Exception:
                                             detected, stop, weight = None, None, None
                                         if detected is not None and stop is not None and weight is not None:
@@ -7434,8 +7481,9 @@ with shared.gradio_root:
                                 return _fn
 
                             def _ip_auto_detect_all(*args):
-                                enabled = args[-1]
-                                n = (len(args) - 1) // 2
+                                state_params = args[-1] if isinstance(args[-1], dict) else {}
+                                enabled = args[-2]
+                                n = (len(args) - 2) // 2
                                 images = args[:n]
                                 types_in = args[n:2 * n]
                                 styles = []
@@ -7463,7 +7511,8 @@ with shared.gradio_root:
 
                                     if enabled and image_np is not None and detect_control_hint_type_and_default_params is not None:
                                         try:
-                                            detected, stop, weight = detect_control_hint_type_and_default_params(image_np)
+                                            allowed = topbar.get_allowed_ip_types(state_params.get('engine', 'Fooocus'), state_params.get('task_method'))
+                                            detected, stop, weight = detect_control_hint_type_and_default_params(image_np, allowed_types=allowed)
                                         except Exception:
                                             detected, stop, weight = None, None, None
                                         if detected is not None and stop is not None and weight is not None:
@@ -7497,7 +7546,7 @@ with shared.gradio_root:
                             ip_image_columns = []
                             for image_count in range(modules.config.default_controlnet_image_count):
                                 image_count += 1
-                                with gr.Column(elem_classes=['ip_image_cell'], min_width=0) as ip_image_column:
+                                with gr.Column(elem_id=f'ip_control_slot_{image_count}', elem_classes=['ip_image_cell'], min_width=0) as ip_image_column:
                                     ip_image_columns.append(ip_image_column)
                                     ip_image_elem_id = f'ip_image_{image_count}'
                                     ip_image_elem_ids.append(ip_image_elem_id)
@@ -7506,7 +7555,7 @@ with shared.gradio_root:
                                     ip_detect_style_nodes.append(ip_detect_style)
                                     ip_images.append(ip_image)
                                     ip_ctrls.append(ip_image)
-                                    with gr.Column(visible=modules.config.default_image_prompt_advanced_checkbox) as ad_col:
+                                    with gr.Column(visible=True, elem_id=f'ip_control_parameters_{image_count}', elem_classes=['ip_control_parameters']) as ad_col:
                                         with gr.Row():
                                             ip_stop = gr.Slider(label='Stop At', minimum=0.0, maximum=1.0, step=0.05, value=modules.config.default_ip_stop_ats[image_count])
                                             ip_stops.append(ip_stop)
@@ -7521,14 +7570,14 @@ with shared.gradio_root:
                                         ip_type = gr.Radio(label='Type', choices=filtered_ip_list, value=default_ip_type, container=False)
                                         ip_types.append(ip_type)
                                         ip_ctrls.append(ip_type)
-                                    ip_type.change(lambda x: flags.default_parameters[x] if x in filtered_ip_list else flags.default_parameters[filtered_ip_list[0]],
+                                    ip_type.change(lambda x: flags.default_parameters.get(x, flags.default_parameters[flags.cn_canny]),
                                                  inputs=[ip_type], outputs=[ip_stop, ip_weight], queue=False, show_progress=False) \
                                            .then(fn=_ip_make_highlight_fn(ip_image_elem_id), inputs=[ip_image, ip_type], outputs=[ip_detect_style], queue=False, show_progress=False)
                                     ip_ad_cols.append(ad_col)
 
                                     ip_image.change(
                                         fn=_ip_make_auto_detect_fn(ip_image_elem_id),
-                                        inputs=[ip_image, ip_type, ip_auto_detect],
+                                        inputs=[ip_image, ip_type, ip_auto_detect, state_topbar],
                                         outputs=[ip_detect_style, ip_type, ip_stop, ip_weight],
                                         queue=False,
                                         show_progress=False
@@ -7536,14 +7585,14 @@ with shared.gradio_root:
 
                             ip_auto_detect.change(
                                 fn=_ip_auto_detect_all,
-                                inputs=ip_images + ip_types + [ip_auto_detect],
+                                inputs=ip_images + ip_types + [ip_auto_detect, state_topbar],
                                 outputs=ip_detect_style_nodes + ip_types + ip_stops + ip_weights,
                                 queue=False,
                                 show_progress=False
                             )
 
                         def ip_advance_checked(x):
-                            return [gr_update(visible=x)] * len(ip_ad_cols) + \
+                            return [skip_component_update()] * len(ip_ad_cols) + \
                                 [skip_component_update()] * len(ip_types) + \
                                 [skip_component_update()] * len(ip_stops) + \
                                 [skip_component_update()] * len(ip_weights)
@@ -8048,9 +8097,9 @@ with shared.gradio_root:
                                 return [quickEnabled, quickStrength, enhanceChecked, enhanceMethod, enhanceStrength];
                             }"""
 
-                            quick_enhance.change(fn=lambda x: [x, flags.upscale_15 if x else flags.disabled, gr_update(visible=x, value=0.2), 0.2 if x else 0],
+                            quick_enhance.input(fn=lambda x: [x, flags.upscale_15 if x else flags.disabled, gr_update(visible=x, value=0.2), 0.2 if x else 0],
                                                 inputs=quick_enhance,outputs=[enhance_checkbox, enhance_uov_method, quick_enhance_uov_strength, enhance_uov_strength], queue=False, show_progress=False)
-                            quick_enhance_uov_strength.change(fn=lambda x: x,inputs=quick_enhance_uov_strength,outputs=enhance_uov_strength, queue=False, show_progress=False)
+                            quick_enhance_uov_strength.input(fn=lambda x: x,inputs=quick_enhance_uov_strength,outputs=enhance_uov_strength, queue=False, show_progress=False)
 
                         with gr.Tab(label="Advanced", id="advanced", render_children=True) as setting_advanced_tab:
                             with gr.Group():
@@ -11184,8 +11233,8 @@ with shared.gradio_root:
 
         image_input_panel_ctrls = [engine_class_display, uov_method, enhance_checkbox, enhance_input_image]
         reset_preset_layout = [params_backend, advanced_checkbox, performance_selection, scheduler_name, sampler_name, input_image_checkbox, prompt_panel_checkbox, enhance_checkbox, base_model, refiner_model, overwrite_step, guidance_scale, negative_prompt, preset_instruction, identity_dialog] + image_input_panel_ctrls + lora_ctrls
-        reset_preset_func_names = ["output_format", "inpaint_advanced_masking_checkbox", "mixing_image_prompt_and_vary_upscale", "mixing_image_prompt_and_inpaint", "backfill_prompt", "translation_methods", "input_image_checkbox", "quick_enhance"]
-        reset_preset_func = [output_format, inpaint_advanced_masking_checkbox, mixing_image_prompt_and_vary_upscale, mixing_image_prompt_and_inpaint, backfill_prompt, translation_methods, input_image_checkbox, quick_enhance]
+        reset_preset_func_names = ["output_format", "inpaint_advanced_masking_checkbox", "mixing_image_prompt_and_vary_upscale", "mixing_image_prompt_and_inpaint", "backfill_prompt", "translation_methods", "input_image_checkbox", "quick_enhance", "quick_enhance_uov_strength"]
+        reset_preset_func = [output_format, inpaint_advanced_masking_checkbox, mixing_image_prompt_and_vary_upscale, mixing_image_prompt_and_inpaint, backfill_prompt, translation_methods, input_image_checkbox, quick_enhance, quick_enhance_uov_strength]
         scene_frontend_ctrls = [prompt_internal_panel, random_button, super_prompter, disable_intermediate_results, image_tools_checkbox, scene_panel, scene_theme, camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:] + [sam3_input_video, sam3_original_video_path, sam3_mask_video, sam3_trim_payload] + [generate_button, load_parameter_button]
         if util.simpai_ui_trace_enabled():
             try:
@@ -13265,8 +13314,10 @@ with shared.gradio_root:
     def _refresh_krea2_aio_inputs(state_params):
         is_krea2 = isinstance(state_params, dict) and state_params.get('task_method') == 'krea2_aio_cn'
         is_moss = isinstance(state_params, dict) and state_params.get('task_method') == 'moss_image_sft_aio_cn'
-        updates = [gr_update(visible=not is_krea2 or index == 0) for index in range(len(ip_image_columns))]
-        updates += [gr_update(visible=not (is_krea2 or is_moss), **({'value': False} if is_krea2 or is_moss else {})) for _ in range(3)]
+        # The frontend owns visibility so preset switches keep every upload mounted.
+        updates = [skip_component_update() for _ in ip_image_columns]
+        updates += [gr_update(value=False) if is_krea2 or is_moss else skip_component_update() for _ in range(2)]
+        updates += [skip_component_update()]
         return updates
 
     state_topbar.change(
@@ -17243,8 +17294,9 @@ async def canvas_workbench_generate_camera_motion_reference_endpoint(payload: di
                 },
                 copy_to_assets=True,
             )
-            if not isinstance(output_ref, dict):
-                return {"ok": False, "error": "Camera-motion reference asset registration failed"}
+            if not isinstance(output_ref, dict) or not output_ref or output_ref.get("copy_error"):
+                error = canvas_workbench_assets.output_delivery_error(state_params)
+                return {"ok": False, "error": error["message"], "output_error": error, "output_path": output_path}
             output_ref["camera_motion_settings"] = settings
             return {
                 "ok": True,
@@ -17358,7 +17410,7 @@ def _canvas_workbench_exact_sam3_source_asset(asset_ref, project_id, state_param
 
 
 @app.post("/canvas-workbench/generate-sam3-video-mask")
-async def canvas_workbench_generate_sam3_video_mask_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_generate_sam3_video_mask_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -17366,15 +17418,22 @@ async def canvas_workbench_generate_sam3_video_mask_endpoint(payload: dict = Bod
                 status_code=400,
             )
 
+        run_id = str(payload.get("run_id") or "").strip()
+        if not run_id:
+            return JSONResponse({"ok": False, "error": "SAM3 run_id is required."}, status_code=400)
+        payload = _canvas_workbench_payload_for_request(request, payload)
+        state_params = _canvas_workbench_state_params(payload)
+        cancel_token = (state_params["user_did"], str(payload.get("project_id") or "default"), str(payload.get("node_id") or ""), run_id)
+        cancel_event = sam3_video_mask.register_sam3_cancel(cancel_token)
+        cancel_check = sam3_video_mask.make_sam3_cancel_check(cancel_event)
+
         def safe_process():
             import modules.async_worker as worker
 
-            state_params = _canvas_workbench_state_params(payload)
+            cancel_check()
             source = payload.get("asset_source") if isinstance(payload.get("asset_source"), dict) else {}
             params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
             source = _canvas_workbench_source_with_media_edit(source, params)
-            cancel_token = f"canvas:{payload.get('project_id') or 'default'}:{payload.get('node_id') or ''}"
-            sam3_video_mask.reset_sam3_cancel(cancel_token)
             resolved = canvas_workbench_assets.materialize_node_asset(payload.get("project_id") or "default", state_params, source)
             asset_ref = resolved.get("asset_ref") if isinstance(resolved, dict) else None
             asset_ref = _canvas_workbench_exact_sam3_source_asset(asset_ref, payload.get("project_id") or "default", state_params, str(payload.get("node_id") or ""))
@@ -17386,6 +17445,23 @@ async def canvas_workbench_generate_sam3_video_mask_endpoint(payload: dict = Bod
             editor_payload = str(params.get("editor_payload") or "").strip()
             if not prompt_text and not editor_payload:
                 return {"ok": False, "error": "SAM3 video mask prompt/editor payload is empty"}
+
+            edit = asset_ref.get("edit") if isinstance(asset_ref.get("edit"), dict) else None
+            if editor_payload and edit:
+                point_data = sam3_video_mask._parse_editor_payload(editor_payload)
+                if (point_data.get("frame_time") is not None and point_data.get("frame_index") is None
+                        and not sam3_video_mask._editor_payload_uses_static_mask(point_data)):
+                    source_time = float(point_data["frame_time"])
+                    start, end = float(edit["trim_start"]), float(edit["trim_end"])
+                    if not start <= source_time < end:
+                        return {
+                            "ok": False,
+                            "error": "sam3_frame_outside_trim",
+                            "details": "The selected SAM3 frame is outside the trimmed video. Reopen the Point Editor to select a frame.",
+                        }
+                    # Canvas points use original-video time; SAM3 reads the materialized clip.
+                    point_data["frame_time"] = source_time - start
+                    editor_payload = json.dumps(point_data, ensure_ascii=False)
 
             if prompt_text and not editor_payload:
                 try:
@@ -17402,27 +17478,23 @@ async def canvas_workbench_generate_sam3_video_mask_endpoint(payload: dict = Bod
                 params.get("invert_mask", False),
             )
             with worker.external_exclusive_task():
-                try:
-                    sam3_video_mask.cleanup_translator_and_vram()
-                    cancel_check = sam3_video_mask.make_sam3_cancel_check(cancel_token)
-                    if editor_payload:
-                        out_path = sam3_video_mask.run_sam3_video_mask(
-                            video_path=video_path,
-                            editor_payload_json=editor_payload,
-                            cancel_check=cancel_check,
-                            **opts,
-                        )
-                    else:
-                        out_path = sam3_video_mask.run_sam3_video_mask_by_prompt(
-                            video_path=video_path,
-                            prompt=prompt_text,
-                            cancel_check=cancel_check,
-                            **opts,
-                        )
-                except sam3_video_mask.Sam3Cancelled as e:
-                    return {"ok": False, "cancelled": True, "error": str(e)}
-                finally:
-                    sam3_video_mask.clear_sam3_cancel(cancel_token)
+                cancel_check()
+                sam3_video_mask.cleanup_translator_and_vram()
+                if editor_payload:
+                    out_path = sam3_video_mask.run_sam3_video_mask(
+                        video_path=video_path,
+                        editor_payload_json=editor_payload,
+                        cancel_check=cancel_check,
+                        **opts,
+                    )
+                else:
+                    out_path = sam3_video_mask.run_sam3_video_mask_by_prompt(
+                        video_path=video_path,
+                        prompt=prompt_text,
+                        cancel_check=cancel_check,
+                        **opts,
+                    )
+            cancel_check()
             if not out_path or not os.path.exists(out_path):
                 return {"ok": False, "error": "SAM3 video mask returned no output"}
 
@@ -17435,6 +17507,9 @@ async def canvas_workbench_generate_sam3_video_mask_endpoint(payload: dict = Bod
                 metadata={"mime": "video/mp4", "source_video": video_path, "prompt": prompt_text, "mode": "points" if editor_payload else "prompt"},
                 copy_to_assets=False,
             )
+            if not isinstance(output_ref, dict) or not output_ref or output_ref.get("copy_error"):
+                error = canvas_workbench_assets.output_delivery_error(state_params)
+                return {"ok": False, "error": error["message"], "output_error": error, "output_path": out_path}
             if isinstance(output_ref, dict) and isinstance(asset_ref, dict) and isinstance(asset_ref.get("edit"), dict):
                 output_ref["source_edit"] = asset_ref.get("edit")
             return {
@@ -17445,7 +17520,13 @@ async def canvas_workbench_generate_sam3_video_mask_endpoint(payload: dict = Bod
                 "source_asset_ref": asset_ref,
             }
 
-        result = await run_in_threadpool(safe_process)
+        try:
+            result = await run_in_threadpool(safe_process)
+            cancel_check()
+        except sam3_video_mask.Sam3Cancelled as e:
+            result = {"ok": False, "cancelled": True, "error": str(e)}
+        finally:
+            sam3_video_mask.clear_sam3_cancel(cancel_token, cancel_event)
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -17460,17 +17541,20 @@ async def canvas_workbench_generate_sam3_video_mask_endpoint(payload: dict = Bod
         )
 
 @app.post("/canvas-workbench/cancel-sam3-video-mask")
-async def canvas_workbench_cancel_sam3_video_mask_endpoint(payload: dict = Body(...)):
-    project_id = "default"
-    node_id = ""
-    if isinstance(payload, dict):
-        project_id = str(payload.get("project_id") or "default")
-        node_id = str(payload.get("node_id") or "")
-    sam3_video_mask.request_sam3_cancel(f"canvas:{project_id}:{node_id}")
-    return JSONResponse({"ok": True, "cancelled": True})
+async def canvas_workbench_cancel_sam3_video_mask_endpoint(request: Request, payload: dict = Body(...)):
+    run_id = str(payload.get("run_id") or "").strip()
+    if not run_id:
+        return JSONResponse({"ok": False, "error": "SAM3 run_id is required."}, status_code=400)
+    payload = _canvas_workbench_payload_for_request(request, payload)
+    state_params = _canvas_workbench_state_params(payload)
+    cancel_token = (state_params["user_did"], str(payload.get("project_id") or "default"), str(payload.get("node_id") or ""), run_id)
+    accepted = sam3_video_mask.request_sam3_cancel(cancel_token)
+    if not accepted:
+        return JSONResponse({"ok": False, "error": "SAM3 task is not active."}, status_code=409)
+    return JSONResponse({"ok": True, "cancel_requested": True})
 
 @app.post("/canvas-workbench/normalize-sam3-mask-video")
-async def canvas_workbench_normalize_sam3_mask_video_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_normalize_sam3_mask_video_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -17478,11 +17562,21 @@ async def canvas_workbench_normalize_sam3_mask_video_endpoint(payload: dict = Bo
                 status_code=400,
             )
 
+        run_id = str(payload.get("run_id") or "").strip()
+        if not run_id:
+            return JSONResponse({"ok": False, "error": "SAM3 run_id is required."}, status_code=400)
+        payload = _canvas_workbench_payload_for_request(request, payload)
+        state_params = _canvas_workbench_state_params(payload)
+        cancel_token = (state_params["user_did"], str(payload.get("project_id") or "default"), str(payload.get("node_id") or ""), run_id)
+        cancel_event = sam3_video_mask.register_sam3_cancel(cancel_token)
+        cancel_check = sam3_video_mask.make_sam3_cancel_check(cancel_event)
+
         def safe_process():
-            state_params = _canvas_workbench_state_params(payload)
+            cancel_check()
             project_id = payload.get("project_id") or "default"
             mask_source = payload.get("mask_source") if isinstance(payload.get("mask_source"), dict) else {}
             mask_resolved = canvas_workbench_assets.materialize_node_asset(project_id, state_params, mask_source)
+            cancel_check()
             mask_ref = mask_resolved.get("asset_ref") if isinstance(mask_resolved, dict) else None
             mask_path = mask_ref.get("path") if isinstance(mask_ref, dict) else ""
             if not mask_path or not os.path.exists(mask_path):
@@ -17499,6 +17593,7 @@ async def canvas_workbench_normalize_sam3_mask_video_endpoint(payload: dict = Bo
                 source_ref = _canvas_workbench_exact_sam3_source_asset(source_ref, project_id, state_params, str(payload.get("node_id") or ""))
                 source_path = source_ref.get("path") if isinstance(source_ref, dict) else ""
 
+            cancel_check()
             mask_mime = mask_ref.get("mime") or ""
             if source_path and os.path.exists(source_path):
                 out_path = sam3_video_mask.normalize_mask_media_to_source_video(
@@ -17507,7 +17602,9 @@ async def canvas_workbench_normalize_sam3_mask_video_endpoint(payload: dict = Bo
                     source_path,
                     sam3_video_mask.sam3_mask_output_dir("canvas_uploads"),
                     node_id=str(payload.get("node_id") or ""),
+                    cancel_check=cancel_check,
                 )
+                cancel_check()
                 output_ref = canvas_workbench_assets.register_existing_file_asset(
                     out_path,
                     project_id,
@@ -17517,6 +17614,9 @@ async def canvas_workbench_normalize_sam3_mask_video_endpoint(payload: dict = Bo
                     metadata={"mime": "video/mp4", "source_video": source_path, "uploaded_mask": mask_path},
                     copy_to_assets=False,
                 )
+                if not isinstance(output_ref, dict) or not output_ref or output_ref.get("copy_error"):
+                    error = canvas_workbench_assets.output_delivery_error(state_params)
+                    return {"ok": False, "error": error["message"], "output_error": error, "output_path": out_path}
                 return {
                     "ok": True,
                     "asset_ref": output_ref,
@@ -17536,6 +17636,9 @@ async def canvas_workbench_normalize_sam3_mask_video_endpoint(payload: dict = Bo
                     metadata={"mime": mask_mime or "video/mp4", "uploaded_mask": mask_path},
                     copy_to_assets=False,
                 )
+                if not isinstance(output_ref, dict) or not output_ref or output_ref.get("copy_error"):
+                    error = canvas_workbench_assets.output_delivery_error(state_params)
+                    return {"ok": False, "error": error["message"], "output_error": error, "output_path": mask_path}
                 return {
                     "ok": True,
                     "asset_ref": output_ref,
@@ -17546,7 +17649,13 @@ async def canvas_workbench_normalize_sam3_mask_video_endpoint(payload: dict = Bo
                 }
             return {"ok": False, "error": "Connect a source video before uploading an image mask"}
 
-        result = await run_in_threadpool(safe_process)
+        try:
+            result = await run_in_threadpool(safe_process)
+            cancel_check()
+        except sam3_video_mask.Sam3Cancelled as e:
+            result = {"ok": False, "cancelled": True, "error": str(e)}
+        finally:
+            sam3_video_mask.clear_sam3_cancel(cancel_token, cancel_event)
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -18682,7 +18791,7 @@ async def sam3_image_mask_endpoint(payload: dict = Body(...)):
             )
 
         def safe_process():
-            with _sam3_image_mask_lock:
+            with worker.external_exclusive_task(), _sam3_image_mask_lock:
                 return layerforge_sam3_image_mask.process_sam3_image_mask(
                     image_data,
                     positive_points=positive_points,
@@ -18708,7 +18817,7 @@ async def sam3_image_mask_endpoint(payload: dict = Body(...)):
 async def sam3_offload_endpoint():
     try:
         def safe_process():
-            with _sam3_image_mask_lock:
+            with worker.external_exclusive_task(), _sam3_image_mask_lock:
                 return layerforge_sam3_image_mask.offload_model()
 
         result = await run_in_threadpool(safe_process)

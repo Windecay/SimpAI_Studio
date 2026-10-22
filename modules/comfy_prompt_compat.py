@@ -208,6 +208,36 @@ def install_queue_prompt_normalizer(comfyclient_pipeline):
     return True
 
 
+def is_comfy_prompt_queued(queue, prompt_id):
+    if not isinstance(queue, dict):
+        raise ValueError("Invalid Comfy queue response.")
+    queued = False
+    for name in ("queue_running", "queue_pending"):
+        group = queue.get(name)
+        if not isinstance(group, list):
+            raise ValueError("Invalid Comfy queue response.")
+        for row in group:
+            if not isinstance(row, (list, tuple)) or len(row) < 2 or not isinstance(row[1], str):
+                raise ValueError("Invalid Comfy queue response.")
+            if row[1] == prompt_id:
+                queued = True
+    return queued
+
+
+def defer_comfy_task_release(prompt_id, endpoint, process=None):
+    from modules.gpu_task_lock import defer_gpu_task_release
+
+    def stopped():
+        if process is not None and process.poll() is not None:
+            return True
+        with httpx.Client(timeout=httpx.Timeout(5, connect=3), trust_env=False) as client:
+            response = client.get(f"{endpoint.rstrip('/')}/queue")
+            response.raise_for_status()
+            return not is_comfy_prompt_queued(response.json(), prompt_id)
+
+    defer_gpu_task_release(stopped)
+
+
 def install_prompt_cancel_support(comfyclient_pipeline):
     interrupt = getattr(comfyclient_pipeline, "interrupt", None)
     if not callable(interrupt) or getattr(interrupt, "_simpai_prompt_cancel_support", False):

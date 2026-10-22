@@ -7,6 +7,7 @@ import tempfile
 import threading
 import uuid
 import html
+from bisect import bisect_right
 
 import cv2
 import gradio as gr
@@ -19,7 +20,7 @@ from enhanced import sam3_comfy31
 
 _VIDEO_PREDICTOR = None
 _VIDEO_PREDICTOR_CKPT = None
-_SAM3_CANCEL_EVENTS: dict[str, threading.Event] = {}
+_SAM3_CANCEL_EVENTS: dict[tuple, threading.Event] = {}
 _SAM3_CANCEL_LOCK = threading.Lock()
 logger = logging.getLogger(__name__)
 SAM3_CHECKPOINT_URL = sam3_comfy31.SAM31_CHECKPOINT_URL
@@ -30,44 +31,31 @@ class Sam3Cancelled(RuntimeError):
     pass
 
 
-def _cancel_key(token: str | None) -> str:
-    return str(token or "webui").strip() or "webui"
-
-
-def reset_sam3_cancel(token: str | None = None) -> None:
-    key = _cancel_key(token)
+def register_sam3_cancel(token) -> threading.Event:
+    if not token:
+        raise ValueError("SAM3 run identity is required.")
     with _SAM3_CANCEL_LOCK:
-        _SAM3_CANCEL_EVENTS[key] = threading.Event()
+        return _SAM3_CANCEL_EVENTS.setdefault(token, threading.Event())
 
 
-def request_sam3_cancel(token: str | None = None) -> None:
-    key = _cancel_key(token)
+def request_sam3_cancel(token) -> bool:
     with _SAM3_CANCEL_LOCK:
-        event = _SAM3_CANCEL_EVENTS.get(key)
+        event = _SAM3_CANCEL_EVENTS.get(token)
         if event is None:
-            event = threading.Event()
-            _SAM3_CANCEL_EVENTS[key] = event
+            return False
         event.set()
+        return True
 
 
-def clear_sam3_cancel(token: str | None = None) -> None:
-    key = _cancel_key(token)
+def clear_sam3_cancel(token, event) -> None:
     with _SAM3_CANCEL_LOCK:
-        _SAM3_CANCEL_EVENTS.pop(key, None)
+        if _SAM3_CANCEL_EVENTS.get(token) is event:
+            del _SAM3_CANCEL_EVENTS[token]
 
 
-def is_sam3_cancelled(token: str | None = None) -> bool:
-    key = _cancel_key(token)
-    with _SAM3_CANCEL_LOCK:
-        event = _SAM3_CANCEL_EVENTS.get(key)
-        return bool(event and event.is_set())
-
-
-def make_sam3_cancel_check(token: str | None = None):
-    key = _cancel_key(token)
-
+def make_sam3_cancel_check(event):
     def _check() -> None:
-        if is_sam3_cancelled(key):
+        if event.is_set():
             raise Sam3Cancelled("SAM3 mask generation cancelled.")
 
     return _check
@@ -331,10 +319,13 @@ def _sam3_text(state_params, en, cn):
     return cn if value.startswith("cn") or value.startswith("zh") or value in {"中文", "chinese"} else en
 
 
-def stop_webui_sam3_generation(state_params=None):
-    request_sam3_cancel("webui")
-    gr.Warning(_sam3_text(state_params, "SAM3 stop requested.", "已请求停止 SAM3。"))
-    return gr_update(interactive=True), gr_update(visible=False)
+def stop_webui_sam3_generation(state_params, cancel_token):
+    accepted = request_sam3_cancel(cancel_token)
+    if accepted:
+        gr.Warning(_sam3_text(state_params, "SAM3 stop requested.", "已请求停止 SAM3。"))
+    else:
+        gr.Warning(_sam3_text(state_params, "SAM3 task is no longer active.", "当前没有对应的 SAM3 运行任务。"))
+    return gr_update(interactive=not accepted), gr_update(visible=accepted)
 
 
 def generate_mask_by_points(
@@ -351,7 +342,7 @@ def generate_mask_by_points(
     invert_mask,
     state_params=None,
     unload_callback=None,
-    cancel_token: str | None = "webui",
+    cancel_check=None,
 ):
     effective_video_path = resolve_sam3_backend_video_path(video_path, original_video_path, trim_payload)
     if effective_video_path is None:
@@ -367,14 +358,16 @@ def generate_mask_by_points(
         ))
         return uploaded_mask_path
     editor_payload = _parse_editor_payload(editor_payload_json)
-    if _editor_payload_uses_static_mask(editor_payload):
-        reset_sam3_cancel(cancel_token)
+    if _editor_payload_uses_manual_mask(editor_payload):
         try:
-            out_path = run_static_mask(
+            if cancel_check:
+                cancel_check()
+            mask_runner = run_keyframed_polygon_mask if editor_payload.get("mode") == "keyframed_polygons" else run_static_mask
+            out_path = mask_runner(
                 video_path=effective_video_path,
                 editor_payload_json=editor_payload_json,
                 invert_mask=bool(invert_mask),
-                cancel_check=make_sam3_cancel_check(cancel_token),
+                cancel_check=cancel_check,
             )
             gr.Info(_sam3_text(state_params, "Polygon mask created!", "多边形蒙版已生成！"))
             return out_path
@@ -385,19 +378,18 @@ def generate_mask_by_points(
             logger.exception("Static mask generation failed")
             gr.Warning(_sam3_text(state_params, f"Polygon mask failed: {e}", f"多边形蒙版生成失败：{e}"))
             return uploaded_mask_path
-        finally:
-            clear_sam3_cancel(cancel_token)
 
     import modules.async_worker as worker
 
     with worker.external_exclusive_task():
-        reset_sam3_cancel(cancel_token)
-        cleanup_translator_and_vram()
         try:
+            if cancel_check:
+                cancel_check()
+            cleanup_translator_and_vram()
             out_path = run_sam3_video_mask(
                 video_path=effective_video_path,
                 editor_payload_json=editor_payload_json,
-                cancel_check=make_sam3_cancel_check(cancel_token),
+                cancel_check=cancel_check,
                 **mask_opts(
                     score_threshold_detection,
                     new_det_thresh,
@@ -418,8 +410,6 @@ def generate_mask_by_points(
             gr.Warning(_sam3_text(state_params, f"SAM3 failed: {e}", f"SAM3 生成失败：{e}"))
             _run_failure_cleanup(unload_callback)
             return uploaded_mask_path
-        finally:
-            clear_sam3_cancel(cancel_token)
 
 
 def generate_mask_by_prompt(
@@ -436,7 +426,7 @@ def generate_mask_by_prompt(
     invert_mask,
     state_params=None,
     unload_callback=None,
-    cancel_token: str | None = "webui",
+    cancel_check=None,
 ):
     import enhanced.translator as translator
     from enhanced.vlm import vlm
@@ -456,17 +446,18 @@ def generate_mask_by_prompt(
         ))
         return uploaded_mask_path
     with worker.external_exclusive_task():
-        reset_sam3_cancel(cancel_token)
         try:
-            prompt_text = translator.normalize_prompt(vlm.translate(str(prompt_text), "Slim Model"))
-        except Exception:
-            prompt_text = translator.normalize_prompt(str(prompt_text))
-        cleanup_translator_and_vram()
-        try:
+            if cancel_check:
+                cancel_check()
+            try:
+                prompt_text = translator.normalize_prompt(vlm.translate(str(prompt_text), "Slim Model"))
+            except Exception:
+                prompt_text = translator.normalize_prompt(str(prompt_text))
+            cleanup_translator_and_vram()
             out_path = run_sam3_video_mask_by_prompt(
                 video_path=effective_video_path,
                 prompt=str(prompt_text),
-                cancel_check=make_sam3_cancel_check(cancel_token),
+                cancel_check=cancel_check,
                 **mask_opts(
                     score_threshold_detection,
                     new_det_thresh,
@@ -487,8 +478,6 @@ def generate_mask_by_prompt(
             gr.Warning(_sam3_text(state_params, f"SAM3 failed: {e}", f"SAM3 生成失败：{e}"))
             _run_failure_cleanup(unload_callback)
             return uploaded_mask_path
-        finally:
-            clear_sam3_cancel(cancel_token)
 
 
 def _scene_frontend_all_sam3_themes(scenes):
@@ -820,6 +809,25 @@ def _get_video_meta(video_path: str) -> tuple[float, int, int, int]:
     return fps, frame_count, width, height
 
 
+def get_editor_video_metadata(original_video_path, video_path, trim_payload, request_json):
+    request = _parse_editor_payload(request_json)
+    result = {"request_id": request.get("request_id"), "source_key": request.get("source_key")}
+    try:
+        source = resolve_sam3_backend_video_path(video_path, original_video_path, trim_payload)
+        if not source:
+            raise ValueError("No source video.")
+        fps, frames, width, height = _get_video_meta(source)
+        if not np.isfinite(fps) or fps <= 0 or frames <= 0:
+            raise ValueError("Invalid source frame metadata.")
+        result["sam3_input_video"] = {
+            "fps": fps, "frames": frames, "width": width, "height": height, "exact": True,
+        }
+    except Exception:
+        logger.exception("Could not read SAM3 editor frame metadata")
+        result["error"] = "Frame metadata is unavailable. Re-upload the video to animate this mask."
+    return json.dumps(result)
+
+
 def _is_video_file(path: str) -> bool:
     if not isinstance(path, str):
         return False
@@ -882,6 +890,12 @@ def _editor_payload_uses_static_mask(payload: dict) -> bool:
         return False
     mode = str(payload.get("mode", "") or "").strip().lower()
     return mode in {"static_boxes", "static_polygons"}
+
+
+def _editor_payload_uses_manual_mask(payload: dict) -> bool:
+    return _editor_payload_uses_static_mask(payload) or (
+        isinstance(payload, dict) and payload.get("mode") == "keyframed_polygons"
+    )
 
 
 def _normalize_points(points: list, width: int, height: int) -> list[list[float]]:
@@ -1005,6 +1019,72 @@ def _normalize_static_polygons(
         if len(normalized_points) >= 3:
             normalized_polygons.append(normalized_points)
     return normalized_polygons
+
+
+def _normalize_polygon_keyframes(keyframes, frame_count):
+    if not isinstance(keyframes, list) or not keyframes:
+        raise ValueError("No polygon keyframes were provided.")
+    normalized = []
+    topology = None
+    seen_frames = set()
+    for keyframe in keyframes:
+        if not isinstance(keyframe, dict):
+            raise ValueError("Invalid polygon keyframe.")
+        index = keyframe.get("frame_index")
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < frame_count:
+            raise ValueError("Polygon keyframe is outside the source video.")
+        if index in seen_frames:
+            raise ValueError("Duplicate polygon keyframe.")
+        polygons = keyframe.get("polygons")
+        if not isinstance(polygons, list) or not polygons:
+            raise ValueError("A polygon keyframe must contain polygons.")
+        normalized_polygons = []
+        for polygon in polygons:
+            if not isinstance(polygon, list) or len(polygon) < 3:
+                raise ValueError("A polygon must have at least three vertices.")
+            points = []
+            for point in polygon:
+                if not isinstance(point, dict) or "x" not in point or "y" not in point:
+                    raise ValueError("Invalid polygon keyframe vertex.")
+                x, y = float(point["x"]), float(point["y"])
+                if not np.isfinite(x) or not np.isfinite(y) or not (-0.5 <= x <= 1.5 and -0.5 <= y <= 1.5):
+                    raise ValueError("Invalid polygon keyframe coordinates.")
+                points.append((x, y))
+            normalized_polygons.append(points)
+        current_topology = tuple(len(polygon) for polygon in normalized_polygons)
+        if topology is not None and current_topology != topology:
+            raise ValueError("Polygon keyframes must have matching polygons and vertices.")
+        topology = current_topology
+        seen_frames.add(index)
+        normalized.append((index, normalized_polygons))
+    return sorted(normalized, key=lambda keyframe: keyframe[0])
+
+
+def _interpolate_polygon_keyframes(keyframes, frame_index):
+    right = bisect_right([keyframe[0] for keyframe in keyframes], frame_index)
+    if right == 0:
+        return keyframes[0][1]
+    if right == len(keyframes):
+        return keyframes[-1][1]
+    start, before = keyframes[right - 1]
+    end, after = keyframes[right]
+    amount = (frame_index - start) / (end - start)
+    return [
+        [(x + (nx - x) * amount, y + (ny - y) * amount)
+         for (x, y), (nx, ny) in zip(polygon, next_polygon)]
+        for polygon, next_polygon in zip(before, after)
+    ]
+
+
+def _rasterize_polygons(polygons, width, height):
+    mask = np.zeros((height, width), dtype=np.uint8)
+    for polygon in polygons:
+        pixels = np.asarray(
+            [[int(round(x * width)), int(round(y * height))] for x, y in polygon],
+            dtype=np.int32,
+        )
+        cv2.fillPoly(mask, [pixels], 255, lineType=cv2.LINE_8)
+    return mask
 
 
 def _select_binary_mask_from_outputs(
@@ -1452,7 +1532,9 @@ def _get_ffmpeg_exe() -> str | None:
     return which("ffmpeg")
 
 
-def _remux_or_reencode_for_browser_playback(src_path: str, dst_path: str, *, fps: float) -> bool:
+def _remux_or_reencode_for_browser_playback(src_path: str, dst_path: str, *, fps: float, cancel_check=None) -> bool:
+    if cancel_check is not None:
+        cancel_check()
     ffmpeg_exe = _get_ffmpeg_exe()
     if not ffmpeg_exe:
         return False
@@ -1491,8 +1573,32 @@ def _remux_or_reencode_for_browser_playback(src_path: str, dst_path: str, *, fps
             "+faststart",
             dst_path,
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            while True:
+                if cancel_check is not None:
+                    cancel_check()
+                try:
+                    process.communicate(timeout=0.2)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=3)
+        if cancel_check is not None:
+            cancel_check()
+        if process.returncode:
+            return False
         return os.path.isfile(dst_path) and os.path.getsize(dst_path) > 0
+    except Sam3Cancelled:
+        try:
+            if os.path.isfile(dst_path):
+                os.remove(dst_path)
+        except OSError:
+            pass
+        raise
     except Exception:
         return False
 
@@ -1503,9 +1609,12 @@ def normalize_mask_media_to_source_video(
     source_video_path: str,
     output_dir: str,
     node_id: str = "sam3v",
+    cancel_check=None,
 ) -> str:
     import hashlib
 
+    if cancel_check is not None:
+        cancel_check()
     fps, frame_count, width, height = _get_video_meta(str(source_video_path))
     fps = float(fps or 24.0)
     frame_count = max(1, int(frame_count or 1))
@@ -1514,11 +1623,11 @@ def normalize_mask_media_to_source_video(
     if width <= 1 or height <= 1:
         raise RuntimeError("source video dimensions are unavailable")
 
-    signature = f"{os.path.abspath(str(mask_path))}|{os.path.getmtime(mask_path)}|{os.path.abspath(str(source_video_path))}|{os.path.getmtime(source_video_path)}|{frame_count}|{width}x{height}|{fps}"
+    signature = f"mask_time_v2|{os.path.abspath(str(mask_path))}|{os.path.getmtime(mask_path)}|{os.path.abspath(str(source_video_path))}|{os.path.getmtime(source_video_path)}|{frame_count}|{width}x{height}|{fps}|{node_id or 'sam3v'}"
     digest = hashlib.sha256(signature.encode("utf-8", errors="ignore")).hexdigest()
     os.makedirs(output_dir, exist_ok=True)
-    raw_out_path = os.path.abspath(os.path.join(output_dir, f"{node_id or 'sam3v'}.uploaded_mask.{digest[:16]}.raw.mp4"))
-    out_path = os.path.abspath(os.path.join(output_dir, f"{node_id or 'sam3v'}.uploaded_mask.{digest[:16]}.mp4"))
+    raw_out_path = os.path.abspath(os.path.join(output_dir, f"sam3v.uploaded_mask.{digest[:16]}.raw.mp4"))
+    out_path = os.path.abspath(os.path.join(output_dir, f"sam3v.uploaded_mask.{digest[:16]}.mp4"))
     if os.path.exists(out_path):
         return out_path
 
@@ -1543,20 +1652,39 @@ def normalize_mask_media_to_source_video(
             frame = mask_frame_to_bgr(cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED))
             if frame is None:
                 raise RuntimeError("failed to read uploaded mask image")
-            for _ in range(frame_count):
+            for i in range(frame_count):
+                if cancel_check is not None and i % 8 == 0:
+                    cancel_check()
                 writer.write(frame)
         else:
             cap = cv2.VideoCapture(str(mask_path))
             if not cap.isOpened():
                 raise RuntimeError("failed to read uploaded mask video")
             last_frame = None
+            mask_index = -1
+            mask_ended = False
             try:
-                for _ in range(frame_count):
-                    ok, frame = cap.read()
-                    if ok:
-                        converted = mask_frame_to_bgr(frame)
-                        if converted is not None:
-                            last_frame = converted
+                mask_fps = float(cap.get(cv2.CAP_PROP_FPS) or fps)
+                if not np.isfinite(mask_fps) or mask_fps <= 0:
+                    mask_fps = fps
+                frame_step = mask_fps / fps
+                for i in range(frame_count):
+                    if cancel_check is not None and i % 8 == 0:
+                        cancel_check()
+                    # Avoid rounding an exact frame boundary down.
+                    target_index = int(i * frame_step + 1e-9)
+                    frame = None
+                    while not mask_ended and mask_index < target_index:
+                        if cancel_check is not None and (mask_index + 1) % 8 == 0:
+                            cancel_check()
+                        ok, next_frame = cap.read()
+                        if not ok:
+                            mask_ended = True
+                            break
+                        mask_index += 1
+                        frame = next_frame
+                    if frame is not None:
+                        last_frame = mask_frame_to_bgr(frame)
                     if last_frame is None:
                         raise RuntimeError("uploaded mask video contains no readable frames")
                     writer.write(last_frame)
@@ -1567,9 +1695,13 @@ def normalize_mask_media_to_source_video(
 
     remuxed = False
     try:
-        remuxed = _remux_or_reencode_for_browser_playback(raw_out_path, out_path, fps=fps)
+        remuxed = _remux_or_reencode_for_browser_playback(raw_out_path, out_path, fps=fps, cancel_check=cancel_check)
+    except Sam3Cancelled:
+        raise
     except Exception:
         remuxed = False
+    if cancel_check is not None:
+        cancel_check()
     if not remuxed:
         try:
             os.replace(raw_out_path, out_path)
@@ -1597,6 +1729,7 @@ def _write_mask_video_from_frames(
     debug_print: bool,
     default_mask: np.ndarray | None = None,
     cancel_check=None,
+    mask_at_frame=None,
 ) -> str:
     out_dir = sam3_mask_output_dir()
     out_path = os.path.join(out_dir, f"sam3_mask_{uuid.uuid4().hex}.mp4")
@@ -1621,7 +1754,7 @@ def _write_mask_video_from_frames(
         for i in range(int(total)):
             if cancel_check is not None and (i % 8) == 0:
                 cancel_check()
-            mask = masks_by_frame.get(i, default_mask)
+            mask = mask_at_frame(i) if mask_at_frame is not None else masks_by_frame.get(i, default_mask)
             if mask is None:
                 frame = np.zeros((height, width), dtype=np.uint8)
             else:
@@ -1636,10 +1769,12 @@ def _write_mask_video_from_frames(
     finally:
         writer.release()
 
+    if cancel_check is not None:
+        cancel_check()
     if force_browser_compatible_output:
+        ok = _remux_or_reencode_for_browser_playback(raw_out_path, out_path, fps=float(out_fps), cancel_check=cancel_check)
         if cancel_check is not None:
             cancel_check()
-        ok = _remux_or_reencode_for_browser_playback(raw_out_path, out_path, fps=float(out_fps))
         if ok:
             try:
                 if os.path.isfile(raw_out_path):
@@ -1724,6 +1859,44 @@ def run_static_mask(
     )
 
 
+def run_keyframed_polygon_mask(
+    video_path: str,
+    editor_payload_json: str,
+    force_browser_compatible_output: bool = True,
+    invert_mask: bool = False,
+    debug_print: bool = False,
+    cancel_check=None,
+) -> str:
+    if not video_path or not str(video_path).strip():
+        raise ValueError("video_path is empty")
+    if cancel_check is not None:
+        cancel_check()
+    fps, frame_count, width, height = _get_video_meta(os.path.abspath(str(video_path)))
+    if frame_count <= 0 or width <= 0 or height <= 0 or not np.isfinite(fps) or fps <= 0:
+        raise ValueError("Could not read source video frame metadata.")
+    payload = _parse_editor_payload(editor_payload_json)
+    editor_fps = float(payload.get("fps", 0))
+    if not np.isfinite(editor_fps) or abs(editor_fps - fps) > max(0.001, fps * 0.0001):
+        raise ValueError("The source video frame rate changed. Reopen the mask editor.")
+    keyframes = _normalize_polygon_keyframes(payload.get("keyframes"), frame_count)
+    return _write_mask_video_from_frames(
+        masks_by_frame={},
+        mask_at_frame=lambda index: _rasterize_polygons(
+            _interpolate_polygon_keyframes(keyframes, index), width, height,
+        ),
+        fps=fps,
+        frame_count=frame_count,
+        width=width,
+        height=height,
+        postprocess_strength=0,
+        postprocess_min_area=0,
+        force_browser_compatible_output=force_browser_compatible_output,
+        invert_mask=invert_mask,
+        debug_print=debug_print,
+        cancel_check=cancel_check,
+    )
+
+
 def run_sam3_video_mask(
     video_path: str,
     editor_payload_json: str,
@@ -1752,8 +1925,9 @@ def run_sam3_video_mask(
         cancel_check()
 
     payload = _parse_editor_payload(editor_payload_json)
-    if _editor_payload_uses_static_mask(payload):
-        return run_static_mask(
+    if _editor_payload_uses_manual_mask(payload):
+        mask_runner = run_keyframed_polygon_mask if payload.get("mode") == "keyframed_polygons" else run_static_mask
+        return mask_runner(
             video_path=video_path,
             editor_payload_json=editor_payload_json,
             force_browser_compatible_output=force_browser_compatible_output,
@@ -1820,294 +1994,6 @@ def run_sam3_video_mask(
             cancel_check=cancel_check,
         )
     finally:
-        if unload_after_run:
-            unload_sam3_video_predictor()
-
-    predictor = None
-    model = None
-    session_id = None
-    tmp_frames_dir = None
-    resource_path = video_path
-    session_num_frames = None
-    masks_by_frame: dict[int, np.ndarray] = {}
-    try:
-        checkpoint_path = _resolve_sam3_checkpoint(None)
-        device_index = int(torch.cuda.current_device()) if torch.cuda.is_available() else 0
-        effective_image_size = _auto_choose_sam3_image_size(int(image_size), device_index=device_index)
-        predictor = _load_video_predictor(checkpoint_path, image_size=effective_image_size)
-        model = getattr(predictor, "model", None)
-        dtype = _precision_to_dtype(precision)
-        _apply_video_model_defaults(
-            model,
-            score_threshold_detection=score_threshold_detection,
-            new_det_thresh=new_det_thresh,
-            assoc_iou_thresh=0.1,
-            det_nms_thresh=det_nms_thresh,
-            hotstart_delay=15,
-            hotstart_unmatch_thresh=8,
-            hotstart_dup_thresh=8,
-            suppress_unmatched_only_within_hotstart=True,
-            min_trk_keep_alive=-1,
-            max_trk_keep_alive=30,
-            init_trk_keep_alive=30,
-            suppress_overlapping_based_on_recent_occlusion_threshold=0.7,
-            suppress_det_close_to_boundary=False,
-            fill_hole_area=fill_hole_area,
-            recondition_every_nth_frame=recondition_every_nth_frame,
-            masklet_confirmation_enable=False,
-            decrease_trk_keep_alive_for_empty_masklets=False,
-            image_size=effective_image_size,
-        )
-        _sync_bias_dtype_with_weight(model)
-
-        fps, frame_count, width, height = _get_video_meta(video_path)
-        payload = _parse_editor_payload(editor_payload_json)
-        offload_video_to_cpu = _env_flag("SIMPLEAI_SAM3_OFFLOAD_VIDEO_TO_CPU", True)
-        async_loading_frames = _env_flag("SIMPLEAI_SAM3_ASYNC_LOADING_FRAMES", True)
-        offload_state_to_cpu = _env_flag("SIMPLEAI_SAM3_OFFLOAD_STATE_TO_CPU", True)
-        offload_cached_masks_to_cpu = _env_flag("SIMPLEAI_SAM3_OFFLOAD_CACHED_MASKS_TO_CPU", True)
-        if debug_print:
-            logger.info(
-                "SAM3(webui) video=%s size_bytes=%s fps=%s frames=%s w=%s h=%s image_size=%s precision=%s dtype=%s model_params=%s offload_video_to_cpu=%s async_loading_frames=%s offload_state_to_cpu=%s offload_cached_masks_to_cpu=%s elastic_vram=%s",
-                str(video_path),
-                str(_safe_get_video_file_size(video_path)),
-                float(fps),
-                int(frame_count),
-                int(width),
-                int(height),
-                int(effective_image_size),
-                str(precision),
-                str(dtype),
-                str(_collect_model_params(model)),
-                bool(offload_video_to_cpu),
-                bool(async_loading_frames),
-                bool(offload_state_to_cpu),
-                bool(offload_cached_masks_to_cpu),
-                str(_apply_elastic_vram_limit_for_sam3(device_index=int(torch.cuda.current_device()))),
-            )
-
-        payload_frame_index = None
-        if payload.get("frame_index", None) is not None:
-            try:
-                payload_frame_index = int(payload.get("frame_index"))
-            except Exception:
-                payload_frame_index = None
-        if payload_frame_index is None and payload.get("frame_time", None) is not None:
-            try:
-                payload_frame_index = int(round(float(payload.get("frame_time", 0.0) or 0.0) * float(fps or 0.0)))
-            except Exception:
-                payload_frame_index = None
-        frame_index = int(payload_frame_index or 0)
-        frame_index = max(0, min(frame_count - 1, frame_index)) if frame_count > 0 else max(0, frame_index)
-
-        pos_points = _normalize_points(payload.get("positive_coords", []), width, height)
-        neg_points = _normalize_points(payload.get("negative_coords", []), width, height)
-        bbox_xywh = _normalize_bbox(payload.get("bbox", None), width, height)
-        points, point_labels = [], []
-        if pos_points:
-            points.extend(pos_points)
-            point_labels.extend([1] * len(pos_points))
-        if neg_points:
-            points.extend(neg_points)
-            point_labels.extend([0] * len(neg_points))
-
-        prompt_text = str(payload.get("prompt", "") or "").strip()
-        if not bbox_xywh and not points and not prompt_text:
-            raise ValueError("No prompt provided. Please add points in editor or provide prompt text.")
-
-        preferred_obj_id = 1 if (points and not bbox_xywh) else None
-
-        with torch.inference_mode(), _autocast_context(dtype):
-            try:
-                predictor.async_loading_frames = bool(async_loading_frames)
-                predictor.video_loader_type = _choose_video_loader_type()
-            except Exception:
-                pass
-            if (
-                getattr(predictor, "video_loader_type", "cv2") != "torchcodec"
-                and getattr(predictor, "async_loading_frames", False)
-                and _is_video_file(video_path)
-                and os.path.isfile(video_path)
-            ):
-                try:
-                    tmp_frames_dir = _extract_video_to_temp_frames(
-                        video_path, max_frames=int(frame_count) if int(frame_count) > 0 else -1
-                    )
-                    if _has_image_files(tmp_frames_dir):
-                        resource_path = tmp_frames_dir
-                    else:
-                        raise RuntimeError("No frames extracted from video.")
-                except Exception:
-                    if tmp_frames_dir:
-                        try:
-                            import shutil
-
-                            shutil.rmtree(tmp_frames_dir, ignore_errors=True)
-                        except Exception:
-                            pass
-                    tmp_frames_dir = None
-                    resource_path = video_path
-            response = predictor.handle_request(
-                request=dict(
-                    type="start_session",
-                    resource_path=resource_path,
-                    session_id=None,
-                    offload_video_to_cpu=bool(offload_video_to_cpu),
-                    async_loading_frames=bool(async_loading_frames),
-                    video_loader_type=_choose_video_loader_type(),
-                )
-            )
-            session_id = response.get("session_id", None)
-            if not session_id:
-                raise RuntimeError("Failed to start SAM3 session")
-
-            session_num_frames = _get_session_num_frames(predictor, session_id)
-            if session_num_frames is not None:
-                frame_index = max(0, min(int(session_num_frames) - 1, int(frame_index)))
-
-            predictor.handle_request(
-                request=dict(
-                    type="add_prompt",
-                    session_id=session_id,
-                    frame_index=frame_index,
-                    text=None if (bbox_xywh or points) else (prompt_text or None),
-                    points=points if (points and not bbox_xywh) else None,
-                    point_labels=point_labels if (points and not bbox_xywh) else None,
-                    bounding_boxes=bbox_xywh if bbox_xywh else None,
-                    bounding_box_labels=([1] * len(bbox_xywh)) if bbox_xywh else None,
-                    obj_id=1,
-                )
-            )
-
-            for r in predictor.handle_stream_request(
-                request=dict(
-                    type="propagate_in_video",
-                    session_id=session_id,
-                    propagation_direction=propagation_direction,
-                    start_frame_index=frame_index,
-                    max_frame_num_to_track=None if max_frames_to_track == -1 else int(max_frames_to_track),
-                )
-            ):
-                if cancel_check is not None:
-                    cancel_check()
-                frame_idx = int(r.get("frame_index", 0) or 0)
-                outputs = r.get("outputs", {}) or {}
-                merged = _select_binary_mask_from_outputs(outputs, preferred_obj_id=preferred_obj_id)
-                if merged is None:
-                    continue
-                m = _postprocess_mask_u8(merged.astype(np.uint8) * 255, strength=postprocess_strength, min_area=postprocess_min_area)
-                masks_by_frame[frame_idx] = m
-
-            if debug_print:
-                try:
-                    if masks_by_frame:
-                        keys = sorted(masks_by_frame.keys())
-                        expected_total = frame_count if frame_count > 0 else (int(keys[-1]) + 1)
-                        first_missing = [i for i in range(int(min(30, expected_total))) if i not in masks_by_frame]
-                        logger.info(
-                            "SAM3(webui) masks: frames_with_mask=%s min=%s max=%s expected_total=%s missing_first=%s",
-                            int(len(keys)),
-                            int(keys[0]),
-                            int(keys[-1]),
-                            int(expected_total),
-                            str(first_missing),
-                        )
-                    else:
-                        logger.info("SAM3(webui) masks: empty (no frames received)")
-                except Exception:
-                    logger.exception("SAM3(webui) masks: failed to summarize frame coverage")
-    finally:
-        if close_after_propagation and predictor is not None and session_id:
-            try:
-                predictor.handle_request(request=dict(type="close_session", session_id=session_id))
-            except Exception:
-                pass
-        if tmp_frames_dir:
-            try:
-                import shutil
-
-                shutil.rmtree(tmp_frames_dir, ignore_errors=True)
-            except Exception:
-                pass
-        try:
-            del model
-        except Exception:
-            pass
-        try:
-            del predictor
-        except Exception:
-            pass
-
-    result = None
-    try:
-        out_dir = sam3_mask_output_dir()
-        out_path = os.path.join(out_dir, f"sam3_mask_{uuid.uuid4().hex}.mp4")
-        ffmpeg_ok = bool(_get_ffmpeg_exe()) if force_browser_compatible_output else False
-        raw_ext = ".avi" if ffmpeg_ok else ".mp4"
-        raw_out_path = os.path.join(out_dir, f"sam3_mask_{uuid.uuid4().hex}_raw{raw_ext}")
-
-        if width <= 0 or height <= 0:
-            if masks_by_frame:
-                any_mask = next(iter(masks_by_frame.values()))
-                height, width = int(any_mask.shape[0]), int(any_mask.shape[1])
-            else:
-                raise RuntimeError("Could not infer video dimensions for output.")
-
-        out_fps = fps if fps > 0 else 24.0
-        writer = _open_mask_video_writer(raw_out_path, fps=float(out_fps), width=int(width), height=int(height))
-        if not writer.isOpened():
-            raise RuntimeError("Failed to open VideoWriter for mask output.")
-
-        total = (
-            frame_count
-            if frame_count > 0
-            else (int(session_num_frames) if session_num_frames is not None else (max(masks_by_frame.keys()) + 1 if masks_by_frame else 0))
-        )
-        for i in range(int(total)):
-            if cancel_check is not None and (i % 8) == 0:
-                cancel_check()
-            mask = masks_by_frame.get(i, None)
-            if mask is None:
-                frame = np.zeros((height, width), dtype=np.uint8)
-            else:
-                if mask.shape[0] != height or mask.shape[1] != width:
-                    frame = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
-                else:
-                    frame = mask
-            if invert_mask:
-                frame = 255 - frame
-            bgr = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-            writer.write(bgr)
-        writer.release()
-
-        if force_browser_compatible_output:
-            ok = _remux_or_reencode_for_browser_playback(raw_out_path, out_path, fps=float(out_fps))
-            if ok:
-                try:
-                    if os.path.isfile(raw_out_path):
-                        os.remove(raw_out_path)
-                except Exception:
-                    pass
-                if debug_print:
-                    logger.info("SAM3(webui) mask video output: %s", str(out_path))
-                result = out_path
-            else:
-                try:
-                    if os.path.isfile(out_path):
-                        os.remove(out_path)
-                except Exception:
-                    pass
-                if debug_print:
-                    logger.info("SAM3(webui) mask video output: %s", str(raw_out_path))
-                result = raw_out_path
-        else:
-            result = out_path
-        return result
-    finally:
-        try:
-            del masks_by_frame
-        except Exception:
-            pass
         if unload_after_run:
             unload_sam3_video_predictor()
 
@@ -2187,271 +2073,6 @@ def run_sam3_video_mask_by_prompt(
         if unload_after_run:
             unload_sam3_video_predictor()
 
-    predictor = None
-    model = None
-    session_id = None
-    tmp_frames_dir = None
-    resource_path = video_path
-    session_num_frames = None
-    masks_by_frame: dict[int, np.ndarray] = {}
-    try:
-        checkpoint_path = _resolve_sam3_checkpoint(None)
-        device_index = int(torch.cuda.current_device()) if torch.cuda.is_available() else 0
-        effective_image_size = _auto_choose_sam3_image_size(int(image_size), device_index=device_index)
-        predictor = _load_video_predictor(checkpoint_path, image_size=effective_image_size)
-        model = getattr(predictor, "model", None)
-        dtype = _precision_to_dtype(precision)
-        _apply_video_model_defaults(
-            model,
-            score_threshold_detection=score_threshold_detection,
-            new_det_thresh=new_det_thresh,
-            assoc_iou_thresh=0.1,
-            det_nms_thresh=det_nms_thresh,
-            hotstart_delay=15,
-            hotstart_unmatch_thresh=8,
-            hotstart_dup_thresh=8,
-            suppress_unmatched_only_within_hotstart=True,
-            min_trk_keep_alive=-1,
-            max_trk_keep_alive=30,
-            init_trk_keep_alive=30,
-            suppress_overlapping_based_on_recent_occlusion_threshold=0.7,
-            suppress_det_close_to_boundary=False,
-            fill_hole_area=fill_hole_area,
-            recondition_every_nth_frame=recondition_every_nth_frame,
-            masklet_confirmation_enable=False,
-            decrease_trk_keep_alive_for_empty_masklets=False,
-            image_size=effective_image_size,
-        )
-        _sync_bias_dtype_with_weight(model)
-
-        fps, frame_count, width, height = _get_video_meta(video_path)
-        offload_video_to_cpu = _env_flag("SIMPLEAI_SAM3_OFFLOAD_VIDEO_TO_CPU", True)
-        async_loading_frames = _env_flag("SIMPLEAI_SAM3_ASYNC_LOADING_FRAMES", True)
-        offload_state_to_cpu = _env_flag("SIMPLEAI_SAM3_OFFLOAD_STATE_TO_CPU", True)
-        offload_cached_masks_to_cpu = _env_flag("SIMPLEAI_SAM3_OFFLOAD_CACHED_MASKS_TO_CPU", True)
-        frame_index = int(round(float(frame_time or 0.0) * fps)) if fps > 0 else 0
-        frame_index = max(0, min(frame_count - 1, frame_index)) if frame_count > 0 else max(0, frame_index)
-        if debug_print:
-            logger.info(
-                "SAM3(webui) video=%s size_bytes=%s fps=%s frames=%s w=%s h=%s image_size=%s precision=%s dtype=%s model_params=%s offload_video_to_cpu=%s async_loading_frames=%s offload_state_to_cpu=%s offload_cached_masks_to_cpu=%s elastic_vram=%s prompt=%s",
-                str(video_path),
-                str(_safe_get_video_file_size(video_path)),
-                float(fps),
-                int(frame_count),
-                int(width),
-                int(height),
-                int(effective_image_size),
-                str(precision),
-                str(dtype),
-                str(_collect_model_params(model)),
-                bool(offload_video_to_cpu),
-                bool(async_loading_frames),
-                bool(offload_state_to_cpu),
-                bool(offload_cached_masks_to_cpu),
-                str(_apply_elastic_vram_limit_for_sam3(device_index=int(torch.cuda.current_device()))),
-                str(prompt),
-            )
-
-        with torch.inference_mode(), _autocast_context(dtype):
-            try:
-                predictor.async_loading_frames = bool(async_loading_frames)
-                predictor.video_loader_type = _choose_video_loader_type()
-            except Exception:
-                pass
-            if (
-                getattr(predictor, "video_loader_type", "cv2") != "torchcodec"
-                and getattr(predictor, "async_loading_frames", False)
-                and _is_video_file(video_path)
-                and os.path.isfile(video_path)
-            ):
-                try:
-                    tmp_frames_dir = _extract_video_to_temp_frames(
-                        video_path, max_frames=int(frame_count) if int(frame_count) > 0 else -1
-                    )
-                    if _has_image_files(tmp_frames_dir):
-                        resource_path = tmp_frames_dir
-                    else:
-                        raise RuntimeError("No frames extracted from video.")
-                except Exception:
-                    if tmp_frames_dir:
-                        try:
-                            import shutil
-
-                            shutil.rmtree(tmp_frames_dir, ignore_errors=True)
-                        except Exception:
-                            pass
-                    tmp_frames_dir = None
-                    resource_path = video_path
-            response = predictor.handle_request(
-                request=dict(
-                    type="start_session",
-                    resource_path=resource_path,
-                    session_id=None,
-                    offload_video_to_cpu=bool(offload_video_to_cpu),
-                    async_loading_frames=bool(async_loading_frames),
-                    video_loader_type=_choose_video_loader_type(),
-                )
-            )
-            session_id = response.get("session_id", None)
-            if not session_id:
-                raise RuntimeError("Failed to start SAM3 session")
-
-            session_num_frames = _get_session_num_frames(predictor, session_id)
-            if session_num_frames is not None:
-                frame_index = max(0, min(int(session_num_frames) - 1, int(frame_index)))
-
-            predictor.handle_request(
-                request=dict(
-                    type="add_prompt",
-                    session_id=session_id,
-                    frame_index=frame_index,
-                    text=prompt,
-                    points=None,
-                    point_labels=None,
-                    bounding_boxes=None,
-                    bounding_box_labels=None,
-                    obj_id=1,
-                )
-            )
-
-            for r in predictor.handle_stream_request(
-                request=dict(
-                    type="propagate_in_video",
-                    session_id=session_id,
-                    propagation_direction=propagation_direction,
-                    start_frame_index=frame_index,
-                    max_frame_num_to_track=None if max_frames_to_track == -1 else int(max_frames_to_track),
-                )
-            ):
-                if cancel_check is not None:
-                    cancel_check()
-                frame_idx = int(r.get("frame_index", 0) or 0)
-                outputs = r.get("outputs", {}) or {}
-                mask = outputs.get("out_binary_masks", None)
-                if mask is None:
-                    continue
-                if isinstance(mask, np.ndarray) and mask.ndim == 3 and mask.shape[0] > 0:
-                    merged = np.any(mask, axis=0)
-                elif isinstance(mask, np.ndarray) and mask.ndim == 2:
-                    merged = mask.astype(bool)
-                else:
-                    continue
-                m = _postprocess_mask_u8(merged.astype(np.uint8) * 255, strength=postprocess_strength, min_area=postprocess_min_area)
-                masks_by_frame[frame_idx] = m
-
-            if debug_print:
-                try:
-                    if masks_by_frame:
-                        keys = sorted(masks_by_frame.keys())
-                        expected_total = frame_count if frame_count > 0 else (int(keys[-1]) + 1)
-                        first_missing = [i for i in range(int(min(30, expected_total))) if i not in masks_by_frame]
-                        logger.info(
-                            "SAM3(webui) masks: frames_with_mask=%s min=%s max=%s expected_total=%s missing_first=%s",
-                            int(len(keys)),
-                            int(keys[0]),
-                            int(keys[-1]),
-                            int(expected_total),
-                            str(first_missing),
-                        )
-                    else:
-                        logger.info("SAM3(webui) masks: empty (no frames received)")
-                except Exception:
-                    logger.exception("SAM3(webui) masks: failed to summarize frame coverage")
-    finally:
-        if close_after_propagation and predictor is not None and session_id:
-            try:
-                predictor.handle_request(request=dict(type="close_session", session_id=session_id))
-            except Exception:
-                pass
-        if tmp_frames_dir:
-            try:
-                import shutil
-
-                shutil.rmtree(tmp_frames_dir, ignore_errors=True)
-            except Exception:
-                pass
-        try:
-            del model
-        except Exception:
-            pass
-        try:
-            del predictor
-        except Exception:
-            pass
-
-    result = None
-    try:
-        out_dir = sam3_mask_output_dir()
-        out_path = os.path.join(out_dir, f"sam3_mask_{uuid.uuid4().hex}.mp4")
-        ffmpeg_ok = bool(_get_ffmpeg_exe()) if force_browser_compatible_output else False
-        raw_ext = ".avi" if ffmpeg_ok else ".mp4"
-        raw_out_path = os.path.join(out_dir, f"sam3_mask_{uuid.uuid4().hex}_raw{raw_ext}")
-
-        if width <= 0 or height <= 0:
-            if masks_by_frame:
-                any_mask = next(iter(masks_by_frame.values()))
-                height, width = int(any_mask.shape[0]), int(any_mask.shape[1])
-            else:
-                raise RuntimeError("Could not infer video dimensions for output.")
-
-        out_fps = fps if fps > 0 else 24.0
-        writer = _open_mask_video_writer(raw_out_path, fps=float(out_fps), width=int(width), height=int(height))
-        if not writer.isOpened():
-            raise RuntimeError("Failed to open VideoWriter for mask output.")
-
-        total = (
-            frame_count
-            if frame_count > 0
-            else (int(session_num_frames) if session_num_frames is not None else (max(masks_by_frame.keys()) + 1 if masks_by_frame else 0))
-        )
-        for i in range(int(total)):
-            if cancel_check is not None and (i % 8) == 0:
-                cancel_check()
-            mask = masks_by_frame.get(i, None)
-            if mask is None:
-                frame = np.zeros((height, width), dtype=np.uint8)
-            else:
-                if mask.shape[0] != height or mask.shape[1] != width:
-                    frame = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
-                else:
-                    frame = mask
-            if invert_mask:
-                frame = 255 - frame
-            bgr = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-            writer.write(bgr)
-        writer.release()
-
-        if force_browser_compatible_output:
-            ok = _remux_or_reencode_for_browser_playback(raw_out_path, out_path, fps=float(out_fps))
-            if ok:
-                try:
-                    if os.path.isfile(raw_out_path):
-                        os.remove(raw_out_path)
-                except Exception:
-                    pass
-                if debug_print:
-                    logger.info("SAM3(webui) mask video output: %s", str(out_path))
-                result = out_path
-            else:
-                try:
-                    if os.path.isfile(out_path):
-                        os.remove(out_path)
-                except Exception:
-                    pass
-                if debug_print:
-                    logger.info("SAM3(webui) mask video output: %s", str(raw_out_path))
-                result = raw_out_path
-        else:
-            result = out_path
-        return result
-    finally:
-        try:
-            del masks_by_frame
-        except Exception:
-            pass
-        if unload_after_run:
-            unload_sam3_video_predictor()
-
 
 def get_viewer_html() -> str:
     glue_js = r"""
@@ -2465,6 +2086,7 @@ def get_viewer_html() -> str:
     pointsPos: [],
     pointsNeg: [],
     polygons: [],
+    polygonKeyframes: [],
     polygonDraft: [],
     polygonHover: null,
     polygonSnapToStart: false,
@@ -2477,7 +2099,21 @@ def get_viewer_html() -> str:
     videoWidth: 0,
     videoHeight: 0,
     time: 0,
+    fps: 0,
+    frameCount: 0,
+    frameIndex: 0,
+    sourceKey: "",
+    sourceMeta: {},
+    metadataPending: false,
+    metadataRequestId: "",
+    metadataInitialized: false,
+    videoStartTime: 0,
+    seekTarget: 0,
+    seekRetries: 0,
   };
+  let savedEditor = null;
+  let metadataSerial = 0;
+  let metadataTimeout = null;
 
   const $ = (id) => document.getElementById(id);
   const backdrop = $("sam3_frames_modal_backdrop");
@@ -2487,6 +2123,16 @@ def get_viewer_html() -> str:
   const hiddenVideo = $("sam3_hidden_video");
   const slider = $("sam3_time_slider");
   const label = $("sam3_frame_label");
+  const frameNumber = $("sam3_frame_number");
+  const frameCountLabel = $("sam3_frame_count");
+  const keyframeMarkers = $("sam3_keyframe_markers");
+  const keyframeControls = $("sam3_keyframe_controls");
+  const btnPrevFrame = $("sam3_prev_frame");
+  const btnNextFrame = $("sam3_next_frame");
+  const btnPrevKeyframe = $("sam3_prev_keyframe");
+  const btnNextKeyframe = $("sam3_next_keyframe");
+  const btnAddKeyframe = $("sam3_add_keyframe");
+  const btnDeleteKeyframe = $("sam3_delete_keyframe");
   const hint = $("sam3_frames_hint");
   const hintMode = $("sam3_hint_mode");
   const hintAction = $("sam3_hint_action");
@@ -2509,6 +2155,8 @@ def get_viewer_html() -> str:
 
   const forceCloseModal = () => {
     state.open = false;
+    clearTimeout(metadataTimeout);
+    state.metadataRequestId = "";
     state.polygonDraft = [];
     state.polygonHover = null;
     state.polygonSnapToStart = false;
@@ -2547,6 +2195,93 @@ def get_viewer_html() -> str:
   };
 
   ensureModalPortal();
+
+  const text = (key, values = {}) => {
+    const stage = window.simpleaiTopbarSystemParams || {};
+    const lang = String(stage.__lang || "en").toLowerCase();
+    const translated = window.SimpAII18n?.t
+      ? window.SimpAII18n.t(key, undefined, stage)
+      : (/^(cn|zh)/.test(lang) ? (window.localization?.[key] || key) : key);
+    return translated.replace(/\{(\w+)\}/g, (match, name) => String(values[name] ?? match));
+  };
+  const localizeControls = () => {
+    backdrop.querySelectorAll("[data-sam3-label]").forEach(el => {
+      const value = text(el.dataset.sam3Label);
+      el.title = value;
+      el.setAttribute("aria-label", value);
+      if (el.dataset.sam3Text === "true") el.textContent = value;
+    });
+  };
+  const clonePolygons = polygons => polygons.map(polygon => polygon.map(point => ({x:point.x, y:point.y})));
+  const cloneKeyframes = keyframes => keyframes.map(keyframe => ({
+    frame_index: keyframe.frame_index,
+    polygons: clonePolygons(keyframe.polygons),
+  }));
+  const polygonsAtFrame = index => {
+    const keyframes = state.polygonKeyframes;
+    if (!keyframes.length) return clonePolygons(state.polygons);
+    const right = keyframes.findIndex(keyframe => keyframe.frame_index > index);
+    if (right === 0) return clonePolygons(keyframes[0].polygons);
+    if (right < 0) return clonePolygons(keyframes[keyframes.length - 1].polygons);
+    const before = keyframes[right - 1], after = keyframes[right];
+    const amount = (index - before.frame_index) / (after.frame_index - before.frame_index);
+    return before.polygons.map((polygon, polygonIndex) => polygon.map((point, vertexIndex) => {
+      const next = after.polygons[polygonIndex][vertexIndex];
+      return {x:point.x + (next.x - point.x) * amount, y:point.y + (next.y - point.y) * amount};
+    }));
+  };
+  const recordPolygonKeyframe = () => {
+    if (!state.polygons.length || state.fps <= 0) return;
+    const current = state.polygonKeyframes.findIndex(keyframe => keyframe.frame_index === state.frameIndex);
+    const keyframe = {frame_index:state.frameIndex, polygons:clonePolygons(state.polygons)};
+    if (current >= 0) state.polygonKeyframes[current] = keyframe;
+    else state.polygonKeyframes.push(keyframe);
+    state.polygonKeyframes.sort((a, b) => a.frame_index - b.frame_index);
+  };
+  const appendPolygon = polygon => {
+    state.polygons.push(polygon);
+    state.polygonKeyframes.forEach(keyframe => {
+      keyframe.polygons.push(polygon.map(point => ({x:point.x, y:point.y})));
+    });
+    recordPolygonKeyframe();
+  };
+  const updateTimeline = () => {
+    const hasFrames = state.fps > 0 && state.frameCount > 0;
+    const lastFrame = Math.max(0, state.frameCount - 1);
+    slider.max = String(hasFrames ? lastFrame : 1000);
+    slider.disabled = state.metadataPending;
+    slider.value = String(hasFrames ? state.frameIndex : Math.round(state.time / (state.duration || 1) * 1000));
+    frameNumber.disabled = !hasFrames;
+    frameNumber.max = String(state.frameCount || 1);
+    frameNumber.value = String(state.frameIndex + 1);
+    frameCountLabel.textContent = hasFrames ? "/ " + state.frameCount : "";
+    label.textContent = state.time.toFixed(3) + "s";
+    btnPrevFrame.disabled = !hasFrames || state.frameIndex <= 0 || state.polygonDraft.length > 0;
+    btnNextFrame.disabled = !hasFrames || state.frameIndex >= lastFrame || state.polygonDraft.length > 0;
+    keyframeControls.hidden = state.mode !== "polygon";
+    const atKeyframe = state.polygonKeyframes.some(keyframe => keyframe.frame_index === state.frameIndex);
+    btnAddKeyframe.disabled = !hasFrames || !state.polygons.length || !!state.polygonDraft.length || atKeyframe;
+    btnAddKeyframe.title = text(hasFrames ? "Add mask keyframe" : "Frame metadata is unavailable. Re-upload the video to animate this mask.");
+    btnDeleteKeyframe.disabled = !hasFrames || !atKeyframe || !!state.polygonDraft.length;
+    btnPrevKeyframe.disabled = !hasFrames || !!state.polygonDraft.length || !state.polygonKeyframes.some(keyframe => keyframe.frame_index < state.frameIndex);
+    btnNextKeyframe.disabled = !hasFrames || !!state.polygonDraft.length || !state.polygonKeyframes.some(keyframe => keyframe.frame_index > state.frameIndex);
+    btnConfirm.disabled = state.metadataPending;
+    keyframeMarkers.replaceChildren();
+    if (state.mode !== "polygon") return;
+    state.polygonKeyframes.forEach(keyframe => {
+      const marker = document.createElement("button");
+      marker.type = "button";
+      marker.className = "sam3_keyframe_marker" + (keyframe.frame_index === state.frameIndex ? " active" : "");
+      marker.style.left = (keyframe.frame_index / (lastFrame || 1) * 100) + "%";
+      marker.dataset.frameIndex = String(keyframe.frame_index);
+      marker.disabled = state.metadataPending || !hasFrames;
+      marker.title = text("Keyframe at frame {frame}", {frame:keyframe.frame_index + 1});
+      marker.setAttribute("aria-label", marker.title);
+      marker.setAttribute("aria-pressed", String(keyframe.frame_index === state.frameIndex));
+      marker.addEventListener("click", () => seekToTime(keyframe.frame_index / state.fps));
+      keyframeMarkers.appendChild(marker);
+    });
+  };
 
   const editorGeometry = () => {
     const frameWidth = Math.max(1, state.videoWidth || 1);
@@ -2587,16 +2322,18 @@ def get_viewer_html() -> str:
   };
 
   const updateUndoRedo = () => {
-    btnUndo.style.opacity = state.historyIndex >= 0 ? "1" : "0.35";
-    btnUndo.style.pointerEvents = state.historyIndex >= 0 ? "auto" : "none";
+    btnUndo.style.opacity = state.historyIndex > 0 ? "1" : "0.35";
+    btnUndo.style.pointerEvents = state.historyIndex > 0 ? "auto" : "none";
     btnRedo.style.opacity = state.historyIndex < state.history.length - 1 ? "1" : "0.35";
     btnRedo.style.pointerEvents = state.historyIndex < state.history.length - 1 ? "auto" : "none";
   };
 
   const updateHint = (message, isError) => {
     const modeText = state.mode === "polygon"
-      ? "Polygon Mask · 固定遮罩 · 不运行 SAM3 · 所有帧共用 · 多边形按并集合并"
-      : "Point Mode · SAM3 跟踪 · 当前帧点选 · 自动跟踪其他帧";
+      ? (state.polygonKeyframes.length > 1
+        ? text("Polygon mask - {count} keyframes", {count:state.polygonKeyframes.length})
+        : text("Polygon mask - fixed"))
+      : text("SAM3 tracking");
     hintMode.textContent = modeText;
     hintMode.title = modeText;
     hintAction.style.color = isError ? "#fca5a5" : "#aaa";
@@ -2609,19 +2346,23 @@ def get_viewer_html() -> str:
       writeAction(message, false);
       return;
     }
+    if (state.metadataPending) {
+      writeAction(text("Reading video frame information..."), false);
+      return;
+    }
     if (state.mode === "polygon") {
       if (state.polygonDraft.length) {
-        writeAction(`左键添加顶点，靠近首点或双击闭合（已完成 ${state.polygons.length} 个，当前 ${state.polygonDraft.length} 点）`, false);
+        writeAction(text("Click to add vertices; click the first vertex or double-click to close ({count} vertices)", {count:state.polygonDraft.length}), false);
         return;
       }
       if (state.selectedPolygonIndex >= 0 && state.selectedPolygonIndex < state.polygons.length) {
-        writeAction(`多边形 ${state.selectedPolygonIndex + 1}：拖动锚点调整，单击边线增加锚点；右键锚点删除，右键内部删除多边形`, false);
+        writeAction(text("Polygon {number}: drag vertices; click an edge to add; right-click to delete", {number:state.selectedPolygonIndex + 1}), false);
         return;
       }
-      writeAction(`左键开始绘制，单击已有多边形可编辑（已完成 ${state.polygons.length} 个）`, false);
+      writeAction(text("Click to draw or select a polygon ({count} polygons)", {count:state.polygons.length}), false);
       return;
     }
-    writeAction('左键<span class="sam3_hint_dot" style="color:#22c55e;">●</span>选取，右键<span class="sam3_hint_dot" style="color:#ef4444;">●</span>排除', true);
+    writeAction(text("Left-click to include; right-click to exclude"), false);
   };
 
   const draw = () => {
@@ -2632,13 +2373,15 @@ def get_viewer_html() -> str:
     canvas.height = geometry.canvasHeight;
     ctx.fillStyle = "#181a1d";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(
-      hiddenVideo,
-      geometry.padding,
-      geometry.padding,
-      geometry.frameWidth,
-      geometry.frameHeight,
-    );
+    if (hiddenVideo.readyState >= 2) {
+      ctx.drawImage(
+        hiddenVideo,
+        geometry.padding,
+        geometry.padding,
+        geometry.frameWidth,
+        geometry.frameHeight,
+      );
+    }
     ctx.strokeStyle = "rgba(255,255,255,0.28)";
     ctx.lineWidth = Math.max(1, canvas.width * 0.0015);
     ctx.strokeRect(
@@ -2794,32 +2537,48 @@ def get_viewer_html() -> str:
     }
   };
 
-  const seekToTime = (t, skipSliderUpdate) => {
+  const seekToTime = (t, restoring = false) => {
     if (!state.open) return;
-    const clamped = Math.max(0, Math.min(state.duration || 0, t));
-    state.time = clamped;
-    if (!skipSliderUpdate && state.duration > 0) {
-      slider.value = String(Math.round((clamped / state.duration) * 1000));
+    if (!restoring && (state.polygonDrag || state.polygonDraft.length)) {
+      updateHint(text("Finish the current polygon before changing frames."), true);
+      updateTimeline();
+      return;
     }
-    label.textContent = "t=" + clamped.toFixed(2) + "s";
-    hiddenVideo.currentTime = clamped;
+    const clamped = Math.max(0, Math.min(state.duration || 0, t));
+    if (state.fps > 0) {
+      state.frameIndex = Math.max(0, Math.min(state.frameCount - 1, Math.round(clamped * state.fps)));
+      state.time = state.frameIndex / state.fps;
+    } else {
+      state.time = clamped;
+    }
+    state.polygons = polygonsAtFrame(state.frameIndex);
+    state.polygonHoverTarget = null;
+    updateTimeline();
+    updateHint();
+    state.seekTarget = state.videoStartTime + state.time + (state.fps > 0 ? 0.001 / state.fps : 0);
+    state.seekRetries = 0;
+    hiddenVideo.currentTime = state.seekTarget;
+    if (!hiddenVideo.seeking && hiddenVideo.readyState >= 2) draw();
   };
 
+  const editorSnapshot = () => ({
+    mode: state.mode,
+    pointsPos: state.pointsPos.map(p => ({x:p.x,y:p.y})),
+    pointsNeg: state.pointsNeg.map(p => ({x:p.x,y:p.y})),
+    polygons: clonePolygons(state.polygons),
+    polygonKeyframes: cloneKeyframes(state.polygonKeyframes),
+    polygonDraft: state.polygonDraft.map(point => ({x:point.x,y:point.y})),
+    time: state.time,
+  });
   const pushHistory = () => {
-    const snapshot = {
-      mode: state.mode,
-      pointsPos: state.pointsPos.map(p => ({x:p.x,y:p.y})),
-      pointsNeg: state.pointsNeg.map(p => ({x:p.x,y:p.y})),
-      polygons: state.polygons.map(polygon => polygon.map(point => ({x:point.x,y:point.y}))),
-      polygonDraft: state.polygonDraft.map(point => ({x:point.x,y:point.y})),
-      time: state.time,
-    };
+    const snapshot = editorSnapshot();
     if (state.historyIndex < state.history.length - 1) {
       state.history = state.history.slice(0, state.historyIndex + 1);
     }
     state.history.push(snapshot);
     state.historyIndex = state.history.length - 1;
     updateUndoRedo();
+    updateTimeline();
   };
 
   const restoreHistory = (idx) => {
@@ -2828,6 +2587,7 @@ def get_viewer_html() -> str:
     state.pointsPos = (s.pointsPos || []).map(p => ({x:p.x,y:p.y}));
     state.pointsNeg = (s.pointsNeg || []).map(p => ({x:p.x,y:p.y}));
     state.polygons = (s.polygons || []).map(polygon => polygon.map(point => ({x:point.x,y:point.y})));
+    state.polygonKeyframes = cloneKeyframes(s.polygonKeyframes || []);
     state.polygonDraft = (s.polygonDraft || []).map(point => ({x:point.x,y:point.y}));
     state.polygonHover = null;
     state.polygonSnapToStart = false;
@@ -2848,18 +2608,121 @@ def get_viewer_html() -> str:
     if (!state.open) return;
     if (state.duration <= 0) return;
     const v = Number(slider.value || 0);
-    const t = (v / 1000) * state.duration;
-    seekToTime(t, true);
+    const t = state.fps > 0 ? v / state.fps : (v / 1000) * state.duration;
+    seekToTime(t);
+  });
+  frameNumber.addEventListener("change", () => {
+    const value = Number(frameNumber.value);
+    if (state.fps > 0 && Number.isFinite(value)) seekToTime((value - 1) / state.fps);
+    else updateTimeline();
+  });
+  btnPrevFrame.addEventListener("click", () => seekToTime((state.frameIndex - 1) / state.fps));
+  btnNextFrame.addEventListener("click", () => seekToTime((state.frameIndex + 1) / state.fps));
+  btnPrevKeyframe.addEventListener("click", () => {
+    const keyframe = [...state.polygonKeyframes].reverse().find(item => item.frame_index < state.frameIndex);
+    if (keyframe) seekToTime(keyframe.frame_index / state.fps);
+  });
+  btnNextKeyframe.addEventListener("click", () => {
+    const keyframe = state.polygonKeyframes.find(item => item.frame_index > state.frameIndex);
+    if (keyframe) seekToTime(keyframe.frame_index / state.fps);
+  });
+  btnAddKeyframe.addEventListener("click", () => {
+    if (btnAddKeyframe.disabled) return;
+    recordPolygonKeyframe();
+    pushHistory();
+    updateHint();
+  });
+  btnDeleteKeyframe.addEventListener("click", () => {
+    if (btnDeleteKeyframe.disabled) return;
+    state.polygonKeyframes = state.polygonKeyframes.filter(item => item.frame_index !== state.frameIndex);
+    state.polygons = polygonsAtFrame(state.frameIndex);
+    pushHistory();
+    updateHint();
+    draw();
   });
 
-  hiddenVideo.addEventListener("seeked", () => draw());
+  hiddenVideo.addEventListener("seeked", () => {
+    // Some MP4s update their duration only after the first seek.
+    if (state.fps > 0 && state.seekRetries < 1 &&
+        state.seekTarget - hiddenVideo.currentTime > 0.002 &&
+        hiddenVideo.duration - hiddenVideo.currentTime > 0.002) {
+      state.seekRetries += 1;
+      hiddenVideo.currentTime = Math.min(state.seekTarget, hiddenVideo.duration);
+      return;
+    }
+    draw();
+  });
+  hiddenVideo.addEventListener("loadeddata", () => {
+    initializeFrameMetadata();
+    draw();
+  });
+  const readSourceMetadata = () => {
+    for (const id of ["sam3_source_meta", "resolution_source_meta"]) {
+      const field = document.querySelector("#" + id + " textarea, #" + id + " input");
+      try {
+        const data = JSON.parse(field?.value || "{}");
+        if (data.source_key && data.source_key !== state.sourceKey) continue;
+        const meta = data.sam3_input_video;
+        if (meta && Number(meta.fps) > 0 && Number(meta.frames) > 0) return meta;
+      } catch (e) {}
+    }
+    return {};
+  };
+  const initializeFrameMetadata = () => {
+    if (!state.open || state.metadataPending || state.metadataInitialized || hiddenVideo.readyState < 2) return;
+    state.metadataInitialized = true;
+    state.videoStartTime = hiddenVideo.currentTime;
+    const meta = state.sourceMeta;
+    state.fps = Number.isFinite(Number(meta.fps)) ? Math.max(0, Number(meta.fps)) : 0;
+    state.frameCount = state.fps > 0 ? Math.max(1, Math.floor(Number(meta.frames))) : 0;
+    state.duration = state.fps > 0 ? state.frameCount / state.fps : Math.max(0, hiddenVideo.duration - state.videoStartTime);
+    layoutCanvas();
+    seekToTime(state.time, true);
+    if (state.historyIndex < 0) pushHistory();
+    if (state.fps <= 0) updateHint(text("Frame metadata is unavailable. Re-upload the video to animate this mask."), true);
+  };
+  window.sam3EditorMetadataReady = raw => {
+    let data;
+    try { data = JSON.parse(raw || "{}"); } catch (e) { return; }
+    if (!state.open || data.request_id !== state.metadataRequestId || data.source_key !== state.sourceKey) return;
+    clearTimeout(metadataTimeout);
+    state.metadataRequestId = "";
+    state.metadataPending = false;
+    state.sourceMeta = data.sam3_input_video || {};
+    initializeFrameMetadata();
+  };
+  window.sam3MetadataInputs = (...args) => {
+    const pending = window.SimpAISam3PendingMetadataRequest;
+    if (pending && args.length >= 4) {
+      args[3] = pending;
+      window.SimpAISam3PendingMetadataRequest = "";
+    }
+    return args;
+  };
+  const requestFrameMetadata = () => {
+    const button = document.querySelector("#sam3_editor_metadata_btn button") || $("sam3_editor_metadata_btn");
+    if (!button) {
+      state.metadataPending = false;
+      state.sourceMeta = {};
+      initializeFrameMetadata();
+      return;
+    }
+    const request = {request_id:String(++metadataSerial), source_key:state.sourceKey};
+    state.metadataRequestId = request.request_id;
+    window.SimpAISam3PendingMetadataRequest = JSON.stringify(request);
+    metadataTimeout = setTimeout(() => {
+      window.sam3EditorMetadataReady(JSON.stringify(request));
+    }, 30000);
+    window.requestAnimationFrame(() => {
+      if (state.open && state.metadataRequestId === request.request_id) button.click();
+    });
+  };
   hiddenVideo.addEventListener("loadedmetadata", () => {
+    if (!state.open) return;
     state.duration = hiddenVideo.duration || 0;
     state.videoWidth = hiddenVideo.videoWidth || 0;
     state.videoHeight = hiddenVideo.videoHeight || 0;
     layoutCanvas();
-    seekToTime(0, false);
-    draw();
   });
 
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -2876,8 +2739,8 @@ def get_viewer_html() -> str:
 
   const clampPointToEditor = (point) => {
     const geometry = editorGeometry();
-    const marginX = geometry.padding / geometry.frameWidth;
-    const marginY = geometry.padding / geometry.frameHeight;
+    const marginX = Math.min(0.5, geometry.padding / geometry.frameWidth);
+    const marginY = Math.min(0.5, geometry.padding / geometry.frameHeight);
     return {
       x: Math.max(-marginX, Math.min(1 + marginX, point.x)),
       y: Math.max(-marginY, Math.min(1 + marginY, point.y)),
@@ -2950,6 +2813,7 @@ def get_viewer_html() -> str:
     };
     return {
       point: nearest,
+      amount: t,
       distance: Math.hypot((point.x - nearest.x) * scale.x, (point.y - nearest.y) * scale.y),
     };
   };
@@ -2973,7 +2837,7 @@ def get_viewer_html() -> str:
     for (let index = 0; index < polygon.length; index += 1) {
       const nearest = nearestPointOnSegment(point, polygon[index], polygon[(index + 1) % polygon.length]);
       if (nearest.distance <= tolerance && (!best || nearest.distance < best.distance)) {
-        best = {edgeIndex:index, point:nearest.point, distance:nearest.distance};
+        best = {edgeIndex:index, point:nearest.point, distance:nearest.distance, amount:nearest.amount};
       }
     }
     return best;
@@ -3005,10 +2869,10 @@ def get_viewer_html() -> str:
 
   const closePolygonDraft = () => {
     if (state.polygonDraft.length < 3) {
-      updateHint("多边形至少需要 3 个顶点", true);
+      updateHint(text("A polygon needs at least three vertices."), true);
       return false;
     }
-    state.polygons.push(state.polygonDraft.map(point => ({x:point.x, y:point.y})));
+    appendPolygon(state.polygonDraft.map(point => ({x:point.x, y:point.y})));
     state.selectedPolygonIndex = state.polygons.length - 1;
     state.polygonDraft = [];
     state.polygonHover = null;
@@ -3024,6 +2888,8 @@ def get_viewer_html() -> str:
   canvas.addEventListener("mousedown", (e) => {
     if (!state.open) return;
     if (state.videoWidth <= 0 || state.videoHeight <= 0) return;
+    if (state.metadataPending) return;
+    if (hiddenVideo.seeking || hiddenVideo.readyState < 2) return;
     const rawPoint = getCanvasNormPos(e);
 
     if (state.mode === "polygon") {
@@ -3044,10 +2910,12 @@ def get_viewer_html() -> str:
           const vertexIndex = findPolygonVertex(hitPoint, selectedPolygon);
           if (vertexIndex >= 0) {
             if (selectedPolygon.length <= 3) {
-              updateHint("多边形至少需要保留 3 个锚点", true);
+              updateHint(text("A polygon needs at least three vertices."), true);
               return;
             }
             selectedPolygon.splice(vertexIndex, 1);
+            state.polygonKeyframes.forEach(keyframe => keyframe.polygons[state.selectedPolygonIndex].splice(vertexIndex, 1));
+            recordPolygonKeyframe();
             state.polygonHoverTarget = null;
             pushHistory();
             updateHint();
@@ -3058,6 +2926,9 @@ def get_viewer_html() -> str:
         const polygonIndex = findPolygonIndexAt(hitPoint);
         if (polygonIndex >= 0) {
           state.polygons.splice(polygonIndex, 1);
+          state.polygonKeyframes.forEach(keyframe => keyframe.polygons.splice(polygonIndex, 1));
+          if (!state.polygons.length) state.polygonKeyframes = [];
+          else recordPolygonKeyframe();
           if (state.selectedPolygonIndex === polygonIndex) state.selectedPolygonIndex = -1;
           else if (state.selectedPolygonIndex > polygonIndex) state.selectedPolygonIndex -= 1;
           state.polygonHoverTarget = null;
@@ -3105,6 +2976,15 @@ def get_viewer_html() -> str:
         if (edge) {
           const insertIndex = edge.edgeIndex + 1;
           selectedPolygon.splice(insertIndex, 0, edge.point);
+          state.polygonKeyframes.forEach(keyframe => {
+            const polygon = keyframe.polygons[state.selectedPolygonIndex];
+            const start = polygon[edge.edgeIndex], end = polygon[(edge.edgeIndex + 1) % polygon.length];
+            polygon.splice(insertIndex, 0, {
+              x:start.x + (end.x - start.x) * edge.amount,
+              y:start.y + (end.y - start.y) * edge.amount,
+            });
+          });
+          recordPolygonKeyframe();
           state.polygonHoverTarget = {type:"vertex", vertexIndex:insertIndex};
           pushHistory();
           updateHint();
@@ -3211,7 +3091,10 @@ def get_viewer_html() -> str:
     const drag = state.polygonDrag;
     state.polygonDrag = null;
     canvas.style.cursor = "grab";
-    if (drag.moved) pushHistory();
+    if (drag.moved) {
+      recordPolygonKeyframe();
+      pushHistory();
+    }
     updateHint();
     draw();
   });
@@ -3219,24 +3102,9 @@ def get_viewer_html() -> str:
   canvas.addEventListener("dblclick", (e) => e.preventDefault());
 
   btnUndo.addEventListener("click", () => {
-    if (state.historyIndex >= 0) {
+    if (state.historyIndex > 0) {
       state.historyIndex -= 1;
-      if (state.historyIndex >= 0) restoreHistory(state.historyIndex);
-      else {
-        state.pointsPos = [];
-        state.pointsNeg = [];
-        state.polygons = [];
-        state.polygonDraft = [];
-        state.polygonHover = null;
-        state.polygonSnapToStart = false;
-        state.selectedPolygonIndex = -1;
-        state.polygonDrag = null;
-        state.polygonHoverTarget = null;
-        canvas.style.cursor = "crosshair";
-        updateUndoRedo();
-        updateHint();
-        draw();
-      }
+      restoreHistory(state.historyIndex);
     }
   });
   btnRedo.addEventListener("click", () => {
@@ -3249,6 +3117,7 @@ def get_viewer_html() -> str:
     state.pointsPos = [];
     state.pointsNeg = [];
     state.polygons = [];
+    state.polygonKeyframes = [];
     state.polygonDraft = [];
     state.polygonHover = null;
     state.polygonSnapToStart = false;
@@ -3302,24 +3171,29 @@ def get_viewer_html() -> str:
   backdrop.addEventListener("mousedown", (e) => { if (e.target === backdrop) closeModal(); });
 
   btnConfirm.addEventListener("click", () => {
+    if (state.metadataPending) return;
+    if (state.mode === "polygon" && state.polygonKeyframes.length > 1 && state.fps <= 0) {
+      updateHint(text("Frame metadata is unavailable. Re-upload the video to animate this mask."), true);
+      return;
+    }
     let payload;
     if (state.mode === "polygon") {
       if (state.polygonDraft.length > 0 && state.polygonDraft.length < 3) {
-        updateHint("当前多边形至少需要 3 个顶点", true);
+        updateHint(text("A polygon needs at least three vertices."), true);
         return;
       }
       if (state.polygonDraft.length >= 3) {
-        state.polygons.push(state.polygonDraft.map(point => ({x:point.x, y:point.y})));
-        state.polygonDraft = [];
-        state.polygonHover = null;
-        state.polygonSnapToStart = false;
-        state.polygonHoverTarget = null;
+        closePolygonDraft();
       }
       if (!state.polygons.length) {
-        updateHint("请先绘制至少一个多边形遮罩", true);
+        updateHint(text("Draw at least one polygon mask."), true);
         return;
       }
-      payload = {
+      payload = state.polygonKeyframes.length > 1 ? {
+        mode: "keyframed_polygons",
+        fps: state.fps,
+        keyframes: cloneKeyframes(state.polygonKeyframes),
+      } : {
         mode: "static_polygons",
         apply_to_all_frames: true,
         frame_time: state.time,
@@ -3333,6 +3207,7 @@ def get_viewer_html() -> str:
         negative_coords: state.pointsNeg.map(p => ({x:p.x, y:p.y})),
       };
     }
+    savedEditor = {sourceKey:state.sourceKey, snapshot:editorSnapshot()};
     const value = JSON.stringify(payload);
     window.SimpAISam3PendingEditorPayload = value;
     const hidden = document.querySelector("#sam3_editor_payload textarea, #sam3_editor_payload input");
@@ -3632,10 +3507,28 @@ def get_viewer_html() -> str:
   const openFromVideo = (videoEl) => {
     const src = getVideoSrc(videoEl);
     if (!src) return;
-    state.mode = "point";
-    state.pointsPos = [];
-    state.pointsNeg = [];
-    state.polygons = [];
+    const trim = readExistingSam3TrimPayload();
+    state.sourceKey = JSON.stringify([src, trim]);
+    const meta = readSourceMetadata();
+    state.sourceMeta = meta;
+    state.metadataPending = !meta.fps || (!!trim && !meta.exact);
+    state.metadataInitialized = false;
+    state.videoStartTime = 0;
+    state.seekTarget = 0;
+    state.seekRetries = 0;
+    if (savedEditor?.sourceKey !== state.sourceKey) savedEditor = null;
+    const saved = savedEditor?.snapshot;
+    state.mode = saved?.mode || "point";
+    state.pointsPos = (saved?.pointsPos || []).map(point => ({...point}));
+    state.pointsNeg = (saved?.pointsNeg || []).map(point => ({...point}));
+    state.polygons = clonePolygons(saved?.polygons || []);
+    state.polygonKeyframes = cloneKeyframes(saved?.polygonKeyframes || []);
+    state.time = saved?.time || 0;
+    state.fps = 0;
+    state.frameCount = 0;
+    state.frameIndex = 0;
+    state.videoWidth = 0;
+    state.videoHeight = 0;
     state.polygonDraft = [];
     state.polygonHover = null;
     state.polygonSnapToStart = false;
@@ -3648,10 +3541,12 @@ def get_viewer_html() -> str:
     updateUndoRedo();
     btnModePoint.classList.toggle("active", state.mode === "point");
     btnModePolygon.classList.toggle("active", state.mode === "polygon");
+    localizeControls();
+    updateTimeline();
     updateHint();
+    state.open = true;
     hiddenVideo.src = src;
     hiddenVideo.load();
-    state.open = true;
     clearForcedCloseStyles();
     ensureModalPortal();
     document.body.classList.add("sam3-frames-editor-open");
@@ -3664,6 +3559,7 @@ def get_viewer_html() -> str:
     modal.style.setProperty("visibility", "visible", "important");
     modal.style.setProperty("pointer-events", "auto", "important");
     layoutCanvas();
+    if (state.metadataPending) requestFrameMetadata();
   };
 
   window.addEventListener("resize", () => layoutCanvas());
@@ -3811,18 +3707,33 @@ def get_viewer_html() -> str:
     display: block;
   }
   #sam3_frames_footer{
-    flex: 0 0 44px;
+    flex: 0 0 auto;
     width: 100%;
     background: #222;
     border-top: 1px solid #333;
     padding: 6px 10px;
     box-sizing: border-box;
     display: flex;
-    gap: 10px;
-    align-items: center;
+    gap: 8px;
+    flex-direction: column;
   }
-  #sam3_time_slider{ flex: 1; height: 4px; }
-  #sam3_frame_label{ color:#ccc; font-family: monospace; font-size: 12px; min-width: 140px; text-align:center; user-select:none; }
+  #sam3_timeline_row{ display:grid; grid-template-columns:28px minmax(0,1fr) 28px; gap:10px; align-items:start; width:100%; }
+  #sam3_timeline_track{ min-width:0; }
+  #sam3_time_slider{ display:block; width:100%; height:20px; padding:0; margin:0; accent-color:#4ade80; }
+  #sam3_keyframe_markers{ position:relative; height:14px; margin:0 8px; }
+  .sam3_keyframe_marker{ position:absolute; top:0; width:12px; height:12px; padding:0; margin-left:-6px; background:#bbb; border:1px solid #222; border-radius:1px; transform:rotate(45deg); cursor:pointer; }
+  .sam3_keyframe_marker.active{ background:#4ade80; border-color:#c1ffda; }
+  .sam3_keyframe_marker:focus-visible{ outline:2px solid #fff; outline-offset:2px; }
+  #sam3_frames_actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; width:100%; }
+  #sam3_frame_position{ display:flex; gap:5px; align-items:center; color:#ccc; font:12px monospace; min-width:0; }
+  #sam3_frame_number{ box-sizing:border-box; width:64px; min-width:0; height:28px; background:#161718; color:#eee; border:1px solid #555; border-radius:4px; padding:2px 4px; font:12px monospace; }
+  #sam3_frame_label{ margin-left:4px; white-space:nowrap; user-select:none; }
+  #sam3_keyframe_controls{ display:flex; gap:4px; }
+  #sam3_keyframe_controls[hidden]{ display:none; }
+  #sam3_footer_buttons{ display:flex; gap:6px; margin-left:auto; }
+  #sam3_frames_footer .sam3_btn{ flex:0 0 28px; padding:0; font:14px sans-serif; }
+  #sam3_frames_footer .sam3_btn:disabled{ opacity:0.3; cursor:default; }
+  #sam3_frames_footer .sam3_btn:disabled:hover{ background:transparent; }
   #sam3_confirm{
     height: 30px;
     padding: 0 12px;
@@ -3852,25 +3763,25 @@ def get_viewer_html() -> str:
   <div id="sam3_frames_modal">
     <div id="sam3_frames_toolbar">
       <div style="display:flex; gap:6px; align-items:center;">
-        <div class="sam3_btn" id="sam3_undo" title="Undo">
+        <div class="sam3_btn" id="sam3_undo" title="Undo" data-sam3-label="Undo">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
         </div>
-        <div class="sam3_btn" id="sam3_redo" title="Redo">
+        <div class="sam3_btn" id="sam3_redo" title="Redo" data-sam3-label="Redo">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.4 10.6C16.55 9 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>
         </div>
-        <div class="sam3_btn" id="sam3_clear" title="Clear All">
+        <div class="sam3_btn" id="sam3_clear" title="Clear All" data-sam3-label="Clear All">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
         </div>
       </div>
       <div id="sam3_frames_hint">
-        <div id="sam3_hint_mode" title="Point Mode · SAM3 跟踪 · 当前帧点选 · 自动跟踪其他帧">Point Mode · SAM3 跟踪 · 当前帧点选 · 自动跟踪其他帧</div>
-        <div id="sam3_hint_action" title="左键选取，右键排除">左键<span class="sam3_hint_dot" style="color:#22c55e;">●</span>选取，右键<span class="sam3_hint_dot" style="color:#ef4444;">●</span>排除</div>
+        <div id="sam3_hint_mode">SAM3 tracking</div>
+        <div id="sam3_hint_action">Left-click to include; right-click to exclude</div>
       </div>
       <div style="display:flex; gap:6px; align-items:center;">
-        <div class="sam3_btn active" id="sam3_mode_point" title="Point Mode：运行 SAM3 跟踪" aria-label="Point Mode：运行 SAM3 跟踪">
+        <div class="sam3_btn active" id="sam3_mode_point" title="SAM3 tracking" data-sam3-label="SAM3 tracking">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
         </div>
-        <div class="sam3_btn" id="sam3_mode_polygon" title="Polygon Mask：固定到所有帧，不运行 SAM3" aria-label="Polygon Mask：固定到所有帧，不运行 SAM3">
+        <div class="sam3_btn" id="sam3_mode_polygon" title="Polygon mask" data-sam3-label="Polygon mask">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2 2 9l4 13h12l4-13-10-7zm0 2.4 7.6 5.3-3 10.3H7.4l-3-10.3L12 4.4z"/></svg>
         </div>
       </div>
@@ -3880,10 +3791,31 @@ def get_viewer_html() -> str:
       <video id="sam3_hidden_video" style="display:none;"></video>
     </div>
     <div id="sam3_frames_footer">
-      <div id="sam3_frame_label">t=0.00s</div>
-      <input id="sam3_time_slider" type="range" min="0" max="1000" value="0" step="1" />
-      <button id="sam3_cancel">取消</button>
-      <button id="sam3_confirm">确认</button>
+      <div id="sam3_timeline_row">
+        <button type="button" class="sam3_btn" id="sam3_prev_frame" data-sam3-label="Previous video frame"><span aria-hidden="true">&#9664;</span></button>
+        <div id="sam3_timeline_track">
+          <input id="sam3_time_slider" type="range" min="0" max="1000" value="0" step="1" data-sam3-label="Video timeline" />
+          <div id="sam3_keyframe_markers"></div>
+        </div>
+        <button type="button" class="sam3_btn" id="sam3_next_frame" data-sam3-label="Next video frame"><span aria-hidden="true">&#9654;</span></button>
+      </div>
+      <div id="sam3_frames_actions">
+        <div id="sam3_frame_position">
+          <input id="sam3_frame_number" type="number" min="1" max="1" step="1" value="1" data-sam3-label="Video frame" />
+          <span id="sam3_frame_count"></span>
+          <span id="sam3_frame_label">0.000s</span>
+        </div>
+        <div id="sam3_keyframe_controls" hidden>
+          <button type="button" class="sam3_btn" id="sam3_prev_keyframe" data-sam3-label="Previous mask keyframe"><span aria-hidden="true">&#9664;&#9670;</span></button>
+          <button type="button" class="sam3_btn" id="sam3_add_keyframe" data-sam3-label="Add mask keyframe"><span aria-hidden="true">&#9671;+</span></button>
+          <button type="button" class="sam3_btn" id="sam3_delete_keyframe" data-sam3-label="Delete mask keyframe"><span aria-hidden="true">&#9671;&#8722;</span></button>
+          <button type="button" class="sam3_btn" id="sam3_next_keyframe" data-sam3-label="Next mask keyframe"><span aria-hidden="true">&#9670;&#9654;</span></button>
+        </div>
+        <div id="sam3_footer_buttons">
+          <button type="button" id="sam3_cancel" data-sam3-label="Cancel" data-sam3-text="true">Cancel</button>
+          <button type="button" id="sam3_confirm" data-sam3-label="Confirm" data-sam3-text="true">Confirm</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>

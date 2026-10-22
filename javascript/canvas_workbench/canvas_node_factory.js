@@ -357,10 +357,10 @@
             return { generation_config: cloneRunValue(generation, {}) };
         }
 
-        function scenePresetDefinition(entry) {
+        function scenePresetDefinition(entry, selectedTheme) {
             const schema = entry?.schema && typeof entry.schema === 'object' ? cloneRunValue(entry.schema, {}) : {};
             const themes = Array.isArray(schema.themes) ? schema.themes : [];
-            const theme = schema.default_theme || themes[0] || '';
+            const theme = themes.includes(selectedTheme) ? selectedTheme : schema.default_theme || themes[0] || '';
             const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
             const themeInfo = perTheme[theme] || {};
             return {
@@ -372,12 +372,13 @@
 
         function refreshScenePresetNodeDefinition(node, entry, options) {
             if (!node || !entry) return false;
-            const expected = scenePresetDefinition(entry);
+            const expected = scenePresetDefinition(entry, node.runtime?.scene_theme);
             const expectedScene = !!entry.scene || !!expected.schema.scene_frontend;
             if (!expectedScene) return false;
             const schemaMatches = JSON.stringify(node.schema || {}) === JSON.stringify(expected.schema);
             const taskMatches = String(node.runtime?.task_method || '') === String(expected.taskMethod || '');
-            if (node.type === 'preset' && schemaMatches && taskMatches) return false;
+            const themeMatches = String(node.runtime?.scene_theme || '') === String(expected.theme || '');
+            if (node.type === 'preset' && schemaMatches && taskMatches && themeMatches) return false;
 
             const previousParams = node.params && typeof node.params === 'object' ? node.params : {};
             const previousUploads = node.upload_slots && typeof node.upload_slots === 'object' ? node.upload_slots : {};
@@ -408,6 +409,9 @@
 
             const promptDefaults = getPromptDefaults(entry);
             const keepOverrides = (value) => value?.overrides && typeof value.overrides === 'object' ? cloneRunValue(value.overrides, {}) : {};
+            const refreshedConfig = (current, defaults) => current?.source_node_id
+                ? cloneRunValue(current, {})
+                : { mode: current?.mode || 'preset_default', defaults: cloneRunValue(defaults || {}, {}), overrides: keepOverrides(current) };
             const modelList = Array.isArray(entry.model_list) ? cloneRunValue(entry.model_list, []) : [];
             const cleanName = normalizePresetName(entry.name || entry.display_name || node.preset?.name || node.title || 'preset');
             applyPresetDefinitionPatch(node, {
@@ -447,22 +451,18 @@
             Object.assign(node, buildNodeParamsPatch(node, { params: nextParams }));
             Object.assign(node, buildPresetConfigPatch(node, {
                 configKey: 'models_config',
-                presetConfig: { mode: 'preset_default', defaults: cloneRunValue(entry.models_config || {}, {}), overrides: keepOverrides(node.models_config) }
+                presetConfig: refreshedConfig(node.models_config, entry.models_config)
             }));
             Object.assign(node, buildPresetConfigPatch(node, {
                 configKey: 'styles_config',
-                presetConfig: { mode: 'preset_default', defaults: { style_selections: promptDefaults.styles.slice() }, overrides: keepOverrides(node.styles_config) }
+                presetConfig: refreshedConfig(node.styles_config, { style_selections: promptDefaults.styles.slice() })
             }));
             Object.assign(node, buildPresetConfigPatch(node, {
                 configKey: 'resolution_config',
-                presetConfig: { mode: 'preset_default', defaults: cloneRunValue(entry.resolution_config || {}, {}), overrides: keepOverrides(node.resolution_config) }
+                presetConfig: refreshedConfig(node.resolution_config, entry.resolution_config)
             }));
             Object.assign(node, buildPresetGenerationConfigPatch(node, {
-                generationConfig: {
-                    mode: 'preset_default',
-                    defaults: cloneRunValue(entry.generation_config || {}, {}),
-                    overrides: keepOverrides(node.generation_config)
-                }
+                generationConfig: refreshedConfig(node.generation_config, entry.generation_config)
             }));
             Object.assign(node, buildPresetModelStatusPatch(node, {
                 status: buildPresetModelCatalogStatus(entry, modelList)
@@ -551,6 +551,7 @@
             const promptDefaults = getPromptDefaults(source);
             const promptStyles = Array.isArray(promptDefaults.styles) ? promptDefaults.styles : [];
             if (promptDefaults.prompt) params.prompt = promptDefaults.prompt;
+            if (promptDefaults.negative_prompt) params.negative_prompt = promptDefaults.negative_prompt;
             if (defaultGeneration.image_number !== undefined) params.image_number = Number(defaultGeneration.image_number || params.image_number || 1) || 1;
             return {
                 id: uid('classic'),
@@ -616,6 +617,9 @@
             const promptStyles = Array.isArray(promptDefaults.styles) ? promptDefaults.styles : [];
             if (promptDefaults.prompt && Object.prototype.hasOwnProperty.call(params, 'prompt') && !String(params.prompt || '').trim()) {
                 params.prompt = promptDefaults.prompt;
+            }
+            if (promptDefaults.negative_prompt && Object.prototype.hasOwnProperty.call(params, 'negative_prompt') && !String(params.negative_prompt || '').trim()) {
+                params.negative_prompt = promptDefaults.negative_prompt;
             }
             const uploadSlots = {};
             getVisibleUploadSlots({ schema }).forEach((slot) => {

@@ -232,10 +232,10 @@ def _publish_timeline_to_gallery(output_path, digest, node_id, state_params):
     output_root = config.get_user_path_outputs(user_did)
     date_folder = time.strftime("%Y-%m-%d")
     gallery_folder = os.path.join(output_root, date_folder)
-    os.makedirs(gallery_folder, exist_ok=True)
     name = f"{canvas_workbench_assets._safe_id(node_id, 'timeline')}.timeline.{digest[:16]}.mp4"
     gallery_path = os.path.abspath(os.path.join(gallery_folder, name))
     try:
+        os.makedirs(gallery_folder, exist_ok=True)
         if not os.path.exists(gallery_path) or os.path.getsize(gallery_path) != os.path.getsize(output_path):
             shutil.copy2(output_path, gallery_path)
     except Exception:
@@ -317,6 +317,28 @@ def _run_timeline_ffmpeg(cmd, duration, progress_callback=None, cancel_callback=
         return subprocess.CompletedProcess(cmd, process.returncode, output, details), cancelled
 
 
+def _register_timeline_output(*args, **kwargs):
+    try:
+        return canvas_workbench_assets.register_existing_file_asset(*args, **kwargs)
+    except OSError as error:
+        return {"copy_error": f"{type(error).__name__}: {error}"}
+
+
+def _timeline_output_response(asset_ref, path, state_params, gallery_required=False, **fields):
+    error = None
+    details = ""
+    if not isinstance(asset_ref, dict) or not asset_ref or asset_ref.get("copy_error"):
+        details = (asset_ref.get("copy_error") or "") if isinstance(asset_ref, dict) else ""
+        error = canvas_workbench_assets.output_delivery_error(state_params)
+        asset_ref = None
+    elif gallery_required and not fields.get("gallery"):
+        error = canvas_workbench_assets.output_delivery_error(state_params, gallery=True)
+    result = {"ok": error is None, "asset_ref": asset_ref, "path": path, **fields}
+    if error:
+        result.update(error=error["message"], output_error=error, details=details)
+    return result
+
+
 def render_timeline(payload, state_params=None, progress_callback=None, cancel_callback=None):
     state_params = state_params if isinstance(state_params, dict) else {}
     project_id = str(payload.get("project_id") or "default")
@@ -350,7 +372,7 @@ def render_timeline(payload, state_params=None, progress_callback=None, cancel_c
     os.makedirs(folder, exist_ok=True)
     output_path = os.path.abspath(os.path.join(folder, f"{canvas_workbench_assets._safe_id(node_id, 'timeline')}.timeline.{digest[:16]}.mp4"))
     if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-        asset_ref = canvas_workbench_assets.register_existing_file_asset(
+        asset_ref = _register_timeline_output(
             output_path,
             project_id,
             state_params,
@@ -360,7 +382,8 @@ def render_timeline(payload, state_params=None, progress_callback=None, cancel_c
             copy_to_assets=False,
         )
         gallery = _publish_timeline_to_gallery(output_path, digest, node_id, state_params) if publish_gallery else None
-        return {"ok": True, "asset_ref": asset_ref, "cached": True, "path": output_path, "gallery": gallery}
+        return _timeline_output_response(asset_ref, output_path, state_params,
+                                         gallery_required=publish_gallery, cached=True, gallery=gallery)
 
     cmd = [ffmpeg, "-y"]
     filters = [f"color=c={background_filter}:s={width}x{height}:d={duration:.3f}:r={fps:.3f},format=rgba[base]"]
@@ -575,7 +598,7 @@ def render_timeline(payload, state_params=None, progress_callback=None, cancel_c
     os.replace(tmp_path, output_path)
     if progress_callback:
         progress_callback(1)
-    asset_ref = canvas_workbench_assets.register_existing_file_asset(
+    asset_ref = _register_timeline_output(
         output_path,
         project_id,
         state_params,
@@ -585,15 +608,10 @@ def render_timeline(payload, state_params=None, progress_callback=None, cancel_c
         copy_to_assets=False,
     )
     gallery = _publish_timeline_to_gallery(output_path, digest, node_id, state_params) if publish_gallery else None
-    return {
-        "ok": True,
-        "asset_ref": asset_ref,
-        "path": output_path,
-        "gallery": gallery,
-        "elapsed": round(time.time() - started, 3),
-        "visual_layers": len(visual_inputs),
-        "audio_layers": len(audio_inputs),
-    }
+    return _timeline_output_response(
+        asset_ref, output_path, state_params, gallery_required=publish_gallery, gallery=gallery,
+        elapsed=round(time.time() - started, 3), visual_layers=len(visual_inputs), audio_layers=len(audio_inputs),
+    )
 
 
 def render_timeline_frame(payload, state_params=None):
@@ -758,7 +776,7 @@ def render_timeline_frame(payload, state_params=None):
             }
         os.replace(tmp_path, output_path)
 
-    asset_ref = canvas_workbench_assets.register_existing_file_asset(
+    asset_ref = _register_timeline_output(
         output_path,
         project_id,
         state_params,
@@ -767,10 +785,5 @@ def render_timeline_frame(payload, state_params=None):
         metadata={"mime": "image/png", "width": width, "height": height, "time": round(frame_time, 4)},
         copy_to_assets=False,
     )
-    return {
-        "ok": True,
-        "asset_ref": asset_ref,
-        "path": output_path,
-        "time": round(frame_time, 4),
-        "source": "direct_png_filtergraph",
-    }
+    return _timeline_output_response(asset_ref, output_path, state_params,
+                                     time=round(frame_time, 4), source="direct_png_filtergraph")

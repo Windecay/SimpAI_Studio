@@ -520,6 +520,16 @@ def _split_size_text(value):
     normalized = head.replace("×", " ").replace("脳", " ").replace("*", " ").lower().replace("x", " ")
     parts = normalized.split()
     if len(parts) < 2:
+        if head.isdigit() and "|" in text:
+            try:
+                ratio_width, ratio_height = map(float, text.split("|", 1)[1].strip().split(":"))
+                width = _positive_int(head)
+                if width and ratio_width > 0 and ratio_height > 0:
+                    height = _positive_int(round(width * ratio_height / ratio_width))
+                    if height:
+                        return width, height
+            except (ValueError, OverflowError):
+                pass
         return None
     width = _positive_int(parts[0])
     height = _positive_int(parts[1])
@@ -1384,7 +1394,7 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
     # Resolve allowed IP control types matching main UI logic in topbar.update_after_identity_sub
     _engine = str(runtime.get("backend_engine") or "").lower()
     _tm_lower = task_method.lower() if task_method else ""
-    if _tm_lower == 'krea2_aio_cn':
+    if _tm_lower in ('krea2_aio_cn', 'moss_image_sft_aio_cn'):
         _default_ip_type = 'Depth'
     elif _engine in ('wan', 'qwen', 'z-image', 'zimage'):
         _default_ip_type = 'PyraCanny'
@@ -1438,6 +1448,8 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
     ip_count = int(preset_node.get("classic_ip_count") or ip_params.get("count") or 1)
     if _tm_lower == 'krea2_aio_cn':
         ip_count = 1
+    elif _tm_lower == 'moss_image_sft_aio_cn':
+        ip_count = min(ip_count, 2)
     ip_ctrls = []
     # For T2I mode (no input images), input_image_checkbox should be False
     has_input_images = classic_mode != "t2i" and bool(ip_count) and any(
@@ -1598,8 +1610,8 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
             or preset_defaults["default_styles"]
             or list(getattr(config, "default_styles", []) or [])
         )
-    classic_negative_prompt = _classic_param("negative_prompt", "")
-    if not str(classic_negative_prompt or "").strip():
+    classic_negative_prompt = _classic_param("negative_prompt")
+    if classic_negative_prompt is None:
         classic_negative_prompt = preset_defaults["default_prompt_negative"]
     classic_prompt = _classic_param("prompt", "")
     if not str(classic_prompt or "").strip():
@@ -1908,8 +1920,8 @@ def build_canvas_task_args_preview(payload, materialized_inputs, state_params):
             or preset_defaults["default_styles"]
             or list(getattr(config, "default_styles", []) or [])
         )
-    scene_negative_prompt = params.get("negative_prompt", "")
-    if not str(scene_negative_prompt or "").strip():
+    scene_negative_prompt = params.get("negative_prompt")
+    if scene_negative_prompt is None:
         scene_negative_prompt = preset_defaults["default_prompt_negative"]
     params_backend["negative_prompt"] = scene_negative_prompt
     scene_prompt = params.get("prompt", "")
@@ -2200,6 +2212,7 @@ def _output_asset(value, record=None):
         mime = _output_asset_mime(value, record)
         is_video = mime.startswith("video/")
         asset_ref = None
+        output_error = None
         if not (isinstance(record, dict) and record.get("result_asset_scope") == "gallery"):
             try:
                 task = record.get("task") if isinstance(record, dict) else None
@@ -2219,6 +2232,8 @@ def _output_asset(value, record=None):
                     })
             except Exception:
                 asset_ref = None
+            if not asset_ref or asset_ref.get("copy_error"):
+                output_error = canvas_workbench_assets.output_delivery_error((record or {}).get("state_params"))
         if not asset_ref:
             asset_ref = {
                 "kind": "video" if is_video else "generated_file",
@@ -2227,6 +2242,8 @@ def _output_asset(value, record=None):
                 "output_path": value,
                 "name": name,
             }
+        if output_error:
+            asset_ref["output_error"] = output_error
         if mime and not asset_ref.get("mime"):
             asset_ref["mime"] = mime
         if is_video and not asset_ref.get("kind"):
@@ -2373,6 +2390,40 @@ def _public_preview_stream(record, after_preview_serial=None):
     }
 
 
+def _run_output_asset(value, record):
+    if not isinstance(value, str):
+        return _output_asset(value, record)
+    try:
+        stat = os.stat(value)
+    except OSError:
+        record.get("_output_asset_cache", {}).pop(value, None)
+        return _output_asset(value, record)
+    signature = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+    cache = record.setdefault("_output_asset_cache", {})
+    previous = cache.get(value)
+    if previous and previous[0] == signature:
+        return copy.deepcopy(previous[1])
+    asset = _output_asset(value, record)
+    if (asset and not asset.get("copy_error") and not asset.get("output_error")
+            and (record.get("result_asset_scope") == "gallery" or asset.get("asset_relative_path"))):
+        cache[value] = (signature, copy.deepcopy(asset))
+    else:
+        cache.pop(value, None)
+    return asset
+
+
+def _run_output_assets(values, record):
+    assets = [_run_output_asset(item, record) for item in (values or [])]
+    assets = [asset for asset in assets if asset]
+    error = next((asset["output_error"] for asset in assets
+                  if isinstance(asset, dict) and asset.get("output_error")), None)
+    if error:
+        record["output_error"] = copy.deepcopy(error)
+    else:
+        record.pop("output_error", None)
+    return assets
+
+
 def _apply_task_yields(record):
     task = record.get("task")
     if task is None:
@@ -2396,8 +2447,7 @@ def _apply_task_yields(record):
                 record["preview"] = preview["preview"]
                 _append_preview_stream_frame(record, preview)
         elif flag == "results":
-            assets = [_output_asset(item, record) for item in (product or [])]
-            assets = [item for item in assets if item]
+            assets = _run_output_assets(product, record)
             if assets:
                 record["assets"] = assets
                 record["asset"] = assets[-1]
@@ -2405,11 +2455,14 @@ def _apply_task_yields(record):
                 record["message"] = f"Received {len(assets)} result(s)."
                 _add_run_event(record, "info", record["message"], {"outputs": len(assets)})
         elif flag == "finish":
-            assets = [_output_asset(item, record) for item in (product or [])]
-            assets = [item for item in assets if item]
+            assets = _run_output_assets(product, record)
             record["assets"] = assets
+            record["asset"] = assets[-1] if assets else None
             cancel_action = getattr(task, "user_cancel_action", None) or getattr(task, "last_stop", None)
             workflow_error = getattr(task, "simpleai_workflow_error", None)
+            backend_error = str(getattr(task, "backend_error", "") or "").strip()
+            cloud_error = (str(getattr(task, "cloud_error", "") or "").strip()
+                           if getattr(task, "task_class", None) == "Cloud" else "")
             if (getattr(task, "task_class", None) == "ImportedWorkflow" and isinstance(workflow_error, dict)
                     and isinstance(workflow_error.get("code"), str) and isinstance(workflow_error.get("message"), str)):
                 record["state"] = "failed"
@@ -2429,6 +2482,22 @@ def _apply_task_yields(record):
                 record["message"] = "Skipped by user."
                 record["finished_ts"] = time.time()
                 _add_run_event(record, "warn", record["message"])
+            elif backend_error or cloud_error:
+                error_text = backend_error or cloud_error
+                record["state"] = "failed"
+                record["error"] = {"code": "backend_error" if backend_error else "cloud_error", "message": error_text}
+                record["message"] = error_text
+                record["asset"] = assets[-1] if assets else None
+                record["percent"] = max(float(record.get("percent") or 0), 0.95) if assets else 0.0
+                record["finished_ts"] = time.time()
+                _add_run_event(record, "error", error_text, {"outputs": len(assets)})
+            elif record.get("output_error"):
+                record["state"] = "failed"
+                record["error"] = copy.deepcopy(record["output_error"])
+                record["message"] = record["error"]["message"]
+                record["percent"] = 0.95 if assets else 0.0
+                record["finished_ts"] = time.time()
+                _add_run_event(record, "error", record["message"], {"outputs": len(assets)})
             elif assets:
                 record["asset"] = assets[-1]
                 record["state"] = "finished"
@@ -2443,6 +2512,7 @@ def _apply_task_yields(record):
                 record["message"] = "Finished without output. Check backend console."
                 record["finished_ts"] = time.time()
                 _add_run_event(record, "error", record["message"])
+            record.pop("_output_asset_cache", None)
 
 
 def _public_run_record(record, after_preview_serial=None):
@@ -2474,6 +2544,8 @@ def _public_run_record(record, after_preview_serial=None):
     }
     if record.get("error"):
         result["error"] = copy.deepcopy(record["error"])
+    if record.get("output_error"):
+        result["output_error"] = copy.deepcopy(record["output_error"])
     preview_stream = _public_preview_stream(record, after_preview_serial=after_preview_serial)
     if preview_stream:
         result["preview_stream"] = preview_stream
@@ -2534,12 +2606,26 @@ def _discard_preparation(record):
     return None
 
 
+def _complete_task_run(task):
+    with CANVAS_RUNS_LOCK:
+        record = CANVAS_RUNS.get(getattr(task, "simpleai_canvas_run_id", None))
+        if record is None or record.get("task") is not task:
+            return
+        if "_update_lock" not in record:
+            record["_update_lock"] = threading.Lock()
+        update_lock = record["_update_lock"]
+    with update_lock:
+        _apply_task_yields(record)
+        record["updated_ts"] = time.time()
+
+
 def _queue_prepared_task(record, task, fields, worker):
     with CANVAS_RUNS_LOCK:
         response = _preparation_response(record)
         if response is not None:
             return response
         # Publish the task and accept cancellation against it as one transition.
+        task.simpleai_canvas_run_id = record["run_id"]
         worker.add_task(task)
         record.update(fields)
     return None
@@ -2646,6 +2732,8 @@ def run_node(payload, state_params):
         "created_ts": now,
         "updated_ts": now,
     }
+    if isinstance(payload.get("agent_submission"), dict):
+        reservation["agent_submission"] = copy.deepcopy(payload["agent_submission"])
     with CANVAS_RUNS_LOCK:
         existing = CANVAS_RUNS.get(run_id)
         if existing:
@@ -2759,45 +2847,46 @@ def poll_run(payload, state_params):
 
         with CANVAS_RUNS_LOCK:
             record = CANVAS_RUNS.get(run_id)
-        if not record:
-            return {"ok": False, "error": "run not found", "run_id": run_id}
-        if not _run_record_owned_by(record, identity):
-            return {"ok": False, "error": "run not found", "run_id": run_id}
+            if not record or not _run_record_owned_by(record, identity):
+                return {"ok": False, "error": "run not found", "run_id": run_id}
+            if "_update_lock" not in record:
+                record["_update_lock"] = threading.Lock()
+            update_lock = record["_update_lock"]
 
-        _apply_task_yields(record)
-        task = record.get("task")
-        processing_id = worker.get_processing_id()
-        queue_size = worker.get_task_size()
-        record["processing_id"] = processing_id
-        record["queue_size"] = queue_size
-        if record.get("state") not in TERMINAL_RUN_STATES:
-            if task is None or not record.get("task_id"):
-                with CANVAS_RUNS_LOCK:
-                    if (record.get("state") not in TERMINAL_RUN_STATES
-                            and (record.get("task") is None or not record.get("task_id"))):
-                        record["state"] = "preparing"
-                        record["message"] = "Preparing AsyncTask."
-            else:
-                cancel_action = getattr(task, "user_cancel_action", None) or getattr(task, "last_stop", None)
-                if cancel_action == "stop":
-                    record["state"] = "cancelling"
-                    record["message"] = "Stop requested. Waiting for backend interruption."
-                elif cancel_action == "skip":
-                    record["state"] = "skipping"
-                    record["message"] = "Skip requested. Waiting for backend interruption."
-                if processing_id == record.get("task_id") or getattr(task, "processing", False):
-                    if record.get("state") not in ("cancelling", "skipping"):
-                        record["state"] = "running"
-                    record["percent"] = max(float(record.get("percent") or 0), 0.06)
-                    if not record.get("message") or record.get("message") == "Queued in AsyncTask.":
-                        record["message"] = "Running in AsyncTask."
-                elif record.get("state") not in ("cancelling", "skipping"):
-                    record["state"] = "queued"
-                    record["message"] = f"Queued in AsyncTask. Queue size: {queue_size}"
-        record["updated_ts"] = time.time()
-        with CANVAS_RUNS_LOCK:
-            CANVAS_RUNS[run_id] = record
-        return _public_run_record(record, after_preview_serial=after_preview_serial)
+        # Consume events and publish their status in the same per-run update.
+        with update_lock:
+            _apply_task_yields(record)
+            task = record.get("task")
+            processing_id = worker.get_processing_id()
+            queue_size = worker.get_task_size()
+            record["processing_id"] = processing_id
+            record["queue_size"] = queue_size
+            if record.get("state") not in TERMINAL_RUN_STATES:
+                if task is None or not record.get("task_id"):
+                    with CANVAS_RUNS_LOCK:
+                        if (record.get("state") not in TERMINAL_RUN_STATES
+                                and (record.get("task") is None or not record.get("task_id"))):
+                            record["state"] = "preparing"
+                            record["message"] = "Preparing AsyncTask."
+                else:
+                    cancel_action = getattr(task, "user_cancel_action", None) or getattr(task, "last_stop", None)
+                    if cancel_action == "stop":
+                        record["state"] = "cancelling"
+                        record["message"] = "Stop requested. Waiting for backend interruption."
+                    elif cancel_action == "skip":
+                        record["state"] = "skipping"
+                        record["message"] = "Skip requested. Waiting for backend interruption."
+                    if processing_id == record.get("task_id") or getattr(task, "processing", False):
+                        if record.get("state") not in ("cancelling", "skipping"):
+                            record["state"] = "running"
+                        record["percent"] = max(float(record.get("percent") or 0), 0.06)
+                        if not record.get("message") or record.get("message") == "Queued in AsyncTask.":
+                            record["message"] = "Running in AsyncTask."
+                    elif record.get("state") not in ("cancelling", "skipping"):
+                        record["state"] = "queued"
+                        record["message"] = f"Queued in AsyncTask. Queue size: {queue_size}"
+            record["updated_ts"] = time.time()
+            return _public_run_record(record, after_preview_serial=after_preview_serial)
     except Exception as err:
         return {"ok": False, "error": f"{type(err).__name__}: {err}", "run_id": run_id}
 
@@ -2829,35 +2918,37 @@ def control_run(payload, state_params):
                 })
                 _add_run_event(record, "warn", message, {"action": action})
                 return _public_run_record(record)
+            if "_update_lock" not in record:
+                record["_update_lock"] = threading.Lock()
+            update_lock = record["_update_lock"]
 
-        # A finish yield may already be waiting when the stop request arrives.
-        # Publish that completed result before marking the task for interruption.
-        _apply_task_yields(record)
-        if record.get("state") in TERMINAL_RUN_STATES:
-            with CANVAS_RUNS_LOCK:
-                CANVAS_RUNS[run_id] = record
-            return _public_run_record(record)
+        with update_lock:
+            # Publish a waiting finish before marking the task for interruption.
+            _apply_task_yields(record)
+            if record.get("state") in TERMINAL_RUN_STATES:
+                return _public_run_record(record)
 
-        task = record.get("task")
-        if task is None:
-            return {"ok": False, "error": "run task is missing", "run_id": run_id}
-        task.last_stop = action
-        task.user_cancel_action = action
+            task = record.get("task")
+            if task is None:
+                return {"ok": False, "error": "run task is missing", "run_id": run_id}
+            task.last_stop = action
+            task.user_cancel_action = action
+            record["state"] = "cancelling" if action == "stop" else "skipping"
+            record["message"] = (
+                "Stop requested. Waiting for backend interruption."
+                if action == "stop"
+                else "Skip requested. Waiting for backend interruption."
+            )
+            _add_run_event(record, "warn", record["message"], {"action": action})
+            record["updated_ts"] = time.time()
+
+        # Backend interruption can block; allow polling while it completes.
         try:
             import modules.async_worker as worker
             worker.request_task_cancel(task, action)
         except Exception:
             pass
-        record["state"] = "cancelling" if action == "stop" else "skipping"
-        record["message"] = (
-            "Stop requested. Waiting for backend interruption."
-            if action == "stop"
-            else "Skip requested. Waiting for backend interruption."
-        )
-        _add_run_event(record, "warn", record["message"], {"action": action})
-        record["updated_ts"] = time.time()
-        with CANVAS_RUNS_LOCK:
-            CANVAS_RUNS[run_id] = record
-        return _public_run_record(record)
+        with update_lock:
+            return _public_run_record(record)
     except Exception as err:
         return {"ok": False, "error": f"{type(err).__name__}: {err}", "run_id": run_id}

@@ -337,70 +337,82 @@ async def _download_file_attempt(
                 _mark_download_cancelled(progress_key, file_name)
                 raise DownloadCancelled(f"下载任务已停止: {progress_key}")
 
-            headers = {}
-            if resume_size > 0:
-                headers["Range"] = f"bytes={resume_size}-"
-
-            async with client.stream("GET", url, headers=headers) as response:
-                response.raise_for_status()
-
-                content_range = response.headers.get("Content-Range")
-                if resume_size > 0 and response.status_code == 200 and not content_range:
-                    logger.info("服务器未接受断点续传请求，将重新下载完整文件")
-                    resume_size = 0
-                if content_range:
-                    try:
-                        total_size = int(content_range.split("/")[-1])
-                    except Exception:
-                        total_size = 0
-                else:
-                    try:
-                        total_size = int(response.headers.get("Content-Length", 0) or 0)
-                    except Exception:
-                        total_size = 0
-                if total_size <= 0 and size:
-                    try:
-                        total_size = int(size or 0)
-                    except Exception:
-                        total_size = 0
+            if size > 0 and resume_size == size:
+                total_size = size
                 download_progress[progress_key] = {
-                    "percent": max(0.0, min(100.0, resume_size / total_size * 100)) if total_size > 0 else 0.0,
+                    "percent": 100.0,
                     "current": resume_size,
                     "total": total_size,
                     "file_name": file_name,
                 }
+            else:
+                headers = {}
+                if resume_size > 0:
+                    headers["Range"] = f"bytes={resume_size}-"
 
-                with tqdm(
-                    total=total_size if total_size > 0 else None,
-                    initial=resume_size,
-                    unit="iB",
-                    unit_scale=True,
-                    desc=''
-                ) as progress_bar:
-                    mode = "ab" if resume_size > 0 else "wb"
-                    with open(partial_file_path, mode) as f:
-                        async for chunk in response.aiter_bytes():
-                            if _is_download_cancelled(progress_key):
-                                _mark_download_cancelled(progress_key, file_name)
-                                raise DownloadCancelled(f"下载任务已停止: {progress_key}")
-                            f.write(chunk)
-                            chunk_len = len(chunk)
-                            progress_bar.update(chunk_len)
+                async with client.stream("GET", url, headers=headers) as response:
+                    response.raise_for_status()
 
-                            current_size = progress_bar.n
-                            percent = (current_size / total_size) * 100 if total_size > 0 else 0.0
-                            download_progress[progress_key] = {
-                                "percent": percent,
-                                "current": current_size,
-                                "total": total_size,
-                                "file_name": file_name,
-                            }
+                    content_range = response.headers.get("Content-Range")
+                    if resume_size > 0 and response.status_code == 200 and not content_range:
+                        logger.info("服务器未接受断点续传请求，将重新下载完整文件")
+                        resume_size = 0
+                    if content_range:
+                        try:
+                            total_size = int(content_range.split("/")[-1])
+                        except Exception:
+                            total_size = 0
+                    else:
+                        try:
+                            total_size = int(response.headers.get("Content-Length", 0) or 0)
+                        except Exception:
+                            total_size = 0
+                    if total_size <= 0 and size:
+                        try:
+                            total_size = int(size or 0)
+                        except Exception:
+                            total_size = 0
+                    download_progress[progress_key] = {
+                        "percent": max(0.0, min(100.0, resume_size / total_size * 100)) if total_size > 0 else 0.0,
+                        "current": resume_size,
+                        "total": total_size,
+                        "file_name": file_name,
+                    }
+
+                    with tqdm(
+                        total=total_size if total_size > 0 else None,
+                        initial=resume_size,
+                        unit="iB",
+                        unit_scale=True,
+                        desc=''
+                    ) as progress_bar:
+                        mode = "ab" if resume_size > 0 else "wb"
+                        with open(partial_file_path, mode) as f:
+                            async for chunk in response.aiter_bytes():
+                                if _is_download_cancelled(progress_key):
+                                    _mark_download_cancelled(progress_key, file_name)
+                                    raise DownloadCancelled(f"下载任务已停止: {progress_key}")
+                                f.write(chunk)
+                                chunk_len = len(chunk)
+                                progress_bar.update(chunk_len)
+
+                                current_size = progress_bar.n
+                                percent = (current_size / total_size) * 100 if total_size > 0 else 0.0
+                                download_progress[progress_key] = {
+                                    "percent": percent,
+                                    "current": current_size,
+                                    "total": total_size,
+                                    "file_name": file_name,
+                                }
 
             downloaded_size = os.path.getsize(partial_file_path)
             expected_total = total_size or size
             if expected_total <= 0 or downloaded_size == expected_total:
-                if vosr2_model_files.vae_config_matches(partial_file_path, size, file_path) is False:
+                config_match = vosr2_model_files.vae_config_matches(partial_file_path, size, file_path)
+                if config_match is False:
                     raise ValueError("VOSR2 VAE 配置校验失败 / Configuration checksum mismatch")
+                if config_match is None and size > 0 and downloaded_size != size:
+                    raise ValueError(f"Downloaded file size mismatch: expected {size} bytes, got {downloaded_size} bytes")
                 os.replace(partial_file_path, file_path)
                 if refresh_models_info:
                     shared.modelsinfo.refresh_file('add', file_path, url)
@@ -1986,6 +1998,35 @@ def get_download_status(file_name):
 
 default_download_url_prefix = 'https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels'
 
+def select_model_download_entries(missing_models, selection=None):
+    rows = list(missing_models or [])
+    if selection is None:
+        return rows
+    if isinstance(selection, dict):
+        def key(row):
+            return (
+                str(row.get("cata") or "").strip(),
+                str(row.get("path_file") or "").strip().replace("\\", "/"),
+            )
+        selected_key = key(selection)
+        for row in rows:
+            if key(row) == selected_key:
+                return [row]
+    raise ValueError("Selected model is not in the current missing model list")
+
+
+def _model_download_path(base_dir, file_name):
+    try:
+        root = os.path.realpath(os.path.abspath(base_dir))
+        target = os.path.realpath(os.path.join(root, file_name))
+        partial = os.path.realpath(target + ".partial")
+        if target == root or any(os.path.commonpath([root, path]) != root for path in (target, partial)):
+            return None
+        return target
+    except (OSError, ValueError):
+        return None
+
+
 def download_model_entry(cata, path_file, size=0, url=None, user_did=None, async_task=True, cleanup_file_path=None):
     from modules.config import path_models_root, model_cata_map
     global default_download_url_prefix
@@ -2001,6 +2042,15 @@ def download_model_entry(cata, path_file, size=0, url=None, user_did=None, async
     path_file = str(path_file or "").strip()
     if not cata or not path_file:
         return False
+    task_id = f"{cata}/{path_file}".replace("\\", "/").strip("/")
+    try:
+        cata = _clean_resource_relative_path(cata)
+        file_name = _clean_resource_relative_path(path_file)
+        if "/" in cata or ":" in cata or ":" in file_name or "\x00" in cata + file_name:
+            raise ValueError("category must be a directory name and model paths must be relative files")
+    except ValueError as error:
+        _mark_download_error(task_id, f"Invalid model download path: {error}", path_file)
+        return False
 
     try:
         size = int(size or 0)
@@ -2015,20 +2065,31 @@ def download_model_entry(cata, path_file, size=0, url=None, user_did=None, async
             path_file.strip("[]"),
         )
         return False
-    else:
-        file_name = path_file.replace('\\', '/').replace(os.sep, '/')
 
     task_id = f"{cata}/{file_name}".replace("\\", "/").strip("/")
 
     if cata in model_cata_map:
         model_dirs = model_cata_map[cata]
     else:
-        model_dirs = [os.path.join(path_models_root, cata)]
+        model_dirs = []
 
     if isinstance(model_dirs, str):
         model_dirs = [model_dirs]
     elif not isinstance(model_dirs, list):
         model_dirs = list(model_dirs)
+    fallback_directory = not model_dirs
+    if fallback_directory:
+        model_dirs = [os.path.join(path_models_root, cata)]
+    targets = {
+        base_dir: _model_download_path(
+            path_models_root if fallback_directory else base_dir,
+            os.path.join(cata, file_name) if fallback_directory else file_name,
+        )
+        for base_dir in model_dirs
+    }
+    if not all(targets.values()):
+        _mark_download_error(task_id, "Model download path escapes its configured directory", file_name)
+        return False
 
     preferred_dir = None
     for base_dir in model_dirs:
@@ -2043,7 +2104,7 @@ def download_model_entry(cata, path_file, size=0, url=None, user_did=None, async
 
     mismatch_path = None
     for base_dir in model_dirs:
-        candidate_path = os.path.abspath(os.path.join(base_dir, file_name))
+        candidate_path = targets[base_dir]
         if not os.path.exists(candidate_path):
             continue
         if _file_size_matches(candidate_path, size):
@@ -2052,7 +2113,7 @@ def download_model_entry(cata, path_file, size=0, url=None, user_did=None, async
         if mismatch_path is None:
             mismatch_path = candidate_path
 
-    full_path_file = mismatch_path or os.path.abspath(os.path.join(preferred_dir, file_name))
+    full_path_file = mismatch_path or targets[preferred_dir]
 
     if url is None or url == '':
         url = f'{default_download_url_prefix}/{cata}/{path_file}'

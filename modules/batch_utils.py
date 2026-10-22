@@ -364,6 +364,7 @@ def create_batch(batch_id=None):
     evt = BATCH_EVENTS.get(batch_id)
     if evt is None:
         evt = threading.Event()
+        evt.simpleai_batch_id = batch_id
         BATCH_EVENTS[batch_id] = evt
     return batch_id, evt
 
@@ -522,67 +523,72 @@ def batch_run_uov(folder_path, upload_files, seed_random, *args, get_task_with_r
         return
 
     batch_id, evt = create_batch()
-    progress_message = _batch_text(state, f"Batch: 0/{len(files)}", f"批处理：0/{len(files)}")
-    started_message = _batch_text(state, f"Batch started: {len(files)} files", f"批处理已开始：{len(files)} 个文件")
-    yield gr_update(visible=True, value=html.make_progress_html(1, progress_message)), \
-        gr_update(), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
-        gr_update(interactive=False), True, started_message, batch_id
+    try:
+        progress_message = _batch_text(state, f"Batch: 0/{len(files)}", f"批处理：0/{len(files)}")
+        started_message = _batch_text(state, f"Batch started: {len(files)} files", f"批处理已开始：{len(files)} 个文件")
+        yield gr_update(visible=True, value=html.make_progress_html(1, progress_message)), \
+            gr_update(), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
+            gr_update(interactive=False), True, started_message, batch_id
 
-    base_task = get_task_with_resolution_multiplier(*ctrls_values, resolution_multiplier, resolution_quantize_step)
-    base_args = copy.deepcopy(base_task.args)
-    base_args = fill_backend_meta(base_args, state)
-    base_seed = base_args[8] if len(base_args) > 8 else 0
+        base_task = get_task_with_resolution_multiplier(*ctrls_values, resolution_multiplier, resolution_quantize_step)
+        base_args = base_task.args.copy()
+        base_args[19] = None
+        base_args = copy.deepcopy(base_args)
+        base_args = fill_backend_meta(base_args, state)
+        base_seed = base_args[8] if len(base_args) > 8 else 0
 
-    stopped = False
-    completed = 0
+        stopped = False
+        completed = 0
 
-    for i, path in enumerate(files):
-        if evt.is_set():
-            stopped = True
-            break
-        try:
-            img = load_rgba(path)
-        except Exception as e:
-            filename = os.path.basename(path)
-            detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
-            status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
-            yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
-                gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
-                gr_update(interactive=False), True, status_message, batch_id
-            continue
+        for i, path in enumerate(files):
+            if evt.is_set():
+                stopped = True
+                break
+            try:
+                img = load_rgba(path)
+            except Exception as e:
+                filename = os.path.basename(path)
+                detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
+                status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
+                yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
+                    gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
+                    gr_update(interactive=False), True, status_message, batch_id
+                continue
 
-        args_i = copy.deepcopy(base_args)
-        try:
-            args_i[8] = resolve_batch_seed(seed_random, base_seed, constants)
-        except Exception:
-            pass
-        args_i[19] = img
-        task = worker.AsyncTask(args=args_i)
-        task.simpleai_batch_cancel_event = evt
+            args_i = copy.deepcopy(base_args)
+            try:
+                args_i[8] = resolve_batch_seed(seed_random, base_seed, constants)
+            except Exception:
+                pass
+            args_i[19] = img
+            task = worker.AsyncTask(args=args_i)
+            task.simpleai_batch_cancel_event = evt
 
-        status = _batch_text(
-            state,
-            f"Batch UOV: {i + 1}/{len(files)} - {os.path.basename(path)}",
-            f"UOV 批处理：{i + 1}/{len(files)} - {os.path.basename(path)}",
-        )
-        for out in generate_clicked(task, state):
-            yield (*out, gr_update(interactive=False), True, status, batch_id)
-        completed = i + 1
-        if evt.is_set():
-            stopped = True
-            break
+            status = _batch_text(
+                state,
+                f"Batch UOV: {i + 1}/{len(files)} - {os.path.basename(path)}",
+                f"UOV 批处理：{i + 1}/{len(files)} - {os.path.basename(path)}",
+            )
+            for out in generate_clicked(task, state):
+                yield (*out, gr_update(interactive=False), True, status, batch_id)
+            completed = i + 1
+            if evt.is_set():
+                stopped = True
+                break
 
-    clear_batch(batch_id)
-    if stopped:
-        yield gr_update(visible=False), \
-            gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
-            gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
-    else:
-        yield gr_update(visible=False), \
-            gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
-            gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, _batch_text(state, "Batch finished.", "批处理已完成。"), batch_id
+        if stopped:
+            yield gr_update(visible=False), \
+                gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
+                gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
+                gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
+        else:
+            yield gr_update(visible=False), \
+                gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
+                gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
+                gr_update(visible=True, interactive=True), False, _batch_text(state, "Batch finished.", "批处理已完成。"), batch_id
+    finally:
+        evt.simpleai_batch_closed = True
+        worker.release_batch(evt)
 
 
 def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_with_resolution_multiplier, generate_clicked, worker, constants, html, get_welcome_image):
@@ -604,67 +610,72 @@ def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_wi
         return
 
     batch_id, evt = create_batch()
-    progress_message = _batch_text(state, f"Batch: 0/{len(files)}", f"批处理：0/{len(files)}")
-    started_message = _batch_text(state, f"Batch started: {len(files)} files", f"批处理已开始：{len(files)} 个文件")
-    yield gr_update(visible=True, value=html.make_progress_html(1, progress_message)), \
-        gr_update(), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
-        gr_update(interactive=False), True, started_message, batch_id
+    try:
+        progress_message = _batch_text(state, f"Batch: 0/{len(files)}", f"批处理：0/{len(files)}")
+        started_message = _batch_text(state, f"Batch started: {len(files)} files", f"批处理已开始：{len(files)} 个文件")
+        yield gr_update(visible=True, value=html.make_progress_html(1, progress_message)), \
+            gr_update(), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
+            gr_update(interactive=False), True, started_message, batch_id
 
-    base_task = get_task_with_resolution_multiplier(*ctrls_values, resolution_multiplier, resolution_quantize_step)
-    base_args = copy.deepcopy(base_task.args)
-    base_args = fill_backend_meta(base_args, state)
-    base_seed = base_args[8] if len(base_args) > 8 else 0
+        base_task = get_task_with_resolution_multiplier(*ctrls_values, resolution_multiplier, resolution_quantize_step)
+        base_args = base_task.args.copy()
+        base_args[75] = None
+        base_args = copy.deepcopy(base_args)
+        base_args = fill_backend_meta(base_args, state)
+        base_seed = base_args[8] if len(base_args) > 8 else 0
 
-    stopped = False
-    completed = 0
+        stopped = False
+        completed = 0
 
-    for i, path in enumerate(files):
-        if evt.is_set():
-            stopped = True
-            break
-        try:
-            img = load_rgba(path)
-        except Exception as e:
-            filename = os.path.basename(path)
-            detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
-            status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
-            yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
-                gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
-                gr_update(interactive=False), True, status_message, batch_id
-            continue
+        for i, path in enumerate(files):
+            if evt.is_set():
+                stopped = True
+                break
+            try:
+                img = load_rgba(path)
+            except Exception as e:
+                filename = os.path.basename(path)
+                detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
+                status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
+                yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
+                    gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
+                    gr_update(interactive=False), True, status_message, batch_id
+                continue
 
-        args_i = copy.deepcopy(base_args)
-        try:
-            args_i[8] = resolve_batch_seed(seed_random, base_seed, constants)
-        except Exception:
-            pass
-        args_i[75] = img
-        task = worker.AsyncTask(args=args_i)
-        task.simpleai_batch_cancel_event = evt
+            args_i = copy.deepcopy(base_args)
+            try:
+                args_i[8] = resolve_batch_seed(seed_random, base_seed, constants)
+            except Exception:
+                pass
+            args_i[75] = img
+            task = worker.AsyncTask(args=args_i)
+            task.simpleai_batch_cancel_event = evt
 
-        status = _batch_text(
-            state,
-            f"Batch Enhance: {i + 1}/{len(files)} - {os.path.basename(path)}",
-            f"增强批处理：{i + 1}/{len(files)} - {os.path.basename(path)}",
-        )
-        for out in generate_clicked(task, state):
-            yield (*out, gr_update(interactive=False), True, status, batch_id)
-        completed = i + 1
-        if evt.is_set():
-            stopped = True
-            break
+            status = _batch_text(
+                state,
+                f"Batch Enhance: {i + 1}/{len(files)} - {os.path.basename(path)}",
+                f"增强批处理：{i + 1}/{len(files)} - {os.path.basename(path)}",
+            )
+            for out in generate_clicked(task, state):
+                yield (*out, gr_update(interactive=False), True, status, batch_id)
+            completed = i + 1
+            if evt.is_set():
+                stopped = True
+                break
 
-    clear_batch(batch_id)
-    if stopped:
-        yield gr_update(visible=False), \
-            gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
-            gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
-    else:
-        yield gr_update(visible=False), \
-            gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
-            gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, _batch_text(state, "Batch finished.", "批处理已完成。"), batch_id
+        if stopped:
+            yield gr_update(visible=False), \
+                gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
+                gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
+                gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
+        else:
+            yield gr_update(visible=False), \
+                gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
+                gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
+                gr_update(visible=True, interactive=True), False, _batch_text(state, "Batch finished.", "批处理已完成。"), batch_id
+    finally:
+        evt.simpleai_batch_closed = True
+        worker.release_batch(evt)
 
 
 def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2,
@@ -726,175 +737,200 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
         return
 
     batch_id, evt = create_batch()
-    progress_message = _batch_text(state, f"Batch: 0/{len(files)}", f"批处理：0/{len(files)}")
-    started_message = _batch_text(state, f"Batch started: {len(files)} files", f"批处理已开始：{len(files)} 个文件")
-    yield gr_update(visible=True, value=html.make_progress_html(1, progress_message)), \
-        gr_update(), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
-        gr_update(interactive=False), True, started_message, batch_id
+    try:
+        progress_message = _batch_text(state, f"Batch: 0/{len(files)}", f"批处理：0/{len(files)}")
+        started_message = _batch_text(state, f"Batch started: {len(files)} files", f"批处理已开始：{len(files)} 个文件")
+        yield gr_update(visible=True, value=html.make_progress_html(1, progress_message)), \
+            gr_update(), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
+            gr_update(interactive=False), True, started_message, batch_id
 
-    base_task = get_task_with_resolution_multiplier(*ctrls_values, resolution_multiplier, resolution_quantize_step)
-    base_args = copy.deepcopy(base_task.args)
-    base_seed = base_args[8] if len(base_args) > 8 else image_seed
+        base_task = get_task_with_resolution_multiplier(*ctrls_values, resolution_multiplier, resolution_quantize_step)
+        base_args = copy.deepcopy(base_task.args)
+        base_seed = base_args[8] if len(base_args) > 8 else image_seed
 
-    stopped = False
-    completed = 0
+        stopped = False
+        completed = 0
+        failed_preparations = 0
+        last_preparation_error = ""
 
-    def _build_canvas_value(img_rgba):
-        h, w = img_rgba.shape[0], img_rgba.shape[1]
-        mask = np.zeros((h, w, 4), dtype=np.uint8)
-        return {"image": img_rgba, "mask": mask}
+        def _build_canvas_value(img_rgba):
+            h, w = img_rgba.shape[0], img_rgba.shape[1]
+            mask = np.zeros((h, w, 4), dtype=np.uint8)
+            return {"image": img_rgba, "mask": mask}
 
-    for i, path in enumerate(files):
-        if evt.is_set():
-            stopped = True
-            break
-        try:
-            img = load_rgba(path)
-        except Exception as e:
-            filename = os.path.basename(path)
-            detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
-            status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
-            yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
-                gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
-                gr_update(interactive=False), True, status_message, batch_id
-            continue
+        for i, path in enumerate(files):
+            if evt.is_set():
+                stopped = True
+                break
+            try:
+                img = load_rgba(path)
+            except Exception as e:
+                filename = os.path.basename(path)
+                detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
+                status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
+                yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
+                    gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
+                    gr_update(interactive=False), True, status_message, batch_id
+                continue
 
-        scene_canvas_image_v = copy.deepcopy(scene_canvas_image) if isinstance(scene_canvas_image, dict) else scene_canvas_image
-        scene_input_image1_v = scene_input_image1
-        scene_input_image2_v = scene_input_image2
-        scene_input_image3_v = scene_input_image3
-        scene_input_image4_v = scene_input_image4
-        scene_input_image5_v = scene_input_image5
-        scene_input_image6_v = scene_input_image6
-        scene_input_image7_v = scene_input_image7
-        scene_input_image8_v = scene_input_image8
-        if target_slot == "scene_canvas_image":
-            scene_canvas_image_v = _build_canvas_value(img)
-        else:
-            image_values = [
-                scene_input_image1_v,
-                scene_input_image2_v,
-                scene_input_image3_v,
-                scene_input_image4_v,
-                scene_input_image5_v,
-                scene_input_image6_v,
-                scene_input_image7_v,
-                scene_input_image8_v,
-            ]
-            target_index = max(0, min(7, _scene_batch_slot_fixed_index(target_slot) - 2))
-            image_values[target_index] = img
-            (
-                scene_input_image1_v,
-                scene_input_image2_v,
-                scene_input_image3_v,
-                scene_input_image4_v,
-                scene_input_image5_v,
-                scene_input_image6_v,
-                scene_input_image7_v,
-                scene_input_image8_v,
-            ) = image_values
+            scene_canvas_image_v = copy.deepcopy(scene_canvas_image) if isinstance(scene_canvas_image, dict) else scene_canvas_image
+            scene_input_image1_v = scene_input_image1
+            scene_input_image2_v = scene_input_image2
+            scene_input_image3_v = scene_input_image3
+            scene_input_image4_v = scene_input_image4
+            scene_input_image5_v = scene_input_image5
+            scene_input_image6_v = scene_input_image6
+            scene_input_image7_v = scene_input_image7
+            scene_input_image8_v = scene_input_image8
+            if target_slot == "scene_canvas_image":
+                scene_canvas_image_v = _build_canvas_value(img)
+            else:
+                image_values = [
+                    scene_input_image1_v,
+                    scene_input_image2_v,
+                    scene_input_image3_v,
+                    scene_input_image4_v,
+                    scene_input_image5_v,
+                    scene_input_image6_v,
+                    scene_input_image7_v,
+                    scene_input_image8_v,
+                ]
+                target_index = max(0, min(7, _scene_batch_slot_fixed_index(target_slot) - 2))
+                image_values[target_index] = img
+                (
+                    scene_input_image1_v,
+                    scene_input_image2_v,
+                    scene_input_image3_v,
+                    scene_input_image4_v,
+                    scene_input_image5_v,
+                    scene_input_image6_v,
+                    scene_input_image7_v,
+                    scene_input_image8_v,
+                ) = image_values
 
-        overwrite_width_v = overwrite_width
-        overwrite_height_v = overwrite_height
-        scene_aspect_ratio_v = scene_aspect_ratio
-        resolution_original_input_v = _scene_batch_effective_original_input(
-            resolution_original_input,
-            selected_original_resolution,
-        )
-        batch_target_size = _scene_batch_target_size_for_batch_image(
-            (img.shape[1], img.shape[0]),
-            resolution_preprocess,
-            resolution_profile,
-            projected_base,
-            custom_area,
-            resolution_quantize_step,
-            selected_original_resolution,
-        )
-        if batch_target_size:
-            overwrite_width_v, overwrite_height_v = batch_target_size
-            scene_aspect_ratio_v = f"{batch_target_size[0]}×{batch_target_size[1]}"
-
-        batch_seed = resolve_batch_seed(seed_random, base_seed, constants)
-        bp = {} if backend_params is None else copy.deepcopy(backend_params)
-        try:
-            topbar.process_before_generation(
-                state, False, batch_seed,
-                bp, scene_theme, scene_canvas_image_v, scene_input_image1_v, scene_input_image2_v, scene_input_image3_v, scene_input_image4_v,
-                scene_additional_prompt, scene_additional_prompt_2,
-                scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5,
-                scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10,
-                scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4,
-                scene_aspect_ratio_v, scene_image_number,
-                scene_video, scene_audio, scene_original_video_path, active_video_source,
-                sam3_input_video, sam3_original_video_path, sam3_mask_video,
-                overwrite_width_v, overwrite_height_v, resolution_multiplier, resolution_quantize_step,
-                resolution_edit_mode, resolution_original_input_v,
-                overwrite_step=overwrite_step,
-                scene_video_duration=scene_video_duration,
-                scene_reference_video=scene_reference_video,
-                scene_reference_video_original_path=scene_reference_video_original_path,
-                scene_video_trim_payload=scene_video_trim_payload,
-                scene_reference_video_trim_payload=scene_reference_video_trim_payload,
-                scene_input_image5=scene_input_image5_v,
-                scene_input_image6=scene_input_image6_v,
-                scene_input_image7=scene_input_image7_v,
-                scene_input_image8=scene_input_image8_v,
-                scene_reference_video2=scene_reference_video2,
-                scene_reference_video2_original_path=scene_reference_video2_original_path,
-                scene_reference_video2_trim_payload=scene_reference_video2_trim_payload,
-                scene_audio2=scene_audio2,
-                scene_audio3=scene_audio3,
-                current_model_params_state=current_model_params_state,
+            overwrite_width_v = overwrite_width
+            overwrite_height_v = overwrite_height
+            scene_aspect_ratio_v = scene_aspect_ratio
+            resolution_original_input_v = _scene_batch_effective_original_input(
+                resolution_original_input,
+                selected_original_resolution,
             )
-        except Exception:
+            batch_target_size = _scene_batch_target_size_for_batch_image(
+                (img.shape[1], img.shape[0]),
+                resolution_preprocess,
+                resolution_profile,
+                projected_base,
+                custom_area,
+                resolution_quantize_step,
+                selected_original_resolution,
+            )
+            if batch_target_size:
+                overwrite_width_v, overwrite_height_v = batch_target_size
+                scene_aspect_ratio_v = f"{batch_target_size[0]}×{batch_target_size[1]}"
+
+            batch_seed = resolve_batch_seed(seed_random, base_seed, constants)
             bp = {} if backend_params is None else copy.deepcopy(backend_params)
+            try:
+                topbar.process_before_generation(
+                    state, False, batch_seed,
+                    bp, scene_theme, scene_canvas_image_v, scene_input_image1_v, scene_input_image2_v, scene_input_image3_v, scene_input_image4_v,
+                    scene_additional_prompt, scene_additional_prompt_2,
+                    scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5,
+                    scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10,
+                    scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4,
+                    scene_aspect_ratio_v, scene_image_number,
+                    scene_video, scene_audio, scene_original_video_path, active_video_source,
+                    sam3_input_video, sam3_original_video_path, sam3_mask_video,
+                    overwrite_width_v, overwrite_height_v, resolution_multiplier, resolution_quantize_step,
+                    resolution_edit_mode, resolution_original_input_v,
+                    overwrite_step=overwrite_step,
+                    scene_video_duration=scene_video_duration,
+                    scene_reference_video=scene_reference_video,
+                    scene_reference_video_original_path=scene_reference_video_original_path,
+                    scene_video_trim_payload=scene_video_trim_payload,
+                    scene_reference_video_trim_payload=scene_reference_video_trim_payload,
+                    scene_input_image5=scene_input_image5_v,
+                    scene_input_image6=scene_input_image6_v,
+                    scene_input_image7=scene_input_image7_v,
+                    scene_input_image8=scene_input_image8_v,
+                    scene_reference_video2=scene_reference_video2,
+                    scene_reference_video2_original_path=scene_reference_video2_original_path,
+                    scene_reference_video2_trim_payload=scene_reference_video2_trim_payload,
+                    scene_audio2=scene_audio2,
+                    scene_audio3=scene_audio3,
+                    current_model_params_state=current_model_params_state,
+                )
+            except Exception as e:
+                failed_preparations += 1
+                last_preparation_error = f"{os.path.basename(path)}: {e}"
+                detail_message = _batch_text(
+                    state,
+                    f"Batch Scene: preparation failed for {last_preparation_error}",
+                    f"场景批处理：准备失败，{last_preparation_error}",
+                )
+                yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
+                    gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
+                    gr_update(interactive=False), True, detail_message, batch_id
+                if evt.is_set():
+                    stopped = True
+                    break
+                continue
 
-        backend_norm = api_params.normalization_backend(bp)
+            backend_norm = api_params.normalization_backend(bp)
 
-        args_i = copy.deepcopy(base_args)
-        _scene_batch_set_task_resolution_args(
-            args_i,
-            api_params,
-            overwrite_width_v,
-            overwrite_height_v,
-            scene_aspect_ratio_v,
-            resolution_multiplier,
-            resolution_quantize_step,
-            resolution_preprocess,
-        )
-        try:
-            params_backend_index = api_params.all_args.index("params_backend")
-        except Exception:
-            params_backend_index = 67
-        args_i[params_backend_index] = backend_norm
-        args_i = fill_backend_meta(args_i, state)
-        try:
-            args_i[8] = batch_seed
-        except Exception:
-            pass
+            args_i = copy.deepcopy(base_args)
+            _scene_batch_set_task_resolution_args(
+                args_i,
+                api_params,
+                overwrite_width_v,
+                overwrite_height_v,
+                scene_aspect_ratio_v,
+                resolution_multiplier,
+                resolution_quantize_step,
+                resolution_preprocess,
+            )
+            try:
+                params_backend_index = api_params.all_args.index("params_backend")
+            except Exception:
+                params_backend_index = 67
+            args_i[params_backend_index] = backend_norm
+            args_i = fill_backend_meta(args_i, state)
+            try:
+                args_i[8] = batch_seed
+            except Exception:
+                pass
 
-        task = worker.AsyncTask(args=args_i)
-        task.simpleai_batch_cancel_event = evt
-        status = _batch_text(
-            state,
-            f"Batch Scene: {i + 1}/{len(files)} - {os.path.basename(path)}",
-            f"场景批处理：{i + 1}/{len(files)} - {os.path.basename(path)}",
-        )
-        for out in generate_clicked(task, state):
-            yield (*out, gr_update(interactive=False), True, status, batch_id)
-        completed = i + 1
-        if evt.is_set():
-            stopped = True
-            break
+            task = worker.AsyncTask(args=args_i)
+            task.simpleai_batch_cancel_event = evt
+            status = _batch_text(
+                state,
+                f"Batch Scene: {i + 1}/{len(files)} - {os.path.basename(path)}",
+                f"场景批处理：{i + 1}/{len(files)} - {os.path.basename(path)}",
+            )
+            for out in generate_clicked(task, state):
+                yield (*out, gr_update(interactive=False), True, status, batch_id)
+            completed = i + 1
+            if evt.is_set():
+                stopped = True
+                break
 
-    clear_batch(batch_id)
-    if stopped:
-        yield gr_update(visible=False), \
-            gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
-            gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
-    else:
-        yield gr_update(visible=False), \
-            gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
-            gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, _batch_text(state, "Batch finished.", "批处理已完成。"), batch_id
+        if stopped:
+            yield gr_update(visible=False), \
+                gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
+                gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
+                gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
+        else:
+            finished_message = _batch_text(state, "Batch finished.", "批处理已完成。")
+            if failed_preparations:
+                finished_message = _batch_text(
+                    state,
+                    f"Batch finished: preparation failed for {failed_preparations}/{len(files)} files. {last_preparation_error}",
+                    f"批处理结束：{failed_preparations}/{len(files)} 个文件准备失败。{last_preparation_error}",
+                )
+            yield gr_update(visible=False), \
+                gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
+                gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
+                gr_update(visible=True, interactive=True), False, finished_message, batch_id
+    finally:
+        evt.simpleai_batch_closed = True
+        worker.release_batch(evt)

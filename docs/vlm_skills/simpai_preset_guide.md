@@ -575,14 +575,25 @@ SimpAI UI guide skill:
   recommending.
 - Keep answers practical and concise in the user's UI language.
 
-## MOSS-Image Text-To-Image
+## MOSS-Image
 
 - `MOSS-Image` uses MOSS-Image-SFT for text-to-image, image variation, upscale
   and masked detail refinement. Enhance supports an uploaded source, three
-  detected regions, and upscale before or after refinement. It does not support reference-image control,
-  ControlNet, video or audio. Do not route free-form reference-image editing to it.
+  detected regions, and upscale before or after refinement. Main generation accepts
+  one depth map and one flat-color region map. The control adapter loads
+  internally only while control is enabled, without using a user LoRA slot.
+  It does not support reference-image control for identity or style, Canny,
+  OpenPose, video or audio. Do not route free-form reference-image editing to it.
   The inpaint engine is `None`; refinement uses the current model with a noise
   mask and Differential Diffusion, without a separate inpaint model.
+  Control is not mixed into variation, upscale, inpaint or enhancement.
+  Depth uses near-white/far-black values; ordinary images use the existing
+  depth preprocessor unless preprocessing is skipped. Region-map colors are
+  region IDs, not requested output colors. Both maps fit the target size with
+  the same center crop; region maps use nearest-neighbor interpolation.
+  Each map has its own strength and stop position. Control weights are included
+  in the MOSS-Image model package and load only when control is enabled.
+  Download any missing files through the existing model download flow.
 - Use the official MOSS prompt skill returned by `simpai.prompts.guidance`.
   Ordinary scenes use a caption in the original request's language: Chinese
   input stays Chinese and English input stays English unless the user explicitly
@@ -599,8 +610,10 @@ SimpAI UI guide skill:
   Layout JSON bypasses wildcard batches, inline LoRA tags, style templates and
   automatic expansion; the explicitly selected LoRA stack remains available.
 - Defaults: 1024 x 1024, Euler, 12 steps, CFG 1, `sgm_uniform`, shift 5 and
-  unconditional skip layer 22, with `lora.safetensors` from
-  `lodestones/MOSS-Image-SFT-8-steps-dmd` enabled at model strength 1.0.
+  unconditional skip layer 22, with `8-steps-dmd2-lora.safetensors` from
+  `lodestones/Kromoss` enabled at model strength 0.75. This uses the original
+  MOSS SFT DiT, not the Kromoss DiT. ModelScope is the primary download source
+  and Hugging Face is the fallback.
   Sampling steps remain editable; 12 is a default, not a fixed limit.
   To use the original undistilled settings, disable the DMD LoRA and select
   50 steps with CFG 3. The workflow uses Comfy's native MOSS support:

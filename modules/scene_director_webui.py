@@ -3080,6 +3080,10 @@ def generate_clicked_or_director(
         timeline_video = _scene_director_render_final_timeline(runtime, segment_videos, state_params)
         if timeline_video:
             final_results.append(timeline_video)
+        elif not getattr(generation_task, "backend_error", None):
+            generation_task.backend_error = _scene_director_text(
+                state_params, "The final timeline could not be delivered; shot outputs were preserved.",
+                "最终时间轴交付失败，已保留分镜输出。")
 
     try:
         generation_task.processing = False

@@ -473,6 +473,8 @@ def _public_record(record):
     if record.get("error"):
         result["error"] = record.get("error")
         result["details"] = record.get("details") or ""
+    if record.get("output_error"):
+        result["output_error"] = copy.deepcopy(record["output_error"])
     if record.get("cancel_action"):
         result["user_cancel_action"] = record.get("cancel_action")
     return result
@@ -539,6 +541,7 @@ def _run_worker_locked(run_id):
             record = QWEN_TTS_RUNS.get(run_id)
             if not record:
                 return
+            record["original_output_path"] = audio_path
             if record.get("cancel_action") == "stop":
                 cleanup_after_worker = True
                 record["state"] = "canceled"
@@ -549,20 +552,26 @@ def _run_worker_locked(run_id):
                 _add_event(record, "warn", record["message"])
                 return
 
-        asset = canvas_workbench_assets.register_existing_file_asset(
-            audio_path,
-            record.get("project_id") or "default",
-            record.get("state_params") if isinstance(record.get("state_params"), dict) else {},
-            node_id=record.get("placeholder_node_id") or record.get("qwen_tts_node_id") or "",
-            role="qwen_tts_output",
-            metadata={
-                "mime": "audio/wav",
-                "owner": record.get("user_did") or "guest",
-                "mode": record.get("mode") or "",
-            },
-        )
-        if not asset:
-            raise RuntimeError("Qwen TTS finished without a materialized audio asset")
+        try:
+            asset = canvas_workbench_assets.register_existing_file_asset(
+                audio_path,
+                record.get("project_id") or "default",
+                record.get("state_params") if isinstance(record.get("state_params"), dict) else {},
+                node_id=record.get("placeholder_node_id") or record.get("qwen_tts_node_id") or "",
+                role="qwen_tts_output",
+                metadata={
+                    "mime": "audio/wav",
+                    "owner": record.get("user_did") or "guest",
+                    "mode": record.get("mode") or "",
+                },
+            )
+        except OSError as error:
+            asset = {"copy_error": f"{type(error).__name__}: {error}"}
+        if not isinstance(asset, dict) or not asset or asset.get("copy_error"):
+            error = canvas_workbench_assets.output_delivery_error(record.get("state_params"))
+            with QWEN_TTS_RUNS_LOCK:
+                record["output_error"] = error
+            raise RuntimeError(error["message"])
         with QWEN_TTS_RUNS_LOCK:
             record = QWEN_TTS_RUNS.get(run_id)
             if not record:

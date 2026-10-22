@@ -1322,6 +1322,27 @@ class LlamaCppVLM:
         logger.info(f"Result: n_gpu_layers = {n_gpu_layers}")
         return n_gpu_layers, estimate
 
+    @contextmanager
+    def _cleanup_failed_model_load(self):
+        try:
+            yield
+        except Exception:
+            if self.llm is None:
+                handler = self.chat_handler
+                self.chat_handler = None
+                self.text_chat_handler = None
+                self.thinking_text_chat_handler = None
+                if handler is not None:
+                    try:
+                        close_handler = getattr(handler, "close", None)
+                        if callable(close_handler):
+                            close_handler()
+                        else:
+                            handler._exit_stack.close()
+                    except Exception:
+                        logger.exception("Unable to release chat handler after llama.cpp model load failure")
+            raise
+
     def load_model(
         self,
         model_name,
@@ -1339,7 +1360,7 @@ class LlamaCppVLM:
             logger.error("llama-cpp-python is not correctly installed or CUDA libraries are missing.")
             return
 
-        with self.lock:
+        with self.lock, self._cleanup_failed_model_load():
             n_ctx = normalize_llama_cpp_n_ctx(n_ctx, default=8192)
             vram_policy = normalize_llama_cpp_vram_policy(vram_policy)
             cpu_only = vram_policy == "cpu"
@@ -2617,6 +2638,15 @@ class LlamaCppVLM:
                     finally:
                         if hasattr(stream, "close"):
                             stream.close()
+            except Exception as error:
+                cancellation_checkpoint()
+                if is_llama_cpp_slot_error(error):
+                    context = self._runtime_context_summary(messages, kwargs.get("max_tokens"))
+                    try:
+                        self._invalidate_runtime_after_slot_error("completion_messages", error, context)
+                    except Exception:
+                        logger.exception("Unable to release llama.cpp runtime after an API slot/decode failure")
+                raise
             finally:
                 self._clear_hybrid_cache_if_needed()
 

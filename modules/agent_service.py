@@ -214,7 +214,12 @@ class StudioBackend:
 
     def submit(self, payload, context):
         from modules import canvas_workbench_runner
-        return canvas_workbench_runner.run_node(payload, context.state)
+        result = canvas_workbench_runner.run_node(payload, context.state)
+        if result.get("ok") and payload.get("agent_submission"):
+            stored = self.replay_preset(payload["run_id"], payload["request_fingerprint"], context)
+            if stored:
+                result["_agent_submission"] = stored.get("_agent_submission")
+        return result
 
     def run(self, run_id, context, cancel=False):
         from modules import canvas_workbench_runner
@@ -293,6 +298,12 @@ class StudioBackend:
         return run_workflow(payload, context.state)
 
     def replay_workflow(self, run_id, fingerprint, context):
+        return self._replay_run(run_id, fingerprint, context)
+
+    def replay_preset(self, run_id, fingerprint, context):
+        return self._replay_run(run_id, fingerprint, context, include_submission=True)
+
+    def _replay_run(self, run_id, fingerprint, context, include_submission=False):
         import sys
         runner = sys.modules.get("modules.canvas_workbench_runner")
         if runner is None:
@@ -305,7 +316,10 @@ class StudioBackend:
                 raise AgentAPIError("run_id_conflict", "Run ID belongs to another identity.", 409)
             if record.get("request_fingerprint") != fingerprint:
                 raise AgentAPIError("request_id_conflict", "This request ID identifies a different submission.", 409)
-            return {**runner._public_run_record(record), "idempotent_replay": True}
+            result = {**runner._public_run_record(record), "idempotent_replay": True}
+            if include_submission:
+                result["_agent_submission"] = copy.deepcopy(record.get("agent_submission") or {})
+            return result
 
 
 class AgentService:
@@ -1003,12 +1017,22 @@ class AgentService:
         if "count" in profile_output:
             node["generation_config"]["overrides"]["image_number"] = request.output.count
         overrides = node["resolution_config"]["overrides"]
+        scene_aspect = (request.parameters.get("scene_aspect_ratio")
+                        if entry.get("scene") and "aspect_ratio" not in request.output.model_fields_set else None)
         size = (request.output.width, request.output.height)
         if not all(size):
-            size = {"1:1": (1024, 1024), "16:9": (1344, 768), "9:16": (768, 1344), "4:3": (1152, 864),
-                    "3:4": (864, 1152), "2:3": (832, 1216), "3:2": (1216, 832)}.get(request.output.aspect_ratio)
+            size = None if scene_aspect is not None else {
+                "1:1": (1024, 1024), "16:9": (1344, 768), "9:16": (768, 1344), "4:3": (1152, 864),
+                "3:4": (864, 1152), "2:3": (832, 1216), "3:2": (1216, 832),
+            }.get(request.output.aspect_ratio)
         if size:
-            overrides.update({"width": size[0], "height": size[1], "aspect_ratio": f"{size[0]}*{size[1]}", "random_aspect_ratio": False})
+            overrides.update({"width": size[0], "height": size[1], "aspect_ratio": f"{size[0]}*{size[1]}",
+                              "random_aspect_ratio": False, "use_input_aspect": False})
+        elif scene_aspect is not None:
+            overrides.update({
+                "width": None, "height": None, "aspect_ratio": scene_aspect, "random_aspect_ratio": False,
+                "use_input_aspect": str(scene_aspect).split("|", 1)[0].strip().lower() in ("origin", "original"),
+            })
         elif entry.get("scene") and "aspect_ratio" in profile_output:
             overrides["use_input_aspect"] = True
         node["classic_mode"] = (plan or {}).get("classic_mode") or "t2i"
@@ -1173,24 +1197,44 @@ class AgentService:
                 "ready_to_submit": plan["status"] == "ready" and not unbound and all(item.asset_id for item in refs.values())}
 
     def submit(self, request, context):
+        from modules.access_mode import user_can_generate
+        if not user_can_generate(context.user_id):
+            message = ("当前身份没有生成权限。" if context.state.get("__lang") == "cn"
+                       else "This identity cannot submit generation tasks.")
+            raise AgentAPIError("generation_not_allowed", message, 403)
+        run_id = "agent-" + hashlib.sha256(f"{context.user_id}\0{request.request_id}".encode()).hexdigest()[:40]
+        fingerprint_value = request.model_dump()
+        if request.parameter_profile:
+            fingerprint_value["profile_output_overrides"] = sorted(request.output.model_fields_set)
+        fingerprint = hashlib.sha256(json.dumps(fingerprint_value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        replay = self.backend.replay_preset(run_id, fingerprint, context)
+        if replay:
+            return self._preset_submission_response(replay, context)
         plan, spec, node, refs, status = self._prepare(request, context)
         if plan["status"] != "ready":
             raise AgentAPIError("task_not_ready", "The task needs inputs, models or interaction before submission.", 409, {"plan": plan})
         sources = self._sources(plan, refs, context)
         if len(sources) != len(request.inputs):
             raise AgentAPIError("unbound_inputs", "Some inputs cannot be used by the selected task. Remove them or choose another preset.", 422)
-        run_id = "agent-" + hashlib.sha256(f"{context.user_id}\0{request.request_id}".encode()).hexdigest()[:40]
-        fingerprint_value = request.model_dump()
-        if request.parameter_profile:
-            fingerprint_value["profile_output_overrides"] = sorted(request.output.model_fields_set)
-        fingerprint = hashlib.sha256(json.dumps(fingerprint_value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         result = _backend_ok(self.backend.submit({
             "project_id": PROJECT_ID, "run_id": run_id, "request_fingerprint": fingerprint,
             "placeholder_node_id": run_id + "-output", "preset_node": node, "asset_sources": sources,
             "user_context": context.user_context, "result_asset_scope": "canvas",
             "client_context": {"surface": "agent_api", "tool_call_id": request.request_id},
+            "agent_submission": {"preset_id": plan["preset"], "plan": copy.deepcopy(plan),
+                                 "identity_binding": identity_binding(context)},
         }, context), "submission_failed")
-        return {**self._public_run(result, context), "preset_id": plan["preset"], "plan": plan}
+        return self._preset_submission_response(result, context)
+
+    def _preset_submission_response(self, result, context):
+        snapshot = result.get("_agent_submission")
+        if not snapshot:
+            message = ("原任务的提交信息不可用，请查询原运行状态。" if context.state.get("__lang") == "cn"
+                       else "Original submission metadata is unavailable. Query the original run status.")
+            raise AgentAPIError("run_metadata_unavailable", message, 409, {"run_id": result.get("run_id")})
+        require_identity_binding(context, snapshot["identity_binding"])
+        return {**self._public_run(result, context), "preset_id": snapshot["preset_id"],
+                "plan": copy.deepcopy(snapshot["plan"])}
 
     def _sources(self, plan, refs, context, allow_missing=False):
         sources = {}
@@ -1214,10 +1258,15 @@ class AgentService:
     def _public_run(self, result, context):
         fields = ("run_id", "task_id", "state", "percent", "message", "queue_size", "resolved_seed", "created_at", "updated_at", "finished_at", "idempotent_replay", "error")
         output = {key: result[key] for key in fields if key in result}
-        output["assets"] = [self._public_asset(asset) for asset in result.get("assets") or [] if ASSET_ID_RE.fullmatch(str(asset.get("asset_id") or ""))]
+        output["assets"] = [self._public_asset(asset) for asset in result.get("assets") or []
+                            if ASSET_ID_RE.fullmatch(str(asset.get("asset_id") or ""))
+                            and not asset.get("copy_error") and not asset.get("output_error")]
         output["status_url"] = f"{API_PREFIX}/runs/{quote(str(result.get('run_id') or ''), safe='')}"
-        if result.get("state") == "finished" and result.get("assets") and not output["assets"]:
-            output["output_error"] = {"code": "asset_registration_failed", "message": "The backend finished but did not register a downloadable output asset."}
+        if result.get("output_error"):
+            output["output_error"] = copy.deepcopy(result["output_error"])
+        elif result.get("assets") and len(output["assets"]) != len(result["assets"]):
+            from modules.canvas_workbench_assets import output_delivery_error
+            output["output_error"] = output_delivery_error(context.state)
         return output
 
     def run(self, request, context):

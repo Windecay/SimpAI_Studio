@@ -366,7 +366,7 @@
                 modeSpecific = `<h3>${escapeHtml(t('Image Prompt Settings', '图像提示设置'))}</h3>
     ${getClassicIpMaxImages(node) > 1 ? `<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('IP Images', 'IP 图像'))}</span><div class="sai-range-pair"><input data-classic-param="ip_count" type="range" min="1" max="${getClassicIpMaxImages(node)}" step="1" value="${escapeHtml(ipCount)}"><input data-classic-param="ip_count" type="number" min="1" max="${getClassicIpMaxImages(node)}" step="1" value="${escapeHtml(ipCount)}"></div></label>` : ''}
     ${Array.from({ length: ipCount }, (_, i) => { const ipStopInsp = params[`ip_stop_${i}`] ?? 0.5; const ipWeightInsp = params[`ip_weight_${i}`] ?? 1.0; return `<div class="sai-inspector-grid2">
-      <label><span>${escapeHtml(t('Type', '类型'))} ${i + 1}</span><select data-classic-ip-type="${i}">${R_IP_TYPES.map(t => `<option value="${escapeHtml(t)}" ${t === (params[`ip_type_${i}`] || R_IP_TYPES[0]) ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select></label>
+      <label><span>${escapeHtml(t('Type', '类型'))} ${i + 1}</span><select data-classic-ip-type="${i}">${R_IP_TYPES.map(t => `<option value="${escapeHtml(t)}" ${t === (params[`ip_type_${i}`] || R_IP_TYPES[0]) ? 'selected' : ''}>${escapeHtml(tOption(t))}</option>`).join('')}</select></label>
       <label class="sai-node-range"><span>${escapeHtml(t('Stop', '停止'))} ${i + 1}</span><div class="sai-range-pair"><input data-classic-ip-stop="${i}" type="range" min="0" max="1" step="0.05" value="${escapeHtml(ipStopInsp)}"><input data-classic-ip-stop="${i}" type="number" min="0" max="1" step="0.05" value="${escapeHtml(ipStopInsp)}"></div></label>
       <label class="sai-node-range"><span>${escapeHtml(t('Weight', '权重'))} ${i + 1}</span><div class="sai-range-pair"><input data-classic-ip-weight="${i}" type="range" min="0" max="2" step="0.05" value="${escapeHtml(ipWeightInsp)}"><input data-classic-ip-weight="${i}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(ipWeightInsp)}"></div></label>
     </div>`; }).join('')}`;
@@ -545,7 +545,7 @@
   <small>${escapeHtml(slotPortHintText(slotKey))}</small>
 </div>
 <div class="sai-classic-ip-params">
-  <select data-classic-ip-type="${i}">${R_IP_TYPES.map(t => `<option value="${escapeHtml(t)}" ${t === ipType ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select>
+  <select data-classic-ip-type="${i}">${R_IP_TYPES.map(t => `<option value="${escapeHtml(t)}" ${t === ipType ? 'selected' : ''}>${escapeHtml(tOption(t))}</option>`).join('')}</select>
   <label class="sai-node-field sai-node-range"><span>Stop</span><div class="sai-range-pair"><input data-classic-ip-stop="${i}" type="range" min="0" max="1" step="0.05" value="${escapeHtml(ipStop)}"><input data-classic-ip-stop="${i}" type="number" min="0" max="1" step="0.05" value="${escapeHtml(ipStop)}"></div></label>
   <label class="sai-node-field sai-node-range"><span>Weight</span><div class="sai-range-pair"><input data-classic-ip-weight="${i}" type="range" min="0" max="2" step="0.05" value="${escapeHtml(ipWeight)}"><input data-classic-ip-weight="${i}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(ipWeight)}"></div></label>
 </div>`;

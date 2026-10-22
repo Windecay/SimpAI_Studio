@@ -444,7 +444,16 @@ def _missing_model_dicts(missing_models):
     return rows
 
 
+def _merge_missing_model_rows(*groups):
+    return list({
+        _download_status_key(row.get("cata"), row.get("path_file")): row
+        for rows in groups for row in rows
+    }.values())
+
+
 def get_preset_model_status(payload):
+    from modules.moss_control import required_model_entries
+
     if not isinstance(payload, dict):
         return {"ok": False, "error": "payload is not an object"}
     user_did = _user_did_from_payload(payload)
@@ -462,12 +471,17 @@ def get_preset_model_status(payload):
         return {"ok": False, "error": "preset name is empty"}
 
     can_download = user_can_download_models(user_did) and not bool(getattr(shared.args, "disable_backend", False))
+    control_entries = required_model_entries(preset_node)
+    control_missing = model_loader.get_missing_model_list_from_entries(
+        preset_name, control_entries, user_did=user_did,
+    ) if control_entries else []
+    control_rows = _missing_model_dicts(control_missing)
     selected_status = _selected_model_config_status(preset_node)
     if selected_status is not None:
-        missing_rows = selected_status["missing_rows"]
-        ready = selected_status["ready"]
+        missing_rows = _merge_missing_model_rows(selected_status["missing_rows"], control_rows)
+        ready = not missing_rows
         state = "ready" if ready else "missing"
-        can_download_selected = False if missing_rows else can_download
+        can_download_selected = can_download and all(row.get("url") for row in missing_rows)
         message = (
             "Selected Models Config files are available."
             if ready
@@ -499,7 +513,7 @@ def get_preset_model_status(payload):
         user_did,
         previous_default_info=_previous_default_info_from_node(preset_node),
     )
-    missing_rows = _missing_model_dicts(missing_models)
+    missing_rows = _merge_missing_model_rows(_missing_model_dicts(missing_models), control_rows)
     has_requirements = _has_model_probe(preset_node, checked_preset, raw_model_list, user_did)
     ready = len(missing_rows) == 0
     state = "ready" if ready else "missing"
@@ -533,21 +547,15 @@ def queue_preset_model_downloads(payload):
         return dict(status, ok=False, error="model download is not allowed for the current user or backend mode")
 
     user_did = _user_did_from_payload(payload)
-    single = payload.get("missing_model") if isinstance(payload.get("missing_model"), dict) else None
-    if single:
-        task_id = model_loader.download_model_entry(
-            single.get("cata"),
-            single.get("path_file"),
-            size=single.get("size") or 0,
-            url=single.get("url") or "",
-            user_did=user_did,
-            async_task=True,
+    try:
+        rows = model_loader.select_model_download_entries(
+            status.get("missing_models"), payload.get("missing_model"),
         )
-        queued = [task_id] if task_id else []
-        return dict(status, ok=True, state="queued", queued_count=len(queued), queued=queued, message=f"Queued {len(queued)} model download task(s).")
+    except ValueError as error:
+        return dict(status, ok=False, error=str(error))
 
     queued = []
-    for item in status.get("missing_models") or []:
+    for item in rows:
         task_id = model_loader.download_model_entry(
             item.get("cata"),
             item.get("path_file"),

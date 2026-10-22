@@ -7,11 +7,12 @@ class SimpAIAIOReferenceConfig:
         return {
             "required": {
                 "image": ("IMAGE", {"lazy": True}),
-                "mode": ("INT", {"default": 0, "min": 0, "max": 5, "step": 1}),
+                "mode": ("INT", {"default": 0, "min": 0, "max": 6, "step": 1}),
                 "weight": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0, "step": 0.01}),
                 "stop_percent": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "skip_preprocessor": ("BOOLEAN", {"default": False}),
-            }
+            },
+            "optional": {"skip_inactive": ("BOOLEAN", {"default": False})},
         }
 
     RETURN_TYPES = ("SIMPAI_AIO_REFERENCE_CONFIG",)
@@ -19,12 +20,14 @@ class SimpAIAIOReferenceConfig:
     FUNCTION = "build"
     CATEGORY = "SimpAI/AIO/Input"
 
-    def check_lazy_status(self, image, mode, weight, stop_percent, skip_preprocessor):
+    def check_lazy_status(self, image, mode, weight, stop_percent, skip_preprocessor, skip_inactive=False):
+        if skip_inactive and (float(weight) == 0 or float(stop_percent) <= 0):
+            return []
         if int(mode) > 0 and image is None:
             return ["image"]
         return []
 
-    def build(self, image=None, mode=0, weight=0.7, stop_percent=0.6, skip_preprocessor=False):
+    def build(self, image=None, mode=0, weight=0.7, stop_percent=0.6, skip_preprocessor=False, skip_inactive=False):
         return ({
             "image": image,
             "mode": int(mode),

@@ -906,14 +906,6 @@ def _resolve_regen_base_model(metadata_value, backend_value, state_params):
     if not selected:
         return ""
 
-    if (
-        metadata_value
-        and not regen_manifest.model_name_has_file_extension(metadata_value)
-        and backend_value
-        and regen_manifest.model_names_share_stem(metadata_value, backend_value)
-    ):
-        selected = backend_value
-
     try:
         choices = config.get_base_model_list(
             state_params.get("engine") or state_params.get("backend_engine") or "Comfy",
@@ -924,9 +916,9 @@ def _resolve_regen_base_model(metadata_value, backend_value, state_params):
         logger.warning("Regen base model catalog unavailable: %s", exc)
         choices = []
 
-    resolved = regen_manifest.resolve_model_filename(selected, choices)
+    resolved = regen_manifest.resolve_model_filename(selected, choices, fallback_value=backend_value)
     if resolved != metadata_value and metadata_value:
-        logger.info("Regen base model restored: %s -> %s", metadata_value, resolved)
+        logger.info("Regen model restored: %s -> %s", metadata_value, resolved)
     return resolved
 
 
@@ -1081,6 +1073,22 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         restored["base_model"] = restored_base_model
         preset_prepared["base_model"] = restored_base_model
 
+    metadata_refiner_model = parsed_parameters.get("refiner_model", parsed_parameters.get("Refiner Model", ""))
+    backend_refiner_model = backend_params.get("base_model2") or backend_params.get("refiner_model") or ""
+    if metadata_refiner_model or backend_refiner_model:
+        restored_refiner_model = _resolve_regen_base_model(metadata_refiner_model, backend_refiner_model, state_params)
+        if restored_refiner_model:
+            restored["refiner_model"] = restored_refiner_model
+            preset_prepared["refiner_model"] = restored_refiner_model
+
+    refiner_switch = next((
+        parsed_parameters[key] for key in ("refiner_switch", "Refiner Switch")
+        if parsed_parameters.get(key) not in (None, "")
+    ), ui_values.get("refiner_switch"))
+    if refiner_switch not in (None, ""):
+        restored["refiner_switch"] = refiner_switch
+        preset_prepared["refiner_switch"] = refiner_switch
+
     for index in range(1, config.default_max_lora_number + 1):
         canonical_key = f"lora_combined_{index}"
         metadata_key = f"LoRA {index}"
@@ -1097,6 +1105,12 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
                 combined = "None : 1.0"
         if not isinstance(combined, str) or not combined.strip():
             combined = "None : 1.0"
+        parts = combined.split(" : ")
+        if len(parts) in (2, 3):
+            parts[-2] = regen_manifest.resolve_model_filename(
+                parts[-2], config.lora_filenames, fallback_value=backend_params.get(f"lora_{index}"),
+            )
+            combined = " : ".join(parts)
         restored[canonical_key] = combined
         preset_prepared[canonical_key] = combined
 

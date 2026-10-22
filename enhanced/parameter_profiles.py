@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 import threading
 from datetime import datetime
 from typing import Any
@@ -158,7 +159,8 @@ def _preset_profiles_dir(user_did: str, preset_name: str) -> str:
 
 
 def _profile_path(user_did: str, preset_name: str, name: str) -> str:
-    return os.path.join(_preset_profiles_dir(user_did, preset_name), f"{_safe_filename(name)}.json")
+    key = hashlib.sha256(_clean_name(name).encode("utf-8")).hexdigest()
+    return os.path.join(_preset_profiles_dir(user_did, preset_name), f"profile-{key}.json")
 
 
 def _load_json(path: str) -> dict[str, Any] | None:
@@ -191,6 +193,12 @@ def _profile_entries(user_did: str, preset_name: str) -> list[dict[str, Any]]:
         })
     entries.sort(key=lambda item: item["name"].casefold())
     return entries
+
+
+def _find_profile_entry(user_did: str, preset_name: str, name: str) -> dict[str, Any] | None:
+    profile_name = _clean_name(name)
+    return next((entry for entry in _profile_entries(user_did, preset_name)
+                 if entry["name"] == profile_name), None)
 
 
 def refresh_dropdown(context: Any = None, current_value: Any = None):
@@ -407,6 +415,7 @@ def _lora_entries(values: dict[str, Any]) -> list[str]:
         if isinstance(state_loras, (list, tuple)) and index < len(state_loras):
             raw = state_loras[index]
             if isinstance(raw, dict):
+                enabled = raw.get("enabled", enabled)
                 name = raw.get("model", raw.get("name", raw.get("filename", name)))
                 weight = raw.get("weight", raw.get("strength", weight))
             elif isinstance(raw, (list, tuple)):
@@ -416,7 +425,7 @@ def _lora_entries(values: dict[str, Any]) -> list[str]:
                     name, weight = raw[0], raw[1]
                 elif len(raw) == 1:
                     name = raw[0]
-        entries.append(f"{bool(enabled)} : {name or 'None'} : {_as_number(weight, 1.0)}")
+        entries.append(f"{_as_bool(enabled)} : {name or 'None'} : {_as_number(weight, 1.0)}")
     return entries
 
 
@@ -546,6 +555,8 @@ def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
         "backfill_prompt": values.get("backfill_prompt"),
         "translation_methods": values.get("translation_methods"),
         "input_image_checkbox": values.get("input_image_checkbox"),
+        "quick_enhance": _as_bool(values.get("quick_enhance", False)),
+        "quick_enhance_uov_strength": values.get("quick_enhance_uov_strength", values.get("enhance_uov_strength", 0.2)),
         "enhance_checkbox": values.get("enhance_checkbox", False),
         "enhance_enabled_1": values.get("enhance_enabled_1", False),
         "enhance_enabled_2": values.get("enhance_enabled_2", False),
@@ -574,6 +585,8 @@ def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
         "engine": backend_engine,
         "engine_type": engine_type,
         "task_method": task_method,
+        "quick_enhance": metadata["quick_enhance"],
+        "quick_enhance_uov_strength": metadata["quick_enhance_uov_strength"],
         **scene_values,
     }
     skipped_backend_keys = {"image", "mask", "samples", "pixels", "latent", regen_manifest.KEY}
@@ -798,7 +811,7 @@ def _sanitize_model_values(metadata: dict[str, Any], state_params: dict[str, Any
         if key not in metadata:
             continue
         enabled, model, weight = _split_lora_entry(metadata.get(key))
-        if not enabled or _clean_name(model).lower() == "none":
+        if _clean_name(model).lower() == "none":
             metadata[key] = _lora_entry(False, "None", weight)
             continue
         match = _model_match(model, lists["lora"], passthrough={"None"})
@@ -919,12 +932,38 @@ def save_profile(name: Any, values: dict[str, Any]):
             pass
         return refresh_dropdown(context, name)
     payload = build_profile_payload(profile_name, values)
-    path = _profile_path(payload["user_did"], payload["preset_name"], profile_name)
+    entry = _find_profile_entry(payload["user_did"], payload["preset_name"], profile_name)
+    path = entry["path"] if entry else _profile_path(payload["user_did"], payload["preset_name"], profile_name)
     existing = _load_json(path)
+    if entry is None and os.path.lexists(path) and (
+        not isinstance(existing, dict) or _clean_name(existing.get("name")) != profile_name
+    ):
+        try:
+            gr.Warning(_profile_text(
+                context,
+                "This name would overwrite an existing file. Choose a different parameter profile name.",
+                "此名称会覆盖已有文件，请更换参数预设名称。",
+            ), duration=3)
+        except Exception:
+            pass
+        return refresh_dropdown(context, profile_name)
     if isinstance(existing, dict) and existing.get("created_at"):
         payload["created_at"] = existing.get("created_at")
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=os.path.dirname(path),
+            prefix=".profile-", suffix=".tmp", delete=False,
+        ) as handle:
+            temporary_path = handle.name
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            try:
+                os.remove(temporary_path)
+            except OSError:
+                logger.warning("Failed to remove parameter profile temporary file %s", temporary_path, exc_info=True)
     logger.info("Saved parameter profile %s for preset %s to %s", profile_name, payload["preset_name"], path)
     try:
         gr.Info(_profile_text(context, "Parameter profile saved.", "参数预设已保存。"), duration=2)
@@ -939,8 +978,9 @@ def delete_profile(name: Any, context: Any = None):
         return refresh_dropdown(context, None)
     user_did = _get_user_did(context)
     preset_name = _get_preset_name(context)
-    path = _profile_path(user_did, preset_name, profile_name)
-    if os.path.isfile(path):
+    entry = _find_profile_entry(user_did, preset_name, profile_name)
+    path = entry["path"] if entry else None
+    if path and os.path.isfile(path):
         os.remove(path)
         logger.info("Deleted parameter profile %s for preset %s from %s", profile_name, preset_name, path)
         try:
@@ -1048,6 +1088,9 @@ def _find_user_profile(name: Any, preset_name: Any = None, context: Any = None) 
         if entry["name"].casefold() == profile_name.casefold()
         and (not wanted_preset or entry["preset_name"].casefold() == wanted_preset.casefold())
     ]
+    exact_matches = [entry for entry in matches if entry["name"] == profile_name]
+    if exact_matches:
+        matches = exact_matches
     if not matches:
         return None, "parameter_profile_missing"
     if len(matches) > 1:

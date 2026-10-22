@@ -221,7 +221,8 @@
                 renderResult = { ok: false, error: err?.message || String(err || 'timeline render failed') };
             }
             if (!isCurrent()) return staleRender();
-            const renderedAsset = renderResult?.ok && renderResult.asset_ref
+            const renderedAsset = renderResult?.asset_ref && !renderResult.asset_ref.copy_error
+                && (renderResult.asset_ref.path || renderResult.asset_ref.output_path || renderResult.asset_ref.preview_url)
                 ? buildTimelineRenderAsset({
                     assetRef: renderResult.asset_ref,
                     renderPayload: payload,
@@ -238,8 +239,10 @@
                 renderPayload: payload
             } : null);
             const preview = dataUrl ? { kind: 'timeline_preview_frame', data_url: dataUrl, thumb: dataUrl, width, height } : null;
-            const errorDetails = renderResult?.ok ? null : {
-                error: renderResult?.error || 'timeline render failed',
+            const completed = !!(renderResult?.ok && renderedAsset && !renderResult.output_error);
+            const errorDetails = completed ? null : {
+                error: renderResult?.error || renderResult?.output_error?.message
+                    || t('Timeline output asset registration failed.', '时间轴输出素材登记失败。'),
                 details: renderResult?.details || ''
             };
             Object.assign(result, buildTimelineResultPatch(result, {
@@ -258,24 +261,29 @@
                     stale_reason: ''
                 },
                 statusPatch: {
-                    state: renderResult?.ok ? 'finished' : (dataUrl ? 'preview_ready' : 'failed'),
+                    state: completed ? 'finished' : (renderedAsset ? 'failed' : (dataUrl ? 'preview_ready' : 'failed')),
                     percent: 1,
-                    message: renderResult?.ok
+                    message: completed
                         ? t('Timeline render completed: {name}', 'Timeline 合成完成：{name}').replace('{name}', renderResult.asset_ref?.name || renderResult.path || 'video')
-                        : (dataUrl
+                        : (renderedAsset
+                            ? t('Video rendered; output delivery failed: {error}', '视频已生成，输出交付失败：{error}').replace('{error}', errorDetails.error)
+                            : dataUrl
                             ? t('Backend render failed; kept current-frame preview: {error}', '后端合成失败，已保留当前帧预览：{error}').replace('{error}', renderResult?.error || 'unknown error')
                             : t('Timeline render failed: {error}', 'Timeline 合成失败：{error}').replace('{error}', renderResult?.error || 'unknown error'))
                 },
                 errorDetails
             }));
             call('mutate', undefined, { inspector: true });
-            if (renderResult?.ok) call('refreshMainGalleryAfterCanvasRun', undefined, renderResult);
-            call('showToast', undefined, renderResult?.ok
+            if (completed || renderResult?.gallery) call('refreshMainGalleryAfterCanvasRun', undefined, renderResult);
+            call('showToast', undefined, completed
                 ? t('Timeline render output sent to Result.', 'Timeline 合成已输出到 Result')
-                : t('Timeline backend render failed; preview kept.', 'Timeline 后端合成失败，已保留预览'));
-            return renderResult?.ok
+                : (renderedAsset
+                    ? t('Timeline video kept; output delivery failed.', '已保留时间轴视频，但输出交付失败。')
+                    : t('Timeline backend render failed; preview kept.', 'Timeline 后端合成失败，已保留预览')));
+            return completed
                 ? { ok: true, result_node_id: result.id, asset: result.asset || null, render_result: renderResult }
-                : { ok: false, result_node_id: result.id, error: renderResult?.error || 'timeline render failed', render_result: renderResult };
+                : { ok: false, result_node_id: result.id, asset: result.asset || null,
+                    error: errorDetails.error, render_result: renderResult };
         }
 
         return {

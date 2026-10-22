@@ -9,6 +9,7 @@ import os
 import re
 import threading
 import time
+from functools import wraps
 
 import numpy as np
 from PIL import Image
@@ -26,7 +27,10 @@ import shared
 from enhanced.vlm import VLM, vlm
 from enhanced.llamacpp_vlm import llamacpp_vlm
 from modules.access_mode import user_can_download_models
+from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task
 from modules.custom_llm_api import (
+    CustomLLMRequestCancelled,
+    apply_prompt_cache_settings,
     apply_sampling_settings,
     apply_thinking_settings,
     api_format_supported,
@@ -599,8 +603,12 @@ def canvas_queue_vlm_model_downloads(payload):
         return status
     if not status.get("can_download"):
         return dict(status, ok=False, error="model download is not allowed for the current user or backend mode")
-    single = payload.get("missing_model") if isinstance(payload.get("missing_model"), dict) else None
-    rows = [single] if single else list(status.get("missing_models") or [])
+    try:
+        rows = model_loader.select_model_download_entries(
+            status.get("missing_models"), payload.get("missing_model"),
+        )
+    except ValueError as error:
+        return dict(status, ok=False, error=str(error))
     user_context = payload.get("user_context") if isinstance(payload.get("user_context"), dict) else {}
     user_did = user_context.get("user_did") or payload.get("user_did")
     queued = []
@@ -935,7 +943,7 @@ def canvas_custom_llm_run(
     if not base_url or not model:
         return {"ok": False, "error": "Custom API settings are incomplete.", "details": "API Base URL and Model are required."}
 
-    def prepare_custom_request(request):
+    def prepare_custom_request(request, *, cacheable=True):
         request = apply_sampling_settings(
             request, params, base_url=base_url, api_format=api_format,
             provider=params.get("custom_provider") or "", api_key=api_key,
@@ -946,7 +954,10 @@ def canvas_custom_llm_run(
         )
         if params.get("describe_tavern_messages") and api_format == "openai_responses":
             prepared["_simpai_preserve_message_order"] = True
-        return prepared
+        return apply_prompt_cache_settings(
+            prepared, params, base_url=base_url, provider=params.get("custom_provider") or "",
+            api_key=api_key, cacheable=cacheable,
+        )
 
     two_stage_intent_meta = None
     two_stage_requested = canvas_vlm_agent.two_stage_intent_enabled(payload, params, prompt)
@@ -974,7 +985,7 @@ def canvas_custom_llm_run(
                 "temperature": 0.0,
                 "top_p": 0.5,
                 "max_tokens": max(128, min(int(params.get("two_stage_intent_max_tokens") or 256), 1024)),
-            })
+            }, cacheable=False)
             if int(params.get("seed", -1)) >= 0:
                 intent_request["seed"] = int(params.get("seed"))
             intent_response = canvas_custom_llm_completion_request(
@@ -1068,7 +1079,7 @@ def canvas_custom_llm_run(
     if int(params.get("seed", -1)) >= 0:
         request_payload["seed"] = int(params.get("seed"))
     logger.info(
-        "Custom VLM request: model=%s, provider=%s, api_format=%s, stream=%s, thinking_requested=%s, thinking_parameters=%s, sampling_parameters=%s, request_id=%s, messages_sha256=%s",
+        "Custom VLM request: model=%s, provider=%s, api_format=%s, stream=%s, thinking_requested=%s, thinking_parameters=%s, sampling_parameters=%s, request_id=%s, messages_sha256=%s, cache_policy=%s",
         model, params.get("custom_provider") or "custom", api_format, stream_enabled, enable_thinking,
         {
             key: request_payload[key]
@@ -1083,6 +1094,7 @@ def canvas_custom_llm_run(
         },
         request_id,
         hashlib.sha256(json.dumps(messages, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest(),
+        {key: request_payload[key] for key in ("strata_prefix", "strata_checkpoint") if key in request_payload},
     )
     main_started = time.monotonic()
     streamed_reasoning = ""
@@ -1100,15 +1112,10 @@ def canvas_custom_llm_run(
                 stream_request_payload,
                 api_key=api_key,
                 timeout=_canvas_vlm_request_timeout(params, 180),
+                cancel_check=lambda: is_canvas_vlm_cancelled("", "", conversation_id, request_id),
             ):
                 if is_canvas_vlm_cancelled("", "", conversation_id, request_id):
-                    return {
-                        "ok": False,
-                        "cancelled": True,
-                        "conversation_id": conversation_id,
-                        "request_id": request_id,
-                        "error": "Stopped.",
-                    }
+                    raise CustomLLMRequestCancelled("Stopped.")
                 if not isinstance(event, dict):
                     continue
                 if event.get("_done"):
@@ -1168,6 +1175,19 @@ def canvas_custom_llm_run(
                     response["output_text"] = text_from_stream
                 if response.get("status") == "failed":
                     raise RuntimeError("Custom API returned a failed Responses completion.")
+        except CustomLLMRequestCancelled:
+            return {
+                "ok": False,
+                "cancelled": True,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "error": "Stopped.",
+                "partial_text": "".join(streamed_parts),
+                "completion": {
+                    "status": "cancelled",
+                    **extract_reasoning_display_metadata({}, streamed_reasoning),
+                },
+            }
         except Exception as exc:
             logger.exception("Custom VLM streaming request failed")
             return {
@@ -1232,7 +1252,7 @@ def canvas_custom_llm_run(
             "temperature": 0.1,
             "top_p": 0.8,
             "max_tokens": int(params.get("danbooru_review_max_tokens") or 800),
-        })
+        }, cacheable=False)
         review_response = canvas_custom_llm_completion_request(
             base_url,
             api_key,
@@ -1266,7 +1286,7 @@ def canvas_custom_llm_run(
             "temperature": 0.2,
             "top_p": 0.8,
             "max_tokens": retry_max_tokens,
-        })
+        }, cacheable=False)
         retry_response = canvas_custom_llm_completion_request(
             base_url,
             api_key,
@@ -1342,8 +1362,10 @@ def canvas_custom_llm_run(
     else:
         response_params["base_url"] = base_url
     usage = completion.get("usage") if isinstance(completion.get("usage"), dict) else {}
+    input_details = usage.get("input_tokens_details", usage.get("prompt_tokens_details"))
+    cached_tokens = input_details.get("cached_tokens") if isinstance(input_details, dict) else None
     logger.info(
-        "Custom VLM completion: status=%s, finish_reason=%s, reason=%s, output_limited=%s, max_tokens=%s, result_chars=%s, input_tokens=%s, output_tokens=%s, total_tokens=%s, thinking_requested=%s, reasoning_tokens=%s, reasoning=%s, reasoning_text_status=%s, reasoning_text_chars=%s",
+        "Custom VLM completion: status=%s, finish_reason=%s, reason=%s, output_limited=%s, max_tokens=%s, result_chars=%s, input_tokens=%s, output_tokens=%s, total_tokens=%s, cached_tokens=%s, thinking_requested=%s, reasoning_tokens=%s, reasoning=%s, reasoning_text_status=%s, reasoning_text_chars=%s",
         completion.get("status"),
         completion.get("finish_reason"),
         completion.get("reason"),
@@ -1353,6 +1375,7 @@ def canvas_custom_llm_run(
         usage.get("input_tokens", usage.get("prompt_tokens")),
         usage.get("output_tokens", usage.get("completion_tokens")),
         usage.get("total_tokens"),
+        cached_tokens,
         completion.get("thinking_requested"),
         completion.get("reasoning_tokens"),
         completion.get("reasoning"),
@@ -1394,6 +1417,44 @@ def canvas_custom_llm_run(
         "params": response_params,
     }
 
+def _canvas_vlm_gpu_task(run):
+    @wraps(run)
+    def guarded(payload, stream_callback=None):
+        payload = payload if isinstance(payload, dict) else {}
+        params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+        version = _canvas_vlm_resolve_version(params.get("version") or VLM.current_version or VLM.DEFAULT_VERSION)
+        if not params.get("version"):
+            payload = dict(payload, params=dict(params, version=version))
+        if version == "Custom" or vlm_api_profiles.is_profile_version(version):
+            return run(payload, stream_callback=stream_callback)
+        project_id = str(payload.get("project_id") or "default").strip() or "default"
+        node_id = str(payload.get("node_id") or params.get("node_id") or "vlm").strip() or "vlm"
+        conversation_id = str(params.get("conversation_id") or payload.get("conversation_id") or f"{project_id}:{node_id}")
+        request_id = str(params.get("request_id") or payload.get("request_id") or "").strip()
+        mode = str(params.get("mode") or "single").strip().lower()
+        deadline = params.get("_harness_deadline")
+        cancelled = lambda: is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id)
+        timed_out = lambda: isinstance(deadline, (int, float)) and time.monotonic() >= deadline
+        try:
+            with exclusive_gpu_task(cancel_check=lambda: cancelled() or timed_out()):
+                return run(payload, stream_callback=stream_callback)
+        except GpuTaskCancelled:
+            if timed_out() and not cancelled():
+                state = payload.get("state") if isinstance(payload.get("state"), dict) else {}
+                lang = str(state.get("__lang") or payload.get("__lang") or "cn").lower()
+                return {
+                    "ok": False, "error": "harness_timeout",
+                    "details": (
+                        "The agent reached its time limit while waiting for the GPU."
+                        if lang.startswith("en") else "Agent 等待 GPU 任务位置时已达到时间限制。"
+                    ),
+                }
+            return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
+
+    return guarded
+
+
+@_canvas_vlm_gpu_task
 def canvas_vlm_run(payload, stream_callback=None):
     run_started = time.monotonic()
 
@@ -1866,302 +1927,230 @@ def canvas_vlm_run(payload, stream_callback=None):
     seed = clamp_int(params.get("seed", -1), -1, -1, 2147483647)
     _canvas_vlm_add_timing(params, "sampling_params", time.monotonic() - stage_started)
 
-    two_stage_intent_meta = None
-    if two_stage_requested:
-        local_stage_started = time.monotonic()
-        two_stage_intent_meta = canvas_vlm_agent.local_two_stage_intent_response(payload, params, prompt)
-        _canvas_vlm_add_timing(params, "two_stage_local_fast_path", time.monotonic() - local_stage_started)
-        if _canvas_vlm_apply_two_stage_meta(params, payload, prompt, two_stage_intent_meta):
-            agent_system_prompt_built = True
-            logger.info("Canvas VLM two-stage intent satisfied by local deterministic locks; skipping Stage1 model call.")
-        else:
-            two_stage_intent_meta = None
-    if two_stage_requested and not isinstance(two_stage_intent_meta, dict):
-        try:
-            stage_started = time.monotonic()
-            intent_prompt = canvas_vlm_agent.build_two_stage_intent_prompt(payload, params, prompt)
-            if VLM.is_llamacpp:
-                logger.info("Canvas VLM two-stage intent uses isolated one-shot inference; clearing runtime context before intent extraction.")
-                vlm.reset_runtime_context()
-            intent_text = vlm.inference(
-                None,
-                intent_prompt,
-                max_tokens=clamp_int(params.get("two_stage_intent_max_tokens", 256), 256, 128, 1024),
-                temperature=0.0,
-                top_p=0.5,
-                top_k=20,
-                repetition_penalty=1.02,
-                seed=seed,
-                system_prompt="You extract concise image intent as JSON only. Do not write final prompts.",
-                enable_thinking=enable_thinking,
-                cancel_check=cancel_local_inference,
-            )
-            intent_text = str(intent_text or "").strip()
-            for prefix in VLM.remove_prefixs:
-                if intent_text.startswith(prefix):
-                    intent_text = intent_text[len(prefix):]
-            if intent_text.endswith('"'):
-                intent_text = intent_text[:-1]
-            two_stage_intent_meta = canvas_vlm_agent.parse_two_stage_intent_response(intent_text, payload, params, prompt)
+    model_used = False
+    try:
+        two_stage_intent_meta = None
+        if two_stage_requested:
+            local_stage_started = time.monotonic()
+            two_stage_intent_meta = canvas_vlm_agent.local_two_stage_intent_response(payload, params, prompt)
+            _canvas_vlm_add_timing(params, "two_stage_local_fast_path", time.monotonic() - local_stage_started)
             if _canvas_vlm_apply_two_stage_meta(params, payload, prompt, two_stage_intent_meta):
                 agent_system_prompt_built = True
-            _canvas_vlm_add_timing(params, "two_stage_model_call", time.monotonic() - stage_started)
-        except Exception as exc:
-            logger.warning("Canvas VLM two-stage intent extraction skipped: %s", exc)
-        finally:
-            if VLM.is_llamacpp:
-                vlm.reset_runtime_context()
-    if not agent_system_prompt_built:
-        stage_started = time.monotonic()
-        params["system_prompt"] = canvas_vlm_agent.build_vlm_agent_system_prompt(params, payload, prompt)
-        system_budget_failure = _canvas_vlm_describe_system_budget_failure(params, version_name)
-        if system_budget_failure:
-            return system_budget_failure
-        _canvas_vlm_add_timing(params, "final_system_prompt_prepare", time.monotonic() - stage_started)
-
-    def build_stateless_llamacpp_chat_prompt(base_prompt, history_budget=None):
-        isolate_history = canvas_vlm_agent.vlm_isolate_rolling_history_for_prompt(payload, params, base_prompt)
-        isolate_current_media_history = bool(
-            image_input is not None
-            and not bool(params.get("describe_image_context"))
-        )
-        if isolate_history or isolate_current_media_history:
-            client_history = payload.get("chat_messages") if isinstance(payload.get("chat_messages"), list) else []
-            client_full_history = payload.get("chat_messages_full") if isinstance(payload.get("chat_messages_full"), list) else []
-            history = []
-            stats = {
-                "omitted": len(client_history) + len(client_full_history),
-                "chars": 0,
-                "max_history": 0,
-                "budget": 0,
-                "media_history_isolated": isolate_current_media_history,
-            }
-        else:
-            history, stats = canvas_vlm_agent.vlm_rolling_history(
-                payload,
-                dict(params, context_chars=history_budget or params.get("context_chars") or params.get("rolling_context_chars")),
-                version_name,
-            )
-        lines = []
-        for message in history:
-            role = str(message.get("role") or "").strip().lower()
-            if role not in ("user", "assistant", "system"):
-                role = "user"
-            content = str(message.get("content") or "").strip()
-            if not content:
-                continue
-            label = {"user": "User", "assistant": "Assistant", "system": "System"}.get(role, "User")
-            lines.append(f"{label}: {content}")
-        text_budget = int(stats.get("budget") or canvas_vlm_agent.vlm_text_budget(params, version_name))
-        current_prompt = canvas_vlm_agent._canvas_vlm_stateless_prompt_text(
-            base_prompt,
-            text_budget,
-            preserve_contract=bool(params.get("describe_roleplay_director") or params.get("describe_roleplay_turn_task") or params.get("describe_image_context") or params.get("describe_skill_draft") or params.get("describe_harness")),
-        )
-        if params.get("describe_input_polish") or params.get("describe_player_draft") or params.get("describe_player_proxy"):
-            # Unsent drafts need their complete bounded instructions and context.
-            current_prompt = str(base_prompt or "").strip()
-        sections = []
-        system_text = ""
-        system_prompt = params.get("system_prompt")
-        if system_prompt is not None and str(system_prompt).strip():
-            system_text = str(system_prompt).strip()
-            chat_mode_key = str(params.get("describe_chat_mode") or "").strip().lower()
-            roleplay_system = bool(params.get("describe_roleplay_enabled")) or chat_mode_key == "roleplay"
-            system_ratio = 0.9 if roleplay_system else (0.75 if chat_mode_key == "guide" else 0.5)
-            system_cap = 16000 if roleplay_system else 5000
-            system_budget = canvas_vlm_agent.vlm_system_prompt_budget(params, version_name)
-            max_system = int(system_budget.get("system_budget_chars") or 1200)
-            system_text = canvas_vlm_agent._canvas_vlm_stateless_system_prompt_text(system_text, max_system)
-        if isolate_history:
-            sections.append(
-                "This is a standalone current image-generation request. Ignore earlier chat visual traits, old prompt tags, "
-                "and prior generated character appearances unless the current request explicitly says to continue or reuse them."
-            )
-        elif isolate_current_media_history:
-            sections.append(
-                "This is an isolated current-image chat turn. Previous chat turns are intentionally omitted. "
-                "Inspect the attached image itself and do not reuse an earlier visual description."
-            )
-        else:
-            sections.append(
-                "Use the rolling conversation context below. It may omit older turns to fit the local model context window. "
-                "If an image is attached, it is visible only for the current turn; do not assume older images are still visible."
-            )
-        if image_input is not None:
-            sections.append(
-                "The current user turn includes attached visual input. Inspect the current visual input directly before answering. "
-                "It is not a previous image and it is not unavailable; do not repeat an earlier claim that the image was not sent."
-            )
-        if stats.get("omitted"):
-            sections.append(f"[Context manager omitted {stats.get('omitted')} older turn(s) to avoid overflowing n_ctx.]")
-        if lines:
-            sections.append("\n".join(lines))
-        sections.append(f"Current user request:\n{current_prompt}")
-        return "\n\n".join(sections), bool(lines), stats, system_text
-
-    stateless_llamacpp_chat = bool(
-        mode == "chat"
-        and VLM.is_llamacpp
-        and not bool(params.get("force_stateful_chat"))
-        and not bool(params.get("force_stateful_image_chat"))
-    )
-    stateless_local_chat = stateless_llamacpp_chat or bool(mode == "chat" and params.get("describe_harness"))
-    stateless_prompt_includes_text_history = False
-    stateless_system_prompt = ""
-    rolling_context_stats = {"omitted": 0, "chars": 0, "max_history": 0, "budget": 0}
-    completion_stats = {}
-    stage_started = time.monotonic()
-    tavern_messages = _canvas_vlm_tavern_messages(params)
-    if tavern_messages is not None and not VLM.is_llamacpp:
-        return {
-            "ok": False, "error": "tavern_messages_backend_unsupported",
-            "details": (
-                "This model backend cannot send ordered Tavern messages. Use llama.cpp or a compatible API."
-                if params.get("describe_lang") == "en" else
-                "当前模型后端不支持按顺序发送酒馆消息，请使用 llama.cpp 或兼容聊天 API。"
-            ),
-        }
-    if tavern_messages is not None and VLM.is_llamacpp and mode == "chat":
-        if image_input is not None:
-            tavern_messages = _canvas_vlm_tavern_messages(
-                params, llamacpp_vlm._build_user_message(image_input, prompt),
-            )
-        text, completion_stats = _canvas_vlm_tavern_local_completion(
-            tavern_messages, params, cancel_local_inference, stream_callback,
-        )
-        rolling_context_stats["tavern_preset"] = params.get("describe_tavern_preset", {})
-    elif mode == "chat" and not stateless_local_chat:
-        if bool(params.get("reset_context")):
-            vlm.clear_conversation(conversation_id)
-        system_prompt = params.get("system_prompt")
-        system_prompt = str(system_prompt) if system_prompt is not None else ""
-        text = vlm.chat(
-            image_input,
-            prompt,
-            conversation_id=conversation_id,
-            system_prompt=system_prompt,
-            save_state=bool(params.get("save_context", True)),
-            max_history=clamp_int(params.get("max_history", 24), 24, 1, 80),
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            repetition_penalty=repetition_penalty,
-            seed=seed,
-            enable_thinking=enable_thinking,
-            cancel_check=cancel_local_inference,
-        )
-        completion_stats = _canvas_vlm_local_completion_stats()
-    else:
-        inference_prompt = prompt
-        if stateless_local_chat:
-            stateless_started = time.monotonic()
-            inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats, stateless_system_prompt = build_stateless_llamacpp_chat_prompt(prompt)
-            _canvas_vlm_add_timing(params, "stateless_prompt_prepare", time.monotonic() - stateless_started)
-            logger.warning(
-                "Canvas VLM llama.cpp chat is using rolling stateless inference to avoid context-shift failures: version=%s, conversation_id=%s, context=%s",
-                version_name,
-                conversation_id,
-                rolling_context_stats,
-            )
-        if stateless_llamacpp_chat and callable(stream_callback) and VLM.is_llamacpp:
-            text = vlm.inference_stream(
-                image_input,
-                inference_prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                top_k=top_k,
-                repetition_penalty=repetition_penalty,
-                seed=seed,
-                system_prompt=stateless_system_prompt,
-                on_delta=stream_callback,
-                enable_thinking=enable_thinking,
-                cancel_check=cancel_local_inference,
-            )
-        else:
-            text = vlm.inference(
-                image_input,
-                inference_prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                top_k=top_k,
-                repetition_penalty=repetition_penalty,
-                seed=seed,
-                system_prompt=stateless_system_prompt if stateless_local_chat else None,
-                enable_thinking=enable_thinking,
-                cancel_check=cancel_local_inference,
-            )
-        completion_stats = _canvas_vlm_local_completion_stats()
-        if (
-            stateless_llamacpp_chat
-            and isinstance(text, str)
-            and ("Context Shift is explicitly disabled" in text or ("n_ctx" in text and "fit the dialogue" in text))
-            and int(rolling_context_stats.get("budget") or 0) > 1600
-        ):
-            retry_budget = max(1200, int((rolling_context_stats.get("budget") or 2400) * 0.45))
-            inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats, stateless_system_prompt = build_stateless_llamacpp_chat_prompt(prompt, retry_budget)
-            logger.warning("Retrying Canvas VLM llama.cpp chat with smaller rolling context: %s", rolling_context_stats)
-            if callable(stream_callback) and VLM.is_llamacpp:
-                text = vlm.inference_stream(
-                    image_input,
-                    inference_prompt,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    top_p=top_p,
-                    top_k=top_k,
-                    repetition_penalty=repetition_penalty,
+                logger.info("Canvas VLM two-stage intent satisfied by local deterministic locks; skipping Stage1 model call.")
+            else:
+                two_stage_intent_meta = None
+        if two_stage_requested and not isinstance(two_stage_intent_meta, dict):
+            try:
+                stage_started = time.monotonic()
+                intent_prompt = canvas_vlm_agent.build_two_stage_intent_prompt(payload, params, prompt)
+                if VLM.is_llamacpp:
+                    logger.info("Canvas VLM two-stage intent uses isolated one-shot inference; clearing runtime context before intent extraction.")
+                    vlm.reset_runtime_context()
+                if cancel_local_inference():
+                    return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
+                model_used = True
+                intent_text = vlm.inference(
+                    None,
+                    intent_prompt,
+                    max_tokens=clamp_int(params.get("two_stage_intent_max_tokens", 256), 256, 128, 1024),
+                    temperature=0.0,
+                    top_p=0.5,
+                    top_k=20,
+                    repetition_penalty=1.02,
                     seed=seed,
-                    system_prompt=stateless_system_prompt,
-                    on_delta=stream_callback,
+                    system_prompt="You extract concise image intent as JSON only. Do not write final prompts.",
                     enable_thinking=enable_thinking,
                     cancel_check=cancel_local_inference,
+                )
+                intent_text = str(intent_text or "").strip()
+                for prefix in VLM.remove_prefixs:
+                    if intent_text.startswith(prefix):
+                        intent_text = intent_text[len(prefix):]
+                if intent_text.endswith('"'):
+                    intent_text = intent_text[:-1]
+                two_stage_intent_meta = canvas_vlm_agent.parse_two_stage_intent_response(intent_text, payload, params, prompt)
+                if _canvas_vlm_apply_two_stage_meta(params, payload, prompt, two_stage_intent_meta):
+                    agent_system_prompt_built = True
+                _canvas_vlm_add_timing(params, "two_stage_model_call", time.monotonic() - stage_started)
+            except Exception as exc:
+                logger.warning("Canvas VLM two-stage intent extraction skipped: %s", exc)
+            finally:
+                if VLM.is_llamacpp:
+                    vlm.reset_runtime_context()
+        if not agent_system_prompt_built:
+            stage_started = time.monotonic()
+            params["system_prompt"] = canvas_vlm_agent.build_vlm_agent_system_prompt(params, payload, prompt)
+            system_budget_failure = _canvas_vlm_describe_system_budget_failure(params, version_name)
+            if system_budget_failure:
+                return system_budget_failure
+            _canvas_vlm_add_timing(params, "final_system_prompt_prepare", time.monotonic() - stage_started)
+
+        def build_stateless_llamacpp_chat_prompt(base_prompt, history_budget=None):
+            isolate_history = canvas_vlm_agent.vlm_isolate_rolling_history_for_prompt(payload, params, base_prompt)
+            isolate_current_media_history = bool(
+                image_input is not None
+                and not bool(params.get("describe_image_context"))
+            )
+            if isolate_history or isolate_current_media_history:
+                client_history = payload.get("chat_messages") if isinstance(payload.get("chat_messages"), list) else []
+                client_full_history = payload.get("chat_messages_full") if isinstance(payload.get("chat_messages_full"), list) else []
+                history = []
+                stats = {
+                    "omitted": len(client_history) + len(client_full_history),
+                    "chars": 0,
+                    "max_history": 0,
+                    "budget": 0,
+                    "media_history_isolated": isolate_current_media_history,
+                }
+            else:
+                history, stats = canvas_vlm_agent.vlm_rolling_history(
+                    payload,
+                    dict(params, context_chars=history_budget or params.get("context_chars") or params.get("rolling_context_chars")),
+                    version_name,
+                )
+            lines = []
+            for message in history:
+                role = str(message.get("role") or "").strip().lower()
+                if role not in ("user", "assistant", "system"):
+                    role = "user"
+                content = str(message.get("content") or "").strip()
+                if not content:
+                    continue
+                label = {"user": "User", "assistant": "Assistant", "system": "System"}.get(role, "User")
+                lines.append(f"{label}: {content}")
+            text_budget = int(stats.get("budget") or canvas_vlm_agent.vlm_text_budget(params, version_name))
+            current_prompt = canvas_vlm_agent._canvas_vlm_stateless_prompt_text(
+                base_prompt,
+                text_budget,
+                preserve_contract=bool(params.get("describe_roleplay_director") or params.get("describe_roleplay_turn_task") or params.get("describe_image_context") or params.get("describe_skill_draft") or params.get("describe_harness")),
+            )
+            if params.get("describe_input_polish") or params.get("describe_player_draft") or params.get("describe_player_proxy"):
+                # Unsent drafts need their complete bounded instructions and context.
+                current_prompt = str(base_prompt or "").strip()
+            sections = []
+            system_text = ""
+            system_prompt = params.get("system_prompt")
+            if system_prompt is not None and str(system_prompt).strip():
+                system_text = str(system_prompt).strip()
+                chat_mode_key = str(params.get("describe_chat_mode") or "").strip().lower()
+                roleplay_system = bool(params.get("describe_roleplay_enabled")) or chat_mode_key == "roleplay"
+                system_ratio = 0.9 if roleplay_system else (0.75 if chat_mode_key == "guide" else 0.5)
+                system_cap = 16000 if roleplay_system else 5000
+                system_budget = canvas_vlm_agent.vlm_system_prompt_budget(params, version_name)
+                max_system = int(system_budget.get("system_budget_chars") or 1200)
+                system_text = canvas_vlm_agent._canvas_vlm_stateless_system_prompt_text(system_text, max_system)
+            if isolate_history:
+                sections.append(
+                    "This is a standalone current image-generation request. Ignore earlier chat visual traits, old prompt tags, "
+                    "and prior generated character appearances unless the current request explicitly says to continue or reuse them."
+                )
+            elif isolate_current_media_history:
+                sections.append(
+                    "This is an isolated current-image chat turn. Previous chat turns are intentionally omitted. "
+                    "Inspect the attached image itself and do not reuse an earlier visual description."
                 )
             else:
-                text = vlm.inference(
-                    image_input,
-                    inference_prompt,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    top_p=top_p,
-                    top_k=top_k,
-                    repetition_penalty=repetition_penalty,
-                    seed=seed,
-                    system_prompt=stateless_system_prompt,
-                    enable_thinking=enable_thinking,
-                    cancel_check=cancel_local_inference,
+                sections.append(
+                    "Use the rolling conversation context below. It may omit older turns to fit the local model context window. "
+                    "If an image is attached, it is visible only for the current turn; do not assume older images are still visible."
                 )
+            if image_input is not None:
+                sections.append(
+                    "The current user turn includes attached visual input. Inspect the current visual input directly before answering. "
+                    "It is not a previous image and it is not unavailable; do not repeat an earlier claim that the image was not sent."
+                )
+            if stats.get("omitted"):
+                sections.append(f"[Context manager omitted {stats.get('omitted')} older turn(s) to avoid overflowing n_ctx.]")
+            if lines:
+                sections.append("\n".join(lines))
+            sections.append(f"Current user request:\n{current_prompt}")
+            return "\n\n".join(sections), bool(lines), stats, system_text
+
+        stateless_llamacpp_chat = bool(
+            mode == "chat"
+            and VLM.is_llamacpp
+            and not bool(params.get("force_stateful_chat"))
+            and not bool(params.get("force_stateful_image_chat"))
+        )
+        stateless_local_chat = stateless_llamacpp_chat or bool(mode == "chat" and params.get("describe_harness"))
+        stateless_prompt_includes_text_history = False
+        stateless_system_prompt = ""
+        rolling_context_stats = {"omitted": 0, "chars": 0, "max_history": 0, "budget": 0}
+        completion_stats = {}
+        stage_started = time.monotonic()
+        tavern_messages = _canvas_vlm_tavern_messages(params)
+        if tavern_messages is not None and not VLM.is_llamacpp:
+            return {
+                "ok": False, "error": "tavern_messages_backend_unsupported",
+                "details": (
+                    "This model backend cannot send ordered Tavern messages. Use llama.cpp or a compatible API."
+                    if params.get("describe_lang") == "en" else
+                    "当前模型后端不支持按顺序发送酒馆消息，请使用 llama.cpp 或兼容聊天 API。"
+                ),
+            }
+        if tavern_messages is not None and VLM.is_llamacpp and mode == "chat":
+            if image_input is not None:
+                tavern_messages = _canvas_vlm_tavern_messages(
+                    params, llamacpp_vlm._build_user_message(image_input, prompt),
+                )
+            if cancel_local_inference():
+                return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
+            model_used = True
+            text, completion_stats = _canvas_vlm_tavern_local_completion(
+                tavern_messages, params, cancel_local_inference, stream_callback,
+            )
+            rolling_context_stats["tavern_preset"] = params.get("describe_tavern_preset", {})
+        elif mode == "chat" and not stateless_local_chat:
+            if bool(params.get("reset_context")):
+                vlm.clear_conversation(conversation_id)
+            system_prompt = params.get("system_prompt")
+            system_prompt = str(system_prompt) if system_prompt is not None else ""
+            if cancel_local_inference():
+                return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
+            model_used = True
+            text = vlm.chat(
+                image_input,
+                prompt,
+                conversation_id=conversation_id,
+                system_prompt=system_prompt,
+                save_state=bool(params.get("save_context", True)),
+                max_history=clamp_int(params.get("max_history", 24), 24, 1, 80),
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                repetition_penalty=repetition_penalty,
+                seed=seed,
+                enable_thinking=enable_thinking,
+                cancel_check=cancel_local_inference,
+            )
             completion_stats = _canvas_vlm_local_completion_stats()
-        if mode == "chat" and image_input is not None and _canvas_vlm_claims_current_media_unavailable(text):
-            logger.warning(
-                "Canvas VLM response claimed that current media was unavailable; retrying with an isolated current-image prompt."
-            )
-            if callable(stream_callback):
-                try:
-                    stream_callback({"type": "reset"})
-                except Exception:
-                    logger.debug("Unable to reset the streamed media fallback response", exc_info=True)
-            if VLM.is_llamacpp:
-                vlm.reset_runtime_context()
-            retry_prompt = _canvas_vlm_current_media_retry_prompt(prompt)
-            retry_system_prompt = (
-                stateless_system_prompt
-                if stateless_local_chat
-                else str(params.get("system_prompt") or "")
-            )
+        else:
+            inference_prompt = prompt
+            if stateless_local_chat:
+                stateless_started = time.monotonic()
+                inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats, stateless_system_prompt = build_stateless_llamacpp_chat_prompt(prompt)
+                _canvas_vlm_add_timing(params, "stateless_prompt_prepare", time.monotonic() - stateless_started)
+                logger.warning(
+                    "Canvas VLM llama.cpp chat is using rolling stateless inference to avoid context-shift failures: version=%s, conversation_id=%s, context=%s",
+                    version_name,
+                    conversation_id,
+                    rolling_context_stats,
+                )
+            if cancel_local_inference():
+                return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
+            model_used = True
             if stateless_llamacpp_chat and callable(stream_callback) and VLM.is_llamacpp:
                 text = vlm.inference_stream(
                     image_input,
-                    retry_prompt,
+                    inference_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
                     top_k=top_k,
                     repetition_penalty=repetition_penalty,
                     seed=seed,
-                    system_prompt=retry_system_prompt,
+                    system_prompt=stateless_system_prompt,
                     on_delta=stream_callback,
                     enable_thinking=enable_thinking,
                     cancel_check=cancel_local_inference,
@@ -2169,240 +2158,329 @@ def canvas_vlm_run(payload, stream_callback=None):
             else:
                 text = vlm.inference(
                     image_input,
-                    retry_prompt,
+                    inference_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
                     top_k=top_k,
                     repetition_penalty=repetition_penalty,
                     seed=seed,
-                    system_prompt=retry_system_prompt,
+                    system_prompt=stateless_system_prompt if stateless_local_chat else None,
                     enable_thinking=enable_thinking,
                     cancel_check=cancel_local_inference,
                 )
             completion_stats = _canvas_vlm_local_completion_stats()
-    if text is None:
-        text = ""
-    _canvas_vlm_add_timing(params, "main_vlm_inference", time.monotonic() - stage_started)
-    if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
-        return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
-    text = str(text).strip()
-    for prefix in VLM.remove_prefixs:
-        if text.startswith(prefix):
-            text = text[len(prefix):]
-    if text.endswith('"'):
-        text = text[:-1]
+            if (
+                stateless_llamacpp_chat
+                and isinstance(text, str)
+                and ("Context Shift is explicitly disabled" in text or ("n_ctx" in text and "fit the dialogue" in text))
+                and int(rolling_context_stats.get("budget") or 0) > 1600
+            ):
+                retry_budget = max(1200, int((rolling_context_stats.get("budget") or 2400) * 0.45))
+                inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats, stateless_system_prompt = build_stateless_llamacpp_chat_prompt(prompt, retry_budget)
+                logger.warning("Retrying Canvas VLM llama.cpp chat with smaller rolling context: %s", rolling_context_stats)
+                if callable(stream_callback) and VLM.is_llamacpp:
+                    text = vlm.inference_stream(
+                        image_input,
+                        inference_prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                        top_k=top_k,
+                        repetition_penalty=repetition_penalty,
+                        seed=seed,
+                        system_prompt=stateless_system_prompt,
+                        on_delta=stream_callback,
+                        enable_thinking=enable_thinking,
+                        cancel_check=cancel_local_inference,
+                    )
+                else:
+                    text = vlm.inference(
+                        image_input,
+                        inference_prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                        top_k=top_k,
+                        repetition_penalty=repetition_penalty,
+                        seed=seed,
+                        system_prompt=stateless_system_prompt,
+                        enable_thinking=enable_thinking,
+                        cancel_check=cancel_local_inference,
+                    )
+                completion_stats = _canvas_vlm_local_completion_stats()
+            if mode == "chat" and image_input is not None and _canvas_vlm_claims_current_media_unavailable(text):
+                logger.warning(
+                    "Canvas VLM response claimed that current media was unavailable; retrying with an isolated current-image prompt."
+                )
+                if callable(stream_callback):
+                    try:
+                        stream_callback({"type": "reset"})
+                    except Exception:
+                        logger.debug("Unable to reset the streamed media fallback response", exc_info=True)
+                if VLM.is_llamacpp:
+                    vlm.reset_runtime_context()
+                retry_prompt = _canvas_vlm_current_media_retry_prompt(prompt)
+                retry_system_prompt = (
+                    stateless_system_prompt
+                    if stateless_local_chat
+                    else str(params.get("system_prompt") or "")
+                )
+                if stateless_llamacpp_chat and callable(stream_callback) and VLM.is_llamacpp:
+                    text = vlm.inference_stream(
+                        image_input,
+                        retry_prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                        top_k=top_k,
+                        repetition_penalty=repetition_penalty,
+                        seed=seed,
+                        system_prompt=retry_system_prompt,
+                        on_delta=stream_callback,
+                        enable_thinking=enable_thinking,
+                        cancel_check=cancel_local_inference,
+                    )
+                else:
+                    text = vlm.inference(
+                        image_input,
+                        retry_prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                        top_k=top_k,
+                        repetition_penalty=repetition_penalty,
+                        seed=seed,
+                        system_prompt=retry_system_prompt,
+                        enable_thinking=enable_thinking,
+                        cancel_check=cancel_local_inference,
+                    )
+                completion_stats = _canvas_vlm_local_completion_stats()
+        if text is None:
+            text = ""
+        _canvas_vlm_add_timing(params, "main_vlm_inference", time.monotonic() - stage_started)
+        if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
+            return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
+        text = str(text).strip()
+        for prefix in VLM.remove_prefixs:
+            if text.startswith(prefix):
+                text = text[len(prefix):]
+        if text.endswith('"'):
+            text = text[:-1]
 
-    if text.lower().startswith("error:") or text.lower().startswith("error during inference"):
-        return {
-            "ok": False,
-            "error": "VLM inference failed",
-            "details": text,
-            "version": VLM.current_version,
-            "provider": runtime_provider_name,
-            "model": runtime_model_name,
-            "asset_refs": asset_refs,
-        }
+        if text.lower().startswith("error:") or text.lower().startswith("error during inference"):
+            return {
+                "ok": False,
+                "error": "VLM inference failed",
+                "details": text,
+                "version": VLM.current_version,
+                "provider": runtime_provider_name,
+                "model": runtime_model_name,
+                "asset_refs": asset_refs,
+            }
 
-    def review_llm_fn(messages, review_payload):
-        review_schema = str((review_payload or {}).get("schema") or "").strip()
-        review_messages = (
-            messages
-            if review_schema == "simpai.natural_prompt_refine.v1" and isinstance(messages, list) and messages
-            else canvas_danbooru_prompt_review.build_compact_review_messages(review_payload)
-        )
-        system_prompt = str(review_messages[0].get("content") or "") if review_messages else ""
-        user_prompt = str(review_messages[1].get("content") or "") if len(review_messages) > 1 else json.dumps(review_payload or {}, ensure_ascii=False)
-        if VLM.is_llamacpp:
-            logger.info("Canvas VLM prompt review/refine uses isolated llama.cpp one-shot inference; clearing runtime context before review.")
-            vlm.reset_runtime_context()
-        try:
-            result = vlm.inference(
-                None,
-                user_prompt,
-                max_tokens=clamp_int(params.get("danbooru_review_max_tokens", 640), 640, 128, 1024),
-                temperature=0.1,
-                top_p=0.8,
-                top_k=40,
-                repetition_penalty=1.05,
-                seed=seed,
-                system_prompt=system_prompt,
-                enable_thinking=enable_thinking,
-                cancel_check=cancel_local_inference,
+        def review_llm_fn(messages, review_payload):
+            review_schema = str((review_payload or {}).get("schema") or "").strip()
+            review_messages = (
+                messages
+                if review_schema == "simpai.natural_prompt_refine.v1" and isinstance(messages, list) and messages
+                else canvas_danbooru_prompt_review.build_compact_review_messages(review_payload)
             )
-            if isinstance(result, str) and ("Context Shift is explicitly disabled" in result or ("n_ctx" in result and "fit the dialogue" in result)):
-                raise RuntimeError(result.strip()[:500])
-            return result
-        finally:
+            system_prompt = str(review_messages[0].get("content") or "") if review_messages else ""
+            user_prompt = str(review_messages[1].get("content") or "") if len(review_messages) > 1 else json.dumps(review_payload or {}, ensure_ascii=False)
             if VLM.is_llamacpp:
+                logger.info("Canvas VLM prompt review/refine uses isolated llama.cpp one-shot inference; clearing runtime context before review.")
                 vlm.reset_runtime_context()
-
-    draft_retry_meta = None
-    draft_repair_meta = None
-    stage_started = time.monotonic()
-    agent_actions = [] if canvas_vlm_agent.vlm_agent_mode(params) == "raw" else canvas_vlm_agent.extract_vlm_agent_actions(text)
-    draft_validation = canvas_vlm_agent.validate_llm_draft_response(text, agent_actions, payload, params, prompt)
-    _canvas_vlm_add_timing(params, "draft_validation", time.monotonic() - stage_started)
-    if draft_validation.get("retry_required") and not bool(params.get("disable_llm_draft_retry")):
-        retry_started = time.monotonic()
-        retry_prompt = canvas_vlm_agent.build_llm_draft_retry_prompt(payload, params, prompt, text, draft_validation)
-        retry_skip_reason = ""
-        if VLM.is_llamacpp:
             try:
-                retry_max_chars = int(params.get("llamacpp_draft_retry_max_chars") or 10000)
-            except Exception:
-                retry_max_chars = 10000
-            if retry_max_chars > 0 and len(retry_prompt) > retry_max_chars:
-                retry_skip_reason = f"retry prompt too large for llama.cpp n_ctx guard: chars={len(retry_prompt)}, limit={retry_max_chars}"
-        if retry_skip_reason:
-            logger.warning("Canvas VLM draft retry skipped: %s", retry_skip_reason)
-            _canvas_vlm_add_timing(params, "draft_retry_skipped", time.monotonic() - retry_started)
+                result = vlm.inference(
+                    None,
+                    user_prompt,
+                    max_tokens=clamp_int(params.get("danbooru_review_max_tokens", 640), 640, 128, 1024),
+                    temperature=0.1,
+                    top_p=0.8,
+                    top_k=40,
+                    repetition_penalty=1.05,
+                    seed=seed,
+                    system_prompt=system_prompt,
+                    enable_thinking=enable_thinking,
+                    cancel_check=cancel_local_inference,
+                )
+                if isinstance(result, str) and ("Context Shift is explicitly disabled" in result or ("n_ctx" in result and "fit the dialogue" in result)):
+                    raise RuntimeError(result.strip()[:500])
+                return result
+            finally:
+                if VLM.is_llamacpp:
+                    vlm.reset_runtime_context()
+
+        draft_retry_meta = None
+        draft_repair_meta = None
+        stage_started = time.monotonic()
+        agent_actions = [] if canvas_vlm_agent.vlm_agent_mode(params) == "raw" else canvas_vlm_agent.extract_vlm_agent_actions(text)
+        draft_validation = canvas_vlm_agent.validate_llm_draft_response(text, agent_actions, payload, params, prompt)
+        _canvas_vlm_add_timing(params, "draft_validation", time.monotonic() - stage_started)
+        if draft_validation.get("retry_required") and not bool(params.get("disable_llm_draft_retry")):
+            retry_started = time.monotonic()
+            retry_prompt = canvas_vlm_agent.build_llm_draft_retry_prompt(payload, params, prompt, text, draft_validation)
+            retry_skip_reason = ""
+            if VLM.is_llamacpp:
+                try:
+                    retry_max_chars = int(params.get("llamacpp_draft_retry_max_chars") or 10000)
+                except Exception:
+                    retry_max_chars = 10000
+                if retry_max_chars > 0 and len(retry_prompt) > retry_max_chars:
+                    retry_skip_reason = f"retry prompt too large for llama.cpp n_ctx guard: chars={len(retry_prompt)}, limit={retry_max_chars}"
+            if retry_skip_reason:
+                logger.warning("Canvas VLM draft retry skipped: %s", retry_skip_reason)
+                _canvas_vlm_add_timing(params, "draft_retry_skipped", time.monotonic() - retry_started)
+                draft_repair_meta = {
+                    "issues": draft_validation.get("issues") or [],
+                    "retry_skipped": retry_skip_reason,
+                    "repair_reason_type": draft_validation.get("retry_reason_type") or "local_repair",
+                }
+            else:
+                if VLM.is_llamacpp:
+                    logger.info("Canvas VLM draft retry uses isolated one-shot inference; clearing runtime context before retry.")
+                    vlm.reset_runtime_context()
+                retry_text = vlm.inference(
+                    image_input,
+                    retry_prompt,
+                    max_tokens=max(max_tokens, 1024),
+                    temperature=0.2,
+                    top_p=0.8,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
+                    seed=(seed + 1 if seed >= 0 else seed),
+                    system_prompt=str(params.get("system_prompt") or ""),
+                    enable_thinking=enable_thinking,
+                    cancel_check=cancel_local_inference,
+                )
+                retry_text = str(retry_text or "").strip()
+                if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
+                    return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
+                for prefix in VLM.remove_prefixs:
+                    if retry_text.startswith(prefix):
+                        retry_text = retry_text[len(prefix):]
+                if retry_text.endswith('"'):
+                    retry_text = retry_text[:-1]
+                retry_actions = canvas_vlm_agent.extract_vlm_agent_actions(retry_text)
+                retry_validation = canvas_vlm_agent.validate_llm_draft_response(retry_text, retry_actions, payload, params, prompt)
+                _canvas_vlm_add_timing(params, "draft_retry_model_call", time.monotonic() - retry_started)
+                draft_retry_meta = {
+                    "attempted": True,
+                    "initial_issues": draft_validation.get("issues") or [],
+                    "retry_issues": retry_validation.get("issues") or [],
+                    "retry_valid": bool(retry_validation.get("valid")),
+                    "retry_required": True,
+                }
+                text = retry_text or text
+                agent_actions = retry_actions if retry_validation.get("valid") else []
+        elif draft_validation.get("issues"):
             draft_repair_meta = {
                 "issues": draft_validation.get("issues") or [],
-                "retry_skipped": retry_skip_reason,
-                "repair_reason_type": draft_validation.get("retry_reason_type") or "local_repair",
+                "retry_required": False,
             }
-        else:
-            if VLM.is_llamacpp:
-                logger.info("Canvas VLM draft retry uses isolated one-shot inference; clearing runtime context before retry.")
-                vlm.reset_runtime_context()
-            retry_text = vlm.inference(
-                image_input,
-                retry_prompt,
-                max_tokens=max(max_tokens, 1024),
-                temperature=0.2,
-                top_p=0.8,
-                top_k=top_k,
-                repetition_penalty=repetition_penalty,
-                seed=(seed + 1 if seed >= 0 else seed),
-                system_prompt=str(params.get("system_prompt") or ""),
-                enable_thinking=enable_thinking,
-                cancel_check=cancel_local_inference,
-            )
-            retry_text = str(retry_text or "").strip()
-            if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
-                return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
-            for prefix in VLM.remove_prefixs:
-                if retry_text.startswith(prefix):
-                    retry_text = retry_text[len(prefix):]
-            if retry_text.endswith('"'):
-                retry_text = retry_text[:-1]
-            retry_actions = canvas_vlm_agent.extract_vlm_agent_actions(retry_text)
-            retry_validation = canvas_vlm_agent.validate_llm_draft_response(retry_text, retry_actions, payload, params, prompt)
-            _canvas_vlm_add_timing(params, "draft_retry_model_call", time.monotonic() - retry_started)
-            draft_retry_meta = {
-                "attempted": True,
-                "initial_issues": draft_validation.get("issues") or [],
-                "retry_issues": retry_validation.get("issues") or [],
-                "retry_valid": bool(retry_validation.get("valid")),
-                "retry_required": True,
-            }
-            text = retry_text or text
-            agent_actions = retry_actions if retry_validation.get("valid") else []
-    elif draft_validation.get("issues"):
-        draft_repair_meta = {
-            "issues": draft_validation.get("issues") or [],
-            "retry_required": False,
-        }
-    repair_started = time.monotonic()
-    agent_actions = canvas_vlm_agent.repair_vlm_agent_actions(
-        agent_actions,
-        payload,
-        params,
-        prompt,
-        review_llm_fn=review_llm_fn if (params.get("enable_prompt_review") or params.get("enable_danbooru_review")) else None,
-        assistant_text=text,
-    )
-    if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
-        return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
-    logger.info(
-        "Canvas VLM agent action repair completed: elapsed=%.3fs, actions=%s",
-        time.monotonic() - repair_started,
-        len(agent_actions or []),
-    )
-    _canvas_vlm_add_timing(params, "repair_actions", time.monotonic() - repair_started)
-    if two_stage_requested and not (isinstance(two_stage_intent_meta, dict) and two_stage_intent_meta.get("valid")):
-        backfill_started = time.monotonic()
-        backfilled_meta = canvas_vlm_agent.backfill_two_stage_intent_response(payload, params, prompt, agent_actions)
-        _canvas_vlm_add_timing(params, "two_stage_contract_backfill", time.monotonic() - backfill_started)
-        if _canvas_vlm_store_two_stage_meta(params, backfilled_meta):
-            two_stage_intent_meta = backfilled_meta
-            logger.info("Canvas VLM two-stage intent contract backfilled from repaired image action.")
-    if draft_retry_meta:
-        for action in agent_actions or []:
-            if isinstance(action, dict) and action.get("action") in {"generate_image", "text_to_image"}:
-                action["llm_draft_retry"] = "true"
-                action["retry_reason"] = "; ".join(draft_retry_meta.get("initial_issues") or [])[:500]
-                action["draft_validation_issues"] = draft_retry_meta.get("retry_issues") or draft_retry_meta.get("initial_issues") or []
-    elif draft_repair_meta:
-        for action in agent_actions or []:
-            if isinstance(action, dict) and action.get("action") in {"generate_image", "text_to_image"}:
-                action["llm_draft_repair_issues"] = draft_repair_meta.get("issues") or []
-                action["llm_draft_retry_required"] = False
-    display_text = canvas_vlm_agent.vlm_agent_display_text(text, agent_actions, params)
-    if not display_text and isinstance(two_stage_intent_meta, dict):
-        display_text = str(two_stage_intent_meta.get("understanding") or "").strip()
-    response_params = {
-        "prompt": prompt,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "top_p": top_p,
-        "top_k": top_k,
-        "repetition_penalty": repetition_penalty,
-        "seed": seed,
-        "save_context": bool(params.get("save_context", True)) if mode == "chat" and not stateless_llamacpp_chat else False,
-        "stateless_llamacpp_chat": stateless_llamacpp_chat,
-        "stateless_llamacpp_image_chat": bool(stateless_llamacpp_chat and image_input is not None),
-        "stateless_prompt_includes_text_history": bool(
-            stateless_llamacpp_chat and stateless_prompt_includes_text_history
-        ),
-        "rolling_context": rolling_context_stats,
-        "mtp_requested": mtp_requested,
-        "mtp_effective": mtp_effective,
-        "mtp_disabled_reason": mtp_disabled_reason,
-    }
-    if VLM.is_llamacpp:
-        response_params["mtp_runtime"] = llamacpp_vlm.get_runtime_status(
-            params.get("vram_policy"),
-            params.get("kv_cache_type"),
-            params.get("n_ctx"),
-            load_mtp=mtp_requested,
+        repair_started = time.monotonic()
+        agent_actions = canvas_vlm_agent.repair_vlm_agent_actions(
+            agent_actions,
+            payload,
+            params,
+            prompt,
+            review_llm_fn=review_llm_fn if (params.get("enable_prompt_review") or params.get("enable_danbooru_review")) else None,
+            assistant_text=text,
         )
-    if visual_reference_manifest:
-        response_params["visual_reference_manifest"] = visual_reference_manifest
-    if params.get("video_frame_budget"):
-        response_params["video_frame_budget"] = copy.deepcopy(params["video_frame_budget"])
-    if video_decode_warnings:
-        response_params["video_decode_warnings"] = video_decode_warnings
-    if reference_input_warnings:
-        response_params["reference_input_warnings"] = reference_input_warnings
-    if isinstance(two_stage_intent_meta, dict):
-        response_params["two_stage_intent"] = {
-            "valid": bool(two_stage_intent_meta.get("valid")),
-            "issues": two_stage_intent_meta.get("issues") or [],
-            "understanding": two_stage_intent_meta.get("understanding") or "",
-            "contract": two_stage_intent_meta.get("contract") or {},
-            "contract_issues": two_stage_intent_meta.get("contract_issues") or [],
-            "confidence": two_stage_intent_meta.get("confidence"),
-            "local_fast_path": bool(two_stage_intent_meta.get("local_fast_path")),
-            "local_signal_level": two_stage_intent_meta.get("local_signal_level") or "",
-            "locks": two_stage_intent_meta.get("locks") or {},
-        }
-
-    free_after = bool(params.get("free_after"))
-    if "keep_model_loaded" in params:
-        free_after = not bool(params.get("keep_model_loaded"))
-    if VLM.is_llamacpp and is_cpu_only_llama_model_loaded(llamacpp_vlm):
-        free_after = False
-    if free_after:
+        if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
+            return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
         logger.info(
-            "[VLM KeepLoaded] vlm-run free_model node_id=%s conversation_id=%s keep_model_loaded=%s free_after=%s source=webui.canvas_workbench_vlm_run",
-            params.get("node_id"),
-            params.get("conversation_id"),
-            params.get("keep_model_loaded"),
-            free_after,
+            "Canvas VLM agent action repair completed: elapsed=%.3fs, actions=%s",
+            time.monotonic() - repair_started,
+            len(agent_actions or []),
         )
-        vlm.free_model()
+        _canvas_vlm_add_timing(params, "repair_actions", time.monotonic() - repair_started)
+        if two_stage_requested and not (isinstance(two_stage_intent_meta, dict) and two_stage_intent_meta.get("valid")):
+            backfill_started = time.monotonic()
+            backfilled_meta = canvas_vlm_agent.backfill_two_stage_intent_response(payload, params, prompt, agent_actions)
+            _canvas_vlm_add_timing(params, "two_stage_contract_backfill", time.monotonic() - backfill_started)
+            if _canvas_vlm_store_two_stage_meta(params, backfilled_meta):
+                two_stage_intent_meta = backfilled_meta
+                logger.info("Canvas VLM two-stage intent contract backfilled from repaired image action.")
+        if draft_retry_meta:
+            for action in agent_actions or []:
+                if isinstance(action, dict) and action.get("action") in {"generate_image", "text_to_image"}:
+                    action["llm_draft_retry"] = "true"
+                    action["retry_reason"] = "; ".join(draft_retry_meta.get("initial_issues") or [])[:500]
+                    action["draft_validation_issues"] = draft_retry_meta.get("retry_issues") or draft_retry_meta.get("initial_issues") or []
+        elif draft_repair_meta:
+            for action in agent_actions or []:
+                if isinstance(action, dict) and action.get("action") in {"generate_image", "text_to_image"}:
+                    action["llm_draft_repair_issues"] = draft_repair_meta.get("issues") or []
+                    action["llm_draft_retry_required"] = False
+        display_text = canvas_vlm_agent.vlm_agent_display_text(text, agent_actions, params)
+        if not display_text and isinstance(two_stage_intent_meta, dict):
+            display_text = str(two_stage_intent_meta.get("understanding") or "").strip()
+        response_params = {
+            "prompt": prompt,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
+            "top_k": top_k,
+            "repetition_penalty": repetition_penalty,
+            "seed": seed,
+            "save_context": bool(params.get("save_context", True)) if mode == "chat" and not stateless_llamacpp_chat else False,
+            "stateless_llamacpp_chat": stateless_llamacpp_chat,
+            "stateless_llamacpp_image_chat": bool(stateless_llamacpp_chat and image_input is not None),
+            "stateless_prompt_includes_text_history": bool(
+                stateless_llamacpp_chat and stateless_prompt_includes_text_history
+            ),
+            "rolling_context": rolling_context_stats,
+            "mtp_requested": mtp_requested,
+            "mtp_effective": mtp_effective,
+            "mtp_disabled_reason": mtp_disabled_reason,
+        }
+        if VLM.is_llamacpp:
+            response_params["mtp_runtime"] = llamacpp_vlm.get_runtime_status(
+                params.get("vram_policy"),
+                params.get("kv_cache_type"),
+                params.get("n_ctx"),
+                load_mtp=mtp_requested,
+            )
+        if visual_reference_manifest:
+            response_params["visual_reference_manifest"] = visual_reference_manifest
+        if params.get("video_frame_budget"):
+            response_params["video_frame_budget"] = copy.deepcopy(params["video_frame_budget"])
+        if video_decode_warnings:
+            response_params["video_decode_warnings"] = video_decode_warnings
+        if reference_input_warnings:
+            response_params["reference_input_warnings"] = reference_input_warnings
+        if isinstance(two_stage_intent_meta, dict):
+            response_params["two_stage_intent"] = {
+                "valid": bool(two_stage_intent_meta.get("valid")),
+                "issues": two_stage_intent_meta.get("issues") or [],
+                "understanding": two_stage_intent_meta.get("understanding") or "",
+                "contract": two_stage_intent_meta.get("contract") or {},
+                "contract_issues": two_stage_intent_meta.get("contract_issues") or [],
+                "confidence": two_stage_intent_meta.get("confidence"),
+                "local_fast_path": bool(two_stage_intent_meta.get("local_fast_path")),
+                "local_signal_level": two_stage_intent_meta.get("local_signal_level") or "",
+                "locks": two_stage_intent_meta.get("locks") or {},
+            }
+
+    finally:
+        free_after = bool(params.get("free_after"))
+        if "keep_model_loaded" in params:
+            free_after = not bool(params.get("keep_model_loaded"))
+        if model_used and free_after:
+            if not (VLM.is_llamacpp and is_cpu_only_llama_model_loaded(llamacpp_vlm)):
+                try:
+                    logger.info(
+                        "[VLM KeepLoaded] vlm-run free_model node_id=%s conversation_id=%s keep_model_loaded=%s free_after=%s source=webui.canvas_workbench_vlm_run",
+                        params.get("node_id"),
+                        params.get("conversation_id"),
+                        params.get("keep_model_loaded"),
+                        free_after,
+                    )
+                    vlm.free_model()
+                except Exception:
+                    logger.exception("Canvas VLM model cleanup failed")
     _canvas_vlm_add_timing(params, "total", time.monotonic() - run_started)
     timings = _canvas_vlm_timing_snapshot(params)
     if timings:

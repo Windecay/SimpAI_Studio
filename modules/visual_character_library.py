@@ -61,9 +61,13 @@ def register_media(asset_ref, user_did, root=None):
         raise ValueError("asset_owner_mismatch")
     if not str(ref.get("mime", "")).startswith(("image/", "audio/")):
         raise ValueError("unsupported_media_type")
+    if ref.get("copy_error") or ref.get("output_error"):
+        raise ValueError("asset_registration_failed")
     ref["schema"] = MEDIA_SCHEMA
     with _LOCK:
-        vlm_roleplay._atomic_write_json(_media_path(ref["asset_id"], user_did, root), ref)
+        path = _media_path(ref["asset_id"], user_did, root)
+        if _read(path) != ref:
+            vlm_roleplay._atomic_write_json(path, ref)
     return ref
 
 

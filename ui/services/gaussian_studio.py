@@ -444,26 +444,33 @@ def predict_from_reference(payload, state_params=None):
             "reference_asset": materialized.get("asset_ref"),
         }
 
-    ply_asset = canvas_workbench_assets.register_existing_file_asset(
-        ply_path,
-        project_id,
-        state_params,
-        node_id=node_id,
-        role="gaussian_ply",
-        metadata={
-            "mime": "application/octet-stream",
-            "generation_metadata": {
-                "tool": "SHARP",
-                "repo_id": SHARP_REPO_ID,
-                "focal_length_mm": focal_length_mm,
-                "precision": actual_precision,
-                "requested_precision": requested_precision,
-                "precision_fallback_error": fallback_error or "",
-                "reference_path": reference_path,
+    try:
+        ply_asset = canvas_workbench_assets.register_existing_file_asset(
+            ply_path,
+            project_id,
+            state_params,
+            node_id=node_id,
+            role="gaussian_ply",
+            metadata={
+                "mime": "application/octet-stream",
+                "generation_metadata": {
+                    "tool": "SHARP",
+                    "repo_id": SHARP_REPO_ID,
+                    "focal_length_mm": focal_length_mm,
+                    "precision": actual_precision,
+                    "requested_precision": requested_precision,
+                    "precision_fallback_error": fallback_error or "",
+                    "reference_path": reference_path,
+                },
             },
-        },
-        copy_to_assets=False,
-    )
+            copy_to_assets=False,
+        )
+    except OSError as error:
+        ply_asset = {"copy_error": f"{type(error).__name__}: {error}"}
+    if not isinstance(ply_asset, dict) or not ply_asset or ply_asset.get("copy_error"):
+        error = canvas_workbench_assets.output_delivery_error(state_params)
+        return {"ok": False, "error": error["message"], "output_error": error,
+                "ply_path": ply_path, "reference_asset": materialized.get("asset_ref")}
     return {
         "ok": True,
         "ply_path": ply_path,

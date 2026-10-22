@@ -2088,7 +2088,7 @@ def _build_preset_store_meta(state, copy_cached=True):
                     "save_metadata_to_images": preset_content.get("default_save_metadata_to_images", None),
                 }
                 scene_frontend = default_engine.get("scene_frontend", {})
-                if isinstance(scene_frontend, dict):
+                if isinstance(scene_frontend, dict) and scene_frontend:
                     explicit_supported_tasks = scene_frontend.get("supported_tasks") or explicit_supported_tasks
                     schema = _build_canvas_scene_schema(scene_frontend)
                     scene_themes = schema.get("themes", []) if isinstance(schema, dict) else []
@@ -2138,6 +2138,9 @@ def _build_preset_store_meta(state, copy_cached=True):
                 }
         except Exception:
             pass
+
+        if not preset_category and str(task_method).lower().startswith("moss_image"):
+            preset_category = "MOSS"
 
         meta[preset_name] = {
             "backend_engine": str(backend_engine or "Other"),
@@ -3336,6 +3339,7 @@ def should_show_finished_catalog(engine_type, output_list):
 
 
 def process_after_generation(state_params, generation_task=None, gallery_output=None, video_output=None):
+    state_params.pop("__post_generation_catalog_refresh", None)
     if "__max_per_page" not in state_params.keys():
         state_params.update({"__max_per_page": 18})
     if "__max_catalog" not in state_params.keys():
@@ -3395,6 +3399,9 @@ def process_after_generation(state_params, generation_task=None, gallery_output=
         try:
             output_index = state_params["__output_list"][0].split('/')[0]
             gallery_util.refresh_images_catalog(output_index, True, user_did)
+            state_params["__post_generation_catalog_refresh"] = [
+                user_did, output_index, state_params["__finished_nums_pages"],
+            ]
         except Exception as e:
             logger.error(f'Error in post-generation gallery processing: {e}')
    
@@ -3403,6 +3410,7 @@ def process_after_generation(state_params, generation_task=None, gallery_output=
 
 def refresh_finished_catalog_stat_after_generation(state_params):
     state_params = state_params if isinstance(state_params, dict) else {}
+    refreshed_catalog = state_params.pop("__post_generation_catalog_refresh", None)
     try:
         state_params.setdefault("__max_per_page", 18)
         state_params.setdefault("__max_catalog", config.default_image_catalog_max_number)
@@ -3410,7 +3418,6 @@ def refresh_finished_catalog_stat_after_generation(state_params):
         user_did = user.get_did() if user is not None and hasattr(user, "get_did") else None
         engine_type = state_params.get("__gallery_engine_type") or state_params.get("engine_type") or "image"
         engine_type = "video" if engine_type == "video" else "image"
-        time.sleep(0.35)
         output_list, finished_nums, finished_pages = gallery_util.refresh_output_list(
             state_params["__max_per_page"],
             state_params["__max_catalog"],
@@ -3425,7 +3432,9 @@ def refresh_finished_catalog_stat_after_generation(state_params):
             state_params["gallery_state"] = "finished_index"
         if output_list and engine_type == "image":
             try:
-                gallery_util.refresh_images_catalog(output_list[0].split("/")[0], True, user_did)
+                output_index = output_list[0].split("/")[0]
+                refresh_key = [user_did, output_index, state_params["__finished_nums_pages"]]
+                gallery_util.refresh_images_catalog(output_index, refreshed_catalog != refresh_key, user_did)
             except Exception as e:
                 logger.error(f"Error in delayed post-generation gallery processing: {e}")
     except Exception as e:
@@ -5121,6 +5130,8 @@ _AIO_STYLE_TRANSFER_TASK_METHODS = {
 def get_allowed_ip_types(engine, task_method=None):
     if task_method == 'krea2_aio_cn':
         return [modules.flags.cn_cpds, modules.flags.cn_pose]
+    if task_method == 'moss_image_sft_aio_cn':
+        return [modules.flags.cn_cpds, modules.flags.cn_color]
     ip_list = list(modules.flags.ip_list if engine in ['Fooocus', 'SDXL', 'Flux', 'Comfy', 'Wan', 'Qwen', 'Z-image'] else modules.flags.ip_list[:-1])
     if engine in ['Wan', 'Qwen', 'Z-image'] or task_method == 'flux2_aio_cn':
         ip_list = ip_list[1:3] + ip_list[-1:]

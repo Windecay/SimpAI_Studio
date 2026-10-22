@@ -220,7 +220,10 @@
 
         function getClassicIpMaxImages(node) {
             const maxImages = call(classicSource, 'getClassicIpMaxImages', 4);
-            return resolveClassicInpaintTaskMethod(node) === 'krea2_aio_cn' ? 1 : (maxImages || 4);
+            const method = resolveClassicInpaintTaskMethod(node);
+            if (method === 'krea2_aio_cn') return 1;
+            if (method === 'moss_image_sft_aio_cn') return 2;
+            return maxImages || 4;
         }
 
         function getClassicIpCount(node) {
@@ -253,6 +256,7 @@
             const engine = String(node?.runtime?.backend_engine || '').toLowerCase();
             const taskMethod = resolveClassicInpaintTaskMethod(node);
             if (taskMethod === 'krea2_aio_cn') return filters.krea2 || ['Depth', 'OpenPose'];
+            if (taskMethod === 'moss_image_sft_aio_cn') return filters.moss || ['Depth', 'ColorMap'];
             if (['wan', 'qwen', 'z-image'].includes(engine) || engine === 'zimage') {
                 return filters.wan_qwen_zimage || allTypes.slice(1, 3).concat(allTypes.slice(-1));
             }

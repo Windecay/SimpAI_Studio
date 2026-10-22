@@ -17,6 +17,7 @@ except Exception:
     piexif = None
 
 import modules.config
+import modules.regen_manifest as regen_manifest
 import modules.sdxl_styles
 import shared
 
@@ -1173,6 +1174,13 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         results.append(gr_update(value=False, visible=False))
     else:
         results.append(gr_update(value=bool(quick_enhance_value), visible=True))
+    quick_strength_value = _value_with_default_alias(
+        presetdata_dict, 'quick_enhance_uov_strength',
+        _value_with_default_alias(presetdata_dict, 'enhance_uov_strength', 0.2),
+    )
+    results.append(gr_update(
+        value=quick_strength_value, visible=engine_type != 'video' and bool(quick_enhance_value),
+    ))
 
     def _finish_results():
         state_params.pop("switch_scene_theme", None)
@@ -2065,10 +2073,13 @@ class MetadataParser(ABC):
         self.full_negative_prompt: str = ''
         self.steps: int = Steps.SPEED.value
         self.base_model_name: str = ''
+        self.base_model_filename: str = ''
         self.base_model_hash: str = ''
         self.refiner_model_name: str = ''
+        self.refiner_model_filename: str = ''
         self.refiner_model_hash: str = ''
         self.loras: list = []
+        self.lora_filenames: list = []
         self.vae_name: str = ''
         self.vae_filename: str = ''
         self.styles_definition = {}
@@ -2093,6 +2104,8 @@ class MetadataParser(ABC):
         self.full_negative_prompt = full_negative_prompt
         self.steps = steps
         self.base_model_name = Path(base_model_name).stem
+        self.base_model_filename = str(base_model_name or '')
+        self.refiner_model_filename = str(refiner_model_name or '')
 
         if base_model_name not in ['', 'None']:
             base_model_path = shared.modelsinfo.get_model_filepath('checkpoints', base_model_name)
@@ -2104,11 +2117,13 @@ class MetadataParser(ABC):
             self.refiner_model_hash = shared.modelsinfo.get_file_muid(refiner_model_path)
 
         self.loras = []
+        self.lora_filenames = []
         for (lora_name, lora_weight) in loras:
             if lora_name != 'None':
                 lora_path = shared.modelsinfo.get_model_filepath('loras', lora_name)
                 lora_hash = shared.modelsinfo.get_file_muid(lora_path)
                 self.loras.append((Path(lora_name).stem, lora_weight, lora_hash))
+                self.lora_filenames.append((lora_name, lora_weight, lora_hash))
         self.vae_filename = str(vae_name or '')
         self.vae_name = Path(self.vae_filename).stem
         if styles_definition != 'None':
@@ -2499,11 +2514,9 @@ class SIMPLEMetadataParser(MetadataParser):
                 continue
             if key in ['base_model', 'refiner_model', 'Base Model', 'Refiner Model']:
                 metadata[key] = self.replace_value_with_filename(key, value, model_filenames)
-                if metadata[key]=='None':
-                    logger.info(f' ⚠️  WARNING! The model is not available in the local: {value}.')
             elif key in ['clip_model', 'CLIP Model']:
                 metadata[key] = self.replace_value_with_filename(key, value, modules.config.clip_filenames)
-            elif key.startswith('LoRA '):
+            elif key.startswith(('LoRA ', 'lora_combined_')):
                 metadata[key] = self.replace_value_with_filename(key, value, modules.config.lora_filenames)
             elif key in ['vae', 'VAE']:
                 metadata[key] = self.replace_value_with_filename(key, value, modules.config.vae_filenames)
@@ -2513,28 +2526,20 @@ class SIMPLEMetadataParser(MetadataParser):
         return metadata
 
     def to_string(self, metadata: list) -> str:
-        for li, (label, key, value) in enumerate(metadata):
-            # remove model folder paths from metadata
-            if key.startswith('lora_combined_'):
-                name, weight = value.split(' : ')
-                name = Path(name).stem
-                value = f'{name} : {weight}'
-                metadata[li] = (label, key, value)
-
         res = {k: v for k, _, v in metadata}
 
         res['Full Prompt'] = self.full_prompt
         res['Full Negative Prompt'] = self.full_negative_prompt
         res['Steps'] = self.steps
-        res['Base Model'] = self.base_model_name
+        res['Base Model'] = self.base_model_filename or self.base_model_name
         res['Base Model Hash'] = self.base_model_hash
 
         if self.refiner_model_name not in ['', 'None']:
-            res['Refiner Model'] = self.refiner_model_name
+            res['Refiner Model'] = self.refiner_model_filename or self.refiner_model_name
             res['Refiner Model Hash'] = self.refiner_model_hash
 
         res['VAE'] = self.vae_filename or self.vae_name
-        res['LoRAs'] = self.loras
+        res['LoRAs'] = self.lora_filenames
         res['styles_definition'] = self.styles_definition
 
         if modules.config.metadata_created_by != '':
@@ -2546,15 +2551,17 @@ class SIMPLEMetadataParser(MetadataParser):
     def replace_value_with_filename(key, value, filenames):
         if key in ['vae', 'VAE', 'clip_model', 'CLIP Model'] and value=='Default (model)':
             return value
-        for filename in filenames:
-            path = Path(filename)
-            if key.startswith('LoRA '):
-                name, weight = value.split(' : ')
-                if Path(name).stem == path.stem or name == path.stem:
-                    return f'{filename} : {weight}'
-            elif Path(value).stem == path.stem or value == path.stem:
-                return filename
-        return 'None'
+        parts = str(value).split(' : ') if key.startswith(('LoRA ', 'lora_combined_')) else None
+        if parts is not None and len(parts) not in (2, 3):
+            return value
+        name = parts[-2] if parts else value
+        resolved = regen_manifest.resolve_model_filename(name, filenames)
+        if resolved not in filenames and str(resolved).casefold() not in ('none', 'auto', 'default (model)'):
+            logger.warning("Metadata %s could not uniquely match an installed file; keeping %s", key, name)
+        if parts:
+            parts[-2] = resolved
+            return ' : '.join(parts)
+        return resolved
 
 
 def get_metadata_parser(metadata_scheme: MetadataScheme) -> MetadataParser:

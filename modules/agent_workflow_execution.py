@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
 import httpx
@@ -13,6 +14,7 @@ import httpx
 from modules.agent_api_contract import WorkflowPreview
 from modules.agent_service import AgentAPIError, StudioBackend, identity_binding
 from modules.agent_workflows import WorkflowStore, preview
+from modules.comfy_prompt_compat import defer_comfy_task_release, is_comfy_prompt_queued
 
 
 MAX_RESULT_BYTES = 512 * 1024 * 1024
@@ -22,12 +24,17 @@ OUTPUT_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp",
 
 class ComfyWorkflowTransport:
     def __init__(self):
-        from enhanced.simpleai import comfyclient_pipeline
-        self.client = httpx.Client(base_url=f"http://{comfyclient_pipeline.server_address()}/",
-                                   timeout=httpx.Timeout(15, connect=3))
+        from enhanced.simpleai import comfyd, comfyclient_pipeline
+        with ExitStack() as resources:
+            resources.enter_context(comfyd.task_session())
+            self.process = comfyd.comfyd_process
+            self.client = resources.enter_context(httpx.Client(
+                base_url=f"http://{comfyclient_pipeline.server_address()}/",
+                timeout=httpx.Timeout(15, connect=3)))
+            self._resources = resources.pop_all()
 
     def close(self):
-        self.client.close()
+        self._resources.close()
 
     def json(self, method, url, **kwargs):
         response = self.client.request(method, url, **kwargs)
@@ -83,9 +90,10 @@ class ComfyWorkflowTransport:
             response.raise_for_status()
 
     def queued(self, prompt_id):
-        result = self.json("GET", "queue")
-        return any(isinstance(item, (list, tuple)) and len(item) > 1 and item[1] == prompt_id
-                   for group in ("queue_running", "queue_pending") for item in result.get(group, []))
+        return is_comfy_prompt_queued(self.json("GET", "queue"), prompt_id)
+
+    def defer_release(self, prompt_id):
+        defer_comfy_task_release(prompt_id, str(self.client.base_url), self.process)
 
     def download(self, item, target):
         filename, subfolder = item.get("filename"), item.get("subfolder", "")
@@ -186,6 +194,7 @@ def execute(task, *, backend=None, transport=None, context=None, output_root=Non
     backend = backend or StudioBackend()
     owned_transport = transport is None
     supplied_context = context is not None
+    backend_pending = False
     task.processing = True
     try:
         transport = transport or ComfyWorkflowTransport()
@@ -231,50 +240,72 @@ def execute(task, *, backend=None, transport=None, context=None, output_root=Non
         check_before_submission()
         task.simpleai_comfy_prompt_id = task.task_id
         transport.submit(prompt, task.task_id)
+        backend_pending = True
         task.simpleai_comfy_prompt_accepted = True
         task.yields.append(["status", _text(task, "工作流已提交，等待后端输出。", "Workflow submitted; waiting for backend outputs.")])
         cancel_deadline = None
-        last_error = None
         while True:
             expired = clock() >= deadline
-            cancel = task.last_stop in {"stop", "skip"} or expired
+            if cancel_deadline is None and (task.last_stop in {"stop", "skip"} or expired):
+                cancel_deadline = clock() + 30
+            if cancel_deadline is not None and clock() >= cancel_deadline:
+                break
+            last_error = None
             try:
                 history = transport.history(task.task_id)
-                if history is not None:
-                    status = history.get("status") or {}
-                    if status.get("status_str") in {"error", "failed"}:
-                        messages = status.get("messages") or []
-                        if task.last_stop in {"stop", "skip"} and any(
-                            isinstance(item, (list, tuple)) and item and item[0] == "execution_interrupted" for item in messages
-                        ):
-                            return
-                        raise AgentAPIError("workflow_execution_failed", "Comfy workflow execution failed.", 502,
-                                            {"nodes": _execution_errors(status.get("messages") or [])})
-                    if status.get("completed") or status.get("status_str") == "success":
+            except (httpx.HTTPError, AgentAPIError) as exc:
+                history = None
+                last_error = exc
+            if history is not None:
+                status = history.get("status") or {}
+                if status.get("status_str") in {"error", "failed"}:
+                    backend_pending = False
+                    messages = status.get("messages") or []
+                    if task.last_stop in {"stop", "skip"} and any(
+                        isinstance(item, (list, tuple)) and item and item[0] == "execution_interrupted" for item in messages
+                    ):
+                        return
+                    raise AgentAPIError("workflow_execution_failed", "Comfy workflow execution failed.", 502,
+                                        {"nodes": _execution_errors(status.get("messages") or [])})
+                if status.get("completed") or status.get("status_str") == "success":
+                    backend_pending = False
+                    while True:
                         if clock() >= deadline:
                             raise AgentAPIError("workflow_timeout", "Workflow exceeded its execution deadline.", 504)
                         if output_root is None:
                             from modules.config import get_user_path_outputs
                             output_root = get_user_path_outputs(task.user_did)
-                        task.results = _collect_outputs(history, task, transport, output_root)
-                        task.last_stop = False
-                        task.user_cancel_action = None
-                        return
-                if cancel:
-                    cancel_deadline = cancel_deadline or clock() + 30
+                        try:
+                            task.results = _collect_outputs(history, task, transport, output_root)
+                            break
+                        except httpx.HTTPError:
+                            sleep(2)
+                    task.last_stop = False
+                    task.user_cancel_action = None
+                    return
+            # Stop/deadline changes during history I/O must also take effect.
+            expired = clock() >= deadline
+            if cancel_deadline is not None or task.last_stop in {"stop", "skip"} or expired:
+                if cancel_deadline is None:
+                    cancel_deadline = clock() + 30
+                try:
                     transport.cancel(task.task_id)
-                    if not transport.queued(task.task_id):
+                except httpx.HTTPError as exc:
+                    last_error = exc
+                try:
+                    queued = transport.queued(task.task_id)
+                except (httpx.HTTPError, AgentAPIError) as exc:
+                    last_error = exc
+                else:
+                    if not queued:
+                        backend_pending = False
                         if expired:
                             raise AgentAPIError("workflow_timeout", "Workflow timed out and was stopped.", 504)
                         return
-                last_error = None
-            except httpx.HTTPError as exc:
-                last_error = exc
-            if cancel_deadline and clock() >= cancel_deadline:
-                raise AgentAPIError("workflow_state_unknown", "Backend termination could not be confirmed. Do not resubmit this task.", 504)
-            if clock() >= deadline and not cancel_deadline:
-                cancel_deadline = clock() + 30
+            if cancel_deadline is not None and clock() >= cancel_deadline:
+                break
             sleep(0.5 if last_error is None else 2)
+        raise AgentAPIError("workflow_state_unknown", "Backend termination could not be confirmed. Do not resubmit this task.", 504)
     except Exception as exc:
         code = exc.code if isinstance(exc, AgentAPIError) else "workflow_execution_failed"
         if not isinstance(exc, AgentAPIError):
@@ -286,6 +317,8 @@ def execute(task, *, backend=None, transport=None, context=None, output_root=Non
             **({"details": exc.details} if isinstance(exc, AgentAPIError) and exc.details is not None else {}),
         }
     finally:
+        if backend_pending:
+            transport.defer_release(task.task_id)
         task.processing = False
         task.yields.append(["finish", task.results])
         if owned_transport and transport is not None:

@@ -160,7 +160,7 @@
                 });
             const promptDefaults = canvasAgentPresetPromptDefaults(node);
             if (!String(params.prompt || '').trim() && promptDefaults.prompt) params.prompt = promptDefaults.prompt;
-            if (!String(params.negative_prompt || '').trim() && promptDefaults.negative_prompt) params.negative_prompt = promptDefaults.negative_prompt;
+            if (params.negative_prompt == null && promptDefaults.negative_prompt) params.negative_prompt = promptDefaults.negative_prompt;
             return {
                 id: node.id,
                 type: node.type,
@@ -172,6 +172,7 @@
                 upload_slots: cloneRunValue(node.upload_slots || {}, {}),
                 text_inputs: cloneRunValue(node.text_inputs || {}, {}),
                 models_config: serializePresetConfigForRun(node.models_config || {}),
+                styles_config: serializePresetConfigForRun(node.styles_config || {}),
                 resolution_config: serializePresetConfigForRun(node.resolution_config || {}),
                 generation_config: serializePresetConfigForRun(generationConfig),
                 model_requirements: modelRequirements
@@ -200,7 +201,7 @@
                 });
             const promptDefaults = canvasAgentPresetPromptDefaults(node);
             if (!String(params.prompt || '').trim() && promptDefaults.prompt) params.prompt = promptDefaults.prompt;
-            if (!String(params.negative_prompt || '').trim() && promptDefaults.negative_prompt) params.negative_prompt = promptDefaults.negative_prompt;
+            if (params.negative_prompt == null && promptDefaults.negative_prompt) params.negative_prompt = promptDefaults.negative_prompt;
             const modeToTab = { t2i: 'ip', ip: 'ip', uov: 'uov', inpaint: 'inpaint', enhance: 'enhance' };
             const currentTab = modeToTab[mode] || 'ip';
             const ipImages = [];
@@ -253,11 +254,7 @@
                 const configNode = edge ? getNode(edge.from) : null;
                 return getClassicEnhanceRegionValues(node, index, configNode?.config?.values || null);
             });
-            const classicRunParams = cloneRunValue(node?.params || {}, {});
-            if (params.director_timeline) classicRunParams.director_timeline = cloneRunValue(params.director_timeline, {});
-            if (params.prompt_override) classicRunParams.prompt_override = params.prompt_override;
-            if (!classicRunParams.prompt && params.prompt) classicRunParams.prompt = params.prompt;
-            if (!classicRunParams.negative_prompt && params.negative_prompt) classicRunParams.negative_prompt = params.negative_prompt;
+            const classicRunParams = cloneRunValue(params, {});
             if (classicRunParams.seed_random === undefined) classicRunParams.seed_random = true;
             if (classicRunParams.image_seed === undefined) classicRunParams.image_seed = 0;
             if (classicRunParams.image_number === undefined) classicRunParams.image_number = 1;
@@ -339,6 +336,7 @@
                 upload_slots: cloneRunValue(node?.upload_slots || {}, {}),
                 text_inputs: cloneRunValue(node?.text_inputs || {}, {}),
                 models_config: serializePresetConfigForRun(node?.models_config || {}),
+                styles_config: serializePresetConfigForRun(node?.styles_config || {}),
                 resolution_config: serializePresetConfigForRun(node?.resolution_config || {}),
                 generation_config: serializePresetConfigForRun(node?.generation_config || {}),
                 model_requirements: cloneRunValue(node?.model_requirements || {})

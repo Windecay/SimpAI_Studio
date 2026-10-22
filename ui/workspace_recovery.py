@@ -449,7 +449,7 @@ def install_workspace_recovery(blocks: Any, after_event: Any | None = None) -> W
     owner_field = gr.Textbox(value="local", visible="hidden", elem_id="workspace_recovery_owner")
 
     for spec in specs:
-        save_event = spec.component.change if spec.kind == "file" else spec.component.input
+        save_event = spec.component.change if spec.kind in {"file", "video"} else spec.component.input
         save_event(
             fn=None,
             inputs=[browser_state, spec.component],

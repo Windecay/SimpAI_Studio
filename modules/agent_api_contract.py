@@ -4,6 +4,7 @@ from typing import Any, Literal
 from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from modules import constants
 from modules.agent_vlm_contract import VLMModels, VLMStatus, VLMChat, VLMAnalyze
 
 
@@ -144,7 +145,10 @@ class MediaInput(RequestModel):
 
 class OutputOptions(RequestModel):
     count: int = Field(default=1, ge=1, le=4)
-    seed: int = Field(default=-1, ge=-1, le=2**63 - 1, description="-1 uses a random seed.")
+    seed: int = Field(
+        default=-1, ge=-1, le=constants.MAX_SEED,
+        description=f"-1 uses a random seed; fixed seeds range from {constants.MIN_SEED} to {constants.MAX_SEED}.",
+    )
     aspect_ratio: Literal["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2"] = "auto"
     width: int | None = Field(default=None, ge=32, le=16384)
     height: int | None = Field(default=None, ge=32, le=16384)

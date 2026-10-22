@@ -352,8 +352,10 @@ def _request_json_once(url, payload=None, api_key="", method="POST", timeout=120
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    response_started = False
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
+            response_started = True
             body = response.read().decode("utf-8", errors="replace")
             if not body:
                 return {}
@@ -392,9 +394,13 @@ def _request_json_once(url, payload=None, api_key="", method="POST", timeout=120
             retry_after=_retry_after_seconds(getattr(exc, "headers", None)),
         ) from exc
     except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError) as exc:
+        reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
         raise CustomLLMRequestError(
             f"API request failed: {exc}",
-            retryable=True,
+            retryable=(
+                request.get_method().upper() in {"GET", "HEAD"}
+                or not response_started and isinstance(reason, (ConnectionRefusedError, socket.gaierror))
+            ),
         ) from exc
 
 
@@ -461,12 +467,77 @@ def _iter_stream_events(response):
         yield event
 
 
-def request_stream(url, payload=None, api_key="", timeout=180):
+def _request_stream_cancelable(url, payload, api_key, timeout, cancel_check):
+    import asyncio
+    import httpx
+
+    async def lines():
+        headers = {"Accept": "text/event-stream, application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {str(api_key).strip()}"
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            async with client.stream("POST", url, json=payload or {}, headers=headers) as response:
+                if response.is_error:
+                    await response.aread()
+                    raise CustomLLMRequestError(
+                        f"HTTP {response.status_code}: {_response_preview(response.text)}",
+                        status=response.status_code,
+                        retryable=response.status_code in RETRYABLE_HTTP_STATUS_CODES,
+                        retry_after=_retry_after_seconds(response.headers),
+                    )
+                async for line in response.aiter_lines():
+                    yield line
+
+    iterator = lines()
+
+    async def next_line():
+        if cancel_check():
+            raise CustomLLMRequestCancelled("API request stopped by user.")
+        task = asyncio.create_task(iterator.__anext__())
+        try:
+            while not task.done():
+                if cancel_check():
+                    raise CustomLLMRequestCancelled("API request stopped by user.")
+                await asyncio.wait([task], timeout=0.1)
+            return await task
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+    loop = asyncio.new_event_loop()
+
+    def read_lines():
+        while True:
+            try:
+                yield loop.run_until_complete(next_line())
+            except StopAsyncIteration:
+                return
+
+    try:
+        yield from _iter_stream_events(read_lines())
+    except httpx.RequestError as error:
+        raise CustomLLMRequestError(f"API stream request failed: {error}") from error
+    finally:
+        try:
+            loop.run_until_complete(iterator.aclose())
+            loop.run_until_complete(loop.shutdown_asyncgens())
+        finally:
+            loop.close()
+
+
+def request_stream(url, payload=None, api_key="", timeout=180, cancel_check=None):
     """Open one streaming completion request and yield decoded provider events.
 
     A stream is not retried after it starts because replaying a partially visible
     assistant reply would duplicate text in the chat window.
     """
+    if callable(cancel_check):
+        yield from _request_stream_cancelable(url, payload, api_key, timeout, cancel_check)
+        return
     data = json.dumps(payload or {}).encode("utf-8")
     headers = {
         "Accept": "text/event-stream, application/json",
@@ -866,6 +937,42 @@ def empty_output_limit_error(text, completion):
     }
 
 
+def apply_prompt_cache_settings(payload, params, *, base_url="", provider="", api_key="", cacheable=True):
+    """Give identified Strata servers cache hints without changing prompt content."""
+    prepared = dict(payload or {})
+    source = params if isinstance(params, dict) else {}
+    defaults = _native_sampling_defaults(
+        base_url, api_key=api_key, provider=provider, model=prepared.get("model") or "",
+    )
+    if not isinstance(defaults, dict) or defaults.get("_backend") != "strata":
+        return prepared
+    actor_kinds = {"character", "character_reply", "reply", ""}
+    auxiliary = (
+        not cacheable or source.get("save_context") is False
+        or source.get("describe_roleplay_enabled")
+        and str(source.get("roleplay_request_kind") or "").lower() not in actor_kinds
+    )
+    if auxiliary:
+        prepared["strata_checkpoint"] = False
+        prepared.pop("strata_prefix", None)
+        return prepared
+    messages = prepared.get("messages") or []
+    if len(messages) < 2 or not isinstance(messages[0], dict):
+        return prepared
+    first = messages[0]
+    content = first.get("content")
+    if first.get("role") not in {"system", "developer"} or not isinstance(content, str) or not content:
+        return prepared
+    prefix = source.get("describe_prompt_cache_prefix")
+    chars = prefix.get("chars") if isinstance(prefix, dict) else None
+    if (isinstance(chars, int) and not isinstance(chars, bool) and 0 < chars <= len(content)
+            and hashlib.sha256(content[:chars].encode("utf-8")).hexdigest() == prefix.get("sha256")):
+        prepared["strata_prefix"] = {"message": 0, "chars": chars}
+    else:
+        prepared["strata_prefix"] = {"messages": 1}
+    return prepared
+
+
 def chat_payload_to_responses(payload):
     payload = payload if isinstance(payload, dict) else {}
     instructions = []
@@ -908,6 +1015,9 @@ def chat_payload_to_responses(payload):
             **(result.get("reasoning") or {}),
             "effort": payload["reasoning_effort"],
         }
+    for key in ("strata_prefix", "strata_checkpoint"):
+        if key in payload:
+            result[key] = payload[key]
     return result
 
 

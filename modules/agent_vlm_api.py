@@ -153,24 +153,46 @@ def add_routes(router, service, authorization, call):
         prepared = await run_in_threadpool(service.vlm.prepare, payload, context)
         cancel, ended = threading.Event(), threading.Event()
         events = queue.Queue(maxsize=8)
-        def put(item):
+        stream_error = None
+        def put(item, check):
             while not cancel.is_set():
+                check()
                 try:
                     events.put(item, timeout=0.1)
-                    return
+                    check()
+                    return True
                 except queue.Full:
                     pass
+            return False
         def produce():
+            nonlocal stream_error
+            stream = None
             try:
-                for event in service.vlm.events(
-                    payload, context, prepared=prepared, cancel_check=cancel.is_set,
-                    context_resolver=live_resolver(authorization, request, context)):
-                    put(event)
+                check = service.vlm._request_check(
+                    payload, context, cancel_check=cancel.is_set,
+                    context_resolver=live_resolver(authorization, request, context))
+                stream = service.vlm.events(payload, context, prepared=prepared, request_check=check)
+                for event in stream:
+                    if not put(event, check):
+                        break
             except AgentAPIError as error:
-                put(error_payload(error))
+                stream_error = error_payload(error)
+                if error.status in {401, 403} or error.code == "identity_context_changed":
+                    while not events.empty():
+                        try:
+                            events.get_nowait()
+                        except queue.Empty:
+                            break
             except Exception:
-                put(error_payload(AgentAPIError("vlm_inference_failed", "Local inference failed.", 502)))
+                stream_error = error_payload(AgentAPIError("vlm_inference_failed", "Local inference failed.", 502))
             finally:
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except Exception:
+                        logger.exception("Unable to close the local completion stream")
+                        if stream_error is None:
+                            stream_error = error_payload(AgentAPIError("vlm_inference_failed", "Local inference failed.", 502))
                 ended.set()
         async def body():
             worker = threading.Thread(target=produce, name="studio-local-completion", daemon=True)
@@ -191,6 +213,8 @@ def add_routes(router, service, authorization, call):
                         continue
                     yield "data: " + json.dumps(item, ensure_ascii=False, allow_nan=False) + "\n\n"
                 if not cancel.is_set():
+                    if stream_error is not None:
+                        yield "data: " + json.dumps(stream_error, ensure_ascii=False, allow_nan=False) + "\n\n"
                     yield "data: [DONE]\n\n"
             finally:
                 cancel.set()

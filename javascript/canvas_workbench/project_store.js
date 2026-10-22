@@ -710,6 +710,46 @@
             null
         );
         const next = cloneValue(source || createDefaultProject(opts), createDefaultProject(opts));
+        const pickMetadata = (value, keys) => Object.fromEntries(keys
+            .filter(key => value?.[key] !== undefined)
+            .map(key => [key, cloneValue(value[key], null)]));
+        const buildMetadataSnapshot = (run) => {
+            const previous = run?.metadata_snapshot || {};
+            const response = run?.last_response || {};
+            const previews = [previous, run?.dry_run || {}, run || {}, response];
+            const taskPreview = Object.assign({}, ...previews.map(item => item.task_preview));
+            const taskArgs = Object.assign({}, ...previews.map(item => item.task_args_preview));
+            const snapshot = {
+                task_preview: pickMetadata(taskPreview, [
+                    'prompt', 'negative_prompt', 'display_name', 'preset', 'task_method',
+                    'scene_theme', 'current_tab', 'scene_steps', 'scene_image_number'
+                ]),
+                task_args_preview: pickMetadata(taskArgs, ['current_tab', 'resolved_seed']),
+                resolved_seed: run?.resolved_seed ?? taskArgs.resolved_seed ?? previous.resolved_seed ?? null,
+                output_count: run?.output_count ?? previous.output_count ?? null
+            };
+            const fields = {
+                params_backend_preview: [
+                    'prompt', 'negative_prompt', 'scene_additional_prompt', 'preset', 'task_method',
+                    'scene_theme', 'image_seed', 'scene_steps', 'steps', 'scene_image_number',
+                    'scene_base_model', 'base_model', 'scene_refiner_model', 'refiner_model',
+                    'clip_model', 'vae_name', 'vae', 'upscale_model', 'sampler', 'scheduler',
+                    'cfg_scale', 'denoise'
+                ],
+                models_preview: ['base_model', 'refiner_model', 'clip_model', 'vae', 'upscale_model', 'enabled_loras'],
+                generation_preview: ['steps', 'sampler', 'scheduler', 'cfg_scale', 'denoise'],
+                resolved_size: ['width', 'height'],
+                resolution_preview: null,
+                effective_resolution_preview: null
+            };
+            for (const [key, keys] of Object.entries(fields)) {
+                const values = Object.assign({}, ...previews.map(item => item.task_args_preview?.[key]));
+                if (key === 'params_backend_preview') Object.assign(values, response.params_backend_preview);
+                const compact = keys ? pickMetadata(values, keys) : cloneValue(values, {});
+                if (Object.keys(compact).length) snapshot.task_args_preview[key] = compact;
+            }
+            return snapshot;
+        };
         const compactAsset = (asset) => {
             if (!asset || typeof asset !== 'object') return;
             const hasFileRef = !!(asset.path || asset.output_path || asset.preview_url || asset.original_output_path || asset.asset_relative_path || asset.relative_path);
@@ -778,6 +818,7 @@
                 error: run?.error || '',
                 details: run?.details || ''
             };
+            if (config.metadataSnapshot) compactRun.metadata_snapshot = cloneValue(config.metadataSnapshot, {});
             if (run?.asset) {
                 compactRun.asset = cloneValue(run.asset, {});
                 compactAsset(compactRun.asset);
@@ -817,7 +858,21 @@
             (_project, runs) => ({ runs: Array.isArray(runs) ? runs : [] })
         );
         if (next.storage && opts.stripStorage !== false) delete next.storage;
+        const sourceRuns = Array.isArray(next.runs) ? next.runs : [];
+        const runById = new Map(sourceRuns.map(run => [run.id, run]));
         const compactedNodes = (Array.isArray(next.nodes) ? next.nodes : []).map((node) => {
+            if (node.type === 'result') {
+                const run = runById.get(node.producer?.run_id);
+                const dryRun = node.source?.dry_run;
+                if (run || dryRun) {
+                    // Results keep their parameters even after older run records are removed.
+                    node.source = Object.assign({}, node.source, {
+                        metadata_snapshot: buildMetadataSnapshot(Object.assign({ dry_run: dryRun }, run || {}, {
+                            metadata_snapshot: run?.metadata_snapshot || node.source?.metadata_snapshot
+                        }))
+                    });
+                }
+            }
             const patch = buildProjectNodeStoragePatch(node, {
                 buildVlmChatStoragePatch,
                 compactAsset,
@@ -833,9 +888,9 @@
             ? nodesPatch
             : { nodes: compactedNodes });
         const runLimit = Math.max(0, Number(opts.runHistoryLimit ?? 12));
-        const sourceRuns = Array.isArray(next.runs) ? next.runs : [];
         const compactedRuns = (runLimit ? sourceRuns.slice(-runLimit) : []).map((run) => {
             const patch = buildRunStoragePatch(run, {
+                metadataSnapshot: buildMetadataSnapshot(run),
                 compactAsset,
                 maxInlineDataUrlChars: maxInline,
                 stripAllMaterializedDataUrls: !!opts.stripAllMaterializedDataUrls

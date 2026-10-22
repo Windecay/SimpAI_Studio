@@ -473,7 +473,8 @@
             const previousTheme = presetThemeCall('getPresetTheme', '', node);
             const previousDefaults = presetThemeDefaults(node, previousTheme);
             historyCall('pushHistory', undefined, 'Change preset theme');
-            const themeInfo = presetThemeCall('getPresetThemeInfo', {}, node) || {};
+            const schema = presetThemeCall('getPresetSchema', {}, node) || {};
+            const themeInfo = schema.per_theme?.[theme] || {};
             Object.assign(node, buildPresetRuntimePatch(node, {
                 runtimePatch: Object.assign(
                     { scene_theme: theme },

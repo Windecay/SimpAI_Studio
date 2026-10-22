@@ -141,6 +141,8 @@ def voice_status(payload, user_did, root=None, service=None, stop=False):
         "ok": True, "run_id": run_id, "state": status,
         "percent": result.get("percent", 0), "character_id": metadata["character_id"],
     }
+    if result.get("output_error"):
+        response["output_error"] = copy.deepcopy(result["output_error"])
     if status == "failed":
         response.update(error="voice_generation_failed", details=result.get("details") or result.get("error") or "")
     elif not result.get("ok"):

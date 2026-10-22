@@ -305,15 +305,18 @@
         const opts = options || {};
         const emptyError = opts.emptyError || 'empty response';
         const requestError = opts.requestError || 'request failed';
+        let transportStarted = false;
         try {
             const bodyPayload = Object.assign({}, payload || {});
             delete bodyPayload.signal;
             const fetchImpl = networkSource.fetch;
             if (typeof fetchImpl !== 'function') return { ok: false, error: requestError };
+            const body = JSON.stringify(bodyPayload);
+            transportStarted = true;
             const response = await fetchImpl(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bodyPayload),
+                body,
                 signal: opts.signal
             });
             let data = null;
@@ -323,15 +326,17 @@
                 data = null;
             }
             if (!response.ok) {
-                return Object.assign({}, data || {}, {
+                const failure = Object.assign({}, data || {}, {
                     ok: false,
                     error: data?.error || `HTTP ${response.status}`,
                     http_status: response.status,
                     details: data?.details || response.statusText || '',
                     errors: data?.errors || []
                 });
+                if (response.status >= 500 && response.status < 600 && !data?.state) failure.transport_error = true;
+                return failure;
             }
-            return data || { ok: false, error: emptyError };
+            return data || { ok: false, transport_error: true, error: emptyError };
         } catch (err) {
             if (err?.name === 'AbortError') {
                 return { ok: false, aborted: true, error: 'aborted' };
@@ -345,7 +350,7 @@
                     }));
                 }
             } catch (eventErr) {}
-            return { ok: false, error: message };
+            return Object.assign({ ok: false, error: message }, transportStarted ? { transport_error: true } : {});
         }
     }
 
@@ -657,7 +662,8 @@
     function normalizeSam3MaskVideo(payload) {
         return postJson('/canvas-workbench/normalize-sam3-mask-video', payload, {
             emptyError: 'empty SAM3 mask upload response',
-            requestError: 'SAM3 mask upload request failed'
+            requestError: 'SAM3 mask upload request failed',
+            signal: payload?.signal
         });
     }
 

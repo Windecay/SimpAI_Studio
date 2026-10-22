@@ -12,6 +12,7 @@ from enhanced.logger import format_name
 from modules.custom_llm_api import strip_reasoning_text, clean_pe_output, PEOutputFormatError
 from modules.pe_models import prompt_expander_vlm_task, qwen_pe_vlm_task
 from modules import generation_capture
+from modules.comfy_prompt_compat import defer_comfy_task_release, is_comfy_prompt_queued
 
 import logging
 
@@ -336,13 +337,16 @@ class ComfyTextgenVLM:
             generation_capture.publish(record)
 
     def _execute_workflow_in_session(self, workflow, preview_id, timeout=600):
-        _, comfyclient_pipeline = self._runtime()
+        comfyd, comfyclient_pipeline = self._runtime()
         self._check_request()
         user_did, user_cert = self._user_credentials()
+        process = getattr(comfyd, "comfyd_process", None)
+        endpoint = f"http://{comfyclient_pipeline.server_address()}"
         queued = comfyclient_pipeline.queue_prompt(user_did, workflow, user_cert)
         if not isinstance(queued, dict) or not queued.get("prompt_id"):
             raise RuntimeError(f"Comfyd rejected the TextGenerate workflow: {queued}")
         prompt_id = str(queued["prompt_id"])
+        backend_pending = True
         deadline = time.monotonic() + max(1.0, float(timeout))
         try:
             while True:
@@ -353,6 +357,7 @@ class ComfyTextgenVLM:
                 if isinstance(item, dict):
                     text = self._extract_preview_text(item, preview_id)
                     if text is not None:
+                        backend_pending = False
                         self._capture_result(workflow, preview_id, item, prompt_id, text)
                         clip_name = workflow.get("1", {}).get("inputs", {}).get("clip_name", "")
                         if prompt_expander_vlm_task(f"comfy:text_encoders:{clip_name}"):
@@ -362,15 +367,21 @@ class ComfyTextgenVLM:
                     if isinstance(status, dict):
                         status_name = str(status.get("status_str") or "").lower()
                         if status_name in {"error", "failed", "failure"}:
+                            backend_pending = False
                             raise RuntimeError(self._history_error(item))
                         if status.get("completed") is True:
+                            backend_pending = False
                             if status_name not in {"success", "completed"}:
                                 raise RuntimeError(self._history_error(item))
                             raise RuntimeError("Comfy TextGenerate completed without text output.")
                 time.sleep(0.25)
         except ComfyTextgenInterrupted:
             self._cancel_workflow(prompt_id)
+            backend_pending = False
             raise
+        finally:
+            if backend_pending:
+                defer_comfy_task_release(prompt_id, endpoint, process)
 
     def _cancel_workflow(self, prompt_id, timeout=15):
         _, pipeline = self._runtime()
@@ -383,11 +394,7 @@ class ComfyTextgenVLM:
                 while time.monotonic() < deadline:
                     response = client.get(f"{endpoint}/queue")
                     response.raise_for_status()
-                    queued = response.json()
-                    running, pending = queued.get("queue_running"), queued.get("queue_pending")
-                    if not isinstance(running, list) or not isinstance(pending, list):
-                        raise ValueError("Invalid Comfy queue response.")
-                    if not any(len(row) > 1 and row[1] == prompt_id for row in running + pending):
+                    if not is_comfy_prompt_queued(response.json(), prompt_id):
                         return
                     time.sleep(0.1)
         except Exception as exc:

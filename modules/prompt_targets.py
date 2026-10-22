@@ -6,7 +6,7 @@ def prompt_target_key(backend_engine, task_method, target_text):
     haystack = f"{backend_engine} {task_method} {target_text}".lower()
     if "minimax" in haystack and "h3" in haystack:
         return "minimax_h3"
-    if re.search(r"(?:^|[^a-z0-9])moss[ ._-]?image(?:[^a-z0-9]|$)", haystack):
+    if re.search(r"(?:^|[^a-z0-9])(?:moss[ ._-]?image|kromoss)(?:[^a-z0-9]|$)", haystack):
         return "moss_image"
     if re.search(r"(?:^|[^a-z0-9])anima(?:[^a-z0-9]|$)", haystack):
         return "anima_aio"

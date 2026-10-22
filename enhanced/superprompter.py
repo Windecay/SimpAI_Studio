@@ -3,6 +3,7 @@ import random
 import torch
 from transformers import T5Tokenizer, T5ForConditionalGeneration
 import modules.config as config
+from modules.gpu_task_lock import serialize_gpu_task
 import shared
 import shutil
 import logging
@@ -14,6 +15,7 @@ model = None
 modelDir = os.path.join(config.paths_llms[0], "superprompt-v1" )
 
 
+@serialize_gpu_task
 def answer(input_text="", max_new_tokens=256, repetition_penalty=1.2, temperature=0.5, top_p=1, top_k = 1 , seed=-1):
     global tokenizer, model, modelDir
 

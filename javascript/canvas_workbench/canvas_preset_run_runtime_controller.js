@@ -863,6 +863,7 @@
                     const outcome = await pending;
                     if (!isCurrent()) return interrupted();
                     if (segmentRuns.some(operation => !segmentIsCurrent(operation))) return failRun('run no longer current');
+                    if (outcome?.recoverable) return Object.assign({ segmented: true }, outcome);
                     if (!outcome?.ok) {
                         const failure = failRun(outcome?.error || t('Director segment run failed.', 'Director 分镜运行失败。'));
                         return Object.assign(failure, outcome || {});
@@ -974,6 +975,21 @@
             };
         }
 
+        function runIdentityKey(context) {
+            return JSON.stringify([context?.user_did || '', context?.owner || '', context?.scope || '']);
+        }
+
+        async function submitRunRequest(payload) {
+            const run = (getProject().runs || []).find(item => item.id === payload.run_id);
+            if (run) run.request_identity = runIdentityKey(payload.user_context);
+            try {
+                return await sendCanvasRunNodeRequest(payload);
+            } catch (err) {
+                return Object.assign({ ok: false, error: err?.message || String(err) },
+                    err?.name === 'AbortError' ? { aborted: true } : { transport_error: true });
+            }
+        }
+
         async function runPresetNode(node, options) {
             const project = getProject();
             if (!node?.id || getNode(node.id) !== node) return staleRun();
@@ -982,6 +998,12 @@
                 return { ok: false, error: 'preset is skipped' };
             }
             const opts = options || {};
+            const resumeResult = (opts.resultNode ? [opts.resultNode] : generatedResultNodesForPreset(node))
+                .find(result => getNode(result.id) === result && result.producer?.preset_node_id === node.id
+                    && (project.runs || []).some(run => run.id === result.producer?.run_id && run.connection_error));
+            if (resumeResult) {
+                return pollCanvasRun(resumeResult.producer.run_id, resumeResult.id, node.id, opts);
+            }
             const runKey = node?.id || '';
             const previousPreparation = pendingPreparations.get(runKey);
             if (previousPreparation && (previousPreparation.project !== project || previousPreparation.node !== node)) {
@@ -1192,7 +1214,7 @@
                 try {
                     const payload = buildRunDryRunPayload(node, resultNode, runId);
                     applyPromptPreflightOverrideToRunPayload(payload, preflight.promptOverride);
-                    runResult = await sendCanvasRunNodeRequest(payload);
+                    runResult = await submitRunRequest(payload);
                 } catch (err) {
                     runResult = { ok: false, state: 'failed', error: err?.message || String(err) };
                 }
@@ -1282,6 +1304,12 @@
         }
 
         function applyCanvasRunStatus(runId, resultNodeId, presetNodeId, response) {
+            if (response?.transport_error) {
+                if (isCurrentResultRun(getProject(), runId, resultNodeId)) {
+                    return applyRunConnectionError(runId, resultNodeId, response, false);
+                }
+                return;
+            }
             const resultNode = getNode(resultNodeId);
             const presetNode = getNode(presetNodeId);
             const project = getProject();
@@ -1291,6 +1319,7 @@
             const hasPreviewStream = !!(response?.preview_stream && typeof response.preview_stream === 'object');
             const hasFreshPreviewFrames = resultPreviewFreshFrames(response).length > 0;
             if (run) {
+                if (ok) delete run.connection_error;
                 Object.assign(run, buildCanvasRunResponsePatch(run, response));
             }
             if (resultNode && !resultRunIsCurrent(resultNode, runId, run)) {
@@ -1388,9 +1417,37 @@
             }
         }
 
+        function applyRunConnectionError(runId, resultNodeId, response, exhausted) {
+            const resultNode = getNode(resultNodeId);
+            const run = (getProject().runs || []).find(item => item.id === runId);
+            const message = exhausted
+                ? t('Task status is unconfirmed. Retry checks the existing task.', '暂时无法确认任务状态，点击重试将查询原任务。')
+                : t('Connection interrupted. Checking the existing task.', '连接中断，正在查询原任务。');
+            if (run) {
+                run.connection_error = String(response?.error?.message || response?.error || 'connection interrupted');
+                run.message = message;
+            }
+            if (resultNode && !isTerminalRunState(nodeStatusState(resultNode))) {
+                Object.assign(resultNode, buildResultStatusPatch(resultNode, {
+                    status: mergeCanvasRunStatus(resultNode.status, nodeStatusState(resultNode) || 'queued', message, {
+                        queuePosition: resultNode.status?.queue_position ?? null,
+                        percent: Number(resultNode.status?.percent || 0)
+                    })
+                }));
+            }
+            pollUpdate();
+            scheduleSave();
+            return { ok: false, state: 'unknown', recoverable: true, error: message,
+                run_id: runId, result_node_id: resultNodeId, result: response };
+        }
+
         function applyRunNodeResult(runId, resultNodeId, presetNodeId, response, options) {
             if (!isCurrentResultRun(getProject(), runId, resultNodeId)) {
                 return Promise.resolve({ ok: false, error: 'run no longer current', response });
+            }
+            if (response?.transport_error) {
+                applyRunConnectionError(runId, resultNodeId, response, false);
+                return pollCanvasRun(runId, resultNodeId, presetNodeId, options);
             }
             applyCanvasRunStatus(runId, resultNodeId, presetNodeId, response);
             if (response && response.ok) {
@@ -1417,13 +1474,24 @@
             const opts = options || {};
             const project = getProject();
             const runToken = getNode(resultNodeId)?.producer?.run_token || '';
+            const run = (project.runs || []).find(item => item.id === runId);
+            const identity = run?.request_identity || runIdentityKey(getWorkbenchUserContext());
+            if (run && !run.request_identity) run.request_identity = identity;
             return pollRunWithController(runId, {
-                shouldContinue: () => isCurrentResultRun(project, runId, resultNodeId, runToken),
+                shouldContinue: () => isCurrentResultRun(project, runId, resultNodeId, runToken)
+                    && runIdentityKey(getWorkbenchUserContext()) === identity
+                    && (typeof opts.shouldContinue !== 'function' || opts.shouldContinue()),
                 initialDelayMs: opts.initialDelayMs ?? 900,
                 intervalMs: opts.intervalMs ?? 1200,
-                poll: () => sendCanvasPollRunRequest(runId, {
-                    after_preview_serial: resultPreviewLastSerial(resultNodeId)
-                }),
+                maxRequestErrors: opts.maxRequestErrors ?? 3,
+                poll: async () => {
+                    const result = await sendCanvasPollRunRequest(runId, {
+                        after_preview_serial: resultPreviewLastSerial(resultNodeId)
+                    });
+                    return result?.ok === false && result.error === 'run not found'
+                        ? Object.assign({}, result, { transport_error: true }) : result;
+                },
+                onRequestError: (result, exhausted) => applyRunConnectionError(runId, resultNodeId, result, exhausted),
                 onResult: (result) => applyCanvasRunStatus(runId, resultNodeId, presetNodeId, result),
                 getState: (result) => result?.state || 'failed',
                 onFinished: (result, state) => {
@@ -1492,10 +1560,7 @@
                     payload.preset_node, plan, segment, index, previousResultNode
                 );
                 payload.asset_sources = Object.assign({}, payload.asset_sources || {}, payload.preset_node?.upload_slot_sources || {});
-                runResult = await call(
-                    requestSource, 'sendCanvasRunNodeRequest',
-                    Promise.resolve({ ok: false, error: 'run request unavailable' }), payload
-                );
+                runResult = await submitRunRequest(payload);
             } catch (err) {
                 runResult = { ok: false, state: 'failed', error: err?.message || String(err) };
             }

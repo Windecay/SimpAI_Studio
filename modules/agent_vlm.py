@@ -350,9 +350,9 @@ class LocalInference:
         finally:
             _CAPACITY.release()
 
-    def events(self, request, context, prepared=None, cancel_check=None, context_resolver=None):
-        deadline = time.monotonic() + request.timeout_seconds
-        spec, messages = prepared or self.prepare(request, context)
+    def _request_check(self, request, context, cancel_check=None, context_resolver=None, *, deadline=None):
+        if deadline is None:
+            deadline = time.monotonic() + request.timeout_seconds
         binding = identity_binding(context)
         last_check = [0.0]
         def check(force=False):
@@ -368,6 +368,14 @@ class LocalInference:
                     fail(context, "identity_context_changed", "身份或存储范围已变化，请重新授权。",
                          "Identity or storage changed; authorize again.", 409)
                 last_check[0] = now
+        return check
+
+    def events(self, request, context, prepared=None, cancel_check=None, context_resolver=None, request_check=None):
+        deadline = None if request_check else time.monotonic() + request.timeout_seconds
+        spec, messages = prepared or self.prepare(request, context)
+        check = request_check or self._request_check(
+            request, context, cancel_check, context_resolver, deadline=deadline,
+        )
         check(True)
         completion_id = "chatcmpl-studio-" + uuid.uuid4().hex
         created = int(time.time())

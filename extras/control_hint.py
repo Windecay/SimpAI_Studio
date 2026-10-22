@@ -159,7 +159,18 @@ def match_flags(image_np):
     return (f["lineart_like"] or f["lineart_light_bg_like"]), f["depth_like"], f["pose_like"]
 
 
-def detect_control_hint_type(image_np):
+def _is_flat_color_map(image_np):
+    image = to_float01_rgb(image_np)
+    if image is None or min(image.shape[:2]) <= 1:
+        return False
+    step = max(1, int(max(image.shape[:2]) / 256))
+    sample = np.rint(image[::step, ::step] * 255).astype(np.uint8).reshape(-1, 3)
+    _, counts = np.unique(sample, axis=0, return_counts=True)
+    return (2 <= len(counts) <= 64 and int(counts.max()) < len(sample) * 0.995
+            and float(np.mean(np.ptp(sample.astype(np.float32), axis=1))) / 255 > 0.06)
+
+
+def detect_control_hint_type(image_np, allowed_types=None):
     import modules.flags as flags
 
     flags_match = match_flags(image_np)
@@ -167,12 +178,12 @@ def detect_control_hint_type(image_np):
         return None
     lineart_like, depth_like, pose_like = flags_match
 
-    if pose_like:
-        return flags.cn_pose
-    if lineart_like:
-        return flags.cn_canny
-    if depth_like:
-        return flags.cn_cpds
+    detected = (flags.cn_pose if pose_like else flags.cn_canny if lineart_like
+                else flags.cn_cpds if depth_like else None)
+    if allowed_types is None or detected in allowed_types:
+        return detected
+    if flags.cn_color in allowed_types and not pose_like and _is_flat_color_map(image_np):
+        return flags.cn_color
     return None
 
 
@@ -192,8 +203,8 @@ def control_hint_default_stop_weight(control_hint_type):
     return float(stop), float(weight)
 
 
-def detect_control_hint_type_and_default_params(image_np):
-    detected = detect_control_hint_type(image_np)
+def detect_control_hint_type_and_default_params(image_np, allowed_types=None):
+    detected = detect_control_hint_type(image_np, allowed_types=allowed_types)
     if detected is None:
         return None, None, None
     stop, weight = control_hint_default_stop_weight(detected)
@@ -220,5 +231,7 @@ def auto_skip_decision(features, cn_flag):
         return bool(features["depth_like"]), False
     if cn_flag == "pose":
         return bool(features["pose_like"]), False
+    if cn_flag == "color":
+        return True, False
     return False, False
 
