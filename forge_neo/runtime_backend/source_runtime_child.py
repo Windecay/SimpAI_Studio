@@ -220,7 +220,10 @@ def _source_lora_prompt_values(value: object) -> list[str]:
 def _source_lora_token_names(payload: dict[str, Any]) -> list[str]:
     names: list[str] = []
     seen: set[str] = set()
-    for key in ("prompt", "negative_prompt"):
+    prompt_keys = ["prompt", "negative_prompt"]
+    if payload.get("enable_hr"):
+        prompt_keys.extend(("hr_prompt", "hr_negative_prompt"))
+    for key in prompt_keys:
         for text in _source_lora_prompt_values(payload.get(key)):
             for match in _SOURCE_LORA_TOKEN_RE.finditer(text):
                 name = str(match.group(1) or "").strip()

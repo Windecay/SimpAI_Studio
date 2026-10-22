@@ -4100,7 +4100,8 @@ def _text_encoders_changed(text_encoders: list[str] | tuple[str, ...] | None):
 
 def _lora_default_updates(preset: str, choices) -> tuple[object, dict[str, float]]:
     defaults = preset_model_defaults(preset, choices)
-    return gr.update(choices=choices.loras, value=defaults.loras), dict(defaults.lora_weights)
+    # Preset LoRAs are editable prompt tokens, not a second active selection.
+    return gr.update(choices=choices.loras, value=[]), dict(defaults.lora_weights)
 
 
 def _normalize_lora_weights(value: object) -> dict[str, float]:
@@ -5492,8 +5493,10 @@ def _build_request(
         mahiro=bool(mahiro),
         script=script,
         script_args=script_args,
-        loras=list(loras or []),
-        lora_weights=_normalize_lora_weights(lora_weights),
+        # Legacy hidden controls may still contain a removed preset LoRA.
+        # UI requests use the edited prompts; explicit API selections are separate.
+        loras=[],
+        lora_weights={},
         init_image=selected_init_image,
         mask_image=selected_mask_image,
         selected_scale_tab=int(selected_scale_tab or 0),
@@ -8045,12 +8048,8 @@ def _insert_lora_token(prompt: str, name: str, weight: object = 1.0) -> str:
     return _append_prompt_token(prompt, f"<lora:{token_name}:{_format_lora_weight(weight)}>")
 
 
-def _add_lora_selection(current: list[str] | None, name: str):
-    selected = list(current or [])
-    clean = str(name or "").strip()
-    if clean and clean not in selected:
-        selected.append(clean)
-    return gr.update(value=selected)
+def _insert_selected_lora(prompt: str, name: str, weights: object) -> str:
+    return _insert_lora_token(prompt, name, _normalize_lora_weights(weights).get(name, 1.0))
 
 
 def _controlnet_suffix(unit_index: int, suffix: str) -> str:
@@ -8548,7 +8547,7 @@ def _wire_extra_network_browser(
     prompt: gr.Textbox,
     negative_prompt: gr.Textbox,
     checkpoint: gr.Dropdown,
-    lora_dropdown: gr.Dropdown,
+    lora_weights: gr.State,
 ) -> None:
     if browser.kind == "textual_inversion":
         browser.search.change(
@@ -8577,10 +8576,9 @@ def _wire_extra_network_browser(
             outputs=[browser.dropdown, browser.cards],
             show_progress=False,
         )
-        if browser.apply is not None:
-            browser.apply.click(_add_lora_selection, inputs=[lora_dropdown, browser.dropdown], outputs=[lora_dropdown])
-        if browser.prompt is not None:
-            browser.prompt.click(_insert_lora_token, inputs=[prompt, browser.dropdown], outputs=[prompt])
+        for button in (browser.apply, browser.prompt):
+            if button is not None:
+                button.click(_insert_selected_lora, inputs=[prompt, browser.dropdown, lora_weights], outputs=[prompt])
 
 
 def _script_panel_updates(script: str):
@@ -13235,7 +13233,7 @@ def create_app() -> gr.Blocks:
                                 with gr.Tab(_label("Lora", "LoRA"), elem_id="forge_neo_lora_tab"):
                                     lora_dropdown = gr.Dropdown(
                                         model_choices.loras,
-                                        value=model_defaults.loras,
+                                        value=[],
                                         label="LoRA",
                                         multiselect=True,
                                         elem_id="forge_neo_lora_selection",
@@ -13397,9 +13395,9 @@ def create_app() -> gr.Blocks:
                     _wire_script_controls(script, script_controls)
                     if txt_tipo:
                         _wire_tipo_controls(txt_tipo, prompt=prompt, width=width, height=height, state=state)
-                    _wire_extra_network_browser(txt_ti_browser, preset, prompt, negative_prompt, checkpoint, lora_dropdown)
-                    _wire_extra_network_browser(txt_checkpoint_browser, preset, prompt, negative_prompt, checkpoint, lora_dropdown)
-                    _wire_extra_network_browser(txt_lora_browser, preset, prompt, negative_prompt, checkpoint, lora_dropdown)
+                    _wire_extra_network_browser(txt_ti_browser, preset, prompt, negative_prompt, checkpoint, txt_lora_weights)
+                    _wire_extra_network_browser(txt_checkpoint_browser, preset, prompt, negative_prompt, checkpoint, txt_lora_weights)
+                    _wire_extra_network_browser(txt_lora_browser, preset, prompt, negative_prompt, checkpoint, txt_lora_weights)
 
                 with gr.Tab(_label("img2img", "图生图"), elem_id="forge_neo_img2img_tab"):
                     mode_img = gr.State("img2img")
@@ -13876,7 +13874,7 @@ def create_app() -> gr.Blocks:
                                 with gr.Tab(_label("Lora", "LoRA"), elem_id="forge_neo_img2img_lora_tab"):
                                     img_lora_dropdown = gr.Dropdown(
                                         model_choices.loras,
-                                        value=model_defaults.loras,
+                                        value=[],
                                         label="LoRA",
                                         multiselect=True,
                                         elem_id="forge_neo_img2img_lora_selection",
@@ -14107,9 +14105,9 @@ def create_app() -> gr.Blocks:
                     _wire_script_controls(img_script, img_script_controls)
                     if img_tipo:
                         _wire_tipo_controls(img_tipo, prompt=img_prompt, width=img_width, height=img_height, state=state)
-                    _wire_extra_network_browser(img_ti_browser, preset, img_prompt, img_negative, checkpoint, img_lora_dropdown)
-                    _wire_extra_network_browser(img_checkpoint_browser, preset, img_prompt, img_negative, checkpoint, img_lora_dropdown)
-                    _wire_extra_network_browser(img_lora_browser, preset, img_prompt, img_negative, checkpoint, img_lora_dropdown)
+                    _wire_extra_network_browser(img_ti_browser, preset, img_prompt, img_negative, checkpoint, img_lora_weights)
+                    _wire_extra_network_browser(img_checkpoint_browser, preset, img_prompt, img_negative, checkpoint, img_lora_weights)
+                    _wire_extra_network_browser(img_lora_browser, preset, img_prompt, img_negative, checkpoint, img_lora_weights)
 
                 with gr.Tab(_label("Extras", "后期处理"), elem_id="forge_neo_extras_tab"):
                     extras_mode = gr.State("single")
