@@ -50,6 +50,20 @@
     let requestId = 0;
     let state = initialState();
 
+    function beginOperation() {
+        if (state.operationQuery) {
+            requestId += 1;
+            state.operationQuery = null;
+            state.loading = false;
+        }
+        state.operationVersion = (state.operationVersion || 0) + 1;
+        return { owner: state, version: state.operationVersion };
+    }
+
+    function operationCurrent(operation) {
+        return state === operation.owner && state.open && state.operationVersion === operation.version;
+    }
+
     function initialState() {
         return {
             open: false,
@@ -359,14 +373,18 @@
     }
 
     async function query(options) {
+        const operation = options?.operation;
+        if (operation && !operationCurrent(operation)) return;
         const id = ++requestId;
+        state.operationQuery = operation || null;
         state.loading = true;
         state.status = '';
         render(options);
         const payloadExtra = options?.forceRefresh ? { force_refresh: true } : null;
         try {
             const data = await postJson('/model-browser/query', currentPayload(payloadExtra));
-            if (id !== requestId) return;
+            if (id !== requestId || (operation && !operationCurrent(operation))) return;
+            state.operationQuery = null;
             state.items = Array.isArray(data.items) ? data.items : [];
             state.total = Number(data.total || 0);
             state.hasMore = !!data.has_more;
@@ -378,7 +396,8 @@
             }
             render(options);
         } catch (err) {
-            if (id !== requestId) return;
+            if (id !== requestId || (operation && !operationCurrent(operation))) return;
+            state.operationQuery = null;
             state.loading = false;
             state.status = err?.message || String(err || tr('Model browser query failed', '模型浏览器查询失败'));
             render(options);
@@ -882,15 +901,17 @@
         });
     }
 
-    async function collectItemsForFilter(predicate) {
+    async function collectItemsForFilter(predicate, operation) {
         const out = [];
         const seen = new Set();
         let page = 1;
         for (;;) {
+            if (operation && !operationCurrent(operation)) return [];
             const data = await postJson('/model-browser/query', currentPayload({
                 page,
                 page_size: 500
             }));
+            if (operation && !operationCurrent(operation)) return [];
             for (const item of Array.isArray(data.items) ? data.items : []) {
                 if ((typeof predicate === 'function' && !predicate(item)) || seen.has(item.id)) continue;
                 seen.add(item.id);
@@ -905,6 +926,7 @@
 
     async function computeHash(item, force) {
         if (!manageableItem(item)) return;
+        const operation = beginOperation();
         state.batch = { label: tr('Computing hash for {name}', '正在计算 {name} 的哈希').replace('{name}', item.file_name || item.name || ''), done: 0, total: 1, message: tr('Large files can take a moment.', '大文件可能需要一点时间。') };
         render({ preserveScroll: true });
         try {
@@ -913,10 +935,13 @@
                 name: item.name,
                 force: !!force
             });
+            if (!operationCurrent(operation)) return;
             state.batch = { label: tr('Hash ready', '哈希已就绪'), done: 1, total: 1, message: result.sha256 ? result.sha256.slice(0, 16) : tr('Updated', '已更新') };
-            await query({ preserveScroll: true });
+            await query({ preserveScroll: true, operation });
+            if (!operationCurrent(operation)) return;
             render({ preserveScroll: true });
         } catch (err) {
+            if (!operationCurrent(operation)) return;
             state.batch = { label: tr('Hash failed', '哈希计算失败'), done: 1, total: 1, message: err?.message || String(err || tr('Hash failed', '哈希计算失败')) };
             render({ preserveScroll: true });
         }
@@ -958,22 +983,27 @@
 
     async function setLocalPreview(item) {
         if (!manageableItem(item)) return;
+        const operation = beginOperation();
         const file = await choosePreviewFile();
-        if (!file) return;
+        if (!operationCurrent(operation) || !file) return;
         state.batch = { label: tr('Saving preview for {name}', '正在保存 {name} 的预览图').replace('{name}', item.file_name || item.name || ''), done: 0, total: 1, message: '' };
         render({ preserveScroll: true });
         try {
             const imageData = await readImageFileAsDataUrl(file);
+            if (!operationCurrent(operation)) return;
             const result = await postJson('/model-browser/set-preview', {
                 type: item.type,
                 name: item.name,
                 image_name: file.name,
                 image_data: imageData
             });
+            if (!operationCurrent(operation)) return;
             state.batch = { label: tr('Preview saved', '预览图已保存'), done: 1, total: 1, message: result?.message || tr('Saved as the model same-name webp.', '已保存为模型同名 webp。') };
-            await query({ preserveScroll: true });
+            await query({ preserveScroll: true, operation });
+            if (!operationCurrent(operation)) return;
             render({ preserveScroll: true });
         } catch (err) {
+            if (!operationCurrent(operation)) return;
             state.batch = { label: tr('Preview save failed', '预览图保存失败'), done: 1, total: 1, message: err?.message || String(err || tr('Preview save failed', '预览图保存失败')) };
             render({ preserveScroll: true });
         }
@@ -1044,6 +1074,7 @@
 
     async function saveTriggerWords(item) {
         if (!item || item.type !== 'lora') return;
+        const operation = beginOperation();
         const text = currentTriggerInputValue();
         state.batch = { label: tr('Saving trigger words', '正在保存触发词'), done: 0, total: 1, message: item.file_name || item.name || '' };
         render({ preserveScroll: true });
@@ -1053,16 +1084,18 @@
                 name: item.name,
                 trigger_words_text: text
             });
+            if (!operationCurrent(operation)) return;
             replaceItem(result.item);
             state.batch = { label: tr('Trigger words saved', '触发词已保存'), done: 1, total: 1, message: tr('Saved to lora_trigger_words.csv', '已保存到 lora_trigger_words.csv') };
             render({ preserveScroll: true });
             setTimeout(() => {
-                if (state.batch?.label === tr('Trigger words saved', '触发词已保存')) {
+                if (operationCurrent(operation) && state.batch?.label === tr('Trigger words saved', '触发词已保存')) {
                     state.batch = null;
                     render({ preserveScroll: true });
                 }
             }, 1800);
         } catch (err) {
+            if (!operationCurrent(operation)) return;
             state.batch = { label: tr('Trigger words save failed', '触发词保存失败'), done: 1, total: 1, message: err?.message || String(err || tr('Save failed', '保存失败')) };
             render({ preserveScroll: true });
         }
@@ -1075,6 +1108,7 @@
 
     async function inspectArchitecture(item) {
         if (!architectureItem(item)) return;
+        const operation = beginOperation();
         state.batch = { label: tr('Reading model header', '正在读取模型头'), done: 0, total: 1, message: item.file_name || item.name || '' };
         render({ preserveScroll: true });
         try {
@@ -1082,6 +1116,7 @@
                 type: item.type,
                 name: item.name
             });
+            if (!operationCurrent(operation)) return;
             replaceItem(result.item);
             state.batch = {
                 label: tr('Classification updated', '分类已更新'),
@@ -1091,6 +1126,7 @@
             };
             render({ preserveScroll: true });
         } catch (err) {
+            if (!operationCurrent(operation)) return;
             state.batch = { label: tr('Classification failed', '分类失败'), done: 1, total: 1, message: err?.message || String(err || tr('Classification failed', '分类失败')) };
             render({ preserveScroll: true });
         }
@@ -1098,6 +1134,7 @@
 
     async function saveArchitecture(item) {
         if (!architectureItem(item)) return;
+        const operation = beginOperation();
         const archFamily = currentArchFamilyValue();
         state.batch = { label: tr('Saving classification', '正在保存分类'), done: 0, total: 1, message: archFamilyLabel(archFamily) };
         render({ preserveScroll: true });
@@ -1107,10 +1144,12 @@
                 name: item.name,
                 arch_family: archFamily
             });
+            if (!operationCurrent(operation)) return;
             replaceItem(result.item);
             state.batch = { label: tr('Classification saved', '分类已保存'), done: 1, total: 1, message: archFamilyLabel(result.arch_family || archFamily) };
             render({ preserveScroll: true });
         } catch (err) {
+            if (!operationCurrent(operation)) return;
             state.batch = { label: tr('Save failed', '保存失败'), done: 1, total: 1, message: err?.message || String(err || tr('Save failed', '保存失败')) };
             render({ preserveScroll: true });
         }
@@ -1118,6 +1157,8 @@
 
     async function inspectArchitectureItems(items, options) {
         const opts = options || {};
+        const operation = opts.operation || beginOperation();
+        if (!operationCurrent(operation)) return;
         if (!items.length) {
             state.status = opts.emptyMessage || tr('No classifiable models selected.', '没有可分类的已选模型。');
             render({ preserveScroll: true });
@@ -1128,6 +1169,7 @@
         state.batch = { label: opts.progressLabel || tr('Reading model headers', '正在读取模型头'), done: 0, total: items.length, message: '' };
         render({ preserveScroll: true });
         for (const item of items) {
+            if (!operationCurrent(operation)) return;
             state.batch.message = item.file_name || item.name || '';
             render({ preserveScroll: true });
             try {
@@ -1135,6 +1177,7 @@
                     type: item.type,
                     name: item.name
                 });
+                if (!operationCurrent(operation)) return;
                 if (result.ok) {
                     success += 1;
                     replaceItem(result.item);
@@ -1142,6 +1185,7 @@
                     failed += 1;
                 }
             } catch (err) {
+                if (!operationCurrent(operation)) return;
                 failed += 1;
                 state.batch.message = err?.message || String(err || tr('Classification failed', '分类失败'));
             }
@@ -1149,7 +1193,8 @@
             render({ preserveScroll: true });
         }
         if (opts.clearSelection) state.checkedIds.clear();
-        await query({ preserveScroll: true });
+        await query({ preserveScroll: true, operation });
+        if (!operationCurrent(operation)) return;
         state.batch = {
             label: opts.completeLabel || tr('Classification complete', '分类完成'),
             done: items.length,
@@ -1166,6 +1211,7 @@
     }
 
     async function inspectAllArchitecturesInFilter() {
+        const operation = beginOperation();
         state.batch = {
             label: tr('Collecting models in filter', '正在读取筛选范围'),
             done: 0,
@@ -1174,7 +1220,8 @@
         };
         render({ preserveScroll: true });
         try {
-            const items = await collectItemsForFilter(architectureItem);
+            const items = await collectItemsForFilter(architectureItem, operation);
+            if (!operationCurrent(operation)) return;
             if (!items.length) {
                 state.batch = {
                     label: tr('No classifiable models', '没有可分类模型'),
@@ -1189,9 +1236,11 @@
                 progressLabel: tr('Reading all model headers', '正在读取全部模型头'),
                 completeLabel: tr('All headers complete', '全部模型头读取完成'),
                 emptyMessage: tr('No classifiable models in filter.', '筛选范围内没有可分类模型。'),
-                clearSelection: false
+                clearSelection: false,
+                operation
             });
         } catch (err) {
+            if (!operationCurrent(operation)) return;
             state.batch = {
                 label: tr('Header scan failed', '模型头读取失败'),
                 done: 1,
@@ -1254,8 +1303,9 @@
 
     async function deleteModel(item) {
         if (!manageableItem(item)) return;
+        const operation = beginOperation();
         const confirmName = await confirmDeleteModel(item);
-        if (!confirmName) return;
+        if (!operationCurrent(operation) || !confirmName) return;
         state.batch = { label: tr('Deleting {name}', '正在删除 {name}').replace('{name}', item.file_name || item.name || ''), done: 0, total: 1, message: '' };
         render({ preserveScroll: true });
         try {
@@ -1265,12 +1315,15 @@
                 confirm_name: confirmName,
                 delete_previews: true
             });
+            if (!operationCurrent(operation)) return;
             state.checkedIds.delete(item.id);
             state.selectedId = '';
             state.batch = { label: tr('Delete complete', '删除完成'), done: 1, total: 1, message: formatDeleteMessage(result) };
-            await query({ preserveScroll: true });
+            await query({ preserveScroll: true, operation });
+            if (!operationCurrent(operation)) return;
             render({ preserveScroll: true });
         } catch (err) {
+            if (!operationCurrent(operation)) return;
             state.batch = { label: tr('Delete failed', '删除失败'), done: 1, total: 1, message: err?.message || String(err || tr('Delete failed', '删除失败')) };
             render({ preserveScroll: true });
         }
@@ -1278,6 +1331,8 @@
 
     async function fetchModelInformationItems(items, options) {
         const opts = options || {};
+        const operation = opts.operation || beginOperation();
+        if (!operationCurrent(operation)) return;
         let success = 0;
         let partial = 0;
         let failed = 0;
@@ -1285,15 +1340,18 @@
         state.batch = { label: opts.progressLabel || tr('Analyzing models', '正在分析模型'), done: 0, total: items.length, message: '' };
         render({ preserveScroll: true });
         for (const item of items) {
+            if (!operationCurrent(operation)) return;
             state.batch.message = tr('Analyzing {name}', '正在分析 {name}').replace('{name}', item.file_name || item.name || '');
             render({ preserveScroll: true });
             try {
                 const result = await fetchOne(item);
+                if (!operationCurrent(operation)) return;
                 if (result.skipped) skipped += 1;
                 else if (result.ok && resultHasPreview(result)) success += 1;
                 else if (result.ok) partial += 1;
                 else failed += 1;
             } catch (err) {
+                if (!operationCurrent(operation)) return;
                 failed += 1;
                 state.batch.message = err?.message || String(err || tr('fetch failed', '获取失败'));
             }
@@ -1302,7 +1360,8 @@
             render({ preserveScroll: true });
         }
         if (opts.clearSelection) state.checkedIds.clear();
-        await query({ preserveScroll: true });
+        await query({ preserveScroll: true, operation });
+        if (!operationCurrent(operation)) return;
         state.batch = {
             label: opts.completeLabel || tr('Analysis complete', '分析完成'),
             done: items.length,
@@ -1329,6 +1388,7 @@
     }
 
     async function collectAndFetchFilter(predicate, options) {
+        const operation = beginOperation();
         if (!remoteFetchEnabledForType()) {
             state.status = tr('{type} does not support remote preview fetch.', '{type} 不支持远端预览获取。').replace('{type}', typeLabel(state.type));
             render({ preserveScroll: true });
@@ -1343,7 +1403,8 @@
         };
         render({ preserveScroll: true });
         try {
-            const items = await collectItemsForFilter(predicate);
+            const items = await collectItemsForFilter(predicate, operation);
+            if (!operationCurrent(operation)) return;
             if (!items.length) {
                 state.batch = {
                     label: opts.emptyLabel || tr('No models to analyze', '没有需要分析的模型'),
@@ -1354,8 +1415,9 @@
                 render({ preserveScroll: true });
                 return;
             }
-            await fetchModelInformationItems(items, opts);
+            await fetchModelInformationItems(items, Object.assign({}, opts, { operation }));
         } catch (err) {
+            if (!operationCurrent(operation)) return;
             state.batch = { label: tr('Analysis failed', '分析失败'), done: 1, total: 1, message: err?.message || String(err || tr('Analysis failed', '分析失败')) };
             render({ preserveScroll: true });
         }
@@ -1511,13 +1573,17 @@
             event.preventDefault();
             const item = findItem(fetchButton.getAttribute('data-smb-fetch'));
             if (!item) return;
+            const operation = beginOperation();
             state.batch = { label: tr('Fetching {name}', '正在获取 {name}').replace('{name}', item.file_name || item.name || ''), done: 0, total: 1, message: '' };
             render({ preserveScroll: true });
             fetchOne(item).then(async (result) => {
+                if (!operationCurrent(operation)) return;
                 state.batch = { label: tr('Fetch complete', '获取完成'), done: 1, total: 1, message: formatFetchResultMessage(result) };
-                await query({ preserveScroll: true });
+                await query({ preserveScroll: true, operation });
+                if (!operationCurrent(operation)) return;
                 render({ preserveScroll: true });
             }).catch((err) => {
+                if (!operationCurrent(operation)) return;
                 state.batch = { label: tr('Fetch failed', '获取失败'), done: 1, total: 1, message: err?.message || String(err || tr('fetch failed', '获取失败')) };
                 render({ preserveScroll: true });
             });
@@ -1699,6 +1765,7 @@
 
     function open(options) {
         const opts = options || {};
+        clearTimeout(debounceTimer);
         ensureModal(opts.container);
         const type = normalizeType(opts.type || opts.targetType || 'base');
         const context = mergeContext(opts);
@@ -1743,6 +1810,7 @@
     }
 
     function close() {
+        clearTimeout(debounceTimer);
         requestId += 1;
         if (modal) {
             modal.hidden = true;

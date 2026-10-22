@@ -64,6 +64,7 @@
         const timingSource = scope.timingSource || {};
         const assetSource = scope.assetSource || {};
         const nodeSource = scope.nodeSource || {};
+        const projectSource = scope.projectSource || {};
         const compareSource = scope.compareSource || {};
         const viewSource = scope.viewSource || {};
         const uiSource = scope.uiSource || {};
@@ -86,6 +87,7 @@
             readImageInfo: delegate(assetSource, 'readImageInfo'),
             safeAssetDisplaySrc: delegate(assetSource, 'safeAssetDisplaySrc'),
             getNode: delegate(nodeSource, 'getNode'),
+            getProject: delegate(projectSource, 'getProject'),
             getSelectedResultAsset: delegate(nodeSource, 'getSelectedResultAsset'),
             refreshCompareDom: delegate(compareSource, 'refreshCompareDom'),
             renderCompareControls: delegate(compareSource, 'renderCompareControls'),
@@ -271,6 +273,16 @@
         if (!doc?.createElement || !doc.body) return;
         let zoom = 1;
         const modal = doc.createElement('div');
+        const project = call(context, 'getProject', null);
+        const projectId = project?.id;
+        let mounted = false;
+        const isCurrent = () => {
+            const valid = call(context, 'getProject', null) === project && (!project || project.id === projectId)
+                && call(context, 'getNode', null, node.id) === node && node.type === 'compare'
+                && (!mounted || modal.isConnected !== false);
+            if (!valid) modal.remove();
+            return valid;
+        };
         modal.className = 'sai-canvas-modal sai-compare-fullscreen';
         modal.dataset.compareNodeId = node.id;
         modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
@@ -279,6 +291,7 @@
             const stageEl = modal.querySelector('.sai-compare-stage');
             if (!body || !stageEl) return;
             scheduleFrame(context, () => {
+                if (!isCurrent() || modal.isConnected === false) return;
                 const bodyRect = body.getBoundingClientRect();
                 const stageRect = stageEl.getBoundingClientRect();
                 if (!bodyRect.width || !bodyRect.height || !stageRect.width || !stageRect.height) return;
@@ -294,7 +307,8 @@
             });
         };
         const renderBody = (anchor) => {
-            const current = call(context, 'getNode', null, node.id) || node;
+            if (!isCurrent()) return;
+            const current = node;
             modal.innerHTML = `
 <div class="sai-canvas-modal-panel sai-compare-viewer">
   <div class="sai-canvas-modal-head">
@@ -307,28 +321,32 @@
   </div>
   ${call(context, 'renderCompareControls', '', current)}
   <div class="sai-compare-full-body">
-    <div class="sai-compare-full-stage">${call(context, 'renderCompareStageHtml', '', current, { maxW: Math.max(360, viewportDimension(context, 'getInnerWidth', 'innerWidth', 1024)), maxH: Math.max(260, viewportDimension(context, 'getInnerHeight', 'innerHeight', 768) - 104), zoom })}</div>
+    <div class="sai-compare-full-stage">${call(context, 'renderCompareStageHtml', '', current, { maxW: Math.max(360, viewportDimension(context, 'getInnerWidth', 'innerWidth', 1024)), maxH: Math.max(260, viewportDimension(context, 'getInnerHeight', 'innerHeight', 768) - 104), zoom, fullResolution: true })}</div>
   </div>
 </div>`;
             call(context, 'ensureWorkbenchFormFieldNames', null, modal, 'compare_fullscreen');
             modal.querySelectorAll('[data-compare-position]').forEach((field) => {
                 field.addEventListener('input', () => {
+                    if (!isCurrent()) return;
                     call(context, 'updateCompareParam', null, current.id, 'position', Number(field.value), 'number', { render: false });
                     call(context, 'refreshCompareDom', null, current.id);
                 });
                 field.addEventListener('change', () => {
+                    if (!isCurrent()) return;
                     call(context, 'updateCompareParam', null, current.id, 'position', Number(field.value), 'number', { render: true });
                     renderBody();
                 });
             });
             modal.querySelectorAll('[data-compare-mode]').forEach((button) => {
                 button.addEventListener('click', () => {
+                    if (!isCurrent()) return;
                     call(context, 'updateCompareParam', null, current.id, 'mode', button.getAttribute('data-compare-mode'), 'text', { render: true });
                     renderBody();
                 });
             });
             modal.querySelectorAll('[data-compare-zoom]').forEach((button) => {
                 button.addEventListener('click', () => {
+                    if (!isCurrent()) return;
                     zoom = 1;
                     renderBody();
                 });
@@ -337,7 +355,9 @@
         };
         renderBody();
         doc.body.appendChild(modal);
+        mounted = true;
         modal.addEventListener('wheel', (evt) => {
+            if (!isCurrent()) return;
             const body = evt.target.closest('.sai-compare-full-body');
             if (!body || !modal.contains(body)) return;
             evt.preventDefault();
@@ -355,10 +375,11 @@
             renderBody(anchor);
         }, { passive: false });
         modal.addEventListener('pointerdown', (evt) => {
+            if (!isCurrent()) return;
             if (evt.button !== 0) return;
             const stageEl = evt.target.closest('.sai-compare-stage');
             if (!stageEl) return;
-            call(context, 'startComparePositionDrag', null, call(context, 'getNode', null, node.id) || node, stageEl, evt);
+            call(context, 'startComparePositionDrag', null, node, stageEl, evt);
         }, true);
         modal.addEventListener('click', (evt) => {
             if (evt.target === modal || evt.target.closest('[data-modal-close]')) modal.remove();

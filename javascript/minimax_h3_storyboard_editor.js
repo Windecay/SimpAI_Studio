@@ -11,7 +11,7 @@
     const MODE_REF2VA = 'Ref2VA';
     const MAX_SHOTS = 20;
     const H3_FPS = 24;
-    const H3_MIN_DURATION = 4;
+    const H3_MIN_DURATION = 0.2;
     const H3_MAX_DURATION = 30;
     const MIN_SHOT_DURATION = Math.round((1 / H3_FPS) * 1000) / 1000;
     const DIALOGUE_CJK_CHARS_PER_SECOND = 4.5;
@@ -773,7 +773,7 @@
     }
 
     function defaultShotCount(duration) {
-        const total = Math.max(0.3, finiteNumber(duration, 5));
+        const total = Math.max(H3_MIN_DURATION, finiteNumber(duration, 5));
         if (total >= 20) return 5;
         if (total >= 10) return 4;
         return 3;
@@ -1079,7 +1079,7 @@
     }
 
     function defaultState(options) {
-        const duration = Math.max(options?.director_segment_id ? MIN_SHOT_DURATION : 0.3, finiteNumber(options?.duration, 5));
+        const duration = Math.max(options?.director_segment_id ? MIN_SHOT_DURATION : H3_MIN_DURATION, finiteNumber(options?.duration, 5));
         const starts = defaultShotStarts(duration);
         return {
             version: 1,
@@ -1386,13 +1386,20 @@
         }));
     }
 
-    function characterSubjectDefinitions(value, bindings, lang, replace = false) {
-        const lines = String(value || '').trim().split('\n');
+    function characterSubjectDefinitions(value, bindings, lang, replace = false, voiceExclusions = []) {
+        const excluded = new Set(voiceExclusions);
+        // Remove prior generated defaults as well as skipping new ones for shot-specific voice choices.
+        const lines = String(value || '').trim().split('\n').map(line => {
+            if (!voiceExclusions.some(speaker => line.trim().startsWith(`(${speaker})`))) return line;
+            const updated = line.replace(/(?:<Audio \d+>\s*)+(?:defines this character's reference voice\b[.]?|为该角色的参考声音。)/g, '').trim();
+            return updated !== line.trim() && /[:：]$/.test(updated) ? '' : updated;
+        });
         const entries = [];
         for (const binding of speakerBindings({ character_bindings: bindings })) {
             const card = binding.card;
             const pictures = [...new Set(binding.references.map(ref => ref.token).filter(token => /^<Picture \d+>$/.test(token)))];
-            const audios = [...new Set(binding.references.map(ref => ref.token).filter(token => /^<Audio \d+>$/.test(token)))];
+            const audios = excluded.has(binding.speaker_id) ? []
+                : [...new Set(binding.references.map(ref => ref.token).filter(token => /^<Audio \d+>$/.test(token)))];
             for (const token of pictures) {
                 const number = token.match(/\d+/)[0];
                 const prefix = `<Subject ${number}> (${token}):`;
@@ -1414,7 +1421,7 @@
                 });
             }
         }
-        if (!entries.length) return cleanText(value);
+        if (!entries.length) return cleanText(lines.join('\n'));
         const result = lines.filter(line => !/^N\/A(?:\s*\([^\n]*\))?[.]?$/i.test(line.trim()));
         for (const entry of entries) {
             const index = result.findIndex(entry.matches);
@@ -1455,7 +1462,10 @@
         const definition = t(
             `${identity} is speaker (${binding.speaker_id}).`,
             `${identity} 为说话人 (${binding.speaker_id})。`, lang);
-        const voice = audio ? t(` ${audio.token} defines this speaker's voice.`, ` ${audio.token} 为该角色的参考声音。`, lang) : '';
+        const voice = audio ? t(` ${audio.token} defines this speaker's voice.`, ` ${audio.token} 为该角色的参考声音。`, lang)
+            : shot.dialogue_audio_asset_id === 'none'
+                ? t(" Do not use reference audio for this speaker's voice in this shot.", '本镜头中，该说话人的声音不使用参考音频。', lang)
+                : '';
         // Speaker changes affect only prose outside the exact spoken <d> content.
         const spoken = dialogue.split(/(<d\b[^>]*>[\s\S]*?<\/d>)/gi).map((part, index) => index % 2
             ? part : part.replace(/\(\s*S\d+\s*\)/gi, `(${binding.speaker_id})`)).join('');
@@ -1888,7 +1898,8 @@
         const inventory = inventoryFromOptions(options);
         const currentRetention = cleanText(state.retention_analysis);
         const next = Object.assign({}, state, {
-            subject_definitions: ensureDistinctReferenceSubjects(state.subject_definitions, inventory, options?.langState, !!options?.director_segment_id),
+            subject_definitions: ensureDistinctReferenceSubjects(state.subject_definitions, inventory, options?.langState,
+                !!options?.director_segment_id || speakerBindings(state).length > 0),
             retention_analysis: !currentRetention || retentionAnalysisIsBare(currentRetention, inventory)
                 ? referenceRetention(inventory, options?.langState)
                 : currentRetention
@@ -2019,16 +2030,19 @@
         const opts = options && typeof options === 'object' ? options : {};
         const state = normalize(value, opts);
         const mode = normalizeMode(state.mode || opts.mode, opts);
-        const duration = Math.max(opts.director_segment_id ? MIN_SHOT_DURATION : 0.3, finiteNumber(opts.duration, 5));
+        const duration = Math.max(opts.director_segment_id ? MIN_SHOT_DURATION : H3_MIN_DURATION, finiteNumber(opts.duration, 5));
         const timeline = timelineText(state, Object.assign({}, opts, { duration }));
         const timelinePreamble = opts.includeTimelinePreamble === false ? '' : cleanText(state.timeline_preamble);
         const soundscape = normalizeOverallSoundscape(state.overall_soundscape, opts.langState);
         const music = cleanText(state.non_diegetic_music) || 'N/A';
         if (mode === MODE_REF2VA) {
             const inventory = inventoryFromOptions(opts);
+            const voiceExclusions = speakerBindings(state).filter(binding => state.shots.some(shot =>
+                shot.dialogue_speaker_id === binding.card.id && shot.dialogue_audio_asset_id === 'none'
+                    && dialogueTextForTiming(shot.dialogue))).map(binding => binding.speaker_id);
             const subjects = characterSubjectDefinitions(
                 cleanText(state.subject_definitions) || defaultReferenceSubjects(inventory, opts.langState),
-                state.character_bindings, opts.langState);
+                state.character_bindings, opts.langState, false, voiceExclusions);
             const summary = cleanText(state.summary) || defaultReferenceSummary(inventory);
             const retention = cleanText(state.retention_analysis) || referenceRetention(inventory, opts.langState);
             return [
@@ -2051,7 +2065,7 @@
 
     function statusText(value, options, source) {
         const state = normalize(value, options);
-        const duration = Math.max(0.3, finiteNumber(options?.duration, 5));
+        const duration = Math.max(H3_MIN_DURATION, finiteNumber(options?.duration, 5));
         const mode = normalizeMode(state.mode || options?.mode, options);
         const path = state.optimize ? t('LLM', 'LLM \u4f18\u5316', source) : t('Direct', '\u76f4\u63a5\u5199\u5165', source);
         return `${mode} · ${state.shots.length} ${t('shots', '\u955c\u5934', source)} · ${duration.toFixed(1)}s · ${H3_FPS} FPS · ${path}`;
@@ -2611,7 +2625,7 @@
         const sceneThemeText = cleanText(findById('scene_theme')?.textContent || '');
         return {
             mode: sceneModeFromSource(source, inventory, sceneThemeText),
-            duration: Math.max(0.3, fieldNumber('scene_video_duration', 5)),
+            duration: Math.max(H3_MIN_DURATION, fieldNumber('scene_video_duration', 5)),
             inventory,
             is_video_transition: sceneSourceVideoSlots(source).length === 2,
             langState: languageState(source)
@@ -2804,7 +2818,7 @@
         const lang = languageState(opts.langState);
         const editorOptions = {
             mode: normalizeMode(opts.mode, opts),
-            duration: Math.max(opts.director_segment_id ? MIN_SHOT_DURATION : 0.3, finiteNumber(opts.duration, 5)),
+            duration: Math.max(opts.director_segment_id ? MIN_SHOT_DURATION : H3_MIN_DURATION, finiteNumber(opts.duration, 5)),
             director_segment_id: opts.director_segment_id || '',
             min_duration: opts.min_duration,
             max_duration: opts.max_duration,
@@ -2889,6 +2903,8 @@
         const history = createHistory();
         let pendingTextEdit = null;
         let pendingRetentionEdit = null;
+        let busy = false;
+        let optimizationVersion = 0;
         const stateSnapshot = () => serialize(state, editorOptions);
         const updateHistoryControls = () => {
             const undo = backdrop.querySelector('[data-h3sb-action="undo"]');
@@ -3146,6 +3162,7 @@
             activeTextTarget = aiTargetControl();
             renderAiTarget();
             updateHistoryControls();
+            if (busy) setBusy(true);
         };
         const openCharacters = () => {
             commitPendingTextEdit();
@@ -3193,11 +3210,14 @@
             output.textContent = String(message || '');
             output.dataset.tone = tone || 'error';
         };
-        const setBusy = (busy) => {
-            backdrop.querySelectorAll('button,input,textarea').forEach((control) => {
+        const setBusy = (nextBusy) => {
+            busy = nextBusy;
+            backdrop.querySelectorAll('button,input,textarea,select').forEach((control) => {
                 if (control.matches('[data-h3sb-action="close"],[data-h3sb-action="cancel"]')) return;
-                if (busy) {
-                    control.dataset.h3sbDisabledBeforeBusy = control.disabled ? '1' : '0';
+                if (nextBusy) {
+                    if (!Object.prototype.hasOwnProperty.call(control.dataset, 'h3sbDisabledBeforeBusy')) {
+                        control.dataset.h3sbDisabledBeforeBusy = control.disabled ? '1' : '0';
+                    }
                     control.disabled = true;
                 } else {
                     if (!Object.prototype.hasOwnProperty.call(control.dataset, 'h3sbDisabledBeforeBusy')) return;
@@ -3205,6 +3225,19 @@
                     delete control.dataset.h3sbDisabledBeforeBusy;
                 }
             });
+        };
+        const beginOptimization = () => {
+            const version = ++optimizationVersion;
+            const snapshot = stateSnapshot();
+            return () => {
+                const current = activeModal === backdrop && backdrop.isConnected
+                    && optimizationVersion === version && stateSnapshot() === snapshot;
+                if (!current && activeModal === backdrop && optimizationVersion === version) {
+                    setBusy(false);
+                    setMessage('');
+                }
+                return current;
+            };
         };
 
         const clearShotReorderDrag = () => {
@@ -3622,9 +3655,11 @@
                     lang
                 );
                 setBusy(true);
+                const isCurrent = beginOptimization();
                 setMessage(t('Editing selected field with LLM...', '\u6b63\u5728\u4fee\u6539\u5f53\u524d\u683c...', lang), 'info');
                 try {
                     const result = await opts.onOptimize(request);
+                    if (!isCurrent()) return;
                     if (result && typeof result === 'object' && result.ok === false) {
                         throw new Error(result.error || t('LLM editing failed.', 'LLM \u4fee\u6539\u5931\u8d25\u3002', lang));
                     }
@@ -3646,6 +3681,7 @@
                     if (instructionInput) instructionInput.value = '';
                     setMessage(t('Selected field updated; you can continue revising it.', '\u5f53\u524d\u683c\u5df2\u66f4\u65b0\uff0c\u53ef\u4ee5\u7ee7\u7eed\u4fee\u6539\u3002', lang), 'success');
                 } catch (error) {
+                    if (!isCurrent()) return;
                     setBusy(false);
                     setMessage(error?.message || String(error), 'error');
                 }
@@ -3692,9 +3728,11 @@
                     mode: state.mode
                 };
                 setBusy(true);
+                const isCurrent = beginOptimization();
                 setMessage(t('Optimizing storyboard with LLM...', '\u6b63\u5728\u901a\u8fc7 LLM \u4f18\u5316\u5206\u955c\u8868...', lang), 'info');
                 try {
                     const result = await opts.onOptimize(request);
+                    if (!isCurrent()) return;
                     if (result && typeof result === 'object' && result.ok === false) {
                         throw new Error(result.error || t('LLM optimization failed.', 'LLM \u4f18\u5316\u5931\u8d25\u3002', lang));
                     }
@@ -3715,6 +3753,7 @@
                         agentWarning || !optimizedCheck.ok ? 'warning' : 'success'
                     );
                 } catch (error) {
+                    if (!isCurrent()) return;
                     setBusy(false);
                     setMessage(error?.message || String(error), 'error');
                 }
@@ -3748,6 +3787,7 @@
                 if (result && typeof result.then === 'function') {
                     setBusy(true);
                     const resolved = await result;
+                    if (activeModal !== backdrop || !backdrop.isConnected) return;
                     if (resolved === false) {
                         setBusy(false);
                         return;
@@ -3757,6 +3797,7 @@
                 }
                 close();
             } catch (error) {
+                if (activeModal !== backdrop || !backdrop.isConnected) return;
                 setBusy(false);
                 setMessage(error?.message === 'director_prompt_target_changed'
                     ? t('This shot changed or was removed. Reopen its storyboard editor.', '\u5f53\u524d\u5206\u955c\u5df2\u6539\u53d8\u6216\u5220\u9664\uff0c\u8bf7\u91cd\u65b0\u6253\u5f00\u5b83\u7684\u5206\u955c\u8868\u3002', lang)

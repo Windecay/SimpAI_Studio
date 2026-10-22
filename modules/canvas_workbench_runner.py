@@ -1394,7 +1394,7 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
     # Resolve allowed IP control types matching main UI logic in topbar.update_after_identity_sub
     _engine = str(runtime.get("backend_engine") or "").lower()
     _tm_lower = task_method.lower() if task_method else ""
-    if _tm_lower in ('krea2_aio_cn', 'moss_image_sft_aio_cn'):
+    if _tm_lower == 'krea2_aio_cn':
         _default_ip_type = 'Depth'
     elif _engine in ('wan', 'qwen', 'z-image', 'zimage'):
         _default_ip_type = 'PyraCanny'
@@ -1449,7 +1449,7 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
     if _tm_lower == 'krea2_aio_cn':
         ip_count = 1
     elif _tm_lower == 'moss_image_sft_aio_cn':
-        ip_count = min(ip_count, 2)
+        ip_count = min(ip_count, 4)
     ip_ctrls = []
     # For T2I mode (no input images), input_image_checkbox should be False
     has_input_images = classic_mode != "t2i" and bool(ip_count) and any(

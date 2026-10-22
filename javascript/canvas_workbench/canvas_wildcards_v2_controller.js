@@ -118,10 +118,25 @@
         const helperSeedModes = () => typeof configSource.getSeedModes === 'function' ? configSource.getSeedModes() : [];
 
         let wildcardsV2State = null;
+        let openVersion = 0;
 
-        function closeWildcardsV2Panel() {
+        function closeWildcardsV2Panel(modal) {
+            if (modal && modal !== wildcardsV2State?.modal) {
+                modal.remove();
+                return;
+            }
+            openVersion += 1;
             wildcardsV2State?.modal?.remove();
             wildcardsV2State = null;
+        }
+
+        function isCurrentPanel(state) {
+            return !!state && wildcardsV2State === state;
+        }
+
+        function panelNode(state) {
+            const node = getNode(state?.nodeId || '');
+            return node === state?.targetNode ? node : null;
         }
 
         function wildcardsV2NamesFromCatalog(catalog) {
@@ -152,18 +167,31 @@
             };
         }
 
+        function wildcardsV2OptionLabel(value) {
+            const labels = {
+                'Array (batch)': ['Array (batch)', '数组（批次）'],
+                'Single in prompt': ['Single in prompt', '提示词中的单项'],
+                'Random Select': ['Random Select', '随机选择'],
+                'In order': ['In order', '按顺序'],
+                'Fixed seed': ['Fixed seed', '固定种子'],
+                'Random seed': ['Random seed', '随机种子']
+            };
+            const pair = labels[value];
+            return pair ? t(pair[0], pair[1]) : value;
+        }
+
         function wildcardsV2BuiltTag(state) {
             const params = wildcardsV2HelperParams(state);
             return params.name ? wildcardHelperBuildTag(params) : '';
         }
 
         function wildcardsV2CanInsert(state) {
-            const node = getNode(state?.nodeId || '');
+            const node = panelNode(state);
             return !!(node && ['preset', 'classic'].includes(node.type) && !isNodeLocked(node));
         }
 
         function wildcardsV2CanApplyHelper(state) {
-            const node = getNode(state?.nodeId || '');
+            const node = panelNode(state);
             return !!(node && node.type === 'wildcards_helper' && !isNodeLocked(node));
         }
 
@@ -212,7 +240,7 @@
             const helper = wildcardsV2HelperParams(state);
             const builtTag = wildcardsV2BuiltTag(state);
             const canInsert = wildcardsV2CanInsert(state);
-            const optionHtml = (items, value) => items.map(item => `<option value="${escapeHtml(item)}" ${item === value ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('');
+            const optionHtml = (items, value) => items.map(item => `<option value="${escapeHtml(item)}" ${item === value ? 'selected' : ''}>${escapeHtml(wildcardsV2OptionLabel(item))}</option>`).join('');
             host.innerHTML = `
 <div class="sai-wildcards-v2-card">
   <h4><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Expression Builder', '表达式构建器'))}</span></h4>
@@ -351,9 +379,10 @@
 
         async function refreshWildcardsV2Catalog(modal) {
             const state = modal?.__wildcardsV2State;
-            if (!state) return null;
+            if (!isCurrentPanel(state)) return null;
+            const version = state.catalogVersion = (state.catalogVersion || 0) + 1;
             wildcardsV2SetStatus(modal, t('Refreshing wildcard catalog...', '正在刷新通配符目录...'), '');
-            const node = getNode(state.nodeId || '');
+            const node = panelNode(state);
             const probe = {
                 id: `${state.nodeId || 'wildcards_v2'}:wildcards_v2_catalog`,
                 type: 'wildcards_helper',
@@ -361,13 +390,14 @@
                 wildcards_catalog: state.catalog || node?.wildcards_catalog || null
             };
             const catalog = await refreshWildcardsCatalog(probe, { force: true, render: false });
+            if (!isCurrentPanel(state) || state.catalogVersion !== version) return null;
             if (!catalog) {
                 wildcardsV2SetStatus(modal, t('Catalog refresh failed.', '目录刷新失败。'), 'error');
                 return null;
             }
             state.catalog = catalog;
             state.names = wildcardsV2NamesFromCatalog(catalog);
-            if (node) Object.assign(node, buildWildcardsHelperStatePatch(node, { wildcardsCatalog: catalog }));
+            if (node && panelNode(state) === node && !isNodeLocked(node)) Object.assign(node, buildWildcardsHelperStatePatch(node, { wildcardsCatalog: catalog }));
             if (!state.helper.name && state.names.length) state.helper.name = state.names[0];
             renderWildcardsV2List(modal);
             renderWildcardsV2Detail(modal);
@@ -377,24 +407,29 @@
 
         async function refreshWildcardsV2PersonalList(modal) {
             const state = modal?.__wildcardsV2State;
-            if (!state || !personalWildcardsAvailable()) return;
+            if (!isCurrentPanel(state) || !personalWildcardsAvailable()) return;
+            const version = state.personalListVersion = (state.personalListVersion || 0) + 1;
+            const draftVersion = state.personalVersion;
             const result = await personalWildcards({ action: 'list', user_context: getWorkbenchUserContext() });
+            if (!isCurrentPanel(state) || state.personalListVersion !== version) return;
             state.personal = Object.assign({}, state.personal || {}, {
                 available: true,
                 canManage: !!result?.can_manage,
                 keys: Array.isArray(result?.keys) ? result.keys : [],
                 error: result?.error || ''
             });
-            if (!state.personal.name) state.personal.name = result?.selected || state.personal.keys[0] || '';
+            if (state.personalVersion === draftVersion && !state.personal.name) state.personal.name = result?.selected || state.personal.keys[0] || '';
         }
 
         async function loadWildcardsV2Personal(modal, name) {
             const state = modal?.__wildcardsV2State;
             const personal = state?.personal || {};
             const safeName = String(name || personal.name || '').trim();
-            if (!state || !safeName || !personalWildcardsAvailable()) return;
+            if (!isCurrentPanel(state) || !safeName || !personalWildcardsAvailable()) return;
+            const version = state.personalVersion = (state.personalVersion || 0) + 1;
             wildcardsV2SetStatus(modal, t('Loading personal wildcard...', '正在载入个人通配符...'), '');
             const loaded = await personalWildcards({ action: 'load', name: safeName, user_context: getWorkbenchUserContext() });
+            if (!isCurrentPanel(state) || state.personalVersion !== version) return;
             if (!loaded?.ok) {
                 wildcardsV2SetStatus(modal, loaded?.error || t('Load failed.', '载入失败。'), 'error');
                 return;
@@ -410,15 +445,19 @@
             const state = modal?.__wildcardsV2State;
             const personal = state?.personal || {};
             const name = String(personal.name || '').trim();
-            if (!state || !name || !personalWildcardsAvailable()) return;
+            if (!isCurrentPanel(state) || !name || !personalWildcardsAvailable()) return;
+            const version = state.personalVersion = (state.personalVersion || 0) + 1;
             wildcardsV2SetStatus(modal, t('Saving personal wildcard...', '正在保存个人通配符...'), '');
             const saved = await personalWildcards({ action: 'save', name, content: personal.content || '', user_context: getWorkbenchUserContext() });
+            if (!isCurrentPanel(state) || state.personalVersion !== version) return;
             if (!saved?.ok) {
                 wildcardsV2SetStatus(modal, saved?.error || t('Save failed.', '保存失败。'), 'error');
                 return;
             }
             await refreshWildcardsV2PersonalList(modal);
+            if (!isCurrentPanel(state) || state.personalVersion !== version) return;
             await refreshWildcardsV2Catalog(modal);
+            if (!isCurrentPanel(state) || state.personalVersion !== version) return;
             renderWildcardsV2Detail(modal);
             wildcardsV2SetStatus(modal, saved.message || t('Saved.', '已保存。'), 'ok');
         }
@@ -427,7 +466,7 @@
             const state = modal?.__wildcardsV2State;
             const personal = state?.personal || {};
             const name = String(personal.name || '').trim();
-            if (!state || !name || !personalWildcardsAvailable()) return;
+            if (!isCurrentPanel(state) || !name || !personalWildcardsAvailable()) return;
             if (!personal.deleteArmed) {
                 personal.deleteArmed = true;
                 renderWildcardsV2Detail(modal);
@@ -435,7 +474,9 @@
                 return;
             }
             wildcardsV2SetStatus(modal, t('Deleting personal wildcard...', '正在删除个人通配符...'), '');
+            const version = state.personalVersion = (state.personalVersion || 0) + 1;
             const deleted = await personalWildcards({ action: 'delete', name, user_context: getWorkbenchUserContext() });
+            if (!isCurrentPanel(state) || state.personalVersion !== version) return;
             if (!deleted?.ok) {
                 wildcardsV2SetStatus(modal, deleted?.error || t('Delete failed.', '删除失败。'), 'error');
                 return;
@@ -444,14 +485,16 @@
             personal.content = '';
             personal.deleteArmed = false;
             await refreshWildcardsV2PersonalList(modal);
+            if (!isCurrentPanel(state) || state.personalVersion !== version) return;
             await refreshWildcardsV2Catalog(modal);
+            if (!isCurrentPanel(state) || state.personalVersion !== version) return;
             renderWildcardsV2Detail(modal);
             wildcardsV2SetStatus(modal, deleted.message || t('Deleted.', '已删除。'), 'ok');
         }
 
         function insertWildcardsV2Text(modal, text) {
             const state = modal?.__wildcardsV2State;
-            const node = getNode(state?.nodeId || '');
+            const node = panelNode(state);
             const value = String(text || '').trim();
             if (!state || !node || !['preset', 'classic'].includes(node.type)) {
                 wildcardsV2SetStatus(modal, t('No prompt target is available.', '没有可插入的提示词目标。'), 'warn');
@@ -468,7 +511,7 @@
 
         function applyWildcardsV2NameToHelper(modal, name) {
             const state = modal?.__wildcardsV2State;
-            const node = getNode(state?.nodeId || '');
+            const node = panelNode(state);
             const value = String(name || '').trim();
             if (!state || !node || node.type !== 'wildcards_helper' || !value || isNodeLocked(node)) return false;
             updateWildcardsHelperParam(node.id, 'name', value, 'text');
@@ -481,9 +524,10 @@
 
         function bindWildcardsV2Panel(modal) {
             modal.addEventListener('click', async (evt) => {
+                if (!isCurrentPanel(modal.__wildcardsV2State)) return;
                 if (evt.target === modal) {
                     evt.preventDefault();
-                    closeWildcardsV2Panel();
+                    closeWildcardsV2Panel(modal);
                     return;
                 }
                 const row = evt.target.closest('[data-wildcards-v2-name]');
@@ -498,7 +542,7 @@
                 }
                 if (!action) return;
                 evt.preventDefault();
-                if (action === 'close') closeWildcardsV2Panel();
+                if (action === 'close') closeWildcardsV2Panel(modal);
                 else if (action === 'refresh-catalog') await refreshWildcardsV2Catalog(modal);
                 else if (action === 'select-name' && row) {
                     state.helper.name = row.getAttribute('data-wildcards-v2-name') || '';
@@ -515,7 +559,7 @@
                 } else if (action === 'insert-raw') {
                     insertWildcardsV2Text(modal, state.rawExpression || '');
                 } else if (action === 'create-helper') {
-                    const source = getNode(state.nodeId || '');
+                    const source = panelNode(state);
                     const center = viewportCenterWorld();
                     const world = source ? { x: (source.x || 0) - 380, y: source.y || 0 } : center;
                     addWildcardsHelperNode(world, { params: wildcardsV2HelperParams(state) });
@@ -528,12 +572,14 @@
                     await deleteWildcardsV2Personal(modal);
                 } else if (action === 'personal-refresh') {
                     await refreshWildcardsV2PersonalList(modal);
+                    if (!isCurrentPanel(state)) return;
                     renderWildcardsV2Detail(modal);
                     wildcardsV2SetStatus(modal, t('Personal wildcard list refreshed.', '个人通配符列表已刷新。'), 'ok');
                 }
             });
             modal.addEventListener('input', (evt) => {
                 const state = modal.__wildcardsV2State;
+                if (!isCurrentPanel(state)) return;
                 const query = evt.target.closest('[data-wildcards-v2-query]');
                 const helper = evt.target.closest('[data-wildcards-v2-helper]');
                 const raw = evt.target.closest('[data-wildcards-v2-raw]');
@@ -550,22 +596,26 @@
                     state.rawExpression = raw.value || '';
                     refreshWildcardsV2ExpressionControls(modal);
                 } else if (personalName) {
+                    state.personalVersion = (state.personalVersion || 0) + 1;
                     state.personal.name = personalName.value || '';
                     state.personal.deleteArmed = false;
                     refreshWildcardsV2PersonalControls(modal);
                 } else if (personalContent) {
+                    state.personalVersion = (state.personalVersion || 0) + 1;
                     state.personal.content = personalContent.value || '';
                     state.personal.deleteArmed = false;
                 }
             });
             modal.addEventListener('change', async (evt) => {
                 const state = modal.__wildcardsV2State;
+                if (!isCurrentPanel(state)) return;
                 const helper = evt.target.closest('[data-wildcards-v2-helper]');
                 const personalSelect = evt.target.closest('[data-wildcards-v2-personal-select]');
                 if (helper) {
                     state.helper[helper.getAttribute('data-wildcards-v2-helper')] = helper.value;
                     renderWildcardsV2Expression(modal);
                 } else if (personalSelect) {
+                    state.personalVersion = (state.personalVersion || 0) + 1;
                     state.personal.name = personalSelect.value || '';
                     state.personal.deleteArmed = false;
                     if (state.personal.name) await loadWildcardsV2Personal(modal, state.personal.name);
@@ -579,7 +629,7 @@
                 evt.stopPropagation();
                 if (evt.key === 'Escape') {
                     evt.preventDefault();
-                    closeWildcardsV2Panel();
+                    closeWildcardsV2Panel(modal);
                 }
             }, true);
         }
@@ -592,18 +642,21 @@
             const opts = options || {};
             closeContextMenu();
             closeWildcardsV2Panel();
+            const version = openVersion;
             const doc = getDocument();
             if (!doc?.createElement) return;
             const modal = doc.createElement('div');
             modal.className = `sai-canvas-modal sai-wildcards-v2-modal ${detectTheme() === 'dark' ? 'theme-dark' : ''}`;
             const probe = { id: `${node?.id || 'wildcards_v2'}:wildcards_v2_open`, type: 'wildcards_helper', params: {}, wildcards_catalog: node?.wildcards_catalog || null };
             const catalog = await refreshWildcardsCatalog(probe, { force: !probe.wildcards_catalog, render: false });
-            if (node && catalog) Object.assign(node, buildWildcardsHelperStatePatch(node, { wildcardsCatalog: catalog }));
+            if (openVersion !== version) return;
+            if (node && getNode(node.id) === node && !isNodeLocked(node) && catalog) Object.assign(node, buildWildcardsHelperStatePatch(node, { wildcardsCatalog: catalog }));
             const names = wildcardsV2NamesFromCatalog(catalog);
             const personal = { available: personalWildcardsAvailable(), canManage: false, keys: [], name: '', content: '', deleteArmed: false };
             modal.__wildcardsV2State = {
                 modal,
                 nodeId: node?.id || '',
+                targetNode: node,
                 slot: slot || 'prompt',
                 catalog,
                 names,
@@ -629,8 +682,10 @@
             host.appendChild(modal);
             if (personal.available) {
                 await refreshWildcardsV2PersonalList(modal);
+                if (!isCurrentPanel(modal.__wildcardsV2State)) return;
                 if (opts.tab === 'manager' && modal.__wildcardsV2State.personal.name) {
                     await loadWildcardsV2Personal(modal, modal.__wildcardsV2State.personal.name);
+                    if (!isCurrentPanel(modal.__wildcardsV2State)) return;
                 }
             }
             renderWildcardsV2Panel(modal);

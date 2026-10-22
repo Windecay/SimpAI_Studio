@@ -802,6 +802,7 @@
         })
         : {};
     const TAG_CART_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
         nodeSource: {
             isNodeLocked,
             getNode,
@@ -2667,7 +2668,7 @@
                         isStandaloneCanvasWorkbench,
                         isCanvasRunActiveState,
                         isTerminalRunState,
-                        fetchStatus: (...args) => window.fetch(...args),
+                        fetchStatus: (path, ...args) => window.fetch(window.SimpAICanvasWorkbenchUtils.studioEndpointUrl(path), ...args),
                         now: () => canvasNow(),
                         setInterval: (...args) => window.setInterval(...args),
                         clearInterval: (...args) => window.clearInterval(...args),
@@ -3193,6 +3194,7 @@
                     getSelectedNodeIds: () => selectedNodeIds,
                 },
                 runtimeSource: {
+                    getLanguageState: () => ({ __lang: runtimeUiLang() }),
                     getPerfStats: () => perfStats,
                     performanceNow: () => canvasPerformanceNow(),
                     getMediaBrowserNodeRuntime: () => mediaBrowserNodeRuntime,
@@ -4466,7 +4468,7 @@
             getSystemInfoElement: () => systemInfoEl,
             getBackendAlertElement: () => backendAlertEl,
             isStandaloneCanvasWorkbench,
-            fetchStatus: (path, options) => fetch(path, options),
+            fetchStatus: (path, options) => fetch(window.SimpAICanvasWorkbenchUtils.studioEndpointUrl(path), options),
             setInterval: (...args) => window.setInterval(...args),
             clearInterval: (...args) => window.clearInterval(...args),
             getMinimapElement: () => minimapEl,
@@ -6214,6 +6216,7 @@
         },
         assetSource: {
             assetDisplaySrc,
+            assetFullDisplaySrc: (...args) => safeAssetFullDisplaySrc(...args),
             readAssetSize
         },
         projectSource: {
@@ -6269,7 +6272,7 @@
     CANVAS_COMPARE_CREATION_CONTROLLER = typeof WORKBENCH_CANVAS_COMPARE_CREATION.createCanvasCompareCreationController === 'function'
         ? WORKBENCH_CANVAS_COMPARE_CREATION.createCanvasCompareCreationController({
             compareCreationSource: Object.assign({
-                nodeSource: { isImageCompareSource }
+                nodeSource: { isImageCompareSource, isNodeLocked }
             }, COMPARE_CREATION_CONTEXT_SOURCE)
         })
         : {};
@@ -6301,7 +6304,8 @@
     const STYLE_SELECTOR_NODE_CONTEXT_SOURCE = {
         utilitySource: {
             escapeHtml,
-            t
+            t,
+            getLanguageState: () => ({ __lang: runtimeUiLang() })
         },
         catalogSource: {
             getItems: () => window.SimpAIStyleTransferCatalog?.items
@@ -7015,6 +7019,7 @@
                     },
                 },
             compareDragSource: {
+                projectSource: { getProject: () => project },
                 domSource: {
                     getDocument: () => document,
                 },
@@ -7722,7 +7727,8 @@
                 buildTimelineCompareAsset: (...args) => buildTimelineCompareAsset(...args)
             },
             uiSource: {
-                showToast: (...args) => showToast(...args)
+                showToast: (...args) => showToast(...args),
+                isWorkbenchOpen: () => !!(root && !root.hidden)
             }
         },
         paramSource: {
@@ -8047,6 +8053,7 @@
             t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
         },
         runtimeSource: {
+            getProject: () => state.project,
             isNodeLocked,
             getNode,
             getSelectedNodeId: () => selectedNodeId,
@@ -14448,6 +14455,15 @@
         ? WORKBENCH_CANVAS_SPECIAL_NODE_EDITOR.createCanvasSpecialNodeEditorController({
             specialNodeEditorSource: {
                 runtimeSource: { ensureWorkbenchLazyRuntime },
+                projectSource: { getProject: () => state.project },
+                nodeSource: {
+                    getNode,
+                    getInputVersion: node => node?.type === 'pose_studio'
+                        ? WORKBENCH_POSE_STUDIO_NODE.editorInputVersion?.(node, POSE_STUDIO_NODE_CONTEXT)
+                        : node?.type === 'gaussian_studio'
+                            ? WORKBENCH_GAUSSIAN_STUDIO_NODE.editorInputVersion?.(node, GAUSSIAN_STUDIO_NODE_CONTEXT)
+                            : WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.editorInputVersion?.(node, LIVEPORTRAIT_EXPRESSION_NODE_CONTEXT)
+                },
                 languageSource: { t: (en, cn) => t(en, cn) },
                 editorSource: {
                     isPoseStudioLoaded: () => typeof window.SimpAIPoseStudioEditor?.open === 'function',
@@ -15649,6 +15665,7 @@
     }
 
     const MEDIA_VIEWER_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
         languageSource: {
             t
         },
@@ -15723,7 +15740,8 @@
 
     const NODE_BROWSER_CONTEXT_SOURCE = {
         languageSource: {
-            t
+            getLanguageState: () => ({ __lang: runtimeUiLang() }),
+            t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
         },
         utilitySource: {
             escapeHtml
@@ -15986,6 +16004,7 @@
             h3StoryboardOptionsForPreset,
             h3StoryboardInventoryForPreset,
             h3StoryboardStateForPreset,
+            h3StoryboardModeForPreset,
             getVisibleUploadSlots,
             getUploadSlotMediaKind,
             canNodeConnectToUploadSlot,
@@ -16047,6 +16066,7 @@
         : {};
 
     const LTX23_GUIDE_EDITOR_SOURCE = {
+        projectSource: { getProject: () => project },
         nodeSource: { isLtx23MultiGuidePresetNode, isNodeLocked, getPresetThemeInfo, getPresetTheme, getNode },
         editorSource: {
             isLoaded: () => typeof window.SimpAILTXGuideEditor?.open === 'function',

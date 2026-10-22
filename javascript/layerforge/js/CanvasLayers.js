@@ -1,15 +1,15 @@
-import { saveImage } from "/file=javascript/layerforge/js/db.js?v=patch26";
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { generateUUID, generateUniqueFileName, createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
-import { withErrorHandling, createValidationError } from "/file=javascript/layerforge/js/ErrorHandler.js?v=patch26";
-import { showErrorNotification } from "/file=javascript/layerforge/js/utils/NotificationUtils.js?v=patch26";
-import { addStylesheet, getUrl } from "/file=javascript/layerforge/js/utils/ResourceManager.js?v=patch26";
+import { saveImage, removeImage } from "./db.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { generateUUID, generateUniqueFileName, createCanvas } from "./utils/CommonUtils.js?v=patch26";
+import { withErrorHandling, createValidationError } from "./ErrorHandler.js?v=patch26";
+import { showErrorNotification } from "./utils/NotificationUtils.js?v=patch26";
+import { addStylesheet, getUrl } from "./utils/ResourceManager.js?v=patch26";
 // @ts-ignore
-import { app } from "/file=javascript/layerforge/js/comfy_shim.js?v=patch26";
+import { app } from "./comfy_shim.js?v=patch26";
 // @ts-ignore
-import { ComfyApp } from "/file=javascript/layerforge/js/comfy_shim.js?v=patch26";
-import { ClipboardManager } from "/file=javascript/layerforge/js/utils/ClipboardManager.js?v=patch26";
-import { createDistanceFieldMaskSync } from "/file=javascript/layerforge/js/utils/ImageAnalysis.js?v=patch26";
+import { ComfyApp } from "./comfy_shim.js?v=patch26";
+import { ClipboardManager } from "./utils/ClipboardManager.js?v=patch26";
+import { createDistanceFieldMaskSync } from "./utils/ImageAnalysis.js?v=patch26";
 const log = createModuleLogger('CanvasLayers');
 export class CanvasLayers {
     constructor(canvas) {
@@ -28,13 +28,22 @@ export class CanvasLayers {
         this.layersTransformingCropBounds = new Set();
         this.layersTransformingScale = new Set();
         this.layersWheelScaling = new Set();
-        this.addLayerWithImage = withErrorHandling(async (image, layerProps = {}, addMode = 'default', targetArea = null) => {
+        this.addLayerWithImage = withErrorHandling(async (image, layerProps = {}, addMode = 'default', targetArea = null, shouldContinue = null) => {
             if (!image) {
                 throw createValidationError("Image is required for layer creation");
             }
+            if (shouldContinue && !shouldContinue()) return null;
             log.debug("Adding layer with image:", image, "with mode:", addMode, "targetArea:", targetArea);
             const imageId = generateUUID();
             await saveImage(imageId, image.src);
+            if (shouldContinue && !shouldContinue()) {
+                // saveImage stores this fresh UUID directly without deduplication.
+                if (!this.canvas.imageCache.has(imageId) && !this.canvas.layers.some(layer => layer.imageId === imageId)) {
+                    await removeImage(imageId);
+                }
+                return null;
+            }
+            this.canvas.imageReferenceManager?.registerCreatedImage(imageId);
             this.canvas.imageCache.set(imageId, image.src);
             let finalWidth = image.width;
             let finalHeight = image.height;
@@ -1739,6 +1748,7 @@ export class CanvasLayers {
             const minZIndex = Math.min(...this.canvas.canvasSelection.selectedLayers.map((layer) => layer.zIndex));
             const imageId = generateUUID();
             await saveImage(imageId, fusedImage.src);
+            this.canvas.imageReferenceManager?.registerCreatedImage(imageId);
             this.canvas.imageCache.set(imageId, fusedImage.src);
             const fusedLayer = {
                 id: generateUUID(),

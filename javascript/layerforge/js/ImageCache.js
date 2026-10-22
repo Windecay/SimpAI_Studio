@@ -1,4 +1,4 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
 const log = createModuleLogger('ImageCache');
 export class ImageCache {
     constructor() {
@@ -15,6 +15,9 @@ export class ImageCache {
     }
     has(key) {
         return this.cache.has(key);
+    }
+    delete(key) {
+        return this.cache.delete(key);
     }
     clear() {
         log.info("Clearing image cache");

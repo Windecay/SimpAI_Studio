@@ -1,4 +1,4 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
+import { createModuleLogger } from "./LoggerUtils.js?v=patch26";
 const log = createModuleLogger('NotificationUtils');
 // Store active notifications for deduplication
 const activeNotifications = new Map();

@@ -447,7 +447,8 @@
         "modern_editorial", "fashion_avant_garde",
         "glamour_editorial", "hosiery_fashion", "see_through_fashion", "artistic_nude",
         "waist_hip_curve", "uniform_glamour", "foot_leg_focus", "tattoo_body_art",
-        "twin_duo_sisters", "atelier_model", "flower_shower_shoot"
+        "twin_duo_sisters", "atelier_model", "flower_shower_shoot",
+        "ecommerce_catalog", "commercial_ad", "luxury_brand", "beauty_makeup", "skin_glow"
       ],
       "allow_specialties": ["portrait_editorial", "reflection", "experimental", "stage", "urban"],
       "preferred": {
@@ -475,7 +476,7 @@
       "id": "urban_night",
       "theme_ids": [
         "cyberpunk_noir", "urban_nightlife", "nightlife_allure", "noir_femme_fatale",
-        "rain_street_night", "rooftop_dusk_view"
+        "rain_street_night", "rooftop_dusk_view", "hong_kong_retro"
       ],
       "allow_specialties": ["urban", "transport", "surveillance", "reflection", "experimental", "stage", "motion"],
       "preferred": {
@@ -551,7 +552,8 @@
       "id": "east_asian_cultural",
       "theme_ids": [
         "ancient_china", "wuxia", "eastern_folklore", "craft_heritage",
-        "oriental_elegance", "classical_chinese"
+        "oriental_elegance", "classical_chinese",
+        "ukiyoe_woodblock", "dunhuang_fresco", "ink_wash_painting"
       ],
       "allow_specialties": ["historical", "outdoor", "stage", "reflection", "experimental"],
       "preferred": {
@@ -613,7 +615,7 @@
       "id": "hospitality_escape",
       "theme_ids": [
         "hotel_suite_escape", "poolside_cabana", "yacht_sunset_deck",
-        "onsen_ryokan_night", "rooftop_wind_night"
+        "onsen_ryokan_night", "rooftop_wind_night", "wabi_sabi_zen"
       ],
       "allow_specialties": [
         "hospitality", "private_indoor", "water_surface", "water_indoor",
@@ -647,7 +649,7 @@
       "id": "home_cocoon",
       "theme_ids": [
         "morning_linen_glow", "kitchen_morning_light", "laundry_glow_room",
-        "greenhouse_humidity", "snow_cabin_firelight"
+        "greenhouse_humidity", "snow_cabin_firelight", "quiet_luxury"
       ],
       "allow_specialties": ["home_cocoon", "private_indoor", "water_indoor", "outdoor", "reflection"],
       "preferred": {
@@ -677,7 +679,8 @@
         "teacher_after_class", "secretary_desk_break", "barista_closing_time",
         "bartender_last_call", "florist_morning_shop", "potter_wheel_studio",
         "photographer_own_loft", "makeup_artist_mirror", "tailor_fitting_pins",
-        "librarian_after_hours", "dj_booth_night", "waitress_late_shift"
+        "librarian_after_hours", "dj_booth_night", "waitress_late_shift",
+        "corporate_profile", "hair_salon"
       ],
       "allow_specialties": [
         "service", "private_indoor", "urban", "reflection", "portrait_editorial", "stage"
@@ -734,7 +737,8 @@
         "bubble_float_room", "petal_rain_soft", "sequin_light_shimmer",
         "sheer_gauze_layers", "polaroid_scatter_floor", "mirror_multiple_reflection",
         "rain_glass_pattern", "dark_academia_study", "pin_up_retro_glam",
-        "bohemian_free_spirit", "fine_art_body_study", "plus_size_confidence"
+        "bohemian_free_spirit", "fine_art_body_study", "plus_size_confidence",
+        "dark_academia"
       ],
       "allow_specialties": [
         "texture_studio", "experimental", "portrait_editorial", "reflection", "historical", "outdoor"
@@ -799,7 +803,8 @@
       "id": "stylized_mood",
       "theme_ids": [
         "cyberpunk_neon_noir", "maternity_glow", "violin_musician",
-        "painter_palette", "bonfire_beach_night"
+        "painter_palette", "bonfire_beach_night",
+        "y2k_pop", "pixel_art_style", "cgi_render", "clay_stopmotion", "glitch_art", "art_nouveau"
       ],
       "allow_specialties": [
         "neon_city", "experimental", "portrait_editorial", "texture_studio", "outdoor", "reflection"

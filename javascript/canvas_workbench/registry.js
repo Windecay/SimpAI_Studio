@@ -205,7 +205,7 @@
         'wan_qwen_zimage': ['PyraCanny', 'Depth', 'OpenPose'],
         'il_v_pre': ['ImagePrompt', 'PyraCanny', 'Depth', 'OpenPose'],
         'krea2': ['Depth', 'OpenPose'],
-        'moss': ['Depth', 'ColorMap'],
+        'moss': ['ImagePrompt', 'Depth', 'ColorMap'],
     };
     const CLASSIC_UOV_METHODS_DEFAULT = [
         'Disabled',

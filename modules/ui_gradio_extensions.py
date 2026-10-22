@@ -44,7 +44,8 @@ def webpath(fn):
     except OSError:
         mtime = 0
 
-    return f'{API_PREFIX}/file={web_path}?{mtime}&v=layerforge_patch_63'
+    root = args_manager.args.webroot.rstrip('/')
+    return f'{root}{API_PREFIX}/file={web_path}?{mtime}&v=layerforge_patch_63'
 
 
 def ensure_tag_cart_custom_tags_path():

@@ -51,7 +51,7 @@ _SUMMARY_CACHE_LOCK = threading.RLock()
 _SUMMARY_CACHE: dict[tuple[str, bool, bool], tuple[int, list[dict[str, Any]]]] = {}
 _FILESYSTEM_CHECK_CACHE_LOCK = threading.RLock()
 _FILESYSTEM_CHECK_CACHE: dict[str, tuple[float, bool]] = {}
-_FILESYSTEM_CHECK_INTERVAL_SECONDS = 2.0
+_FILESYSTEM_CHECK_INTERVAL_SECONDS = 10.0
 _INITIALIZE_LOCKS_LOCK = threading.RLock()
 _INITIALIZE_LOCKS: dict[str, threading.RLock] = {}
 _MEDIA_WRITE_LOCKS_LOCK = threading.RLock()
@@ -76,6 +76,10 @@ def _media_write_lock_for(db_path: str) -> threading.RLock:
             lock = threading.RLock()
             _MEDIA_WRITE_LOCKS[db_path] = lock
         return lock
+
+
+def _source_file_signature(size: Any, mtime_ns: Any) -> str:
+    return f"{int(size or 0)}-{int(mtime_ns or 0)}"
 
 
 def _serialize_media_write(method):
@@ -722,8 +726,8 @@ class MediaLibrary:
         ).fetchone()
         signature_same = bool(
             row
-            and int(row["size"] or 0) == int(stat.st_size)
-            and int(row["mtime_ns"] or 0) == int(stat.st_mtime_ns)
+            and _source_file_signature(row["size"], row["mtime_ns"])
+            == _source_file_signature(stat.st_size, stat.st_mtime_ns)
             and str(row["media_type"] or "") == media_type
         )
         if signature_same:
@@ -1470,6 +1474,35 @@ class MediaLibrary:
             connection.execute(f"UPDATE media SET {', '.join(updates)} WHERE media_id = ?", params)
         return self.get_item(media_id, include_trashed=True)
 
+    @contextmanager
+    def _file_move_transaction(self):
+        moves: list[tuple[str, str]] = []
+        try:
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                yield connection, moves
+        except Exception as exc:
+            # SQLite has rolled back before files return to their original locations.
+            for source, target in reversed(moves):
+                try:
+                    if os.path.lexists(source):
+                        raise FileExistsError(f"Recovery target already exists: {source}")
+                    shutil.move(target, source)
+                except OSError:
+                    exc.add_note(f"Media recovery failed; file retained at {target}; original path: {source}")
+                    _LOGGER.exception("Media recovery failed from %s to %s", target, source)
+            raise
+
+    def _pending_trash_file(self, media_id: str, source: str) -> str:
+        suffix = f"_{media_id}_{os.path.basename(source)}"
+        candidates = []
+        for entry in os.scandir(self.trash_root):
+            if entry.name.endswith(suffix) and entry.name[:-len(suffix)].isdigit() and entry.is_file():
+                candidates.append(entry.path)
+        if len(candidates) > 1:
+            raise OSError("Multiple recoverable trash files exist; media record retained.")
+        return candidates[0] if candidates else ""
+
     @_serialize_media_write
     def trash_items(self, media_ids: Iterable[Any]) -> dict[str, Any]:
         self.initialize()
@@ -1478,8 +1511,7 @@ class MediaLibrary:
         errors: list[dict[str, str]] = []
         now = time.time()
         ids = list(dict.fromkeys(str(value or "") for value in media_ids))[:120]
-        with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+        with self._file_move_transaction() as (connection, moves):
             summary_changed = False
             for media_id in ids:
                 row = connection.execute("SELECT * FROM media WHERE media_id = ? AND trashed_at IS NULL", (media_id,)).fetchone()
@@ -1495,6 +1527,20 @@ class MediaLibrary:
                 except FileNotFoundError:
                     if os.path.lexists(source):
                         errors.append({"id": media_id, "error": "Media path is not a regular file."})
+                        continue
+                    try:
+                        pending_trash = self._pending_trash_file(media_id, source)
+                    except OSError as exc:
+                        errors.append({"id": media_id, "error": str(exc)})
+                        continue
+                    if pending_trash:
+                        trash_relative = os.path.relpath(pending_trash, self.gallery_root).replace(os.sep, "/")
+                        connection.execute(
+                            "UPDATE media SET trashed_at = ?, trash_path = ?, original_relative_path = COALESCE(original_relative_path, relative_path), missing_at = NULL WHERE media_id = ?",
+                            (now, trash_relative, media_id),
+                        )
+                        deleted.append(media_id)
+                        summary_changed = True
                         continue
                     connection.execute("DELETE FROM media WHERE media_id = ?", (media_id,))
                     removed_missing.append(media_id)
@@ -1522,6 +1568,7 @@ class MediaLibrary:
                 except OSError as exc:
                     errors.append({"id": media_id, "error": str(exc)})
                     continue
+                moves.append((source, trash_path))
                 trash_relative = os.path.relpath(trash_path, self.gallery_root).replace(os.sep, "/")
                 connection.execute(
                     "UPDATE media SET trashed_at = ?, trash_path = ?, original_relative_path = COALESCE(original_relative_path, relative_path), missing_at = NULL WHERE media_id = ?",
@@ -1542,8 +1589,7 @@ class MediaLibrary:
         restored: list[str] = []
         errors: list[dict[str, str]] = []
         ids = list(dict.fromkeys(str(value or "") for value in media_ids))[:120]
-        with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+        with self._file_move_transaction() as (connection, moves):
             summary_changed = False
             for media_id in ids:
                 row = connection.execute("SELECT * FROM media WHERE media_id = ? AND trashed_at IS NOT NULL", (media_id,)).fetchone()
@@ -1567,6 +1613,7 @@ class MediaLibrary:
                 except OSError as exc:
                     errors.append({"id": media_id, "error": str(exc)})
                     continue
+                moves.append((trash_path, target))
                 connection.execute(
                     "UPDATE media SET trashed_at = NULL, trash_path = NULL, missing_at = NULL WHERE media_id = ?",
                     (media_id,),
@@ -1621,8 +1668,9 @@ class MediaLibrary:
         return {"ok": not errors, "purged": purged, "errors": errors}
 
     @staticmethod
-    def _thumbnail_target(gallery_root: str, media_id: str, max_size: int) -> str:
-        return os.path.join(gallery_root, "thumbnails", f"{media_id}_{int(max_size)}.jpg")
+    def _thumbnail_target(gallery_root: str, media_id: str, max_size: int, version: str = "") -> str:
+        suffix = f"_{version}" if version else ""
+        return os.path.join(gallery_root, "thumbnails", f"{media_id}_{int(max_size)}{suffix}.jpg")
 
     def media_path(self, media_id: str, include_trashed: bool = False) -> str:
         item = self.get_item(media_id, include_trashed=include_trashed, include_generation_metadata=False)
@@ -1633,7 +1681,10 @@ class MediaLibrary:
         path = _path_under(root, relative_path or "")
         return path if path and os.path.isfile(path) else ""
 
-    def thumbnail_path(self, media_id: str, max_size: int = 640, include_trashed: bool = False) -> str:
+    def thumbnail_path(
+        self, media_id: str, max_size: int = 640, include_trashed: bool = False,
+        source_version: str = "",
+    ) -> str:
         """Return a cached image thumbnail; video cards use the Gradio poster route."""
 
         item = self.get_item(media_id, include_trashed=include_trashed, include_generation_metadata=False)
@@ -1652,11 +1703,14 @@ class MediaLibrary:
             source_stat = os.stat(source)
         except OSError:
             return ""
+        version = _source_file_signature(source_stat.st_size, source_stat.st_mtime_ns)
+        if source_version and source_version not in {version, str(source_stat.st_mtime_ns)}:
+            return ""
         thumbnail_root = os.path.join(self.gallery_root, "thumbnails")
         os.makedirs(thumbnail_root, exist_ok=True)
-        target = self._thumbnail_target(self.gallery_root, str(media_id), max_size)
+        target = self._thumbnail_target(self.gallery_root, str(media_id), max_size, version)
         try:
-            if os.path.isfile(target) and os.stat(target).st_mtime_ns >= source_stat.st_mtime_ns:
+            if os.path.isfile(target):
                 return target
         except OSError:
             pass
@@ -1668,7 +1722,17 @@ class MediaLibrary:
                 image = image.convert("RGB")
                 image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
                 image.save(temporary, format="JPEG", quality=84, optimize=True)
-            os.replace(temporary, target)
+            current_stat = os.stat(source)
+            if version != _source_file_signature(current_stat.st_size, current_stat.st_mtime_ns):
+                os.remove(temporary)
+                return ""
+            try:
+                os.replace(temporary, target)
+            except OSError:
+                # Another request may have published this exact version on Windows.
+                if not os.path.isfile(target):
+                    raise
+                os.remove(temporary)
             return target
         except Exception:
             try:

@@ -75,6 +75,42 @@
             return call(languageSource, 't', state.__lang === 'cn' || state.__lang === 'zh' ? cn : en, en, cn, state);
         };
         const warn = typeof uiSource.warn === 'function' ? uiSource.warn : console.warn;
+        const activeEditorSaves = new WeakMap();
+        const activeEditors = new WeakMap();
+
+        function captureEditTarget(node) {
+            const project = call(edgeSource, 'getProject', null);
+            const projectId = project?.id;
+            const asset = getNodeLayerForgeAsset(node);
+            const mask = node?.mask;
+            const type = node?.type;
+            const assetFields = Object.assign({}, asset);
+            const maskFields = Object.assign({}, mask);
+            const unchanged = (value, fields) => Object.keys(value || {}).length === Object.keys(fields).length
+                && Object.keys(fields).every(key => value?.[key] === fields[key]);
+            return () => (!project || (call(edgeSource, 'getProject', null) === project && project.id === projectId))
+                && (typeof nodeSource.getNode !== 'function' || getNode(node.id) === node)
+                && node.type === type && !isNodeLocked(node)
+                && getNodeLayerForgeAsset(node) === asset && unchanged(asset, assetFields)
+                && node.mask === mask && unchanged(mask, maskFields)
+                && !call(domSource, 'getRoot', null)?.hidden;
+        }
+
+        function beginEditorSave(node, editorCurrent) {
+            const targetCurrent = editorCurrent || captureEditTarget(node);
+            if (!targetCurrent()) return () => false;
+            const record = {};
+            activeEditorSaves.set(node, record);
+            return () => activeEditorSaves.get(node) === record && targetCurrent();
+        }
+
+        function beginEditor(node) {
+            const targetCurrent = captureEditTarget(node);
+            if (!targetCurrent()) return () => false;
+            const record = {};
+            activeEditors.set(node, record);
+            return () => activeEditors.get(node) === record && targetCurrent();
+        }
 
         function finishImageReplacement(node, buildMessage, logKind) {
             call(stateSource, 'selectReplacedNode', undefined, node.id);
@@ -489,14 +525,19 @@
             return moved;
         }
 
-        async function createImageNodeFromLayerForgeOutput(sourceNode, imageDataUrl, maskDataUrl, metadata) {
+        async function createImageNodeFromLayerForgeOutput(sourceNode, imageDataUrl, maskDataUrl, metadata, editorCurrent) {
+            if (!sourceNode) return null;
+            const isCurrent = beginEditorSave(sourceNode, editorCurrent);
+            if (!isCurrent()) return null;
             const dataUrl = call(fileSource, 'normalizeLayerForgeDataUrl', '', imageDataUrl);
             if (!dataUrl) {
                 call(uiSource, 'showToast', undefined, 'LayerForge did not return an image.');
                 return null;
             }
             const dimensions = await call(fileSource, 'getImageDimensions', {}, dataUrl);
+            if (!isCurrent()) return null;
             const thumb = await call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 720);
+            if (!isCurrent()) return null;
             const mime = dataUrl.match(/^data:([^;]+);/)?.[1] || 'image/png';
             const titleBase = sourceNode?.title || 'LayerForge';
             const asset = call(assetSource, 'buildImageOutputAsset', {}, {
@@ -508,21 +549,20 @@
                 dataUrl,
                 thumb
             });
-            call(historySource, 'pushHistory', undefined, 'LayerForge edit');
-            const imageNode = call(mediaSource, 'createImageNodeFromAsset', null, asset, {
-                x: (sourceNode?.x || 0) + (sourceNode?.w || 240) + 70,
-                y: (sourceNode?.y || 0) + 40
-            }, titleBase + ' LayerForge');
-            if (!imageNode) return null;
             const returnedMask = call(fileSource, 'normalizeLayerForgeDataUrl', '', maskDataUrl);
             const alphaMask = await call(fileSource, 'createAlphaMaskDataUrl', null, dataUrl, 10, 1);
+            if (!isCurrent()) return null;
             const mask = alphaMask?.data_url
                 ? await call(fileSource, 'mergeMaskDataUrls', returnedMask, returnedMask, alphaMask.data_url,
                     dimensions.width || alphaMask.width, dimensions.height || alphaMask.height)
                 : returnedMask;
+            if (!isCurrent()) return null;
             let outputMask = null;
             if (mask) {
                 const maskDimensions = await call(fileSource, 'getImageDimensions', {}, mask);
+                if (!isCurrent()) return null;
+                const maskThumb = await call(fileSource, 'createThumbnailDataUrl', '', mask, 720);
+                if (!isCurrent()) return null;
                 outputMask = call(assetSource, 'buildMaskAsset', {}, {
                     kind: 'layerforge_mask',
                     name: titleBase + '.layerforge.mask.png',
@@ -530,9 +570,16 @@
                     width: maskDimensions.width || dimensions.width || null,
                     height: maskDimensions.height || dimensions.height || null,
                     dataUrl: mask,
-                    thumb: await call(fileSource, 'createThumbnailDataUrl', '', mask, 720)
+                    thumb: maskThumb
                 });
             }
+            if (!isCurrent()) return null;
+            call(historySource, 'pushHistory', undefined, 'LayerForge edit');
+            const imageNode = call(mediaSource, 'createImageNodeFromAsset', null, asset, {
+                x: (sourceNode?.x || 0) + (sourceNode?.w || 240) + 70,
+                y: (sourceNode?.y || 0) + 40
+            }, titleBase + ' LayerForge');
+            if (!imageNode) return null;
             if (outputMask) Object.assign(imageNode, buildMediaNodeStatePatch(imageNode, { mask: outputMask }));
             Object.assign(imageNode, call(patchSource, 'buildMediaNodeSourcePatch', {}, imageNode, {
                 kind: 'layerforge',
@@ -549,13 +596,21 @@
             return imageNode;
         }
 
-        async function createImageNodeFromSketchOutput(sourceNode, payload) {
-            const dataUrl = call(fileSource, 'normalizeLayerForgeDataUrl', '', payload?.image || '');
+        async function createImageNodeFromSketchOutput(sourceNode, payload, editorCurrent) {
+            if (!sourceNode) return null;
+            const isCurrent = beginEditorSave(sourceNode, editorCurrent);
+            if (!isCurrent()) return null;
+            const maskDataUrl = call(fileSource, 'normalizeLayerForgeDataUrl', '', payload?.mask || '');
+            const dataUrl = call(fileSource, 'normalizeLayerForgeDataUrl', '',
+                sourceNode.type === 'mask' && maskDataUrl ? maskDataUrl : (payload?.image || ''));
             if (!dataUrl) {
                 call(uiSource, 'showToast', undefined, 'Sketch did not return an image.');
                 return null;
             }
             const dimensions = await call(fileSource, 'getImageDimensions', {}, dataUrl);
+            if (!isCurrent()) return null;
+            const thumb = await call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 720);
+            if (!isCurrent()) return null;
             const titleBase = sourceNode?.title || 'Sketch';
             const asset = call(assetSource, 'buildImageOutputAsset', {}, {
                 kind: 'sketch_output',
@@ -564,19 +619,15 @@
                 width: dimensions.width || payload?.width || null,
                 height: dimensions.height || payload?.height || null,
                 dataUrl,
-                thumb: await call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 720)
+                thumb
             });
-            const maskDataUrl = call(fileSource, 'normalizeLayerForgeDataUrl', '', payload?.mask || '');
             const applyToCurrent = payload?.mode === 'apply' && ['image', 'mask'].includes(sourceNode?.type);
-            call(historySource, 'pushHistory', undefined, applyToCurrent ? 'Apply Sketch edit' : 'Sketch edit');
-            const imageNode = applyToCurrent ? sourceNode : call(mediaSource, 'createImageNodeFromAsset', null, asset, {
-                x: (sourceNode?.x || 0) + (sourceNode?.w || 240) + 70,
-                y: (sourceNode?.y || 0) + 40
-            }, titleBase + ' Sketch');
-            if (!imageNode) return null;
             let outputMask = null;
-            if (maskDataUrl) {
+            if (maskDataUrl && sourceNode.type !== 'mask') {
                 const maskDimensions = await call(fileSource, 'getImageDimensions', {}, maskDataUrl);
+                if (!isCurrent()) return null;
+                const maskThumb = await call(fileSource, 'createThumbnailDataUrl', '', maskDataUrl, 720);
+                if (!isCurrent()) return null;
                 outputMask = call(assetSource, 'buildMaskAsset', {}, {
                     kind: 'sketch_mask',
                     name: titleBase + '.sketch.mask.png',
@@ -584,9 +635,16 @@
                     width: maskDimensions.width || asset.width || null,
                     height: maskDimensions.height || asset.height || null,
                     dataUrl: maskDataUrl,
-                    thumb: await call(fileSource, 'createThumbnailDataUrl', '', maskDataUrl, 720)
+                    thumb: maskThumb
                 });
             }
+            if (!isCurrent()) return null;
+            call(historySource, 'pushHistory', undefined, applyToCurrent ? 'Apply Sketch edit' : 'Sketch edit');
+            const imageNode = applyToCurrent ? sourceNode : call(mediaSource, 'createImageNodeFromAsset', null, asset, {
+                x: (sourceNode?.x || 0) + (sourceNode?.w || 240) + 70,
+                y: (sourceNode?.y || 0) + 40
+            }, titleBase + ' Sketch');
+            if (!imageNode) return null;
             const sourcePatch = {
                 kind: 'sketch',
                 source_node_id: sourceNode?.id || '',
@@ -626,11 +684,13 @@
 
         async function openSketchForNode(node) {
             if (!node || !['image', 'result', 'mask', 'pose_studio', 'gaussian_studio', 'liveportrait_expression'].includes(node.type)) return;
+            const isCurrent = beginEditor(node);
+            if (!isCurrent()) return;
             const getAdapter = () => call(editorSource, 'getCanvasSketchAdapter', {});
             const ready = await call(editorSource, 'ensureWorkbenchLazyRuntime', false,
                 'customSketch', () => typeof getAdapter()?.open === 'function',
                 'Loading Sketch...', 'Sketch adapter is not ready.');
-            if (!ready) return;
+            if (!ready || !isCurrent()) return;
             const adapter = getAdapter();
             if (!adapter || typeof adapter.open !== 'function') {
                 call(uiSource, 'showToast', undefined, 'Sketch adapter is not ready.');
@@ -641,19 +701,39 @@
                 call(uiSource, 'showToast', undefined, 'Sketch only supports image assets.');
                 return;
             }
-            const image = call(assetSource, 'assetDisplaySrc', '', asset) || call(assetSource, 'getNodeImageSrc', '', node);
+            let image = call(assetSource, 'assetDisplaySrc', '', asset) || call(assetSource, 'getNodeImageSrc', '', node);
             if (!image) {
                 call(uiSource, 'showToast', undefined, 'No image available for Sketch.');
                 return;
             }
+            let mask = node.type === 'image' ? (node.mask?.data_url || '') : '';
+            if (node.type === 'mask') {
+                const dimensions = await call(fileSource, 'getImageDimensions', {}, image);
+                if (!isCurrent()) return;
+                const canvas = getDocument()?.createElement?.('canvas');
+                if (!canvas) return;
+                canvas.width = dimensions.width || asset?.width || 1;
+                canvas.height = dimensions.height || asset?.height || 1;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                mask = image;
+                if (node.mask?.data_url) {
+                    mask = await call(fileSource, 'mergeMaskDataUrls', mask, mask, node.mask.data_url, canvas.width, canvas.height);
+                    if (!isCurrent()) return;
+                }
+                image = canvas.toDataURL('image/png');
+            }
             adapter.open({
                 image,
-                mask: node.type === 'image' ? (node.mask?.data_url || '') : '',
+                mask,
                 title: (node.title || 'Image') + ' Sketch',
-                onSave: payload => createImageNodeFromSketchOutput(node, payload),
-                onError: err => call(uiSource, 'showToast', undefined,
+                onSave: payload => createImageNodeFromSketchOutput(node, payload, isCurrent),
+                onError: err => isCurrent() && call(uiSource, 'showToast', undefined,
                     'Sketch save failed: ' + (err?.message || err || 'unknown error'))
             }).catch((err) => {
+                if (!isCurrent()) return;
                 warn('[SimpAI Canvas] Sketch open failed', err);
                 call(uiSource, 'showToast', undefined,
                     'Sketch failed to open: ' + (err?.message || err || 'unknown error'));
@@ -662,12 +742,14 @@
 
         async function openLayerForgeForNode(node) {
             if (!node || !['image', 'result'].includes(node.type)) return;
+            const isCurrent = beginEditor(node);
+            if (!isCurrent()) return;
             const getAdapter = () => call(editorSource, 'getLayerForgeAdapter', null);
             const ready = await call(editorSource, 'ensureWorkbenchLazyRuntime', false,
                 'layerForge', () => typeof getAdapter()?.open === 'function',
                 t('Loading LayerForge...', '正在加载 LayerForge...'),
                 t('LayerForge is not ready.', 'LayerForge 尚未就绪。'));
-            if (!ready) return;
+            if (!ready || !isCurrent()) return;
             const adapter = getAdapter();
             if (!adapter || typeof adapter.open !== 'function') {
                 call(uiSource, 'showToast', undefined, t('LayerForge is not ready.', 'LayerForge 尚未就绪。'));
@@ -693,7 +775,7 @@
                 mountSelector: '#simpai-infinite-canvas-workbench',
                 modalClassName: 'sai-canvas-layerforge-modal ' + (theme === 'dark' ? 'theme-dark' : 'theme-light'),
                 onSave: ({ image: editedImage, mask, metadata }) =>
-                    createImageNodeFromLayerForgeOutput(node, editedImage, mask, metadata)
+                    createImageNodeFromLayerForgeOutput(node, editedImage, mask, metadata, isCurrent)
             });
         }
 

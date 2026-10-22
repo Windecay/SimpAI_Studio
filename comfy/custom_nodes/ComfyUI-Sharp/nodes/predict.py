@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import time
+import weakref
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +31,9 @@ _encode_cache = {
     "monodepth_output": None,
     "image_resized": None,
     "original_shape": None,
+    "predictor_ref": None,
+    "encode_device": None,
+    "encode_dtype": None,
 }
 
 
@@ -48,6 +52,13 @@ def _monodepth_to(output, device):
 def _compute_image_hash(image_np: np.ndarray) -> str:
     """Compute hash of image for cache key."""
     return hashlib.sha256(image_np.tobytes()).hexdigest()[:16]
+
+
+def _predictor_encode_dtype(predictor):
+    try:
+        return next(predictor.parameters()).dtype
+    except (AttributeError, StopIteration):
+        return None
 
 
 class SharpPredict(io.ComfyNode):
@@ -254,9 +265,19 @@ def _predict_image_cached(
 
     # Compute image hash for cache
     image_hash = _compute_image_hash(image)
+    original_shape = tuple(image.shape)
+    encode_dtype = _predictor_encode_dtype(predictor)
+    cached_predictor = _encode_cache["predictor_ref"]
 
     # Check cache
-    if _encode_cache["image_hash"] == image_hash:
+    if (
+        _encode_cache["image_hash"] == image_hash
+        and _encode_cache["original_shape"] == original_shape
+        and cached_predictor is not None
+        and cached_predictor() is predictor
+        and _encode_cache["encode_device"] == str(device)
+        and _encode_cache["encode_dtype"] == encode_dtype
+    ):
         # Cache hit - reuse encoded features
         log.info("Cache hit - reusing encoded features (focal_length change is instant)")
         monodepth_output = _monodepth_to(_encode_cache["monodepth_output"], device)
@@ -270,6 +291,9 @@ def _predict_image_cached(
         _encode_cache["monodepth_output"] = None
         _encode_cache["image_resized"] = None
         _encode_cache["original_shape"] = None
+        _encode_cache["predictor_ref"] = None
+        _encode_cache["encode_device"] = None
+        _encode_cache["encode_dtype"] = None
 
         # Convert to tensor and normalize
         image_pt = torch.from_numpy(image.copy()).float().to(device).permute(2, 0, 1) / 255.0
@@ -291,7 +315,10 @@ def _predict_image_cached(
         _encode_cache["image_hash"] = image_hash
         _encode_cache["monodepth_output"] = _monodepth_to(monodepth_output, "cpu")
         _encode_cache["image_resized"] = image_resized_pt.cpu()
-        _encode_cache["original_shape"] = (height, width)
+        _encode_cache["original_shape"] = original_shape
+        _encode_cache["predictor_ref"] = weakref.ref(predictor)
+        _encode_cache["encode_device"] = str(device)
+        _encode_cache["encode_dtype"] = encode_dtype
 
         # Release fragmented GPU memory after heavy encode (35 ViT passes)
         comfy.model_management.soft_empty_cache()

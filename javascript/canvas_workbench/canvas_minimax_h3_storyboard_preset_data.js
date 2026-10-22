@@ -123,6 +123,17 @@
                     if (!refs[kind]) return;
                     const sourceNode = getNode(edge?.from);
                     const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset;
+                    const assetIsAvailable = !!asset && !!(
+                        asset.data_url
+                        || asset.path
+                        || asset.output_path
+                        || asset.original_output_path
+                        || asset.preview_url
+                        || asset.thumb
+                        || asset.asset_relative_path
+                        || asset.relative_path
+                    );
+                    if (!sourceNode || !assetIsAvailable) return;
                     const fallback = asset?.preview_url || asset?.thumb || asset?.data_url || asset?.url || '';
                     const preview = kind === 'image'
                         ? call(nodeSource, 'safeAssetFullDisplaySrc', fallback, asset || {}, fallback)

@@ -5,6 +5,7 @@ import mimetypes
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -27,6 +28,7 @@ POSE_STUDIO_CHARACTER_CACHE: Dict[str, Any] = {
 }
 _PERSON_DETECTOR_LOCK = threading.Lock()
 _PERSON_DETECTOR_CACHE = {}
+_POSE_LIBRARY_SAVE_LOCK = threading.Lock()
 
 
 class NoPeopleDetectedError(ValueError):
@@ -47,7 +49,7 @@ def _detect_people(image_rgb):
 
     model_path = _person_detector_path()
     if not model_path.is_file():
-        raise FileNotFoundError("Pose Studio person detector is missing. Install the Pose Studio model package (37).")
+        raise FileNotFoundError("[SAM3DBody] Person detector is missing. Install it through model management before parsing.")
     with _PERSON_DETECTOR_LOCK:
         key = str(model_path.resolve())
         if _PERSON_DETECTOR_CACHE.get("path") != key:
@@ -123,6 +125,11 @@ def _get_user_did(state_params: Optional[Dict[str, Any]] = None) -> str:
                 return str(did)
     except Exception:
         pass
+    if isinstance(state_params, dict):
+        for key in ("user_did", "__user_did"):
+            did = str(state_params.get(key) or "").strip()
+            if did:
+                return did
     try:
         if shared.token is not None:
             return str(shared.token.get_guest_did() or "guest")
@@ -210,15 +217,16 @@ def _comfy_models_root() -> Path:
 
 def _sam3d_model_status() -> Dict[str, Any]:
     models_root = _comfy_models_root()
+    model_dir = _sam3d_model_directory()
     checks = {
-        "sam3d_model_ckpt": _check(models_root, "sam3dbody/model.ckpt"),
-        "sam3d_model_config": _check(models_root, "sam3dbody/model_config.yaml"),
-        "sam3d_mhr_model": _check(models_root, "sam3dbody/assets/mhr_model.pt"),
+        "sam3d_model_ckpt": _check(model_dir, "model.ckpt"),
+        "sam3d_model_config": _check(model_dir, "model_config.yaml"),
+        "sam3d_mhr_model": _check(model_dir, "assets/mhr_model.pt"),
         "birefnet_config": _check(models_root, "birefnet/BiRefNet_lite/config.json"),
         "person_detector": _check(_person_detector_path().parent, _person_detector_path().name),
     }
     required = ["sam3d_model_ckpt", "sam3d_model_config", "sam3d_mhr_model", "person_detector"]
-    missing_required = [key for key in required if not checks[key].get("exists")]
+    missing_required = [key for key in required if not checks[key].get("exists") or checks[key].get("is_dir")]
     dependency_error = ""
     try:
         _load_sam3d_bridge()
@@ -230,8 +238,8 @@ def _sam3d_model_status() -> Dict[str, Any]:
         "required_ready": not missing_required,
         "birefnet_ready": bool(checks["birefnet_config"].get("exists")),
         "person_detector_ready": bool(checks["person_detector"].get("exists")),
-        "auto_download": True,
-        "model_root": _norm_path(models_root / "sam3dbody"),
+        "auto_download": False,
+        "model_root": _norm_path(model_dir),
         "birefnet_root": _norm_path(models_root / "birefnet" / "BiRefNet_lite"),
         "checks": checks,
         "missing": missing_required,
@@ -239,9 +247,21 @@ def _sam3d_model_status() -> Dict[str, Any]:
         "message": (
             "SAM3D pose parser is ready."
             if ready
-            else "SAM3D models or runtime dependencies are missing; first parse can download model files when network access is available."
+            else "SAM3D models or runtime dependencies are missing. Install the required models through model management before parsing."
         ),
     }
+
+
+def _sam3d_model_directory() -> Path:
+    import modules.config as config
+
+    configured = getattr(config, "paths_sam3dbody", []) or []
+    if isinstance(configured, (str, os.PathLike)):
+        configured = [configured]
+    directories = [Path(value) for value in configured]
+    directories.append(_comfy_models_root() / "sam3dbody")
+    required = ("model.ckpt", "model_config.yaml", "assets/mhr_model.pt")
+    return next((directory for directory in directories if all((directory / name).is_file() for name in required)), directories[0])
 
 
 def _ensure_character_data_loaded() -> None:
@@ -295,14 +315,18 @@ def _sam3d_error(exc: Exception) -> Dict[str, Any]:
         or isinstance(exc, ImportError)
         or isinstance(exc, ModuleNotFoundError)
     )
+    missing_model = isinstance(exc, FileNotFoundError) and "SAM3DBody" in details
     message = "SAM3D reference pose import failed."
     if missing_dependency:
         message = "SAM3D runtime dependencies are missing or incompatible."
+    elif missing_model:
+        message = "SAM3D models are missing. Install them through model management before parsing."
     return {
         "ok": False,
         "error": message,
         "details": details,
         "missing_dependency": missing_dependency,
+        **({"error_code": "resource_missing"} if missing_model else {}),
         "lighting_enabled": False,
         "prompt_box_enabled": False,
     }
@@ -345,7 +369,7 @@ def resource_status(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "message": (
             "Pose Studio resources are available."
             if available and sam3d.get("ready")
-            else "Pose Studio resources are available; SAM3D models may download on first parse."
+            else "Pose Studio resources are available; install missing SAM3D models through model management before parsing."
             if available
             else "Pose Studio resources are incomplete."
         ),
@@ -625,7 +649,9 @@ def import_reference_image(payload: Optional[Dict[str, Any]] = None, state_param
                 boxes = _select_people(boxes, image_rgb.shape, max_people, selection)
             image_np = image_rgb.astype(np.float32) / 255.0
             image_tensor = torch.from_numpy(image_np).unsqueeze(0)
-            pose_json = process_image_to_pose_json(image_tensor, bboxes=boxes)
+            pose_json = process_image_to_pose_json(
+                image_tensor, bboxes=boxes, allow_download=False, model_path=str(_sam3d_model_directory()),
+            )
 
         try:
             pose_data = json.loads(pose_json)
@@ -902,7 +928,10 @@ def render_overlay(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         pose_adjust = 0.0
     try:
         build_overlay = _load_sam3d_overlay_bridge()
-        mesh = build_overlay(pose_data, body_preset=body_preset, pose_adjust=pose_adjust)
+        mesh = build_overlay(
+            pose_data, body_preset=body_preset, pose_adjust=pose_adjust,
+            allow_download=False, model_path=str(_sam3d_model_directory()),
+        )
         return {
             "ok": True,
             "status": "success",
@@ -928,6 +957,30 @@ def _safe_category_parts(value: str) -> List[str]:
         if safe:
             parts.append(safe)
     return parts[:4]
+
+
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _unique_pose_path(folder: Path, stem: str, overwrite: bool) -> Path:
@@ -959,10 +1012,7 @@ def _save_preview_data_url(data_url: str, pose_path: Path) -> str:
     if not binary:
         return ""
     preview_path = pose_path.with_suffix(ext)
-    tmp_path = preview_path.with_suffix(f"{preview_path.suffix}.tmp")
-    with open(tmp_path, "wb") as f:
-        f.write(binary)
-    os.replace(tmp_path, preview_path)
+    _atomic_write_bytes(preview_path, binary)
     return _norm_path(preview_path)
 
 
@@ -988,18 +1038,24 @@ def save_pose(payload: Optional[Dict[str, Any]] = None, state_params: Optional[D
     folder.mkdir(parents=True, exist_ok=True)
 
     stem = _safe_file_stem(str(payload.get("name") or payload.get("title") or "pose"))
-    path = _unique_pose_path(folder, stem, bool(payload.get("overwrite")))
     data = _safe_json_value(pose_data)
-    tmp_path = path.with_suffix(".json.tmp")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp_path, path)
-    preview_path = _save_preview_data_url(str(payload.get("preview_data_url") or ""), path)
-    item = _pose_library_item(path, root, "user", id_prefix="user/")
-    if preview_path:
-        preview = Path(preview_path)
-        item["preview_path"] = preview_path
-        item["preview_url"] = _file_url(preview)
+    with _POSE_LIBRARY_SAVE_LOCK:
+        path = _unique_pose_path(folder, stem, bool(payload.get("overwrite")))
+        previous_json = path.read_bytes() if path.is_file() else None
+        _atomic_write_bytes(path, json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
+        try:
+            preview_path = _save_preview_data_url(str(payload.get("preview_data_url") or ""), path)
+        except Exception:
+            if previous_json is None:
+                path.unlink(missing_ok=True)
+            else:
+                _atomic_write_bytes(path, previous_json)
+            raise
+        item = _pose_library_item(path, root, "user", id_prefix="user/")
+        if preview_path:
+            preview = Path(preview_path)
+            item["preview_path"] = preview_path
+            item["preview_url"] = _file_url(preview)
     return {
         "ok": True,
         "item": item,

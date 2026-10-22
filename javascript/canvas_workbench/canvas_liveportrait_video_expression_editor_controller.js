@@ -12,6 +12,7 @@
         const runtimeSource = scope.runtimeSource || {};
         const selectionSource = scope.selectionSource || {};
         const languageSource = scope.languageSource || {};
+        const editorSessions = new WeakMap();
         const call = (source, name, fallback, ...args) => typeof source[name] === 'function'
             ? source[name](...args) : fallback;
         const t = (en, cn) => {
@@ -46,19 +47,37 @@
                 showToast(t('Node is locked.', '节点已锁定。'));
                 return null;
             }
+            const project = call(projectSource, 'getProject', {}) || {};
+            if (call(nodeSource, 'getNode', null, node.id) !== node) return null;
+            const sourceInfo = livePortraitVideoExpressionSourceInfo(node);
+            const inputVersion = () => {
+                const currentSource = livePortraitVideoExpressionSourceInfo(node);
+                return JSON.stringify({
+                    asset: currentSource.asset, src: currentSource.src,
+                    expression: node.params?.scene_additional_prompt_2 || '',
+                    state: node.liveportrait_video_expression || {}
+                });
+            };
+            const session = { version: inputVersion() };
+            editorSessions.set(node, session);
+            const owns = () => call(projectSource, 'getProject', null) === project
+                && call(nodeSource, 'getNode', null, node.id) === node
+                && editorSessions.get(node) === session
+                && livePortraitVideoExpressionSourceInfo(node).sourceNode === sourceInfo.sourceNode
+                && inputVersion() === session.version;
             const ready = await call(runtimeSource, 'ensureWorkbenchLazyRuntime', false,
                 'livePortraitExpression',
                 () => call(editorSource, 'isLoaded', false),
                 t('Loading LivePortrait Video...', '正在加载 LivePortrait Video...'),
                 t('LivePortrait Exp editor is not loaded.', 'LivePortrait Exp 编辑器尚未加载。')
             );
-            if (!ready) return null;
-            const sourceInfo = livePortraitVideoExpressionSourceInfo(node);
+            if (!ready || !owns()) return null;
             if (!sourceInfo.sourceNode || !sourceInfo.src) {
                 showToast(t('Connect a source video first.', '请先连接源视频。'));
                 return null;
             }
             const frame = await call(nodeSource, 'extractVideoFirstFrameDataUrl', null, sourceInfo.src);
+            if (!owns()) return null;
             if (!frame?.dataUrl) {
                 showToast(t('Could not read the first frame from this video.', '无法读取这个视频的首帧。'));
                 return null;
@@ -72,7 +91,6 @@
                 height: frame.height,
                 source_video_node_id: sourceInfo.sourceNode.id
             });
-            const project = call(projectSource, 'getProject', {}) || {};
             return call(editorSource, 'open', undefined, {
                 title: t('LivePortrait Video', 'LivePortrait 视频表情'),
                 context: 'canvas',
@@ -80,7 +98,9 @@
                 projectId: project.id || call(projectSource, 'getProjectId', ''),
                 node,
                 nodeId: node.id,
-                params: stored.params || {},
+                params: stored.params && typeof stored.params === 'object' && Object.keys(stored.params).length
+                    ? stored.params
+                    : undefined,
                 expressionState,
                 sourceDataUrl: frame.dataUrl,
                 sourceSrc: frame.dataUrl,
@@ -96,7 +116,8 @@
                 detectTheme: (...args) => call(domSource, 'detectWorkbenchTheme', undefined, ...args),
                 ensureFormNames: (...args) => call(domSource, 'ensureWorkbenchFormFieldNames', undefined, ...args),
                 onStateChange: (cache) => {
-                    const current = call(nodeSource, 'getNode', null, node.id) || node;
+                    if (!owns()) return;
+                    const current = node;
                     Object.assign(current, call(stateSource, 'buildLivePortraitVideoExpressionStatePatch', {}, current, {
                         statePatch: {
                             params: cache?.params || {},
@@ -108,10 +129,12 @@
                         },
                         updatedAt: cache?.updated_at || call(runtimeSource, 'nowIso', '')
                     }));
+                    session.version = inputVersion();
                 },
                 onConfirm: (response) => {
+                    if (!owns()) return;
                     call(runtimeSource, 'pushHistory', undefined, 'Update LivePortrait Video expression params');
-                    const current = call(nodeSource, 'getNode', null, node.id) || node;
+                    const current = node;
                     const expression = response?.expression_state || expressionState || '';
                     Object.assign(current, call(stateSource, 'buildNodeParamsPatch', {}, current, {
                         paramsPatch: { scene_additional_prompt_2: expression }
@@ -132,6 +155,7 @@
                     Object.assign(current, call(stateSource, 'buildSpecialNodeStatusPatch', {}, current, {
                         status: call(stateSource, 'mergeCanvasRunStatus', current.status, current.status, 'ready', t('Expression params saved.', '表情参数已保存。'))
                     }));
+                    editorSessions.delete(node);
                     call(selectionSource, 'selectNode', undefined, current.id);
                     call(runtimeSource, 'mutate', undefined, { inspector: true });
                     showToast(t('Expression params saved.', '表情参数已保存。'));

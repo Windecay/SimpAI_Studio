@@ -8,7 +8,6 @@ import logging
 import mimetypes
 import os
 import re
-import tempfile
 from urllib.parse import quote
 
 import gradio as gr
@@ -1921,29 +1920,24 @@ def _scene_director_backend_dict(value):
         return {}
 
 
-def _scene_director_data_url_to_temp(value, kind):
+def _scene_director_data_url_asset_path(value, kind, runtime, state_params, ref):
     text = str(value or "").strip()
     if not text.startswith("data:") or "," not in text:
         return None
-    header, payload = text.split(",", 1)
-    mime = ""
-    try:
-        mime = header[5:].split(";", 1)[0]
-    except Exception:
-        mime = ""
-    suffix = mimetypes.guess_extension(mime) if mime else None
-    if not suffix:
-        suffix = ".wav" if kind == "audio" else ".mp4"
-    try:
-        raw = base64.b64decode(payload, validate=False)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-            temp_file.write(raw)
-            return os.path.abspath(temp_file.name)
-    except Exception:
-        return None
+    from modules import canvas_workbench_assets as assets
+
+    saved = assets.save_data_url_asset(
+        text, str(runtime.get("project_id") or "scene_director"), state_params,
+        node_id=ref, role=f"director_{kind}_reference",
+    )
+    if not saved or not saved.get("path") or saved.get("copy_error"):
+        raise gr.Error(_scene_director_text(
+            state_params, f"Could not save Director {kind} reference.",
+            f"无法保存导演台{'音频' if kind == 'audio' else '视频'}参考素材。"))
+    return os.path.abspath(saved["path"])
 
 
-def _scene_director_media_file_value(runtime, ref, kind, fallback=None):
+def _scene_director_media_file_value(runtime, ref, kind, fallback=None, state_params=None):
     ref = str(ref or "").strip()
     if not ref or ref == SCENE_DIRECTOR_PREVIOUS_VIDEO_REF:
         return None
@@ -1960,9 +1954,9 @@ def _scene_director_media_file_value(runtime, ref, kind, fallback=None):
         for key in ("data_url", "data"):
             value = holder.get(key)
             if isinstance(value, str) and value.strip():
-                temp_path = _scene_director_data_url_to_temp(value, kind)
-                if temp_path:
-                    return temp_path
+                asset_path = _scene_director_data_url_asset_path(value, kind, runtime, state_params, ref)
+                if asset_path:
+                    return asset_path
     return fallback
 
 
@@ -2080,7 +2074,9 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
 
     audio_refs = _scene_director_segment_refs(segment, "audio", len(SCENE_DIRECTOR_AUDIO_BACKEND_SLOTS))
     for slot, audio_ref in zip(SCENE_DIRECTOR_AUDIO_BACKEND_SLOTS, audio_refs):
-        audio_value = _scene_director_media_file_value(runtime, audio_ref, "audio", base_audio_by_ref.get(audio_ref))
+        audio_value = _scene_director_media_file_value(
+            runtime, audio_ref, "audio", base_audio_by_ref.get(audio_ref), state_params,
+        )
         if audio_value:
             next_backend[slot] = audio_value
 
@@ -2089,7 +2085,9 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
         if video_ref == SCENE_DIRECTOR_PREVIOUS_VIDEO_REF:
             video_value = previous_video
         else:
-            video_value = _scene_director_media_file_value(runtime, video_ref, "video", base_video_by_ref.get(video_ref))
+            video_value = _scene_director_media_file_value(
+                runtime, video_ref, "video", base_video_by_ref.get(video_ref), state_params,
+            )
         if video_value:
             next_backend[slot] = video_value
     if h3_director.is_runtime(runtime) and segment["mode"] == "transition":
@@ -3016,57 +3014,9 @@ def generate_clicked_or_director(
         pass
 
     total = len(segments)
-    yield (
-        gr_update(visible=True, value=html_module.make_progress_html(1, f"Director: 0/{total}")),
-        gr_update(),
-        gr_update(visible="hidden", value=None),
-        gr_update(visible=False, value=None),
-        gr_update(visible=False),
-        False,
-        gr_update(visible=False),
-        compare_button_update_fn(visible=False, ready=False),
-        gr_update(visible=True, interactive=True),
-        gr_update(visible=True, interactive=True),
-    )
-
-    for index, segment in enumerate(segments):
-        if getattr(generation_task, "last_stop", False) in ("stop", "skip"):
-            break
-        segment_task = _scene_director_build_segment_task(
-            generation_task,
-            runtime,
-            segment,
-            index,
-            previous_video,
-            state_params,
-        )
-        for out in generate_clicked_fn(segment_task, state_params):
-            yield out
-        segment_results = list(getattr(segment_task, "results", []) or [])
-        if segment_results:
-            final_results.extend(segment_results)
-            segment_video = _scene_director_video_path(_scene_director_first_video_result(segment_results))
-            if segment_video:
-                segment_videos.append({"index": index, "segment": segment, "path": segment_video})
-                previous_video = segment_video
-            else:
-                previous_video = _scene_director_first_video_result(segment_results) or previous_video
-        if getattr(generation_task, "last_stop", False) in ("stop", "skip"):
-            break
-
-    chain_output = str((runtime.get("director_capability") or {}).get("chain_output") or "timeline").strip().lower()
-    compose_timeline = _scene_director_compose_timeline_enabled(runtime)
-    if chain_output == "last_result" and final_results:
-        last_video = _scene_director_first_video_result(final_results)
-        final_results = [last_video or final_results[-1]]
-    elif (
-        compose_timeline
-        and final_results
-        and len(segment_videos) == len(segments)
-        and getattr(generation_task, "last_stop", False) not in ("stop", "skip")
-    ):
+    try:
         yield (
-            gr_update(visible=True, value=html_module.make_progress_html(1, "Director: composing final video")),
+            gr_update(visible=True, value=html_module.make_progress_html(1, f"Director: 0/{total}")),
             gr_update(),
             gr_update(visible="hidden", value=None),
             gr_update(visible=False, value=None),
@@ -3077,21 +3027,97 @@ def generate_clicked_or_director(
             gr_update(visible=True, interactive=True),
             gr_update(visible=True, interactive=True),
         )
-        timeline_video = _scene_director_render_final_timeline(runtime, segment_videos, state_params)
-        if timeline_video:
-            final_results.append(timeline_video)
-        elif not getattr(generation_task, "backend_error", None):
-            generation_task.backend_error = _scene_director_text(
-                state_params, "The final timeline could not be delivered; shot outputs were preserved.",
-                "最终时间轴交付失败，已保留分镜输出。")
 
-    try:
+        for index, segment in enumerate(segments):
+            if getattr(generation_task, "last_stop", False) in ("stop", "skip"):
+                break
+            segment_task = _scene_director_build_segment_task(
+                generation_task, runtime, segment, index, previous_video, state_params,
+            )
+            if getattr(generation_task, "last_stop", False) in ("stop", "skip"):
+                break
+            generation_task.active_director_task = segment_task
+            try:
+                yield from generate_clicked_fn(segment_task, state_params)
+            except BaseException:
+                if (getattr(segment_task, "processing", False)
+                        and getattr(segment_task, "last_stop", False) not in ("stop", "skip")):
+                    import modules.async_worker as worker
+
+                    action = getattr(generation_task, "last_stop", False)
+                    try:
+                        worker.request_task_cancel(segment_task, action if action in ("stop", "skip") else "stop")
+                    except Exception:
+                        logger.warning("[SceneDirector] Failed to cancel interrupted shot", exc_info=True)
+                raise
+            finally:
+                segment_results = list(getattr(segment_task, "results", []) or [])
+                final_results.extend(segment_results)
+                generation_task.results = list(final_results)
+                if getattr(generation_task, "active_director_task", None) is segment_task:
+                    generation_task.active_director_task = None
+            stopped = (getattr(generation_task, "last_stop", False)
+                       or getattr(segment_task, "user_cancel_action", None)
+                       or getattr(segment_task, "last_stop", False))
+            if stopped in ("stop", "skip"):
+                generation_task.last_stop = stopped
+                break
+            if getattr(segment_task, "backend_error", None):
+                generation_task.backend_error = segment_task.backend_error
+                break
+            segment_video = _scene_director_video_path(_scene_director_first_video_result(segment_results))
+            if not segment_video:
+                generation_task.backend_error = _scene_director_text(
+                    state_params, f"Director shot {index + 1} produced no video; later shots were not started.",
+                    f"分镜 {index + 1} 没有可用视频，后续分镜未开始生成。")
+                break
+            segment_videos.append({"index": index, "segment": segment, "path": segment_video})
+            previous_video = segment_video
+
+        chain_output = str((runtime.get("director_capability") or {}).get("chain_output") or "timeline").strip().lower()
+        compose_timeline = _scene_director_compose_timeline_enabled(runtime)
+        sequence_complete = len(segment_videos) == len(segments)
+        if chain_output == "last_result" and final_results and sequence_complete:
+            last_video = _scene_director_first_video_result(final_results)
+            final_results = [last_video or final_results[-1]]
+        elif (
+            compose_timeline
+            and final_results
+            and sequence_complete
+            and getattr(generation_task, "last_stop", False) not in ("stop", "skip")
+        ):
+            yield (
+                gr_update(visible=True, value=html_module.make_progress_html(1, "Director: composing final video")),
+                gr_update(),
+                gr_update(visible="hidden", value=None),
+                gr_update(visible=False, value=None),
+                gr_update(visible=False),
+                False,
+                gr_update(visible=False),
+                compare_button_update_fn(visible=False, ready=False),
+                gr_update(visible=True, interactive=True),
+                gr_update(visible=True, interactive=True),
+            )
+            timeline_video = _scene_director_render_final_timeline(runtime, segment_videos, state_params)
+            if timeline_video:
+                final_results.append(timeline_video)
+            elif not getattr(generation_task, "backend_error", None):
+                generation_task.backend_error = _scene_director_text(
+                    state_params, "The final timeline could not be delivered; shot outputs were preserved.",
+                    "最终时间轴交付失败，已保留分镜输出。")
+    except GeneratorExit:
+        if getattr(generation_task, "last_stop", False) not in ("stop", "skip"):
+            generation_task.last_stop = "stop"
+        raise
+    except Exception as error:
+        if not getattr(generation_task, "backend_error", None):
+            generation_task.backend_error = str(error)
+        raise
+    finally:
         generation_task.processing = False
         generation_task.results = final_results
         generation_task.simpleai_generation_had_output = bool(final_results)
         generation_task.image_number = max(1, len(final_results))
-    except Exception:
-        pass
 
     if not final_results:
         yield (

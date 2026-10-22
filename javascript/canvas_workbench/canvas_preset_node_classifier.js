@@ -39,7 +39,7 @@
         function isLtx23MultiGuidePresetNode(node) {
             if (!node || node.type !== 'preset') return false;
             const taskMethod = String(call('getPresetThemeInfo', {}, node)?.task_method || node.runtime?.task_method || '').toLowerCase();
-            if (taskMethod.includes('ltx_i2v') || taskMethod.includes('ltx_ia2v') || taskMethod.includes('ltx_extent')) return true;
+            if (taskMethod) return taskMethod.includes('ltx_i2v') || taskMethod.includes('ltx_ia2v') || taskMethod.includes('ltx_extent');
             return /ltx2\.3\s*\((i2v|ia2v|extent)\)/.test(presetText(node, false));
         }
 

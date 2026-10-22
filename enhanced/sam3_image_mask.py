@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import math
 import os
 from typing import Any
 from typing import Iterable
@@ -29,7 +30,7 @@ def _resolve_sam3_checkpoint(model_path: str | None, *, allow_download: bool) ->
 
 
 def ensure_sam3_image_model_loaded(*, model_path: str | None = None) -> None:
-    sam3_comfy31.ensure_sam31_loaded(model_path)
+    sam3_comfy31.ensure_sam31_loaded(model_path, allow_download=False)
 
 
 def offload_sam3_image_model_to_cpu() -> None:
@@ -56,15 +57,35 @@ def run_sam3_image_mask_from_points(
     *,
     positive_points: Iterable[dict[str, Any]] | None,
     negative_points: Iterable[dict[str, Any]] | None,
-    threshold: float = 0.3,
-    mask_threshold: float = 0.4,
+    threshold: float | None = None,
+    mask_threshold: float = 0.5,
     model_path: str | None = None,
 ) -> np.ndarray:
+    probability = float(mask_threshold)
+    if isinstance(mask_threshold, bool) or not math.isfinite(probability) or not 0.0 < probability < 1.0:
+        raise ValueError("mask_threshold must be a pixel probability greater than 0 and less than 1.")
+    mask_logit_threshold = math.log(probability) - math.log1p(-probability)
+    positive_points = [{"x": x, "y": y} for x, y in _normalize_points(positive_points)]
+    negative_points = [{"x": x, "y": y} for x, y in _normalize_points(negative_points)]
+    if not positive_points and not negative_points:
+        confidence = 0.3 if threshold is None else float(threshold)
+        if isinstance(threshold, bool) or not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+            raise ValueError("threshold must be a detection confidence between 0 and 1.")
+        return sam3_comfy31.image_mask_from_text(
+            image_rgb,
+            prompt="visual",
+            threshold=confidence,
+            mask_threshold=mask_logit_threshold,
+            refine_iterations=2,
+            model_path=model_path,
+        )
+    if threshold is not None:
+        raise ValueError("threshold is not supported for point prompts. Use mask_threshold for pixel probability.")
     return sam3_comfy31.image_mask_from_points(
         image_rgb,
         positive_points=positive_points,
         negative_points=negative_points,
-        mask_threshold=0.0,
+        mask_threshold=mask_logit_threshold,
         refine_iterations=2,
         model_path=model_path,
     )
@@ -79,9 +100,10 @@ def decode_data_url_to_pil(data_url: str) -> Tuple[Image.Image, Image.Image | No
     img = Image.open(io.BytesIO(img_data))
 
     alpha = None
-    if img.mode == "RGBA":
-        alpha = img.split()[3]
-        img = img.convert("RGB")
+    if "A" in img.getbands() or "transparency" in img.info:
+        rgba = img.convert("RGBA")
+        alpha = rgba.getchannel("A")
+        img = rgba.convert("RGB")
     elif img.mode != "RGB":
         img = img.convert("RGB")
 
@@ -210,11 +232,14 @@ def build_sam3_image_response(
     image_data_url: str,
     positive_points: Iterable[dict[str, Any]] | None,
     negative_points: Iterable[dict[str, Any]] | None,
-    threshold: float = 0.3,
+    threshold: float | None = None,
     fill_holes: bool = False,
-    mask_threshold: float = 0.4,
+    mask_threshold: float = 0.5,
     close_radius: int = 1,
 ) -> dict[str, Any]:
+    radius = float(close_radius)
+    if isinstance(close_radius, bool) or not math.isfinite(radius) or not radius.is_integer() or not 0 <= radius <= 6:
+        raise ValueError("close_radius must be an integer between 0 and 6.")
     image_rgb, original_alpha = decode_data_url_to_pil(image_data_url)
     mask_u8 = run_sam3_image_mask_from_points(
         image_rgb,
@@ -223,7 +248,7 @@ def build_sam3_image_response(
         threshold=threshold,
         mask_threshold=mask_threshold,
     )
-    mask_u8 = close_mask(mask_u8, radius=int(close_radius))
+    mask_u8 = close_mask(mask_u8, radius=int(radius))
     if bool(fill_holes):
         mask_u8 = fill_mask_holes(mask_u8)
     cutout = apply_mask_to_image(image_rgb, mask_u8, original_alpha=original_alpha)

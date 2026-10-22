@@ -51,7 +51,7 @@ def _card_path(card_id, user_did, root=None):
 def _media_path(asset_id, user_did, root=None):
     if not _MEDIA_ID.fullmatch(str(asset_id)):
         raise ValueError("invalid_asset_id")
-    return _root(user_did, root) / "audiovisual_media" / f"{asset_id.split(':')[1]}.json"
+    return _root(user_did, root) / "audiovisual_media" / f"{asset_id.replace(':', '_')}.json"
 
 
 def register_media(asset_ref, user_did, root=None):
@@ -72,8 +72,13 @@ def register_media(asset_ref, user_did, root=None):
 
 
 def resolve_media(asset_id, user_did, root=None):
-    ref = _read(_media_path(asset_id, user_did, root))
-    if not ref or ref.get("schema") != MEDIA_SCHEMA or str(ref.get("owner")) != str(user_did):
+    path = _media_path(asset_id, user_did, root)
+    if not path.exists():
+        # Legacy filenames omitted the namespace; the record must still match the exact requested ID.
+        path = path.with_name(f"{asset_id.split(':')[1]}.json")
+    ref = _read(path)
+    if (not ref or ref.get("schema") != MEDIA_SCHEMA or str(ref.get("owner")) != str(user_did)
+            or ref.get("asset_id") != asset_id or ref.get("trim_source_asset_id") == asset_id):
         raise ValueError("asset_not_found")
     return ref
 
@@ -123,6 +128,16 @@ def prepare_scene_assignments(assignments, current, user_did, image_loader, root
     return updates, refs
 
 
+def _validate_trim_wav(path):
+    try:
+        with wave.open(str(path), "rb") as reader:
+            frame_size = reader.getnchannels() * reader.getsampwidth()
+            if reader.getnframes() < 1 or len(reader.readframes(1)) < frame_size:
+                raise ValueError("audio_trim_failed")
+    except (OSError, wave.Error, EOFError):
+        raise ValueError("audio_trim_failed") from None
+
+
 def trim_audio(asset_id, start, end, user_did, root=None, asset_service=None):
     ref = resolve_media(asset_id, user_did, root)
     if not str(ref.get("mime", "")).startswith("audio/"):
@@ -158,6 +173,10 @@ def trim_audio(asset_id, start, end, user_did, root=None, asset_service=None):
                 duration = reader.getnframes() / rate
                 if end > duration + 0.001 or round(end * rate) <= round(start * rate):
                     raise ValueError("invalid_trim_range")
+                if round(start * rate) == 0 and round(end * rate) >= reader.getnframes():
+                    # No PCM samples were removed, so retain the existing registration and origin.
+                    _validate_trim_wav(source)
+                    return ref
                 reader.setpos(round(start * rate))
                 with wave.open(str(temporary), "wb") as writer:
                     writer.setparams(reader.getparams())
@@ -179,20 +198,34 @@ def trim_audio(asset_id, start, end, user_did, root=None, asset_service=None):
                 raise ValueError("audio_trim_failed") from None
             if result.returncode:
                 raise ValueError("audio_trim_failed")
+        _validate_trim_wav(temporary)
         with _LOCK:
-            temporary.replace(output)
-        trimmed = asset_service.register_existing_file_asset(
-            str(output), "character_library", state, node_id="visual_character", role="audio",
-            metadata={"mime": "audio/wav"}, copy_to_assets=False,
-        )
-        if not trimmed:
-            raise ValueError("audio_trim_failed")
-        trimmed.update({
-            "name": f"{Path(ref.get('name') or 'voice').stem} [{start:g}-{end:g}s].wav",
-            "trim_source_asset_id": asset_id,
-            "trim_start": start, "trim_end": end,
-        })
-        return register_media(trimmed, user_did, root)
+            created = not output.exists()
+            try:
+                if created:
+                    temporary.replace(output)
+                else:
+                    _validate_trim_wav(output)
+                trimmed = asset_service.register_existing_file_asset(
+                    str(output), "character_library", state, node_id="visual_character", role="audio",
+                    metadata={"mime": "audio/wav"}, copy_to_assets=False,
+                )
+                if not trimmed:
+                    raise ValueError("audio_trim_failed")
+                source_start = float(ref.get("trim_start") or 0) if ref.get("trim_source_asset_id") else 0
+                trimmed.update({
+                    "name": f"{Path(ref.get('name') or 'voice').stem} [{start:g}-{end:g}s].wav",
+                    "trim_source_asset_id": ref.get("trim_source_asset_id") or asset_id,
+                    "trim_start": start + source_start, "trim_end": end + source_start,
+                })
+                return register_media(trimmed, user_did, root)
+            except BaseException:
+                if created:
+                    try:
+                        output.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                raise
     finally:
         temporary.unlink(missing_ok=True)
 

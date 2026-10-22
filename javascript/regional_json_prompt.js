@@ -391,7 +391,7 @@
         });
         return image;
     }
-    async function readReferenceFile(file) {
+    async function readReferenceFile(file, material = false) {
         let type = String(file.type || '').toLowerCase();
         if (!type || type === 'application/octet-stream') {
             type = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }[
@@ -412,10 +412,10 @@
             canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
             canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (!material) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
             ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-            const source = canvas.toDataURL('image/jpeg', 0.92);
-            requireValue(source.length <= 2800000, 'Reference image is too large');
+            const source = canvas.toDataURL(material ? 'image/png' : 'image/jpeg', 0.92);
+            requireValue(source.length <= (material ? 12 * 1024 * 1024 : 2800000), 'Reference image is too large');
             return { source, width: canvas.width, height: canvas.height, name: file.name,
                 opacity: 0.5, visible: true };
         } finally { root.URL.revokeObjectURL(url); }
@@ -477,6 +477,11 @@
         return Array.from({ length: count }, (_, index) => ({
             locked: value?.[index]?.locked === true,
             hidden: value?.[index]?.hidden === true,
+            ...(Number.isInteger(value?.[index]?.referenceSlot) && value[index].referenceSlot >= 1
+                && value[index].referenceSlot <= 4 ? {
+                    referenceSlot: value[index].referenceSlot,
+                    referenceKey: String(value[index].referenceKey || '').slice(0, 100),
+                } : {}),
             ...(value?.[index]?.outside === true ? { outside: true } : {}),
             ...(Array.isArray(value?.[index]?.sourceBox) && value[index].sourceBox.length === 4
                 && value[index].sourceBox.every(edge => typeof edge === 'number' && Number.isFinite(edge))
@@ -489,6 +494,21 @@
             ? { width: value.width, height: value.height } : null;
     }
 
+    function referenceLabels(draft, regionUi, label = slot => `Reference image ${slot}`) {
+        const result = clone(draft);
+        result.items.forEach((item, index) => {
+            const slot = regionUi[index]?.referenceSlot;
+            if (slot) item.caption = `${label(slot)}: ${item.caption}`;
+        });
+        return result;
+    }
+    function materialSlots(value) {
+        return Array.from({ length: 4 }, (_, index) => {
+            const item = value?.find?.(item => item.slot === index + 1) || {};
+            return { slot: index + 1, key: String(item.key || '').slice(0, 100),
+                kind: String(item.kind || 'ImagePrompt'), occupied: item.occupied === true, enabled: item.enabled === true };
+        });
+    }
     function normalizeSnapshot(value) {
         try {
             if (value?.version !== 1) return null;
@@ -505,6 +525,7 @@
                         dimensions(item?.fixedCanvas?.width, item?.fixedCanvas?.height);
                         frame.fixedCanvas = { width: item.fixedCanvas.width, height: item.fixedCanvas.height };
                     } catch (_) {}
+                    if (Array.isArray(item?.materials)) frame.materials = materialSlots(item.materials);
                     return [{ draft, regionUi: normalizeRegionUi(item?.regionUi, draft.items.length), ...frame }];
                 } catch (_) { return []; }
             });
@@ -514,6 +535,7 @@
             } catch (_) {}
             return {
                 version: 1, draft, regionUi: normalizeRegionUi(value.regionUi, draft.items.length),
+                ...(Array.isArray(value.materials) ? { materials: materialSlots(value.materials) } : {}),
                 raw: typeof value.raw === 'string' ? value.raw
                     : JSON.stringify(visibleDraft(draft, value.regionUi), null, 2),
                 rawDirty: value.rawDirty === true,
@@ -538,10 +560,12 @@
 
     let active = null, windowFrame = null, windowMaximized = false;
     function open(options = {}) {
+        if (active?.isApplying?.()) return active.host;
         active?.close();
         const state = options.langState || root.simpleaiTopbarSystemParams || {};
         const t = key => options.translate?.(key) || (state.__lang === 'en' ? key : (root.localization?.[key] || key));
         let outputModel = options.outputModel || 'moss';
+        const referenceLabel = slot => t('Reference image {number}').replace('{number}', slot);
         const compileOutput = value => typeof options.compilePrompt === 'function'
             ? options.compilePrompt(value, outputModel) : compile(value, { allowIncomplete: true });
         const previewColor = (item, index) => options.regionColor?.(item, index, outputModel) || regionColor(item, index);
@@ -559,9 +583,10 @@
                 bbox_coord_space: 'abs', bbox_format: 'xyxy' };
         }
         let appliedLayout = normalizeSnapshot(options.reference?.layoutState);
-        if (appliedLayout) {
+        if (appliedLayout && options.reference?.layoutPrompt !== options.value) {
             try {
-                if (compile(visibleDraft(appliedLayout.draft, appliedLayout.regionUi), { allowIncomplete: true })
+                if (compile(visibleDraft(referenceLabels(appliedLayout.draft, appliedLayout.regionUi, referenceLabel),
+                    appliedLayout.regionUi), { allowIncomplete: true })
                     !== compile(draft, { allowIncomplete: true })) appliedLayout = null;
             } catch (_) { appliedLayout = null; }
         }
@@ -575,6 +600,10 @@
         let optimizing = false, closed = false, aiPreview = null, aiGeneration = 0;
         let reference = null, referenceImage = null, referenceRevision = 0, loadingReference = false;
         let referenceAbort = null, referenceDragDepth = 0;
+        const hasMaterials = typeof options.loadMaterials === 'function';
+        let materials = materialSlots(null), originalMaterials = materialSlots(null), materialSignature = '';
+        let loadingMaterials = false, materialsReady = !hasMaterials, materialFileSlot = null, materialAbort = null;
+        const materialVault = new Map(), materialImages = new Map();
         let referenceFit = restored?.referenceFit
             || (referenceFits.includes(options.reference?.fit) ? options.reference.fit : 'contain');
         let fixedCanvas = restored?.fixedCanvas || { width: draft.width, height: draft.height };
@@ -636,6 +665,12 @@
                 <details><summary>${esc(t('Compiled prompt'))}</summary><textarea data-rjp-output readonly rows="3" aria-label="${esc(t('Compiled prompt'))}"></textarea></details>
               </div>
               <aside>
+                <section class="sai-rjp-materials" data-rjp-materials ${hasMaterials ? '' : 'hidden'}>
+                  <div class="sai-rjp-region-heading"><h3>${esc(t('Image references'))}</h3>
+                    ${icon('add-material', 'images', 'Add reference images')}
+                  </div>
+                  <div class="sai-rjp-material-list" data-rjp-material-list></div>
+                </section>
                 <div class="sai-rjp-region-heading"><h3>${esc(t('Regions'))} <span data-rjp-count></span></h3>
                   <select data-rjp-add-type aria-label="${esc(t('New region type'))}">${roles.map(role => `<option value="${role}">${esc(label(role))}</option>`).join('')}</select>
                   ${icon('add', 'plus', 'Add region')}</div>
@@ -647,6 +682,9 @@
                     ${icon('duplicate', 'clone', 'Duplicate region')}${icon('delete', 'trash-can', 'Delete region')}
                   </div>
                   <label>${esc(t('Region description'))}<textarea data-rjp-field="caption" rows="2"></textarea></label>
+                  <label data-rjp-binding-wrap ${hasMaterials ? '' : 'hidden'}>${esc(t('Image reference'))}
+                    <select data-rjp-binding aria-label="${esc(t('Image reference'))}"></select>
+                  </label>
                   <label data-rjp-text-wrap>${esc(t('Literal text'))}<textarea data-rjp-field="text" rows="2"></textarea></label>
                   <details class="sai-rjp-region-details" data-rjp-details>
                     <summary>${esc(t('Position and palette'))}</summary>
@@ -701,6 +739,7 @@
               </div>
             </footer><input type="file" accept=".json,application/json" data-rjp-file hidden>
             <input type="file" accept="image/png,image/jpeg,image/webp" data-rjp-reference-file hidden>
+            <input type="file" accept="image/png,image/jpeg,image/webp" data-rjp-material-file multiple hidden>
           </section>`;
         const q = selector => host.querySelector(selector);
         const dialog = q('.sai-rjp-dialog');
@@ -759,6 +798,17 @@
         const canvas = q('canvas'), viewport = q('.sai-rjp-viewport'), board = q('.sai-rjp-board');
         const raw = q('[data-rjp-json]');
         const editableDraft = () => visibleDraft(draft, regionUi);
+        const modelDraft = () => {
+            if (!hasMaterials) return editableDraft();
+            draft.items.forEach((_, index) => {
+                const ui = regionUi[index];
+                if (!ui.referenceSlot || ui.outside) return;
+                const material = materials[ui.referenceSlot - 1];
+                requireValue(material?.enabled && material.key === ui.referenceKey,
+                    'A linked reference image is unavailable. Select its image reference again.');
+            });
+            return visibleDraft(referenceLabels(draft, regionUi, referenceLabel), regionUi);
+        };
         raw.value = restored ? restored.raw : (initialError ? String(options.value || '') : JSON.stringify(editableDraft(), null, 2));
         q('[data-rjp-ai-scope]').value = restored?.aiScope || 'all';
         q('[data-rjp-ai-instruction]').value = restored?.aiInstruction || '';
@@ -774,6 +824,7 @@
                 version: 1, draft, regionUi, raw: rawDirty ? raw.value : JSON.stringify(editableDraft(), null, 2),
                 rawDirty, selected, mode, tab, undo, redo, optimizedSnapshot,
                 referenceFit, fixedCanvas,
+                ...(hasMaterials ? { materials: materialSlots(materials) } : {}),
                 detailsOpen: q('[data-rjp-details]').open,
                 aiScope: q('[data-rjp-ai-scope]').value,
                 aiInstruction: q('[data-rjp-ai-instruction]').value,
@@ -781,6 +832,10 @@
             });
             if (snapshot) {
                 try { options.onDraftChange(snapshot); } catch (_) {}
+            }
+            if (hasMaterials && materialsReady) {
+                options.onMaterialsChange?.({ signature: materialSignature, materials: clone(materials),
+                    assets: [...materialVault.values()] });
             }
         }
         function status(error = null, isError = true) {
@@ -800,10 +855,17 @@
             }, false);
         }
         const capture = () => ({ draft: clone(draft), regionUi: clone(regionUi), referenceFit, fixedCanvas: { ...fixedCanvas },
+            ...(hasMaterials ? { materials: materialSlots(materials) } : {}),
             ...(reference ? { referenceSize: referenceDimensions(reference) } : {}) });
         function restore(snapshot) {
             draft = clone(snapshot.draft);
             regionUi = normalizeRegionUi(snapshot.regionUi, draft.items.length);
+            if (hasMaterials && snapshot.materials) {
+                materials = materialSlots(snapshot.materials).map(item => ({
+                    ...item, source: item.kind === 'ImagePrompt' ? materialVault.get(item.key)?.source || '' : '',
+                    name: materialVault.get(item.key)?.name || '',
+                }));
+            }
             if (referenceFits.includes(snapshot.referenceFit)) referenceFit = snapshot.referenceFit;
             fixedCanvas = snapshot.fixedCanvas ? { ...snapshot.fixedCanvas } : { width: draft.width, height: draft.height };
             if (reference && snapshot.referenceSize
@@ -828,7 +890,7 @@
         }
         function updateOutput() {
             try {
-                q('[data-rjp-output]').value = compileOutput(editableDraft());
+                q('[data-rjp-output]').value = compileOutput(modelDraft());
                 if (!optimizing) {
                     try {
                         if (draft.items.length || draft.summary.caption.trim()) validateDraft(draft, true);
@@ -887,6 +949,123 @@
         }
         function rememberReference() {
             try { options.onReferenceChange?.(reference ? { ...reference, fit: referenceFit } : null); } catch (_) {}
+        }
+        function renderMaterials() {
+            if (!hasMaterials) return;
+            q('[data-rjp-material-list]').innerHTML = materials.map(item => {
+                const label = referenceLabel(item.slot);
+                const available = item.kind === 'ImagePrompt' || !item.occupied;
+                return `<div class="sai-rjp-material" data-rjp-material-slot="${item.slot}">
+                  <button type="button" data-rjp-action="${item.source ? 'place-material' : 'upload-material'}"
+                    data-rjp-slot="${item.slot}" title="${esc(item.source ? t('Place image in a region') : label)}"
+                    aria-label="${esc(label)}" draggable="${!!item.source && item.enabled}"
+                    ${loadingMaterials || !available || !materialsReady ? 'disabled' : ''}>
+                    ${item.source ? `<img src="${esc(item.source)}" alt="${esc(label)}">`
+                        : `<i class="fa-solid fa-${available ? 'plus' : 'sliders'}" aria-hidden="true"></i>`}
+                    <span>${item.slot}</span>
+                  </button>
+                  <small>${esc(available ? label : t(item.kind))}</small>
+                  ${item.source ? icon('remove-material', 'xmark', 'Remove image reference', `data-rjp-slot="${item.slot}"`) : ''}
+                </div>`;
+            }).join('');
+            const binding = q('[data-rjp-binding]');
+            binding.innerHTML = `<option value="">${esc(t('None'))}</option>` + materials.filter(item => item.source && item.enabled)
+                .map(item => `<option value="${item.slot}">${esc(referenceLabel(item.slot))}</option>`).join('');
+            binding.value = String(regionUi[selected]?.referenceSlot || '');
+            binding.disabled = !draft.items[selected] || regionUi[selected].locked || loadingMaterials;
+            q('[data-rjp-action="add-material"]').disabled = loadingMaterials || !materialsReady
+                || !materials.some(item => !item.occupied);
+            q('[data-rjp-action="apply"]').disabled = optimizing || applying || loadingMaterials || !materialsReady;
+        }
+        async function initializeMaterials() {
+            loadingMaterials = true;
+            renderMaterials();
+            try {
+                const result = await options.loadMaterials();
+                if (closed) return;
+                options.assertContext?.();
+                materialSignature = result.signature;
+                originalMaterials = materialSlots(result.materials);
+                const cached = options.materialState?.signature === materialSignature ? options.materialState : null;
+                for (const item of [...(result.materials || []), ...(cached?.assets || []), ...(cached?.materials || [])]) {
+                    if (!item.source || !item.key || materialImages.has(item.key)) continue;
+                    materialVault.set(item.key, clone(item));
+                    materialImages.set(item.key, await decodeReference(item.source));
+                    if (closed) return;
+                }
+                materials = clone(cached?.materials || result.materials);
+                materialsReady = true;
+                render();
+            } catch (error) {
+                if (!closed) status(error);
+            } finally {
+                loadingMaterials = false;
+                if (!closed) { renderMaterials(); persistDraft(); }
+            }
+        }
+        function bindMaterial(slot, position = null, create = false) {
+            requireValue(materialsReady && !loadingMaterials && !optimizing && !applying, 'Reference image is still loading');
+            const material = materials[slot - 1];
+            requireValue(material?.source && material.enabled, 'This reference image is disabled. Enable its weight and end position.');
+            if (rawDirty) loadRaw();
+            requireValue(create || !regionUi[selected]?.locked, 'Unlock the region before changing its image reference.');
+            remember();
+            if (create || !draft.items[selected]) {
+                requireValue(draft.items.length < 200, 'Too many regions');
+                const image = materialImages.get(material.key);
+                const ratio = image.naturalWidth / image.naturalHeight;
+                const width = Math.min(draft.width * 0.48, draft.height * 0.6 * ratio);
+                const height = width / ratio;
+                const x = Math.max(0, Math.min(draft.width - width, (position?.[0] ?? draft.width / 2) - width / 2));
+                const y = Math.max(0, Math.min(draft.height - height, (position?.[1] ?? draft.height / 2) - height / 2));
+                const label = q('[data-rjp-add-type]').value || 'object';
+                draft.items.push({ label, caption: '', ...(label === 'text' ? { text: '' } : {}),
+                    bbox: [x, y, x + width, y + height] });
+                regionUi.push({ locked: false, hidden: false });
+                selected = draft.items.length - 1;
+            }
+            Object.assign(regionUi[selected], { referenceSlot: slot, referenceKey: material.key });
+            updateAnchor(selected);
+            rawDirty = false; raw.value = JSON.stringify(editableDraft(), null, 2);
+            render();
+        }
+        async function loadMaterialFiles(sources, requestedSlot = null) {
+            if (loadingMaterials || optimizing || applying || !materialsReady) return;
+            const slots = materials.filter(item => !item.occupied).map(item => item.slot);
+            if (requestedSlot && !slots.includes(requestedSlot)) throw new Error('This input is occupied by an image.');
+            const order = requestedSlot ? [requestedSlot, ...slots.filter(slot => slot !== requestedSlot)] : slots;
+            requireValue(sources.length <= order.length, 'MOSS supports four shared image inputs.');
+            loadingMaterials = true; renderMaterials();
+            materialAbort = new root.AbortController();
+            const timer = root.setTimeout(() => materialAbort?.abort(), 15000);
+            try {
+                const additions = [];
+                for (let index = 0; index < sources.length; index++) {
+                    const source = sources[index];
+                    const file = typeof source === 'string' ? await referenceFileFromUrl(source, materialAbort.signal) : source;
+                    const value = await readReferenceFile(file, true);
+                    const image = await decodeReference(value.source);
+                    if (closed) return;
+                    const key = `new-${root.crypto?.randomUUID?.() || Date.now() + '-' + Math.random()}`;
+                    additions.push({ ...value, slot: order[index], key, kind: 'ImagePrompt', occupied: true, enabled: true });
+                    materialImages.set(key, image);
+                }
+                options.assertContext?.();
+                remember();
+                for (const item of additions) {
+                    materialVault.set(item.key, item);
+                    materials[item.slot - 1] = item;
+                }
+                status();
+            } catch (error) {
+                if (!closed) status(materialAbort.signal.aborted ? { message: 'Reference image loading timed out' } : error);
+            }
+            finally {
+                root.clearTimeout(timer);
+                materialAbort = null;
+                loadingMaterials = false;
+                if (!closed) { render(); persistDraft(); }
+            }
         }
         function updateAnchor(index) {
             if (!reference || !draft.items[index] || regionUi[index]?.outside) return;
@@ -969,7 +1148,7 @@
             q('[data-rjp-action="upload-reference"]').disabled = value || loadingReference;
             q('[data-rjp-action="remove-reference"]').disabled = value;
             q('[data-rjp-reference-fit]').disabled = value || !reference || loadingReference;
-            q('[data-rjp-action="apply"]').disabled = value || applying;
+            q('[data-rjp-action="apply"]').disabled = value || applying || loadingMaterials || !materialsReady;
         }
         function assertAiSnapshot(snapshot, request, selection) {
             requireValue(!closed, 'The layout editor was closed');
@@ -1093,6 +1272,13 @@
             draft.items.forEach((item, index) => {
                 if (regionUi[index].hidden || regionUi[index].outside) return;
                 const [x0, y0, x1, y1] = item.bbox;
+                const material = materialImages.get(regionUi[index].referenceKey);
+                if (material && regionUi[index].referenceSlot) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.75;
+                    ctx.drawImage(material, x0, y0, x1 - x0, y1 - y0);
+                    ctx.restore();
+                }
                 const color = previewColor(item, index);
                 ctx.fillStyle = `${color}20`; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
                 ctx.strokeStyle = color; ctx.lineWidth = (index === selected ? 2.5 : 1.5) * unit;
@@ -1189,6 +1375,7 @@
             renderAiPreview();
             renderAiMode();
             renderReference();
+            renderMaterials();
             if (tab === 'layout') draw();
             if (revealSelected) revealSelectedRegion();
             persistDraft();
@@ -1199,7 +1386,7 @@
             persistDraft();
         });
         function close(preserve = true) {
-            if (closed) return;
+            if (closed || (applying && preserve)) return;
             if (gesture) endGesture();
             if (preserve) persistDraft();
             else {
@@ -1207,10 +1394,13 @@
             }
             closed = true;
             referenceAbort?.abort();
+            materialAbort?.abort();
             for (const [name, handler] of referenceEvents) root.removeEventListener?.(name, handler, true);
             aiGeneration++;
             referenceRevision++;
             referenceImage = null;
+            materialImages.clear();
+            materialVault.clear();
             aiPreview = null;
             windowMaximized = maximized;
             if (maximized && restoreFrame && (!compactWindow() || restoreFrame.width > 700)) windowFrame = { ...restoreFrame };
@@ -1296,9 +1486,22 @@
         let applying = false;
         async function action(name, index = selected) {
             try {
-                if (closed || (name === 'apply' && (applying || optimizing))) return;
+                if (closed || applying || (name === 'apply' && optimizing)) return;
                 if (name === 'close') return close();
                 if (name === 'maximize') return toggleMaximize();
+                if (hasMaterials && ['add-material', 'upload-material'].includes(name) && !loadingMaterials && !applying) {
+                    materialFileSlot = name === 'upload-material' ? index : null;
+                    q('[data-rjp-material-file]').click();
+                }
+                if (hasMaterials && name === 'place-material') bindMaterial(index);
+                if (hasMaterials && name === 'remove-material' && !loadingMaterials && !applying && !optimizing) {
+                    remember();
+                    materials[index - 1] = { slot: index, key: '', kind: 'ImagePrompt', occupied: false, enabled: false };
+                    for (const ui of regionUi) if (ui.referenceSlot === index) {
+                        delete ui.referenceSlot; delete ui.referenceKey;
+                    }
+                    render();
+                }
                 if (name === 'optimize') return await optimize();
                 if (name === 'upload-reference' && !optimizing && !loadingReference && !applying) q('[data-rjp-reference-file]').click();
                 if (name === 'remove-reference' && !optimizing && !loadingReference) {
@@ -1398,21 +1601,33 @@
                     const output = editableDraft();
                     requireValue(!draft.items.length || output.items.length || output.summary.caption.trim(),
                         'All regions are outside the canvas');
-                    const prompt = compileOutput(output);
+                    requireValue(!loadingMaterials && materialsReady, 'Reference image is still loading');
+                    const prompt = compileOutput(modelDraft());
                     if (name === 'copy') await navigator.clipboard.writeText(prompt);
                     else {
                         const button = q('[data-rjp-action="apply"]');
                         applying = true;
                         button.disabled = true;
+                        const controls = [...host.querySelectorAll('button,input,select,textarea')]
+                            .map(node => [node, node.disabled]);
+                        controls.forEach(([node]) => { node.disabled = true; });
+                        button.setAttribute('aria-busy', 'true');
                         try {
                             if (await options.onApply?.({
                                 prompt, draft: output, width: draft.width, height: draft.height,
                                 outputModel, target: options.applyTargets ? q('[data-rjp-target]').value : undefined,
                                 referenceLayout: { version: 1, ...capture() },
+                                ...(hasMaterials ? { materialState: {
+                                    signature: materialSignature,
+                                    changes: materials.filter(item => item.key !== originalMaterials[item.slot - 1].key)
+                                        .map(item => ({ slot: item.slot, source: item.source || null })),
+                                } } : {}),
                                 optimized: optimizedSnapshot === JSON.stringify(draft),
                             }) !== false) close(false);
                         } finally {
                             applying = false;
+                            controls.forEach(([node, disabled]) => { node.disabled = disabled; });
+                            button.setAttribute('aria-busy', 'false');
                             button.disabled = false;
                         }
                     }
@@ -1424,14 +1639,30 @@
             const button = event.target.closest('button,[data-rjp-action="close"]');
             if (!button) return;
             if (button.dataset.rjpAction) void action(button.dataset.rjpAction,
-                button.dataset.rjpIndex === undefined ? selected : Number(button.dataset.rjpIndex));
+                button.dataset.rjpSlot !== undefined ? Number(button.dataset.rjpSlot)
+                    : button.dataset.rjpIndex === undefined ? selected : Number(button.dataset.rjpIndex));
             if (button.dataset.rjpTab) {
                 try { setTab(button.dataset.rjpTab); } catch (error) { status(error); }
             }
             if (button.dataset.rjpRegion !== undefined) { selected = Number(button.dataset.rjpRegion); render(); }
         });
         function updateField(event) {
-            if (closed) return;
+            if (closed || applying) return;
+            if (hasMaterials && event.target === q('[data-rjp-binding]')) {
+                try {
+                    const ui = regionUi[selected];
+                    const slot = Number(event.target.value) || 0;
+                    if (!ui || (slot === (ui.referenceSlot || 0)
+                        && (!slot || ui.referenceKey === materials[slot - 1]?.key))) return;
+                    if (event.target.value) bindMaterial(Number(event.target.value));
+                    else if (regionUi[selected] && !regionUi[selected].locked) {
+                        remember();
+                        delete regionUi[selected].referenceSlot; delete regionUi[selected].referenceKey;
+                        render();
+                    }
+                } catch (error) { status(error); }
+                return;
+            }
             if (event.target === q('[data-rjp-model]')) {
                 outputModel = event.target.value;
                 options.onOutputModelChange?.(outputModel);
@@ -1570,6 +1801,19 @@
             if (file) await loadReference(file);
             event.target.value = '';
         });
+        q('[data-rjp-material-file]').addEventListener('change', async event => {
+            try {
+                const files = Array.from(event.target.files || []);
+                if (files.length) await loadMaterialFiles(files, materialFileSlot);
+            } catch (error) { status(error); }
+            finally { event.target.value = ''; materialFileSlot = null; }
+        });
+        host.addEventListener('dragstart', event => {
+            const button = event.target.closest?.('[data-rjp-action="place-material"]');
+            if (!button || button.draggable !== true) return;
+            event.dataTransfer.setData('application/x-simpai-moss-reference-slot', button.dataset.rjpSlot);
+            event.dataTransfer.effectAllowed = 'copy';
+        });
         function showReferenceDrop(show) {
             const overlay = q('[data-rjp-reference-drop]');
             overlay.hidden = !show;
@@ -1582,7 +1826,7 @@
             return !!transfer && (transfer.files?.length
                 || Array.from(transfer.items || []).some(item => item.kind === 'file')
                 || Array.from(transfer.types || []).some(type => [
-                    'files', 'text/uri-list', 'text/html', 'application/x-simpleai-gallery-original-url',
+                    'files', 'text/uri-list', 'text/html', 'application/x-simpleai-gallery-original-url', 'application/x-simpai-moss-reference-slot',
                 ].includes(String(type).toLowerCase())));
         }
         function claimReferenceEvent(event) {
@@ -1608,6 +1852,14 @@
             ['drop', event => {
                 if (closed || !host.contains(event.target)) return;
                 const transfer = event.dataTransfer;
+                const slot = Number(transfer?.getData?.('application/x-simpai-moss-reference-slot'));
+                if (hasMaterials && slot >= 1 && slot <= 4) {
+                    claimReferenceEvent(event);
+                    clearReferenceDrop();
+                    try { bindMaterial(slot, event.target === canvas ? point(event) : null, true); }
+                    catch (error) { status(error); }
+                    return;
+                }
                 if (!referenceTransferAvailable(transfer)) return;
                 const files = referenceTransferFiles(transfer);
                 const image = files.find(file => /^image\//i.test(file.type)
@@ -1616,7 +1868,9 @@
                 clearReferenceDrop();
                 if (!files.length && !source) return;
                 claimReferenceEvent(event);
-                if (source) void loadReference(source);
+                const asMaterial = hasMaterials && (event.target === canvas || event.target.closest?.('[data-rjp-materials]'));
+                if (source && asMaterial) void loadMaterialFiles(files.length ? files : [source]).catch(status);
+                else if (source) void loadReference(source);
                 else status({ message: 'Choose a PNG, JPEG or WebP reference image' });
             }],
             ['paste', event => {
@@ -1626,7 +1880,9 @@
                 if (!file) return;
                 claimReferenceEvent(event);
                 clearReferenceDrop();
-                void loadReference(file);
+                if (hasMaterials && (event.target === canvas || event.target.closest?.('[data-rjp-materials]')))
+                    void loadMaterialFiles([file]).catch(status);
+                else void loadReference(file);
             }],
             ['dragend', clearReferenceDrop], ['blur', clearReferenceDrop],
         ];
@@ -1639,7 +1895,7 @@
             ];
         };
         canvas.addEventListener('pointerdown', event => {
-            if (event.button !== 0) return;
+            if (event.button !== 0 || applying) return;
             event.preventDefault();
             const [x, y] = point(event), before = capture();
             let handle = null;
@@ -1728,10 +1984,11 @@
         else syncWindowViewport();
         const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (tab === 'layout') draw(); }) : null;
         observer?.observe(viewport);
-        active = { host, close };
+        active = { host, close, isApplying: () => applying };
         root.addEventListener?.('pagehide', persistDraft);
         render();
-        if (options.reference) void setReference(options.reference, true).catch(error => { if (!closed) status(error); });
+        if (options.reference?.source) void setReference(options.reference, true).catch(error => { if (!closed) status(error); });
+        if (hasMaterials) void initializeMaterials();
         if (initialError) status(initialError);
         else if (restored) status({ message: 'Draft restored.' }, false);
         else importStatus();
@@ -1742,7 +1999,7 @@
         open, compile, parse, importLayout, validateDraft, scaleDraft, regionColor, wrapPreviewText, fitPreviewText,
         optimizationRequest, mergeOptimization, normalizeSnapshot,
         referencePlacement, matchedReferenceSize, reframeReference, visibleDraft, annotatedReferenceDraft,
-        generationRequest, generationResult,
+        generationRequest, generationResult, referenceLabels,
     };
     root.SimpAIRegionalJsonPrompt = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -1,19 +1,20 @@
 // @ts-ignore
-import { app } from "/file=javascript/layerforge/js/comfy_shim.js?v=patch26";
+import { app } from "./comfy_shim.js?v=patch26";
 // @ts-ignore
-import { $el } from "/file=javascript/layerforge/js/comfy_shim.js?v=patch26";
-import { api } from "/file=javascript/layerforge/js/api_shim.js?v=patch26";
-import { addStylesheet, getUrl, loadTemplate } from "/file=javascript/layerforge/js/utils/ResourceManager.js?v=patch26";
-import { Canvas } from "/gradio_api/file=javascript/layerforge/js/Canvas.js?v=patch66";
-import { clearAllCanvasStates } from "/file=javascript/layerforge/js/db.js?v=patch26";
-import { ImageCache } from "/file=javascript/layerforge/js/ImageCache.js?v=patch26";
-import { createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { showErrorNotification, showSuccessNotification, showInfoNotification, showWarningNotification } from "/file=javascript/layerforge/js/utils/NotificationUtils.js?v=patch26";
-import { iconLoader, LAYERFORGE_TOOLS } from "/file=javascript/layerforge/js/utils/IconLoader.js?v=patch26";
-import { setupSAMDetectorHook } from "/file=javascript/layerforge/js/SAMDetectorIntegration.js?v=patch26";
-import { OpenPoseEditor } from "/file=javascript/layerforge/js/OpenPoseEditor.js?v=patch26";
+import { $el } from "./comfy_shim.js?v=patch26";
+import { api } from "./api_shim.js?v=patch26";
+import { addStylesheet, getUrl, loadTemplate } from "./utils/ResourceManager.js?v=patch26";
+import { Canvas } from "./Canvas.js?v=patch66";
+import { clearAllCanvasStates } from "./db.js?v=patch26";
+import { ImageCache } from "./ImageCache.js?v=patch26";
+import { createCanvas } from "./utils/CommonUtils.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { showErrorNotification, showSuccessNotification, showInfoNotification, showWarningNotification } from "./utils/NotificationUtils.js?v=patch26";
+import { iconLoader, LAYERFORGE_TOOLS } from "./utils/IconLoader.js?v=patch26";
+import { setupSAMDetectorHook } from "./SAMDetectorIntegration.js?v=patch26";
+import { OpenPoseEditor } from "./OpenPoseEditor.js?v=patch26";
 const log = createModuleLogger('Canvas_view');
+const studioRoot = new URL('../../../../', import.meta.url);
 export async function createCanvasWidget(node, widget, app) {
     const canvas = new Canvas(node, widget, {
         onStateChange: () => updateOutput(node, canvas)
@@ -58,8 +59,8 @@ export async function createCanvasWidget(node, widget, app) {
     let tooltipHtml = '';
     let tooltipHideTimer = null;
     const [standardShortcuts, maskShortcuts, systemClipboardTooltip, clipspaceClipboardTooltip] = await Promise.all([
-        loadTemplate('/gradio_api/file=javascript/layerforge/js/templates/standard_shortcuts.html?v=patch64'),
-        loadTemplate('/gradio_api/file=javascript/layerforge/js/templates/mask_shortcuts.html?v=patch64'),
+        loadTemplate('./templates/standard_shortcuts.html?v=patch64'),
+        loadTemplate('./templates/mask_shortcuts.html?v=patch64'),
         loadTemplate('./templates/system_clipboard_tooltip.html'),
         loadTemplate('./templates/clipspace_clipboard_tooltip.html')
     ]);
@@ -436,7 +437,7 @@ export async function createCanvasWidget(node, widget, app) {
                             return;
                         try {
                             // First check if model is available
-                            const modelCheckResponse = await fetch("/matting/check-model");
+                            const modelCheckResponse = await fetch(new URL('matting/check-model', studioRoot));
                             if (!modelCheckResponse.ok) {
                                 throw new Error(`${modelCheckResponse.status} ${modelCheckResponse.statusText}`);
                             }
@@ -475,7 +476,7 @@ export async function createCanvasWidget(node, widget, app) {
                             const selectedLayer = canvas.canvasSelection.selectedLayers[0];
                             const selectedLayerIndex = canvas.layers.indexOf(selectedLayer);
                             const imageData = await canvas.canvasLayers.getLayerImageData(selectedLayer);
-                            const response = await fetch("/matting", {
+                            const response = await fetch(new URL('matting', studioRoot), {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ image: imageData })
@@ -549,18 +550,16 @@ export async function createCanvasWidget(node, widget, app) {
                         button.appendChild(spinner);
                         button.classList.add('loading');
                         try {
-                            const modelCheckResponse = await fetch("/sam3/check-model");
+                            const modelCheckResponse = await fetch(new URL('sam3/check-model', studioRoot));
                             if (!modelCheckResponse.ok) {
                                 throw new Error(`${modelCheckResponse.status} ${modelCheckResponse.statusText}`);
                             }
                             const modelStatus = await modelCheckResponse.json();
                             if (!modelStatus.available) {
                                 if (modelStatus.reason === 'not_downloaded') {
-                                    showWarningNotification("需要先下载 SAM3 模型。这将在您继续时自动发生（需要互联网连接）。", 5000);
-                                    if (!confirm("需要下载 SAM3 模型（约 3.2GB）。这是一次性下载。要继续吗？")) {
-                                        return;
-                                    }
-                                    showInfoNotification("正在下载 SAM3 模型... 这可能需要几分钟。", 10000);
+                                    const message = "SAM3.1 is missing. Install it through model management or the current preset model downloads, then retry.";
+                                    showWarningNotification(window.LayerForgeI18n?.text(message) || message, 8000);
+                                    return;
                                 }
                                 else {
                                     showErrorNotification(modelStatus.message || "SAM3 模型不可用", 8000);
@@ -599,8 +598,7 @@ export async function createCanvasWidget(node, widget, app) {
                                 historyIndex: -1,
                                 viewScale: 1,
                                 spaceDown: false,
-                                sam3Threshold: 0.3,
-                                sam3MaskThreshold: 0.4,
+                                sam3MaskThreshold: 0.5,
                                 sam3CloseRadius: 1,
                                 invertMask: false,
                                 posHit: null,
@@ -689,8 +687,7 @@ export async function createCanvasWidget(node, widget, app) {
                                 ]);
                                 return { wrap, input, valueEl };
                             };
-                            const thresholdSlider = mkSlider("threshold", 0.05, 0.6, 0.01, state.sam3Threshold, (v) => Number(v).toFixed(2));
-                            const maskThresholdSlider = mkSlider("mask", 0.15, 0.6, 0.01, state.sam3MaskThreshold, (v) => Number(v).toFixed(2));
+                            const maskThresholdSlider = mkSlider(window.LayerForgeI18n?.text?.("Mask probability threshold") || "Mask probability threshold", 0.05, 0.95, 0.01, state.sam3MaskThreshold, (v) => Number(v).toFixed(2));
                             const closeRadiusSlider = mkSlider("close", 0, 6, 1, state.sam3CloseRadius, (v) => String(parseInt(String(v), 10)));
                             const btnUndo = $el("button", {
                                 className: "painter-button",
@@ -732,7 +729,6 @@ export async function createCanvasWidget(node, widget, app) {
                                 realtimeCheckbox,
                                 $el("span", {}, ["实时生成"])
                             ]));
-                            headerBottom.appendChild(thresholdSlider.wrap);
                             headerBottom.appendChild(maskThresholdSlider.wrap);
                             headerBottom.appendChild($el("label", { style: { display: "flex", alignItems: "center", gap: "6px", color: "rgba(255,255,255,0.8)", fontSize: "12px", userSelect: "none", whiteSpace: "nowrap" } }, [
                                 closeEdgesCheckbox,
@@ -823,21 +819,35 @@ export async function createCanvasWidget(node, widget, app) {
                             }
                             let onKeydown = null;
                             let onKeyup = null;
+                            let onWindowMousemove = null;
+                            let onWindowMouseup = null;
+                            const ownsModal = () => document.getElementById(modalId) === backdrop;
+                            const isCurrentModal = () => state.open && ownsModal();
                             const closeModal = () => {
+                                if (!ownsModal()) return;
                                 state.open = false;
+                                state.confirmRequested = false;
+                                state.pending = false;
+                                state.pendingFinal = false;
                                 if (state.debounceTimer) {
                                     clearTimeout(state.debounceTimer);
                                     state.debounceTimer = null;
                                 }
                                 window.removeEventListener("resize", layoutCanvas);
                                 if (onKeydown) {
-                                    window.removeEventListener("keydown", onKeydown);
+                                    window.removeEventListener("keydown", onKeydown, true);
                                 }
                                 if (onKeyup) {
                                     window.removeEventListener("keyup", onKeyup);
                                 }
+                                if (onWindowMousemove) {
+                                    window.removeEventListener("mousemove", onWindowMousemove);
+                                }
+                                if (onWindowMouseup) {
+                                    window.removeEventListener("mouseup", onWindowMouseup);
+                                }
                                 try {
-                                    fetch("/sam3/offload", { method: "POST" }).catch(() => { });
+                                    fetch(new URL('sam3/offload', studioRoot), { method: "POST" }).catch(() => { });
                                 }
                                 catch {
                                 }
@@ -951,9 +961,10 @@ export async function createCanvasWidget(node, widget, app) {
                                 btnInvert.style.opacity = state.invertMask ? "1" : "0.85";
                             };
                             const applyMaskPreview = async () => {
-                                if (!state.maskImg)
+                                if (!isCurrentModal() || !state.maskImg)
                                     return;
                                 await buildOverlayCanvas();
+                                if (!isCurrentModal()) return;
                                 buildCutoutFromMask();
                                 draw();
                             };
@@ -1075,9 +1086,8 @@ export async function createCanvasWidget(node, widget, app) {
                                 realtimeCheckbox.disabled = busy;
                                 fillHolesCheckbox.disabled = busy;
                                 closeEdgesCheckbox.disabled = busy;
-                                thresholdSlider.input.disabled = busy;
                                 maskThresholdSlider.input.disabled = busy;
-                                closeRadiusSlider.input.disabled = busy;
+                                closeRadiusSlider.input.disabled = busy || !closeEdgesCheckbox.checked;
                                 if (busy) {
                                     busyOverlayText.textContent = text || "正在生成蒙版...";
                                     busyOverlay.style.display = "flex";
@@ -1099,13 +1109,21 @@ export async function createCanvasWidget(node, widget, app) {
                                 }, 200);
                             };
                             const finalizeToLayer = async () => {
+                                if (!isCurrentModal()) return;
+                                if (state.running || state.pending || state.lastRunVersion !== state.pointsVersion) return;
                                 if (!state.cutoutDataUrl) {
                                     throw new Error("cutout image missing");
                                 }
+                                const cutoutDataUrl = state.cutoutDataUrl;
+                                const pointsVersion = state.pointsVersion;
+                                const canCommit = () => isCurrentModal() && !state.running
+                                    && state.lastRunVersion === pointsVersion && state.pointsVersion === pointsVersion
+                                    && state.cutoutDataUrl === cutoutDataUrl;
                                 const newImg = new Image();
-                                newImg.src = state.cutoutDataUrl;
+                                newImg.src = cutoutDataUrl;
                                 await newImg.decode();
-                                await canvas.canvasLayers.addLayerWithImage(newImg, {
+                                if (!canCommit()) return;
+                                const layer = await canvas.canvasLayers.addLayerWithImage(newImg, {
                                     name: "SAM3",
                                     x: selectedLayer.x,
                                     y: selectedLayer.y,
@@ -1114,7 +1132,8 @@ export async function createCanvasWidget(node, widget, app) {
                                     rotation: selectedLayer.rotation || 0,
                                     flipH: !!selectedLayer.flipH,
                                     flipV: !!selectedLayer.flipV,
-                                }, 'default');
+                                }, 'default', null, canCommit);
+                                if (!layer || !canCommit()) return;
                                 canvas.render();
                                 canvas.saveState();
                                 canvas.canvasLayersPanel?.renderLayers?.();
@@ -1133,7 +1152,7 @@ export async function createCanvasWidget(node, widget, app) {
                                 closeModal();
                             };
                             const triggerRun = async (isFinal) => {
-                                if (!state.open)
+                                if (!isCurrentModal())
                                     return;
                                 if (isFinal) {
                                     state.confirmRequested = true;
@@ -1150,25 +1169,31 @@ export async function createCanvasWidget(node, widget, app) {
                                     draw();
                                     return;
                                 }
+                                if (state.debounceTimer) {
+                                    clearTimeout(state.debounceTimer);
+                                    state.debounceTimer = null;
+                                }
                                 state.running = true;
                                 setUiBusy(true, state.hadRunOnce ? "正在生成蒙版..." : "首次运行将加载模型并生成蒙版...");
                                 const reqVersion = state.pointsVersion;
-                                state.lastRunVersion = reqVersion;
+                                state.lastRunVersion = -1;
+                                const requestCurrent = () => isCurrentModal() && state.pointsVersion === reqVersion;
                                 try {
-                                    const response = await fetch("/sam3/image-mask", {
+                                    const response = await fetch(new URL('sam3/image-mask', studioRoot), {
                                         method: "POST",
                                         headers: { "Content-Type": "application/json" },
                                         body: JSON.stringify({
                                             image: imageData,
                                             positive_points: state.pointsPos,
                                             negative_points: state.pointsNeg,
-                                            threshold: state.sam3Threshold,
                                             fill_holes: !!fillHolesCheckbox.checked,
                                             mask_threshold: state.sam3MaskThreshold,
                                             close_radius: closeEdgesCheckbox.checked ? state.sam3CloseRadius : 0,
                                         })
                                     });
+                                    if (!requestCurrent()) return;
                                     const result = await response.json();
+                                    if (!requestCurrent()) return;
                                     if (!response.ok) {
                                         let errorMsg = `Server error: ${response.status} - ${response.statusText}`;
                                         if (result && result.error) {
@@ -1183,31 +1208,46 @@ export async function createCanvasWidget(node, widget, app) {
                                         const mi = new Image();
                                         mi.src = result.mask;
                                         await mi.decode();
+                                        if (!requestCurrent()) return;
                                         state.maskImg = mi;
                                         await applyMaskPreview();
+                                        if (!requestCurrent()) return;
                                     }
+                                    state.lastRunVersion = reqVersion;
                                     state.hadRunOnce = true;
                                     draw();
                                 }
+                                catch (error) {
+                                    if (isCurrentModal()) {
+                                        state.confirmRequested = false;
+                                        showErrorNotification(`智能抠图失败: ${error.message || error}`);
+                                    }
+                                }
                                 finally {
                                     state.running = false;
-                                    setUiBusy(false);
-                                    const shouldFinalize = state.confirmRequested && state.lastRunVersion === state.pointsVersion && !!state.cutoutDataUrl && !state.pending;
-                                    if (shouldFinalize) {
-                                        try {
-                                            await finalizeToLayer();
+                                    if (isCurrentModal()) {
+                                        setUiBusy(false);
+                                        const shouldFinalize = state.confirmRequested && state.lastRunVersion === state.pointsVersion && !!state.cutoutDataUrl && !state.pending;
+                                        if (shouldFinalize) {
+                                            try {
+                                                await finalizeToLayer();
+                                            }
+                                            catch (err) {
+                                                if (isCurrentModal()) {
+                                                    state.confirmRequested = false;
+                                                    showErrorNotification(`生成图层失败: ${err.message || err}`);
+                                                }
+                                            }
+                                            return;
                                         }
-                                        catch (err) {
-                                            showErrorNotification(`生成图层失败: ${err.message || err}`);
+                                        if (state.pending) {
+                                            state.pending = false;
+                                            const elapsed = Date.now() - state.lastChangeTs;
+                                            const waitMs = Math.max(0, 200 - elapsed);
+                                            const pendingFinal = state.pendingFinal;
+                                            state.pendingFinal = false;
+                                            setTimeout(() => triggerRun(pendingFinal), waitMs);
                                         }
-                                        return;
-                                    }
-                                    if (state.pending) {
-                                        state.pending = false;
-                                        const elapsed = Date.now() - state.lastChangeTs;
-                                        const waitMs = Math.max(0, 200 - elapsed);
-                                        setTimeout(() => triggerRun(state.pendingFinal), waitMs);
-                                        state.pendingFinal = false;
                                     }
                                 }
                             };
@@ -1271,7 +1311,7 @@ export async function createCanvasWidget(node, widget, app) {
                                 draw();
                                 scheduleRealtime();
                             });
-                            window.addEventListener("mousemove", (ev) => {
+                            onWindowMousemove = (ev) => {
                                 if (!state.open)
                                     return;
                                 if (dragActive) {
@@ -1294,8 +1334,8 @@ export async function createCanvasWidget(node, widget, app) {
                                     canvasWrap.scrollLeft = panBaseScrollLeft - dx;
                                     canvasWrap.scrollTop = panBaseScrollTop - dy;
                                 }
-                            });
-                            window.addEventListener("mouseup", () => {
+                            };
+                            onWindowMouseup = () => {
                                 if (!state.open)
                                     return;
                                 if (dragActive) {
@@ -1313,7 +1353,9 @@ export async function createCanvasWidget(node, widget, app) {
                                     panActive = false;
                                     editorCanvas.style.cursor = "crosshair";
                                 }
-                            });
+                            };
+                            window.addEventListener("mousemove", onWindowMousemove);
+                            window.addEventListener("mouseup", onWindowMouseup);
                             editorCanvas.addEventListener("wheel", (ev) => {
                                 if (!state.open)
                                     return;
@@ -1369,6 +1411,7 @@ export async function createCanvasWidget(node, widget, app) {
                             });
                             btnCancel.addEventListener("click", () => closeModal());
                             btnConfirm.addEventListener("click", async () => {
+                                if (!isCurrentModal()) return;
                                 try {
                                     const canReuse = !state.running && !state.pending && state.lastRunVersion === state.pointsVersion && !!state.cutoutDataUrl;
                                     if (canReuse) {
@@ -1376,31 +1419,34 @@ export async function createCanvasWidget(node, widget, app) {
                                         await finalizeToLayer();
                                         return;
                                     }
-                                    triggerRun(true);
+                                    await triggerRun(true);
                                 }
                                 catch (err) {
-                                    showErrorNotification(`生成图层失败: ${err.message || err}`);
+                                    if (isCurrentModal()) {
+                                        state.confirmRequested = false;
+                                        showErrorNotification(`生成图层失败: ${err.message || err}`);
+                                    }
                                 }
                             });
                             window.addEventListener("resize", layoutCanvas);
                             onKeydown = (ev) => {
+                                if (!isCurrentModal() || ev.isComposing || ev.defaultPrevented) return;
+                                if (ev.target?.isContentEditable || ev.target?.closest?.('textarea, input[type="text"], input[type="number"], input:not([type]), [role="textbox"]')) return;
                                 const k = (ev.key || "").toLowerCase();
                                 if (ev.key === " " || k === "spacebar") {
                                     state.spaceDown = true;
                                 }
-                                if ((ev.ctrlKey || ev.metaKey) && k === "z") {
+                                if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && (k === "z" || k === "y")) {
                                     ev.preventDefault();
-                                    if (state.historyIndex > 0) {
+                                    ev.stopImmediatePropagation();
+                                    const redo = k === "y" || ev.shiftKey;
+                                    if (!redo && state.historyIndex > 0) {
                                         restoreHistory(state.historyIndex - 1);
                                         state.pointsVersion += 1;
                                         draw();
                                         scheduleRealtime();
                                     }
-                                    return;
-                                }
-                                if ((ev.ctrlKey || ev.metaKey) && (k === "y" || (k === "z" && ev.shiftKey))) {
-                                    ev.preventDefault();
-                                    if (state.historyIndex >= 0 && state.historyIndex < state.history.length - 1) {
+                                    else if (redo && state.historyIndex >= 0 && state.historyIndex < state.history.length - 1) {
                                         restoreHistory(state.historyIndex + 1);
                                         state.pointsVersion += 1;
                                         draw();
@@ -1408,7 +1454,7 @@ export async function createCanvasWidget(node, widget, app) {
                                     }
                                 }
                             };
-                            window.addEventListener("keydown", onKeydown);
+                            window.addEventListener("keydown", onKeydown, true);
                             onKeyup = (ev) => {
                                 const k = (ev.key || "").toLowerCase();
                                 if (ev.key === " " || k === "spacebar") {
@@ -1439,16 +1485,7 @@ export async function createCanvasWidget(node, widget, app) {
                                 scheduleRealtime();
                             });
                             closeEdgesCheckbox.addEventListener("change", () => {
-                                if (state.pointsPos.length === 0 && state.pointsNeg.length === 0)
-                                    return;
                                 closeRadiusSlider.input.disabled = !closeEdgesCheckbox.checked;
-                                state.pointsVersion += 1;
-                                scheduleRealtime();
-                            });
-                            thresholdSlider.input.addEventListener("input", () => {
-                                const v = parseFloat(String(thresholdSlider.input.value));
-                                state.sam3Threshold = isFinite(v) ? v : 0.3;
-                                thresholdSlider.valueEl.textContent = Number(state.sam3Threshold).toFixed(2);
                                 if (state.pointsPos.length === 0 && state.pointsNeg.length === 0)
                                     return;
                                 state.pointsVersion += 1;
@@ -1456,7 +1493,7 @@ export async function createCanvasWidget(node, widget, app) {
                             });
                             maskThresholdSlider.input.addEventListener("input", () => {
                                 const v = parseFloat(String(maskThresholdSlider.input.value));
-                                state.sam3MaskThreshold = isFinite(v) ? v : 0.4;
+                                state.sam3MaskThreshold = isFinite(v) ? v : 0.5;
                                 maskThresholdSlider.valueEl.textContent = Number(state.sam3MaskThreshold).toFixed(2);
                                 if (state.pointsPos.length === 0 && state.pointsNeg.length === 0)
                                     return;
@@ -1477,6 +1514,7 @@ export async function createCanvasWidget(node, widget, app) {
                             state.baseImg = new Image();
                             state.baseImg.src = imageData;
                             await state.baseImg.decode();
+                            if (!ownsModal()) return;
                             state.open = true;
                             closeRadiusSlider.input.disabled = !closeEdgesCheckbox.checked;
                             updateInvertUi();
@@ -1494,7 +1532,6 @@ export async function createCanvasWidget(node, widget, app) {
                         }
                         finally {
                             button.classList.remove('loading');
-                            const spinner = button.querySelector('.matting-spinner');
                             if (spinner && button.contains(spinner)) {
                                 button.removeChild(spinner);
                             }
@@ -1509,7 +1546,7 @@ export async function createCanvasWidget(node, widget, app) {
                         if (button.classList.contains('loading'))
                             return;
                         try {
-                            const modelCheckResponse = await fetch("/openpose/check-model");
+                            const modelCheckResponse = await fetch(new URL('openpose/check-model', studioRoot));
                             if (!modelCheckResponse.ok) {
                                 throw new Error(`${modelCheckResponse.status} ${modelCheckResponse.statusText}`);
                             }
@@ -1559,7 +1596,7 @@ export async function createCanvasWidget(node, widget, app) {
                             let poseJson = existingPoseJson;
                             if (!poseJson) {
                                 showInfoNotification("正在进行 OpenPose 检测...", 2000);
-                                const response = await fetch("/openpose/detect", {
+                                const response = await fetch(new URL('openpose/detect', studioRoot), {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({ image: imageData, allow_download: allowDownload })
@@ -2423,7 +2460,7 @@ const canvasNodeInstances = new Map();
 app.registerExtension({
     name: "Comfy.LayerForgeNode",
     init() {
-        addStylesheet('/gradio_api/file=javascript/layerforge/js/css/canvas_view.css?v=patch67');
+        addStylesheet('./css/canvas_view.css?v=patch67');
         const originalQueuePrompt = app.queuePrompt;
         app.queuePrompt = async function (number, prompt) {
             log.info("Preparing to queue prompt...");

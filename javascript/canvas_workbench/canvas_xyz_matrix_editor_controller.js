@@ -56,6 +56,12 @@
             const keys = comparisonParameterKeys(node);
             let list = Array.isArray(options) && options.length ? options.slice() : (axisSource.fallbackOptions || []).slice();
             list = list.filter(option => option.label !== 'Resolution Template');
+            const generationProps = getPresetThemeInfo(node).generation_config_props || {};
+            const generationKeys = {
+                'Forced Sampling Steps': 'overwrite_step', 'Sampler': 'sampler_name',
+                'Scheduler': 'scheduler_name', 'Guidance Scale': 'guidance_scale'
+            };
+            list = list.filter(option => generationProps[option.apply || generationKeys[option.label]]?.interactive !== false);
             if (keys) {
                 const allowed = new Set(keys);
                 list = list.filter(option => (!option.param_key || allowed.has(option.param_key))
@@ -408,7 +414,7 @@
             const xyz = node.xyz || {};
             const variant = (Array.isArray(xyz.variants) ? xyz.variants : []).find(item => item.id === variantId);
             if (!variant) return;
-            const resultNode = getNode(variant.result_node_id || variant.node_id || '');
+            const resultNode = comparisonResult(variant);
             if (resultNode) {
                 if (Number.isFinite(Number(variant.asset_index))) {
                     nodeSource.selectResultAsset(resultNode, Number(variant.asset_index));
@@ -445,8 +451,20 @@
         }
 
         function comparisonResult(variant) {
-            const result = getNode(variant?.result_node_id);
-            return result?.type === 'result' && (!variant.run_id || result.producer?.run_id === variant.run_id) ? result : null;
+            if (variant?.run_stale) return null;
+            const result = getNode(variant?.result_node_id || variant?.node_id);
+            return result?.type === 'result'
+                && (result.producer?.run_id || '') === (variant.run_id || '')
+                && (variant.run_token === undefined || (result.producer?.run_token || '') === variant.run_token)
+                ? result : null;
+        }
+
+        function ownsComparisonResult(operation) {
+            const result = operation.resultNode;
+            return !result || (getNode(result.id) === result
+                && (result.producer?.run_id || '') === operation.runId
+                && (result.producer?.run_token || '') === operation.runToken
+                && (!operation.runRecord || (operation.project.runs || []).find(run => run.id === operation.runId) === operation.runRecord));
         }
 
         function isXyzMatrixRunning(node) {
@@ -462,12 +480,13 @@
             if (!operation.owns()) return { ok: false, stale: true };
             if (operation.stopRequest) return operation.stopRequest;
             if (!operation.execution && !operation.resultNode) return { ok: true, pending: true };
-            const result = operation.resultNode || call(runSource, 'findActiveResultNodeForPreset', null, operation.execution);
+            const result = operation.resultNode;
             if (!result || getNode(result.id) !== result || terminalStates.has(result.status?.state)) return { ok: true, pending: true };
-            if (operation.runId && result.producer?.run_id !== operation.runId) return { ok: false, stale: true };
-            operation.resultNode = result;
-            operation.runId = result.producer?.run_id;
-            operation.stopRequest = Promise.resolve().then(() => call(runSource, 'controlResultRun', { ok: false, error: 'Stop is unavailable' }, result, 'stop'));
+            if (!ownsComparisonResult(operation)) return { ok: false, stale: true };
+            operation.stopRequest = Promise.resolve().then(() => operation.owns()
+                && operation.resultNode === result && ownsComparisonResult(operation)
+                ? call(runSource, 'controlResultRun', { ok: false, error: 'Stop is unavailable' }, result, 'stop')
+                : { ok: false, stale: true });
             try {
                 const response = await operation.stopRequest;
                 if (!response?.ok && operation.owns()) operation.stopError = response?.error || t('Stop request failed.', '停止请求失败。');
@@ -603,14 +622,22 @@
                     operation.execution = execution;
                     operation.resultNode = null;
                     operation.runId = '';
-                    patchVariant(node, item.id, { status: 'preparing', error: '', execution_complete: false, execution_node_id: execution.id, result_node_id: '', run_id: '' });
+                    operation.runToken = '';
+                    operation.runRecord = null;
+                    patchVariant(node, item.id, { status: 'preparing', error: '', execution_complete: false, execution_node_id: execution.id, result_node_id: '', run_id: '', run_token: '', run_stale: false });
                     update('running', `${selectedIndex + 1} / ${selected.length}`);
                     const rememberResult = (info, submitted) => {
                         if (!operation.owns() || getNode(execution.id) !== execution) return;
-                        operation.resultNode = getNode(info.result_node_id);
+                        const result = getNode(info.result_node_id);
+                        if (!result || result.producer?.run_id !== info.run_id
+                            || (operation.runId === info.run_id && !ownsComparisonResult(operation))) return;
+                        operation.resultNode = result;
                         operation.runId = info.run_id || '';
+                        operation.runToken = operation.resultNode?.producer?.run_token || '';
+                        operation.runRecord = (project.runs || []).find(run => run.id === operation.runId) || null;
                         patchVariant(node, item.id, {
                             status: submitted ? 'running' : 'preparing', result_node_id: info.result_node_id, run_id: info.run_id,
+                            run_token: operation.runToken,
                             execution_kind: info.director_segment_index !== undefined ? 'director' : 'preset'
                         });
                         call(historySource, 'mutate', undefined, { inspector: true });
@@ -632,11 +659,17 @@
                     if (!operation.owns()) return stale();
                     const resultId = outcome?.result_node_id || outcome?.final_result_node_id || outcome?.render_result?.result_node_id || operation.resultNode?.id || '';
                     const result = getNode(resultId);
+                    const runId = resultId === operation.resultNode?.id
+                        ? operation.runId : outcome?.run_id || outcome?.render_result?.run_id || '';
+                    const runToken = resultId === operation.resultNode?.id
+                        ? operation.runToken : outcome?.run_token || outcome?.render_result?.run_token || '';
+                    const resultCurrent = ownsComparisonResult(operation) && (!result
+                        || ((result.producer?.run_id || '') === runId
+                            && (!runToken || result.producer?.run_token === runToken)));
                     const canceled = operation.stopped || ['canceled', 'skipped'].includes(outcome?.state);
-                    const complete = !!(outcome?.ok || outcome?.render_result?.ok);
+                    const complete = resultCurrent && !!(outcome?.ok || outcome?.render_result?.ok);
                     const state = complete ? 'finished' : canceled ? 'canceled' : 'failed';
-                    const runId = result ? result.producer?.run_id || '' : outcome?.run_id || operation.runId;
-                    patchVariant(node, item.id, { status: state, execution_complete: complete, result_node_id: resultId, run_id: runId, asset_index: 0, error: complete ? '' : outcome?.error || '' });
+                    patchVariant(node, item.id, { status: state, execution_complete: complete, result_node_id: resultId, run_id: runId, run_token: runToken, run_stale: !resultCurrent, asset_index: 0, error: complete ? '' : outcome?.error || '' });
                     if (runId) job.run_ids = Array.from(new Set([...(job.run_ids || []), runId]));
                     failed = failed || state === 'failed';
                     if (canceled) { operation.stopped = true; break; }

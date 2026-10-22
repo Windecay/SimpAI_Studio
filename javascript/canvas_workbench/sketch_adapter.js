@@ -59,10 +59,14 @@
             return `${String(args[0] || 'sai-workbench-sketch')}-${fallbackUid}`;
         };
 
-        function waitForSketch(root, timeoutMs) {
+        function waitForSketch(root, timeoutMs, shouldStop) {
             const started = performanceNow();
             return new Promise((resolve, reject) => {
                 const tick = () => {
+                    if (shouldStop?.()) {
+                        resolve(null);
+                        return;
+                    }
                     const api = getSketch(root) || root?.__simpaiSketch;
                     if (api) {
                         resolve(api);
@@ -125,28 +129,41 @@
     <button type="button" data-sketch-close><span>Cancel</span></button>
   </div>
 </div>`;
-            doc.body.appendChild(modal);
             const source = modal.querySelector(`.${SOURCE_CLASS}`);
             const textarea = modal.querySelector('textarea');
             const initialPayload = JSON.stringify({ image, mask });
             textarea.value = initialPayload;
-            if (!getSketch(source)) {
-                const loaded = await loadLazyAssetGroup('customSketch');
-                if (!loaded && !getSketch(source)) await loadStandaloneSketchEditor(doc);
-            }
-
             let closed = false;
             const close = () => {
+                if (closed) return;
                 closed = true;
                 modal.remove();
             };
             modal.addEventListener('click', (evt) => {
                 if (evt.target === modal || evt.target.closest('[data-sketch-close]')) close();
             });
+            doc.body.appendChild(modal);
 
-            const api = await waitForSketch(source);
-            if (closed) return null;
-            await api.setValue({ image, mask }, { change: false });
+            let api;
+            try {
+                if (!getSketch(source)) {
+                    const loaded = await loadLazyAssetGroup('customSketch');
+                    if (closed) return null;
+                    if (!loaded && !getSketch(source)) {
+                        await loadStandaloneSketchEditor(doc);
+                        if (closed) return null;
+                    }
+                }
+                if (closed) return null;
+                api = await waitForSketch(source, undefined, () => closed);
+                if (closed || !api) return null;
+                await api.setValue({ image, mask }, { change: false });
+                if (closed) return null;
+            } catch (err) {
+                if (closed) return null;
+                close();
+                throw err;
+            }
 
             modal.querySelectorAll('[data-sketch-action]').forEach((button) => {
                 button.addEventListener('click', async () => {

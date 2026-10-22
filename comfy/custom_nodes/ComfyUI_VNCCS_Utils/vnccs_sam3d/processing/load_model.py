@@ -52,18 +52,22 @@ class LoadSAM3DBodyModel:
     FUNCTION = "load_model"
     CATEGORY = "SAM3DBody"
 
-    def load_model(self, device_mode):
+    def load_model(self, device_mode, *, allow_download=True, model_path=None):
         """Prepare model config (actual loading happens in inference nodes)."""
         resolved_device = _resolve_device(device_mode)
 
-        model_path = MODEL_DIR
+        model_path = os.path.abspath(model_path or MODEL_DIR)
         ckpt_path = os.path.join(model_path, "model.ckpt")
         mhr_path = os.path.join(model_path, "assets", "mhr_model.pt")
 
         # Check if model exists locally, download if not
-        model_exists = os.path.exists(ckpt_path) and os.path.exists(mhr_path)
+        model_exists = all(os.path.isfile(path) for path in (ckpt_path, mhr_path, os.path.join(model_path, "model_config.yaml")))
 
         if not model_exists:
+            if not allow_download:
+                raise FileNotFoundError(
+                    "[SAM3DBody] Required model files are missing. Install them through model management before parsing."
+                )
             try:
                 from huggingface_hub import snapshot_download
 

@@ -287,14 +287,16 @@ def _is_regen_manifest_metadata(label, key):
     return label == "SimpleAI Regen Manifest" or key == "simpleai_regen_manifest"
 
 
+def _escape_log_text(value):
+    return html.escape(str(value)).replace("\n", " </br> ")
+
+
 def _metadata_value_html(label, key, value):
     value_txt = str(value)
     if _is_regen_manifest_metadata(label, key):
         value_txt = html.escape(value_txt)
         return f"<details><summary>SimpleAI Regen Manifest</summary><pre>{value_txt}</pre></details>"
-    if key in ("pe_model", "pe_prompt", "pe_status"):
-        value_txt = html.escape(value_txt)
-    return value_txt.replace("\n", " </br> ")
+    return _escape_log_text(value_txt)
 
 
 def log_audio_file(audio_path: str, metadata, user_did=None):
@@ -425,6 +427,8 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
                 _embed_video_metadata(local_temp_filename, parsed_parameters, metadata_scheme)
         img_result = img
 
+    only_name = os.path.basename(local_temp_filename)
+
     if disable_image_log:
         if remote_task is None:
             _queue_media_library_index(local_temp_filename, user_did=user_did)
@@ -440,11 +444,10 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
         item += f"<tr><td class='label'>{label}</td><td class='value'>{value_txt}</td></tr>\n"
 
     if task is not None and 'positive' in task and 'negative' in task:
-        positive_prompt = ', '.join(task['positive'])
-        if isinstance(task.get('pe_prompt'), str):
-            positive_prompt = html.escape(positive_prompt)
+        positive_prompt = _escape_log_text(', '.join(task['positive']))
+        negative_prompt = _escape_log_text(', '.join(task['negative']))
         full_prompt_details = f"""<details><summary>Positive</summary>{positive_prompt}</details>
-        <details><summary>Negative</summary>{', '.join(task['negative'])}</details>"""
+        <details><summary>Negative</summary>{negative_prompt}</details>"""
         item += f"<tr><td class='label'>Full raw prompt</td><td class='value'>{full_prompt_details}</td></tr>\n"
 
     item += "</table>"

@@ -150,7 +150,7 @@ def _item_urls(
     item["media_url"] = f"{base}/media/{media_id}{trash_query}"
     item["download_url"] = f"{base}/download/{media_id}{trash_query}"
     if item.get("media_type") in {"image", "video"}:
-        version = str(item.get("mtime_ns") or item.get("indexed_at") or "0")
+        version = media_library._source_file_signature(item.get("size"), item.get("mtime_ns"))
         version_param = f"v={quote(version, safe='')}"
         if item.get("is_trashed"):
             version_param = f"trash=1&{version_param}"
@@ -256,6 +256,7 @@ async def _schedule_scan_if_needed(library: media_library.MediaLibrary, *, force
             changed = False
         if not changed:
             return False
+        force = True
     return _schedule_scan(library, force=force)
 
 
@@ -577,11 +578,19 @@ async def media_library_download(request: Request, media_id: str):
 async def media_library_thumbnail(request: Request, media_id: str):
     library = _library_for_request(request=request)
     include_trashed = _bool_query(request.query_params.get("trash")) is True
-    path = await run_in_threadpool(lambda: library.thumbnail_path(media_id, include_trashed=include_trashed))
+    version = request.query_params.get("v") or ""
+    path = await run_in_threadpool(
+        lambda: library.thumbnail_path(media_id, include_trashed=include_trashed, source_version=version)
+    )
     if not path:
         return JSONResponse({"ok": False, "error": "Thumbnail not found."}, status_code=404)
+    cache_control = (
+        "private, max-age=31536000, immutable"
+        if version and os.path.basename(path).endswith(f"_{version}.jpg")
+        else "private, no-store"
+    )
     return FileResponse(
         path,
         media_type="image/jpeg",
-        headers={"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"},
+        headers={"Cache-Control": cache_control, "X-Content-Type-Options": "nosniff"},
     )

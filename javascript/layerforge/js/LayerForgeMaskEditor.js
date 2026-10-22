@@ -1,5 +1,5 @@
-import { createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
-import { isEditingText, nextBrushSize } from "/gradio_api/file=javascript/layerforge/js/KeyboardUtils.js?v=patch1";
+import { createCanvas } from "./utils/CommonUtils.js?v=patch26";
+import { isEditingText, nextBrushSize } from "./KeyboardUtils.js?v=patch1";
 
 export class LayerForgeMaskEditor {
     constructor() {

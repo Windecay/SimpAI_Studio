@@ -1,6 +1,34 @@
 (function () {
     'use strict';
 
+    const languageRefreshers = new WeakMap();
+    const languageDocuments = new WeakSet();
+
+    function refreshNodeBrowserLanguage(context) {
+        const doc = getDocument(context);
+        doc?.querySelectorAll?.('[data-node-browser-language]').forEach(modal => {
+            languageRefreshers.get(modal)?.();
+        });
+    }
+
+    function registerLanguageRefresh(context, modal, refresh) {
+        const doc = getDocument(context);
+        modal.setAttribute('data-node-browser-language', '');
+        let language = call(context, 'getLanguageState', {})?.__lang;
+        languageRefreshers.set(modal, () => {
+            const currentLanguage = call(context, 'getLanguageState', {})?.__lang;
+            if (currentLanguage === language) return;
+            language = currentLanguage;
+            refresh();
+        });
+        if (doc?.defaultView?.addEventListener && !languageDocuments.has(doc)) {
+            languageDocuments.add(doc);
+            doc.defaultView.addEventListener('simpai:system-params-updated', () => {
+                refreshNodeBrowserLanguage({ getDocument: () => doc });
+            });
+        }
+    }
+
     function call(context, name, fallback, ...args) {
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
@@ -43,6 +71,7 @@
         const assetSource = scope.assetSource || {};
         const viewSource = scope.viewSource || {};
         return {
+            getLanguageState: delegate(languageSource, 'getLanguageState'),
             t: typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en),
             escapeHtml: typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : (value => String(value ?? '')),
             getDocument: () => typeof domSource.getDocument === 'function'
@@ -117,7 +146,7 @@
         modal.innerHTML = `
 <div class="sai-canvas-modal-panel sai-node-search-panel">
   <div class="sai-canvas-modal-head">
-    <span>${escape(translate('Node Search', '节点搜索'))}</span>
+    <span data-node-search-title>${escape(translate('Node Search', '节点搜索'))}</span>
     <button type="button" data-modal-close title="${escape(translate('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
   </div>
   <input data-node-search-input type="search" placeholder="${escape(translate('Search by title, type, preset, id', '按标题、类型、preset、id 搜索'))}" autocomplete="off">
@@ -148,7 +177,21 @@
         modal.addEventListener('click', (evt) => {
             if (evt.target === modal || evt.target.closest('[data-modal-close]')) modal.remove();
         });
-        renderList();
+        const refreshLanguage = () => {
+            const focusedItem = doc.activeElement?.closest?.('[data-node-search-id]');
+            const focusedId = focusedItem && list.contains(focusedItem)
+                ? focusedItem.getAttribute('data-node-search-id') : null;
+            modal.querySelector('[data-node-search-title]').textContent = translate('Node Search', '节点搜索');
+            modal.querySelector('[data-modal-close]').title = translate('Close', '关闭');
+            input.placeholder = translate('Search by title, type, preset, id', '按标题、类型、preset、id 搜索');
+            renderList();
+            if (focusedId) {
+                Array.from(list.querySelectorAll('[data-node-search-id]'))
+                    .find(item => item.getAttribute('data-node-search-id') === focusedId)?.focus();
+            }
+        };
+        registerLanguageRefresh(context, modal, refreshLanguage);
+        refreshLanguage();
         schedule(context, () => input.focus(), 0);
     }
 
@@ -156,10 +199,7 @@
         return `<ul>${items.map(item => `<li>${escapeHtml(context, item)}</li>`).join('')}</ul>`;
     }
 
-    function openCanvasManual(context) {
-        call(context, 'closeContextMenu', null);
-        const doc = getDocument(context);
-        if (!doc?.createElement || !doc.body) return;
+    function canvasManualMarkup(context) {
         const translate = (en, cn) => t(context, en, cn);
         const escape = (value) => escapeHtml(context, value);
         const rows = [
@@ -206,10 +246,7 @@
             ['generate', translate('Generation link: Preset / Classic / Timeline to Result', '生成链路：Preset / Classic / Timeline 到 Result')],
             ['timeline', translate('Timeline media track input', 'Timeline 媒体轨道输入')]
         ];
-        const modal = doc.createElement('div');
-        modal.className = 'sai-canvas-modal';
-        modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
-        modal.innerHTML = `
+        return `
 <div class="sai-canvas-modal-panel sai-canvas-manual">
   <div class="sai-canvas-modal-head">
     <span>${escape(translate('Infinite Canvas Manual', '无限画布说明书'))}</span>
@@ -238,6 +275,24 @@
     </section>
   </div>
 </div>`;
+    }
+
+    function openCanvasManual(context) {
+        call(context, 'closeContextMenu', null);
+        const doc = getDocument(context);
+        if (!doc?.createElement || !doc.body) return;
+        const modal = doc.createElement('div');
+        modal.className = 'sai-canvas-modal';
+        modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
+        const refreshLanguage = () => {
+            const scrollTop = modal.querySelector('.sai-canvas-manual-body')?.scrollTop || 0;
+            const closeFocused = doc.activeElement === modal.querySelector('[data-modal-close]');
+            modal.innerHTML = canvasManualMarkup(context);
+            modal.querySelector('.sai-canvas-manual-body').scrollTop = scrollTop;
+            if (closeFocused) modal.querySelector('[data-modal-close]').focus();
+        };
+        registerLanguageRefresh(context, modal, refreshLanguage);
+        refreshLanguage();
         doc.body.appendChild(modal);
         modal.addEventListener('click', (evt) => {
             if (evt.target === modal || evt.target.closest('[data-modal-close]')) modal.remove();
@@ -246,6 +301,7 @@
 
     window.SimpAICanvasWorkbenchNodeBrowser = {
         createNodeBrowserContext,
+        refreshNodeBrowserLanguage,
         openCanvasManual,
         openNodeSearchPanel
     };

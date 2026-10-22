@@ -18,9 +18,9 @@ def required_model_entries(preset_node):
     if runtime.get("task_method") != TASK_METHOD or preset_node.get("classic_mode") != "ip":
         return []
     params = {**(preset_node.get("ip_params") or {}), **(preset_node.get("params") or {})}
-    count = max(1, min(2, int(preset_node.get("classic_ip_count") or params.get("ip_count") or params.get("count") or 1)))
+    count = max(1, min(4, int(preset_node.get("classic_ip_count") or params.get("ip_count") or params.get("count") or 1)))
     for index in range(count):
-        kind = params.get(f"ip_type_{index}", flags.cn_cpds)
+        kind = params.get(f"ip_type_{index}", flags.cn_ip)
         if (kind in (flags.cn_cpds, flags.cn_color)
                 and float(params.get(f"ip_weight_{index}", 1.0)) != 0
                 and float(params.get(f"ip_stop_{index}", 0.5)) > 0):

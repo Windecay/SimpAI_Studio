@@ -312,8 +312,9 @@
             const fetchImpl = networkSource.fetch;
             if (typeof fetchImpl !== 'function') return { ok: false, error: requestError };
             const body = JSON.stringify(bodyPayload);
+            const resolvedEndpoint = call(configSource, 'resolveEndpoint', endpoint, endpoint);
             transportStarted = true;
-            const response = await fetchImpl(endpoint, {
+            const response = await fetchImpl(resolvedEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body,
@@ -1036,6 +1037,7 @@
     const utils = window.SimpAICanvasWorkbenchUtils || {};
     const defaultApi = createCanvasApiController({
         configSource: {
+            resolveEndpoint: utils.studioEndpointUrl,
             getPresetRunAspectOptions: () => window.SimpAICanvasWorkbenchCanvasAgent?.CANVAS_AGENT_ASPECT_OPTIONS
         },
         networkSource: {

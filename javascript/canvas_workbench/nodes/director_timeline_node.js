@@ -202,6 +202,22 @@
         return refs;
     }
 
+    function normalizeMediaRefs(list, kind) {
+        const refs = [];
+        (Array.isArray(list) ? list : []).forEach((item) => {
+            const source = item && typeof item === 'object' ? item : { source_ref: item };
+            const ref = String(source.source_ref || source.source_node_id || '').trim();
+            if (!ref || refs.some(value => value.source_ref === ref)) return;
+            refs.push(Object.assign({}, source, {
+                source_ref: ref,
+                role: kind === 'video' && ref === PREVIOUS_SEGMENT_VIDEO_REF
+                    ? 'previous_result'
+                    : (source.role || (kind === 'audio' ? 'voice' : 'reference'))
+            }));
+        });
+        return refs;
+    }
+
     function inheritsPreviousSegmentLastFrame(segment) {
         return refsFromList(segment?.images).includes(PREVIOUS_SEGMENT_IMAGE_REF);
     }
@@ -264,16 +280,17 @@
             if (ref && !imageRefs.includes(ref)) imageRefs.push(ref);
         });
         if (index === 0) imageRefs = imageRefs.filter(ref => ref !== PREVIOUS_SEGMENT_IMAGE_REF);
-        const audioRef = firstRef(raw.audio);
-        const videoRef = firstRef(raw.video || raw.videos) || VIDEO_REF_PARAM_KEYS.map((key) => String(raw[key] || '').trim()).find(Boolean) || '';
+        const audio = normalizeMediaRefs(raw.audio, 'audio');
+        const video = normalizeMediaRefs(raw.video || raw.videos, 'video');
+        if (!video.length) {
+            const legacyVideoRef = VIDEO_REF_PARAM_KEYS.map((key) => String(raw[key] || '').trim()).find(Boolean);
+            if (legacyVideoRef) video.push(...normalizeMediaRefs([legacyVideoRef], 'video'));
+        }
         const rawTypeKey = taskMethodKey(raw.type);
         const legacyMethod = String(raw.task_method || raw.method || '').trim();
         const type = SEGMENT_TYPES.some(item => item[0] === rawTypeKey)
             ? rawTypeKey
-            : segmentTypeFromTaskMethod(legacyMethod || raw.type, imageRefs, audioRef, videoRef);
-        const videoRole = videoRef === PREVIOUS_SEGMENT_VIDEO_REF
-            ? 'previous_result'
-            : (raw.video?.[0]?.role || 'reference');
+            : segmentTypeFromTaskMethod(legacyMethod || raw.type, imageRefs, firstRef(audio), firstRef(video));
         return {
             id: String(raw.id || `shot_${index + 1}`),
             start,
@@ -282,8 +299,8 @@
             type,
             prompt: String(raw.prompt || ''),
             images: normalizeSegmentImages(type, imageRefs),
-            audio: audioRef ? [{ source_ref: audioRef, role: raw.audio?.[0]?.role || 'voice' }] : [],
-            video: videoRef ? [{ source_ref: videoRef, role: videoRole }] : []
+            audio,
+            video
         };
     }
 
@@ -331,8 +348,8 @@
                 const token = tokenFromRef(ref, 'image');
                 if (token) refs.push(token);
             });
-            firstRef(segment.audio) && refs.push(tokenFromRef(firstRef(segment.audio), 'audio'));
-            firstRef(segment.video) && refs.push(tokenFromRef(firstRef(segment.video), 'video'));
+            refsFromList(segment.audio).forEach(ref => refs.push(tokenFromRef(ref, 'audio')));
+            refsFromList(segment.video).forEach(ref => refs.push(tokenFromRef(ref, 'video')));
             const range = `[${compactTime(segment.start)}-${compactTime(segment.end)}s]`;
             return refs.concat([segment.prompt, range]).filter(Boolean).join(' ').trim();
         }).filter(Boolean).join(' | ');
@@ -527,19 +544,19 @@
         const t = (en, cn) => translateValue(ctx, en, cn);
         const range = timelineSegmentRange(timeline, segment);
         const imageRefs = refsFromList(segment.images);
-        const videoRef = firstRef(segment.video);
-        const audioRef = firstRef(segment.audio);
-        const refs = imageRefs.concat(videoRef ? [videoRef] : []);
+        const videoRefs = refsFromList(segment.video);
+        const audioRefs = refsFromList(segment.audio);
+        const refs = imageRefs.concat(videoRefs);
         const prompt = segment.prompt || timelineSegmentTypeLabel(segment, ctx);
         const badges = [
             ...imageRefs.map(ref => `@${ref}`),
-            audioRef ? `@${audioRef}` : '',
-            videoRef ? `@${videoRef}` : ''
+            ...audioRefs.map(ref => `@${ref}`),
+            ...videoRefs.map(ref => `@${ref}`)
         ].filter(Boolean).join(' ');
         const title = `${t('Shot', '分镜')} ${index + 1} · ${formatTimelineSeconds(range.start)}-${formatTimelineSeconds(range.end)}`;
         const duration = Math.max(0, range.end - range.start);
         return `
-<article class="sai-director-timeline-clip ${imageRefs.length ? 'has-image' : ''} ${videoRef ? 'has-video' : ''}" data-director-timeline-clip="${index}" data-director-timeline-drag="move" style="${timelineTrackStyle(range, totalSeconds)}" title="${escapeHtml(prompt)}">
+<article class="sai-director-timeline-clip ${imageRefs.length ? 'has-image' : ''} ${videoRefs.length ? 'has-video' : ''}" data-director-timeline-clip="${index}" data-director-timeline-drag="move" style="${timelineTrackStyle(range, totalSeconds)}" title="${escapeHtml(prompt)}">
   <button type="button" class="sai-director-timeline-handle is-start" data-director-timeline-drag="start" data-director-timeline-clip="${index}" title="${escapeHtml(t('Adjust start', '调整开始'))}"></button>
   <button type="button" class="sai-director-timeline-handle is-end" data-director-timeline-drag="end" data-director-timeline-clip="${index}" title="${escapeHtml(t('Adjust end', '调整结束'))}"></button>
   <div class="sai-director-timeline-clip-media">${timelinePreviewRefChips(ctx, node, refs)}</div>
@@ -678,10 +695,11 @@ ${MEDIA_KIND_GROUPS.map(group => renderMediaPoolGroup(group, node, context)).joi
   <div class="sai-director-image-ref-row">
     ${Array.from({ length: imageFieldCount }, (_, slotIndex) => renderImageRefField(segment, index, attr, indexAttr, node, context, slotIndex)).join('')}
   </div>
+  ${Array.from({ length: Math.max(3, segment.audio.length, segment.video.length) }, (_, slotIndex) => `
   <div class="sai-node-field-row sai-director-segment-refs">
-    <label class="sai-node-field"><span>${escapeHtml(t('Audio ref', '音频引用'))}</span><select ${attr}="audio_ref" ${indexAttr}>${optionHtml(AUDIO_REFS, firstRef(segment.audio), ctx)}</select></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('Video ref', '视频引用'))}</span><select ${attr}="video_ref" ${indexAttr}>${optionHtml(VIDEO_REFS, firstRef(segment.video), ctx)}</select></label>
-  </div>
+    <label class="sai-node-field"><span>${escapeHtml(t('Audio ref', '音频引用'))} ${slotIndex + 1}</span><select ${attr}="${slotIndex ? `audio_ref_${slotIndex + 1}` : 'audio_ref'}" ${indexAttr}>${optionHtml(AUDIO_REFS, segment.audio[slotIndex]?.source_ref || '', ctx)}</select></label>
+    <label class="sai-node-field"><span>${escapeHtml(t('Video ref', '视频引用'))} ${slotIndex + 1}</span><select ${attr}="${slotIndex ? `video_ref_${slotIndex + 1}` : 'video_ref'}" ${indexAttr}>${optionHtml(VIDEO_REFS, segment.video[slotIndex]?.source_ref || '', ctx)}</select></label>
+  </div>`).join('')}
   <label class="sai-node-field sai-text-node-field sai-director-segment-prompt"><span>${escapeHtml(t('Prompt', '提示词'))}</span><textarea ${attr}="prompt" ${indexAttr} rows="2">${escapeHtml(segment.prompt)}</textarea></label>
 </div>`;
     }
@@ -885,11 +903,6 @@ ${renderTimelinePreview(timeline, node, ctx)}
         });
         const segments = timeline.segments.map((segment) => {
             const imageRefs = refsFromList(segment.images);
-            const audioRef = firstRef(segment.audio);
-            const videoRef = firstRef(segment.video);
-            const videoRole = videoRef === PREVIOUS_SEGMENT_VIDEO_REF
-                ? 'previous_result'
-                : (segment.video?.[0]?.role || 'reference');
             const start = numberValue(segment.start, 0, 0, 86400);
             const end = Math.max(start, numberValue(segment.end, start + 0.1, 0, 86400));
             return Object.assign({}, segment, {
@@ -901,8 +914,12 @@ ${renderTimelinePreview(timeline, node, ctx)}
                     source_node_id: sourceNodeIds[imageRef] || '',
                     role: imageRoleForType(segment.type, imageIndex)
                 })),
-                audio: audioRef ? [{ source_ref: audioRef, source_node_id: sourceNodeIds[audioRef] || '', role: segment.audio?.[0]?.role || 'voice' }] : [],
-                video: videoRef ? [{ source_ref: videoRef, source_node_id: sourceNodeIds[videoRef] || '', role: videoRole }] : []
+                audio: segment.audio.map(item => Object.assign({}, item, {
+                    source_node_id: sourceNodeIds[item.source_ref] || item.source_node_id || ''
+                })),
+                video: segment.video.map(item => Object.assign({}, item, {
+                    source_node_id: sourceNodeIds[item.source_ref] || item.source_node_id || ''
+                }))
             });
         });
         const payload = Object.assign({}, timeline, {

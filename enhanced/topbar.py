@@ -5131,7 +5131,7 @@ def get_allowed_ip_types(engine, task_method=None):
     if task_method == 'krea2_aio_cn':
         return [modules.flags.cn_cpds, modules.flags.cn_pose]
     if task_method == 'moss_image_sft_aio_cn':
-        return [modules.flags.cn_cpds, modules.flags.cn_color]
+        return [modules.flags.cn_ip, modules.flags.cn_cpds, modules.flags.cn_color]
     ip_list = list(modules.flags.ip_list if engine in ['Fooocus', 'SDXL', 'Flux', 'Comfy', 'Wan', 'Qwen', 'Z-image'] else modules.flags.ip_list[:-1])
     if engine in ['Wan', 'Qwen', 'Z-image'] or task_method == 'flux2_aio_cn':
         ip_list = ip_list[1:3] + ip_list[-1:]
@@ -5212,13 +5212,17 @@ def update_after_identity_sub(state, lightweight_nav=False, skip_output_refresh=
     else:
         results += update_topbar_js_params(state)
     ip_list = get_allowed_ip_types(state["engine"], state.get("task_method"))
+    ip_choices = ip_list
+    if state.get("task_method") == 'moss_image_sft_aio_cn':
+        from modules.localization import localized_text
+        ip_choices = [(localized_text(state, "Reference image"), kind) if kind == modules.flags.cn_ip else kind for kind in ip_list]
     default_controlnet_image_count = config.default_controlnet_image_count if state["engine"]=='Fooocus' else 4
     for image_count in range(default_controlnet_image_count):
         image_count += 1
         ip_value = config.default_ip_types[image_count]
         if ip_value not in ip_list:
             ip_value = ip_list[0] if len(ip_list) > 0 else None
-        results.append(gr.update(choices=ip_list, value=ip_value))
+        results.append(gr.update(choices=ip_choices, value=ip_value))
 
     return results
 

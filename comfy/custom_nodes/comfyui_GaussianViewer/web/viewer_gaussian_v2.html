@@ -415,6 +415,8 @@
         let controls = null;
         let animationId = null;
         let currentSplat = null;
+        let currentMeshRequestId = null;
+        let loadedMeshRequestId = null;
         let originalScales = null;  // Store original scales for dynamic adjustment
         let cachedSplatData = null; // Keep a copy of buffers to reattach after worker detaches
         let baseFocalLength = null;
@@ -845,7 +847,7 @@
             return `${filename || "unknown"}::${intrinsicKey}`;
         }
 
-        async function loadPLYFromData(arrayBuffer, filename, extrinsics, intrinsics) {
+        async function loadPLYFromData(arrayBuffer, filename, extrinsics, intrinsics, requestId = null) {
             try {
                 const meshSignature = buildMeshSignature(filename, intrinsics);
                 const isNewMesh = meshSignature !== lastMeshSignature;
@@ -914,6 +916,7 @@
 
                 // Clean up blob URL
                 URL.revokeObjectURL(blobUrl);
+                if (requestId !== currentMeshRequestId) return;
 
                 // Get the loaded splat (last object in scene)
                 if (scene.objects && scene.objects.length > 0) {
@@ -1010,9 +1013,12 @@
                 infoPanel.classList.remove('hidden');
                 infoContent.innerHTML = `<span style="color:#6cc;">Gaussian Splat Loaded</span><br><span style="color:#888;">${filename}</span>`;
 
+                if (!currentSplat) throw new Error('PLY contains no Gaussian scene');
+                loadedMeshRequestId = requestId;
                 // Notify parent
                 window.parent.postMessage({
                     type: 'MESH_LOADED',
+                    request_id: requestId,
                     error: null,
                     timestamp: Date.now()
                 }, '*');
@@ -1025,6 +1031,7 @@
 
                 window.parent.postMessage({
                     type: 'MESH_ERROR',
+                    request_id: requestId,
                     error: err.message,
                     timestamp: Date.now()
                 }, '*');
@@ -1155,12 +1162,12 @@
             updateCropFrame();
         }
 
-        async function renderForRequest(requestId, resolution, aspectRatio, outputWidth = null, outputHeight = null) {
+        async function renderForRequest(requestId, resolution, aspectRatio, outputWidth = null, outputHeight = null, meshRequestId = null) {
             // Wait for renderer and scene to be ready (up to 20 seconds)
             const maxWait = 20000;
             const interval = 250;
             let waited = 0;
-            while ((!renderer || !renderer.canvas || !currentSplat) && waited < maxWait) {
+            while ((!renderer || !renderer.canvas || !currentSplat || (meshRequestId && meshRequestId !== loadedMeshRequestId)) && waited < maxWait) {
                 await new Promise(r => setTimeout(r, interval));
                 waited += interval;
             }
@@ -1177,13 +1184,22 @@
                 return;
             }
 
-            if (!currentSplat) {
-                console.warn('[GaussianViewer] Render proceeding without splat after', waited, 'ms wait');
+            if (!currentSplat || (meshRequestId && meshRequestId !== loadedMeshRequestId)) {
+                window.parent.postMessage({
+                    type: 'RENDER_ERROR',
+                    request_id: requestId,
+                    error: 'Gaussian scene not ready after waiting ' + waited + 'ms',
+                    source: 'preview_gaussian_v2',
+                    timestamp: Date.now()
+                }, '*');
+                return;
             } else if (waited > 0) {
                 console.log('[GaussianViewer] Renderer and scene ready after', waited, 'ms');
             }
 
             try {
+                const renderedSplat = currentSplat;
+                const renderedMeshRequestId = loadedMeshRequestId;
                 updateOutputSettings(resolution, aspectRatio, outputWidth, outputHeight);
 
                 if (animationId) cancelAnimationFrame(animationId);
@@ -1196,6 +1212,9 @@
                     renderer.render(scene, camera);
                 }
 
+                if (!currentSplat || currentSplat !== renderedSplat || loadedMeshRequestId !== renderedMeshRequestId) {
+                    throw new Error('Gaussian scene changed during render');
+                }
                 const outputCanvas = createOutputCanvas() || getCanvasWithBlackBackground(renderer.canvas);
                 const dataUrl = outputCanvas.toDataURL('image/png');
                 const cameraState = getCurrentCameraStateSnapshot();
@@ -2073,6 +2092,8 @@
         }
 
         function clearLoadedMesh(reason) {
+            currentMeshRequestId = null;
+            loadedMeshRequestId = null;
             if (scene && scene.objects && scene.objects.length > 0) {
                 while (scene.objects.length > 0) {
                     scene.removeObject(scene.objects[0]);
@@ -2101,11 +2122,15 @@
 
         // Listen for messages from parent
         window.addEventListener('message', async (event) => {
+            if (event.source !== window.parent || !event.data || typeof event.data !== 'object') return;
             const { type, data, filename, extrinsics, intrinsics, overlay_image, camera_state } = event.data;
 
             if (type === 'CLEAR_MESH') {
                 clearLoadedMesh(event.data?.reason);
             } else if (type === 'LOAD_MESH_DATA' && data) {
+                const requestId = event.data?.request_id || null;
+                currentMeshRequestId = requestId;
+                loadedMeshRequestId = null;
                 console.log('[GaussianViewer] Received LOAD_MESH_DATA, size:', data.byteLength);
                 console.log('[GaussianViewer] Extrinsics:', extrinsics);
                 console.log('[GaussianViewer] Intrinsics:', intrinsics);
@@ -2123,7 +2148,8 @@
                     if (overlayControl) overlayControl.style.display = "none";
                 }
 
-                await loadPLYFromData(data, filename || 'gaussian.ply', extrinsics, intrinsics);
+                await loadPLYFromData(data, filename || 'gaussian.ply', extrinsics, intrinsics, requestId);
+                if (requestId !== currentMeshRequestId) return;
                 applyFocalScale(focalScaleInput.value);
                 if (camera_state) {
                     applyCameraState(camera_state);
@@ -2143,7 +2169,7 @@
                 const outputWidth = event.data.output_width;
                 const outputHeight = event.data.output_height;
                 console.log('[GaussianViewer] RENDER_REQUEST:', requestId, resolution, aspectRatio, outputWidth, outputHeight);
-                renderForRequest(requestId, resolution, aspectRatio, outputWidth, outputHeight);
+                renderForRequest(requestId, resolution, aspectRatio, outputWidth, outputHeight, event.data?.mesh_request_id || null);
             } else if (type === 'OUTPUT_SETTINGS') {
                 const resolution = event.data?.output_resolution;
                 const aspectRatio = event.data?.output_aspect_ratio;

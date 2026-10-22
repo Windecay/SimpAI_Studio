@@ -1080,6 +1080,37 @@
 
     const regionalPromptDrafts = new Map();
     const regionalPromptReferences = new Map();
+    const regionalPromptMaterials = new Map();
+    const mossReferenceExchanges = new Map();
+    window.completeMossReferenceExchange = value => {
+        let result;
+        try { result = typeof value === "string" ? JSON.parse(value) : value; } catch (_) { return; }
+        const request = mossReferenceExchanges.get(result?.id);
+        if (!request) return;
+        mossReferenceExchanges.delete(result.id);
+        window.clearTimeout(request.timer);
+        if (result.ok) request.resolve(result);
+        else request.reject(new Error(result.error || "MOSS reference inputs are unavailable."));
+    };
+    function exchangeMossReferences(operation, params, data = {}) {
+        const localText = key => currentLang() === "en" ? key : (window.localization?.[key] || key);
+        return new Promise((resolve, reject) => {
+            const id = `moss-${Date.now()}-${Math.random()}`;
+            const timer = window.setTimeout(() => {
+                mossReferenceExchanges.delete(id);
+                reject(new Error(localText("Reference image synchronization timed out. Reopen the layout editor.")));
+            }, 20000);
+            mossReferenceExchanges.set(id, { resolve, reject, timer });
+            if (!setField("moss_reference_request", JSON.stringify({
+                id, operation, preset: String(params.__preset || params.preset || ""),
+                user: String(params.user_did || params.__user_did || ""), ...data,
+            }))) {
+                window.clearTimeout(timer);
+                mossReferenceExchanges.delete(id);
+                reject(new Error(localText("MOSS reference inputs are unavailable.")));
+            }
+        });
+    }
     const anonymousRegionalPromptDrafts = new WeakMap();
     const REGIONAL_DRAFT_STORAGE_KEY = "simpai.regionalPromptDrafts.v1";
     const REGIONAL_DRAFT_LIMIT = 8;
@@ -1321,6 +1352,7 @@
         const drafts = regionalDraftStore(field, persistent);
         const draftKey = JSON.stringify([window.location?.pathname || "", user, preset, task, target, original]);
         const localText = key => currentLang() === "en" ? key : (window.localization?.[key] || key);
+        const materialBridge = task === "moss_image_sft_aio_cn" && !!rootById("moss_reference_request");
         let host = null;
         const assertContext = () => {
             const current = paramsSource();
@@ -1339,6 +1371,20 @@
                 snapshot: drafts.get(draftKey),
                 onDraftChange: snapshot => rememberRegionalDraft(drafts, draftKey, snapshot, persistent),
                 reference: regionalPromptReferences.get(draftKey),
+                ...(materialBridge ? {
+                    materialState: regionalPromptMaterials.get(draftKey),
+                    async loadMaterials() {
+                        assertContext();
+                        const result = await exchangeMossReferences("read", params);
+                        assertContext();
+                        return result;
+                    },
+                    onMaterialsChange(value) {
+                        regionalPromptMaterials.delete(draftKey);
+                        regionalPromptMaterials.set(draftKey, value);
+                        while (regionalPromptMaterials.size > 8) regionalPromptMaterials.delete(regionalPromptMaterials.keys().next().value);
+                    },
+                } : {}),
                 onReferenceChange(reference) {
                     regionalPromptReferences.delete(draftKey);
                     if (reference) regionalPromptReferences.set(draftKey, reference);
@@ -1388,12 +1434,12 @@
                         try { applied = setPromptFieldValue(field, result.prompt); }
                         finally { history.applying = false; }
                         if (!applied) throw new Error(localText("The prompt or preset changed. Reopen the layout editor."));
-                        const reference = regionalPromptReferences.get(draftKey);
+                        const reference = regionalPromptReferences.get(draftKey) || {};
                         if (reference) {
                             const appliedKey = JSON.stringify([window.location?.pathname || "", user, preset, task, target, result.prompt]);
                             regionalPromptReferences.delete(appliedKey);
                             regionalPromptReferences.set(appliedKey, result.referenceLayout
-                                ? { ...reference, layoutState: result.referenceLayout } : reference);
+                                ? { ...reference, layoutState: result.referenceLayout, layoutPrompt: result.prompt } : reference);
                             while (regionalPromptReferences.size > 8) regionalPromptReferences.delete(regionalPromptReferences.keys().next().value);
                         }
                         rememberPrompt(field, history);
@@ -1406,8 +1452,26 @@
                         showSuccessToast({}, { agent_service_kind: "local_script" });
                         return true;
                     };
-                    if (differentSize) return setPromptImageSize(result.width, result.height, assertContext).then(applyPrompt);
-                    return applyPrompt();
+                    const applyMaterials = () => {
+                        if (!materialBridge || !result.materialState) return applyPrompt();
+                        assertContext();
+                        return exchangeMossReferences("apply", params, result.materialState).then(response => {
+                            assertContext();
+                            if (result.referenceLayout) {
+                                for (const ui of result.referenceLayout.regionUi || []) {
+                                    if (ui.referenceSlot) ui.referenceKey = response.materials[ui.referenceSlot - 1].key;
+                                }
+                                result.referenceLayout.materials = response.materials;
+                            }
+                            regionalPromptMaterials.delete(draftKey);
+                            if (response.materials.some(item => item.enabled)) {
+                                rootById("image_input_tabs")?.querySelector('[role="tab"][data-tab-id="ip_tab"]')?.click();
+                            }
+                            return applyPrompt();
+                        });
+                    };
+                    if (differentSize) return setPromptImageSize(result.width, result.height, assertContext).then(applyMaterials);
+                    return applyMaterials();
                 },
             });
             if (host) closeModal(false);

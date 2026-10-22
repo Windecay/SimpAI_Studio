@@ -230,7 +230,7 @@
         }
 
         function directorSegmentUsesPreviousVideo(segment) {
-            return directorSegmentFirstMediaRef(segment, 'video') === previousVideoRef();
+            return directorSegmentMediaRefs(segment, 'video').includes(previousVideoRef());
         }
 
         function directorSegmentUsesPreviousImage(segment) {
@@ -445,23 +445,37 @@
                         }
                     });
                 }
-                const videoRef = directorSegmentFirstMediaRef(segment, 'video');
-                const usesPreviousVideo = videoRef === previousVideoRef();
-                if (videoPolicy === 'required' && !videoRef) {
+                const audioRefs = directorSegmentMediaRefs(segment, 'audio');
+                const videoRefs = directorSegmentMediaRefs(segment, 'video');
+                const maxAudios = Number(capability.max_audios ?? 1);
+                const maxVideos = Number(capability.max_videos ?? 1);
+                if (audioRefs.length > maxAudios) {
+                    errors.push(t('Director shot {index} uses too many audio refs.', '分镜 {index} 的音频引用数量超出当前 preset 支持范围。').replace('{index}', shotIndex));
+                }
+                if (videoRefs.length > maxVideos) {
+                    errors.push(t('Director shot {index} uses too many video refs.', '分镜 {index} 的视频引用数量超出当前 preset 支持范围。').replace('{index}', shotIndex));
+                }
+                const usesPreviousVideo = videoRefs.includes(previousVideoRef());
+                if (videoPolicy === 'required' && !videoRefs.length) {
                     errors.push(t('Director shot {index} requires a source video.', '分镜 {index} 需要源视频。').replace('{index}', shotIndex));
                 }
-                if (videoPolicy === 'forbidden' && videoRef) {
+                if (videoPolicy === 'forbidden' && videoRefs.length) {
                     warnings.push(t('Director shot {index} video refs are ignored by this preset.', '当前 preset 不使用分镜 {index} 的视频引用。').replace('{index}', shotIndex));
                 }
                 if (usesPreviousVideo) {
                     if (index === 0) errors.push(t('Director shot 1 cannot use the previous shot result.', '分镜 1 不能使用上一段结果。'));
                     if (!allowPreviousVideo) errors.push(t('The current preset does not support previous-shot video chaining.', '当前 preset 不支持使用上一段结果作为视频输入。'));
-                } else if (requiresSequentialVideo && index > 0 && videoRef) {
+                } else if (requiresSequentialVideo && index > 0 && videoRefs.length) {
                     errors.push(t('Director shot {index} must use the previous shot result for this extend preset.', '当前延长 preset 的分镜 {index} 必须使用上一段结果。').replace('{index}', shotIndex));
-                } else if (videoPolicy === 'required' && videoRef && !directorPayloadHasMediaAsset(payload, videoRef)) {
-                    errors.push(t('Director shot {index} uses {ref}, but no video source is connected.', '分镜 {index} 选择了 {ref}，但这个素材位没有视频来源。')
-                        .replace('{index}', shotIndex)
-                        .replace('{ref}', videoRef));
+                }
+                if (videoPolicy === 'required') {
+                    videoRefs.filter(ref => ref !== previousVideoRef()).forEach(ref => {
+                        if (!directorPayloadHasMediaAsset(payload, ref)) {
+                            errors.push(t('Director shot {index} uses {ref}, but no video source is connected.', '分镜 {index} 选择了 {ref}，但这个素材位没有视频来源。')
+                                .replace('{index}', shotIndex)
+                                .replace('{ref}', ref));
+                        }
+                    });
                 }
             });
             return { ok: !errors.length, errors, warnings, capability };

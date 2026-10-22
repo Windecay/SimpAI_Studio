@@ -6,6 +6,8 @@
     const escapeHtmlFallback = (value) => String(value ?? '');
     const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
     const translateFallback = (en, cn) => cn || en;
+    const displayVersions = new WeakMap();
+    let nextDisplayVersion = 0;
 
     function call(ctx, name, fallback, ...args) {
         return typeof ctx?.[name] === 'function' ? ctx[name](...args) : fallback;
@@ -69,6 +71,7 @@
             : undefined;
         return {
             assetDisplaySrc: pick(assetSource, 'assetDisplaySrc'),
+            assetFullDisplaySrc: pick(assetSource, 'assetFullDisplaySrc'),
             defaultNodeSize: pick(nodeSource, 'defaultNodeSize'),
             buildProjectNodeAppendPatch: pick(projectSource, 'buildProjectNodeAppendPatch'),
             escapeHtml: pick(utilitySource, 'escapeHtml'),
@@ -235,7 +238,11 @@
         return call(contextOf(context), 'getCompareSourceAsset', null, source);
     }
 
-    function assetSrc(asset, context) {
+    function assetSrc(asset, context, fullResolution = false) {
+        if (fullResolution && typeof contextOf(context).assetFullDisplaySrc === 'function') {
+            return contextOf(context).assetFullDisplaySrc(asset || {});
+        }
+        if (fullResolution && asset?.kind === 'browser_upload' && asset.data_url) return asset.data_url;
         if (typeof contextOf(context).assetDisplaySrc === 'function') return contextOf(context).assetDisplaySrc(asset || {});
         return asset?.data_url || asset?.preview_url || asset?.thumb || '';
     }
@@ -264,6 +271,18 @@
         const ctx = contextOf(context);
         const source = getSourceNode(node, slot, ctx);
         const asset = getSourceAsset(source, ctx);
+        let displayVersion = '';
+        if (asset && typeof asset === 'object') {
+            const preview = assetSrc(asset, ctx);
+            const full = assetSrc(asset, ctx, true);
+            let cached = displayVersions.get(asset);
+            // Track complete resolved sources once per change without embedding image bytes in render keys.
+            if (!cached || cached.preview !== preview || cached.full !== full) {
+                cached = { preview, full, version: ++nextDisplayVersion };
+                displayVersions.set(asset, cached);
+            }
+            displayVersion = cached.version;
+        }
         return [
             source?.id || '',
             source?.title || '',
@@ -271,7 +290,7 @@
             asset?.path || '',
             asset?.output_path || '',
             asset?.preview_url || '',
-            asset?.data_url ? String(asset.data_url).slice(0, 128) : '',
+            displayVersion,
             asset?.width || '',
             asset?.height || ''
         ].join('|');
@@ -345,10 +364,11 @@
         const sourceB = getSourceNode(node, 'b', ctx);
         const assetA = getSourceAsset(sourceA, ctx);
         const assetB = getSourceAsset(sourceB, ctx);
-        const srcA = assetSrc(assetA, ctx);
-        const srcB = assetSrc(assetB, ctx);
         const pos = clampValue(ctx, Number(node?.params?.position ?? 50), 0, 100);
         const mode = String(node?.params?.mode || 'fit');
+        const fullResolution = mode === 'pixel' || !!opts.fullResolution;
+        const srcA = assetSrc(assetA, ctx, fullResolution);
+        const srcB = assetSrc(assetB, ctx, fullResolution);
         if (!srcA || !srcB) {
             return `<div class="sai-compare-empty">${renderIconHtml('sai-compare-glyph', ctx)}<span>${escapeHtmlValue(ctx, srcA || srcB ? translateValue(ctx, 'Connect the second image', '连接第二张图像') : translateValue(ctx, 'Connect two image nodes', '连接两个图像节点'))}</span></div>`;
         }

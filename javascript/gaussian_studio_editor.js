@@ -5,6 +5,7 @@
     const UTILS = window.SimpAICanvasWorkbenchUtils || {};
     const ASSETS = window.SimpAICanvasWorkbenchAssetNodes || {};
     const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
+    const studioEndpointUrl = UTILS.studioEndpointUrl || ((url) => url);
     const t = (en, cn) => {
         const langState = window.simpleaiTopbarSystemParams || {};
         if (typeof UTILS.t === 'function') return UTILS.t(en, cn, langState);
@@ -24,10 +25,15 @@
     let backdropPointerStarted = false;
     let viewerContextGuardActive = false;
     let viewerContextGuardUntil = 0;
+    let meshRequestSeq = 0;
+
+    function ownsWindow(expectedState, expectedModal) {
+        return !!expectedState && state === expectedState && modal === expectedModal && expectedModal?.isConnected !== false;
+    }
 
     function postJson(endpoint, payload) {
         if (typeof API.postJson === 'function') return API.postJson(endpoint, payload || {});
-        return fetch(endpoint, {
+        return fetch(studioEndpointUrl(endpoint), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload || {})
@@ -62,13 +68,17 @@
 
     function assetDisplaySrc(asset, fallback) {
         if (!asset || typeof asset !== 'object') return fallback || '';
-        if (typeof ASSETS.assetDisplaySrc === 'function') return ASSETS.assetDisplaySrc(asset) || fallback || '';
-        return asset.preview_url || asset.data_url || asset.thumb || fallback || '';
+        if (typeof ASSETS.assetDisplaySrc === 'function') return studioAssetUrl(ASSETS.assetDisplaySrc(asset) || fallback || '');
+        return studioAssetUrl(asset.preview_url || asset.data_url || asset.thumb || fallback || '');
+    }
+
+    function studioAssetUrl(url) {
+        return /^\/(?:file=|gradio_api\/file=)/.test(url) ? studioEndpointUrl(url) : url;
     }
 
     function assetUrl(asset) {
         if (!asset || typeof asset !== 'object') return '';
-        return asset.preview_url || asset.data_url || asset.url || '';
+        return studioAssetUrl(asset.preview_url || asset.data_url || asset.url || '');
     }
 
     function hasPly(target) {
@@ -95,7 +105,14 @@
         const text = String(value || '');
         if (!text) return '';
         if (!text.startsWith('data:')) return text;
-        return compactSignatureParts(['data', text.length, text.slice(0, 96), text.slice(-96)]);
+        let hash = 2166136261;
+        let secondHash = 5381;
+        for (let index = 0; index < text.length; index++) {
+            const value = text.charCodeAt(index);
+            hash = Math.imul(hash ^ value, 16777619);
+            secondHash = Math.imul(secondHash, 33) ^ value;
+        }
+        return compactSignatureParts(['data-v2', text.length, (hash >>> 0).toString(16), (secondHash >>> 0).toString(16)]);
     }
 
     function imagePixelSignature(dataUrl) {
@@ -169,7 +186,7 @@
         const assetSig = assetSignature(referenceAsset);
         const captureSig = current.referenceCaptureSignature || current.reference_capture_signature || '';
         const dataSig = current.referenceDataSignature || current.reference_data_signature || dataUrlSignature(current.referenceDataUrl || current.reference_data_url || '');
-        const inlineSig = captureSig || dataSig || ((current.sceneBridge || current.scene_bridge) ? '' : (current.referenceSrc || current.reference_src || ''));
+        const inlineSig = dataSig || captureSig || ((current.sceneBridge || current.scene_bridge) ? '' : (current.referenceSrc || current.reference_src || ''));
         return compactSignatureParts([
             (current.sceneBridge || current.scene_bridge) ? (inlineSig || sourceSig || assetSig) : (sourceSig || assetSig || inlineSig),
             current.referenceWidth || current.reference_width || '',
@@ -194,7 +211,6 @@
     }
 
     function referenceEvidenceMatches(previousCapture, previousData, nextCapture, nextData) {
-        if (previousCapture && nextCapture) return previousCapture === nextCapture;
         if (previousData && nextData) return previousData === nextData;
         return false;
     }
@@ -318,7 +334,7 @@
         const label = modal.querySelector('[data-gaussian-reference-label]');
         const src = state.referenceSrc || state.referenceDataUrl || assetDisplaySrc(state.referenceAsset || {}, '');
         if (img) {
-            img.src = src || '';
+            img.src = studioAssetUrl(src || '');
             img.hidden = !src;
         }
         if (label) label.textContent = src ? t('Reference ready', '参考图已就绪') : t('No reference', '无参考图');
@@ -329,7 +345,7 @@
         const img = modal.querySelector('[data-gaussian-output-preview]');
         const src = state.renderedImageDataUrl || assetDisplaySrc(state.renderAsset || {}, '');
         if (img) {
-            img.src = src || '';
+            img.src = studioAssetUrl(src || '');
             img.hidden = !src;
         }
         const ply = modal.querySelector('[data-gaussian-ply-label]');
@@ -339,6 +355,11 @@
     }
 
     function clearViewerMesh(reason) {
+        if (pendingRender) pendingRender.reject(new Error('Gaussian scene changed'));
+        if (state) {
+            state.viewerReady = false;
+            state.meshRequestId = '';
+        }
         iframeWindow()?.postMessage({ type: 'CLEAR_MESH', reason: reason || 'reference_changed' }, '*');
     }
 
@@ -388,7 +409,8 @@
             const nextCapture = state.referenceCaptureSignature || '';
             const nextData = state.referenceDataSignature || '';
             if (!previousCapture && !previousData) {
-                if (previousSignature && !referenceSignatureMatches(previousSignature, nextSignature)) {
+                const matchesFullInput = nextData && (previousSignature === nextSignature || previousSignature === nextData);
+                if ((nextData && !matchesFullInput) || (!nextData && previousSignature && !referenceSignatureMatches(previousSignature, nextSignature))) {
                     clearGeneratedStateForReferenceChange(nextSignature, reason || 'reference_changed');
                     return true;
                 }
@@ -415,7 +437,7 @@
 
     function buildModal(options) {
         const title = escapeHtml(options?.title || 'Gaussian Studio');
-        const viewerUrl = escapeHtml(options?.viewerUrl || DEFAULT_VIEWER_URL);
+        const viewerUrl = escapeHtml(studioEndpointUrl(options?.viewerUrl || DEFAULT_VIEWER_URL));
         const shell = document.createElement('div');
         shell.className = 'sai-canvas-modal sai-gaussian-studio-modal';
         shell.innerHTML = `
@@ -530,6 +552,9 @@
     }
 
     async function loadPlyIntoViewer() {
+        const owner = state;
+        const ownerModal = modal;
+        if (!owner) return;
         if (!hasPly(state)) {
             updateOutputPreview();
             return;
@@ -539,14 +564,23 @@
             setStatus(t('PLY asset has no readable URL.', 'PLY 资产没有可读取的地址。'), true);
             return;
         }
+        const requestId = `gaussian_mesh_${++meshRequestSeq}`;
+        if (pendingRender) pendingRender.reject(new Error('Gaussian scene changed'));
+        owner.meshRequestId = requestId;
+        owner.viewerReady = false;
+        const isCurrent = () => ownsWindow(owner, ownerModal) && owner.meshRequestId === requestId;
         setBusy(true, t('Loading viewer asset...', '正在载入 Viewer 资产...'));
         try {
             await waitForIframe();
-            const response = await fetch(url);
+            if (!isCurrent()) return;
+            const response = await fetch(studioAssetUrl(url));
+            if (!isCurrent()) return;
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const buffer = await response.arrayBuffer();
+            if (!isCurrent()) return;
             iframeWindow()?.postMessage({
                 type: 'LOAD_MESH_DATA',
+                request_id: requestId,
                 data: buffer,
                 filename: state.plyAsset?.name || state.plyPath || 'gaussian.ply',
                 extrinsics: state.extrinsics || null,
@@ -555,18 +589,22 @@
             }, '*', [buffer]);
             state.pendingApplyCameraState = hasCameraState(state.cameraState);
             if (state.pendingApplyCameraState) {
-                setTimeout(() => applyCameraStateToViewer('ply_load_fallback'), 1200);
+                setTimeout(() => { if (isCurrent()) applyCameraStateToViewer('ply_load_fallback'); }, 1200);
             }
             setStatus(state.referenceStale
                 ? t('Reference changed. Click Build to rebuild.', '参考图已更新，点击生成按钮重新解析。')
-                : t('Viewer ready.', 'Viewer 已就绪。'));
+                : t('Loading Gaussian scene...', '正在载入高斯场景...'));
         } catch (err) {
+            if (!isCurrent()) return;
             setStatus(`${t('Viewer load failed', 'Viewer 载入失败')}: ${err?.message || err}`, true);
+            setBusy(false);
             clearMissingPlyState('ply_load_failed');
             maybeAutoBuild('ply_missing');
         } finally {
-            setBusy(false);
-            updateOutputPreview();
+            if (isCurrent()) {
+                setBusy(false);
+                updateOutputPreview();
+            }
         }
     }
 
@@ -583,10 +621,11 @@
     function captureCameraState(timeoutMs, options) {
         if (!state || pendingCameraCapture) return pendingCameraCapture?.promise || Promise.resolve(state?.cameraState || {});
         const opts = options || {};
+        const owner = state;
         const requestId = `gaussian_camera_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const promise = new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
-                const fallback = state?.cameraState || {};
+                const fallback = state === owner ? owner.cameraState || {} : {};
                 pendingCameraCapture = null;
                 if (opts.required && !hasCameraState(fallback)) reject(new Error(t('Camera capture timed out.', '相机捕获超时。')));
                 else resolve(fallback);
@@ -615,6 +654,7 @@
 
     function renderCurrentView() {
         if (!hasPly(state)) return Promise.reject(new Error(t('Build PLY first.', '请先生成 PLY。')));
+        if (!state.viewerReady) return Promise.reject(new Error(t('Wait for the Gaussian scene to load.', '请等待高斯场景载入完成。')));
         if (pendingRender) return pendingRender.promise;
         const params = readParams();
         const requestId = `gaussian_render_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -626,6 +666,7 @@
             }, 30000);
             pendingRender = {
                 requestId,
+                meshRequestId: state.meshRequestId,
                 resolve: (value) => {
                     clearTimeout(timeout);
                     pendingRender = null;
@@ -644,6 +685,7 @@
         iframeWindow()?.postMessage({
             type: 'RENDER_REQUEST',
             request_id: requestId,
+            mesh_request_id: state.meshRequestId,
             output_resolution: params.resolution,
             output_aspect_ratio: params.aspect_ratio,
             output_width: outputSize.width || null,
@@ -654,7 +696,7 @@
 
     async function urlToDataUrl(url) {
         if (!url || String(url).startsWith('data:')) return url || '';
-        const response = await fetch(url);
+        const response = await fetch(studioAssetUrl(url));
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const blob = await response.blob();
         return new Promise((resolve, reject) => {
@@ -665,40 +707,47 @@
         });
     }
 
-    async function ensureReferenceDataUrl() {
-        if (state.referenceAssetSource) return '';
-        if (state.referenceDataUrl) {
-            if (!state.referenceWidth || !state.referenceHeight) {
-                const size = await measureDataUrl(state.referenceDataUrl);
+    async function ensureReferenceDataUrl(owner = state) {
+        if (!owner || owner.referenceAssetSource) return '';
+        if (owner.referenceDataUrl) {
+            if (!owner.referenceWidth || !owner.referenceHeight) {
+                const size = await measureDataUrl(owner.referenceDataUrl);
                 if (size.width && size.height) {
-                    state.referenceWidth = size.width;
-                    state.referenceHeight = size.height;
+                    owner.referenceWidth = size.width;
+                    owner.referenceHeight = size.height;
                 }
             }
-            return state.referenceDataUrl;
+            return owner.referenceDataUrl;
         }
-        if (state.referenceSrc) {
-            state.referenceDataUrl = await urlToDataUrl(state.referenceSrc);
-            const size = await measureDataUrl(state.referenceDataUrl);
+        if (owner.referenceSrc) {
+            owner.referenceDataUrl = await urlToDataUrl(owner.referenceSrc);
+            const size = await measureDataUrl(owner.referenceDataUrl);
             if (size.width && size.height) {
-                state.referenceWidth = size.width;
-                state.referenceHeight = size.height;
+                owner.referenceWidth = size.width;
+                owner.referenceHeight = size.height;
             }
-            updateReferencePreview();
-            return state.referenceDataUrl;
+            if (state === owner) updateReferencePreview();
+            return owner.referenceDataUrl;
         }
         return '';
     }
 
-    async function buildGaussian() {
+    async function buildGaussian(options) {
         if (!state) return;
+        const owner = state;
+        const ownerModal = modal;
+        const requestId = owner.buildRequestSeq = (owner.buildRequestSeq || 0) + 1;
+        const isCurrent = () => ownsWindow(owner, ownerModal) && owner.buildRequestSeq === requestId;
+        if (!options?.auto) owner.autoBuildAttempts = 1;
         setBusy(true, t('Building 3D Gaussian...', '正在生成 3D 高斯...'));
         try {
-            const referenceDataUrl = await ensureReferenceDataUrl();
+            const referenceDataUrl = await ensureReferenceDataUrl(owner);
+            if (!isCurrent()) return;
             if (!state.referenceAssetSource && !referenceDataUrl) throw new Error(t('No reference image.', '没有参考图。'));
             if (referenceDataUrl && !state.referenceDataSignature) state.referenceDataSignature = dataUrlSignature(referenceDataUrl);
             if (referenceDataUrl && !state.referenceCaptureSignature && state.sceneBridge) {
                 state.referenceCaptureSignature = await imagePixelSignature(referenceDataUrl);
+                if (!isCurrent()) return;
             }
             state.referenceSignature = currentReferenceSignature();
             const buildReferenceSignature = state.referenceSignature || '';
@@ -715,6 +764,10 @@
                 focal_length_mm: params.focal_length_mm,
                 output_prefix: `sharp_${state.nodeId || 'gaussian'}`
             });
+            if (!isCurrent()) return;
+            if (response?.error_code === 'resource_missing') {
+                throw new Error(t('SHARP model is missing. Install it through model management, then retry.', '缺少 SHARP 模型，请通过模型管理安装后重试。'));
+            }
             if (!response?.ok) throw new Error([response?.error, response?.details].filter(Boolean).join(': ') || 'predict failed');
             if (buildReferenceSignature && buildReferenceSignature !== currentReferenceSignature()) {
                 throw new Error(t('Reference changed during build. Please build again.', '生成期间参考图已变化，请重新生成。'));
@@ -734,27 +787,34 @@
             setStatus(response.message || t('PLY generated.', 'PLY 已生成。'));
             updateReferencePreview();
             persistCache('build');
+            if (!isCurrent()) return;
             await loadPlyIntoViewer();
         } catch (err) {
-            setStatus(`${t('Build failed', '生成失败')}: ${err?.message || err}`, true);
+            if (isCurrent()) setStatus(`${t('Build failed', '生成失败')}: ${err?.message || err}`, true);
         } finally {
-            setBusy(false);
-            updateOutputPreview();
+            if (isCurrent()) {
+                setBusy(false);
+                updateOutputPreview();
+            }
         }
     }
 
     async function renderViewAction() {
+        const owner = state;
+        const ownerModal = modal;
+        const isCurrent = () => ownsWindow(owner, ownerModal);
         setBusy(true, t('Rendering current view...', '正在渲染当前视角...'));
         try {
             const dataUrl = await renderCurrentView();
+            if (!isCurrent()) return;
             state.renderedImageDataUrl = dataUrl;
             setStatus(t('Render ready.', '渲染已就绪。'));
             updateOutputPreview();
             persistCache('render_preview', { includeDataUrl: sceneBridgeOpen });
         } catch (err) {
-            setStatus(`${t('Render failed', '渲染失败')}: ${err?.message || err}`, true);
+            if (isCurrent()) setStatus(`${t('Render failed', '渲染失败')}: ${err?.message || err}`, true);
         } finally {
-            setBusy(false);
+            if (isCurrent()) setBusy(false);
         }
     }
 
@@ -890,13 +950,23 @@
 
     async function confirmExport() {
         if (!state) return;
+        const owner = state;
+        const ownerModal = modal;
+        const requestId = owner.exportRequestSeq = (owner.exportRequestSeq || 0) + 1;
+        const isCurrent = () => ownsWindow(owner, ownerModal) && owner.exportRequestSeq === requestId;
+        const params = readParams();
         setBusy(true, t('Exporting render...', '正在导出渲染...'));
         try {
             const dataUrl = await renderCurrentView();
+            if (!isCurrent()) return;
             state.renderedImageDataUrl = dataUrl;
             const size = await measureDataUrl(dataUrl);
-            const params = readParams();
+            if (!isCurrent()) return;
             state.referenceSignature = currentReferenceSignature() || state.referenceSignature || '';
+            const metadata = JSON.parse(JSON.stringify({
+                ...cachePayload(false),
+                params
+            }));
             const response = await gaussianExport({
                 project_id: state.projectId,
                 node_id: state.nodeId,
@@ -914,22 +984,23 @@
                 intrinsics: state.intrinsics || null,
                 params
             });
+            if (!isCurrent()) return;
             if (!response?.ok) throw new Error([response?.error, response?.details].filter(Boolean).join(': ') || 'export failed');
             const finalResponse = Object.assign({}, response, {
                 image_data_url: dataUrl,
                 render_asset: response.render_asset || response.asset_ref || null,
                 asset_ref: response.asset_ref || response.render_asset || null,
-                ply_asset: state.plyAsset || null,
-                ply_path: state.plyPath || '',
-                reference_asset: state.referenceAsset || null,
-                reference_signature: state.referenceSignature || '',
-                reference_capture_signature: state.referenceCaptureSignature || '',
-                reference_data_signature: state.referenceDataSignature || dataUrlSignature(state.referenceDataUrl || ''),
-                camera_state: state.cameraState || {},
-                extrinsics: state.extrinsics || null,
-                intrinsics: state.intrinsics || null,
+                ply_asset: metadata.ply_asset,
+                ply_path: metadata.ply_path,
+                reference_asset: metadata.reference_asset,
+                reference_signature: metadata.reference_signature,
+                reference_capture_signature: metadata.reference_capture_signature,
+                reference_data_signature: metadata.reference_data_signature,
+                camera_state: metadata.camera_state,
+                extrinsics: metadata.extrinsics,
+                intrinsics: metadata.intrinsics,
                 params,
-                gaussian_state: Object.assign({}, response.gaussian_state || {}, cachePayload(false), {
+                gaussian_state: Object.assign({}, response.gaussian_state || {}, metadata, {
                     render_asset: response.render_asset || response.asset_ref || null,
                     output_asset: response.render_asset || response.asset_ref || null
                 })
@@ -937,17 +1008,25 @@
             state.renderAsset = finalResponse.render_asset;
             updateOutputPreview();
             persistCache('confirm');
+            if (!isCurrent()) return;
             applySceneBridge(finalResponse);
-            if (typeof state.onConfirm === 'function') state.onConfirm(finalResponse);
-            close();
+            if (typeof owner.onConfirm === 'function') owner.onConfirm(finalResponse);
+            if (isCurrent()) close();
         } catch (err) {
-            setStatus(`${t('Export failed', '导出失败')}: ${err?.message || err}`, true);
+            if (isCurrent()) setStatus(`${t('Export failed', '导出失败')}: ${err?.message || err}`, true);
         } finally {
-            setBusy(false);
+            if (isCurrent()) setBusy(false);
         }
     }
 
     function handleMessage(event) {
+        const iframe = modal?.querySelector('[data-gaussian-viewer]');
+        if (!iframe?.contentWindow || event.source !== iframe.contentWindow) return;
+        try {
+            if (event.origin !== new URL(iframe.src, window.location?.href || document.baseURI).origin) return;
+        } catch (err) {
+            return;
+        }
         const data = event?.data || {};
         if (!data || typeof data !== 'object') return;
         if (data.type === 'GAUSSIAN_VIEWER_CONTEXT_GUARD') {
@@ -958,28 +1037,48 @@
         }
         if (!state) return;
         if (data.type === 'SET_CAMERA_PARAMS') {
+            if (data.request_id) {
+                if (!pendingCameraCapture || data.request_id !== pendingCameraCapture.requestId) return;
+            } else if (pendingCameraCapture) {
+                return;
+            }
+            const owner = state;
+            const capture = pendingCameraCapture;
             state.cameraState = data.camera_state || {};
             setStatus(t('Camera captured.', '相机已记录。'));
             persistCache('camera');
-            if (pendingCameraCapture) {
-                pendingCameraCapture.resolve(state.cameraState);
+            if (state === owner && capture && pendingCameraCapture === capture) {
+                capture.resolve(owner.cameraState);
             }
             return;
         }
         if (data.type === 'MESH_LOADED') {
+            if (!state.meshRequestId || data.request_id !== state.meshRequestId) return;
+            state.viewerReady = true;
+            setStatus(t('Viewer ready.', 'Viewer 已就绪。'));
             if (state.pendingApplyCameraState && hasCameraState(state.cameraState)) {
                 state.pendingApplyCameraState = false;
                 applyCameraStateToViewer('mesh_loaded');
-                setTimeout(() => applyCameraStateToViewer('mesh_loaded_confirm'), 160);
+                const owner = state;
+                const requestId = state.meshRequestId;
+                setTimeout(() => { if (state === owner && state.meshRequestId === requestId) applyCameraStateToViewer('mesh_loaded_confirm'); }, 160);
             }
             return;
         }
+        if (data.type === 'MESH_ERROR' && data.request_id === state.meshRequestId) {
+            state.viewerReady = false;
+            setStatus(`${t('Viewer load failed', 'Viewer 载入失败')}: ${data.error || 'mesh error'}`, true);
+            return;
+        }
         if (data.type === 'RENDER_RESULT' && pendingRender && data.request_id === pendingRender.requestId) {
+            if (!state.viewerReady || pendingRender.meshRequestId !== state.meshRequestId) return;
+            const owner = state;
+            const render = pendingRender;
             if (hasCameraState(data.camera_state)) {
                 state.cameraState = data.camera_state || {};
                 persistCache('camera');
             }
-            pendingRender.resolve(data.image || '');
+            if (state === owner && pendingRender === render) render.resolve(data.image || '');
             return;
         }
         if (data.type === 'RENDER_ERROR' && pendingRender && data.request_id === pendingRender.requestId) {
@@ -1103,13 +1202,18 @@
     document.addEventListener('pointerup', releaseViewerContextGuard, true);
 
     async function hydrateStatus() {
+        const owner = state;
+        const ownerModal = modal;
+        const isCurrent = () => ownsWindow(owner, ownerModal);
         try {
             const status = await gaussianStatus({});
+            if (!isCurrent()) return;
             if (state) state.sharpModelReady = !!status?.sharp_model?.ready;
             if (status?.sharp_model?.ready) setStatus(t('SHARP model ready.', 'SHARP 模型已就绪。'));
-            else setStatus(t('SHARP model will download on first build.', '首次生成时会下载 SHARP 模型。'));
+            else setStatus(t('SHARP model is missing. Install it through model management, then retry.', '缺少 SHARP 模型，请通过模型管理安装后重试。'));
             maybeAutoBuild('status');
         } catch (err) {
+            if (!isCurrent()) return;
             if (state) state.sharpModelReady = false;
             setStatus(t('Status check skipped.', '状态检查已跳过。'));
         }
@@ -1118,13 +1222,21 @@
     function maybeAutoBuild(reason) {
         if (!state || !state.autoBuild || state.autoBuildStarted || state.autoBuildInFlight) return;
         if (hasPly(state) || !hasReference(state)) return;
+        if (state.autoBuildAttempts >= 2) {
+            setStatus(t('The PLY asset is still unreadable. Click Build to retry.', 'PLY 资产仍无法读取，请点击生成按钮重试。'), true);
+            return;
+        }
+        const owner = state;
+        const ownerModal = modal;
+        const requestId = owner.autoBuildRequestSeq = (owner.autoBuildRequestSeq || 0) + 1;
         state.autoBuildStarted = true;
         state.autoBuildInFlight = true;
+        state.autoBuildAttempts = (state.autoBuildAttempts || 0) + 1;
         Promise.resolve()
-            .then(() => buildGaussian())
-            .catch((err) => setStatus(`${t('Build failed', '生成失败')}: ${err?.message || err}`, true))
+            .then(() => { if (ownsWindow(owner, ownerModal)) return buildGaussian({ auto: true }); })
+            .catch((err) => { if (ownsWindow(owner, ownerModal)) setStatus(`${t('Build failed', '生成失败')}: ${err?.message || err}`, true); })
             .finally(() => {
-                if (state) state.autoBuildInFlight = false;
+                if (state === owner && owner.autoBuildRequestSeq === requestId) owner.autoBuildInFlight = false;
             });
     }
 
@@ -1170,10 +1282,13 @@
             autoBuild: opts.autoBuild !== false,
             autoBuildStarted: false,
             autoBuildInFlight: false,
+            autoBuildAttempts: 0,
             deferInitialPlyLoad: !!opts.deferInitialPlyLoad,
             referenceStale: false,
             sharpModelReady: false,
             pendingApplyCameraState: false,
+            viewerReady: false,
+            meshRequestId: '',
             onConfirm: opts.onConfirm || null,
             onStateChange: opts.onStateChange || null
         };
@@ -1185,7 +1300,11 @@
         updateReferencePreview();
         updateOutputPreview();
         hydrateStatus();
-        if (!state.deferInitialPlyLoad) waitForIframe().then(() => loadPlyIntoViewer()).catch(() => {});
+        if (!state.deferInitialPlyLoad) {
+            const owner = state;
+            const ownerModal = modal;
+            waitForIframe().then(() => { if (ownsWindow(owner, ownerModal)) return loadPlyIntoViewer(); }).catch(() => {});
+        }
         return modal;
     }
 

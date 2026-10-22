@@ -24,6 +24,7 @@
         return {
             escapeHtml: pick(utilitySource, 'escapeHtml'),
             t: pick(utilitySource, 't'),
+            getLanguageState: pick(utilitySource, 'getLanguageState'),
             applyStyleSelectorToPreset: pick(scope, 'applyStyleSelectorToPreset'),
             setSelectedNode: pick(scope, 'setSelectedNode'),
             buildStyleSelectorStatePatch: pick(scope, 'buildStyleSelectorStatePatch'),
@@ -80,6 +81,11 @@
     function translateValue(context, en, cn) {
         const ctx = contextOf(context);
         return call(ctx, 't', translateFallback(en, cn), en, cn);
+    }
+
+    function isEnglish(context) {
+        const language = call(contextOf(context), 'getLanguageState', {})?.__lang;
+        return String(language || '').toLowerCase().startsWith('en');
     }
 
     function createNode(world, options, context) {
@@ -218,14 +224,14 @@
     function findStyleSelectorForPreset(presetNode, context) {
         if (!presetNode) return null;
         const project = call(context, 'getProject', null);
-        const nodes = Array.isArray(project?.nodes) ? project.nodes : [];
         const edges = Array.isArray(project?.edges) ? project.edges : [];
-        return nodes.find(node => node?.type === 'style_selector' && node.style_selector?.target_preset_id === presetNode.id)
-            || (() => {
-                const edge = edges.find(item => item.type === 'text' && item.to === presetNode.id && item.slot === 'prompt'
-                    && call(context, 'getNode', null, item.from)?.type === 'style_selector');
-                return edge ? call(context, 'getNode', null, edge.from) : null;
-            })();
+        const edge = edges.find(item => item.type === 'text' && item.to === presetNode.id && (item.slot || 'prompt') === 'prompt');
+        const sourceId = edge?.from || presetNode.text_inputs?.prompt;
+        if (sourceId) {
+            const source = call(context, 'getNode', null, sourceId);
+            return source?.type === 'style_selector' ? source : null;
+        }
+        return null;
     }
 
     function styleSelectorLinkedPreset(selectorNode, context) {
@@ -233,14 +239,23 @@
         const state = selectorNode.style_selector || {};
         const project = call(context, 'getProject', null);
         const edges = Array.isArray(project?.edges) ? project.edges : [];
-        const edgeTarget = edges.find(edge => edge.type === 'text' && edge.from === selectorNode.id && edge.slot === 'prompt');
-        return call(context, 'getNode', null, state.target_preset_id || '')
-            || call(context, 'getNode', null, edgeTarget?.to || '');
+        const targets = [state.target_preset_id, ...edges
+            .filter(edge => edge.type === 'text' && edge.from === selectorNode.id && (edge.slot || 'prompt') === 'prompt')
+            .map(edge => edge.to)];
+        return targets.map(id => call(context, 'getNode', null, id || ''))
+            .find(target => target && ['preset', 'classic'].includes(target.type)
+                && findStyleSelectorForPreset(target, context) === selectorNode) || null;
     }
 
     function linkStyleSelectorToPreset(selectorNode, presetNode, options, context) {
         const ctx = contextOf(context);
         if (!selectorNode || selectorNode.type !== 'style_selector' || !presetNode || !['preset', 'classic'].includes(presetNode.type)) return false;
+        const project = call(ctx, 'getProject', null);
+        (project?.nodes || []).filter(node => node.type === 'style_selector'
+            && node !== selectorNode && node.style_selector?.target_preset_id === presetNode.id)
+            .forEach(node => Object.assign(node, call(ctx, 'buildStyleSelectorStatePatch', {}, node, {
+                statePatch: { target_preset_id: '' }
+            })));
         const stateFallback = {
             style_selector: Object.assign({
                 selected_name: '', prompt: '', negative: '', target_preset_id: '', search: ''
@@ -250,7 +265,7 @@
             statePatch: { target_preset_id: presetNode.id }
         }) || stateFallback);
         call(ctx, 'filterProjectEdges', undefined,
-            edge => !(edge.type === 'text' && edge.to === presetNode.id && edge.slot === 'prompt'));
+            edge => !(edge.type === 'text' && edge.to === presetNode.id && (edge.slot || 'prompt') === 'prompt'));
         call(ctx, 'appendProjectEdge', undefined, call(ctx, 'buildCanvasEdge', null, 'text', {
             from: selectorNode.id,
             to: presetNode.id,
@@ -266,14 +281,16 @@
 
     function applyStyleSelectorToPreset(selectorNode, style, options, context) {
         const ctx = contextOf(context);
-        if (!selectorNode || selectorNode.type !== 'style_selector') return false;
+        if (!selectorNode || selectorNode.type !== 'style_selector'
+            || call(ctx, 'getNode', selectorNode, selectorNode.id) !== selectorNode) return false;
         const selected = style || selectedStyle(selectorNode, ctx);
         if (!selected) {
             if (!options?.silent) call(ctx, 'showToast', undefined, translateValue(ctx, 'Choose a style first.', '请先选择一个风格。'));
             return false;
         }
-        const presetNode = styleSelectorLinkedPreset(selectorNode, ctx);
-        if (!presetNode || !['preset', 'classic'].includes(presetNode.type)) {
+        const presetNode = options?.targetPresetNode || styleSelectorLinkedPreset(selectorNode, ctx);
+        if (!presetNode || !['preset', 'classic'].includes(presetNode.type)
+            || call(ctx, 'getNode', presetNode, presetNode.id) !== presetNode) {
             if (!options?.silent) call(ctx, 'showToast', undefined, translateValue(ctx, 'Link this Style Selector to a Style Transfer+ preset first.', '请先把 Style Selector 连接到 Style Transfer+ preset。'));
             return false;
         }
@@ -320,7 +337,7 @@
                 call(ctx, 'showToast', undefined, translateValue(ctx, 'Choose a style first.', '请先选择一个风格。'));
                 return { ok: false, error: 'style missing' };
             }
-            if (!applyStyleSelectorToPreset(selector, style, { silent: true }, context)) {
+            if (!applyStyleSelectorToPreset(selector, style, { silent: true, targetPresetNode: node }, context)) {
                 return { ok: false, error: 'style apply failed' };
             }
         }
@@ -346,7 +363,7 @@
             call(ctx, 'showToast', undefined, translateValue(ctx, 'Choose a style first.', '请先选择一个风格。'));
             return { ok: false, error: 'style missing' };
         }
-        if (!applyStyleSelectorToPreset(selectorNode, style, { silent: true }, context)) {
+        if (!applyStyleSelectorToPreset(selectorNode, style, { silent: true, targetPresetNode: presetNode }, context)) {
             return { ok: false, error: 'style apply failed' };
         }
         call(ctx, 'setSelectedNode', undefined, presetNode.id);
@@ -399,22 +416,30 @@
         return call(context, 'styleSelectorTargetLabel', '', node, state.target_preset_id);
     }
 
-    function renderCards(node, context) {
+    function renderCards(node, context, query) {
         const ctx = contextOf(context);
         const selected = selectedStyle(node, context);
         const selectedName = selected?.name || '';
         const items = catalogItems(context);
+        const search = String(query || '').trim().toLowerCase();
         if (!items.length) {
             return `<div class="sai-style-selector-empty">${escapeHtmlValue(ctx, translateValue(ctx, 'No Style Transfer assets found.', '未找到 Style Transfer 风格资源。'))}</div>`;
         }
-        return items.map((item) => {
+        let matchCount = 0;
+        const english = isEnglish(ctx);
+        const cards = items.map((item) => {
+            const hay = [item.name, item.description, item.prompt].join(' ').toLowerCase();
+            const matches = !search || hay.includes(search);
+            if (matches) matchCount += 1;
             const active = item.name === selectedName;
-            const desc = item.description || item.name;
-            return `<button type="button" class="sai-style-selector-card ${active ? 'is-selected' : ''}" data-style-selector-style="${escapeHtmlValue(ctx, item.name)}" data-style-selector-text="${escapeHtmlValue(ctx, [item.name, item.description, item.prompt].join(' ').toLowerCase())}" title="${escapeHtmlValue(ctx, desc)}">
+            const label = english ? item.name : (item.description || item.name);
+            return `<button type="button" class="sai-style-selector-card ${active ? 'is-selected' : ''}" data-style-selector-style="${escapeHtmlValue(ctx, item.name)}" data-style-selector-text="${escapeHtmlValue(ctx, [item.name, item.description, item.prompt].join(' ').toLowerCase())}" style="display:${matches ? '' : 'none'}" title="${escapeHtmlValue(ctx, label)}">
   <span class="sai-style-selector-thumb">${item.preview_url ? `<img src="${escapeHtmlValue(ctx, item.preview_url)}" loading="lazy" alt="">` : '<i class="fa-solid fa-palette"></i>'}</span>
-  <span class="sai-style-selector-card-title">${escapeHtmlValue(ctx, item.description || item.name)}</span>
+  <span class="sai-style-selector-card-title">${escapeHtmlValue(ctx, label)}</span>
 </button>`;
         }).join('');
+        const empty = escapeHtmlValue(ctx, translateValue(ctx, 'No styles matched your search.', '没有匹配的风格。'));
+        return `${cards}<div class="sai-style-selector-empty" data-style-selector-no-results ${!search || matchCount ? 'hidden' : ''}>${empty}</div>`;
     }
 
     function renderSelectedPreview(node, context) {
@@ -426,9 +451,12 @@
   <span>${escapeHtmlValue(ctx, translateValue(ctx, 'Choose a style card to feed Style Transfer+.', '选择一个风格卡片后会写入 Style Transfer+。'))}</span>
 </div>`;
         }
+        const subtitle = isEnglish(ctx)
+            ? style.name
+            : (style.description || translateValue(ctx, 'Style prompt ready', '风格提示词已就绪'));
         return `<div class="sai-style-selector-current">
   <span class="sai-style-selector-current-thumb">${style.preview_url ? `<img src="${escapeHtmlValue(ctx, style.preview_url)}" loading="lazy" alt="">` : '<i class="fa-solid fa-palette"></i>'}</span>
-  <span><b>${escapeHtmlValue(ctx, style.name)}</b><small>${escapeHtmlValue(ctx, style.description || translateValue(ctx, 'Style prompt ready', '风格提示词已就绪'))}</small></span>
+  <span><b>${escapeHtmlValue(ctx, style.name)}</b><small>${escapeHtmlValue(ctx, subtitle)}</small></span>
 </div>`;
     }
 
@@ -454,7 +482,7 @@
 </label>
 ${renderSelectedPreview(node, ctx)}
 <div class="sai-style-selector-grid" data-style-selector-grid>
-  ${renderCards(node, ctx)}
+  ${renderCards(node, ctx, state.search)}
 </div>
 <button type="button" class="sai-node-primary" data-node-action="apply-style-selector"><i class="fa-solid fa-paper-plane"></i><span>${escapeHtmlValue(ctx, translateValue(ctx, 'Apply & Run', '应用并运行'))}</span></button>
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="text" title="${escapeHtmlValue(ctx, translateValue(ctx, 'Style prompt output', '风格提示词输出'))}"></button>`;
@@ -553,10 +581,15 @@ ${getNegative(node, context) ? `<div class="sai-inspector-section">
 
     function filterNodeDom(nodeEl, query) {
         const text = String(query || '').trim().toLowerCase();
+        let visibleCount = 0;
         nodeEl?.querySelectorAll?.('[data-style-selector-style]').forEach((card) => {
             const hay = String(card.getAttribute('data-style-selector-text') || card.textContent || '').toLowerCase();
-            card.style.display = !text || hay.includes(text) ? '' : 'none';
+            const visible = !text || hay.includes(text);
+            card.style.display = visible ? '' : 'none';
+            if (visible) visibleCount += 1;
         });
+        const noResults = nodeEl?.querySelector?.('[data-style-selector-no-results]');
+        if (noResults) noResults.hidden = !text || visibleCount > 0;
     }
 
     window.SimpAICanvasWorkbenchStyleSelectorNode = {

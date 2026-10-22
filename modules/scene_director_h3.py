@@ -509,16 +509,20 @@ class Project:
             raise ValueError(text(self.state, "The source shot has no selected result.", "来源分镜没有已选结果，请先生成并选择来源版本。"))
         return {source: version["id"]}
 
-    def stale_key(self, segment, runtime, visited=None, version=None):
+    def stale_key(self, segment, runtime, visited=None, version=None, signature_cache=None):
         selected = version if version is not None else self.selected(segment["id"])
         if not selected or not os.path.isfile(selected["asset"]["path"]):
             return ""
+        if signature_cache is None:
+            signature_cache = {}
         visited = set(visited or ())
         if segment["id"] in visited:
             return "cycle"
         visited.add(segment["id"])
         changes = []
-        signature = request_signature(segment, runtime)
+        if segment["id"] not in signature_cache:
+            signature_cache[segment["id"]] = request_signature(segment, runtime)
+        signature = signature_cache[segment["id"]]
         if selected["request_signature"] != signature:
             changes.append(("parameters", signature))
         if segment["mode"] == "transition":
@@ -532,15 +536,17 @@ class Project:
             if source not in by_id or not current or current["id"] != version:
                 changes.append((source, current["id"] if current else "missing"))
             else:
-                source_key = self.stale_key(by_id[source], runtime, visited)
+                source_key = self.stale_key(
+                    by_id[source], runtime, visited, signature_cache=signature_cache,
+                )
                 if segment["mode"] == "transition" and self.shot(source).get("acknowledged") == source_key:
                     source_key = ""
                 if source_key:
                     changes.append((source, source_key))
         return digest(changes) if changes else ""
 
-    def stale(self, segment, runtime):
-        key = self.stale_key(segment, runtime)
+    def stale(self, segment, runtime, signature_cache=None):
+        key = self.stale_key(segment, runtime, signature_cache=signature_cache)
         return bool(key and self.shot(segment["id"]).get("acknowledged") != key)
 
     def append(self, segment, runtime, path, parameters, dependencies):
@@ -592,16 +598,20 @@ class Project:
     def view(self, runtime):
         from modules import canvas_workbench_assets as assets
 
+        signature_cache = {}
+
         def item_view(segment):
             shot = self.shot(segment["id"])
             return {
                 "id": segment["id"], "selected": shot["selected"],
                 "status": "stopped" if shot.get("status") == "running" and not self.lock.locked() else shot.get("status"),
-                "error": shot.get("error", ""), "stale": self.stale(segment, runtime),
+                "error": shot.get("error", ""), "stale": self.stale(segment, runtime, signature_cache),
                 "versions": [
                     {"id": v["id"], "url": assets._file_preview_url(v["asset"]["path"]),
                      "available": os.path.isfile(v["asset"]["path"]), "duration": v["asset"].get("duration"),
-                     "current": not self.stale_key(segment, runtime, version=v)}
+                     "current": not self.stale_key(
+                         segment, runtime, version=v, signature_cache=signature_cache,
+                     )}
                     for v in shot["versions"]
                 ],
             }

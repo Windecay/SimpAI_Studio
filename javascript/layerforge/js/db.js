@@ -1,4 +1,4 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
 const log = createModuleLogger('db');
 const DB_NAME = 'CanvasNodeDB_v2';
 const STATE_STORE_NAME = 'CanvasState';
@@ -113,6 +113,53 @@ export async function removeImage(imageId) {
     const store = transaction.objectStore(IMAGE_STORE_NAME);
     await createDBRequest(store, 'delete', imageId, "Error removing image");
 }
+
+export async function removeUnreferencedImages(imageIds, getUsedImageIds) {
+    const database = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = database.transaction([STATE_STORE_NAME, IMAGE_STORE_NAME], 'readwrite');
+        const states = transaction.objectStore(STATE_STORE_NAME);
+        const images = transaction.objectStore(IMAGE_STORE_NAME);
+        const removed = [];
+        transaction.oncomplete = () => resolve(removed);
+        transaction.onerror = () => reject(transaction.error || new Error("Image cleanup failed"));
+        transaction.onabort = () => reject(transaction.error || new Error("Image cleanup aborted"));
+        const request = states.getAll();
+        request.onsuccess = () => {
+            const referenced = new Set();
+            const candidates = new Set(imageIds);
+            for (const record of request.result) {
+                const state = record?.state;
+                // An unreadable reference list cannot establish that an image is unused.
+                if (!state || !Array.isArray(state.layers) ||
+                    (state.imageReferences !== undefined && !Array.isArray(state.imageReferences))) return;
+                for (const layer of state.layers) {
+                    if (!layer || typeof layer !== 'object') return;
+                }
+                // Older snapshots may carry their history without imageReferences.
+                const pending = [state];
+                const visited = new Set();
+                while (pending.length) {
+                    const value = pending.pop();
+                    if (typeof value === 'string') {
+                        if (candidates.has(value)) referenced.add(value);
+                    } else if (value && typeof value === 'object' && !visited.has(value)) {
+                        visited.add(value);
+                        if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype) return;
+                        pending.push(...Object.values(value));
+                    }
+                }
+            }
+            const usedImageIds = getUsedImageIds();
+            for (const imageId of imageIds) {
+                if (referenced.has(imageId) || usedImageIds.has(imageId)) continue;
+                images.delete(imageId);
+                removed.push(imageId);
+            }
+        };
+    });
+}
+
 export async function getAllImageIds() {
     const db = await openDB();
     const transaction = db.transaction([IMAGE_STORE_NAME], 'readonly');

@@ -1,6 +1,22 @@
 (function () {
     'use strict';
 
+    const studioRoot = (() => {
+        const configured = String(window.gradio_config?.root || '');
+        if (configured) return configured.replace(/\/+$/, '');
+        const src = typeof document !== 'undefined' ? String(document.currentScript?.src || '') : '';
+        const markerIndex = src.indexOf('/gradio_api/file=');
+        return markerIndex >= 0 ? src.slice(0, markerIndex) : '';
+    })();
+    const studioRootPath = studioRoot.replace(/^(?:[a-z][a-z\d+.-]*:)?\/\/[^/]+/i, '');
+
+    function studioEndpointUrl(endpoint) {
+        if (!studioRootPath || !endpoint.startsWith('/') || endpoint.startsWith('//')) return endpoint;
+        if (endpoint === studioRootPath || endpoint.startsWith(`${studioRootPath}/`)
+            || endpoint.startsWith(`${studioRootPath}?`) || endpoint.startsWith(`${studioRootPath}#`)) return endpoint;
+        return `${studioRoot}${endpoint}`;
+    }
+
     function uid(prefix, options) {
         const rnd = Math.random().toString(16).slice(2, 8);
         const nowSource = options && typeof options === 'object' ? options.now : null;
@@ -261,6 +277,7 @@
     }
 
     window.SimpAICanvasWorkbenchUtils = {
+        studioEndpointUrl,
         uid,
         nowIso,
         formatLocalTime,

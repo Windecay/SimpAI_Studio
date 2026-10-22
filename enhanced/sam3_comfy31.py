@@ -53,7 +53,7 @@ def _checkpoint_dirs() -> list[str]:
     return [os.path.abspath(p) for p in dirs]
 
 
-def resolve_sam31_checkpoint(model_path: str | None = None, *, allow_download: bool = True) -> str:
+def resolve_sam31_checkpoint(model_path: str | None = None, *, allow_download: bool = False) -> str:
     if model_path:
         candidate = os.path.abspath(str(model_path))
         if os.path.isfile(candidate):
@@ -65,7 +65,7 @@ def resolve_sam31_checkpoint(model_path: str | None = None, *, allow_download: b
             return candidate
 
     if not allow_download:
-        raise FileNotFoundError(f"SAM3.1 checkpoint not found: {SAM31_CHECKPOINT_FILENAME}")
+        raise FileNotFoundError("SAM3.1 is missing. Install it through model management or the current preset model downloads, then retry.")
 
     from modules.model_loader import load_file_from_url
 
@@ -82,10 +82,10 @@ def resolve_sam31_checkpoint(model_path: str | None = None, *, allow_download: b
     raise FileNotFoundError(f"SAM3.1 checkpoint download did not create: {candidate}")
 
 
-def ensure_sam31_loaded(model_path: str | None = None) -> tuple[Any, Any, str]:
+def ensure_sam31_loaded(model_path: str | None = None, *, allow_download: bool = False) -> tuple[Any, Any, str]:
     global _MODEL, _CLIP, _CKPT_PATH
 
-    ckpt_path = resolve_sam31_checkpoint(model_path, allow_download=True)
+    ckpt_path = resolve_sam31_checkpoint(model_path, allow_download=allow_download)
     with _MODEL_LOCK:
         if _MODEL is not None and _CLIP is not None and _CKPT_PATH == ckpt_path:
             return _MODEL, _CLIP, ckpt_path
@@ -219,7 +219,7 @@ def image_mask_from_points(
     model_path: str | None = None,
 ) -> np.ndarray:
     image_size = normalize_sam_image_size(image_size)
-    model, _clip, _ckpt = ensure_sam31_loaded(model_path)
+    model, _clip, _ckpt = ensure_sam31_loaded(model_path, allow_download=False)
     device, dtype, sam3_model = _load_model_gpu(model)
 
     image_tensor = image_to_tensor(image_rgb)
@@ -270,7 +270,7 @@ def image_mask_from_text(
     model_path: str | None = None,
 ) -> np.ndarray:
     image_size = normalize_sam_image_size(image_size)
-    model, clip, _ckpt = ensure_sam31_loaded(model_path)
+    model, clip, _ckpt = ensure_sam31_loaded(model_path, allow_download=False)
     device, dtype, sam3_model = _load_model_gpu(model)
 
     image_tensor = image_to_tensor(image_rgb)
@@ -508,7 +508,7 @@ def _initial_mask_from_points_or_box(
     image_size = normalize_sam_image_size(image_size)
     image = Image.fromarray(frame_rgb, mode="RGB")
     if bbox_xywh:
-        model, _clip, _ckpt = ensure_sam31_loaded(model_path)
+        model, _clip, _ckpt = ensure_sam31_loaded(model_path, allow_download=False)
         device, dtype, sam3_model = _load_model_gpu(model)
         image_tensor = image_to_tensor(image)
         h, w = int(image_tensor.shape[1]), int(image_tensor.shape[2])
@@ -583,7 +583,7 @@ def video_masks(
         has_initial_prompt = bool(pos_points or neg_points or bbox_xywh)
         direction = str(propagation_direction or "both").strip().lower()
 
-        model, clip, _ckpt = ensure_sam31_loaded(model_path)
+        model, clip, _ckpt = ensure_sam31_loaded(model_path, allow_download=False)
         device, dtype, sam3_model = _load_model_gpu(model)
 
         init_masks = None

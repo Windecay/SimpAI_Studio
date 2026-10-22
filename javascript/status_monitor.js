@@ -270,7 +270,7 @@
         clearRevision: 0
     };
 
-    const CANVAS_WORKBENCH_STANDALONE_URL = '/canvas-workbench/app';
+    const CANVAS_WORKBENCH_STANDALONE_URL = `${String(window.gradio_config?.root || '').replace(/\/+$/, '')}/canvas-workbench/app`;
     const CANVAS_WORKBENCH_STANDALONE_TARGET = 'simpai-canvas-workbench';
     const CANVAS_WORKBENCH_SYSTEM_PARAMS_KEY = 'simpai.canvasWorkbench.systemParams';
 
@@ -1422,7 +1422,7 @@
     async function fetchAppStatus() {
         try {
             const headers = { 'Content-Type': 'application/json' };
-            const response = await fetch('/gradio_api/run/get_start_timestamp', {
+            const response = await fetch(window.SimpAICanvasWorkbenchUtils.studioEndpointUrl('/gradio_api/run/get_start_timestamp'), {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers,

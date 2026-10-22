@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LayerForge Editor</title>
-    <link rel="stylesheet" href="/file=javascript/layerforge/js/css/blend_mode_menu.css?v=patch26">
-    <link rel="stylesheet" href="/gradio_api/file=javascript/layerforge/js/css/canvas_view.css?v=patch67">
-    <link rel="stylesheet" href="/file=javascript/layerforge/js/css/custom_shape_menu.css?v=patch26">
-    <link rel="stylesheet" href="/file=javascript/layerforge/js/css/layerforge_mask_editor.css?v=patch63">
-    <link rel="stylesheet" href="/gradio_api/file=javascript/layerforge/js/css/layers_panel.css?v=patch66">
+    <link rel="stylesheet" href="./js/css/blend_mode_menu.css?v=patch26">
+    <link rel="stylesheet" href="./js/css/canvas_view.css?v=patch67">
+    <link rel="stylesheet" href="./js/css/custom_shape_menu.css?v=patch26">
+    <link rel="stylesheet" href="./js/css/layerforge_mask_editor.css?v=patch63">
+    <link rel="stylesheet" href="./js/css/layers_panel.css?v=patch66">
     <style>
         body {
             margin: 0;
@@ -225,15 +225,15 @@
     </div>
     <div id="editor-container"></div>
 
-    <script src="/gradio_api/file=javascript/layerforge/js/i18n.js?v=patch5"></script>
+    <script src="./js/i18n.js?v=patch5"></script>
     <script type="module">
-        import { createCanvasWidget } from '/gradio_api/file=javascript/layerforge/js/CanvasView.js?v=patch67';
-        import { app } from '/file=javascript/layerforge/js/comfy_shim.js?v=patch26';
-        import { createEmptyImage } from '/file=javascript/layerforge/js/utils/ImageUtils.js?v=patch26';
-        import { saveImage } from '/file=javascript/layerforge/js/db.js?v=patch26';
-        import { generateUUID, createCanvas } from '/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26';
-        import { AnnotationTool } from '/gradio_api/file=javascript/layerforge/js/AnnotationTool.js?v=patch3';
-        import { isEditingText, nextBrushSize } from '/gradio_api/file=javascript/layerforge/js/KeyboardUtils.js?v=patch1';
+        import { createCanvasWidget } from './js/CanvasView.js?v=patch67';
+        import { app } from './js/comfy_shim.js?v=patch26';
+        import { createEmptyImage } from './js/utils/ImageUtils.js?v=patch26';
+        import { saveImage } from './js/db.js?v=patch26';
+        import { generateUUID, createCanvas } from './js/utils/CommonUtils.js?v=patch26';
+        import { AnnotationTool } from './js/AnnotationTool.js?v=patch3';
+        import { isEditingText, nextBrushSize } from './js/KeyboardUtils.js?v=patch1';
 
         window.comfy_api_url = "http://127.0.0.1:8188";
         
@@ -1820,10 +1820,9 @@
                     }
                 }, { passive: false });
 
-                const maskEditorVisible = () => {
-                    const editor = document.querySelector('.layerforge-mask-editor-overlay');
-                    return editor && editor.style.display !== 'none';
-                };
+                const maskEditorVisible = () => Array.from(document.querySelectorAll(
+                    '.layerforge-mask-editor-overlay, [id^="sam3_image_mask_modal_backdrop_"]'
+                )).some(editor => editor.style.display !== 'none');
                 const refreshNavigation = () => {
                     updateOverlayToolState();
                     updateCanvasPointerLock();
@@ -2029,21 +2028,29 @@
                 scheduleOverlayResize();
                 setPaintTool(paintTool);
                 
+                let inputVersion = 0;
                 window.addEventListener('message', (event) => {
                     if (event.data.type === 'LOAD_IMAGE' || event.data.type === 'ADD_LAYER') {
                         const url = event.data.url;
                         const maskUrl = event.data.maskUrl;
+                        const replacesInput = event.data.type === 'LOAD_IMAGE';
+                        if (replacesInput) inputVersion += 1;
+                        const version = inputVersion;
+                        const owner = canvasInstance;
+                        const isCurrent = () => canvasInstance === owner && inputVersion === version;
                         
-                        if (event.data.type === 'LOAD_IMAGE' && canvasInstance && canvasInstance.layers) {
+                        if (replacesInput && canvasInstance && canvasInstance.layers) {
                             canvasInstance.layers = [];
+                            canvasInstance.maskTool?.clear();
                             layerMasks.historyChanged();
                             canvasInstance.render();
                         }
 
                         const img = new Image();
-                        img.onload = () => {
+                        img.onload = async () => {
+                            if (!isCurrent()) return;
                             if (canvasInstance) {
-                                if (event.data.type === 'LOAD_IMAGE') {
+                                if (replacesInput) {
                                     canvasInstance.canvasLayers.setOutputAreaSize(img.width, img.height);
                                     paintLayer = null;
                                     paintCanvas = null;
@@ -2056,12 +2063,19 @@
                                     }
                                 }
                                 
-                                canvasInstance.canvasLayers.addLayerWithImage(img, {}, 'default');
+                                let layer;
+                                try {
+                                    layer = await canvasInstance.canvasLayers.addLayerWithImage(img, {}, 'default', null, isCurrent);
+                                } catch (err) {
+                                    if (isCurrent()) console.error("[LayerForge Child] Failed to add input image:", err);
+                                    return;
+                                }
+                                if (!isCurrent() || !layer) return;
                                 
                                 if (maskUrl) {
                                     const maskImg = new Image();
                                     maskImg.onload = () => {
-                                        if (canvasInstance.maskTool) {
+                                        if (isCurrent() && canvasInstance.maskTool) {
                                             canvasInstance.maskTool.setMask(maskImg, true);
                                             canvasInstance.render();
                                         }
@@ -2070,8 +2084,9 @@
                                 }
 
                                 canvasInstance.render();
-                                if (event.data.type === 'LOAD_IMAGE') {
+                                if (replacesInput) {
                                     const fitOnce = () => {
+                                        if (!isCurrent()) return true;
                                         const bounds = canvasInstance.outputAreaBounds;
                                         if (!bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height)) {
                                             return false;
@@ -2130,6 +2145,7 @@
                                     let attempts = 0;
                                     const maxAttempts = 30;
                                     const step = () => {
+                                        if (!isCurrent()) return;
                                         attempts += 1;
                                         if (fitOnce() || attempts >= maxAttempts) {
                                             return;
@@ -2143,6 +2159,7 @@
                             }
                         };
                         img.onerror = (err) => {
+                            if (!isCurrent()) return;
                             console.error("[LayerForge Child] Failed to load image object:", err);
                         };
                         img.src = url;

@@ -48,7 +48,7 @@
             return directorTimelineMediaRefs(payload, key)[0] || '';
         }
 
-        function applyDirectorMediaRefsToPresetPayload(next, mediaSources, imageRefs, audioRef, videoRef, capability) {
+        function applyDirectorMediaRefsToPresetPayload(next, mediaSources, imageRefs, audioRefs, videoRefs, capability) {
             if (!next || !mediaSources || typeof mediaSources !== 'object') return next;
             const uploadSources = cloneRunValue(next.upload_slot_sources || {}, {});
             const uploadSlots = cloneRunValue(next.upload_slots || {}, {});
@@ -76,8 +76,14 @@
                     bindRefToSlot(ref, slots[index]);
                 });
             }
-            bindRefToSlot(audioRef, 'scene_audio');
-            bindRefToSlot(videoRef, 'scene_video');
+            const bindMediaRefs = (refs, slots, limit, policy) => {
+                if (policy === 'forbidden') return;
+                const selected = Array.isArray(refs) ? refs : (refs ? [refs] : []);
+                const count = Number.isFinite(Number(limit)) ? Math.max(0, Math.min(slots.length, Math.round(Number(limit)))) : 1;
+                selected.slice(0, count).forEach((ref, index) => bindRefToSlot(ref, slots[index]));
+            };
+            bindMediaRefs(audioRefs, ['scene_audio', 'scene_audio2', 'scene_audio3'], resolvedCapability?.max_audios, resolvedCapability?.audio_policy);
+            bindMediaRefs(videoRefs, ['scene_video', 'scene_reference_video', 'scene_reference_video2'], resolvedCapability?.max_videos, resolvedCapability?.video_policy);
 
             next.upload_slot_sources = uploadSources;
             next.upload_slots = uploadSlots;
@@ -105,8 +111,8 @@
                 next,
                 mediaSources,
                 directorTimelineMediaRefs(payload, 'images'),
-                directorTimelineFirstMediaRef(payload, 'audio'),
-                directorTimelineFirstMediaRef(payload, 'video'),
+                directorTimelineMediaRefs(payload, 'audio'),
+                directorTimelineMediaRefs(payload, 'video'),
                 payload.director_capability
             );
         }
@@ -118,7 +124,7 @@
                 plan.payload.media_sources && typeof plan.payload.media_sources === 'object' ? plan.payload.media_sources : {},
                 {}
             );
-            const videoRef = directorSegmentFirstMediaRef(segment, 'video');
+            const videoRefs = directorSegmentMediaRefs(segment, 'video');
             const imageRefs = directorSegmentMediaRefs(segment, 'images');
             if (imageRefs.includes(previousImageRef())) {
                 const previousSource = directorResultAssetSource(previousResultNode);
@@ -127,7 +133,7 @@
                     mediaSources[previousImageRef()] = previousSource;
                 }
             }
-            if (videoRef === previousVideoRef()) {
+            if (videoRefs.includes(previousVideoRef())) {
                 const previousSource = directorResultAssetSource(previousResultNode);
                 if (previousSource) mediaSources[previousVideoRef()] = previousSource;
             }
@@ -135,8 +141,8 @@
                 next,
                 mediaSources,
                 imageRefs,
-                directorSegmentFirstMediaRef(segment, 'audio'),
-                videoRef,
+                directorSegmentMediaRefs(segment, 'audio'),
+                videoRefs,
                 plan.capability || plan.payload.director_capability
             );
         }

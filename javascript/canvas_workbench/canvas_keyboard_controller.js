@@ -36,6 +36,7 @@
         const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
         const getRoot = () => domCall('getRoot', null);
         const getProject = () => projectCall('getProject', {}) || {};
+        const forwardedModalEvents = new WeakSet();
 
         function isWorkbenchGenerateShortcut(evt) {
             return !!evt && (evt.key === 'Enter' || evt.keyCode === 13) && (evt.ctrlKey || evt.metaKey || evt.altKey);
@@ -52,9 +53,55 @@
             }
         }
 
+        function getActiveModal(root) {
+            const doc = root?.ownerDocument;
+            const candidates = doc?.querySelectorAll?.(
+                '.sai-canvas-modal, [role="dialog"][aria-modal="true"], .sai-model-browser-v2, .sai-model-browser-confirm'
+            ) || [];
+            return Array.from(candidates).reverse().find(modal => {
+                if (modal.closest?.('[hidden], [aria-hidden="true"]')) return false;
+                if (modal.getClientRects && !modal.getClientRects().length) return false;
+                const style = doc.defaultView?.getComputedStyle?.(modal);
+                return style?.display !== 'none' && style?.visibility !== 'hidden';
+            }) || null;
+        }
+
         function onDocumentKeyDown(evt) {
             const root = getRoot();
             if (!evt || !root || root.hidden) return;
+            if (forwardedModalEvents.has(evt)) return;
+            const modal = getActiveModal(root);
+            if (modal) {
+                if (isWorkbenchGenerateShortcut(evt)) evt.preventDefault();
+                if (evt.key === 'Escape') {
+                    const close = modal.matches('.sai-canvas-modal')
+                        ? modal.querySelector('[data-modal-close], button[data-wildcards-v2-action="close"]') : null;
+                    if (close && !close.disabled) {
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                        close.click();
+                    } else if (!modal.contains(evt.target)) {
+                        // Let the dialog keep its own Escape behavior after focus leaves it.
+                        const forwarded = new root.ownerDocument.defaultView.KeyboardEvent('keydown', {
+                            key: 'Escape', bubbles: true, cancelable: true
+                        });
+                        forwardedModalEvents.add(forwarded);
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                        modal.dispatchEvent(forwarded);
+                    }
+                }
+                return;
+            }
+            if (paletteCall('isPresetPaletteOpen', false)) {
+                if (isWorkbenchGenerateShortcut(evt)) evt.preventDefault();
+                if (evt.key === 'Escape') {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    paletteCall('closePresetPalette', undefined);
+                }
+                return;
+            }
             const textareaEditorState = inputCall('getTextareaEditorState', undefined);
             if (textareaEditorState?.modal?.contains?.(evt.target)) return;
             if (isWorkbenchGenerateShortcut(evt)) {

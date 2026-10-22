@@ -38,14 +38,7 @@ function initializeTagAssistantLogic() {
 
     // --- 全局状态和常量 ---
     const resolveAssetBasePath = () => {
-        const scriptSrc = document.currentScript?.src || '';
-        if (scriptSrc) {
-            const matchedBase = scriptSrc.match(/^(.*\/(?:gradio_api\/)?file=)(?:javascript\/tag_cart\.js)(?:\?.*)?$/i);
-            if (matchedBase && matchedBase[1]) {
-                return matchedBase[1];
-            }
-        }
-        return '/gradio_api/file=';
+        return window.SimpAICanvasWorkbenchUtils.studioEndpointUrl('/gradio_api/file=');
     };
 
     const buildAssetUrl = (relativePath) => {
@@ -68,7 +61,7 @@ function initializeTagAssistantLogic() {
     // const giteeCsvUrl = '...';
     // const githubCsvUrl = '...';
     const customCsvUrl = getMetaContent('tag-cart-custom-tags-path') || buildAssetUrl('tags/custom_tags.csv');
-    const customTagsApiUrl = '/tag-cart/custom-tags';
+    const customTagsApiUrl = window.SimpAICanvasWorkbenchUtils.studioEndpointUrl('/tag-cart/custom-tags');
 
     const wildcardCnListUrl = buildAssetUrl('wildcards/cn_list.json');
     const wildcardCnWordsUrl = buildAssetUrl('wildcards/cn_words.json');
@@ -99,7 +92,10 @@ function initializeTagAssistantLogic() {
             copy: { zh: '发送到提示词框', en: 'Send to Prompt' },
             nsfwFilter: { zh: 'NSFW 过滤', en: 'NSFW Filter' },
             clearAll: { zh: '清空已选', en: 'Clear All Selected' },
-            toggleLanguage: { zh: '切换显示语言', en: 'Toggle Display Language' }
+            toggleLanguage: { zh: '切换显示语言', en: 'Toggle Display Language' },
+            importFromPrompt: { zh: '从提示词读取', en: 'Import from prompt' },
+            importFromPromptTitle: { zh: '从正面提示词框中读取文本，并拆分成标签', en: 'Read text from the positive prompt and split it into tags' },
+            promptWeight: { zh: '此标签的提示词权重', en: 'Prompt weight for this tag' }
         },
         presetCustomCategories: { // [修改点 2] 在这里添加新的自定义分类，直接删除或注释掉您不想要的那一行。添加ID标记和中英文名称。
             // 'ID'是这个分类在代码内部的唯一标识符（ID）。您的CSV文件里的<一级分类>列就需要填写这个字符串。zh 和 en 字段是它在界面上显示的中文和英文名称。
@@ -344,8 +340,8 @@ function initializeTagAssistantLogic() {
 
         // [核心修改]
         // 现在 innerHTML 同时包含图标和包裹在 <span> 中的文字
-        importBtn.innerHTML = '<i class="fa-solid fa-file-import"></i> <span>从提示词读取</span>';
-        importBtn.title = '从正面提示词框中读取文本，并拆分成标签'; // 添加悬停提示
+        importBtn.innerHTML = `<i class="fa-solid fa-file-import"></i> <span>${uiTexts.buttonTitles.importFromPrompt[tagCartLang()]}</span>`;
+        importBtn.title = uiTexts.buttonTitles.importFromPromptTitle[tagCartLang()];
         controlBar.appendChild(importBtn); // 将它添加到 controlBar
 
         editCustomBtn = document.createElement('button');
@@ -1322,7 +1318,7 @@ function initializeTagAssistantLogic() {
         try {
             console.log("正在使用官方 API 获取通配符文件列表...");
             // [新增] 1. 调用官方API获取真实的文件名列表
-            const apiResponse = await fetch('/gradio_api/run/predict', {
+            const apiResponse = await fetch(window.SimpAICanvasWorkbenchUtils.studioEndpointUrl('/gradio_api/run/predict'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2262,7 +2258,7 @@ function initializeTagAssistantLogic() {
     function createSelectedTagWeightControl(tag) {
         const weightControl = document.createElement('div');
         weightControl.className = 'tag-chip-weight-control';
-        weightControl.title = 'Prompt weight for this tag';
+        weightControl.title = uiTexts.buttonTitles.promptWeight[tagCartLang()];
 
         const updateWeight = (nextValue) => {
             tag.promptWeight = normalizePromptWeight(nextValue);
@@ -2678,6 +2674,11 @@ function initializeTagAssistantLogic() {
         nsfwFilterBtn.title = uiTexts.buttonTitles.nsfwFilter[lang];
         clearAllBtn.title = uiTexts.buttonTitles.clearAll[lang];
         toggleLanguageBtn.title = uiTexts.buttonTitles.toggleLanguage[lang];
+        importBtn.innerHTML = `<i class="fa-solid fa-file-import"></i> <span>${uiTexts.buttonTitles.importFromPrompt[lang]}</span>`;
+        importBtn.title = uiTexts.buttonTitles.importFromPromptTitle[lang];
+        selectedTagsContainer?.querySelectorAll?.('.tag-chip-weight-control').forEach(control => {
+            control.title = uiTexts.buttonTitles.promptWeight[lang];
+        });
         updateCustomTagsEditorText();
 
         // 只有在数据加载后才执行渲染，否则会出错

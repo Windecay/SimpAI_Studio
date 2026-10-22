@@ -23,7 +23,7 @@ def _dependency_error(exc: Exception) -> RuntimeError:
     )
 
 
-def process_image_to_pose_json(image_tensor, *, bboxes=None):
+def process_image_to_pose_json(image_tensor, *, bboxes=None, allow_download=True, model_path=None):
     try:
         from .processing.load_model import LoadSAM3DBodyModel
         from .processing.process import SAM3DBodyProcessToJson
@@ -31,7 +31,7 @@ def process_image_to_pose_json(image_tensor, *, bboxes=None):
         raise _dependency_error(exc) from exc
 
     progress.update("Step 2/6: Checking SAM 3D Body model files...", 4)
-    model = LoadSAM3DBodyModel().load_model("Auto")[0]
+    model = LoadSAM3DBodyModel().load_model("Auto", allow_download=allow_download, model_path=model_path)[0]
     progress.update("Step 4/6: Preparing SAM 3D Body reconstruction...", 55)
     boxes = [None] if bboxes is None else list(bboxes)
     if not boxes:
@@ -185,7 +185,7 @@ def _add_skeleton_data(pose_json, model):
         return pose_json
 
 
-def process_pose_json_to_overlay_mesh(pose_data, body_preset=None, pose_adjust=0.0):
+def process_pose_json_to_overlay_mesh(pose_data, body_preset=None, pose_adjust=0.0, *, allow_download=True, model_path=None):
     """Build the same postprocessed MHR mesh used by the SAM render node.
 
     This returns geometry only, so Pose Studio can overlay it in Three.js
@@ -217,7 +217,7 @@ def process_pose_json_to_overlay_mesh(pose_data, body_preset=None, pose_adjust=0
         str(k): float(v) for k, v in (preset.get("blendshapes") or {}).items()
     }
 
-    model = LoadSAM3DBodyModel().load_model("Auto")[0]
+    model = LoadSAM3DBodyModel().load_model("Auto", allow_download=allow_download, model_path=model_path)[0]
     loaded = _load_sam3d_model(model)
     sam_3d_model = loaded["model"]
     device = torch.device(loaded["device"])

@@ -8,15 +8,29 @@
         const domSource = scope.domSource || {};
         const stateSource = scope.stateSource || {};
         const runtimeSource = scope.runtimeSource || {};
+        const projectSource = scope.projectSource || {};
+        let activeSession = null;
         const call = (source, name, fallback, ...args) => typeof source[name] === 'function'
             ? source[name](...args) : fallback;
         const t = (en, cn) => call(scope.languageSource || {}, 't', en, en, cn);
+
+        function captureTarget(node) {
+            const project = call(projectSource, 'getProject', null);
+            const projectId = project?.id;
+            const session = {};
+            activeSession = session;
+            return (allowLocked = false) => activeSession === session
+                && call(projectSource, 'getProject', null) === project
+                && (!project || project.id === projectId)
+                && call(nodeSource, 'getNode', null, node.id) === node
+                && (allowLocked || !call(nodeSource, 'isNodeLocked', false, node));
+        }
 
         function readTagCartFieldValue(node, target, key, field) {
             if (!node) return String(field?.value || '');
             if (target === 'node-param') return String(node.params?.[key] ?? field?.value ?? '');
             if (target === 'vlm-param') return String(node.params?.[key || 'prompt'] ?? field?.value ?? '');
-            return String(call(nodeSource, 'getNodeTextOutput', '', node) || field?.value || '');
+            return String(call(nodeSource, 'getNodeTextOutput', null, node) ?? field?.value ?? '');
         }
 
         async function ensureTagCartReady() {
@@ -38,12 +52,28 @@
             const wrap = button.closest('.sai-translate-wrap');
             const field = options?.field || (wrap ? wrap.querySelector('textarea') : null);
             if (!field || field.readOnly || field.disabled) return;
+            const isCurrent = captureTarget(node);
             const adapter = await ensureTagCartReady();
-            if (!adapter) return;
+            if (!adapter || !isCurrent() || field.isConnected === false || field.readOnly || field.disabled) return;
             const target = button.getAttribute('data-translate-target') || 'text-value';
             const key = button.getAttribute('data-translate-key') || '';
             const targetKind = key === 'negative_prompt' ? 'negative' : 'positive';
-            const baseText = readTagCartFieldValue(call(nodeSource, 'getNode', node, node.id) || node, target, key, field);
+            let baseText = readTagCartFieldValue(node, target, key, field);
+            let lastModelText = baseText;
+            let lastFieldText = String(field.value || '');
+            let currentText = baseText;
+            let lastAppliedText = null;
+            const readCurrent = () => {
+                const modelText = readTagCartFieldValue(node, target, key, field);
+                if (modelText !== lastModelText) currentText = modelText;
+                lastModelText = modelText;
+                if (field.isConnected !== false) {
+                    const fieldText = String(field.value || '');
+                    if (fieldText !== lastFieldText) currentText = fieldText;
+                    lastFieldText = fieldText;
+                }
+                return currentText;
+            };
             adapter.open({
                 action: 'append',
                 targetKind,
@@ -51,12 +81,20 @@
                 baseText,
                 container: call(domSource, 'getRoot', null),
                 target: {
-                    getBaseText: () => baseText,
-                    getText: () => readTagCartFieldValue(call(nodeSource, 'getNode', node, node.id) || node, target, key, field),
+                    getBaseText: () => {
+                        if (!isCurrent()) return '';
+                        const value = readCurrent();
+                        if (value !== lastAppliedText) baseText = value;
+                        return baseText;
+                    },
+                    getText: () => isCurrent() ? readCurrent() : '',
                     setText: (nextValue, meta) => {
-                        const latest = call(nodeSource, 'getNode', node, node.id) || node;
-                        if (!latest) return false;
-                        const ok = call(runtimeSource, 'setTranslatedFieldValue', false, latest, target, key, nextValue, field);
+                        if (!isCurrent() || field.readOnly || field.disabled) return false;
+                        const ok = call(runtimeSource, 'setTranslatedFieldValue', false, node, target, key, nextValue, field);
+                        if (!ok) return false;
+                        lastAppliedText = currentText = String(nextValue || '');
+                        lastModelText = readTagCartFieldValue(node, target, key, field);
+                        lastFieldText = String(field.value || '');
                         call(runtimeSource, 'renderAll', undefined, { inspector: false });
                         if (!meta?.auto) call(runtimeSource, 'showToast', undefined, t('Tags inserted.', '标签已发送到提示词。'));
                         return ok;
@@ -90,8 +128,9 @@
 
         async function openTagCartForNode(node, button, options) {
             if (!node || node.type !== 'tag_cart' || call(nodeSource, 'isNodeLocked', false, node)) return;
+            const isCurrent = captureTarget(node);
             const adapter = await ensureTagCartReady();
-            if (!adapter) return;
+            if (!adapter || !isCurrent()) return;
             const params = node.params || {};
             const source = call(nodeSource, 'getTextNodeInputSource', null, node);
             const baseText = source ? String(call(nodeSource, 'getNodeTextOutput', '', source) || '') : '';
@@ -109,7 +148,8 @@
                 call(runtimeSource, 'renderEdges', undefined);
             }
             const readCurrent = () => {
-                const latest = call(nodeSource, 'getNode', node, node.id) || node;
+                if (!isCurrent()) return '';
+                const latest = node;
                 const current = String(latest.text?.value || '');
                 if (current) return current;
                 const latestSource = call(nodeSource, 'getTextNodeInputSource', null, latest);
@@ -122,6 +162,7 @@
                 inlineContainer: inlineHost,
                 inlineHeight: 520,
                 onClose: () => {
+                    if (!isCurrent(true)) return;
                     if (call(stateSource, 'getActiveInlineTagCartNodeId', '') === node.id) call(stateSource, 'setActiveInlineTagCartNodeId', undefined, '');
                     const latestEl = call(domSource, 'getNodeElement', null, node.id);
                     if (latestEl) {
@@ -134,14 +175,15 @@
                 baseText,
                 target: {
                     getBaseText: () => {
-                        const latest = call(nodeSource, 'getNode', node, node.id) || node;
+                        if (!isCurrent()) return '';
+                        const latest = node;
                         const latestSource = call(nodeSource, 'getTextNodeInputSource', null, latest);
                         return latestSource ? String(call(nodeSource, 'getNodeTextOutput', '', latestSource) || '') : baseText;
                     },
                     getText: readCurrent,
                     setText: (nextValue, meta) => {
-                        const latest = call(nodeSource, 'getNode', node, node.id) || node;
-                        if (!latest || call(nodeSource, 'isNodeLocked', false, latest)) return false;
+                        if (!isCurrent()) return false;
+                        const latest = node;
                         call(runtimeSource, 'pushHistoryBatch', undefined, 'tag-cart:' + latest.id + ':text', 'Edit Tag Cart output');
                         Object.assign(latest, call(nodeSource, 'buildTagCartStatePatch', {}, latest, {
                             textPatch: { value: String(nextValue || ''), updated_at: call(runtimeSource, 'nowIso', '') },

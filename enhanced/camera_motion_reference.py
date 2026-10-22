@@ -153,6 +153,30 @@ def _output_directory(output_dir=None):
     return target
 
 
+def camera_motion_frame_count(settings):
+    return max(2, int(round(float(settings["duration"]) * float(settings["fps"]))))
+
+
+def inspect_camera_motion_video(path, expected_frames=None):
+    capture = cv2.VideoCapture(str(path))
+    try:
+        ok, frame = capture.read() if capture.isOpened() else (False, None)
+        if not ok or frame is None or frame.size == 0:
+            raise RuntimeError("The generated camera-motion video has no readable frames.")
+        fps = float(capture.get(cv2.CAP_PROP_FPS))
+        count = float(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        if not math.isfinite(fps) or fps <= 0 or not math.isfinite(count) or count < 1:
+            raise RuntimeError("The generated camera-motion video has invalid timing metadata.")
+        frame_count = int(count)
+        if expected_frames is not None and frame_count != expected_frames:
+            raise RuntimeError("The generated camera-motion video is incomplete.")
+        height, width = frame.shape[:2]
+        return {"width": width, "height": height, "fps": fps,
+                "frame_count": frame_count, "duration": frame_count / fps}
+    finally:
+        capture.release()
+
+
 def _unit(vector):
     vector = np.asarray(vector, dtype=np.float32)
     length = float(np.linalg.norm(vector))
@@ -343,8 +367,9 @@ def generate_camera_motion_video(
     width=None,
     height=None,
     output_dir=None,
+    metadata=None,
 ):
-    """Render a neutral camera-motion reference and return its local MP4 path."""
+    """Return a local MP4 path, optionally populating validated media metadata."""
     settings = normalize_camera_motion_settings(
         motion_type=motion_type,
         direction=direction,
@@ -360,11 +385,10 @@ def generate_camera_motion_video(
     direction = settings["direction"]
     speed = settings["speed"]
     amplitude = settings["amplitude"]
-    duration = settings["duration"]
     fps = settings["fps"]
     width = settings["width"]
     height = settings["height"]
-    frame_count = max(2, int(round(duration * fps)))
+    frame_count = camera_motion_frame_count(settings)
     output_path = Path(_output_directory(output_dir)) / f"camera_motion_{uuid.uuid4().hex}.mp4"
     writer = None
     try:
@@ -402,6 +426,9 @@ def generate_camera_motion_video(
         writer = None
         if not output_path.is_file() or output_path.stat().st_size <= 0:
             raise RuntimeError("The generated camera-motion video is empty.")
+        media = inspect_camera_motion_video(output_path, expected_frames=frame_count)
+        if isinstance(metadata, dict):
+            metadata.update(media)
         return str(output_path)
     except Exception:
         if writer is not None:

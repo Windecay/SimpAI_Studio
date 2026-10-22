@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -9,8 +10,12 @@ import tempfile
 import threading
 import time
 from collections import OrderedDict
+from contextvars import ContextVar
+from functools import wraps
 from pathlib import Path
 from typing import Any
+
+from modules import access_mode
 
 
 _DATA_URL_RE = re.compile(r"^data:(?P<mime>image/[^;,]+)(?:;[^,]*)?;base64,(?P<data>.*)$", re.IGNORECASE | re.DOTALL)
@@ -25,6 +30,62 @@ _lock = threading.RLock()
 _cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _total_bytes = 0
 _disk_index_loaded = False
+_request_scope = ContextVar("sketch_cache_request", default=None)
+_request_owner_resolver = None
+
+
+def install_request_scope(blocks, request_owner_resolver) -> None:
+    """Keep Studio's request available while Gradio preprocesses sketch refs."""
+    global _request_owner_resolver
+    _request_owner_resolver = request_owner_resolver
+    if getattr(blocks, "_sketch_cache_request_scope_installed", False):
+        return
+    process_api = blocks.process_api
+    preprocess_data = blocks.preprocess_data
+    signature = inspect.signature(process_api)
+
+    @wraps(preprocess_data)
+    async def scoped_preprocess(*args, **kwargs):
+        scope = _request_scope.get()
+        if scope is None or scope[1] is None:
+            return await preprocess_data(*args, **kwargs)
+        token = _request_scope.set((next(scope[1], None), None))
+        try:
+            return await preprocess_data(*args, **kwargs)
+        finally:
+            _request_scope.reset(token)
+
+    @wraps(process_api)
+    async def scoped_process_api(*args, **kwargs):
+        request = signature.bind_partial(*args, **kwargs).arguments.get("request")
+        token = _request_scope.set((request, iter(request) if isinstance(request, list) else None))
+        try:
+            return await process_api(*args, **kwargs)
+        finally:
+            _request_scope.reset(token)
+
+    blocks.preprocess_data = scoped_preprocess
+    blocks.process_api = scoped_process_api
+    blocks._sketch_cache_request_scope_installed = True
+
+
+def _cache_owner(owner=None):
+    if access_mode.is_local_mode():
+        return None
+    if owner is None:
+        scope = _request_scope.get()
+        request = scope[0] if scope is not None else None
+        if request is None or _request_owner_resolver is None:
+            raise PermissionError("Studio identity session is required for sketch cache references.")
+        requests = request if isinstance(request, list) else [request]
+        owners = {str(_request_owner_resolver(item) or "").strip() for item in requests}
+        if len(owners) != 1:
+            raise PermissionError("Sketch cache references require one current identity.")
+        owner = owners.pop()
+    owner = str(owner or "").strip()
+    if not owner:
+        raise PermissionError("Studio identity session is required for sketch cache references.")
+    return hashlib.sha256(owner.encode("utf-8")).hexdigest()
 
 
 def _decode_data_url(data_url: str) -> tuple[str, bytes]:
@@ -98,9 +159,11 @@ def _ensure_disk_index_locked() -> None:
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             _remove_entry_files({"data_path": data_path, "meta_path": expected_meta_path})
             continue
-        entries.append((updated_at, digest, mime, size, data_path, expected_meta_path))
+        owners = metadata.get("owners")
+        owners = [value for value in owners if isinstance(value, str) and _DIGEST_RE.fullmatch(value)] if isinstance(owners, list) else []
+        entries.append((updated_at, digest, mime, size, data_path, expected_meta_path, owners))
 
-    for updated_at, digest, mime, size, data_path, meta_path in sorted(entries):
+    for updated_at, digest, mime, size, data_path, meta_path, owners in sorted(entries):
         ref = f"{_REF_PREFIX}{digest}"
         _cache[ref] = {
             "mime": mime,
@@ -109,6 +172,7 @@ def _ensure_disk_index_locked() -> None:
             "updated_at": updated_at,
             "data_path": str(data_path),
             "meta_path": str(meta_path),
+            "owners": owners,
         }
         _total_bytes += size
     _prune_locked()
@@ -129,8 +193,42 @@ def is_ref(value: Any) -> bool:
     return isinstance(value, str) and value.startswith(_REF_PREFIX)
 
 
-def store_data_url(data_url: str, *, role: str = "image") -> dict[str, Any]:
+def _read_verified_cache_content(ref: str, *, owner=None) -> tuple[str, bytes] | None:
+    if not is_ref(ref):
+        return None
+    owner = _cache_owner(owner)
     global _total_bytes
+    with _lock:
+        _ensure_disk_index_locked()
+        entry = _cache.get(ref)
+        if entry is None or (owner is not None and owner not in entry.get("owners", [])):
+            return None
+        try:
+            raw = Path(entry["data_path"]).read_bytes()
+        except OSError:
+            _cache.pop(ref, None)
+            _total_bytes -= int(entry.get("bytes") or 0)
+            return None
+        digest = str(entry.get("sha256") or "")
+        if not raw or hashlib.sha256(raw).hexdigest() != digest:
+            _cache.pop(ref, None)
+            _total_bytes -= int(entry.get("bytes") or 0)
+            _remove_entry_files(entry)
+            return None
+        _cache.move_to_end(ref)
+        now = time.time()
+        entry["updated_at"] = now
+        try:
+            os.utime(entry["data_path"], (now, now))
+            os.utime(entry["meta_path"], (now, now))
+        except OSError:
+            pass
+        return str(entry["mime"]), raw
+
+
+def store_data_url(data_url: str, *, role: str = "image", owner=None) -> dict[str, Any]:
+    global _total_bytes
+    owner = _cache_owner(owner)
     mime, raw = _decode_data_url(data_url)
     digest = hashlib.sha256(raw).hexdigest()
     ref = f"{_REF_PREFIX}{digest}"
@@ -138,6 +236,9 @@ def store_data_url(data_url: str, *, role: str = "image") -> dict[str, Any]:
     with _lock:
         _ensure_disk_index_locked()
         data_path, meta_path = _cache_paths(digest)
+        owners = set((_cache.get(ref) or {}).get("owners", []))
+        if owner is not None:
+            owners.add(owner)
         _CACHE_ROOT.mkdir(parents=True, exist_ok=True)
         _atomic_write(data_path, raw)
         metadata = json.dumps({
@@ -146,6 +247,7 @@ def store_data_url(data_url: str, *, role: str = "image") -> dict[str, Any]:
             "bytes": len(raw),
             "role": role,
             "updated_at": now,
+            "owners": sorted(owners),
         }, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
         _atomic_write(meta_path, metadata)
         old = _cache.pop(ref, None)
@@ -159,6 +261,7 @@ def store_data_url(data_url: str, *, role: str = "image") -> dict[str, Any]:
             "updated_at": now,
             "data_path": str(data_path),
             "meta_path": str(meta_path),
+            "owners": sorted(owners),
         }
         _cache[ref] = entry
         _total_bytes += len(raw)
@@ -171,68 +274,46 @@ def store_data_url(data_url: str, *, role: str = "image") -> dict[str, Any]:
     }
 
 
-def resolve_data_url(value: Any) -> str | None:
-    global _total_bytes
+def resolve_data_url(value: Any, *, owner=None) -> str | None:
     if not isinstance(value, str):
         return None
     text = value.strip()
     if text.lower().startswith("data:image/"):
         return text
-    if not text.startswith(_REF_PREFIX):
+    verified = _read_verified_cache_content(text, owner=owner)
+    if verified is None:
         return None
-    with _lock:
-        _ensure_disk_index_locked()
-        entry = _cache.get(text)
-        if entry is None:
-            return None
-        try:
-            raw = Path(entry["data_path"]).read_bytes()
-        except OSError:
-            _cache.pop(text, None)
-            _total_bytes -= int(entry.get("bytes") or 0)
-            return None
-        digest = str(entry.get("sha256") or "")
-        if not raw or hashlib.sha256(raw).hexdigest() != digest:
-            _cache.pop(text, None)
-            _total_bytes -= int(entry.get("bytes") or 0)
-            _remove_entry_files(entry)
-            return None
-        _cache.move_to_end(text)
-        now = time.time()
-        entry["updated_at"] = now
-        try:
-            os.utime(entry["data_path"], (now, now))
-            os.utime(entry["meta_path"], (now, now))
-        except OSError:
-            pass
-        return f"data:{entry['mime']};base64,{base64.b64encode(raw).decode('ascii')}"
+    mime, raw = verified
+    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
-def resolve_payload_source(payload: dict[str, Any], role: str) -> str | None:
-    direct = resolve_data_url(payload.get(role))
+def resolve_payload_source(payload: dict[str, Any], role: str, *, owner=None) -> str | None:
+    direct = resolve_data_url(payload.get(role), owner=owner)
     if direct:
         return direct
-    return resolve_data_url(payload.get(f"{role}_ref"))
+    return resolve_data_url(payload.get(f"{role}_ref"), owner=owner)
 
 
-def store_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def store_payload(payload: dict[str, Any], *, owner=None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("Sketch cache payload must be an object.")
     result: dict[str, Any] = {"ok": True}
     for role in ("image", "mask"):
         source = payload.get(role)
         if isinstance(source, str) and source.strip():
-            stored = store_data_url(source, role=role)
+            stored = store_data_url(source, role=role, owner=owner)
             result[f"{role}_ref"] = stored["ref"]
             result[f"{role}_sha256"] = stored["sha256"]
             result[f"{role}_bytes"] = stored["bytes"]
             result[f"{role}_mime"] = stored["mime"]
         elif is_ref(payload.get(f"{role}_ref")):
+            if _read_verified_cache_content(payload[f"{role}_ref"], owner=owner) is None:
+                raise ValueError(f"Sketch cache reference is unavailable: {role}")
             result[f"{role}_ref"] = payload.get(f"{role}_ref")
     return result
 
 
-def check_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def check_payload(payload: dict[str, Any], *, owner=None) -> dict[str, Any]:
     """Validate cached content without transferring image data to the browser."""
     result: dict[str, Any] = {"ok": True}
     for role in ("image", "mask"):
@@ -243,13 +324,13 @@ def check_payload(payload: dict[str, Any]) -> dict[str, Any]:
         expected = payload.get(f"{role}_sha256")
         if not _DIGEST_RE.fullmatch(digest) or (expected and expected != digest):
             continue
-        if resolve_data_url(ref) is not None:
+        if _read_verified_cache_content(ref, owner=owner) is not None:
             result[f"{role}_ref"] = ref
             result[f"{role}_sha256"] = digest
     return result
 
 
-def resolve_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def resolve_payload(payload: dict[str, Any], *, owner=None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("Sketch cache resolve payload must be an object.")
     result: dict[str, Any] = {
@@ -258,7 +339,7 @@ def resolve_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "height": payload.get("height"),
     }
     for role in ("image", "mask"):
-        source = resolve_payload_source(payload, role)
+        source = resolve_payload_source(payload, role, owner=owner)
         if source:
             result[role] = source
         elif is_ref(payload.get(f"{role}_ref")):

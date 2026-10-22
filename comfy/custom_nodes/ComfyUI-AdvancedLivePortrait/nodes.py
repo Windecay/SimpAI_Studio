@@ -101,6 +101,30 @@ def get_model_dir(m):
     except:
         return os.path.join(folder_paths.models_dir, m)
 
+def get_model_path(category, filename):
+    try:
+        path = folder_paths.get_full_path(category, filename)
+        if path and os.path.isfile(path):
+            return path
+    except (AttributeError, KeyError):
+        pass
+    try:
+        directories = folder_paths.get_folder_paths(category)
+    except KeyError:
+        directories = []
+    for directory in directories:
+        path = os.path.join(directory, filename)
+        if os.path.isfile(path):
+            return path
+    return os.path.join(get_model_dir(category), filename)
+
+def model_file_signature(path):
+    try:
+        stat = os.stat(path)
+        return os.path.normcase(os.path.abspath(path)), stat.st_size, stat.st_mtime_ns
+    except OSError:
+        return os.path.normcase(os.path.abspath(path)), None, None
+
 def calc_crop_limit(center, img_size, crop_size):
     pos = center - crop_size / 2
     if pos < 0:
@@ -147,6 +171,34 @@ class LP_Engine:
     detect_model = None
     mask_img = None
     temp_img_idx = 0
+    model_paths = None
+    allow_download = True
+    model_signature = None
+
+    def configure_model_paths(self, paths, allow_download=True):
+        paths = dict(paths)
+        signature = (
+            tuple(sorted((key, model_file_signature(path)) for key, path in paths.items())),
+            model_file_signature(os.path.join(current_directory, 'LivePortrait', 'config', 'models.yaml')),
+            model_file_signature(os.path.join(current_directory, 'LivePortrait', 'config', 'inference_config.py')),
+            model_file_signature(os.path.join(current_directory, 'LivePortrait', 'utils', 'resources', 'mask_template.png')),
+        )
+        if signature != self.model_signature:
+            self.pipeline = None
+            self.detect_model = None
+            self.mask_img = None
+        self.model_paths = paths
+        self.allow_download = bool(allow_download)
+        self.model_signature = signature
+        return signature
+
+    def model_path(self, category, filename):
+        if self.model_paths is None:
+            return get_model_path(category, filename)
+        path = self.model_paths.get((category, filename))
+        if not path or not os.path.isfile(path):
+            raise FileNotFoundError(f"LivePortrait model is missing: {category}/{filename}")
+        return path
 
     def get_temp_img_name(self):
         self.temp_img_idx += 1
@@ -194,18 +246,21 @@ class LP_Engine:
 
         device = get_device()
 
-        if model_type == 'stitching_retargeting_module':
-            ckpt_path = os.path.join(get_model_dir("liveportrait"), "retargeting_models", model_type + ".pth")
-        else:
-            ckpt_path = os.path.join(get_model_dir("liveportrait"), "base_models", model_type + ".pth")
-
-        is_safetensors = None
-        if os.path.isfile(ckpt_path) == False:
+        if self.model_paths is not None:
+            ckpt_path = self.model_path("liveportrait", model_type + ".safetensors")
             is_safetensors = True
-            ckpt_path = os.path.join(get_model_dir("liveportrait"), model_type + ".safetensors")
+        else:
+            subdirectory = "retargeting_models" if model_type == 'stitching_retargeting_module' else "base_models"
+            ckpt_path = self.model_path("liveportrait", os.path.join(subdirectory, model_type + ".pth"))
+            is_safetensors = False
             if os.path.isfile(ckpt_path) == False:
-                self.download_model(ckpt_path,
-                "https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/" + model_type + ".safetensors")
+                is_safetensors = True
+                ckpt_path = self.model_path("liveportrait", model_type + ".safetensors")
+                if os.path.isfile(ckpt_path) == False:
+                    if not self.allow_download:
+                        raise FileNotFoundError(f"LivePortrait model is missing: {ckpt_path}")
+                    self.download_model(ckpt_path,
+                    "https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/" + model_type + ".safetensors")
         model_params = model_config['model_params'][f'{model_type}_params']
         if model_type == 'appearance_feature_extractor':
             model = AppearanceFeatureExtractor(**model_params).to(device)
@@ -241,7 +296,7 @@ class LP_Engine:
 
     def load_models(self):
         model_path = get_model_dir("liveportrait")
-        if not os.path.exists(model_path):
+        if self.model_paths is None and not os.path.exists(model_path):
             os.mkdir(model_path)
 
         model_config_path = os.path.join(current_directory, 'LivePortrait', 'config', 'models.yaml')
@@ -257,10 +312,11 @@ class LP_Engine:
 
     def get_detect_model(self):
         if self.detect_model == None:
-            model_dir = get_model_dir("ultralytics")
-            if not os.path.exists(model_dir): os.mkdir(model_dir)
-            model_path = os.path.join(model_dir, "face_yolov8n.pt")
+            model_path = self.model_path("ultralytics", "face_yolov8n.pt")
             if not os.path.exists(model_path):
+                if not self.allow_download:
+                    raise FileNotFoundError(f"LivePortrait face detector is missing: {model_path}")
+                os.makedirs(os.path.dirname(model_path), exist_ok=True)
                 self.download_model(model_path, "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt")
             self.detect_model = YOLO(model_path)
 

@@ -4,6 +4,7 @@
     const UTILS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchUtils || {} : {};
     const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
     const formatBytes = UTILS.formatBytes || ((bytes) => String(bytes || ''));
+    const studioEndpointUrl = UTILS.studioEndpointUrl || ((url) => url);
 
     function sourceCall(source, name, fallback, ...args) {
         return typeof source?.[name] === 'function' ? source[name](...args) : fallback;
@@ -39,8 +40,12 @@
     function pathToFileUrl(path) {
         const text = String(path || '').trim();
         if (!text) return '';
-        if (/^(https?:|blob:|data:|\/file=|\/gradio_api\/file=)/i.test(text)) return text;
-        return `/file=${encodeURI(text.replace(/\\/g, '/'))}`;
+        if (/^(https?:|blob:|data:|\/\/|\/(?:[^/?#]+\/)*file=)/i.test(text)) return studioAssetSrc(text);
+        return studioEndpointUrl(`/file=${encodeURI(text.replace(/\\/g, '/'))}`);
+    }
+
+    function studioAssetSrc(url) {
+        return /^\/(?:file=|gradio_api\/file=)/.test(url) ? studioEndpointUrl(url) : url;
     }
 
     function projectRelativeFileUrl(asset, runtime) {
@@ -227,8 +232,8 @@
             assetRootSource
         };
         return {
-            assetDisplaySrc: asset => assetDisplaySrc(asset, runtime),
-            assetThumbSrc: asset => assetThumbSrc(asset, runtime),
+            assetDisplaySrc: asset => studioAssetSrc(assetDisplaySrc(asset, runtime)),
+            assetThumbSrc: asset => studioAssetSrc(assetThumbSrc(asset, runtime)),
             readAssetInfo: (asset, hasMask) => readAssetInfo(asset, hasMask, runtime),
             readImageInfo: node => readImageInfo(node, runtime),
             mediaAspectStyle: asset => mediaAspectStyle(asset, runtime),

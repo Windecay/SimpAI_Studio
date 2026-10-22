@@ -6,7 +6,8 @@
     const lang = rawLang.startsWith('en') ? 'en' : 'cn';
     const stage = { __lang: lang };
     let translations = {};
-    const ready = stage.__lang === 'en' ? Promise.resolve() : fetch('/gradio_api/file=language/cn.json?v=layerforge_masks_20261015', {
+    const dictionaryUrl = new URL('../../../file=language/cn.json?v=layerforge_masks_20261015', document.currentScript.src).href;
+    const ready = stage.__lang === 'en' ? Promise.resolve() : fetch(dictionaryUrl, {
         cache: 'no-cache',
         signal: AbortSignal.timeout(10000)
     }).then((response) => {

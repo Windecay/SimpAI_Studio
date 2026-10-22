@@ -1,11 +1,12 @@
-import { removeImage, getAllImageIds } from "/file=javascript/layerforge/js/db.js?v=patch26";
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
+import { removeUnreferencedImages } from "./db.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
 const log = createModuleLogger('ImageReferenceManager');
 export class ImageReferenceManager {
     constructor(canvas) {
         this.canvas = canvas;
         this.imageReferences = new Map(); // imageId -> count
         this.imageLastUsed = new Map(); // imageId -> timestamp
+        this.createdImages = new Map(); // Only fresh UUIDs created by this editor.
         this.gcInterval = 5 * 60 * 1000; // 5 minut (nieużywane)
         this.maxAge = 30 * 60 * 1000; // 30 minut bez użycia
         this.gcTimer = null;
@@ -46,6 +47,9 @@ export class ImageReferenceManager {
         this.imageReferences.set(imageId, currentCount + 1);
         this.imageLastUsed.set(imageId, Date.now());
         log.debug(`Added reference to image ${imageId}, count: ${currentCount + 1}`);
+    }
+    registerCreatedImage(imageId) {
+        if (imageId) this.createdImages.set(imageId, Date.now());
     }
     /**
      * Usuwa referencję do obrazu
@@ -115,12 +119,11 @@ export class ImageReferenceManager {
      */
     async findUnusedImages(usedImageIds) {
         try {
-            const allImageIds = await getAllImageIds();
             const unusedImages = [];
             const now = Date.now();
-            for (const imageId of allImageIds) {
+            for (const [imageId, createdAt] of this.createdImages) {
                 if (!usedImageIds.has(imageId)) {
-                    const lastUsed = this.imageLastUsed.get(imageId) || 0;
+                    const lastUsed = this.imageLastUsed.get(imageId) ?? createdAt;
                     const age = now - lastUsed;
                     if (age > this.maxAge) {
                         unusedImages.push(imageId);
@@ -150,21 +153,24 @@ export class ImageReferenceManager {
         log.info(`Starting cleanup of ${unusedImages.length} unused images`);
         let cleanedCount = 0;
         let errorCount = 0;
-        for (const imageId of unusedImages) {
-            try {
-                await removeImage(imageId);
+        const candidates = unusedImages.filter(imageId => this.createdImages.has(imageId));
+        try {
+            const removed = await removeUnreferencedImages(candidates,
+                () => this.collectAllUsedImageIds());
+            for (const imageId of removed) {
                 if (this.canvas.imageCache && this.canvas.imageCache.has(imageId)) {
                     this.canvas.imageCache.delete(imageId);
                 }
                 this.imageReferences.delete(imageId);
                 this.imageLastUsed.delete(imageId);
+                this.createdImages.delete(imageId);
                 cleanedCount++;
                 log.debug(`Cleaned up image: ${imageId}`);
             }
-            catch (error) {
-                errorCount++;
-                log.error(`Error cleaning up image ${imageId}:`, error);
-            }
+        }
+        catch (error) {
+            errorCount++;
+            log.error("Error cleaning up images:", error);
         }
         log.info(`Garbage collection completed: ${cleanedCount} images cleaned, ${errorCount} errors`);
     }
@@ -247,6 +253,7 @@ export class ImageReferenceManager {
         this.stopGarbageCollection();
         this.imageReferences.clear();
         this.imageLastUsed.clear();
+        this.createdImages.clear();
         log.info("ImageReferenceManager destroyed");
     }
 }

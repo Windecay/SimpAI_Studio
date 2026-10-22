@@ -3,6 +3,7 @@
 
     const DEFAULT_UTILS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchUtils || {} : {};
     const DEFAULT_ASSETS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchAssetNodes || {} : {};
+    const editorSessions = new WeakMap();
     const escapeHtmlFallback = (value) => String(value ?? '');
     const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
     const translateFallback = (en, cn) => cn || en;
@@ -368,8 +369,21 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
         return node;
     }
 
+    function editorInputVersion(node, context) {
+        const state = livePortraitState(node, context);
+        return JSON.stringify({
+            source: sourceAssetForSlot(node, 'source', context) || state.source_asset || null,
+            reference: sourceAssetForSlot(node, 'reference', context) || state.reference_asset || null,
+            sourceNode: inputSourceForSlot(node, 'source', context)?.id || '',
+            referenceNode: inputSourceForSlot(node, 'reference', context)?.id || '',
+            state: node.liveportrait_expression || {}
+        });
+    }
+
     function openEditor(node, context) {
         if (!node || node.type !== 'liveportrait_expression') return null;
+        const project = getProject(context);
+        if (getNode(node.id, context) !== node) return null;
         const runtimeEditor = editor(context);
         if (typeof runtimeEditor.open !== 'function') {
             call(context, 'showToast', null, t('LivePortrait Exp editor is not loaded.', 'LivePortrait Exp 编辑器尚未加载。', context));
@@ -378,6 +392,13 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
         const state = livePortraitState(node, context);
         const sourceSource = inputSourceForSlot(node, 'source', context);
         const referenceSource = inputSourceForSlot(node, 'reference', context);
+        const session = { version: editorInputVersion(node, context) };
+        editorSessions.set(node, session);
+        const owns = () => getProject(context) === project && getNode(node.id, context) === node
+            && editorSessions.get(node) === session
+            && inputSourceForSlot(node, 'source', context) === sourceSource
+            && inputSourceForSlot(node, 'reference', context) === referenceSource
+            && editorInputVersion(node, context) === session.version;
         const sourceAsset = sourceAssetForSlot(node, 'source', context) || state.source_asset || null;
         const referenceAsset = sourceAssetForSlot(node, 'reference', context) || state.reference_asset || null;
         const sourceSrc = assetDisplaySrc(sourceAsset || {}, context);
@@ -388,7 +409,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
         return runtimeEditor.open({
             title: node.title || 'LivePortrait Exp',
             context: 'canvas',
-            projectId: getProject(context).id || (typeof context?.getProjectId === 'function' ? context.getProjectId() : '') || 'default',
+            projectId: project.id || (typeof context?.getProjectId === 'function' ? context.getProjectId() : '') || 'default',
             node,
             nodeId: node.id,
             params: state.params || {},
@@ -406,12 +427,15 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
             detectTheme: () => call(context, 'detectWorkbenchTheme', 'dark'),
             ensureFormNames: (scope, prefix) => call(context, 'ensureWorkbenchFormFieldNames', null, scope, prefix),
             onStateChange: (cache) => {
-                const current = getNode(node.id, context) || node;
+                if (!owns()) return;
+                const current = node;
                 Object.assign(current, call(context, 'buildLivePortraitStatePatch', {}, current, cache || {}));
+                session.version = editorInputVersion(node, context);
             },
             onConfirm: (response) => {
+                if (!owns()) return;
                 call(context, 'pushHistory', null, 'Update LivePortrait Exp output');
-                const current = getNode(node.id, context) || node;
+                const current = node;
                 const sourceNodeId = inputSourceForSlot(current, 'source', context)?.id || '';
                 const referenceNodeId = inputSourceForSlot(current, 'reference', context)?.id || '';
                 Object.assign(current, call(context, 'buildLivePortraitConfirmPatch', {}, current, {
@@ -431,6 +455,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
                         message: t('Expression image exported.', '表情图已导出。', context)
                     }
                 }));
+                editorSessions.delete(node);
                 call(context, 'setSelectedNode', null, current.id);
                 call(context, 'mutate', null);
             }
@@ -439,6 +464,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
 
     window.SimpAICanvasWorkbenchLivePortraitExpressionNode = {
         createLivePortraitExpressionNodeContext,
+        editorInputVersion,
         addNode,
         createNode,
         inputSourceForSlot,

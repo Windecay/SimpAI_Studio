@@ -65,14 +65,23 @@
 
         function writeTextConnection(fromId, toId, from, to, targetSlot) {
             call(edgeSource, 'filterProjectEdges', undefined,
-                edge => !(edge.type === 'text' && edge.to === toId && edge.slot === targetSlot));
+                edge => !(edge.type === 'text' && edge.to === toId && (edge.slot || 'prompt') === targetSlot));
             call(edgeSource, 'appendProjectEdge', undefined,
                 call(edgeSource, 'buildCanvasEdge', null, 'text', { from: fromId, to: toId, slot: targetSlot }));
             if (to.type === 'preset' || to.type === 'classic') {
+                if (targetSlot === 'prompt') {
+                    const project = call(projectSource, 'getProject', null);
+                    (project?.nodes || []).filter(node => node.type === 'style_selector'
+                        && node.id !== fromId && node.style_selector?.target_preset_id === toId)
+                        .forEach(node => Object.assign(node,
+                            call(patchSource, 'buildStyleSelectorStatePatch', {}, node, {
+                                statePatch: { target_preset_id: '' }
+                            })));
+                }
                 Object.assign(to, call(patchSource, 'buildPresetTextInputPatch', {}, to, {
                     textInputsPatch: { [targetSlot]: fromId },
-                    ...(from.type === 'style_selector' && targetSlot === 'prompt'
-                        ? { styleTransferSelectorId: from.id }
+                    ...(targetSlot === 'prompt'
+                        ? { styleTransferSelectorId: from.type === 'style_selector' ? from.id : null }
                         : {})
                 }));
                 if (from.type === 'style_selector' && targetSlot === 'prompt') {

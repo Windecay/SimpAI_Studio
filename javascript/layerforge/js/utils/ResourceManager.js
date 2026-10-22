@@ -1,7 +1,7 @@
 // @ts-ignore
-import { $el } from "/file=javascript/layerforge/js/comfy_shim.js?v=patch26";
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { withErrorHandling, createValidationError, createNetworkError } from "/file=javascript/layerforge/js/ErrorHandler.js?v=patch26";
+import { $el } from "../comfy_shim.js?v=patch26";
+import { createModuleLogger } from "./LoggerUtils.js?v=patch26";
+import { withErrorHandling, createValidationError, createNetworkError } from "../ErrorHandler.js?v=patch26";
 const log = createModuleLogger('ResourceManager');
 export const addStylesheet = withErrorHandling(function (url) {
     if (!url) {
@@ -24,31 +24,7 @@ export function getUrl(path, baseUrl) {
         throw createValidationError("Path is required", { path });
     }
     
-    // Hardcoded prefix for Gradio environment to ensure absolute paths
-    const GRADIO_PREFIX = "/file=javascript/layerforge/js/";
-
-    if (baseUrl) {
-        return new URL(path, baseUrl).toString();
-    }
-    
-    // Check if path is already absolute or a full URL
-    if (path.startsWith("http") || path.startsWith("/")) {
-        return path;
-    }
-    
-    // Handle relative paths starting with ./ or ../
-    if (path.startsWith("./")) {
-        path = path.substring(2);
-    } else if (path.startsWith("../")) {
-        // This is tricky without real path resolution, but for our structure:
-        // utils/../foo -> foo
-        // We assume we are in js root for relative paths usually?
-        // Actually, let's just strip it and append to prefix which points to js root
-        path = path.replace(/^\.\.\//, "");
-    }
-
-    // Force absolute path
-    return GRADIO_PREFIX + path;
+    return new URL(path, baseUrl || new URL('../', import.meta.url)).href;
 }
 export const loadTemplate = withErrorHandling(async function (path, baseUrl) {
     if (!path) {

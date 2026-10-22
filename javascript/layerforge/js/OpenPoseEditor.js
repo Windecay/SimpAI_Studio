@@ -1,5 +1,5 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { createCanvas } from "./utils/CommonUtils.js?v=patch26";
 
 const log = createModuleLogger('OpenPoseEditor');
 

@@ -1,6 +1,6 @@
-import { saveImage } from "/file=javascript/layerforge/js/db.js?v=patch26";
-import { generateUUID } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
-import { iconLoader, LAYERFORGE_TOOLS } from "/file=javascript/layerforge/js/utils/IconLoader.js?v=patch26";
+import { saveImage } from "./db.js?v=patch26";
+import { generateUUID } from "./utils/CommonUtils.js?v=patch26";
+import { iconLoader, LAYERFORGE_TOOLS } from "./utils/IconLoader.js?v=patch26";
 
 const SHAPES = [
     ['rectangle', 'Rectangle'], ['ellipse', 'Ellipse'], ['triangle', 'Triangle'],
@@ -570,6 +570,7 @@ export class AnnotationTool {
             const image = await this.imageFromCanvas(bitmap.canvas);
             const imageId = generateUUID();
             await saveImage(imageId, image.src);
+            this.canvas.imageReferenceManager?.registerCreatedImage(imageId);
             layer.x += layer.width / 2 - width / 2 + Math.cos(angle) * shiftX - Math.sin(angle) * shiftY;
             layer.y += layer.height / 2 - height / 2 + Math.sin(angle) * shiftX + Math.cos(angle) * shiftY;
             Object.assign(layer, { image, imageId, width, height,

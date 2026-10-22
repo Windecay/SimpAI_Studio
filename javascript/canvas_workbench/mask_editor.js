@@ -138,20 +138,64 @@
         const img = modal.querySelector('img');
         const canvas = modal.querySelector('canvas');
         const ctx = canvas.getContext('2d');
+        const targetNode = node;
+        const sourceImage = src;
+        const saveButton = modal.querySelector('[data-mask-save]');
+        const clearButton = modal.querySelector('[data-mask-clear]');
         let drawing = false;
         let lastPoint = null;
         let strokeStartPoint = null;
+        let closed = false;
+        let saving = false;
         const existingMaskUrl = node.mask?.data_url || '';
+        let canvasReady = false;
+        let imageReady = Boolean(img.complete && img.naturalWidth > 0);
+        let maskReady = !existingMaskUrl;
+        let maskLoadToken = 0;
+        const close = () => {
+            if (closed) return;
+            closed = true;
+            modal.remove();
+        };
+        const updateControls = () => {
+            saveButton.disabled = closed || saving || !canvasReady || !imageReady || !maskReady;
+            clearButton.disabled = closed || saving || !canvasReady || !imageReady;
+        };
         const naturalSize = () => ({
             width: Math.max(1, Math.round(img.naturalWidth || node.asset?.width || canvas.width || 1)),
             height: Math.max(1, Math.round(img.naturalHeight || node.asset?.height || canvas.height || 1))
         });
         const drawExistingMask = () => {
-            if (!existingMaskUrl) return;
+            if (!existingMaskUrl) {
+                maskReady = true;
+                updateControls();
+                return;
+            }
             const ImageCtor = getImageConstructor(context);
-            if (!ImageCtor) return;
+            if (!ImageCtor) {
+                maskReady = false;
+                updateControls();
+                return;
+            }
+            const token = ++maskLoadToken;
+            maskReady = false;
+            updateControls();
             const mask = new ImageCtor();
-            mask.onload = () => ctx.drawImage(mask, 0, 0, canvas.width, canvas.height);
+            mask.onload = () => {
+                if (closed || token !== maskLoadToken) return;
+                ctx.drawImage(mask, 0, 0, canvas.width, canvas.height);
+                maskReady = true;
+                updateControls();
+            };
+            mask.onerror = () => {
+                if (closed || token !== maskLoadToken) return;
+                maskReady = false;
+                updateControls();
+                call(context, 'showToast', null, t(
+                    context,
+                    'The existing Mask could not be loaded. Clear it before saving.'
+                ));
+            };
             mask.src = existingMaskUrl;
         };
         const resize = () => {
@@ -162,15 +206,23 @@
             if (changed) {
                 canvas.width = size.width;
                 canvas.height = size.height;
-                drawExistingMask();
             }
+            canvasReady = true;
+            imageReady = Boolean(img.naturalWidth > 0);
+            if (changed || (existingMaskUrl && !maskLoadToken)) drawExistingMask();
+            updateControls();
             canvas.style.width = `${Math.round(rect.width)}px`;
             canvas.style.height = `${Math.round(rect.height)}px`;
             canvas.style.left = `${Math.round(rect.left - wrapRect.left + img.parentElement.scrollLeft)}px`;
             canvas.style.top = `${Math.round(rect.top - wrapRect.top + img.parentElement.scrollTop)}px`;
         };
         img.onload = resize;
+        img.onerror = () => {
+            imageReady = false;
+            updateControls();
+        };
         schedule(context, resize, 0);
+        updateControls();
         const point = (evt) => {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / Math.max(1, rect.width);
@@ -207,6 +259,7 @@
             ctx.fill();
         };
         canvas.addEventListener('pointerdown', (evt) => {
+            if (closed || saving || !canvasReady || !imageReady || !maskReady) return;
             evt.preventDefault();
             drawing = true;
             canvas.setPointerCapture(evt.pointerId);
@@ -215,7 +268,7 @@
             paintDot(lastPoint);
         });
         canvas.addEventListener('pointermove', (evt) => {
-            if (!drawing) return;
+            if (!drawing || closed || saving || !canvasReady || !imageReady || !maskReady) return;
             evt.preventDefault();
             const nextPoint = constrainPoint(point(evt), evt);
             paintLine(lastPoint || nextPoint, nextPoint);
@@ -228,10 +281,31 @@
         };
         canvas.addEventListener('pointerup', stopDrawing);
         canvas.addEventListener('pointercancel', stopDrawing);
-        modal.querySelector('[data-mask-clear]').addEventListener('click', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
-        modal.querySelector('[data-mask-save]').addEventListener('click', () => {
-            const dataUrl = canvas.toDataURL('image/png');
-            call(context, 'createThumbnailDataUrl', Promise.resolve(''), dataUrl, 720).then((thumb) => {
+        clearButton.addEventListener('click', () => {
+            if (closed || saving || !canvasReady || !imageReady) return;
+            maskLoadToken += 1;
+            maskReady = true;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            updateControls();
+        });
+        saveButton.addEventListener('click', async () => {
+            if (closed || saving || !canvasReady || !imageReady || !maskReady) return;
+            saving = true;
+            updateControls();
+            try {
+                const dataUrl = canvas.toDataURL('image/png');
+                const thumb = await Promise.resolve(
+                    call(context, 'createThumbnailDataUrl', Promise.resolve(''), dataUrl, 720)
+                );
+                if (closed) return;
+                if (call(context, 'getNodeImageSrc', '', targetNode) !== sourceImage) {
+                    close();
+                    call(context, 'showToast', null, t(
+                        context,
+                        'The source image changed. Reopen the Mask editor before saving.'
+                    ));
+                    return;
+                }
                 call(context, 'pushHistory', null, 'Save mask');
                 const mask = {
                     kind: 'canvas_mask',
@@ -244,17 +318,24 @@
                     thumb,
                     updated_at: nowIso(context)
                 };
-                const patch = call(context, 'buildMediaNodeStatePatch', {}, node, { mask });
-                Object.assign(node, patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'mask')
+                const patch = call(context, 'buildMediaNodeStatePatch', {}, targetNode, { mask });
+                Object.assign(targetNode, patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'mask')
                     ? patch
                     : { mask });
-                modal.remove();
+                close();
                 call(context, 'mutate', null);
                 call(context, 'showToast', null, t(context, 'Mask saved to image node.', 'Mask 已保存到图片节点'));
-            });
+            } catch (error) {
+                if (!closed) {
+                    call(context, 'showToast', null, t(context, 'Mask could not be saved.'));
+                }
+            } finally {
+                saving = false;
+                updateControls();
+            }
         });
         modal.addEventListener('click', (evt) => {
-            if (evt.target === modal || evt.target.closest('[data-modal-close]')) modal.remove();
+            if (evt.target === modal || evt.target.closest('[data-modal-close]')) close();
         });
     }
 

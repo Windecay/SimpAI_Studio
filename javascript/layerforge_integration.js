@@ -24,7 +24,8 @@
 
     function layerForgeAppUrl(sessionId, timestamp, source) {
         const lang = getLayerForgeLang(source);
-        return `${LAYERFORGE_APP_URL}?v=${timestamp}&api_url=${encodeURIComponent(COMFY_API_URL)}&session_id=${sessionId}&__lang=${encodeURIComponent(lang)}&t=${timestamp}`;
+        const appUrl = window.SimpAICanvasWorkbenchUtils.studioEndpointUrl(LAYERFORGE_APP_URL);
+        return `${appUrl}?v=${timestamp}&api_url=${encodeURIComponent(COMFY_API_URL)}&session_id=${sessionId}&__lang=${encodeURIComponent(lang)}&t=${timestamp}`;
     }
 
     function loadImageElement(url) {
@@ -193,10 +194,7 @@
             if (!s)
                 return '';
             if (s.startsWith('data:')) {
-                const head = s.slice(0, 128);
-                const tail = s.slice(Math.max(0, s.length - 128));
-                const combined = `${s.length}|${head}|${tail}`;
-                return `d:${hashString32(combined)}`;
+                return `d:${s.length}:${hashString32(s)}`;
             }
             return `u:${hashString32(s)}`;
         } catch {
@@ -582,6 +580,7 @@
         document.body.appendChild(modal);
 
         const messageHandler = (event) => {
+            if (event.source !== iframe.contentWindow || !event.data) return;
             if (event.data.type === 'READY') {
 
                 let src = null;

@@ -22,8 +22,12 @@ def _active_references(references):
         mode = int(reference.get("mode", 0))
         if mode <= 0 or reference["weight"] == 0 or reference["stop_percent"] <= 0:
             continue
+        if mode == 1:
+            if reference.get("image") is None:
+                raise ValueError("The enabled MOSS reference image is missing.")
+            continue
         if mode not in (3, 6):
-            raise ValueError("MOSS image control supports Depth and ColorMap.")
+            raise ValueError("MOSS image control supports ImagePrompt, Depth and ColorMap.")
         if mode in active:
             raise ValueError("MOSS image control accepts one Depth map and one ColorMap.")
         if reference.get("image") is None:
@@ -138,6 +142,9 @@ class SimpAIAIOReferenceMoss:
             "vae": ("VAE",), "width": ("INT", {"default": 1024}),
             "height": ("INT", {"default": 1024}),
             **{f"reference_{index}": ("SIMPAI_AIO_REFERENCE_CONFIG",) for index in range(1, 5)},
+        }, "optional": {
+            "clip": ("CLIP",), "prompt": ("STRING", {"multiline": True}),
+            "negative_prompt": ("STRING", {"multiline": True}),
         }}
 
     RETURN_TYPES = ("MODEL", "CONDITIONING", "CONDITIONING")
@@ -145,11 +152,25 @@ class SimpAIAIOReferenceMoss:
     CATEGORY = "SimpAI/AIO/Reference"
 
     def expand(self, model, positive, negative, vae, width, height,
-               reference_1, reference_2, reference_3, reference_4):
-        active = _active_references((reference_1, reference_2, reference_3, reference_4))
-        if not active:
+               reference_1, reference_2, reference_3, reference_4,
+               clip=None, prompt="", negative_prompt=""):
+        references = (reference_1, reference_2, reference_3, reference_4)
+        active = _active_references(references)
+        vision = any(ref["mode"] == 1 and ref["weight"] > 0 and ref["stop_percent"] > 0 for ref in references)
+        if not active and not vision:
             return (model, positive, negative)
         graph = GraphBuilder()
+        if vision:
+            if clip is None:
+                raise ValueError("MOSS image references require the selected text encoder.")
+            encoded = graph.node(
+                "SimpAIMossVisionConditioning", clip=clip, prompt=prompt, negative_prompt=negative_prompt,
+                positive=positive, negative=negative,
+                **{f"reference_{index}": ref for index, ref in enumerate(references, 1)},
+            )
+            positive, negative = encoded.out(0), encoded.out(1)
+        if not active:
+            return {"result": (model, positive, negative), "expand": graph.finalize()}
         controlled = graph.node("SimpAIMossControlModel", model=model)
         inputs = dict(positive=positive, negative=negative, vae=vae, width=width, height=height)
         for mode, name in ((6, "color"), (3, "depth")):

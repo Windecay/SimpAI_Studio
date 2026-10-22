@@ -13,6 +13,7 @@ CHECK_INTERVAL = 300
 _REJECTED_SESSION_LIMIT = 256
 _REJECTED_SESSIONS = OrderedDict()
 _REJECTED_SESSION_LOCK = threading.RLock()
+_PENDING_SESSION_CHECKS = {}
 
 
 def resolve_session(token, session, ua_hash):
@@ -23,18 +24,32 @@ def resolve_session(token, session, ua_hash):
         return _resolve_session(token, session, ua_hash)
     fingerprint = hashlib.sha256(json.dumps([session, ua_hash]).encode("utf-8")).digest()
     key = (id(token), fingerprint)
-    with _REJECTED_SESSION_LOCK:
-        now = time.monotonic()
-        cached = _REJECTED_SESSIONS.get(key)
-        if cached is not None and cached[0] is token and now < cached[1]:
-            return {"status": "invalid_legacy", "did": "", "sstoken": "", "expires_in": 0}
-        _REJECTED_SESSIONS.pop(key, None)
+    while True:
+        with _REJECTED_SESSION_LOCK:
+            now = time.monotonic()
+            cached = _REJECTED_SESSIONS.get(key)
+            if cached is not None and cached[0] is token and now < cached[1]:
+                return {"status": "invalid_legacy", "did": "", "sstoken": "", "expires_in": 0}
+            _REJECTED_SESSIONS.pop(key, None)
+            pending = _PENDING_SESSION_CHECKS.get(key)
+            if pending is None:
+                pending = threading.Event()
+                _PENDING_SESSION_CHECKS[key] = pending
+                break
+        # Only requests for this key wait; native verification holds no cache lock.
+        pending.wait()
+    try:
         result = _resolve_session(token, session, ua_hash)
         if result["status"] == "invalid_legacy":
-            _REJECTED_SESSIONS[key] = (token, time.monotonic() + CHECK_INTERVAL)
-            while len(_REJECTED_SESSIONS) > _REJECTED_SESSION_LIMIT:
-                _REJECTED_SESSIONS.popitem(last=False)
+            with _REJECTED_SESSION_LOCK:
+                _REJECTED_SESSIONS[key] = (token, time.monotonic() + CHECK_INTERVAL)
+                while len(_REJECTED_SESSIONS) > _REJECTED_SESSION_LIMIT:
+                    _REJECTED_SESSIONS.popitem(last=False)
         return result
+    finally:
+        with _REJECTED_SESSION_LOCK:
+            _PENDING_SESSION_CHECKS.pop(key, None)
+            pending.set()
 
 
 def _resolve_session(token, session, ua_hash):

@@ -272,7 +272,7 @@ def _int_text(value):
     return str(value).replace(" ", "")
 
 
-def _float_range(start, end, step):
+def _float_range(start, end, step, max_values=MAX_PREVIEW_VARIANTS):
     if step == 0:
         raise ValueError("range step must not be 0")
     values = []
@@ -280,6 +280,8 @@ def _float_range(start, end, step):
     guard = 0
     if step > 0:
         while current <= end + step / 1000000:
+            if len(values) >= max_values:
+                raise ValueError("axis range exceeds the variant limit")
             values.append(current)
             current += step
             guard += 1
@@ -287,6 +289,8 @@ def _float_range(start, end, step):
                 break
     else:
         while current >= end + step / 1000000:
+            if len(values) >= max_values:
+                raise ValueError("axis range exceeds the variant limit")
             values.append(current)
             current += step
             guard += 1
@@ -352,13 +356,17 @@ def _expand_float_values(values):
             start = float(match.group(1))
             end = float(match.group(2))
             step = float(match.group(3) or "1")
-            expanded.extend(_float_range(start, end, step))
+            expanded.extend(_float_range(start, end, step, MAX_PREVIEW_VARIANTS - len(expanded)))
         elif count_match:
             start = float(count_match.group(1))
             end = float(count_match.group(2))
             count = int(count_match.group(3) or "1")
+            if count + len(expanded) > MAX_PREVIEW_VARIANTS:
+                raise ValueError("axis range exceeds the variant limit")
             expanded.extend(_linspace(start, end, count))
         else:
+            if len(expanded) >= MAX_PREVIEW_VARIANTS:
+                raise ValueError("axis range exceeds the variant limit")
             expanded.append(float(text))
     return expanded
 
@@ -570,6 +578,12 @@ def _source_axis_options(mode, node=None, parameter_keys=None):
     source = node if isinstance(node, dict) else {}
     preset = source.get("preset") if isinstance(source.get("preset"), dict) else {}
     schema = source.get("schema") if isinstance(source.get("schema"), dict) else {}
+    runtime = source.get("runtime") if isinstance(source.get("runtime"), dict) else {}
+    theme = runtime.get("scene_theme") or schema.get("default_theme") or next(iter(schema.get("themes") or []), "")
+    theme_info = (schema.get("per_theme") or {}).get(theme) or {}
+    generation_props = theme_info.get("generation_config_props") or {}
+    options = [option for option in options
+               if (generation_props.get(option.apply) or {}).get("interactive") is not False]
     fixed_prompt = str(preset.get("name") or "").casefold() == "onekeykontext" or (preset.get("prompt_mode") or schema.get("prompt_mode")) == "preset_fixed"
     if fixed_prompt:
         options = [option for option in options if option.label != "Prompt"]

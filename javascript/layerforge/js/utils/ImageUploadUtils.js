@@ -1,7 +1,7 @@
 // @ts-ignore
-import { api } from "/file=javascript/layerforge/js/api_shim.js?v=patch26";
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { withErrorHandling, createValidationError, createNetworkError } from "/file=javascript/layerforge/js/ErrorHandler.js?v=patch26";
+import { api } from "../api_shim.js?v=patch26";
+import { createModuleLogger } from "./LoggerUtils.js?v=patch26";
+import { withErrorHandling, createValidationError, createNetworkError } from "../ErrorHandler.js?v=patch26";
 const log = createModuleLogger('ImageUploadUtils');
 /**
  * Uploads an image blob to ComfyUI server and returns image element

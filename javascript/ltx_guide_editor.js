@@ -65,6 +65,9 @@
 
     function stateMode(source) {
         const state = languageState(source);
+        const currentTask = String(state?.task_method || '').toLowerCase();
+        if (currentTask.includes('ltx_extent')) return 'video_extent';
+        if (currentTask.includes('ltx_i2v') || currentTask.includes('ltx_ia2v')) return 'keyframes';
         const taskMethods = state?.scene_frontend?.task_method;
         const text = [
             state?.__preset,
@@ -72,16 +75,19 @@
             state?.task_method,
             ...(taskMethods && typeof taskMethods === 'object' ? Object.values(taskMethods) : [])
         ].filter(Boolean).join(' ').toLowerCase();
-        return text.includes('ltx_extent') || /ltx\s*\(extent\)/.test(text)
-            ? 'video_extent'
-            : 'keyframes';
+        if (text.includes('ltx_extent') || /ltx\s*\(extent\)/.test(text)) return 'video_extent';
+        if (text.includes('ltx_i2v') || text.includes('ltx_ia2v') || /ltx\s*\((i2v|ia2v)\)/.test(text)) return 'keyframes';
+        return null;
     }
 
     function configMode(value, source, explicitMode) {
         const parsed = configSource(value);
-        if (String(explicitMode || '').toLowerCase() === 'video_extent') return 'video_extent';
+        const explicit = String(explicitMode || '').toLowerCase();
+        if (explicit === 'video_extent' || explicit === 'keyframes') return explicit;
+        const currentMode = stateMode(source);
+        if (currentMode) return currentMode;
         if (String(parsed.mode || '').toLowerCase() === 'video_extent') return 'video_extent';
-        return stateMode(source);
+        return 'keyframes';
     }
 
     function normalizeContextFrames(value) {

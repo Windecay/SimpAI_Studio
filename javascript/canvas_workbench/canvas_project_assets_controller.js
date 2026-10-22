@@ -53,6 +53,27 @@
         };
         const warn = typeof uiSource.warn === 'function' ? uiSource.warn : console.warn;
         let canvasProjectAssetCatalog = [];
+        const activeMaterializations = new WeakMap();
+        let assetRootRequest = 0;
+
+        function materializationGuard(node, item) {
+            const origin = project();
+            const projectId = origin.id || call('getProjectId', 'default');
+            const target = item || node;
+            const asset = target.asset;
+            const fields = Object.assign({}, asset);
+            const record = {};
+            activeMaterializations.set(target, record);
+            return {
+                projectId,
+                isCurrent: () => project() === origin && (origin.id || call('getProjectId', 'default')) === projectId
+                    && call('getNode', null, node.id) === node && target.asset === asset
+                    && activeMaterializations.get(target) === record
+                    && (!item || node.items?.find(entry => entry.id === item.id) === item)
+                    && Object.keys(asset || {}).length === Object.keys(fields).length
+                    && Object.keys(fields).every(key => asset[key] === fields[key])
+            };
+        }
 
         function project() {
             return call('getProject', {}, []) || {};
@@ -326,14 +347,18 @@
 
         async function refreshCanvasProjectAssetRoot(options) {
             const opts = options || {};
+            const request = ++assetRootRequest;
             try {
                 const currentProject = project();
+                const projectId = currentProject.id || call('getProjectId', 'default', []);
                 const response = await call('sendCanvasListAssetsRequest', null, {
-                    project_id: currentProject.id || call('getProjectId', 'default', []),
+                    project_id: projectId,
                     max_files: 500,
                     max_seconds: 1.5,
                     include_dimensions: false
                 });
+                if (request !== assetRootRequest || project() !== currentProject
+                    || (currentProject.id || call('getProjectId', 'default', [])) !== projectId) return false;
                 const rootText = String(response?.asset_root || '').trim();
                 if (!rootText) return false;
                 canvasProjectAssetCatalog = Array.isArray(response?.assets) ? response.assets : [];
@@ -365,12 +390,13 @@
         async function materializeNodeAssetForStorage(nodeId) {
             const node = call('getNode', null, nodeId);
             if (!node || !node.asset?.data_url) return { ok: false, error: 'node has no inline asset' };
+            const guard = materializationGuard(node);
             const response = await call('sendCanvasMaterializeAssetRequest', null, {
-                project_id: project().id || call('getProjectId', 'default'),
+                project_id: guard.projectId,
                 asset_source: call('serializeAssetSourceForRun', null, node)
             });
             const current = call('getNode', null, nodeId);
-            if (!current || !response?.ok || !response.asset_ref) return response;
+            if (!guard.isCurrent() || !current || !response?.ok || !response.asset_ref) return response;
             const ref = response.asset_ref || {};
             const materializedAsset = call('buildMaterializedAsset', {}, current.asset, ref);
             if (ref.asset_root) setCanvasProjectAssetRoot(ref.asset_root);
@@ -405,8 +431,9 @@
             const index = (node.items || []).findIndex(item => item.id === itemId);
             const item = index >= 0 ? node.items[index] : null;
             if (!item || !item.asset?.data_url) return { ok: false, error: 'item has no inline asset' };
+            const guard = materializationGuard(node, item);
             const response = await call('sendCanvasMaterializeAssetRequest', null, {
-                project_id: project().id || call('getProjectId', 'default'),
+                project_id: guard.projectId,
                 asset_source: {
                     node_id: `${node.id}:item:${item.id}`,
                     type: item.media_kind || call('batchAnyMediaKind', '', node) || 'image',
@@ -424,7 +451,7 @@
             const currentNode = call('getNode', null, nodeId);
             const currentIndex = currentNode?.items?.findIndex(entry => entry.id === itemId) ?? -1;
             const currentItem = currentIndex >= 0 ? currentNode.items[currentIndex] : null;
-            if (!currentNode || !currentItem || !response?.ok || !response.asset_ref) return response;
+            if (!guard.isCurrent() || !currentNode || !currentItem || !response?.ok || !response.asset_ref) return response;
             const ref = response.asset_ref || {};
             const materializedAsset = call('buildMaterializedAsset', {}, currentItem.asset, ref);
             if (ref.asset_root) setCanvasProjectAssetRoot(ref.asset_root);
@@ -449,6 +476,7 @@
             const nodes = (Array.isArray(currentProject.nodes) ? currentProject.nodes : [])
                 .filter(node => node && ['image', 'video', 'audio'].includes(node.type) && node.asset?.data_url && !(node.asset.path || node.asset.preview_url));
             for (const node of nodes) {
+                if (project() !== currentProject) return;
                 try {
                     await materializeNodeAssetForStorage(node.id);
                 } catch (err) {

@@ -8,6 +8,7 @@
     const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
     const translateFallback = (en, cn) => cn || en;
     const refreshTimers = new Map();
+    const activeRequests = new WeakMap();
 
     const MOTION_TYPES = [
         ['orbit', 'Orbit', '环绕'],
@@ -254,13 +255,15 @@ ${status ? `<div class="sai-node-foot">${escapeHtmlValue(ctx, status)}</div>` : 
         const nextParams = Object.assign(defaultParams(), node.params || {}, { [key]: next });
         const statePatch = { params: nextParams };
         const hadAsset = !!node.asset;
-        if (hadAsset) {
+        const wasRunning = String(node.status?.state || '').toLowerCase() === 'running';
+        activeRequests.delete(node);
+        if (hadAsset || wasRunning) {
             statePatch.asset = null;
             statePatch.status = buildStatus('idle', translateValue(context, 'Settings changed. Generate a new reference video.', '参数已变化，请重新生成参考视频。'), context);
         }
         Object.assign(node, call(context, 'buildCameraMotionStatePatch', statePatch, node, { statePatch }));
         call(context, 'scheduleSave', null);
-        if (hadAsset || refreshTimers.has(nodeId)) {
+        if (hadAsset || wasRunning || refreshTimers.has(nodeId)) {
             if (refreshTimers.has(nodeId)) {
                 call(context, 'clearTimeout', null, refreshTimers.get(nodeId));
                 refreshTimers.delete(nodeId);
@@ -342,6 +345,19 @@ ${status ? `<div class="sai-node-foot">${escapeHtmlValue(ctx, status)}</div>` : 
         if (call(ctx, 'isNodeIgnored', false, node)) return { ok: false, error: 'node is skipped' };
         if (String(node.status?.state || '').toLowerCase() === 'running') return { ok: false, error: 'already running' };
         if (typeof ctx.generateCameraMotionReference !== 'function') return { ok: false, error: 'camera motion API is unavailable' };
+        const project = getProject(ctx);
+        const projectId = project.id || call(ctx, 'getProjectId', '') || 'default';
+        const params = Object.assign(defaultParams(), node.params || {});
+        const request = {};
+        activeRequests.set(node, request);
+        const isCurrent = () => {
+            const currentParams = Object.assign(defaultParams(), node.params || {});
+            return getProject(ctx) === project
+                && (project.id || call(ctx, 'getProjectId', '') || 'default') === projectId
+                && node.type === 'camera_motion' && getNode(node.id, ctx) === node && activeRequests.get(node) === request
+                && !call(ctx, 'isNodeLocked', false, node) && !call(ctx, 'isNodeIgnored', false, node)
+                && Object.keys(params).every(key => currentParams[key] === params[key]);
+        };
 
         call(ctx, 'pushHistory', null, 'Generate Uni3C camera motion reference');
         const runningPatch = {
@@ -350,10 +366,12 @@ ${status ? `<div class="sai-node-foot">${escapeHtmlValue(ctx, status)}</div>` : 
         Object.assign(node, call(ctx, 'buildCameraMotionStatePatch', runningPatch, node, { statePatch: runningPatch }));
         call(ctx, 'mutate', null);
         const response = await ctx.generateCameraMotionReference({
-            project_id: getProject(ctx).id || (typeof ctx?.getProjectId === 'function' ? ctx.getProjectId() : '') || 'default',
+            project_id: projectId,
             node_id: node.id,
-            params: Object.assign(defaultParams(), node.params || {})
+            params
         });
+        if (!isCurrent()) return { ok: false, error: 'camera motion request no longer current' };
+        activeRequests.delete(node);
         const current = getNode(node.id, ctx);
         if (!current) return response || { ok: false, error: 'node was removed' };
         if (response?.ok) {
@@ -393,6 +411,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtmlValue(ctx, status)}</div>` : 
 
     function clearNode(node, context) {
         if (!node || node.type !== 'camera_motion' || call(context, 'isNodeLocked', false, node)) return false;
+        activeRequests.delete(node);
         call(context, 'pushHistory', null, 'Clear Uni3C camera motion reference');
         const clearPatch = {
             asset: null,

@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import importlib
 import importlib.util
 import io
@@ -227,9 +228,17 @@ def _register_model_dirs():
     import folder_paths
 
     for category in ("liveportrait", "ultralytics"):
-        path = _category_ready_dir(category)
-        if path is not None and path.is_dir():
-            folder_paths.add_model_folder_path(category, str(path), is_default=True)
+        for path in _category_dirs(category):
+            if path.is_dir():
+                folder_paths.add_model_folder_path(category, str(path))
+
+
+def _configure_engine(nodes, status):
+    paths = {
+        (item["category"], item["filename"]): item["path"]
+        for item in status.get("files", []) if item.get("ok")
+    }
+    return nodes.g_engine.configure_model_paths(paths, allow_download=False)
 
 
 def _load_advanced_liveportrait_nodes():
@@ -256,7 +265,7 @@ def _value_from_payload(payload, *keys):
     return ""
 
 
-def _decode_source_to_bytes(value):
+def _decode_source_to_bytes(value, project_id="default", state_params=None):
     if isinstance(value, dict):
         value = _value_from_payload(value, "image_data_url", "data_url", "path", "url", "preview_url")
     text = str(value or "").strip()
@@ -267,14 +276,20 @@ def _decode_source_to_bytes(value):
         return base64.b64decode(match.group("data"))
     if text.startswith("/file="):
         text = unquote(text[len("/file="):])
-    path = Path(text)
-    if path.is_file():
-        return path.read_bytes()
+    path = canvas_workbench_assets.resolve_readable_asset_path(
+        {"path": text}, project_id, state_params
+    )
+    if path:
+        return Path(path).read_bytes()
     return b""
 
 
-def _image_source_to_tensor(value):
-    raw = _decode_source_to_bytes(value)
+def _image_source_to_tensor(value, project_id="default", state_params=None):
+    raw = _decode_source_to_bytes(value, project_id, state_params)
+    return _image_bytes_to_tensor(raw)
+
+
+def _image_bytes_to_tensor(raw):
     if not raw:
         return None
     import numpy as np
@@ -286,8 +301,18 @@ def _image_source_to_tensor(value):
     return torch.from_numpy(array).unsqueeze(0)
 
 
-def _image_source_to_rgb_array(value):
-    raw = _decode_source_to_bytes(value)
+def _preparation_key(payload, state_params, source, reference, source_bbox, reference_bbox, params, model_signature, engine):
+    asset_root, user_did = canvas_workbench_assets._asset_root(payload.get("project_id") or "default", state_params)
+    return (
+        str(user_did), os.path.normcase(os.path.realpath(asset_root)), str(payload.get("node_id") or ""),
+        hashlib.sha256(source).digest(), hashlib.sha256(reference).digest(),
+        source_bbox, reference_bbox, params["crop_factor"], model_signature,
+        id(engine), id(engine.pipeline),
+    )
+
+
+def _image_source_to_rgb_array(value, project_id="default", state_params=None):
+    raw = _decode_source_to_bytes(value, project_id, state_params)
     if not raw:
         return None
     import numpy as np
@@ -366,7 +391,7 @@ def _tensor_to_data_url(tensor):
     return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def detect_faces(payload):
+def detect_faces(payload, state_params=None):
     payload = payload if isinstance(payload, dict) else {}
     status = resource_status(payload)
     face_missing = [
@@ -382,7 +407,10 @@ def detect_faces(payload):
             "missing": face_missing,
         }
 
-    image_info = _image_source_to_rgb_array(_value_from_payload(payload, "source_image", "source_image_data_url", "image_data_url"))
+    image_info = _image_source_to_rgb_array(
+        _value_from_payload(payload, "source_image", "source_image_data_url", "image_data_url"),
+        payload.get("project_id") or "default", state_params,
+    )
     if image_info is None:
         return {"ok": False, "error": "Source image is required.", "code": "source_image_required", "status": status}
     image_rgb, width, height = image_info
@@ -390,8 +418,10 @@ def detect_faces(payload):
     try:
         _register_model_dirs()
         nodes = _load_advanced_liveportrait_nodes()
-        model = nodes.g_engine.get_detect_model()
-        pred = model(image_rgb, conf=0.7, device="")
+        with _PREVIEW_LOCK:
+            _configure_engine(nodes, status)
+            model = nodes.g_engine.get_detect_model()
+            pred = model(image_rgb, conf=0.7, device="")
         boxes = pred[0].boxes.xyxy.cpu().numpy() if pred and pred[0].boxes is not None else []
         confs = pred[0].boxes.conf.cpu().numpy() if pred and pred[0].boxes is not None and pred[0].boxes.conf is not None else []
     except Exception as err:
@@ -436,11 +466,13 @@ def detect_faces(payload):
     }
 
 
-def _render_expression(payload):
+def _render_expression(payload, state_params=None):
     global _EXPRESSION_EDITOR
 
     status = resource_status(payload)
     if not status.get("ready"):
+        with _PREVIEW_LOCK:
+            _EXPRESSION_EDITOR = None
         return {
             "ok": False,
             "error": "LivePortrait Expression resources are missing.",
@@ -452,8 +484,12 @@ def _render_expression(payload):
     if not expression_state and isinstance(payload, dict) and isinstance(payload.get("params"), dict):
         expression_state = json.dumps({"params": payload.get("params")})
     params = parse_expression_state(expression_state)
-    source_tensor = _image_source_to_tensor(_value_from_payload(payload, "source_image", "source_image_data_url", "image_data_url"))
-    if source_tensor is None:
+    project_id = payload.get("project_id") or "default"
+    source_bytes = _decode_source_to_bytes(
+        _value_from_payload(payload, "source_image", "source_image_data_url", "image_data_url"),
+        project_id, state_params,
+    )
+    if not source_bytes:
         return {
             "ok": False,
             "error": "Source image is required.",
@@ -461,37 +497,60 @@ def _render_expression(payload):
             "status": status,
             "params": params,
         }
-    reference_tensor = _image_source_to_tensor(_value_from_payload(payload, "reference_image", "reference_image_data_url", "sample_image"))
+    reference_bytes = _decode_source_to_bytes(
+        _value_from_payload(payload, "reference_image", "reference_image_data_url", "sample_image"),
+        project_id, state_params,
+    )
     source_face_bbox = _selected_face_bbox(payload, params, "source_face_bbox", "source_face_bbox")
     reference_face_bbox = _selected_face_bbox(payload, params, "reference_face_bbox", "reference_face_bbox")
 
     _register_model_dirs()
     nodes = _load_advanced_liveportrait_nodes()
     with _PREVIEW_LOCK:
-        if _EXPRESSION_EDITOR is None:
+        model_signature = _configure_engine(nodes, status)
+        key = _preparation_key(payload, state_params, source_bytes, reference_bytes,
+                               source_face_bbox, reference_face_bbox, params, model_signature, nodes.g_engine)
+        if _EXPRESSION_EDITOR is None or getattr(_EXPRESSION_EDITOR, "_simpai_preparation_key", None) != key:
             _EXPRESSION_EDITOR = nodes.ExpressionEditor()
-        result = _EXPRESSION_EDITOR.run(
-            params["rotate_pitch"],
-            params["rotate_yaw"],
-            params["rotate_roll"],
-            params["blink"],
-            params["eyebrow"],
-            params["wink"],
-            params["pupil_x"],
-            params["pupil_y"],
-            params["aaa"],
-            params["eee"],
-            params["woo"],
-            params["smile"],
-            params["src_ratio"],
-            params["sample_ratio"],
-            params["sample_parts"],
-            params["crop_factor"],
-            src_image=source_tensor,
-            sample_image=reference_tensor,
-            src_face_bbox=source_face_bbox,
-            sample_face_bbox=reference_face_bbox,
-        )
+            source_tensor = _image_bytes_to_tensor(source_bytes)
+            reference_tensor = _image_bytes_to_tensor(reference_bytes)
+        else:
+            source_tensor = _EXPRESSION_EDITOR.src_image
+            reference_tensor = _EXPRESSION_EDITOR.sample_image
+        try:
+            result = _EXPRESSION_EDITOR.run(
+                params["rotate_pitch"],
+                params["rotate_yaw"],
+                params["rotate_roll"],
+                params["blink"],
+                params["eyebrow"],
+                params["wink"],
+                params["pupil_x"],
+                params["pupil_y"],
+                params["aaa"],
+                params["eee"],
+                params["woo"],
+                params["smile"],
+                params["src_ratio"],
+                params["sample_ratio"],
+                params["sample_parts"],
+                params["crop_factor"],
+                src_image=source_tensor,
+                sample_image=reference_tensor,
+                src_face_bbox=source_face_bbox,
+                sample_face_bbox=reference_face_bbox,
+            )
+            values = result.get("result") if isinstance(result, dict) else result
+            if isinstance(values, (tuple, list)) and values and values[0] is not None:
+                _EXPRESSION_EDITOR._simpai_preparation_key = _preparation_key(
+                    payload, state_params, source_bytes, reference_bytes, source_face_bbox,
+                    reference_face_bbox, params, model_signature, nodes.g_engine,
+                )
+            else:
+                _EXPRESSION_EDITOR = None
+        except BaseException:
+            _EXPRESSION_EDITOR = None
+            raise
 
     output_tensor = None
     ui_images = []
@@ -524,9 +583,9 @@ def _render_expression(payload):
     }
 
 
-def preview(payload):
+def preview(payload, state_params=None):
     try:
-        return _render_expression(payload if isinstance(payload, dict) else {})
+        return _render_expression(payload if isinstance(payload, dict) else {}, state_params)
     except Exception as exc:
         return {"ok": False, "error": str(exc), "code": "preview_error", "status": resource_status(payload)}
 
@@ -539,7 +598,7 @@ def export_image(payload, state_params=None):
     if data_url.startswith("data:image/"):
         params = payload.get("params") if isinstance(payload.get("params"), dict) else parse_expression_state(_value_from_payload(payload, "expression_state", "state", "params_json"))
     else:
-        rendered = preview(payload)
+        rendered = preview(payload, state_params)
         if not rendered.get("ok"):
             return rendered
         data_url = str(rendered.get("image_data_url") or (rendered.get("expression_image") or {}).get("data_url") or "").strip()

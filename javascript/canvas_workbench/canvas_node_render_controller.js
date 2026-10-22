@@ -18,7 +18,7 @@
         const { getSelectedNodeId, getSelectedNodeIds } = selectionSource;
         const runtimeSource = sourceObject('runtimeSource');
         const {
-            getPerfStats, performanceNow, getMediaBrowserNodeRuntime,
+            getLanguageState, getPerfStats, performanceNow, getMediaBrowserNodeRuntime,
             getMediaBrowserScrollMemory, getVlmChatScrollMemory,
             getVlmRenderDebugEnabled, requestAnimationFrame, setTimeout
         } = runtimeSource;
@@ -392,7 +392,8 @@
         function nodeRenderKey(node, options) {
             const renderMode = getNodeEffectiveRenderMode(node, options);
             const signature = renderMode === 'overview' ? nodeOverviewRenderSignature(node) : nodeRenderSignature(node);
-            return `${renderMode}|${signature}|collapsed:${isNodeCollapsed(node) ? '1' : '0'}`;
+            const language = String(getLanguageState?.()?.__lang || '');
+            return `${renderMode}|${signature}|collapsed:${isNodeCollapsed(node) ? '1' : '0'}|language:${language}`;
         }
 
         function invalidateRenderedNode(nodeId) {

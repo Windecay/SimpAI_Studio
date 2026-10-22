@@ -1,9 +1,9 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { showNotification, showInfoNotification, showErrorNotification, showWarningNotification } from "/file=javascript/layerforge/js/utils/NotificationUtils.js?v=patch26";
-import { withErrorHandling, createValidationError, createNetworkError, createFileError } from "/file=javascript/layerforge/js/ErrorHandler.js?v=patch26";
-import { safeClipspacePaste } from "/file=javascript/layerforge/js/utils/ClipspaceUtils.js?v=patch26";
+import { createModuleLogger } from "./LoggerUtils.js?v=patch26";
+import { showNotification, showInfoNotification, showErrorNotification, showWarningNotification } from "./NotificationUtils.js?v=patch26";
+import { withErrorHandling, createValidationError, createNetworkError, createFileError } from "../ErrorHandler.js?v=patch26";
+import { safeClipspacePaste } from "./ClipspaceUtils.js?v=patch26";
 // @ts-ignore
-import { api } from "/file=javascript/layerforge/js/api_shim.js?v=patch26";
+import { api } from "../api_shim.js?v=patch26";
 const log = createModuleLogger('ClipboardManager');
 export class ClipboardManager {
     constructor(canvas) {

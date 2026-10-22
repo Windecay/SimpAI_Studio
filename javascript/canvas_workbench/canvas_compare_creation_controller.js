@@ -32,6 +32,10 @@
                 showToast(t('Select two Image or image Result nodes first.', '请先选择两个图像或图像结果节点。'));
                 return null;
             }
+            if (pair.some(source => call(scope.nodeSource || {}, 'isNodeLocked', !!source.locked, source))) {
+                showToast(t('Locked nodes cannot change connections', '锁定节点不能修改连接'));
+                return null;
+            }
             const rectA = call(layoutSource, 'getNodeRect', {}, pair[0]) || {};
             const rectB = call(layoutSource, 'getNodeRect', {}, pair[1]) || {};
             const size = call(layoutSource, 'defaultNodeSize', { w: 560, h: 520 }, 'compare') || { w: 560, h: 520 };

@@ -18,11 +18,14 @@
         });
 
         async function requestTranslation(text, options) {
+            const current = () => typeof options?.shouldContinue !== 'function' || options.shouldContinue();
+            if (!current()) return { ok: false, stale: true };
             const start = await call(requestSource, 'sendCanvasTranslateRunRequest', null, {
                 text,
                 direction: options?.direction || 'toggle',
                 method: options?.method || ''
             });
+            if (!current()) return { ok: false, stale: true };
             if (!start?.ok || !start.job_id) return start || { ok: false, error: 'translate request failed' };
             const startedAt = currentTime();
             if (!Number.isFinite(startedAt) || typeof timingSource.setTimeout !== 'function') {
@@ -31,7 +34,9 @@
             const deadline = startedAt + 120000;
             while (currentTime() < deadline) {
                 await wait(650);
+                if (!current()) return { ok: false, stale: true };
                 const result = await call(requestSource, 'sendCanvasTranslatePollRequest', null, start.job_id);
+                if (!current()) return { ok: false, stale: true };
                 if (!result?.ok && result?.state !== 'failed') return result || { ok: false, error: 'translate poll failed' };
                 if (result.state === 'finished') return result;
                 if (result.state === 'failed') return result;
@@ -43,6 +48,18 @@
 
         const runtimeSource = scope.runtimeSource || {};
         const runtimeCall = (name, ...args) => call(runtimeSource, name, undefined, ...args);
+        const operations = new WeakMap();
+        function beginOperation(node, key) {
+            const project = runtimeCall('getProject');
+            const current = operations.get(node) || new Map();
+            const operation = {};
+            current.set(key, operation);
+            operations.set(node, current);
+            return (allowLocked = false) => current.get(key) === operation
+                && (typeof runtimeSource.getProject !== 'function' || runtimeCall('getProject') === project)
+                && (typeof runtimeSource.getNode !== 'function' || runtimeCall('getNode', node.id) === node)
+                && (allowLocked || !runtimeCall('isNodeLocked', node));
+        }
         const languageSource = scope.languageSource || {};
         const t = (en, cn) => call(languageSource, 't', cn || en, en, cn, call(languageSource, 'getLanguageState', {}));
 
@@ -98,12 +115,15 @@
 
         function bindInspectorTranslateEvents(inspector) {
             if (!inspector?.querySelectorAll) return false;
+            const node = runtimeCall('getNode', runtimeCall('getSelectedNodeId'));
+            const project = runtimeCall('getProject');
             inspector.querySelectorAll('[data-translate-action]').forEach((button) => {
                 button.addEventListener('click', (evt) => {
                     evt.preventDefault();
                     evt.stopPropagation();
-                    const node = runtimeCall('getNode', runtimeCall('getSelectedNodeId'));
-                    if (node) handleTranslateButton(node, button);
+                    if (node && runtimeCall('getSelectedNodeId') === node.id
+                        && runtimeCall('getNode', node.id) === node
+                        && runtimeCall('getProject') === project) handleTranslateButton(node, button);
                 });
             });
             return true;
@@ -112,19 +132,33 @@
         async function runTranslationNode(node) {
             if (!node || node.type !== 'translation' || runtimeCall('isNodeLocked', node)) return { ok: false, error: 'translation node is unavailable' };
             const source = runtimeCall('getTextNodeInputSource', node);
-            const text = String(source ? runtimeCall('getNodeTextOutput', source) : (node.input_text || '')).trim();
+            const inputText = String(source ? runtimeCall('getNodeTextOutput', source) : (node.input_text || ''));
+            const text = inputText.trim();
             if (!text) {
                 const message = t('Translation node has no input text.', '翻译节点没有输入文本。');
                 runtimeCall('showToast', message);
                 return { ok: false, error: message };
             }
+            const direction = node.params?.direction || 'toggle';
+            const method = node.params?.method || '';
+            const sourceVersion = [source?.text?.updated_at, source?.producer?.run_id, source?.producer?.run_token];
+            const ownsOperation = beginOperation(node, 'run');
+            const owns = () => ownsOperation()
+                && runtimeCall('getTextNodeInputSource', node) === source
+                && String(source ? runtimeCall('getNodeTextOutput', source) : (node.input_text || '')) === inputText
+                && [source?.text?.updated_at, source?.producer?.run_id, source?.producer?.run_token]
+                    .every((value, index) => value === sourceVersion[index])
+                && (node.params?.direction || 'toggle') === direction && (node.params?.method || '') === method;
+            if (!owns()) return { ok: false, stale: true };
             runtimeCall('pushHistoryBatch', 'translation:' + node.id + ':run', 'Run translation node');
             Object.assign(node, runtimeCall('buildTranslationStatePatch', node, {
                 status: runtimeCall('buildTranslationStatus', 'running', t('Translating...', '正在翻译...'))
             }) || {});
+            const runningStatus = node.status;
             runtimeCall('mutate');
             try {
-                const result = await requestTranslation(text, { direction: node.params?.direction || 'toggle', method: node.params?.method || '' });
+                const result = await requestTranslation(text, { direction, method, shouldContinue: owns });
+                if (!owns()) return { ok: false, stale: true };
                 if (!result?.ok || result.state === 'failed') {
                     Object.assign(node, runtimeCall('buildTranslationStatePatch', node, {
                         status: runtimeCall('buildTranslationStatus', 'failed', result?.details || result?.error || t('Translation failed.', '翻译失败。'))
@@ -149,12 +183,20 @@
                 runtimeCall('mutate');
                 return { ok: true, text: translated };
             } catch (err) {
+                if (!owns()) return { ok: false, stale: true };
                 Object.assign(node, runtimeCall('buildTranslationStatePatch', node, {
                     status: runtimeCall('buildTranslationStatus', 'failed', err?.message || String(err))
                 }) || {});
                 runtimeCall('showToast', t('Translation failed: {error}', '翻译失败：{error}').replace('{error}', node.status.message));
                 runtimeCall('mutate');
                 return { ok: false, error: node.status.message };
+            } finally {
+                if (ownsOperation(true) && node.status === runningStatus && node.status?.state === 'running') {
+                    Object.assign(node, runtimeCall('buildTranslationStatePatch', node, {
+                        status: runtimeCall('buildTranslationStatus', 'idle', '')
+                    }) || {});
+                    runtimeCall('mutate');
+                }
             }
         }
 
@@ -181,6 +223,17 @@
                 return;
             }
             const cacheKey = getTranslateCacheKey(target, key);
+            const storedValue = () => target === 'node-param' || target === 'vlm-param'
+                ? node.params?.[key || (target === 'vlm-param' ? 'prompt' : '')] : node.text?.value;
+            const originalValue = storedValue();
+            const ownsOperation = beginOperation(node, cacheKey);
+            let edited = false;
+            const invalidate = () => { edited = true; };
+            const owns = () => ownsOperation() && !edited
+                && String(field.value || '') === text && storedValue() === originalValue
+                && field.isConnected !== false && button.isConnected !== false
+                && !field.readOnly && !field.disabled;
+            if (!owns()) return;
             const cached = getTranslationCacheEntry(node, target, key, text);
             if (cached && text === cached.after) {
                 runtimeCall('pushHistoryBatch', 'translate:' + node.id + ':' + cacheKey, 'Restore source text');
@@ -209,8 +262,11 @@
             }
             button.disabled = true;
             button.classList.add('is-busy');
+            field.addEventListener?.('input', invalidate);
+            field.addEventListener?.('change', invalidate);
             try {
-                const result = await requestTranslation(text, { direction: 'toggle' });
+                const result = await requestTranslation(text, { direction: 'toggle', shouldContinue: owns });
+                if (!owns()) return;
                 if (!result?.ok || result.state === 'failed') {
                     runtimeCall('showToast', t('Translation failed: {error}', '翻译失败：{error}').replace('{error}', result?.details || result?.error || 'unknown error'));
                     return;
@@ -228,7 +284,11 @@
                 setTranslatedFieldValue(node, target, key, translated, field);
                 runtimeCall('showToast', t('Translated and replaced{method}', '已翻译并替换{method}').replace('{method}', result.method ? ' (' + result.method + ')' : ''));
                 runtimeCall('renderAll', { inspector: false });
+            } catch (err) {
+                if (owns()) runtimeCall('showToast', t('Translation failed: {error}', '翻译失败：{error}').replace('{error}', err?.message || String(err)));
             } finally {
+                field.removeEventListener?.('input', invalidate);
+                field.removeEventListener?.('change', invalidate);
                 button.disabled = false;
                 button.classList.remove('is-busy');
             }

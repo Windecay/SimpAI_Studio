@@ -1,6 +1,6 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
-import { withErrorHandling, createValidationError } from "/file=javascript/layerforge/js/ErrorHandler.js?v=patch26";
+import { createModuleLogger } from "./LoggerUtils.js?v=patch26";
+import { createCanvas } from "./CommonUtils.js?v=patch26";
+import { withErrorHandling, createValidationError } from "../ErrorHandler.js?v=patch26";
 const log = createModuleLogger('IconLoader');
 // Define tool constants for LayerForge
 export const LAYERFORGE_TOOLS = {

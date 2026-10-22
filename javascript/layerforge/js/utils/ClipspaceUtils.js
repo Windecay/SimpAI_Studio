@@ -1,6 +1,6 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
+import { createModuleLogger } from "./LoggerUtils.js?v=patch26";
 // @ts-ignore
-import { ComfyApp } from "/file=javascript/layerforge/js/comfy_shim.js?v=patch26";
+import { ComfyApp } from "../comfy_shim.js?v=patch26";
 const log = createModuleLogger('ClipspaceUtils');
 /**
  * Validates and fixes ComfyUI clipspace structure to prevent 'Cannot read properties of undefined' errors

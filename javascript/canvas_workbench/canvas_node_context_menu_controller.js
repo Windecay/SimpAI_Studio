@@ -130,7 +130,8 @@
             }
             const compareSources = (selectionCall('getSelectedNodeIdList', [],) || []).map(id => projectCall('getNode', null, id)).filter(item => nodeCall('isImageCompareSource', false, item));
             if (compareSources.length >= 2) {
-                items.push({ label: t('Create compare node', '创建对比节点'), icon: 'sai-compare-glyph', action: () => actionCall('createCompareNodeFromSources', undefined, compareSources.slice(0, 2)) });
+                items.push({ label: t('Create compare node', '创建对比节点'), icon: 'sai-compare-glyph', action: () => actionCall('createCompareNodeFromSources', undefined, compareSources.slice(0, 2)),
+                    disabled: compareSources.slice(0, 2).some(source => nodeCall('isNodeLocked', !!source.locked, source)) });
             }
             const timelineSources = (selectionCall('getSelectedNodeIdList', [],) || []).map(id => projectCall('getNode', null, id)).filter(item => nodeCall('isTimelineSource', false, item));
             if (timelineSources.length) {

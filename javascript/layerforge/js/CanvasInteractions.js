@@ -1,6 +1,6 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { isEditingText } from "/gradio_api/file=javascript/layerforge/js/KeyboardUtils.js?v=patch1";
-import { snapToGrid, getSnapAdjustment } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { isEditingText } from "./KeyboardUtils.js?v=patch1";
+import { snapToGrid, getSnapAdjustment } from "./utils/CommonUtils.js?v=patch26";
 const log = createModuleLogger('CanvasInteractions');
 export class CanvasInteractions {
     constructor(canvas) {

@@ -12,7 +12,7 @@ from modules import visual_character_library as library
 
 
 _LOCK = threading.RLock()
-_TERMINAL = {"finished", "failed", "canceled", "cancelled", "stopped"}
+_TERMINAL = {"finished", "failed", "canceled", "skipped", "cancelled", "stopped"}
 
 
 @lru_cache(maxsize=1)

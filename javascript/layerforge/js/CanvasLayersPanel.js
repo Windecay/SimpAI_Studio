@@ -1,9 +1,9 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { isEditingText } from "/gradio_api/file=javascript/layerforge/js/KeyboardUtils.js?v=patch1";
-import { showErrorNotification } from "/file=javascript/layerforge/js/utils/NotificationUtils.js?v=patch26";
-import { iconLoader, LAYERFORGE_TOOLS } from "/file=javascript/layerforge/js/utils/IconLoader.js?v=patch26";
-import { createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
-import { addStylesheet, getUrl } from "/file=javascript/layerforge/js/utils/ResourceManager.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { isEditingText } from "./KeyboardUtils.js?v=patch1";
+import { showErrorNotification } from "./utils/NotificationUtils.js?v=patch26";
+import { iconLoader, LAYERFORGE_TOOLS } from "./utils/IconLoader.js?v=patch26";
+import { createCanvas } from "./utils/CommonUtils.js?v=patch26";
+import { addStylesheet, getUrl } from "./utils/ResourceManager.js?v=patch26";
 const log = createModuleLogger('CanvasLayersPanel');
 export class CanvasLayersPanel {
     constructor(canvas) {
@@ -22,7 +22,7 @@ export class CanvasLayersPanel {
         // Preload icons
         this.initializeIcons();
         // Load CSS for layers panel
-        addStylesheet('/gradio_api/file=javascript/layerforge/js/css/layers_panel.css?v=patch66');
+        addStylesheet('./css/layers_panel.css?v=patch66');
         log.info('CanvasLayersPanel initialized');
     }
     async initializeIcons() {

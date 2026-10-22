@@ -587,17 +587,17 @@ def _resolve_model_path(model_name: str, catalogs: Iterable[str], data: Dict[str
             path = ""
         if path:
             path = os.path.abspath(path)
-            if os.path.isfile(path):
+            if is_model_path_allowed(path):
                 key, entry = _resolve_models_info_key(data, (catalog,), normalized)
                 return path, catalog, key, entry
 
     key, entry = _resolve_models_info_key(data, catalogs, normalized)
     path = _first_existing_file_from_entry(entry)
-    if path:
+    if path and is_model_path_allowed(path):
         catalog = key.split("/", 1)[0] if "/" in key else next(iter(catalogs), "")
         return path, catalog, key, entry
     path = _find_model_file_in_roots(normalized, catalogs)
-    if path:
+    if path and is_model_path_allowed(path):
         catalog = next(iter(catalogs), "")
         found_catalog = False
         for candidate_catalog in catalogs:
@@ -840,6 +840,8 @@ def _sidecar_path(model_path: str) -> str:
 
 
 def _read_json_file(path: str) -> Dict[str, Any]:
+    if not _is_model_read_path_allowed(path):
+        return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -1144,16 +1146,13 @@ def is_preview_path_allowed(path: str) -> bool:
     return False
 
 
-def is_model_path_allowed(path: str) -> bool:
+def _is_model_read_path_allowed(path: str) -> bool:
     if not path:
         return False
     try:
-        abs_path = os.path.abspath(path)
-        if not os.path.isfile(abs_path):
-            return False
-        if os.path.splitext(abs_path)[1].lower() not in MODEL_FILE_EXTENSIONS:
-            return False
+        abs_path = os.path.normcase(os.path.realpath(os.path.abspath(path)))
         for root in _allowed_preview_roots():
+            root = os.path.normcase(os.path.realpath(root))
             try:
                 if os.path.commonpath([root, abs_path]) == root:
                     return True
@@ -1162,6 +1161,11 @@ def is_model_path_allowed(path: str) -> bool:
     except Exception:
         return False
     return False
+
+
+def is_model_path_allowed(path: str) -> bool:
+    return bool(path and os.path.splitext(path)[1].lower() in MODEL_FILE_EXTENSIONS
+                and _is_model_read_path_allowed(path) and os.path.isfile(path))
 
 
 def preview_url(path: str) -> str:

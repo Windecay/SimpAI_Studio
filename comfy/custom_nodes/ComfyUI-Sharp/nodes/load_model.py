@@ -227,8 +227,13 @@ class LoadSharpModel(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, precision: str = "auto"):
+    def execute(cls, precision: str = "auto", *, allow_download: bool = True, model_path=None):
         """Download checkpoint and return config dict."""
+        checkpoint = os.path.abspath(model_path) if model_path else _existing_sharp_checkpoint()
+        if not checkpoint or not os.path.isfile(checkpoint):
+            if not allow_download:
+                raise FileNotFoundError("SHARP checkpoint is missing. Install it through model management before building.")
+            checkpoint = _download_sharp_checkpoint()
         import comfy.model_management
 
         load_device = comfy.model_management.get_torch_device()
@@ -246,9 +251,7 @@ class LoadSharpModel(io.ComfyNode):
 
         dtype_str = {torch.bfloat16: "bf16", torch.float16: "fp16", torch.float32: "fp32"}[dtype]
 
-        model_path = _existing_sharp_checkpoint()
-        if model_path is None:
-            model_path = _download_sharp_checkpoint()
+        model_path = checkpoint
 
         log.info(f"SHARP config: precision={precision} -> dtype={dtype_str}, path={model_path}")
 

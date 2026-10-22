@@ -18,6 +18,18 @@
         };
         const showToast = message => call(runtimeSource, 'showToast', undefined, message);
         const mutate = () => call(runtimeSource, 'mutate', undefined);
+        const requests = new WeakMap();
+        // Keep string values by reference, including inline image data.
+        const snapshot = (value) => {
+            if (!value || typeof value !== 'object') return value;
+            return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshot(item)]));
+        };
+        const matches = (value, saved) => {
+            if (!saved || typeof saved !== 'object') return value === saved;
+            if (!value || typeof value !== 'object') return false;
+            const keys = Object.keys(saved);
+            return keys.length === Object.keys(value).length && keys.every(key => matches(value[key], saved[key]));
+        };
 
         async function runWd14Node(node) {
             if (!node || node.type !== 'wd14') return { ok: false, error: 'WD14 node is unavailable' };
@@ -41,42 +53,87 @@
                 showToast(t(error, '已连接节点没有图像资源。'));
                 return { ok: false, error };
             }
+            if (call(nodeSource, 'getNode', null, node.id) !== node) return { ok: false, error: 'wd14_request_changed' };
+            const sourceType = source.type;
+            const edgeFrom = edge?.from;
             call(runtimeSource, 'pushHistory', undefined, 'Run WD14 node');
             Object.assign(node, call(stateSource, 'buildWd14StatePatch', {}, node, {
                 inputNodeId: source.id,
                 status: call(stateSource, 'buildWd14Status', {}, 'running', t('Running extras.wd14tagger...', '正在运行 extras.wd14tagger...'))
             }));
+            const request = {};
+            requests.set(node, request);
+            const projectId = project.id;
+            const params = snapshot(node.params || {});
+            const text = snapshot(node.text || {});
+            const assetVersion = snapshot(asset);
+            const runningStatus = node.status;
+            const inputNodeId = node.input_node_id;
+            const isCurrent = () => {
+                const activeProject = call(projectSource, 'getProject', null);
+                if (requests.get(node) !== request || activeProject !== project || project.id !== projectId
+                    || call(nodeSource, 'getNode', null, node.id) !== node
+                    || node.type !== 'wd14' || node.status !== runningStatus
+                    || call(nodeSource, 'isNodeIgnored', false, node)
+                    || node.input_node_id !== inputNodeId || !matches(node.params || {}, params)
+                    || !matches(node.text || {}, text)) return false;
+                const currentEdge = (project.edges || []).find(item => item.type === 'image' && item.to === node.id && item.slot === 'image');
+                const currentSource = call(nodeSource, 'getNode', null, node.input_node_id)
+                    || call(nodeSource, 'getNode', null, currentEdge?.from);
+                const currentAsset = currentSource?.type === 'result'
+                    ? call(nodeSource, 'getSelectedResultAsset', null, currentSource)
+                    : currentSource?.asset;
+                return currentEdge?.from === edgeFrom && currentSource === source && source.type === sourceType
+                    && currentAsset === asset && matches(currentAsset, assetVersion);
+            };
             mutate();
-            const response = await call(requestSource, 'sendCanvasWd14TagRequest', null, {
-                project_id: project.id || call(projectSource, 'getProjectId', ''),
-                node_id: node.id,
-                asset_source: call(serializationSource, 'serializeAssetSourceForRun', null, source),
-                params: call(serializationSource, 'cloneRunValue', {}, node.params || {}, {})
-            });
-            const current = call(nodeSource, 'getNode', null, node.id);
-            if (!current) return;
-            if (response?.ok) {
+            try {
+                let response;
+                try {
+                    response = await call(requestSource, 'sendCanvasWd14TagRequest', null, {
+                        project_id: project.id || call(projectSource, 'getProjectId', ''),
+                        node_id: node.id,
+                        asset_source: call(serializationSource, 'serializeAssetSourceForRun', null, source),
+                        params: call(serializationSource, 'cloneRunValue', {}, node.params || {}, {})
+                    });
+                } catch (err) {
+                    response = { ok: false, error: String(err?.message || err) };
+                }
+                const current = call(nodeSource, 'getNode', null, node.id);
+                if (!current) return;
+                if (!isCurrent()) return { ok: false, error: 'wd14_request_changed' };
+                if (response?.ok) {
+                    Object.assign(current, call(stateSource, 'buildWd14StatePatch', {}, current, {
+                        textPatch: {
+                            value: response.text || '',
+                            updated_at: call(runtimeSource, 'nowIso', '')
+                        },
+                        status: call(stateSource, 'buildWd14Status', {}, 'finished', response.text
+                            ? t('Tags generated.', '标签已生成。')
+                            : t('WD14 finished with empty tags.', 'WD14 已完成，但没有生成标签。')),
+                        lastResponse: response
+                    }));
+                    showToast(t('WD14 tags generated', 'WD14 标签已生成'));
+                    mutate();
+                    return { ok: true, text: current.text.value };
+                }
                 Object.assign(current, call(stateSource, 'buildWd14StatePatch', {}, current, {
-                    textPatch: {
-                        value: response.text || '',
-                        updated_at: call(runtimeSource, 'nowIso', '')
-                    },
-                    status: call(stateSource, 'buildWd14Status', {}, 'finished', response.text
-                        ? t('Tags generated.', '标签已生成。')
-                        : t('WD14 finished with empty tags.', 'WD14 已完成，但没有生成标签。')),
-                    lastResponse: response
+                    status: call(stateSource, 'buildWd14Status', {}, 'failed', response?.details || response?.error || t('WD14 failed', 'WD14 运行失败')),
+                    lastResponse: response || {}
                 }));
-                showToast(t('WD14 tags generated', 'WD14 标签已生成'));
+                showToast(t('WD14 failed: {error}', 'WD14 运行失败：{error}').replace('{error}', response?.error || 'unknown error'));
                 mutate();
-                return { ok: true, text: current.text.value };
+                return { ok: false, error: current.status.message };
+            } finally {
+                if (requests.get(node) === request) {
+                    requests.delete(node);
+                    if (node.status === runningStatus && node.status?.state === 'running') {
+                        node.status = call(stateSource, 'buildWd14Status', {}, 'idle', '');
+                        if (call(projectSource, 'getProject', null) === project
+                            && call(nodeSource, 'getNode', null, node.id) === node) mutate();
+                    }
+                }
             }
-            Object.assign(current, call(stateSource, 'buildWd14StatePatch', {}, current, {
-                status: call(stateSource, 'buildWd14Status', {}, 'failed', response?.details || response?.error || t('WD14 failed', 'WD14 运行失败')),
-                lastResponse: response || {}
-            }));
-            showToast(t('WD14 failed: {error}', 'WD14 运行失败：{error}').replace('{error}', response?.error || 'unknown error'));
-            mutate();
-            return { ok: false, error: current.status.message };
         }
 
         return { runWd14Node };

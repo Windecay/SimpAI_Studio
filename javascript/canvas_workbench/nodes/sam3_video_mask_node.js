@@ -9,6 +9,7 @@
     const translateFallback = (en, cn) => cn || en;
     const runningControllers = new WeakMap();
     const pendingStopRequests = new WeakMap();
+    const pendingOperations = new WeakMap();
 
     function call(context, name, fallback, ...args) {
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
@@ -283,6 +284,54 @@
         const project = getProject(context);
         const currentId = typeof context?.getProjectId === 'function' ? context.getProjectId() : '';
         return project.id || currentId || 'default';
+    }
+
+    function inputKey(node, context) {
+        return JSON.stringify([node.input_node_id || '', sourceEdgeForNode(node, context)?.from || '']);
+    }
+
+    function sourceKey(source, context) {
+        const asset = selectedResultAsset(source, context);
+        return JSON.stringify([asset, sourceMediaEditForRun(asset, context)]);
+    }
+
+    function captureInput(node, source, context) {
+        return {
+            project: getProject(context),
+            projectId: projectId(context),
+            source,
+            inputKey: inputKey(node, context),
+            paramsKey: JSON.stringify(node.params || {}),
+            sourceKey: sourceKey(source, context)
+        };
+    }
+
+    function inputIsCurrent(node, snapshot, context) {
+        return getProject(context) === snapshot.project && projectId(context) === snapshot.projectId
+            && getNode(node.id, context) === node
+            && inputSourceForNode(node, context) === snapshot.source
+            && inputKey(node, context) === snapshot.inputKey
+            && JSON.stringify(node.params || {}) === snapshot.paramsKey
+            && sourceKey(snapshot.source, context) === snapshot.sourceKey;
+    }
+
+    function finishChangedInputRun(node, snapshot, runId, response, controller, context) {
+        if (getProject(context) !== snapshot.project || projectId(context) !== snapshot.projectId
+            || getNode(node.id, context) !== node || node.status?.run_id !== runId) return;
+        const interrupted = !response || response.aborted || response.transport_error || controller.signal.aborted;
+        const message = interrupted
+            ? t('SAM3 connection was interrupted. The task may still be running.', null, context)
+            : t('The generation settings changed. Please submit again.', null, context);
+        applyStatePatch(node, {
+            status: interrupted
+                ? { ...buildStatus('unknown', message, context), run_id: runId }
+                : buildStatus('idle', message, context)
+        }, context);
+        call(context, 'mutate', null);
+    }
+
+    function discardOperation(node, request) {
+        if (pendingOperations.get(node) === request) pendingOperations.delete(node);
     }
 
     function setSelectedNode(id, context) {
@@ -827,6 +876,8 @@ ${running
         runningControllers.set(node, controller);
         const params = cloneValue(node.params || {}, {}, context);
         const sourcePayload = serializeSourceWithMediaEdit(source, context);
+        const request = captureInput(node, source, context);
+        pendingOperations.set(node, request);
         if (editorPayload) {
             params.editor_payload = editorPayload;
             params.segmentation_mode = 'points';
@@ -839,15 +890,21 @@ ${running
             asset_source: sourcePayload.payload,
             params
         };
-        let response = null;
+        let response = null, latest;
         try {
             response = await generateSam3VideoMask(requestPayload, { signal: controller.signal, context });
         } finally {
-            runningControllers.delete(node);
+            if (runningControllers.get(node) === controller) runningControllers.delete(node);
+            latest = pendingOperations.get(node) === request;
+            if (latest) pendingOperations.delete(node);
         }
         const current = getNode(node.id, context);
         if (!current) return response || { ok: false, error: t('SAM3 Video Mask node was removed', 'SAM3 视频蒙版节点已被删除', context) };
-        if (current !== node || projectId(context) !== requestProjectId || current.status?.run_id !== runId) return response;
+        if (!latest || current.status?.run_id !== runId) return response;
+        if (!inputIsCurrent(node, request, context)) {
+            finishChangedInputRun(node, request, runId, response, controller, context);
+            return response;
+        }
         if (response?.ok) {
             const ref = response.mask_video || response.asset_ref || {};
             applyStatePatch(current, {
@@ -862,7 +919,7 @@ ${running
             Object.assign(current, call(context, 'buildSam3SourcePatch', {}, current, {
                 sourcePatch: {
                     source_node_id: source.id,
-                    prompt: current.params?.prompt || '',
+                    prompt: params.prompt || '',
                     mask_origin: editorPayload ? 'generated_points' : 'generated_prompt'
                 }
             }));
@@ -899,6 +956,7 @@ ${running
         if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用', context) };
         const controller = runningControllers.get(node);
         const runId = node.status?.run_id;
+        const requestProject = getProject(context);
         const requestProjectId = projectId(context);
         const request = {};
         pendingStopRequests.set(node, request);
@@ -915,7 +973,7 @@ ${running
         if (pendingStopRequests.get(node) !== request) return response;
         pendingStopRequests.delete(node);
         const current = getNode(node.id, context);
-        if (current !== node || projectId(context) !== requestProjectId
+        if (current !== node || getProject(context) !== requestProject || projectId(context) !== requestProjectId
             || runningControllers.get(node) !== controller || current.status?.run_id !== runId) return response;
         const state = String(current.status?.state || '').toLowerCase();
         if (state !== 'running' && state !== 'unknown') return response;
@@ -940,6 +998,10 @@ ${running
             call(context, 'showToast', null, message);
             return { ok: false, error: message };
         }
+        const source = inputSourceForNode(node, context);
+        const request = captureInput(node, source, context);
+        const sourceNodeId = source?.id || node.source?.source_node_id || '';
+        pendingOperations.set(node, request);
         const input = doc.createElement('input');
         input.type = 'file';
         input.accept = 'video/*,image/*';
@@ -950,17 +1012,21 @@ ${running
             input.click();
         });
         input.remove();
-        if (!file) return { ok: false, error: t('no file selected', '未选择文件', context) };
+        if (!file) {
+            discardOperation(node, request);
+            return { ok: false, error: t('no file selected', '未选择文件', context) };
+        }
 
         const dataUrl = await readFileAsDataUrl(file, context);
         const mime = file.type || (/\.(png|jpg|jpeg|webp|bmp)$/i.test(file.name || '') ? 'image/png' : 'video/mp4');
         const isImage = String(mime).toLowerCase().startsWith('image/');
         const meta = isImage ? await getImageDimensions(dataUrl, context) : await getMediaMetadata(dataUrl, 'video', context);
-        if (getNode(node.id, context) !== node || projectId(context) !== requestProjectId || isRunning(node)) {
+        if (pendingOperations.get(node) !== request || !inputIsCurrent(node, request, context) || isRunning(node)) {
+            discardOperation(node, request);
             return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用', context) };
         }
-        const source = inputSourceForNode(node, context);
         if (isImage && (!source || !isSource(source, context))) {
+            discardOperation(node, request);
             call(context, 'showToast', null, t('Connect a source video before uploading an image mask.', '上传图片蒙版前请先连接源视频。', context));
             return { ok: false, error: t('Connect a source video before uploading an image mask.', '上传图片蒙版前请先连接源视频。', context) };
         }
@@ -975,9 +1041,12 @@ ${running
         applyStatePatch(node, {
             status: { ...buildStatus('running', t('Normalizing uploaded mask...', '正在处理上传的蒙版...', context), context), run_id: runId }
         }, context);
+        request.inputKey = inputKey(node, context);
+        request.paramsKey = JSON.stringify(node.params || {});
         call(context, 'mutate', null);
         const controller = call(context, 'createAbortController', null);
         if (!controller) {
+            discardOperation(node, request);
             const message = t('SAM3 browser runtime is unavailable.', 'SAM3 浏览器运行时不可用。', context);
             applyStatePatch(node, { status: buildStatus('failed', message, context) }, context);
             call(context, 'mutate', null);
@@ -1008,15 +1077,21 @@ ${running
                 }
             }
         };
-        let response;
+        let response, latest;
         try {
             response = await normalizeSam3MaskVideo({ ...requestPayload, signal: controller.signal }, context);
         } finally {
-            runningControllers.delete(node);
+            if (runningControllers.get(node) === controller) runningControllers.delete(node);
+            latest = pendingOperations.get(node) === request;
+            if (latest) pendingOperations.delete(node);
         }
         const current = getNode(node.id, context);
         if (!current) return response || { ok: false, error: t('SAM3 Video Mask node was removed', 'SAM3 视频蒙版节点已被删除', context) };
-        if (current !== node || projectId(context) !== requestProjectId || current.status?.run_id !== runId) return response;
+        if (!latest || current.status?.run_id !== runId) return response;
+        if (!inputIsCurrent(node, request, context)) {
+            finishChangedInputRun(node, request, runId, response, controller, context);
+            return response;
+        }
         if (response?.ok) {
             const ref = response.mask_video || response.asset_ref || {};
             applyStatePatch(current, {
@@ -1036,7 +1111,7 @@ ${running
             }, context);
             Object.assign(current, call(context, 'buildSam3SourcePatch', {}, current, {
                 sourcePatch: {
-                    source_node_id: source?.id || current.source?.source_node_id || '',
+                    source_node_id: sourceNodeId,
                     uploaded_mask_name: file.name || '',
                     mask_origin: 'upload'
                 }
@@ -1080,6 +1155,7 @@ ${running
             return false;
         }
         call(context, 'pushHistory', null, t('Unload SAM3 uploaded mask', '卸载 SAM3 上传蒙版', context));
+        pendingOperations.delete(node);
         applyStatePatch(node, { asset: null }, context);
         Object.assign(node, call(context, 'buildSam3SourcePatch', {}, node, {
             sourcePatch: {

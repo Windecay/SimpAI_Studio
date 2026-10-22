@@ -12,7 +12,7 @@ def create_router(resolve_user, *, root=None):
 
     @router.post("/describe-image/vlm-roleplay/story-packs/{operation}")
     async def story_pack_endpoint(operation: str, request: Request, payload: dict = Body(default={})):
-        user_did = resolve_user(payload, request)
+        user_did = resolve_user(payload, request) if operation in {"list", "save", "load", "delete"} else None
 
         def perform():
             if operation == "list":

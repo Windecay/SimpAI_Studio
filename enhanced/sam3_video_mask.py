@@ -794,7 +794,7 @@ def _apply_elastic_vram_limit_for_sam3(*, device_index: int) -> dict | None:
 
 
 def _resolve_sam3_checkpoint(model_path: str | None) -> str:
-    return sam3_comfy31.resolve_sam31_checkpoint(model_path, allow_download=True)
+    return sam3_comfy31.resolve_sam31_checkpoint(model_path, allow_download=False)
 
 
 def _get_video_meta(video_path: str) -> tuple[float, int, int, int]:
@@ -1128,7 +1128,7 @@ def _select_binary_mask_from_outputs(
 
 
 def _load_video_predictor(checkpoint_path: str, *, image_size: int):
-    model, _clip, _ckpt = sam3_comfy31.ensure_sam31_loaded(checkpoint_path)
+    model, _clip, _ckpt = sam3_comfy31.ensure_sam31_loaded(checkpoint_path, allow_download=False)
     return model
 
 
@@ -1626,10 +1626,12 @@ def normalize_mask_media_to_source_video(
     signature = f"mask_time_v2|{os.path.abspath(str(mask_path))}|{os.path.getmtime(mask_path)}|{os.path.abspath(str(source_video_path))}|{os.path.getmtime(source_video_path)}|{frame_count}|{width}x{height}|{fps}|{node_id or 'sam3v'}"
     digest = hashlib.sha256(signature.encode("utf-8", errors="ignore")).hexdigest()
     os.makedirs(output_dir, exist_ok=True)
-    raw_out_path = os.path.abspath(os.path.join(output_dir, f"sam3v.uploaded_mask.{digest[:16]}.raw.mp4"))
     out_path = os.path.abspath(os.path.join(output_dir, f"sam3v.uploaded_mask.{digest[:16]}.mp4"))
     if os.path.exists(out_path):
         return out_path
+    request_id = uuid.uuid4().hex
+    raw_out_path = os.path.abspath(os.path.join(output_dir, f"sam3v.uploaded_mask.{digest[:16]}.{request_id}.raw.mp4"))
+    browser_path = os.path.abspath(os.path.join(output_dir, f"sam3v.uploaded_mask.{digest[:16]}.{request_id}.browser.mp4"))
 
     def mask_frame_to_bgr(frame):
         if frame is None:
@@ -1644,75 +1646,83 @@ def normalize_mask_media_to_source_video(
             gray = cv2.resize(gray, (width, height), interpolation=cv2.INTER_NEAREST)
         return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
-    writer = _open_mask_video_writer(raw_out_path, fps=fps, width=width, height=height)
-    if writer is None or not writer.isOpened():
-        raise RuntimeError("failed to open uploaded mask video writer")
+    delivered_path = None
     try:
-        if str(mask_mime or "").lower().startswith("image/"):
-            frame = mask_frame_to_bgr(cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED))
-            if frame is None:
-                raise RuntimeError("failed to read uploaded mask image")
-            for i in range(frame_count):
-                if cancel_check is not None and i % 8 == 0:
-                    cancel_check()
-                writer.write(frame)
-        else:
-            cap = cv2.VideoCapture(str(mask_path))
-            if not cap.isOpened():
-                raise RuntimeError("failed to read uploaded mask video")
-            last_frame = None
-            mask_index = -1
-            mask_ended = False
-            try:
-                mask_fps = float(cap.get(cv2.CAP_PROP_FPS) or fps)
-                if not np.isfinite(mask_fps) or mask_fps <= 0:
-                    mask_fps = fps
-                frame_step = mask_fps / fps
+        writer = _open_mask_video_writer(raw_out_path, fps=fps, width=width, height=height)
+        if writer is None:
+            raise RuntimeError("failed to open uploaded mask video writer")
+        try:
+            if not writer.isOpened():
+                raise RuntimeError("failed to open uploaded mask video writer")
+            if str(mask_mime or "").lower().startswith("image/"):
+                frame = mask_frame_to_bgr(cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED))
+                if frame is None:
+                    raise RuntimeError("failed to read uploaded mask image")
                 for i in range(frame_count):
                     if cancel_check is not None and i % 8 == 0:
                         cancel_check()
-                    # Avoid rounding an exact frame boundary down.
-                    target_index = int(i * frame_step + 1e-9)
-                    frame = None
-                    while not mask_ended and mask_index < target_index:
-                        if cancel_check is not None and (mask_index + 1) % 8 == 0:
+                    writer.write(frame)
+            else:
+                cap = cv2.VideoCapture(str(mask_path))
+                if not cap.isOpened():
+                    raise RuntimeError("failed to read uploaded mask video")
+                last_frame = None
+                mask_index = -1
+                mask_ended = False
+                try:
+                    mask_fps = float(cap.get(cv2.CAP_PROP_FPS) or fps)
+                    if not np.isfinite(mask_fps) or mask_fps <= 0:
+                        mask_fps = fps
+                    frame_step = mask_fps / fps
+                    for i in range(frame_count):
+                        if cancel_check is not None and i % 8 == 0:
                             cancel_check()
-                        ok, next_frame = cap.read()
-                        if not ok:
-                            mask_ended = True
-                            break
-                        mask_index += 1
-                        frame = next_frame
-                    if frame is not None:
-                        last_frame = mask_frame_to_bgr(frame)
-                    if last_frame is None:
-                        raise RuntimeError("uploaded mask video contains no readable frames")
-                    writer.write(last_frame)
-            finally:
-                cap.release()
-    finally:
-        writer.release()
-
-    remuxed = False
-    try:
-        remuxed = _remux_or_reencode_for_browser_playback(raw_out_path, out_path, fps=fps, cancel_check=cancel_check)
-    except Sam3Cancelled:
-        raise
-    except Exception:
-        remuxed = False
-    if cancel_check is not None:
-        cancel_check()
-    if not remuxed:
+                        # Avoid rounding an exact frame boundary down.
+                        target_index = int(i * frame_step + 1e-9)
+                        frame = None
+                        while not mask_ended and mask_index < target_index:
+                            if cancel_check is not None and (mask_index + 1) % 8 == 0:
+                                cancel_check()
+                            ok, next_frame = cap.read()
+                            if not ok:
+                                mask_ended = True
+                                break
+                            mask_index += 1
+                            frame = next_frame
+                        if frame is not None:
+                            last_frame = mask_frame_to_bgr(frame)
+                        if last_frame is None:
+                            raise RuntimeError("uploaded mask video contains no readable frames")
+                        writer.write(last_frame)
+                finally:
+                    cap.release()
+        finally:
+            writer.release()
         try:
-            os.replace(raw_out_path, out_path)
+            remuxed = _remux_or_reencode_for_browser_playback(raw_out_path, browser_path, fps=fps, cancel_check=cancel_check)
+        except Sam3Cancelled:
+            raise
         except Exception:
-            out_path = raw_out_path
-    elif os.path.exists(raw_out_path):
+            remuxed = False
+        if cancel_check is not None:
+            cancel_check()
+        candidate = browser_path if remuxed else raw_out_path
         try:
-            os.remove(raw_out_path)
-        except Exception:
+            os.rename(candidate, out_path)
+        except FileExistsError:
             pass
-    return out_path
+        except OSError:
+            delivered_path = candidate
+            return delivered_path
+        delivered_path = out_path
+        return delivered_path
+    finally:
+        for temporary in (raw_out_path, browser_path):
+            if temporary != delivered_path:
+                try:
+                    os.remove(temporary)
+                except OSError:
+                    pass
 
 
 def _write_mask_video_from_frames(
@@ -1745,54 +1755,52 @@ def _write_mask_video_from_frames(
             raise RuntimeError("Could not infer video dimensions for output.")
 
     out_fps = fps if fps > 0 else 24.0
-    writer = _open_mask_video_writer(raw_out_path, fps=float(out_fps), width=int(width), height=int(height))
-    if not writer.isOpened():
-        raise RuntimeError("Failed to open VideoWriter for mask output.")
-
+    delivered_path = None
     try:
-        total = int(frame_count) if int(frame_count or 0) > 0 else (max(masks_by_frame.keys()) + 1 if masks_by_frame else 0)
-        for i in range(int(total)):
-            if cancel_check is not None and (i % 8) == 0:
-                cancel_check()
-            mask = mask_at_frame(i) if mask_at_frame is not None else masks_by_frame.get(i, default_mask)
-            if mask is None:
-                frame = np.zeros((height, width), dtype=np.uint8)
-            else:
-                if mask.shape[0] != height or mask.shape[1] != width:
-                    frame = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
+        writer = _open_mask_video_writer(raw_out_path, fps=float(out_fps), width=int(width), height=int(height))
+        try:
+            if not writer.isOpened():
+                raise RuntimeError("Failed to open VideoWriter for mask output.")
+            total = int(frame_count) if int(frame_count or 0) > 0 else (max(masks_by_frame.keys()) + 1 if masks_by_frame else 0)
+            for i in range(int(total)):
+                if cancel_check is not None and (i % 8) == 0:
+                    cancel_check()
+                mask = mask_at_frame(i) if mask_at_frame is not None else masks_by_frame.get(i, default_mask)
+                if mask is None:
+                    frame = np.zeros((height, width), dtype=np.uint8)
                 else:
-                    frame = mask
-                frame = _postprocess_mask_u8(frame, strength=postprocess_strength, min_area=postprocess_min_area)
-            if invert_mask:
-                frame = 255 - frame
-            writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
-    finally:
-        writer.release()
-
-    if cancel_check is not None:
-        cancel_check()
-    if force_browser_compatible_output:
-        ok = _remux_or_reencode_for_browser_playback(raw_out_path, out_path, fps=float(out_fps), cancel_check=cancel_check)
+                    if mask.shape[0] != height or mask.shape[1] != width:
+                        frame = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
+                    else:
+                        frame = mask
+                    frame = _postprocess_mask_u8(frame, strength=postprocess_strength, min_area=postprocess_min_area)
+                if invert_mask:
+                    frame = 255 - frame
+                writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
+        finally:
+            writer.release()
         if cancel_check is not None:
             cancel_check()
-        if ok:
-            try:
-                if os.path.isfile(raw_out_path):
-                    os.remove(raw_out_path)
-            except Exception:
-                pass
+        if force_browser_compatible_output:
+            ok = _remux_or_reencode_for_browser_playback(raw_out_path, out_path, fps=float(out_fps), cancel_check=cancel_check)
+            if cancel_check is not None:
+                cancel_check()
+            if ok:
+                if debug_print:
+                    logger.info("SAM3(webui) mask video output: %s", str(out_path))
+                delivered_path = out_path
+                return delivered_path
             if debug_print:
-                logger.info("SAM3(webui) mask video output: %s", str(out_path))
-            return out_path
-        try:
-            if os.path.isfile(out_path):
-                os.remove(out_path)
-        except Exception:
-            pass
-        if debug_print:
-            logger.info("SAM3(webui) mask video output: %s", str(raw_out_path))
-        return raw_out_path
-    return raw_out_path
+                logger.info("SAM3(webui) mask video output: %s", str(raw_out_path))
+        delivered_path = raw_out_path
+        return delivered_path
+    finally:
+        for temporary in (raw_out_path, out_path):
+            if temporary != delivered_path:
+                try:
+                    os.remove(temporary)
+                except OSError:
+                    pass
 
 
 def run_static_mask(

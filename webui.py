@@ -5446,12 +5446,19 @@ with shared.gradio_root:
                                 resolution_multiplier_value,
                                 resolution_quantize_step_value,
                             )
+                            request_state = state if isinstance(state, dict) else {}
+                            request = {"id": uuid.uuid4().hex, "settings": settings}
+                            request_state["__camera_motion_request"] = request
                             try:
                                 path = camera_motion_reference.generate_camera_motion_video(**settings)
                             except Exception as exc:
+                                if request_state.get("__camera_motion_request") is not request:
+                                    return tuple(skip_component_update() for _ in range(5))
                                 logger.exception("[CameraMotion] reference video generation failed")
                                 message = _camera_motion_text(state, "Camera-motion reference generation failed.")
                                 raise gr.Error(message) from exc
+                            if request_state.get("__camera_motion_request") is not request:
+                                return tuple(skip_component_update() for _ in range(5))
                             status = _camera_motion_text(
                                 state,
                                 "Neutral 3D camera reference generated. Uni3C patch will be used for this video.",
@@ -5460,6 +5467,8 @@ with shared.gradio_root:
                             return path, path, snapshot, status, ""
 
                         def clear_camera_motion_reference(state):
+                            if isinstance(state, dict):
+                                state.pop("__camera_motion_request", None)
                             return (
                                 None,
                                 None,
@@ -5472,6 +5481,8 @@ with shared.gradio_root:
                             )
 
                         def camera_motion_reference_cleared(state):
+                            if isinstance(state, dict):
+                                state.pop("__camera_motion_request", None)
                             return (
                                 None,
                                 _camera_motion_text(
@@ -5496,24 +5507,21 @@ with shared.gradio_root:
                             resolution_multiplier_value,
                             resolution_quantize_step_value,
                         ):
+                            pending_request = state.get("__camera_motion_request") if isinstance(state, dict) else None
+                            if not isinstance(pending_request, dict) and not isinstance(generated_snapshot, dict):
+                                return skip_component_update(), skip_component_update()
+                            current_settings = _camera_motion_settings(
+                                motion_type, direction, speed, amplitude, duration, fps,
+                                scene_aspect_ratio_value, overwrite_width_value, overwrite_height_value,
+                                resolution_multiplier_value, resolution_quantize_step_value,
+                            )
+                            if isinstance(pending_request, dict) and pending_request.get("settings") != current_settings:
+                                state.pop("__camera_motion_request", None)
                             if not isinstance(generated_snapshot, dict):
                                 return skip_component_update(), skip_component_update()
                             generated_path = str(generated_snapshot.get("path") or "")
                             if not generated_path or str(reference_path or "") != generated_path:
                                 return None, ""
-                            current_settings = _camera_motion_settings(
-                                motion_type,
-                                direction,
-                                speed,
-                                amplitude,
-                                duration,
-                                fps,
-                                scene_aspect_ratio_value,
-                                overwrite_width_value,
-                                overwrite_height_value,
-                                resolution_multiplier_value,
-                                resolution_quantize_step_value,
-                            )
                             if current_settings != generated_snapshot.get("settings"):
                                 warning = _camera_motion_text(
                                     state,
@@ -6891,20 +6899,17 @@ with shared.gradio_root:
                             except Exception:
                                 pass
 
-                        qwen_tts_force_unload = {"flag": False}
-
-                        def _qwen_tts_begin(state_params):
-                            _qwen_tts_set_interrupt(False)
-                            qwen_tts_force_unload["flag"] = False
+                        def _qwen_tts_begin(state_params, mode=""):
+                            from modules import canvas_workbench_qwen_tts
+                            canvas_workbench_qwen_tts.begin_ui_qwen_tts(state_params, new_request=True, mode=mode)
                             return gr_update(visible=False), gr_update(visible=True), _qwen_text(state_params, "Generating...", "正在生成...")
 
                         def _qwen_tts_end():
-                            _qwen_tts_set_interrupt(False)
                             return gr_update(visible=True), gr_update(visible=False)
 
-                        def _qwen_tts_stop(state_params):
-                            _qwen_tts_set_interrupt(True)
-                            qwen_tts_force_unload["flag"] = True
+                        def _qwen_tts_stop(state_params, mode=""):
+                            from modules import canvas_workbench_qwen_tts
+                            canvas_workbench_qwen_tts.stop_ui_qwen_tts(state_params, mode=mode)
                             return _qwen_text(state_params, "Stopping...", "正在停止...")
 
                         def _qwen_is_interrupt_exception(e: Exception) -> bool:
@@ -7179,30 +7184,17 @@ with shared.gradio_root:
                         qwen_design_expand_btn.click(fn=_expand_tts_style_instruction, inputs=[qwen_design_instruct, state_topbar], outputs=[qwen_design_instruct, qwen_design_info], queue=False, show_progress=True)
                         qwen_custom_expand_btn.click(fn=_expand_tts_style_instruction, inputs=[qwen_custom_instruct, state_topbar], outputs=[qwen_custom_instruct, qwen_custom_info], queue=False, show_progress=True)
 
-                        def _qwen_after_unload(unload):
-                            if not bool(unload):
-                                return
-                            try:
-                                webui_qwen_tts.unload_qwen_tts_models()
-                            except Exception:
-                                pass
-                            try:
-                                unload_models_clicked(False)
-                            except Exception:
-                                pass
-
-                        def _qwen_tts_cleanup(unload):
-                            should_unload = bool(unload) or bool(qwen_tts_force_unload.get("flag"))
-                            qwen_tts_force_unload["flag"] = False
-                            if not should_unload:
-                                return
-                            _qwen_after_unload(True)
-
                         def _qwen_call_progress(handler_fn, seed_random, seed, unload, state_params, **kwargs):
+                            from modules import canvas_workbench_qwen_tts
+                            from modules.gpu_task_lock import GpuTaskCancelled
                             import queue as _queue
                             import threading as _threading
                             import time as _time
 
+                            mode = getattr(handler_fn, "__name__", "")
+                            if mode not in ("voice_design", "voice_clone", "custom_voice", "dialogue"):
+                                mode = ""
+                            ui_task = canvas_workbench_qwen_tts.begin_ui_qwen_tts(state_params, mode=mode)
                             try:
                                 seed_int = int(seed)
                             except Exception:
@@ -7234,7 +7226,9 @@ with shared.gradio_root:
 
                             def runner():
                                 try:
-                                    audio_path = webui_qwen_tts.enqueue_task(
+                                    audio_path = canvas_workbench_qwen_tts.execute_ui_qwen_tts(
+                                        ui_task,
+                                        webui_qwen_tts.enqueue_task,
                                         handler_fn,
                                         user_did=_get_user_did_from_state(state_params),
                                         seed=int(used_seed),
@@ -7311,7 +7305,7 @@ with shared.gradio_root:
                                 yield out.get("audio_path"), used_seed, skip_component_update()
                                 return
 
-                            interrupted = _qwen_is_interrupt_exception(err)
+                            interrupted = _qwen_is_interrupt_exception(err) or isinstance(err, GpuTaskCancelled)
                             if interrupted:
                                 yield gr_update(value=None), seed_int, _qwen_text(state_params, "Interrupted", "已中断")
                                 return
@@ -7332,8 +7326,8 @@ with shared.gradio_root:
                                 return
                             yield from _qwen_call_progress(webui_qwen_tts.qwen_tts_handler.voice_design, seed_random, seed, unload, state_params, text=text, instruct=instruct, model_choice=model_choice, device=device, precision=precision, language=language, max_new_tokens=int(max_new_tokens), max_chars=int(split_max_chars), hard_max_chars=int(split_hard_max_chars), top_p=float(top_p), top_k=int(top_k), temperature=float(temperature), repetition_penalty=float(repetition_penalty), attention=attention, unload_model_after_generate=bool(unload), lock_timbre_with_first_segment=bool(lock_timbre), clone_batch_size=int(clone_batch_size))
 
-                        qwen_design_btn.click(fn=_qwen_tts_begin, inputs=[state_topbar], outputs=[qwen_design_btn, qwen_design_stop_btn, qwen_design_info], queue=False, show_progress=False).then(fn=qwen_voice_design_fn, inputs=[qwen_design_text, qwen_design_instruct, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_design_lock_timbre, qwen_design_clone_batch_size, state_topbar], outputs=[qwen_design_output, qwen_tts_seed, qwen_design_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_design_btn, qwen_design_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
-                        qwen_design_stop_btn.click(fn=_qwen_tts_stop, inputs=[state_topbar], outputs=[qwen_design_info], queue=False, show_progress=False)
+                        qwen_design_btn.click(fn=lambda state: _qwen_tts_begin(state, "voice_design"), inputs=[state_topbar], outputs=[qwen_design_btn, qwen_design_stop_btn, qwen_design_info], queue=False, show_progress=False).then(fn=qwen_voice_design_fn, inputs=[qwen_design_text, qwen_design_instruct, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_design_lock_timbre, qwen_design_clone_batch_size, state_topbar], outputs=[qwen_design_output, qwen_tts_seed, qwen_design_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_design_btn, qwen_design_stop_btn], queue=False, show_progress=False)
+                        qwen_design_stop_btn.click(fn=lambda state: _qwen_tts_stop(state, "voice_design"), inputs=[state_topbar], outputs=[qwen_design_info], queue=False, show_progress=False)
 
                         def qwen_voice_clone_fn(ref_audio, ref_text, target_text, model_choice, precision, device, language, seed_random, seed, max_new_tokens, split_max_chars, split_hard_max_chars, top_p, top_k, temperature, repetition_penalty, attention, unload, batch_size, state_params):
                             try:
@@ -7348,8 +7342,8 @@ with shared.gradio_root:
                                 return
                             yield from _qwen_call_progress(webui_qwen_tts.qwen_tts_handler.voice_clone, seed_random, seed, unload, state_params, ref_audio=ref_audio, ref_text=ref_text, target_text=target_text, model_choice=model_choice, device=device, precision=precision, language=language, max_new_tokens=int(max_new_tokens), max_chars=int(split_max_chars), hard_max_chars=int(split_hard_max_chars), top_p=float(top_p), top_k=int(top_k), temperature=float(temperature), repetition_penalty=float(repetition_penalty), x_vector_only=False, attention=attention, unload_model_after_generate=bool(unload), batch_size=int(batch_size))
 
-                        qwen_clone_btn.click(fn=_qwen_tts_begin, inputs=[state_topbar], outputs=[qwen_clone_btn, qwen_clone_stop_btn, qwen_clone_info], queue=False, show_progress=False).then(fn=qwen_voice_clone_fn, inputs=[qwen_clone_ref_audio, qwen_clone_ref_text, qwen_clone_target_text, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_clone_batch_size, state_topbar], outputs=[qwen_clone_output, qwen_tts_seed, qwen_clone_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_clone_btn, qwen_clone_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
-                        qwen_clone_stop_btn.click(fn=_qwen_tts_stop, inputs=[state_topbar], outputs=[qwen_clone_info], queue=False, show_progress=False)
+                        qwen_clone_btn.click(fn=lambda state: _qwen_tts_begin(state, "voice_clone"), inputs=[state_topbar], outputs=[qwen_clone_btn, qwen_clone_stop_btn, qwen_clone_info], queue=False, show_progress=False).then(fn=qwen_voice_clone_fn, inputs=[qwen_clone_ref_audio, qwen_clone_ref_text, qwen_clone_target_text, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_clone_batch_size, state_topbar], outputs=[qwen_clone_output, qwen_tts_seed, qwen_clone_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_clone_btn, qwen_clone_stop_btn], queue=False, show_progress=False)
+                        qwen_clone_stop_btn.click(fn=lambda state: _qwen_tts_stop(state, "voice_clone"), inputs=[state_topbar], outputs=[qwen_clone_info], queue=False, show_progress=False)
 
                         def qwen_custom_voice_fn(text, speaker, instruct, model_choice, precision, device, language, seed_random, seed, max_new_tokens, split_max_chars, split_hard_max_chars, top_p, top_k, temperature, repetition_penalty, attention, unload, batch_size, state_params):
                             try:
@@ -7367,8 +7361,8 @@ with shared.gradio_root:
                                 speaker_key = _qwen_speaker_display_to_key[speaker_key]
                             yield from _qwen_call_progress(webui_qwen_tts.qwen_tts_handler.custom_voice, seed_random, seed, unload, state_params, text=text, speaker=speaker_key, instruct=instruct, model_choice=model_choice, device=device, precision=precision, language=language, max_new_tokens=int(max_new_tokens), max_chars=int(split_max_chars), hard_max_chars=int(split_hard_max_chars), top_p=float(top_p), top_k=int(top_k), temperature=float(temperature), repetition_penalty=float(repetition_penalty), attention=attention, unload_model_after_generate=bool(unload), custom_model_path="", custom_speaker_name="", batch_size=int(batch_size))
 
-                        qwen_custom_btn.click(fn=_qwen_tts_begin, inputs=[state_topbar], outputs=[qwen_custom_btn, qwen_custom_stop_btn, qwen_custom_info], queue=False, show_progress=False).then(fn=qwen_custom_voice_fn, inputs=[qwen_custom_text, qwen_custom_speaker, qwen_custom_instruct, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_custom_batch_size, state_topbar], outputs=[qwen_custom_output, qwen_tts_seed, qwen_custom_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_custom_btn, qwen_custom_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
-                        qwen_custom_stop_btn.click(fn=_qwen_tts_stop, inputs=[state_topbar], outputs=[qwen_custom_info], queue=False, show_progress=False)
+                        qwen_custom_btn.click(fn=lambda state: _qwen_tts_begin(state, "custom_voice"), inputs=[state_topbar], outputs=[qwen_custom_btn, qwen_custom_stop_btn, qwen_custom_info], queue=False, show_progress=False).then(fn=qwen_custom_voice_fn, inputs=[qwen_custom_text, qwen_custom_speaker, qwen_custom_instruct, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_custom_batch_size, state_topbar], outputs=[qwen_custom_output, qwen_tts_seed, qwen_custom_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_custom_btn, qwen_custom_stop_btn], queue=False, show_progress=False)
+                        qwen_custom_stop_btn.click(fn=lambda state: _qwen_tts_stop(state, "custom_voice"), inputs=[state_topbar], outputs=[qwen_custom_info], queue=False, show_progress=False)
 
                         def qwen_dialogue_fn(script, r1n, r1a, r1t, r2n, r2a, r2t, r3n, r3a, r3t, r4n, r4a, r4t, model_choice, precision, device, language, seed_random, seed, top_p, top_k, temperature, repetition_penalty, attention, unload, pause_linebreak, period_pause, comma_pause, question_pause, hyphen_pause, merge_outputs, batch_size, max_tokens_per_line, state_params):
                             try:
@@ -7380,8 +7374,8 @@ with shared.gradio_root:
                                 return
                             yield from _qwen_call_progress(webui_qwen_tts.qwen_tts_handler.dialogue, seed_random, seed, unload, state_params, script=script, role_1_name=r1n, role_1_audio=r1a, role_1_ref_text=r1t, role_2_name=r2n, role_2_audio=r2a, role_2_ref_text=r2t, role_3_name=r3n, role_3_audio=r3a, role_3_ref_text=r3t, role_4_name=r4n, role_4_audio=r4a, role_4_ref_text=r4t, model_choice=model_choice, device=device, precision=precision, language=language, pause_linebreak=float(pause_linebreak), period_pause=float(period_pause), comma_pause=float(comma_pause), question_pause=float(question_pause), hyphen_pause=float(hyphen_pause), merge_outputs=bool(merge_outputs), batch_size=int(batch_size), max_new_tokens_per_line=int(max_tokens_per_line), top_p=float(top_p), top_k=int(top_k), temperature=float(temperature), repetition_penalty=float(repetition_penalty), attention=attention, unload_model_after_generate=bool(unload))
 
-                        qwen_dialogue_btn.click(fn=_qwen_tts_begin, inputs=[state_topbar], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn, qwen_dialogue_info], queue=False, show_progress=False).then(fn=qwen_dialogue_fn, inputs=[qwen_dialogue_script, qwen_role_1_name, qwen_role_1_audio, qwen_role_1_ref_text, qwen_role_2_name, qwen_role_2_audio, qwen_role_2_ref_text, qwen_role_3_name, qwen_role_3_audio, qwen_role_3_ref_text, qwen_role_4_name, qwen_role_4_audio, qwen_role_4_ref_text, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_pause_linebreak, qwen_period_pause, qwen_comma_pause, qwen_question_pause, qwen_hyphen_pause, qwen_dialogue_merge, qwen_dialogue_batch, qwen_dialogue_max_tokens, state_topbar], outputs=[qwen_dialogue_output, qwen_tts_seed, qwen_dialogue_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
-                        qwen_dialogue_stop_btn.click(fn=_qwen_tts_stop, inputs=[state_topbar], outputs=[qwen_dialogue_info], queue=False, show_progress=False)
+                        qwen_dialogue_btn.click(fn=lambda state: _qwen_tts_begin(state, "dialogue"), inputs=[state_topbar], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn, qwen_dialogue_info], queue=False, show_progress=False).then(fn=qwen_dialogue_fn, inputs=[qwen_dialogue_script, qwen_role_1_name, qwen_role_1_audio, qwen_role_1_ref_text, qwen_role_2_name, qwen_role_2_audio, qwen_role_2_ref_text, qwen_role_3_name, qwen_role_3_audio, qwen_role_3_ref_text, qwen_role_4_name, qwen_role_4_audio, qwen_role_4_ref_text, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_pause_linebreak, qwen_period_pause, qwen_comma_pause, qwen_question_pause, qwen_hyphen_pause, qwen_dialogue_merge, qwen_dialogue_batch, qwen_dialogue_max_tokens, state_topbar], outputs=[qwen_dialogue_output, qwen_tts_seed, qwen_dialogue_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn], queue=False, show_progress=False)
+                        qwen_dialogue_stop_btn.click(fn=lambda state: _qwen_tts_stop(state, "dialogue"), inputs=[state_topbar], outputs=[qwen_dialogue_info], queue=False, show_progress=False)
 
                         qwen_send_outputs = [qwen_clone_ref_audio, qwen_role_1_audio, qwen_role_2_audio, qwen_role_3_audio, qwen_role_4_audio, scene_audio, scene_audio2, scene_audio3, scene_audio_backup]
                         _qwen_send_audio_binder = _bind_qwen_send_audio
@@ -7414,10 +7408,15 @@ with shared.gradio_root:
                             ip_ad_cols = []
                             ip_detect_style_nodes = []
                             ip_image_elem_ids = []
+                            from modules.moss_references import reference_type_defaults
 
                             def _ip_make_auto_detect_fn(elem_id: str):
                                 def _fn(image_np, selected_type, enabled, state_params):
                                     if image_np is None:
+                                        return '', skip_component_update(), skip_component_update(), skip_component_update()
+                                    if (isinstance(state_params, dict)
+                                            and state_params.get('task_method') == 'moss_image_sft_aio_cn'
+                                            and selected_type == flags.cn_ip):
                                         return '', skip_component_update(), skip_component_update(), skip_component_update()
                                     type_for_highlight = selected_type
                                     type_update = skip_component_update()
@@ -7509,7 +7508,8 @@ with shared.gradio_root:
                                     stop_update = skip_component_update()
                                     weight_update = skip_component_update()
 
-                                    if enabled and image_np is not None and detect_control_hint_type_and_default_params is not None:
+                                    is_moss_reference = state_params.get('task_method') == 'moss_image_sft_aio_cn' and selected_type == flags.cn_ip
+                                    if enabled and image_np is not None and not is_moss_reference and detect_control_hint_type_and_default_params is not None:
                                         try:
                                             allowed = topbar.get_allowed_ip_types(state_params.get('engine', 'Fooocus'), state_params.get('task_method'))
                                             detected, stop, weight = detect_control_hint_type_and_default_params(image_np, allowed_types=allowed)
@@ -7550,7 +7550,7 @@ with shared.gradio_root:
                                     ip_image_columns.append(ip_image_column)
                                     ip_image_elem_id = f'ip_image_{image_count}'
                                     ip_image_elem_ids.append(ip_image_elem_id)
-                                    ip_image = gr.Image(label='Image', sources=['upload'], type='numpy', image_mode='RGBA', show_label=False, height=300, value=modules.config.default_ip_images[image_count], elem_id=ip_image_elem_id, buttons=["download", "fullscreen"])
+                                    ip_image = gr.Image(label='Image', sources=['upload'], type='numpy', image_mode='RGBA', format='png', show_label=False, height=300, value=modules.config.default_ip_images[image_count], elem_id=ip_image_elem_id, buttons=["download", "fullscreen"])
                                     ip_detect_style = gr.HTML(value='', elem_classes=['ip_detect_style'])
                                     ip_detect_style_nodes.append(ip_detect_style)
                                     ip_images.append(ip_image)
@@ -7570,8 +7570,10 @@ with shared.gradio_root:
                                         ip_type = gr.Radio(label='Type', choices=filtered_ip_list, value=default_ip_type, container=False)
                                         ip_types.append(ip_type)
                                         ip_ctrls.append(ip_type)
-                                    ip_type.change(lambda x: flags.default_parameters.get(x, flags.default_parameters[flags.cn_canny]),
-                                                 inputs=[ip_type], outputs=[ip_stop, ip_weight], queue=False, show_progress=False) \
+                                    ip_type.input(lambda x, state: reference_type_defaults(x, state, manual=True),
+                                                  inputs=[ip_type, state_topbar], outputs=[ip_stop, ip_weight], queue=False, show_progress=False)
+                                    ip_type.change(reference_type_defaults,
+                                                 inputs=[ip_type, state_topbar], outputs=[ip_stop, ip_weight], queue=False, show_progress=False) \
                                            .then(fn=_ip_make_highlight_fn(ip_image_elem_id), inputs=[ip_image, ip_type], outputs=[ip_detect_style], queue=False, show_progress=False)
                                     ip_ad_cols.append(ad_col)
 
@@ -7962,6 +7964,16 @@ with shared.gradio_root:
             ip_advanced.change(lambda: None, queue=False, show_progress=False, js=down_js)
 
             current_tab = gr.Textbox(value=modules.config.default_selected_image_input_tab_id.split('_')[0], visible=False)
+            moss_reference_request = gr.Textbox(value='', visible='hidden', elem_id='moss_reference_request', elem_classes=['sai-gradio-hidden-bridge'])
+            moss_reference_result = gr.Textbox(value='', visible='hidden', elem_id='moss_reference_result', elem_classes=['sai-gradio-hidden-bridge'])
+            from modules.moss_references import exchange as exchange_moss_references
+            moss_reference_request.change(
+                exchange_moss_references,
+                inputs=[moss_reference_request, state_topbar, state_is_generating] + ip_images + ip_types + ip_stops + ip_weights,
+                outputs=[moss_reference_result] + ip_images + ip_types + ip_stops + ip_weights + [input_image_checkbox, current_tab],
+                queue=False, show_progress=False,
+            ).then(fn=None, inputs=moss_reference_result, queue=False, show_progress=False,
+                   js='(result)=>{window.completeMossReferenceExchange?.(result);}')
             history_link = gr.HTML()
 
         with gr.Column(
@@ -13303,12 +13315,14 @@ with shared.gradio_root:
         engine = state_params.get('engine', 'Fooocus') if isinstance(state_params, dict) else 'Fooocus'
         task_method = state_params.get('task_method', None) if isinstance(state_params, dict) else None
         allowed = topbar.get_allowed_ip_types(engine, task_method)
+        choices = ([(localized_text(state_params, "Reference image"), kind) if kind == flags.cn_ip else kind for kind in allowed]
+                   if task_method == 'moss_image_sft_aio_cn' else allowed)
         fallback = allowed[0] if len(allowed) > 0 else flags.cn_canny
         sanitized = []
         for index in range(len(ip_types)):
             current = values[index] if index < len(values) else None
             next_value = current if current in allowed else fallback
-            sanitized.append(dropdown_update(choices=allowed, value=next_value))
+            sanitized.append(dropdown_update(choices=choices, value=next_value))
         return sanitized
 
     def _refresh_krea2_aio_inputs(state_params):
@@ -14414,25 +14428,28 @@ async def simpai_logs_raw_endpoint(request: Request):
 
 
 @app.post("/simpai/sketch-cache")
-async def simpai_sketch_cache_endpoint(payload: dict = Body(...)):
+async def simpai_sketch_cache_endpoint(request: Request, payload: dict = Body(...)):
+    owner = _sketch_cache_request_owner(request)
     try:
-        return await run_in_threadpool(lambda: sketch_payload_cache.store_payload(payload))
+        return await run_in_threadpool(lambda: sketch_payload_cache.store_payload(payload, owner=owner))
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
 
 
 @app.post("/simpai/sketch-cache/resolve")
-async def simpai_sketch_cache_resolve_endpoint(payload: dict = Body(...)):
+async def simpai_sketch_cache_resolve_endpoint(request: Request, payload: dict = Body(...)):
+    owner = _sketch_cache_request_owner(request)
     try:
-        return await run_in_threadpool(lambda: sketch_payload_cache.resolve_payload(payload))
+        return await run_in_threadpool(lambda: sketch_payload_cache.resolve_payload(payload, owner=owner))
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=404)
 
 
 @app.post("/simpai/sketch-cache/check")
-async def simpai_sketch_cache_check_endpoint(payload: dict = Body(...)):
+async def simpai_sketch_cache_check_endpoint(request: Request, payload: dict = Body(...)):
+    owner = _sketch_cache_request_owner(request)
     try:
-        return await run_in_threadpool(lambda: sketch_payload_cache.check_payload(payload))
+        return await run_in_threadpool(lambda: sketch_payload_cache.check_payload(payload, owner=owner))
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
 
@@ -14493,7 +14510,12 @@ def _canvas_workbench_standalone_html(request: Request):
     params = _canvas_workbench_standalone_system_params(request)
     theme = "dark" if str(params.get("__theme") or "").lower().find("dark") >= 0 else "light"
     lang = "en" if str(params.get("__lang") or "").lower().startswith("en") else "cn"
-    system_params_json = json.dumps(params, ensure_ascii=False)
+    # HTML parses script endings before JavaScript reads the JSON string.
+    system_params_json = json.dumps(params, ensure_ascii=False).replace("<", "\\u003c")
+    startup_messages_json = json.dumps({
+        text: localized_text({"__lang": "cn"}, text)
+        for text in ("Loading Infinite Canvas", "Unable to open Infinite Canvas.", "Reload page")
+    }).replace("<", "\\u003c")
 
     css_paths = [
         webpath("css/video_region_selector.css"),
@@ -14880,7 +14902,9 @@ def _canvas_workbench_standalone_html(request: Request):
 {links}
 <style>
 html, body {{ width: 100%; height: 100%; margin: 0; overflow: hidden; background: {('#181818' if theme == 'dark' else '#f7f7f8')}; }}
-body.simpai-canvas-standalone-loading::before {{ content: "Loading Infinite Canvas"; position: fixed; inset: 0; display: grid; place-items: center; color: {('#e7e7e7' if theme == 'dark' else '#27272a')}; font: 14px/1.4 system-ui, sans-serif; }}
+#simpai-canvas-standalone-status {{ position: fixed; inset: 0; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; box-sizing: border-box; background: inherit; color: {('#e7e7e7' if theme == 'dark' else '#27272a')}; font: 14px/1.4 system-ui, sans-serif; text-align: center; }}
+#simpai-canvas-standalone-status[hidden] {{ display: none; }}
+#simpai-canvas-standalone-reload {{ padding: 8px 16px; border: 1px solid currentColor; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }}
 </style>
 <script type="text/javascript">
 (function () {{
@@ -14923,11 +14947,41 @@ body.simpai-canvas-standalone-loading::before {{ content: "Loading Infinite Canv
 {scripts}
 <script type="text/javascript">
 window.addEventListener('load', function () {{
+    var stage = window.simpleaiTopbarSystemParams || {{}};
+    var english = String(stage.__lang || 'en').toLowerCase().indexOf('en') === 0;
+    var translations = {startup_messages_json};
+    var status = document.getElementById('simpai-canvas-standalone-status');
+    var message = document.getElementById('simpai-canvas-standalone-message');
+    var reload = document.getElementById('simpai-canvas-standalone-reload');
+    var deadline = Date.now() + 15000;
+    function text(value) {{
+        return english ? value : translations[value];
+    }}
+    message.textContent = text('Loading Infinite Canvas');
+    reload.textContent = text('Reload page');
+    reload.addEventListener('click', function () {{ window.location.reload(); }});
+    function showStartupFailure(error) {{
+        console.error('[SimpAI Canvas] startup failed:', error);
+        document.body.classList.remove('simpai-canvas-standalone-loading');
+        status.setAttribute('role', 'alert');
+        message.textContent = text('Unable to open Infinite Canvas.');
+        reload.hidden = false;
+    }}
     function openCanvas() {{
         var api = window.SimpAIInfiniteCanvasWorkbench;
         if (api && typeof api.open === 'function') {{
-            api.open({{ source: 'standalone_page' }});
+            try {{
+                api.open({{ source: 'standalone_page' }});
+            }} catch (err) {{
+                showStartupFailure(err);
+                return;
+            }}
+            status.hidden = true;
             document.body.classList.remove('simpai-canvas-standalone-loading');
+            return;
+        }}
+        if (Date.now() >= deadline) {{
+            showStartupFailure(new Error('Canvas startup timed out'));
             return;
         }}
         window.setTimeout(openCanvas, 50);
@@ -14936,7 +14990,12 @@ window.addEventListener('load', function () {{
 }});
 </script>
 </head>
-<body class="simpai-canvas-standalone-loading"></body>
+<body class="simpai-canvas-standalone-loading">
+<div id="simpai-canvas-standalone-status" role="status">
+<span id="simpai-canvas-standalone-message">{html.escape(localized_text(params, "Loading Infinite Canvas"))}</span>
+<button id="simpai-canvas-standalone-reload" type="button" hidden></button>
+</div>
+</body>
 </html>"""
 
 
@@ -14944,14 +15003,21 @@ def _canvas_workbench_state_params(payload):
     return canvas_workbench_project._state_params_for_payload(payload if isinstance(payload, dict) else {}, {})
 
 
-def _canvas_workbench_payload_for_request(request, payload):
+def _canvas_workbench_payload_for_request(request, payload, *, require_identity=False):
     if not isinstance(payload, dict):
         return payload
 
     if is_local_mode():
+        try:
+            workspace_did = canvas_workbench_request_identity.resolve_local_workspace_did(getattr(shared, "token", None))
+        except ValueError:
+            if not require_identity:
+                raise
+            from fastapi import HTTPException
+            raise HTTPException(status_code=503, detail="Local workspace identity is unavailable.")
         return canvas_workbench_request_identity.normalize_payload_identity(
             payload,
-            canvas_workbench_request_identity.resolve_local_workspace_did(getattr(shared, "token", None)),
+            workspace_did,
             access_mode="local",
             user_role="local",
         )
@@ -14969,6 +15035,9 @@ def _canvas_workbench_payload_for_request(request, payload):
             user_role = "guest"
         effective_did = request_did
     else:
+        if require_identity:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=401, detail="Studio identity session is required.")
         effective_did = ""
         try:
             if token is not None and hasattr(token, "get_guest_did"):
@@ -14984,6 +15053,14 @@ def _canvas_workbench_payload_for_request(request, payload):
         access_mode="multi",
         user_role=user_role,
     )
+
+
+def _sketch_cache_request_owner(request):
+    normalized = _canvas_workbench_payload_for_request(request, {}, require_identity=True)
+    return normalized["user_context"]["user_did"]
+
+
+sketch_payload_cache.install_request_scope(shared.gradio_root, _sketch_cache_request_owner)
 
 
 def _agent_api_context_for_request(request):
@@ -15241,13 +15318,15 @@ async def pose_studio_character_update_preview_endpoint(payload: dict = Body(def
         return JSONResponse({"ok": False, "error": "Pose Studio Character Preview Error", "details": str(e)}, status_code=500)
 
 @app.post("/pose-studio/library/list")
-async def pose_studio_library_list_endpoint(payload: dict = Body(default={})):
+async def pose_studio_library_list_endpoint(request: Request, payload: dict = Body(default={})):
+    if payload is None:
+        payload = {}
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
+    state_params = _canvas_workbench_state_params(payload)
     try:
-        if payload is None:
-            payload = {}
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: pose_studio_service.list_pose_library(payload, {}))
+        result = await run_in_threadpool(lambda: pose_studio_service.list_pose_library(payload, state_params))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15255,11 +15334,13 @@ async def pose_studio_library_list_endpoint(payload: dict = Body(default={})):
         return JSONResponse({"ok": False, "error": "Pose Studio Library Error", "details": str(e)}, status_code=500)
 
 @app.post("/pose-studio/library/get")
-async def pose_studio_library_get_endpoint(payload: dict = Body(...)):
+async def pose_studio_library_get_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
+    state_params = _canvas_workbench_state_params(payload)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: pose_studio_service.get_pose(payload, {}))
+        result = await run_in_threadpool(lambda: pose_studio_service.get_pose(payload, state_params))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15267,11 +15348,13 @@ async def pose_studio_library_get_endpoint(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "Pose Studio Get Pose Error", "details": str(e)}, status_code=500)
 
 @app.post("/pose-studio/library/save")
-async def pose_studio_library_save_endpoint(payload: dict = Body(...)):
+async def pose_studio_library_save_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
+    state_params = _canvas_workbench_state_params(payload)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: pose_studio_service.save_pose(payload, {}))
+        result = await run_in_threadpool(lambda: pose_studio_service.save_pose(payload, state_params))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15279,11 +15362,13 @@ async def pose_studio_library_save_endpoint(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "Pose Studio Save Pose Error", "details": str(e)}, status_code=500)
 
 @app.post("/pose-studio/library/delete")
-async def pose_studio_library_delete_endpoint(payload: dict = Body(...)):
+async def pose_studio_library_delete_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
+    state_params = _canvas_workbench_state_params(payload)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: pose_studio_service.delete_pose(payload, {}))
+        result = await run_in_threadpool(lambda: pose_studio_service.delete_pose(payload, state_params))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15291,11 +15376,13 @@ async def pose_studio_library_delete_endpoint(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "Pose Studio Delete Pose Error", "details": str(e)}, status_code=500)
 
 @app.post("/pose-studio/library/rename")
-async def pose_studio_library_rename_endpoint(payload: dict = Body(...)):
+async def pose_studio_library_rename_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
+    state_params = _canvas_workbench_state_params(payload)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: pose_studio_service.rename_pose(payload, {}))
+        result = await run_in_threadpool(lambda: pose_studio_service.rename_pose(payload, state_params))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15383,11 +15470,12 @@ async def gaussian_studio_vendor_asset_endpoint(path: str):
         return JSONResponse({"ok": False, "error": "Gaussian Studio Vendor Asset Error", "details": str(e)}, status_code=500)
 
 @app.post("/gaussian-studio/predict")
-async def gaussian_studio_predict_endpoint(payload: dict = Body(...)):
+async def gaussian_studio_predict_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: gaussian_studio_service.predict_from_reference(payload, {}))
+        result = await run_in_threadpool(lambda: gaussian_studio_service.predict_from_reference(payload, _canvas_workbench_state_params(payload)))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15395,11 +15483,12 @@ async def gaussian_studio_predict_endpoint(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "Gaussian Studio Predict Error", "details": str(e)}, status_code=500)
 
 @app.post("/gaussian-studio/canvas/export")
-async def gaussian_studio_canvas_export_endpoint(payload: dict = Body(...)):
+async def gaussian_studio_canvas_export_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: gaussian_studio_service.save_canvas_export(payload, {}))
+        result = await run_in_threadpool(lambda: gaussian_studio_service.save_canvas_export(payload, _canvas_workbench_state_params(payload)))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15421,11 +15510,12 @@ async def liveportrait_expression_status_endpoint(payload: dict = Body(default={
         return JSONResponse({"ok": False, "error": "LivePortrait Expression Status Error", "details": str(e)}, status_code=500)
 
 @app.post("/liveportrait-expression/faces")
-async def liveportrait_expression_faces_endpoint(payload: dict = Body(...)):
+async def liveportrait_expression_faces_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: liveportrait_expression_service.detect_faces(payload))
+        result = await run_in_threadpool(lambda: liveportrait_expression_service.detect_faces(payload, _canvas_workbench_state_params(payload)))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15433,11 +15523,12 @@ async def liveportrait_expression_faces_endpoint(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "LivePortrait Expression Face Detection Error", "details": str(e)}, status_code=500)
 
 @app.post("/liveportrait-expression/preview")
-async def liveportrait_expression_preview_endpoint(payload: dict = Body(...)):
+async def liveportrait_expression_preview_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: liveportrait_expression_service.preview(payload))
+        result = await run_in_threadpool(lambda: liveportrait_expression_service.preview(payload, _canvas_workbench_state_params(payload)))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15445,11 +15536,12 @@ async def liveportrait_expression_preview_endpoint(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "LivePortrait Expression Preview Error", "details": str(e)}, status_code=500)
 
 @app.post("/liveportrait-expression/canvas/export")
-async def liveportrait_expression_canvas_export_endpoint(payload: dict = Body(...)):
+async def liveportrait_expression_canvas_export_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
-        result = await run_in_threadpool(lambda: liveportrait_expression_service.export_image(payload))
+        result = await run_in_threadpool(lambda: liveportrait_expression_service.export_image(payload, _canvas_workbench_state_params(payload)))
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15469,7 +15561,8 @@ async def model_browser_delete_endpoint(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "Model Browser Delete Error", "details": str(e)}, status_code=500)
 
 @app.post("/canvas-workbench/wildcards/catalog")
-async def canvas_workbench_wildcards_catalog(payload: dict = Body(...)):
+async def canvas_workbench_wildcards_catalog(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
@@ -15511,7 +15604,8 @@ async def canvas_workbench_wildcards_helper_tag(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "Wildcards Helper Error", "details": str(e)}, status_code=500)
 
 @app.post("/canvas-workbench/wildcards/preview")
-async def canvas_workbench_wildcards_preview(payload: dict = Body(...)):
+async def canvas_workbench_wildcards_preview(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
@@ -15530,7 +15624,8 @@ async def canvas_workbench_wildcards_preview(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "Wildcards Preview Error", "details": str(e)}, status_code=500)
 
 @app.post("/canvas-workbench/wildcards/personal")
-async def canvas_workbench_wildcards_personal(payload: dict = Body(...)):
+async def canvas_workbench_wildcards_personal(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
@@ -16264,7 +16359,8 @@ async def canvas_workbench_xyz_axis_options_endpoint(payload: dict = Body(defaul
         )
 
 @app.post("/canvas-workbench/xyz/preview")
-async def canvas_workbench_xyz_preview_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_xyz_preview_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16291,7 +16387,8 @@ async def canvas_workbench_xyz_preview_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/xyz/run")
-async def canvas_workbench_xyz_run_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_xyz_run_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16318,7 +16415,8 @@ async def canvas_workbench_xyz_run_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/xyz/poll")
-async def canvas_workbench_xyz_poll_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_xyz_poll_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16345,7 +16443,8 @@ async def canvas_workbench_xyz_poll_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/xyz/control")
-async def canvas_workbench_xyz_control_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_xyz_control_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16372,7 +16471,8 @@ async def canvas_workbench_xyz_control_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/xyz/render-grid")
-async def canvas_workbench_xyz_render_grid_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_xyz_render_grid_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16399,7 +16499,8 @@ async def canvas_workbench_xyz_render_grid_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/qwen-tts-run")
-async def canvas_workbench_qwen_tts_run_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_qwen_tts_run_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16425,7 +16526,8 @@ async def canvas_workbench_qwen_tts_run_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/qwen-tts-poll")
-async def canvas_workbench_qwen_tts_poll_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_qwen_tts_poll_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16452,7 +16554,8 @@ async def canvas_workbench_qwen_tts_poll_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/qwen-tts-control")
-async def canvas_workbench_qwen_tts_control_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_qwen_tts_control_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16479,7 +16582,8 @@ async def canvas_workbench_qwen_tts_control_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/qwen-tts-presets")
-async def canvas_workbench_qwen_tts_presets_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_qwen_tts_presets_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16531,7 +16635,8 @@ async def canvas_workbench_model_catalog_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/preset-catalog")
-async def canvas_workbench_preset_catalog_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_preset_catalog_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16571,7 +16676,8 @@ async def canvas_workbench_preset_catalog_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/preset-model-status")
-async def canvas_workbench_preset_model_status_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_preset_model_status_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16597,7 +16703,8 @@ async def canvas_workbench_preset_model_status_endpoint(payload: dict = Body(...
         )
 
 @app.post("/canvas-workbench/preset-model-downloads")
-async def canvas_workbench_preset_model_downloads_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_preset_model_downloads_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16654,7 +16761,8 @@ async def vlm_model_catalog_endpoint(request: Request, refresh: bool = False, in
         )
 
 @app.post("/canvas-workbench/vlm-model-status")
-async def canvas_workbench_vlm_model_status_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_vlm_model_status_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16699,7 +16807,8 @@ async def canvas_workbench_vlm_model_status_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/vlm-model-downloads")
-async def canvas_workbench_vlm_model_downloads_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_vlm_model_downloads_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16722,7 +16831,8 @@ async def canvas_workbench_vlm_model_downloads_endpoint(payload: dict = Body(...
         )
 
 @app.post("/canvas-workbench/vlm-model-download-status")
-async def canvas_workbench_vlm_model_download_status_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_vlm_model_download_status_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -16745,7 +16855,8 @@ async def canvas_workbench_vlm_model_download_status_endpoint(payload: dict = Bo
         )
 
 @app.post("/canvas-workbench/vlm-model-download-cancel")
-async def canvas_workbench_vlm_model_download_cancel_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_vlm_model_download_cancel_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -17105,7 +17216,8 @@ async def canvas_workbench_delete_assets_endpoint(request: Request, payload: dic
         )
 
 @app.post("/canvas-workbench/materialize-asset")
-async def canvas_workbench_materialize_asset_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_materialize_asset_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -17134,7 +17246,8 @@ async def canvas_workbench_materialize_asset_endpoint(payload: dict = Body(...))
         )
 
 @app.post("/canvas-workbench/generate-mask")
-async def canvas_workbench_generate_mask_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_generate_mask_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -17239,7 +17352,8 @@ async def canvas_workbench_generate_mask_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/generate-camera-motion-reference")
-async def canvas_workbench_generate_camera_motion_reference_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_generate_camera_motion_reference_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -17266,44 +17380,64 @@ async def canvas_workbench_generate_camera_motion_reference_endpoint(payload: di
                 width=params.get("width", 640),
                 height=params.get("height", 640),
             )
-            output_path = camera_motion_reference.generate_camera_motion_video(**settings)
+            output_metadata = {}
+            output_path = camera_motion_reference.generate_camera_motion_video(**settings, metadata=output_metadata)
             if not output_path or not os.path.exists(output_path):
                 return {"ok": False, "error": "Camera-motion reference returned no output"}
-            browser_path = util.compress_video(
-                output_path,
-                target_height=int(settings["height"]),
-                crf=18,
-            )
-            if browser_path and os.path.exists(browser_path):
-                output_path = browser_path
+            generated_path = output_path
+            preview_path = os.path.splitext(output_path)[0] + "_preview.mp4"
+            preview_existed = os.path.exists(preview_path)
+            output_ref = None
+            output_delivered = False
+            try:
+                browser_path = util.compress_video(
+                    output_path,
+                    target_height=int(settings["height"]),
+                    crf=18,
+                )
+                if browser_path and os.path.exists(browser_path):
+                    output_path = browser_path
 
-            frame_count = max(2, int(round(float(settings["duration"]) * float(settings["fps"]))))
-            output_ref = canvas_workbench_assets.register_existing_file_asset(
-                output_path,
-                project_id,
-                state_params,
-                node_id=node_id,
-                role="camera_motion_reference_video",
-                metadata={
-                    "mime": "video/mp4",
-                    "width": settings["width"],
-                    "height": settings["height"],
-                    "duration": settings["duration"],
-                    "fps": settings["fps"],
-                    "frame_count": frame_count,
-                },
-                copy_to_assets=True,
-            )
-            if not isinstance(output_ref, dict) or not output_ref or output_ref.get("copy_error"):
-                error = canvas_workbench_assets.output_delivery_error(state_params)
-                return {"ok": False, "error": error["message"], "output_error": error, "output_path": output_path}
-            output_ref["camera_motion_settings"] = settings
-            return {
-                "ok": True,
-                "asset_ref": output_ref,
-                "reference_video": output_ref,
-                "settings": settings,
-            }
+                if output_path != generated_path:
+                    output_metadata = camera_motion_reference.inspect_camera_motion_video(
+                        output_path, expected_frames=output_metadata["frame_count"]
+                    )
+                output_ref = canvas_workbench_assets.register_existing_file_asset(
+                    output_path,
+                    project_id,
+                    state_params,
+                    node_id=node_id,
+                    role="camera_motion_reference_video",
+                    metadata={
+                        "mime": "video/mp4",
+                        **output_metadata,
+                    },
+                    copy_to_assets=True,
+                )
+                if not isinstance(output_ref, dict) or not output_ref or output_ref.get("copy_error"):
+                    error = canvas_workbench_assets.output_delivery_error(state_params)
+                    output_delivered = True
+                    return {"ok": False, "error": error["message"], "output_error": error, "output_path": output_path}
+                output_ref["camera_motion_settings"] = settings
+                output_delivered = True
+                return {
+                    "ok": True,
+                    "asset_ref": output_ref,
+                    "reference_video": output_ref,
+                    "settings": settings,
+                }
+            finally:
+                preserved = {os.path.abspath(output_path)} if output_delivered else set()
+                if output_delivered and isinstance(output_ref, dict):
+                    preserved.update(os.path.abspath(str(output_ref[key]))
+                                     for key in ("path", "output_path", "original_output_path") if output_ref.get(key))
+                owned = [generated_path] + ([] if preview_existed else [preview_path])
+                for candidate in owned:
+                    if os.path.abspath(candidate) not in preserved:
+                        try:
+                            os.remove(candidate)
+                        except OSError:
+                            pass
 
         result = await run_in_threadpool(safe_process)
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
@@ -17670,7 +17804,8 @@ async def canvas_workbench_normalize_sam3_mask_video_endpoint(request: Request, 
         )
 
 @app.post("/canvas-workbench/render-timeline")
-async def canvas_workbench_render_timeline_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_render_timeline_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -17696,7 +17831,8 @@ async def canvas_workbench_render_timeline_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/render-timeline-frame")
-async def canvas_workbench_render_timeline_frame_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_render_timeline_frame_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -17722,7 +17858,8 @@ async def canvas_workbench_render_timeline_frame_endpoint(payload: dict = Body(.
         )
 
 @app.post("/canvas-workbench/wd14-tag")
-async def canvas_workbench_wd14_tag_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_wd14_tag_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -17786,7 +17923,8 @@ async def canvas_workbench_wd14_tag_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/vlm-run")
-async def canvas_workbench_vlm_run_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_vlm_run_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -18066,11 +18204,8 @@ async def describe_image_vlm_chat_stream_resume_endpoint(request: Request, paylo
 
 
 def _roleplay_endpoint_user_did(payload, request):
-    authenticated = str(_get_request_identity_did(request) or "").strip()
-    if authenticated:
-        return authenticated
-    source = payload if isinstance(payload, dict) else {}
-    return str(source.get("user_did") or source.get("__user_did") or "guest").strip() or "guest"
+    normalized = _canvas_workbench_payload_for_request(request, {}, require_identity=True)
+    return normalized["user_context"]["user_did"]
 
 
 from modules.vlm_story_packs_api import create_router as create_story_packs_router
@@ -18129,6 +18264,8 @@ async def describe_image_visual_characters_endpoint(action: str, request: Reques
     user_did = _roleplay_endpoint_user_did(payload, request)
     if any(part in user_did for part in ("/", "\\", "..")):
         return JSONResponse({"ok": False, "error": "invalid_user_id"}, status_code=400)
+    if action in {"image-start", "voice-start", "voice-style"} and not user_can_generate(user_did):
+        return JSONResponse({"ok": False, "error": "generation_not_allowed"}, status_code=403)
 
     def perform():
         if action in {"image-start", "image-poll", "image-stop"}:
@@ -18139,7 +18276,7 @@ async def describe_image_visual_characters_endpoint(action: str, request: Reques
         if action in {"voice-style", "voice-start", "voice-poll", "voice-stop"}:
             from modules import visual_character_voice
             if action == "voice-style":
-                return visual_character_voice.expand_style(payload.get("character"))
+                return visual_character_voice.expand_style(payload.get("character"), user_did=user_did)
             if action == "voice-start":
                 return visual_character_voice.start_voice(payload, user_did)
             return visual_character_voice.voice_status(payload, user_did, stop=action == "voice-stop")
@@ -18594,7 +18731,8 @@ def _canvas_translate_text(text, method, direction):
     selected_method = method if method in modules.flags.translation_methods else ads.get_admin_default('translation_methods')
     if selected_method not in modules.flags.translation_methods:
         selected_method = modules.config.default_translation_methods
-    direction = str(direction or "to_en")
+    direction = str(direction or "toggle")
+    direction = {"en_to_zh": "to_cn", "zh_to_en": "to_en"}.get(direction, direction)
     if direction == "to_cn":
         return translator.convert(text, selected_method, "cn"), selected_method
     if direction == "toggle":
@@ -18602,7 +18740,8 @@ def _canvas_translate_text(text, method, direction):
     return translator.convert(text, selected_method, "en"), selected_method
 
 @app.post("/canvas-workbench/translate-run")
-async def canvas_workbench_translate_run_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_translate_run_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -18618,11 +18757,12 @@ async def canvas_workbench_translate_run_endpoint(payload: dict = Body(...)):
         job = {
             "ok": True,
             "job_id": job_id,
+            "owner": payload["user_context"]["user_did"],
             "state": "queued",
             "text": text,
             "translated_text": "",
             "method": str(payload.get("method") or ads.get_admin_default('translation_methods') or modules.config.default_translation_methods),
-            "direction": str(payload.get("direction") or "to_en"),
+            "direction": str(payload.get("direction") or "toggle"),
             "created_at": time.time(),
             "updated_at": time.time(),
         }
@@ -18671,7 +18811,8 @@ async def canvas_workbench_translate_run_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/translate-poll")
-async def canvas_workbench_translate_poll_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_translate_poll_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
@@ -18680,9 +18821,10 @@ async def canvas_workbench_translate_poll_endpoint(payload: dict = Body(...)):
             )
         job_id = str(payload.get("job_id") or "")
         job = _canvas_translate_snapshot(job_id)
-        if not job:
+        if not job or job.get("owner") != payload["user_context"]["user_did"]:
             return JSONResponse({"ok": False, "error": "translate job not found", "job_id": job_id}, status_code=404)
         response = dict(job)
+        response.pop("owner", None)
         response.pop("created_at", None)
         response.pop("updated_at", None)
         return JSONResponse(response, status_code=200 if response.get("ok") else 400)
@@ -18779,7 +18921,9 @@ async def sam3_image_mask_endpoint(payload: dict = Body(...)):
         image_data = payload.get("image")
         positive_points = payload.get("positive_points", None)
         negative_points = payload.get("negative_points", None)
-        threshold = payload.get("threshold", 0.3)
+        threshold = payload.get("threshold")
+        mask_threshold = payload.get("mask_threshold", 0.5)
+        close_radius = payload.get("close_radius", 1)
         fill_holes = payload.get("fill_holes", False)
         if not isinstance(image_data, str) or not image_data.startswith("data:image"):
             return JSONResponse(
@@ -18798,10 +18942,14 @@ async def sam3_image_mask_endpoint(payload: dict = Body(...)):
                     negative_points=negative_points,
                     threshold=threshold,
                     fill_holes=fill_holes,
+                    mask_threshold=mask_threshold,
+                    close_radius=close_radius,
                 )
 
         result = await run_in_threadpool(safe_process)
         return result
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"error": "Bad Request", "details": str(e)}, status_code=400)
     except Exception as e:
         import traceback
         traceback.print_exc()

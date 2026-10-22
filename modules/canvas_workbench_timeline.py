@@ -2,9 +2,12 @@ import hashlib
 import json
 import mimetypes
 import os
+import queue
 import re
 import shutil
 import subprocess
+import tempfile
+import threading
 import time
 
 import shared
@@ -27,8 +30,9 @@ def _asset_path(asset, project_id, state_params, node_id, role):
         return "", ""
     path = asset.get("path") or asset.get("output_path") or asset.get("original_output_path")
     mime = asset.get("mime") or mimetypes.guess_type(str(path or ""))[0] or ""
-    if path and os.path.exists(path):
-        return os.path.abspath(path), mime
+    resolved = canvas_workbench_assets.resolve_readable_asset_path(asset, project_id, state_params)
+    if resolved:
+        return os.path.abspath(resolved), mime
     if asset.get("data_url"):
         saved = canvas_workbench_assets.save_data_url_asset(
             asset.get("data_url"),
@@ -45,6 +49,91 @@ def _asset_path(asset, project_id, state_params, node_id, role):
 
 def _filter_escape_path(path):
     return str(path or "").replace("\\", "/")
+
+
+def _timeline_sources(layers, audio_layers, project_id, state_params, node_id, duration, frame_time=None):
+    resolved, versions, missing = {}, [], []
+    prefix = "timeline_frame" if frame_time is not None else "timeline"
+    for kind, items in (("visual", layers), ("audio", audio_layers)):
+        for index, item in enumerate(items):
+            if frame_time is not None:
+                timing = item.get("timing") if isinstance(item.get("timing"), dict) else {}
+                start = _clamp(_num(timing.get("start"), 0), 0, duration)
+                clip_duration = max(0.05, _num(timing.get("duration"), duration))
+                if frame_time < start or frame_time > start + clip_duration:
+                    continue
+            asset = item.get("asset") if isinstance(item.get("asset"), dict) else {}
+            candidates = [(kind, asset)]
+            if kind == "visual":
+                mask = item.get("mask") if isinstance(item.get("mask"), dict) else {}
+                mask_asset = mask.get("asset") if isinstance(mask.get("asset"), dict) else mask
+                if (any(mask_asset.get(key) for key in (
+                        "path", "output_path", "original_output_path", "data_url", "asset_id", "id",
+                )) or mask_asset.get("strokes")):
+                    candidates.append(("mask", mask_asset))
+            for role, source in candidates:
+                path, mime = _asset_path(source, project_id, state_params, node_id, f"{prefix}_{role}")
+                try:
+                    if not path or not os.path.isfile(path):
+                        raise FileNotFoundError
+                    stat = os.stat(path)
+                except OSError:
+                    missing.append({"kind": role, "index": index})
+                    continue
+                resolved[(id(item), role)] = (path, mime)
+                versions.append((os.path.realpath(path), stat.st_size, stat.st_mtime_ns))
+    return resolved, versions, missing
+
+
+def _temporary_render_path(output_path):
+    descriptor, path = tempfile.mkstemp(prefix=".timeline-", suffix=".tmp" + os.path.splitext(output_path)[1],
+                                        dir=os.path.dirname(output_path))
+    os.close(descriptor)
+    return path
+
+
+def _commit_render_output(tmp_path, output_path):
+    try:
+        try:
+            os.rename(tmp_path, output_path)
+        except FileExistsError:
+            # Another identical render may have published this cache entry first.
+            if os.path.getsize(output_path) <= 0:
+                os.replace(tmp_path, output_path)
+    finally:
+        if os.path.isfile(tmp_path):
+            os.remove(tmp_path)
+
+
+def _preview_video_seek_time(path, mime, requested):
+    metadata = canvas_workbench_assets._probe_media_metadata(path, mime)
+    duration = _num(metadata.get("duration"), 0)
+    fps = _num(metadata.get("fps"), 0)
+    if duration <= 0 or requested < duration - 1 / max(1, fps):
+        return requested
+    ffprobe = canvas_workbench_assets._get_ffprobe_exe()
+    if ffprobe:
+        try:
+            completed = subprocess.run([
+                ffprobe, "-v", "error", "-select_streams", "v:0",
+                "-read_intervals", f"{max(0, duration - 2):.6f}%",
+                "-show_entries", "stream=start_time:frame=best_effort_timestamp_time",
+                "-of", "json", path,
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+            if completed.returncode == 0:
+                decoded = json.loads(completed.stdout)
+                start = _num(next(iter(decoded.get("streams", [])), {}).get("start_time"), 0)
+                times = [_num(frame.get("best_effort_timestamp_time"), -1) - start
+                         for frame in decoded.get("frames", [])]
+                times = [value for value in times if value >= 0]
+                if times:
+                    return min(requested, max(times))
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            pass
+    frame_count = _num(metadata.get("frame_count"), 0)
+    if frame_count > 0 and fps > 0:
+        return min(requested, max(0, (frame_count - 1) / fps))
+    return min(requested, max(0, duration - 1 / max(1, fps)))
 
 
 def _asset_dimensions(asset, path, mime):
@@ -271,8 +360,6 @@ def _run_timeline_ffmpeg(cmd, duration, progress_callback=None, cancel_callback=
     timeout = max(60, int(duration * 6 + 60))
     if progress_callback is None and cancel_callback is None:
         return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout), False
-    import tempfile
-
     def report(output):
         if not progress_callback:
             return
@@ -289,32 +376,45 @@ def _run_timeline_ffmpeg(cmd, duration, progress_callback=None, cancel_callback=
         )
         started = time.monotonic()
         cancelled = False
-        output = ""
+        output = []
+        updates = queue.SimpleQueue()
+
+        def read_progress():
+            for line in process.stdout:
+                output.append(line)
+                if line.startswith("out_time_us="):
+                    updates.put(line)
+
+        reader = threading.Thread(target=read_progress, name="timeline-ffmpeg-progress")
+        reader.start()
         try:
             while True:
                 if cancel_callback and cancel_callback():
                     cancelled = True
-                    process.terminate()
                     break
                 if time.monotonic() - started > timeout:
                     raise subprocess.TimeoutExpired(cmd, timeout)
                 try:
-                    output, _ = process.communicate(timeout=0.2)
-                    report(output)
+                    report(updates.get(timeout=0.2))
+                except queue.Empty:
+                    pass
+                if process.poll() is not None:
                     break
-                except subprocess.TimeoutExpired as pending:
-                    report(pending.output)
         finally:
             if process.poll() is None:
                 process.terminate()
-                try:
-                    output, _ = process.communicate(timeout=3)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    output, _ = process.communicate(timeout=3)
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+            reader.join()
+            process.stdout.close()
+        while not updates.empty():
+            report(updates.get())
         errors.seek(0)
         details = errors.read().decode("utf-8", errors="replace")
-        return subprocess.CompletedProcess(cmd, process.returncode, output, details), cancelled
+        return subprocess.CompletedProcess(cmd, process.returncode, "".join(output), details), cancelled
 
 
 def _register_timeline_output(*args, **kwargs):
@@ -365,7 +465,13 @@ def render_timeline(payload, state_params=None, progress_callback=None, cancel_c
     if not ffmpeg:
         return {"ok": False, "error": "ffmpeg is not available"}
 
-    signature = json.dumps({"renderer": "timeline_ffmpeg.v8_keyframe_expr", "payload": render_payload}, ensure_ascii=False, sort_keys=True, default=str)
+    sources, versions, missing = _timeline_sources(
+        layers, audio_layers, project_id, state_params, node_id, duration,
+    )
+    if missing:
+        return {"ok": False, "error": "Timeline sources are missing or unreadable", "missing_sources": missing}
+    signature = json.dumps({"renderer": "timeline_ffmpeg.v9_source_versions", "payload": render_payload,
+                            "sources": versions}, ensure_ascii=False, sort_keys=True, default=str)
     digest = hashlib.sha256(signature.encode("utf-8", errors="ignore")).hexdigest()
     root, _ = canvas_workbench_assets._asset_root(project_id, state_params)
     folder = os.path.join(root, digest[:2])
@@ -395,10 +501,7 @@ def render_timeline(payload, state_params=None, progress_callback=None, cancel_c
         timing = layer.get("timing") if isinstance(layer.get("timing"), dict) else {}
         clip_duration = max(minimum_clip, min(duration, _num(timing.get("duration"), duration)))
         clip_in = max(0.0, _num(timing.get("in"), 0))
-        asset = layer.get("asset") if isinstance(layer.get("asset"), dict) else {}
-        path, mime = _asset_path(asset, project_id, state_params, node_id, "timeline_visual")
-        if not path:
-            continue
+        path, mime = sources[(id(layer), "visual")]
         input_index = input_count
         if str(mime).startswith("image/"):
             cmd += ["-loop", "1", "-t", f"{clip_duration:.3f}", "-i", path]
@@ -406,30 +509,26 @@ def render_timeline(payload, state_params=None, progress_callback=None, cancel_c
             cmd += ["-ss", f"{clip_in:.{time_precision}f}", "-t", f"{clip_duration:.{time_precision}f}", "-i", path]
         input_count += 1
         mask_input_index = None
-        mask = layer.get("mask") if isinstance(layer.get("mask"), dict) else {}
-        mask_asset = mask.get("asset") if isinstance(mask.get("asset"), dict) else mask
-        mask_path, _mask_mime = _asset_path(mask_asset, project_id, state_params, node_id, "timeline_mask")
+        mask_path, _mask_mime = sources.get((id(layer), "mask"), ("", ""))
         if mask_path:
             mask_input_index = input_count
             cmd += ["-loop", "1", "-t", f"{duration:.3f}", "-i", mask_path]
             input_count += 1
-        visual_inputs.append((input_index, layer, mime, mask_input_index))
+        visual_inputs.append((input_index, layer, mime, path, mask_input_index))
 
     for item in audio_layers:
         timing = item.get("timing") if isinstance(item.get("timing"), dict) else {}
         clip_duration = max(minimum_clip, min(duration, _num(timing.get("duration"), duration)))
         clip_in = max(0.0, _num(timing.get("in"), 0))
-        asset = item.get("asset") if isinstance(item.get("asset"), dict) else {}
-        path, mime = _asset_path(asset, project_id, state_params, node_id, "timeline_audio")
-        if not path:
-            continue
+        path, mime = sources[(id(item), "audio")]
         input_index = input_count
         cmd += ["-ss", f"{clip_in:.{time_precision}f}", "-t", f"{clip_duration:.{time_precision}f}", "-i", path]
         input_count += 1
         audio_inputs.append((input_index, item, mime))
 
     current = "base"
-    for index, (input_index, layer, _mime, mask_input_index) in enumerate(visual_inputs):
+    for index, (input_index, layer, _mime, path, mask_input_index) in enumerate(visual_inputs):
+        asset = layer.get("asset") if isinstance(layer.get("asset"), dict) else {}
         timing = layer.get("timing") if isinstance(layer.get("timing"), dict) else {}
         crop = layer.get("crop_percent") if isinstance(layer.get("crop_percent"), dict) else {}
         start = _clamp(_num(timing.get("start"), 0), 0, duration)
@@ -562,7 +661,7 @@ def render_timeline(payload, state_params=None, progress_callback=None, cancel_c
         cmd += ["-map", "[aud]", "-c:a", "aac", "-b:a", "192k"]
     else:
         cmd += ["-an"]
-    tmp_path = output_path + ".tmp.mp4"
+    tmp_path = _temporary_render_path(output_path)
     cmd += [
         "-t", f"{duration:.3f}",
         "-c:v", "libx264",
@@ -595,7 +694,7 @@ def render_timeline(payload, state_params=None, progress_callback=None, cancel_c
             "details": (completed.stderr or completed.stdout or "")[-2000:],
             "cmd": " ".join(_filter_escape_path(part) for part in cmd[:16]) + " ...",
         }
-    os.replace(tmp_path, output_path)
+    _commit_render_output(tmp_path, output_path)
     if progress_callback:
         progress_callback(1)
     asset_ref = _register_timeline_output(
@@ -635,8 +734,14 @@ def render_timeline_frame(payload, state_params=None):
     if not ffmpeg:
         return {"ok": False, "error": "ffmpeg is not available"}
 
+    sources, versions, missing = _timeline_sources(
+        layers, [], project_id, state_params, node_id, duration, frame_time,
+    )
+    if missing:
+        return {"ok": False, "error": "Timeline sources are missing or unreadable", "missing_sources": missing}
     signature = json.dumps(
-        {"renderer": "direct_png_filtergraph.v8_geometry_pixels", "payload": render_payload, "time": round(frame_time, 4)},
+        {"renderer": "direct_png_filtergraph.v9_source_versions", "payload": render_payload,
+         "sources": versions, "time": round(frame_time, 4)},
         ensure_ascii=False,
         sort_keys=True,
         default=str,
@@ -650,7 +755,6 @@ def render_timeline_frame(payload, state_params=None):
         f"{canvas_workbench_assets._safe_id(node_id, 'timeline')}.frame.{int(round(frame_time * 1000)):06d}.{digest[:12]}.png",
     ))
     if not os.path.exists(output_path) or os.path.getsize(output_path) <= 0:
-        tmp_path = output_path + ".tmp.png"
         cmd = [ffmpeg, "-y"]
         filters = [f"color=c={background_filter}:s={width}x{height}:d=0.100:r={fps:.3f},format=rgba[base]"]
         visual_inputs = []
@@ -662,20 +766,16 @@ def render_timeline_frame(payload, state_params=None):
             if frame_time < start or frame_time > start + clip_duration:
                 continue
             clip_in = max(0.0, _num(timing.get("in"), 0) + frame_time - start)
-            asset = layer.get("asset") if isinstance(layer.get("asset"), dict) else {}
-            path, mime = _asset_path(asset, project_id, state_params, node_id, "timeline_frame_visual")
-            if not path:
-                continue
+            path, mime = sources[(id(layer), "visual")]
             input_index = input_count
             if str(mime).startswith("image/"):
                 cmd += ["-loop", "1", "-t", "0.100", "-i", path]
             else:
+                clip_in = _preview_video_seek_time(path, mime, clip_in)
                 cmd += ["-ss", f"{clip_in:.6f}", "-t", "0.100", "-i", path]
             input_count += 1
             mask_input_index = None
-            mask = layer.get("mask") if isinstance(layer.get("mask"), dict) else {}
-            mask_asset = mask.get("asset") if isinstance(mask.get("asset"), dict) else mask
-            mask_path, _mask_mime = _asset_path(mask_asset, project_id, state_params, node_id, "timeline_frame_mask")
+            mask_path, _mask_mime = sources.get((id(layer), "mask"), ("", ""))
             if mask_path:
                 mask_input_index = input_count
                 cmd += ["-loop", "1", "-t", "0.100", "-i", mask_path]
@@ -754,6 +854,7 @@ def render_timeline_frame(payload, state_params=None):
                 filters.append(f"[{current}][v{index}]overlay=x='{x_expr}':y='{y_expr}':shortest=0[tmp{index}]")
             current = f"tmp{index}"
 
+        tmp_path = _temporary_render_path(output_path)
         cmd += [
             "-filter_complex", ";".join(filters),
             "-map", f"[{current}]",
@@ -761,7 +862,12 @@ def render_timeline_frame(payload, state_params=None):
             "-update", "1",
             tmp_path,
         ]
-        completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=60)
+        try:
+            completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=60)
+        except BaseException:
+            if os.path.isfile(tmp_path):
+                os.remove(tmp_path)
+            raise
         if completed.returncode != 0 or not os.path.exists(tmp_path) or os.path.getsize(tmp_path) <= 0:
             if os.path.exists(tmp_path):
                 try:
@@ -774,7 +880,7 @@ def render_timeline_frame(payload, state_params=None):
                 "details": (completed.stderr or completed.stdout or "")[-2000:],
                 "cmd": " ".join(_filter_escape_path(part) for part in cmd[:16]) + " ...",
             }
-        os.replace(tmp_path, output_path)
+        _commit_render_output(tmp_path, output_path)
 
     asset_ref = _register_timeline_output(
         output_path,

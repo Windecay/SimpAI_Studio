@@ -274,6 +274,7 @@ def save_project(payload, state_params):
     return result
 
 
+@asset_lifecycle.serialized
 def load_project(payload, state_params):
     project_id = _safe_id(payload.get("project_id") or "default") if isinstance(payload, dict) else "default"
     effective_state_params = _state_params_for_payload(payload, state_params)
@@ -299,6 +300,7 @@ def load_project(payload, state_params):
     return {"ok": True, "found": True, "project": project, "storage": project["storage"]}
 
 
+@asset_lifecycle.serialized
 def clear_project(payload, state_params):
     project_id = _safe_id(payload.get("project_id") or "default") if isinstance(payload, dict) else "default"
     effective_state_params = _state_params_for_payload(payload, state_params)

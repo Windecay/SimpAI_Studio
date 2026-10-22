@@ -2,6 +2,7 @@
     'use strict';
 
     const UTILS = window.SimpAICanvasWorkbenchUtils || {};
+    const studioEndpointUrl = UTILS.studioEndpointUrl || (url => url);
     const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])));
     const SAMPLE_PART_OPTIONS = [
         ['OnlyExpression', 'Expression', '表情'],
@@ -212,7 +213,7 @@
     }
 
     function postJson(endpoint, payload) {
-        return fetch(endpoint, {
+        return fetch(studioEndpointUrl(endpoint), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload || {})
@@ -728,7 +729,7 @@
     function sourceImageFingerprint(source) {
         const dataUrl = String(source?.dataUrl || '');
         if (!dataUrl) return '';
-        return `${Number(source?.width || 0)}x${Number(source?.height || 0)}:${dataUrl.length}:${dataUrl.slice(0, 96)}`;
+        return dataUrl;
     }
 
     function sourceCropBoxForFace(faceBox) {
@@ -876,6 +877,7 @@
         });
         if (requestId !== faceDetectionRequestSeq || !activeModal || !activeSession) return null;
         if (!data?.ok) {
+            activeSession.sourceFaceFingerprint = '';
             if (!opts.quiet) setStatus(data?.details || data?.error || t('Face detection failed.', '人脸检测失败。'), true);
             return null;
         }
@@ -955,7 +957,10 @@
     }
 
     async function imageSrcToDataUrl(src) {
-        const value = String(src || '');
+        const rawValue = String(src || '');
+        const value = /^\/(?:file=|gradio_api\/file=)/.test(rawValue)
+            ? studioEndpointUrl(rawValue)
+            : rawValue;
         if (!value) return '';
         if (value === 'about:blank' || value.startsWith('data:image/svg')) return '';
         if (value.startsWith('data:image/')) return value;
@@ -1200,12 +1205,15 @@
         return source;
     }
 
-    async function buildPreviewPayload() {
+    async function buildPreviewPayload(isCurrent) {
         const params = readParams();
         const expressionPayload = writeActiveState(params);
         const source = await readActiveSourceImage();
+        if (!isCurrent()) return null;
         const reference = await readActiveReferenceImage();
+        if (!isCurrent()) return null;
         await loadSourceFaces(source, { quiet: true });
+        if (!isCurrent()) return null;
         const sourceFaceBBox = faceBBoxText(activeSession?.faceSelection?.source_face_bbox);
         const referenceFaceBBox = faceBBoxText(activeSession?.faceSelection?.reference_face_bbox);
         return {
@@ -1246,6 +1254,7 @@
 
     async function preview(options) {
         const opts = options || {};
+        if (!activeModal || !activeSession) return null;
         if (previewRunning) {
             pendingAutoPreview = true;
             return null;
@@ -1253,15 +1262,19 @@
         previewRunning = true;
         const requestId = ++previewRequestSeq;
         previewRunningRequestId = requestId;
+        const modal = activeModal;
+        const session = activeSession;
+        const isCurrent = () => requestId === previewRequestSeq && activeModal === modal && activeSession === session;
         try {
             setBusy(true, opts.auto ? t('Please wait, updating preview...', '请等待，正在更新预览...') : t('Rendering preview...', '正在生成预览...'));
-            const payload = await buildPreviewPayload();
+            const payload = await buildPreviewPayload(isCurrent);
+            if (!isCurrent() || !payload) return null;
             if (!payload.source_image) {
                 setStatus(sourceMissingMessage(), !opts.auto);
                 return null;
             }
             const data = await postJson('/liveportrait-expression/preview', payload);
-            if (requestId !== previewRequestSeq || !activeModal) return null;
+            if (!isCurrent()) return null;
             if (!data?.ok) {
                 const status = data?.status || {};
                 setStatus(status?.ready === false ? resourceMessage(status) : (data?.details || data?.error || t('Preview failed.', '预览失败。')), true);
@@ -1272,6 +1285,9 @@
             setPreviewImage(data.image_data_url || data.expression_image?.data_url || '');
             setStatus(previewReadyMessage());
             return lastPreview;
+        } catch (error) {
+            if (isCurrent()) throw error;
+            return null;
         } finally {
             if (previewRunningRequestId === requestId) {
                 previewRunning = false;
@@ -1286,6 +1302,10 @@
     }
 
     async function exportToScene() {
+        const session = activeSession;
+        const modal = activeModal;
+        const isCurrent = () => !!session && activeSession === session && activeModal === modal;
+        if (!isCurrent()) return;
         if (sceneExportIsParamsOnly()) {
             writeActiveState(readParams());
             setStatus(t('Parameters saved. Generate uses the current expression JSON.', '参数已保存。Generate 会使用当前表情 JSON。'));
@@ -1296,6 +1316,7 @@
         if (!result?.image_data_url) {
             result = await preview({ manual: true });
         }
+        if (!isCurrent()) return;
         if (!result?.image_data_url) return;
         const payload = {
             image_data_url: result.image_data_url,
@@ -1317,6 +1338,10 @@
     }
 
     async function exportToCanvas() {
+        const session = activeSession;
+        const modal = activeModal;
+        const isCurrent = () => !!session && activeSession === session && activeModal === modal;
+        if (!isCurrent()) return;
         if (canvasExportIsParamsOnly()) {
             const params = readParams();
             const payload = writeActiveState(params);
@@ -1328,7 +1353,8 @@
                 reference_face_bbox: faceBBoxText(activeSession?.faceSelection?.reference_face_bbox),
                 exported_at: payload.updated_at
             };
-            if (typeof activeSession?.onConfirm === 'function') activeSession.onConfirm(response);
+            if (typeof session.onConfirm === 'function') session.onConfirm(response);
+            if (!isCurrent()) return;
             setStatus(t('Parameters saved. Generate uses the current expression JSON.', '参数已保存。Generate 会使用当前表情 JSON。'));
             closeActiveModal();
             return;
@@ -1337,43 +1363,53 @@
         if (!result?.image_data_url) {
             result = await preview({ manual: true });
         }
+        if (!isCurrent()) return;
         if (!result?.image_data_url) return;
         const params = readParams();
+        const expressionState = JSON.stringify(statePayload(params));
+        const sourceAsset = session.sourceAsset || null;
+        const referenceAsset = session.referenceAsset || null;
+        const sourceFaceBBox = faceBBoxText(session.faceSelection?.source_face_bbox);
+        const referenceFaceBBox = faceBBoxText(session.faceSelection?.reference_face_bbox);
         const source = await readOptionImage('canvas_source', 'sourceDataUrl', 'sourceSrc', 'sourceAsset', 'sourceSize');
+        if (!isCurrent()) return;
         const reference = await readOptionImage('canvas_reference', 'referenceDataUrl', 'referenceSrc', 'referenceAsset', 'referenceSize');
+        if (!isCurrent()) return;
         setBusy(true, t('Exporting to canvas...', '正在导出到画布...'));
         try {
             const data = await postJson('/liveportrait-expression/canvas/export', {
-                project_id: activeSession?.projectId || 'default',
-                node_id: activeSession?.nodeId || activeSession?.node?.id || '',
+                project_id: session.projectId || 'default',
+                node_id: session.nodeId || session.node?.id || '',
                 image_data_url: result.image_data_url,
-                expression_state: JSON.stringify(statePayload(params)),
+                expression_state: expressionState,
                 params,
                 source_image: source.dataUrl,
                 reference_image: reference.dataUrl,
                 source_size: { width: source.width, height: source.height },
                 reference_size: { width: reference.width, height: reference.height },
-                source_face_bbox: faceBBoxText(activeSession?.faceSelection?.source_face_bbox),
-                reference_face_bbox: faceBBoxText(activeSession?.faceSelection?.reference_face_bbox),
-                source_asset: activeSession?.sourceAsset || null,
-                reference_asset: activeSession?.referenceAsset || null
+                source_face_bbox: sourceFaceBBox,
+                reference_face_bbox: referenceFaceBBox,
+                source_asset: sourceAsset,
+                reference_asset: referenceAsset
             });
+            if (!isCurrent()) return;
             if (!data?.ok) {
                 setStatus(data?.details || data?.error || t('Export failed.', '导出失败。'), true);
                 return;
             }
             const response = Object.assign({}, data, {
                 params,
-                expression_state: JSON.stringify(statePayload(params)),
+                expression_state: expressionState,
                 preview_image: result.expression_image || { data_url: result.image_data_url },
-                source_asset: activeSession?.sourceAsset || null,
-                reference_asset: activeSession?.referenceAsset || null
+                source_asset: sourceAsset,
+                reference_asset: referenceAsset
             });
-            if (typeof activeSession?.onConfirm === 'function') activeSession.onConfirm(response);
+            if (typeof session.onConfirm === 'function') session.onConfirm(response);
+            if (!isCurrent()) return;
             setStatus(t('Exported to canvas node.', '已导出到画布节点。'));
             closeActiveModal();
         } finally {
-            setBusy(false);
+            if (isCurrent()) setBusy(false);
         }
     }
 

@@ -18,9 +18,10 @@
     const tokenPattern = /<(Picture|Video|Audio)\s+(\d+)>/g;
     const language = state => String(state?.__lang || '').toLowerCase().startsWith('en');
     const text = (state, en, cn) => language(state) ? en : cn;
+    const studioEndpointUrl = url => root.SimpAICanvasWorkbenchUtils?.studioEndpointUrl(url) ?? url;
     const safeUrl = value => {
         const url = String(value || '').replace(/^\/file=/, '/gradio_api/file=');
-        return /^(?:\/(?!\/)|https?:\/\/|blob:|data:image\/(?:png|jpeg|webp);base64,)/i.test(url) ? url : '';
+        return /^(?:\/(?!\/)|https?:\/\/|blob:|data:image\/(?:png|jpeg|webp);base64,)/i.test(url) ? studioEndpointUrl(url) : '';
     };
     function mediaFilename(value) {
         try {
@@ -147,7 +148,7 @@
         const timer = controller && root.setTimeout(() => controller.abort(),
             action === 'resolve' || /-(poll|stop)$/.test(action) ? 15000 : 120000);
         try {
-            const response = await fetch(`/describe-image/visual-characters/${action}`, {
+            const response = await fetch(studioEndpointUrl(`/describe-image/visual-characters/${action}`), {
                 method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...payload, user_did: state?.user_did || state?.__user_did || '', __lang: state?.__lang }),
                 ...(controller ? { signal: controller.signal } : {}),
@@ -445,6 +446,8 @@
         let history = [], redo = [], lastSnapshot = { value, bindings: clone(bindings), targets: clone(targetValues) };
         let voiceJob = null, voiceTimer = null, pollingVoice = false;
         let imageJob = null, imageTimer = null, pollingImage = false;
+        let voiceRequestSeq = 0, imageRequestSeq = 0;
+        let stoppingVoice = false, stoppingImage = false;
         let imageMessage = '';
         let imagePresets = [], imagePresetsLoading = false, imagePresetsLoaded = false;
         let imagePresetsTask = null;
@@ -480,6 +483,7 @@
         const errorText = error => {
             const code = error?.message || String(error);
             const messages = {
+                generation_not_allowed: t('Current identity is not allowed to generate.', '当前身份没有生成权限。'),
                 character_image_prompt_required: t('Enter an appearance or image prompt.', '请填写外观描述或生图提示词。'),
                 character_image_service_outdated: t('Studio has not loaded character image generation yet. Restart Studio, then refresh this page.', '当前 Studio 尚未加载角色生图接口。请重启 Studio，再刷新页面。'),
                 character_image_preset_required: t('Select an image preset.', '请选择生图预设。'),
@@ -755,7 +759,9 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
         }
         function lockVoiceControls() {
             host.querySelectorAll('button,input,textarea,select').forEach(element => {
-                if (['voice-stop', 'voice-poll', 'image-stop', 'image-poll'].includes(element.dataset.vpeAction)) return;
+                if (element.dataset.vpeAction === 'voice-stop') { element.disabled = stoppingVoice; return; }
+                if (element.dataset.vpeAction === 'image-stop') { element.disabled = stoppingImage; return; }
+                if (['voice-poll', 'image-poll'].includes(element.dataset.vpeAction)) return;
                 if (imageJob?.finished && element.dataset.vpeAction === 'close') {
                     element.disabled = false; return;
                 }
@@ -770,50 +776,77 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             rich.contentEditable = voiceJob || imageJob ? 'false' : 'true';
         }
         async function pollImage(stop = false) {
-            if (!imageJob || pollingImage) return;
+            if (!imageJob || (stop ? stoppingImage : pollingImage)) return;
+            const job = imageJob;
+            const requestId = ++imageRequestSeq;
+            const ownsRequest = () => active?.host === host && host.isConnected && imageRequestSeq === requestId;
+            if (stop) {
+                stoppingImage = true;
+                lockVoiceControls();
+                imageStatus(t('Stopping image generation...', '正在停止生图...'));
+            }
             root.clearTimeout(imageTimer); pollingImage = true;
             try {
-                const result = await request(stop ? 'image-stop' : 'image-poll', { run_id: imageJob.run_id }, state);
+                const result = await request(stop ? 'image-stop' : 'image-poll', { run_id: job.run_id }, state);
+                if (!ownsRequest() || imageJob !== job) return;
                 const progress = query('[data-vpe-image-progress]');
                 if (progress) progress.value = Number(result.percent) || 0;
-                if (['finished', 'failed', 'canceled', 'cancelled', 'stopped'].includes(result.state)) {
+                if (['finished', 'failed', 'canceled', 'skipped', 'cancelled', 'stopped'].includes(result.state)) {
+                    stoppingImage = false;
                     if (result.state === 'finished') {
                         addGeneratedImage(draft, result); dirty = true;
                         imageJob = null; lockVoiceControls();
                         await saveDraft();
+                        if (!ownsRequest() || imageJob) return;
                         imageStatus(t('Character sheet saved as one image.', '单张角色设定图已保存到角色卡。'));
                     } else {
                         imageJob = null; lockVoiceControls();
                         imageStatus(result.state === 'failed' ? t('Image generation failed. ', '生图失败。') + (result.message || '')
-                            : t('Image generation stopped.', '生图已停止。'));
+                            : result.state === 'skipped' ? t('Image generation skipped.', '已跳过生图。')
+                                : t('Image generation stopped.', '生图已停止。'));
                     }
                     renderDetail();
                 } else {
-                    imageStatus(t('Generating character sheet', '正在生成角色设定图') + ` ${Math.round((Number(result.percent) || 0) * 100)}%`);
+                    imageStatus(stoppingImage ? t('Stopping image generation...', '正在停止生图...')
+                        : t('Generating character sheet', '正在生成角色设定图') + ` ${Math.round((Number(result.percent) || 0) * 100)}%`);
                     imageTimer = root.setTimeout(() => pollImage(), 1500);
                 }
             } catch (error) {
+                if (!ownsRequest()) return;
+                if (stop) stoppingImage = false;
                 if (['character_image_run_not_found', 'character_image_result_missing'].includes(error.message)
                         || [401, 403, 404].includes(error.status)) imageJob = null;
                 else if (error.message === 'character_image_save_failed' && imageJob) imageJob.finished = true;
+                if (!imageJob) stoppingImage = false;
                 lockVoiceControls(); renderDetail();
                 imageStatus(errorText(error));
-            } finally { pollingImage = false; }
+            } finally { if (ownsRequest()) pollingImage = false; }
         }
         async function pollVoice(stop = false) {
-            if (!voiceJob || pollingVoice) return;
+            if (!voiceJob || (stop ? stoppingVoice : pollingVoice)) return;
+            const job = voiceJob;
+            const requestId = ++voiceRequestSeq;
+            const ownsRequest = () => active?.host === host && host.isConnected && voiceRequestSeq === requestId;
+            if (stop) {
+                stoppingVoice = true;
+                lockVoiceControls();
+                status(t('Stopping voice generation...', '正在停止音色生成...'));
+            }
             root.clearTimeout(voiceTimer);
             pollingVoice = true;
             try {
-                const result = await request(stop ? 'voice-stop' : 'voice-poll', { run_id: voiceJob.run_id }, state);
+                const result = await request(stop ? 'voice-stop' : 'voice-poll', { run_id: job.run_id }, state);
+                if (!ownsRequest() || voiceJob !== job) return;
                 const progress = query('[data-vpe-voice-progress]');
                 if (progress) progress.value = Number(result.percent) || 0;
                 if (['finished', 'failed', 'canceled'].includes(result.state)) {
                     voiceJob = null;
+                    stoppingVoice = false;
                     lockVoiceControls();
                     if (result.state === 'finished') {
                         addGeneratedVoice(draft, result); dirty = true;
                         await saveDraft();
+                        if (!ownsRequest() || voiceJob) return;
                         status(t('Voice saved to character.', '音色已保存到角色卡。'));
                     } else {
                         status(result.state === 'canceled' ? t('Voice generation stopped.', '音色生成已停止。')
@@ -821,17 +854,21 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                     }
                     renderDetail();
                 } else {
-                    status(t('QwenTTS voice generation', 'QwenTTS 音色生成中') + ` ${Math.round((Number(result.percent) || 0) * 100)}%`);
+                    status(stoppingVoice ? t('Stopping voice generation...', '正在停止音色生成...')
+                        : t('QwenTTS voice generation', 'QwenTTS 音色生成中') + ` ${Math.round((Number(result.percent) || 0) * 100)}%`);
                     voiceTimer = root.setTimeout(() => pollVoice(), 1500);
                 }
             } catch (error) {
+                if (!ownsRequest()) return;
+                if (stop) stoppingVoice = false;
                 if (error?.message === 'voice_run_not_found' || (error.status >= 400 && error.status < 500) || !voiceJob) {
-                    voiceJob = null; lockVoiceControls(); renderDetail();
+                    voiceJob = null; stoppingVoice = false; lockVoiceControls(); renderDetail();
                     status(errorText(error));
                 } else {
+                    lockVoiceControls();
                     status(`${errorText(error)} ${t('Use Check voice progress to retry.', '可点击“检查音色进度”重试。')}`);
                 }
-            } finally { pollingVoice = false; }
+            } finally { if (ownsRequest()) pollingVoice = false; }
         }
         function updateMentions() {
             const menu = query('[data-vpe-mentions]');
@@ -880,6 +917,9 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 action = 'image-start';
             }
             if (action === 'image-start') {
+                imageRequestSeq += 1;
+                stoppingImage = false;
+                pollingImage = false;
                 if (!imagePresetsLoaded || imagePresetsLoading) await loadImagePresets();
                 const mode = characterImageMode(draft);
                 const sourceImage = mode === 'reference' ? characterImageSource(draft) : null;
@@ -921,6 +961,9 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 return;
             }
             if (action === 'voice-start') {
+                voiceRequestSeq += 1;
+                stoppingVoice = false;
+                pollingVoice = false;
                 await saveDraft();
                 voiceJob = await request('voice-start', { character_id: draft.id, revision: draft.revision }, state);
                 renderDetail();
@@ -1084,7 +1127,17 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
         host.addEventListener('click', event => {
             event.stopPropagation();
             const target = event.target.closest('button');
-            if (!target || busy) return;
+            if (!target) return;
+            const action = target.dataset.vpeAction;
+            if (action === 'image-poll' || action === 'image-stop') {
+                pollImage(action === 'image-stop');
+                return;
+            }
+            if (action === 'voice-poll' || action === 'voice-stop') {
+                pollVoice(action === 'voice-stop');
+                return;
+            }
+            if (busy) return;
             if ((voiceJob || imageJob) && !['voice-stop', 'voice-poll', 'image-stop', 'image-poll'].includes(target.dataset.vpeAction)
                     && !(imageJob?.finished && target.dataset.vpeAction === 'close')) return;
             if (target.dataset.vpeAction === 'close') { close(); return; }

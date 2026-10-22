@@ -115,19 +115,9 @@ def synchronized_execution(func):
     return func
 
 def enqueue_task(func, *args, **kwargs):
-    try:
-        import modules.async_worker as worker
-    except Exception:
-        return func(*args, **kwargs)
+    import modules.async_worker as worker
 
-    called = False
-    try:
-        with worker.external_exclusive_task():
-            called = True
-            return func(*args, **kwargs)
-    except Exception:
-        if called:
-            raise
+    with worker.external_exclusive_task():
         return func(*args, **kwargs)
 
 def unload_qwen_tts_models():

@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import os
 import random
@@ -6,9 +7,11 @@ import subprocess
 import tempfile
 import threading
 import time
+import uuid
 import wave
 
 import modules.canvas_workbench_assets as canvas_workbench_assets
+from modules.access_mode import user_can_generate
 import shared
 
 try:
@@ -18,6 +21,7 @@ except Exception:
 
 
 QWEN_TTS_RUNS = {}
+QWEN_TTS_UI_TASKS = {}
 QWEN_TTS_RUNS_LOCK = threading.Lock()
 QWEN_TTS_WORKER_LOCK = threading.Lock()
 QWEN_TTS_RETENTION_SECONDS = 60 * 60 * 6
@@ -94,17 +98,76 @@ def _blank(value):
 
 
 def _state_identity(payload, state_params):
-    user_context = payload.get("user_context") if isinstance(payload.get("user_context"), dict) else {}
-    user_did = user_context.get("user_did") or user_context.get("owner") or ""
-    if isinstance(state_params, dict):
-        user_did = user_did or state_params.get("user_did") or ""
-        try:
-            user = state_params.get("user")
-            if not user_did and user is not None and hasattr(user, "get_did"):
-                user_did = user.get_did()
-        except Exception:
-            pass
-    return {"user_did": str(user_did or "guest")}
+    return {"user_did": str(canvas_workbench_assets._get_user_did(state_params))}
+
+
+def _record_owned_by(record, state_params):
+    return bool(record) and record.get("user_did") == _state_identity({}, state_params)["user_did"]
+
+
+def _ui_task_key(state_params, mode=""):
+    identity = _state_identity({}, state_params)["user_did"]
+    session = str(state_params.get("__session") or "") if isinstance(state_params, dict) else ""
+    return identity, session, str(mode or "")
+
+
+def begin_ui_qwen_tts(state_params, new_request=False, mode=""):
+    key = _ui_task_key(state_params, mode)
+    with QWEN_TTS_RUNS_LOCK:
+        current = QWEN_TTS_UI_TASKS.get(key)
+        if current and not current.get("finished") and (current.get("claimed") or not new_request):
+            return current
+        token = {"key": key, "cancel": threading.Event(), "claimed": False, "owns_gpu": False}
+        QWEN_TTS_UI_TASKS[key] = token
+        return token
+
+
+def stop_ui_qwen_tts(state_params, mode=""):
+    with QWEN_TTS_RUNS_LOCK:
+        token = QWEN_TTS_UI_TASKS.get(_ui_task_key(state_params, mode))
+        if not token or token.get("finished"):
+            return False
+        token["cancel"].set()
+        if token.get("owns_gpu"):
+            _set_interrupt(True)
+        return True
+
+
+def execute_ui_qwen_tts(token, handler, *args, **kwargs):
+    from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task
+
+    def canceled():
+        with QWEN_TTS_RUNS_LOCK:
+            return QWEN_TTS_UI_TASKS.get(token["key"]) is not token or token["cancel"].is_set()
+
+    with QWEN_TTS_RUNS_LOCK:
+        if QWEN_TTS_UI_TASKS.get(token["key"]) is not token or token.get("claimed"):
+            raise RuntimeError("Qwen TTS request is no longer pending.")
+        token["claimed"] = True
+    try:
+        with exclusive_gpu_task(cancel_check=canceled):
+            with QWEN_TTS_RUNS_LOCK:
+                if QWEN_TTS_UI_TASKS.get(token["key"]) is not token or token["cancel"].is_set():
+                    raise GpuTaskCancelled("Stopped by user.")
+                _set_interrupt(False)
+                token["owns_gpu"] = True
+            try:
+                result = handler(*args, **kwargs)
+                if canceled():
+                    raise GpuTaskCancelled("Stopped by user.")
+                return result
+            except BaseException:
+                _unload_qwen_tts_models_safe()
+                raise
+            finally:
+                with QWEN_TTS_RUNS_LOCK:
+                    _set_interrupt(False)
+                    token["owns_gpu"] = False
+    finally:
+        with QWEN_TTS_RUNS_LOCK:
+            token["finished"] = True
+            if QWEN_TTS_UI_TASKS.get(token["key"]) is token:
+                QWEN_TTS_UI_TASKS.pop(token["key"])
 
 
 def _character_presets_dir(user_did):
@@ -183,7 +246,8 @@ def _cleanup_runs():
     with QWEN_TTS_RUNS_LOCK:
         stale = [
             run_id for run_id, record in QWEN_TTS_RUNS.items()
-            if now - float(record.get("updated_ts") or record.get("created_ts") or now) > QWEN_TTS_RETENTION_SECONDS
+            if record.get("state") in QWEN_TTS_TERMINAL_STATES
+            and now - float(record.get("updated_ts") or record.get("created_ts") or now) > QWEN_TTS_RETENTION_SECONDS
         ]
         for run_id in stale:
             QWEN_TTS_RUNS.pop(run_id, None)
@@ -287,14 +351,17 @@ def _convert_audio_to_wav(audio_path):
     tmp_path = tmp.name
     tmp.close()
     cmd = [ffmpeg, "-y", "-i", p, "-vn", "-acodec", "pcm_s16le", "-ar", "24000", tmp_path]
-    completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=240)
-    if completed.returncode != 0 or not os.path.exists(tmp_path) or os.path.getsize(tmp_path) <= 0:
+    try:
+        completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=240)
+        if completed.returncode != 0 or not os.path.exists(tmp_path) or os.path.getsize(tmp_path) <= 0:
+            raise RuntimeError((completed.stderr or completed.stdout or "audio conversion failed")[-1000:])
+        return tmp_path
+    except BaseException:
         try:
             os.remove(tmp_path)
-        except Exception:
+        except OSError:
             pass
-        raise RuntimeError((completed.stderr or completed.stdout or "audio conversion failed")[-1000:])
-    return tmp_path
+        raise
 
 
 def _audio_ref_to_gradio_tuple(asset_ref):
@@ -302,7 +369,14 @@ def _audio_ref_to_gradio_tuple(asset_ref):
         raise ValueError("Missing reference audio")
     audio_path = asset_ref.get("path") or asset_ref.get("output_path")
     wav_path = _convert_audio_to_wav(audio_path)
-    return _read_wav_file(wav_path)
+    try:
+        return _read_wav_file(wav_path)
+    finally:
+        if os.path.abspath(wav_path) != os.path.abspath(str(audio_path or "")):
+            try:
+                os.remove(wav_path)
+            except OSError:
+                pass
 
 
 def _materialize_input_assets(payload, state_params):
@@ -480,19 +554,48 @@ def _public_record(record):
     return result
 
 
-def _run_worker(run_id):
+def _run_worker(run_id, expected_record=None):
+    from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task
+
+    if expected_record is None:
+        with QWEN_TTS_RUNS_LOCK:
+            expected_record = QWEN_TTS_RUNS.get(run_id)
+
+    def canceled():
+        with QWEN_TTS_RUNS_LOCK:
+            return (
+                QWEN_TTS_RUNS.get(run_id) is not expected_record
+                or not expected_record or expected_record.get("cancel_action") == "stop"
+            )
+
     with QWEN_TTS_WORKER_LOCK:
-        _run_worker_locked(run_id)
+        try:
+            with exclusive_gpu_task(cancel_check=canceled):
+                with QWEN_TTS_RUNS_LOCK:
+                    if QWEN_TTS_RUNS.get(run_id) is not expected_record or expected_record.get("cancel_action") == "stop":
+                        raise GpuTaskCancelled("Stopped by user.")
+                    expected_record["owns_gpu"] = True
+                try:
+                    _run_worker_locked(run_id, expected_record)
+                finally:
+                    with QWEN_TTS_RUNS_LOCK:
+                        expected_record["owns_gpu"] = False
+        except GpuTaskCancelled:
+            with QWEN_TTS_RUNS_LOCK:
+                if QWEN_TTS_RUNS.get(run_id) is expected_record and expected_record:
+                    expected_record.update(
+                        state="canceled", message="Stopped by user.",
+                        finished_ts=time.time(), updated_ts=time.time(),
+                    )
 
 
-def _run_worker_locked(run_id):
+def _run_worker_locked(run_id, expected_record=None):
     with QWEN_TTS_RUNS_LOCK:
         record = QWEN_TTS_RUNS.get(run_id)
-    if not record:
+    if not record or (expected_record is not None and record is not expected_record):
         return
     with QWEN_TTS_RUNS_LOCK:
-        record = QWEN_TTS_RUNS.get(run_id)
-        if not record:
+        if QWEN_TTS_RUNS.get(run_id) is not record:
             return
         if record.get("cancel_action") == "stop":
             record["state"] = "canceled"
@@ -507,11 +610,12 @@ def _run_worker_locked(run_id):
     try:
         from enhanced import webui_qwen_tts
 
-        _set_interrupt(False)
         with QWEN_TTS_RUNS_LOCK:
-            record = QWEN_TTS_RUNS.get(run_id)
-            if not record:
+            if QWEN_TTS_RUNS.get(run_id) is not record:
                 return
+            if record.get("cancel_action") == "stop":
+                raise RuntimeError("Stopped by user.")
+            _set_interrupt(False)
             record["state"] = "running"
             record["percent"] = max(float(record.get("percent") or 0), 0.04)
             record["message"] = "Qwen TTS running."
@@ -521,7 +625,7 @@ def _run_worker_locked(run_id):
         def progress_callback(percent, message=""):
             with QWEN_TTS_RUNS_LOCK:
                 current = QWEN_TTS_RUNS.get(run_id)
-                if not current:
+                if current is not record:
                     return
                 try:
                     pct = max(0.0, min(1.0, float(percent) / 100.0))
@@ -538,8 +642,7 @@ def _run_worker_locked(run_id):
         audio_path = webui_qwen_tts.enqueue_task(handler, **kwargs)
 
         with QWEN_TTS_RUNS_LOCK:
-            record = QWEN_TTS_RUNS.get(run_id)
-            if not record:
+            if QWEN_TTS_RUNS.get(run_id) is not record:
                 return
             record["original_output_path"] = audio_path
             if record.get("cancel_action") == "stop":
@@ -573,8 +676,12 @@ def _run_worker_locked(run_id):
                 record["output_error"] = error
             raise RuntimeError(error["message"])
         with QWEN_TTS_RUNS_LOCK:
-            record = QWEN_TTS_RUNS.get(run_id)
-            if not record:
+            if QWEN_TTS_RUNS.get(run_id) is not record:
+                return
+            if record.get("cancel_action") == "stop":
+                cleanup_after_worker = True
+                record.update(state="canceled", message="Stopped by user.", finished_ts=time.time(), updated_ts=time.time())
+                _add_event(record, "warn", record["message"])
                 return
             record["asset"] = asset
             record["assets"] = [asset]
@@ -589,8 +696,7 @@ def _run_worker_locked(run_id):
             raise
         cleanup_after_worker = True
         with QWEN_TTS_RUNS_LOCK:
-            record = QWEN_TTS_RUNS.get(run_id)
-            if not record:
+            if QWEN_TTS_RUNS.get(run_id) is not record:
                 return
             if record.get("cancel_action") == "stop" or _is_interrupt_exception(err):
                 record["state"] = "canceled"
@@ -621,15 +727,15 @@ def run_qwen_tts(payload, state_params):
         return {"ok": False, "error": "unsupported Qwen TTS mode"}
     params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
     identity = _state_identity(payload, state_params)
-    try:
-        materialized, errors = _materialize_input_assets(payload, state_params)
-        if errors:
-            return {"ok": False, "error": "input materialization failed", "errors": errors}
-        handler, kwargs = _build_handler_call(mode, params, materialized, identity.get("user_did") or "guest")
-    except Exception as err:
-        return {"ok": False, "error": f"{type(err).__name__}: {err}"}
-
-    run_id = payload.get("run_id") or f"qwen-tts-{int(time.time() * 1000)}"
+    if not user_can_generate(identity.get("user_did") or ""):
+        return {"ok": False, "error": "generation_not_allowed"}
+    run_id = str(payload.get("run_id") or f"qwen-tts-{uuid.uuid4().hex}").strip()[:240]
+    if not run_id:
+        return {"ok": False, "error": "run_id is empty"}
+    request_body = {key: value for key, value in payload.items() if key not in ("run_id", "job_id")}
+    fingerprint = hashlib.sha256(
+        json.dumps(request_body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
     now = time.time()
     record = {
         "run_id": run_id,
@@ -638,23 +744,54 @@ def run_qwen_tts(payload, state_params):
         "placeholder_node_id": payload.get("placeholder_node_id") or "",
         "qwen_tts_node_id": payload.get("qwen_tts_node_id") or payload.get("node_id") or "",
         "mode": mode,
-        "state": "queued",
-        "percent": 0.02,
-        "message": "Queued Qwen TTS job.",
-        "handler": handler,
-        "handler_kwargs": kwargs,
-        "input_count": len(materialized),
-        "resolved_seed": kwargs.get("seed"),
+        "state": "preparing",
+        "percent": 0.01,
+        "message": "Preparing Qwen TTS job.",
+        "request_fingerprint": fingerprint,
         "user_did": identity.get("user_did") or "guest",
         "state_params": copy.deepcopy(state_params) if isinstance(state_params, dict) else {},
         "created_ts": now,
         "updated_ts": now,
     }
-    _add_event(record, "info", record["message"], {"mode": mode})
     with QWEN_TTS_RUNS_LOCK:
+        existing = QWEN_TTS_RUNS.get(run_id)
+        if existing:
+            if existing.get("user_did") != record["user_did"] or existing.get("request_fingerprint") != fingerprint:
+                return {"ok": False, "error": "run_id_conflict", "run_id": run_id}
+            response = _public_record(existing)
+            response["idempotent_replay"] = True
+            return response
         QWEN_TTS_RUNS[run_id] = record
-    threading.Thread(target=_run_worker, args=(run_id,), daemon=True).start()
-    return _public_record(record)
+    errors = []
+    try:
+        materialized, errors = _materialize_input_assets(payload, state_params)
+        if errors:
+            raise ValueError("input materialization failed")
+        handler, kwargs = _build_handler_call(mode, params, materialized, identity.get("user_did") or "guest")
+    except Exception as err:
+        with QWEN_TTS_RUNS_LOCK:
+            if QWEN_TTS_RUNS.get(run_id) is record:
+                QWEN_TTS_RUNS.pop(run_id)
+        result = {"ok": False, "error": f"{type(err).__name__}: {err}"}
+        if errors:
+            result["errors"] = errors
+        return result
+    with QWEN_TTS_RUNS_LOCK:
+        if QWEN_TTS_RUNS.get(run_id) is not record:
+            return {"ok": False, "error": "run replaced", "run_id": run_id}
+        record.update(handler=handler, handler_kwargs=kwargs, input_count=len(materialized), resolved_seed=kwargs.get("seed"))
+        if record.get("cancel_action") == "stop":
+            record.update(state="canceled", message="Stopped by user.", finished_ts=time.time(), updated_ts=time.time())
+            return _public_record(record)
+        record.update(state="queued", percent=0.02, message="Queued Qwen TTS job.", updated_ts=time.time())
+        _add_event(record, "info", record["message"], {"mode": mode})
+    try:
+        threading.Thread(target=_run_worker, args=(run_id, record), daemon=True).start()
+    except Exception as err:
+        with QWEN_TTS_RUNS_LOCK:
+            record.update(state="failed", error=f"{type(err).__name__}: {err}", finished_ts=time.time(), updated_ts=time.time())
+    with QWEN_TTS_RUNS_LOCK:
+        return _public_record(record)
 
 
 def poll_qwen_tts(payload, state_params):
@@ -663,7 +800,7 @@ def poll_qwen_tts(payload, state_params):
     run_id = payload.get("job_id") or payload.get("run_id") or ""
     with QWEN_TTS_RUNS_LOCK:
         record = QWEN_TTS_RUNS.get(run_id)
-        if not record:
+        if not _record_owned_by(record, state_params):
             return {"ok": False, "error": "run not found", "run_id": run_id, "job_id": run_id}
         return _public_record(record)
 
@@ -677,16 +814,16 @@ def control_qwen_tts(payload, state_params):
         return {"ok": False, "error": "unsupported control action", "run_id": run_id, "job_id": run_id}
     with QWEN_TTS_RUNS_LOCK:
         record = QWEN_TTS_RUNS.get(run_id)
-        if not record:
+        if not _record_owned_by(record, state_params):
             return {"ok": False, "error": "run not found", "run_id": run_id, "job_id": run_id}
         if record.get("state") in QWEN_TTS_TERMINAL_STATES:
             return _public_record(record)
-        should_interrupt = record.get("state") == "running"
+        should_interrupt = record.get("state") == "running" and record.get("owns_gpu") is True
         record["cancel_action"] = "stop"
         record["state"] = "cancelling"
         record["message"] = "Stop requested. Waiting for Qwen TTS interruption."
         record["updated_ts"] = time.time()
         _add_event(record, "warn", record["message"], {"action": action})
-    if should_interrupt:
-        _set_interrupt(True)
+        if should_interrupt:
+            _set_interrupt(True)
     return _public_record(record)

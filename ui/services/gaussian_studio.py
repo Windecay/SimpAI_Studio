@@ -53,12 +53,24 @@ def _viewer_web_root():
 
 def _candidate_model_paths():
     candidates = []
+    try:
+        import modules.config as config
+        configured = getattr(config, "paths_sharp", []) or []
+        if isinstance(configured, (str, os.PathLike)):
+            configured = [configured]
+        candidates.extend(Path(directory) / SHARP_FILENAME for directory in configured)
+    except ImportError:
+        pass
     parents = list(_repo_root().parents)
     if len(parents) > 1:
         candidates.append(parents[1] / "SimpleModels" / "sharp" / SHARP_FILENAME)
     try:
         _ensure_comfy_import_path()
         import folder_paths
+        try:
+            candidates.extend(Path(directory) / SHARP_FILENAME for directory in folder_paths.get_folder_paths("sharp"))
+        except (AttributeError, KeyError):
+            pass
         models_dir = getattr(folder_paths, "models_dir", None)
         if models_dir:
             candidates.append(Path(models_dir) / "sharp" / SHARP_FILENAME)
@@ -369,7 +381,7 @@ def _reset_sharp_encode_cache(predict):
 
 
 def _run_sharp_predict(load_model, predict, precision, image_tensor, focal_length_mm, output_prefix, temp_output_dir):
-    model_output = load_model.LoadSharpModel.execute(precision=precision)
+    model_output = load_model.LoadSharpModel.execute(precision=precision, allow_download=False, model_path=str(_model_path()))
     model_config = model_output[0]
     with _SHARP_PREDICT_LOCK:
         previous_output_dir = getattr(predict, "OUTPUT_DIR", None)
@@ -439,7 +451,8 @@ def predict_from_reference(payload, state_params=None):
     except Exception as err:
         return {
             "ok": False,
-            "error": "SHARP prediction failed.",
+            "error": "SHARP model is missing. Install it through model management before building." if isinstance(err, FileNotFoundError) else "SHARP prediction failed.",
+            **({"error_code": "resource_missing"} if isinstance(err, FileNotFoundError) else {}),
             "details": f"{type(err).__name__}: {err}",
             "reference_asset": materialized.get("asset_ref"),
         }

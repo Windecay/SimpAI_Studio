@@ -3905,7 +3905,7 @@ document.addEventListener("DOMContentLoaded", function() {
         setVisible('mixing_image_prompt_and_vary_upscale', allowMixing);
         setVisible('mixing_image_prompt_and_inpaint', allowMixing);
         setVisible('ip_auto_detect', true);
-        const maxInputs = isMoss ? 2 : taskMethod === 'krea2_aio_cn' ? 1 : Infinity;
+        const maxInputs = isMoss ? 4 : taskMethod === 'krea2_aio_cn' ? 1 : Infinity;
         document.querySelectorAll('#ip_image_grid > .ip_image_cell').forEach((column, index) => {
             if (!column.id || column.id.startsWith('ip_image_column_')) column.id = `ip_control_slot_${index + 1}`;
             if (column.dataset.simpaiAioHidden) delete column.dataset.simpaiAioHidden;

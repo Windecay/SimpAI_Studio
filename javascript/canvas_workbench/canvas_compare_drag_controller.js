@@ -3,6 +3,7 @@
 
     function createCanvasCompareDragController(context) {
         const scope = context?.compareDragSource || context || {};
+        const projectSource = scope.projectSource || {};
         const domSource = scope.domSource || {};
         const nodeSource = scope.nodeSource || {};
         const utilitySource = scope.utilitySource || {};
@@ -53,9 +54,15 @@
             ? uiSource.renderInspector(...args)
             : undefined;
         let dragState = null;
+        const getProject = () => typeof projectSource.getProject === 'function' ? projectSource.getProject() : null;
+        const ownsDrag = (state) => !!state && getProject() === state.project
+            && (!state.project || state.project.id === state.projectId)
+            && getNode(state.nodeId) === state.node && !isNodeLocked(state.node)
+            && state.stageEl?.isConnected !== false;
 
         function updateComparePositionFromPointer(node, stageEl, evt) {
-            if (!node || node.type !== 'compare' || !stageEl || !evt) return null;
+            if (!node || node.type !== 'compare' || getNode(node.id) !== node || isNodeLocked(node)
+                || !stageEl || stageEl.isConnected === false || !evt) return null;
             const rect = stageEl.getBoundingClientRect?.();
             if (!rect?.width) return null;
             const next = clamp(((evt.clientX - rect.left) / rect.width) * 100, 0, 100);
@@ -65,7 +72,9 @@
         }
 
         function startComparePositionDrag(node, stageEl, evt) {
-            if (!node || node.type !== 'compare' || !stageEl || !evt || isNodeLocked(node)) return;
+            if (!node || node.type !== 'compare' || getNode(node.id) !== node
+                || !stageEl || stageEl.isConnected === false || !evt || isNodeLocked(node)) return;
+            if (dragState) stopComparePositionDrag();
             endHistoryBatch();
             evt.preventDefault();
             evt.stopPropagation();
@@ -74,6 +83,9 @@
             dragState = {
                 pointerId: evt.pointerId,
                 nodeId: node.id,
+                node,
+                project: getProject(),
+                projectId: getProject()?.id,
                 stageEl
             };
             try { stageEl.setPointerCapture?.(evt.pointerId); } catch (err) {}
@@ -86,21 +98,28 @@
 
         function onComparePositionDragMove(evt) {
             if (!dragState || !evt || evt.pointerId !== dragState.pointerId) return;
+            if (!ownsDrag(dragState)) {
+                stopComparePositionDrag(evt);
+                return;
+            }
             evt.preventDefault();
-            const node = getNode(dragState.nodeId);
-            updateComparePositionFromPointer(node, dragState.stageEl, evt);
+            updateComparePositionFromPointer(dragState.node, dragState.stageEl, evt);
         }
 
         function stopComparePositionDrag(evt) {
             if (!dragState) return;
             if (evt && evt.pointerId !== dragState.pointerId) return;
-            const nodeId = dragState.nodeId;
+            const state = dragState;
+            const current = ownsDrag(state);
+            const nodeId = state.nodeId;
             dragState = null;
-            endHistoryBatch();
+            try { state.stageEl.releasePointerCapture?.(state.pointerId); } catch (err) {}
             const doc = getDocument();
             doc?.removeEventListener('pointermove', onComparePositionDragMove, true);
             doc?.removeEventListener('pointerup', stopComparePositionDrag, true);
             doc?.removeEventListener('pointercancel', stopComparePositionDrag, true);
+            if (!current) return;
+            endHistoryBatch();
             scheduleSave();
             const node = getNode(nodeId);
             if (getSelectedNodeId() === nodeId && node?.type === 'compare') renderInspector();

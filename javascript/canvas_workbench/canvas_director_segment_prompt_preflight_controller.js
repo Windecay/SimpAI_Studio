@@ -47,8 +47,8 @@
             const target = canvasAgentPromptTargetFromNode(node, 'text-to-video');
             if (!target?.prompt_compiler) return target;
             const imageCount = directorSegmentMediaRefs(segment, 'images').length;
-            const videoCount = directorSegmentFirstMediaRef(segment, 'video') ? 1 : 0;
-            const audioCount = directorSegmentFirstMediaRef(segment, 'audio') ? 1 : 0;
+            const videoCount = directorSegmentMediaRefs(segment, 'video').length;
+            const audioCount = directorSegmentMediaRefs(segment, 'audio').length;
             return Object.assign({}, target, {
                 prompt_compiler_context: Object.assign({}, target.prompt_compiler_context || {}, {
                     image_count: imageCount,

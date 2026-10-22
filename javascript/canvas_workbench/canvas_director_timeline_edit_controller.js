@@ -115,13 +115,19 @@
                 ['image_ref', 'image_ref_1', 'image_ref_2', 'image_ref_3', 'image_ref_4', 'image_ref_5', 'image_ref_6', 'image_ref_7', 'image_ref_8', 'image_ref_9'].forEach(refKey => {
                     delete segment[refKey];
                 });
-            } else if (key === 'audio_ref') {
-                segment.audio = value ? [{ source_ref: value, role: 'voice' }] : [];
-            } else if (key === 'video_ref') {
-                segment.video = value ? [{
-                    source_ref: value,
-                    role: value === previousSegmentVideoRef() ? 'previous_result' : 'reference'
-                }] : [];
+            } else if (/^(audio|video)_ref(?:_[1-5])?$/.test(key)) {
+                const kind = key.startsWith('audio') ? 'audio' : 'video';
+                const slotIndex = Number(key.match(/_(\d+)$/)?.[1] || 1) - 1;
+                const items = Array.isArray(segment[kind]) ? segment[kind].map(item => Object.assign({}, item)) : [];
+                while (items.length <= slotIndex) items.push({ source_ref: '' });
+                const prior = items[slotIndex];
+                items[slotIndex] = Object.assign({}, prior, {
+                    source_ref: value || '',
+                    role: kind === 'video' && value === previousSegmentVideoRef()
+                        ? 'previous_result'
+                        : (prior.role === 'previous_result' ? 'reference' : prior.role) || (kind === 'audio' ? 'voice' : 'reference')
+                });
+                segment[kind] = items.filter(item => item.source_ref);
             } else {
                 segment[key] = value;
             }

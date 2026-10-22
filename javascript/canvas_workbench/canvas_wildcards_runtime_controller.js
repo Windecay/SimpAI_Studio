@@ -9,6 +9,7 @@
         const runtimeSource = scope.runtimeSource || {};
         const serializationSource = scope.serializationSource || {};
         const patchSource = scope.patchSource || {};
+        const catalogVersions = new WeakMap();
 
         function canvasRunPromptParamText(value) {
             return value == null ? '' : String(value);
@@ -20,10 +21,13 @@
             if (!opts.force && Array.isArray(node.wildcards_catalog?.flat_names) && node.wildcards_catalog.flat_names.length) {
                 return node.wildcards_catalog;
             }
+            const version = (catalogVersions.get(node) || 0) + 1;
+            catalogVersions.set(node, version);
             const requestCatalog = apiSource.getWildcardsCatalog();
             const response = typeof requestCatalog === 'function'
                 ? await requestCatalog({ user_context: runtimeSource.getWorkbenchUserContext(), path: 'root', trans: false })
                 : null;
+            if (catalogVersions.get(node) !== version || nodeSource.isNodeLocked(node)) return null;
             if (!response?.ok) {
                 runtimeSource.showToast(response?.error || 'Wildcards catalog failed');
                 return null;

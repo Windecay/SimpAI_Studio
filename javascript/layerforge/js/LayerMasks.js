@@ -1,4 +1,4 @@
-import { generateUUID } from '/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26';
+import { generateUUID } from './utils/CommonUtils.js?v=patch26';
 
 function surface(width, height) {
     const canvas = document.createElement('canvas');

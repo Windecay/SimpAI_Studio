@@ -265,13 +265,16 @@ def resolve_ltx_extent_guide_schedule(
 
     resolved_indices = [None] * image_count
     fixed_points = [(0, 0)]
-    for guide_index in range(image_count - 1):
+    for guide_index in range(image_count):
         requested = int(requested_indices[guide_index] or 0)
         if requested:
+            if not 0 < requested <= continuation_span:
+                raise ValueError("Each extent frame index must be inside the continuation range.")
             fixed_points.append((guide_index + 1, requested))
             resolved_indices[guide_index] = requested
-    resolved_indices[-1] = continuation_span
-    fixed_points.append((image_count, continuation_span))
+    if resolved_indices[-1] is None:
+        resolved_indices[-1] = continuation_span
+        fixed_points.append((image_count, continuation_span))
 
     for (left_position, left_frame), (right_position, right_frame) in zip(fixed_points, fixed_points[1:]):
         position_span = right_position - left_position

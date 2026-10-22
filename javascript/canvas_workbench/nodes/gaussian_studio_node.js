@@ -3,6 +3,7 @@
 
     const DEFAULT_UTILS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchUtils || {} : {};
     const DEFAULT_ASSETS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchAssetNodes || {} : {};
+    const editorSessions = new WeakMap();
     const escapeHtmlFallback = (value) => String(value ?? '');
     const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
     const translateFallback = (en, cn) => cn || en;
@@ -353,8 +354,19 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
         return node;
     }
 
+    function editorInputVersion(node, context) {
+        const state = gaussianState(node, context);
+        return JSON.stringify({
+            reference: sourceAssetForNode(node, context) || state.reference_asset || null,
+            referenceNode: inputSourceForNode(node, context)?.id || '',
+            state: node.gaussian_studio || {}
+        });
+    }
+
     function openEditor(node, context) {
         if (!node || node.type !== 'gaussian_studio') return null;
+        const project = getProject(context);
+        if (getNode(node.id, context) !== node) return null;
         const runtimeEditor = editor(context);
         if (typeof runtimeEditor.open !== 'function') {
             call(context, 'showToast', null, 'Gaussian Studio editor is not loaded.');
@@ -362,6 +374,11 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
         }
         const state = gaussianState(node, context);
         const referenceSource = inputSourceForNode(node, context);
+        const session = { version: editorInputVersion(node, context) };
+        editorSessions.set(node, session);
+        const owns = () => getProject(context) === project && getNode(node.id, context) === node
+            && editorSessions.get(node) === session && inputSourceForNode(node, context) === referenceSource
+            && editorInputVersion(node, context) === session.version;
         const referenceAsset = sourceAssetForNode(node, context) || state.reference_asset || null;
         const referenceAssetSource = referenceSource
             ? serializeAssetSourceForRun(referenceSource, context)
@@ -375,7 +392,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
         const referenceSrc = assetDisplaySrc(referenceAsset || {}, context);
         return runtimeEditor.open({
             title: node.title || 'Gaussian Studio',
-            projectId: getProject(context).id || (typeof context?.getProjectId === 'function' ? context.getProjectId() : '') || 'default',
+            projectId: project.id || (typeof context?.getProjectId === 'function' ? context.getProjectId() : '') || 'default',
             node,
             nodeId: node.id,
             referenceSrc,
@@ -397,7 +414,8 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
             detectTheme: () => call(context, 'detectWorkbenchTheme', 'dark'),
             ensureFormNames: (scope, prefix) => call(context, 'ensureWorkbenchFormFieldNames', null, scope, prefix),
             onStateChange: (cache, reason) => {
-                const current = getNode(node.id, context) || node;
+                if (!owns()) return;
+                const current = node;
                 Object.assign(current, call(context, 'buildGaussianStudioStatePatch', {
                     gaussian_studio: gaussianState(current, context)
                 }, current));
@@ -414,12 +432,14 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
                         message: t('PLY ready. Rotate and export a view.', 'PLY 已生成，可旋转并导出视角。', context)
                     }
                 }));
+                session.version = editorInputVersion(node, context);
                 call(context, 'setSelectedNode', null, current.id);
                 call(context, 'mutate', null, { inspector: true });
             },
             onConfirm: (response) => {
+                if (!owns()) return;
                 call(context, 'pushHistory', null, 'Update Gaussian Studio output');
-                const current = getNode(node.id, context) || node;
+                const current = node;
                 Object.assign(current, call(context, 'buildGaussianStudioStatePatch', {
                     gaussian_studio: gaussianState(current, context)
                 }, current));
@@ -436,6 +456,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
                         message: t('Gaussian render exported.', '高斯渲染图已导出。', context)
                     }
                 }));
+                editorSessions.delete(node);
                 call(context, 'setSelectedNode', null, current.id);
                 call(context, 'mutate', null);
             }
@@ -444,6 +465,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
 
     window.SimpAICanvasWorkbenchGaussianStudioNode = {
         createGaussianStudioNodeContext,
+        editorInputVersion,
         addNode,
         createNode,
         inputSourceForNode,

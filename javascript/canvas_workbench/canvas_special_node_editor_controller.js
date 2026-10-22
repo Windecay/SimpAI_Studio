@@ -4,6 +4,9 @@
     function createCanvasSpecialNodeEditorController(context) {
         const scope = context?.specialNodeEditorSource || context || {};
         const runtimeSource = scope.runtimeSource || {};
+        const projectSource = scope.projectSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const pendingOpens = new WeakMap();
         const editorSource = scope.editorSource || {};
         const languageSource = scope.languageSource || {};
         const call = (source, name, fallback, ...args) => typeof source?.[name] === 'function'
@@ -12,6 +15,13 @@
         const t = (en, cn) => call(languageSource, 't', en, en, cn);
 
         async function openEditor(groupName, node, isLoaded, open, loadingMessage, failureMessage) {
+            if (!node || (typeof nodeSource.getNode === 'function' && nodeSource.getNode(node.id) !== node)) return null;
+            const project = call(projectSource, 'getProject', null);
+            const readInputVersion = () => typeof nodeSource.getInputVersion === 'function'
+                ? nodeSource.getInputVersion(node) : JSON.stringify(node);
+            const inputVersion = readInputVersion();
+            const operation = {};
+            pendingOpens.set(node, operation);
             const ready = await call(
                 runtimeSource,
                 'ensureWorkbenchLazyRuntime',
@@ -21,7 +31,10 @@
                 t(...loadingMessage),
                 t(...failureMessage)
             );
-            if (!ready) return null;
+            if (!ready || pendingOpens.get(node) !== operation
+                || (typeof projectSource.getProject === 'function' && projectSource.getProject() !== project)
+                || (typeof nodeSource.getNode === 'function' && nodeSource.getNode(node.id) !== node)
+                || readInputVersion() !== inputVersion) return null;
             return call(editorSource, open, null, node);
         }
 

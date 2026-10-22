@@ -1,7 +1,7 @@
-import { getCanvasState, setCanvasState, saveImage, getImage } from "/file=javascript/layerforge/js/db.js?v=patch26";
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { showAlertNotification } from "/file=javascript/layerforge/js/utils/NotificationUtils.js?v=patch26";
-import { generateUUID, cloneLayers, getStateSignature, debounce, createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
+import { getCanvasState, setCanvasState, saveImage, getImage } from "./db.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { showAlertNotification } from "./utils/NotificationUtils.js?v=patch26";
+import { generateUUID, cloneLayers, getStateSignature, debounce, createCanvas } from "./utils/CommonUtils.js?v=patch26";
 const log = createModuleLogger('CanvasState');
 const layerStateSignature = (layers) => getStateSignature(layers) + JSON.stringify(layers.map((layer) =>
     layer.layerMask ? [layer.layerMask.id, layer.layerMask.enabled !== false] : null));
@@ -17,6 +17,7 @@ export class CanvasState {
         this.lastSavedStateSignature = null;
         this._loadInProgress = null;
         this._debouncedSave = null;
+        this.lastLoadResult = null;
         try {
             this.stateSaverWorker = new Worker(new URL('./state-saver.worker.js?v=patch26', import.meta.url), { type: 'module' });
             this.stateSaverWorker.onmessage = () => { };
@@ -48,6 +49,7 @@ export class CanvasState {
         }
     }
     async _performLoad() {
+        this.lastLoadResult = null;
         try {
             if (!this.canvas.node.id) {
                 log.error("Node ID is not available for loading state from DB.");
@@ -77,10 +79,20 @@ export class CanvasState {
             }
             this.canvas.canvasLayers.updateOutputAreaSize(this.canvas.width, this.canvas.height, false);
             const loadedLayers = await this._loadLayers(savedState.layers);
+            const missing = loadedLayers.filter(layer => layer === null).length;
+            this.lastLoadResult = { ok: missing === 0, partial: missing > 0,
+                loadedLayers: loadedLayers.length - missing, missingLayers: missing };
             this.canvas.layers = loadedLayers.filter((l) => l !== null);
             await this.canvas.layerMasks.prepare(this.canvas.layers);
             this.canvas.updateSelectionAfterHistory();
             this.canvas.render();
+            this.canvas.canvasLayersPanel?.onLayersChanged();
+            if (missing) {
+                const message = 'Canvas partially restored: {loaded} layers loaded, {missing} images missing.';
+                showAlertNotification((window.LayerForgeI18n?.text(message) || message)
+                    .replace('{loaded}', String(this.canvas.layers.length)).replace('{missing}', String(missing)), 6000);
+                return false;
+            }
             return true;
         }
         catch (error) {
@@ -164,6 +176,7 @@ export class CanvasState {
         const imageId = generateUUID();
         saveImage(imageId, layerData.imageSrc)
             .then(() => {
+            this.canvas.imageReferenceManager?.registerCreatedImage(imageId);
             const newLayerData = { ...layerData, imageId };
             delete newLayerData.imageSrc;
             this._createLayerFromSrc(newLayerData, layerData.imageSrc, index, resolve);
@@ -217,6 +230,7 @@ export class CanvasState {
         }
     }
     async saveStateToDB() {
+        if (this.lastLoadResult?.partial) return;
         if (!this.canvas.node.id) {
             log.error("Node ID is not available for saving state to DB.");
             return;
@@ -235,12 +249,14 @@ If you see dark images or masks in the output, make sure node_id is set to ${cor
             }
         }
         const layers = await this._prepareLayers();
+        if (this.lastLoadResult?.partial) return;
         const state = {
             layers: layers.filter(layer => layer !== null),
             viewport: this.canvas.viewport,
             width: this.canvas.width,
             height: this.canvas.height,
             outputAreaBounds: this.canvas.outputAreaBounds,
+            imageReferences: Array.from(this.canvas.imageReferenceManager.collectAllUsedImageIds()),
         };
         if (this.stateSaverWorker) {
             this.stateSaverWorker.postMessage({
@@ -270,6 +286,8 @@ If you see dark images or masks in the output, make sure node_id is set to ${cor
                     newLayer.imageId = generateUUID();
                     const imageBitmap = await createImageBitmap(layer.image);
                     await saveImage(newLayer.imageId, imageBitmap);
+                    this.canvas.imageReferenceManager?.registerCreatedImage(newLayer.imageId);
+                    layer.imageId = newLayer.imageId;
                 }
             }
             else if (!layer.imageId) {
@@ -288,7 +306,7 @@ If you see dark images or masks in the output, make sure node_id is set to ${cor
             this.saveLayersState(replaceLast);
         }
     }
-    saveLayersState(replaceLast = false) {
+    saveLayersState(replaceLast = false, persist = true) {
         if (replaceLast && this.layersUndoStack.length > 0) {
             this.layersUndoStack.pop();
         }
@@ -306,6 +324,8 @@ If you see dark images or masks in the output, make sure node_id is set to ${cor
         }
         this.layersRedoStack = [];
         this.canvas.updateHistoryButtons();
+        if (!persist) return;
+        this.lastLoadResult = null;
         if (!this._debouncedSave) {
             this._debouncedSave = debounce(this.saveStateToDB.bind(this), 1000);
         }

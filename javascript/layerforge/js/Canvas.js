@@ -1,21 +1,21 @@
 // @ts-ignore
-import { api } from "/file=javascript/layerforge/js/api_shim.js?v=patch26";
-import { MaskTool } from "/file=javascript/layerforge/js/MaskTool.js?v=patch26";
-import { ShapeTool } from "/file=javascript/layerforge/js/ShapeTool.js?v=patch26";
-import { CustomShapeMenu } from "/file=javascript/layerforge/js/CustomShapeMenu.js?v=patch26";
-import { CanvasState } from "/gradio_api/file=javascript/layerforge/js/CanvasState.js?v=patch66";
-import { CanvasInteractions } from "/gradio_api/file=javascript/layerforge/js/CanvasInteractions.js?v=patch64";
-import { CanvasLayers } from "/gradio_api/file=javascript/layerforge/js/CanvasLayers.js?v=patch66";
-import { CanvasLayersPanel } from "/gradio_api/file=javascript/layerforge/js/CanvasLayersPanel.js?v=patch66";
-import { CanvasRenderer } from "/file=javascript/layerforge/js/CanvasRenderer.js?v=patch63";
-import { CanvasIO } from "/file=javascript/layerforge/js/CanvasIO.js?v=patch26";
-import { ImageReferenceManager } from "/file=javascript/layerforge/js/ImageReferenceManager.js?v=patch26";
-import { BatchPreviewManager } from "/file=javascript/layerforge/js/BatchPreviewManager.js?v=patch26";
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { debounce, createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
-import { MaskEditorIntegration } from "/gradio_api/file=javascript/layerforge/js/MaskEditorIntegration.js?v=patch64";
-import { CanvasSelection } from "/gradio_api/file=javascript/layerforge/js/CanvasSelection.js?v=patch66";
-import { LayerMasks } from "/gradio_api/file=javascript/layerforge/js/LayerMasks.js?v=patch2";
+import { api } from "./api_shim.js?v=patch26";
+import { MaskTool } from "./MaskTool.js?v=patch26";
+import { ShapeTool } from "./ShapeTool.js?v=patch26";
+import { CustomShapeMenu } from "./CustomShapeMenu.js?v=patch26";
+import { CanvasState } from "./CanvasState.js?v=patch66";
+import { CanvasInteractions } from "./CanvasInteractions.js?v=patch64";
+import { CanvasLayers } from "./CanvasLayers.js?v=patch66";
+import { CanvasLayersPanel } from "./CanvasLayersPanel.js?v=patch66";
+import { CanvasRenderer } from "./CanvasRenderer.js?v=patch63";
+import { CanvasIO } from "./CanvasIO.js?v=patch26";
+import { ImageReferenceManager } from "./ImageReferenceManager.js?v=patch26";
+import { BatchPreviewManager } from "./BatchPreviewManager.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { debounce, createCanvas } from "./utils/CommonUtils.js?v=patch26";
+import { MaskEditorIntegration } from "./MaskEditorIntegration.js?v=patch64";
+import { CanvasSelection } from "./CanvasSelection.js?v=patch66";
+import { LayerMasks } from "./LayerMasks.js?v=patch2";
 const useChainCallback = (original, next) => {
     if (original === undefined || original === null) {
         return next;
@@ -218,12 +218,13 @@ export class Canvas {
     async loadInitialState() {
         log.info("Loading initial state for node:", this.node.id);
         const loaded = await this.canvasState.loadStateFromDB();
-        if (!loaded) {
+        const partial = this.canvasState.lastLoadResult?.partial === true;
+        if (!loaded && !partial) {
             log.info("No saved state found, initializing from node data.");
             await this.canvasIO.initNodeData();
         }
 
-        if (this.layers.length === 0) {
+        if (this.layers.length === 0 && !partial) {
             const hasImageInput = this.node.inputs && this.node.inputs[0] && this.node.inputs[0].link;
             if (hasImageInput) {
                 log.info("Canvas is empty after initialization but has input connected. Triggering auto-import.");
@@ -235,7 +236,8 @@ export class Canvas {
             }
         }
 
-        this.saveState();
+        if (partial) this.canvasState.saveLayersState(false, false);
+        else this.saveState();
         this.render();
         // Dodaj to wywołanie, aby panel renderował się po załadowaniu stanu
         if (this.canvasLayersPanel) {

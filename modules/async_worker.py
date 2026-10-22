@@ -450,18 +450,23 @@ class AsyncTask:
         self.cn_tasks = {x: [] for x in [*ip_list, cn_color]}
         self.cn_task_num = 0
         cn_items = args.pop()
+        cn_slots = list(enumerate(cn_items, 1))
+        self.moss_reference_slots = {}
         if self.params_backend.get('task_method') == 'krea2_aio_cn':
             # Other presets retain their hidden upload slots when switching to Krea2.
-            cn_items = cn_items[:1]
+            cn_slots = cn_slots[:1]
         elif self.params_backend.get('task_method') == 'moss_image_sft_aio_cn':
-            cn_items = [item for item in cn_items[:2] if item[3] in ('Depth', cn_color)
+            cn_slots = [(slot, item) for slot, item in cn_slots[:4] if item[3] in ('ImagePrompt', 'Depth', cn_color)
                         and item[1] > 0 and item[2] != 0]
             self.mixing_image_prompt_and_vary_upscale = False
             self.mixing_image_prompt_and_inpaint = False
-        for cn_item in cn_items:
+        for slot, cn_item in cn_slots:
             (cn_img, cn_stop, cn_weight, cn_type) = cn_item
             if cn_img is not None:
-                self.cn_tasks[cn_type].append([cn_img, cn_stop, cn_weight])
+                task = [cn_img, cn_stop, cn_weight]
+                self.cn_tasks[cn_type].append(task)
+                if self.params_backend.get('task_method') == 'moss_image_sft_aio_cn':
+                    self.moss_reference_slots[id(task)] = slot
                 self.cn_task_num += 1
 
         self.debugging_dino = args.pop()
@@ -1766,6 +1771,8 @@ def worker():
                 # https://github.com/tencent-ailab/IP-Adapter/blob/d580c50a291566bbf9fc7ac0f760506607297e6d/README.md?plain=1#L75
                 cn_img = resize_image(cn_img, width=224, height=224, resize_mode=0)
                 task[0] = ip_adapter.preprocess(cn_img, ip_adapter_path=ip_adapter_path)
+            elif async_task.task_method == 'moss_image_sft_aio_cn':
+                task[0] = cn_img
             else:
                 task[0] = resize_image(cn_img, min_side=1024, resize_mode=3)
             if async_task.debugging_cn_preprocessor:
@@ -3063,6 +3070,8 @@ def worker():
                     if async_task.skipping_cn_preprocessor:
                         async_task.params_backend['i2i_skip_preprocessors'] = True
                     def push_cn_task(i, task, cn_type):
+                        if async_task.task_method == 'moss_image_sft_aio_cn':
+                            i = async_task.moss_reference_slots[id(task)]
                         cn_img, cn_stop, cn_weight = task
                         input_images.set_image(f'i2i_ip_image{i}', cn_img)
                         async_task.params_backend[f'i2i_ip_fn{i}'] = cn_type

@@ -29,14 +29,14 @@ def check_model_availability():
         return {
             "available": False,
             "reason": "not_downloaded",
-            "message": "The SAM3 model needs to be downloaded. This will happen automatically when you first use the feature (requires internet connection).",
+            "message": "SAM3.1 is missing. Install it through model management or the current preset model downloads before retrying.",
             "model_path": ckpt_path or "",
         }
     except Exception as e:
         return {"available": False, "reason": "error", "message": str(e)}
 
 
-def process_sam3_image_mask(image_data_url, positive_points=None, negative_points=None, threshold=0.3, fill_holes=False, mask_threshold=0.4, close_radius=1):
+def process_sam3_image_mask(image_data_url, positive_points=None, negative_points=None, threshold=None, fill_holes=False, mask_threshold=0.5, close_radius=1):
     _ensure_project_root_on_path()
     import enhanced.sam3_image_mask as sam3_image_mask
 
@@ -44,10 +44,10 @@ def process_sam3_image_mask(image_data_url, positive_points=None, negative_point
         image_data_url=image_data_url,
         positive_points=positive_points,
         negative_points=negative_points,
-        threshold=float(threshold),
+        threshold=threshold,
         fill_holes=bool(fill_holes),
-        mask_threshold=float(mask_threshold),
-        close_radius=int(close_radius),
+        mask_threshold=mask_threshold,
+        close_radius=close_radius,
     )
 
 

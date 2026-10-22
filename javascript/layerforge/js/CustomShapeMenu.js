@@ -1,5 +1,5 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { addStylesheet, getUrl } from "/file=javascript/layerforge/js/utils/ResourceManager.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { addStylesheet, getUrl } from "./utils/ResourceManager.js?v=patch26";
 const log = createModuleLogger('CustomShapeMenu');
 export class CustomShapeMenu {
     constructor(canvas) {

@@ -3774,7 +3774,9 @@ def _resource_key_hits(
 ) -> int:
     query_text = _text(query, 12000).casefold()
     raw_query_text = _text(query, 12000)
-    query_tokens = _turn_tokens(query_text)
+    query_tokens = _turn_tokens(
+        raw_query_text if case_sensitive else query_text, case_sensitive=case_sensitive,
+    )
     hits = 0
     for key in _clean_string_list(keys, MAX_WORLD_BOOK_KEYS):
         if use_regex:
@@ -3782,7 +3784,7 @@ def _resource_key_hits(
                 flags = 0 if case_sensitive else re.IGNORECASE
                 if re.search(key, raw_query_text, flags):
                     hits += 1
-                    continue
+                continue
             except re.error:
                 pass
         normalized = key if case_sensitive else key.casefold()
@@ -3798,7 +3800,7 @@ def _resource_key_hits(
             elif normalized in haystack:
                 hits += 1
                 continue
-        key_tokens = _turn_tokens(normalized)
+        key_tokens = _turn_tokens(normalized, case_sensitive=case_sensitive)
         if key_tokens and key_tokens.issubset(query_tokens):
             hits += 1
     return hits
@@ -11426,10 +11428,14 @@ def _canonical_turn_text(value: Any) -> str:
     return text
 
 
-def _turn_tokens(value: Any) -> set[str]:
-    text = _text(value, 4000).lower()
+def _turn_tokens(value: Any, *, case_sensitive: bool = False) -> set[str]:
+    text = _text(value, 4000)
+    pattern = r"[^\W_\u3400-\u9fff]+|[\u3400-\u9fff]"
+    if not case_sensitive:
+        text = text.lower()
+        pattern = r"[a-z0-9]+|[\u3400-\u9fff]"
     # Keep Chinese characters as individual tokens and Latin words as words.
-    return set(re.findall(r"[a-z0-9]+|[\u3400-\u9fff]", text))
+    return set(re.findall(pattern, text))
 
 
 def turn_text_similarity(left: Any, right: Any) -> float:
@@ -12553,8 +12559,14 @@ def _safe_child(root: Path, *parts: str) -> Path:
 def _atomic_write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
+    try:
+        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def save_roleplay_session(session: Any, user_did: Any = "", root: Any = None) -> dict[str, Any]:

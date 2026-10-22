@@ -2,7 +2,7 @@
  * ErrorHandler - Centralna obsługa błędów
  * Eliminuje powtarzalne wzorce obsługi błędów w całym projekcie
  */
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
 const log = createModuleLogger('ErrorHandler');
 /**
  * Typy błędów w aplikacji

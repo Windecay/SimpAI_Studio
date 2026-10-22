@@ -1,5 +1,5 @@
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { withErrorHandling, createValidationError } from "/file=javascript/layerforge/js/ErrorHandler.js?v=patch26";
+import { createModuleLogger } from "./LoggerUtils.js?v=patch26";
+import { withErrorHandling, createValidationError } from "../ErrorHandler.js?v=patch26";
 const log = createModuleLogger('MaskUtils');
 export function new_editor(app) {
     if (!app)

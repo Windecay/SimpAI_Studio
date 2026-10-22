@@ -162,6 +162,16 @@
             return activeProject?.id === nextProject.id && (loaded || activeProject === nextProject);
         }
 
+        function currentStorageScopeKey() {
+            return call('getStorageKey', call('getStorageBaseKey', '', []), call('getStorageScope', {}, []));
+        }
+
+        function isCurrentProjectRequest(project, projectId, scopeKey) {
+            return call('getCurrentProject', null, []) === project
+                && project.id === projectId
+                && currentStorageScopeKey() === scopeKey;
+        }
+
         function clearBrowserCache() {
             const storage = call('getStorage', null);
             try {
@@ -189,9 +199,15 @@
         async function clearProjectFileWithConfirm() {
             const confirmed = call('confirm', false, t('Clear the current project file? This resets the canvas project under the user directory.', '清空当前项目文件？这会把用户目录下的画布项目重置为空。'));
             if (!confirmed) return false;
+            const currentProject = call('getCurrentProject', {}, []);
+            const projectId = currentProject.id;
+            const updatedAt = currentProject.updated_at;
+            const scopeKey = currentStorageScopeKey();
             const result = await call('sendCanvasProjectClearRequest', null, {
                 project_id: call('getCurrentProjectId', '', [])
             });
+            if (!isCurrentProjectRequest(currentProject, projectId, scopeKey)
+                || currentProject.updated_at !== updatedAt) return false;
             if (!result || !result.ok) {
                 call('showToast', null, t('Failed to clear project file{error}', '清空项目文件失败{error}')
                     .replace('{error}', result && result.error ? `: ${result.error}` : ''));
@@ -443,9 +459,18 @@
 
         async function importWorkbenchProjectFromFile(file, options) {
             try {
+                const currentProject = call('getCurrentProject', {}, []);
+                const currentId = currentProject.id;
+                const scopeKey = currentStorageScopeKey();
                 const raw = await call('readFileAsText', null, file);
+                if (!isCurrentProjectRequest(currentProject, currentId, scopeKey)) return false;
                 const incoming = extractWorkbenchProjectJson(raw);
-                await call('saveProject', null, true, { persist: false });
+                const cachedCurrent = await call('saveProject', false, true, { persist: false });
+                if (!isCurrentProjectRequest(currentProject, currentId, scopeKey)) return false;
+                if (!cachedCurrent) {
+                    call('showToast', null, t('Current workbench could not be saved to browser cache; import cancelled.', '当前工作台无法保存到浏览器缓存，已取消导入。'));
+                    return false;
+                }
                 const nextProjectId = importedProjectId(incoming, file);
                 const storageScope = call('getStorageScope', {}, []);
                 call('setActiveBrowserCacheProject', null, nextProjectId, storageScope);
@@ -457,16 +482,21 @@
                 call('resetRenderedProjectDomCache', null);
                 call('resetSelectionState', null);
                 call('resetHistory', null);
-                call('saveProjectToBrowserCache', null);
+                const cached = call('saveProjectToBrowserCache', false);
                 call('renderAll', null);
                 call('resetGalleryFrostReveals', null);
                 if (options?.persist) {
-                    await call('saveProject', null, false, { persist: true, backupExisting: false });
-                } else {
+                    const saved = await call('saveProject', false, false, { persist: true, backupExisting: false });
+                    if (!isCurrentProjectRequest(nextProject, nextProjectId, scopeKey)) return false;
+                    return !!saved;
+                } else if (cached) {
                     call('showToast', null, t('Imported {name} into browser cache', '已将 {name} 导入浏览器缓存')
                         .replace('{name}', file?.name || 'workbench JSON'));
+                } else {
+                    call('showToast', null, t('Imported {name}, but browser cache save failed; the current workbench is unsaved.', '已导入 {name}，但浏览器缓存保存失败；当前工作台尚未保存。')
+                        .replace('{name}', file?.name || 'workbench JSON'));
                 }
-                return true;
+                return !!cached;
             } catch (error) {
                 call('warn', null, '[SimpAI Canvas] failed to import workbench JSON:', error);
                 call('showToast', null, t('Import failed: {error}', '导入失败：{error}')

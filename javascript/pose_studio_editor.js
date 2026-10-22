@@ -2,6 +2,7 @@
     'use strict';
 
     const UTILS = window.SimpAICanvasWorkbenchUtils || {};
+    const studioEndpointUrl = UTILS.studioEndpointUrl || (url => url);
     const API = window.SimpAICanvasWorkbenchApi || {};
     const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
     const t = UTILS.t || ((en, cn) => {
@@ -10,7 +11,9 @@
     });
 
     let activeModal = null;
+    let openSequence = 0;
     let poseViewerCorePromise = null;
+    const poseViewerModules = new Map();
     let handPresetsPromise = null;
     let sceneBridgeAttached = false;
     const POSE_VIEWER_CORE_VERSION = 'simpai-pose-camera-20261011-1';
@@ -24,8 +27,14 @@
         return modal?.dataset?.poseStudioContext || '';
     }
 
+    function studioAssetUrl(value) {
+        const src = String(value || '');
+        return /^\/(?:file=|gradio_api\/file=)/.test(src) ? studioEndpointUrl(src) : src;
+    }
+
     function closeActiveModal(expectedContext) {
         if (expectedContext && activeModal && modalContext(activeModal) !== expectedContext) return false;
+        ++openSequence;
         if (activeModal && typeof activeModal.__poseStudioCleanup === 'function') {
             try {
                 activeModal.__poseStudioCleanup();
@@ -38,24 +47,44 @@
         return true;
     }
 
+    function loadPoseViewerModule(name, version = POSE_VIEWER_CORE_VERSION) {
+        const previous = poseViewerModules.get(name);
+        if (previous?.promise) return previous.promise;
+        const attempt = (previous?.attempt || 0) + 1;
+        const retry = attempt > 1 ? `&retry=${attempt}` : '';
+        const promise = import(studioEndpointUrl(`/pose-studio/vendor/${name}?v=${version}${retry}`))
+            .catch(error => {
+                if (poseViewerModules.get(name)?.promise === promise) poseViewerModules.set(name, { attempt });
+                throw error;
+            });
+        poseViewerModules.set(name, { attempt, promise });
+        return promise;
+    }
+
     function loadPoseViewerCore() {
         if (!poseViewerCorePromise) {
-            poseViewerCorePromise = Promise.all([
-                import(`/pose-studio/vendor/vnccs_pose_studio_core.js?v=${POSE_VIEWER_CORE_VERSION}`),
-                import(`/pose-studio/vendor/vnccs_pose_scene.js?v=${POSE_VIEWER_CORE_VERSION}`),
-                import(`/pose-studio/vendor/simpai_pose_spatial_view.js?v=${POSE_VIEWER_CORE_VERSION}-grey-20261011`),
-                import(`/pose-studio/vendor/simpai_pose_regions.js?v=${POSE_VIEWER_CORE_VERSION}`)
-            ]).then(([core, scene, spatial, regions]) => ({ ...core, ...scene, ...spatial, ...regions }));
+            const promise = Promise.all([
+                loadPoseViewerModule('vnccs_pose_studio_core.js'),
+                loadPoseViewerModule('vnccs_pose_scene.js'),
+                loadPoseViewerModule('simpai_pose_spatial_view.js', `${POSE_VIEWER_CORE_VERSION}-grey-20261011`),
+                loadPoseViewerModule('simpai_pose_regions.js')
+            ]).then(([core, scene, spatial, regions]) => ({ ...core, ...scene, ...spatial, ...regions }))
+                .catch(error => {
+                    if (poseViewerCorePromise === promise) poseViewerCorePromise = null;
+                    throw error;
+                });
+            poseViewerCorePromise = promise;
         }
         return poseViewerCorePromise;
     }
 
     function loadHandPresets() {
         if (!handPresetsPromise) {
-            handPresetsPromise = import(`/pose-studio/vendor/vnccs_hand_presets.js?v=${POSE_VIEWER_CORE_VERSION}`)
+            handPresetsPromise = loadPoseViewerModule('vnccs_hand_presets.js')
                 .then((module) => module?.HAND_PRESETS || null)
                 .catch((err) => {
                     console.warn('[SimpAI Pose Studio] hand presets unavailable:', err);
+                    handPresetsPromise = null;
                     return null;
                 });
         }
@@ -168,7 +197,7 @@
     }
 
     async function imageSrcToDataUrl(src) {
-        const value = String(src || '');
+        const value = studioAssetUrl(src);
         if (!value) return '';
         if (value.startsWith('data:image/')) return value;
         try {
@@ -204,7 +233,7 @@
     }
 
     function readImageSize(src) {
-        const value = String(src || '');
+        const value = studioAssetUrl(src);
         if (!value) return Promise.resolve(null);
         return new Promise((resolve) => {
             const image = new Image();
@@ -274,7 +303,7 @@
         const status = host?.querySelector?.('[data-pose-studio-scene-status]');
         const thumb = host?.querySelector?.('[data-pose-studio-scene-thumb]');
         const image = response?.pose_image || response?.asset_ref || {};
-        const src = image.preview_url || image.data_url || '';
+        const src = studioAssetUrl(image.preview_url || image.data_url || '');
         if (status) status.textContent = message || t('Pose image ready', '姿势图已就绪');
         if (thumb) {
             if (src) {
@@ -346,9 +375,12 @@
     }
 
     async function openScenePresetBridge() {
+        closeActiveModal();
+        const openingSequence = openSequence;
         refreshSceneBridgeFlow();
         const state = safeJsonParse(readBridgeValue('pose_studio_scene_state'), {});
         const reference = await readSceneReference();
+        if (openingSequence !== openSequence) return null;
         const outputSlot = sceneOutputSlot();
         if (outputSlot === 'scene_canvas_image' && sceneBridgeConfig().pose_studio_reference_slots?.includes('scene_input_image1') && !reference.dataUrl) {
             updateSceneBridgePreview(null, t('Upload the character original to Image 2 first. Image 1 accepts your pose image after that.', '请先将人物原图上传到图2，再准备图1的姿势图或打开 Pose Studio。'));
@@ -424,18 +456,16 @@
 
     function poseStudioResourceStatusText(response) {
         if (!response) return t('Pose Studio status unavailable.', 'Pose Studio 状态不可用。');
-        const parts = [response.message || (response.available ? t('Pose Studio resources are ready.', 'Pose Studio 资源已就绪。') : t('Pose Studio resources are incomplete.', 'Pose Studio 资源不完整。'))];
+        const parts = [response.available ? t('Pose Studio resources are ready.', 'Pose Studio 资源已就绪。') : t('Pose Studio resources are incomplete.', 'Pose Studio 资源不完整。')];
         const sam3d = response.sam3d || {};
         if (sam3d.dependency_error) {
             parts.push(t('SAM3D runtime dependencies are missing or incompatible.', 'SAM3D 运行依赖缺失或不兼容。'));
         } else if (sam3d.person_detector_ready === false) {
-            parts.push(t('Person detector is missing. Install the Pose Studio model package (37).', '缺少人物检测模型，请安装 Pose Studio 模型包（37）。'));
+            parts.push(t('Person detector is missing. Install it through model management, then retry.', '缺少人物检测模型，请通过模型管理安装后重试。'));
         } else if (sam3d.ready) {
             parts.push(t('SAM3D pose parser models are ready.', 'SAM3D 姿势解析模型已就绪。'));
-        } else if (sam3d.auto_download) {
-            parts.push(t('SAM3D models are missing; first Parse will download them automatically.', 'SAM3D 模型未完整安装；首次解析会自动下载。'));
         } else {
-            parts.push(t('SAM3D models are missing.', 'SAM3D 模型缺失。'));
+            parts.push(t('SAM3D models are missing. Install them through model management, then retry.', '缺少 SAM3D 模型，请通过模型管理安装后重试。'));
         }
         return parts.filter(Boolean).join(' ');
     }
@@ -919,7 +949,7 @@
                 drawFallbackPose(ctx, canvas.width, canvas.height);
                 resolve(false);
             };
-            img.src = src;
+            img.src = studioAssetUrl(src);
         });
     }
 
@@ -930,7 +960,7 @@
         }
         return rows.map((item) => `
 <div class="sai-pose-studio-pose" role="button" tabindex="0" data-pose-id="${escapeHtml(item.id || item.relative_path || '')}" title="${escapeHtml(item.name || '')}">
-  <span>${item.preview_url ? `<img src="${escapeHtml(item.preview_url)}" alt="" loading="lazy">` : '<i class="fa-solid fa-person-walking"></i>'}</span>
+  <span>${item.preview_url ? `<img src="${escapeHtml(studioAssetUrl(item.preview_url))}" alt="" loading="lazy">` : '<i class="fa-solid fa-person-walking"></i>'}</span>
   <b>${escapeHtml(item.name || '')}</b>
   ${item.can_delete ? `<em class="sai-pose-studio-pose-actions">
     <button type="button" data-pose-library-action="rename" title="${escapeHtml(t('Rename', '重命名'))}"><i class="fa-solid fa-pen"></i></button>
@@ -1001,10 +1031,15 @@
 
     async function open(options) {
         closeActiveModal();
+        const openingSequence = openSequence;
         options = options || {};
         const canvasSize = await resolveInitialCanvasSize(options);
+        if (openingSequence !== openSequence) return null;
         const theme = call(options, 'detectTheme') || detectPageTheme();
         const modal = document.createElement('div');
+        let closed = false;
+        let exportRequestId = 0;
+        const isCurrent = () => !closed && openingSequence === openSequence && activeModal === modal && modal.isConnected;
         modal.className = 'sai-canvas-modal sai-pose-studio-modal';
         modal.dataset.poseStudioContext = options.context || (options.projectId === 'scene-preset' ? 'scene_preset' : 'canvas');
         modal.classList.toggle('theme-dark', theme !== 'light');
@@ -1257,13 +1292,14 @@
         let toeBaseRotations = {};
 
         const setStatus = (message, failed) => {
-            if (!status) return;
+            if (!isCurrent() || !status) return;
             status.textContent = message || '';
             status.classList.toggle('is-error', !!failed);
             if (busyActive && busyText && message) busyText.textContent = message;
         };
 
         const setBusy = (message, active = true) => {
+            if (!isCurrent()) return;
             busyActive = !!active;
             modal.classList.toggle('is-busy', busyActive);
             if (busyEl) busyEl.hidden = !busyActive;
@@ -1274,7 +1310,9 @@
             controlSliders.forEach(slider => { slider.disabled = busyActive || !viewerReady; });
             modal.querySelectorAll('[data-pose-studio-action]').forEach((button) => {
                 const action = button.getAttribute('data-pose-studio-action') || '';
-                button.disabled = busyActive && action !== 'status';
+                button.disabled = action === 'export'
+                    ? busyActive || !viewerReady || usingFallbackCanvas
+                    : busyActive && action !== 'status';
             });
             handSliders.forEach((slider) => {
                 slider.disabled = busyActive || !viewerReady || !handPresets || !activeHandSide;
@@ -1370,7 +1408,7 @@
         };
 
         const persistEditorState = (extra = {}) => {
-            if (personScene?.loading) return editorState;
+            if (!isCurrent() || personScene?.loading) return editorState;
             editorState = Object.assign({}, editorState, extra, {
                 mesh_params: Object.assign({}, meshParams),
                 export_params: Object.assign({}, exportParams),
@@ -1578,10 +1616,12 @@
         };
 
         const activateHandSide = async (side, flash = true) => {
+            if (!isCurrent()) return false;
             if (side !== 'l' && side !== 'r') return false;
             activeHandSide = side;
             if (!handPresets) {
                 handPresets = await loadHandPresets();
+                if (!isCurrent()) return false;
             }
             if (viewerReady && viewer && handPresets) {
                 calibrateHandSliderDefaults(side);
@@ -2055,6 +2095,7 @@
         };
 
         const reloadCharacterPreview = async () => {
+            if (!isCurrent()) return false;
             if (!viewerReady || !viewer || typeof API.poseStudioCharacterPreview !== 'function') {
                 persistEditorState();
                 return false;
@@ -2067,7 +2108,7 @@
             setStatus(t('Updating character...', '正在更新角色...'), false);
             try {
                 const response = await API.poseStudioCharacterPreview(meshParams);
-                if (requestId !== meshUpdateRequestId) return false;
+                if (!isCurrent() || requestId !== meshUpdateRequestId) return false;
                 if (!response?.ok && !response?.vertices) {
                     setStatus(response?.details || response?.error || t('Character update failed.', '角色更新失败。'), true);
                     return false;
@@ -2089,12 +2130,12 @@
                 setStatus(t('Character updated.', '角色已更新。'), false);
                 return true;
             } catch (err) {
-                if (requestId === meshUpdateRequestId) {
+                if (isCurrent() && requestId === meshUpdateRequestId) {
                     setStatus(err?.message || t('Character update failed.', '角色更新失败。'), true);
                 }
                 return false;
             } finally {
-                if (requestId === meshUpdateRequestId) {
+                if (isCurrent() && requestId === meshUpdateRequestId) {
                     meshUpdatePending = false;
                     personSelect.disabled = busyActive;
                 }
@@ -2171,10 +2212,11 @@
 
         const startImportStatusPolling = (taskId) => {
             stopImportStatusPolling();
-            if (!taskId || typeof API.poseStudioImportStatus !== 'function') return;
+            if (!isCurrent() || !taskId || typeof API.poseStudioImportStatus !== 'function') return;
             importPollTimer = window.setInterval(() => {
+                if (!isCurrent()) return stopImportStatusPolling();
                 API.poseStudioImportStatus({ task_id: taskId }).then((response) => {
-                    if (!response?.ok) return;
+                    if (!isCurrent() || !response?.ok) return;
                     const progress = Number(response.progress || 0);
                     const message = response.message || t('Parsing reference pose...', '正在解析参考姿势...');
                     setStatus(`${message}${Number.isFinite(progress) ? ` ${Math.round(progress)}%` : ''}`, response.status === 'error');
@@ -2194,7 +2236,7 @@
         const updateReferenceBackground = (src) => {
             if (!referenceBg) return;
             if (src) {
-                referenceBg.src = src;
+                referenceBg.src = studioAssetUrl(src);
                 referenceBg.hidden = false;
             } else {
                 referenceBg.removeAttribute('src');
@@ -2203,7 +2245,7 @@
         };
 
         const applyPoseToViewer = (data, preserveCamera = true) => {
-            if (!viewerReady || !viewer || !data || typeof data !== 'object') return false;
+            if (!isCurrent() || !viewerReady || !viewer || !data || typeof data !== 'object') return false;
             const pose = Array.isArray(data.poses) ? (data.poses[0] || {}) : data;
             try {
                 if (pose.bones || pose.modelRotation || pose.ikEffectorPositions) {
@@ -2249,6 +2291,7 @@
         };
 
         const drawCurrentReference = async () => {
+            if (!isCurrent()) return false;
             const src = currentReferenceSrc();
             if (viewerReady && viewer) {
                 updateReferenceBackground(src);
@@ -2309,15 +2352,23 @@
         }, true);
 
         const loadPersonScene = async (data) => {
+            if (!isCurrent()) return;
             if (!viewerReady || !personScene) throw new Error(t('Pose viewer is unavailable.', '姿势编辑器尚未就绪。'));
             ++meshUpdateRequestId;
             if (meshUpdateTimer) window.clearTimeout(meshUpdateTimer);
             meshUpdateTimer = null;
             meshUpdatePending = false;
             await personScene.load(data, meshParams,
-                params => API.poseStudioCharacterPreview(params),
-                (pose, params) => API.poseStudioRenderOverlay({ pose_data: pose, body_preset: { body_params: params }, pose_adjust: 0.0 })
+                params => {
+                    if (!isCurrent()) throw new Error('Pose editor is closed.');
+                    return API.poseStudioCharacterPreview(params);
+                },
+                (pose, params) => {
+                    if (!isCurrent()) throw new Error('Pose editor is closed.');
+                    return API.poseStudioRenderOverlay({ pose_data: pose, body_preset: { body_params: params }, pose_adjust: 0.0 });
+                }
             );
+            if (!isCurrent()) return;
             if (!data.projection) {
                 Object.assign(exportParams, { cam_zoom: 1, cam_distance: 1, cam_offset_x: 0, cam_offset_y: 0, cam_yaw_deg: 0, cam_pitch_deg: 0 });
             }
@@ -2326,7 +2377,7 @@
         };
 
         const loadReferenceFile = async (file) => {
-            if (!file) return;
+            if (!isCurrent() || !file) return;
             if (file.type && !String(file.type).startsWith('image/')) {
                 setStatus(t('Please choose an image file.', '请选择图片文件。'), true);
                 return;
@@ -2334,7 +2385,9 @@
             setBusy(t('Loading reference image...', '正在载入参考图...'), true);
             try {
                 const dataUrl = await readFileAsDataUrl(file);
+                if (!isCurrent()) return;
                 const size = await readImageSize(dataUrl);
+                if (!isCurrent()) return;
                 referenceDataUrl = dataUrl;
                 regionSelector?.clear();
                 referenceSrc = dataUrl;
@@ -2350,16 +2403,18 @@
                     applyCameraToViewer(true);
                 }
                 referenceDrawn = await drawCurrentReference();
+                if (!isCurrent()) return;
                 setStatus(t('Reference image loaded. Click Parse to extract the pose.', '参考图已载入。点击解析提取姿势。'), false);
             } catch (err) {
                 setStatus(err?.message || t('Reference load failed.', '参考图载入失败。'), true);
             } finally {
                 setBusy('', false);
-                if (referenceFileInput) referenceFileInput.value = '';
+                if (isCurrent() && referenceFileInput) referenceFileInput.value = '';
             }
         };
 
         const renderSAMOverlayForPose = async (rawPose, options = {}) => {
+            if (!isCurrent()) return { ok: false, mesh: null };
             if (!viewerReady || !viewer || typeof viewer.setSAMMeshOverlayData !== 'function') return { ok: false, mesh: null };
             if (!rawPose || typeof rawPose !== 'object' || typeof API.poseStudioRenderOverlay !== 'function') return { ok: false, mesh: null };
             const fitToOverlay = options.fitToOverlay !== false;
@@ -2374,7 +2429,7 @@
                     },
                     pose_adjust: 0.0
                 });
-                if (!response?.ok || !response.mesh) return { ok: false, mesh: null };
+                if (!isCurrent() || !response?.ok || !response.mesh) return { ok: false, mesh: null };
                 const ok = viewer.setSAMMeshOverlayData(response.mesh, rawPose,
                     options.restoreCamera ? editorState.sam3d_overlay_frame : null);
                 if (ok && typeof viewer.setSAMMeshOverlayVisible === 'function') {
@@ -2434,7 +2489,7 @@
         };
 
         const captureCurrentImage = () => {
-            if (viewerReady && viewer && typeof viewer.capture === 'function') {
+            if (!usingFallbackCanvas && viewerReady && viewer && typeof viewer.capture === 'function') {
                 const width = Number(exportParams.view_width) || 1024;
                 const height = Number(exportParams.view_height) || 1024;
                 const bg = Array.isArray(exportParams.bg_color) ? exportParams.bg_color : [255, 255, 255];
@@ -2459,15 +2514,7 @@
                 }
                 if (captured) return captured;
             }
-            const sourceCanvas = usingFallbackCanvas ? fallbackCanvas : viewerCanvas;
-            if (usingFallbackCanvas && !exportReferenceBackground) {
-                const offscreen = document.createElement('canvas');
-                offscreen.width = sourceCanvas.width || Number(exportParams.view_width) || 1024;
-                offscreen.height = sourceCanvas.height || Number(exportParams.view_height) || 1024;
-                drawFallbackPose(offscreen.getContext('2d'), offscreen.width, offscreen.height);
-                return offscreen.toDataURL('image/png');
-            }
-            return sourceCanvas.toDataURL('image/png');
+            throw new Error(t('Pose viewer is unavailable.', '姿势编辑器尚未就绪。'));
         };
 
         const disposeViewer = () => {
@@ -2491,6 +2538,9 @@
         };
 
         modal.__poseStudioCleanup = () => {
+            closed = true;
+            ++exportRequestId;
+            ++meshUpdateRequestId;
             stopImportStatusPolling();
             if (meshUpdateTimer) {
                 window.clearTimeout(meshUpdateTimer);
@@ -2505,6 +2555,7 @@
         };
 
         const initializeViewer = async () => {
+            if (!isCurrent()) return false;
             if (!viewerCanvas || typeof API.poseStudioCharacterPreview !== 'function') {
                 showFallbackCanvas(true);
                 return false;
@@ -2517,6 +2568,7 @@
                     loadHandPresets(),
                     API.poseStudioCharacterPreview(meshParams)
                 ]);
+                if (!isCurrent()) return false;
                 handPresets = loadedHandPresets;
                 cameraGestures = { cameraKeyboardAction, cameraRotationPatch, cameraWheelPatch };
                 if (!PoseViewerCore) throw new Error('PoseViewerCore export is unavailable.');
@@ -2555,7 +2607,13 @@
                     },
                     onError: (err) => console.warn('[SimpAI Pose Studio] viewer error:', err)
                 });
-                await viewer.init();
+                const initializingViewer = viewer;
+                try {
+                    await initializingViewer.init();
+                } finally {
+                    if (!isCurrent()) initializingViewer.dispose?.();
+                }
+                if (!isCurrent()) return false;
                 viewer.loadData(modelData, true);
                 personScene = new PoseScene(viewer);
                 personScene.meshData = modelData;
@@ -2580,21 +2638,25 @@
                 applyClientMeshControls();
                 showFallbackCanvas(false);
                 await drawCurrentReference();
+                if (!isCurrent()) return false;
                 const initialScene = editorState.person_scene || (poseData.format === 'simpai_pose_scene' ? poseData : null);
                 if (initialScene) {
                     await loadPersonScene(initialScene);
+                    if (!isCurrent()) return false;
                     setStatus(t('Stored scene loaded.', '已载入上次的多人场景。'), false);
                     return true;
                 }
                 const initialPoseState = storedPoseForEditing(poseData, editorState);
                 const initialPose = initialPoseState.pose || {};
                 const appliedInitialPose = applyPoseToViewer(initialPose, true);
+                if (hasStoredPose(initialPose) && !appliedInitialPose) throw new Error(t('Pose viewer is unavailable.', '姿势编辑器尚未就绪。'));
                 const rawStoredPose = hasStoredPose(editorState.sam3d_pose_data) ? editorState.sam3d_pose_data : null;
                 if (appliedInitialPose && rawStoredPose) {
                     const overlayResult = await renderSAMOverlayForPose(rawStoredPose, {
                         fitToOverlay: initialPoseState.source === 'sam3d_pose_data',
                         restoreCamera: initialPoseState.source !== 'sam3d_pose_data'
                     });
+                    if (!isCurrent()) return false;
                     let restoredCamera = false;
                     if (overlayResult.ok && exportParams.samApplyCamera) {
                         if (editorState.sam3d_projection_frame && initialPoseState.source !== 'sam3d_pose_data') {
@@ -2611,14 +2673,17 @@
                 }
                 syncControlValues();
                 await activateHandSide(activeHandSide, false);
+                if (!isCurrent()) return false;
                 activateToeSide(activeToeSide);
                 setStatus(appliedInitialPose ? t('Stored pose loaded.', '已载入上次姿态。') : t('PoseViewerCore ready.', 'PoseViewerCore 已就绪。'), false);
                 return true;
             } catch (err) {
+                if (!isCurrent()) return false;
                 console.warn('[SimpAI Pose Studio] PoseViewerCore init failed, using fallback canvas:', err);
                 disposeViewer();
                 showFallbackCanvas(true);
                 await drawReference(ctx, fallbackCanvas, currentReferenceSrc());
+                if (!isCurrent()) return false;
                 setStatus(err?.message || t('PoseViewerCore unavailable, using fallback canvas.', 'PoseViewerCore 不可用，已使用降级画布。'), true);
                 return false;
             } finally {
@@ -2627,9 +2692,10 @@
         };
 
         const refreshLibrary = async () => {
-            if (!libraryList || typeof API.poseStudioLibraryList !== 'function') return;
+            if (!isCurrent() || !libraryList || typeof API.poseStudioLibraryList !== 'function') return;
             libraryList.innerHTML = `<div class="sai-pose-studio-empty">${escapeHtml(t('Loading...', '加载中...'))}</div>`;
             const response = await API.poseStudioLibraryList({ limit: 240 });
+            if (!isCurrent()) return;
             if (!response?.ok) {
                 libraryList.innerHTML = `<div class="sai-pose-studio-empty">${escapeHtml(response?.error || t('Load failed.', '加载失败。'))}</div>`;
                 return;
@@ -2638,8 +2704,9 @@
         };
 
         const loadPose = async (poseId) => {
-            if (!poseId || typeof API.poseStudioLibraryGet !== 'function') return;
+            if (!isCurrent() || !poseId || typeof API.poseStudioLibraryGet !== 'function') return;
             const response = await API.poseStudioLibraryGet({ id: poseId });
+            if (!isCurrent()) return;
             if (!response?.ok) {
                 setStatus(response?.error || t('Pose load failed.', '姿势加载失败。'), true);
                 return;
@@ -2650,8 +2717,11 @@
                 setBusy(t('Loading pose scene...', '正在载入姿势场景...'), true);
                 try {
                     await loadPersonScene(poseData);
+                    if (!isCurrent()) return;
                     setStatus(response.name || poseId, false);
                 } catch (err) {
+                    if (!isCurrent()) return;
+                    showFallbackCanvas(true);
                     setStatus(err.message, true);
                 } finally {
                     setBusy('', false);
@@ -2660,16 +2730,23 @@
             }
             if (!applyPoseToViewer(poseData, true)) {
                 drawFallbackPose(ctx, fallbackCanvas.width, fallbackCanvas.height);
+                showFallbackCanvas(true);
+                setBusy('', false);
+                setStatus(t('Pose viewer is unavailable.', '姿势编辑器尚未就绪。'), true);
+                return;
             }
+            showFallbackCanvas(false);
+            setBusy('', false);
             setStatus(response.name || poseId, false);
         };
 
         const renameLibraryPose = async (poseId) => {
-            if (!poseId || typeof API.poseStudioLibraryRename !== 'function') return;
+            if (!isCurrent() || !poseId || typeof API.poseStudioLibraryRename !== 'function') return;
             const currentName = poseId.split('/').pop()?.replace(/\.[^.]+$/, '') || '';
             const nextName = window.prompt(t('Rename pose', '重命名姿势'), currentName);
             if (!nextName || nextName.trim() === currentName) return;
             const response = await API.poseStudioLibraryRename({ id: poseId, name: nextName.trim() });
+            if (!isCurrent()) return;
             if (!response?.ok) {
                 setStatus(response?.details || response?.error || t('Pose rename failed.', '姿势重命名失败。'), true);
                 return;
@@ -2686,9 +2763,10 @@
         };
 
         const deleteLibraryPose = async (poseId) => {
-            if (!poseId || typeof API.poseStudioLibraryDelete !== 'function') return;
+            if (!isCurrent() || !poseId || typeof API.poseStudioLibraryDelete !== 'function') return;
             if (!window.confirm(t('Delete this saved pose?', '删除这个已保存姿势？'))) return;
             const response = await API.poseStudioLibraryDelete({ id: poseId });
+            if (!isCurrent()) return;
             if (!response?.ok) {
                 setStatus(response?.details || response?.error || t('Pose delete failed.', '姿势删除失败。'), true);
                 return;
@@ -2705,6 +2783,7 @@
         };
 
         const parseReference = async () => {
+            if (!isCurrent() || busyActive) return;
             if (typeof API.poseStudioImportReference !== 'function') {
                 setStatus('Pose Studio import API is not loaded.', true);
                 return;
@@ -2749,10 +2828,13 @@
             startImportStatusPolling(taskId);
             try {
                 const response = await API.poseStudioImportReference(payload);
+                if (!isCurrent()) return;
                 stopImportStatusPolling();
                 if (!response?.ok) {
                     setStatus(response?.error_code === 'no_people_detected'
                         ? t('No person detected; reconstruction has not started. Select people manually, then parse again.', '未检测到人物，尚未重建。请框选目标人物后再次解析。')
+                        : response?.error_code === 'resource_missing'
+                            ? t('SAM3D models are missing. Install them through model management, then retry.', '缺少 SAM3D 模型，请通过模型管理安装后重试。')
                         : (response?.details || response?.error || t('Pose import failed.', '姿势解析失败。')), true);
                     return;
                 }
@@ -2769,7 +2851,9 @@
                 const limitText = personLimitStatusText(response);
                 if (rawPoseData.format === 'simpai_pose_scene') {
                     await loadPersonScene(rawPoseData);
+                    if (!isCurrent()) return;
                     referenceDrawn = await drawCurrentReference();
+                    if (!isCurrent()) return;
                     setStatus(limitText || `${t('People parsed:', '已解析人物：')}${personScene.people.length}${t('. Select a person to edit; export includes everyone.', '。选择人物分别编辑，导出时包含所有人。')}`, false);
                     return;
                 }
@@ -2779,10 +2863,17 @@
                 syncPeopleControl();
                 const summary = poseDataSummary(rawPoseData);
                 const appliedToViewer = applyPoseToViewer(rawPoseData, true);
+                showFallbackCanvas(!appliedToViewer);
+                if (!appliedToViewer) {
+                    setStatus(t('Pose viewer is unavailable.', '姿势编辑器尚未就绪。'), true);
+                    return;
+                }
                 const overlayResult = appliedToViewer ? await renderSAMOverlayForPose(rawPoseData) : { ok: false, mesh: null };
+                if (!isCurrent()) return;
                 const frameFitResult = appliedToViewer ? applySAM3DFrameCameraParams(rawPoseData, overlayResult.mesh || null) : { applied: false };
                 const frameFitReady = !!frameFitResult.applied;
                 referenceDrawn = await drawCurrentReference();
+                if (!isCurrent()) return;
                 const viewerText = appliedToViewer ? t(' Applied to mannequin.', ' 已应用到人偶。') : '';
                 const overlayText = overlayResult.ok ? t(' Overlay ready.', ' 对照网格已就绪。') : '';
                 const frameText = frameFitReady
@@ -2798,6 +2889,7 @@
         };
 
         const savePoseToLibrary = async () => {
+            if (!isCurrent()) return;
             if (typeof API.poseStudioLibrarySave !== 'function') {
                 setStatus('Pose Studio library save API is not loaded.', true);
                 return;
@@ -2823,6 +2915,7 @@
                 editor_state: editorState,
                 preview_data_url: previewDataUrl
             });
+            if (!isCurrent()) return;
             if (!response?.ok) {
                 setStatus(response?.details || response?.error || t('Pose save failed.', '姿势保存失败。'), true);
                 return;
@@ -2837,6 +2930,7 @@
         };
 
         const exportPose = async () => {
+            if (!isCurrent() || busyActive) return;
             if (typeof API.poseStudioExport !== 'function') {
                 setStatus('Pose Studio API is not loaded.', true);
                 return;
@@ -2856,6 +2950,7 @@
                 }
             }
             persistCameraParams();
+            const requestId = ++exportRequestId;
             const response = await API.poseStudioExport({
                 project_id: options.projectId || 'default',
                 node_id: options.node?.id || options.nodeId || '',
@@ -2868,12 +2963,13 @@
                 }),
                 reference_asset: referenceAsset || null,
             });
+            if (!isCurrent() || requestId !== exportRequestId) return;
             if (!response?.ok) {
                 setStatus(response?.details || response?.error || t('Export failed.', '导出失败。'), true);
                 return;
             }
             call(options, 'onConfirm', response);
-            closeActiveModal();
+            if (isCurrent()) closeActiveModal();
         };
 
         controlSliders.forEach((slider) => {
@@ -2976,6 +3072,7 @@
         });
 
         modal.addEventListener('click', (evt) => {
+            if (!isCurrent()) return;
             if (evt.target === modal || evt.target.closest('[data-pose-studio-close]')) {
                 closeActiveModal();
                 call(options, 'onClose');
@@ -3084,6 +3181,7 @@
 
         showFallbackCanvas(true);
         const initialReferencePromise = drawReference(ctx, fallbackCanvas, currentReferenceSrc()).then((ok) => {
+            if (!isCurrent()) return false;
             referenceDrawn = !!ok;
             setStatus(ok
                 ? (autoParseOnOpen ? t('Reference loaded. Preparing pose parser...', '参考图已载入，正在准备姿势解析...') : t('Reference loaded.', '参考图已载入。'))
@@ -3093,7 +3191,7 @@
         const viewerReadyPromise = initializeViewer();
         refreshLibrary();
         Promise.allSettled([initialReferencePromise, viewerReadyPromise]).then(() => {
-            if (autoParseOnOpen) parseReference();
+            if (isCurrent() && autoParseOnOpen) parseReference();
         });
         return modal;
     }

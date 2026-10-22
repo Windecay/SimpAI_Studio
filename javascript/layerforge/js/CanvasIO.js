@@ -1,8 +1,9 @@
-import { createCanvas } from "/file=javascript/layerforge/js/utils/CommonUtils.js?v=patch26";
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { showErrorNotification, showSuccessNotification } from "/file=javascript/layerforge/js/utils/NotificationUtils.js?v=patch26";
-import { webSocketManager } from "/file=javascript/layerforge/js/utils/WebSocketManager.js?v=patch26";
-import { scaleImageToFit, createImageFromSource, tensorToImageData, createImageFromImageData } from "/file=javascript/layerforge/js/utils/ImageUtils.js?v=patch26";
+import { createCanvas } from "./utils/CommonUtils.js?v=patch26";
+import { api } from "./api_shim.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { showErrorNotification, showSuccessNotification } from "./utils/NotificationUtils.js?v=patch26";
+import { webSocketManager } from "./utils/WebSocketManager.js?v=patch26";
+import { scaleImageToFit, createImageFromSource, tensorToImageData, createImageFromImageData } from "./utils/ImageUtils.js?v=patch26";
 const log = createModuleLogger('CanvasIO');
 export class CanvasIO {
     constructor(canvas) {
@@ -124,7 +125,7 @@ export class CanvasIO {
                 formDataWithoutMask.append("image", blobWithoutMask, fileNameWithoutMask);
                 formDataWithoutMask.append("overwrite", "true");
                 try {
-                    const response = await fetch("/upload/image", {
+                    const response = await api.fetchApi("/upload/image", {
                         method: "POST",
                         body: formDataWithoutMask,
                     });
@@ -143,7 +144,7 @@ export class CanvasIO {
                 formData.append("image", blob, fileName);
                 formData.append("overwrite", "true");
                 try {
-                    const resp = await fetch("/upload/image", {
+                    const resp = await api.fetchApi("/upload/image", {
                         method: "POST",
                         body: formData,
                     });
@@ -159,7 +160,7 @@ export class CanvasIO {
                             maskFormData.append("image", maskBlob, maskFileName);
                             maskFormData.append("overwrite", "true");
                             try {
-                                const maskResp = await fetch("/upload/image", {
+                                const maskResp = await api.fetchApi("/upload/image", {
                                     method: "POST",
                                     body: maskFormData,
                                 });
@@ -388,7 +389,7 @@ export class CanvasIO {
                                     // Clear the lastLoadedImageSrc to force reload
                                     this.canvas.lastLoadedImageSrc = undefined;
                                     // Clear backend data to force fresh load
-                                    fetch(`/layerforge/clear_input_data/${nodeId}`, { method: 'POST' })
+                                    api.fetchApi(`/layerforge/clear_input_data/${nodeId}`, { method: 'POST' })
                                         .then(() => log.debug("Backend input data cleared due to image change"))
                                         .catch(err => log.error("Failed to clear backend data:", err));
                                 }
@@ -601,7 +602,7 @@ export class CanvasIO {
                 return;
             }
 
-            const response = await fetch(`/layerforge/get_input_data/${nodeId}`);
+            const response = await api.fetchApi(`/layerforge/get_input_data/${nodeId}`);
             const result = await response.json();
             if (result.success && result.has_input) {
                 // Dedupe: skip only if backend payload matches last loaded batch hash
@@ -772,28 +773,6 @@ export class CanvasIO {
         }, 500); // Shorter delay for mask data retry
     }
 
-    async importLatestImage() {
-        log.info("[DEBUG] Manual import requested.");
-        try {
-            // Check if running in iframe (Gradio mode) - More robust check
-            const inIframe = window.self !== window.top;
-            const hasApiUrl = window.location.search.includes("api_url");
-            
-            log.info(`[DEBUG] Environment check: inIframe=${inIframe}, hasApiUrl=${hasApiUrl}, href=${window.location.href}`);
-
-            if (inIframe || hasApiUrl) {
-                log.info(`[DEBUG] Running in iframe, sending REQUEST_INPUT message`);
-                window.parent.postMessage({ type: 'REQUEST_INPUT' }, '*');
-                return;
-            }
-            
-            log.info("[DEBUG] Not in iframe, proceeding with backend check");
-            await this.checkForInputData('manual_import', true, true);
-        } catch (error) {
-            log.error("[DEBUG] Error importing latest image:", error);
-            showErrorNotification("导入输入失败: " + error.message);
-        }
-    }
     scheduleDataCheck() {
         if (this.canvas.pendingDataCheck) {
             clearTimeout(this.canvas.pendingDataCheck);
@@ -932,7 +911,7 @@ export class CanvasIO {
     async importLatestImages(sinceTimestamp, targetArea = null) {
         try {
             log.info(`Fetching latest images since ${sinceTimestamp}...`);
-            const response = await fetch(`/layerforge/get-latest-images/${sinceTimestamp}`);
+            const response = await api.fetchApi(`/layerforge/get-latest-images/${sinceTimestamp}`);
             const result = await response.json();
             if (result.success && result.images && result.images.length > 0) {
                 log.info(`Received ${result.images.length} new images, adding to canvas.`);

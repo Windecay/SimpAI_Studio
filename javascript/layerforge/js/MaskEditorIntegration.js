@@ -1,11 +1,11 @@
-import { api } from "/file=javascript/layerforge/js/api_shim.js?v=patch26";
-import { app } from "/file=javascript/layerforge/js/comfy_shim.js?v=patch26";
-import { createModuleLogger } from "/file=javascript/layerforge/js/utils/LoggerUtils.js?v=patch26";
-import { showErrorNotification } from "/file=javascript/layerforge/js/utils/NotificationUtils.js?v=patch26";
-import { processImageToMask } from "/file=javascript/layerforge/js/utils/MaskProcessingUtils.js?v=patch26";
-import { convertToImage } from "/file=javascript/layerforge/js/utils/ImageUtils.js?v=patch26";
-import { updateNodePreview } from "/file=javascript/layerforge/js/utils/PreviewUtils.js?v=patch26";
-import { layerForgeMaskEditor } from "/gradio_api/file=javascript/layerforge/js/LayerForgeMaskEditor.js?v=patch64";
+import { api } from "./api_shim.js?v=patch26";
+import { app } from "./comfy_shim.js?v=patch26";
+import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
+import { showErrorNotification } from "./utils/NotificationUtils.js?v=patch26";
+import { processImageToMask } from "./utils/MaskProcessingUtils.js?v=patch26";
+import { convertToImage } from "./utils/ImageUtils.js?v=patch26";
+import { updateNodePreview } from "./utils/PreviewUtils.js?v=patch26";
+import { layerForgeMaskEditor } from "./LayerForgeMaskEditor.js?v=patch64";
 
 const log = createModuleLogger('MaskEditorIntegration');
 

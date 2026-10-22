@@ -112,6 +112,7 @@ export function getStateSignature(layers) {
             zIndex: layer.zIndex,
             blendMode: layer.blendMode || 'normal',
             opacity: layer.opacity !== undefined ? Math.round(layer.opacity * 100) / 100 : 1,
+            visible: layer.visible !== false,
             flipH: !!layer.flipH,
             flipV: !!layer.flipV
         };

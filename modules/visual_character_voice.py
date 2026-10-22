@@ -5,6 +5,7 @@ import threading
 import uuid
 
 from modules import visual_character_library as library
+from modules.access_mode import user_can_generate
 
 
 LANGUAGES = ("Auto", "Chinese", "English", "Japanese", "Korean")
@@ -51,7 +52,9 @@ def style_context(character):
     )
 
 
-def expand_style(character, expand=None):
+def expand_style(character, expand=None, *, user_did=None):
+    if not user_can_generate(user_did or ""):
+        return {"ok": False, "error": "generation_not_allowed"}
     context = style_context(character)
     if expand is None:
         from enhanced.vlm import VLM, vlm

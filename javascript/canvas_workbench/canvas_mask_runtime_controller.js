@@ -21,6 +21,17 @@
         };
         const showToast = message => call(runtimeSource, 'showToast', undefined, message);
         const mutate = () => call(runtimeSource, 'mutate', undefined);
+        const requests = new WeakMap();
+
+        function inputSource(node, project) {
+            const edge = (project.edges || []).find(item => item.type === 'image' && item.to === node.id && item.slot === 'source');
+            return call(nodeSource, 'getNode', null, node.input_node_id) || call(nodeSource, 'getNode', null, edge?.from);
+        }
+
+        function inputKey(node, project) {
+            const edge = (project.edges || []).find(item => item.type === 'image' && item.to === node.id && item.slot === 'source');
+            return JSON.stringify([node.input_node_id || '', edge?.from || '']);
+        }
 
         async function runMaskNode(node) {
             if (!node || node.type !== 'mask') return { ok: false, error: 'Advanced Masking node is unavailable' };
@@ -29,8 +40,7 @@
                 return { ok: false, error: 'mask node is skipped' };
             }
             const project = call(projectSource, 'getProject', {}) || {};
-            const edge = (project.edges || []).find(item => item.type === 'image' && item.to === node.id && item.slot === 'source');
-            const source = call(nodeSource, 'getNode', null, node.input_node_id) || call(nodeSource, 'getNode', null, edge?.from);
+            const source = inputSource(node, project);
             if (!source || !['image', 'result'].includes(source.type)) {
                 showToast(t('Connect a source image/result node first.', '请先连接源图像 / 结果节点。'));
                 return { ok: false, error: 'Connect a source image/result node first.' };
@@ -47,15 +57,43 @@
                 inputNodeId: source.id,
                 status: call(stateSource, 'buildMaskStatus', {}, 'running', t('Generating mask...', '正在生成遮罩...'))
             }));
+            const runningStatus = node.status;
             mutate();
-            const response = await call(requestSource, 'sendCanvasGenerateMaskRequest', null, {
-                project_id: project.id || call(projectSource, 'getProjectId', ''),
-                node_id: node.id,
-                asset_source: call(serializationSource, 'serializeAssetSourceForRun', null, source),
-                params: call(serializationSource, 'cloneRunValue', {}, node.params || {}, {})
-            });
+            const request = {};
+            requests.set(node, request);
+            const params = call(serializationSource, 'cloneRunValue', {}, node.params || {}, {});
+            const serializedSource = call(serializationSource, 'serializeAssetSourceForRun', null, source);
+            const paramsKey = JSON.stringify(params);
+            const sourceKey = JSON.stringify(serializedSource);
+            const connectionKey = inputKey(node, project);
+            const requestProjectId = project.id || call(projectSource, 'getProjectId', '');
+            let response, latest;
+            try {
+                response = await call(requestSource, 'sendCanvasGenerateMaskRequest', null, {
+                    project_id: requestProjectId,
+                    node_id: node.id,
+                    asset_source: serializedSource,
+                    params
+                });
+            } finally {
+                latest = requests.get(node) === request;
+                if (latest) requests.delete(node);
+            }
             const current = call(nodeSource, 'getNode', null, node.id);
             if (!current) return response || { ok: false, error: 'mask node was removed' };
+            if (!latest || current !== node || call(projectSource, 'getProject', null) !== project
+                || (project.id || call(projectSource, 'getProjectId', '')) !== requestProjectId) return response;
+            if (inputSource(node, project) !== source || inputKey(node, project) !== connectionKey
+                || JSON.stringify(node.params || {}) !== paramsKey
+                || JSON.stringify(call(serializationSource, 'serializeAssetSourceForRun', null, source)) !== sourceKey) {
+                if (current.status === runningStatus && response && !response.aborted && !response.transport_error) {
+                    Object.assign(current, call(stateSource, 'buildMaskStatePatch', {}, current, {
+                        status: call(stateSource, 'buildMaskStatus', {}, 'idle', t('The generation settings changed. Please submit again.', null))
+                    }));
+                    mutate();
+                }
+                return response;
+            }
             if (response?.ok) {
                 const mask = response.mask || {};
                 const assetRef = response.asset_ref || {};
@@ -72,7 +110,7 @@
                     asset: generatedAsset,
                     sourcePatch: {
                         source_node_id: source.id,
-                        mask_model: current.params?.mask_model || ''
+                        mask_model: params.mask_model || ''
                     },
                     status: call(stateSource, 'buildMaskStatus', {}, 'finished', t('Mask generated.', '遮罩已生成。'))
                 }));

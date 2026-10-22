@@ -2,8 +2,8 @@
  * LoggerUtils - Centralizacja inicjalizacji loggerów
  * Eliminuje powtarzalny kod inicjalizacji loggera w każdym module
  */
-import { logger, LogLevel } from "/file=javascript/layerforge/js/logger.js?v=patch26";
-import { LOG_LEVEL } from '/file=javascript/layerforge/js/config.js?v=patch26';
+import { logger, LogLevel } from "../logger.js?v=patch26";
+import { LOG_LEVEL } from '../config.js?v=patch26';
 /**
  * Tworzy obiekt loggera dla modułu z predefiniowanymi metodami
  * @param {string} moduleName - Nazwa modułu

@@ -167,7 +167,7 @@ def _resolve_asset_file_path(asset, project_id, state_params):
     root, _ = _asset_root(project_id, state_params)
     for key in ("asset_relative_path", "relative_path"):
         candidate = _project_asset_path_from_relative(asset.get(key), root)
-        if candidate and os.path.exists(candidate):
+        if candidate and _source_path_is_readable(candidate, project_id, state_params):
             return candidate
     for key in ("path", "output_path", "original_output_path"):
         value = str(asset.get(key) or "").strip()
@@ -175,21 +175,61 @@ def _resolve_asset_file_path(asset, project_id, state_params):
             continue
         if os.path.isabs(value):
             candidate = os.path.abspath(value)
-            if os.path.exists(candidate):
+            if _source_path_is_readable(candidate, project_id, state_params):
                 return candidate
+            if os.path.exists(candidate):
+                continue
             basename = os.path.basename(candidate)
             if basename:
                 for dirpath, _, filenames in os.walk(root):
                     if basename in filenames:
-                        return os.path.abspath(os.path.join(dirpath, basename))
+                        recovered = os.path.abspath(os.path.join(dirpath, basename))
+                        if _source_path_is_readable(recovered, project_id, state_params):
+                            return recovered
             continue
         candidate = _project_asset_path_from_relative(value, root)
-        if candidate and os.path.exists(candidate):
+        if candidate and _source_path_is_readable(candidate, project_id, state_params):
             return candidate
     asset_id_path = _resolve_asset_id_file_path(asset.get("asset_id"), root)
     if asset_id_path:
         return asset_id_path
     return ""
+
+
+def _source_path_is_readable(path, project_id, state_params):
+    from modules.access_mode import is_local_mode
+
+    if not path:
+        return False
+    if is_local_mode():
+        return os.path.isfile(path)
+    root, user_did = _asset_root(project_id, state_params)
+    catalog = os.path.dirname(root)
+    workspace = os.path.dirname(os.path.dirname(catalog))
+    roots = [catalog]
+    for name in ("outputs", "vlm_roleplay", "presets/characters"):
+        try:
+            directory = shared.token.get_path_in_user_dir(user_did, name)
+        except Exception:
+            directory = os.path.join(workspace, name)
+        if directory:
+            roots.append(directory)
+    try:
+        candidate = os.path.normcase(os.path.realpath(os.path.abspath(path)))
+        for directory in roots:
+            allowed_root = os.path.normcase(os.path.realpath(os.path.abspath(directory)))
+            if os.path.commonpath([allowed_root, candidate]) == allowed_root:
+                return os.path.isfile(candidate)
+    except (OSError, ValueError, TypeError):
+        pass
+    return False
+
+
+def resolve_readable_asset_path(asset, project_id, state_params):
+    """Resolve input media using server identity, never reference ownership fields."""
+    if not isinstance(asset, dict):
+        return ""
+    return _resolve_asset_file_path(asset, project_id, state_params)
 
 
 def _decode_data_url(data_url):
@@ -850,6 +890,7 @@ def _materialize_node_asset(project_id, state_params, source):
     elif (
         asset.get("path")
         or asset.get("output_path")
+        or asset.get("original_output_path")
         or asset.get("asset_relative_path")
         or asset.get("relative_path")
         or _asset_id_digest(asset.get("asset_id"))

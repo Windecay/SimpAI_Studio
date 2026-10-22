@@ -239,6 +239,7 @@
         "_meta": {"title": "MOSS Main Image Control"},
         "inputs": {
             "model": ["13", 0], "positive": ["4", 0], "negative": ["5", 0], "vae": ["21", 0],
+            "clip": ["simpai_lora_stack_main", 1], "prompt": ["simpai_moss_pe", 0], "negative_prompt": ["728", 1],
             "width": ["728", 2], "height": ["728", 3],
             "reference_1": ["aio_ref_config_1", 0], "reference_2": ["aio_ref_config_2", 0],
             "reference_3": ["aio_ref_config_3", 0], "reference_4": ["aio_ref_config_4", 0]
