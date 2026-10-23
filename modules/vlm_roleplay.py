@@ -12583,16 +12583,9 @@ def roleplay_user_root(user_did: Any = "", root: Any = None) -> Path:
 
 
 def roleplay_character_library_root(user_did: Any = "", root: Any = None) -> Path:
-    safe_did = _id(user_did, "guest")
-    if root:
-        base = Path(root)
-    else:
-        try:
-            import shared
-            base = Path(getattr(shared, "path_userhome", None) or "users")
-        except Exception:
-            base = Path("users")
-    return base / safe_did / "presets" / "characters"
+    from modules.character_storage import library_root
+
+    return library_root(user_did, root)
 
 
 def _safe_child(root: Path, *parts: str) -> Path:
@@ -12603,16 +12596,9 @@ def _safe_child(root: Path, *parts: str) -> Path:
 
 
 def _atomic_write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(temporary, path)
-    finally:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
+    from modules.character_storage import atomic_json
+
+    atomic_json(path, value)
 
 
 def save_roleplay_session(session: Any, user_did: Any = "", root: Any = None) -> dict[str, Any]:
@@ -12753,9 +12739,14 @@ def delete_roleplay_branch(
 
 
 def save_roleplay_character(character: Any, user_did: Any = "", root: Any = None) -> dict[str, Any]:
+    from modules.character_storage import snapshot
+
     card = default_character_card(character)
     library_root = roleplay_character_library_root(user_did, root)
     path = _safe_child(library_root, f"{card['id']}.json")
+    if path.exists():
+        snapshot(path, json.loads(path.read_text(encoding="utf-8-sig")))
+    snapshot(path, card)
     _atomic_write_json(path, card)
     return card
 
@@ -12806,9 +12797,12 @@ def delete_roleplay_character(
     user_did: Any = "",
     root: Any = None,
 ) -> bool:
+    from modules.character_storage import snapshot
+
     library_root = roleplay_character_library_root(user_did, root)
     path = _safe_child(library_root, f"{_id(character_id, 'character')}.json")
     try:
+        snapshot(path, json.loads(path.read_text(encoding="utf-8-sig")))
         path.unlink()
     except FileNotFoundError:
         return False

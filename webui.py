@@ -18331,7 +18331,37 @@ async def describe_image_visual_characters_endpoint(action: str, request: Reques
                 payload.get("asset_id"), payload.get("start"), payload.get("end"), user_did)}
         if action == "list":
             return {"ok": True, "characters": visual_character_library.list_characters(
-                user_did, str(payload.get("category") or "audiovisual"))}
+                user_did, str(payload.get("category") or "audiovisual")),
+                "storage": visual_character_library.library_status(user_did)}
+        if action in {"import-preview", "import", "export", "recovery-preview", "recover",
+                      "backup-preview", "backup-import", "backup-export"}:
+            from modules import visual_character_archive
+            if action == "backup-preview":
+                return {"ok": True, **visual_character_archive.preview_backup(
+                    payload.get("character_id"), payload.get("backup_id"), user_did)}
+            if action == "backup-import":
+                return {"ok": True, **visual_character_archive.import_backup(
+                    payload.get("character_id"), payload.get("backup_id"), user_did,
+                    allow_missing_media=payload.get("allow_missing_media") is True)}
+            if action == "backup-export":
+                return {"ok": True, "archive": visual_character_archive.export_backup(
+                    payload.get("character_id"), payload.get("backup_id"), user_did)}
+            if action == "export":
+                return {"ok": True, "archive": visual_character_archive.export_character(
+                    payload.get("character_id"), user_did)}
+            if action == "recovery-preview":
+                _, preview = visual_character_archive.recovery_preview(
+                    payload.get("character_id"), user_did)
+                return {"ok": True, **preview}
+            if action == "recover":
+                return {"ok": True, **visual_character_archive.recover_character(
+                    payload.get("character_id"), user_did,
+                    allow_missing_media=payload.get("allow_missing_media") is True)}
+            if action == "import-preview":
+                return {"ok": True, **visual_character_archive.preview_import(payload.get("archive"), user_did)}
+            return {"ok": True, **visual_character_archive.import_character(
+                payload.get("archive"), user_did,
+                allow_missing_media=payload.get("allow_missing_media") is True)}
         if action == "save":
             return {"ok": True, "character": visual_character_library.save_character(
                 payload.get("character"), user_did)}
@@ -18357,6 +18387,11 @@ async def describe_image_visual_characters_endpoint(action: str, request: Reques
 
     try:
         result = await run_in_threadpool(perform)
+    except visual_character_library.CharacterMediaUnavailable as error:
+        return JSONResponse({"ok": False, "error": str(error), "missing_media": error.missing_media},
+                            status_code=400)
+    except OSError:
+        return JSONResponse({"ok": False, "error": "character_storage_error"}, status_code=500)
     except (ValueError, TypeError) as error:
         code = str(error)
         return JSONResponse({"ok": False, "error": code},

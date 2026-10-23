@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import filecmp
+import importlib
 import importlib.metadata as importlib_metadata
 import importlib.util
 import json
@@ -349,10 +350,20 @@ def install_package_with_retry(
 ) -> bool:
     install_spec = _package_install_spec(pkg_name, pkg_version, version_specifier)
     install_description = description or f"更新包 {install_spec} / Update package {install_spec}"
-    return pip_install_with_retry(
+    success = pip_install_with_retry(
         ["install", "-U", install_spec],
         description=install_description,
     )
+    if not success:
+        return False
+    importlib.invalidate_caches()
+    if _package_requirement_met(pkg_name, pkg_version, version_specifier):
+        return True
+    print(
+        f"Package verification failed after pip completed: required={install_spec}, "
+        f"installed_metadata={_installed_package_versions(pkg_name)!r}"
+    )
+    return False
 
 
 def is_nvidia_cuda_runtime() -> bool:

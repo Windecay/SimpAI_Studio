@@ -5,6 +5,7 @@ import json
 import platform
 import re
 import hashlib
+import importlib
 from importlib import metadata as importlib_metadata
 from packaging import specifiers as packaging_specifiers
 from packaging import version as packaging_version
@@ -172,11 +173,21 @@ def _package_install_spec(pkg_name, pkg_version=None, version_specifier=None):
 
 def install_package_with_retry(pkg_name, pkg_version=None, description=None, version_specifier=None):
     install_spec = _package_install_spec(pkg_name, pkg_version, version_specifier)
-    return install_with_routing(
+    success = install_with_routing(
         ["install", "-U", install_spec],
         primary_url=index_url, extra_url=extra_index_url, python=python,
         env=_make_pip_env(), description=description or install_spec, emit=logger.info,
     )
+    if not success:
+        return False
+    importlib.invalidate_caches()
+    if _package_requirement_met(pkg_name, pkg_version, version_specifier):
+        return True
+    logger.error(
+        "Package verification failed after pip completed: required=%s, installed_metadata=%r",
+        install_spec, _installed_package_versions(pkg_name),
+    )
+    return False
 
 def ensure_online_translation_runtime():
     return ensure_translator_runtime(

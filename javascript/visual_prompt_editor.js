@@ -34,6 +34,29 @@
         const filename = mediaFilename(asset.preview_url || asset.path);
         return !!filename && filename === mediaFilename(ref.preview_url || ref.preview);
     }
+    function addUploadedMedia(card, asset, replaceIndex = null) {
+        const kind = String(asset?.mime || '').split('/')[0];
+        if (!asset?.asset_id || !['image', 'audio'].includes(kind)) throw new Error('unsupported_media_type');
+        const media = card.media || [];
+        if (replaceIndex !== null && (!Number.isInteger(replaceIndex) || !media[replaceIndex])) throw new Error('asset_not_found');
+        const previous = replaceIndex === null ? null : media[replaceIndex];
+        if (previous && String(previous.mime || '').split('/')[0] !== kind) throw new Error('media_kind_mismatch');
+        const next = media.slice(), ref = { ...clone(asset), unavailable: false };
+        const index = replaceIndex ?? next.findIndex(item => item.asset_id === ref.asset_id);
+        if (index >= 0) next[index] = ref;
+        else next.push(ref);
+        const seen = new Set(), unique = next.filter(item => {
+            if (seen.has(item.asset_id)) return false;
+            seen.add(item.asset_id); return true;
+        });
+        if (unique.filter(item => item.mime?.startsWith('image/')).length > 9) throw new Error('too_many_images');
+        if (unique.filter(item => item.mime?.startsWith('audio/')).length > 3) throw new Error('too_many_audios');
+        card.media = unique; card.media_ids = unique.map(item => item.asset_id);
+        if (kind === 'image' && (!card.image_source_asset_id || card.image_source_asset_id === previous?.asset_id)) {
+            card.image_mode = 'reference'; card.image_source_asset_id = asset.asset_id;
+        }
+        return !!previous;
+    }
     function sourceIdentity(item) {
         if (String(item.preview || '').startsWith('waveform:')) return '';
         if (item.asset_id) return String(item.asset_id);
@@ -144,9 +167,10 @@
         return output + escape(value.slice(offset));
     }
     async function request(action, payload, state) {
-        const controller = /^(voice|image)-/.test(action) || action === 'resolve' ? new AbortController() : null;
-        const timer = controller && root.setTimeout(() => controller.abort(),
-            action === 'resolve' || /-(poll|stop)$/.test(action) ? 15000 : 120000);
+        const controller = new AbortController();
+        const timer = root.setTimeout(() => controller.abort(),
+            action === 'resolve' || /-(poll|stop)$/.test(action) ? 15000
+                : /^(voice|image|backup)-/.test(action) || ['import', 'import-preview', 'export', 'recover', 'recovery-preview'].includes(action) ? 120000 : 30000);
         try {
             const response = await fetch(studioEndpointUrl(`/describe-image/visual-characters/${action}`), {
                 method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
@@ -159,12 +183,14 @@
                     ? 'character_image_service_outdated' : result.error || `HTTP ${response.status}`;
                 const error = new Error(code);
                 error.status = response.status;
+                error.missing_media = result.missing_media;
                 throw error;
             }
             return result;
         } catch (error) {
             if (error.name === 'AbortError') throw new Error(action === 'resolve' ? 'media_request_timeout'
-                : action.startsWith('image-') ? 'image_request_timeout' : 'voice_request_timeout');
+                : action.startsWith('image-') ? 'image_request_timeout'
+                    : action.startsWith('voice-') ? 'voice_request_timeout' : 'character_request_timeout');
             throw error;
         } finally {
             if (timer) root.clearTimeout(timer);
@@ -432,6 +458,7 @@
         if (active) return active.host;
         const state = options.langState || root.simpleaiTopbarSystemParams || {};
         const t = (en, cn) => text(state, en, cn);
+        const tr = key => language(state) ? key : root.localization?.[key] || key;
         let inventory = options.inventory || {};
         let refs = references(inventory);
         let value = String(options.value || '');
@@ -441,6 +468,7 @@
         if (targets.length) value = targetValues[targetId] || '';
         let bindings = normalizeBindings(options.bindings);
         let cards = [], draft = null, dirty = false, busy = false, composing = false;
+        let storage = null, pendingImport = null;
         let listRequestVersion = 0, saveRequestVersion = 0, librarySaving = false;
         let usingCard = '';
         let rawMode = false, savedSelection = { start: value.length, end: value.length }, mentionStart = null;
@@ -452,6 +480,7 @@
         let imageMessage = '';
         let imagePresets = [], imagePresetsLoading = false, imagePresetsLoaded = false;
         let imagePresetsTask = null;
+        let pendingUpload = null;
         const previousFocus = document.activeElement;
         const host = document.createElement('div');
         host.className = 'sai-vpe-backdrop';
@@ -460,11 +489,15 @@
 <header><strong>${escape(t('Characters & prompts', '角色与提示词'))}</strong><div class="sai-vpe-actions">${root.SimpAIStudioHelp?.button('character_cards') || ''}${button('undo', 'rotate-left', t('Undo', '撤销'))}${button('redo', 'rotate-right', t('Redo', '重做'))}${button('close', 'xmark', t('Close', '关闭'))}</div></header>
 <div class="sai-vpe-body"><aside class="sai-vpe-library">
 <div class="sai-vpe-actions"><strong>${escape(t('Character library', '角色库'))}</strong>${button('new', 'plus', t('New audiovisual character', '新建视听角色'))}${button('refresh', 'arrows-rotate', t('Refresh', '刷新'))}</div>
+<div class="sai-vpe-actions"><button type="button" data-vpe-action="import-card">${escape(tr('Import character'))}</button><button type="button" data-vpe-action="recovery">${escape(t('Backups & recovery', '备份与恢复'))}</button></div>
+<input type="file" data-vpe-import accept=".json,application/json" hidden>
+<div data-vpe-storage class="sai-vpe-storage" hidden></div>
 <select data-vpe-category aria-label="${escape(t('Category', '分类'))}"><option value="audiovisual">${escape(t('Audiovisual', '视听创作'))}</option><option value="roleplay">${escape(t('Roleplay', '角色扮演'))}</option><option value="all">${escape(t('All', '全部'))}</option></select>
 <input type="search" data-vpe-search aria-label="${escape(t('Search characters', '搜索角色'))}" placeholder="${escape(t('Search characters', '搜索角色'))}">
 <div data-vpe-cards class="sai-vpe-cards"></div>
 <strong>${escape(t('Current references', '当前参考素材'))}</strong><div data-vpe-refs class="sai-vpe-refs"></div>
 </aside><main class="sai-vpe-main">${targets.length ? `<label class="sai-vpe-target">${escape(t('Editing', '编辑位置'))}<select data-vpe-target>${targets.map(target => `<option value="${escape(target.id)}"${target.id === targetId ? ' selected' : ''}>${escape(target.label)}</option>`).join('')}</select></label>` : ''}<div class="sai-vpe-mode" role="group" aria-label="${escape(t('Editing mode', '编辑模式'))}"><button type="button" data-vpe-mode="visual" aria-pressed="true">${escape(t('Visual', '可视化'))}</button><button type="button" data-vpe-mode="raw" aria-pressed="false">${escape(t('Source', '原文'))}</button></div>
+<section data-vpe-import-review class="sai-vpe-import-review" hidden></section>
 <div class="sai-vpe-rich" data-vpe-rich contenteditable="true" role="textbox" aria-multiline="true" aria-label="${escape(t('Prompt', '提示词'))}" spellcheck="false"></div>
 <textarea data-vpe-raw-editor class="sai-vpe-raw" aria-label="${escape(t('Prompt source', '提示词原文'))}" hidden spellcheck="false"></textarea>
 <div data-vpe-mentions class="sai-vpe-mentions" role="listbox" hidden></div>
@@ -483,7 +516,22 @@
         };
         const errorText = error => {
             const code = error?.message || String(error);
+            if (error?.missing_media?.length) {
+                return t('These older references are unavailable: ', '以下旧素材引用失效：')
+                    + error.missing_media.map(item => item.name || item.asset_id).join(', ')
+                    + t('. A new upload does not replace older references. Use Re-upload and replace on these rows, or explicitly remove them.',
+                        '。上传新文件不会自动替换旧引用，请在这些项上“重新上传替换”，或明确移除该项。');
+            }
             const messages = {
+                invalid_character_archive: tr('Choose a SimpAI audiovisual character JSON or an exported character backup.'),
+                character_archive_too_large: tr('A character backup supports up to 80 MB, with each media file up to 20 MB.'),
+                character_archive_media_missing: tr('Some character media is missing. Review the import preview or upload the missing media before exporting.'),
+                character_archive_media_mismatch: tr('The media does not match this character backup. Choose an intact backup.'),
+                character_backup_not_found: tr('This character backup is unavailable. Refresh the library.'),
+                character_id_conflict: tr('A file already exists for this character. Import its backup as a new card instead.'),
+                character_storage_error: tr('Character files could not be read or saved. Check the user directory and its permissions.'),
+                character_library_unreadable: tr('Character files could not be read or saved. Check the user directory and its permissions.'),
+                character_request_timeout: tr('The character request timed out. Refresh to check the library before retrying a save or import.'),
                 generation_not_allowed: t('Current identity is not allowed to generate.', '当前身份没有生成权限。'),
                 character_image_prompt_required: t('Enter an appearance or image prompt.', '请填写外观描述或生图提示词。'),
                 character_image_service_outdated: t('Studio has not loaded character image generation yet. Restart Studio, then refresh this page.', '当前 Studio 尚未加载角色生图接口。请重启 Studio，再刷新页面。'),
@@ -502,6 +550,7 @@
                 unsupported_or_oversized_media: t('Unsupported media, or file exceeds 20 MB.', '媒体格式不支持，或文件超过 20 MB。'),
                 asset_not_found: t('Reference asset is unavailable.', '参考素材已不可用。'),
                 asset_file_missing: t('The reference file is missing. Upload it again.', '参考文件已不存在，请重新上传。'),
+                media_kind_mismatch: t('Choose the same media type when replacing a reference.', '替换时请选择相同类型的图片或声音。'),
                 reference_capacity: t('Not enough appendable reference slots. Existing inputs were not replaced.', '可追加的参考槽位不足，未替换现有输入。'),
                 reference_media_unsupported: options.directorSegmentId
                     ? t('This shot mode does not accept the reference types on this card. Use compatible media or insert the character description.', '\u5f53\u524d\u5206\u955c\u6a21\u5f0f\u4e0d\u652f\u6301\u8fd9\u5f20\u89d2\u8272\u5361\u7684\u7d20\u6750\u7c7b\u578b\uff0c\u53ef\u9009\u62e9\u9002\u7528\u7d20\u6750\u6216\u4f7f\u7528\u89d2\u8272\u63cf\u8ff0\u3002')
@@ -626,9 +675,43 @@
 <p class="sai-vpe-card-description">${escape(card.appearance || card.voice_description || t('No description', '暂无描述'))}</p>
 ${voice ? mediaHtml(voice) : ''}
 <button type="button" class="sai-vpe-use" data-vpe-card="${escape(card.id)}"><i class="fa-solid fa-plus"></i> ${escape(t('Use character', '使用角色'))}</button></article>`;
-            }).join('') || `<p>${escape(t('No characters', '暂无角色'))}</p>`;
+            }).join('') || `<p>${escape(tr(filter ? 'No characters match this search.' : 'No characters in this category. Check All or Find missing characters.'))}</p><button type="button" data-vpe-action="show-all">${escape(tr('Show all characters'))}</button>`;
             updateUseControls();
             mediaPreviews.sync();
+        }
+        function renderStorage() {
+            const panel = query('[data-vpe-storage]');
+            if (!storage) return;
+            const groups = new Map();
+            for (const entry of storage.backups || []) {
+                if (!groups.has(entry.id)) groups.set(entry.id, []);
+                groups.get(entry.id).push(entry);
+            }
+            panel.innerHTML = `<strong>${escape(t('Restore from automatic backups', '从自动备份恢复角色'))}</strong>
+<p>${escape(t('Choose a character and version below. No folders or hash files need to be selected.', '直接选择下面的角色和版本，不需要查找文件夹或哈希文件。'))}</p>
+${[...groups].map(([id, versions]) => `<div class="sai-vpe-backup-row"><strong>${escape(versions[0].name)}</strong>
+<small>${escape(versions[0].deleted ? t('Deleted character: restore as a new card', '已删除角色：恢复为新卡')
+    : versions[0].live ? t('Existing card is kept; recovery creates a copy', '已有角色保留，恢复会新建副本')
+        : t('Missing character: restore from backup', '角色已缺失，可从备份恢复'))}</small>
+<select data-vpe-backup="${escape(id)}" aria-label="${escape(t('Backup version', '备份版本'))}">${versions.map(entry => `<option value="${escape(entry.backup_id)}">${escape(`v${entry.revision} · ${entry.updated_at ? new Date(entry.updated_at).toLocaleString(language(state) ? 'en' : 'zh-CN') : ''} · ${entry.media_count} ${t('media', '份素材')}`)}</option>`).join('')}</select>
+<div class="sai-vpe-actions"><button type="button" data-vpe-action="backup-preview:${escape(id)}">${escape(t('Preview and restore', '预览并恢复'))}</button><button type="button" data-vpe-action="backup-export:${escape(id)}">${escape(t('Download complete backup', '下载完整备份'))}</button></div></div>`).join('') || `<p>${escape(t('No automatic audiovisual backups found in this workspace.', '当前工作区尚无视听角色自动备份。'))}</p>`}
+<details><summary>${escape(t('Storage diagnostics', '存储诊断'))}</summary><p>${escape(tr('Characters belong to the current identity. Check the identity and user directory if the list changed.'))}</p>
+<strong>${escape(tr('Character descriptions and settings'))}</strong><code>${escape(storage.directory)}</code>
+<strong>${escape(tr('Automatic character backups'))}</strong><code>${escape(storage.backup_directory)}</code>
+<strong>${escape(t('Character version history', '角色历史版本备份'))}</strong><code>${escape(storage.history_directory || '')}</code>
+<p>${escape(tr('Images and audio alone cannot restore the original written descriptions. Import the original character JSON or a complete backup.'))}</p>
+${storage.migration_conflicts?.length || storage.migration_unreadable?.length ? `<p role="alert">${escape(t('Legacy migration needs attention. Original files were kept; conflicting files were not overwritten.', '旧库迁移需要核对。原文件已保留，同名冲突没有覆盖。'))}</p><ul>${[...(storage.migration_conflicts || []), ...(storage.migration_unreadable || [])].map(name => `<li>${escape(name)}</li>`).join('')}</ul>` : ''}
+${storage.unreadable_files?.length ? `<p role="alert">${escape(tr('These character files could not be read:'))}</p><ul>${storage.unreadable_files.map(name => `<li>${escape(name)}</li>`).join('')}</ul>` : ''}
+${storage.recoverable?.length ? storage.recoverable.map(card => `<button type="button" data-vpe-action="recover:${escape(card.id)}">${escape(tr('Preview recovery'))}: ${escape(card.name)}</button>`).join('') : `<p>${escape(tr('No missing cards have an automatic backup here.'))}</p>`}</details>`;
+        }
+        function renderImportPreview(preview) {
+            const panel = query('[data-vpe-import-review]');
+            panel.hidden = false;
+            panel.innerHTML = `<strong>${escape(preview.character.name)}</strong><p>${escape(preview.character.appearance || preview.character.image_prompt || '')}</p>
+<p>${escape(preview.character.voice_description || '')}</p><p>${escape(tr('Available media'))}: ${preview.media_count - preview.missing_media.length} / ${preview.media_count}</p>
+${preview.missing_media.length ? `<p role="alert">${escape(tr('Missing media will not be imported. Descriptions and available media will be kept.'))}</p><ul>${preview.missing_media.map(item => `<li>${escape(item.name)}</li>`).join('')}</ul>` : ''}
+<p>${escape(tr((pendingImport?.recoveryId || pendingImport?.backupId) && preview.restore_mode !== 'copy' ? 'Restore this missing card from its backup.' : 'Import creates a new card and keeps existing cards.'))}</p>
+<div class="sai-vpe-actions"><button type="button" data-vpe-action="confirm-import">${escape(tr(preview.missing_media.length ? 'Import available content' : 'Confirm character import'))}</button><button type="button" data-vpe-action="cancel-import">${escape(t('Cancel', '取消'))}</button></div>`;
         }
         function updateUseControls() {
             host.querySelectorAll('button,input,textarea,select').forEach(element => {
@@ -664,7 +747,10 @@ ${voice ? mediaHtml(voice) : ''}
                 return false;
             }
             if (!isCurrent()) return false;
-            cards = result.characters; renderCards(); renderReferences(); renderText();
+            cards = result.characters; storage = result.storage || null;
+            renderCards(); renderStorage(); renderReferences(); renderText();
+            if (storage?.unreadable_files?.length || storage?.recoverable?.length
+                    || storage?.migration_conflicts?.length || storage?.migration_unreadable?.length) query('[data-vpe-storage]').hidden = false;
             return true;
         }
         function refreshLibrary() {
@@ -685,7 +771,14 @@ ${voice ? mediaHtml(voice) : ''}
             try {
                 result = await request('save', { character: card }, state);
             } catch (error) {
-                if (isCurrent()) throw error;
+                if (isCurrent()) {
+                    for (const missing of error.missing_media || []) {
+                        const ref = draft.media.find(item => item.asset_id === missing.asset_id);
+                        if (ref) { ref.unavailable = true; ref.unavailable_reason = missing.reason; }
+                    }
+                    if (error.missing_media?.length) renderDetail();
+                    throw error;
+                }
                 return false;
             }
             if (!isCurrent()) return false;
@@ -705,7 +798,9 @@ ${voice ? mediaHtml(voice) : ''}
             return `<div class="sai-vpe-media">${(draft.media || []).map((ref, index) => `
 <div class="sai-vpe-media-row" data-vpe-media-index="${index}">
 ${mediaHtml(ref)}<span>${escape(ref.name || ref.asset_id)}</span>
+${ref.unavailable ? `<p role="alert">${escape(t('This older reference is unavailable. Uploading another file does not replace it.', '这份旧引用已失效，上传其他文件不会自动替换它。'))}</p>` : ''}
 <div class="sai-vpe-actions sai-vpe-media-actions">${ref.mime?.startsWith('image/') ? button(`image-convert:${ref.asset_id}`, 'images', t('Convert this image to four views', '将这张图片转为四视图')) : ''}
+<button type="button" data-vpe-action="replace-upload:${index}">${escape(t('Re-upload and replace', '重新上传替换'))}</button>
 <button type="button" data-vpe-remove-media="${index}" title="${escape(t('Remove media', '移除素材'))}" aria-label="${escape(t('Remove media', '移除素材'))}"><i class="fa-solid fa-xmark"></i></button></div>
 ${ref.mime?.startsWith('audio/') ? `<details class="sai-vpe-audio-tools"><summary>${escape(t('Trim audio', '裁剪声音'))}</summary><div class="sai-vpe-trim">
 <label>${escape(t('Start (s)', '开始（秒）'))}<input type="number" min="0" step="0.01" data-vpe-trim-start value="0"></label>
@@ -751,7 +846,7 @@ ${ref.trim_source_asset_id ? button(`restore-audio:${index}`, 'rotate-left', t('
             const sourceImage = characterImageSource(draft);
             const imageRefs = (draft.media || []).filter(ref => ref.mime?.startsWith('image/'));
             draft.voice = voiceDefaults(draft.voice, state);
-            detail.innerHTML = `<div class="sai-vpe-actions"><strong>${escape(t('Edit character', '编辑角色'))}</strong>${button('save-card', 'floppy-disk', imported ? t('Save audiovisual copy', '保存为视听副本') : t('Save character', '保存角色'))}${!imported && draft.id ? button('delete-card', 'trash', t('Delete character', '删除角色')) : ''}${button('close-detail', 'xmark', t('Close character settings', '收起角色设置'))}</div>
+            detail.innerHTML = `<div class="sai-vpe-actions"><strong>${escape(t('Edit character', '编辑角色'))}</strong>${button('save-card', 'floppy-disk', imported ? t('Save audiovisual copy', '保存为视听副本') : t('Save character', '保存角色'))}${!imported && draft.id ? button('export-card', 'download', t('Export complete backup', '导出完整备份')) + button('delete-card', 'trash', t('Delete character', '删除角色')) : ''}${button('close-detail', 'xmark', t('Close character settings', '收起角色设置'))}</div>
 <button type="button" class="is-primary sai-vpe-use" data-vpe-action="insert-character"><i class="fa-solid fa-plus"></i> ${escape(t('Use character', '使用角色'))}</button>
 <div class="sai-vpe-actions"><strong>${escape(t('Portrait & voice', '角色图片与声音'))}</strong>${button('upload', 'file-arrow-up', t('Upload image or audio', '上传图片或音频'))}<input type="file" data-vpe-upload accept="image/png,image/jpeg,image/webp,audio/wav,audio/mpeg,audio/ogg,audio/flac,audio/mp4" hidden></div>
 ${draftMediaHtml()}
@@ -930,7 +1025,59 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             host.remove(); if (active?.host === host) active = null;
             previousFocus?.isConnected && previousFocus.focus();
         }
+        function downloadArchive(archive, name) {
+            const url = root.URL.createObjectURL(new Blob([JSON.stringify(archive, null, 2)], { type: 'application/json' }));
+            const link = document.createElement('a');
+            link.href = url; link.download = `${name.replace(/[<>:"/\\|?*]/g, '_')}.character.json`;
+            document.body.appendChild(link); link.click(); link.remove();
+            root.setTimeout(() => root.URL.revokeObjectURL(url), 1000);
+        }
         async function handleAction(action) {
+            if (action === 'show-all') {
+                query('[data-vpe-category]').value = 'all';
+                query('[data-vpe-search]').value = '';
+                await refresh(); return;
+            }
+            if (action === 'recovery') {
+                await refresh(); query('[data-vpe-storage]').hidden = false; return;
+            }
+            if (action === 'import-card') { query('[data-vpe-import]').click(); return; }
+            if (action === 'cancel-import') {
+                pendingImport = null; query('[data-vpe-import-review]').hidden = true; return;
+            }
+            if (action.startsWith('backup-preview:') || action.startsWith('backup-export:')) {
+                const [operation, recoveryId] = action.split(':');
+                const backupId = query(`[data-vpe-backup="${recoveryId}"]`).value;
+                if (operation === 'backup-export') {
+                    const result = await request('backup-export', { character_id: recoveryId, backup_id: backupId }, state);
+                    downloadArchive(result.archive, result.archive.character.name); return;
+                }
+                const preview = await request('backup-preview', { character_id: recoveryId, backup_id: backupId }, state);
+                pendingImport = { recoveryId, backupId, preview }; renderImportPreview(preview); return;
+            }
+            if (action.startsWith('recover:')) {
+                const recoveryId = action.slice('recover:'.length);
+                const preview = await request('recovery-preview', { character_id: recoveryId }, state);
+                pendingImport = { recoveryId, preview }; renderImportPreview(preview); return;
+            }
+            if (action === 'confirm-import') {
+                if (!pendingImport) return;
+                if (dirty && !await saveDraft()) return;
+                const pending = pendingImport;
+                const result = await request(pending.backupId ? 'backup-import' : pending.recoveryId ? 'recover' : 'import', {
+                    ...(pending.recoveryId ? { character_id: pending.recoveryId } : { archive: pending.archive }),
+                    ...(pending.backupId ? { backup_id: pending.backupId } : {}),
+                    allow_missing_media: pending.preview.missing_media.length > 0
+                }, state);
+                pendingImport = null; query('[data-vpe-import-review]').hidden = true;
+                draft = result.character; dirty = false; await refresh(); renderDetail();
+                status(t('Character restored/imported. Existing cards were kept.', '角色已恢复或导入，已有角色卡已保留。')); return;
+            }
+            if (action === 'export-card') {
+                if (!await saveDraft()) return;
+                const result = await request('export', { character_id: draft.id }, state);
+                downloadArchive(result.archive, draft.name); return;
+            }
             const skippedNotice = skipped => {
                 if (!skipped?.length) return '';
                 const kinds = [...new Set(skipped.map(item => item.kind))].map(kind =>
@@ -1026,7 +1173,13 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 draft = { name: '', appearance: '', voice_description: '', category: 'audiovisual', media: [], media_ids: [] };
                 dirty = false; imageMessage = ''; renderDetail(); query('[data-vpe-field="name"]').focus(); return;
             }
-            if (action === 'upload') { query('[data-vpe-upload]')?.click(); return; }
+            if (action === 'upload') { pendingUpload = null; query('[data-vpe-upload]')?.click(); return; }
+            if (action.startsWith('replace-upload:')) {
+                const index = Number(action.split(':')[1]);
+                if (!draft.media[index]) return;
+                pendingUpload = { owner: draft, index, assetId: draft.media[index].asset_id };
+                query('[data-vpe-upload]')?.click(); return;
+            }
             if (action === 'attach-media') {
                 await saveDraft();
                 if (!draft.media?.length) {
@@ -1084,6 +1237,13 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             }
             if (action === 'insert-description' || action === 'insert-character') {
                 if (!draft?.name?.trim()) throw new Error('character_name_required');
+                if (action === 'insert-character' && draft.media?.some(ref => ref.unavailable)) {
+                    const error = new Error('asset_not_found');
+                    error.missing_media = draft.media.filter(ref => ref.unavailable).map(ref => ({
+                        asset_id: ref.asset_id, name: ref.name, reason: ref.unavailable_reason,
+                    }));
+                    renderDetail(); throw error;
+                }
                 await saveDraft();
                 const mapped = [];
                 let skipped = [];
@@ -1203,7 +1363,9 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 renderText(savedSelection.start); return;
             }
             if (target.hasAttribute('data-vpe-remove-media')) {
-                draft.media.splice(Number(target.dataset.vpeRemoveMedia), 1);
+                const [removed] = draft.media.splice(Number(target.dataset.vpeRemoveMedia), 1);
+                draft.media_ids = draft.media.map(ref => ref.asset_id);
+                if (removed?.asset_id === draft.image_source_asset_id) draft.image_source_asset_id = '';
                 if (!characterImageSource(draft)) draft.image_mode = 'text';
                 dirty = true; renderDetail(); return;
             }
@@ -1243,6 +1405,17 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             }
         });
         host.addEventListener('change', event => {
+            if (event.target.matches('[data-vpe-import]')) {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (file) run(async () => {
+                    if (file.size > 80 * 1024 * 1024) throw new Error('character_archive_too_large');
+                    const archive = await file.text();
+                    const preview = await request('import-preview', { archive }, state);
+                    pendingImport = { archive, preview }; renderImportPreview(preview);
+                });
+                return;
+            }
             if (event.target.matches('[data-vpe-target]')) {
                 targetValues[targetId] = value; targetId = event.target.value;
                 value = targetValues[targetId] || '';
@@ -1253,18 +1426,27 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             if (event.target.matches('[data-vpe-category]')) refreshLibrary();
             if (event.target.matches('[data-vpe-upload]')) {
                 const file = event.target.files?.[0];
-                if (!file) return;
+                event.target.value = '';
+                const replacement = pendingUpload, owner = draft;
+                pendingUpload = null;
+                if (!file || !owner) return;
                 run(async () => {
                     if (file.size > 20 * 1024 * 1024) throw new Error('unsupported_or_oversized_media');
+                    if (replacement && String(file.type || '').split('/')[0] !== owner.media[replacement.index]?.mime?.split('/')[0]) {
+                        throw new Error('media_kind_mismatch');
+                    }
                     const dataUrl = await new Promise((resolve, reject) => {
                         const reader = new FileReader(); reader.onload = () => resolve(reader.result);
                         reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
                     });
                     const result = await request('upload', { name: file.name, data_url: dataUrl }, state);
-                    if (result.asset.mime?.startsWith('image/') && !characterImageSource(draft)) {
-                        draft.image_mode = 'reference'; draft.image_source_asset_id = result.asset.asset_id;
-                    }
-                    draft.media.push(result.asset); dirty = true; renderDetail();
+                    if (!editorIsCurrent() || draft !== owner || (replacement
+                            && (replacement.owner !== owner || owner.media[replacement.index]?.asset_id !== replacement.assetId))) return;
+                    const replaced = addUploadedMedia(draft, result.asset, replacement?.index ?? null);
+                    dirty = true; renderDetail();
+                    status(replaced
+                        ? t('Reference replaced. Save the card or use it to save automatically.', '已替换这份引用，保存角色卡或使用角色即可自动保存。')
+                        : t('Upload succeeded. Other unavailable references still need to be replaced or removed.', '上传成功。其他失效的旧引用仍需逐项替换或移除。'));
                 });
             }
         });
@@ -1340,7 +1522,7 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
         field.insertAdjacentElement('afterend', button);
         field.__visualPromptButton = button;
     }
-    const api = { open, attach, references, characterInsertionRange, normalizeBindings, validateBindings, serializeDom, renderPrompt, safeUrl, sourceIdentity, planMediaAttachments, matchingAsset, request, voiceDefaults, addGeneratedVoice, characterImageMode, characterImageSource, characterImagePreset, imagePresetRoute, addGeneratedImage, audioTime, waveformBars, audioPlayerHtml, previewPlacement };
+    const api = { open, attach, references, characterInsertionRange, normalizeBindings, validateBindings, serializeDom, renderPrompt, safeUrl, sourceIdentity, planMediaAttachments, matchingAsset, addUploadedMedia, request, voiceDefaults, addGeneratedVoice, characterImageMode, characterImageSource, characterImagePreset, imagePresetRoute, addGeneratedImage, audioTime, waveformBars, audioPlayerHtml, previewPlacement };
     root.SimpAIVisualPromptEditor = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document !== 'undefined') {

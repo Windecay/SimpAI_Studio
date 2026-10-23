@@ -105,6 +105,9 @@ html:has(body > .sai-vpe-backdrop) { scrollbar-gutter: stable; }
 .sai-vpe-mentions { flex: none; max-height: 150px; overflow-y: auto; border: 1px solid var(--border-color-primary); padding: 4px; }
 .sai-vpe-mentions button { display: block; width: 100%; text-align: left; }
 .sai-vpe-dialog [data-vpe-status] { min-width: 0; overflow-wrap: anywhere; font-size: 12px; color: var(--body-text-color); }
+.sai-vpe-backup-row { display: grid; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border-color-primary); }
+.sai-vpe-backup-row select { width: 100%; min-width: 0; }
+.sai-vpe-media-row > [role="alert"] { width: 100%; overflow-wrap: anywhere; color: var(--body-text-color); }
 .sai-vpe-entry { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 24px; height: 24px; border: 1px solid var(--border-color-primary); border-radius: 4px; background: var(--button-secondary-background-fill); color: inherit; cursor: pointer; }
 .sai-vpe-entry i { font-size: 12px; line-height: 1; }
 #prompt_text_column { --sai-prompt-scrollbar-space: 0px; }

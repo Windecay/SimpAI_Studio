@@ -316,6 +316,16 @@ def run_pip(command, desc=None, live=default_command_live):
         return None
 
 
+def _installed_package_versions(package):
+    versions = [distribution.version for distribution in importlib.metadata.distributions(name=package)]
+    if len(versions) > 1:
+        logger.warning(
+            "Duplicate package metadata for %s: %r. Remove stale .dist-info directories.",
+            package, versions,
+        )
+    return versions
+
+
 met_diff = {}
 def requirements_met(requirements_file):
     global met_diff
@@ -348,48 +358,56 @@ def requirements_met(requirements_file):
                 continue
 
             try:
-                version_installed = importlib.metadata.version(package)
+                versions_installed = _installed_package_versions(package)
             except Exception:
                 met_diff.update({package:'-'})
                 result = False
                 continue
 
-            if not isinstance(version_installed, str) or not version_installed.strip():
-                met_diff.update({package:'-'})
-                logger.warning(
-                    "Invalid installed version for %s: %r. Package metadata may be incomplete.",
-                    package, version_installed,
-                )
-                result = False
-                continue
-
-            if version_required=='':
-                continue
-
-            try:
-                versions_match = packaging.version.parse(version_required) == packaging.version.parse(version_installed)
-            except packaging.version.InvalidVersion as e:
-                met_diff.update({package:version_installed})
-                logger.warning(
-                    "Cannot compare versions for %s: installed=%r, required=%r (%s)",
-                    package, version_installed, version_required, e,
-                )
-                result = False
-                continue
-
+            versions_match = False
+            version_installed = '-'
+            for installed in versions_installed:
+                if not isinstance(installed, str) or not installed.strip():
+                    logger.warning(
+                        "Invalid installed version for %s: %r. Package metadata may be incomplete.",
+                        package, installed,
+                    )
+                    continue
+                version_installed = installed
+                if version_required == '':
+                    versions_match = True
+                    break
+                try:
+                    versions_match = packaging.version.parse(version_required) == packaging.version.parse(installed)
+                except packaging.version.InvalidVersion as e:
+                    logger.warning(
+                        "Cannot compare versions for %s: installed=%r, required=%r (%s)",
+                        package, installed, version_required, e,
+                    )
+                    continue
+                if versions_match:
+                    break
             if not versions_match:
                 met_diff.update({package:version_installed})
-                logger.info(f"Version mismatch for {package}: Installed version {version_installed} does not meet requirement {version_required}")
+                if version_installed != '-':
+                    logger.info(f"Version mismatch for {package}: Installed versions {versions_installed!r} do not meet requirement {version_required}")
                 result = False
 
     return result
 
 def is_installed_version(package, version_required):
     try:
-        version_installed = importlib.metadata.version(package)
-        return packaging.version.parse(version_required) == packaging.version.parse(version_installed)
+        versions_installed = _installed_package_versions(package)
+        required = packaging.version.parse(version_required)
     except Exception:
         return False
+    for installed in versions_installed:
+        try:
+            if packaging.version.parse(installed) == required:
+                return True
+        except (TypeError, packaging.version.InvalidVersion):
+            continue
+    return False
 
 
 def delete_folder_content(folder, prefix=None):

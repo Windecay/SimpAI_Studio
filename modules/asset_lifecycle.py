@@ -407,6 +407,8 @@ class AssetStore:
         workspace = canvas.parent
         directories = [canvas / "projects", canvas / "templates",
                        self.root / "agent_api" / "workflow_imports",
+                       self.root / "character_library" / "cards",
+                       workspace / "character_backups",
                        workspace / "vlm_roleplay", workspace / "presets" / "characters", *self.reference_roots]
         digests, signatures = set(), {}
         count = 0
