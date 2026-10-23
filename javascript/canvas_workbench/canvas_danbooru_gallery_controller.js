@@ -22,6 +22,7 @@
         const browserSource = scope.browserSource || {};
         const timeSource = scope.timeSource || {};
         const nodeSource = scope.nodeSource || {};
+        const projectSource = scope.projectSource || {};
         const viewportSource = scope.viewportSource || {};
         const metadataSource = scope.metadataSource || {};
         const patchSource = scope.patchSource || {};
@@ -141,7 +142,12 @@
             return { ok: true, items, page, has_more: hasMore, next_page: nextPage };
         }
 
-        async function importDanbooruGalleryPost(item, world) {
+        async function importDanbooruGalleryPost(item, world, options) {
+            const getProject = pick(projectSource, 'getProject');
+            const project = options?.project || getProject?.();
+            const isCurrent = () => !!project && getProject?.() === project
+                && (typeof options?.shouldContinue !== 'function' || options.shouldContinue());
+            if (!isCurrent()) return null;
             const url = item?.file_url || item?.preview_url || '';
             if (!url) {
                 showToast(t('Danbooru post has no importable file URL.', '该 Danbooru 条目没有可导入文件地址。'));
@@ -151,16 +157,21 @@
             if (typeof fileCtor !== 'function') throw new Error('File constructor is unavailable');
             showToast(t('Importing Danbooru media...', '正在导入 Danbooru 媒体...'));
             const response = await fetchImpl(danbooruGalleryImageProxyUrl(url));
+            if (!isCurrent()) return null;
             if (!response.ok) throw new Error(`Danbooru media HTTP ${response.status}`);
             const blob = await response.blob();
+            if (!isCurrent()) return null;
             const ext = danbooruPostExtension(item.raw || item);
             const mime = blob.type || (item.media_type === 'video' ? 'video/mp4' : 'image/jpeg');
             const file = new fileCtor([blob], item.name || `danbooru_${currentTime()}.${ext}`, { type: mime });
             const centerWorld = pick(viewportSource, 'viewportCenterWorld');
             const addMediaNodeFromFile = pick(nodeSource, 'addMediaNodeFromFile');
             const node = typeof addMediaNodeFromFile === 'function'
-                ? await addMediaNodeFromFile(file, world || (typeof centerWorld === 'function' ? centerWorld() : null))
+                ? await addMediaNodeFromFile(file, world || (typeof centerWorld === 'function' ? centerWorld() : null), {
+                    project, shouldContinue: isCurrent
+                })
                 : null;
+            if (!isCurrent()) return null;
             if (node) {
                 const metadata = pick(metadataSource, 'mediaBrowserItemMetadata');
                 const generationMetadata = typeof metadata === 'function' ? metadata(item) : {};

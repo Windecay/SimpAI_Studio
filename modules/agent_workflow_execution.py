@@ -14,7 +14,7 @@ import httpx
 from modules.agent_api_contract import WorkflowPreview
 from modules.agent_service import AgentAPIError, StudioBackend, identity_binding
 from modules.agent_workflows import WorkflowStore, preview
-from modules.comfy_prompt_compat import defer_comfy_task_release, is_comfy_prompt_queued
+from modules.comfy_prompt_compat import defer_comfy_task_release, is_comfy_prompt_queued, restrict_studio_model_downloads
 
 
 MAX_RESULT_BYTES = 512 * 1024 * 1024
@@ -63,6 +63,7 @@ class ComfyWorkflowTransport:
         return actual
 
     def validate(self, prompt):
+        prompt = restrict_studio_model_downloads(prompt)
         result = self.json("POST", "simpai/workflows/validate", json={"prompt": prompt})
         if not result.get("strict_submission_supported"):
             raise AgentAPIError("workflow_backend_upgrade_required", "Restart the updated Comfy backend before using imported workflows.", 409)
@@ -71,6 +72,7 @@ class ComfyWorkflowTransport:
                                 {"error": result.get("error"), "node_errors": result.get("node_errors")})
 
     def submit(self, prompt, prompt_id):
+        prompt = restrict_studio_model_downloads(prompt)
         # Resolve ambiguous network failures by querying this ID. Reposting a
         # task after it left Comfy's queue could otherwise execute it twice.
         try:

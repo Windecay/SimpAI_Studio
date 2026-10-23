@@ -163,7 +163,7 @@ class OutputOptions(RequestModel):
 class PlanRequest(RequestModel):
     instruction: str = Field(default="", max_length=16000, description="User's original request. Send UTF-8 JSON; this can remain Chinese when the final model prompt must be English.")
     prompt: str | None = Field(default=None, max_length=16000, description="Final model prompt prepared using prompts.guidance and applicable skills. Separate from the user's original instruction.")
-    task: str = Field(default="", max_length=80, description="Optional task ID from discovery. An explicit supported ID is preserved; omit it to infer from the original instruction and media. image_edit supports a text-described one-image edit; image_object_transfer requires a target and a reference image.")
+    task: str = Field(default="", max_length=80, description="Optional task ID from discovery. An explicit supported ID is preserved; omit it to infer from the original instruction and media. image_edit supports a text-described one-image edit; image_object_transfer requires a target and a reference image. video_edit requires a source video and preserves optional references within the selected preset's media limits.")
     preset_id: str = Field(default="", max_length=160, description="Explicit choice; incompatible choices are rejected, never silently replaced.")
     theme: str = Field(default="", max_length=160)
     parameter_profile: str = Field(default="", max_length=200, description="User-selected private parameter profile name. Requires an explicit preset_id.")
@@ -192,6 +192,7 @@ class AssetUpload(RequestModel):
 class AssetStorageQuery(RequestModel):
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=50, ge=1, le=200)
+    snapshot_id: str = Field(default="", max_length=100, description="Reuse the returned display snapshot for another page for up to 30 seconds. Omit to rescan files and references. Running tasks and expiry are always current; deletion checks never reuse this snapshot.")
 
 
 class WorkflowImport(RequestModel):

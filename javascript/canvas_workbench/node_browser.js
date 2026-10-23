@@ -137,7 +137,6 @@
         call(context, 'closeContextMenu', null);
         const doc = getDocument(context);
         if (!doc?.createElement || !doc.body) return;
-        const project = getProject(context);
         const modal = doc.createElement('div');
         const translate = (en, cn) => t(context, en, cn);
         const escape = (value) => escapeHtml(context, value);
@@ -156,9 +155,15 @@
         doc.body.appendChild(modal);
         const input = modal.querySelector('[data-node-search-input]');
         const list = modal.querySelector('.sai-node-search-list');
+        let listedProject = null;
+        let listedProjectId;
+        let listedNodes = new Map();
         const renderList = () => {
+            listedProject = getProject(context);
+            listedProjectId = listedProject.id;
             const query = String(input.value || '').trim().toLowerCase();
-            const nodes = (Array.isArray(project.nodes) ? project.nodes : []).filter((node) => !query || nodeSearchText(node).includes(query)).slice(0, 80);
+            const nodes = (Array.isArray(listedProject.nodes) ? listedProject.nodes : []).filter((node) => !query || nodeSearchText(node).includes(query)).slice(0, 80);
+            listedNodes = new Map(nodes.map(node => [String(node.id), node]));
             list.innerHTML = nodes.length ? nodes.map((node) => `
 <button type="button" data-node-search-id="${escape(node.id)}">
   ${iconForNode(node, context)}
@@ -167,10 +172,17 @@
         };
         input.addEventListener('input', renderList);
         list.addEventListener('click', (evt) => {
+            if (modal.isConnected === false) return;
             const item = evt.target.closest('[data-node-search-id]');
             if (!item) return;
-            const node = call(context, 'getNode', null, item.getAttribute('data-node-search-id'));
-            if (!node) return;
+            const id = item.getAttribute('data-node-search-id');
+            const currentProject = getProject(context);
+            const node = call(context, 'getNode', null, id);
+            if (currentProject !== listedProject || currentProject.id !== listedProjectId || !node || node !== listedNodes.get(id)) {
+                renderList();
+                input.focus();
+                return;
+            }
             call(context, 'focusNode', null, node);
             modal.remove();
         });

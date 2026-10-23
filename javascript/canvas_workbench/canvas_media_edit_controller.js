@@ -77,6 +77,7 @@
         const warn = typeof uiSource.warn === 'function' ? uiSource.warn : console.warn;
         const activeEditorSaves = new WeakMap();
         const activeEditors = new WeakMap();
+        const activeReplacements = new WeakMap();
 
         function captureEditTarget(node) {
             const project = call(edgeSource, 'getProject', null);
@@ -85,6 +86,7 @@
             const mask = node?.mask;
             const type = node?.type;
             const assetFields = Object.assign({}, asset);
+            const editFields = asset?.edit && typeof asset.edit === 'object' ? Object.assign({}, asset.edit) : null;
             const maskFields = Object.assign({}, mask);
             const unchanged = (value, fields) => Object.keys(value || {}).length === Object.keys(fields).length
                 && Object.keys(fields).every(key => value?.[key] === fields[key]);
@@ -92,6 +94,7 @@
                 && (typeof nodeSource.getNode !== 'function' || getNode(node.id) === node)
                 && node.type === type && !isNodeLocked(node)
                 && getNodeLayerForgeAsset(node) === asset && unchanged(asset, assetFields)
+                && (!editFields || unchanged(asset?.edit, editFields))
                 && node.mask === mask && unchanged(mask, maskFields)
                 && !call(domSource, 'getRoot', null)?.hidden;
         }
@@ -112,24 +115,77 @@
             return () => activeEditors.get(node) === record && targetCurrent();
         }
 
-        function finishImageReplacement(node, buildMessage, logKind) {
+        function beginReplacement(node, previous) {
+            if (previous) return activeReplacements.get(node) === previous && previous.isCurrent() ? previous : null;
+            const project = call(edgeSource, 'getProject', null);
+            const projectId = project?.id;
+            const nodeId = node.id;
+            const type = node.type;
+            let targetCurrent = captureEditTarget(node);
+            if (!targetCurrent()) return null;
+            const record = {
+                project,
+                isActive: () => activeReplacements.get(node) === record && node.id === nodeId && node.type === type
+                    && (!project || (call(edgeSource, 'getProject', null) === project && project.id === projectId))
+                    && (typeof nodeSource.getNode !== 'function' || getNode(nodeId) === node)
+                    && !isNodeLocked(node) && !call(domSource, 'getRoot', null)?.hidden,
+                isCurrent: () => record.isActive() && targetCurrent(),
+                acceptChanges: () => {
+                    if (!record.isActive()) return false;
+                    targetCurrent = captureEditTarget(node);
+                    return targetCurrent();
+                },
+            };
+            activeReplacements.set(node, record);
+            return record;
+        }
+
+        function replacementStorageOptions(node, operation) {
+            return {
+                project: operation.project, node,
+                shouldContinue: operation.isCurrent,
+                onMaterialized: operation.acceptChanges,
+            };
+        }
+
+        async function replacementResult(operation, work) {
+            try {
+                return await work();
+            } catch (err) {
+                if (!operation.isCurrent()) return null;
+                throw err;
+            }
+        }
+
+        function finishImageReplacement(node, buildMessage, logKind, operation) {
+            if (!operation.isCurrent()) return false;
             call(stateSource, 'selectReplacedNode', undefined, node.id);
+            if (!operation.isCurrent()) return false;
             call(renderSource, 'invalidateRenderedNode', undefined, node.id);
+            if (!operation.isCurrent()) return false;
             call(renderSource, 'mutate', undefined);
+            if (!operation.isCurrent()) return false;
             call(viewerSource, 'syncPresetSpecialViewersForAssetNode', undefined, node.id);
+            if (!operation.isCurrent()) return false;
             call(uiSource, 'showToast', undefined, buildMessage());
-            call(storageSource, 'materializeNodeAssetForStorage', Promise.resolve(), node.id)
-                .catch(err => warn(`[SimpAI Canvas] ${logKind} materialize skipped:`, err));
+            if (!operation.isCurrent()) return false;
+            call(storageSource, 'materializeNodeAssetForStorage', Promise.resolve(), node.id, replacementStorageOptions(node, operation))
+                .catch(err => { if (operation.isCurrent()) warn(`[SimpAI Canvas] ${logKind} materialize skipped:`, err); });
             return true;
         }
 
         async function applyTransferItemToImageNode(node, item, options) {
             if (!node || node.type !== 'image' || !item) return false;
+            const operation = beginReplacement(node, options?.replacementOperation);
+            if (!operation) return false;
             const dataUrl = item.dataUrl || '';
             const previewUrl = item.previewUrl || '';
-            const dimensions = await call(fileSource, 'getImageDimensions', {}, dataUrl || previewUrl);
-            const thumb = dataUrl ? await call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 1024) : previewUrl;
+            const dimensions = await replacementResult(operation, () => call(fileSource, 'getImageDimensions', {}, dataUrl || previewUrl));
+            if (!operation.isCurrent()) return false;
+            const thumb = dataUrl ? await replacementResult(operation, () => call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 1024)) : previewUrl;
+            if (!operation.isCurrent()) return false;
             call(historySource, 'pushHistory', undefined, options?.history || 'Replace image');
+            if (!operation.isCurrent()) return false;
             const asset = call(patchSource, 'buildBrowserImageAsset', null, {
                 assetId: item.id ? `transfer:${item.id}` : undefined,
                 mime: item.type || 'image/png',
@@ -153,15 +209,22 @@
                 kind: 'transfer_station_drop',
                 transfer_id: item.id || ''
             }));
-            return finishImageReplacement(node, () => t('Image placed into Image node.', '图片已放入图像节点'), 'dropped image');
+            if (!operation.acceptChanges()) return false;
+            return finishImageReplacement(node, () => t('Image placed into Image node.', '图片已放入图像节点'), 'dropped image', operation);
         }
 
         async function applyImageFileToNode(node, file, options) {
             if (!node || !['image', 'result'].includes(node.type) || !call(fileSource, 'isImageFile', false, file)) return false;
-            const dataUrl = await call(fileSource, 'readFileAsDataUrl', '', file);
-            const dimensions = await call(fileSource, 'getImageDimensions', {}, dataUrl);
-            const thumb = await call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 1024);
+            const operation = beginReplacement(node, options?.replacementOperation);
+            if (!operation) return false;
+            const dataUrl = await replacementResult(operation, () => call(fileSource, 'readFileAsDataUrl', '', file));
+            if (!operation.isCurrent()) return false;
+            const dimensions = await replacementResult(operation, () => call(fileSource, 'getImageDimensions', {}, dataUrl));
+            if (!operation.isCurrent()) return false;
+            const thumb = await replacementResult(operation, () => call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 1024));
+            if (!operation.isCurrent()) return false;
             call(historySource, 'pushHistory', undefined, options?.history || 'Replace image');
+            if (!operation.isCurrent()) return false;
             const asset = call(patchSource, 'buildBrowserImageAsset', null, {
                 mime: file.type || 'image/png',
                 size: file.size || 0,
@@ -193,7 +256,8 @@
                     Object.assign(node, call(patchSource, 'buildMediaNodeSourcePatch', {}, node, { kind: options?.sourceKind || 'manual_upload' }));
                 }
             }
-            return finishImageReplacement(node, () => t('Image replaced.', '图片已替换'), 'image');
+            if (!operation.acceptChanges()) return false;
+            return finishImageReplacement(node, () => t('Image replaced.', '图片已替换'), 'image', operation);
         }
 
         async function handleImageNodeDrop(node, dataTransfer) {
@@ -202,12 +266,15 @@
                 call(uiSource, 'showToast', undefined, t('Locked node cannot be edited', '锁定节点无法编辑'));
                 return;
             }
+            const operation = beginReplacement(node);
+            if (!operation) return false;
             const transferId = dataTransfer?.getData('application/x-simpleai-transfer-id');
             const station = transferId ? call(transferSource, 'getTransferStation', null) : null;
             if (transferId && station && typeof station.getItem === 'function') {
-                const item = await station.getItem(transferId, { dataUrl: true, file: false });
+                const item = await replacementResult(operation, () => station.getItem(transferId, { dataUrl: true, file: false }));
+                if (!operation.isCurrent()) return false;
                 if (item) {
-                    await applyTransferItemToImageNode(node, item, { history: 'Drop image into node' });
+                    await applyTransferItemToImageNode(node, item, { history: 'Drop image into node', replacementOperation: operation });
                     return;
                 }
             }
@@ -217,7 +284,7 @@
                 return;
             }
             await applyImageFileToNode(node, files[0], {
-                history: 'Drop image into node', sourceKind: 'dropped_into_image_node'
+                history: 'Drop image into node', sourceKind: 'dropped_into_image_node', replacementOperation: operation
             });
         }
 
@@ -235,14 +302,21 @@
                     : t('Unsupported media file.', '不支持的媒体文件。'));
                 return false;
             }
-            const dataUrl = await call(fileSource, 'readFileAsDataUrl', '', file);
-            const metadata = await call(fileSource, 'getMediaMetadata', {}, dataUrl, type);
+            const operation = beginReplacement(node, options?.replacementOperation);
+            if (!operation) return false;
+            const dataUrl = await replacementResult(operation, () => call(fileSource, 'readFileAsDataUrl', '', file));
+            if (!operation.isCurrent()) return false;
+            const metadata = await replacementResult(operation, () => call(fileSource, 'getMediaMetadata', {}, dataUrl, type));
+            if (!operation.isCurrent()) return false;
             const previewFrames = type === 'video'
-                ? await call(fileSource, 'createVideoStoryboardDataUrls', [], dataUrl, metadata.duration, 8) : [];
-            const waveform = type === 'audio' ? await call(fileSource, 'createAudioWaveformPeaks', [], file, 96) : [];
+                ? await replacementResult(operation, () => call(fileSource, 'createVideoStoryboardDataUrls', [], dataUrl, metadata.duration, 8)) : [];
+            if (!operation.isCurrent()) return false;
+            const waveform = type === 'audio' ? await replacementResult(operation, () => call(fileSource, 'createAudioWaveformPeaks', [], file, 96)) : [];
+            if (!operation.isCurrent()) return false;
             const duration = metadata.duration || null;
             call(historySource, 'pushHistory', undefined,
                 options?.history || (type === 'video' ? 'Re-upload video asset' : 'Re-upload audio asset'));
+            if (!operation.isCurrent()) return false;
             Object.assign(node, buildMediaNodeStatePatch(node, {
                 title: file.name || node.title || type,
                 asset: call(patchSource, 'buildBrowserMediaAsset', null, {
@@ -265,8 +339,11 @@
                 uploaded_name: file.name || '',
                 uploaded_at: call(timeSource, 'nowIso', '')
             }));
+            if (!operation.acceptChanges()) return false;
             call(renderSource, 'mutate', undefined, { inspector: true });
-            const response = await call(storageSource, 'materializeNodeAssetForStorage', null, node.id);
+            if (!operation.isCurrent()) return false;
+            const response = await replacementResult(operation, () => call(storageSource, 'materializeNodeAssetForStorage', null, node.id, replacementStorageOptions(node, operation)));
+            if (!operation.isCurrent()) return false;
             const successMessage = type === 'video'
                 ? t('Video asset replaced.', '视频资产已替换。')
                 : t('Audio asset replaced.', '音频资产已替换。');
@@ -450,18 +527,21 @@
 
         async function reloadMediaNode(node) {
             if (!node || !['video', 'audio'].includes(node.type)) return;
+            const operation = beginReplacement(node);
+            if (!operation) return false;
             const type = node.type;
-            const file = await call(
+            const file = await replacementResult(operation, () => call(
                 mediaSource,
                 type === 'video' ? 'pickLocalVideoFile' : 'pickLocalAudioFile',
                 null
-            );
-            if (!file) return;
+            ));
+            if (!operation.isCurrent() || !file) return;
             await applyMediaFileToNode(node, file, {
                 history: type === 'video' ? 'Re-upload video asset' : 'Re-upload audio asset',
-                sourceKind: type === 'video' ? 'manual_video_reupload' : 'manual_audio_reupload'
+                sourceKind: type === 'video' ? 'manual_video_reupload' : 'manual_audio_reupload',
+                replacementOperation: operation
             });
-            if (type === 'video') call(mediaSource, 'hideVideoScrubPreview', undefined, node.id);
+            if (operation.isCurrent() && type === 'video') call(mediaSource, 'hideVideoScrubPreview', undefined, node.id);
         }
 
         function playMediaSelection(node) {

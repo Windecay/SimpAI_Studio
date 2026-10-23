@@ -28,6 +28,7 @@
         const warn = typeof uiSource.warn === 'function' ? uiSource.warn : console.warn;
         const nowIso = () => call(timeSource, 'nowIso', '');
         const applyBatchAnyStatePatch = (node, options) => call(batchSource, 'applyBatchAnyStatePatch', undefined, node, options);
+        const isBatchAnyRunning = node => call(batchSource, 'isBatchAnyRunning', false, node);
 
         function addBatchAnyNode(world, options) {
             const opts = options || {};
@@ -68,8 +69,20 @@
             return call(factorySource, 'buildMediaBatchItemFromFile', null, file, kind, dataUrl, metadata, thumb, previewFrames, waveform);
         }
 
+        const activeImports = new WeakSet();
+
         async function addBatchAnyFilesToNode(node, files) {
             if (!node || node.type !== 'batch_any' || call(nodeSource, 'isNodeLocked', false, node)) return;
+            const project = call(projectSource, 'getProject', null);
+            const projectId = project?.id;
+            const isAttached = () => project?.id === projectId && (project?.nodes || []).includes(node);
+            const isCurrent = () => call(projectSource, 'getProject', null) === project && isAttached() && node.type === 'batch_any';
+            const canImport = () => isCurrent() && !call(nodeSource, 'isNodeLocked', false, node);
+            if (!isCurrent()) return false;
+            if (activeImports.has(node)) {
+                showToast(t('A file import is already in progress.', '正在导入文件，请等待完成。'));
+                return;
+            }
             const selected = Array.from(files || []).filter(file => call(fileSource, 'isMediaFile', false, file)
                 || call(batchSource, 'isBatchTextFile', false, file));
             if (!selected.length) {
@@ -82,6 +95,10 @@
                 showToast(t('Unsupported first file.', '第一个文件不支持。'));
                 return;
             }
+            if (!call(batchSource, 'batchAnyAcceptsMediaKind', true, node, firstKind)) {
+                showToast(t('Selected files do not match this Batch type or its connected inputs.', '所选文件与 Batch 类型或已连接的输入槽不匹配。'));
+                return;
+            }
             const accepted = selected.filter(file => call(batchSource, 'batchAnyMediaKindFromFile', '', file) === firstKind);
             const skipped = selected.length - accepted.length;
             if (!accepted.length) {
@@ -89,40 +106,76 @@
                 return;
             }
             call(historySource, 'pushHistory', undefined, 'Import Batch Any files');
-            applyBatchAnyStatePatch(node, {
-                statePatch: {
-                    media_kind: firstKind,
-                    items: Array.isArray(node.items) ? node.items.slice() : []
-                },
-                batchPatch: { state: 'importing', last_error: '' }
-            });
-            call(renderSource, 'mutate', undefined, { inspector: true });
-            for (const file of accepted) {
-                const item = await createBatchAnyItemFromFile(file, firstKind);
-                const items = Array.isArray(node.items) ? node.items.slice() : [];
-                items.push(item);
-                const patchOptions = { statePatch: { items } };
-                if (items.length === 1) {
-                    patchOptions.statePatch.current_index = 0;
-                    patchOptions.statePatch.asset = item.asset || null;
-                    if (item.media_kind === 'text') {
-                        patchOptions.textPatch = {
-                            value: call(batchSource, 'batchAnyTextFromItem', '', item),
-                            updated_at: item.added_at || nowIso()
-                        };
+            const ownsImportState = !isBatchAnyRunning(node);
+            let imported = 0;
+            let failure = null;
+            let canceled = false;
+            const canceledMessage = () => t('Import stopped because the Batch target changed or was locked.', '导入已停止：Batch 目标已变更或被锁定。');
+            activeImports.add(node);
+            try {
+                applyBatchAnyStatePatch(node, {
+                    statePatch: {
+                        media_kind: firstKind,
+                        items: Array.isArray(node.items) ? node.items.slice() : []
+                    },
+                    batchPatch: ownsImportState ? { state: 'importing', last_error: '' } : { last_error: '' }
+                });
+                call(renderSource, 'mutate', undefined, { inspector: true });
+                for (const file of accepted) {
+                    if (!canImport()) { canceled = true; break; }
+                    const item = await createBatchAnyItemFromFile(file, firstKind);
+                    if (!canImport()) { canceled = true; break; }
+                    if (!item) throw new Error(t('Failed to prepare a batch item.', '无法创建批量素材。'));
+                    const items = Array.isArray(node.items) ? node.items.slice() : [];
+                    items.push(item);
+                    const patchOptions = { statePatch: { items } };
+                    if (items.length === 1 && !isBatchAnyRunning(node)) {
+                        patchOptions.statePatch.current_index = 0;
+                        patchOptions.statePatch.asset = item.asset || null;
+                        if (item.media_kind === 'text') {
+                            patchOptions.textPatch = {
+                                value: call(batchSource, 'batchAnyTextFromItem', '', item),
+                                updated_at: item.added_at || nowIso()
+                            };
+                        }
+                    }
+                    applyBatchAnyStatePatch(node, patchOptions);
+                    imported += 1;
+                    if (item.asset?.data_url) {
+                        call(storageSource, 'materializeBatchAnyItemForStorage', Promise.resolve(), node.id, item.id)
+                            .catch(err => warn('[SimpAI Canvas] batch item materialize skipped:', err));
                     }
                 }
-                applyBatchAnyStatePatch(node, patchOptions);
-                if (item.asset?.data_url) {
-                    call(storageSource, 'materializeBatchAnyItemForStorage', Promise.resolve(), node.id, item.id)
-                        .catch(err => warn('[SimpAI Canvas] batch item materialize skipped:', err));
+                if (!canceled && !node.asset && node.items.length && !isBatchAnyRunning(node)) {
+                    call(batchSource, 'setBatchAnyCurrentItem', undefined, node, 0, { render: false });
+                }
+            } catch (err) {
+                if (!canImport()) canceled = true;
+                else failure = err;
+            } finally {
+                activeImports.delete(node);
+                if (isCurrent()) {
+                    const batchPatch = { last_error: canceled ? canceledMessage() : failure ? (failure.message || String(failure)) : '' };
+                    if (!failure && !canceled) batchPatch.imported_at = nowIso();
+                    if (ownsImportState && node.batch?.state === 'importing' && !isBatchAnyRunning(node)) {
+                        batchPatch.state = canceled ? 'canceled' : failure ? 'failed' : 'idle';
+                    }
+                    applyBatchAnyStatePatch(node, { batchPatch });
+                    call(renderSource, 'mutate', undefined, { inspector: true });
+                } else if (ownsImportState && isAttached() && node.batch?.state === 'importing') {
+                    // End this operation on its original project without refreshing the newly active project.
+                    applyBatchAnyStatePatch(node, { batchPatch: { state: 'canceled', last_error: canceledMessage() } });
                 }
             }
-            if (!node.asset && node.items.length) call(batchSource, 'setBatchAnyCurrentItem', undefined, node, 0, { render: false });
-            applyBatchAnyStatePatch(node, {
-                batchPatch: { state: 'idle', imported_at: nowIso(), last_error: '' }
-            });
-            call(renderSource, 'mutate', undefined, { inspector: true });
+            if (canceled) {
+                if (isCurrent()) showToast(canceledMessage());
+                return false;
+            }
+            if (failure) {
+                showToast(t('Import failed after {count} item(s): {error}', '已导入 {count} 个素材，后续导入失败：{error}')
+                    .replace('{count}', imported).replace('{error}', failure.message || String(failure)));
+                throw failure;
+            }
             showToast(skipped
                 ? t('Imported {count} item(s); skipped {skipped} mismatched file(s).', '已导入 {count} 个素材；跳过 {skipped} 个类型不一致的文件。').replace('{count}', accepted.length).replace('{skipped}', skipped)
                 : t('Imported {count} item(s).', '已导入 {count} 个素材。').replace('{count}', accepted.length));
@@ -140,7 +193,11 @@
             input.addEventListener('change', async () => {
                 const files = Array.from(input.files || []);
                 input.remove();
-                await addBatchAnyFilesToNode(node, files);
+                try {
+                    await addBatchAnyFilesToNode(node, files);
+                } catch (err) {
+                    warn('[SimpAI Canvas] batch file import failed:', err);
+                }
             }, { once: true });
             input.click();
         }

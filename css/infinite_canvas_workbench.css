@@ -10029,6 +10029,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-canvas-context-menu {
+    box-sizing: border-box;
     position: fixed;
     z-index: 2147483647;
     display: grid;
@@ -10047,7 +10048,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-canvas-context-menu.has-submenus {
-    overflow: visible;
+    overflow-y: auto;
 }
 
 .sai-canvas-context-menu.is-searchable {
@@ -10134,7 +10135,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     height: calc(100% + 8px);
 }
 
-.sai-canvas-context-menu.is-flipped .sai-canvas-context-menu-item.has-children::after {
+.sai-canvas-context-menu-item.is-submenu-flipped::after {
     right: auto;
     left: -10px;
 }
@@ -10221,7 +10222,8 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-canvas-context-submenu {
-    position: absolute;
+    box-sizing: border-box;
+    position: fixed;
     top: -6px;
     left: calc(100% + 2px);
     z-index: 1;
@@ -10238,11 +10240,6 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     background: var(--sai-canvas-panel);
     box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
     scrollbar-width: thin;
-}
-
-.sai-canvas-context-menu.is-flipped .sai-canvas-context-submenu {
-    right: calc(100% + 2px);
-    left: auto;
 }
 
 .sai-canvas-context-menu-item.has-children:hover > .sai-canvas-context-submenu,

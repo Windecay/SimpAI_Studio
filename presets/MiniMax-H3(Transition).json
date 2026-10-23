@@ -36,7 +36,7 @@
         "scene_var_number6", "scene_var_number7", "scene_var_number8",
         "scene_var_number9", "scene_var_number10", "scene_switch_option2", "scene_switch_option3",
         "scene_refiner_model", "scene_reference_video2",
-        "sam3_input_video", "sam3_mask_video", "scene_batch"
+        "sam3_input_video", "sam3_mask_video"
       ],
       "prompt": {
         "Basic": "summary:\n\nCreate a smooth audiovisual transition from the starting frame to the ending frame through continuous, purposeful motion. Keep the background unchange."

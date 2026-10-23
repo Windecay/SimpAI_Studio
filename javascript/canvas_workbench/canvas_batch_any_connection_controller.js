@@ -50,7 +50,7 @@
             }
             const kind = call(batchSource, 'batchAnySourceMediaKind', '', source);
             if (!call(batchSource, 'batchAnyAcceptsMediaKind', false, node, kind)) {
-                if (opts.toast !== false) showToast(t('This Batch Any already uses another media type.', '这个 Batch Any 已经使用另一种素材类型。'));
+                if (opts.toast !== false) showToast(t('This media type does not match the Batch type or its connected inputs.', '这种素材与 Batch 类型或已连接的输入槽不匹配。'));
                 return null;
             }
             let item = createBatchAnyItemFromSourceNode(source, kind);
@@ -71,7 +71,8 @@
                 }));
             const patchOptions = {
                 statePatch: { items, media_kind: mediaKind },
-                batchPatch: { state: 'idle', last_error: '' }
+                batchPatch: call(batchSource, 'isBatchAnyRunning', false, node)
+                    ? { last_error: '' } : { state: 'idle', last_error: '' }
             };
             if (items.length === 1) {
                 patchOptions.statePatch.current_index = 0;

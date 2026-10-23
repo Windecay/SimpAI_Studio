@@ -441,6 +441,7 @@
         if (targets.length) value = targetValues[targetId] || '';
         let bindings = normalizeBindings(options.bindings);
         let cards = [], draft = null, dirty = false, busy = false, composing = false;
+        let listRequestVersion = 0, saveRequestVersion = 0, librarySaving = false;
         let usingCard = '';
         let rawMode = false, savedSelection = { start: value.length, end: value.length }, mentionStart = null;
         let history = [], redo = [], lastSnapshot = { value, bindings: clone(bindings), targets: clone(targetValues) };
@@ -649,22 +650,56 @@ ${voice ? mediaHtml(voice) : ''}
                 query('[data-vpe-action="redo"]').disabled = !redo.length;
             }
         }
+        const editorIsCurrent = () => host.isConnected && active?.host === host;
         async function refresh() {
-            const result = await request('list', { category: query('[data-vpe-category]').value }, state);
-            if (!host.isConnected) return;
+            const category = query('[data-vpe-category]').value;
+            const version = ++listRequestVersion;
+            const isCurrent = () => editorIsCurrent() && listRequestVersion === version
+                && query('[data-vpe-category]').value === category;
+            let result;
+            try {
+                result = await request('list', { category }, state);
+            } catch (error) {
+                if (isCurrent()) throw error;
+                return false;
+            }
+            if (!isCurrent()) return false;
             cards = result.characters; renderCards(); renderReferences(); renderText();
+            return true;
+        }
+        function refreshLibrary() {
+            refresh().catch(error => { if (editorIsCurrent()) status(errorText(error)); });
         }
         function discardDraft() {
             return !dirty || root.confirm(t('Discard unsaved character changes?', '放弃尚未保存的角色卡修改？'));
         }
         async function saveDraft() {
-            if (!draft || (!dirty && draft.id && draft.category !== 'roleplay')) return;
+            if (!draft) return false;
+            if (!dirty && draft.id && draft.category !== 'roleplay') return true;
             if (!draft.name?.trim()) throw new Error('character_name_required');
-            const card = { ...draft, media_ids: (draft.media || []).map(ref => ref.asset_id) };
+            const owner = draft, submitted = clone(draft), version = ++saveRequestVersion;
+            const isCurrent = () => editorIsCurrent() && draft === owner && saveRequestVersion === version;
+            const card = { ...submitted, media_ids: (submitted.media || []).map(ref => ref.asset_id) };
             if (card.category === 'roleplay') { card.source_roleplay_id = card.id; delete card.id; delete card.revision; }
-            const result = await request('save', { character: card }, state);
-            draft = result.character; dirty = false;
+            let result;
+            try {
+                result = await request('save', { character: card }, state);
+            } catch (error) {
+                if (isCurrent()) throw error;
+                return false;
+            }
+            if (!isCurrent()) return false;
+            const changed = JSON.stringify(draft) !== JSON.stringify(submitted);
+            if (changed) {
+                Object.entries(result.character).forEach(([key, value]) => {
+                    if (JSON.stringify(draft[key]) === JSON.stringify(submitted[key])) draft[key] = clone(value);
+                });
+            } else {
+                draft = result.character;
+            }
+            dirty = changed;
             await refresh();
+            return editorIsCurrent() && saveRequestVersion === version;
         }
         function draftMediaHtml() {
             return `<div class="sai-vpe-media">${(draft.media || []).map((ref, index) => `
@@ -886,7 +921,9 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
         function close(force = false) {
             if (imageJob && !imageJob.finished) { status(t('Stop image generation before closing.', '请停止生图后再关闭。')); return; }
             if (voiceJob) { status(t('Stop voice generation before closing.', '请停止音色生成后再关闭。')); return; }
-            if (busy || (!force && !discardDraft())) return;
+            if ((busy && !librarySaving) || (!force && !discardDraft())) return;
+            listRequestVersion += 1;
+            saveRequestVersion += 1;
             root.clearTimeout(voiceTimer);
             root.clearTimeout(imageTimer);
             mediaPreviews.dispose();
@@ -1028,8 +1065,17 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 return;
             }
             if (action === 'save-card') {
-                await saveDraft(); renderDetail();
-                status(t('Character saved.', '角色卡已保存。')); return;
+                librarySaving = true;
+                try {
+                    if (!await saveDraft() || !editorIsCurrent()) return;
+                    if (!dirty) renderDetail();
+                    status(dirty
+                        ? t('Submitted changes saved. Newer edits are not saved yet.', '已保存提交的修改，后续编辑尚未保存。')
+                        : t('Character saved.', '角色卡已保存。'));
+                } finally {
+                    librarySaving = false;
+                }
+                return;
             }
             if (action === 'delete-card') {
                 if (!root.confirm(t(`Delete ${draft.name}?`, `删除 ${draft.name}？`))) return;
@@ -1137,7 +1183,7 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 pollVoice(action === 'voice-stop');
                 return;
             }
-            if (busy) return;
+            if (busy && action !== 'close') return;
             if ((voiceJob || imageJob) && !['voice-stop', 'voice-poll', 'image-stop', 'image-poll'].includes(target.dataset.vpeAction)
                     && !(imageJob?.finished && target.dataset.vpeAction === 'close')) return;
             if (target.dataset.vpeAction === 'close') { close(); return; }
@@ -1204,7 +1250,7 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 savedSelection = { start: value.length, end: value.length };
                 renderText(value.length);
             }
-            if (event.target.matches('[data-vpe-category]')) run(refresh);
+            if (event.target.matches('[data-vpe-category]')) refreshLibrary();
             if (event.target.matches('[data-vpe-upload]')) {
                 const file = event.target.files?.[0];
                 if (!file) return;
@@ -1265,7 +1311,7 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
         document.body.appendChild(host);
         active = { host, close };
         renderReferences(); renderText(); restoreCaret(value.length);
-        run(refresh);
+        refreshLibrary();
         return host;
     }
     function attach(field, context) {

@@ -1319,7 +1319,8 @@ class AgentService:
 
     def asset_storage(self, request, context):
         from modules import asset_lifecycle
-        return {**asset_lifecycle.for_state(context.state).status(request.offset, request.limit),
+        return {**asset_lifecycle.for_state(context.state).status(
+                    request.offset, request.limit, request.snapshot_id, identity_binding(context)),
                 "management_url": f"{API_PREFIX}/assets/manage"}
 
     def workflow_import(self, request, context):

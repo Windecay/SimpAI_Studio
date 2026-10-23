@@ -161,6 +161,9 @@
                 const mediaBrowserScroll = node.type === 'media_browser' && renderMode === 'full' && !mediaBrowserRuntimeFor(node.id).loading
                     ? captureMediaBrowserScroll(nodeEl, node.id)
                     : null;
+                const batchGrid = node.type === 'batch_any' && renderMode === 'full'
+                    ? nodeEl.querySelector('[data-batch-any-grid]') : null;
+                const batchGridScroll = batchGrid ? { top: batchGrid.scrollTop, left: batchGrid.scrollLeft } : null;
                 const renderKey = nodeRenderKey(node, renderOptions);
                 const preservePresetSpecialIframe = shouldPreservePresetSpecialIframe(node, nodeEl, renderMode);
                 const hasOverviewBody = renderMode === 'full' && !!nodeEl.querySelector?.(':scope > .sai-node-overview-body');
@@ -234,6 +237,13 @@
                 }
                 if (node.type === 'media_browser' && renderMode === 'full' && mediaBrowserScroll) {
                     restoreMediaBrowserScroll(nodeEl, mediaBrowserScroll, node.id);
+                }
+                if (batchGridScroll && didRenderHtml) {
+                    const grid = nodeEl.querySelector('[data-batch-any-grid]');
+                    if (grid) {
+                        grid.scrollTop = batchGridScroll.top;
+                        grid.scrollLeft = batchGridScroll.left;
+                    }
                 }
                 if (node.type === 'result' && renderMode === 'full') {
                     syncResultPreviewPlayerDom(node, nodeEl);

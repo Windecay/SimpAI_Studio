@@ -4,6 +4,7 @@ Only hashed media beneath the user's asset catalog can be reclaimed. Generated
 originals, project documents, credentials and model directories are never deleted.
 """
 from contextlib import contextmanager
+from collections import OrderedDict
 from functools import wraps
 import hashlib
 import json
@@ -11,6 +12,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import secrets
 import sqlite3
 import sys
 import threading
@@ -28,6 +30,10 @@ MAX_FILES = 50000
 MAX_DELETIONS = 500
 MAX_DOCUMENTS = 10000
 MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
+STATUS_SNAPSHOT_SECONDS = 30
+MAX_STATUS_SNAPSHOTS = 16
+MAX_STATUS_SNAPSHOT_ITEMS = 100000
+_STATUS_SNAPSHOTS = OrderedDict()
 _LOCKS = {}
 _REGISTRY_LOCK = threading.Lock()
 _PENDING = {}
@@ -214,9 +220,41 @@ class AssetStore:
                 # directories are never accepted from API request bodies.
                 self.reference_roots = tuple(Path(path) for path in json.loads(stored[0]))
             yield db
+            changed = bool(db.total_changes)
+            row = db.execute("SELECT value FROM settings WHERE key='status_revision'").fetchone()
+            revision = int(row[0]) if row else 0
+            if changed:
+                revision += 1
+                db.execute("INSERT OR REPLACE INTO settings VALUES ('status_revision',?)", (str(revision),))
             db.commit()
+            if changed:
+                self._invalidate_status_snapshots()
         finally:
             db.close()
+
+    def _invalidate_status_snapshots(self):
+        root = os.path.normcase(str(self.root))
+        with _REGISTRY_LOCK:
+            for token, snapshot in list(_STATUS_SNAPSHOTS.items()):
+                if snapshot["key"][0] == root:
+                    _STATUS_SNAPSHOTS.pop(token, None)
+
+    def _status_snapshot_key(self, identity):
+        return (os.path.normcase(str(self.root)), str(identity),
+                tuple(sorted(os.path.normcase(str(path.resolve())) for path in self.reference_roots)))
+
+    def _status_snapshot(self, db, token, identity):
+        if not token or db.total_changes:
+            return None
+        row = db.execute("SELECT value FROM settings WHERE key='status_revision'").fetchone()
+        revision = int(row[0]) if row else 0
+        with _REGISTRY_LOCK:
+            snapshot = _STATUS_SNAPSHOTS.get(token)
+            if (snapshot is None or snapshot["key"] != self._status_snapshot_key(identity)
+                    or snapshot["revision"] != revision
+                    or time.monotonic() >= snapshot["deadline"]):
+                return None
+            return snapshot
 
     def _relative(self, path):
         path = Path(path)
@@ -469,24 +507,69 @@ class AssetStore:
         except OSError:
             return False
 
-    def status(self, offset=0, limit=50):
+    def status(self, offset=0, limit=50, snapshot_id="", identity=""):
         with self.lock, self._db() as db:
-            policy, items, _, complete, busy, inventory_complete = self._snapshot(db, time.time())
-            used = sum(row["size"] for row in items)
+            now = time.time()
+            snapshot = self._status_snapshot(db, snapshot_id, identity)
+            if snapshot is None:
+                policy, items, _, complete, _, inventory_complete = self._snapshot(db, now)
+                # Cached state describes the completed filesystem scan. Running
+                # tasks and expiry are evaluated afresh for every displayed page.
+                snapshot = {
+                    "key": self._status_snapshot_key(identity), "policy": dict(policy),
+                    "items": tuple({**item, "protection": "" if item["protection"] == "active_task"
+                                   else item["protection"]} for item in items),
+                    "complete": complete, "inventory_complete": inventory_complete,
+                    "at": time.time(), "deadline": time.monotonic() + STATUS_SNAPSHOT_SECONDS,
+                    "token": "", "last_cleanup": None,
+                }
+                recent = db.execute("SELECT value FROM settings WHERE key='last_cleanup'").fetchone()
+                snapshot["last_cleanup"] = json.loads(recent[0]) if recent else None
+            else:
+                policy = snapshot["policy"]
+            complete, inventory_complete = snapshot["complete"], snapshot["inventory_complete"]
+            now = time.time()
+            busy = generation_busy()
+            items = []
+            protected = reclaimable = reclaimable_bytes = used = 0
+            for index, row in enumerate(snapshot["items"]):
+                reason = row["protection"] or ("active_task" if busy else "")
+                eligible = bool(now >= row["expires_at"] and not reason and complete)
+                used += row["size"]
+                protected += bool(reason)
+                reclaimable += eligible
+                reclaimable_bytes += row["size"] if eligible else 0
+                if offset <= index < offset + limit:
+                    items.append({"entry_id": row["entry_id"], "name": Path(row["path"]).name,
+                                  "size": row["size"], "last_used": row["used"], "expires_at": row["expires_at"],
+                                  "pinned": bool(row["pinned"]), "protection": reason, "eligible": eligible})
             maximum = policy["max_gb"] * GIB
-            result = {"policy": policy, "total_files": len(items), "total_bytes": used,
-                      "protected_files": sum(bool(row["protection"]) for row in items),
-                      "reclaimable_files": sum(row["eligible"] for row in items),
-                      "reclaimable_bytes": sum(row["size"] for row in items if row["eligible"]),
+            result = {"policy": dict(policy), "total_files": len(snapshot["items"]), "total_bytes": used,
+                      "protected_files": protected, "reclaimable_files": reclaimable,
+                      "reclaimable_bytes": reclaimable_bytes,
                       "over_limit": bool(maximum and used >= maximum), "scan_complete": complete, "busy": busy,
                       "inventory_complete": inventory_complete,
-                      "offset": offset, "limit": limit, "has_more": offset + limit < len(items),
-                      "items": [{"entry_id": row["entry_id"], "name": Path(row["path"]).name,
-                                 "size": row["size"], "last_used": row["used"], "expires_at": row["expires_at"],
-                                 "pinned": bool(row["pinned"]), "protection": row["protection"], "eligible": row["eligible"]}
-                                for row in items[offset:offset + limit]]}
-            recent = db.execute("SELECT value FROM settings WHERE key='last_cleanup'").fetchone()
-            result["last_cleanup"] = json.loads(recent[0]) if recent else None
+                      "offset": offset, "limit": limit, "has_more": offset + limit < len(snapshot["items"]),
+                      "items": items, "last_cleanup": snapshot["last_cleanup"],
+                      "snapshot_at": snapshot["at"],
+                      "snapshot_expires_at": snapshot["at"] + STATUS_SNAPSHOT_SECONDS}
+            if not snapshot["token"]:
+                revision = db.execute("SELECT value FROM settings WHERE key='status_revision'").fetchone()
+                snapshot["revision"] = (int(revision[0]) if revision else 0) + int(bool(db.total_changes))
+        # Publish only after the indexing transaction committed its revision.
+        # Cleanup, deletion_protection and capacity checks never read this cache.
+        if (not snapshot["token"] and snapshot["complete"] and snapshot["inventory_complete"]
+                and len(snapshot["items"]) <= MAX_STATUS_SNAPSHOT_ITEMS):
+            snapshot["token"] = secrets.token_urlsafe(24)
+            with _REGISTRY_LOCK:
+                for token, cached in list(_STATUS_SNAPSHOTS.items()):
+                    if time.monotonic() >= cached["deadline"]:
+                        _STATUS_SNAPSHOTS.pop(token, None)
+                _STATUS_SNAPSHOTS[snapshot["token"]] = snapshot
+                while (len(_STATUS_SNAPSHOTS) > MAX_STATUS_SNAPSHOTS
+                       or sum(len(cached["items"]) for cached in _STATUS_SNAPSHOTS.values()) > MAX_STATUS_SNAPSHOT_ITEMS):
+                    _STATUS_SNAPSHOTS.popitem(last=False)
+        result["snapshot_id"] = snapshot["token"]
         schedule(self)
         return result
 

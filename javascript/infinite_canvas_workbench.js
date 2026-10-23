@@ -726,6 +726,8 @@
     const scheduleMediaBrowserPaintRefresh = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.scheduleMediaBrowserPaintRefresh?.(...args);
     const scheduleMediaBrowserNodePaintRefresh = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.scheduleMediaBrowserNodePaintRefresh?.(...args);
     const TEXTAREA_EDITOR_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
+        nodeSource: { isNodeLocked: (...args) => isNodeLocked(...args) },
         domSource: {
             getDocument: () => typeof document !== 'undefined' ? document : null,
             getRoot: () => root,
@@ -1066,7 +1068,18 @@
     const viewportShouldRenderEdgeInViewport = WORKBENCH_VIEWPORT.shouldRenderEdgeInViewport;
     const viewportCurvePath = WORKBENCH_VIEWPORT.curvePath;
     const viewportGetEdgeSvgBounds = WORKBENCH_VIEWPORT.getEdgeSvgBounds;
-    const schedulerBuildPlan = WORKBENCH_SCHEDULER.buildPlan;
+    const schedulerTextOutputSource = {
+        isTextOutputNode: (...args) => isTextOutputNode(...args),
+        getNodeTextOutput: (...args) => getNodeTextOutput(...args),
+        getTextNodeInputSource: (...args) => getTextNodeInputSource(...args),
+        getTextMergeInputSource: (...args) => getTextMergeInputSource(...args),
+        textMergeInputSlots: (...args) => textMergeInputSlots(...args)
+    };
+    const schedulerBuildPlan = typeof WORKBENCH_SCHEDULER.buildPlan === 'function'
+        ? (sourceProject, options) => WORKBENCH_SCHEDULER.buildPlan(sourceProject, Object.assign({}, options || {}, {
+            textOutputSource: schedulerTextOutputSource
+        }))
+        : null;
     const schedulerRunPlan = WORKBENCH_SCHEDULER.runPlan;
     const schedulerBuildBlockedState = WORKBENCH_SCHEDULER.buildSchedulerBlockedState;
     const schedulerBuildWaitingState = WORKBENCH_SCHEDULER.buildSchedulerWaitingState;
@@ -3333,7 +3346,7 @@
                     isNodeLocked,
                 },
                 layoutSource: {
-                    getNodeRect: (...args) => viewportGetNodeRect(...args),
+                    getNodeRect: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER.getNodeRect(...args),
                 },
                 viewportSource: {
                     getCanvasRenderMode: () => getCanvasRenderMode(),
@@ -3646,6 +3659,7 @@
                  },
                  renderSource: {
                      beginDragEdgeLod: (...args) => beginDragEdgeLod(...args),
+                     endDragEdgeLodVisual: (...args) => endDragEdgeLodVisual(...args),
                      isDragEdgeLodActive: (...args) => isDragEdgeLodActive(...args),
                      scheduleDragEdgeSettleRender: (...args) => scheduleDragEdgeSettleRender(...args),
                      flushInteractiveLinkRender: (...args) => flushInteractiveLinkRender(...args),
@@ -4721,6 +4735,8 @@
         renderSource: SPECIAL_RESULT_BRIDGE_CONTEXT_SOURCE.renderSource,
         textSource: {
             isTextOutputNode: (...args) => isTextOutputNode(...args),
+            getTextNodeInputSource: (...args) => getTextNodeInputSource(...args),
+            getNodeTextOutput: (...args) => getNodeTextOutput(...args),
             textMergeInputSlots: (...args) => textMergeInputSlots(...args),
             getTextMergeOutput: (...args) => getTextMergeOutput(...args),
             getTextMergeInputSource: (...args) => getTextMergeInputSource(...args),
@@ -4889,6 +4905,8 @@
         })
         : {};
     const MEDIA_BROWSER_INTERACTION_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
+        nodeSource: { getNode: (...args) => getNode(...args) },
         stateSource: {
             mediaBrowserInitialState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserInitialState(...args),
             mediaBrowserNodeState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserNodeState(...args),
@@ -5083,12 +5101,14 @@
         })
         : {};
     const NOTE_EDIT_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
         nodeSource: {
             getNode: (...args) => getNode(...args),
             isNodeLocked: (...args) => isNodeLocked(...args)
         },
         domSource: {
             getNodesLayer: () => nodesLayer,
+            getInspector: () => inspector,
             getDocument: () => document,
             cssEscape: (...args) => CSS.escape(...args)
         },
@@ -5155,6 +5175,8 @@
         })
         : {};
     const NOTE_INSPECTOR_CONTEXT_SOURCE = {
+        projectSource: NOTE_EDIT_CONTEXT_SOURCE.projectSource,
+        nodeSource: NOTE_EDIT_CONTEXT_SOURCE.nodeSource,
         geometrySource: NOTE_EDIT_CONTEXT_SOURCE.geometrySource,
         editSource: {
             updateNoteText: (...args) => updateNoteText(...args),
@@ -5236,6 +5258,7 @@
         })
         : {};
     const MEDIA_BROWSER_ACTION_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
         stateSource: {
             viewportCenterWorld: (...args) => viewportCenterWorld(...args),
             mediaBrowserInitialState: (...args) => CANVAS_MEDIA_BROWSER_STATE_CONTROLLER.mediaBrowserInitialState(...args),
@@ -5268,6 +5291,7 @@
         })
         : {};
     const MEDIA_BROWSER_PANEL_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
         domSource: {
             getDocument: () => document,
             detectWorkbenchTheme: (...args) => detectWorkbenchTheme(...args),
@@ -5423,6 +5447,8 @@
         },
         batchSource: {
             isBatchTextFile: (...args) => isBatchTextFile(...args),
+            isBatchAnyRunning: (...args) => CANVAS_BATCH_ANY_RUNTIME_CONTROLLER.isBatchAnyRunning(...args),
+            batchAnyAcceptsMediaKind: (...args) => batchAnyAcceptsMediaKind(...args),
             batchAnyMediaKind: (...args) => batchAnyMediaKind(...args),
             batchAnyMediaKindFromFile: (...args) => batchAnyMediaKindFromFile(...args),
             batchAnyTextFromItem: (...args) => batchAnyTextFromItem(...args),
@@ -5459,6 +5485,7 @@
         renderSource: SPECIAL_RESULT_BRIDGE_CONTEXT_SOURCE.renderSource,
         batchSource: {
             applyBatchAnyStatePatch: (...args) => applyBatchAnyStatePatch(...args),
+            isBatchAnyRunning: (...args) => CANVAS_BATCH_ANY_RUNTIME_CONTROLLER.isBatchAnyRunning(...args),
             batchAnyMediaKind: (...args) => batchAnyMediaKind(...args),
             batchAnyTextFromItem: (...args) => batchAnyTextFromItem(...args)
         },
@@ -5708,6 +5735,7 @@
         })
         : {};
     const CONFIG_EDIT_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
         nodeSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.nodeSource,
         domSource: {
             getDocument: () => document
@@ -8053,7 +8081,7 @@
             t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() })
         },
         runtimeSource: {
-            getProject: () => state.project,
+            getProject: () => project,
             isNodeLocked,
             getNode,
             getSelectedNodeId: () => selectedNodeId,
@@ -8224,6 +8252,7 @@
                 }
             },
             presetPaletteSource: {
+                projectSource: { getProject: () => project },
                 languageSource: { t },
                 utilitySource: { escapeHtml, localizeCanvasLabel },
                 catalogSource: {
@@ -9942,6 +9971,7 @@
         uiSource: UPLOAD_CONNECTION_CONTEXT_SOURCE.uiSource,
         batchSource: {
             isBatchAnySourceNode: (...args) => isBatchAnySourceNode(...args),
+            isBatchAnyRunning: (...args) => CANVAS_BATCH_ANY_RUNTIME_CONTROLLER.isBatchAnyRunning(...args),
             batchAnySourceMediaKind: (...args) => batchAnySourceMediaKind(...args),
             batchAnyAcceptsMediaKind: (...args) => batchAnyAcceptsMediaKind(...args),
             batchAnySourceText: (...args) => batchAnySourceText(...args),
@@ -12985,6 +13015,7 @@
         : {};
     const NODE_MENU_CONTEXT_SOURCE = {
         nodeMenusSource: {
+            projectSource: { getProject: () => project },
             languageSource: {
                 t,
             },
@@ -13652,7 +13683,9 @@
         },
         nodeSource: {
             nodeStatusState: (...args) => nodeStatusState(...args),
-            compareSourceSignature: (...args) => compareSourceSignature(...args)
+            compareSourceSignature: (...args) => compareSourceSignature(...args),
+            getNodeTextOutput: (...args) => getNodeTextOutput(...args),
+            getTextNodeInputSource: (...args) => getTextNodeInputSource(...args)
         },
         projectSource: { getNode: (...args) => getNode(...args) },
         timelineSource: { getTimelineSourceAsset: (...args) => getTimelineSourceAsset(...args) },
@@ -15517,6 +15550,7 @@
     }
 
     const DANBOORU_GALLERY_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
         configSource: {
             endpoint: DANBOORU_GALLERY_ENDPOINT
         },
@@ -15584,8 +15618,8 @@
         return CANVAS_MEDIA_INPUT_CONNECTION_CONTROLLER.disconnectVlmImageInput(node, slot);
     }
 
-    async function addImageNodeFromFile(file, world) {
-        return CANVAS_MEDIA_IMPORT_CONTROLLER.addImageNodeFromFile(file, world);
+    async function addImageNodeFromFile(file, world, options) {
+        return CANVAS_MEDIA_IMPORT_CONTROLLER.addImageNodeFromFile(file, world, options);
     }
 
     function getInputImageNodePosition(targetNode, handle, size) {
@@ -15628,8 +15662,8 @@
         return CANVAS_INPUT_CREATION_CONTROLLER.createImageNodeForImageInput(targetNode, kind, slot, handle);
     }
 
-    async function addMediaNodeFromFile(file, world) {
-        return CANVAS_MEDIA_IMPORT_CONTROLLER.addMediaNodeFromFile(file, world);
+    async function addMediaNodeFromFile(file, world, options) {
+        return CANVAS_MEDIA_IMPORT_CONTROLLER.addMediaNodeFromFile(file, world, options);
     }
 
     function addBatchAnyNode(world, options) {
@@ -15660,8 +15694,8 @@
         return MEDIA_EDIT_CONTROLLER.applyMediaFileToNode(node, file, options);
     }
 
-    async function materializeNodeAssetForStorage(nodeId) {
-        return CANVAS_PROJECT_ASSETS_CONTROLLER.materializeNodeAssetForStorage(nodeId);
+    async function materializeNodeAssetForStorage(nodeId, options) {
+        return CANVAS_PROJECT_ASSETS_CONTROLLER.materializeNodeAssetForStorage(nodeId, options);
     }
 
     const MEDIA_VIEWER_CONTEXT_SOURCE = {
@@ -15784,6 +15818,7 @@
     NODE_BROWSER_CONTEXT = CANVAS_NODE_BROWSER_CONTEXT.NODE_BROWSER_CONTEXT || {};
 
     const GROUP_LIST_CONTEXT_SOURCE = {
+        projectSource: { getProject: () => project },
         languageSource: {
             t
         },

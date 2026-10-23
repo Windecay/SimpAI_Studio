@@ -1,0 +1,200 @@
+{
+  "supported_tasks": [
+    "image_edit"
+  ],
+  "interaction_requirements": [],
+  "prompt_agent_required": false,
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "backend_params": {
+      "pe_model": "None"
+    },
+    "engine_type": "image",
+    "disvisible": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection",
+      "sampler_name",
+      "scheduler_name"
+    ],
+    "disinteractive": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection"
+    ],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "m1.2",
+      "theme": [
+        "Moss-Edit"
+      ],
+      "theme_title": "Moss-Edit [Single image, no mask]",
+      "disable_canvas_mask": true,
+      "director_capability": {
+        "image_policy": "required",
+        "audio_policy": "forbidden",
+        "video_policy": "forbidden",
+        "min_images": 1,
+        "max_images": 1,
+        "image_modes": [
+          "reference_set"
+        ],
+        "audio_output": "silent",
+        "mixed_segments": false
+      },
+      "disvisible": [
+        "scene_input_image1",
+        "scene_input_image2",
+        "scene_input_image3",
+        "scene_additional_prompt",
+        "scene_additional_prompt_2",
+        "scene_var_number4",
+        "scene_var_number5",
+        "scene_var_number6",
+        "scene_var_number7",
+        "scene_var_number8",
+        "scene_var_number9",
+        "scene_var_number10",
+        "scene_switch_option1",
+        "scene_switch_option2",
+        "scene_switch_option3",
+        "scene_switch_option4",
+        "scene_refiner_model",
+        "scene_video",
+        "scene_reference_video",
+        "scene_audio",
+        "scene_video_duration",
+        "sam3_input_video",
+        "sam3_mask_video",
+        "minimax_h3_storyboard_control",
+        "scene_var_number3",
+        "scene_input_image4",
+        "scene_input_image5",
+        "scene_input_image6",
+        "scene_input_image7",
+        "scene_input_image8"
+      ],
+      "task_method": {
+        "Moss-Edit": "moss_edit_cn"
+      },
+      "prompt_skill_docs": {
+        "image_edit": {
+          "cn": [
+            "moss_edit_prompting_cn.md"
+          ],
+          "en": [
+            "moss_edit_prompting_en.md"
+          ]
+        }
+      },
+      "prompt": {
+        "Moss-Edit": ""
+      },
+      "agent_prompt": {
+        "Moss-Edit": "Write one direct instruction in English to edit the single main image. Describe the requested change and what must be preserved. For removal, explicitly name each requested subject and associated object using its visible position or appearance, state that each must disappear completely, and describe the empty area that replaces them. Distinguish foreground subjects to remove from background subjects to preserve. Do not invent additional input images, reference image numbers, masks, bounding boxes, JSON layouts, or model-specific image tags. Preserve quoted on-image text in its original language unless a change is requested. Return only the instruction."
+      },
+      "resolution_control": {
+        "mode": "image_keep_input_area",
+        "source": "scene_canvas",
+        "base_width": 512,
+        "base_height": 512,
+        "quantize": 16,
+        "interactive": true,
+        "frontend_preprocess": false,
+        "preprocess_target": "none",
+        "preprocess_fit": "proportional"
+      },
+      "aspect_ratio": [
+        "origin|Original",
+        "512|1:1",
+        "768|1:1",
+        "1024|1:1"
+      ],
+      "image_preprocessor_method": [
+        [
+          "-normalization"
+        ]
+      ],
+      "overwrite_step": {
+        "Moss-Edit": 30
+      },
+      "overwrite_step_min": 1,
+      "overwrite_step_max": 200,
+      "sampler": {
+        "Moss-Edit": "euler"
+      },
+      "scheduler": {
+        "Moss-Edit": "normal"
+      },
+      "theme_labels": {
+        "Moss-Edit": "Moss-Edit"
+      },
+      "var_number_title": "Reference Long Edge (0 = Output)",
+      "var_number_min": 0,
+      "var_number_max": 4096,
+      "var_number_step": 16,
+      "var_number": {
+        "Moss-Edit": 0
+      },
+      "var_number2_title": "Inference Shift",
+      "var_number2_min": 0.1,
+      "var_number2_max": 20,
+      "var_number2_step": 0.1,
+      "var_number2": {
+        "Moss-Edit": 5.0
+      }
+    }
+  },
+  "default_model": "moss_image_sft_int8_convrot.safetensors",
+  "default_clip_model": "qwen3.5_9b_w4a8_gptq.safetensors",
+  "default_vae": "moss_image_vae_bf16.safetensors",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_loras": [
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ]
+  ],
+  "default_cfg_scale": 4.0,
+  "default_sample_sharpness": 0,
+  "default_sampler": "euler",
+  "default_scheduler": "normal",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "origin|Original",
+  "default_resolution_quantize_step": 16,
+  "default_image_number": 1,
+  "default_overwrite_step": 30,
+  "default_prompt": "",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,moss_image_sft_int8_convrot.safetensors,5413698958,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors",
+    "text_encoders,qwen3.5_9b_w4a8_gptq.safetensors,7343591088,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors",
+    "vae,moss_image_vae_bf16.safetensors,124774710,81a27c7135775f149648fa35a58eec6d78a3e6a9bb9273885b51895cbc212d5d,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/moss_image_vae_bf16.safetensors",
+    "loras,moss_edit/adapter_model.safetensors,297382216,17a48b8c605dcffdedb92a2b887d18cf316505be90802717669fb6556098dcdf,https://modelscope.cn/models/ChenkinLab/Moss-Image-Edit/resolve/master/adapter_model.safetensors,https://huggingface.co/chinoll/Moss-Image-Edit/resolve/2e6ecc52b6c773dcf02723834239d7e1ac807793/adapter_model.safetensors",
+    "loras,moss_edit/adapter_config.json,53712,b6b471cf7bc77b0874af03be618f8a06b6997d92b35de12c47a06b292ade2669,https://modelscope.cn/models/ChenkinLab/Moss-Image-Edit/resolve/master/adapter_config.json,https://huggingface.co/chinoll/Moss-Image-Edit/resolve/2e6ecc52b6c773dcf02723834239d7e1ac807793/adapter_config.json"
+  ],
+  "preset_category": "MOSS"
+}

@@ -20,7 +20,7 @@ from .SimpAIH3VideoTransition import (
 LOG = logging.getLogger(__name__)
 
 
-def loop_source_frames(images, source_fps):
+def loop_source_frames(images, source_fps, allow_download=True):
     if not math.isfinite(source_fps) or source_fps <= 0 or len(images) == 0:
         raise ValueError("Loop sources must contain frames with a valid frame rate.")
     if source_fps >= MODEL_FPS - 0.01 or len(images) == 1:
@@ -30,6 +30,10 @@ def loop_source_frames(images, source_fps):
         Path(folder_paths.models_dir) / "rife/flownet.pkl",
         Path(folder_paths.models_dir) / "controlnet/rife/flownet.pkl",
     ]
+    resolver = getattr(folder_paths, "get_full_path", None)
+    registered = resolver("controlnet", "rife/flownet.pkl") if callable(resolver) else None
+    if registered:
+        candidates.insert(0, Path(registered))
     if not any(path.is_file() for path in candidates):
         raise FileNotFoundError("Install the local RIFE flownet.pkl model before interpolating a loop source.")
     interpolate = nodes.NODE_CLASS_MAPPINGS.get("RIFEInterpolation")
@@ -46,6 +50,7 @@ def loop_source_frames(images, source_fps):
         images=source, source_fps=source_fps, target_fps=MODEL_FPS, scale=2.0,
         model_name="flownet.pkl", batch_size=2, use_fp16=True,
         scene_detect=True, scene_threshold=0.15,
+        allow_download=allow_download,
     )[0]
     if len(result) < wanted:
         raise ValueError("Loop source interpolation returned fewer frames than requested.")
@@ -61,7 +66,7 @@ class SimpAIH3LoopSource:
             "overlap": ("FLOAT", {"default": 0.75, "min": 0.1, "max": 3.0}),
             "width": ("INT", {"default": 864, "min": 32, "max": 8192}),
             "height": ("INT", {"default": 480, "min": 32, "max": 8192}),
-        }}
+        }, "optional": {"allow_download": ("BOOLEAN", {"default": True})}}
 
     RETURN_TYPES = ("H3_TRANSITION", "INT", "INT", "INT", "FLOAT")
     RETURN_NAMES = ("transition", "length", "width", "height", "fps")
@@ -72,7 +77,7 @@ class SimpAIH3LoopSource:
     def IS_CHANGED(cls, video, **kwargs):
         return _file_hash(_resolve_video_path(video)), kwargs
 
-    def prepare(self, video, duration, overlap, width, height):
+    def prepare(self, video, duration, overlap, width, height, allow_download=True):
         if not video:
             raise ValueError("Upload a source video to create a loop.")
         source, _, audio, source_fps = _load_video_frames(
@@ -80,7 +85,7 @@ class SimpAIH3LoopSource:
         )
         if source is None:
             raise ValueError("Upload a source video to create a loop.")
-        source = loop_source_frames(source, source_fps)
+        source = loop_source_frames(source, source_fps, allow_download=allow_download)
         # Keep original neighbors at the loop boundary when the source is long enough.
         context_limit = max(1, (len(source) - 2) // 2)
         layout = transition_layout(context_limit, context_limit, float(duration), float(overlap))

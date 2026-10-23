@@ -78,12 +78,17 @@
 
         const activeBatches = new WeakMap();
 
+        function isBatchAnyRunning(node) {
+            return !!node && !!activeBatches.get(node)?.isCurrent();
+        }
+
         async function runBatchAnyNode(node, options) {
             if (!node || node.type !== 'batch_any') return { ok: false, error: 'batch node not found' };
             const project = getProject();
             const stale = () => ({ ok: false, stale: true, error: 'batch no longer current' });
             if (getNode(node.id) !== node) return stale();
-            if (activeBatches.get(node)?.isCurrent()) return { ok: false, error: 'batch already running' };
+            if (isBatchAnyRunning(node)) return { ok: false, error: 'batch already running' };
+            if (node.batch?.state === 'importing') return { ok: false, error: 'batch import in progress' };
             const opts = options || {};
             const items = Array.isArray(node.items) ? node.items : [];
             if (!items.length) {
@@ -98,6 +103,7 @@
             const indexes = opts.currentOnly
                 ? [Number(node.current_index || 0)]
                 : items.map((_, index) => index);
+            const plan = indexes.map(index => ({ index, id: items[index]?.id, item: items[index] }));
             const jobId = uid('batch_any_job');
             let job = null;
             const operation = {};
@@ -137,21 +143,35 @@
                 applyBatchAnyStatePatch(node, {
                     batchPatch: {
                         state: 'running', job_id: jobId, target_node_id: target.node.id,
-                        target_slot: target.slot, current: 0, total: indexes.length,
+                        target_slot: target.slot, current: 0, total: plan.length,
                         run_ids: [], last_error: ''
                     }
                 });
                 applyProjectPatch(buildProjectBatchJobAppendPatch(project, buildBatchAnyJob({
                     jobId, sourceNodeId: node.id, targetNodeId: target.node.id,
-                    targetSlot: target.slot, itemIds: indexes.map(index => items[index]?.id || '')
+                    targetSlot: target.slot, itemIds: plan.map(entry => entry.id || '')
                 })));
                 job = (project.batch_jobs || []).find(entry => entry.id === jobId);
                 mutate({ inspector: true });
-                for (let order = 0; order < indexes.length; order += 1) {
+                for (let order = 0; order < plan.length; order += 1) {
                     if (!isCurrent()) return stale();
-                    const index = indexes[order];
-                    const item = setBatchAnyCurrentItem(node, index, { render: false });
-                    if (!item) continue;
+                    const entry = plan[order];
+                    const index = entry.index;
+                    const currentItems = Array.isArray(node.items) ? node.items : [];
+                    const liveIndex = entry.id
+                        ? currentItems.findIndex(item => item?.id === entry.id)
+                        : currentItems.indexOf(entry.item);
+                    const item = liveIndex >= 0
+                        ? setBatchAnyCurrentItem(node, liveIndex, { render: false, runJobId: jobId })
+                        : null;
+                    if (!item) {
+                        results.push({ ok: false, error: t('A planned batch item is no longer available.', '计划中的批量素材已不可用。') });
+                        break;
+                    }
+                    const hasCurrentInput = () => {
+                        const current = node.items?.[Number(node.current_index || 0)];
+                        return entry.id ? current?.id === entry.id : current === item;
+                    };
                     applyBatchAnyStatePatch(node, {
                         batchPatch: { current: order + 1, active_item_id: item.id, active_item_name: item.name || '' }
                     });
@@ -161,9 +181,13 @@
                         reuseExistingResult: !!batchResultNode,
                         skipInputPreflight: true,
                         initialDelayMs: 900,
-                        shouldContinue: isCurrent
+                        shouldContinue: () => isCurrent() && hasCurrentInput()
                     });
                     if (!isCurrent()) return stale();
+                    if (!hasCurrentInput()) {
+                        results.push({ ok: false, error: t('The active batch input changed during execution.', '执行期间的批量素材输入已改变。') });
+                        break;
+                    }
                     const resultNode = getNode(result?.result_node_id);
                     const response = result?.result || result?.response || {};
                     const runId = result?.run_id || response.run_id || '';
@@ -218,6 +242,7 @@
         return {
             batchAnyResultTitle,
             batchAnyResultAssetsFromResponse,
+            isBatchAnyRunning,
             runBatchAnyNode
         };
     }

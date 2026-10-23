@@ -209,7 +209,7 @@
     },
     "class_type": "UpscaleModelLoader",
     "_meta": {
-      "title": "Load Upscale Model"
+      "title": "upscale_model"
     }
   },
   "467": {

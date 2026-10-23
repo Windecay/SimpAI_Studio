@@ -58,8 +58,7 @@
                 "scene_refiner_model",
                 "sam3_input_video",
                 "sam3_mask_video",
-                "scene_switch_option1",
-                "scene_batch"
+                "scene_switch_option1"
             ],
             "prompt": {
                 "Text+Audio to Video": ""

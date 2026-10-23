@@ -298,3 +298,40 @@
 - 新云端节点只做注册和模拟请求检查，不读取认证信息、不调用真实云服务。没有下载模型、安装依赖、重启服务或执行用户数据库迁移；现有环境仍安装 frontend `1.55.18` 和 templates `0.11.89`。
 - 源仓库和 Studio 后端各 `84 passed`，包含 16 项本次新增检查；Studio 启动、更新器及依赖路由为 `87 passed, 33 subtests passed`。Studio 合计 171 项及 33 项子测试通过，不把源端的同组检查再次累计。CPU 测试进程关闭可选 Triton 与 CUDA 探测，不代表 GPU、真实权重或付费 API 已验收。
 - Fibo 小模型检查首次因隐藏维度低于固定 256 维时间条件而有 4 项失败，改用符合模型结构的 256 维测试对象后全部通过，没有为测试修改上游生产实现。Studio 的 pytest 原始日志为 84 项通过；外围打印日志时遇到 GBK/UTF-8 编码错误，保留原始日志单独读取核对。
+
+## 2026-10-23 上游合并与 Moss Edit 实验实现对照
+
+- 从干净的 `34c13a06a` 合并官方 `origin/master` 至 `bef11fcbfa8d772678e2ad00b1294c63eb3e5da7`，新增 23 个提交，无文本冲突，保留未提交 merge。源码仍为 ComfyUI `0.42.0`，私有版本标记为 `bef11fcbf`。
+- 更新前比较 1,278 个共享文件，运行代码差异集中在 Studio 的四个 Moss Edit 实验文件；其他差异为 CI、说明和维护配置。Studio 本次只读，其 1,292 个受检文件、HEAD 和 index 保持原样，没有复制预置、工作流、模型或 custom_nodes。
+
+### Moss Edit 取舍
+
+- 采用官方 `60aade0bb` 的参考分支、RoPE、缓存布局、控制通道填充及 LoRA 映射。官方提供 `ai-toolkit`、`ai-toolkit (kv_cache off)`、`Moss-Image-Edit` 三种格式；当前 chinoll adapter 必须选择最后一项，对应 `index_timestep_zero_text_start`，且文本编码器不读取参考图。不能使用默认 ai-toolkit 格式代替。
+- 保留实验版的编辑时间编码精度，仅用于带参考图的 `Moss-Image-Edit` 格式。纯官方代码在原作者小模型对照中有 4/18 组超过此前 `3e-5` 容差，最大误差 `4.4405460357666016e-05`；单独恢复 float64 频率后，18/18 组通过，最大误差 `1.430511474609375e-06`。不支持 FP64 的设备沿用现有 RoPE 的 CPU 计算方式；未执行真实 MPS/XPU/NPU 验收。
+- 保留参考 K/V 的显存预算，适配官方 `ref_kv` 条件；全注意力参考模式不额外预留 KV 缓存空间。在 42 层、3072 维、BF16、512×512 单参考图的检查中，正负两份缓存共需 1,056,964,608 字节，官方通用估算不足以单独覆盖此项。预算检查先复现失败，保留处理后通过。取消检查已由官方算子提供，不移植重复的逐层检查。
+- 当前 adapter 的 SHA256 与配套配置一致，252 个目标均为 rank=alpha=64；融合与独立 QKV 各 252 项映射通过原生 LoRA 加载器检查。可采用普通 LoRA 加载，不再需要实验版转换函数；本次未向源仓库引入三种旧实验节点或兼容别名。
+- Studio 工作流仍使用 `MOSSImageEditAdapter`、`MOSSImageEditReference`、`MOSSImageEditScheduler`，本次没有迁移或覆盖。后续同步前应改用官方编码节点，为正负提示词分别传入同一参考集合，并保留现有参考图缩放与 V2 采样时间表。官方编码节点按输入尺寸编码，不含原来的最长边缩放；30 步、shift=5 时，原时间表最后非零 sigma 为 `0.024000002`，普通 normal 为 `0.024414064`，两者不逐值相同。
+
+### 其他变化与依赖
+
+- 同步 Qwen 自适应树形 MTP、Qwen Image 2.1 动态显存 KV cache、pin 复用前同步 offload streams、Fibo2 负向提示词和 NTK RoPE、Gemma4 KV heads 修正、AMD VAE 的 PyTorch attention，以及镜像/倍数补边节点。MTP 仍依赖相应权重，不代表现有普通文本编码任务自动具备 MTP。
+- 私有入口对齐可选 `--enable-agent` 的加载、服务就绪回调和停止流程；默认不启用，独立可选依赖不加入主 requirements。继续默认关闭 Memory compiler，并随之关闭 CUDA graphs；DynamicVRAM、aimdo、SLA 和既有 offload 参数策略不改动。H3 VAE 和 MLP 分批没有本次改动。
+- workflow templates 从 `0.11.93` 更新为 `0.11.96`，Kitchen 从 `0.2.39` 更新为 `0.2.40`，aimdo 从 `0.5.6` 更新为 `0.6.0`，新增 Pillow `>=10.1.0` 要求。frontend `1.57.1` 和 embedded docs `0.5.14` 不变。
+- 根据此前 Bria 云端调用授权，保留新增 Guided Remove Background、Product Holding、Virtual Try-On 及其共享视频蒙版转换。依照仓库不新增联网功能的规则，排除本次 Krea 3 ultra、PixVerse V6 Max、Ideogram Vector、Meshy T2.5、Mirelo、VEED 变更；这些模块已有内容保持更新前状态。
+
+### 验证与使用限制
+
+- 源 checkout 使用嵌入式 Python 做 CPU 隔离检查，保留真实 Kitchen eager 运算。Moss 编辑、普通 Moss、compiler、私有入口与既有模型检查共 `106 passed`；其他回归为 `247 passed, 18 failed`。两组重合 14 项，去重后为 `339 passed, 18 failed`，不累计修正过程中的重复测试。
+- 18 个失败均位于 Qwen 解码专项，当前 Kitchen `0.2.39` 仍提供 2-int 控制结构、旧 decode 签名，缺少新版 tree merge；目标 `0.2.40` 要求 26-int 结构及新接口。当前 aimdo `0.5.6` 也没有新增文件回写 API。保留失败日志，不为旧依赖添加生产兼容分支或把这些失败计为通过。
+- 原作者 FP32 小模型对照覆盖 1/2/4 张不同尺寸参考图、融合与独立 QKV、三种文本长度及时间步，18 组通过；与实验版的另 18 组对照最大误差为 `4.76837158203125e-07`，无参考图输出逐值一致。adapter 检查读取已有本地文件，没有下载模型。49 个改动 Python 文件语法、requirements 解析和 Git 空白检查通过；CPU 对照不代表真实量化模型、GPU 显存行为或多图编辑质量通过。
+- 测试中的首次编码检查失败来自新增测试直接比较 Tensor 列表，修正为逐张数值比较；一次回归收集失败来自 Bria 所需共享转换被排除，恢复对应本地工具后完成回归。没有为通过测试修改这些节点的生产行为。
+- 审计与原始日志位于本仓库 `.git/audit-moss-edit-20261023-090622/`。未安装依赖、启动或重启服务、执行真实云端请求、下载模型、同步 Studio、创建提交或推送。部署前仍需安装声明版本并迁移 Studio 的编辑工作流。
+
+### Studio 开发端同步
+
+- 按 55 项清单复制 53 个后端文件，并删除两处模块迁移的旧路径；不复制 AGENTS、模型、用户数据或其他节点包。Studio 后端版本标记为 `bef11fcbf`，四个实验性 Moss 内核文件按本次已审阅实现替换，删除不再使用的编辑 LoRA 转换函数。
+- Moss-Edit 工作流改用标准 `LoraLoaderModelOnly`；参考图预处理和 V2 时间表移至 Studio 的 `SimpAIMossEdit` 节点模块。每张参考图只编码一次，正负条件共享 latent 集合并使用官方 `Moss-Image-Edit` 契约，保留图片顺序、参考最长边和 FLOAT Shift 映射。原有魔搭首选/HF 备用源、模型清单、界面默认值保持原样。
+- Studio 两份 requirements、启动器、更新器、相关合同和 Forge 的两个 Kitchen 声明对齐 `0.2.40`；aimdo `0.6.0`、模板 `0.11.96`、Pillow `>=10.1.0` 同步对齐。默认 compiler/CUDA graphs 策略和现有 offload 契约不变。
+- 在 Studio checkout 验证：后端 `339 passed, 18 failed`；Studio 集成 `324 passed, 1 failed, 53 subtests passed`；指定 Forge 合同 `1 passed, 1 failed`。合计 `664 passed, 20 failed, 53 subtests passed`，不累计基线或修正过程的重测。18 项为旧 Kitchen 接口限制；另外两项分别为既有 Forge 预览 block/flex 断言，以及 LoRA 再生测试模拟配置缺少 `lora_filenames`，对应测试与生产函数均未因本次同步改动。
+- 迁移后的原作者 CPU 对照 `18` 组通过，最大误差 `1.430511474609375e-06`，`4` 组 SIGMAS 逐值一致。测试覆盖完整工作流校验、分数 Shift、参考图片顺序、CFG 共享条件、原生 LoRA、依赖声明、compiler、模型管理及受影响内核；未执行真实 GPU、浏览器、付费 API 或完整服务验收。
+- 以独立 cached patch 暂存本次范围；Forge 两个已有开发文件只暂存 Kitchen 版本变化，其余无关暂存/工作区内容保留。

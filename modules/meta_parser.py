@@ -201,6 +201,7 @@ def ensure_dropdown_choices_include_values(choices, *values):
     return result
 
 def _coerce_scene_slider_value(value, minimum=None, maximum=None, step=None):
+    """Shared numeric rule for scene payloads and Gradio value updates."""
     if minimum is None and maximum is None:
         return value
     try:
@@ -522,6 +523,7 @@ def _scene_generation_step_update_props(state_or_scene, theme=None):
 
 
 def _state_standard_generation_step_default(state):
+    """Read the positive step override shared by scene backfill paths."""
     if not isinstance(state, dict):
         return None
     preset_prepared = state.get("__preset_prepared", {})

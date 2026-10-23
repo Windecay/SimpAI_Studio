@@ -25584,7 +25584,7 @@
   ${renderMessageImages(message.images, message.media_assets)}
   ${renderDocumentAttachments(message.documents)}
   ${renderConversationImageReads(message.image_context_reads)}
-  ${role === 'assistant' && (!pending || completion?.reasoning_text) ? completionReasoningHtml(completion, message.id) : ''}
+  ${role === 'assistant' && (!pending || completion?.reasoning_text) ? completionReasoningHtml(completion, variants.length > 1 && activeVariant?.id ? `${message.id}:${activeVariant.id}` : message.id) : ''}
   ${message.content || pending ? `<div class="describe-vlm-chat-rich-text" data-describe-vlm-message-body>${renderChatMessageText(message.content, runtime)}</div>` : ''}
   ${memoryUsageHtml}
   ${stateChangesHtml}

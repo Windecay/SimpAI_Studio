@@ -5979,6 +5979,47 @@ window.applySceneOutpaintSubmitValues = applySceneOutpaintSubmitValues;
 
 const SCENE_BATCH_TARGET_SLOT_ORDER = ["scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8"];
 
+function getSceneBatchInputDefinitions() {
+    const root = document.querySelector('#scene_batch_schema [data-scene-batch-inputs]');
+    if (root) {
+        try {
+            const definitions = JSON.parse(root.getAttribute('data-scene-batch-inputs'));
+            if (Array.isArray(definitions)) return definitions;
+        } catch (e) { console.warn('[SceneBatch] Invalid input definitions', e); }
+    }
+    return SCENE_BATCH_TARGET_SLOT_ORDER.map(slot => ({slot, kind: 'image', en: sceneUploadSlotEnglishLabel(slot)}));
+}
+window.getSceneBatchInputDefinitions = getSceneBatchInputDefinitions;
+
+function sceneBatchVisibleSlotItems(isScene, hidden) {
+    if (!isScene) return [];
+    const hiddenSet = hidden instanceof Set ? hidden : sceneDisvisibleSetFromValue(hidden);
+    const state = window.simpleaiTopbarSystemParams || {};
+    const lang = String(state.__lang || 'en').toLowerCase();
+    const cn = lang.startsWith('cn') || lang.startsWith('zh') || lang === '中文';
+    return getSceneBatchInputDefinitions().filter(item => !hiddenSet.has(item.slot)).map(item => ({
+        ...item, englishLabel: item.en, label: cn ? (item.cn || topbarTranslateText(item.en)) : item.en,
+        uploadLabel: cn ? item.upload_cn : item.upload_en,
+    }));
+}
+
+function syncSceneBatchUploadLabel(item) {
+    const root = document.getElementById('scene_batch_files');
+    if (!root || !item?.uploadLabel) return;
+    const labels = new Set(['Upload media', '上传素材']);
+    getSceneBatchInputDefinitions().forEach(definition => {
+        labels.add(definition.upload_en);
+        labels.add(definition.upload_cn);
+    });
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!labels.has(String(node.textContent || '').trim())) continue;
+        if (node.textContent !== item.uploadLabel) node.textContent = item.uploadLabel;
+        node.parentElement?.setAttribute('data-original-text', item.upload_en);
+        break;
+    }
+}
+
 let sceneUploadImageLabelObserver = null;
 let sceneUploadImageLabelObserverRoot = null;
 let sceneUploadImageLabelSyncTimer = null;
@@ -6033,6 +6074,8 @@ function normalizeSceneUploadPromptLabelIdentity(value) {
 function normalizeSceneBatchTargetSlotIdentity(value) {
     let raw = String(value || "").replace(/\s+/g, " ").trim();
     if (!raw) return "";
+    const definition = getSceneBatchInputDefinitions().find(item => [item.slot, item.en, item.cn].includes(raw));
+    if (definition) return definition.slot;
     if (SCENE_BATCH_TARGET_SLOT_ORDER.includes(raw)) return raw;
     try {
         if (typeof getReverseLocalization === "function") {
@@ -6141,10 +6184,10 @@ function setSceneBatchTargetChoiceVisible(label, visible) {
     }
 }
 
-function setSceneBatchTargetChoiceLabel(label, englishLabel) {
+function setSceneBatchTargetChoiceLabel(label, englishLabel, localizedLabel = null) {
     const textNode = findSceneBatchTargetLabelTextNode(label);
     if (!label || !textNode) return false;
-    const translated = topbarTranslateText(englishLabel);
+    const translated = localizedLabel || topbarTranslateText(englishLabel);
     const currentText = String(textNode.textContent || "");
     const nextText = currentText.match(/(?:Upload and canvas|Upload prompt image|Prompt image|主体图片|参考图片)\([1-9]\)/)
         ? currentText.replace(/(?:Upload and canvas|Upload prompt image|Prompt image|主体图片|参考图片)\([1-9]\)/, translated)
@@ -6160,14 +6203,14 @@ function setSceneBatchTargetChoiceLabel(label, englishLabel) {
     return true;
 }
 
-function syncSceneBatchTargetLabels(isScene, hidden, slotItems = null) {
+function syncSceneBatchTargetLabels(isScene, hidden) {
     if (!isScene) return;
     ensureSceneBatchTargetObserver();
     const app = gradioApp();
     const root = (app && app.getElementById ? app.getElementById("scene_batch_target") : null) || document.getElementById("scene_batch_target");
     if (!root || !root.querySelectorAll) return;
 
-    const items = Array.isArray(slotItems) ? slotItems : sceneUploadVisibleSlotItems(isScene, hidden);
+    const items = sceneBatchVisibleSlotItems(isScene, hidden);
     const itemBySlot = new Map(items.map((item) => [item.slot, item]));
     const labels = Array.from(root.querySelectorAll('label')).filter((label) => label.querySelector('input[type="radio"]'));
     const visibleOptions = [];
@@ -6184,7 +6227,7 @@ function syncSceneBatchTargetLabels(isScene, hidden, slotItems = null) {
             return;
         }
         setSceneBatchTargetChoiceVisible(label, true);
-        setSceneBatchTargetChoiceLabel(label, item.englishLabel);
+        setSceneBatchTargetChoiceLabel(label, item.englishLabel, item.label);
         if (input.value !== item.slot) input.value = item.slot;
         visibleOptions.push({ input, slot: item.slot });
         if (input.checked) checkedVisible = true;
@@ -6196,6 +6239,11 @@ function syncSceneBatchTargetLabels(isScene, hidden, slotItems = null) {
         next.input.dispatchEvent(new Event("input", { bubbles: true }));
         next.input.dispatchEvent(new Event("change", { bubbles: true }));
     }
+    const selected = visibleOptions.find(option => option.input.checked);
+    const upload = document.querySelector('#scene_batch_files input[type="file"]');
+    const selectedItem = selected && itemBySlot.get(selected.slot);
+    if (upload && selectedItem?.extensions) upload.accept = selectedItem.extensions.join(',');
+    syncSceneBatchUploadLabel(selectedItem);
 }
 
 function ensureSceneBatchTargetObserver() {
@@ -6210,7 +6258,9 @@ function ensureSceneBatchTargetObserver() {
     sceneBatchTargetObserverRoot = root;
     sceneBatchTargetObserver = new MutationObserver(() => {
         if (!sceneUploadImageLabelState.isScene) return;
-        scheduleSceneUploadImageLabelSync();
+        // Gradio recreates radio labels when the accordion opens or choices
+        // update. Hide unsupported targets before the next paint/click.
+        syncSceneBatchTargetLabels(true, new Set(sceneUploadImageLabelState.hiddenIds));
     });
     sceneBatchTargetObserver.observe(root, { childList: true, subtree: true, characterData: true });
 }
@@ -6253,7 +6303,7 @@ function syncSceneUploadImageLabels(isScene, hidden) {
         if (item.slot === "scene_canvas_image") return;
         setSceneUploadPromptBlockLabel(item.slot, item.englishLabel);
     });
-    syncSceneBatchTargetLabels(isScene, hiddenSet, items);
+    syncSceneBatchTargetLabels(isScene, hiddenSet);
 }
 
 let qwenPoseImageModeActive = false;

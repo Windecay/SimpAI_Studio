@@ -4,6 +4,7 @@
     function createCanvasConfigEditController(context) {
         const scope = context?.configEditSource || context || {};
         const nodeSource = scope.nodeSource || {};
+        const projectSource = scope.projectSource || {};
         const domSource = scope.domSource || {};
         const configSource = scope.configSource || {};
         const modelBrowserSource = scope.modelBrowserSource || {};
@@ -21,6 +22,8 @@
         const eventCall = (name, fallback, ...args) => call(eventSource, name, fallback, ...args);
         const t = (en, cn) => call(languageSource, 't', en, en, cn);
         const getNode = id => call(nodeSource, 'getNode', null, id);
+        const getProject = () => projectSource.getProject();
+        let modelSelectionSession = null;
         const isNodeLocked = node => call(nodeSource, 'isNodeLocked', false, node);
         const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
             ? serializationSource.cloneRunValue
@@ -185,7 +188,7 @@
         }
 
         function openModelBrowserForConfigField(node, trigger, nodeEl) {
-            if (!node || node.type !== 'config' || node.config_kind !== 'models') return false;
+            if (!node || node.type !== 'config' || node.config_kind !== 'models' || isNodeLocked(node)) return false;
             const browser = call(modelBrowserSource, 'getModelBrowser', null);
             if (!browser || typeof browser.open !== 'function') {
                 eventCall('showToast', undefined, t('Model Browser is not loaded yet.', 'Model Browser 尚未加载完成。'));
@@ -216,6 +219,18 @@
             const catalog = node.config?.catalog || call(modelBrowserSource, 'getModelCatalog', {});
             const targetPreset = call(configSource, 'getConfigTargetPreset', null, node);
             const currentModelNames = currentModelBrowserNames(node, isLora, select, key);
+            const project = getProject();
+            const projectId = project?.id;
+            const session = {};
+            modelSelectionSession = session;
+            const fieldSnapshot = () => JSON.stringify({
+                value: isLora
+                    ? call(modelBrowserSource, 'normalizeInitialConfigLoras', [], node.config?.defaults || {}, node.config?.values || {})
+                    : [node.config?.values?.[key], node.config?.defaults?.[key]],
+                target: node.target_preset_id,
+                select: select?.value
+            });
+            const snapshot = fieldSnapshot();
             browser.open({
                 type,
                 title,
@@ -234,7 +249,18 @@
                 },
                 onSelect: item => {
                     const value = item?.name || '';
-                    if (!value) return;
+                    if (!value || modelSelectionSession !== session
+                        || getProject() !== project || project?.id !== projectId
+                        || getNode(node.id) !== node || node.config_kind !== 'models' || isNodeLocked(node)
+                        || call(configSource, 'getConfigTargetPreset', null, node) !== targetPreset
+                        || (targetPreset && isNodeLocked(targetPreset))
+                        || (select && (select.isConnected === false || select.disabled || select.readOnly))
+                        || fieldSnapshot() !== snapshot) return false;
+                    modelSelectionSession = null;
+                    if (isLora) updateConfigLora(node.id, index, 'model', value);
+                    else updateConfigParam(node.id, key, value, 'text', { render: false });
+                    const updated = isLora ? node.config?.values?.loras?.[index]?.model : node.config?.values?.[key];
+                    if (updated !== value) return false;
                     if (select && !Array.from(select.options || []).some(option => option.value === value)) {
                         select.add(call(modelBrowserSource, 'createOption', { value, textContent: value }, value));
                     }
@@ -242,9 +268,8 @@
                         select.value = value;
                         eventCall('syncModelSelectTitle', undefined, select);
                     }
-                    if (isLora) updateConfigLora(node.id, index, 'model', value);
-                    else updateConfigParam(node.id, key, value, 'text', { render: false });
                     eventCall('showToast', undefined, t('Model selected.', '已选择模型。'));
+                    return true;
                 }
             });
             return true;

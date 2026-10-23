@@ -225,7 +225,7 @@
   <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Input', '输入'))}</span><b>${escapeHtml(source?.title || t('Manual', '手动'))}</b></div>
   <label>${escapeHtml(t('Output', '输出'))}${renderTranslatableTextarea(`data-inspector-text-value rows="10" ${source ? 'readonly' : ''}`, value, { target: 'text-value', disabled: !!source, tagCart: !source, state: getTranslationFieldState(node, 'text-value', '', value) })}</label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Characters', '字符数'))}</span><b>${escapeHtml(String(value.length))}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Characters', '字符数'))}</span><b data-text-output-length>${escapeHtml(String(value.length))}</b></div>
 </div>
 <div class="sai-inspector-actions">
   <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>

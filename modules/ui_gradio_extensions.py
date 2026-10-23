@@ -9,6 +9,7 @@ import modules.prompt_actions
 import modules.sdxl_styles
 
 from modules.localization import localization_js
+from modules.tag_text_storage import atomic_write_bytes
 from ui.assets import reload_template_assets
 from gradio.route_utils import API_PREFIX
 
@@ -56,18 +57,11 @@ def ensure_tag_cart_custom_tags_path():
     os.makedirs(user_tags_dir, exist_ok=True)
 
     if not os.path.exists(user_custom_tags):
-        migrated = False
-        try:
-            if os.path.exists(legacy_custom_tags) and os.path.getsize(legacy_custom_tags) > 0:
-                with open(legacy_custom_tags, 'rb') as src, open(user_custom_tags, 'wb') as dst:
-                    dst.write(src.read())
-                migrated = True
-        except Exception:
-            migrated = False
-
-        if not migrated:
-            with open(user_custom_tags, 'w', encoding='utf-8') as f:
-                f.write('')
+        content = b''
+        if os.path.exists(legacy_custom_tags) and os.path.getsize(legacy_custom_tags) > 0:
+            with open(legacy_custom_tags, 'rb') as src:
+                content = src.read()
+        atomic_write_bytes(user_custom_tags, content)
 
     return os.path.abspath(user_custom_tags)
 

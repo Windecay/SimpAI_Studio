@@ -104,6 +104,7 @@ IMAGE_GENERATION_TASKS = {
     "image_expression_transfer",
 }
 VIDEO_GENERATION_TASKS = {
+    "video_edit",
     "text_to_video",
     "image_to_video",
     "multi_image_to_video",
@@ -118,8 +119,8 @@ IMAGE_INPUT_GENERATION_TASKS = (IMAGE_GENERATION_TASKS - {"text_to_image"}) | {
     "multi_image_to_video",
     "image_audio_to_video",
 }
-AUDIO_INPUT_GENERATION_TASKS = {"audio_to_video", "image_audio_to_video", "video_audio_to_video"}
-VIDEO_INPUT_GENERATION_TASKS = {"video_audio_to_video"}
+AUDIO_INPUT_GENERATION_TASKS = {"audio_to_video", "image_audio_to_video", "video_audio_to_video", "video_edit"}
+VIDEO_INPUT_GENERATION_TASKS = {"video_audio_to_video", "video_edit"}
 MULTI_IMAGE_GENERATION_TASKS = {
     "multi_image_edit",
     "image_style_transfer",
@@ -231,7 +232,7 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "The generate_image action is a task request, not an execution plan and not proof that generation has started. The application selects and validates the Preset, theme, task_method, models, input slots, and interaction requirements. "
     "For image work, include the exact attached media refs in visual input order. Use image_edit for a general one-image edit and multi_image_edit for a general edit using two or more images. Prefer Qwen2.1-Edit for both tasks when ready; preserve an explicitly selected compatible preset or session preference. Use <image1> through <image9> for Qwen2.1 references, not H3 <Picture N> labels. "
     "For requests to erase or remove a named object, such as a cup, balloon, person, or watermark, use image_object_removal with the source image ref. Describe the target and its location, reconstruct the background naturally, and preserve unrelated content. The application prefers QwenEraser when ready. A painted mask is optional: do not ask the user to paint one before executing a text-directed removal. If the source image is missing, the application will request it. Keep the existing automatic-generation or confirmation preference. "
-    "For video work, use text_to_video with no refs, image_to_video with one image ref, multi_image_to_video with two or more image refs, audio_to_video with audio refs only, image_audio_to_video with image and audio refs, and video_audio_to_video whenever a reference video is included. "
+    "For video work, use text_to_video with no refs, image_to_video with one image ref, multi_image_to_video with two or more image refs, audio_to_video with audio refs only, and image_audio_to_video with image and audio refs. Use video_edit for a selected source-video editing preset such as Loop or Transition, preserving its optional references; otherwise use video_audio_to_video when a reference video is included. "
     "MiniMax-H3(T2V) is text-to-video, MiniMax-H3(I2V) uses the first image as the first frame and an optional second image as the last frame, and MiniMax-H3(R2V) accepts up to nine ordered images, three ordered videos, and three ordered standalone audio clips. Preserve the user's language and describe coherent motion, camera movement, timing, and matching generated audio. "
     "For MiniMax-H3(R2V), preserve the attached source order in media_refs. Refer to inputs in the prompt with independently numbered tags such as <Picture 1>, <Video 1>, and <Audio 1>; use only tags listed in the attached media manifest. A reference video's soundtrack remains paired with that video. "
     "MiniMax-H3(R2I) is the still-image text/reference route: use text_to_image when no image ref is supplied, or image_edit/multi_image_edit with one to nine ordered image refs; preserve referenced identity and never add video or audio refs. "
@@ -1233,7 +1234,7 @@ def _generation_task_allowed_media_types(task):
         return {"audio"}
     if normalized_task == "image_audio_to_video":
         return {"image", "audio"}
-    if normalized_task == "video_audio_to_video":
+    if normalized_task in {"video_audio_to_video", "video_edit"}:
         return {"image", "video", "audio"}
     return set(CREATIVE_REFERENCE_MEDIA_LIMITS)
 
@@ -1802,7 +1803,7 @@ def _direct_run_task(prompt, media_refs, preferred_preset, preset_capabilities, 
     if is_h3_prompt:
         if preferred and preferred.get("output_type") == "video":
             if media_counts["video"]:
-                candidates = ("video_audio_to_video",)
+                candidates = ("video_edit", "video_audio_to_video")
             elif media_counts["image"] and media_counts["audio"]:
                 candidates = ("image_audio_to_video", "audio_to_video")
             elif media_counts["audio"]:
@@ -4897,7 +4898,7 @@ def _normalize_generation_task(value, media_refs, intent_text="", available_medi
         task = inferred_task
     if not media_refs:
         return task
-    if task in VIDEO_GENERATION_TASKS and counts["video"]:
+    if task in VIDEO_GENERATION_TASKS and task != "video_edit" and counts["video"]:
         return "video_audio_to_video"
     if task in {"text_to_video", "image_to_video", "multi_image_to_video"} and counts["audio"]:
         return "image_audio_to_video" if counts["image"] else "audio_to_video"

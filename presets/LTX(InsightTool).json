@@ -67,8 +67,7 @@
                 "sam3_input_video",
                 "sam3_mask_video",
                 "scene_switch_option1",
-                "scene_audio",
-                "scene_batch"
+                "scene_audio"
             ],
             "prompt": {
                 "Video Upscale": "Convert the video to ultra-high-definition quality, significantly improving clarity, fine detail richness, texture fidelity, and overall perceptual sharpness.",

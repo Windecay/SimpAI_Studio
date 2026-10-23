@@ -32,7 +32,7 @@
         "scene_additional_prompt", "scene_additional_prompt_2", "scene_var_number", "scene_var_number2",
         "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10",
         "scene_switch_option1", "scene_switch_option2", "scene_switch_option3",
-        "scene_refiner_model", "sam3_input_video", "sam3_mask_video", "scene_batch",
+        "scene_refiner_model", "sam3_input_video", "sam3_mask_video",
         "minimax_h3_storyboard_control"
       ],
       "prompt": {

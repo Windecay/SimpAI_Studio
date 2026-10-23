@@ -45,11 +45,17 @@
 <textarea class="sai-note-body" data-note-text style="color:${escapeHtml(color)};background:${escapeHtml(background)};font-size:${escapeHtml(String(fontSize))}px;">${escapeHtml(node.text || '')}</textarea>`;
         }
 
-        function shouldRenderNoteTailInViewport(node, target, renderWindow) {
+        function shouldRenderNoteTailInViewport(node, target, renderWindow, base) {
             if (isSelected(node)) return true;
             const noteRect = getNodeRect(node);
             const targetRect = { x: Number(target.x || 0) - 18, y: Number(target.y || 0) - 18, w: 36, h: 36 };
-            return rectsOverlap(noteRect, renderWindow, 260) || rectsOverlap(targetRect, renderWindow, 260);
+            if (rectsOverlap(noteRect, renderWindow, 260) || rectsOverlap(targetRect, renderWindow, 260)) return true;
+            // The quadratic control point is the midpoint; a 7px expansion contains the whole tail.
+            const pathRect = {
+                x: Math.min(base.x, target.x) - 7, y: Math.min(base.y, target.y) - 7,
+                w: Math.abs(target.x - base.x) + 14, h: Math.abs(target.y - base.y) + 14
+            };
+            return rectsOverlap(pathRect, renderWindow, 260);
         }
 
         function renderNoteTailSvg(paths, keyParts, renderWindow) {
@@ -58,8 +64,8 @@
                 const state = noteTailState(node);
                 if (!state.enabled || state.target.x === null || state.target.y === null) return;
                 const target = state.target;
-                if (!shouldRenderNoteTailInViewport(node, target, renderWindow)) return;
                 const base = noteTailBasePoint(node, target);
+                if (!shouldRenderNoteTailInViewport(node, target, renderWindow, base)) return;
                 const selected = isSelected(node);
                 const color = normalizeCanvasColor(node.style?.background, '#164e63');
                 const d = noteTailShapePath(base, target);

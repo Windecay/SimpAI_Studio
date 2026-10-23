@@ -62,8 +62,21 @@ def decompress_tokenizer_if_available(source: str, target: str, expected_sha256:
         return
     if not os.path.isfile(source):
         return
-    decompress(source, target)
-    compare_sha256(target, expected_sha256)
+    import tempfile
+
+    target_dir = os.path.dirname(os.path.abspath(target))
+    os.makedirs(target_dir, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".tokenizer-", suffix=".tmp", dir=target_dir)
+    os.close(descriptor)
+    try:
+        decompress(source, temporary)
+        compare_sha256(temporary, expected_sha256)
+        os.replace(temporary, target)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 def process():

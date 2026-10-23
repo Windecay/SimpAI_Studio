@@ -170,6 +170,44 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             ? runtimeSource.setTimeout(...args)
             : undefined;
         const tools = createContextMenuTools({ escapeHtml, renderIconHtml, t });
+        let menuAnchor = null;
+
+        function positionContextSubmenu(itemElement) {
+            const submenu = itemElement.querySelector(':scope > .sai-canvas-context-submenu');
+            if (!submenu) return;
+            const viewport = getWindow();
+            const width = Number(viewport?.innerWidth) || 0;
+            const height = Number(viewport?.innerHeight) || 0;
+            const margin = 12;
+            submenu.style.maxHeight = `${Math.max(0, height - margin * 2)}px`;
+            submenu.style.right = 'auto';
+            const parentRect = itemElement.getBoundingClientRect();
+            const rect = submenu.getBoundingClientRect();
+            const right = parentRect.right + 2;
+            const left = parentRect.left - rect.width - 2;
+            const flipped = right + rect.width > width - margin;
+            itemElement.classList.toggle('is-submenu-flipped', flipped);
+            submenu.style.left = `${clamp(flipped ? left : right, margin, Math.max(margin, width - rect.width - margin))}px`;
+            submenu.style.top = `${clamp(parentRect.top - 6, margin, Math.max(margin, height - rect.height - margin))}px`;
+        }
+
+        function positionContextMenu() {
+            const contextMenu = getContextMenu();
+            if (!contextMenu || contextMenu.hidden || !menuAnchor) return;
+            const viewport = getWindow();
+            const width = Number(viewport?.innerWidth) || 0;
+            const height = Number(viewport?.innerHeight) || 0;
+            const margin = 12;
+            contextMenu.style.maxHeight = `${Math.max(0, height - margin * 2)}px`;
+            const rect = contextMenu.getBoundingClientRect();
+            contextMenu.style.left = `${clamp(menuAnchor.x, margin, Math.max(margin, width - rect.width - margin))}px`;
+            contextMenu.style.top = `${clamp(menuAnchor.y, margin, Math.max(margin, height - rect.height - margin))}px`;
+            contextMenu.querySelectorAll('.sai-canvas-context-menu-item.has-children').forEach(itemElement => {
+                if (itemElement.matches(':hover') || itemElement.contains(getDocument()?.activeElement)) {
+                    positionContextSubmenu(itemElement);
+                }
+            });
+        }
 
         function bindContextMenuActionButtons(items) {
             const contextMenu = getContextMenu();
@@ -182,6 +220,10 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     if (item && typeof item.action === 'function') item.action();
                 });
             });
+            contextMenu.querySelectorAll('.sai-canvas-context-menu-item.has-children').forEach(itemElement => {
+                itemElement.addEventListener('mouseenter', () => positionContextSubmenu(itemElement));
+                itemElement.addEventListener('focusin', () => positionContextSubmenu(itemElement));
+            });
         }
 
         function applyContextMenuSearchState(items, query, maxHeight) {
@@ -191,8 +233,8 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             const hasSubmenus = !searching && hasNestedContextMenuItems(items);
             contextMenu.classList.toggle('has-submenus', hasSubmenus);
             contextMenu.classList.toggle('is-filtered', searching);
-            contextMenu.style.maxHeight = hasSubmenus ? '' : `${maxHeight}px`;
-            contextMenu.style.overflowY = hasSubmenus ? 'visible' : 'auto';
+            contextMenu.style.maxHeight = `${maxHeight}px`;
+            contextMenu.style.overflowY = 'auto';
             const resultsEl = contextMenu.querySelector('[data-context-menu-results]');
             if (resultsEl) {
                 resultsEl.classList.toggle('is-filtered', searching);
@@ -201,6 +243,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                 contextMenu.innerHTML = tools.renderContextMenuSearchResults(items, query);
             }
             bindContextMenuActionButtons(items);
+            positionContextMenu();
         }
 
         function closeContextMenuOnce(evt) {
@@ -224,12 +267,16 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             const viewport = getWindow();
             const viewportWidth = Number(viewport?.innerWidth) || 0;
             const viewportHeight = Number(viewport?.innerHeight) || 0;
+            menuAnchor = {
+                x: Number.isFinite(Number(x)) ? Number(x) : 12,
+                y: Number.isFinite(Number(y)) ? Number(y) : 12
+            };
             contextMenu.classList.toggle('is-flipped', Number(x) > viewportWidth - 460);
             contextMenu.hidden = false;
             contextMenu.style.left = '0px';
             contextMenu.style.top = '0px';
             const margin = 12;
-            const maxHeight = Math.max(140, viewportHeight - margin * 2);
+            const maxHeight = Math.max(0, viewportHeight - margin * 2);
             if (options.searchable) {
                 contextMenu.innerHTML = `
 <div class="sai-context-search-shell">
@@ -261,15 +308,11 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                 applyContextMenuSearchState(items, '', maxHeight);
             }
             contextMenu.scrollTop = 0;
-            const rect = contextMenu.getBoundingClientRect();
-            const leftMax = Math.max(margin, viewportWidth - (rect.width || 220) - margin);
-            const topMax = Math.max(margin, viewportHeight - Math.min(rect.height || maxHeight, maxHeight) - margin);
-            const targetX = Number.isFinite(Number(x)) ? Number(x) : margin;
-            const targetY = Number.isFinite(Number(y)) ? Number(y) : margin;
-            contextMenu.style.left = `${clamp(targetX, margin, leftMax)}px`;
-            contextMenu.style.top = `${clamp(targetY, margin, topMax)}px`;
+            positionContextMenu();
+            viewport?.addEventListener?.('resize', positionContextMenu);
+            contextMenu.addEventListener?.('scroll', positionContextMenu, true);
             schedule(() => {
-                getDocument()?.addEventListener('pointerdown', closeContextMenuOnce, true);
+                if (!contextMenu.hidden) getDocument()?.addEventListener('pointerdown', closeContextMenuOnce, true);
             }, 0);
         }
 
@@ -277,6 +320,9 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             const contextMenu = getContextMenu();
             if (!contextMenu) return;
             contextMenu.hidden = true;
+            menuAnchor = null;
+            getWindow()?.removeEventListener?.('resize', positionContextMenu);
+            contextMenu.removeEventListener?.('scroll', positionContextMenu, true);
             getDocument()?.removeEventListener('pointerdown', closeContextMenuOnce, true);
         }
 

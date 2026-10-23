@@ -387,16 +387,22 @@
             return loaded;
         }
 
-        async function materializeNodeAssetForStorage(nodeId) {
+        async function materializeNodeAssetForStorage(nodeId, options) {
+            const opts = options || {};
             const node = call('getNode', null, nodeId);
             if (!node || !node.asset?.data_url) return { ok: false, error: 'node has no inline asset' };
+            const owner = project();
+            const contextCurrent = () => project() === owner && call('getNode', null, nodeId) === node
+                && (!opts.project || opts.project === owner) && (!opts.node || opts.node === node)
+                && (typeof opts.shouldContinue !== 'function' || opts.shouldContinue());
+            if (!contextCurrent()) return { ok: false, stale: true };
             const guard = materializationGuard(node);
             const response = await call('sendCanvasMaterializeAssetRequest', null, {
                 project_id: guard.projectId,
                 asset_source: call('serializeAssetSourceForRun', null, node)
             });
             const current = call('getNode', null, nodeId);
-            if (!guard.isCurrent() || !current || !response?.ok || !response.asset_ref) return response;
+            if (!guard.isCurrent() || !contextCurrent() || !current || !response?.ok || !response.asset_ref) return response;
             const ref = response.asset_ref || {};
             const materializedAsset = call('buildMaterializedAsset', {}, current.asset, ref);
             if (ref.asset_root) setCanvasProjectAssetRoot(ref.asset_root);
@@ -418,9 +424,14 @@
                     materialized_at: call('nowIso', '')
                 }));
             }
+            if (typeof opts.onMaterialized === 'function' && opts.onMaterialized() === false) return response;
+            if (!contextCurrent()) return response;
             call('saveProjectToBrowserCache', undefined);
+            if (!contextCurrent()) return response;
             call('invalidateRenderedNode', undefined, current.id);
+            if (!contextCurrent()) return response;
             call('renderAll', undefined, { inspector: false });
+            if (!contextCurrent()) return response;
             call('syncPresetSpecialViewersForAssetNode', undefined, current.id);
             return response;
         }

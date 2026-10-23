@@ -213,6 +213,8 @@ function initializeTagAssistantLogic() {
         } catch (error) {
             // URL parsing can fail in embedded test documents.
         }
+        const state = window.simpleaiTopbarSystemParams || {};
+        candidates.push(state.__lang);
         try {
             candidates.push(window.locale_lang);
         } catch (error) {
@@ -248,8 +250,8 @@ function initializeTagAssistantLogic() {
     }
     
     // --- 全局状态变量 ---
-    // [优化 3] 新增 isDataLoaded 状态标志
     let isDataLoaded = false;
+    let isDataLoading = false;
     let allTags = [], filteredTags = [], selectedTags = [];
     let searchableWildcardTags = [];
     let currentPage = 1, debounceTimer;
@@ -859,19 +861,18 @@ function initializeTagAssistantLogic() {
     
     // [优化 4] 新增懒加载主函数
     async function triggerDataLoadAndDisplay() {
-        // 如果数据已经加载过，或者正在加载中（isDataLoaded已为true），则直接返回
-        if (isDataLoaded) {
+        if (isDataLoaded || isDataLoading) {
             return;
         }
-        // 立即设置状态为 true，防止用户快速重复点击导致多次加载
-        isDataLoaded = true; 
+        isDataLoading = true;
         console.log("首次激活面板，开始懒加载数据...");
 
         // 在UI上显示加载提示
-        tagDisplayContainer.innerHTML = '<div class="loading-indicator">正在加载标签数据...</div>';
+        tagDisplayContainer.innerHTML = `<div class="loading-indicator">${tagCartLang() === 'en' ? 'Loading tags...' : '正在加载标签数据...'}</div>`;
 
         try {
             await loadAllData(); // 调用真正的数据加载函数
+            isDataLoaded = true;
             
             // 数据加载成功后，执行首次渲染和UI更新
             renderPrimaryCategories();
@@ -881,9 +882,12 @@ function initializeTagAssistantLogic() {
             console.log("数据懒加载并渲染完成。");
 
         } catch (error) {
+            isDataLoaded = false;
             console.error("懒加载数据失败:", error);
             // 显示错误信息
-            tagDisplayContainer.innerHTML = '<div class="error-indicator">数据加载失败，请检查控制台信息。</div>';
+            tagDisplayContainer.innerHTML = `<div class="error-indicator">${tagCartLang() === 'en' ? 'Failed to load tags. Reopen to retry.' : '标签加载失败，请重新打开重试。'}</div>`;
+        } finally {
+            isDataLoading = false;
         }
     }
 
@@ -1056,16 +1060,16 @@ function initializeTagAssistantLogic() {
         });
     }
 
-    function restoreSelectedTags(tagNames) {
-        const names = Array.isArray(tagNames) ? tagNames : [];
+    function restoreSelectedTags(selection) {
+        const tags = Array.isArray(selection) ? selection : [];
         const seen = new Set();
-        selectedTags = names
-            .filter(name => {
-                if (!name || seen.has(name)) return false;
-                seen.add(name);
+        selectedTags = tags
+            .filter(tag => {
+                if (!tag?.name || seen.has(tag.name)) return false;
+                seen.add(tag.name);
                 return true;
             })
-            .map(name => createSelectedTag(fullTagMap.get(name) || buildUnmatchedTag(name)));
+            .map(tag => createSelectedTag(fullTagMap.get(tag.name) || buildUnmatchedTag(tag.name), getTagPromptWeight(tag)));
     }
 
     function normalizeCustomTagRow(row) {
@@ -1222,7 +1226,9 @@ function initializeTagAssistantLogic() {
     }
 
     async function refreshTagData({ preserveSelection = true } = {}) {
-        const previousSelection = preserveSelection ? selectedTags.map(tag => tag.name) : [];
+        const previousSelection = preserveSelection
+            ? selectedTags.map(tag => ({ name: tag.name, promptWeight: getTagPromptWeight(tag) }))
+            : [];
         const previousPrimary = activePrimaryCategory;
         const previousSecondary = activeSecondaryCategory;
 
@@ -2506,7 +2512,10 @@ function initializeTagAssistantLogic() {
             flashTagCartCopyFeedback(displayEnglishOnly ? 'No tags' : '未选择标签', 'warn');
             return;
         }
-        if (writeTagsToWorkbenchTarget(formattedString)) return;
+        if (workbenchTarget) {
+            writeTagsToWorkbenchTarget(formattedString);
+            return;
+        }
         const targetId = activeTarget === 'positive' ? 'positive_prompt' : 'negative_prompt';
         const root = typeof gradioApp === 'function' ? gradioApp() : document;
         const promptTextarea = root && root.querySelector
@@ -2595,7 +2604,7 @@ function initializeTagAssistantLogic() {
             appRootInstance.style.pointerEvents = workbenchInlineMode ? 'auto' : '';
         }
         draggableContainer.classList.toggle('tagcart-panel-inline', workbenchInlineMode);
-        if (targetBtnGroup) targetBtnGroup.style.display = workbenchInlineMode ? 'none' : '';
+        if (targetBtnGroup) targetBtnGroup.style.display = workbenchInlineMode || workbenchTarget ? 'none' : '';
         draggableContainer.style.display = 'flex';
         if (workbenchInlineMode) {
             draggableContainer.style.position = 'relative';

@@ -464,13 +464,16 @@ def _progress_worker(
     requested_steps: int,
     requested_batches: int,
     task_id: str,
+    job_id: str = "",
 ) -> None:
+    job_id = job_id or _CURRENT_JOB_ID
     if not _source_backend_progress_api_enabled():
         _progress_worker_passive(
             stop_event,
             requested_steps=requested_steps,
             requested_batches=requested_batches,
             task_id=task_id,
+            job_id=job_id,
         )
         return
 
@@ -488,6 +491,8 @@ def _progress_worker(
         try:
             request = source_progress.ProgressRequest(id_task=task_id, id_live_preview=preview_id, live_preview=False)
             response = source_progress.progressapi(request)
+            if stop_event.is_set():
+                break
             data = _model_dump(response)
             state = data.get("state") if isinstance(data.get("state"), dict) else {}
             active = bool(data.get("active"))
@@ -546,6 +551,8 @@ def _progress_worker(
                         live_preview=True,
                     )
                     preview_response = source_progress.progressapi(preview_request)
+                    if stop_event.is_set():
+                        break
                     preview_data = _model_dump(preview_response)
                     preview_image = preview_data.get("live_preview") or preview_data.get("current_image")
                     preview_next_id = preview_data.get("id_live_preview")
@@ -559,6 +566,8 @@ def _progress_worker(
                     last_preview_monotonic = time.monotonic()
                     last_preview_error = ""
                 except Exception as exc:
+                    if stop_event.is_set():
+                        break
                     last_preview_monotonic = time.monotonic()
                     preview_error = f"{type(exc).__name__}: {exc}"
                     if preview_error != last_preview_error:
@@ -568,6 +577,7 @@ def _progress_worker(
                                 progress,
                                 f"Source backend preview unavailable: {preview_error}",
                                 f"源后端预览不可用：{preview_error}",
+                                job_id=job_id,
                             )
                         )
             message_en, message_cn = _progress_message(
@@ -581,9 +591,11 @@ def _progress_worker(
             )
             key = (round(progress, 4), step, steps, preview_id, bool(current_image), message_en, message_cn)
             if key == last_key:
+                stop_event.wait(_SOURCE_BACKEND_PROGRESS_POLL_SECONDS)
                 continue
             last_key = key
             event: dict[str, Any] = {
+                "job_id": job_id,
                 "event": "progress",
                 "progress": progress,
                 "message": message_en,
@@ -599,8 +611,12 @@ def _progress_worker(
             }
             if current_image:
                 event["current_image"] = _to_text_image(current_image)
+            if stop_event.is_set():
+                break
             _emit_event(event)
         except Exception as exc:
+            if stop_event.is_set():
+                break
             error = f"{type(exc).__name__}: {exc}"
             if error != last_error:
                 last_error = error
@@ -609,6 +625,7 @@ def _progress_worker(
                         0.18,
                         f"Source backend progress unavailable: {error}",
                         f"源后端进度不可用：{error}",
+                        job_id=job_id,
                     )
                 )
         stop_event.wait(_SOURCE_BACKEND_PROGRESS_POLL_SECONDS)
@@ -620,9 +637,11 @@ def _progress_worker_passive(
     requested_steps: int,
     requested_batches: int,
     task_id: str,
+    job_id: str = "",
 ) -> None:
     from modules import shared
 
+    job_id = job_id or _CURRENT_JOB_ID
     preview_id = -1
     preview_interval = _source_preview_interval_seconds()
     preview_enabled = _source_backend_preview_enabled()
@@ -668,6 +687,8 @@ def _progress_worker_passive(
         if preview_due:
             try:
                 preview_image, next_preview_id = _source_live_preview(preview_id)
+                if stop_event.is_set():
+                    break
                 if next_preview_id is not None:
                     preview_id = _as_int(next_preview_id, preview_id)
                 if preview_image:
@@ -676,6 +697,8 @@ def _progress_worker_passive(
                 last_preview_monotonic = time.monotonic()
                 last_preview_error = ""
             except Exception as exc:
+                if stop_event.is_set():
+                    break
                 last_preview_monotonic = time.monotonic()
                 preview_error = f"{type(exc).__name__}: {exc}"
                 if preview_error != last_preview_error:
@@ -685,6 +708,7 @@ def _progress_worker_passive(
                             progress,
                             f"Source backend preview unavailable: {preview_error}",
                             f"源后端预览不可用：{preview_error}",
+                            job_id=job_id,
                         )
                     )
 
@@ -702,6 +726,7 @@ def _progress_worker_passive(
         if key != last_key:
             last_key = key
             event = {
+                "job_id": job_id,
                 "event": "progress",
                 "progress": progress,
                 "message": message_en,
@@ -718,6 +743,8 @@ def _progress_worker_passive(
             }
             if current_image:
                 event["current_image"] = _to_text_image(current_image)
+            if stop_event.is_set():
+                break
             _emit_event(event)
         stop_event.wait(_SOURCE_BACKEND_PROGRESS_POLL_SECONDS)
 
@@ -820,21 +847,38 @@ def _apply_source_control_action(action: str) -> None:
         pass
 
 
-def _request_watchdog_worker(stop_event: threading.Event, *, stage: str, progress: float, control_path: Path | None = None) -> None:
+def _request_watchdog_worker(
+    stop_event: threading.Event,
+    *,
+    stage: str,
+    progress: float,
+    control_path: Path | None = None,
+    job_id: str = "",
+) -> None:
+    job_id = job_id or _CURRENT_JOB_ID
     last_control_action = ""
     while not stop_event.wait(0.5):
         control_action = _source_control_action(control_path)
+        if stop_event.is_set() or _CURRENT_JOB_ID != job_id:
+            break
         if control_action and control_action != last_control_action:
             last_control_action = control_action
             _apply_source_control_action(control_action)
+            source_state = _source_state_snapshot()
+            if stop_event.is_set() or _CURRENT_JOB_ID != job_id:
+                break
+            cuda_memory = _cuda_memory_snapshot()
+            if stop_event.is_set() or _CURRENT_JOB_ID != job_id:
+                break
             _emit_event(
                 _stage_event(
                     progress,
                     f"Source backend {control_action} requested",
                     f"源后端已收到 {control_action} 请求",
+                    job_id=job_id,
                     source_control_status=control_action,
-                    source_state=_source_state_snapshot(),
-                    cuda_memory=_cuda_memory_snapshot(),
+                    source_state=source_state,
+                    cuda_memory=cuda_memory,
                 )
             )
 
@@ -3826,6 +3870,7 @@ def _run_txt2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
                 "requested_steps": requested_steps,
                 "requested_batches": requested_batches,
                 "task_id": task_id,
+                "job_id": _CURRENT_JOB_ID,
             },
             daemon=True,
         )
@@ -3833,7 +3878,10 @@ def _run_txt2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
     watchdog_thread = threading.Thread(
         target=_request_watchdog_worker,
         args=(stop_event,),
-        kwargs={"stage": "Source text2img request", "progress": 0.22, "control_path": control_path},
+        kwargs={
+            "stage": "Source text2img request", "progress": 0.22,
+            "control_path": control_path, "job_id": _CURRENT_JOB_ID,
+        },
         daemon=True,
     )
     watchdog_thread.start()
@@ -3940,6 +3988,7 @@ def _run_img2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
                 "requested_steps": requested_steps,
                 "requested_batches": requested_batches,
                 "task_id": task_id,
+                "job_id": _CURRENT_JOB_ID,
             },
             daemon=True,
         )
@@ -3947,7 +3996,10 @@ def _run_img2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
     watchdog_thread = threading.Thread(
         target=_request_watchdog_worker,
         args=(stop_event,),
-        kwargs={"stage": "Source img2img request", "progress": 0.22, "control_path": control_path},
+        kwargs={
+            "stage": "Source img2img request", "progress": 0.22,
+            "control_path": control_path, "job_id": _CURRENT_JOB_ID,
+        },
         daemon=True,
     )
     watchdog_thread.start()

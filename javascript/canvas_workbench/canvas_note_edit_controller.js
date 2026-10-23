@@ -4,6 +4,7 @@
     function createCanvasNoteEditController(context) {
         const scope = context?.noteEditSource || context || {};
         const nodeSource = scope.nodeSource || {};
+        const projectSource = scope.projectSource || {};
         const domSource = scope.domSource || {};
         const geometrySource = scope.geometrySource || {};
         const patchSource = scope.patchSource || {};
@@ -14,8 +15,11 @@
         const call = (source, name, fallback, ...args) => typeof source[name] === 'function'
             ? source[name](...args) : fallback;
         const getNode = id => call(nodeSource, 'getNode', null, id);
+        const getProject = () => call(projectSource, 'getProject', null);
+        const fieldOwners = new WeakMap();
         const isNodeLocked = node => call(nodeSource, 'isNodeLocked', false, node);
         const getNodesLayer = () => call(domSource, 'getNodesLayer', null);
+        const getInspector = () => call(domSource, 'getInspector', null);
         const getDocument = () => call(domSource, 'getDocument', null);
         const cssEscape = value => call(domSource, 'cssEscape', value, value);
         const normalizeCanvasColor = (...args) => call(geometrySource, 'normalizeCanvasColor', '', ...args);
@@ -36,15 +40,23 @@
 
         function refreshNoteDom(nodeId) {
             const node = getNode(nodeId);
+            if (!node || node.type !== 'note') return;
             const nodeEl = getNodesLayer()?.querySelector(`[data-node-id="${cssEscape(nodeId || '')}"]`);
-            if (!node || !nodeEl || node.type !== 'note') return;
-            const body = nodeEl.querySelector('[data-note-text]');
-            if (!body) return;
-            const style = Object.assign({ color: '#f8fafc', background: '#164e63', font_size: 14 }, node.style || {});
-            body.style.color = normalizeCanvasColor(style.color, '#f8fafc');
-            body.style.background = normalizeCanvasColor(style.background, '#164e63');
-            body.style.fontSize = `${clamp(Number(style.font_size || 14), 10, 42)}px`;
-            if (getDocument().activeElement !== body) body.value = node.text || '';
+            const activeElement = getDocument()?.activeElement;
+            if (nodeEl) {
+                const body = nodeEl.querySelector('[data-note-text]');
+                if (body) {
+                    const style = Object.assign({ color: '#f8fafc', background: '#164e63', font_size: 14 }, node.style || {});
+                    body.style.color = normalizeCanvasColor(style.color, '#f8fafc');
+                    body.style.background = normalizeCanvasColor(style.background, '#164e63');
+                    body.style.fontSize = `${clamp(Number(style.font_size || 14), 10, 42)}px`;
+                    if (activeElement !== body) body.value = node.text || '';
+                }
+            }
+            const inspector = getSelectedNodeId() === nodeId ? getInspector() : null;
+            (inspector?.querySelectorAll?.('[data-note-text]') || []).forEach(field => {
+                if (field !== activeElement && field.value !== String(node.text || '')) field.value = node.text || '';
+            });
         }
 
         function updateNoteText(nodeId, value, options) {
@@ -61,6 +73,10 @@
             if (!node || node.type !== 'note' || !evt?.target || !['input', 'change'].includes(eventType)) return false;
             const field = evt.target.closest?.('[data-note-text]');
             if (!field) return false;
+            if (!fieldOwners.has(field)) fieldOwners.set(field, { project: getProject(), node });
+            const owner = fieldOwners.get(field);
+            if (!owner.project || getProject() !== owner.project || getNode(node.id) !== node
+                || owner.node !== node || field.isConnected === false || isNodeLocked(node)) return true;
             updateNoteText(node.id, field.value, eventType === 'change' ? { render: false } : undefined);
             return true;
         }
@@ -74,6 +90,7 @@
                 : normalizeCanvasColor(value, key === 'color' ? '#f8fafc' : '#164e63');
             Object.assign(node, buildNoteStatePatch(node, { stylePatch: { [key]: nextValue } }));
             refreshNoteDom(nodeId);
+            if (key === 'background' && noteTailState(node).enabled) renderEdges();
             scheduleSave();
         }
 
@@ -125,7 +142,7 @@
         }
 
         function toggleNoteTail(node) {
-            if (!node || node.type !== 'note' || isNodeLocked(node)) return;
+            if (!node || node.type !== 'note' || getNode(node.id) !== node || isNodeLocked(node)) return;
             pushHistory('Toggle tip note pointer');
             const enabled = !noteTailState(node).enabled;
             const patch = { tailPatch: { enabled } };
@@ -145,7 +162,7 @@
         }
 
         function resetNoteTail(node) {
-            if (!node || node.type !== 'note' || isNodeLocked(node)) return;
+            if (!node || node.type !== 'note' || getNode(node.id) !== node || isNodeLocked(node)) return;
             pushHistory('Reset tip note pointer');
             Object.assign(node, buildNoteStatePatch(node, {
                 tailPatch: { enabled: true },

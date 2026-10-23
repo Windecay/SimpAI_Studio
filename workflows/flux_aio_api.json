@@ -1187,10 +1187,6 @@
         "aio_reference_4",
         0
       ],
-      "inpaint_model": [
-        "789",
-        0
-      ],
       "clip": [
         "simpai_lora_stack_main",
         1

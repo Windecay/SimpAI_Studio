@@ -453,6 +453,7 @@ def _merge_missing_model_rows(*groups):
 
 def get_preset_model_status(payload):
     from modules.moss_control import required_model_entries
+    from modules.preset_model_dependencies import required_model_entries as selected_model_entries, model_entries_revision
 
     if not isinstance(payload, dict):
         return {"ok": False, "error": "payload is not an object"}
@@ -475,7 +476,14 @@ def get_preset_model_status(payload):
     control_missing = model_loader.get_missing_model_list_from_entries(
         preset_name, control_entries, user_did=user_did,
     ) if control_entries else []
-    control_rows = _missing_model_dicts(control_missing)
+    selected_entries = selected_model_entries(preset_node)
+    selected_missing = model_loader.get_missing_model_list_from_entries(
+        preset_name, selected_entries, user_did=user_did,
+        source_mtime=model_entries_revision(selected_entries),
+    ) if selected_entries else []
+    control_rows = _merge_missing_model_rows(
+        _missing_model_dicts(control_missing), _missing_model_dicts(selected_missing),
+    )
     selected_status = _selected_model_config_status(preset_node)
     if selected_status is not None:
         missing_rows = _merge_missing_model_rows(selected_status["missing_rows"], control_rows)
@@ -514,7 +522,7 @@ def get_preset_model_status(payload):
         previous_default_info=_previous_default_info_from_node(preset_node),
     )
     missing_rows = _merge_missing_model_rows(_missing_model_dicts(missing_models), control_rows)
-    has_requirements = _has_model_probe(preset_node, checked_preset, raw_model_list, user_did)
+    has_requirements = _has_model_probe(preset_node, checked_preset, raw_model_list, user_did) or bool(selected_entries)
     ready = len(missing_rows) == 0
     state = "ready" if ready else "missing"
     message = "All required model files are available." if ready else f"{len(missing_rows)} required model file(s) are missing."

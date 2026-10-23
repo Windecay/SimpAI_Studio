@@ -18,6 +18,38 @@ _OBJECT_INFO_CACHE = {
 }
 
 
+_STUDIO_MODEL_DOWNLOAD_INPUTS = {
+    "RIFEInterpolation": "allow_download",
+    "SimpAIH3LoopSource": "allow_download",
+    "easy applyPowerPaint": "allow_download",
+    "easy applyInpaint": "allow_download",
+    "RemBGSession+": "allow_download",
+    "SimpleModelDownloader": "allow_download",
+}
+
+
+def restrict_studio_model_downloads(prompt):
+    """Keep Studio inference separate from its approved model-download action.
+
+    This client-side policy is not installed in the native Comfy prompt server.
+    Copy only changed nodes so the caller's workflow and native defaults remain intact.
+    """
+    if not isinstance(prompt, dict):
+        return prompt
+    result = prompt
+    for node_id, node in prompt.items():
+        if not isinstance(node, dict):
+            continue
+        input_name = _STUDIO_MODEL_DOWNLOAD_INPUTS.get(node.get("class_type"))
+        inputs = node.get("inputs")
+        if not input_name or not isinstance(inputs, dict) or inputs.get(input_name) is False:
+            continue
+        if result is prompt:
+            result = dict(prompt)
+        result[node_id] = {**node, "inputs": {**inputs, input_name: False}}
+    return result
+
+
 def _comfy_endpoint(comfyclient_pipeline):
     try:
         return str(comfyclient_pipeline.server_address())
@@ -194,6 +226,7 @@ def install_queue_prompt_normalizer(comfyclient_pipeline):
 
     def queue_prompt_with_enum_path_normalization(user_did, prompt, user_cert, extra_data=None, *args, **kwargs):
         normalized_prompt, changes = normalize_comfy_prompt_for_pipeline(prompt, comfyclient_pipeline)
+        normalized_prompt = restrict_studio_model_downloads(normalized_prompt)
         if changes:
             preview = ", ".join(
                 f"{item['node_id']}.{item['input']}={item['to']}"

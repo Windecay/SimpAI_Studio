@@ -13,7 +13,10 @@
         const uiSource = scope.uiSource || {};
         const menuSource = scope.menuSource || {};
         const worldSource = scope.worldSource || {};
+        const projectSource = scope.projectSource || {};
+        let menuSession = 0;
         const callbackSources = {
+            localizeCanvasLabel: utilitySource,
             getPresetCatalog: catalogSource,
             resolvePresetCatalogEntry: catalogSource,
             refreshPresetCatalog: catalogSource,
@@ -50,15 +53,17 @@
             showToast: uiSource
         };
         const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
-        const localizeCanvasLabel = typeof utilitySource.localizeCanvasLabel === 'function'
-            ? utilitySource.localizeCanvasLabel
-            : (value) => value;
         const call = (name, fallback, ...args) => {
             const source = callbackSources[name] || {};
             return typeof source[name] === 'function' ? source[name](...args) : fallback;
         };
 
         function buildAddNodeContextMenuItems(targetWorld, includeViewActions) {
+            const project = projectSource.getProject();
+            const projectId = project?.id;
+            const session = menuSession;
+            const presetWorld = Object.assign({}, targetWorld);
+            const isCurrent = () => menuSession === session && projectSource.getProject() === project && project?.id === projectId;
             const items = [
                 {
                     label: t('Presets', '预设'),
@@ -67,14 +72,16 @@
                         label: entry.display_name || entry.name,
                         icon: 'fa-square-plus',
                         search: [entry.name, entry.display_name, entry.backend_engine, entry.task_method, entry.engine_type,
-                            ...(Array.isArray(entry.themes) ? entry.themes.map(value => call('localizeCanvasLabel', value, value)) : [])],
+                            ...(Array.isArray(entry.themes) ? entry.themes.flatMap(value => [value, call('localizeCanvasLabel', value, value)]) : [])],
                         action: async () => {
+                            if (!isCurrent()) return;
                             const resolved = await call('resolvePresetCatalogEntry', null, entry.name);
+                            if (!isCurrent()) return;
                             if (!resolved) {
                                 call('showToast', null, t('Preset definition is not ready. Please reopen the preset list.', 'Preset 定义尚未加载，请重新打开 Preset 列表。'));
                                 return;
                             }
-                            call('addPresetNode', null, resolved, targetWorld);
+                            call('addPresetNode', null, resolved, presetWorld);
                         }
                     }))
                 },
@@ -162,6 +169,10 @@
         }
 
         function openAddNodeMenu(x, y, world, includeViewActions, closeDelayMs) {
+            menuSession += 1;
+            const session = menuSession;
+            const project = projectSource.getProject();
+            const projectId = project?.id;
             const targetWorld = world || worldSource.lastPointerWorld?.() || worldSource.viewportCenterWorld?.();
             const items = buildAddNodeContextMenuItems(targetWorld, includeViewActions);
             menuSource.openContextMenu?.(x, y, items, {
@@ -172,7 +183,8 @@
             const contextMenu = menuSource.contextMenu;
             const searchInput = contextMenu?.querySelector('[data-context-menu-search]');
             call('refreshPresetCatalog', null)?.then(() => {
-                if (!contextMenu || contextMenu.hidden || contextMenu.querySelector('[data-context-menu-search]') !== searchInput) return;
+                if (session !== menuSession || projectSource.getProject() !== project || project?.id !== projectId
+                    || !contextMenu || contextMenu.hidden || contextMenu.querySelector('[data-context-menu-search]') !== searchInput) return;
                 items.splice(0, items.length, ...buildAddNodeContextMenuItems(targetWorld, includeViewActions));
                 searchInput?.dispatchEvent(menuSource.createInputEvent?.() || new Event('input'));
             });

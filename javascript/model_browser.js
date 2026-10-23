@@ -80,6 +80,7 @@
             folders: ['All folders'],
             types: [],
             items: [],
+            detailDrafts: new Map(),
             selectedId: '',
             checkedIds: new Set(),
             status: '',
@@ -532,6 +533,24 @@
         return Array.isArray(item?.trained_words) ? item.trained_words.join(', ') : '';
     }
 
+    function detailDraftValue(item, field, fallback) {
+        const draft = state.detailDrafts.get(item?.id);
+        return draft && Object.prototype.hasOwnProperty.call(draft, field) ? draft[field] : fallback;
+    }
+
+    function setDetailDraft(item, field, value) {
+        if (!item?.id) return;
+        const draft = state.detailDrafts.get(item.id) || {};
+        state.detailDrafts.set(item.id, Object.assign({}, draft, { [field]: String(value ?? '') }));
+    }
+
+    function clearSubmittedDetailDraft(item, field, submitted) {
+        const draft = state.detailDrafts.get(item?.id);
+        if (!draft || draft[field] !== submitted) return;
+        delete draft[field];
+        if (!Object.keys(draft).length) state.detailDrafts.delete(item.id);
+    }
+
     function renderTriggerWordsPanel(item) {
         if (!item || item.type !== 'lora' || item.synthetic) return '';
         const words = Array.isArray(item.trained_words) ? item.trained_words : [];
@@ -546,7 +565,7 @@
     <small>${escapeHtml(triggerWordsSourceLabel(item))}</small>
   </div>
   <div class="sai-model-browser-trigger-tags">${chips}</div>
-  <textarea data-smb-trigger-input rows="3" placeholder="${escapeHtml(tr('Input LoRA trigger words', '输入 LoRA 触发词'))}">${escapeHtml(triggerWordsText(item))}</textarea>
+  <textarea data-smb-trigger-input rows="3" placeholder="${escapeHtml(tr('Input LoRA trigger words', '输入 LoRA 触发词'))}">${escapeHtml(detailDraftValue(item, 'triggerWords', triggerWordsText(item)))}</textarea>
   <div class="sai-model-browser-trigger-actions">
     <button type="button" data-smb-trigger-send><i class="fa-solid fa-paper-plane"></i><span>${escapeHtml(tr('Send to prompt', '发送到提示词'))}</span></button>
     <button type="button" class="is-primary" data-smb-trigger-save><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(saveLabel)}</span></button>
@@ -557,8 +576,9 @@
     function renderArchitecturePanel(item) {
         if (!architectureItem(item)) return '';
         const current = String(item.arch_family || 'unknown').toLowerCase() || 'unknown';
+        const draft = detailDraftValue(item, 'archFamily', current);
         const options = ARCH_FAMILY_OPTIONS
-            .map(([value, label]) => `<option value="${escapeHtml(value)}" ${value === current ? 'selected' : ''}>${escapeHtml(localize(label, value))}</option>`)
+            .map(([value, label]) => `<option value="${escapeHtml(value)}" ${value === draft ? 'selected' : ''}>${escapeHtml(localize(label, value))}</option>`)
             .join('');
         return `<section class="sai-model-browser-arch">
   <div class="sai-model-browser-arch-head">
@@ -904,13 +924,11 @@
     async function collectItemsForFilter(predicate, operation) {
         const out = [];
         const seen = new Set();
+        const payload = currentPayload({ page_size: 500 });
         let page = 1;
         for (;;) {
             if (operation && !operationCurrent(operation)) return [];
-            const data = await postJson('/model-browser/query', currentPayload({
-                page,
-                page_size: 500
-            }));
+            const data = await postJson('/model-browser/query', Object.assign({}, payload, { page }));
             if (operation && !operationCurrent(operation)) return [];
             for (const item of Array.isArray(data.items) ? data.items : []) {
                 if ((typeof predicate === 'function' && !predicate(item)) || seen.has(item.id)) continue;
@@ -1076,6 +1094,8 @@
         if (!item || item.type !== 'lora') return;
         const operation = beginOperation();
         const text = currentTriggerInputValue();
+        const draft = String(modal?.querySelector?.('[data-smb-trigger-input]')?.value ?? text);
+        setDetailDraft(item, 'triggerWords', draft);
         state.batch = { label: tr('Saving trigger words', '正在保存触发词'), done: 0, total: 1, message: item.file_name || item.name || '' };
         render({ preserveScroll: true });
         try {
@@ -1085,7 +1105,9 @@
                 trigger_words_text: text
             });
             if (!operationCurrent(operation)) return;
+            if (result?.ok === false) throw new Error(result.error || result.details || tr('Save failed', '保存失败'));
             replaceItem(result.item);
+            clearSubmittedDetailDraft(item, 'triggerWords', draft);
             state.batch = { label: tr('Trigger words saved', '触发词已保存'), done: 1, total: 1, message: tr('Saved to lora_trigger_words.csv', '已保存到 lora_trigger_words.csv') };
             render({ preserveScroll: true });
             setTimeout(() => {
@@ -1136,6 +1158,7 @@
         if (!architectureItem(item)) return;
         const operation = beginOperation();
         const archFamily = currentArchFamilyValue();
+        setDetailDraft(item, 'archFamily', archFamily);
         state.batch = { label: tr('Saving classification', '正在保存分类'), done: 0, total: 1, message: archFamilyLabel(archFamily) };
         render({ preserveScroll: true });
         try {
@@ -1145,7 +1168,9 @@
                 arch_family: archFamily
             });
             if (!operationCurrent(operation)) return;
+            if (result?.ok === false) throw new Error(result.error || result.details || tr('Save failed', '保存失败'));
             replaceItem(result.item);
+            clearSubmittedDetailDraft(item, 'archFamily', archFamily);
             state.batch = { label: tr('Classification saved', '分类已保存'), done: 1, total: 1, message: archFamilyLabel(result.arch_family || archFamily) };
             render({ preserveScroll: true });
         } catch (err) {
@@ -1658,6 +1683,11 @@
     }
 
     function onInput(event) {
+        const trigger = event.target.closest('[data-smb-trigger-input]');
+        if (trigger) {
+            setDetailDraft(selectedItem(), 'triggerWords', trigger.value);
+            return;
+        }
         const search = event.target.closest('[data-smb-search]');
         if (!search) return;
         state.search = search.value || '';
@@ -1667,6 +1697,11 @@
     }
 
     function onChange(event) {
+        const architecture = event.target.closest('[data-smb-arch-family]');
+        if (architecture) {
+            setDetailDraft(selectedItem(), 'archFamily', String(architecture.value || 'unknown').trim().toLowerCase());
+            return;
+        }
         const modelFilter = event.target.closest('[data-smb-model-filter]');
         if (modelFilter) {
             state.useModelFilter = !!modelFilter.checked;

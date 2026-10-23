@@ -765,6 +765,42 @@ class ImageRandomTransform:
 
         return (out,)
 
+def _local_rembg_session(model, providers):
+    from rembg.sessions import sessions_class
+    from rembg.session_factory import ort
+
+    session_class = next((candidate for candidate in sessions_class if candidate.name() == model), None)
+    if session_class is None:
+        raise ValueError(f"Unsupported RemBG session: {model}")
+    filenames = (["sam_vit_b_01ec64.encoder.onnx", "sam_vit_b_01ec64.decoder.onnx"]
+                 if model == "sam" else [f"{model}.onnx"])
+    legacy_home = os.path.expanduser(os.getenv(
+        "U2NET_HOME", os.path.join(os.getenv("XDG_DATA_HOME", "~"), ".u2net")
+    ))
+    paths = []
+    for filename in filenames:
+        path = folder_paths.get_full_path("inpaint", filename)
+        if not path:
+            legacy = os.path.join(legacy_home, filename)
+            path = legacy if os.path.isfile(legacy) else None
+        if not path:
+            raise FileNotFoundError(
+                f"Required RemBG model '{filename}' is missing. Confirm its download in Studio before inference."
+            )
+        paths.append(path)
+
+    class LocalSession(session_class):
+        @classmethod
+        def download_models(cls, *args, **kwargs):
+            return tuple(paths) if model == "sam" else paths[0]
+
+    options = ort.SessionOptions()
+    if "OMP_NUM_THREADS" in os.environ:
+        options.inter_op_num_threads = int(os.environ["OMP_NUM_THREADS"])
+        options.intra_op_num_threads = int(os.environ["OMP_NUM_THREADS"])
+    return LocalSession(model, options, [providers + "ExecutionProvider"])
+
+
 class RemBGSession:
     @classmethod
     def INPUT_TYPES(s):
@@ -773,20 +809,26 @@ class RemBGSession:
                 "model": (["u2net: general purpose", "u2netp: lightweight general purpose", "u2net_human_seg: human segmentation", "u2net_cloth_seg: cloths Parsing", "silueta: very small u2net", "isnet-general-use: general purpose", "isnet-anime: anime illustrations", "sam: general purpose"],),
                 "providers": (['CPU', 'CUDA', 'ROCM', 'DirectML', 'OpenVINO', 'CoreML', 'Tensorrt', 'Azure'],),
             },
+            "optional": {"allow_download": ("BOOLEAN", {"default": True})},
         }
 
     RETURN_TYPES = ("REMBG_SESSION",)
     FUNCTION = "execute"
     CATEGORY = "essentials/image manipulation"
 
-    def execute(self, model, providers):
+    def execute(self, model, providers, allow_download=True):
         from rembg import new_session, remove
 
         model = model.split(":")[0]
 
         class Session:
             def __init__(self, model, providers):
-                self.session = new_session(model, providers=[providers+"ExecutionProvider"])
+                try:
+                    self.session = _local_rembg_session(model, providers)
+                except (FileNotFoundError, ImportError):
+                    if not allow_download:
+                        raise
+                    self.session = new_session(model, providers=[providers+"ExecutionProvider"])
             def process(self, image):
                 return remove(image, session=self.session)
             

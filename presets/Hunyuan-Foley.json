@@ -25,7 +25,6 @@
                 "scene_input_image2",
                 "scene_use_lora",
                 "scene_audio",
-                "scene_batch",
                 "scene_var_number3",
                 "scene_var_number4",
                 "scene_refiner_model",

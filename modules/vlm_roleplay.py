@@ -3884,7 +3884,22 @@ def match_world_book_entries(
     include_hidden: bool = False,
     history: Any = None,
 ) -> list[dict[str, Any]]:
-    normalized = normalize_roleplay_session(session)
+    return _match_world_book_entries(
+        normalize_roleplay_session(session), query, speaker_id,
+        limit=limit, include_hidden=include_hidden, history=history,
+    )
+
+
+def _match_world_book_entries(
+    normalized: dict[str, Any],
+    query: Any = "",
+    speaker_id: Any = "",
+    *,
+    limit: int = 20,
+    include_hidden: bool = False,
+    history: Any = None,
+) -> list[dict[str, Any]]:
+    """Select from the current request's normalized snapshot without changing it."""
     actor_id = _text(speaker_id, 160)
     active_chapter_id = _text(normalized.get("active_chapter_id"), 160)
     search_text = _roleplay_context_query(normalized, query, "" if include_hidden else actor_id)
@@ -3991,7 +4006,21 @@ def query_roleplay_memories(
     limit: int = 20,
     include_hidden: bool = False,
 ) -> list[dict[str, Any]]:
-    normalized = normalize_roleplay_session(session)
+    return _query_roleplay_memories(
+        normalize_roleplay_session(session), query, speaker_id,
+        limit=limit, include_hidden=include_hidden,
+    )
+
+
+def _query_roleplay_memories(
+    normalized: dict[str, Any],
+    query: Any = "",
+    speaker_id: Any = "",
+    *,
+    limit: int = 20,
+    include_hidden: bool = False,
+) -> list[dict[str, Any]]:
+    """Select memories from the current request's normalized snapshot."""
     actor_id = _text(speaker_id, 160)
     active_chapter_id = _text(normalized.get("active_chapter_id"), 160)
     search_text = _roleplay_context_query(normalized, query, "" if include_hidden else actor_id)
@@ -4037,7 +4066,24 @@ def roleplay_context_resources(
     memory_limit: int = 20,
     history: Any = None,
 ) -> dict[str, Any]:
-    normalized = normalize_roleplay_session(session)
+    return _roleplay_context_resources(
+        normalize_roleplay_session(session), query, speaker_id,
+        include_hidden=include_hidden, world_limit=world_limit,
+        memory_limit=memory_limit, history=history,
+    )
+
+
+def _roleplay_context_resources(
+    normalized: dict[str, Any],
+    query: Any = "",
+    speaker_id: Any = "",
+    *,
+    include_hidden: bool = False,
+    world_limit: int = 20,
+    memory_limit: int = 20,
+    history: Any = None,
+) -> dict[str, Any]:
+    """Share one normalized snapshot across both resource selectors."""
     active_chapter = next(
         (copy.deepcopy(item) for item in normalized.get("chapters", {}).get("items", [])
          if item.get("id") == normalized.get("active_chapter_id")),
@@ -4045,7 +4091,7 @@ def roleplay_context_resources(
     )
     return {
         "chapter": active_chapter,
-        "world_book": match_world_book_entries(
+        "world_book": _match_world_book_entries(
             normalized,
             query,
             speaker_id,
@@ -4053,7 +4099,7 @@ def roleplay_context_resources(
             include_hidden=include_hidden,
             history=history,
         ),
-        "memories": query_roleplay_memories(
+        "memories": _query_roleplay_memories(
             normalized,
             query,
             speaker_id,
@@ -4874,7 +4920,7 @@ def build_roleplay_context(
     witnessing_scene = actor_id in vlm_roleplay_cognition.observer_ids(normalized)
     if private_audience and not witnessing_scene:
         present_ids = []
-    resources = roleplay_context_resources(
+    resources = _roleplay_context_resources(
         normalized,
         query,
         actor_id,

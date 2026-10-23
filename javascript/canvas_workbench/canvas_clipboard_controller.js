@@ -446,6 +446,12 @@
 
         function normalizePastedNode(node) {
             applyNodeFlagPatch(node, 'locked', false);
+            if (node.type === 'batch_any') {
+                node.batch = {
+                    state: 'idle', run_ids: [], last_error: '',
+                    selected_item_ids: Array.isArray(node.batch?.selected_item_ids) ? node.batch.selected_item_ids.slice() : []
+                };
+            }
             if (node.type === 'preset' || node.type === 'classic') {
                 const uploadSlots = {};
                 const slots = node.type === 'classic'

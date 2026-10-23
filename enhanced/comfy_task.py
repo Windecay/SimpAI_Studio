@@ -24,6 +24,8 @@ AIO_UOV_PREVIEW_NODE_CLASS_TYPES = {
 
 
 def _register_runtime_preview_nodes():
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SamplerCustom")
+    comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SamplerCustom")
     node_name = "SimpAIWanAnimateLoop"
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add(node_name)
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add(node_name)
@@ -152,6 +154,16 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("vae_model", "VAELoader:vae_model:vae_name")
         comfy_params.update_mapping_rule("sampler", "GeneralInput:GeneralInput:sampler")
         comfy_params.update_mapping_rule("scheduler", "GeneralInput:GeneralInput:scheduler")
+    if task_method_l == "scene_moss_edit_cn":
+        for name in ("prompt", "negative_prompt", "width", "height", "cfg", "steps", "var_number"):
+            comfy_params.update_mapping_rule(name, f"SceneInput:SceneInput:{name}")
+        comfy_params.update_mapping_rule("var_number2", "SimpAIMossEditScheduler:MOSS Edit Schedule:shift")
+        for name, field in (("i2i_inpaint_image", "inpaint_image"), ("i2i_ip_image1", "ip_image"),
+                            ("i2i_ip_image2", "ip_image1"), ("i2i_ip_image3", "ip_image2")):
+            comfy_params.update_mapping_rule(name, f"SceneInput:SceneInput:{field}")
+        comfy_params.update_mapping_rule("base_model", "UNETLoader:base_model:unet_name")
+        comfy_params.update_mapping_rule("clip_model", "CLIPLoader:clip_model:clip_name")
+        comfy_params.update_mapping_rule("vae_model", "VAELoader:vae_model:vae_name")
     if "scene_" in task_method_l or "flux3" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):
         comfy_params.update_mapping_rule("sampler", "GeneralInput:GeneralInput:sampler")
         comfy_params.update_mapping_rule("scheduler", "GeneralInput:GeneralInput:scheduler")

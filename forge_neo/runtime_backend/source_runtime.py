@@ -109,7 +109,7 @@ _SOURCE_BACKEND_CONSOLE_PROGRESS_LINE = ""
 _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = ""
 _SOURCE_BACKEND_TQDM_PARTIAL_BLOCKS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
 _SOURCE_BACKEND_BOOTSTRAP_PACKAGES: tuple[tuple[str, str], ...] = (
-    ("comfy-kitchen", "0.2.39"),
+    ("comfy-kitchen", "0.2.40"),
 )
 
 
@@ -1168,6 +1168,7 @@ class _SourceBackendSession:
             if item is _STDOUT_DONE:
                 self._stdout_lines.append("<source backend stdout closed>")
                 _print_source_backend_log("child stdout closed")
+                output_queue.put(_STDOUT_DONE)
                 break
             if not isinstance(item, str):
                 continue
@@ -1260,6 +1261,7 @@ class _SourceBackendSession:
                 }
 
             deadline = time.monotonic() + timeout
+            deadline_queue_remaining: int | None = None
             result: dict[str, Any] | None = None
             while result is None:
                 try:
@@ -1270,6 +1272,7 @@ class _SourceBackendSession:
                 if item is _STDOUT_DONE:
                     self._stdout_lines.append("<source backend stdout closed>")
                     _print_source_backend_log("child stdout closed")
+                    break
                 elif isinstance(item, str):
                     line = item.rstrip("\r\n")
                     source_result = _source_result_from_line(line)
@@ -1291,7 +1294,14 @@ class _SourceBackendSession:
                             self._stdout_lines.append(line)
                             _print_source_backend_log(line)
 
-                if time.monotonic() >= deadline and process.poll() is None:
+                if time.monotonic() >= deadline:
+                    if deadline_queue_remaining is None:
+                        # Drain the existing batch without extending it for new logs.
+                        deadline_queue_remaining = output_queue.qsize()
+                    else:
+                        deadline_queue_remaining -= 1
+                    if deadline_queue_remaining > 0:
+                        continue
                     _print_source_backend_log(f"job {job_id[-8:]} timed out after {timeout:g}s")
                     self.stop()
                     return {
@@ -1303,10 +1313,6 @@ class _SourceBackendSession:
                         "elapsed_seconds": round(time.monotonic() - started, 3),
                         "debug_info": {"stdout_tail": _tail_lines(self._stdout_lines)},
                     }
-
-                if process.poll() is not None and output_queue.empty():
-                    _print_source_backend_log(f"service exited code={process.returncode}")
-                    break
 
             if result is None:
                 self.stop()
@@ -1376,6 +1382,7 @@ class _SourceBackendSession:
                 }
 
             deadline = time.monotonic() + timeout
+            deadline_queue_remaining: int | None = None
             result: dict[str, Any] | None = None
             while result is None:
                 try:
@@ -1386,6 +1393,7 @@ class _SourceBackendSession:
                 if item is _STDOUT_DONE:
                     self._stdout_lines.append("<source backend stdout closed>")
                     _print_source_backend_log("child stdout closed")
+                    break
                 elif isinstance(item, str):
                     line = item.rstrip("\r\n")
                     source_result = _source_result_from_line(line)
@@ -1407,7 +1415,13 @@ class _SourceBackendSession:
                             self._stdout_lines.append(line)
                             _print_source_backend_log(line)
 
-                if time.monotonic() >= deadline and process.poll() is None:
+                if time.monotonic() >= deadline:
+                    if deadline_queue_remaining is None:
+                        deadline_queue_remaining = output_queue.qsize()
+                    else:
+                        deadline_queue_remaining -= 1
+                    if deadline_queue_remaining > 0:
+                        continue
                     _print_source_backend_log(f"job {job_id[-8:]} timed out after {timeout:g}s")
                     self.stop()
                     return {
@@ -1417,10 +1431,6 @@ class _SourceBackendSession:
                         "elapsed_seconds": round(time.monotonic() - started, 3),
                         "debug_info": {"stdout_tail": _tail_lines(self._stdout_lines)},
                     }
-
-                if process.poll() is not None and output_queue.empty():
-                    _print_source_backend_log(f"service exited code={process.returncode}")
-                    break
 
             if result is None:
                 self.stop()
@@ -1495,6 +1505,7 @@ class _SourceBackendSession:
                 )
 
             deadline = time.monotonic() + timeout
+            deadline_queue_remaining: int | None = None
             timed_out = False
             interrupted_status = ""
             interrupt_requested_at = 0.0
@@ -1510,6 +1521,7 @@ class _SourceBackendSession:
                 if item is _STDOUT_DONE:
                     self._stdout_lines.append("<source backend stdout closed>")
                     _print_source_backend_log("child stdout closed")
+                    break
                 elif isinstance(item, str):
                     line = item.rstrip("\r\n")
                     source_result = _source_result_from_line(line)
@@ -1565,15 +1577,17 @@ class _SourceBackendSession:
                         self.stop()
                         break
 
-                if time.monotonic() >= deadline and process.poll() is None:
+                if time.monotonic() >= deadline:
+                    if deadline_queue_remaining is None:
+                        deadline_queue_remaining = output_queue.qsize()
+                    else:
+                        deadline_queue_remaining -= 1
+                    if deadline_queue_remaining > 0:
+                        continue
                     timed_out = True
                     _print_source_backend_log(f"job {job_id[-8:]} timed out after {timeout:g}s")
                     _cleanup_source_backend_control_path(control_path)
                     self.stop()
-                    break
-
-                if process.poll() is not None and output_queue.empty():
-                    _print_source_backend_log(f"service exited code={process.returncode}")
                     break
 
             if timed_out:

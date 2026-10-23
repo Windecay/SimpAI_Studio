@@ -1087,6 +1087,8 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     const MOBILE_MODELS_SELECT_RENDER_LIMIT = 80;
     const MOBILE_MODELS_SELECT_ROW_HEIGHT = 30;
     let modelsSelectScrollFrame = 0;
+    const modelsPanelControlStates = new WeakMap();
+    const modelsPanelLocalizationStates = new WeakMap();
 
     function modelsPanelUsesWindowedOptions() {
         return simpleaiDisableHoverPreviewsForInput();
@@ -1183,23 +1185,40 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
 
     function localizeModelsJsPanel(panel) {
         const root = panel || document;
-        window.SimpAILoraStackEditor?.refresh(root, modelsPanelLang());
+        const language = modelsPanelLang();
+        const previous = modelsPanelLocalizationStates.get(root);
+        if (previous?.language === language && !modelsPanelLocalizationChanged(previous)) return;
+        if (previous?.language !== language) window.SimpAILoraStackEditor?.refresh(root, language);
+        const texts = [], titles = [];
         root.querySelectorAll?.('[data-simpai-i18n-en]').forEach((node) => {
-            node.textContent = modelsPanelText(node.dataset.simpaiI18nEn || '', node.dataset.simpaiI18nCn || '');
+            const value = modelsPanelText(node.dataset.simpaiI18nEn || '', node.dataset.simpaiI18nCn || '');
+            if (node.textContent !== value) node.textContent = value;
+            texts.push({ node, value, en: node.dataset.simpaiI18nEn, cn: node.dataset.simpaiI18nCn });
         });
         root.querySelectorAll?.('[data-simpai-i18n-title-en]').forEach((node) => {
-            node.title = modelsPanelText(node.dataset.simpaiI18nTitleEn || '', node.dataset.simpaiI18nTitleCn || '');
+            const value = modelsPanelText(node.dataset.simpaiI18nTitleEn || '', node.dataset.simpaiI18nTitleCn || '');
+            if (node.title !== value) node.title = value;
+            titles.push({ node, value, en: node.dataset.simpaiI18nTitleEn, cn: node.dataset.simpaiI18nTitleCn });
         });
+        modelsPanelLocalizationStates.set(root, { language, texts, titles });
     }
 
-    function syncModelsJsPanelLocalization() {
-        document.querySelectorAll('[data-simpai-models-js-root]').forEach((panel) => localizeModelsJsPanel(panel));
+    function modelsPanelLocalizationChanged(state) {
+        return state.texts.some(({ node, value, en, cn }) => node.isConnected === false || node.textContent !== value
+            || node.dataset.simpaiI18nEn !== en || node.dataset.simpaiI18nCn !== cn)
+            || state.titles.some(({ node, value, en, cn }) => node.isConnected === false || node.title !== value
+                || node.dataset.simpaiI18nTitleEn !== en || node.dataset.simpaiI18nTitleCn !== cn);
     }
 
-    function modelsPanelNeedsLocalization() {
-        return Array.from(document.querySelectorAll('[data-simpai-models-js-root] [data-simpai-i18n-en]')).some((node) => (
-            node.textContent !== modelsPanelText(node.dataset.simpaiI18nEn || '', node.dataset.simpaiI18nCn || '')
-        ));
+    function syncModelsJsPanelLocalization(panels) {
+        (panels || document.querySelectorAll('[data-simpai-models-js-root]')).forEach((panel) => localizeModelsJsPanel(panel));
+    }
+
+    function modelsPanelNeedsLocalization(panels, language) {
+        return Array.from(panels || document.querySelectorAll('[data-simpai-models-js-root]')).some((panel) => {
+            const previous = modelsPanelLocalizationStates.get(panel);
+            return !previous || previous.language !== (language || modelsPanelLang()) || modelsPanelLocalizationChanged(previous);
+        });
     }
 
     function getRoot() {
@@ -1321,11 +1340,17 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         return true;
     }
 
+    function modelsPanelActiveTaskMethod() {
+        const params = window.simpleaiTopbarSystemParams || {};
+        return String((params.__is_scene_frontend ? params.__scene_task_method : '')
+            || params.task_method || params.__scene_task_method || '').trim();
+    }
+
     function modelsPanelCatalogSignature() {
         const params = window.simpleaiTopbarSystemParams || {};
         const engine = String(params.__backend_engine || params.backend_engine || params.engine || params.task_class_name || 'Z-image').trim() || 'Z-image';
         const sceneFrontend = !!params.__is_scene_frontend;
-        const taskMethod = String((sceneFrontend ? params.__scene_task_method : '') || params.task_method || params.__scene_task_method || '').trim();
+        const taskMethod = modelsPanelActiveTaskMethod();
         const useModelFilter = modelsPanelUseModelFilter();
         const baseModelField = document.querySelector('[data-simpai-models-js-root] [data-simpai-model-field="base_model"]');
         const baseModel = String(baseModelField?.value || params.__base_model || params.base_model || '').trim();
@@ -1905,13 +1930,44 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         panel.querySelectorAll('[data-simpai-lora-enabled]').forEach(syncLoraRowInteractivity);
         syncModelsPanelRefinerAvailability(panel);
         // PE availability belongs to the active task, not the asynchronous file catalog.
-        const peEnabled = /qwen_image21|flux3|^moss_image_sft_aio_cn$/i.test(modelsPanelCatalogSignature().taskMethod);
+        const peEnabled = /qwen_image21|flux3|^moss_image_sft_aio_cn$/i.test(modelsPanelActiveTaskMethod());
         const peField = panel.querySelector('[data-simpai-model-card="pe"]');
         if (peField) peField.hidden = !peEnabled;
+        const previous = modelsPanelControlStates.get(panel);
+        modelsPanelControlStates.set(panel, modelsPanelControlState(panel, previous));
     }
 
-    function syncAllModelsPanelControls() {
-        document.querySelectorAll('[data-simpai-models-js-root]').forEach(syncModelsPanelControls);
+    function modelsPanelControlState(panel, previous) {
+        const fields = previous?.fields?.every(field => field.isConnected !== false) ? previous.fields
+            : Array.from(panel.querySelectorAll('[data-simpai-model-range], [data-simpai-model-field], [data-simpai-lora-weight], [data-simpai-lora-weight-range], [data-simpai-lora-enabled]'));
+        const focused = fields.includes(document.activeElement) ? document.activeElement : null;
+        const html = document.documentElement;
+        const key = JSON.stringify([
+            modelsPanelActiveTaskMethod(),
+            html.classList.contains('simpai-hide-refiner-model'), html.classList.contains('simpai-hide-refiner-switch'),
+            fields.map(field => [field.value, field.checked, field.disabled, field.min, field.max]),
+        ]);
+        return { fields, key, focused };
+    }
+
+    function modelsPanelControlsChanged(panel) {
+        const previous = modelsPanelControlStates.get(panel);
+        const next = modelsPanelControlState(panel, previous);
+        return !previous || previous.key !== next.key || previous.focused !== next.focused;
+    }
+
+    function modelsPanelIsVisible(panel) {
+        if (document.hidden) return false;
+        for (let node = panel; node; node = node.parentElement) {
+            if (node.hidden || node.style?.display === 'none') return false;
+        }
+        return true;
+    }
+
+    function syncAllModelsPanelControls(panels) {
+        (panels || document.querySelectorAll('[data-simpai-models-js-root]')).forEach(panel => {
+            if (modelsPanelIsVisible(panel) && modelsPanelControlsChanged(panel)) syncModelsPanelControls(panel);
+        });
     }
 
     let latestPresetModelsPanelResetSeq = '';
@@ -2405,19 +2461,20 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         if (localizationTimer) return;
         localizationTimer = setTimeout(() => {
             localizationTimer = null;
-            lastLanguageKey = modelsPanelLanguageKey();
-            syncModelsJsPanelLocalization();
-            syncAllModelsPanelControls();
+            syncModelsJsPanelLocalizationIfLanguageChanged();
         }, 0);
     }
 
     function syncModelsJsPanelLocalizationIfLanguageChanged() {
-        if (!document.querySelector('[data-simpai-models-js-root]')) return;
-        syncAllModelsPanelControls();
+        if (document.hidden) return;
+        const panels = Array.from(document.querySelectorAll('[data-simpai-models-js-root]')).filter(modelsPanelIsVisible);
+        if (!panels.length) return;
+        const changedPanels = panels.filter(modelsPanelControlsChanged);
+        if (changedPanels.length) syncAllModelsPanelControls(changedPanels);
         const nextLanguageKey = modelsPanelLanguageKey();
-        if (nextLanguageKey === lastLanguageKey && !modelsPanelNeedsLocalization()) return;
+        if (nextLanguageKey === lastLanguageKey && !modelsPanelNeedsLocalization(panels, nextLanguageKey)) return;
         lastLanguageKey = nextLanguageKey;
-        syncModelsJsPanelLocalization();
+        syncModelsJsPanelLocalization(panels);
     }
 
     if (document.readyState === 'loading') {
@@ -2426,10 +2483,10 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         scheduleModelsJsPanelLocalization();
     }
     window.addEventListener('simpai:system-params-updated', () => {
-        if (!document.querySelector('[data-simpai-models-js-root]')) return;
-        syncModelsJsPanelLocalization();
-        lastLanguageKey = modelsPanelLanguageKey();
-        syncAllModelsPanelControls();
+        syncModelsJsPanelLocalizationIfLanguageChanged();
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) scheduleModelsJsPanelLocalization();
     });
     if (window.MutationObserver) {
         const observer = new MutationObserver((mutations) => {
@@ -2438,14 +2495,28 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
                     if (node.nodeType !== 1) continue;
                     if (node.matches?.('[data-simpai-models-js-root]') || node.querySelector?.('[data-simpai-models-js-root]')) {
                         scheduleModelsJsPanelLocalization();
-                        setTimeout(syncAllModelsPanelControls, 0);
                         return;
                     }
+                }
+                const panel = mutation.target?.closest?.('[data-simpai-models-js-root]');
+                if (panel && [...(mutation.addedNodes || []), ...(mutation.removedNodes || [])].some(node => node.nodeType === 1
+                    && (node.matches?.('input, select, button, [data-simpai-i18n-en], [data-simpai-i18n-title-en]')
+                        || node.querySelector?.('input, select, [data-simpai-i18n-en], [data-simpai-i18n-title-en]')))) {
+                    modelsPanelControlStates.delete(panel);
+                    modelsPanelLocalizationStates.delete(panel);
+                    scheduleModelsJsPanelLocalization();
+                    return;
                 }
             }
         });
         observer.observe(document.documentElement, { childList: true, subtree: true });
-        const classObserver = new MutationObserver(syncAllModelsPanelControls);
+        let refinerClassKey = `${document.documentElement.classList.contains('simpai-hide-refiner-model')}:${document.documentElement.classList.contains('simpai-hide-refiner-switch')}`;
+        const classObserver = new MutationObserver(() => {
+            const nextKey = `${document.documentElement.classList.contains('simpai-hide-refiner-model')}:${document.documentElement.classList.contains('simpai-hide-refiner-switch')}`;
+            if (nextKey === refinerClassKey) return;
+            refinerClassKey = nextKey;
+            syncAllModelsPanelControls();
+        });
         classObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     }
     window.addEventListener('scroll', (event) => {
@@ -4138,6 +4209,14 @@ document.addEventListener("DOMContentLoaded", function() {
                 batchInputs.push(id);
             }
         }
+        if (typeof window.getSceneBatchInputDefinitions === 'function') {
+            for (const item of window.getSceneBatchInputDefinitions()) {
+                if (item.kind === 'image') continue;
+                if (!item.optional || Array.isArray(params.__scene_disvisible) || enabledInputs.includes(item.slot)) {
+                    batchInputs.push(item.slot);
+                }
+            }
+        }
         setVisible('scene_batch_accordion', !disvisible.has('scene_batch')
             && batchInputs.some((id) => !disvisible.has(id)));
         if (typeof window.syncSceneCanvasMaskMode === 'function') {
@@ -5197,7 +5276,10 @@ function initBatchPreviewGeneratingOverlay() {
         if (!t) return false;
         if (t.startsWith("batch finished")) return false;
         if (t.startsWith("batch stopped")) return false;
+        if (/^批处理(?:结束|已完成|已停止)/.test(t)) return false;
         if (t.includes("folder is empty")) return false;
+        if (t.startsWith("batch: no matching media") || t.startsWith("this batch target is unavailable")) return false;
+        if (t.startsWith("批处理：上传列表") || t.startsWith("批处理：文件夹为空") || t.startsWith("当前预置或主题不支持这个批量覆盖位置")) return false;
         return true;
     };
     const getStatusValue = function(elemId) {

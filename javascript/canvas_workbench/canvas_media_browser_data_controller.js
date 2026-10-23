@@ -67,18 +67,20 @@
         async function refreshMediaBrowserPanel(modal) {
             if (modal?.isConnected === false) return;
             const state = call(fieldSource, 'readMediaBrowserFields', {}, modal);
+            const queryState = Object.assign({}, state);
             const request = beginPanelRequest(modal);
             modal.__mediaBrowserLoadingMore = false;
             try {
                 renderCall('renderMediaBrowserPanel', modal, true);
                 let data;
                 try {
-                    data = await fetchMediaBrowserData(state, { limit: pageSize(), offset: 0 });
+                    data = await fetchMediaBrowserData(queryState, { limit: pageSize(), offset: 0 });
                 } catch (err) {
                     data = { ok: false, error: err?.message || String(err || 'media browser failed'), items: [] };
                 }
                 if (!isCurrentPanelRequest(request)) return;
                 modal.__mediaBrowserData = stateCall('mergeMediaBrowserPage', {}, null, data, false);
+                modal.__mediaBrowserQueryState = queryState;
                 const items = Array.isArray(modal.__mediaBrowserData.items) ? modal.__mediaBrowserData.items : [];
                 if (!items.some(item => String(item.id || '') === String(state.selectedId || ''))) {
                     state.selectedId = items[0]?.id || '';
@@ -95,8 +97,8 @@
         async function loadMoreMediaBrowserPanel(modal) {
             if (!modal || modal.isConnected === false || modal.__mediaBrowserLoadingMore || panelRequests.has(modal)) return;
             const current = modal.__mediaBrowserData || {};
-            if (!current.has_more && !current.truncated) return;
-            const state = call(fieldSource, 'readMediaBrowserFields', {}, modal);
+            if (!current.has_more) return;
+            const state = Object.assign({}, modal.__mediaBrowserQueryState || modal.__mediaBrowserState || {});
             const request = beginPanelRequest(modal);
             modal.__mediaBrowserLoadingMore = true;
             try {
@@ -111,9 +113,12 @@
                     });
                 }
                 if (!isCurrentPanelRequest(request)) return;
-                if (state.tab === 'danbooru') state.page = nextPage;
+                if (state.tab === 'danbooru') {
+                    state.page = nextPage;
+                    modal.__mediaBrowserState = Object.assign({}, modal.__mediaBrowserState || {}, { page: nextPage });
+                }
                 modal.__mediaBrowserData = stateCall('mergeMediaBrowserPage', {}, current, page, true);
-                modal.__mediaBrowserState = state;
+                modal.__mediaBrowserQueryState = state;
             } finally {
                 if (finishPanelRequest(request)) {
                     renderCall('renderMediaBrowserPanel', modal, false);
@@ -154,6 +159,7 @@
                 }
                 if (!isCurrentNodeRequest(request)) return data;
                 runtime.data = stateCall('mergeMediaBrowserPage', {}, null, data, false);
+                runtime.queryState = Object.assign({}, state);
                 runtime.loading = false;
                 runtime.error = runtime.data.error || '';
                 runtime.version = Number(runtime.version || 0) + 1;
@@ -175,8 +181,8 @@
             if (!node || node.type !== 'media_browser' || getNode(node.id) !== node) return;
             const runtime = stateCall('mediaBrowserRuntimeFor', {}, node.id);
             const current = runtime.data || {};
-            if (runtime.loading || runtime.loadingMore || (!current.has_more && !current.truncated)) return;
-            const state = call(fieldSource, 'readMediaBrowserNodeFields', {}, node, nodeEl);
+            if (runtime.loading || runtime.loadingMore || !current.has_more) return;
+            const state = Object.assign({}, runtime.queryState || stateCall('mediaBrowserNodeState', {}, node));
             const request = beginNodeRequest(node, runtime);
             runtime.loadingMore = true;
             runtime.version = Number(runtime.version || 0) + 1;
@@ -198,6 +204,7 @@
                     stateCall('saveMediaBrowserNodeState', undefined, node, state);
                 }
                 runtime.data = stateCall('mergeMediaBrowserPage', {}, current, page, true);
+                runtime.queryState = state;
             } finally {
                 if (runtime.requestId === request.requestId) runtime.loadingMore = false;
                 if (isCurrentNodeRequest(request)) {

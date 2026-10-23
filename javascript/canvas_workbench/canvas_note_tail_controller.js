@@ -42,6 +42,8 @@
 
         function startNoteTailDrag(node, evt) {
             if (!node || node.type !== 'note' || !evt) return;
+            const project = getProject();
+            if (!project || getNode(node.id) !== node) return;
             if (isNodeLocked(node)) {
                 uiCall('showToast', undefined, t('Locked note pointer cannot be moved.', '锁定的提示贴不能移动指引点。'));
                 return;
@@ -52,8 +54,12 @@
             dragState = {
                 pointerId: evt.pointerId,
                 nodeId: node.id,
-                startClientX: evt.clientX,
-                startClientY: evt.clientY,
+                project,
+                node,
+                lastClientX: evt.clientX,
+                lastClientY: evt.clientY,
+                worldDx: 0,
+                worldDy: 0,
                 startX: Number(target.x || 0),
                 startY: Number(target.y || 0),
                 historyPushed: false
@@ -70,12 +76,20 @@
         function onNoteTailDragMove(evt) {
             if (!dragState || !evt || evt.pointerId !== dragState.pointerId) return;
             const node = getNode(dragState.nodeId);
+            if (getProject() !== dragState.project || node !== dragState.node || isNodeLocked(node)) {
+                stopNoteTailDrag(evt);
+                return;
+            }
             if (!node || node.type !== 'note') return;
             evt.preventDefault();
             const project = getProject();
             const zoom = project.viewport?.zoom || 1;
-            const dx = (evt.clientX - dragState.startClientX) / zoom;
-            const dy = (evt.clientY - dragState.startClientY) / zoom;
+            dragState.worldDx += (evt.clientX - dragState.lastClientX) / zoom;
+            dragState.worldDy += (evt.clientY - dragState.lastClientY) / zoom;
+            dragState.lastClientX = evt.clientX;
+            dragState.lastClientY = evt.clientY;
+            const dx = dragState.worldDx;
+            const dy = dragState.worldDy;
             if (!dragState.historyPushed && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) {
                 historyCall('pushHistory', undefined, 'Move tip note pointer');
                 dragState.historyPushed = true;
@@ -98,12 +112,14 @@
         function stopNoteTailDrag(evt) {
             if (!dragState) return;
             if (evt && evt.pointerId !== dragState.pointerId) return;
-            const nodeId = dragState.nodeId;
+            const state = dragState;
+            const nodeId = state.nodeId;
             dragState = null;
             const doc = getDocument();
             doc?.removeEventListener('pointermove', onNoteTailDragMove, true);
             doc?.removeEventListener('pointerup', stopNoteTailDrag, true);
             doc?.removeEventListener('pointercancel', stopNoteTailDrag, true);
+            if (getProject() !== state.project || getNode(nodeId) !== state.node || isNodeLocked(state.node)) return;
             persistenceCall('scheduleSave', undefined);
             if (selectionCall('getSelectedNodeId', null) === nodeId) renderCall('renderInspector', undefined);
         }

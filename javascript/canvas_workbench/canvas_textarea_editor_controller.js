@@ -12,6 +12,9 @@
         const selectionSource = scope.selectionSource || {};
         const toolSource = scope.toolSource || {};
         const formSource = scope.formSource || {};
+        const projectSource = scope.projectSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const getProject = () => typeof projectSource.getProject === 'function' ? projectSource.getProject() : null;
 
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
@@ -99,11 +102,16 @@
 
         function bindInspectorTextareaTitleEvents(inspector) {
             if (!inspector?.querySelectorAll) return false;
+            const project = getProject();
+            const nodeId = getSelectedNodeId();
+            const node = getNode(nodeId);
             inspector.querySelectorAll('label').forEach((label) => {
                 const textarea = label.querySelector('textarea');
                 const title = Array.from(label.children || []).find(child => String(child.tagName || '').toLowerCase() === 'span');
                 if (!textarea || !title) return;
                 title.addEventListener('click', (evt) => {
+                    if (!project || getProject() !== project || getNode(nodeId) !== node
+                        || getSelectedNodeId() !== nodeId || textarea.isConnected === false) return;
                     if (evt.target.closest?.('button,input,select,textarea,a,[contenteditable="true"],.sai-translate-wrap')) return;
                     evt.preventDefault();
                     evt.stopPropagation();
@@ -160,11 +168,15 @@
         }
 
         function findTextareaEditorSource(desc, fallback) {
-            if (fallback?.isConnected) return fallback;
+            if (desc?.inspector && getSelectedNodeId() !== desc.nodeId) return null;
+            if (fallback?.isConnected) {
+                const current = textareaEditorDescriptor(fallback);
+                if (current.nodeId === desc.nodeId && current.attr === desc.attr && current.key === desc.key) return fallback;
+            }
             const selector = textareaEditorSelector(desc);
             if (!selector) return fallback?.isConnected ? fallback : null;
             const nodesLayer = getNodesLayer();
-            if (desc?.nodeId && nodesLayer) {
+            if (!desc?.inspector && desc?.nodeId && nodesLayer) {
                 const nodeEl = nodesLayer.querySelector?.(`[data-node-id="${cssEscape(desc.nodeId)}"]`);
                 const field = nodeEl?.querySelector?.(selector);
                 if (field) return field;
@@ -174,11 +186,14 @@
                 const field = inspector.querySelector?.(selector);
                 if (field) return field;
             }
-            return getRoot()?.querySelector?.(selector) || null;
+            return null;
         }
 
         function resolveTextareaEditorSource() {
             if (!editorState) return null;
+            if (!editorState.project || getProject() !== editorState.project
+                || getNode(editorState.descriptor.nodeId) !== editorState.node
+                || editorState.modal?.isConnected === false) return null;
             const source = findTextareaEditorSource(editorState.descriptor, editorState.source);
             if (source) editorState.source = source;
             return source;
@@ -214,10 +229,16 @@
             if (!editorState) return false;
             const source = resolveTextareaEditorSource();
             const input = editorState.input;
-            if (!source || !input || source.disabled || source.readOnly) return false;
+            if (!source || !input || source.disabled || source.readOnly
+                || typeof nodeSource.isNodeLocked !== 'function' || nodeSource.isNodeLocked(editorState.node)) return false;
+            const state = editorState;
             source.value = input.value;
             dispatchFieldEvent(source, 'input');
-            if (commit) dispatchFieldEvent(source, 'change');
+            state.lastWrittenValue = source.value;
+            if (commit && editorState === state) {
+                const current = resolveTextareaEditorSource();
+                if (current && !nodeSource.isNodeLocked(state.node)) dispatchFieldEvent(current, 'change');
+            }
             return true;
         }
 
@@ -235,24 +256,33 @@
                 syncTextareaEditorToSource(true);
             } else if (!apply && !state.readonly) {
                 const source = resolveTextareaEditorSource();
-                if (source && !source.disabled && !source.readOnly && source.value !== state.initialValue) {
+                if (source && !source.disabled && !source.readOnly
+                    && typeof nodeSource.isNodeLocked === 'function' && !nodeSource.isNodeLocked(state.node)
+                    && state.lastWrittenValue !== null && source.value === state.lastWrittenValue
+                    && source.value !== state.initialValue) {
                     source.value = state.initialValue;
                     dispatchFieldEvent(source, 'input');
-                    dispatchFieldEvent(source, 'change');
+                    if (editorState === state) {
+                        const current = resolveTextareaEditorSource();
+                        if (current && !nodeSource.isNodeLocked(state.node)) dispatchFieldEvent(current, 'change');
+                    }
                 }
             }
             state.modal?.remove?.();
-            editorState = null;
+            if (editorState === state) editorState = null;
         }
 
         function scheduleSourceSync(delays) {
-            delays.forEach((delay) => schedule(syncTextareaEditorFromSource, delay));
+            const state = editorState;
+            delays.forEach((delay) => schedule(() => {
+                if (editorState === state) syncTextareaEditorFromSource();
+            }, delay));
         }
 
         function handleTextareaEditorTool(kind, toolButton) {
             if (!editorState) return;
             const source = resolveTextareaEditorSource();
-            if (!source) return;
+            if (!source || typeof nodeSource.isNodeLocked !== 'function' || nodeSource.isNodeLocked(editorState.node)) return;
             if (!source.readOnly && !source.disabled) syncTextareaEditorToSource(false);
             const button = textareaEditorSourceButton(source, kind);
             if (!button || button.disabled) return;
@@ -276,13 +306,20 @@
         }
 
         function openTextareaEditor(field) {
-            if (!field || field.disabled) return;
+            if (!field || field.disabled || field.isConnected === false) return;
+            const descriptor = textareaEditorDescriptor(field);
+            const project = getProject();
+            const node = getNode(descriptor.nodeId);
+            if (!project || !node || typeof nodeSource.isNodeLocked !== 'function') return;
             closeTextareaEditor(true);
+            if (getProject() !== project || getNode(descriptor.nodeId) !== node) return;
+            field = findTextareaEditorSource(descriptor, field);
+            if (!field) return;
             const doc = getDocument();
             const modal = doc?.createElement?.('div');
             const host = getOverlayHost();
             if (!modal || !host?.appendChild) return;
-            const readonly = !!(field.readOnly || field.disabled);
+            const readonly = !!(field.readOnly || field.disabled || nodeSource.isNodeLocked(node));
             modal.className = `sai-canvas-modal sai-textarea-editor-modal ${detectTheme() === 'dark' ? 'theme-dark' : ''}`;
             modal.innerHTML = `
 <div class="sai-canvas-modal-panel sai-textarea-editor-panel">
@@ -310,12 +347,17 @@
                 modal,
                 input,
                 source: field,
-                descriptor: textareaEditorDescriptor(field),
+                descriptor,
+                project,
+                node,
                 initialValue: field.value || '',
+                lastWrittenValue: null,
                 readonly
             };
+            const state = editorState;
             ensureFormNames(modal, 'textarea_editor');
             modal.addEventListener?.('click', (evt) => {
+                if (editorState !== state) return;
                 if (evt.target === modal) {
                     evt.preventDefault?.();
                     closeTextareaEditor(false);
@@ -334,6 +376,7 @@
                 closeTextareaEditor(action === 'apply');
             });
             modal.addEventListener?.('keydown', (evt) => {
+                if (editorState !== state) return;
                 evt.stopPropagation?.();
                 if (evt.key === 'Escape') {
                     evt.preventDefault?.();
@@ -344,6 +387,7 @@
                 }
             }, true);
             schedule(() => {
+                if (editorState !== state || !resolveTextareaEditorSource()) return;
                 input?.focus?.();
                 input?.setSelectionRange?.(input.value.length, input.value.length);
             }, 0);

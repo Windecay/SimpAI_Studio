@@ -160,8 +160,18 @@
         return !!(node && RUNNABLE_TYPES.has(node.type));
     }
 
-    function hasUsableOutput(node) {
+    function hasUsableOutput(node, textOutputSource) {
         if (!node) return false;
+        if (textOutputSource?.isTextOutputNode?.(node)) {
+            return !isIgnored(node) && !!String(textOutputSource.getNodeTextOutput(node) || '').trim();
+        }
+        if (node.type === 'batch_any') {
+            const kind = node.media_kind || node.items?.[0]?.media_kind;
+            const asset = node.asset || {};
+            return !isIgnored(node) && !!node.items?.length && ['image', 'video', 'audio'].includes(kind)
+                && !!(asset.path || asset.output_path || asset.preview_url || asset.data_url
+                    || asset.asset_id || asset.asset_relative_path || asset.relative_path);
+        }
         if (['image', 'video', 'audio'].includes(node.type)) return !!node.asset;
         if (node.type === 'pose_studio') {
             const asset = node.asset || node.pose_studio?.output_asset || {};
@@ -263,9 +273,28 @@
             || '';
     }
 
-    function implicitDependencyIds(node, project, wanted) {
+    function textDependencySources(node, textOutputSource) {
+        if (!node || isIgnored(node)) return [];
+        if (node.type === 'text_merge') {
+            return (textOutputSource?.textMergeInputSlots?.(node) || [])
+                .map(slot => textOutputSource.getTextMergeInputSource(node, slot)).filter(Boolean);
+        }
+        if (node.type === 'text' || (node.type === 'tag_cart' && !String(node.text?.value || ''))) {
+            return [textOutputSource?.getTextNodeInputSource?.(node)].filter(Boolean);
+        }
+        return [];
+    }
+
+    function implicitDependencyIds(node, project, wanted, textOutputSource) {
         const nodeMap = getNodeMap(project);
         const deps = new Set();
+        const seen = new Set();
+        const visitTextSource = source => {
+            if (!source || isIgnored(source) || seen.has(source.id)) return;
+            seen.add(source.id);
+            if (wanted.has(source.id) && isRunnable(source)) deps.add(source.id);
+            textDependencySources(source, textOutputSource).forEach(visitTextSource);
+        };
         inputEdgesFor(node?.id, project).forEach(edge => {
             if (!edge?.from) return;
             const source = nodeMap.get(edge.from);
@@ -275,6 +304,7 @@
                 return;
             }
             if (wanted.has(edge.from)) deps.add(edge.from);
+            if (edge.type === 'text') visitTextSource(source);
         });
         return deps;
     }
@@ -318,7 +348,7 @@
         return seen;
     }
 
-    function topoSort(ids, project) {
+    function topoSort(ids, project, textOutputSource) {
         const nodeMap = getNodeMap(project);
         const wanted = new Set(ids);
         const visited = new Set();
@@ -338,7 +368,7 @@
                 if (producerId && wanted.has(producerId)) visit(producerId);
             });
             const node = nodeMap.get(id);
-            implicitDependencyIds(node, project, wanted).forEach(depId => visit(depId));
+            implicitDependencyIds(node, project, wanted, textOutputSource).forEach(depId => visit(depId));
             visiting.delete(id);
             visited.add(id);
             if (node) ordered.push(node);
@@ -354,13 +384,23 @@
     }
 
     function isPlannedOutputSource(source, project, plannedIds) {
-        if (!source || !plannedIds) return false;
+        if (!source || isIgnored(source) || !plannedIds) return false;
         if (isPlannedResultSource(source, project, plannedIds)) return true;
         if (!plannedIds.has(source.id)) return false;
         return ['wd14', 'vlm', 'translation', 'timeline'].includes(source.type) || (source.type && String(source.type).startsWith('qwen_tts_'));
     }
 
-    function missingInputsFor(node, project, plannedIds) {
+    function isPlannedTextOutputSource(source, project, plannedIds, textOutputSource, visited) {
+        if (!source || isIgnored(source)) return false;
+        const seen = new Set(visited || []);
+        if (seen.has(source.id)) return false;
+        seen.add(source.id);
+        if (isPlannedOutputSource(source, project, plannedIds)) return true;
+        return textDependencySources(source, textOutputSource).some(upstream =>
+            isPlannedTextOutputSource(upstream, project, plannedIds, textOutputSource, seen));
+    }
+
+    function missingInputsFor(node, project, plannedIds, textOutputSource) {
         if (!node) return [missingDetail('Missing node', null, null, 'node_missing')];
         const nodeMap = getNodeMap(project);
         const missing = [];
@@ -387,7 +427,8 @@
             const textEdge = inputEdgesFor(node.id, project).find(item => item.type === 'text');
             const source = nodeMap.get(textEdge?.from);
             const ownText = String(node.input_text || '').trim();
-            if (!ownText && !hasUsableOutput(source) && !isPlannedOutputSource(source, project, plannedIds)) {
+            if (!ownText && !hasUsableOutput(source, textOutputSource)
+                && !isPlannedTextOutputSource(source, project, plannedIds, textOutputSource)) {
                 missing.push(missingDetail('text input', textEdge, source, missingReasonForSource(source)));
             }
         }
@@ -426,7 +467,8 @@
                         missing.push(missingDetail(`${edgeLabel(edge)} input`, edge, source, 'source_missing'));
                     } else if (edge.type === 'upload' && !hasUsableOutput(source) && !isPlannedOutputSource(source, project, plannedIds)) {
                         missing.push(missingDetail(`${edge.slot || 'image'} input`, edge, source, missingReasonForSource(source)));
-                    } else if (edge.type === 'text' && !hasUsableOutput(source) && !isPlannedOutputSource(source, project, plannedIds)) {
+                    } else if (edge.type === 'text' && !hasUsableOutput(source, textOutputSource)
+                        && !isPlannedTextOutputSource(source, project, plannedIds, textOutputSource)) {
                         missing.push(missingDetail(`${edge.slot || 'text'} input`, edge, source, missingReasonForSource(source)));
                     }
                 });
@@ -452,7 +494,7 @@
         return missing;
     }
 
-    function detectCycles(ids, project) {
+    function detectCycles(ids, project, textOutputSource) {
         const wanted = new Set(ids || []);
         const nodeMap = getNodeMap(project);
         const cycles = [];
@@ -468,7 +510,7 @@
                 const producerId = producerIdForResult(source, project);
                 if (producerId && wanted.has(producerId)) deps.add(producerId);
             });
-            implicitDependencyIds(node, project, wanted).forEach(depId => deps.add(depId));
+            implicitDependencyIds(node, project, wanted, textOutputSource).forEach(depId => deps.add(depId));
             return Array.from(deps).filter(depId => depId && depId !== id);
         };
         const visit = (id) => {
@@ -509,19 +551,19 @@
         const steps = [];
         const skipped = [];
         const warnings = [];
-        topoSort(ids, project).forEach(node => {
+        topoSort(ids, project, opts.textOutputSource).forEach(node => {
             if (!isRunnable(node)) return;
             if (isIgnored(node)) {
                 skipped.push({ node_id: node.id, title: nodeLabel(node), reason: 'ignored' });
                 return;
             }
-            const missingDetails = missingInputsFor(node, project, ids);
+            const missingDetails = missingInputsFor(node, project, ids, opts.textOutputSource);
             const missing = missingDetails.map(item => item.label || 'input');
             const step = {
                 node_id: node.id,
                 type: node.type,
                 title: nodeLabel(node),
-                dependencies: Array.from(implicitDependencyIds(node, project, ids)).filter(depId => depId !== node.id),
+                dependencies: Array.from(implicitDependencyIds(node, project, ids, opts.textOutputSource)).filter(depId => depId !== node.id),
                 auto_included: !seed.includes(node.id),
                 missing_inputs: missing,
                 missing_details: missingDetails,
@@ -533,7 +575,7 @@
         seed.forEach(id => {
             if (!nodeMap.has(id)) warnings.push(`Missing selected node: ${id}`);
         });
-        const cycles = detectCycles(ids, project);
+        const cycles = detectCycles(ids, project, opts.textOutputSource);
         cycles.forEach(cycle => {
             const titles = cycle.map(id => nodeLabel(nodeMap.get(id))).join(' -> ');
             warnings.push(`Cycle detected: ${titles}`);

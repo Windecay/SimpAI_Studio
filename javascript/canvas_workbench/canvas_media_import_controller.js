@@ -26,14 +26,25 @@
             const state = call(languageSource, 'getLanguageState', {}) || {};
             return call(languageSource, 't', state.__lang === 'cn' || state.__lang === 'zh' ? cn : en, en, cn, state);
         };
+        const getProject = () => call(projectSource, 'getProject', null);
+        const importOwner = options => ({
+            project: options?.project || getProject(),
+            shouldContinue: options?.shouldContinue
+        });
+        const isCurrentImport = owner => !!owner?.project && getProject() === owner.project
+            && (typeof owner.shouldContinue !== 'function' || owner.shouldContinue());
 
-        function finishImportedNode(node, world, logKind) {
+        function finishImportedNode(node, world, logKind, owner) {
             if (!node) return null;
+            if (!isCurrentImport(owner)) return null;
             call(layoutSource, 'placeNodeAvoidingOverlap', undefined, node, world);
-            const project = call(projectSource, 'getProject', {}) || {};
+            if (!isCurrentImport(owner)) return null;
+            const project = owner.project;
             Object.assign(project, call(projectSource, 'buildProjectNodeAppendPatch', {}, project, node));
             call(selectionSource, 'selectImportedNode', undefined, node.id);
+            if (!isCurrentImport(owner)) return null;
             call(renderSource, 'mutate', undefined);
+            if (!isCurrentImport(owner)) return null;
             call(storageSource, 'materializeNodeAssetForStorage', Promise.resolve(), node.id)
                 .catch(err => warn(`[SimpAI Canvas] ${logKind} materialize skipped:`, err));
             return node;
@@ -57,28 +68,38 @@
             Object.assign(project, call(projectSource, 'buildProjectNodeAppendPatch', {}, project, node));
             return node;
         }
-        async function addImageNodeFromFile(file, world) {
+        async function addImageNodeFromFile(file, world, options) {
+            const owner = importOwner(options);
+            if (!isCurrentImport(owner)) return null;
             const dataUrl = await call(fileSource, 'readFileAsDataUrl', '', file);
+            if (!isCurrentImport(owner)) return null;
             const dimensions = await call(fileSource, 'getImageDimensions', {}, dataUrl);
+            if (!isCurrentImport(owner)) return null;
             const thumb = await call(fileSource, 'createThumbnailDataUrl', '', dataUrl, 1024);
+            if (!isCurrentImport(owner)) return null;
             call(historySource, 'pushHistory', undefined, 'Add image node');
             const node = call(factorySource, 'buildImageNodeFromFile', null, file, world, dataUrl, dimensions, thumb);
             if (!node) return null;
             call(layoutSource, 'fitImageNodeToAssetBounds', undefined, node, node.asset, { preserveCenter: false });
-            return finishImportedNode(node, world, 'image');
+            return finishImportedNode(node, world, 'image', owner);
         }
 
-        async function addMediaNodeFromFile(file, world) {
-            if (call(fileSource, 'isImageFile', false, file)) return addImageNodeFromFile(file, world);
+        async function addMediaNodeFromFile(file, world, options) {
+            const owner = importOwner(options);
+            if (!isCurrentImport(owner)) return null;
+            if (call(fileSource, 'isImageFile', false, file)) return addImageNodeFromFile(file, world, owner);
             const type = call(fileSource, 'isVideoFile', false, file) ? 'video' : 'audio';
             const dataUrl = await call(fileSource, 'readFileAsDataUrl', '', file);
+            if (!isCurrentImport(owner)) return null;
             const metadata = await call(fileSource, 'getMediaMetadata', {}, dataUrl, type);
+            if (!isCurrentImport(owner)) return null;
             const previewFrames = type === 'video'
                 ? await call(fileSource, 'createVideoStoryboardDataUrls', [], dataUrl, metadata.duration, 8) : [];
             const waveform = type === 'audio' ? await call(fileSource, 'createAudioWaveformPeaks', [], file, 96) : [];
+            if (!isCurrentImport(owner)) return null;
             call(historySource, 'pushHistory', undefined, `Add ${type} node`);
             const node = call(factorySource, 'buildMediaNodeFromFile', null, file, type, world, dataUrl, metadata, previewFrames, waveform);
-            return finishImportedNode(node, world, 'media');
+            return finishImportedNode(node, world, 'media', owner);
         }
 
         function addOutputGalleryMediaNode(item, world) {
@@ -185,23 +206,32 @@
             importFileInput.click();
         }
 
-        async function importSelectedMediaBrowserItem(modal) {
+        async function importSelectedMediaBrowserItem(modal, options) {
+            const owner = importOwner({
+                project: options?.project,
+                shouldContinue: () => modal?.isConnected !== false
+                    && (typeof options?.shouldContinue !== 'function' || options.shouldContinue())
+            });
+            if (!isCurrentImport(owner)) return;
             const item = call(mediaBrowserSource, 'selectedMediaBrowserItem', null, modal);
             if (!item) return;
             const state = modal.__mediaBrowserState || call(mediaBrowserSource, 'mediaBrowserInitialState', {},
                 call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 }));
             const world = state.world || call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 });
-            await addMediaBrowserItemToCanvas(item, state, world);
+            await addMediaBrowserItemToCanvas(item, state, world, owner);
         }
 
-        async function addMediaBrowserItemToCanvas(item, state, world) {
+        async function addMediaBrowserItemToCanvas(item, state, world, options) {
             if (!item) return null;
+            const owner = importOwner(options);
+            if (!isCurrentImport(owner)) return null;
             try {
                 const position = world || call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 });
                 if (state?.tab === 'danbooru') {
-                    return await call(mediaBrowserSource, 'importDanbooruGalleryPost', null, item, position);
+                    return await call(mediaBrowserSource, 'importDanbooruGalleryPost', null, item, position, owner);
                 }
                 const node = addOutputGalleryMediaNode(item, position);
+                if (!isCurrentImport(owner)) return null;
                 if (!node) {
                     call(uiSource, 'showToast', undefined, t('Media import failed.', '媒体导入失败。'));
                     return null;
@@ -209,6 +239,7 @@
                 call(uiSource, 'showToast', undefined, t('Gallery media added to canvas.', '画廊媒体已加入画布。'));
                 return node;
             } catch (err) {
+                if (!isCurrentImport(owner)) return null;
                 warn('[CanvasWorkbench] media browser import failed', err);
                 call(uiSource, 'showToast', undefined, t('Media import failed.', '媒体导入失败。'));
             }
@@ -228,15 +259,18 @@
 
         async function importLibraryMediaById(mediaId) {
             if (!mediaId) return null;
+            const owner = importOwner();
             try {
                 const response = await call(networkSource, 'fetchLibraryMediaItem', null, mediaId);
+                if (!isCurrentImport(owner)) return null;
                 const item = response?.item;
                 if (!item?.path || !['image', 'video'].includes(item.media_type)) {
                     throw new Error('Library media is unavailable');
                 }
                 return addMediaBrowserItemToCanvas(item, { tab: 'outputs' },
-                    call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 }));
+                    call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 }), owner);
             } catch (err) {
+                if (!isCurrentImport(owner)) return null;
                 warn('[CanvasWorkbench] library media import failed', err);
                 call(uiSource, 'showToast', undefined, t('Media import failed.', '媒体导入失败。'));
                 return null;

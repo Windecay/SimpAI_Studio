@@ -71,8 +71,7 @@
         "scene_base_model",
         "scene_refiner_model",
         "sam3_input_video",
-        "sam3_mask_video",
-        "scene_batch"
+        "sam3_mask_video"
       ],
       "prompt": {
         "Video Upscale": "Use <Video 1> as the exact source. Restore clearer detail and cleaner edges at the target resolution while preserving its subjects, identities, objects, visible text, motion, timing, camera path, composition, lighting, colors, dialogue, music, and sound effects. Do not add, remove, replace, restage, or retime content."

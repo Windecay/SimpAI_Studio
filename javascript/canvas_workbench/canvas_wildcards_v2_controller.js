@@ -81,13 +81,14 @@
             if (typeof runtimeSource.mutate === 'function') runtimeSource.mutate({ inspector: false });
         }
         function appendWildcardTagToNodeParam(node, slot, tag) {
-            if (!node || !tag || isNodeLocked(node)) return;
+            if (!node || !tag || isNodeLocked(node)) return false;
             const key = slot === 'negative_prompt' ? 'negative_prompt' : 'prompt';
             const value = String(node.params?.[key] || '').trim();
-            if (typeof mutationSource.updateNodeParam === 'function') {
-                mutationSource.updateNodeParam(node.id, key, value ? `${value} ${tag}` : tag, 'textarea');
-            }
+            if (typeof mutationSource.updateNodeParam !== 'function') return false;
+            const updated = mutationSource.updateNodeParam(node.id, key, value ? `${value} ${tag}` : tag, 'textarea');
+            if (updated !== true) return false;
             if (typeof runtimeSource.mutate === 'function') runtimeSource.mutate({ inspector: true });
+            return true;
         }
         const addWildcardsHelperNode = (...args) => typeof mutationSource.addWildcardsHelperNode === 'function'
             ? mutationSource.addWildcardsHelperNode(...args)
@@ -504,7 +505,11 @@
                 wildcardsV2SetStatus(modal, t('Nothing to insert.', '没有可插入内容。'), 'warn');
                 return false;
             }
-            appendWildcardTagToNodeParam(node, state.slot || 'prompt', value);
+            const inserted = appendWildcardTagToNodeParam(node, state.slot || 'prompt', value);
+            if (!inserted) {
+                wildcardsV2SetStatus(modal, t('Prompt insertion was rejected.', '未能插入提示词。'), 'warn');
+                return false;
+            }
             wildcardsV2SetStatus(modal, t('Inserted: {text}', '已插入：{text}').replace('{text}', value), 'ok');
             return true;
         }
@@ -612,8 +617,16 @@
                 const helper = evt.target.closest('[data-wildcards-v2-helper]');
                 const personalSelect = evt.target.closest('[data-wildcards-v2-personal-select]');
                 if (helper) {
-                    state.helper[helper.getAttribute('data-wildcards-v2-helper')] = helper.value;
-                    renderWildcardsV2Expression(modal);
+                    const key = helper.getAttribute('data-wildcards-v2-helper');
+                    state.helper[key] = helper.value;
+                    if (helper.tagName === 'INPUT') {
+                        // Input change runs during blur, before the next control receives its click.
+                        state.helper[key] = wildcardsV2HelperParams(state)[key];
+                        helper.value = String(state.helper[key]);
+                        refreshWildcardsV2ExpressionControls(modal);
+                    } else {
+                        renderWildcardsV2Expression(modal);
+                    }
                 } else if (personalSelect) {
                     state.personalVersion = (state.personalVersion || 0) + 1;
                     state.personal.name = personalSelect.value || '';

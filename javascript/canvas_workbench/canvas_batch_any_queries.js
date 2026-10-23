@@ -74,7 +74,13 @@
 
         function batchAnyAcceptsMediaKind(node, kind) {
             const currentKind = batchAnyMediaKind(node);
-            return !!kind && (!currentKind || currentKind === kind);
+            if (!kind || (currentKind && currentKind !== kind)) return false;
+            if (currentKind) return true;
+            const project = call(projectSource, 'getProject', {}) || {};
+            return (project.edges || []).filter(edge => edge.from === node?.id
+                && ['upload', 'text'].includes(edge.type)).every(edge =>
+                edge.type === 'text' ? kind === 'text'
+                    : call(slotSource, 'getUploadSlotMediaKind', '', edge.slot) === kind);
         }
 
         function batchAnySourceAsset(node) {

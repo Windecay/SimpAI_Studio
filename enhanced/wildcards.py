@@ -6,6 +6,7 @@ import random
 import gradio as gr
 import enhanced.translator as translator
 from modules.access_mode import is_local_mode, user_has_full_local_access
+from modules.tag_text_storage import atomic_write_text
 import logging
 from enhanced.logger import format_name
 from ui.update_helpers import dataset_update, dropdown_update, gr_update, skip_update
@@ -29,15 +30,15 @@ wildcards_template = {}
 wildcards_weight_range = {}
 wildcards_cache = {}
 
-array_regex = re.compile(r'\[([\w\(\)\.\s,;:-]+)\]')
-array_regex1 = re.compile(r'\[([\w\(\)\s\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF,;.:\"\'-]+)\]')
-tag_regex0 = re.compile(r'([\s\w\(\);-]+)')
-tag_regex1 = re.compile(r'([\s\w\(\),-]+)')
-tag_regex2 = re.compile(r'__([\w-]+)__')
-tag_regex3 = re.compile(r'__([\w-]+)__:([\d]+)')
-tag_regex4 = re.compile(r'__([\w-]+)__:([RLrl]){1}([\d]*)')
-tag_regex5 = re.compile(r'__([\w-]+)__:([RLrl]){1}([\d]*):([\d]+)')
-tag_regex6 = re.compile(r'__([\w-]+)__:([\d]+):([\d]+)')
+array_regex = re.compile(r'\[([\w\(\)\.\s,;:/-]+)\]')
+array_regex1 = re.compile(r'\[([\w\(\)\s\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF,;/.:\"\'-]+)\]')
+tag_regex0 = re.compile(r'([\s\w\(\);/-]+)')
+tag_regex1 = re.compile(r'([\s\w\(\),/-]+)')
+tag_regex2 = re.compile(r'__([\w/-]+)__')
+tag_regex3 = re.compile(r'__([\w/-]+)__:([\d]+)')
+tag_regex4 = re.compile(r'__([\w/-]+)__:([RLrl]){1}([\d]*)')
+tag_regex5 = re.compile(r'__([\w/-]+)__:([RLrl]){1}([\d]*):([\d]+)')
+tag_regex6 = re.compile(r'__([\w/-]+)__:([\d]+):([\d]+)')
 
 wildcard_regex = re.compile(r'-([\w-]+)-')
 
@@ -343,7 +344,7 @@ def get_words_with_wildcard(wildcard, rng, method='R', number=1, start_at=1, use
         else:
             if number < 0:
                 number = 1
-            start = start_at - 1
+            start = (start_at - 1) % len(words) if words else 0
             if number > len(words):
                 number = len(words)
             if (start + number)>len(words):
@@ -870,8 +871,7 @@ def personal_wildcards_json_save(name, content, state_params=None, user_did=None
         return {**info, "ok": False, "error": "Invalid wildcard name."}
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     final_content = _normalize_newlines(content)
-    with open(file_path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(final_content)
+    atomic_write_text(file_path, final_content)
     ensure_wildcards_loaded(info["user_did"], reload_flag=True)
     return {**personal_wildcards_json_list(state_params, info["user_did"]), "ok": True, "selected": safe_key, "content": final_content, "message": f"Saved: {safe_key}.txt"}
 
@@ -1025,8 +1025,7 @@ def personal_wildcards_save(state_params, name, content):
     try:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         final_content = _normalize_newlines(content)
-        with open(file_path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(final_content)
+        atomic_write_text(file_path, final_content)
         ensure_wildcards_loaded(user_did, reload_flag=True)
         return (
             f"**Saved**: {safe_key}.txt",
@@ -1187,8 +1186,7 @@ def personal_wildcards_upload(state_params, upload_file, save_as):
             raw = f.read()
         content = _normalize_newlines(raw.decode("utf-8", errors="ignore"))
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(content)
+        atomic_write_text(file_path, content)
         ensure_wildcards_loaded(user_did, reload_flag=True)
         keys = _list_personal_wildcard_keys(user_dir)
         select_update = dropdown_update(choices=keys, value=safe_key)

@@ -10,7 +10,6 @@ import comfy.utils
 from comfy.ldm.flux.layers import timestep_embedding
 import comfy.model_management
 from insightface.app import FaceAnalysis
-from facexlib.parsing import init_parsing_model
 from .face_restoration_helper import FaceRestoreHelper
 import gc
 import torch.nn.functional as F
@@ -599,10 +598,8 @@ class GRApplyPulidFlux:
             save_ext='png',
             device=device,
             model_rootpath=CONTROLNET_DIR,
+            parsing_model='bisenet',
         )
-
-        face_helper.face_parse = None
-        face_helper.face_parse = init_parsing_model(model_name='bisenet', device=device, model_rootpath=CONTROLNET_DIR)
 
         bg_label = [0, 16, 18, 7, 8, 9, 14, 15]
         cond = []

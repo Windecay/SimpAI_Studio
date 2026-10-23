@@ -180,6 +180,7 @@ def _load_fallback_workflow(flow_name, user_did):
         probes.append(probe)
         if selected is None and probe.get('parse') == 'ok' and probe.get('api_nodes', 0) > 0:
             selected = probe
+            break
 
     diagnostics = {
         'user': getpass.getuser(),

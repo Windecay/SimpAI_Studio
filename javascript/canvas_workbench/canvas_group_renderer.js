@@ -28,14 +28,11 @@
         function getNodeGroupMembershipRect(node) {
             const nodeRect = call(geometrySource, 'getNodeRect', null, node);
             if (!nodeRect) return null;
-            const nodeEl = node?.id ? call(domSource, 'getRenderedNodeElement', null, node.id) : null;
-            const head = nodeEl?.querySelector?.(':scope > .sai-node-head');
-            const headHeight = Number(head?.offsetHeight || 0);
             return {
                 x: nodeRect.x,
                 y: nodeRect.y,
                 w: nodeRect.w,
-                h: Math.max(1, Math.min(nodeRect.h, headHeight || 44))
+                h: Math.max(1, Math.min(nodeRect.h, 44))
             };
         }
 
@@ -79,14 +76,11 @@
         function getNodeGroupMembershipRect(node) {
             const nodeRect = call(geometrySource, 'getNodeRect', null, node);
             if (!nodeRect) return null;
-            const nodeEl = node?.id ? call(domSource, 'getRenderedNodeElement', null, node.id) : null;
-            const head = nodeEl?.querySelector?.(':scope > .sai-node-head');
-            const headHeight = Number(head?.offsetHeight || 0);
             return {
                 x: nodeRect.x,
                 y: nodeRect.y,
                 w: nodeRect.w,
-                h: Math.max(1, Math.min(nodeRect.h, headHeight || 44))
+                h: Math.max(1, Math.min(nodeRect.h, 44))
             };
         }
 

@@ -10,6 +10,7 @@
         const networkSource = scope.networkSource || {};
         const languageSource = scope.languageSource || {};
         const uiSource = scope.uiSource || {};
+        const projectSource = scope.projectSource || {};
         const call = (source, name, fallback, ...args) => typeof source[name] === 'function'
             ? source[name](...args) : fallback;
         const metadataCall = (name, ...args) => call(metadataSource, name, undefined, ...args);
@@ -21,15 +22,20 @@
             return call(languageSource, 't', state.__lang === 'cn' || state.__lang === 'zh' ? cn : en, en, cn, state);
         };
 
-        async function copyMediaBrowserItemPrompt(item) {
+        async function copyMediaBrowserItemPrompt(item, options) {
             const prompt = metadataCall('mediaBrowserItemPrompt', item);
             if (!prompt) return false;
+            const project = call(projectSource, 'getProject', null);
+            const isCurrent = () => !!project && call(projectSource, 'getProject', null) === project
+                && (!options?.project || options.project === project)
+                && (typeof options?.shouldContinue !== 'function' || options.shouldContinue());
+            if (!isCurrent()) return false;
             try {
                 await call(browserSource, 'writeClipboardText', undefined, prompt);
-                toast(t('Prompt copied.', '提示词已复制。'));
+                if (isCurrent()) toast(t('Prompt copied.', '提示词已复制。'));
                 return true;
             } catch (err) {
-                toast(t('Copy failed.', '复制失败。'));
+                if (isCurrent()) toast(t('Copy failed.', '复制失败。'));
                 return false;
             }
         }
@@ -56,9 +62,9 @@
             return applyMediaBrowserPromptToTarget(item, () => state?.world || center());
         }
 
-        async function copySelectedMediaBrowserPrompt(modal) {
+        async function copySelectedMediaBrowserPrompt(modal, options) {
             const item = call(stateSource, 'selectedMediaBrowserItem', null, modal);
-            await copyMediaBrowserItemPrompt(item);
+            await copyMediaBrowserItemPrompt(item, options);
         }
 
         function applySelectedMediaBrowserPromptToTarget(modal) {
@@ -69,8 +75,13 @@
             });
         }
 
-        async function deleteLocalMediaBrowserItem(item, state) {
+        async function deleteLocalMediaBrowserItem(item, state, options) {
             if (!item || state?.tab === 'danbooru') return false;
+            const project = call(projectSource, 'getProject', null);
+            const isCurrent = () => !!project && call(projectSource, 'getProject', null) === project
+                && (!options?.project || options.project === project)
+                && (typeof options?.shouldContinue !== 'function' || options.shouldContinue());
+            if (!isCurrent()) return false;
             if (typeof getDeleteApi() !== 'function') {
                 toast(t('Media delete API is not loaded.', '媒体删除接口未加载。'));
                 return false;
@@ -83,16 +94,23 @@
             const ok = call(browserSource, 'confirm', false,
                 `${t('Delete this local file from disk?', '确定从磁盘删除这个本地文件吗？')}\n\n${item.name || rel}`);
             if (!ok) return false;
-            const response = await getDeleteApi()({
-                ids: [rel],
-                media_type: state.mediaType || item.media_type || 'image'
-            });
+            if (!isCurrent()) return false;
+            let response;
+            try {
+                response = await getDeleteApi()({
+                    ids: [rel],
+                    media_type: state.mediaType || item.media_type || 'image'
+                });
+            } catch (err) {
+                if (!isCurrent()) return false;
+                throw err;
+            }
             if (!response?.ok) {
                 const detail = response?.errors?.[0]?.error || response?.details || response?.error || t('unknown error', '未知错误');
-                toast(`${t('Delete failed:', '删除失败：')} ${detail}`);
+                if (isCurrent()) toast(`${t('Delete failed:', '删除失败：')} ${detail}`);
                 return false;
             }
-            toast(t('Local media file deleted.', '本地媒体文件已删除。'));
+            if (isCurrent()) toast(t('Local media file deleted.', '本地媒体文件已删除。'));
             return true;
         }
 

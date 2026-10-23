@@ -42,6 +42,9 @@ CANVAS_EXTRA_BACKEND_ARGS = (
     "cloud_model",
     "simpleai_regen_manifest",
     "scene_video_duration",
+    "reference_video2",
+    "audio2",
+    "audio3",
     "scene_input_image5",
     "scene_input_image6",
     "scene_input_image7",
@@ -1375,7 +1378,7 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
         try:
             preset_name = preset.get("name") or preset_node.get("title") or ""
             if preset_name:
-                _content = config.try_get_preset_content(preset_name)
+                _content = config.try_get_preset_content(preset_name, user_did=identity["user_did"])
                 if isinstance(_content, dict):
                     _de = _content.get("default_engine", {})
                     if isinstance(_de, dict):

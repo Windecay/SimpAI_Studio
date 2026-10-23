@@ -238,7 +238,13 @@ ${status ? `<div class="sai-node-foot">${escape(status)}</div>` : ''}
                 return `<div class="sai-batch-any-thumb is-text"><i class="fa-solid fa-align-left"></i><p>${escape(text || item?.name || '')}</p></div>`;
             }
             if (mediaKind === 'audio') return `<div class="sai-batch-any-thumb is-audio">${renderAssetAudioWaveformHtml(asset)}</div>`;
-            const src = displaySrc(asset, asset.thumb || asset.preview_url || asset.data_url || '');
+            // The normal display source is the full clip for videos, not an image.
+            const frames = Array.isArray(asset.preview_frames) ? asset.preview_frames : [];
+            const src = mediaKind === 'video'
+                ? [asset.thumb, ...frames.map(frame => frame?.thumb)].find(value => typeof value === 'string'
+                    && value && value !== asset.data_url && !/^data:(?!image\/)/i.test(value)
+                    && !/\.(?:mp4|webm|mov|m4v|avi|mkv)(?:[?#]|$)/i.test(value)) || ''
+                : displaySrc(asset, asset.thumb || asset.preview_url || asset.data_url || '');
             if (src) return `<div class="sai-batch-any-thumb"><img src="${escape(src)}" alt=""></div>`;
             return `<div class="sai-batch-any-thumb is-empty"><i class="fa-solid ${escape(batchIcon(mediaKind))}"></i></div>`;
         }
@@ -500,18 +506,28 @@ ${actions}
         }
 
         function renderMediaBrowserItems(items, selectedId, isDanbooru, data) {
+            let errorHtml = '';
             if (data?.ok === false) {
+                const appendFailed = !!data.load_more_error && items.length > 0;
                 const message = data.load_more_error || data.error || translate('Load failed.', '加载失败。');
-                return `<div class="sai-media-browser-empty sai-media-browser-error">
-  <b>${escape(isDanbooru ? translate('Danbooru connection failed.', 'Danbooru 连接失败。') : translate('Media load failed.', '媒体加载失败。'))}</b>
+                const heading = appendFailed
+                    ? translate('Loading more failed.', '追加加载失败。')
+                    : (isDanbooru ? translate('Danbooru connection failed.', 'Danbooru 连接失败。') : translate('Media load failed.', '媒体加载失败。'));
+                const action = appendFailed ? 'load-more' : (isDanbooru ? 'reconnect' : 'refresh');
+                const label = appendFailed
+                    ? translate('Retry', '重试')
+                    : (isDanbooru ? translate('Reconnect', '重连') : translate('Refresh', '刷新'));
+                errorHtml = `<div class="sai-media-browser-empty sai-media-browser-error">
+  <b>${escape(heading)}</b>
   <small>${escape(message)}</small>
-  <button type="button" data-media-browser-action="${isDanbooru ? 'reconnect' : 'refresh'}"><i class="fa-solid fa-rotate"></i><span>${escape(isDanbooru ? translate('Reconnect', '重连') : translate('Refresh', '刷新'))}</span></button>
+  <button type="button" data-media-browser-action="${action}"><i class="fa-solid fa-rotate"></i><span>${escape(label)}</span></button>
 </div>`;
+                if (!appendFailed) return errorHtml;
             }
             if (!items.length) {
                 return `<div class="sai-media-browser-empty">${escape(translate('No media found.', '没有找到媒体。'))}</div>`;
             }
-            return items.map((item, index) => {
+            return errorHtml + items.map((item, index) => {
                 const id = String(item.id || '');
                 const selected = id === String(selectedId || '');
                 const mediaType = item.media_type || (isDanbooru ? postMediaType(item.raw || item) : 'image');

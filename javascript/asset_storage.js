@@ -46,8 +46,12 @@
         finally { busy = false; buttons(); }
     }
 
-    async function refresh() {
-        current = await request(`?offset=${offset}&limit=50`);
+    async function refresh(reuseSnapshot = false) {
+        const snapshot = reuseSnapshot && current?.snapshot_id
+            ? `&snapshot_id=${encodeURIComponent(current.snapshot_id)}` : '';
+        current = await request(`?offset=${offset}&limit=50${snapshot}`);
+        text('scan-time', t('File and reference scan: {time}. Pages reuse this scan for up to 30 seconds; Refresh scans again. Running tasks and expiry update on each page.')
+            .replace('{time}', new Date(current.snapshot_at * 1000).toLocaleString(stage.__lang === 'cn' ? 'zh-CN' : 'en-US')));
         text('total', `${current.total_files} · ${bytes(current.total_bytes)}`);
         text('protected', current.protected_files);
         text('reclaimable', `${current.reclaimable_files} · ${bytes(current.reclaimable_bytes)}`);
@@ -90,8 +94,8 @@
         });
     });
     byId('refresh').addEventListener('click', () => operation(refresh));
-    byId('previous').addEventListener('click', () => operation(async () => { offset = Math.max(0, offset - 50); await refresh(); }));
-    byId('next').addEventListener('click', () => operation(async () => { offset += 50; await refresh(); }));
+    byId('previous').addEventListener('click', () => operation(async () => { offset = Math.max(0, offset - 50); await refresh(true); }));
+    byId('next').addEventListener('click', () => operation(async () => { offset += 50; await refresh(true); }));
     byId('cleanup').addEventListener('click', () => {
         if (!window.confirm(t('Cleanup only removes expired, unused assets. Continue?'))) return;
         operation(async () => {

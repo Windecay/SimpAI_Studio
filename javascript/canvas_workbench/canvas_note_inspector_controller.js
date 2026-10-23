@@ -6,6 +6,8 @@
         const geometrySource = scope.geometrySource || {};
         const editSource = scope.editSource || {};
         const selectionSource = scope.selectionSource || {};
+        const projectSource = scope.projectSource || {};
+        const nodeSource = scope.nodeSource || {};
         const utilitySource = scope.utilitySource || {};
         const languageSource = scope.languageSource || {};
         const call = (source, name, fallback, ...args) => typeof source[name] === 'function'
@@ -61,22 +63,29 @@
         }
 
         function bindNoteInspectorEvents(inspector) {
+            const project = call(projectSource, 'getProject', null);
+            const nodeId = getSelectedNodeId();
+            const node = call(nodeSource, 'getNode', null, nodeId);
+            if (!project || !node || node.type !== 'note') return;
+            const isCurrent = field => call(projectSource, 'getProject', null) === project
+                && call(nodeSource, 'getNode', null, nodeId) === node && getSelectedNodeId() === nodeId
+                && !call(nodeSource, 'isNodeLocked', true, node) && field.isConnected !== false;
             inspector.querySelectorAll('[data-note-text]').forEach((field) => {
-                field.addEventListener('input', () => updateNoteText(getSelectedNodeId(), field.value));
-                field.addEventListener('change', () => updateNoteText(getSelectedNodeId(), field.value, { render: true }));
+                field.addEventListener('input', () => { if (isCurrent(field)) updateNoteText(nodeId, field.value); });
+                field.addEventListener('change', () => { if (isCurrent(field)) updateNoteText(nodeId, field.value, { render: true }); });
             });
             inspector.querySelectorAll('[data-note-style]').forEach((field) => {
-                const handler = () => updateNoteStyle(getSelectedNodeId(), field.getAttribute('data-note-style'), field.value, field.type);
+                const handler = () => { if (isCurrent(field)) updateNoteStyle(nodeId, field.getAttribute('data-note-style'), field.value, field.type); };
                 field.addEventListener('input', handler);
                 field.addEventListener('change', handler);
             });
             inspector.querySelectorAll('[data-note-size]').forEach((field) => {
-                const handler = () => updateNoteSize(getSelectedNodeId(), field.getAttribute('data-note-size'), field.value);
+                const handler = () => { if (isCurrent(field)) updateNoteSize(nodeId, field.getAttribute('data-note-size'), field.value); };
                 field.addEventListener('input', handler);
                 field.addEventListener('change', handler);
             });
             inspector.querySelectorAll('[data-note-tail]').forEach((field) => {
-                const handler = () => updateNoteTail(getSelectedNodeId(), field.getAttribute('data-note-tail'), field.type === 'checkbox' ? field.checked : field.value, field.type, { renderNodes: field.type === 'checkbox' });
+                const handler = () => { if (isCurrent(field)) updateNoteTail(nodeId, field.getAttribute('data-note-tail'), field.type === 'checkbox' ? field.checked : field.value, field.type, { renderNodes: field.type === 'checkbox' }); };
                 field.addEventListener('input', handler);
                 field.addEventListener('change', handler);
             });

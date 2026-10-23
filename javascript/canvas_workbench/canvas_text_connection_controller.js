@@ -155,17 +155,24 @@
         function syncTextMergeOutputDom(node) {
             if (!node || node.type !== 'text_merge') return;
             const output = call(textSource, 'getTextMergeOutput', '', node, new Set([node.id]));
+            syncTextFieldDom(node, '[data-text-merge-output]', output);
+        }
+
+        function syncTextFieldDom(node, selector, output) {
             const nodesLayer = call(viewSource, 'getNodesLayer', null);
             const inspector = call(viewSource, 'getInspector', null);
             const selectedNodeId = call(viewSource, 'getSelectedNodeId', null);
             const escapeNodeId = call(viewSource, 'cssEscape', value => String(value), node.id);
             const nodeEl = nodesLayer?.querySelector('[data-node-id="' + escapeNodeId + '"]');
-            nodeEl?.querySelectorAll('[data-text-merge-output]').forEach(field => {
+            nodeEl?.querySelectorAll(selector).forEach(field => {
                 if (field.value !== output) field.value = output;
             });
             if (selectedNodeId === node.id && inspector) {
-                inspector.querySelectorAll('[data-text-merge-output]').forEach(field => {
+                inspector.querySelectorAll(selector).forEach(field => {
                     if (field.value !== output) field.value = output;
+                });
+                inspector.querySelectorAll('[data-text-output-length]').forEach(counter => {
+                    counter.textContent = String(output.length);
                 });
             }
         }
@@ -173,17 +180,39 @@
         function refreshTextMergeDependents(sourceNodeId, visited) {
             const seen = visited || new Set();
             if (!sourceNodeId || seen.has(sourceNodeId)) return;
-            seen.add(sourceNodeId);
             const project = call(projectSource, 'getProject', null);
-            (project?.nodes || [])
-                .filter(node => node.type === 'text_merge' && (
-                    Object.values(node.text_inputs || {}).includes(sourceNodeId)
-                    || (project.edges || []).some(edge => edge.type === 'text' && edge.from === sourceNodeId && edge.to === node.id)
-                ))
-                .forEach(node => {
-                    syncTextMergeOutputDom(node);
-                    refreshTextMergeDependents(node.id, seen);
+            const dependents = new Map();
+            (project?.nodes || []).forEach(node => {
+                let sourceIds = [];
+                if (node.type === 'text' || (node.type === 'tag_cart' && !String(node.text?.value || ''))) {
+                    const source = call(textSource, 'getTextNodeInputSource', null, node);
+                    sourceIds = source ? [source.id] : [];
+                } else if (node.type === 'text_merge') {
+                    sourceIds = textMergeInputSlots(node).map(slot => {
+                        if (typeof textSource.getTextMergeInputSource === 'function') {
+                            return textSource.getTextMergeInputSource(node, slot)?.id;
+                        }
+                        return node.text_inputs?.[slot] || (project.edges || []).find(edge =>
+                            edge.type === 'text' && edge.to === node.id && edge.slot === slot)?.from;
+                    });
+                }
+                new Set(sourceIds.filter(Boolean)).forEach(id => {
+                    if (!dependents.has(id)) dependents.set(id, []);
+                    dependents.get(id).push(node);
                 });
+            });
+            const pending = [sourceNodeId];
+            for (let index = 0; index < pending.length; index += 1) {
+                const id = pending[index];
+                if (seen.has(id)) continue;
+                seen.add(id);
+                (dependents.get(id) || []).forEach(node => {
+                    if (seen.has(node.id)) return;
+                    if (node.type === 'text_merge') syncTextMergeOutputDom(node);
+                    else syncTextFieldDom(node, '[data-text-value], [data-inspector-text-value]', call(textSource, 'getNodeTextOutput', '', node));
+                    pending.push(node.id);
+                });
+            }
         }
 
         return {

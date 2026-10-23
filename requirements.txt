@@ -1,5 +1,5 @@
 comfyui-frontend-package==1.57.1
-comfyui-workflow-templates==0.11.93
+comfyui-workflow-templates==0.11.96
 comfyui-embedded-docs==0.5.14
 transformers==4.57.6 #4.42.4 #
 huggingface_hub==0.35.1
@@ -47,7 +47,7 @@ onnx>=1.14.0
 # - Custom cu12x environments must install their matching onnxruntime-gpu wheel manually.
 #onnx-graphsurgeon==0.3.27
 peft==0.17.1
-Pillow #==10.4.0 #
+Pillow>=10.1.0
 pixeloe
 polygraphy>=0.49.26
 protobuf==4.25.3 #3.19.0
@@ -112,8 +112,8 @@ blind-watermark
 qrcode
 pyzbar
 transparent-background
-comfy-kitchen==0.2.39
-comfy-aimdo==0.5.6
+comfy-kitchen==0.2.40
+comfy-aimdo==0.6.0
 facexlib
 insightface
 facenet-pytorch==2.6.0

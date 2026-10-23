@@ -29,6 +29,7 @@ STRINGS = (
     "Asset indexing is still in progress. Counts may be partial; refresh to continue.",
     "References changed during cleanup. Refresh and try again.", "Request failed. Refresh the page and check your Studio identity.",
     "Saved by you", "Referenced by a project", "Only remaining result copy", "Running task", "Temporary", "Expired", "No assets yet.",
+    "File and reference scan: {time}. Pages reuse this scan for up to 30 seconds; Refresh scans again. Running tasks and expiry update on each page.",
 )
 
 
@@ -69,7 +70,7 @@ form{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px}}
 <section><div class="stats"><div>{t('Temporary assets')}<strong id="total">—</strong></div><div>{t('Protected assets')}<strong id="protected">—</strong></div><div>{t('Available to clean')}<strong id="reclaimable">—</strong></div></div><div id="warning" role="status"></div></section>
 <section><form id="policy"><label><input id="enabled" type="checkbox"> {t('Automatic cleanup')}</label><label>{t('Days since last use')}<input id="days" type="number" min="1" max="365" required></label><label>{t('Storage limit (GiB, 0 = unlimited)')}<input id="limit" type="number" min="0" max="100000" required></label><button type="submit" class="primary">{t('Save settings')}</button></form>
 <p>{t('The default retention is 30 days since last use. New use restarts the retention period.')}</p><p>{t('Projects, templates, running tasks and assets marked Keep are protected. Original generated works are not deleted.')}</p><p>{t('Existing assets receive a full retention period when first indexed. Cleanup runs hourly while Studio is idle.')}</p><p>{t('The storage limit pauses new uploads and generation. It never deletes recent or protected assets early; running tasks may finish.')}</p></section>
-<section><div class="actions"><button id="refresh">{t('Refresh')}</button><button id="cleanup" class="primary" disabled>{t('Clean expired assets')}</button></div><p id="message" role="status"></p><div class="table"><table><thead><tr>{''.join('<th>'+t(key)+'</th>' for key in ('File','Size','Last used','Protection'))}<th></th></tr></thead><tbody id="files"></tbody></table></div><div class="actions"><button id="previous">{t('Previous page')}</button><button id="next">{t('Next page')}</button></div></section>
+<section><div class="actions"><button id="refresh">{t('Refresh')}</button><button id="cleanup" class="primary" disabled>{t('Clean expired assets')}</button></div><p id="scan-time"></p><p id="message" role="status"></p><div class="table"><table><thead><tr>{''.join('<th>'+t(key)+'</th>' for key in ('File','Size','Last used','Protection'))}<th></th></tr></thead><tbody id="files"></tbody></table></div><div class="actions"><button id="previous">{t('Previous page')}</button><button id="next">{t('Next page')}</button></div></section>
 </main><script type="application/json" id="asset-storage-data">{config}</script><script src="{html.escape(prefix, quote=True)}/api/v1/assets/storage/script"></script></body></html>'''
 
 
@@ -90,9 +91,11 @@ def add_routes(router, authorization):
         return value
 
     @router.get("/assets/storage", operation_id="simpai_asset_storage")
-    async def status(request: Request, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
+    async def status(request: Request, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200),
+                     snapshot_id: str = Query("", max_length=100)):
         principal = context(request)
-        result = await run_in_threadpool(asset_lifecycle.for_state(principal.state).status, offset, limit)
+        result = await run_in_threadpool(asset_lifecycle.for_state(principal.state).status,
+                                        offset, limit, snapshot_id, identity_binding(principal))
         prefix = str(request.scope.get("root_path") or "").rstrip("/")
         result["management_url"] = prefix + "/api/v1/assets/manage"
         return JSONResponse({"ok": True, "api_version": "1.0", "data": result}, headers={"Cache-Control": "no-store"})

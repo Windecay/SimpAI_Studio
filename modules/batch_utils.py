@@ -4,16 +4,19 @@ import copy
 import random
 import re
 import threading
+import json
+from html import escape
 import numpy as np
 import gradio as gr
 from PIL import Image
 from ui.update_helpers import dropdown_update, gr_update
+from modules.scene_batch_inputs import INPUTS, INPUT_BY_SLOT, MEDIA_EXTENSIONS, MEDIA_UPLOAD_LABELS, replace_media_input
 
 BATCH_EVENTS = {}
 _EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 
-def list_images(folder_path):
+def list_images(folder_path, extensions=None):
     if folder_path is None:
         return []
     folder_path = str(folder_path).strip()
@@ -25,13 +28,13 @@ def list_images(folder_path):
         if not os.path.isfile(full):
             continue
         ext = os.path.splitext(name)[1].lower()
-        if ext in _EXTS:
+        if ext in (_EXTS if extensions is None else extensions):
             files.append(full)
     files.sort(key=lambda p: os.path.basename(p).lower())
     return files
 
 
-def files_from_upload(upload_files):
+def files_from_upload(upload_files, *, strict=False):
     if upload_files is None:
         return []
     if isinstance(upload_files, (str, dict)):
@@ -44,27 +47,52 @@ def files_from_upload(upload_files):
         if isinstance(it, str):
             p = it
         elif isinstance(it, dict):
-            p = it.get("name") or it.get("path")
+            p = it.get("path") or it.get("name")
         else:
             p = getattr(it, "name", None)
-        if p and isinstance(p, str) and os.path.exists(p):
+        if p and isinstance(p, str) and (strict or os.path.exists(p)):
             files.append(p)
-    files = [p for p in files if os.path.splitext(p)[1].lower() in _EXTS]
+    if not strict:
+        files = [p for p in files if os.path.splitext(p)[1].lower() in _EXTS]
     files.sort(key=lambda p: os.path.basename(p).lower())
     return files
 
 
-def get_files(folder_path, upload_files):
-    upload_list = files_from_upload(upload_files)
+def get_files(folder_path, upload_files, media_type=None):
+    upload_list = files_from_upload(upload_files, strict=media_type is not None)
     if len(upload_list) > 0:
         return upload_list
-    return list_images(folder_path)
+    # An explicit upload must never silently run files from the local folder.
+    if media_type is not None and upload_files:
+        return []
+    return list_images(folder_path, MEDIA_EXTENSIONS[media_type] if media_type else None)
 
 
 def load_rgba(path):
-    im = Image.open(path)
-    im = im.convert("RGBA")
-    return np.array(im)
+    with Image.open(path) as im:
+        return np.array(im.convert("RGBA"))
+
+
+def load_scene_batch_media(path, kind):
+    if os.path.splitext(path)[1].lower() not in MEDIA_EXTENSIONS[kind]:
+        raise ValueError(f"Expected {kind}: {os.path.basename(path)}")
+    if kind == "image":
+        image = load_rgba(path)
+        return image, (image.shape[1], image.shape[0])
+    if not os.path.isfile(path):
+        raise FileNotFoundError(path)
+    import av
+
+    # Inspect one decoded frame, without loading the full clip into memory.
+    with av.open(path, timeout=5.0) as container:
+        streams = getattr(container.streams, kind)
+        if not streams:
+            raise ValueError(f"No {kind} stream")
+        frame = next(container.decode(streams[0]), None)
+        if frame is None:
+            raise ValueError(f"Empty {kind} stream")
+        size = (frame.width, frame.height) if kind == "video" else None
+    return path, size
 
 
 def _image_size_from_value(value):
@@ -240,7 +268,7 @@ def _scene_batch_set_task_resolution_args(
     return task_size
 
 
-_SCENE_BATCH_TARGET_SLOTS = ("scene_canvas_image",) + tuple(f"scene_input_image{index}" for index in range(1, 9))
+_SCENE_BATCH_TARGET_SLOTS = tuple(INPUT_BY_SLOT)
 _SCENE_BATCH_UPLOAD_SLOTS = tuple(f"scene_input_image{index}" for index in range(1, 9))
 
 
@@ -278,7 +306,7 @@ def _scene_batch_disvisible(state_params):
         extra_hidden = theme_hidden.get(theme, [])
         if isinstance(extra_hidden, list):
             disvisible.extend(str(item) for item in extra_hidden)
-    for slot in tuple(f"scene_input_image{index}" for index in range(3, 9)):
+    for slot in (item["slot"] for item in INPUTS if item.get("optional")):
         if slot not in disvisible and slot not in enabled:
             disvisible.append(slot)
     return set(str(item) for item in disvisible)
@@ -299,6 +327,9 @@ def _scene_batch_slot_fixed_index(slot):
 
 
 def _scene_batch_slot_label(slot, index=None, state_params=None):
+    definition = INPUT_BY_SLOT.get(slot)
+    if definition:
+        return definition["cn" if _scene_batch_lang_is_cn(state_params) else "en"]
     slot_index = _scene_batch_slot_fixed_index(slot)
     if slot == "scene_canvas_image":
         return f"主体图片({slot_index})" if _scene_batch_lang_is_cn(state_params) else f"Upload and canvas({slot_index})"
@@ -307,9 +338,25 @@ def _scene_batch_slot_label(slot, index=None, state_params=None):
 
 def _scene_batch_target_choices(state_params):
     visible_slots = _scene_batch_visible_slots(state_params)
-    if len(visible_slots) == 0:
-        visible_slots = ["scene_input_image1"]
     return [(_scene_batch_slot_label(slot, state_params=state_params), slot) for slot in visible_slots]
+
+
+def scene_batch_all_choices():
+    return [(item["en"], item["slot"]) for item in INPUTS]
+
+
+def scene_batch_schema_html():
+    payload = [{**item, "extensions": MEDIA_EXTENSIONS[item["kind"]],
+                "upload_en": MEDIA_UPLOAD_LABELS[item["kind"]][0],
+                "upload_cn": MEDIA_UPLOAD_LABELS[item["kind"]][1]} for item in INPUTS]
+    return '<span data-scene-batch-inputs="' + escape(json.dumps(payload), quote=True) + '"></span>'
+
+
+def refresh_scene_batch_upload(state_params, target):
+    definition = INPUT_BY_SLOT.get(normalize_scene_batch_target_slot(target, state_params))
+    kind = definition["kind"] if definition else "image"
+    return gr_update(label=_batch_text(state_params, *MEDIA_UPLOAD_LABELS[kind]),
+                     file_types=list(MEDIA_EXTENSIONS[kind]), value=None)
 
 
 def normalize_scene_batch_target_slot(target, state_params=None):
@@ -339,7 +386,7 @@ def normalize_scene_batch_target_slot(target, state_params=None):
                 slot_index = max(1, min(len(_SCENE_BATCH_UPLOAD_SLOTS), number - 1))
                 slot = _SCENE_BATCH_UPLOAD_SLOTS[slot_index - 1]
     if not visible_slots:
-        return slot or "scene_input_image1"
+        return None
     if slot not in visible_slots:
         slot = "scene_canvas_image" if "scene_canvas_image" in visible_slots else visible_slots[0]
     return slot or "scene_input_image1"
@@ -452,8 +499,12 @@ def refresh_scene_batch_target(state_params, current_value):
     elif "scene_canvas_image" in choice_slots:
         value = "scene_canvas_image"
     else:
-        value = choice_slots[0]
-    return dropdown_update(choices=choices, value=value)
+        value = choice_slots[0] if choice_slots else None
+    # Keep all options mounted so fast preset navigation can reveal other media
+    # without waiting for another Python theme event. JS owns option visibility.
+    mounted_choices = [(_scene_batch_slot_label(item["slot"], state_params=state_params), item["slot"])
+                       for item in INPUTS]
+    return dropdown_update(choices=mounted_choices, value=value)
 
 
 def refresh_scene_batch_accordion(state_params):
@@ -678,6 +729,26 @@ def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_wi
         worker.release_batch(evt)
 
 
+def _scene_batch_report(state, records, total, stopped=False):
+    successes = sum(row[1] == "success" for row in records)
+    failures = sum(row[1] == "failed" for row in records)
+    heading = _batch_text(state, "Batch stopped:" if stopped else "Batch finished:",
+                          "批处理已停止：" if stopped else "批处理结束：")
+    summary = _batch_text(state, f"{successes}/{total} succeeded, {failures}/{total} failed, {total - len(records)} pending.",
+                          f"成功 {successes}/{total}，失败 {failures}/{total}，未处理 {total - len(records)}。")
+    labels = {"success": _batch_text(state, "Succeeded", "成功"),
+              "failed": _batch_text(state, "Failed", "失败"),
+              "skipped": _batch_text(state, "Skipped", "已跳过"),
+              "stopped": _batch_text(state, "Stopped", "已停止")}
+    interrupted = sum(row[1] in ("skipped", "stopped") for row in records)
+    if interrupted:
+        summary += _batch_text(state, f" {interrupted} skipped/stopped.", f" 跳过或停止 {interrupted} 项。")
+    lines = [f"{heading} {summary}"]
+    lines.extend(f"{name} — {labels[status]}" + (f"：{detail}" if detail else "")
+                 for name, status, detail in records)
+    return "\n".join(lines)
+
+
 def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2,
                     scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6,
                     scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps,
@@ -706,6 +777,15 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
         else None
     )
     target_slot = normalize_scene_batch_target_slot(target, state)
+    if (target_slot is None or "scene_batch" in _scene_batch_disvisible(state)
+            or (target in INPUT_BY_SLOT and target != target_slot)):
+        message = _batch_text(state, "This batch target is unavailable for the current preset/theme.",
+                             "当前预置或主题不支持这个批量覆盖位置。")
+        yield gr_update(visible=True, value=html.make_progress_html(1, message)), \
+            gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
+            gr_update(interactive=True), False, message, ""
+        return
+    media_type = INPUT_BY_SLOT[target_slot]["kind"]
     current_source_size = _image_size_from_value(_scene_batch_source_value(target_slot, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8))
     current_target_size = _positive_size_pair(overwrite_width, overwrite_height)
     try:
@@ -728,9 +808,9 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
     if resolution_preprocess is not None and not selected_original_resolution and projected_base is None and current_target_size:
         custom_area = current_target_size[0] * current_target_size[1]
 
-    files = get_files(folder_path, upload_files)
+    files = get_files(folder_path, upload_files, media_type)
     if len(files) == 0:
-        message = _batch_text(state, "Batch: folder is empty or invalid.", "批处理：文件夹为空或无效。")
+        message = _batch_text(state, "Batch: no matching media files in the upload or folder.", "批处理：上传列表或文件夹中没有匹配类型的素材。")
         yield gr_update(visible=True, value=html.make_progress_html(1, message)), \
             gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True, state_params=state)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
             gr_update(interactive=True), False, message, ""
@@ -749,9 +829,18 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
         base_seed = base_args[8] if len(base_args) > 8 else image_seed
 
         stopped = False
-        completed = 0
-        failed_preparations = 0
-        last_preparation_error = ""
+        records = []
+        original_media = dict(
+            scene_video=scene_video, scene_original_video_path=scene_original_video_path,
+            active_video_source=active_video_source, scene_video_trim_payload=scene_video_trim_payload,
+            scene_reference_video=scene_reference_video,
+            scene_reference_video_original_path=scene_reference_video_original_path,
+            scene_reference_video_trim_payload=scene_reference_video_trim_payload,
+            scene_reference_video2=scene_reference_video2,
+            scene_reference_video2_original_path=scene_reference_video2_original_path,
+            scene_reference_video2_trim_payload=scene_reference_video2_trim_payload,
+            scene_audio=scene_audio, scene_audio2=scene_audio2, scene_audio3=scene_audio3,
+        )
 
         def _build_canvas_value(img_rgba):
             h, w = img_rgba.shape[0], img_rgba.shape[1]
@@ -763,9 +852,10 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
                 stopped = True
                 break
             try:
-                img = load_rgba(path)
+                media_value, media_size = load_scene_batch_media(path, media_type)
             except Exception as e:
                 filename = os.path.basename(path)
+                records.append((filename, "failed", str(e)))
                 detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
                 status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
                 yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
@@ -773,6 +863,8 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
                     gr_update(interactive=False), True, status_message, batch_id
                 continue
 
+            media_values = (replace_media_input(original_media, target_slot, media_value)
+                            if media_type != "image" else dict(original_media))
             scene_canvas_image_v = copy.deepcopy(scene_canvas_image) if isinstance(scene_canvas_image, dict) else scene_canvas_image
             scene_input_image1_v = scene_input_image1
             scene_input_image2_v = scene_input_image2
@@ -783,8 +875,8 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
             scene_input_image7_v = scene_input_image7
             scene_input_image8_v = scene_input_image8
             if target_slot == "scene_canvas_image":
-                scene_canvas_image_v = _build_canvas_value(img)
-            else:
+                scene_canvas_image_v = _build_canvas_value(media_value)
+            elif media_type == "image":
                 image_values = [
                     scene_input_image1_v,
                     scene_input_image2_v,
@@ -796,7 +888,7 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
                     scene_input_image8_v,
                 ]
                 target_index = max(0, min(7, _scene_batch_slot_fixed_index(target_slot) - 2))
-                image_values[target_index] = img
+                image_values[target_index] = media_value
                 (
                     scene_input_image1_v,
                     scene_input_image2_v,
@@ -816,7 +908,7 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
                 selected_original_resolution,
             )
             batch_target_size = _scene_batch_target_size_for_batch_image(
-                (img.shape[1], img.shape[0]),
+                media_size if media_type == "image" or target_slot == "scene_video" else None,
                 resolution_preprocess,
                 resolution_profile,
                 projected_base,
@@ -839,30 +931,31 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
                     scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10,
                     scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4,
                     scene_aspect_ratio_v, scene_image_number,
-                    scene_video, scene_audio, scene_original_video_path, active_video_source,
+                    media_values["scene_video"], media_values["scene_audio"],
+                    media_values["scene_original_video_path"], media_values["active_video_source"],
                     sam3_input_video, sam3_original_video_path, sam3_mask_video,
                     overwrite_width_v, overwrite_height_v, resolution_multiplier, resolution_quantize_step,
                     resolution_edit_mode, resolution_original_input_v,
                     overwrite_step=overwrite_step,
                     scene_video_duration=scene_video_duration,
-                    scene_reference_video=scene_reference_video,
-                    scene_reference_video_original_path=scene_reference_video_original_path,
-                    scene_video_trim_payload=scene_video_trim_payload,
-                    scene_reference_video_trim_payload=scene_reference_video_trim_payload,
+                    scene_reference_video=media_values["scene_reference_video"],
+                    scene_reference_video_original_path=media_values["scene_reference_video_original_path"],
+                    scene_video_trim_payload=media_values["scene_video_trim_payload"],
+                    scene_reference_video_trim_payload=media_values["scene_reference_video_trim_payload"],
                     scene_input_image5=scene_input_image5_v,
                     scene_input_image6=scene_input_image6_v,
                     scene_input_image7=scene_input_image7_v,
                     scene_input_image8=scene_input_image8_v,
-                    scene_reference_video2=scene_reference_video2,
-                    scene_reference_video2_original_path=scene_reference_video2_original_path,
-                    scene_reference_video2_trim_payload=scene_reference_video2_trim_payload,
-                    scene_audio2=scene_audio2,
-                    scene_audio3=scene_audio3,
+                    scene_reference_video2=media_values["scene_reference_video2"],
+                    scene_reference_video2_original_path=media_values["scene_reference_video2_original_path"],
+                    scene_reference_video2_trim_payload=media_values["scene_reference_video2_trim_payload"],
+                    scene_audio2=media_values["scene_audio2"],
+                    scene_audio3=media_values["scene_audio3"],
                     current_model_params_state=current_model_params_state,
                 )
             except Exception as e:
-                failed_preparations += 1
                 last_preparation_error = f"{os.path.basename(path)}: {e}"
+                records.append((os.path.basename(path), "failed", str(e)))
                 detail_message = _batch_text(
                     state,
                     f"Batch Scene: preparation failed for {last_preparation_error}",
@@ -876,6 +969,8 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
                     break
                 continue
 
+            from modules.regen_manifest import ensure_api_params_backend_arg
+            ensure_api_params_backend_arg(api_params)
             backend_norm = api_params.normalization_backend(bp)
 
             args_i = copy.deepcopy(base_args)
@@ -909,7 +1004,24 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
             )
             for out in generate_clicked(task, state):
                 yield (*out, gr_update(interactive=False), True, status, batch_id)
-            completed = i + 1
+            has_output = getattr(task, "simpleai_generation_had_output", bool(getattr(task, "results", [])))
+            error = str(getattr(task, "backend_error", "") or getattr(task, "cloud_error", "")
+                        or getattr(task, "simpleai_native_error", "") or "")
+            cancel_action = getattr(task, "user_cancel_action", None) or getattr(task, "last_stop", None)
+            if cancel_action in ("stop", "skip"):
+                records.append((os.path.basename(path), "skipped" if cancel_action == "skip" else "stopped", ""))
+            elif has_output and not error:
+                outputs = []
+                for result in getattr(task, "results", []):
+                    result = result[0] if isinstance(result, (list, tuple)) and result else result
+                    if isinstance(result, str):
+                        outputs.append(os.path.basename(result))
+                records.append((os.path.basename(path), "success", ", ".join(outputs)))
+            elif evt.is_set():
+                records.append((os.path.basename(path), "stopped", ""))
+            else:
+                records.append((os.path.basename(path), "failed", error or _batch_text(
+                    state, "Generation produced no output.", "生成没有返回结果。")))
             if evt.is_set():
                 stopped = True
                 break
@@ -918,15 +1030,9 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
             yield gr_update(visible=False), \
                 gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
                 gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-                gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
+                gr_update(visible=True, interactive=True), False, _scene_batch_report(state, records, len(files), stopped=True), batch_id
         else:
-            finished_message = _batch_text(state, "Batch finished.", "批处理已完成。")
-            if failed_preparations:
-                finished_message = _batch_text(
-                    state,
-                    f"Batch finished: preparation failed for {failed_preparations}/{len(files)} files. {last_preparation_error}",
-                    f"批处理结束：{failed_preparations}/{len(files)} 个文件准备失败。{last_preparation_error}",
-                )
+            finished_message = _scene_batch_report(state, records, len(files))
             yield gr_update(visible=False), \
                 gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
                 gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \

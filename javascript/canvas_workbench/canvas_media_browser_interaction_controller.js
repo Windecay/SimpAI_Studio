@@ -11,6 +11,8 @@
         const renderSource = scope.renderSource || {};
         const languageSource = scope.languageSource || {};
         const uiSource = scope.uiSource || {};
+        const projectSource = scope.projectSource || {};
+        const nodeSource = scope.nodeSource || {};
         const call = (source, name, fallback, ...args) => typeof source[name] === 'function'
             ? source[name](...args) : fallback;
         const stateCall = (name, fallback, ...args) => call(stateSource, name, fallback, ...args);
@@ -18,6 +20,9 @@
         const renderNodes = () => call(renderSource, 'renderNodes', undefined);
         const refreshNode = node => call(dataSource, 'refreshMediaBrowserNode', Promise.resolve(), node);
         const warn = (...args) => call(uiSource, 'warn', undefined, ...args);
+        const getProject = () => call(projectSource, 'getProject', null);
+        const isCurrentNode = (node, project = getProject()) => !!project && getProject() === project
+            && node?.type === 'media_browser' && call(nodeSource, 'getNode', null, node.id) === node;
         const t = (en, cn) => {
             const state = call(languageSource, 'getLanguageState', {}) || {};
             return call(languageSource, 't', state.__lang === 'cn' || state.__lang === 'zh' ? cn : en, en, cn, state);
@@ -56,7 +61,8 @@
         }
 
         function handleMediaBrowserNodeClick(node, evt, nodeEl) {
-            if (!node || node.type !== 'media_browser') return false;
+            const project = getProject();
+            if (!isCurrentNode(node, project)) return false;
             const frostArea = evt.target.closest('.sai-media-browser-main');
             if (frostArea && call(frostSource, 'revealGalleryFrostArea', false, frostArea)) {
                 stateCall('mediaBrowserRuntimeFor', {}, node.id).frostRevealed = true;
@@ -96,9 +102,13 @@
                 stateCall('saveMediaBrowserNodeState', undefined, node, state);
                 renderNodes();
                 if (evt.detail >= 2) {
-                    const item = stateCall('selectedMediaBrowserNodeItem', null, node);
-                    call(actionSource, 'addMediaBrowserItemToCanvas', Promise.resolve(), item, state, state.world)
-                        .catch(err => warn('[SimpAI Canvas] media browser item add failed', err));
+                    const items = stateCall('mediaBrowserRuntimeFor', {}, node.id).data?.items;
+                    const item = Array.isArray(items)
+                        ? items.find(candidate => String(candidate?.id || '') === state.selectedId) || null
+                        : null;
+                    call(actionSource, 'addMediaBrowserItemToCanvas', Promise.resolve(), item, state, state.world, {
+                        project, shouldContinue: () => isCurrentNode(node, project)
+                    }).catch(err => { if (isCurrentNode(node, project)) warn('[SimpAI Canvas] media browser item add failed', err); });
                 }
                 return true;
             }
@@ -108,6 +118,7 @@
             evt.stopPropagation();
             const action = actionButton.getAttribute('data-media-browser-action') || '';
             handleMediaBrowserNodeAction(node, action, nodeEl).catch(err => {
+                if (!isCurrentNode(node, project)) return;
                 warn('[SimpAI Canvas] media browser node action failed', err);
                 call(uiSource, 'showToast', undefined,
                     `${t('Media Browser action failed', '媒体浏览器操作失败')}：${err?.message || err || t('unknown error', '未知错误')}`);
@@ -116,6 +127,9 @@
         }
 
         async function handleMediaBrowserNodeAction(node, action, nodeEl) {
+            const project = getProject();
+            if (!isCurrentNode(node, project)) return;
+            const options = { project, shouldContinue: () => isCurrentNode(node, project) };
             const state = readMediaBrowserNodeFields(node, nodeEl);
             if (action === 'refresh' || action === 'search' || action === 'reconnect') {
                 state.page = action === 'search' ? 1 : state.page;
@@ -140,21 +154,26 @@
             const item = stateCall('selectedMediaBrowserNodeItem', null, node);
             if (action === 'import') {
                 await actionCall('addMediaBrowserItemToCanvas', item, state,
-                    state.world || call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 }));
+                    state.world || call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 }), options);
             } else if (action === 'copy-prompt') {
-                await actionCall('copyMediaBrowserItemPrompt', item);
+                await actionCall('copyMediaBrowserItemPrompt', item, options);
             } else if (action === 'apply-prompt') {
                 actionCall('applyMediaBrowserItemPromptToTarget', item, state);
             } else if (action === 'delete-local') {
-                if (!await actionCall('deleteLocalMediaBrowserItem', item, state)) return;
-                state.selectedId = '';
-                stateCall('saveMediaBrowserNodeState', undefined, node, state, { history: 'delete-local' });
+                const selectedId = String(state.selectedId || '');
+                if (!await actionCall('deleteLocalMediaBrowserItem', item, state, options)) return;
+                if (!isCurrentNode(node, project)) return;
+                const current = stateCall('mediaBrowserNodeState', {}, node);
+                if (String(current.selectedId || '') === selectedId) {
+                    current.selectedId = '';
+                    stateCall('saveMediaBrowserNodeState', undefined, node, current, { history: 'delete-local' });
+                }
                 await refreshNode(node);
             }
         }
 
         function handleMediaBrowserNodeChange(node, evt, nodeEl) {
-            if (!node || node.type !== 'media_browser') return false;
+            if (!isCurrentNode(node)) return false;
             const frostToggle = evt.target.closest('[data-media-browser-frost]');
             if (frostToggle) {
                 call(frostSource, 'setGalleryFrostEnabled', undefined, !!frostToggle.checked);
@@ -172,7 +191,7 @@
         }
 
         function handleMediaBrowserNodeKeydown(node, evt, nodeEl) {
-            if (!node || node.type !== 'media_browser' || evt.key !== 'Enter') return false;
+            if (!isCurrentNode(node) || evt.key !== 'Enter') return false;
             const field = evt.target.closest('[data-media-browser-search]');
             if (!field) return false;
             evt.preventDefault();

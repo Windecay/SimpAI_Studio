@@ -57,8 +57,7 @@
         "scene_reference_video",
         "scene_audio",
         "sam3_input_video",
-        "sam3_mask_video",
-        "scene_batch"
+        "sam3_mask_video"
       ],
       "prompt": {"Basic": "", "2 pass": ""},
       "task_method": {"Basic": "minimax_h3_r2c_cn", "2 pass": "minimax_h3_r2c_2_pass_cn"},

@@ -138,14 +138,22 @@
                 seen.add(id);
                 return true;
             }));
-            const nextOffset = pageData.next_offset ?? (append ? mergedItems.length : pageItems.length);
-            return Object.assign({}, append ? (existing || {}) : {}, pageData, {
+            const nextOffset = pageData.next_offset === null
+                ? null : (pageData.next_offset ?? (append ? mergedItems.length : pageItems.length));
+            const hasMore = !!(pageData.has_more ?? (pageData.truncated && pageItems.length))
+                && (nextOffset !== null || pageData.next_page != null);
+            const result = Object.assign({}, append ? (existing || {}) : {}, pageData, {
                 ok: pageData.ok !== false,
                 items: mergedItems,
-                has_more: !!(pageData.has_more || pageData.truncated),
-                next_offset: pageData.has_more || pageData.truncated ? nextOffset : null,
+                has_more: hasMore,
+                next_offset: hasMore ? nextOffset : null,
                 loaded_count: mergedItems.length
             });
+            if (append && result.ok) {
+                delete result.error;
+                delete result.load_more_error;
+            }
+            return result;
         }
 
         function selectedMediaBrowserItemFrom(state, data) {

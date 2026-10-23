@@ -340,7 +340,8 @@ class SimpleModelDownloader:
                 "overwrite_existing": ("BOOLEAN", {"default": False, "tooltip": "overwrite existing"}),
             },
             "optional": {
-                "anything": (any_type, {})
+                "anything": (any_type, {}),
+                "allow_download": ("BOOLEAN", {"default": True}),
             },
         }
 
@@ -353,10 +354,18 @@ class SimpleModelDownloader:
 
         self.download_lock = threading.Lock()
 
-    def download_model(self, model_url, model_folder, run_download=True, overwrite_existing=False, anything=None):
+    def download_model(self, model_url, model_folder, run_download=True, overwrite_existing=False, anything=None, allow_download=True):
         """下载模型并返回带后缀的模型名称"""
         if not run_download:
             return ("", "下载已取消")
+        if not allow_download:
+            model_name_with_ext = model_url.split('/')[-1].split('?')[0]
+            existing_path = find_existing_file(model_name_with_ext, model_folder) if model_name_with_ext else None
+            if existing_path:
+                return (model_name_with_ext, f"使用已有模型: {existing_path}")
+            raise FileNotFoundError(
+                f"Required local model '{model_name_with_ext}' is missing and downloads are disabled."
+            )
         
         if not model_url.strip():
             return ("", "没有提供有效的URL")

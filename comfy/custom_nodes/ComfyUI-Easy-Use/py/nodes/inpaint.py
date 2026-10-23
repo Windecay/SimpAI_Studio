@@ -120,6 +120,7 @@ class applyPowerPaint:
                 "end_at": ("INT", {"default": 10000, "min": 0, "max": 10000}),
                 "save_memory": (['none', 'auto', 'max'],),
             },
+            "optional": {"allow_download": ("BOOLEAN", {"default": True})},
         }
 
     RETURN_TYPES = ("PIPE_LINE",)
@@ -127,7 +128,7 @@ class applyPowerPaint:
     CATEGORY = "EasyUse/Inpaint"
     FUNCTION = "apply"
 
-    def apply(self, pipe, image, mask, powerpaint_model, powerpaint_clip, dtype, fitting, function, scale, start_at, end_at, save_memory='none'):
+    def apply(self, pipe, image, mask, powerpaint_model, powerpaint_clip, dtype, fitting, function, scale, start_at, end_at, save_memory='none', allow_download=True):
         model = pipe['model']
         vae = pipe['vae']
         positive = pipe['positive']
@@ -140,7 +141,16 @@ class applyPowerPaint:
             _, ppclip = backend_cache.cache[powerpaint_clip][1]
         else:
             model_url = POWERPAINT_MODELS['base_fp16']['model_url']
-            base_clip = get_local_filepath(model_url, os.path.join(folder_paths.models_dir, 'clip'))
+            filename = model_url.rsplit('/', 1)[-1]
+            base_clip = folder_paths.get_full_path("clip", filename)
+            if not base_clip:
+                base_clip = folder_paths.get_full_path("text_encoders", filename)
+            if not base_clip:
+                if not allow_download:
+                    raise FileNotFoundError(
+                        f"Required PowerPaint CLIP '{filename}' is missing. Confirm its download in Studio before inference."
+                    )
+                base_clip = get_local_filepath(model_url, os.path.join(folder_paths.models_dir, 'clip'))
             ppclip, = cls.load_powerpaint_clip(base_clip, os.path.join(folder_paths.get_full_path("inpaint", powerpaint_clip)))
             backend_cache.update_cache(powerpaint_clip, 'ppclip', (False, ppclip))
         # load powerpaint model
@@ -185,7 +195,8 @@ class applyInpaint:
                 "end_at": ("INT", {"default": 10000, "min": 0, "max": 10000}),
             },
             "optional":{
-                "noise_mask": ("BOOLEAN", {"default": True})
+                "noise_mask": ("BOOLEAN", {"default": True}),
+                "allow_download": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -264,7 +275,7 @@ class applyInpaint:
             brushname = os.path.basename(parsed_url.path)
         return brushname
 
-    def get_powerpaint_model(self, model):
+    def get_powerpaint_model(self, model, allow_download=True):
         model_type = 'sdxl' if isinstance(model.model.model_config, comfy.supported_models.SDXL) else 'sd1'
         if model_type == 'sdxl':
             raise Exception("Powerpaint not supported for SDXL models")
@@ -273,14 +284,19 @@ class applyInpaint:
         powerpaint_clip = POWERPAINT_MODELS['v2.1']['clip_url']
 
         from urllib.parse import urlparse
-        get_local_filepath(powerpaint_model, os.path.join(INPAINT_DIR, 'powerpaint'))
         model_parsed_url = urlparse(powerpaint_model)
         clip_parsed_url = urlparse(powerpaint_clip)
         model_name = os.path.join("powerpaint",os.path.basename(model_parsed_url.path))
         clip_name = os.path.join("powerpaint",os.path.basename(clip_parsed_url.path))
+        if not folder_paths.get_full_path("inpaint", model_name):
+            if not allow_download:
+                raise FileNotFoundError(f"Required local PowerPaint model is missing: {model_name}")
+            get_local_filepath(powerpaint_model, os.path.join(INPAINT_DIR, 'powerpaint'))
+        if not folder_paths.get_full_path("inpaint", clip_name) and not allow_download:
+            raise FileNotFoundError(f"Required local PowerPaint CLIP is missing: {clip_name}")
         return model_name, clip_name
 
-    def apply(self, pipe, image, mask, inpaint_mode, encode, grow_mask_by, dtype, fitting, function, scale, start_at, end_at, noise_mask=True):
+    def apply(self, pipe, image, mask, inpaint_mode, encode, grow_mask_by, dtype, fitting, function, scale, start_at, end_at, noise_mask=True, allow_download=True):
         new_pipe = {
             **pipe,
         }
@@ -289,8 +305,8 @@ class applyInpaint:
             brushnet = self.get_brushnet_model(inpaint_mode, new_pipe['model'])
             new_pipe, = applyBrushNet().apply(new_pipe, image, mask, brushnet, dtype, scale, start_at, end_at)
         elif inpaint_mode == 'powerpaint':
-            powerpaint_model, powerpaint_clip = self.get_powerpaint_model(new_pipe['model'])
-            new_pipe, = applyPowerPaint().apply(new_pipe, image, mask, powerpaint_model, powerpaint_clip, dtype, fitting, function, scale, start_at, end_at)
+            powerpaint_model, powerpaint_clip = self.get_powerpaint_model(new_pipe['model'], allow_download=allow_download)
+            new_pipe, = applyPowerPaint().apply(new_pipe, image, mask, powerpaint_model, powerpaint_clip, dtype, fitting, function, scale, start_at, end_at, allow_download=allow_download)
 
         vae = new_pipe['vae']
         if encode == 'none':

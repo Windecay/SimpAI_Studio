@@ -56,8 +56,7 @@
         "scene_switch_option3",
         "scene_refiner_model",
         "sam3_input_video",
-        "sam3_mask_video",
-        "scene_batch"
+        "sam3_mask_video"
       ],
       "prompt": {"Basic": "", "2 pass": ""},
       "task_method": {"Basic": "minimax_h3_r2v_cn", "2 pass": "minimax_h3_r2v_2_pass_cn"},

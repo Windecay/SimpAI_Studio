@@ -3585,6 +3585,7 @@ with shared.gradio_root:
                     return rows
 
                 def _get_missing_models_for_preset(preset_name, user_did=None, state_params=None):
+                    from modules.preset_model_dependencies import required_model_entries_for_state, model_entries_revision
                     raw_model_list = []
                     if isinstance(state_params, dict) and state_params.get("__preset") == preset_name:
                         raw_model_list = state_params.get("__preset_model_list_raw") or []
@@ -3605,6 +3606,18 @@ with shared.gradio_root:
                     else:
                         missing_models = model_loader.get_missing_model_list(preset_name, user_did=user_did)
                         fallback_models = model_loader.get_fallback_model_list(preset_name, user_did=user_did)
+                    selected_entries = (
+                        required_model_entries_for_state(state_params)
+                        if isinstance(state_params, dict) and state_params.get("__preset") == preset_name else []
+                    )
+                    if selected_entries:
+                        selected_missing = model_loader.get_missing_model_list_from_entries(
+                            preset_name, selected_entries, user_did=user_did,
+                            source_mtime=model_entries_revision(selected_entries),
+                        )
+                        missing_models = list({(row[0], row[1]): row for row in [
+                            *missing_models, *selected_missing,
+                        ]}.values())
                     if missing_models or fallback_models:
                         return preset_name, missing_models, fallback_models
                     variant_names = []
@@ -4365,6 +4378,17 @@ with shared.gradio_root:
                         f"开始下载预设模型：{preset_name}。请稍候，可在控制台查看进度。",
                     ))
                     model_loader.download_model_files(preset_name, user_did=user_did, async_task=True)
+                    from modules.preset_model_dependencies import required_model_entries_for_state, model_entries_revision
+                    selected_entries = (
+                        required_model_entries_for_state(state_params)
+                        if state_params.get("__preset") == preset_name else []
+                    )
+                    selected_missing = model_loader.get_missing_model_list_from_entries(
+                        preset_name, selected_entries, user_did=user_did,
+                        source_mtime=model_entries_revision(selected_entries),
+                    ) if selected_entries else []
+                    for cata, path_file, human_size, url, size in selected_missing:
+                        model_loader.download_model_entry(cata, path_file, size=size, url=url, user_did=user_did, async_task=True)
                     raw_resource_bundles = state_params.get("__preset_resource_bundles_raw") if isinstance(state_params, dict) else None
                     model_loader.download_resource_bundles(
                         preset_name,
@@ -5055,10 +5079,11 @@ with shared.gradio_root:
                                 scene_input_image7 = gr.Image(label='Upload prompt image(8)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image7")
                                 scene_input_image8 = gr.Image(label='Upload prompt image(9)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image8")
                         with gr.Accordion("📦 Batch", open=False, visible=True, elem_id="scene_batch_accordion", elem_classes=["simpai-mounted-hidden"]) as scene_batch_accordion:
-                            scene_batch_target = gr.Radio(label="Batch Target", choices=[("Upload and canvas(1)", "scene_canvas_image")] + [(f"Upload prompt image({index + 1})", f"scene_input_image{index}") for index in range(1, 9)], value="scene_input_image1", elem_id="scene_batch_target")
+                            gr.HTML(batch_utils.scene_batch_schema_html(), visible="hidden", elem_id="scene_batch_schema")
+                            scene_batch_target = gr.Radio(label="Batch Target", choices=batch_utils.scene_batch_all_choices(), value="scene_input_image1", elem_id="scene_batch_target")
                             scene_batch_folder = gr.Textbox(label="Folder(Local Path)", placeholder="e.g. D:\\images\\inputs")
-                            scene_batch_files = gr.File(label="Upload images", file_count="multiple", file_types=[".png", ".jpg", ".jpeg", ".webp", ".bmp"], type="filepath")
-                            scene_batch_status = gr.Textbox(label="Batch status", value="", lines=1, max_lines=1, interactive=False, elem_id="scene_batch_status", elem_classes=["simpleai-status-textbox"])
+                            scene_batch_files = gr.File(label="Upload media", file_count="multiple", file_types=["image", "video", "audio"], type="filepath", elem_id="scene_batch_files")
+                            scene_batch_status = gr.Textbox(label="Batch status", value="", lines=4, max_lines=16, interactive=False, elem_id="scene_batch_status")
                             scene_batch_id = gr.State("")
                             with gr.Row():
                                 scene_batch_start = gr.Button(value="Batch Start", size="sm", elem_classes=["simpleai-batch-start-button"])
@@ -7944,6 +7969,18 @@ with shared.gradio_root:
                                     with gr.Row():
                                         enhance_batch_start = gr.Button(value="Batch Start", size="sm", elem_classes=["simpleai-batch-start-button"])
                                         enhance_batch_stop = gr.Button(value="Batch Stop", size="sm", elem_classes=["simpleai-batch-stop-button"])
+            def _capture_selected_enhance_models(state, enabled, *controls):
+                from modules.preset_model_dependencies import capture_enhance_selection
+                return capture_enhance_selection(state, enabled, *controls)
+
+            selected_dependency_inputs = [state_topbar, enhance_checkbox, *enhance_ctrls]
+            selected_dependency_controls = [enhance_checkbox] + [
+                control for index, control in enumerate(enhance_ctrls) if index % 16 in (0, 4)
+            ]
+            for control in selected_dependency_controls:
+                control.change(_capture_selected_enhance_models, inputs=selected_dependency_inputs,
+                               outputs=state_topbar, show_progress=False, queue=False)
+
             switch_js = "(x) => {if(x){viewer_to_bottom(100);viewer_to_bottom(500);}else{viewer_to_top();} return x;}"
             switch_js_two = "(x,y) => {if(x){viewer_to_bottom(100);viewer_to_bottom(500);}else{if(!y){viewer_to_top();}} return [x,y];}"
             sync_image_tts_js = """(ttsChecked, imageChecked) => {
@@ -10832,6 +10869,11 @@ with shared.gradio_root:
             get_welcome_image=get_welcome_image,
             api_params=api_params,
             topbar=topbar
+        )
+        scene_batch_target.change(
+            batch_utils.refresh_scene_batch_upload,
+            inputs=[state_topbar, scene_batch_target], outputs=[scene_batch_files],
+            queue=False, show_progress=False,
         )
 
         batch_lock_controls = [random_button, super_prompter, background_theme, image_tools_checkbox] + nav_bars
@@ -14299,6 +14341,7 @@ import ui.services.pose_studio as pose_studio_service
 import ui.services.gaussian_studio as gaussian_studio_service
 import ui.services.liveportrait_expression as liveportrait_expression_service
 from modules.ui_gradio_extensions import ensure_tag_cart_custom_tags_path, webpath
+from modules.tag_text_storage import atomic_write_text
 from ui.studio_performance import install_studio_performance_logging
 
 install_studio_performance_logging(app)
@@ -19017,8 +19060,7 @@ async def tag_cart_custom_tags_save(payload: dict = Body(...)):
 
         normalized = content.replace("\r\n", "\n").replace("\r", "\n")
         custom_tags_path = ensure_tag_cart_custom_tags_path()
-        with open(custom_tags_path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(normalized)
+        atomic_write_text(custom_tags_path, normalized)
 
         return JSONResponse(
             {

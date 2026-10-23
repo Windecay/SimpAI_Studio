@@ -870,6 +870,11 @@
     "Flux3 Prompt Upsampler": "Flux3 Prompt Upsampler",
     "Flux3 Text Encoder": "Flux3 Text Encoder",
     "MOSS-Image": "MOSS-Image",
+    "Moss-Edit": "Moss-Edit",
+    "Moss-Edit\u2B07": "Moss-Edit\u2B07",
+    "Moss-Edit [Single image, no mask]": "Moss-Edit [Single image, no mask]",
+    "Reference Long Edge (0 = Output)": "Reference Long Edge (0 = Output)",
+    "Inference Shift": "Inference Shift",
     "MOSS-Image\u2B07": "MOSS-Image\u2B07",
     "Resize preset drawer": "Resize preset drawer",
     "Drag to change the number of visible rows": "Drag to change the number of visible rows",
@@ -928,5 +933,14 @@
   "Add mask keyframe": "Add mask keyframe",
   "Delete mask keyframe": "Delete mask keyframe",
   "Frame metadata is unavailable. Re-upload the video to animate this mask.": "Frame metadata is unavailable. Re-upload the video to animate this mask.",
-  "Reading video frame information...": "Reading video frame information..."
+  "Reading video frame information...": "Reading video frame information...",
+  "Upload media": "Upload media",
+  "Upload videos": "Upload videos",
+  "Upload audio files": "Upload audio files",
+  "Main video": "Main video",
+  "Reference video 1": "Reference video 1",
+  "Reference video 2": "Reference video 2",
+  "Audio 1": "Audio 1",
+  "Audio 2": "Audio 2",
+  "Audio 3": "Audio 3"
 }

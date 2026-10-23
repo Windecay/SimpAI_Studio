@@ -1,5 +1,6 @@
 import base64
 import binascii
+from functools import wraps
 import html
 import io
 import hashlib
@@ -49,6 +50,7 @@ REMOTE_DISABLED_TYPES = {"clip", "vae"}
 MODEL_BROWSER_CATALOG_CACHE_TTL = 120.0
 MODEL_BROWSER_CATALOG_CACHE: Dict[str, Dict[str, Any]] = {}
 MODEL_BROWSER_CATALOG_CACHE_LOCK = threading.Lock()
+MODEL_BROWSER_METADATA_LOCK = threading.RLock()
 _MODEL_BROWSER_METADATA_DIR_CACHE = ""
 ARCH_FAMILY_CHOICES = (
     "unknown",
@@ -137,13 +139,32 @@ def _load_models_info() -> Dict[str, Any]:
         return {}
 
 
-def _save_models_info(data: Dict[str, Any]) -> None:
-    path = _models_info_path()
+def _metadata_locked(function):
+    @wraps(function)
+    def update(*args, **kwargs):
+        with MODEL_BROWSER_METADATA_LOCK:
+            return function(*args, **kwargs)
+    return update
+
+
+def _atomic_write_json(path: str, data: Dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data if isinstance(data, dict) else {}, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, path)
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=os.path.dirname(path),
+            prefix=f".{os.path.basename(path)}.", suffix=".tmp", delete=False,
+        ) as file:
+            tmp_path = file.name
+            json.dump(data if isinstance(data, dict) else {}, file, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+def _save_models_info(data: Dict[str, Any]) -> None:
+    _atomic_write_json(_models_info_path(), data)
 
 
 def _normalize_type(value: Any) -> str:
@@ -697,6 +718,7 @@ def _inspector_summary(result: Dict[str, Any]) -> Dict[str, Any]:
     return summary
 
 
+@_metadata_locked
 def _persist_arch_family_for_item(item: Dict[str, Any], arch_family: str, source: str, inspector_result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if not _architecture_manageable_item(item):
         raise ValueError("this model type cannot store architecture classification")
@@ -1017,6 +1039,7 @@ def _hash_stamp_is_current(metadata: Dict[str, Any], model_path: str) -> bool:
     return stamp == _hash_stamp_for_model_path(model_path)
 
 
+@_metadata_locked
 def _load_sidecar(model_path: str) -> Dict[str, Any]:
     if not model_path:
         return {}
@@ -1048,11 +1071,15 @@ def _save_sidecar(model_path: str, metadata: Dict[str, Any]) -> None:
     payload = dict(metadata or {})
     payload.setdefault("model_path", os.path.abspath(model_path))
     payload.setdefault("model_file", os.path.basename(model_path))
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, path)
+    _atomic_write_json(path, payload)
+
+
+@_metadata_locked
+def _merge_sidecar(model_path: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = _load_sidecar(model_path)
+    metadata.update(updates)
+    _save_sidecar(model_path, metadata)
+    return metadata
 
 
 def _preview_candidates(model_path: str) -> List[str]:
@@ -1400,7 +1427,7 @@ def query_models(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     page_size = max(1, min(page_size, 500))
     start = (page - 1) * page_size
     force_full_index = bool(payload.get("full_index") or payload.get("include_metadata_index") or payload.get("search_metadata"))
-    full_index = force_full_index or _sort_requires_full_items(sort)
+    full_index = force_full_index or bool(str(search).strip()) or _sort_requires_full_items(sort)
 
     if full_index:
         indexed_items = _enrich_model_browser_items(model_type, basic_items, data)
@@ -1409,17 +1436,9 @@ def query_models(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         total = len(filtered)
         page_items = filtered[start:start + page_size]
     else:
-        filtered_basic = _filter_items(basic_items, search, folder)
-        if search and not filtered_basic:
-            indexed_items = _enrich_model_browser_items(model_type, basic_items, data)
-            filtered = _filter_items(indexed_items, search, folder)
-            filtered = _sort_items(filtered, sort)
-            total = len(filtered)
-            page_items = filtered[start:start + page_size]
-        else:
-            filtered = _sort_items(filtered_basic, sort)
-            total = len(filtered)
-            page_items = _enrich_model_browser_items(model_type, filtered[start:start + page_size], data)
+        filtered = _sort_items(_filter_items(basic_items, search, folder), sort)
+        total = len(filtered)
+        page_items = _enrich_model_browser_items(model_type, filtered[start:start + page_size], data)
     return {
         "ok": True,
         "type": model_type,
@@ -1556,6 +1575,7 @@ def _compute_sha256_file(path: str) -> str:
     return digest.hexdigest()
 
 
+@_metadata_locked
 def _persist_hash_for_item(item: Dict[str, Any], sha256: str, source: str = "computed") -> None:
     model_path = str(item.get("path") or "").strip()
     stamp = _hash_stamp_for_model_path(model_path)
@@ -1686,16 +1706,15 @@ def set_preview(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             pass
         return {"ok": False, "error": f"preview save failed: {type(exc).__name__}: {exc}", "item": item}
 
-    sidecar = _load_sidecar(model_path)
-    sidecar.update({
+    preview_metadata = {
         "preview_path": webp_path,
         "preview_source": "manual_upload",
         "preview_original_name": str(payload.get("image_name") or payload.get("file_name") or "").strip(),
         "preview_max_edge": PREVIEW_MAX_EDGE,
         "preview_updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    })
+    }
     try:
-        _save_sidecar(model_path, sidecar)
+        _merge_sidecar(model_path, preview_metadata)
     except Exception as exc:
         logger.debug("Model browser preview sidecar save failed: %s", exc)
 
@@ -2046,6 +2065,7 @@ def _try_civitai_hash_candidates(candidates: Iterable[Dict[str, str]]) -> Tuple[
     return {}, {}, attempted
 
 
+@_metadata_locked
 def _local_metadata_fallback(
     item: Dict[str, Any],
     sha256: str,
@@ -2175,7 +2195,7 @@ def fetch_metadata(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     metadata["hash_lookup"] = matched_candidate
     if preview_path:
         metadata["preview_path"] = preview_path
-    _save_sidecar(model_path, metadata)
+    metadata = _merge_sidecar(model_path, metadata)
     refreshed = _item_from_choice(item["type"], item["name"], _load_models_info())
     preview_ok = bool(refreshed.get("preview_url"))
     return {
@@ -2273,7 +2293,7 @@ def _remove_from_runtime_catalog(item: Dict[str, Any]) -> None:
         _normalize_model_name(item.get("name")).lower(),
         _normalize_model_name(item.get("display_name")).lower(),
         _normalize_model_name(item.get("relative_path")).lower(),
-        os.path.basename(str(item.get("path") or "")).lower(),
+        _normalize_model_name(item.get("path")).lower(),
     }
     cfg = TYPE_CONFIG.get(model_type) or {}
     attr = cfg.get("config_attr")
@@ -2283,8 +2303,7 @@ def _remove_from_runtime_catalog(item: Dict[str, Any]) -> None:
         for value in current:
             text = str(value or "")
             normalized = _normalize_model_name(text).lower()
-            basename = os.path.basename(normalized)
-            if normalized in name_keys or basename in name_keys:
+            if normalized in name_keys:
                 continue
             filtered.append(value)
         setattr(config, attr, filtered)
@@ -2300,6 +2319,7 @@ def _remove_from_runtime_catalog(item: Dict[str, Any]) -> None:
             pass
 
 
+@_metadata_locked
 def delete_model(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}
     item = _resolve_single_item(payload)
@@ -2323,6 +2343,7 @@ def delete_model(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         paths.extend(_associated_local_metadata_paths(model_path))
 
     deleted = []
+    preview_deleted = []
     failed = []
     seen = set()
     allowed_sidecars = {
@@ -2335,31 +2356,36 @@ def delete_model(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             continue
         seen.add(path)
         try:
+            preview_allowed = path != os.path.abspath(model_path) and is_preview_path_allowed(path)
             if path == os.path.abspath(model_path) and not is_model_path_allowed(path):
                 failed.append({"path": path, "error": "path is not an allowed model file"})
                 continue
-            if path != os.path.abspath(model_path) and not (path in allowed_sidecars or is_preview_path_allowed(path)):
+            if path != os.path.abspath(model_path) and not (path in allowed_sidecars or preview_allowed):
                 failed.append({"path": path, "error": "path is not an allowed metadata file"})
                 continue
             os.remove(path)
             deleted.append(path)
+            if preview_allowed:
+                preview_deleted.append(path)
         except Exception as exc:
             failed.append({"path": path, "error": f"{type(exc).__name__}: {exc}"})
 
-    info_key = str(item.get("models_info_key") or "").strip()
-    if info_key:
-        data = _load_models_info()
-        if info_key in data:
-            data.pop(info_key, None)
-            try:
-                _save_models_info(data)
-            except Exception as exc:
-                failed.append({"path": _models_info_path(), "error": f"models_info update failed: {type(exc).__name__}: {exc}"})
-
-    _remove_from_runtime_catalog(item)
-    refreshed = _item_from_choice(item["type"], item["name"], _load_models_info())
     model_abs = os.path.abspath(model_path)
-    preview_deleted = [path for path in deleted if path != model_abs and is_preview_path_allowed(path)]
+    if model_abs in deleted:
+        info_key = str(item.get("models_info_key") or "").strip()
+        if info_key:
+            data = _load_models_info()
+            if info_key in data:
+                data.pop(info_key, None)
+                try:
+                    _save_models_info(data)
+                except Exception as exc:
+                    failed.append({"path": _models_info_path(), "error": f"models_info update failed: {type(exc).__name__}: {exc}"})
+        _remove_from_runtime_catalog(item)
+        with MODEL_BROWSER_CATALOG_CACHE_LOCK:
+            MODEL_BROWSER_CATALOG_CACHE.clear()
+        _invalidate_canvas_model_catalog_cache()
+    refreshed = _item_from_choice(item["type"], item["name"], _load_models_info())
     metadata_deleted = [path for path in deleted if path != model_abs and path in allowed_sidecars]
     related_deleted = [path for path in deleted if path != model_abs]
     return {

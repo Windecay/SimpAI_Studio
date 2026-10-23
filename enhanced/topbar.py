@@ -273,6 +273,7 @@ PRESET_MISSING_MARKER = "\u2B07"
 PRESET_STORE_ORDER = [
     "Z-imageT",
     "MOSS-Image",
+    "Moss-Edit",
     "Krea2-Turbo",
     "Krea2-ImageEdit",
     "Krea2-A2R",
@@ -517,7 +518,14 @@ def _resolve_preset_storage_name(preset_name, user_did=None):
     path_preset = os.path.abspath('./presets/')
     user_path_preset = get_path_in_user_dir('presets', user_did) if user_did else get_path_in_user_dir('presets')
 
-    if base_name.endswith('.') or base_name.endswith('_fp4') or base_name.endswith('_int4'):
+    if base_name.endswith('.'):
+        candidate_names = [base_name]
+        user_base_name = base_name[:-1]
+        if not user_base_name.endswith(('_fp4', '_int4')):
+            if arch_str:
+                candidate_names.append(f'{user_base_name}{arch_str}.')
+            candidate_names.extend([f'{user_base_name}_fp4.', f'{user_base_name}_int4.'])
+    elif base_name.endswith('_fp4') or base_name.endswith('_int4'):
         candidate_names = [base_name]
     else:
         candidate_names = [base_name]
@@ -579,8 +587,9 @@ def _filter_existing_presets(presets, user_did=None):
     for preset in presets:
         preset_name = _strip_preset_marker(preset)
         if preset_name.endswith('.'):
-            preset_file = os.path.join(user_path_preset, f'{preset_name[:-1]}.json')
-            preset_file2 = os.path.join(user_path_preset, f'{preset_name[:-1]}{arch_str}.json')
+            if _preset_storage_exists(preset_name, user_did):
+                available.append(preset)
+            continue
         else:
             preset_file = os.path.join(path_preset, f'{preset_name}.json')
             preset_file2 = os.path.join(path_preset, f'{preset_name}{arch_str}.json')
@@ -812,6 +821,17 @@ def _invalidate_preset_store_cache(user_did=None):
     preset_store_meta_base_mtime.pop(cache_key, None)
     preset_store_meta_samples_sig.pop(cache_key, None)
 
+def _preset_files_signature(directory, files):
+    entries = []
+    for name in sorted(set(files)):
+        try:
+            stat = os.stat(os.path.join(directory, name))
+            state = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, stat.st_ino)
+        except OSError as exc:
+            state = ("stat_error", exc.errno)
+        entries.append((name, state))
+    return os.path.abspath(directory or ""), tuple(entries)
+
 def get_preset_samples(user_did=None, include_status_markers=True):
     global preset_samples, preset_samples_user_mtime, preset_samples_base_mtime, preset_samples_complete_ts
     cache_key = user_did if user_did else 'guest'
@@ -819,32 +839,24 @@ def get_preset_samples(user_did=None, include_status_markers=True):
     base_files = [p for p in util.get_files_from_folder(path_preset, ['.json'], None) 
                  if is_preset_file_allowed(p)]
     base_presets = [p[:-5] for p in base_files]
-    base_mtime = 0
-    for f in base_files:
-        try:
-            base_mtime = max(base_mtime, os.path.getmtime(os.path.join(path_preset, f)))
-        except Exception:
-            continue
+    base_signature = _preset_files_signature(path_preset, base_files)
 
     user_path_preset = get_path_in_user_dir('presets', user_did) if user_did else get_path_in_user_dir('presets')
     user_presets = []
-    user_mtime = 0
+    presets2 = []
     if user_path_preset and os.path.exists(user_path_preset):
         presets2 = [p for p in util.get_files_from_folder(user_path_preset, ['.json'], None)
                    if is_preset_file_allowed(p)]
         for p in presets2:
             user_presets.append(f'{p[:-5]}.')
-            try:
-                user_mtime = max(user_mtime, os.path.getmtime(os.path.join(user_path_preset, p)))
-            except Exception:
-                continue
+    user_signature = _preset_files_signature(user_path_preset, presets2)
 
     store_list = _filter_existing_presets(PRESET_STORE_ORDER, user_did)
 
     if (
         cache_key in preset_samples
-        and preset_samples_user_mtime.get(cache_key, -1) == user_mtime
-        and preset_samples_base_mtime.get(cache_key, -1) == base_mtime
+        and preset_samples_user_mtime.get(cache_key, -1) == user_signature
+        and preset_samples_base_mtime.get(cache_key, -1) == base_signature
     ):
         cached = preset_samples[cache_key]
         if not include_status_markers:
@@ -899,8 +911,8 @@ def get_preset_samples(user_did=None, include_status_markers=True):
         except Exception:
             pass
     preset_samples[cache_key] = marked_list
-    preset_samples_user_mtime[cache_key] = user_mtime
-    preset_samples_base_mtime[cache_key] = base_mtime
+    preset_samples_user_mtime[cache_key] = user_signature
+    preset_samples_base_mtime[cache_key] = base_signature
     preset_samples_complete_ts[cache_key] = time.time()
     return marked_list
 
@@ -1293,31 +1305,45 @@ def refresh_nav_bars(state_params):
             pass
     return results
 
-def _read_preset_content_silent(preset_name, user_did=None):
-    resolved_name = _resolve_preset_storage_name(preset_name, user_did)
-    arch_str = config.get_gpu_arch_str_in_preset_name()
-    path_preset = os.path.abspath('./presets/')
-    user_path_preset = get_path_in_user_dir('presets', user_did) if user_did else get_path_in_user_dir('presets')
-
-    if resolved_name.endswith('.'):
-        preset_path = os.path.join(user_path_preset, f'{resolved_name[:-1]}.json')
-        preset_path2 = os.path.join(user_path_preset, f'{resolved_name[:-1]}{arch_str}.json')
-    else:
-        preset_path = os.path.join(path_preset, f'{resolved_name}.json')
-        preset_path2 = os.path.join(path_preset, f'{resolved_name}{arch_str}.json')
-    if os.path.exists(preset_path2):
-        preset_path = preset_path2
-    if not os.path.exists(preset_path):
-        return {}
+def _read_preset_content_with_status(preset_name, user_did=None):
+    status = {
+        "load_status": "error", "load_error": "read_error", "load_error_detail": "",
+        "source_file": "", "storage_name": str(preset_name or ""),
+    }
     try:
+        resolved_name = _resolve_preset_storage_name(preset_name, user_did)
+        arch_str = config.get_gpu_arch_str_in_preset_name()
+        personal = resolved_name.endswith('.')
+        source_root = (
+            get_path_in_user_dir('presets', user_did) if user_did else get_path_in_user_dir('presets')
+        ) if personal else os.path.abspath('./presets/')
+        source_name = resolved_name[:-1] if personal else resolved_name
+        preset_path = os.path.join(source_root, f'{source_name}.json')
+        preset_path2 = os.path.join(source_root, f'{source_name}{arch_str}.json')
+        if os.path.exists(preset_path2):
+            preset_path = preset_path2
+        source_file = os.path.relpath(preset_path, source_root).replace("\\", "/")
+        status.update(source_file=source_file, storage_name=source_file[:-5] + ("." if personal else ""))
+        if not os.path.exists(preset_path):
+            status.update(load_error="not_found", load_error_detail=f"Preset file not found: {source_file}")
+            return {}, status
         with open(preset_path, "r", encoding="utf-8") as json_file:
             preset_content = json.load(json_file)
-            if isinstance(preset_content, dict):
-                preset_content["supported_tasks"] = config.resolve_preset_supported_tasks(preset_content, resolved_name)
-                preset_content["interaction_requirements"] = config.resolve_preset_interaction_requirements(preset_content, resolved_name)
-            return preset_content
-    except Exception:
-        return {}
+        if not isinstance(preset_content, dict):
+            status.update(load_error="invalid_type", load_error_detail=f"Expected a JSON object, got {type(preset_content).__name__}")
+            return {}, status
+        preset_content["supported_tasks"] = config.resolve_preset_supported_tasks(preset_content, resolved_name)
+        preset_content["interaction_requirements"] = config.resolve_preset_interaction_requirements(preset_content, resolved_name)
+        status.update(load_status="ready", load_error="", load_error_detail="")
+        return preset_content, status
+    except json.JSONDecodeError as exc:
+        status.update(load_error="invalid_json", load_error_detail=str(exc))
+    except Exception as exc:
+        status.update(load_error_detail=f"{type(exc).__name__}: {exc}")
+    return {}, status
+
+def _read_preset_content_silent(preset_name, user_did=None):
+    return _read_preset_content_with_status(preset_name, user_did)[0]
 
 def _canvas_scene_value(scene_frontend, key, theme=None, default=None):
     if not isinstance(scene_frontend, dict):
@@ -1976,7 +2002,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         samples = []
 
     sample_signature = (
-        "canvas_preset_meta_media_capability_v10",
+        "canvas_preset_meta_media_capability_v11",
         *(
             item[0] if isinstance(item, (list, tuple)) and item else item
             for item in samples
@@ -2021,8 +2047,9 @@ def _build_preset_store_meta(state, copy_cached=True):
         model_list_raw = []
         resource_bundles_raw = []
         has_model_probe = False
+        read_status = {}
         try:
-            preset_content = _read_preset_content_silent(preset_name, user_did)
+            preset_content, read_status = _read_preset_content_with_status(preset_name, user_did)
             model_list_raw = preset_content.get("model_list", []) if isinstance(preset_content, dict) else []
             resource_bundles_raw = preset_content.get("resource_bundles", []) if isinstance(preset_content, dict) else []
             if isinstance(preset_content, dict):
@@ -2172,6 +2199,8 @@ def _build_preset_store_meta(state, copy_cached=True):
             "missing": display_name.endswith(PRESET_MISSING_MARKER),
             "order": order,
             "source": "user" if preset_name.endswith('.') else "base",
+            **read_status,
+            "invalid": read_status.get("load_status") == "error",
         }
     preset_store_meta_cache[cache_key] = copy.deepcopy(meta)
     preset_store_meta_user_mtime[cache_key] = current_user_mtime
@@ -3261,6 +3290,14 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         if selected_model_status is None
         else selected_model_status
     ) if not args_manager.args.disable_backend else False
+    if not args_manager.args.disable_backend:
+        from modules.preset_model_dependencies import required_model_entries_for_state, model_entries_revision
+        selected_entries = required_model_entries_for_state(state_params, backend_params)
+        if selected_entries:
+            model_absent = bool(model_absent or model_loader.get_missing_model_list_from_entries(
+                state_params["__preset"], selected_entries, user_did=user_did,
+                source_mtime=model_entries_revision(selected_entries),
+            ))
     state_params["absent_model"] = bool(model_absent)
     if model_absent:
         if not model_download_notifications_disabled(state_params, no_model_modal_checkbox):
@@ -4435,22 +4472,7 @@ def _main_param_update_with_engine_visibility(update, control_name, engine_disvi
 
 
 def _coerce_scene_default_number(value, minimum=None, maximum=None, step=None):
-    if minimum is None and maximum is None:
-        return value
-    try:
-        if value is None or value == "":
-            value = minimum if minimum is not None else maximum
-        number = float(value)
-        if minimum is not None:
-            number = max(number, float(minimum))
-        if maximum is not None:
-            number = min(number, float(maximum))
-        # An explicit fractional step takes precedence over integer-looking bounds.
-        if step == 1 or (step is None and all(isinstance(v, int) and not isinstance(v, bool) for v in (minimum, maximum) if v is not None)):
-            return int(round(number))
-        return number
-    except Exception:
-        return value
+    return meta_parser._coerce_scene_slider_value(value, minimum, maximum, step)
 
 
 def _scene_value_by_theme(scene_frontend, theme, key, default):
@@ -4541,24 +4563,7 @@ def _scene_number_default_specs():
 
 
 def _scene_standard_overwrite_step_default_from_state(state):
-    if not isinstance(state, dict):
-        return None
-    preset_prepared = state.get("__preset_prepared", {})
-    candidates = [state]
-    if isinstance(preset_prepared, dict):
-        candidates.append(preset_prepared)
-    for source in candidates:
-        for key in ("overwrite_step", "steps", "default_overwrite_step"):
-            value = source.get(key)
-            if value is None:
-                continue
-            try:
-                step_value = int(float(value))
-            except Exception:
-                continue
-            if step_value > 0:
-                return step_value
-    return None
+    return meta_parser._state_standard_generation_step_default(state)
 
 
 def _build_scene_default_payload(scene_frontend, scene_theme, overwrite_step_default=None):

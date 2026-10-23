@@ -92,3 +92,39 @@ def test_private_assets_off_does_not_initialize_database(entrypoint):
     entrypoint["setup_database"](SimpleNamespace(enabled=False, startup=startup))
     init_db.assert_not_called()
     startup.assert_called_once()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_private_agent_load_is_opt_in(enabled):
+    source = Path(__file__).resolve().parents[1] / "main_comfyd.py"
+    module = ast.parse(source.read_text(encoding="utf-8"))
+    block = next(node for node in module.body if isinstance(node, ast.If)
+                 and ast.unparse(node.test) == "args.enable_agent")
+    host = SimpleNamespace(load=Mock())
+    namespace = {"args": SimpleNamespace(enable_agent=enabled),
+                 "app": SimpleNamespace(agent_host=host), "logging": logging}
+    exec(compile(ast.Module(body=[block], type_ignores=[]), str(source), "exec"), namespace)
+    assert host.load.call_count == int(enabled)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("browser_enabled", [False, True])
+def test_private_agent_start_preserves_browser_callback(enabled, browser_enabled):
+    source = Path(__file__).resolve().parents[1] / "main_comfyd.py"
+    module = ast.parse(source.read_text(encoding="utf-8"))
+    startup = next(node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == "start_comfyui")
+    block = next(node for node in startup.body if isinstance(node, ast.If)
+                 and ast.unparse(node.test) == "args.enable_agent")
+    calls = []
+    browser = lambda *args: calls.append(("browser", args))
+    server = object()
+    host = SimpleNamespace(start=lambda *args: calls.append(("agent", args)))
+    namespace = {"args": SimpleNamespace(enable_agent=enabled), "app": SimpleNamespace(agent_host=host),
+                 "call_on_start": browser if browser_enabled else None, "prompt_server": server}
+    exec(compile(ast.Module(body=[block], type_ignores=[]), str(source), "exec"), namespace)
+    if namespace["call_on_start"] is not None:
+        namespace["call_on_start"]("http", "127.0.0.1", 8190)
+    expected = [("browser", ("http", "127.0.0.1", 8190))] if browser_enabled else []
+    if enabled:
+        expected.append(("agent", (server, "http", "127.0.0.1", 8190)))
+    assert calls == expected

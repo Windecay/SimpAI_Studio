@@ -62,8 +62,7 @@
                 "scene_switch_option4",
                 "scene_refiner_model",
                 "sam3_input_video",
-                "sam3_mask_video",
-                "scene_batch"
+                "sam3_mask_video"
             ],
             "prompt": {
                 "Video to Audio[Output Original Video]": "根据上传视频画面生成自然同步的环境声、动作声和电影音效。",

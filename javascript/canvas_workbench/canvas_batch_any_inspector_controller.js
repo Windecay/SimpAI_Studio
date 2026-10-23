@@ -40,6 +40,7 @@
   <h3>${escapeHtml(t('Batch Any', '批量素材'))}</h3>
   <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Type', '类型'))}</span><b>${escapeHtml(batchAnyMediaLabel(kind))}</b></div>
+  <div class="sai-inspector-note">${escapeHtml(t('Each Batch Any holds one type. Import images, videos, audio, or text into separate nodes, then connect to an input of the same type.', '每个 Batch Any 保存一种类型。图片、视频、音频、文本请分别导入不同节点，再连接对应类型的输入。'))}</div>
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Items', '素材'))}</span><b>${items.length}</b></div>
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Current', '当前'))}</span><b>${escapeHtml(current?.name || notConnectedText())}</b></div>
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Target', '目标'))}</span><b>${escapeHtml(targets[0] ? `${targets[0].node?.title || targets[0].node?.preset?.name || targets[0].node?.id || ''} / ${batchAnyTargetLabel(targets[0])}` : notConnectedText())}</b></div>

@@ -112,8 +112,8 @@
                 : null;
             const center = viewportCall('viewportCenterWorld', null) || { x: 0, y: 0 };
             const rect = fromSelection || {
-                x: Math.round((world?.x || center.x) - 200),
-                y: Math.round((world?.y || center.y) - 120),
+                x: Math.round((world?.x ?? center.x) - 200),
+                y: Math.round((world?.y ?? center.y) - 120),
                 w: 400,
                 h: 240
             };
@@ -165,13 +165,15 @@
 
         function bindInspectorGroupFieldEvents(inspector) {
             if (!inspector || typeof inspector.querySelectorAll !== 'function') return false;
+            const project = getProject();
+            const groupId = getSelectedGroupId();
+            const owner = { project, projectId: project.id, groupId, group: getGroup(groupId) };
             inspector.querySelectorAll('[data-group-field]').forEach((field) => {
-                const handler = () => updateGroupField(
-                    getSelectedGroupId(),
-                    field.getAttribute('data-group-field'),
-                    field.type === 'checkbox' ? field.checked : field.value,
-                    field.type
-                );
+                const handler = () => {
+                    if (!isCurrentGroupContext(owner) || getSelectedGroupId() !== groupId || field.isConnected === false) return;
+                    updateGroupField(groupId, field.getAttribute('data-group-field'),
+                        field.type === 'checkbox' ? field.checked : field.value, field.type);
+                };
                 field.addEventListener('input', handler);
                 field.addEventListener('change', handler);
             });
@@ -183,6 +185,12 @@
         );
         let groupDragState = null;
         let groupResizeState = null;
+
+        function isCurrentGroupContext(state) {
+            return !!state?.group && getProject() === state.project && state.project.id === state.projectId
+                && getGroup(state.groupId) === state.group
+                && (!state.nodes || state.nodes.every(item => getNode(item.id) === item.node));
+        }
 
         function selectGroupLight(groupId) {
             selectionCall('selectGroupLight', undefined, groupId);
@@ -202,17 +210,22 @@
                 showToast(t('Group position is locked.', '分组位置已锁定。'));
                 return;
             }
+            if (getGroup(group.id) !== group) return;
+            const project = getProject();
             const insideNodes = getNodesInsideGroup(group).filter(node => !isNodeLocked(node));
             try { evt.target?.setPointerCapture?.(evt.pointerId); } catch (err) {}
             groupDragState = {
+                project, projectId: project.id, group,
                 pointerId: evt.pointerId,
                 groupId: group.id,
                 historyPushed: false,
-                startClientX: evt.clientX,
-                startClientY: evt.clientY,
+                lastClientX: evt.clientX,
+                lastClientY: evt.clientY,
+                worldDx: 0,
+                worldDy: 0,
                 startX: group.x || 0,
                 startY: group.y || 0,
-                nodes: insideNodes.map(node => ({ id: node.id, x: node.x || 0, y: node.y || 0 }))
+                nodes: insideNodes.map(node => ({ id: node.id, node, x: node.x || 0, y: node.y || 0 }))
             };
             renderCall('beginDragEdgeLod', undefined);
             const doc = getDocument();
@@ -226,11 +239,16 @@
                 showToast(t('Group position is locked.', '分组位置已锁定。'));
                 return;
             }
+            if (getGroup(group.id) !== group) return;
+            const project = getProject();
             groupResizeState = {
+                project, projectId: project.id, group,
                 groupId: group.id,
                 pointerId: evt.pointerId,
-                startClientX: evt.clientX,
-                startClientY: evt.clientY,
+                lastClientX: evt.clientX,
+                lastClientY: evt.clientY,
+                worldDx: 0,
+                worldDy: 0,
                 startX: Number(group.x || 0),
                 startY: Number(group.y || 0),
                 startW: Number(group.w || 360),
@@ -247,12 +265,19 @@
         function onGroupResizeMove(evt) {
             if (!groupResizeState || evt.pointerId !== groupResizeState.pointerId) return;
             const group = getGroup(groupResizeState.groupId);
-            if (!group) return;
+            if (!isCurrentGroupContext(groupResizeState) || group.locked) {
+                stopGroupResize(evt);
+                return;
+            }
             evt.preventDefault();
             const project = getProject();
             const zoom = project.viewport?.zoom || 1;
-            const rawW = Math.max(180, Math.round(groupResizeState.startW + (evt.clientX - groupResizeState.startClientX) / zoom));
-            const rawH = Math.max(120, Math.round(groupResizeState.startH + (evt.clientY - groupResizeState.startClientY) / zoom));
+            groupResizeState.worldDx += (evt.clientX - groupResizeState.lastClientX) / zoom;
+            groupResizeState.worldDy += (evt.clientY - groupResizeState.lastClientY) / zoom;
+            groupResizeState.lastClientX = evt.clientX;
+            groupResizeState.lastClientY = evt.clientY;
+            const rawW = Math.max(180, Math.round(groupResizeState.startW + groupResizeState.worldDx));
+            const rawH = Math.max(120, Math.round(groupResizeState.startH + groupResizeState.worldDy));
             const nextW = project.settings?.snap
                 ? snapCanvasSizeFromOrigin(groupResizeState.startX, rawW, 180, Number.POSITIVE_INFINITY)
                 : rawW;
@@ -274,11 +299,13 @@
         function stopGroupResize(evt) {
             if (!groupResizeState) return;
             if (evt && evt.pointerId !== groupResizeState.pointerId) return;
+            const current = isCurrentGroupContext(groupResizeState);
             groupResizeState = null;
             const doc = getDocument();
             doc?.removeEventListener('pointermove', onGroupResizeMove, true);
             doc?.removeEventListener('pointerup', stopGroupResize, true);
             doc?.removeEventListener('pointercancel', stopGroupResize, true);
+            if (!current) return;
             persistenceCall('scheduleSave', undefined);
             minimapCall('flushMinimapRender', undefined);
             if (getSelectedGroupId()) renderCall('renderInspector', undefined);
@@ -288,11 +315,19 @@
             if (!groupDragState || evt.pointerId !== groupDragState.pointerId) return;
             evt.preventDefault();
             const group = getGroup(groupDragState.groupId);
-            if (!group) return;
+            if (!isCurrentGroupContext(groupDragState) || group.locked
+                || groupDragState.nodes.some(item => isNodeLocked(item.node))) {
+                stopGroupDrag(evt);
+                return;
+            }
             const project = getProject();
             const zoom = project.viewport?.zoom || 1;
-            let nextX = groupDragState.startX + (evt.clientX - groupDragState.startClientX) / zoom;
-            let nextY = groupDragState.startY + (evt.clientY - groupDragState.startClientY) / zoom;
+            groupDragState.worldDx += (evt.clientX - groupDragState.lastClientX) / zoom;
+            groupDragState.worldDy += (evt.clientY - groupDragState.lastClientY) / zoom;
+            groupDragState.lastClientX = evt.clientX;
+            groupDragState.lastClientY = evt.clientY;
+            let nextX = groupDragState.startX + groupDragState.worldDx;
+            let nextY = groupDragState.startY + groupDragState.worldDy;
             if (project.settings?.snap) {
                 nextX = snapCanvasCoord(nextX);
                 nextY = snapCanvasCoord(nextY);
@@ -326,11 +361,16 @@
             if (!groupDragState) return;
             if (evt && evt.pointerId !== groupDragState.pointerId) return;
             const useDragEdgeLod = !!renderCall('isDragEdgeLodActive', false);
+            const current = isCurrentGroupContext(groupDragState);
             groupDragState = null;
             const doc = getDocument();
             doc?.removeEventListener('pointermove', onGroupDragMove, true);
             doc?.removeEventListener('pointerup', stopGroupDrag, true);
             doc?.removeEventListener('pointercancel', stopGroupDrag, true);
+            if (!current) {
+                renderCall('endDragEdgeLodVisual', undefined);
+                return;
+            }
             persistenceCall('scheduleSave', undefined);
             if (useDragEdgeLod) renderCall('scheduleDragEdgeSettleRender', undefined);
             else renderCall('flushInteractiveLinkRender', undefined);

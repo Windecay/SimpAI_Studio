@@ -24,6 +24,7 @@
         const isDirectorTimelineNode = (...args) => !!call(timelineSource, 'isDirectorTimelineNode', false, ...args);
         const directorTimelinePayload = (...args) => call(timelineSource, 'directorTimelinePayload', null, ...args);
         const getStyleSelectorPrompt = (...args) => call(styleSource, 'getStyleSelectorPrompt', '', ...args);
+        const isIgnored = node => !!(node && (node.ignored || node.skip || node.flags?.ignored));
 
         function isTextOutputNode(node) {
             if (!node) return false;
@@ -86,7 +87,7 @@
         }
 
         function getNodeTextOutput(node, visited) {
-            if (!isTextOutputNode(node)) return '';
+            if (!isTextOutputNode(node) || isIgnored(node)) return '';
             const seen = visited || new Set();
             if (seen.has(node.id)) return '';
             seen.add(node.id);
@@ -165,6 +166,7 @@
         }
 
         function getTextMergeOutput(node, visited) {
+            if (isIgnored(node)) return '';
             const seen = visited || new Set();
             const values = cssTextMergeInputSlots(node)
                 .map(slot => getTextMergeInputSource(node, slot))

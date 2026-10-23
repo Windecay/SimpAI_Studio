@@ -227,6 +227,13 @@
                     ignored: !!node.ignored
                 });
             }
+            if (['text', 'text_merge', 'tag_cart'].includes(node.type) && typeof nodeSource.getNodeTextOutput === 'function') {
+                return JSON.stringify({
+                    ...node,
+                    resolved_text_output: nodeSource.getNodeTextOutput(node),
+                    text_input_source: nodeSource.getTextNodeInputSource?.(node)?.id || ''
+                });
+            }
             return JSON.stringify(node);
         }
 

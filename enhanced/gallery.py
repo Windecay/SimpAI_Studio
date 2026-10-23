@@ -1225,10 +1225,11 @@ def _build_output_catalog_snapshot(user_did=None):
             raise TimeoutError()
 
     def _walk_files_with_deadline(folder_path, extensions):
-        if not os.path.isdir(folder_path):
-            return []
+        def _raise_walk_error(error):
+            raise error
+
         filenames = []
-        for root, _, files in os.walk(folder_path, topdown=False):
+        for root, _, files in os.walk(folder_path, topdown=False, onerror=_raise_walk_error):
             _check_deadline()
             relative_path = os.path.relpath(root, folder_path)
             if relative_path == ".":
@@ -1241,31 +1242,25 @@ def _build_output_catalog_snapshot(user_did=None):
         return filenames
 
     def _list_files_quick(folder_path, extensions):
-        try:
-            _check_deadline()
-            has_dirs = False
-            files = []
-            for entry in os.scandir(folder_path):
+        _check_deadline()
+        has_dirs = False
+        files = []
+        with os.scandir(folder_path) as entries:
+            for entry in entries:
                 _check_deadline()
-                try:
-                    if entry.is_dir():
-                        has_dirs = True
-                        continue
-                    if not entry.is_file():
-                        continue
-                    _, ext = os.path.splitext(entry.name)
-                    if ext.lower() in extensions:
-                        files.append(entry.name)
-                except OSError:
+                if entry.is_dir():
+                    has_dirs = True
                     continue
-            if files or not has_dirs:
-                return files
-        except Exception:
-            pass
-        try:
-            return _walk_files_with_deadline(folder_path, extensions)
-        except Exception:
-            return []
+                if not entry.is_file():
+                    continue
+                _, ext = os.path.splitext(entry.name)
+                if ext.lower() in extensions:
+                    files.append(entry.name)
+        if files or not has_dirs:
+            return files
+        # An unreadable directory is not a successfully scanned empty directory.
+        # Let the snapshot owner retain its previous snapshot or retry on the next request.
+        return _walk_files_with_deadline(folder_path, extensions)
 
     def _has_any_files_quick(folder_path, extensions):
         try:

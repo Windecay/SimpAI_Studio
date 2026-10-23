@@ -32,6 +32,7 @@
         let authoritativePresetCatalog = null;
         let authoritativePresetCatalogPromise = null;
         let authoritativePresetCatalogState = 'idle';
+        let requestedCatalogRevision = 0;
 
         function call(name, fallback, ...args) {
             const sourceObject = callbackSources[name] || {};
@@ -89,34 +90,42 @@
 
         async function refreshPresetCatalog(options) {
             const force = !!options?.force;
+            if (force) requestedCatalogRevision += 1;
             if (authoritativePresetCatalogPromise) return authoritativePresetCatalogPromise;
             if (!force && Array.isArray(authoritativePresetCatalog) && authoritativePresetCatalog.length) return authoritativePresetCatalog;
             authoritativePresetCatalogState = 'loading';
             if (call('isPaletteOpen', false)) call('renderPresetPalette');
             authoritativePresetCatalogPromise = Promise.resolve()
-                .then(() => call('presetCatalog', null, {
-                    user_context: call('getWorkbenchUserContext', {})
-                }))
-                .then((response) => {
-                    const entries = normalizePresetCatalog(response?.presets || []);
-                    if (!response?.ok || !entries.length) {
-                        throw new Error(response?.details || response?.error || 'Preset catalog is empty');
+                .then(async () => {
+                    for (;;) {
+                        const revision = requestedCatalogRevision;
+                        try {
+                            const response = await call('presetCatalog', null, {
+                                user_context: call('getWorkbenchUserContext', {})
+                            });
+                            if (revision !== requestedCatalogRevision) continue;
+                            const entries = normalizePresetCatalog(response?.presets || []);
+                            if (!response?.ok || !entries.length) {
+                                throw new Error(response?.details || response?.error || 'Preset catalog is empty');
+                            }
+                            authoritativePresetCatalog = entries;
+                            authoritativePresetCatalogState = 'ready';
+                            const repaired = Number(call('reconcilePresetNodesWithCatalog', 0, entries) || 0);
+                            if (repaired > 0) {
+                                call('mutate', null);
+                                call('showToast', null, t('{count} preset node definition(s) refreshed.', '已刷新 {count} 个 Preset 节点定义。').replace('{count}', String(repaired)));
+                            } else if (call('isWorkbenchOpen', false)) {
+                                call('renderAll', null, { inspector: false });
+                            }
+                            if (revision === requestedCatalogRevision) return entries;
+                            authoritativePresetCatalogState = 'loading';
+                        } catch (err) {
+                            if (revision !== requestedCatalogRevision) continue;
+                            authoritativePresetCatalogState = 'error';
+                            warn('[SimpAI Canvas] preset catalog refresh failed', err);
+                            return getPresetCatalog();
+                        }
                     }
-                    authoritativePresetCatalog = entries;
-                    authoritativePresetCatalogState = 'ready';
-                    const repaired = Number(call('reconcilePresetNodesWithCatalog', 0, entries) || 0);
-                    if (repaired > 0) {
-                        call('mutate', null);
-                        call('showToast', null, t('{count} preset node definition(s) refreshed.', '已刷新 {count} 个 Preset 节点定义。').replace('{count}', String(repaired)));
-                    } else if (call('isWorkbenchOpen', false)) {
-                        call('renderAll', null, { inspector: false });
-                    }
-                    return entries;
-                })
-                .catch((err) => {
-                    authoritativePresetCatalogState = 'error';
-                    warn('[SimpAI Canvas] preset catalog refresh failed', err);
-                    return getPresetCatalog();
                 })
                 .finally(() => {
                     authoritativePresetCatalogPromise = null;

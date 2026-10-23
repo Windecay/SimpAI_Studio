@@ -27,6 +27,7 @@
         const languageSource = scope.languageSource || {};
         const utilitySource = scope.utilitySource || {};
         const domSource = scope.domSource || {};
+        const projectSource = scope.projectSource || {};
         const groupSource = scope.groupSource || {};
         const actionSource = scope.actionSource || {};
         const viewportSource = scope.viewportSource || {};
@@ -37,6 +38,7 @@
             getDocument: () => typeof domSource.getDocument === 'function'
                 ? domSource.getDocument()
                 : domSource.document || (typeof document !== 'undefined' ? document : null),
+            getProject: delegate(projectSource, 'getProject'),
             getGroups: delegate(groupSource, 'getGroups'),
             getGroup: delegate(groupSource, 'getGroup'),
             getNodesInsideGroup: delegate(groupSource, 'getNodesInsideGroup'),
@@ -58,6 +60,9 @@
         const existing = doc.querySelector('.sai-group-list-modal');
         if (existing) existing.remove();
         const groups = call(context, 'getGroups', [], {}) || [];
+        const project = call(context, 'getProject', null);
+        const projectId = project?.id;
+        const listedGroups = new Map(groups.map(group => [String(group.id), group]));
         const modal = doc.createElement('div');
         modal.className = 'sai-canvas-modal sai-group-list-modal';
         modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
@@ -86,13 +91,24 @@
         doc.body.appendChild(modal);
         call(context, 'ensureWorkbenchFormFieldNames', null, modal, 'group_list');
         modal.addEventListener('click', (evt) => {
+            if (modal.isConnected === false) return;
             if (evt.target === modal || evt.target.closest('[data-modal-close]')) {
                 modal.remove();
                 return;
             }
+            const currentProject = call(context, 'getProject', null);
+            if (currentProject !== project || currentProject?.id !== projectId) {
+                openPanel(context);
+                return;
+            }
             const jump = evt.target.closest('[data-group-jump]');
             if (jump) {
-                const group = call(context, 'getGroup', null, jump.getAttribute('data-group-jump'));
+                const id = jump.getAttribute('data-group-jump');
+                const group = call(context, 'getGroup', null, id);
+                if (!group || group !== listedGroups.get(id)) {
+                    openPanel(context);
+                    return;
+                }
                 modal.remove();
                 call(context, 'focusGroup', null, group);
                 return;

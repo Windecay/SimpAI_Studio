@@ -28,6 +28,13 @@
             return call(languageSource, 't', state.__lang === 'cn' || state.__lang === 'zh' ? cn : en, en, cn, state);
         };
 
+        function rejectRunningInputEdit(node, options) {
+            if (!call(batchSource, 'isBatchAnyRunning', node?.batch?.state === 'running', node)) return false;
+            if (options?.toast !== false) call(uiSource, 'showToast', undefined,
+                t('Wait for Batch Any to finish before changing its inputs.', '请等待 Batch Any 运行结束后再修改输入。'));
+            return true;
+        }
+
         function batchAnyCurrentItem(node) {
             const items = Array.isArray(node?.items) ? node.items : [];
             const index = clamp(Number(node?.current_index || 0), 0, Math.max(items.length - 1, 0));
@@ -52,6 +59,7 @@
 
         function refreshBatchAnyActiveItem(node) {
             if (!node || node.type !== 'batch_any') return null;
+            if (rejectRunningInputEdit(node)) return null;
             const items = Array.isArray(node.items) ? node.items : [];
             const currentIndex = clamp(Number(node.current_index || 0), 0, Math.max(items.length - 1, 0));
             const current = items[currentIndex] || null;
@@ -78,6 +86,8 @@
 
         function setBatchAnyCurrentItem(node, index, options) {
             if (!node || node.type !== 'batch_any') return null;
+            if ((!options?.runJobId || options.runJobId !== node.batch?.job_id)
+                && rejectRunningInputEdit(node, options)) return null;
             const items = Array.isArray(node.items) ? node.items : [];
             const nextIndex = clamp(Number(index || 0), 0, Math.max(items.length - 1, 0));
             const item = items[nextIndex] || null;
@@ -166,6 +176,7 @@
                     t('Locked node cannot be edited', '锁定节点不能编辑'));
                 return false;
             }
+            if (rejectRunningInputEdit(node, opts)) return false;
             const ids = new Set((itemIds || []).filter(Boolean));
             if (!ids.size) return false;
             const items = Array.isArray(node.items) ? node.items : [];
@@ -196,7 +207,9 @@
                 return {
                     label: t('Disconnect {name}', '断开 {name}').replace('{name}', item?.name || source?.title || source?.id || edge.from || t('source', '来源')),
                     icon: 'fa-link-slash',
-                    action: () => call(edgeSource, 'deleteEdge', undefined, edge.id)
+                    action: () => {
+                        if (!rejectRunningInputEdit(node)) call(edgeSource, 'deleteEdge', undefined, edge.id);
+                    }
                 };
             });
             menuItems.push({
@@ -206,6 +219,7 @@
                 danger: true,
                 action: () => {
                     if (!edges.length) return;
+                    if (rejectRunningInputEdit(node)) return;
                     call(historySource, 'pushHistory', undefined, 'Disconnect Batch Any sources');
                     edges.forEach(edge => call(edgeSource, 'deleteEdge', undefined, edge.id, { render: false, history: false }));
                     mutate({ inspector: selectedNodeId() === node.id });

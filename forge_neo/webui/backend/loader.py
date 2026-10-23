@@ -712,7 +712,7 @@ def replace_state_dict(sd: dict[str, torch.Tensor], asd: dict[str, torch.Tensor]
                             "{}text_model.embeddings.token_embedding.weight": "{}token_embedding.weight",
                             "{}text_model.final_layer_norm.weight": "{}ln_final.weight",
                             "{}text_model.final_layer_norm.bias": "{}ln_final.bias",
-                            "text_projection.weight": "{}text_projection",
+                            "{}text_projection.weight": "{}text_projection",
                         }
                         resblock_to_replace = {
                             "layer_norm1": "ln_1",
@@ -835,6 +835,13 @@ def replace_state_dict(sd: dict[str, torch.Tensor], asd: dict[str, torch.Tensor]
             sd[f"{text_encoder_key_prefix}t5xxl.transformer.{k}"] = True
         sd[f"{text_encoder_key_prefix}t5xxl.transformer.filename"] = str(path)
 
+    qwen3vl_language_prefix = next(
+        (prefix for prefix in ("model.", "model.language_model.")
+         if f"{prefix}layers.0.post_attention_layernorm.weight" in asd
+         and f"{prefix}layers.0.self_attn.q_norm.weight" in asd),
+        None,
+    )
+
     if "model.layers.0.post_feedforward_layernorm.weight" in asd:
         assert "model.layers.0.self_attn.q_norm.weight" not in asd
         for k, v in asd.items():
@@ -849,11 +856,10 @@ def replace_state_dict(sd: dict[str, torch.Tensor], asd: dict[str, torch.Tensor]
             sd[f"{text_encoder_key_prefix}qwen25_7b.{k}"] = v
 
     elif (
-        "model.layers.0.post_attention_layernorm.weight" in asd
-        and "model.layers.0.self_attn.q_norm.weight" in asd
+        qwen3vl_language_prefix is not None
         and any(k.startswith(("visual.", "model.visual.")) for k in asd)
     ):
-        weight: torch.Tensor = asd["model.layers.0.post_attention_layernorm.weight"]
+        weight: torch.Tensor = asd[f"{qwen3vl_language_prefix}layers.0.post_attention_layernorm.weight"]
         if weight.shape[0] == 2560:
             for k, v in asd.items():
                 sd[f"{text_encoder_key_prefix}qwen3vl_4b.transformer.{k}"] = v

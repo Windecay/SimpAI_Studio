@@ -137,7 +137,7 @@
     },
     "class_type": "VAELoader",
     "_meta": {
-      "title": "VAE加载器"
+      "title": "vae_model"
     }
   },
   "165": {

@@ -93,7 +93,7 @@
 
         function updateNodeParam(nodeId, key, value, inputType) {
             const node = getNode(nodeId);
-            if (!node || nodeCall('isNodeLocked', false, node)) return;
+            if (!node || nodeCall('isNodeLocked', false, node)) return false;
             historyCall('pushHistoryBatch', undefined, `node-param:${nodeId}:${key}`, 'Edit node parameter');
             const paramsPatch = {};
             if (inputType === 'checkbox') {
@@ -107,9 +107,10 @@
             Object.assign(node, buildNodeParamsPatch(node, { paramsPatch }));
             if (key === 'seed_random') {
                 uiStateCall('mutate', undefined, { inspector: true });
-                return;
+                return true;
             }
             persistenceCall('scheduleSave');
+            return true;
         }
 
         function updateTextMergeSeparator(nodeId, value) {
@@ -181,19 +182,21 @@
 
         function syncNodeParamControlDom(nodeId, key, value) {
             const nodesLayer = domSource.getNodesLayer?.();
-            if (!nodeId || !key || !nodesLayer) return;
+            if (!nodeId || !key) return;
             const cssEscape = typeof domSource.cssEscape === 'function'
                 ? domSource.cssEscape
                 : text => String(text);
-            const nodeEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
-            if (!nodeEl) return;
-            nodeEl.querySelectorAll(`[data-node-param="${cssEscape(key)}"]`).forEach((field) => {
-                if (!field) return;
-                if (field.type === 'checkbox') {
-                    field.checked = value === true || value === 'true' || value === 1 || value === '1';
-                } else if ('value' in field && field.value !== String(value ?? '')) {
-                    field.value = String(value ?? '');
-                }
+            const nodeEl = nodesLayer?.querySelector(`[data-node-id="${cssEscape(nodeId)}"]`);
+            const inspector = getSelectedNodeId() === nodeId ? getInspector() : null;
+            [nodeEl, inspector].filter(Boolean).forEach(container => {
+                container.querySelectorAll(`[data-wd14-param="${cssEscape(key)}"]`).forEach((field) => {
+                    if (!field) return;
+                    if (field.type === 'checkbox') {
+                        field.checked = value === true || value === 'true' || value === 1 || value === '1';
+                    } else if ('value' in field && field.value !== String(value ?? '')) {
+                        field.value = String(value ?? '');
+                    }
+                });
             });
         }
 
@@ -212,7 +215,6 @@
                 return;
             }
             syncNodeParamControlDom(nodeId, key, node.params[key]);
-            actionCall('refreshPresetSpecialNodeDom', undefined, node, { syncViewer: false });
             persistenceCall('scheduleSave');
         }
 

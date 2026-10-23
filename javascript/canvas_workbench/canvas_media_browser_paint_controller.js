@@ -14,7 +14,6 @@
         const performanceNow = () => Number(call(timingSource, 'performanceNow', 0)) || 0;
         const requestFrame = (callback) => call(timingSource, 'requestAnimationFrame', null, callback);
         const schedule = (...args) => call(timingSource, 'setTimeout', undefined, ...args);
-        const renderMediaBrowserPanel = (...args) => call(renderSource, 'renderMediaBrowserPanel', undefined, ...args);
         const findMediaBrowserNodeElement = (...args) => call(renderSource, 'findMediaBrowserNodeElement', null, ...args);
 
         function captureMediaBrowserScroll(scopeElement, memoryKey) {
@@ -89,7 +88,6 @@
                 nudgeMediaBrowserPaint(modal);
                 schedule(() => {
                     if (!modal.isConnected || modal.__mediaBrowserPaintSeq !== seq) return;
-                    renderMediaBrowserPanel(modal, false);
                     requestFrame(() => {
                         if (!modal.isConnected || modal.__mediaBrowserPaintSeq !== seq) return;
                         primeMediaBrowserThumbImages(modal);

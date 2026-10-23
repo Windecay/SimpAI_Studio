@@ -260,6 +260,10 @@ def resolve_swap_model_path(model):
 
 def get_preferred_insightface_path():
     roots = get_swap_model_dirs("insightface")
+    required = ("1k3d68.onnx", "2d106det.onnx", "det_10g.onnx", "genderage.onnx", "w600k_r50.onnx")
+    for root in roots:
+        if all(os.path.isfile(os.path.join(root, "models", "buffalo_l", filename)) for filename in required):
+            return root
     for root in roots:
         if (
             os.path.isdir(os.path.join(root, "models", "buffalo_l"))

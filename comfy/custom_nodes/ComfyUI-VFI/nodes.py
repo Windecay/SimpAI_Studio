@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from contextlib import nullcontext
 
 import torch
 
@@ -105,6 +106,7 @@ class RIFEInterpolation:
                         "tooltip": "Scene-change score threshold; higher values detect fewer cuts",
                     },
                 ),
+                "allow_download": ("BOOLEAN", {"default": True}),
             },
         }
 
@@ -128,6 +130,7 @@ class RIFEInterpolation:
         use_fp16=True,
         scene_detect=True,
         scene_threshold=0.15,
+        allow_download=True,
     ):
         # Validate inputs
         if images is None or len(images) == 0:
@@ -147,7 +150,7 @@ class RIFEInterpolation:
             return (images,)
 
         # Get or load model
-        model = self._get_or_load_model(model_name, use_fp16=use_fp16)
+        model = self._get_or_load_model(model_name, use_fp16=use_fp16, allow_download=allow_download)
 
         duration = len(images) / source_fps
         total_target_frames = int(duration * target_fps)
@@ -162,7 +165,7 @@ class RIFEInterpolation:
 
         # Use autocast context for mixed precision
         autocast_enabled = use_fp16 and torch.cuda.is_available()
-        autocast_context = torch.amp.autocast("cuda") if autocast_enabled else torch.nullcontext()
+        autocast_context = torch.amp.autocast("cuda") if autocast_enabled else nullcontext()
 
         try:
             with autocast_context:
@@ -182,7 +185,7 @@ class RIFEInterpolation:
         except Exception as e:
             raise RuntimeError(f"Frame interpolation failed: {str(e)}")
 
-    def _get_or_load_model(self, model_name, use_fp16=False):
+    def _get_or_load_model(self, model_name, use_fp16=False, allow_download=True):
         """Load model from cache or disk"""
         global MODEL_CACHE
 
@@ -192,61 +195,46 @@ class RIFEInterpolation:
         if cache_key in MODEL_CACHE:
             return MODEL_CACHE[cache_key]
 
-        # Look for model in multiple locations
-        model_paths = [
-            os.path.join(os.path.dirname(__file__), "rife", "train_log", model_name),
-            os.path.join(folder_paths.models_dir, "controlnet", "rife", model_name),
-        ]
-
-        # Add ComfyUI model directory if available
+        model_paths = []
+        resolver = getattr(folder_paths, "get_full_path", None)
+        if callable(resolver):
+            registered = resolver("controlnet", f"rife/{model_name}")
+            if registered:
+                model_paths.append(registered)
+        model_paths.append(os.path.join(os.path.dirname(__file__), "rife", "train_log", model_name))
         if folder_paths and hasattr(folder_paths, "models_dir"):
-            model_paths.insert(1, os.path.join(folder_paths.models_dir, "rife", model_name))
+            model_paths.extend([
+                os.path.join(folder_paths.models_dir, "rife", model_name),
+                os.path.join(folder_paths.models_dir, "controlnet", "rife", model_name),
+            ])
 
         model_path = None
         for path in model_paths:
-            if os.path.exists(path):
+            if os.path.isfile(path):
                 model_path = path
                 break
 
         if model_path is None:
-            # Try to download the model automatically
-            print(f"RIFE model '{model_name}' not found. Attempting to download...")
-
-            # Default download location
-            download_target = os.path.join(folder_paths.models_dir, "controlnet", "rife")
-
-            try:
-                # Run the download script
-                download_script = os.path.join(os.path.dirname(__file__), "rife", "download_rife.py")
-
-                if os.path.exists(download_script):
-                    result = subprocess.run(
-                        [sys.executable, download_script, download_target], capture_output=True, text=True
-                    )
-
-                    if result.returncode == 0:
-                        print("Model downloaded successfully!")
-                        # Check if model now exists
-                        model_path = os.path.join(download_target, model_name)
-                        if not os.path.exists(model_path):
-                            raise FileNotFoundError(
-                                f"Model download completed but '{model_name}' not found at expected location."
-                            )
-                    else:
-                        raise RuntimeError(f"Model download failed: {result.stderr}")
-                else:
-                    raise FileNotFoundError(
-                        f"Download script not found at {download_script}. "
-                        f"Please manually download the model and place it in one of these locations:\n"
-                        + "\n".join(f"  - {p}" for p in model_paths)
-                    )
-
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to automatically download RIFE model: {str(e)}\n"
-                    f"Please manually download the model and place it in one of these locations:\n"
-                    + "\n".join(f"  - {p}" for p in model_paths)
+            if not allow_download:
+                raise FileNotFoundError(
+                    f"Required RIFE model '{model_name}' is missing. Use Studio's model download confirmation "
+                    "before running interpolation. Searched:\n" + "\n".join(model_paths)
                 )
+            download_target = os.path.join(folder_paths.models_dir, "controlnet", "rife")
+            download_script = os.path.join(os.path.dirname(__file__), "rife", "download_rife.py")
+            try:
+                if not os.path.isfile(download_script):
+                    raise FileNotFoundError(f"Download script not found: {download_script}")
+                result = subprocess.run(
+                    [sys.executable, download_script, download_target], capture_output=True, text=True
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(f"Model download failed: {result.stderr}")
+                model_path = os.path.join(download_target, model_name)
+                if not os.path.isfile(model_path):
+                    raise FileNotFoundError(f"Downloaded RIFE model is missing: {model_path}")
+            except Exception as exc:
+                raise RuntimeError(f"Failed to automatically download RIFE model: {exc}") from exc
 
         # Load model
         print(f"Loading RIFE model from: {model_path}")
