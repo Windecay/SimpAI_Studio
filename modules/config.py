@@ -2404,15 +2404,15 @@ def update_files(engine='Z-image', task_method=None, use_model_filter: bool = Tr
         from enhanced.seedvr2 import list_local_models
 
         seedvr2_models = list_local_models(paths_SEEDVR2)
-        model_filenames = seedvr2_models['dit']
-        vae_filenames = seedvr2_models['vae']
-        lora_filenames, clip_filenames, upscale_model_filenames = [], [], []
-        return model_filenames, lora_filenames, vae_filenames, clip_filenames
+        models, vaes = seedvr2_models['dit'], seedvr2_models['vae']
+        loras, clips = [], []
+        model_filenames, lora_filenames, vae_filenames, clip_filenames = models, loras, vaes, clips
+        upscale_model_filenames = []
+        return models, loras, vaes, clips
     modelsinfo.refresh_from_path()
     _apply_builtin_model_arch_family_cache(path_models_root)
-    model_filenames = get_base_model_list(engine, task_method, use_model_filter=use_model_filter)
-    lora_filenames = modelsinfo.get_model_names('loras')
-    lora_filenames_norm = [_normalize_model_name(n) for n in lora_filenames]
+    models = get_base_model_list(engine, task_method, use_model_filter=use_model_filter)
+    lora_filenames_norm = [_normalize_model_name(n) for n in modelsinfo.get_model_names('loras')]
     lora_filenames_norm = [
         n for n in lora_filenames_norm
         if not _is_placeholder_model_name(n) and n.rsplit("/", 1)[-1].casefold() != CONTROL_LORA
@@ -2426,30 +2426,33 @@ def update_files(engine='Z-image', task_method=None, use_model_filter: bool = Tr
             task_method,
             base_model,
         )
-    lora_filenames = [str(n).replace("/", os.sep).replace("\\", os.sep).lstrip(os.sep) for n in lora_filenames_norm]
-    vae_filenames = [n for n in modelsinfo.get_model_names('vae') if not _is_placeholder_model_name(n)]
+    loras = [str(n).replace("/", os.sep).replace("\\", os.sep).lstrip(os.sep) for n in lora_filenames_norm]
+    vaes = [n for n in modelsinfo.get_model_names('vae') if not _is_placeholder_model_name(n)]
     clip_names = []
     for catalog in ('clip', 'text_encoders'):
         try:
             clip_names.extend(modelsinfo.get_model_names(catalog))
         except Exception:
             pass
-    clip_filenames = [n for n in clip_names if not _is_placeholder_model_name(n)]
-    clip_filenames = [str(n).replace("/", os.sep).replace("\\", os.sep).lstrip(os.sep) for n in clip_filenames]
-    clip_filenames = list(dict.fromkeys(clip_filenames))
-    upscale_model_filenames = [
+    clips = [n for n in clip_names if not _is_placeholder_model_name(n)]
+    clips = [str(n).replace("/", os.sep).replace("\\", os.sep).lstrip(os.sep) for n in clips]
+    clips = list(dict.fromkeys(clips))
+    upscalers = [
         n for n in get_model_filenames(paths_upscale_models)
         if not _is_placeholder_model_name(n)
     ]
-    upscale_model_filenames = [
+    upscalers = [
         str(n).replace("/", os.sep).replace("\\", os.sep).lstrip(os.sep)
-        for n in upscale_model_filenames
+        for n in upscalers
     ]
-    wildcard_filenames = []
+    wildcards = []
     for path in paths_wildcards:
         files = get_files_from_folder(path, ['.txt'])
-        wildcard_filenames.extend(files)
-    return model_filenames, lora_filenames, vae_filenames, clip_filenames
+        wildcards.extend(files)
+    # Publish the legacy catalog after scanning; each caller returns its own lists.
+    model_filenames, lora_filenames, vae_filenames, clip_filenames = models, loras, vaes, clips
+    upscale_model_filenames, wildcard_filenames = upscalers, wildcards
+    return models, loras, vaes, clips
 
 
 def downloading_inpaint_models(v):

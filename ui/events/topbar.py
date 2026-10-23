@@ -50,6 +50,41 @@ def _resolve_scene_theme_from_state(sp):
     return resolved
 
 
+def _bind_shared_preset_navigation(buttons, fn, inputs, outputs):
+    """Keep the current session's button values while sharing one event graph."""
+    buttons = list(buttons)
+    input_count = len(inputs)
+    button_indices = {button._id: index for index, button in enumerate(buttons)}
+    element_indices = {
+        button.elem_id: index for index, button in enumerate(buttons)
+        if isinstance(button.elem_id, str) and button.elem_id
+    }
+
+    def _dispatch_preset_navigation(evt: gr.EventData, *values):
+        index = button_indices.get(getattr(evt.target, "_id", None))
+        if index is None:
+            # gr.update(value=...) replaces the session's Button instance and
+            # allocates a new internal _id. Its DOM elem_id remains stable.
+            index = element_indices.get(getattr(evt.target, "elem_id", None))
+        if index is None or len(values) != input_count + len(buttons):
+            raise ValueError("Invalid preset navigation target")
+        # EventData.target.value can be the initial server-side label. Read the
+        # submitted component value, which includes this user's reordered and
+        # private presets, exactly as the former per-button listener did.
+        return fn(*values[:input_count], values[input_count + index])
+
+    return gr.on(
+        triggers=[button.click for button in buttons],
+        fn=_dispatch_preset_navigation,
+        inputs=[*inputs, *buttons],
+        outputs=outputs,
+        trigger_mode="always_last",
+        js="(...args)=>{window.__simpleaiPresetNavigationManaged=true; return args;}",
+        queue=False,
+        show_progress=False,
+    )
+
+
 def bind_topbar_store_events(
     *,
     layout_refs,
@@ -719,106 +754,91 @@ def bind_topbar_navigation_events(
     ]
     merge_post_nav_with_values = not split_deferred_values and not split_after_identity
 
-    for button in bar_buttons:
-        chain = button.click(
-            _reset_layout_ui_nav,
-            inputs=reset_preset_inputs + ([models_tab_active_state] if has_models_tab_active_state else []) + [button],
-            outputs=reset_layout_main_head_outputs
-            + ([reset_layout_deferred_ui_state] if split_reset_layout_main else [])
-            + reset_layout_nav_tail_outputs,
+    chain = _bind_shared_preset_navigation(
+        bar_buttons,
+        _reset_layout_ui_nav,
+        reset_preset_inputs + ([models_tab_active_state] if has_models_tab_active_state else []),
+        reset_layout_main_head_outputs
+        + ([reset_layout_deferred_ui_state] if split_reset_layout_main else [])
+        + reset_layout_nav_tail_outputs,
+    )
+    navigation_events = [chain]
+    if split_reset_layout_main:
+        chain = chain.success(
+            _reset_layout_main_tail_batch,
+            inputs=reset_layout_deferred_ui_state,
+            outputs=reset_layout_main_tail_outputs,
             queue=False,
             show_progress=False,
         )
-        if split_reset_layout_main:
-            chain = chain.then(
-                _reset_layout_main_tail_batch,
-                inputs=reset_layout_deferred_ui_state,
-                outputs=reset_layout_main_tail_outputs,
+    if merge_post_nav_with_values:
+        chain = chain.success(
+            _nav_visibility_values_and_post_batch,
+            inputs=[*nav_visibility_values_inputs, *post_nav_tail_inputs],
+            outputs=[*nav_visibility_values_outputs, *post_nav_outputs],
+            queue=False,
+            show_progress=False,
+        )
+    else:
+        chain = chain.success(
+            _nav_visibility_and_values_batch,
+            inputs=nav_visibility_values_inputs,
+            outputs=nav_visibility_values_outputs,
+            queue=False,
+            show_progress=False,
+        )
+        if split_deferred_values:
+            chain = chain.success(
+                _nav_deferred_values_batch,
+                inputs=reset_layout_deferred_value_state,
+                outputs=reset_layout_deferred_value_outputs,
                 queue=False,
                 show_progress=False,
             )
-        if merge_post_nav_with_values:
-            chain = chain.then(
-                _nav_visibility_values_and_post_batch,
-                inputs=[*nav_visibility_values_inputs, *post_nav_tail_inputs],
-                outputs=[*nav_visibility_values_outputs, *post_nav_outputs],
+        if split_after_identity:
+            chain = chain.success(
+                _nav_after_identity_batch,
+                inputs=reset_layout_after_identity_state,
+                outputs=reset_layout_after_identity_outputs,
                 queue=False,
                 show_progress=False,
             )
-        else:
-            chain = chain.then(
-                _nav_visibility_and_values_batch,
-                inputs=nav_visibility_values_inputs,
-                outputs=nav_visibility_values_outputs,
-                queue=False,
-                show_progress=False,
-            )
-            if split_deferred_values:
-                chain = chain.then(
-                    _nav_deferred_values_batch,
-                    inputs=reset_layout_deferred_value_state,
-                    outputs=reset_layout_deferred_value_outputs,
-                    queue=False,
-                    show_progress=False,
-                )
-            if split_after_identity:
-                chain = chain.then(
-                    _nav_after_identity_batch,
-                    inputs=reset_layout_after_identity_state,
-                    outputs=reset_layout_after_identity_outputs,
-                    queue=False,
-                    show_progress=False,
-                )
-            chain = chain.then(
-                _post_nav_controls_and_params_batch,
-                inputs=post_nav_inputs,
-                outputs=post_nav_outputs,
-                queue=False,
-                show_progress=False,
-            )
-        chain = chain.then(
+        chain = chain.success(
+            _post_nav_controls_and_params_batch,
+            inputs=post_nav_inputs,
+            outputs=post_nav_outputs,
+            queue=False,
+            show_progress=False,
+        )
+
+    navigation_events.append(chain)
+    # Scene values are already part of post_nav_outputs. Do not send them a
+    # second time, and keep frontend-only events at the end: Gradio 6.9 does
+    # not dispatch their downstream .then/.success listeners.
+    if welcome_media_load_fn is not None and welcome_media_outputs:
+        chain = chain.success(
+            welcome_media_load_fn,
+            inputs=welcome_media_inputs,
+            outputs=welcome_media_outputs,
+            queue=False,
+            show_progress=False,
+        )
+        navigation_events.append(chain)
+    chain.success(
+        fn=None,
+        inputs=system_params,
+        js="(x)=>window.completeSimpleAIPresetNavigation(x)",
+        queue=False,
+        show_progress=False,
+    )
+    for event in navigation_events:
+        event.failure(
             fn=None,
-            inputs=system_params,
-            js="(x)=>new Promise((resolve)=>{try{syncImageAndTtsPanelsFromCheckboxes('preset_nav_fast'); setTimeout(()=>syncImageAndTtsPanelsFromCheckboxes('preset_nav_fast+80ms'),80); setTimeout(()=>syncImageAndTtsPanelsFromCheckboxes('preset_nav_fast+260ms'),260);}catch(e){console.warn('[UI-TRACE] preset_nav_fast_panel_sync_failed', e);} try{if (typeof notify_style_state_changed === 'function') { notify_style_state_changed('preset_styles_fast'); } else { refresh_style_localization(); refresh_style_layout(); setTimeout(refresh_style_layout,120); setTimeout(refresh_style_layout,500); }}catch(e){console.warn('[UI-TRACE] style_preset_fast_refresh_failed', e);} try{refresh_topbar_status_js_for_preset_nav(x);}catch(e){console.warn('[UI-TRACE] topbar_status_refresh_failed', e);} try{if (typeof window.simpleaiRehydrateModelsTabAfterPresetNav === 'function') window.simpleaiRehydrateModelsTabAfterPresetNav(x);}catch(e){console.warn('[UI-TRACE] models_tab_rehydrate_failed', e);} setTimeout(()=>resolve(x), 120);})",
+            js="()=>window.failSimpleAIPresetNavigation()",
             queue=False,
             show_progress=False,
         )
-        if reset_layout_scene_outputs:
-            chain = chain.then(
-                _reset_scene_frontend_ui_safe,
-                inputs=state_topbar,
-                outputs=reset_layout_scene_outputs,
-                queue=False,
-                show_progress=False,
-            )
-            chain = chain.then(
-                fn=None,
-                inputs=system_params,
-                js="(x)=>{try{if(typeof scheduleScenePanelVisibilityRepair==='function') scheduleScenePanelVisibilityRepair(x,'preset_nav_after_mount_scene_refresh'); if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility('preset_nav_after_mount_scene_refresh'); if(typeof refresh_scene_localization==='function') refresh_scene_localization(); setTimeout(()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility('preset_nav_after_mount_scene_refresh+120ms');}catch(e){}},120);}catch(e){console.warn('[UI-TRACE] preset_nav_after_mount_scene_refresh_failed', e);}}",
-                queue=False,
-                show_progress=False,
-            )
-        if welcome_media_load_fn is not None and welcome_media_outputs:
-            chain = chain.then(
-                welcome_media_load_fn,
-                inputs=welcome_media_inputs,
-                outputs=welcome_media_outputs,
-                queue=False,
-                show_progress=False,
-            )
-            chain = chain.then(
-                fn=lambda: None,
-                js="()=>{try{window.SimpAIWelcomeMedia?.sync();}catch(e){}}",
-                queue=False,
-                show_progress=False,
-            )
-        chain.then(
-            fn=lambda x: None,
-            inputs=system_params,
-            js="(x)=>{const p=x&&typeof x==='object'?x:{}; const preset=String(p.__preset||p.preset||'').trim(); const seq=(Number(window.__simpleai_preset_nav_completion_seq)||0)+1; const detail={preset:preset,seq:seq,completed_at:Date.now()}; window.__simpleai_preset_nav_completion_seq=seq; window.__simpleai_preset_nav_completed=detail; try{window.dispatchEvent(new CustomEvent('simpai:preset-nav-completed',{detail:detail}));}catch(e){} try{window.SimpAIStudioPerformance?.mark?.('preset.navigation_finished',{preset:preset,completion_seq:seq});}catch(e){}}",
-            queue=False,
-            show_progress=False,
-        )
+
 
 
 def bind_topbar_load_chain(
@@ -1046,16 +1066,6 @@ def bind_topbar_load_chain(
         queue=False,
         show_progress=False,
     ).then(
-        fn=lambda x: _debug_load_trace(
-            "load.system_params_to_state",
-            x.get("preset_store", None) if isinstance(x, dict) else None,
-            x.get("__preset", None) if isinstance(x, dict) else None,
-        ),
-        inputs=[state_topbar],
-        outputs=None,
-        queue=False,
-        show_progress=False,
-    ).then(
         topbar_module.init_nav_bars,
         inputs=[state_topbar] + admin_ctrls,
         outputs=[progress_window, language_ui, background_theme, preset_instruction] + user_app_ctrls + admin_ctrls,
@@ -1067,11 +1077,6 @@ def bind_topbar_load_chain(
         outputs=main_vlm_outputs,
         queue=False,
         show_progress=False,
-    ).then(
-        fn=lambda: None,
-        js="()=>{try{if (typeof notify_style_state_changed === 'function') { notify_style_state_changed('load_rehydrate'); } else { refresh_style_localization(); refresh_style_layout(); setTimeout(refresh_style_layout,120); setTimeout(refresh_style_layout,500); setTimeout(refresh_style_layout,1000); }}catch(e){console.warn('[UI-TRACE] style_load_rehydrate_failed', e);}}",
-        show_progress=False,
-        queue=False,
     ).then(
         qwen_refresh_style_preset_dropdowns,
         inputs=[state_topbar],
@@ -1085,17 +1090,6 @@ def bind_topbar_load_chain(
         show_progress=False,
         queue=False,
     ).then(
-        fn=lambda x: _debug_load_trace(
-            "load.after_reset_layout_ui.state_topbar",
-            x.get("preset_store", None) if isinstance(x, dict) else None,
-            x.get("identity_dialog", None) if isinstance(x, dict) else None,
-            x.get("__preset", None) if isinstance(x, dict) else None,
-        ),
-        inputs=[state_topbar],
-        outputs=None,
-        queue=False,
-        show_progress=False,
-    ).then(
         fn=_update_topbar_js_params_safe,
         inputs=state_topbar,
         outputs=system_params,
@@ -1108,29 +1102,9 @@ def bind_topbar_load_chain(
         queue=False,
         show_progress=False,
     ).then(
-        fn=lambda x: None,
-        inputs=system_params,
-        js="(x)=>{refresh_topbar_status_js(x);}",
-        queue=False,
-        show_progress=False,
-    ).then(
         reset_preset_styles_fn,
         inputs=[state_topbar],
         outputs=[style_selections],
-        queue=False,
-        show_progress=False,
-    ).then(
-        fn=lambda st: _debug_load_trace(
-            "load.after_reset_preset_styles_fast",
-            st.get("__preset", None) if isinstance(st, dict) else None,
-        ),
-        inputs=[state_topbar],
-        outputs=None,
-        queue=False,
-        show_progress=False,
-    ).then(
-        fn=lambda: None,
-        js="()=>{try{if (typeof notify_style_state_changed === 'function') { notify_style_state_changed('load_preset_styles_fast'); } else { refresh_style_localization(); refresh_style_layout(); setTimeout(refresh_style_layout,120); setTimeout(refresh_style_layout,500); }}catch(e){console.warn('[UI-TRACE] style_load_fast_refresh_failed', e);}}",
         queue=False,
         show_progress=False,
     ).then(
@@ -1140,25 +1114,9 @@ def bind_topbar_load_chain(
         queue=False,
         show_progress=False,
     ).then(
-        fn=lambda i, t: _debug_load_trace("load.after_toggle_image_input_panel", i, t),
-        inputs=[input_image_checkbox, qwen_tts_checkbox],
-        outputs=None,
-        queue=False,
-        show_progress=False,
-    ).then(
         sanitize_ip_types,
         inputs=[state_topbar] + ip_types,
         outputs=ip_types,
-        queue=False,
-        show_progress=False,
-    ).then(
-        fn=lambda st, *vals: _debug_load_trace(
-            "load.after_sanitize_ip_types_fast",
-            st.get("__preset", None) if isinstance(st, dict) else None,
-            list(vals),
-        ),
-        inputs=[state_topbar] + ip_types,
-        outputs=None,
         queue=False,
         show_progress=False,
     ).then(
@@ -1192,44 +1150,9 @@ def bind_topbar_load_chain(
         queue=False,
         show_progress=False,
     ).then(
-        fn=lambda x: _debug_load_trace(
-            "load.after_reset_layout_values",
-            x.get("__finished_nums_pages", None) if isinstance(x, dict) else None,
-            x.get("__gallery_engine_type", None) if isinstance(x, dict) else None,
-        ),
-        inputs=system_params,
-        outputs=None,
-        queue=False,
-        show_progress=False,
-    ).then(
-        fn=lambda x: None,
-        inputs=system_params,
-        js="(x)=>{try{refresh_topbar_status_js(x);}catch(e){console.warn('[UI-TRACE] load_after_reset_values_topbar_sync_failed', e);}}",
-        queue=False,
-        show_progress=False,
-    ).then(
-        fn=lambda: None,
-        js="()=>{try{if (typeof notify_style_state_changed === 'function') { notify_style_state_changed('after_reset_values'); } else { refresh_style_localization(); refresh_style_layout(); setTimeout(refresh_style_layout,120); setTimeout(refresh_style_layout,500); }}catch(e){console.warn('[UI-TRACE] style_after_values_refresh_failed', e);}}",
-        queue=False,
-        show_progress=False,
-    ).then(
         _load_refresh_files,
         inputs=[state_topbar, model_filter_state],
         outputs=refresh_files_output + lora_ctrls,
-        queue=False,
-        show_progress=False,
-    ).then(
-        fn=lambda st: _debug_load_trace(
-            "load.after_refresh_files",
-            st.get("__preset", None) if isinstance(st, dict) else None,
-        ),
-        inputs=[state_topbar],
-        outputs=None,
-        queue=False,
-        show_progress=False,
-    ).then(
-        fn=lambda: None,
-        js="()=>{try{syncImageAndTtsPanelsFromCheckboxes('load_after_refresh_files'); setTimeout(()=>syncImageAndTtsPanelsFromCheckboxes('load_after_refresh_files+120ms'),120); setTimeout(()=>syncImageAndTtsPanelsFromCheckboxes('load_after_refresh_files+500ms'),500);}catch(e){console.warn('[UI-TRACE] load_panel_sync_failed', e);}}",
         queue=False,
         show_progress=False,
     ).then(
@@ -1276,26 +1199,8 @@ def bind_topbar_load_chain(
         queue=False,
         show_progress=False,
     ).then(
-        lambda x: None,
-        inputs=aspect_ratio_sync_source,
-        queue=False,
-        show_progress=False,
-        js="(x)=>{refresh_aspect_ratios_label(x); if (typeof syncResolutionControlWidgets === 'function') syncResolutionControlWidgets();}",
-    ).then(
-        fn=lambda: None,
-        js="refresh_grid_delayed",
-    ).then(
-        fn=lambda: None,
-        js="bindPluginBtn",
-    ).then(
         fn=lambda: time.time_ns(),
         outputs=[ui_ready_state],
-        queue=False,
-        show_progress=False,
-    ).then(
-        fn=lambda x: None,
-        inputs=system_params,
-        js="(x)=>{window.__simpleai_ui_ready=true; try{refresh_topbar_status_js(x); setTimeout(()=>refresh_topbar_status_js(x),250); setTimeout(()=>refresh_topbar_status_js(x),900);}catch(e){console.warn('[UI-TRACE] load_ready_topbar_sync_failed', e);} try{syncImageAndTtsPanelsFromCheckboxes('load_ready'); setTimeout(()=>syncImageAndTtsPanelsFromCheckboxes('load_ready+120ms'),120); setTimeout(()=>syncImageAndTtsPanelsFromCheckboxes('load_ready+500ms'),500);}catch(e){console.warn('[UI-TRACE] load_ready_panel_sync_failed', e);}}",
         queue=False,
         show_progress=False,
     )
@@ -1307,12 +1212,17 @@ def bind_topbar_load_chain(
             outputs=welcome_media_outputs,
             queue=False,
             show_progress=False,
-        ).then(
-            fn=lambda: None,
-            js="()=>{try{window.SimpAIWelcomeMedia?.sync();}catch(e){}}",
-            queue=False,
-            show_progress=False,
         )
+
+    # This is a terminal frontend branch. Keep returning the last backend
+    # event so workspace recovery can attach to a trigger Gradio dispatches.
+    load_chain.then(
+        fn=None,
+        inputs=[system_params, aspect_ratio_sync_source],
+        js="(params, aspect)=>window.completeSimpleAIStudioLoad(params, aspect)",
+        queue=False,
+        show_progress=False,
+    )
 
     if admin_access_refresh_fn is not None and admin_access_user_select is not None and admin_access_refresh_outputs:
         load_chain.then(

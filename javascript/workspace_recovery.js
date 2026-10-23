@@ -1798,24 +1798,19 @@
     function markRestoredSceneParameterEdit(request) {
         const snapshot = request?.restore_snapshot || request?.snapshot;
         const owner = String(request?.owner || ownerKey());
-        const elemIds = [
-            'scene_var_number3',
-            'scene_var_number7',
-            'scene_switch_option2',
-            'scene_switch_option3',
-            'scene_var_number2',
-            'scene_video_duration',
-        ];
-        for (const elemId of elemIds) {
-            const resolved = workspaceEntryForElemId(snapshot, owner, elemId);
+        if (typeof window.rememberScenePresetControlValue !== 'function') return false;
+        let remembered = 0;
+        for (const field of rootNode().querySelectorAll('.simpai-workspace-field[id]')) {
+            const resolved = workspaceEntryForElemId(snapshot, owner, field.id);
             if (!resolved?.entry || !resolved?.field) continue;
-            const control = resolved.field.querySelector?.('input, textarea, select');
-            if (!control?.dispatchEvent) continue;
-            control.dispatchEvent(new Event('input', { bubbles: true }));
-            markPerformance('workspace.restore_scene_defaults_cancelled', { elem_id: elemId }, true);
-            return true;
+            // The default guard tracks each control separately. Remember all
+            // restored values without dispatching input events or API calls.
+            if (window.rememberScenePresetControlValue(field.id, domWorkspaceValue(resolved.field))) {
+                remembered += 1;
+            }
         }
-        return false;
+        markPerformance('workspace.restore_scene_defaults_cancelled', { controls: remembered }, true);
+        return remembered > 0;
     }
 
     function captureWorkspaceField(node, options) {

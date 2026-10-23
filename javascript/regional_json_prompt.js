@@ -509,6 +509,25 @@
                 kind: String(item.kind || 'ImagePrompt'), occupied: item.occupied === true, enabled: item.enabled === true };
         });
     }
+    const corners = [[0, 1], [2, 1], [0, 3], [2, 3]];
+    function selectionState(value, count) {
+        const valid = index => Number.isInteger(index) && index >= 0 && index < count;
+        const selectedRegions = [...new Set(Array.isArray(value?.selectedRegions)
+            ? value.selectedRegions.filter(valid) : valid(value?.selected) ? [value.selected] : [])];
+        const selected = selectedRegions.includes(value?.selected) ? value.selected : selectedRegions.at(-1) ?? -1;
+        const selectedPoints = [...new Set((Array.isArray(value?.selectedPoints) ? value.selectedPoints : [])
+            .filter(key => typeof key === 'string' && /^\d+:[0-3]$/.test(key)
+                && selectedRegions.includes(Number(key.split(':')[0]))))];
+        return { selected, selectedRegions, selectedPoints };
+    }
+    function viewState(value) {
+        return {
+            scale: typeof value?.scale === 'number' && Number.isFinite(value.scale)
+                ? Math.max(0.01, Math.min(8, value.scale)) : null,
+            centerX: Number.isFinite(value?.centerX) ? Math.max(0, Math.min(1, value.centerX)) : 0.5,
+            centerY: Number.isFinite(value?.centerY) ? Math.max(0, Math.min(1, value.centerY)) : 0.5,
+        };
+    }
     function normalizeSnapshot(value) {
         try {
             if (value?.version !== 1) return null;
@@ -526,7 +545,9 @@
                         frame.fixedCanvas = { width: item.fixedCanvas.width, height: item.fixedCanvas.height };
                     } catch (_) {}
                     if (Array.isArray(item?.materials)) frame.materials = materialSlots(item.materials);
-                    return [{ draft, regionUi: normalizeRegionUi(item?.regionUi, draft.items.length), ...frame }];
+                    return [{ draft, regionUi: normalizeRegionUi(item?.regionUi, draft.items.length), ...frame,
+                        ...(Number.isInteger(item?.selected) || Array.isArray(item?.selectedRegions)
+                            ? selectionState(item, draft.items.length) : {}) }];
                 } catch (_) { return []; }
             });
             let optimizedSnapshot = '';
@@ -539,8 +560,8 @@
                 raw: typeof value.raw === 'string' ? value.raw
                     : JSON.stringify(visibleDraft(draft, value.regionUi), null, 2),
                 rawDirty: value.rawDirty === true,
-                selected: Number.isInteger(value.selected) ? Math.max(-1, Math.min(value.selected, draft.items.length - 1)) : -1,
-                mode: value.mode === 'draw' ? 'draw' : 'select',
+                ...selectionState(value, draft.items.length), view: viewState(value.view),
+                mode: ['draw', 'points', 'pan'].includes(value.mode) ? value.mode : 'select',
                 tab: value.tab === 'json' ? 'json' : 'layout',
                 detailsOpen: value.detailsOpen === true,
                 undo: history(value.undo), redo: history(value.redo), optimizedSnapshot,
@@ -594,6 +615,9 @@
         if (restored) { draft = restored.draft; initialError = null; }
         let regionUi = normalizeRegionUi(restored?.regionUi, draft.items.length);
         let selected = restored ? restored.selected : (draft.items.length ? 0 : -1);
+        let selectedRegions = new Set(restored?.selectedRegions || (selected < 0 ? [] : [selected]));
+        let selectedPoints = new Set(restored?.selectedPoints || []);
+        let view = viewState(restored?.view), spaceHeld = false, multiSelect = false;
         let mode = restored?.mode || 'select', tab = restored?.tab || (initialError ? 'json' : 'layout');
         let gesture = null, editingField = null;
         let rawDirty = restored ? restored.rawDirty : !!initialError;
@@ -626,7 +650,10 @@
             <div class="sai-rjp-toolbar">
               <div class="sai-rjp-tools" role="group" aria-label="${esc(t('Layout tools'))}">
                 ${icon('select', 'arrow-pointer', 'Select and move')}
+                ${icon('points', 'bezier-curve', 'Select region corners')}
                 ${icon('draw', 'vector-square', 'Draw a region')}
+                ${icon('pan', 'hand', 'Pan canvas')}
+                ${icon('multi-select', 'object-group', 'Multiple selection')}
                 ${icon('undo', 'rotate-left', 'Undo')}${icon('redo', 'rotate-right', 'Redo')}
               </div>
               <div class="sai-rjp-dimensions">
@@ -661,7 +688,14 @@
                     ${icon('remove-reference', 'trash-can', 'Remove reference image')}
                   </div>
                 </div>
-                <div class="sai-rjp-viewport"><div class="sai-rjp-board"><canvas tabindex="0" aria-label="${esc(t('Region canvas'))}"></canvas></div></div>
+                <div class="sai-rjp-view-tools sai-rjp-tools" role="group" aria-label="${esc(t('Canvas view'))}">
+                  ${icon('zoom-out', 'magnifying-glass-minus', 'Zoom out')}
+                  <label class="sai-rjp-zoom"><input data-rjp-zoom type="number" min="1" max="800" step="10" aria-label="${esc(t('Canvas zoom'))}"><span>%</span></label>
+                  ${icon('zoom-in', 'magnifying-glass-plus', 'Zoom in')}
+                  ${icon('zoom-fit', 'expand', 'Fit canvas in view')}
+                  ${icon('zoom-selection', 'compress', 'Fit selected regions in view')}
+                </div>
+                <div class="sai-rjp-viewport"><div class="sai-rjp-board"><canvas tabindex="0" aria-label="${esc(t('Region canvas'))}"></canvas></div><div class="sai-rjp-marquee" hidden></div></div>
                 <details><summary>${esc(t('Compiled prompt'))}</summary><textarea data-rjp-output readonly rows="3" aria-label="${esc(t('Compiled prompt'))}"></textarea></details>
               </div>
               <aside>
@@ -796,6 +830,34 @@
             if (tab === 'layout') draw();
         }
         const canvas = q('canvas'), viewport = q('.sai-rjp-viewport'), board = q('.sai-rjp-board');
+        function setSelection(indices, primary = indices.at(-1) ?? -1, points = []) {
+            const clean = selectionState({ selected: primary, selectedRegions: indices, selectedPoints: points }, draft.items.length);
+            selected = clean.selected;
+            selectedRegions = new Set(clean.selectedRegions);
+            selectedPoints = new Set(clean.selectedPoints.filter(key => editableRegion(Number(key.split(':')[0]))));
+        }
+        const selectOnly = index => setSelection(index < 0 ? [] : [index], index);
+        const editableRegion = index => draft.items[index] && !regionUi[index]?.locked
+            && !regionUi[index]?.hidden && !regionUi[index]?.outside;
+        function chooseRegion(index, additive = false) {
+            const indices = additive ? new Set(selectedRegions) : new Set();
+            if (additive && indices.has(index)) indices.delete(index);
+            else if (index >= 0) indices.add(index);
+            setSelection([...indices], index);
+        }
+        const viewScale = () => view.scale ?? Math.max(0.001,
+            Math.min((viewport.clientWidth - 24) / draft.width, (viewport.clientHeight - 24) / draft.height));
+        function zoomTo(scale, anchor = null) {
+            if (gesture || applying || tab !== 'layout') return;
+            const rect = viewport.getBoundingClientRect();
+            const x = anchor ? anchor.clientX - rect.left - viewport.clientWidth / 2 : 0;
+            const y = anchor ? anchor.clientY - rect.top - viewport.clientHeight / 2 : 0;
+            const previous = viewScale();
+            view.scale = Math.max(0.01, Math.min(8, scale));
+            view.centerX += x * (1 / previous - 1 / view.scale) / draft.width;
+            view.centerY += y * (1 / previous - 1 / view.scale) / draft.height;
+            draw(); persistDraft();
+        }
         const raw = q('[data-rjp-json]');
         const editableDraft = () => visibleDraft(draft, regionUi);
         const modelDraft = () => {
@@ -822,7 +884,8 @@
             // Preserve unfinished edits without compiling them or saving API settings.
             const snapshot = normalizeSnapshot({
                 version: 1, draft, regionUi, raw: rawDirty ? raw.value : JSON.stringify(editableDraft(), null, 2),
-                rawDirty, selected, mode, tab, undo, redo, optimizedSnapshot,
+                rawDirty, selected, selectedRegions: [...selectedRegions], selectedPoints: [...selectedPoints], view,
+                mode, tab, undo, redo, optimizedSnapshot,
                 referenceFit, fixedCanvas,
                 ...(hasMaterials ? { materials: materialSlots(materials) } : {}),
                 detailsOpen: q('[data-rjp-details]').open,
@@ -855,11 +918,14 @@
             }, false);
         }
         const capture = () => ({ draft: clone(draft), regionUi: clone(regionUi), referenceFit, fixedCanvas: { ...fixedCanvas },
+            selected, selectedRegions: [...selectedRegions], selectedPoints: [...selectedPoints],
             ...(hasMaterials ? { materials: materialSlots(materials) } : {}),
             ...(reference ? { referenceSize: referenceDimensions(reference) } : {}) });
         function restore(snapshot) {
             draft = clone(snapshot.draft);
             regionUi = normalizeRegionUi(snapshot.regionUi, draft.items.length);
+            setSelection(snapshot.selectedRegions || [Math.min(selected, draft.items.length - 1)],
+                snapshot.selected ?? selected, snapshot.selectedPoints || []);
             if (hasMaterials && snapshot.materials) {
                 materials = materialSlots(snapshot.materials).map(item => ({
                     ...item, source: item.kind === 'ImagePrompt' ? materialVault.get(item.key)?.source || '' : '',
@@ -1022,7 +1088,7 @@
                 draft.items.push({ label, caption: '', ...(label === 'text' ? { text: '' } : {}),
                     bbox: [x, y, x + width, y + height] });
                 regionUi.push({ locked: false, hidden: false });
-                selected = draft.items.length - 1;
+                selectOnly(draft.items.length - 1);
             }
             Object.assign(regionUi[selected], { referenceSlot: slot, referenceKey: material.key });
             updateAnchor(selected);
@@ -1231,7 +1297,7 @@
                 remember();
                 draft = annotated?.draft || next;
                 regionUi = annotated?.regionUi || normalizeRegionUi(null, next.items.length);
-                selected = draft.items.length ? 0 : -1;
+                selectOnly(draft.items.length ? 0 : -1);
                 if (!annotated && reference) draft.items.forEach((_, index) => updateAnchor(index));
                 optimizedSnapshot = JSON.stringify(draft);
                 raw.value = JSON.stringify(editableDraft(), null, 2); rawDirty = false;
@@ -1243,12 +1309,25 @@
             }
         }
         function draw() {
-            const width = Math.max(1, Math.min(viewport.clientWidth - 24,
-                (viewport.clientHeight - 24) * draft.width / draft.height));
-            const height = width * draft.height / draft.width;
+            const scale = viewScale(), width = draft.width * scale, height = draft.height * scale;
+            const pan = (center, size, available) => {
+                const limit = Math.max(0, (size - available) / 2 + 12);
+                return Math.max(-limit, Math.min(limit, (0.5 - center) * size));
+            };
+            const dx = pan(view.centerX, width, viewport.clientWidth);
+            const dy = pan(view.centerY, height, viewport.clientHeight);
+            view.centerX = 0.5 - dx / width; view.centerY = 0.5 - dy / height;
+            board.style.left = `${(viewport.clientWidth - width) / 2 + dx}px`;
+            board.style.top = `${(viewport.clientHeight - height) / 2 + dy}px`;
             board.style.width = `${width}px`;
             board.style.height = `${height}px`;
-            const dpr = root.devicePixelRatio || 1;
+            q('[data-rjp-zoom]').value = Math.round(scale * 100);
+            q('[data-rjp-action="zoom-out"]').disabled = scale <= 0.01;
+            q('[data-rjp-action="zoom-in"]').disabled = scale >= 8;
+            q('[data-rjp-action="zoom-selection"]').disabled = ![...selectedRegions].some(editableRegion);
+            // Bound the backing bitmap when a large source is magnified; pointer coordinates remain full precision.
+            const dpr = Math.min(root.devicePixelRatio || 1, 8192 / Math.max(width, height),
+                Math.sqrt(16 * 1024 * 1024 / (width * height)));
             canvas.width = Math.max(1, Math.round(width * dpr));
             canvas.height = Math.max(1, Math.round(height * dpr));
             const ctx = canvas.getContext('2d');
@@ -1281,7 +1360,7 @@
                 }
                 const color = previewColor(item, index);
                 ctx.fillStyle = `${color}20`; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
-                ctx.strokeStyle = color; ctx.lineWidth = (index === selected ? 2.5 : 1.5) * unit;
+                ctx.strokeStyle = color; ctx.lineWidth = (selectedRegions.has(index) ? 2.5 : 1.5) * unit;
                 ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
                 const boxWidth = (x1 - x0) / unit, boxHeight = (y1 - y0) / unit;
                 const badgeWidth = Math.min(25, boxWidth / 2);
@@ -1318,13 +1397,18 @@
                     });
                     ctx.restore();
                 }
-                if (index === selected && !regionUi[index].locked) {
-                    for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) {
-                        ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 4 * unit, y - 4 * unit, 8 * unit, 8 * unit);
-                        ctx.strokeRect(x - 4 * unit, y - 4 * unit, 8 * unit, 8 * unit);
-                    }
-                }
             });
+            for (const index of selectedRegions) {
+                if (!editableRegion(index)) continue;
+                const item = draft.items[index], color = previewColor(item, index);
+                ctx.strokeStyle = color; ctx.lineWidth = 1.5 * unit;
+                corners.forEach(([xi, yi], corner) => {
+                    const x = item.bbox[xi], y = item.bbox[yi];
+                    ctx.fillStyle = selectedPoints.has(`${index}:${corner}`) ? color : '#ffffff';
+                    ctx.fillRect(x - 4 * unit, y - 4 * unit, 8 * unit, 8 * unit);
+                    ctx.strokeRect(x - 4 * unit, y - 4 * unit, 8 * unit, 8 * unit);
+                });
+            }
         }
         function revealSelectedRegion() {
             const list = q('.sai-rjp-regions');
@@ -1341,7 +1425,7 @@
                 const ui = regionUi[index];
                 const extra = flag => `data-rjp-index="${index}" aria-pressed="${ui[flag]}"`;
                 return `<div class="sai-rjp-region-row${ui.hidden || ui.outside ? ' is-hidden' : ''}" role="listitem" style="--region-color:${previewColor(item, index)}">
-                  <button type="button" class="sai-rjp-region-select" aria-pressed="${index === selected}" data-rjp-region="${index}" ${ui.outside ? `title="${esc(t('Outside canvas; restored when the image fit changes'))}"` : ''}><span>${index + 1}</span><span>${esc(label(item.label))}${ui.outside ? ' <i class="fa-solid fa-crop-simple" aria-hidden="true"></i>' : ''}<small>${esc(item.label === 'text' ? item.text || item.caption : item.caption)}</small></span></button>
+                  <button type="button" class="sai-rjp-region-select" aria-pressed="${selectedRegions.has(index)}" data-rjp-region="${index}" ${ui.outside ? `title="${esc(t('Outside canvas; restored when the image fit changes'))}"` : ''}><span>${index + 1}</span><span>${esc(label(item.label))}${ui.outside ? ' <i class="fa-solid fa-crop-simple" aria-hidden="true"></i>' : ''}<small>${esc(item.label === 'text' ? item.text || item.caption : item.caption)}</small></span></button>
                   ${icon('lock', ui.locked ? 'lock' : 'lock-open', ui.locked ? 'Unlock region' : 'Lock region', extra('locked'))}
                   ${icon('hide', ui.hidden ? 'eye-slash' : 'eye', ui.hidden ? 'Show region on canvas' : 'Hide region on canvas (still included in generation)', extra('hidden'))}
                 </div>`;
@@ -1349,17 +1433,20 @@
             list.scrollTop = scrollTop;
         }
         function render({ revealSelected = true } = {}) {
+            setSelection([...selectedRegions], selected, [...selectedPoints]);
             q('.sai-rjp-layout').hidden = tab !== 'layout';
             q('.sai-rjp-json').hidden = tab !== 'json';
             host.querySelectorAll('[data-rjp-tab]').forEach(node => node.setAttribute('aria-selected', String(node.dataset.rjpTab === tab)));
-            for (const name of ['select', 'draw']) q(`[data-rjp-action="${name}"]`).setAttribute('aria-pressed', String(mode === name));
-            canvas.style.cursor = mode === 'draw' ? 'crosshair' : 'default';
+            for (const name of ['select', 'points', 'draw', 'pan']) q(`[data-rjp-action="${name}"]`).setAttribute('aria-pressed', String(mode === name));
+            q('[data-rjp-action="multi-select"]').setAttribute('aria-pressed', String(multiSelect));
+            updateCursor();
             for (const key of ['width', 'height']) q(`[data-rjp-field="${key}"]`).value = draft[key];
             q('[data-rjp-field="summary"]').value = draft.summary.caption;
             renderRegionList();
             q('.sai-rjp-region-form').hidden = !draft.items[selected];
             const item = draft.items[selected];
-            q('[data-rjp-action="delete"]').disabled = !item || regionUi[selected].locked;
+            q('[data-rjp-action="delete"]').disabled = ![...selectedRegions].some(index => !regionUi[index].locked);
+            q('[data-rjp-action="duplicate"]').disabled = !selectedRegions.size;
             if (item) {
                 q('[data-rjp-selection]').textContent = t('Region {number}').replace('{number}', selected + 1);
                 for (const key of ['label', 'caption', 'text']) q(`[data-rjp-field="${key}"]`).value = item[key] || '';
@@ -1453,7 +1540,7 @@
             });
             if (result.canvasChanged) fixedCanvas = { width: draft.width, height: draft.height };
             imported = result;
-            selected = draft.items.length ? 0 : -1;
+            selectOnly(draft.items.length ? 0 : -1);
             initialError = null;
             rawDirty = false;
             return true;
@@ -1478,7 +1565,7 @@
             draft.items.push({ label, caption: '', ...(label === 'text' ? { text: '' } : {}),
                 bbox: [draft.width / 4, draft.height / 4, draft.width * 3 / 4, draft.height * 3 / 4] });
             regionUi.push({ locked: false, hidden: false });
-            selected = draft.items.length - 1;
+            selectOnly(draft.items.length - 1);
             updateAnchor(selected);
             render();
             q('[data-rjp-field="caption"]').focus();
@@ -1489,6 +1576,18 @@
                 if (closed || applying || (name === 'apply' && optimizing)) return;
                 if (name === 'close') return close();
                 if (name === 'maximize') return toggleMaximize();
+                if (name === 'zoom-in' || name === 'zoom-out') return zoomTo(viewScale() * (name === 'zoom-in' ? 1.25 : 0.8));
+                if (name === 'zoom-fit') { view = viewState(null); draw(); return; }
+                if (name === 'zoom-selection') {
+                    const boxes = [...selectedRegions].filter(editableRegion).map(index => draft.items[index].bbox);
+                    if (!boxes.length) return;
+                    const box = [Math.min(...boxes.map(b => b[0])), Math.min(...boxes.map(b => b[1])),
+                        Math.max(...boxes.map(b => b[2])), Math.max(...boxes.map(b => b[3]))];
+                    view = { centerX: (box[0] + box[2]) / (2 * draft.width), centerY: (box[1] + box[3]) / (2 * draft.height),
+                        scale: Math.max(0.01, Math.min(8, (viewport.clientWidth - 64) / (box[2] - box[0]),
+                            (viewport.clientHeight - 64) / (box[3] - box[1]))) };
+                    draw(); return;
+                }
                 if (hasMaterials && ['add-material', 'upload-material'].includes(name) && !loadingMaterials && !applying) {
                     materialFileSlot = name === 'upload-material' ? index : null;
                     q('[data-rjp-material-file]').click();
@@ -1527,7 +1626,8 @@
                     render();
                     status({ message: 'Suggestions applied to layout.' }, false);
                 }
-                if (name === 'select' || name === 'draw') { mode = name; render(); }
+                if (['select', 'points', 'draw', 'pan'].includes(name)) { mode = name; selectedPoints.clear(); render(); }
+                if (name === 'multi-select') { multiSelect = !multiSelect; render(); }
                 if (name === 'add') addRegion();
                 if ((name === 'lock' || name === 'hide') && Number.isInteger(index) && regionUi[index]) {
                     remember();
@@ -1536,19 +1636,26 @@
                     render({ revealSelected: false });
                     q(`[data-rjp-action="${name}"][data-rjp-index="${index}"]`)?.focus({ preventScroll: true });
                 }
-                if (name === 'undo' && undo.length) { redo.push(capture()); restore(undo.pop()); selected = Math.min(selected, draft.items.length - 1); render(); }
-                if (name === 'redo' && redo.length) { undo.push(capture()); restore(redo.pop()); selected = Math.min(selected, draft.items.length - 1); render(); }
-                if ((name === 'delete' || name === 'duplicate') && draft.items[selected]) {
-                    if (name === 'delete' && regionUi[selected].locked) return;
-                    if (name === 'duplicate') requireValue(draft.items.length < 200, 'Too many regions');
+                if (name === 'undo' && undo.length) { redo.push(capture()); restore(undo.pop()); render(); }
+                if (name === 'redo' && redo.length) { undo.push(capture()); restore(redo.pop()); render(); }
+                if ((name === 'delete' || name === 'duplicate') && selectedRegions.size) {
+                    const indices = [...selectedRegions].filter(index => name === 'duplicate' || !regionUi[index].locked).sort((a, b) => a - b);
+                    if (!indices.length) return;
+                    if (name === 'duplicate') requireValue(draft.items.length + indices.length <= 200, 'Too many regions');
                     remember();
                     if (name === 'delete') {
-                        draft.items.splice(selected, 1); regionUi.splice(selected, 1);
-                        selected = Math.min(selected, draft.items.length - 1);
+                        for (const index of indices.reverse()) { draft.items.splice(index, 1); regionUi.splice(index, 1); }
+                        selectOnly(Math.min(selected, draft.items.length - 1));
                     }
                     else {
-                        draft.items.splice(selected + 1, 0, clone(draft.items[selected]));
-                        regionUi.splice(selected + 1, 0, { ...clone(regionUi[selected]), locked: false, hidden: false }); selected++;
+                        const copies = [];
+                        for (const [offset, index] of indices.entries()) {
+                            const source = index + offset, target = source + 1;
+                            draft.items.splice(target, 0, clone(draft.items[source]));
+                            regionUi.splice(target, 0, { ...clone(regionUi[source]), locked: false, hidden: false });
+                            copies.push(target);
+                        }
+                        setSelection(copies);
                     }
                     render();
                 }
@@ -1644,10 +1751,20 @@
             if (button.dataset.rjpTab) {
                 try { setTab(button.dataset.rjpTab); } catch (error) { status(error); }
             }
-            if (button.dataset.rjpRegion !== undefined) { selected = Number(button.dataset.rjpRegion); render(); }
+            if (!applying && button.dataset.rjpRegion !== undefined) {
+                chooseRegion(Number(button.dataset.rjpRegion), event.ctrlKey || event.metaKey || multiSelect); render();
+            }
         });
         function updateField(event) {
             if (closed || applying) return;
+            if (event.target === q('[data-rjp-zoom]')) {
+                if (event.type === 'change') {
+                    const value = Number(event.target.value);
+                    if (Number.isFinite(value) && value > 0) zoomTo(value / 100);
+                    else draw();
+                }
+                return;
+            }
             if (hasMaterials && event.target === q('[data-rjp-binding]')) {
                 try {
                     const ui = regionUi[selected];
@@ -1884,81 +2001,216 @@
                     void loadMaterialFiles([file]).catch(status);
                 else void loadReference(file);
             }],
-            ['dragend', clearReferenceDrop], ['blur', clearReferenceDrop],
+            ['dragend', clearReferenceDrop], ['blur', () => {
+                clearReferenceDrop(); spaceHeld = false; endGesture(true); updateCursor();
+            }],
+            ['keyup', event => {
+                if (event.code === 'Space' || event.key === ' ') { spaceHeld = false; updateCursor(); }
+            }],
         ];
         for (const [name, handler] of referenceEvents) root.addEventListener?.(name, handler, true);
-        const point = event => {
+        const point = (event, clamp = true) => {
             const rect = canvas.getBoundingClientRect();
-            return [
-                Math.round(Math.max(0, Math.min(draft.width, (event.clientX - rect.left) * draft.width / rect.width))),
-                Math.round(Math.max(0, Math.min(draft.height, (event.clientY - rect.top) * draft.height / rect.height)))
-            ];
+            const values = [(event.clientX - rect.left) * draft.width / rect.width,
+                (event.clientY - rect.top) * draft.height / rect.height];
+            return clamp ? values.map((value, axis) => Math.round(Math.max(0, Math.min(axis ? draft.height : draft.width, value)))) : values;
         };
-        canvas.addEventListener('pointerdown', event => {
-            if (event.button !== 0 || applying) return;
+        function updateCursor() {
+            const cursor = gesture?.type === 'pan' ? 'grabbing' : spaceHeld || mode === 'pan' ? 'grab'
+                : ['draw', 'points'].includes(mode) ? 'crosshair' : 'default';
+            canvas.style.cursor = cursor; viewport.style.cursor = cursor;
+        }
+        function movingBoxes(keys = null) {
+            return [...selectedRegions].filter(editableRegion).flatMap(index => {
+                const axes = keys ? [...new Set(keys.filter(key => Number(key.split(':')[0]) === index)
+                    .flatMap(key => corners[Number(key.split(':')[1])]))] : [0, 1, 2, 3];
+                return axes.length ? [{ index, bbox: [...draft.items[index].bbox], axes }] : [];
+            });
+        }
+        function moveBoxes(boxes, dx, dy) {
+            const delta = [dx, dy].map((value, axis) => {
+                let low = -Infinity, high = Infinity;
+                const edge = axis, opposite = axis + 2, size = axis ? draft.height : draft.width;
+                for (const { bbox: box, axes } of boxes) {
+                    const near = axes.includes(edge), far = axes.includes(opposite);
+                    if (near) { low = Math.max(low, -box[edge]); high = Math.min(high, far ? size - box[opposite] : box[opposite] - box[edge] - 1); }
+                    if (far) { high = Math.min(high, size - box[opposite]); low = Math.max(low, near ? -box[edge] : box[edge] + 1 - box[opposite]); }
+                }
+                return low <= high ? Math.max(low, Math.min(high, Math.round(value))) : 0;
+            });
+            for (const { index, bbox, axes } of boxes)
+                draft.items[index].bbox = bbox.map((value, axis) => value + (axes.includes(axis) ? delta[axis % 2] : 0));
+        }
+        function marqueeSelection(event) {
+            const current = point(event, false), [x, y] = gesture.start;
+            const bounds = [Math.min(x, current[0]), Math.min(y, current[1]), Math.max(x, current[0]), Math.max(y, current[1])];
+            const rect = viewport.getBoundingClientRect(), overlay = q('.sai-rjp-marquee');
+            overlay.hidden = false;
+            overlay.style.left = `${Math.min(gesture.client[0], event.clientX) - rect.left}px`;
+            overlay.style.top = `${Math.min(gesture.client[1], event.clientY) - rect.top}px`;
+            overlay.style.width = `${Math.abs(event.clientX - gesture.client[0])}px`;
+            overlay.style.height = `${Math.abs(event.clientY - gesture.client[1])}px`;
+            const hits = [];
+            if (gesture.points) {
+                for (const index of gesture.before.selectedRegions.filter(editableRegion)) {
+                    const box = draft.items[index].bbox;
+                    corners.forEach(([xi, yi], corner) => {
+                        if (box[xi] >= bounds[0] && box[xi] <= bounds[2] && box[yi] >= bounds[1] && box[yi] <= bounds[3]) hits.push(`${index}:${corner}`);
+                    });
+                }
+            } else draft.items.forEach((item, index) => {
+                const box = item.bbox;
+                if (editableRegion(index) && box[2] >= bounds[0] && box[0] <= bounds[2]
+                    && box[3] >= bounds[1] && box[1] <= bounds[3]) hits.push(index);
+            });
+            const result = new Set(gesture.additive ? gesture.points ? gesture.before.selectedPoints : gesture.before.selectedRegions : []);
+            for (const key of hits) {
+                if (gesture.additive && result.has(key)) result.delete(key);
+                else result.add(key);
+            }
+            if (gesture.points) selectedPoints = result;
+            else setSelection([...result]);
+            render({ revealSelected: false });
+        }
+        viewport.addEventListener('wheel', event => {
+            if (applying || tab !== 'layout') return;
             event.preventDefault();
-            const [x, y] = point(event), before = capture();
-            let handle = null;
-            const tolerance = 10 * draft.width / canvas.getBoundingClientRect().width;
-            const box = draft.items[selected]?.bbox;
-            if (mode === 'select' && box && !regionUi[selected].hidden && !regionUi[selected].outside && !regionUi[selected].locked) {
-                handle = [[0, 1], [2, 1], [0, 3], [2, 3]].find(([xi, yi]) =>
-                    Math.abs(x - box[xi]) <= tolerance && Math.abs(y - box[yi]) <= tolerance);
+            event.stopPropagation();
+            const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1);
+            zoomTo(viewScale() * Math.exp(-Math.max(-300, Math.min(300, delta)) * 0.002), event);
+        }, { passive: false });
+        viewport.addEventListener('pointerdown', event => {
+            if (![0, 1].includes(event.button) || applying || gesture) return;
+            event.preventDefault();
+            canvas.focus({ preventScroll: true });
+            viewport.setPointerCapture(event.pointerId);
+            const start = point(event, false), [x, y] = start, before = capture();
+            const base = { before, start, pointerId: event.pointerId, client: [event.clientX, event.clientY] };
+            if (event.button === 1 || spaceHeld || mode === 'pan') {
+                gesture = { ...base, type: 'pan', view: { ...view }, scale: viewScale() };
+                updateCursor(); return;
+            }
+            const additive = !!(event.ctrlKey || event.metaKey || multiSelect);
+            const inside = x >= 0 && x <= draft.width && y >= 0 && y <= draft.height;
+            const pixel = draft.width / canvas.getBoundingClientRect().width;
+            // Browser pointer rounding must not turn a click on a visible edge into an empty-space marquee.
+            const hit = inside ? draft.items.findLastIndex((item, index) => !regionUi[index].hidden && !regionUi[index].outside
+                && x >= item.bbox[0] - pixel / 2 && x <= item.bbox[2] + pixel / 2
+                && y >= item.bbox[1] - pixel / 2 && y <= item.bbox[3] + pixel / 2) : -1;
+            let handle = null, distance = Infinity;
+            const tolerance = 10 * pixel;
+            if (mode === 'points' || mode === 'select' && !additive) {
+                for (const index of selectedRegions) {
+                    if (!editableRegion(index)) continue;
+                    const box = draft.items[index].bbox;
+                    corners.forEach(([xi, yi], corner) => {
+                        const d = Math.hypot(x - box[xi], y - box[yi]);
+                        if (d <= tolerance && d < distance) { handle = `${index}:${corner}`; distance = d; }
+                    });
+                }
             }
             if (mode === 'draw') {
-                if (draft.items.length >= 200) return;
+                if (!inside || draft.items.length >= 200) return;
                 const label = q('[data-rjp-add-type]').value;
-                draft.items.push({ label, caption: '', ...(label === 'text' ? { text: '' } : {}), bbox: [x, y, x, y] });
+                const [px, py] = point(event);
+                draft.items.push({ label, caption: '', ...(label === 'text' ? { text: '' } : {}), bbox: [px, py, px, py] });
                 regionUi.push({ locked: false, hidden: false });
-                selected = draft.items.length - 1;
-            } else if (!handle) {
-                selected = draft.items.findLastIndex((item, index) => !regionUi[index].hidden && !regionUi[index].outside
-                    && x >= item.bbox[0] && x <= item.bbox[2] && y >= item.bbox[1] && y <= item.bbox[3]);
+                selectOnly(draft.items.length - 1);
+                gesture = { ...base, type: 'draw', start: [px, py], index: selected };
+            } else if (handle) {
+                if (mode === 'points' && additive) {
+                    if (selectedPoints.has(handle)) selectedPoints.delete(handle);
+                    else selectedPoints.add(handle);
+                } else if (mode !== 'points' || !selectedPoints.has(handle)) selectedPoints = new Set([handle]);
+                if (selectedPoints.has(handle)) gesture = { ...base, type: 'move', boxes: movingBoxes([...selectedPoints]) };
+            } else if (mode === 'points' && !selectedRegions.size && hit >= 0) {
+                selectOnly(hit);
+            } else if (mode === 'points' || hit < 0) {
+                gesture = { ...base, type: 'marquee', points: mode === 'points', additive };
+                if (!additive) {
+                    if (mode === 'points') selectedPoints.clear();
+                    else selectOnly(-1);
+                }
+            } else {
+                if (additive) chooseRegion(hit, true);
+                else if (!selectedRegions.has(hit)) selectOnly(hit);
+                else { selected = hit; selectedPoints.clear(); }
+                if (selectedRegions.has(hit) && editableRegion(hit)) gesture = { ...base, type: 'move', boxes: movingBoxes() };
             }
-            gesture = selected < 0 || regionUi[selected].locked ? null
-                : { before, start: [x, y], bbox: [...draft.items[selected].bbox], handle, draw: mode === 'draw' };
-            canvas.setPointerCapture(event.pointerId);
             render();
         });
-        canvas.addEventListener('pointermove', event => {
-            if (!gesture) return;
-            const [x, y] = point(event), item = draft.items[selected], box = gesture.bbox;
-            if (gesture.draw) {
-                item.bbox = [Math.min(x, gesture.start[0]), Math.min(y, gesture.start[1]), Math.max(x, gesture.start[0]), Math.max(y, gesture.start[1])];
-            } else if (gesture.handle) {
-                const [xi, yi] = gesture.handle;
-                item.bbox[xi] = xi === 0 ? Math.min(x, item.bbox[2] - 1) : Math.max(x, item.bbox[0] + 1);
-                item.bbox[yi] = yi === 1 ? Math.min(y, item.bbox[3] - 1) : Math.max(y, item.bbox[1] + 1);
+        viewport.addEventListener('pointermove', event => {
+            if (!gesture || gesture.pointerId !== event.pointerId) return;
+            if (gesture.type === 'pan') {
+                view.centerX = gesture.view.centerX - (event.clientX - gesture.client[0]) / (draft.width * gesture.scale);
+                view.centerY = gesture.view.centerY - (event.clientY - gesture.client[1]) / (draft.height * gesture.scale);
+                draw(); return;
+            }
+            if (gesture.type === 'marquee') {
+                if (Math.hypot(event.clientX - gesture.client[0], event.clientY - gesture.client[1]) >= 3) marqueeSelection(event);
+                return;
+            }
+            if (gesture.type === 'draw') {
+                const [x, y] = point(event);
+                draft.items[gesture.index].bbox = [Math.min(x, gesture.start[0]), Math.min(y, gesture.start[1]),
+                    Math.max(x, gesture.start[0]), Math.max(y, gesture.start[1])];
             } else {
-                const dx = Math.max(-box[0], Math.min(draft.width - box[2], x - gesture.start[0]));
-                const dy = Math.max(-box[1], Math.min(draft.height - box[3], y - gesture.start[1]));
-                item.bbox = [box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy];
+                const [x, y] = point(event, false);
+                moveBoxes(gesture.boxes, x - gesture.start[0], y - gesture.start[1]);
             }
             draw();
         });
         function endGesture(cancel = false) {
             if (!gesture) return;
-            const box = draft.items[selected]?.bbox;
-            if (cancel || !box || box[2] - box[0] < 1 || box[3] - box[1] < 1) restore(gesture.before);
-            else if (JSON.stringify(draft) !== JSON.stringify(gesture.before.draft)) {
-                updateAnchor(selected);
-                remember(gesture.before);
-            }
-            selected = Math.min(selected, draft.items.length - 1);
+            const finished = gesture;
             gesture = null;
+            q('.sai-rjp-marquee').hidden = true;
+            if (finished.type === 'pan') {
+                if (cancel) view = finished.view;
+            } else if (finished.type === 'marquee') {
+                if (cancel) setSelection(finished.before.selectedRegions, finished.before.selected, finished.before.selectedPoints);
+            } else {
+                const indices = finished.type === 'draw' ? [finished.index] : finished.boxes.map(item => item.index);
+                if (cancel || indices.some(index => {
+                    const box = draft.items[index]?.bbox;
+                    return !box || box[2] - box[0] < 1 || box[3] - box[1] < 1;
+                })) restore(finished.before);
+                else if (JSON.stringify(draft) !== JSON.stringify(finished.before.draft)) {
+                    indices.forEach(updateAnchor);
+                    remember(finished.before);
+                }
+            }
+            if (viewport.hasPointerCapture?.(finished.pointerId)) viewport.releasePointerCapture(finished.pointerId);
             render();
         }
-        canvas.addEventListener('pointerup', () => endGesture());
-        canvas.addEventListener('pointercancel', () => endGesture(true));
+        viewport.addEventListener('pointerup', event => { if (gesture?.pointerId === event.pointerId) endGesture(); });
+        viewport.addEventListener('pointercancel', event => { if (gesture?.pointerId === event.pointerId) endGesture(true); });
+        viewport.addEventListener('lostpointercapture', event => { if (gesture?.pointerId === event.pointerId) endGesture(true); });
+        viewport.addEventListener('auxclick', event => { if (event.button === 1) event.preventDefault(); });
         host.addEventListener('keydown', event => {
-            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
+            if (event.key === 'Escape') {
+                event.preventDefault(); event.stopPropagation();
+                if (gesture) endGesture(true); else close();
+            }
             if (event.key === 'Tab') {
                 const nodes = [...host.querySelectorAll('button,input,select,textarea,canvas')].filter(node => !node.disabled && node.getClientRects().length);
                 const first = nodes[0], last = nodes[nodes.length - 1];
                 if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
                 else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
             }
-            if (event.target !== canvas) return;
+            if (event.target !== canvas || applying) return;
+            if (event.code === 'Space' || event.key === ' ') { event.preventDefault(); spaceHeld = true; updateCursor(); }
+            if (gesture) return;
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+                event.preventDefault();
+                if (mode === 'points') selectedPoints = new Set([...selectedRegions].filter(editableRegion)
+                    .flatMap(index => corners.map((_, corner) => `${index}:${corner}`)));
+                else setSelection(draft.items.map((_, index) => index).filter(editableRegion));
+                render();
+            }
+            if (['+', '='].includes(event.key)) { event.preventDefault(); zoomTo(viewScale() * 1.25); }
+            if (event.key === '-') { event.preventDefault(); zoomTo(viewScale() * 0.8); }
+            if (event.key === '0') { event.preventDefault(); void action('zoom-fit'); }
             if (['Delete', 'Backspace'].includes(event.key)) { event.preventDefault(); void action('delete'); }
             if ((event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())) {
                 event.preventDefault(); void action(event.key.toLowerCase() === 'y' || event.shiftKey ? 'redo' : 'undo');

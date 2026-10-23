@@ -2605,6 +2605,7 @@ function isPresetNavCompletionRequest(input) {
 }
 
 function schedulePresetNavNetworkIdleFinish(reason) {
+    if (window.__simpleaiPresetNavigationManaged) return;
     if (!presetNavProgressActive || presetNavNetworkObserved <= 0 || presetNavNetworkPending > 0) return;
     clearPresetNavNetworkIdleTimer();
     const token = presetNavNetworkToken;
@@ -2889,6 +2890,117 @@ function finishPresetNavProgress(nextPreset) {
         return;
     }
     finishNow();
+}
+
+let presetNavigationRequestButtonId = "";
+let presetNavigationQueuedButtonId = "";
+
+function guardSimpleAIPresetNavigationClick(event) {
+    const button = event.target?.closest?.("#topbar_row button.bar_button");
+    if (!button || button.disabled || !/^bar\d+$/.test(button.id)) return;
+    window.__simpleaiPresetNavigationManaged = true;
+    if (!presetNavigationRequestButtonId) {
+        presetNavigationRequestButtonId = button.id;
+        return;
+    }
+    // Gradio's always_last only guards one dependency, and replays its original
+    // trigger. Keep the latest button until the entire navigation has finished.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    presetNavigationQueuedButtonId = button.id === presetNavigationRequestButtonId ? "" : button.id;
+    applyOptimisticBarHighlight(button);
+}
+
+function finishSimpleAIPresetNavigationRequest() {
+    const nextButtonId = presetNavigationQueuedButtonId;
+    presetNavigationQueuedButtonId = "";
+    presetNavigationRequestButtonId = "";
+    const button = nextButtonId ? document.getElementById(nextButtonId) : null;
+    if (button?.isConnected && !button.disabled) button.click();
+}
+
+function waitForSimpleAIUiPaint() {
+    return new Promise((resolve) => {
+        let timer = 0;
+        let finished = false;
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            if (timer) clearTimeout(timer);
+            resolve();
+        };
+        // Background tabs may not receive animation frames.
+        timer = setTimeout(finish, 150);
+        if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => requestAnimationFrame(finish));
+        }
+    });
+}
+
+async function completeSimpleAIPresetNavigation(params) {
+    try {
+        if (!params || isStaleSystemParamsForPreset(params) || isStaleSystemParamsForSceneTheme(params)) return [];
+        const navigationToken = presetNavNetworkToken;
+        syncImageAndTtsPanelsFromCheckboxes("preset_nav_complete");
+        refresh_topbar_status_js_for_preset_nav(params, { finishProgress: false });
+        window.simpleaiRehydrateModelsTabAfterPresetNav?.(params);
+        window.syncGradio6MountedDynamicVisibility?.("preset_nav_complete");
+        window.SimpAIWelcomeMedia?.sync();
+        await waitForSimpleAIUiPaint();
+        if (navigationToken !== presetNavNetworkToken || isStaleSystemParamsForPreset(params)
+                || isStaleSystemParamsForSceneTheme(params)) return [];
+        const preset = String(params.__preset || params.preset || "").trim();
+        const seq = (Number(window.__simpleai_preset_nav_completion_seq) || 0) + 1;
+        const detail = { preset, seq, completed_at: Date.now() };
+        window.__simpleai_preset_nav_completion_seq = seq;
+        window.__simpleai_preset_nav_completed = detail;
+        finishPresetNavProgress(preset);
+        window.dispatchEvent(new CustomEvent("simpai:preset-nav-completed", { detail }));
+        window.SimpAIStudioPerformance?.mark?.("preset.navigation_finished", {
+            preset, completion_seq: seq,
+            duration_ms: presetNavProgressStartedAt ? Date.now() - presetNavProgressStartedAt : null,
+        });
+    } catch (error) {
+        failSimpleAIPresetNavigation(false);
+        console.error("[UI-TRACE] preset_nav_complete_failed", error);
+    } finally {
+        finishSimpleAIPresetNavigationRequest();
+    }
+    return [];
+}
+
+function failSimpleAIPresetNavigation(finishRequest = true) {
+    clearPresetNavFinishTimer();
+    clearPresetNavNetworkIdleTimer();
+    stopPresetNavSoftProgress();
+    setPresetNavSceneSuppressed(false);
+    if (presetNavProgressHideTimer) clearTimeout(presetNavProgressHideTimer);
+    presetNavProgressHideTimer = 0;
+    presetNavProgressActive = false;
+    document.body.style.cursor = "";
+    const host = document.getElementById("preset_nav_progress");
+    if (host) host.style.opacity = "0";
+    window.SimpAIStudioPerformance?.mark?.("preset.navigation_failed", {});
+    if (finishRequest) finishSimpleAIPresetNavigationRequest();
+}
+
+async function completeSimpleAIStudioLoad(params, aspect) {
+    // Reached only after the server has applied the initial preset values.
+    // Do not replace this with a timer or a DOM-mounted approximation.
+    window.__simpleai_ui_ready = true;
+    refresh_topbar_status_js(params);
+    syncImageAndTtsPanelsFromCheckboxes("load_ready");
+    if (typeof notify_style_state_changed === "function") notify_style_state_changed("load_ready");
+    if (typeof refresh_aspect_ratios_label === "function") refresh_aspect_ratios_label(aspect);
+    if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();
+    if (typeof refresh_grid_delayed === "function") refresh_grid_delayed();
+    if (typeof bindPluginBtn === "function") bindPluginBtn();
+    window.SimpAIWelcomeMedia?.sync();
+    await waitForSimpleAIUiPaint();
+    window.__simpleai_main_load_complete = true;
+    window.dispatchEvent(new CustomEvent("simpai:studio-load-completed"));
+    window.SimpAIStudioPerformance?.mark?.("studio.load_ready", { preset: String(params?.__preset || "") });
+    return [];
 }
 
 function markUiAction(action, extra = null) {
@@ -5186,6 +5298,15 @@ function scheduleScenePresetDefaultSync(system_params, traceLabel) {
     }
 }
 
+function rememberScenePresetControlValue(controlId, value) {
+    const params = window.simpleaiTopbarSystemParams || topbarLastSystemParams;
+    if (value === undefined || !params?.__is_scene_frontend || isStaleSystemParamsForPreset(params)) return false;
+    if (!SCENE_PRESET_DEFAULT_CONTROL_IDS.includes(controlId)
+            && controlId !== "overwrite_step" && controlId !== "image_number") return false;
+    getScenePresetDefaultUserState(params).values.set(scenePresetDefaultControlKey(controlId), value);
+    return true;
+}
+
 function bindScenePresetDefaultUserEditGuard() {
     if (window.__simpleai_scene_default_guard_bound) return;
     const app = typeof gradioApp === "function" ? gradioApp() : document;
@@ -5200,11 +5321,8 @@ function bindScenePresetDefaultUserEditGuard() {
         const target = event && event.target ? event.target : null;
         const root = target?.closest?.(selector);
         if (!root) return;
-        const params = window.simpleaiTopbarSystemParams || topbarLastSystemParams;
-        if (!params?.__is_scene_frontend || isStaleSystemParamsForPreset(params)) return;
         const value = target.type === "checkbox" ? target.checked : target.value;
-        if (value === undefined) return;
-        getScenePresetDefaultUserState(params).values.set(scenePresetDefaultControlKey(root.id), value);
+        rememberScenePresetControlValue(root.id, value);
     };
     app.addEventListener("input", onEdit, true);
     app.addEventListener("change", onEdit, true);
@@ -6895,7 +7013,7 @@ function reconcileSceneAuxControls(state, theme) {
     reconcileSceneAuxControlsFromValues(isScene, resolvedTheme, getSceneTaskMethodFromState(state, resolvedTheme), resolvedHidden, state);
 }
 
-function refresh_topbar_status_js_for_preset_nav(system_params) {
+function refresh_topbar_status_js_for_preset_nav(system_params, options = {}) {
     const presetSwitched = !!(system_params && system_params.__preset_switched);
     if (isStaleSystemParamsForPreset(system_params)) {
         try {
@@ -6968,7 +7086,7 @@ function refresh_topbar_status_js_for_preset_nav(system_params) {
     }
 
     try {
-        finishPresetNavProgress(system_params && system_params["__preset"]);
+        if (options.finishProgress !== false) finishPresetNavProgress(system_params && system_params["__preset"]);
     } catch (e) {
         console.error('[UI-TRACE] preset_nav_js.finish_progress_failed', e);
     }
@@ -14664,10 +14782,7 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         } catch (_) {}
     });
-    // Keep this flag for diagnostics only; no click is blocked by this script now.
-    setTimeout(() => {
-        window.__simpleai_ui_ready = true;
-    }, 2500);
+    // The load chain sets readiness after applying the preset and parameters.
 
     const tryBindImageTtsPanelSync = () => {
         const app = gradioApp();
@@ -14825,6 +14940,7 @@ document.addEventListener("DOMContentLoaded", function() {
         app.addEventListener("pointerdown", cachedStorePointerHandler, true);
         app.addEventListener("keydown", cachedStoreKeyboardHandler, true);
         // Single-channel binding only; avoid duplicate optimistic applies.
+        app.addEventListener("click", guardSimpleAIPresetNavigationClick, true);
         app.addEventListener("click", optimisticHandler, false);
     };
     tryBindTopbarOptimistic();

@@ -18,6 +18,7 @@
         const renderAll = () => call(renderSource, 'renderAll', undefined, { inspector: false });
         const warn = (...args) => call(diagnosticSource, 'warn', undefined, ...args);
         const buildConfigStatePatch = (...args) => call(patchSource, 'buildConfigStatePatch', {}, ...args);
+        const catalogRequests = new WeakMap();
 
         function mergeChoices(items) {
             const merged = [];
@@ -37,18 +38,20 @@
 
         function getModelChoices(node) {
             const defaults = node?.config?.defaults || {};
+            const values = node?.config?.values || {};
             const globalCatalog = call(catalogSource, 'getGlobalModelCatalog', {});
             const catalog = node?.config?.catalog || globalCatalog || {};
             const presetLoras = getPresetDefaultLoraModels(defaults);
+            const selectedLoras = getPresetDefaultLoraModels(values);
             return {
-                base_model: mergeChoices([defaults.base_model || '', ...(catalog.model_filenames || [])]),
-                refiner_model: mergeChoices(['None', defaults.refiner_model || '', ...(catalog.refiner_filenames || [])]),
-                clip_model: mergeChoices([defaults.clip_model || 'Default (model)', ...(catalog.clip_filenames || [])]),
-                pe_model: mergeChoices(['None', ...(catalog.pe_filenames || [])]),
+                base_model: mergeChoices([defaults.base_model || '', ...(catalog.model_filenames || []), values.base_model]),
+                refiner_model: mergeChoices(['None', defaults.refiner_model || '', ...(catalog.refiner_filenames || []), values.refiner_model]),
+                clip_model: mergeChoices([defaults.clip_model || 'Default (model)', ...(catalog.clip_filenames || []), values.clip_model]),
+                pe_model: mergeChoices(['None', ...(catalog.pe_filenames || []), values.pe_model]),
                 pe_enabled: !!catalog.pe_enabled,
-                vae: mergeChoices([defaults.vae || 'Default (model)', ...(catalog.vae_filenames || [])]),
-                upscale_model: mergeChoices([defaults.upscale_model || 'default', ...(catalog.upscale_model_filenames || [])]),
-                lora: mergeChoices(['None', ...presetLoras, ...(catalog.lora_filenames || [])])
+                vae: mergeChoices([defaults.vae || 'Default (model)', ...(catalog.vae_filenames || []), values.vae]),
+                upscale_model: mergeChoices([defaults.upscale_model || 'default', ...(catalog.upscale_model_filenames || []), values.upscale_model]),
+                lora: mergeChoices(['None', ...presetLoras, ...(catalog.lora_filenames || []), ...selectedLoras])
             };
         }
 
@@ -59,15 +62,27 @@
         async function refreshModelConfigCatalog(configNode, presetNode) {
             if (!configNode || !presetNode || configNode.config_kind !== 'models') return;
             const useModelFilter = modelConfigUsesFilter(configNode);
-            const response = await call(requestSource, 'sendCanvasModelCatalogRequest', null,
-                presetNode, { use_model_filter: useModelFilter });
+            const request = {};
+            catalogRequests.set(configNode, request);
+            const isCurrentRequest = () => catalogRequests.get(configNode) === request
+                && call(nodeSource, 'getNode', null, configNode.id) === configNode
+                && call(nodeSource, 'getConfigTargetPreset', null, configNode) === presetNode
+                && modelConfigUsesFilter(configNode) === useModelFilter;
+            let response;
+            try {
+                response = await call(requestSource, 'sendCanvasModelCatalogRequest', null,
+                    presetNode, { use_model_filter: useModelFilter });
+            } catch (err) {
+                if (isCurrentRequest()) throw err;
+                return;
+            }
+            if (!isCurrentRequest()) return;
             if (!response?.ok || !response.catalog) {
                 warn('[SimpAI Canvas] model catalog refresh failed', response);
                 return;
             }
             Object.assign(configNode, buildConfigStatePatch(configNode, {
                 configPatch: {
-                    use_model_filter: useModelFilter,
                     catalog: response.catalog,
                     catalog_updated_at: call(timeSource, 'nowIso', '')
                 }

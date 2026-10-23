@@ -107,6 +107,59 @@ _FILE_PREVIEW_PATCHED_KEY = (
     "each(tbody, 23, () => get(normalized_files), "
     "(_file, simpleai_file_row_index) => simpleai_file_row_index,"
 )
+_BLOCKS_INITIAL_RELOAD_ORIGINAL = """\tuser_effect(() => {
+\t\treload_count();
+
+\t\tuntrack(() => {
+\t\t\tapp_tree.reload("""
+_BLOCKS_INITIAL_RELOAD_PATCHED = """\t// The constructors already applied the initial config. Reload only when
+\t// Gradio advances its reload counter; rebuilding on mount duplicates work.
+\tlet simpleai_applied_reload_count = reload_count();
+\tuser_effect(() => {
+\t\tconst requested_reload = reload_count();
+\t\tif (Object.is(requested_reload, simpleai_applied_reload_count)) return;
+\t\tsimpleai_applied_reload_count = requested_reload;
+
+\t\tuntrack(() => {
+\t\t\tapp_tree.reload("""
+_APP_TREE_LOADING_UPDATE_ORIGINAL = """\tasync update_state(id, new_state, check_visibility = true) {
+\t\tconst node = find_node_by_id(this.root, id);"""
+_APP_TREE_RELOAD_START = "\treload(components, layout, dependencies, config) {\n"
+_APP_TREE_RERENDER_START = "\trerender(components, layout) {\n"
+
+
+def _startup_performance_patch_disabled() -> bool:
+    return _env_flag_enabled("SIMPAI_DISABLE_GRADIO_STARTUP_PERFORMANCE_PATCH") or _env_flag_enabled(
+        "SIMPAI_DISABLE_GRADIO_ASSET_PATCHES"
+    )
+
+
+def _asset_needs_startup_performance_patch(text: str) -> bool:
+    return (
+        _BLOCKS_INITIAL_RELOAD_ORIGINAL in text and "new AppTree(" in text
+    ) or (
+        all(marker in text for marker in (
+            _APP_TREE_LOADING_UPDATE_ORIGINAL, _APP_TREE_RELOAD_START, _APP_TREE_RERENDER_START,
+        )) and "simpleai_loading_status_cache" not in text
+    )
+
+
+def _patch_startup_performance_asset(text: str) -> str:
+    if _BLOCKS_INITIAL_RELOAD_ORIGINAL in text and "new AppTree(" in text:
+        text = text.replace(_BLOCKS_INITIAL_RELOAD_ORIGINAL, _BLOCKS_INITIAL_RELOAD_PATCHED, 1)
+    if "simpleai_loading_status_cache" not in text and all(marker in text for marker in (
+        _APP_TREE_LOADING_UPDATE_ORIGINAL, _APP_TREE_RELOAD_START, _APP_TREE_RERENDER_START,
+    )):
+        helper = Path(__file__).with_name("gradio_loading_status.js").read_text(encoding="utf-8")
+        text = helper + "\n" + text.replace(
+            _APP_TREE_LOADING_UPDATE_ORIGINAL,
+            _APP_TREE_LOADING_UPDATE_ORIGINAL
+            + "\n\t\tif (node && simpleai_skip_unchanged_loading_status(this, id, new_state, check_visibility)) return;",
+            1,
+        )
+        for marker in (_APP_TREE_RELOAD_START, _APP_TREE_RERENDER_START):
+            text = text.replace(marker, marker + "\t\tsimpleai_reset_loading_status(this);\n", 1)
+    return text
 
 
 def _asset_needs_file_preview_patch(text: str) -> bool:
@@ -635,6 +688,7 @@ def _read_patched_gradio_js_asset(path: Path) -> str | None:
         app_tree_disabled = _app_tree_patch_disabled()
         image_drop_disabled = _image_drop_patch_disabled()
         connection_reload_disabled = _connection_reload_patch_disabled()
+        startup_performance_disabled = _startup_performance_patch_disabled()
         heartbeat_disabled = _env_flag_enabled("SIMPAI_DISABLE_GRADIO_ASSET_PATCHES")
         cache_key = (
             str(path),
@@ -644,6 +698,7 @@ def _read_patched_gradio_js_asset(path: Path) -> str | None:
             image_drop_disabled,
             connection_reload_disabled,
             heartbeat_disabled,
+            startup_performance_disabled,
         )
         cached = _GRADIO_JS_PATCH_CACHE.get(cache_key)
         if cached is not None:
@@ -656,6 +711,8 @@ def _read_patched_gradio_js_asset(path: Path) -> str | None:
             patched = _patch_image_drop_asset(patched)
         if not connection_reload_disabled:
             patched = _patch_connection_reload_asset(patched)
+        if not startup_performance_disabled:
+            patched = _patch_startup_performance_asset(patched)
         if not heartbeat_disabled:
             patched = _patch_heartbeat_asset(patched)
             patched = _patch_file_preview_asset(patched)
@@ -703,8 +760,12 @@ def _discover_gradio_js_patch_readers() -> dict[str, Callable[[Path], str | None
             not _env_flag_enabled("SIMPAI_DISABLE_GRADIO_ASSET_PATCHES")
             and _asset_needs_file_preview_patch(text)
         )
+        needs_startup_performance = (
+            not _startup_performance_patch_disabled()
+            and _asset_needs_startup_performance_patch(text)
+        )
         patch_count = sum((needs_app_tree, needs_image_drop, needs_connection_reload))
-        if patch_count > 1 or needs_heartbeat or needs_file_preview:
+        if patch_count > 1 or needs_heartbeat or needs_file_preview or needs_startup_performance:
             readers[path.name] = _read_patched_gradio_js_asset
         elif needs_app_tree:
             readers[path.name] = _read_patched_app_tree_asset
@@ -791,6 +852,7 @@ def describe_gradio_runtime_patches() -> dict:
             "app_tree": _app_tree_patch_disabled(),
             "image_drop_replace": _image_drop_patch_disabled(),
             "connection_reload": _connection_reload_patch_disabled(),
+            "startup_performance": _startup_performance_patch_disabled(),
         },
         "patch_count": len(entries),
         "patches": entries,
