@@ -2,6 +2,8 @@
     'use strict';
     if (root.SimpAIRegionalJsonPrompt) return;
     const clone = value => JSON.parse(JSON.stringify(value));
+    let cameraApi = root.SimpAIRegionalCamera || (typeof require === 'function' ? require('./regional_prompt_camera.js') : null);
+    const cameraState = value => cameraApi?.normalize(value) || { enabled: false, project: false };
     const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[ch]);
@@ -474,9 +476,11 @@
     }
 
     function normalizeRegionUi(value, count) {
+        cameraApi ||= root.SimpAIRegionalCamera;
         return Array.from({ length: count }, (_, index) => ({
             locked: value?.[index]?.locked === true,
             hidden: value?.[index]?.hidden === true,
+            ...(cameraApi && value?.[index]?.body ? { body: cameraApi.body(value[index].body) } : {}),
             ...(Number.isInteger(value?.[index]?.referenceSlot) && value[index].referenceSlot >= 1
                 && value[index].referenceSlot <= 4 ? {
                     referenceSlot: value[index].referenceSlot,
@@ -545,6 +549,7 @@
                         frame.fixedCanvas = { width: item.fixedCanvas.width, height: item.fixedCanvas.height };
                     } catch (_) {}
                     if (Array.isArray(item?.materials)) frame.materials = materialSlots(item.materials);
+                    if (item?.sceneCamera) frame.sceneCamera = cameraState(item.sceneCamera);
                     return [{ draft, regionUi: normalizeRegionUi(item?.regionUi, draft.items.length), ...frame,
                         ...(Number.isInteger(item?.selected) || Array.isArray(item?.selectedRegions)
                             ? selectionState(item, draft.items.length) : {}) }];
@@ -556,18 +561,20 @@
             } catch (_) {}
             return {
                 version: 1, draft, regionUi: normalizeRegionUi(value.regionUi, draft.items.length),
+                ...(value.sceneCamera ? { sceneCamera: cameraState(value.sceneCamera) } : {}),
+                scenePreview: value.scenePreview !== false,
                 ...(Array.isArray(value.materials) ? { materials: materialSlots(value.materials) } : {}),
                 raw: typeof value.raw === 'string' ? value.raw
                     : JSON.stringify(visibleDraft(draft, value.regionUi), null, 2),
                 rawDirty: value.rawDirty === true,
                 ...selectionState(value, draft.items.length), view: viewState(value.view),
-                mode: ['draw', 'points', 'pan'].includes(value.mode) ? value.mode : 'select',
+                mode: ['draw', 'points', 'pan', 'camera'].includes(value.mode) ? value.mode : 'select',
                 tab: value.tab === 'json' ? 'json' : 'layout',
                 detailsOpen: value.detailsOpen === true,
                 undo: history(value.undo), redo: history(value.redo), optimizedSnapshot,
                 aiScope: ['all', 'region', 'summary'].includes(value.aiScope) ? value.aiScope : 'all',
                 aiInstruction: typeof value.aiInstruction === 'string' ? value.aiInstruction.slice(0, 4000) : '',
-                aiMode: ['text', 'image'].includes(value.aiMode) ? value.aiMode : 'optimize',
+                aiMode: ['text', 'image', 'camera'].includes(value.aiMode) ? value.aiMode : 'optimize',
                 referenceFit: referenceFits.includes(value.referenceFit) ? value.referenceFit : 'contain',
                 fixedCanvas: (() => {
                     try {
@@ -581,6 +588,7 @@
 
     let active = null, windowFrame = null, windowMaximized = false;
     function open(options = {}) {
+        cameraApi ||= root.SimpAIRegionalCamera;
         if (active?.isApplying?.()) return active.host;
         active?.close();
         const state = options.langState || root.simpleaiTopbarSystemParams || {};
@@ -593,6 +601,11 @@
         const label = role => t({ object: 'Object', character: 'Character', text: 'Text' }[role]);
         const icon = (action, glyph, title, extra = '') =>
             `<button type="button" data-rjp-action="${action}" title="${esc(t(title))}" aria-label="${esc(t(title))}" ${extra}><i class="fa-solid fa-${glyph}" aria-hidden="true"></i></button>`;
+        const slider = (kind, key, min, max, step, title) => `<div class="sai-rjp-parameter">
+            <label for="sai-rjp-${kind}-${key}">${esc(t(title))}</label><div class="sai-rjp-slider-value">
+              <input id="sai-rjp-${kind}-${key}" type="range" data-rjp-${kind}-slider="${key}" min="${min}" max="${max}" step="${step}" aria-label="${esc(t(title))}">
+              <input type="number" data-rjp-${kind}-field="${key}" min="${min}" max="${max}" step="any" aria-label="${esc(t('Exact value'))}: ${esc(t(title))}">
+            </div></div>`;
         let draft, initialError = null, imported = null;
         try {
             imported = importLayout(options.value || '', options.width, options.height);
@@ -614,6 +627,12 @@
         const restored = normalizeSnapshot(options.snapshot) || appliedLayout;
         if (restored) { draft = restored.draft; initialError = null; }
         let regionUi = normalizeRegionUi(restored?.regionUi, draft.items.length);
+        let sceneCamera = cameraState(restored?.sceneCamera), scenePreview = restored?.scenePreview !== false;
+        let cameraLoading = false, cameraLoadFailed = false;
+        let cameraWheelTimer = null;
+        let projectionCache = null;
+        const cameraEnabled = () => !!cameraApi && outputModel === 'moss' && sceneCamera.enabled;
+        const cameraProjected = () => cameraEnabled() && scenePreview && cameraApi.changed(sceneCamera);
         let selected = restored ? restored.selected : (draft.items.length ? 0 : -1);
         let selectedRegions = new Set(restored?.selectedRegions || (selected < 0 ? [] : [selected]));
         let selectedPoints = new Set(restored?.selectedPoints || []);
@@ -689,11 +708,31 @@
                   </div>
                 </div>
                 <div class="sai-rjp-view-tools sai-rjp-tools" role="group" aria-label="${esc(t('Canvas view'))}">
+                  <label class="sai-rjp-camera-toggle" ${cameraApi ? '' : 'hidden'}><input type="checkbox" data-rjp-camera-enabled>${esc(t('Camera mode'))}</label>
                   ${icon('zoom-out', 'magnifying-glass-minus', 'Zoom out')}
                   <label class="sai-rjp-zoom"><input data-rjp-zoom type="number" min="1" max="800" step="10" aria-label="${esc(t('Canvas zoom'))}"><span>%</span></label>
                   ${icon('zoom-in', 'magnifying-glass-plus', 'Zoom in')}
                   ${icon('zoom-fit', 'expand', 'Fit canvas in view')}
                   ${icon('zoom-selection', 'compress', 'Fit selected regions in view')}
+                </div>
+                <div class="sai-rjp-camera" data-rjp-camera-panel hidden>
+                  <div class="sai-rjp-camera-row">
+                    <select data-rjp-camera-preset aria-label="${esc(t('Camera position'))}">
+                      ${(cameraApi?.presets || []).map(item => `<option value="${item.id}">${esc(t(item.label))}</option>`).join('')}
+                      <option value="custom">${esc(t('Custom camera'))}</option>
+                    </select>
+                    <label class="sai-rjp-camera-toggle"><input type="checkbox" data-rjp-camera-project>${esc(t('Change viewpoint'))}</label>
+                    ${icon('camera-orbit', 'camera-rotate', 'Rotate camera by dragging')}
+                    ${icon('camera-reset', 'rotate-left', 'Reset camera to front view')}
+                    <div class="sai-rjp-tabs" role="group" aria-label="${esc(t('Scene view'))}">
+                      ${icon('camera-preview', 'camera', 'Camera preview')}${icon('camera-base', 'vector-square', 'Edit base layout')}
+                    </div>
+                  </div>
+                  <details data-rjp-camera-details><summary>${esc(t('Camera parameters'))}</summary>
+                    <div class="sai-rjp-camera-grid">${Object.entries(cameraApi?.limits || {}).map(([key, range]) =>
+                        slider('camera', key, ...range)).join('')}</div>
+                  </details>
+                  <span class="sai-rjp-camera-outside" data-rjp-camera-outside hidden></span>
                 </div>
                 <div class="sai-rjp-viewport"><div class="sai-rjp-board"><canvas tabindex="0" aria-label="${esc(t('Region canvas'))}"></canvas></div><div class="sai-rjp-marquee" hidden></div></div>
                 <details><summary>${esc(t('Compiled prompt'))}</summary><textarea data-rjp-output readonly rows="3" aria-label="${esc(t('Compiled prompt'))}"></textarea></details>
@@ -720,6 +759,14 @@
                     <select data-rjp-binding aria-label="${esc(t('Image reference'))}"></select>
                   </label>
                   <label data-rjp-text-wrap>${esc(t('Literal text'))}<textarea data-rjp-field="text" rows="2"></textarea></label>
+                  <details data-rjp-body-panel hidden><summary>${esc(t('Region volume'))}</summary>
+                    <div class="sai-rjp-camera-grid">
+                      <label>${esc(t('Region anchoring'))}<select data-rjp-body-field="anchor"><option value="world">${esc(t('Scene object'))}</option><option value="screen">${esc(t('Fixed on screen'))}</option></select></label>
+                      ${slider('body', 'depth', 0.25, 6, 0.05, 'Region depth')}
+                      ${slider('body', 'thickness', 0, 2, 0.05, 'Region thickness')}
+                      ${slider('body', 'yaw', -180, 180, 1, 'Region orientation')}
+                    </div>
+                  </details>
                   <details class="sai-rjp-region-details" data-rjp-details>
                     <summary>${esc(t('Position and palette'))}</summary>
                     <div class="sai-rjp-region-geometry">
@@ -744,6 +791,7 @@
             <div class="sai-rjp-ai-bar">
               <select data-rjp-ai-mode aria-label="${esc(t('Agent operation'))}">
                 <option value="optimize">${esc(t('Optimize descriptions'))}</option>
+                <option value="camera" data-rjp-camera-ai-option hidden>${esc(t('Optimize for camera view'))}</option>
                 <option value="text">${esc(t('Text to layout'))}</option>
                 <option value="image">${esc(t('Image to layout'))}</option>
               </select>
@@ -860,16 +908,88 @@
         }
         const raw = q('[data-rjp-json]');
         const editableDraft = () => visibleDraft(draft, regionUi);
+        const promptTranslate = key => {
+            const descriptions = [draft.summary.caption, ...draft.items.map(item => item.caption)].join(' ');
+            return /[a-z]/i.test(descriptions) && !/[\u3400-\u9fff]/u.test(descriptions) ? key : t(key);
+        };
+        function sceneProjection() {
+            if (!cameraEnabled()) return null;
+            const key = JSON.stringify([sceneCamera, draft.width, draft.height,
+                draft.items.map((item, index) => [item.bbox, item.label, regionUi[index].body, regionUi[index].outside])]);
+            if (projectionCache?.key !== key) projectionCache = { key, frame: cameraApi.project(draft, regionUi, sceneCamera) };
+            return projectionCache.frame;
+        }
+        function cameraDraft(value = draft) {
+            if (!cameraEnabled()) return visibleDraft(value, regionUi);
+            const frame = sceneProjection();
+            requireValue(!draft.items.length || frame.regions.some(item => item.visible), 'All regions are outside the camera');
+            return cameraApi.output(value, regionUi, sceneCamera, promptTranslate, frame);
+        }
+        async function loadCameraMath() {
+            if (cameraLoading || !cameraApi || cameraApi.ready()) return;
+            cameraLoading = true; cameraLoadFailed = false; render();
+            try { await cameraApi.load(); }
+            catch (_) { cameraLoadFailed = true; }
+            finally {
+                cameraLoading = false;
+                if (!closed) {
+                    render();
+                    if (cameraLoadFailed) status({ message: 'Camera projection could not be loaded. Toggle viewpoint conversion to retry.' });
+                }
+            }
+        }
+        function renderCamera() {
+            const enabled = cameraEnabled();
+            q('.sai-rjp-camera-toggle').hidden = !cameraApi || outputModel !== 'moss';
+            q('[data-rjp-camera-enabled]').checked = enabled;
+            q('[data-rjp-camera-panel]').hidden = !enabled;
+            q('[data-rjp-body-panel]').hidden = !enabled || !draft.items[selected];
+            q('[data-rjp-camera-ai-option]').hidden = !enabled;
+            if (!enabled) {
+                if (mode === 'camera') mode = 'select';
+                if (q('[data-rjp-ai-mode]').value === 'camera') q('[data-rjp-ai-mode]').value = 'optimize';
+                return;
+            }
+            q('[data-rjp-camera-project]').checked = sceneCamera.project;
+            q('[data-rjp-camera-project]').disabled = cameraLoading;
+            const preset = cameraApi.presets.find(item => Object.keys(cameraApi.defaults)
+                .every(key => Math.abs(sceneCamera.pose[key] - (item.values[key] ?? cameraApi.defaults[key])) < 1e-6));
+            q('[data-rjp-camera-preset]').value = preset?.id || 'custom';
+            for (const key of Object.keys(cameraApi.limits)) {
+                q(`[data-rjp-camera-field="${key}"]`).value = Number(sceneCamera.pose[key].toFixed(3));
+                q(`[data-rjp-camera-slider="${key}"]`).value = sceneCamera.pose[key];
+            }
+            q('[data-rjp-action="camera-orbit"]').setAttribute('aria-pressed', String(mode === 'camera'));
+            q('[data-rjp-action="camera-preview"]').setAttribute('aria-pressed', String(scenePreview));
+            q('[data-rjp-action="camera-base"]').setAttribute('aria-pressed', String(!scenePreview));
+            if (draft.items[selected]) {
+                const b = cameraApi.body(regionUi[selected].body, draft.items[selected]);
+                for (const key of ['anchor', 'depth', 'thickness', 'yaw']) {
+                    const field = q(`[data-rjp-body-field="${key}"]`);
+                    field.value = b[key]; field.disabled = regionUi[selected].locked || (key !== 'anchor' && b.anchor === 'screen');
+                    if (key !== 'anchor') {
+                        q(`[data-rjp-body-slider="${key}"]`).value = b[key];
+                        q(`[data-rjp-body-slider="${key}"]`).disabled = field.disabled;
+                    }
+                }
+            }
+            const outside = q('[data-rjp-camera-outside]');
+            try {
+                const count = sceneProjection().regions.filter((item, index) => !item.visible && !regionUi[index].outside).length;
+                outside.hidden = !count;
+                outside.textContent = t('{count} regions outside camera').replace('{count}', count);
+            } catch (_) { outside.hidden = true; }
+        }
         const modelDraft = () => {
-            if (!hasMaterials) return editableDraft();
+            if (!hasMaterials) return cameraDraft();
             draft.items.forEach((_, index) => {
                 const ui = regionUi[index];
-                if (!ui.referenceSlot || ui.outside) return;
+                if (!ui.referenceSlot || ui.outside || cameraEnabled() && !sceneProjection().regions[index].visible) return;
                 const material = materials[ui.referenceSlot - 1];
                 requireValue(material?.enabled && material.key === ui.referenceKey,
                     'A linked reference image is unavailable. Select its image reference again.');
             });
-            return visibleDraft(referenceLabels(draft, regionUi, referenceLabel), regionUi);
+            return cameraDraft(referenceLabels(draft, regionUi, referenceLabel));
         };
         raw.value = restored ? restored.raw : (initialError ? String(options.value || '') : JSON.stringify(editableDraft(), null, 2));
         q('[data-rjp-ai-scope]').value = restored?.aiScope || 'all';
@@ -886,7 +1006,7 @@
                 version: 1, draft, regionUi, raw: rawDirty ? raw.value : JSON.stringify(editableDraft(), null, 2),
                 rawDirty, selected, selectedRegions: [...selectedRegions], selectedPoints: [...selectedPoints], view,
                 mode, tab, undo, redo, optimizedSnapshot,
-                referenceFit, fixedCanvas,
+                referenceFit, fixedCanvas, sceneCamera, scenePreview,
                 ...(hasMaterials ? { materials: materialSlots(materials) } : {}),
                 detailsOpen: q('[data-rjp-details]').open,
                 aiScope: q('[data-rjp-ai-scope]').value,
@@ -918,12 +1038,14 @@
             }, false);
         }
         const capture = () => ({ draft: clone(draft), regionUi: clone(regionUi), referenceFit, fixedCanvas: { ...fixedCanvas },
+            sceneCamera: clone(sceneCamera),
             selected, selectedRegions: [...selectedRegions], selectedPoints: [...selectedPoints],
             ...(hasMaterials ? { materials: materialSlots(materials) } : {}),
             ...(reference ? { referenceSize: referenceDimensions(reference) } : {}) });
         function restore(snapshot) {
             draft = clone(snapshot.draft);
             regionUi = normalizeRegionUi(snapshot.regionUi, draft.items.length);
+            sceneCamera = cameraState(snapshot.sceneCamera);
             setSelection(snapshot.selectedRegions || [Math.min(selected, draft.items.length - 1)],
                 snapshot.selected ?? selected, snapshot.selectedPoints || []);
             if (hasMaterials && snapshot.materials) {
@@ -990,7 +1112,7 @@
             ).join('') : '';
         }
         function renderAiMode() {
-            const generating = q('[data-rjp-ai-mode]').value !== 'optimize';
+            const generating = ['text', 'image'].includes(q('[data-rjp-ai-mode]').value);
             q('.sai-rjp-ai-bar').classList.toggle('is-layout-generation', generating);
             q('[data-rjp-ai-scope]').hidden = generating;
             const button = q('[data-rjp-action="optimize"]');
@@ -1041,7 +1163,7 @@
             binding.disabled = !draft.items[selected] || regionUi[selected].locked || loadingMaterials;
             q('[data-rjp-action="add-material"]').disabled = loadingMaterials || !materialsReady
                 || !materials.some(item => !item.occupied);
-            q('[data-rjp-action="apply"]').disabled = optimizing || applying || loadingMaterials || !materialsReady;
+            q('[data-rjp-action="apply"]').disabled = optimizing || applying || loadingMaterials || !materialsReady || cameraLoading;
         }
         async function initializeMaterials() {
             loadingMaterials = true;
@@ -1089,6 +1211,7 @@
                     bbox: [x, y, x + width, y + height] });
                 regionUi.push({ locked: false, hidden: false });
                 selectOnly(draft.items.length - 1);
+                scenePreview = false;
             }
             Object.assign(regionUi[selected], { referenceSlot: slot, referenceKey: material.key });
             updateAnchor(selected);
@@ -1214,28 +1337,41 @@
             q('[data-rjp-action="upload-reference"]').disabled = value || loadingReference;
             q('[data-rjp-action="remove-reference"]').disabled = value;
             q('[data-rjp-reference-fit]').disabled = value || !reference || loadingReference;
-            q('[data-rjp-action="apply"]').disabled = value || applying || loadingMaterials || !materialsReady;
+            q('[data-rjp-action="apply"]').disabled = value || applying || loadingMaterials || !materialsReady || cameraLoading;
         }
+        const aiSnapshot = () => JSON.stringify({ draft, regionUi, sceneCamera });
         function assertAiSnapshot(snapshot, request, selection) {
             requireValue(!closed, 'The layout editor was closed');
             options.assertContext?.();
-            requireValue(!rawDirty && JSON.stringify(draft) === snapshot
+            requireValue(!rawDirty && aiSnapshot() === snapshot
                 && (request.scope !== 'region' || selected === selection),
             'The layout changed. Request new suggestions.');
         }
         async function optimize() {
             if (optimizing || applying) return;
             requireValue(!loadingReference, 'Reference image is still loading');
-            if (q('[data-rjp-ai-mode]').value !== 'optimize') return generateLayout();
+            if (['text', 'image'].includes(q('[data-rjp-ai-mode]').value)) return generateLayout();
             if (typeof options.onOptimize !== 'function') throw new Error('Agent optimization is unavailable in this view.');
             if (rawDirty) loadRaw();
             options.assertContext?.();
             const selection = selected;
-            const indices = draft.items.flatMap((_, index) => regionUi[index].outside ? [] : [index]);
-            const contextDraft = editableDraft();
+            const forCamera = q('[data-rjp-ai-mode]').value === 'camera';
+            requireValue(!forCamera || cameraEnabled(), 'Enable camera mode before optimizing its descriptions');
+            const frame = forCamera ? sceneProjection() : null;
+            const indices = frame ? frame.order.filter(index => frame.regions[index].visible)
+                : draft.items.flatMap((_, index) => regionUi[index].outside ? [] : [index]);
+            const contextDraft = forCamera ? { ...clone(draft), items: indices.map(index => ({
+                ...clone(draft.items[index]), bbox: [...frame.regions[index].bbox],
+            })) } : editableDraft();
             const request = optimizationRequest(contextDraft, q('[data-rjp-ai-scope]').value || 'all', indices.indexOf(selected),
                 q('[data-rjp-ai-instruction]').value || '');
-            const snapshot = JSON.stringify(draft), originalDraft = clone(draft);
+            if (forCamera) request.camera = {
+                ...clone(sceneCamera.pose), base: clone(sceneCamera.base), projection: sceneCamera.project,
+                description: cameraApi.phrase(sceneCamera, promptTranslate),
+                regions: indices.map((index, visibleIndex) => ({ id: `r${visibleIndex + 1}`,
+                    ...cameraApi.body(regionUi[index].body, draft.items[index]) })),
+            };
+            const snapshot = aiSnapshot(), originalDraft = clone(draft);
             const generation = ++aiGeneration;
             aiPreview = null;
             renderAiPreview();
@@ -1250,7 +1386,7 @@
                     typeof result === 'string' ? result : result?.text);
                 const next = clone(originalDraft);
                 next.summary = visible.summary;
-                indices.forEach((index, visibleIndex) => { next.items[index] = visible.items[visibleIndex]; });
+                indices.forEach((index, visibleIndex) => { next.items[index].caption = visible.items[visibleIndex].caption; });
                 const changes = [];
                 if (next.summary.caption !== originalDraft.summary.caption) changes.push({
                     label: t('Whole image description'), before: originalDraft.summary.caption, after: next.summary.caption,
@@ -1278,7 +1414,7 @@
             options.assertContext?.();
             const request = generationRequest(editableDraft(), q('[data-rjp-ai-mode]').value,
                 q('[data-rjp-ai-instruction]').value, reference ? { ...reference, fit: referenceFit } : null);
-            const snapshot = JSON.stringify(draft), imageRevision = referenceRevision;
+            const snapshot = aiSnapshot(), imageRevision = referenceRevision;
             const generation = ++aiGeneration;
             aiPreview = null;
             renderAiPreview();
@@ -1297,6 +1433,7 @@
                 remember();
                 draft = annotated?.draft || next;
                 regionUi = annotated?.regionUi || normalizeRegionUi(null, next.items.length);
+                sceneCamera = cameraState(null);
                 selectOnly(draft.items.length ? 0 : -1);
                 if (!annotated && reference) draft.items.forEach((_, index) => updateAnchor(index));
                 optimizedSnapshot = JSON.stringify(draft);
@@ -1348,8 +1485,14 @@
                 ctx.drawImage(referenceImage, rect.x, rect.y, rect.width, rect.height);
                 ctx.restore();
             }
-            draft.items.forEach((item, index) => {
+            let projection = null;
+            if (cameraProjected()) { try { projection = sceneProjection(); } catch (_) {} }
+            const renderIndices = projection?.order || draft.items.map((_, index) => index);
+            renderIndices.forEach(index => {
+                const original = draft.items[index];
                 if (regionUi[index].hidden || regionUi[index].outside) return;
+                if (projection && !projection.regions[index].visible) return;
+                const item = projection ? { ...original, bbox: projection.regions[index].bbox } : original;
                 const [x0, y0, x1, y1] = item.bbox;
                 const material = materialImages.get(regionUi[index].referenceKey);
                 if (material && regionUi[index].referenceSlot) {
@@ -1397,9 +1540,15 @@
                     });
                     ctx.restore();
                 }
+                if (projection) {
+                    ctx.strokeStyle = color; ctx.lineWidth = unit;
+                    for (const [a, b] of projection.regions[index].lines) {
+                        ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke();
+                    }
+                }
             });
             for (const index of selectedRegions) {
-                if (!editableRegion(index)) continue;
+                if (!editableRegion(index) || cameraProjected()) continue;
                 const item = draft.items[index], color = previewColor(item, index);
                 ctx.strokeStyle = color; ctx.lineWidth = 1.5 * unit;
                 corners.forEach(([xi, yi], corner) => {
@@ -1433,6 +1582,7 @@
             list.scrollTop = scrollTop;
         }
         function render({ revealSelected = true } = {}) {
+            if (mode === 'camera' && !cameraEnabled()) mode = 'select';
             setSelection([...selectedRegions], selected, [...selectedPoints]);
             q('.sai-rjp-layout').hidden = tab !== 'layout';
             q('.sai-rjp-json').hidden = tab !== 'json';
@@ -1442,6 +1592,7 @@
             updateCursor();
             for (const key of ['width', 'height']) q(`[data-rjp-field="${key}"]`).value = draft[key];
             q('[data-rjp-field="summary"]').value = draft.summary.caption;
+            renderCamera();
             renderRegionList();
             q('.sai-rjp-region-form').hidden = !draft.items[selected];
             const item = draft.items[selected];
@@ -1455,7 +1606,7 @@
                 q('[data-rjp-text-wrap]').hidden = item.label !== 'text';
                 host.querySelectorAll('[data-rjp-coordinate]').forEach(node => {
                     node.value = item.bbox[Number(node.dataset.rjpCoordinate)];
-                    node.disabled = regionUi[selected].locked || regionUi[selected].outside === true;
+                    node.disabled = regionUi[selected].locked || regionUi[selected].outside === true || cameraProjected();
                 });
             }
             updateOutput();
@@ -1463,9 +1614,13 @@
             renderAiMode();
             renderReference();
             renderMaterials();
+            q('[data-rjp-action="apply"]').disabled = optimizing || applying || loadingMaterials || !materialsReady
+                || cameraLoading || (cameraLoadFailed && cameraEnabled() && cameraApi.changed(sceneCamera));
             if (tab === 'layout') draw();
             if (revealSelected) revealSelectedRegion();
             persistDraft();
+            if (cameraEnabled() && sceneCamera.project && !cameraApi.ready() && !cameraLoading && !cameraLoadFailed)
+                void loadCameraMath();
         }
         q('[data-rjp-details]').addEventListener('toggle', () => {
             if (closed) return;
@@ -1480,6 +1635,7 @@
                 try { options.onDraftChange?.(null); } catch (_) {}
             }
             closed = true;
+            root.clearTimeout(cameraWheelTimer);
             referenceAbort?.abort();
             materialAbort?.abort();
             for (const [name, handler] of referenceEvents) root.removeEventListener?.(name, handler, true);
@@ -1508,6 +1664,7 @@
             let next = result.draft;
             const previousItems = draft.items;
             const current = editableDraft();
+            const resetCamera = replace || next.width !== draft.width || next.height !== draft.height || next.items.length !== current.items.length;
             if (replace || JSON.stringify(next) !== JSON.stringify(current)) {
                 remember();
                 if (!replace && next.width === draft.width && next.height === draft.height
@@ -1533,6 +1690,7 @@
                     regionUi = flags;
                 } else regionUi = normalizeRegionUi(null, next.items.length);
             } else next = draft;
+            if (resetCamera) sceneCamera = cameraState(null);
             draft = next;
             draft.items.forEach((item, index) => {
                 if (!regionUi[index]?.sourceBox || JSON.stringify(item.bbox) !== JSON.stringify(previousItems[index]?.bbox))
@@ -1576,10 +1734,30 @@
                 if (closed || applying || (name === 'apply' && optimizing)) return;
                 if (name === 'close') return close();
                 if (name === 'maximize') return toggleMaximize();
+                if (name === 'camera-preview' || name === 'camera-base') {
+                    scenePreview = name === 'camera-preview';
+                    if (!scenePreview && mode === 'camera') mode = 'select';
+                    render(); return;
+                }
+                if (name === 'camera-orbit' && cameraEnabled()) {
+                    if (!sceneCamera.project) { remember(); sceneCamera.project = true; }
+                    scenePreview = true; mode = mode === 'camera' ? 'select' : 'camera';
+                    void loadCameraMath(); render(); return;
+                }
+                if (name === 'camera-reset' && cameraEnabled()) {
+                    remember();
+                    sceneCamera.pose = clone(cameraApi.defaults);
+                    // Explicit reset also clears references accidentally saved by the older toggle behavior.
+                    sceneCamera.base = clone(cameraApi.defaults);
+                    scenePreview = true;
+                    render(); return;
+                }
                 if (name === 'zoom-in' || name === 'zoom-out') return zoomTo(viewScale() * (name === 'zoom-in' ? 1.25 : 0.8));
                 if (name === 'zoom-fit') { view = viewState(null); draw(); return; }
                 if (name === 'zoom-selection') {
-                    const boxes = [...selectedRegions].filter(editableRegion).map(index => draft.items[index].bbox);
+                    const frame = cameraProjected() ? sceneProjection() : null;
+                    const boxes = [...selectedRegions].filter(index => editableRegion(index) && frame?.regions[index]?.visible !== false)
+                        .map(index => frame?.regions[index]?.bbox || draft.items[index].bbox);
                     if (!boxes.length) return;
                     const box = [Math.min(...boxes.map(b => b[0])), Math.min(...boxes.map(b => b[1])),
                         Math.max(...boxes.map(b => b[2])), Math.max(...boxes.map(b => b[3]))];
@@ -1626,7 +1804,11 @@
                     render();
                     status({ message: 'Suggestions applied to layout.' }, false);
                 }
-                if (['select', 'points', 'draw', 'pan'].includes(name)) { mode = name; selectedPoints.clear(); render(); }
+                if (['select', 'points', 'draw', 'pan'].includes(name)) {
+                    mode = name; selectedPoints.clear();
+                    if (name === 'points' || name === 'draw') scenePreview = false;
+                    render();
+                }
                 if (name === 'multi-select') { multiSelect = !multiSelect; render(); }
                 if (name === 'add') addRegion();
                 if ((name === 'lock' || name === 'hide') && Number.isInteger(index) && regionUi[index]) {
@@ -1697,15 +1879,16 @@
                 if (name === 'import') q('[data-rjp-file]').click();
                 if (name === 'export') {
                     if (rawDirty) loadRaw();
-                    validateDraft(editableDraft(), true, true);
-                    const url = URL.createObjectURL(new Blob([JSON.stringify(editableDraft(), null, 2)], { type: 'application/json' }));
+                    const exported = cameraDraft();
+                    validateDraft(exported, true, true);
+                    const url = URL.createObjectURL(new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' }));
                     const link = document.createElement('a');
                     link.href = url; link.download = 'moss-layout.json'; link.click();
                     root.setTimeout(() => URL.revokeObjectURL(url), 1000);
                 }
                 if (name === 'copy' || name === 'apply') {
                     if (rawDirty) loadRaw();
-                    const output = editableDraft();
+                    const output = cameraDraft();
                     requireValue(!draft.items.length || output.items.length || output.summary.caption.trim(),
                         'All regions are outside the canvas');
                     requireValue(!loadingMaterials && materialsReady, 'Reference image is still loading');
@@ -1757,6 +1940,49 @@
         });
         function updateField(event) {
             if (closed || applying) return;
+            const target = event.target;
+            const cameraField = target.dataset.rjpCameraField || target.dataset.rjpCameraSlider;
+            const bodyField = target.dataset.rjpBodyField || target.dataset.rjpBodySlider;
+            if (target === q('[data-rjp-camera-enabled]') || target === q('[data-rjp-camera-project]')
+                || target === q('[data-rjp-camera-preset]') || cameraField || bodyField) {
+                if (!cameraApi || outputModel !== 'moss') return;
+                try {
+                    if (rawDirty) loadRaw();
+                    if (target === q('[data-rjp-camera-enabled]')) {
+                        if (sceneCamera.enabled === target.checked) return;
+                        remember(); sceneCamera.enabled = target.checked;
+                    } else if (target === q('[data-rjp-camera-project]')) {
+                        if (sceneCamera.project === target.checked) return;
+                        remember(); sceneCamera.project = target.checked; scenePreview = true;
+                        if (!sceneCamera.project) {
+                            if (mode === 'camera') mode = 'select';
+                        } else mode = 'camera';
+                    } else if (target === q('[data-rjp-camera-preset]')) {
+                        const preset = cameraApi.presets.find(item => item.id === target.value);
+                        if (!preset) return;
+                        const next = { ...cameraApi.defaults, ...preset.values };
+                        if (JSON.stringify(next) === JSON.stringify(sceneCamera.pose)) return;
+                        remember(); sceneCamera.pose = next;
+                    } else if (cameraField && cameraApi.limits[cameraField]) {
+                        if (target.value === '' || !Number.isFinite(Number(target.value))) return;
+                        const next = cameraState({ ...sceneCamera, pose: { ...sceneCamera.pose, [cameraField]: Number(target.value) } });
+                        if (next.pose[cameraField] === sceneCamera.pose[cameraField]) return;
+                        if (editingField !== target) { remember(); editingField = target; }
+                        sceneCamera = next;
+                    } else if (bodyField && draft.items[selected] && !regionUi[selected].locked) {
+                        const value = bodyField === 'anchor' ? target.value : Number(target.value);
+                        if (bodyField !== 'anchor' && (target.value === '' || !Number.isFinite(value))) return;
+                        const current = cameraApi.body(regionUi[selected].body, draft.items[selected]);
+                        const next = cameraApi.body({ ...current, [bodyField]: value }, draft.items[selected]);
+                        if (JSON.stringify(next) === JSON.stringify(current)) return;
+                        if (editingField !== target) { remember(); editingField = target; }
+                        regionUi[selected].body = next;
+                    } else return;
+                    if (sceneCamera.enabled && sceneCamera.project) void loadCameraMath();
+                    render();
+                } catch (error) { render(); status(error); }
+                return;
+            }
             if (event.target === q('[data-rjp-zoom]')) {
                 if (event.type === 'change') {
                     const value = Number(event.target.value);
@@ -1805,7 +2031,7 @@
             const field = event.target.dataset.rjpField;
             const coordinate = event.target.dataset.rjpCoordinate;
             if (!field && coordinate === undefined) return;
-            if (coordinate !== undefined && (regionUi[selected]?.locked || regionUi[selected]?.outside)) return;
+            if (coordinate !== undefined && (regionUi[selected]?.locked || regionUi[selected]?.outside || cameraProjected())) return;
             // Blur repeats the last input as change; replacing rows here would discard the pending button click.
             const currentItem = draft.items[selected], value = event.target.value;
             if ((coordinate !== undefined && currentItem?.bbox[Number(coordinate)] === Number(value))
@@ -1860,6 +2086,9 @@
         }
         host.addEventListener('input', updateField);
         host.addEventListener('change', updateField);
+        host.addEventListener('pointerdown', event => {
+            if (event.target.dataset.rjpCameraSlider || event.target.dataset.rjpBodySlider) editingField = null;
+        });
         host.addEventListener('focusout', event => { if (editingField === event.target) editingField = null; });
         q('[data-rjp-file]').addEventListener('change', async event => {
             const file = event.target.files[0];
@@ -2016,7 +2245,7 @@
             return clamp ? values.map((value, axis) => Math.round(Math.max(0, Math.min(axis ? draft.height : draft.width, value)))) : values;
         };
         function updateCursor() {
-            const cursor = gesture?.type === 'pan' ? 'grabbing' : spaceHeld || mode === 'pan' ? 'grab'
+            const cursor = ['pan', 'camera'].includes(gesture?.type) ? 'grabbing' : spaceHeld || mode === 'pan' || mode === 'camera' ? 'grab'
                 : ['draw', 'points'].includes(mode) ? 'crosshair' : 'default';
             canvas.style.cursor = cursor; viewport.style.cursor = cursor;
         }
@@ -2059,8 +2288,9 @@
                     });
                 }
             } else draft.items.forEach((item, index) => {
-                const box = item.bbox;
-                if (editableRegion(index) && box[2] >= bounds[0] && box[0] <= bounds[2]
+                const projected = cameraProjected() ? sceneProjection().regions[index] : null;
+                const box = projected?.bbox || item.bbox;
+                if (editableRegion(index) && projected?.visible !== false && box[2] >= bounds[0] && box[0] <= bounds[2]
                     && box[3] >= bounds[1] && box[1] <= bounds[3]) hits.push(index);
             });
             const result = new Set(gesture.additive ? gesture.points ? gesture.before.selectedPoints : gesture.before.selectedRegions : []);
@@ -2077,6 +2307,19 @@
             event.preventDefault();
             event.stopPropagation();
             const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1);
+            if (mode === 'camera' && cameraEnabled() && !event.ctrlKey && !event.metaKey) {
+                if (gesture || cameraLoading || !cameraApi.ready()) return;
+                const key = event.altKey ? 'fov' : 'distance';
+                const pose = { ...sceneCamera.pose, [key]: event.altKey
+                    ? sceneCamera.pose.fov + delta * 0.03 : sceneCamera.pose.distance * Math.exp(Math.max(-300, Math.min(300, delta)) * 0.0015) };
+                const next = cameraState({ ...sceneCamera, pose });
+                if (next.pose[key] === sceneCamera.pose[key]) return;
+                const edit = `camera-wheel-${key}`;
+                if (editingField !== edit) { remember(); editingField = edit; }
+                root.clearTimeout(cameraWheelTimer);
+                cameraWheelTimer = root.setTimeout(() => { if (editingField === edit) editingField = null; }, 300);
+                sceneCamera = next; render(); return;
+            }
             zoomTo(viewScale() * Math.exp(-Math.max(-300, Math.min(300, delta)) * 0.002), event);
         }, { passive: false });
         viewport.addEventListener('pointerdown', event => {
@@ -2090,16 +2333,26 @@
                 gesture = { ...base, type: 'pan', view: { ...view }, scale: viewScale() };
                 updateCursor(); return;
             }
+            if (mode === 'camera' && cameraEnabled()) {
+                if (cameraLoading || !cameraApi.ready()) return;
+                gesture = { ...base, type: 'camera', camera: clone(sceneCamera), pan: event.shiftKey === true };
+                updateCursor(); return;
+            }
             const additive = !!(event.ctrlKey || event.metaKey || multiSelect);
             const inside = x >= 0 && x <= draft.width && y >= 0 && y <= draft.height;
             const pixel = draft.width / canvas.getBoundingClientRect().width;
             // Browser pointer rounding must not turn a click on a visible edge into an empty-space marquee.
-            const hit = inside ? draft.items.findLastIndex((item, index) => !regionUi[index].hidden && !regionUi[index].outside
-                && x >= item.bbox[0] - pixel / 2 && x <= item.bbox[2] + pixel / 2
-                && y >= item.bbox[1] - pixel / 2 && y <= item.bbox[3] + pixel / 2) : -1;
+            let preview = null;
+            if (cameraProjected()) { try { preview = sceneProjection(); } catch (_) { return; } }
+            const hitOrder = preview?.order || draft.items.map((_, index) => index);
+            const hit = inside ? hitOrder.findLast(index => {
+                const box = preview?.regions[index]?.bbox || draft.items[index].bbox;
+                return !regionUi[index].hidden && !regionUi[index].outside && preview?.regions[index]?.visible !== false
+                    && x >= box[0] - pixel / 2 && x <= box[2] + pixel / 2 && y >= box[1] - pixel / 2 && y <= box[3] + pixel / 2;
+            }) ?? -1 : -1;
             let handle = null, distance = Infinity;
             const tolerance = 10 * pixel;
-            if (mode === 'points' || mode === 'select' && !additive) {
+            if (!preview && (mode === 'points' || mode === 'select' && !additive)) {
                 for (const index of selectedRegions) {
                     if (!editableRegion(index)) continue;
                     const box = draft.items[index].bbox;
@@ -2135,12 +2388,21 @@
                 if (additive) chooseRegion(hit, true);
                 else if (!selectedRegions.has(hit)) selectOnly(hit);
                 else { selected = hit; selectedPoints.clear(); }
-                if (selectedRegions.has(hit) && editableRegion(hit)) gesture = { ...base, type: 'move', boxes: movingBoxes() };
+                if (!preview && selectedRegions.has(hit) && editableRegion(hit)) gesture = { ...base, type: 'move', boxes: movingBoxes() };
             }
             render();
         });
         viewport.addEventListener('pointermove', event => {
             if (!gesture || gesture.pointerId !== event.pointerId) return;
+            if (gesture.type === 'camera') {
+                const dx = event.clientX - gesture.client[0], dy = event.clientY - gesture.client[1];
+                const initial = gesture.camera.pose;
+                const pose = gesture.pan ? { ...initial, panX: initial.panX - dx / viewport.clientWidth * 1.5,
+                    panY: initial.panY + dy / viewport.clientHeight * 1.5 }
+                    : { ...initial, orbit: initial.orbit + dx * 0.35, pitch: initial.pitch - dy * 0.35 };
+                sceneCamera = cameraState({ ...gesture.camera, pose });
+                renderCamera(); updateOutput(); draw(); return;
+            }
             if (gesture.type === 'pan') {
                 view.centerX = gesture.view.centerX - (event.clientX - gesture.client[0]) / (draft.width * gesture.scale);
                 view.centerY = gesture.view.centerY - (event.clientY - gesture.client[1]) / (draft.height * gesture.scale);
@@ -2167,6 +2429,9 @@
             q('.sai-rjp-marquee').hidden = true;
             if (finished.type === 'pan') {
                 if (cancel) view = finished.view;
+            } else if (finished.type === 'camera') {
+                if (cancel) restore(finished.before);
+                else if (JSON.stringify(sceneCamera) !== JSON.stringify(finished.camera)) remember(finished.before);
             } else if (finished.type === 'marquee') {
                 if (cancel) setSelection(finished.before.selectedRegions, finished.before.selected, finished.before.selectedPoints);
             } else {

@@ -205,6 +205,7 @@ def javascript_html():
     scene_prompt_recommendations_path = webpath('javascript/scene_prompt_recommendations.js')
     prompt_actions_path = webpath('javascript/prompt_actions.js')
     regional_json_prompt_path = webpath('javascript/regional_json_prompt.js')
+    regional_camera_path = webpath('javascript/regional_prompt_camera.js')
     regional_json_prompt_css_path = webpath('css/regional_json_prompt.css')
     visual_prompt_editor_path = webpath('javascript/visual_prompt_editor.js')
     visual_prompt_editor_css_path = webpath('css/visual_prompt_editor.css')
@@ -369,6 +370,7 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{scene_prompt_recommendations_path}"></script>\n'
     head += f'<script type="text/javascript" src="{prompt_actions_path}"></script>\n'
     head += f'<link rel="stylesheet" href="{regional_json_prompt_css_path}">\n'
+    head += f'<script type="text/javascript" src="{regional_camera_path}"></script>\n'
     head += f'<script type="text/javascript" src="{regional_json_prompt_path}"></script>\n'
     head += f'<link rel="stylesheet" href="{visual_prompt_editor_css_path}">\n'
     head += f'<script type="text/javascript" src="{visual_prompt_editor_path}"></script>\n'

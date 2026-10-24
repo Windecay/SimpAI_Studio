@@ -1148,10 +1148,16 @@
     }
 
     function workspaceEntryForElemId(snapshot, owner, elemId) {
+        if (typeof elemId !== 'string' || !elemId) return null;
         const workspace = snapshot?.workspaces?.[owner];
         const values = workspace?.values;
         if (!values || typeof values !== 'object') return null;
-        const field = rootNode().querySelector?.(`#${elemId}`);
+        const root = rootNode();
+        // Gradio also mounts fields with id=""; IDs supplied by components
+        // need not be valid CSS identifiers. Never build an invalid selector.
+        const field = /^[A-Za-z_][A-Za-z0-9_-]*$/.test(elemId)
+            ? root.querySelector?.(`#${elemId}`)
+            : Array.from(root.querySelectorAll?.('[id]') || []).find((node) => node.id === elemId);
         const key = workspaceKey(field);
         const signature = workspaceSignature(field);
         const entry = key ? values[key] : null;
@@ -1799,15 +1805,31 @@
         const snapshot = request?.restore_snapshot || request?.snapshot;
         const owner = String(request?.owner || ownerKey());
         if (typeof window.rememberScenePresetControlValue !== 'function') return false;
+        const values = snapshot?.workspaces?.[owner]?.values;
+        if (!values || typeof values !== 'object') return false;
         let remembered = 0;
+        const visited = new Set();
+        const remember = (id, key, signature) => {
+            if (!id || !key || !signature || visited.has(id)) return;
+            const entry = values[key];
+            if (!entry || entry.signature !== signature) return;
+            visited.add(id);
+            // The accepted snapshot is authoritative while Gradio repaints.
+            // Reading the DOM here can capture a not-yet-updated default.
+            if (window.rememberScenePresetControlValue(id, entry.value)) remembered += 1;
+        };
         for (const field of rootNode().querySelectorAll('.simpai-workspace-field[id]')) {
-            const resolved = workspaceEntryForElemId(snapshot, owner, field.id);
-            if (!resolved?.entry || !resolved?.field) continue;
-            // The default guard tracks each control separately. Remember all
-            // restored values without dispatching input events or API calls.
-            if (window.rememberScenePresetControlValue(field.id, domWorkspaceValue(resolved.field))) {
-                remembered += 1;
-            }
+            remember(field.id, workspaceKey(field), workspaceSignature(field));
+        }
+        // Collapsed Gradio panels may not have DOM fields yet. Their stable
+        // workspace keys/signatures are still present in the component config.
+        for (const component of window.gradio_config?.components || []) {
+            const props = component?.props || {};
+            const classes = Array.isArray(props.elem_classes) ? props.elem_classes
+                : typeof props.elem_classes === 'string' ? props.elem_classes.split(/\s+/) : [];
+            if (!classes.includes('simpai-workspace-field')) continue;
+            const readClass = (prefix) => classes.find((name) => typeof name === 'string' && name.startsWith(prefix))?.slice(prefix.length) || '';
+            remember(props.elem_id, readClass('simpai-workspace-key-'), readClass('simpai-workspace-signature-'));
         }
         markPerformance('workspace.restore_scene_defaults_cancelled', { controls: remembered }, true);
         return remembered > 0;
@@ -2215,8 +2237,19 @@
         const request = restoreRequest || pendingManualReconnectRequest();
         if (!request) return false;
         restoreCompleted = true;
-        markRestoredSceneParameterEdit(request);
-        restoreUiState(request.owner);
+        try {
+            markRestoredSceneParameterEdit(request);
+            restoreUiState(request.owner);
+        } catch (error) {
+            markPerformance('workspace.restore_finish_failed', {
+                owner: request.owner || '',
+                preset: currentPresetName(),
+                message: String(error?.message || error || ''),
+            }, true);
+            abortRestoreAfterFailure('restore_finish_failed');
+            finishRestoreProgress(false, 'Workspace restore failed');
+            return false;
+        }
         finishRestoreProgress(true);
         if (request.source !== 'browser_history') clearManualReconnectRequest(request);
         else clearPageLifecycle();
