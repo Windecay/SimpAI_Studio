@@ -44,9 +44,9 @@
       "var_number5_title": "Source Audio Start (seconds)",
       "var_number5_min": 0, "var_number5_max": 10000, "var_number5_step": 0.01,
       "var_number5": {"Basic": 0},
-      "var_number3_title": "Video Shift", "var_number3_min": 0.01, "var_number3_max": 100,
+      "var_number3_title": "Video Shift", "var_number3_min": 0.01, "var_number3_step": 0.01, "var_number3_max": 100,
       "var_number3": {"Basic": 12},
-      "var_number4_title": "Audio Shift", "var_number4_min": 0.01, "var_number4_max": 100,
+      "var_number4_title": "Audio Shift", "var_number4_min": 0.01, "var_number4_step": 0.01, "var_number4_max": 100,
       "var_number4": {"Basic": 3},
       "aspect_ratio": [
         "864*480",

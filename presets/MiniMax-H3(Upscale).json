@@ -93,12 +93,14 @@
       },
       "var_number4_title": "Video Shift",
       "var_number4_min": 0.01,
+      "var_number4_step": 0.01,
       "var_number4_max": 100,
       "var_number4": {
         "Video Upscale": 12
       },
       "var_number5_title": "Audio Shift",
       "var_number5_min": 0.01,
+      "var_number5_step": 0.01,
       "var_number5_max": 100,
       "var_number5": {
         "Video Upscale": 3

@@ -2949,6 +2949,9 @@ async function completeSimpleAIPresetNavigation(params) {
         await waitForSimpleAIUiPaint();
         if (navigationToken !== presetNavNetworkToken || isStaleSystemParamsForPreset(params)
                 || isStaleSystemParamsForSceneTheme(params)) return [];
+        // Gradio can finish applying component props on the next frame. Restore
+        // the current control and row visibility before declaring navigation done.
+        reconcileSceneVisibilityForPreset(params);
         const preset = String(params.__preset || params.preset || "").trim();
         const seq = (Number(window.__simpleai_preset_nav_completion_seq) || 0) + 1;
         const detail = { preset, seq, completed_at: Date.now() };
@@ -5543,8 +5546,20 @@ function scheduleMainModelDropdownVisibilityReconcile(system_params, traceLabel)
     });
 }
 
+function isStaleSceneVisibilityParams(system_params) {
+    if (!system_params || typeof system_params !== "object") return false;
+    if (isStaleSystemParamsForPreset(system_params) || isStaleSystemParamsForSceneTheme(system_params)) return true;
+    const current = window.simpleaiTopbarSystemParams || topbarLastSystemParams;
+    const incomingPreset = normalizePresetName(system_params.__preset || system_params.preset);
+    const currentPreset = normalizePresetName(current && (current.__preset || current.preset));
+    // Theme/status replies need not carry __preset_switched. Once a preset's
+    // state is accepted, an older owner must never change its visibility.
+    return !!(incomingPreset && currentPreset && incomingPreset !== currentPreset);
+}
+
 function reconcileSceneVisibilityForPreset(system_params) {
     if (!system_params || typeof system_params !== "object") return;
+    if (isStaleSceneVisibilityParams(system_params)) return;
     const isScene = !!system_params["__is_scene_frontend"];
     const hiddenList = Array.isArray(system_params["__scene_disvisible"]) ? system_params["__scene_disvisible"] : [];
     const hidden = new Set(hiddenList);

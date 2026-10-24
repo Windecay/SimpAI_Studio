@@ -3834,19 +3834,34 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function sceneVisibilityParamsResolution(params) {
         if (!params || typeof params !== 'object') return { resolved: false, params: null };
+        if (window.isStaleSceneVisibilityParams?.(params)
+            || window.isStaleSystemParamsForPreset?.(params)
+            || window.isStaleSystemParamsForSceneTheme?.(params)) {
+            return { resolved: false, params: null };
+        }
         const hasSceneFlag = Object.prototype.hasOwnProperty.call(params, '__is_scene_frontend');
         const hasSceneSchema = Object.prototype.hasOwnProperty.call(params, 'scene_frontend');
         return { resolved: hasSceneFlag || hasSceneSchema, params };
     }
 
     function resolveSceneVisibilityParams(paramsOverride) {
-        const candidate = paramsOverride !== undefined ? paramsOverride : getTopbarParams();
+        const current = getTopbarParams();
+        const candidate = paramsOverride !== undefined ? paramsOverride : current;
         const resolution = sceneVisibilityParamsResolution(candidate);
         if (resolution.resolved) {
             lastResolvedSceneVisibilityParams = resolution.params;
             return resolution.params;
         }
-        return lastResolvedSceneVisibilityParams || null;
+        // A theme callback can finish after another preset has already painted.
+        // Its delayed retries must use the accepted current state, not restore
+        // visibility from the old response or keep it as the cached state.
+        const currentResolution = sceneVisibilityParamsResolution(current);
+        if (currentResolution.resolved) {
+            lastResolvedSceneVisibilityParams = currentResolution.params;
+            return currentResolution.params;
+        }
+        const cachedResolution = sceneVisibilityParamsResolution(lastResolvedSceneVisibilityParams);
+        return cachedResolution.resolved ? cachedResolution.params : null;
     }
 
     visibility?.registerMany?.([
