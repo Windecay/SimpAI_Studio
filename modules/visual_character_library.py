@@ -22,6 +22,9 @@ MEDIA_SCHEMA = "simpai.audiovisual.media"
 _LOCK = threading.RLock()
 _CARD_ID = re.compile(r"av_[a-f0-9]{32}\Z")
 _MEDIA_ID = re.compile(r"(?:asset|file):[a-f0-9]{24}\Z")
+_FOLDER_ID = re.compile(r"cf_[a-f0-9]{32}\Z")
+FOLDER_SCHEMA = "simpai.character.folders"
+MAX_FOLDER_NAME = 100
 SCENE_IMAGE_SLOTS = ("scene_canvas_image",) + tuple(f"scene_input_image{i}" for i in range(1, 9))
 SCENE_AUDIO_SLOTS = ("scene_audio", "scene_audio2", "scene_audio3")
 SCENE_SLOTS = SCENE_IMAGE_SLOTS + SCENE_AUDIO_SLOTS
@@ -53,6 +56,90 @@ def _card_path(card_id, user_did, root=None):
     if not _CARD_ID.fullmatch(str(card_id)):
         raise ValueError("invalid_character_id")
     return _root(user_did, root) / f"{card_id}.json"
+
+
+def _folder_catalog(user_did, root=None):
+    path = _root(user_did, root) / ".folders.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        return {"schema": FOLDER_SCHEMA, "version": 1, "folders": [], "roleplay": {}}
+    except (OSError, ValueError):
+        raise ValueError("character_folders_unreadable") from None
+    if (not isinstance(value, dict) or value.get("schema") != FOLDER_SCHEMA or value.get("version") != 1
+            or not isinstance(value.get("folders"), list) or not isinstance(value.get("roleplay"), dict)):
+        raise ValueError("character_folders_unreadable")
+    ids, names = set(), set()
+    for folder in value["folders"]:
+        if (not isinstance(folder, dict) or not isinstance(folder.get("id"), str)
+                or not _FOLDER_ID.fullmatch(folder["id"]) or not isinstance(folder.get("name"), str)
+                or not 0 < len(folder["name"].strip()) <= MAX_FOLDER_NAME
+                or folder["id"] in ids or folder["name"].casefold() in names):
+            raise ValueError("character_folders_unreadable")
+        ids.add(folder["id"])
+        names.add(folder["name"].casefold())
+    if any(not isinstance(key, str) or not isinstance(folder_id, str) or folder_id not in ids
+           for key, folder_id in value["roleplay"].items()):
+        raise ValueError("character_folders_unreadable")
+    return value
+
+
+def _write_folder_catalog(value, user_did, root=None):
+    from modules.character_storage import snapshot
+
+    path = _root(user_did, root) / ".folders.json"
+    snapshot(path, value)
+    vlm_roleplay._atomic_write_json(path, value)
+
+
+def _folder_fields(folder_id, catalog, *, strict=False):
+    if folder_id == "":
+        return {"folder_id": "", "folder_name": ""}
+    if isinstance(folder_id, str):
+        folder = next((item for item in catalog["folders"] if item["id"] == folder_id), None)
+        if folder:
+            return {"folder_id": folder["id"], "folder_name": folder["name"]}
+    if strict:
+        raise ValueError("character_folder_not_found")
+    return {"folder_id": "", "folder_name": ""}
+
+
+def list_folders(user_did, root=None):
+    return sorted(_folder_catalog(user_did, root)["folders"], key=lambda item: item["name"].casefold())
+
+
+def save_folder(name, user_did, root=None, *, folder_id=None, reuse=False):
+    if (not isinstance(name, str) or not 0 < len(name.strip()) <= MAX_FOLDER_NAME
+            or any(ord(char) < 32 for char in name)):
+        raise ValueError("invalid_character_folder_name")
+    name = name.strip()
+    with _LOCK:
+        catalog = _folder_catalog(user_did, root)
+        if folder_id is not None:
+            if not folder_id:
+                raise ValueError("character_folder_not_found")
+            _folder_fields(folder_id, catalog, strict=True)
+        duplicate = next((item for item in catalog["folders"] if item["name"].casefold() == name.casefold()), None)
+        if duplicate and duplicate["id"] != folder_id:
+            if reuse and folder_id is None:
+                return duplicate
+            raise ValueError("character_folder_name_exists")
+        folder = {"id": folder_id or f"cf_{uuid.uuid4().hex}", "name": name}
+        catalog["folders"] = [item for item in catalog["folders"] if item["id"] != folder["id"]] + [folder]
+        _write_folder_catalog(catalog, user_did, root)
+        return folder
+
+
+def delete_folder(folder_id, user_did, root=None):
+    with _LOCK:
+        catalog = _folder_catalog(user_did, root)
+        if not folder_id:
+            raise ValueError("character_folder_not_found")
+        _folder_fields(folder_id, catalog, strict=True)
+        catalog["folders"] = [item for item in catalog["folders"] if item["id"] != folder_id]
+        catalog["roleplay"] = {key: value for key, value in catalog["roleplay"].items() if value != folder_id}
+        # Missing folder IDs resolve to Ungrouped; card IDs and media never move.
+        _write_folder_catalog(catalog, user_did, root)
 
 
 def backup_root(user_did, root=None):
@@ -171,8 +258,10 @@ def _runtime_media(ref, user_did, root=None):
     return result
 
 
-def _runtime_card(card, user_did, root=None):
+def _runtime_card(card, user_did, root=None, *, catalog=None):
     card = copy.deepcopy(card)
+    card.update(_folder_fields(card.get("folder_id", ""),
+                               catalog if catalog is not None else _folder_catalog(user_did, root)))
     media = []
     for ref in card.get("media", []):
         if root is not None:
@@ -462,6 +551,8 @@ def save_character(value, user_did, root=None, *, restore_revision=None):
         # Existing cards require a revision to avoid silently overwriting another editor.
         if previous and source.get("revision") != previous["revision"]:
             raise ValueError("character_revision_conflict")
+        folder = _folder_fields(source.get("folder_id", (previous or {}).get("folder_id", "")),
+                                _folder_catalog(user_did, root), strict=True)
         raw_ids = source.get("media_ids", [])
         if not isinstance(raw_ids, list) or len(raw_ids) > 12:
             raise ValueError("invalid_media_ids")
@@ -488,6 +579,7 @@ def save_character(value, user_did, root=None, *, restore_revision=None):
             "schema": SCHEMA, "version": 1, "category": "audiovisual", "id": card_id,
             "revision": previous["revision"] + 1 if previous else (restore_revision or 1),
             "name": name,
+            **folder,
             "appearance": str(source.get("appearance") or "").strip()[:12000],
             "image_prompt": str(source.get("image_prompt") or "").strip()[:12000],
             "image_preset": str(source.get("image_preset") or "").strip()[:200],
@@ -504,39 +596,75 @@ def save_character(value, user_did, root=None, *, restore_revision=None):
             "created_at": previous["created_at"] if previous else _now(),
             "updated_at": _now(),
         }
-        # Keep descriptions beside the assets as well as in the reusable library.
-        # Write this first so a backup failure never reports an unprotected save as successful.
-        from modules.character_storage import snapshot
-
-        stored = {**card, "media": [_stored_media(ref, user_did, root) for ref in media]}
-        if previous:
-            snapshot(path, {**previous, "media": [_stored_media(ref, user_did, root) for ref in previous["media"]]})
-        snapshot(path, stored)
-        vlm_roleplay._atomic_write_json(backup_root(user_did, root) / path.name, stored)
-        vlm_roleplay._atomic_write_json(path, stored)
-        (history_root(user_did, root) / card_id / "deleted.json").unlink(missing_ok=True)
+        _write_card(card, previous, user_did, root)
     return card
+
+
+def _write_card(card, previous, user_did, root=None):
+    from modules.character_storage import snapshot
+
+    path = _card_path(card["id"], user_did, root)
+    stored = {**card, "media": [_stored_media(ref, user_did, root) for ref in card.get("media", [])]}
+    if previous:
+        snapshot(path, {**previous, "media": [_stored_media(ref, user_did, root) for ref in previous.get("media", [])]})
+    snapshot(path, stored)
+    vlm_roleplay._atomic_write_json(backup_root(user_did, root) / path.name, stored)
+    vlm_roleplay._atomic_write_json(path, stored)
+    (history_root(user_did, root) / card["id"] / "deleted.json").unlink(missing_ok=True)
+
+
+def _roleplay_card(card, catalog):
+    return {"id": card["id"], "name": card["name"], "category": "roleplay",
+            "appearance": card["appearance"] or card["image_prompt"],
+            "voice_description": card["speech_style"], "media": [], "media_ids": [],
+            "revision": card["revision"], "updated_at": card["updated_at"],
+            **_folder_fields(catalog["roleplay"].get(card["id"], ""), catalog)}
+
+
+def move_character(card_id, folder_id, user_did, root=None, *, revision=None, category="audiovisual"):
+    with _LOCK:
+        catalog = _folder_catalog(user_did, root)
+        folder = _folder_fields(folder_id, catalog, strict=True)
+        if category == "roleplay":
+            card = vlm_roleplay.load_roleplay_character(card_id, user_did, root)
+            if not card or card["id"] != card_id:
+                raise ValueError("character_not_found")
+            if card["revision"] != revision:
+                raise ValueError("character_revision_conflict")
+            if folder_id:
+                catalog["roleplay"][card_id] = folder_id
+            else:
+                catalog["roleplay"].pop(card_id, None)
+            _write_folder_catalog(catalog, user_did, root)
+            return _roleplay_card(card, catalog)
+        if category != "audiovisual":
+            raise ValueError("invalid_character_category")
+        previous = _read(_card_path(card_id, user_did, root))
+        if not _valid_card(previous, card_id):
+            raise ValueError("character_not_found")
+        if previous["revision"] != revision:
+            raise ValueError("character_revision_conflict")
+        card = {**previous, **folder, "revision": previous["revision"] + 1, "updated_at": _now()}
+        # Grouping also works for cards with unavailable references.
+        _write_card(card, previous, user_did, root)
+        return _runtime_card(card, user_did, root, catalog=catalog)
 
 
 def list_characters(user_did, category="audiovisual", root=None):
     if category not in {"audiovisual", "roleplay", "all"}:
         raise ValueError("invalid_character_category")
     cards = []
+    catalog = _folder_catalog(user_did, root)
     if category in {"audiovisual", "all"}:
         for path in _root(user_did, root).glob("av_*.json"):
             card = _read(path)
             if _valid_card(card, path.stem):
-                cards.append(_runtime_card(card, user_did, root))
+                cards.append(_runtime_card(card, user_did, root, catalog=catalog))
     if category in {"roleplay", "all"}:
         for row in vlm_roleplay.list_roleplay_characters(user_did, root):
             card = vlm_roleplay.load_roleplay_character(row["id"], user_did, root)
             if card:
-                cards.append({
-                    "id": card["id"], "name": card["name"], "category": "roleplay",
-                    "appearance": card["appearance"] or card["image_prompt"],
-                    "voice_description": card["speech_style"], "media": [], "media_ids": [],
-                    "revision": card["revision"], "updated_at": card["updated_at"],
-                })
+                cards.append(_roleplay_card(card, catalog))
     return sorted(cards, key=lambda card: card.get("updated_at", ""), reverse=True)
 
 

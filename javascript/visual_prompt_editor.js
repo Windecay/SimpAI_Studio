@@ -468,6 +468,7 @@
         if (targets.length) value = targetValues[targetId] || '';
         let bindings = normalizeBindings(options.bindings);
         let cards = [], draft = null, dirty = false, busy = false, composing = false;
+        let folders = [], selectedFolder = 'all', editingFolderId = null;
         let storage = null, pendingImport = null;
         let listRequestVersion = 0, saveRequestVersion = 0, librarySaving = false;
         let usingCard = '';
@@ -493,6 +494,11 @@
 <input type="file" data-vpe-import accept=".json,application/json" hidden>
 <div data-vpe-storage class="sai-vpe-storage" hidden></div>
 <select data-vpe-category aria-label="${escape(t('Category', '分类'))}"><option value="audiovisual">${escape(t('Audiovisual', '视听创作'))}</option><option value="roleplay">${escape(t('Roleplay', '角色扮演'))}</option><option value="all">${escape(t('All', '全部'))}</option></select>
+<section class="sai-vpe-folders" aria-label="${escape(tr('Character folders'))}">
+<div class="sai-vpe-actions"><strong>${escape(tr('Character folders'))}</strong>${button('folder-new', 'folder-plus', tr('New folder'))}${button('folder-rename', 'pen', tr('Rename folder'))}${button('folder-delete', 'trash', tr('Delete folder'))}</div>
+<select data-vpe-folder aria-label="${escape(tr('Character folder'))}"><option value="all">${escape(tr('All characters'))}</option><option value="">${escape(tr('Ungrouped'))}</option></select>
+<div data-vpe-folder-form hidden><label>${escape(tr('Folder name'))}<input data-vpe-folder-name maxlength="100" autocomplete="off"></label><div class="sai-vpe-actions"><button type="button" data-vpe-action="folder-save">${escape(tr('Save folder'))}</button><button type="button" data-vpe-action="folder-cancel">${escape(t('Cancel', '取消'))}</button></div></div>
+</section>
 <input type="search" data-vpe-search aria-label="${escape(t('Search characters', '搜索角色'))}" placeholder="${escape(t('Search characters', '搜索角色'))}">
 <div data-vpe-cards class="sai-vpe-cards"></div>
 <strong>${escape(t('Current references', '当前参考素材'))}</strong><div data-vpe-refs class="sai-vpe-refs"></div>
@@ -531,6 +537,10 @@
                 character_id_conflict: tr('A file already exists for this character. Import its backup as a new card instead.'),
                 character_storage_error: tr('Character files could not be read or saved. Check the user directory and its permissions.'),
                 character_library_unreadable: tr('Character files could not be read or saved. Check the user directory and its permissions.'),
+                character_folders_unreadable: tr('Character folders could not be read. Check the user directory before retrying.'),
+                invalid_character_folder_name: tr('Enter a folder name of 1 to 100 characters without line breaks.'),
+                character_folder_name_exists: tr('A folder with this name already exists.'),
+                character_folder_not_found: tr('This character folder no longer exists. Refresh the library and choose another folder.'),
                 character_request_timeout: tr('The character request timed out. Refresh to check the library before retrying a save or import.'),
                 generation_not_allowed: t('Current identity is not allowed to generate.', '当前身份没有生成权限。'),
                 character_image_prompt_required: t('Enter an appearance or image prompt.', '请填写外观描述或生图提示词。'),
@@ -663,19 +673,43 @@
             if (String(ref.mime || ref.kind).startsWith('audio')) return audioPlayerHtml(ref, state);
             return `<video src="${escape(url)}" controls preload="none"></video>`;
         }
+        function folderOptions(selected, includeAll = false) {
+            return (includeAll ? `<option value="all"${selected === 'all' ? ' selected' : ''}>${escape(tr('All characters'))}</option>` : '')
+                + `<option value=""${selected === '' ? ' selected' : ''}>${escape(tr('Ungrouped'))}</option>`
+                + folders.map(folder => `<option value="${escape(folder.id)}"${selected === folder.id ? ' selected' : ''}>${escape(folder.name)}</option>`).join('');
+        }
+        function renderFolders() {
+            if (selectedFolder !== 'all' && !folders.some(folder => folder.id === selectedFolder)) selectedFolder = '';
+            query('[data-vpe-folder]').innerHTML = folderOptions(selectedFolder, true);
+            if (draft) {
+                const folder = folders.find(item => item.id === draft.folder_id);
+                draft.folder_id = folder?.id || ''; draft.folder_name = folder?.name || '';
+                const field = query('[data-vpe-draft-folder]');
+                if (field) field.innerHTML = folderOptions(draft.folder_id);
+            }
+            lockFolderControls();
+        }
+        function lockFolderControls() {
+            const locked = busy || !!usingCard || !!voiceJob || !!imageJob;
+            const managed = folders.some(folder => folder.id === selectedFolder);
+            host.querySelectorAll('.sai-vpe-folders button,.sai-vpe-folders input,.sai-vpe-folders select,[data-vpe-draft-folder]').forEach(element => {
+                element.disabled = locked || (!managed && ['folder-rename', 'folder-delete'].includes(element.dataset.vpeAction));
+            });
+        }
         function renderCards() {
             const filter = query('[data-vpe-search]').value.toLowerCase();
-            query('[data-vpe-cards]').innerHTML = cards.filter(card => `${card.name} ${card.appearance}`.toLowerCase().includes(filter)).map(card => {
+            query('[data-vpe-cards]').innerHTML = cards.filter(card => (selectedFolder === 'all' || (card.folder_id || '') === selectedFolder)
+                && `${card.name} ${card.appearance}`.toLowerCase().includes(filter)).map(card => {
                 const image = card.media?.find(ref => ref.mime?.startsWith('image/'));
                 const voice = card.media?.find(ref => ref.mime?.startsWith('audio/'));
                 return `<article class="sai-vpe-character${bindings.some(binding => binding.card.id === card.id) ? ' is-used' : ''}">
 <button type="button" data-vpe-card="${escape(card.id)}" class="sai-vpe-portrait" aria-label="${escape(t(`Use ${card.name}`, `使用 ${card.name}`))}">${image ? mediaHtml(image) : `<span class="sai-vpe-monogram">${escape(Array.from(card.name || '?').slice(0, 2).join(''))}</span>`}</button>
 <div class="sai-vpe-card-heading"><strong>${escape(card.name)}</strong><button type="button" data-vpe-edit="${escape(card.id)}" aria-label="${escape(t(`Edit ${card.name}`, `编辑 ${card.name}`))}" title="${escape(t('Edit character', '编辑角色'))}"><i class="fa-solid fa-pen"></i></button></div>
-<small>${escape(card.category === 'roleplay' ? t('Roleplay', '角色扮演') : t('Audiovisual', '视听创作'))}${voice ? ` · ${escape(t('Voice ready', '已有音色'))}` : ''}</small>
+<small>${escape(card.category === 'roleplay' ? t('Roleplay', '角色扮演') : t('Audiovisual', '视听创作'))} · ${escape(card.folder_name || tr('Ungrouped'))}${voice ? ` · ${escape(t('Voice ready', '已有音色'))}` : ''}</small>
 <p class="sai-vpe-card-description">${escape(card.appearance || card.voice_description || t('No description', '暂无描述'))}</p>
 ${voice ? mediaHtml(voice) : ''}
 <button type="button" class="sai-vpe-use" data-vpe-card="${escape(card.id)}"><i class="fa-solid fa-plus"></i> ${escape(t('Use character', '使用角色'))}</button></article>`;
-            }).join('') || `<p>${escape(tr(filter ? 'No characters match this search.' : 'No characters in this category. Check All or Find missing characters.'))}</p><button type="button" data-vpe-action="show-all">${escape(tr('Show all characters'))}</button>`;
+            }).join('') || `<p>${escape(tr(filter ? 'No characters match this search.' : 'No characters in this folder and category.'))}</p><button type="button" data-vpe-action="show-all">${escape(tr('Show all characters'))}</button>`;
             updateUseControls();
             mediaPreviews.sync();
         }
@@ -711,7 +745,9 @@ ${storage.recoverable?.length ? storage.recoverable.map(card => `<button type="b
 <p>${escape(preview.character.voice_description || '')}</p><p>${escape(tr('Available media'))}: ${preview.media_count - preview.missing_media.length} / ${preview.media_count}</p>
 ${preview.missing_media.length ? `<p role="alert">${escape(tr('Missing media will not be imported. Descriptions and available media will be kept.'))}</p><ul>${preview.missing_media.map(item => `<li>${escape(item.name)}</li>`).join('')}</ul>` : ''}
 <p>${escape(tr((pendingImport?.recoveryId || pendingImport?.backupId) && preview.restore_mode !== 'copy' ? 'Restore this missing card from its backup.' : 'Import creates a new card and keeps existing cards.'))}</p>
+<label>${escape(tr('Import into folder'))}<select data-vpe-import-folder><option value="__saved__">${escape(tr('Use saved folder'))}: ${escape(preview.character.folder_name || tr('Ungrouped'))}</option>${folderOptions('')}</select></label>
 <div class="sai-vpe-actions"><button type="button" data-vpe-action="confirm-import">${escape(tr(preview.missing_media.length ? 'Import available content' : 'Confirm character import'))}</button><button type="button" data-vpe-action="cancel-import">${escape(t('Cancel', '取消'))}</button></div>`;
+            query('[data-vpe-import-folder]').value = pendingImport?.recoveryId || selectedFolder === 'all' ? '__saved__' : selectedFolder;
         }
         function updateUseControls() {
             host.querySelectorAll('button,input,textarea,select').forEach(element => {
@@ -747,7 +783,8 @@ ${preview.missing_media.length ? `<p role="alert">${escape(tr('Missing media wil
                 return false;
             }
             if (!isCurrent()) return false;
-            cards = result.characters; storage = result.storage || null;
+            cards = result.characters; storage = result.storage || null; folders = result.folders || [];
+            renderFolders();
             renderCards(); renderStorage(); renderReferences(); renderText();
             if (storage?.unreadable_files?.length || storage?.recoverable?.length
                     || storage?.migration_conflicts?.length || storage?.migration_unreadable?.length) query('[data-vpe-storage]').hidden = false;
@@ -851,6 +888,7 @@ ${ref.trim_source_asset_id ? button(`restore-audio:${index}`, 'rotate-left', t('
 <div class="sai-vpe-actions"><strong>${escape(t('Portrait & voice', '角色图片与声音'))}</strong>${button('upload', 'file-arrow-up', t('Upload image or audio', '上传图片或音频'))}<input type="file" data-vpe-upload accept="image/png,image/jpeg,image/webp,audio/wav,audio/mpeg,audio/ogg,audio/flac,audio/mp4" hidden></div>
 ${draftMediaHtml()}
 <label>${escape(t('Name', '名称'))}<input data-vpe-field="name" value="${escape(draft.name)}" maxlength="200"></label>
+<label>${escape(tr('Character folder'))}<select data-vpe-draft-folder>${folderOptions(draft.folder_id || '')}</select></label>
 <label>${escape(t('Appearance', '外观描述'))}<textarea data-vpe-field="appearance" rows="5">${escape(draft.appearance)}</textarea></label>
 <section class="sai-vpe-sheet" aria-label="${escape(t('Character sheet', '角色设定图'))}">
 <div class="sai-vpe-actions"><strong>${escape(t('Four-view sheet · 1 image', '标准四视图 · 单张'))}</strong>${button('image-presets', 'arrows-rotate', t('Refresh image presets', '刷新生图预设'))}</div>
@@ -904,6 +942,7 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 }
             });
             rich.contentEditable = voiceJob || imageJob ? 'false' : 'true';
+            lockFolderControls();
         }
         async function pollImage(stop = false) {
             if (!imageJob || (stop ? stoppingImage : pollingImage)) return;
@@ -1033,7 +1072,38 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             root.setTimeout(() => root.URL.revokeObjectURL(url), 1000);
         }
         async function handleAction(action) {
+            if (action === 'folder-new' || action === 'folder-rename') {
+                const folder = folders.find(item => item.id === selectedFolder);
+                if (action === 'folder-rename' && !folder) return;
+                editingFolderId = action === 'folder-rename' ? folder.id : null;
+                query('[data-vpe-folder-form]').hidden = false;
+                const field = query('[data-vpe-folder-name]');
+                field.value = editingFolderId ? folder.name : '';
+                root.requestAnimationFrame(() => {
+                    if (editorIsCurrent() && !query('[data-vpe-folder-form]').hidden && !busy) { field.focus(); field.select(); }
+                });
+                return;
+            }
+            if (action === 'folder-cancel') { query('[data-vpe-folder-form]').hidden = true; return; }
+            if (action === 'folder-save') {
+                const result = await request(editingFolderId ? 'folder-rename' : 'folder-create', {
+                    name: query('[data-vpe-folder-name]').value, ...(editingFolderId ? { folder_id: editingFolderId } : {})
+                }, state);
+                if (!editorIsCurrent()) return;
+                selectedFolder = result.folder.id;
+                query('[data-vpe-folder-form]').hidden = true;
+                await refresh(); status(tr('Folder saved.')); return;
+            }
+            if (action === 'folder-delete') {
+                const folder = folders.find(item => item.id === selectedFolder);
+                if (!folder || !root.confirm(tr('Delete folder "{name}"? Its characters will move to Ungrouped.').replace('{name}', folder.name))) return;
+                await request('folder-delete', { folder_id: folder.id }, state);
+                if (!editorIsCurrent()) return;
+                selectedFolder = ''; query('[data-vpe-folder-form]').hidden = true;
+                await refresh(); status(tr('Folder deleted. Its characters are now Ungrouped.')); return;
+            }
             if (action === 'show-all') {
+                selectedFolder = 'all';
                 query('[data-vpe-category]').value = 'all';
                 query('[data-vpe-search]').value = '';
                 await refresh(); return;
@@ -1064,13 +1134,17 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 if (!pendingImport) return;
                 if (dirty && !await saveDraft()) return;
                 const pending = pendingImport;
+                const destination = query('[data-vpe-import-folder]').value;
                 const result = await request(pending.backupId ? 'backup-import' : pending.recoveryId ? 'recover' : 'import', {
                     ...(pending.recoveryId ? { character_id: pending.recoveryId } : { archive: pending.archive }),
                     ...(pending.backupId ? { backup_id: pending.backupId } : {}),
+                    ...(destination !== '__saved__' ? { folder_id: destination } : {}),
                     allow_missing_media: pending.preview.missing_media.length > 0
                 }, state);
                 pendingImport = null; query('[data-vpe-import-review]').hidden = true;
-                draft = result.character; dirty = false; await refresh(); renderDetail();
+                draft = result.character; dirty = false; selectedFolder = draft.folder_id || '';
+                query('[data-vpe-category]').value = 'audiovisual';
+                await refresh(); renderDetail();
                 status(t('Character restored/imported. Existing cards were kept.', '角色已恢复或导入，已有角色卡已保留。')); return;
             }
             if (action === 'export-card') {
@@ -1156,7 +1230,10 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
                 return;
             }
             if (action === 'close') { close(); return; }
-            if (action === 'close-detail') { await saveDraft(); draft = null; renderDetail(); return; }
+            if (action === 'close-detail') {
+                if (dirty && (!await saveDraft() || dirty)) return;
+                draft = null; renderDetail(); return;
+            }
             if (action === 'undo' || action === 'redo') {
                 const source = action === 'undo' ? history : redo;
                 const target = action === 'undo' ? redo : history;
@@ -1170,7 +1247,8 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             if (action === 'new') {
                 if (dirty) await saveDraft();
                 mediaPreviews.pauseAll();
-                draft = { name: '', appearance: '', voice_description: '', category: 'audiovisual', media: [], media_ids: [] };
+                draft = { name: '', appearance: '', voice_description: '', category: 'audiovisual', media: [], media_ids: [],
+                    folder_id: selectedFolder === 'all' ? '' : selectedFolder };
                 dirty = false; imageMessage = ''; renderDetail(); query('[data-vpe-field="name"]').focus(); return;
             }
             if (action === 'upload') { pendingUpload = null; query('[data-vpe-upload]')?.click(); return; }
@@ -1297,6 +1375,7 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             if (busy) return;
             busy = true; host.setAttribute('aria-busy', 'true');
             usingCard = cardId;
+            lockFolderControls();
             if (usingCard) {
                 status(t('Adding character and references...', '正在使用角色并关联素材...'));
                 updateUseControls();
@@ -1308,6 +1387,7 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             finally {
                 usingCard = ''; updateUseControls();
                 busy = false; host.removeAttribute('aria-busy');
+                lockFolderControls();
             }
         }
         async function selectCharacter(cardId, edit = false) {
@@ -1405,6 +1485,32 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
             }
         });
         host.addEventListener('change', event => {
+            if (event.target.matches('[data-vpe-folder]')) {
+                if (busy || voiceJob || imageJob) { event.target.value = selectedFolder; return; }
+                selectedFolder = event.target.value;
+                query('[data-vpe-folder-form]').hidden = true;
+                renderFolders(); renderCards(); return;
+            }
+            if (event.target.matches('[data-vpe-draft-folder]')) {
+                const owner = draft, destination = event.target.value;
+                if (!owner || busy || voiceJob || imageJob) {
+                    event.target.value = owner?.folder_id || ''; return;
+                }
+                if (!owner.id) { owner.folder_id = destination; dirty = true; return; }
+                run(async () => {
+                    const field = event.target; field.disabled = true;
+                    try {
+                        const result = await request('move', { character_id: owner.id, revision: owner.revision,
+                            category: owner.category, folder_id: destination }, state);
+                        if (!editorIsCurrent() || draft !== owner) return;
+                        for (const key of ['revision', 'folder_id', 'folder_name', 'updated_at']) owner[key] = result.character[key];
+                        await refresh(); status(tr('Character moved.'));
+                    } finally {
+                        if (editorIsCurrent() && draft === owner) { field.disabled = false; field.value = owner.folder_id || ''; }
+                    }
+                });
+                return;
+            }
             if (event.target.matches('[data-vpe-import]')) {
                 const file = event.target.files?.[0];
                 event.target.value = '';
@@ -1453,6 +1559,9 @@ ${options.onAttachMedia ? `<button type="button" data-vpe-action="attach-media">
         host.addEventListener('keydown', event => {
             event.stopPropagation();
             if (composing || event.isComposing) return;
+            if (event.key === 'Enter' && event.target.matches('[data-vpe-folder-name]')) {
+                event.preventDefault(); run(() => handleAction('folder-save')); return;
+            }
             if (event.key === 'Escape') {
                 event.preventDefault();
                 mediaPreviews.hidePreview();

@@ -17,7 +17,8 @@ MIMES = {"image/png", "image/jpeg", "image/webp", "audio/wav", "audio/x-wav",
          "audio/mpeg", "audio/ogg", "audio/flac", "audio/mp4"}
 TEXT_FIELDS = {"name": 200, "appearance": 12000, "image_prompt": 12000, "image_preset": 200,
                "image_edit_preset": 200, "personality": 4000, "voice_description": 4000,
-               "image_source_asset_id": 100, "source_roleplay_id": 200}
+               "image_source_asset_id": 100, "source_roleplay_id": 200,
+               "folder_name": library.MAX_FOLDER_NAME}
 
 
 def _service(service):
@@ -153,11 +154,13 @@ def preview_import(value, user_did, root=None, asset_service=None):
 
 
 def import_character(value, user_did, root=None, asset_service=None, *, allow_missing_media=False,
-                     restore_id=None, restore_revision=None):
+                     restore_id=None, restore_revision=None, folder_id=None):
     service = _service(asset_service)
     card, records, missing = _prepare(value, user_did, root, service)
     if missing and allow_missing_media is not True:
         raise ValueError("character_archive_media_missing")
+    if folder_id is not None:
+        library._folder_fields(folder_id, library._folder_catalog(user_did, root), strict=True)
     mapping, refs = {}, []
     for record in records:
         ref = record.get("existing")
@@ -181,7 +184,12 @@ def import_character(value, user_did, root=None, asset_service=None, *, allow_mi
     card["image_source_asset_id"] = mapping.get(card["image_source_asset_id"], "")
     if restore_id:
         card["id"] = restore_id
-    saved = library.save_character(card, user_did, root, restore_revision=restore_revision)
+    with library._LOCK:
+        if folder_id is None:
+            folder_id = (library.save_folder(card["folder_name"], user_did, root, reuse=True)["id"]
+                         if card["folder_name"] else "")
+        card["folder_id"] = folder_id
+        saved = library.save_character(card, user_did, root, restore_revision=restore_revision)
     return {"character": saved, "missing_media": missing}
 
 
@@ -225,7 +233,8 @@ def preview_backup(card_id, backup_id, user_did, root=None, asset_service=None):
             "revision": card["revision"], "updated_at": card.get("updated_at", "")}
 
 
-def import_backup(card_id, backup_id, user_did, root=None, asset_service=None, *, allow_missing_media=False):
+def import_backup(card_id, backup_id, user_did, root=None, asset_service=None, *, allow_missing_media=False,
+                  folder_id=None):
     with library._LOCK:
         card = library.backup_card(card_id, backup_id, user_did, root)
         preview = preview_backup(card_id, backup_id, user_did, root, asset_service)
@@ -236,7 +245,7 @@ def import_backup(card_id, backup_id, user_did, root=None, asset_service=None, *
                            if entry["id"] == card_id) + 1
         return import_character(card, user_did, root, asset_service,
                                 allow_missing_media=allow_missing_media,
-                                restore_id=restore_id, restore_revision=revision)
+                                restore_id=restore_id, restore_revision=revision, folder_id=folder_id)
 
 
 def export_backup(card_id, backup_id, user_did, root=None):
@@ -250,7 +259,8 @@ def recovery_preview(card_id, user_did, root=None, asset_service=None):
     return card, preview_import(card, user_did, root, asset_service)
 
 
-def recover_character(card_id, user_did, root=None, asset_service=None, *, allow_missing_media=False):
+def recover_character(card_id, user_did, root=None, asset_service=None, *, allow_missing_media=False,
+                      folder_id=None):
     with library._LOCK:
         path = library._card_path(card_id, user_did, root)
         if path.exists():
@@ -258,4 +268,4 @@ def recover_character(card_id, user_did, root=None, asset_service=None, *, allow
         card, _ = recovery_preview(card_id, user_did, root, asset_service)
         return import_character(card, user_did, root, asset_service,
                                 allow_missing_media=allow_missing_media, restore_id=card_id,
-                                restore_revision=card["revision"])
+                                restore_revision=card["revision"], folder_id=folder_id)

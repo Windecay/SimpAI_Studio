@@ -17,7 +17,7 @@ _READY = set()
 MAX_FILES = 10000
 MAX_BYTES = 32 * 1024 * 1024
 SCHEMAS = {"simpai.audiovisual.character", "simpai.audiovisual.media",
-           "simpai.vlm_roleplay.character"}
+           "simpai.vlm_roleplay.character", "simpai.character.folders"}
 
 
 def portable_value(value):

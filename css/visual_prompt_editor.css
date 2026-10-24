@@ -38,6 +38,8 @@ html:has(body > .sai-vpe-backdrop) { scrollbar-gutter: stable; }
 .sai-vpe-mode [aria-pressed="true"], .sai-vpe-dialog .is-primary { background: var(--button-primary-background-fill); border-color: var(--button-primary-border-color, var(--button-primary-background-fill)); color: var(--button-primary-text-color); }
 .sai-vpe-mode [aria-pressed="true"]:hover:not(:disabled), .sai-vpe-dialog .is-primary:hover:not(:disabled) { background: var(--button-primary-background-fill-hover, var(--button-primary-background-fill)); }
 .sai-vpe-cards { display: grid; gap: 14px; }
+.sai-vpe-folders { display: flex; flex-direction: column; gap: 8px; }
+.sai-vpe-folders [data-vpe-folder-form] { padding: 10px; border: 1px solid var(--border-color-primary); border-radius: 4px; background: var(--background-fill-secondary); }
 .sai-vpe-character { min-width: 0; padding: 10px; border: 1px solid var(--border-color-primary); border-radius: 8px; background: var(--block-background-fill, var(--background-fill-secondary)); display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
 .sai-vpe-character.is-used { border-color: var(--button-primary-background-fill); }
 .sai-vpe-dialog .sai-vpe-portrait { width: 100%; aspect-ratio: 16 / 10; padding: 0; display: grid; place-items: center; overflow: hidden; background: var(--background-fill-secondary); }
