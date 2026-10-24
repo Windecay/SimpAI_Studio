@@ -13,6 +13,7 @@ LOOPBACK_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 _INVALID_HTTP_FILTER_SENTINEL = "_simpai_frontend_invalid_http_filter"
 _H11_DATA_GUARD_SENTINEL = "_simpai_frontend_h11_data_guard"
 _H11_DATA_ORIGINAL_ATTR = "_simpai_original_data_received"
+_H11_BAD_REQUEST_ORIGINAL_ATTR = "_simpai_original_send_400_response"
 _PROACTOR_ACCEPT_GUARD_SENTINEL = "_simpai_frontend_threaded_accept_guard"
 _PROACTOR_ACCEPT_ORIGINAL_ATTR = "_simpai_original_accept"
 _ASYNCIO_CONNECTION_RESET_FILTER_SENTINEL = "_simpai_frontend_asyncio_connection_reset_filter"
@@ -280,6 +281,7 @@ def patch_windows_proactor_accept_threaded(host: str | None = None, port: int | 
 
 def patch_uvicorn_h11_protocol_probe(host: str | None = None, port: int | str | None = None) -> None:
     try:
+        import h11
         from uvicorn.protocols.http.h11_impl import H11Protocol
     except Exception:
         return
@@ -289,6 +291,25 @@ def patch_uvicorn_h11_protocol_probe(host: str | None = None, port: int | str | 
 
     original = H11Protocol.data_received
     setattr(H11Protocol, _H11_DATA_ORIGINAL_ATTR, original)
+
+    original_send_400 = getattr(H11Protocol, "send_400_response", None)
+    if callable(original_send_400):
+        setattr(H11Protocol, _H11_BAD_REQUEST_ORIGINAL_ATTR, original_send_400)
+
+        def send_400_response(self, message):
+            # A malformed request may arrive after the response has started or
+            # the connection has closed. Sending another response is illegal.
+            if self.transport.is_closing() or self.conn.our_state not in (h11.IDLE, h11.SEND_RESPONSE):
+                self.transport.close()
+                return
+            try:
+                return original_send_400(self, message)
+            except h11.LocalProtocolError:
+                # This is only the malformed-request response path. Exceptions
+                # from normal application responses must remain observable.
+                self.transport.close()
+
+        H11Protocol.send_400_response = send_400_response
 
     def data_received(self, data: bytes) -> None:
         kind = classify_frontend_invalid_http_bytes(data[:24] if data else b"")

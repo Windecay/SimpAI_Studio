@@ -50,7 +50,7 @@ def _resolve_scene_theme_from_state(sp):
     return resolved
 
 
-def _bind_shared_preset_navigation(buttons, fn, inputs, outputs):
+def _bind_shared_preset_navigation(buttons, fn, inputs, outputs, *, pass_request=False):
     """Keep the current session's button values while sharing one event graph."""
     buttons = list(buttons)
     input_count = len(inputs)
@@ -60,7 +60,7 @@ def _bind_shared_preset_navigation(buttons, fn, inputs, outputs):
         if isinstance(button.elem_id, str) and button.elem_id
     }
 
-    def _dispatch_preset_navigation(evt: gr.EventData, *values):
+    def _dispatch_preset_navigation(evt: gr.EventData, request: gr.Request, *values):
         index = button_indices.get(getattr(evt.target, "_id", None))
         if index is None:
             # gr.update(value=...) replaces the session's Button instance and
@@ -71,7 +71,10 @@ def _bind_shared_preset_navigation(buttons, fn, inputs, outputs):
         # EventData.target.value can be the initial server-side label. Read the
         # submitted component value, which includes this user's reordered and
         # private presets, exactly as the former per-button listener did.
-        return fn(*values[:input_count], values[input_count + index])
+        selected_values = (*values[:input_count], values[input_count + index])
+        if pass_request:
+            return fn(*selected_values, request=request)
+        return fn(*selected_values)
 
     return gr.on(
         triggers=[button.click for button in buttons],
@@ -213,6 +216,7 @@ def bind_topbar_navigation_events(
     welcome_media_load_fn=None,
     welcome_media_load_inputs=None,
     welcome_media_load_outputs=None,
+    navigation_state_recovery_fn=None,
 ) -> None:
     def _debug_nav_trace(event_name, *values):
         if not _simpai_ui_trace_enabled():
@@ -328,12 +332,15 @@ def bind_topbar_navigation_events(
         value = _value_from_component_update(update)
         return gr_update(value=value) if value is not None else skip_update()
 
-    def _reset_layout_ui_nav(*args):
+    def _reset_layout_ui_nav(*args, request=None):
         models_tab_active = True
         reset_args = args
         if has_models_tab_active_state and len(args) >= 2:
             models_tab_active = bool(args[-2])
             reset_args = args[:-2] + (args[-1],)
+        if navigation_state_recovery_fn is not None:
+            recovered_state = navigation_state_recovery_fn(reset_args[2], request, reset_args[-1])
+            reset_args = (*reset_args[:2], recovered_state, *reset_args[3:])
         result = topbar_module.reset_layout_ui(
             *reset_args,
             include_scene_outputs=not bool(reset_layout_scene_outputs),
@@ -761,6 +768,7 @@ def bind_topbar_navigation_events(
         reset_layout_main_head_outputs
         + ([reset_layout_deferred_ui_state] if split_reset_layout_main else [])
         + reset_layout_nav_tail_outputs,
+        pass_request=navigation_state_recovery_fn is not None,
     )
     navigation_events = [chain]
     if split_reset_layout_main:

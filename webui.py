@@ -66,7 +66,7 @@ from ui.bootstrap import apply_webui_assets, create_root_blocks, launch_root_app
 from ui.workspace_recovery import install_workspace_recovery
 from ui.frontend_http_guard import configure_frontend_http_guard
 from ui.update_helpers import dataset_update, dropdown_update, gr_update, skip_update as skip_component_update
-from ui.image_tagger_settings import create_image_tagger_settings
+from ui.image_tagger_settings import ImageTaggerSignInRequired, create_image_tagger_settings
 from ui.studio_help import vlm_help_marker
 from ui.events.topbar import (
     bind_topbar_identity_events,
@@ -713,17 +713,73 @@ def _resolve_cloud_config_user_did(state_params=None, request=None):
 
 def _image_tagger_request_state(state, request):
     next_state = dict(state) if isinstance(state, dict) else {}
+    next_state.setdefault("__lang", args_manager.args.language)
     if is_local_mode():
         did = canvas_workbench_request_identity.resolve_local_workspace_did(shared.token)
     else:
         session = _get_request_identity_session(request)
         if session["status"] != "valid":
-            raise gr.Error("请登录后修改标签模型设置。" if next_state.get("__lang") == "cn"
-                           else "Sign in to change image tagger settings.")
+            raise ImageTaggerSignInRequired(next_state)
         did = session["did"]
     next_state["user_did"] = did
     next_state["user"] = shared.token.get_user_context(did)
     return next_state
+
+
+def _recover_preset_navigation_state(state, request, selected_preset):
+    """Rebuild an expired Gradio state using the current HTTP identity."""
+    state = state if isinstance(state, dict) else {}
+    required = ("__preset", "__lang", "__theme", "__is_mobile", "__max_per_page",
+                "__max_catalog", "__session", "ua_hash", "sys_did")
+    if state.get("user") is not None and all(key in state for key in required):
+        return state
+
+    lang = state.get("__lang") or args_manager.args.language
+    if request is None:
+        raise gr.Error("页面会话已失效，请刷新页面后重试。" if lang == "cn"
+                       else "The page session has expired. Reload the page and try again.")
+    user_agent = str(_get_request_header(request, "user-agent", ""))
+    ua_hash = hashlib.sha256(user_agent.encode("utf-8")).hexdigest()
+    if is_local_mode():
+        did = canvas_workbench_request_identity.resolve_local_workspace_did(shared.token)
+        session = {"status": "valid", "did": did,
+                   "sstoken": shared.token.get_guest_sstoken(ua_hash), "expires_in": 90 * 86400}
+    else:
+        session = _get_request_identity_session(request)
+        if session.get("status") != "valid":
+            raise gr.Error("页面会话已失效，请重新登录后切换预置。" if lang == "cn"
+                           else "The page session has expired. Sign in again to switch presets.")
+        did = session["did"]
+    user = shared.token.get_user_context(did)
+    if user is None or user.get_did() != did:
+        raise gr.Error("无法恢复当前身份，请刷新页面后重试。" if lang == "cn"
+                       else "The current identity could not be restored. Reload the page and try again.")
+
+    # Do not carry cached private data, model defaults or a former identity into
+    # a rebuilt session. The normal navigation chain applies the clicked preset.
+    now = time.time()
+    client_host, client_port = topbar._get_request_client_host_port(request)
+    recovered = {
+        "user": user, "sys_did": shared.token.get_sys_did(),
+        "__session": session["sstoken"], "sstoken": session["sstoken"],
+        "ua_hash": ua_hash, "ua_session": topbar.gen_ua_session(client_host, str(client_port), user_agent),
+        "__identity_status": "valid", "__identity_last_check": now,
+        "__identity_expires_at": now + session["expires_in"],
+        "__identity_session_seq": max(int(state.get("__identity_session_seq", 0) or 0) + 1, int(now * 1000)),
+        "local_access": client_host in (shared.args.listen, "127.0.0.1") or shared.args.listen == "127.0.0.1",
+        "__is_mobile": topbar.is_mobile_user_agent(user_agent),
+        "__max_per_page": 18, "__max_catalog": modules.config.default_image_catalog_max_number,
+        "__preset": topbar._strip_preset_marker(selected_preset), "__layout_initialized": False,
+        "infobox_state": 0, "note_box_state": ["", 0, 0], "array_wildcards_mode": "_",
+        "wildcard_in_wildcards": "root", "preset_store": False,
+        "__preset_store_seq": 0, "__preset_store_mounted": False,
+    }
+    recovered["__lang"] = ads.get_user_default("__lang", recovered, lang)
+    recovered["__theme"] = ads.get_user_default("__theme", recovered, args_manager.args.theme)
+    topbar._update_request_web_state(recovered, request)
+    logger.info("[UI-TRACE] nav.session_recovered | preset=%r, is_mobile=%s",
+                recovered["__preset"], recovered["__is_mobile"])
+    return recovered
 
 
 def _main_vlm_state_from_request(state, request=None):
@@ -13115,6 +13171,10 @@ with shared.gradio_root:
                 inputs=camera_motion_status_inputs,
                 outputs=[camera_motion_generated_snapshot, camera_motion_status],
                 js=camera_motion_reference_status_js,
+                # A delayed status notification can contain a prior preset's
+                # slider values. Let the status callback check its snapshot
+                # before interpreting them; generation retains preprocessing.
+                preprocess=False,
                 show_progress=False,
                 queue=False,
             )
@@ -14050,6 +14110,7 @@ with shared.gradio_root:
         return [gr.update(visible=True)] * 4
 
     bind_topbar_navigation_events(
+        navigation_state_recovery_fn=_recover_preset_navigation_state,
         bar_buttons=bar_buttons,
         topbar_module=topbar,
         reset_preset_inputs=reset_preset_inputs,

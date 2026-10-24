@@ -9,6 +9,15 @@ from modules.localization import localized_text
 from modules.wd14_models import DEFAULT_MODEL_ID, MODEL_LABELS, DEFAULT_TAG_CATEGORIES, TAG_CATEGORY_LABELS
 
 
+class ImageTaggerSignInRequired(gr.Error):
+    """An expected authentication failure, distinct from model/status failures."""
+
+    def __init__(self, state):
+        self.language = state.get("__lang") if isinstance(state, dict) else None
+        super().__init__("请登录后修改标签模型设置。" if self.language == "cn"
+                         else "Sign in to change image tagger settings.")
+
+
 def create_image_tagger_settings(state_component, resolve_state, refresh_events=(), tooltip_component=None):
     category_info = ("Saved for your account. Character tags use the character threshold; other categories use the general threshold. "
                      "Only categories provided by the selected model can appear.")
@@ -39,17 +48,32 @@ def create_image_tagger_settings(state_component, resolve_state, refresh_events=
             result += (gr.update(value=tooltip),)
         result += (gr.update(value=snapshot["categories"], label=localized_text(state, "Output tag categories"),
                             choices=[(localized_text(state, label), key) for key, label in TAG_CATEGORY_LABELS.items()],
-                            info=localized_text(state, category_info)),)
+                            info=localized_text(state, category_info), interactive=True),)
         return result
 
+    def signed_out_updates(error):
+        message = ("登录后可查看和修改标签模型设置。" if error.language == "cn"
+                   else "Sign in to view and change image tagger settings.")
+        result = (gr.update(value="<p>" + html.escape(message) + "</p>"),
+                  gr.update(visible=False, interactive=False), gr.update(active=False))
+        if tooltip_component is not None:
+            result += (gr.update(value=message),)
+        return (*result, gr.update(value=[], interactive=False))
+
     def refresh(state, request: gr.Request):
-        state = resolve_state(state, request)
+        try:
+            state = resolve_state(state, request)
+        except ImageTaggerSignInRequired as error:
+            return signed_out_updates(error)
         return updates(settings.model_status(state), state)
 
     def load(state, request: gr.Request):
-        state = resolve_state(state, request)
+        try:
+            state = resolve_state(state, request)
+        except ImageTaggerSignInRequired as error:
+            return (gr.update(value=None, interactive=False), *signed_out_updates(error))
         selected = settings.selected_model(state)
-        return (gr.update(value=selected), *updates(settings.model_status(state, selected), state))
+        return (gr.update(value=selected, interactive=True), *updates(settings.model_status(state, selected), state))
 
     def save(model_id, state, request: gr.Request):
         state = resolve_state(state, request)

@@ -126,6 +126,34 @@ _APP_TREE_LOADING_UPDATE_ORIGINAL = """\tasync update_state(id, new_state, check
 \t\tconst node = find_node_by_id(this.root, id);"""
 _APP_TREE_RELOAD_START = "\treload(components, layout, dependencies, config) {\n"
 _APP_TREE_RERENDER_START = "\trerender(components, layout) {\n"
+_SLIDER_VALUE_EFFECT = """\tuser_effect(() => {
+\t\tif (gradio.props.value == null) return;
+
+\t\trange_input.style.setProperty("--range_progress", `${get(percentage)}%`);
+\t\trange_input.value = gradio.props.value.toString();
+\t});"""
+_SLIDER_RANGE_BINDING = "\t\t\tbind_this(input_1, ($$value) => range_input = $$value, () => range_input);"
+
+
+def _asset_needs_slider_lifecycle_patch(text: str) -> bool:
+    return _SLIDER_VALUE_EFFECT in text and _SLIDER_RANGE_BINDING in text
+
+
+def _patch_slider_lifecycle_asset(text: str) -> str:
+    """Dispose the DOM effect with the slider's conditionally mounted inputs."""
+    if not _asset_needs_slider_lifecycle_patch(text):
+        return text
+    mounted_effect = _SLIDER_VALUE_EFFECT.replace("range_input", "input_1").replace(
+        "user_effect(() => {", "template_effect(() => {", 1,
+    )
+    mounted_effect = "\n".join("\t\t" + line for line in mounted_effect.splitlines())
+    return text.replace(_SLIDER_VALUE_EFFECT, "", 1).replace(
+        _SLIDER_RANGE_BINDING,
+        _SLIDER_RANGE_BINDING
+        + "\n\n\t\t\t// simpleai_slider_mounted_value_effect: recreate on each mount.\n"
+        + mounted_effect,
+        1,
+    )
 
 
 def _startup_performance_patch_disabled() -> bool:
@@ -716,6 +744,7 @@ def _read_patched_gradio_js_asset(path: Path) -> str | None:
         if not heartbeat_disabled:
             patched = _patch_heartbeat_asset(patched)
             patched = _patch_file_preview_asset(patched)
+            patched = _patch_slider_lifecycle_asset(patched)
         if patched == text:
             return None
         _GRADIO_JS_PATCH_CACHE.clear()
@@ -764,8 +793,12 @@ def _discover_gradio_js_patch_readers() -> dict[str, Callable[[Path], str | None
             not _startup_performance_patch_disabled()
             and _asset_needs_startup_performance_patch(text)
         )
+        needs_slider_lifecycle = (
+            not _env_flag_enabled("SIMPAI_DISABLE_GRADIO_ASSET_PATCHES")
+            and _asset_needs_slider_lifecycle_patch(text)
+        )
         patch_count = sum((needs_app_tree, needs_image_drop, needs_connection_reload))
-        if patch_count > 1 or needs_heartbeat or needs_file_preview or needs_startup_performance:
+        if patch_count > 1 or needs_heartbeat or needs_file_preview or needs_startup_performance or needs_slider_lifecycle:
             readers[path.name] = _read_patched_gradio_js_asset
         elif needs_app_tree:
             readers[path.name] = _read_patched_app_tree_asset
