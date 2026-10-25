@@ -609,14 +609,19 @@ SimpAI UI guide skill:
   object, character and text regions, including exact literal text. Compiled
   Layout JSON bypasses wildcard batches, inline LoRA tags, style templates and
   automatic expansion; the explicitly selected LoRA stack remains available.
-- Defaults: 1024 x 1024, Euler, 12 steps, CFG 1, `sgm_uniform`, shift 5 and
-  unconditional skip layer 22, with `8-steps-dmd2-lora.safetensors` from
-  `lodestones/Kromoss` enabled at model strength 0.75. This uses the original
-  MOSS SFT DiT, not the Kromoss DiT. ModelScope is the primary download source
-  and Hugging Face is the fallback.
-  Sampling steps remain editable; 12 is a default, not a fixed limit.
-  To use the original undistilled settings, disable the DMD LoRA and select
-  50 steps with CFG 3. The workflow uses Comfy's native MOSS support:
+- `MOSS-Image` defaults to 50 steps, CFG 3 and Spectrum acceleration, with no
+  DMD LoRA. Spectrum uses the tested native MOSS adapter, window 2, flex 0.25,
+  warmup 6 and tail 3. Forecast state resets for each sampler invocation.
+  Acceleration may change text and fine details; it is not strictly lossless.
+  `MOSS-Turbo` retains 12 steps, CFG 1 and `8-steps-dmd2-lora.safetensors`
+  from `lodestones/Kromoss` at strength 0.75, with Spectrum disabled.
+  Both use the original MOSS SFT DiT and share the same image functions,
+  optional PE and regional editor. Steps remain editable in both presets.
+  Common defaults: 1024 x 1024, Euler, `sgm_uniform`, shift 5 and
+  unconditional skip layer 22. ModelScope is the primary download source
+  and Hugging Face is the fallback. Forge Neo also defaults to 50 steps,
+  CFG 3 and no LoRA; the Spectrum node runs on the Comfy backend only.
+  The workflow uses Comfy's native MOSS support:
   official fused-QKV INT8 DiT and Comfy-Org Qwen3.5-9B W4A8 text encoder with
   `CLIPLoader(type=moss_image)`, and the shared Flux2 VAE. Retain native
   `multiplier=1`; a legacy `ModelSamplingSD3` override produces an invalid

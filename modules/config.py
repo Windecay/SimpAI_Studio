@@ -469,6 +469,8 @@ def resolve_preset_supported_tasks(preset_content, preset_name=""):
 def try_get_preset_content(preset, user_did=None):
     if isinstance(preset, str):
         try:
+            preset = {"moss-image": "MOSS-Image", "moss-turbo": "MOSS-Turbo",
+                      "moss-edit": "MOSS-Edit"}.get(preset.casefold(), preset)
             arch_str = get_gpu_arch_str_in_preset_name()
             if preset.endswith('.'):
                 if user_did is None:

@@ -1181,7 +1181,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         _value_with_default_alias(presetdata_dict, 'enhance_uov_strength', 0.2),
     )
     results.append(gr_update(
-        value=quick_strength_value, visible=engine_type != 'video' and bool(quick_enhance_value),
+        value=quick_strength_value,
     ))
 
     def _finish_results():

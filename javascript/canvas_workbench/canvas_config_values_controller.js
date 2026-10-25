@@ -726,6 +726,7 @@
                 refiner_model: defaults.refiner_model || 'None',
                 clip_model: defaults.clip_model || 'Default (model)',
                 pe_model: defaults.pe_model || 'None',
+                moss_spectrum: defaults.moss_spectrum === true,
                 vae: defaults.vae || 'Default (model)',
                 upscale_model: defaults.upscale_model || 'default',
                 lora_stack: defaults.lora_stack || [],

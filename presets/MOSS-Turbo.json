@@ -1,0 +1,67 @@
+{
+    "preset_category": "MOSS",
+    "supported_tasks": ["text_to_image", "image_detail_enhance"],
+    "interaction_requirements": [],
+    "default_engine": {
+        "backend_engine": "Comfy",
+        "engine_type": "image",
+        "disvisible": [
+            "backend_selection",
+            "performance_selection", "refiner_model"
+        ],
+        "disinteractive": [
+            "performance_selection", "refiner_model"
+        ],
+        "available_aspect_ratios_selection": "SDXL",
+        "backend_params": {
+            "task_method": "moss_image_sft_aio_cn",
+            "pe_model": "None",
+            "moss_spectrum": false
+        },
+        "resolution_control": {
+            "mode": "standard",
+            "source": "none",
+            "base_width": 1024,
+            "base_height": 1024,
+            "quantize": 16,
+            "interactive": true,
+            "frontend_preprocess": false,
+            "preprocess_target": "none",
+            "preprocess_fit": "scale"
+        }
+    },
+    "default_model": "moss_image_sft_int8_convrot.safetensors",
+    "default_clip_model": "qwen3.5_9b_w4a8_gptq.safetensors",
+    "default_vae": "flux2-vae.safetensors",
+    "default_refiner": "None",
+    "default_refiner_switch": 0.5,
+    "default_upscale_model": "4x-AnimeSharp.pth",
+    "default_loras": [
+        ["8-steps-dmd2-lora.safetensors", 0.75], ["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0]
+    ],
+    "default_cfg_scale": 1.0,
+    "default_sample_sharpness": 0.0,
+    "default_sampler": "euler",
+    "default_scheduler": "sgm_uniform",
+    "default_performance": "Speed",
+    "default_styles": [],
+    "default_aspect_ratio": "1024*1024",
+    "default_resolution_quantize_step": 16,
+    "default_image_number": 1,
+    "default_overwrite_step": 12,
+    "default_inpaint_engine": "None",
+    "default_prompt": "",
+    "default_prompt_negative": "",
+    "checkpoint_downloads": {},
+    "embeddings_downloads": {},
+    "lora_downloads": {},
+    "vae_downloads": {},
+    "model_list": [
+        "diffusion_models,moss_image_sft_int8_convrot.safetensors,5413698958,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors",
+        "text_encoders,qwen3.5_9b_w4a8_gptq.safetensors,7343591088,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors",
+        "vae,flux2-vae.safetensors,336211292,0,https://www.modelscope.cn/models/Comfy-Org/flux2-klein-4B/resolve/master/split_files/vae/flux2-vae.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/vae/flux2-vae.safetensors",
+        "upscale_models,4x-AnimeSharp.pth,67010245,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/upscale_models/4x-AnimeSharp.pth",
+        "loras,8-steps-dmd2-lora.safetensors,1189176800,0,https://modelscope.cn/models/lodestones/Kromoss/resolve/master/8-steps-dmd2-lora.safetensors,https://huggingface.co/lodestones/Kromoss/resolve/main/8-steps-dmd2-lora.safetensors",
+        "loras,moss_image_color_depth_control.safetensors,313063368,e5c0c3efd05e4269207a39de6005798f14c90c6687c89c54eaffe4b76c43a763,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/loras/moss_image_color_depth_control.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/loras/moss_image_color_depth_control.safetensors"
+    ]
+}

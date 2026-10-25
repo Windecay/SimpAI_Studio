@@ -7,9 +7,9 @@
             "negative_prompt": "",
             "width": 1024,
             "height": 1024,
-            "cfg": 1.0,
-            "steps": 12,
-            "refiner_step": 12,
+            "cfg": 3.0,
+            "steps": 50,
+            "refiner_step": 50,
             "sampler": "euler",
             "scheduler": "sgm_uniform",
             "denoise": 1.0,
@@ -194,6 +194,15 @@
             "end_percent": 1.0
         }
     },
+    "moss_spectrum": {
+        "class_type": "SimpAIMossSpectrum",
+        "_meta": {"title": "MOSS Spectrum"},
+        "inputs": {
+            "model": ["13", 0], "enabled": false,
+            "window_size": 2.0, "flex_window": 0.25,
+            "warmup_steps": 6, "tail_actual_steps": 3
+        }
+    },
     "aio_image_ref1": {
         "class_type": "LoadImage",
         "_meta": {"title": "i2i_ip_image1"},
@@ -238,7 +247,7 @@
         "class_type": "SimpAIAIOReferenceMoss",
         "_meta": {"title": "MOSS Main Image Control"},
         "inputs": {
-            "model": ["13", 0], "positive": ["4", 0], "negative": ["5", 0], "vae": ["21", 0],
+            "model": ["moss_spectrum", 0], "positive": ["4", 0], "negative": ["5", 0], "vae": ["21", 0],
             "clip": ["simpai_lora_stack_main", 1], "prompt": ["simpai_moss_pe", 0], "negative_prompt": ["728", 1],
             "width": ["728", 2], "height": ["728", 3],
             "reference_1": ["aio_ref_config_1", 0], "reference_2": ["aio_ref_config_2", 0],
@@ -316,7 +325,7 @@
         "class_type": "SimpAIAIOUOVMoss",
         "_meta": {"title": "SimpAI AIO UOV MOSS"},
         "inputs": {
-            "model": ["13", 0], "clip": ["simpai_lora_stack_main", 1],
+            "model": ["moss_spectrum", 0], "clip": ["simpai_lora_stack_main", 1],
             "positive": ["4", 0], "negative": ["5", 0], "vae": ["21", 0],
             "upscale_model": ["upscale_model", 0], "uov": ["aio_uov_config", 0],
             "seed": ["417", 0], "steps": ["728", 5], "cfg": ["728", 4],
@@ -336,7 +345,7 @@
         "class_type": "SimpAIAIOInpaintMoss",
         "_meta": {"title": "SimpAI AIO Inpaint MOSS"},
         "inputs": {
-            "model": ["13", 0], "positive": ["4", 0], "negative": ["5", 0], "vae": ["21", 0],
+            "model": ["moss_spectrum", 0], "positive": ["4", 0], "negative": ["5", 0], "vae": ["21", 0],
             "inpaint": ["aio_inpaint_config", 0],
             "seed": ["417", 0], "steps": ["728", 5], "cfg": ["728", 4],
             "sampler_name": ["728", 7], "scheduler": ["728", 8]
@@ -397,7 +406,7 @@
         "_meta": {"title": "SimpAI AIO Improve Detail MOSS"},
         "inputs": {
             "image": ["aio_image_enhance", 0], "fallback_image": ["aio_route", 0],
-            "model": ["13", 0], "clip": ["simpai_lora_stack_main", 1],
+            "model": ["moss_spectrum", 0], "clip": ["simpai_lora_stack_main", 1],
             "positive": ["4", 0], "negative": ["5", 0], "vae": ["21", 0],
             "upscale_model": ["upscale_model", 0],
             "region_1": ["aio_region_1", 0], "region_2": ["aio_region_2", 0], "region_3": ["aio_region_3", 0],

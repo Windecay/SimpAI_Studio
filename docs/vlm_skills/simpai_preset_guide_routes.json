@@ -163,7 +163,7 @@
       "key": "moss_image",
       "title": {"en": "MOSS-Image", "cn": "MOSS-Image"},
       "priority": 715,
-      "keywords": ["moss-image", "moss image", "moss_image", "moss文生图"],
+      "keywords": ["moss-image", "moss image", "moss_image", "moss文生图", "moss-turbo", "moss turbo"],
       "sections": ["MOSS-Image", "Prompt Language / Model Routing"]
     },
     {

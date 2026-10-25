@@ -1,4 +1,4 @@
-# Moss-Edit image editing prompts
+# MOSS-Edit image editing prompts
 
 Edit only the single main image supplied through the canvas.
 

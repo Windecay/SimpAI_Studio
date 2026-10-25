@@ -28,7 +28,7 @@
       "theme": [
         "Moss-Edit"
       ],
-      "theme_title": "Moss-Edit [Single image, no mask]",
+      "theme_title": "MOSS-Edit [Single image, no mask]",
       "disable_canvas_mask": true,
       "director_capability": {
         "image_policy": "required",
@@ -127,7 +127,7 @@
         "Moss-Edit": "normal"
       },
       "theme_labels": {
-        "Moss-Edit": "Moss-Edit"
+        "Moss-Edit": "MOSS-Edit"
       },
       "var_number_title": "Reference Long Edge (0 = Output)",
       "var_number_min": 0,

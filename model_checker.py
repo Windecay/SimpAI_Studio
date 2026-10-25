@@ -4277,7 +4277,7 @@ packages = {'base_package': {'id': 1,
  'moss_image_package': {
      'id': 48,
      'name': '[48]MOSS-Image 图像生成',
-     'note': 'MOSS-Image SFT 支持文生图、图像变化、放大、局部细化及深度图与分区图控制，含官方 DiT、W4A8 编码器、Flux2 VAE、DMD2 加速 LoRA、控制 LoRA 和通用放大模型。控制 LoRA 仅启用控图时内部加载，不占用用户 LoRA 槽位。默认 12 步、DMD2 权重 0.75，步数可调整。旧社区权重须校验替换，不匹配文件沿用 .corrupted 处理；需支持原生 MOSS 的 Comfyd。魔搭首选、HF 备用。',
+     'note': 'MOSS-Image SFT 默认 50 步、CFG 3、Spectrum 加速，不加载 DMD LoRA。支持文生图、图像变化、放大、局部细化及深度图与分区图控制。含 MOSS-Turbo 所需的 DMD2 加速 LoRA。',
      'files': [
          'diffusion_models,moss_image_sft_int8_convrot.safetensors,5413698958,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors',
          'text_encoders,qwen3.5_9b_w4a8_gptq.safetensors,7343591088,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors',
@@ -4313,7 +4313,7 @@ packages = {'base_package': {'id': 1,
  },
  'moss_edit_package': {
     'id': 51,
-    'name': '[51]Moss-Edit',
+    'name': '[51]MOSS-Edit',
     'note': '原生 Comfy 单图编辑，复用 MOSS INT8 和 W4A8 编码器，包含专用 VAE 与编辑 adapter。',
     'files': [
         'diffusion_models,moss_image_sft_int8_convrot.safetensors,5413698958,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors',

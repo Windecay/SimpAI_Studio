@@ -48,7 +48,7 @@ SCHEDULERS = {
 }
 
 STEPS = {
-    PresetArch.moss: 12,
+    PresetArch.moss: 50,
     PresetArch.sd: 32,
     PresetArch.xl: 24,
     PresetArch.flux: 20,
@@ -62,7 +62,7 @@ STEPS = {
 }
 
 CFG = {
-    PresetArch.moss: 1.0,
+    PresetArch.moss: 3.0,
     PresetArch.sd: 6.0,
     PresetArch.xl: 4.5,
     PresetArch.flux: 1.0,

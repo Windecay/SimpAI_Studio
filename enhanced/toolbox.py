@@ -1263,6 +1263,7 @@ def save_preset(*args):
     translation_methods = args.pop()
     input_image_checkbox = args.pop()
     quick_enhance = args.pop()
+    quick_enhance_uov_strength = args.pop()
 
     progress_video = args.pop()
     progress_gallery = args.pop()
@@ -1622,6 +1623,8 @@ def save_preset(*args):
         preset["default_backfill_prompt"] = backfill_prompt
         preset["default_translation_methods"] = translation_methods
         preset["default_input_image_checkbox"] = input_image_checkbox
+        preset["default_quick_enhance"] = quick_enhance
+        preset["default_quick_enhance_uov_strength"] = quick_enhance_uov_strength
 
         # preset["default_progress_video"] = progress_video
         # preset["default_progress_gallery"] = progress_gallery

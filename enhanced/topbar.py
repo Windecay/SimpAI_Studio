@@ -273,7 +273,8 @@ PRESET_MISSING_MARKER = "\u2B07"
 PRESET_STORE_ORDER = [
     "Z-imageT",
     "MOSS-Image",
-    "Moss-Edit",
+    "MOSS-Turbo",
+    "MOSS-Edit",
     "Krea2-Turbo",
     "Krea2-ImageEdit",
     "Krea2-A2R",
@@ -382,7 +383,8 @@ def _canonicalize_preset_name(name):
         base_name = base_name[:-5]
     if is_user_preset and base_name:
         return f'{base_name}.'
-    return base_name
+    return {"moss-image": "MOSS-Image", "moss-turbo": "MOSS-Turbo",
+            "moss-edit": "MOSS-Edit"}.get(base_name.casefold(), base_name)
 
 def _has_preset_model_probe(preset_name, user_did=None):
     if not isinstance(preset_name, str) or not preset_name:
@@ -2100,6 +2102,8 @@ def _build_preset_store_meta(state, copy_cached=True):
                     "lora_stack": copy.deepcopy(preset_content.get("lora_stack", backend_params.get("lora_stack", []) if isinstance(backend_params, dict) else [])),
                     "lora_stack_target": preset_content.get("lora_stack_target", backend_params.get("lora_stack_target", "auto") if isinstance(backend_params, dict) else "auto"),
                 }
+                if task_method == "moss_image_sft_aio_cn" and isinstance(backend_params, dict):
+                    models_config["moss_spectrum"] = backend_params.get("moss_spectrum") is True
                 generation_config = {
                     "guidance_scale": preset_content.get("default_cfg_scale", None),
                     "sharpness": preset_content.get("default_sample_sharpness", None),
@@ -4014,7 +4018,7 @@ def reset_layout_values(state_params, is_generating, inpaint_mode, use_resolutio
     if fast_nav:
         reset_ui_results = [skip_update() for _ in range(reset_ui_results_len)]
     else:
-        reset_ui_results = [gr.update() for _ in range(9)] + [True] + \
+        reset_ui_results = [gr.update() for _ in range(9)] + [skip_update()] + \
                    [False, [], [], "base", gr.update(visible=False), gr.update(value=""), gr.update(choices=["All folders"], value="All folders"), gr.update(value="Showing **0** / **0** items"), gr.update(value=[])] + \
                    [gr.update(visible=False) for _ in config.default_loras] + \
                    [False for _ in config.default_loras] + \

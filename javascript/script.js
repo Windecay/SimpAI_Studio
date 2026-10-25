@@ -3883,6 +3883,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'ip_auto_detect', group: 'image-input' },
         { id: 'tts_panel', group: 'topbar-panel' },
         { id: 'advanced_column', group: 'topbar-panel' },
+        { id: 'quick_enhance_strength_row', group: 'topbar-panel', defaultVisible: false },
         { id: 'scene_panel', group: 'scene' },
         { id: 'scene_primary_row', group: 'scene' },
         { id: 'scene_batch_accordion', group: 'scene' },
@@ -4024,6 +4025,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const imageChecked = getChecked('input_image_checkbox');
         const ttsChecked = getChecked('qwen_tts_checkbox');
         const advancedChecked = getChecked('advanced_checkbox');
+        const quickEnhanceChecked = getChecked('quick_enhance');
         const params = resolveSceneVisibilityParams(paramsOverride);
         if (params) syncClassicImageInputTabs(params);
         const isScene = isSceneFrontendParams(params);
@@ -4036,6 +4038,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         if (ttsChecked !== null) setVisible('tts_panel', !!ttsChecked);
         if (advancedChecked !== null) setVisible('advanced_column', !!advancedChecked);
+        if (quickEnhanceChecked !== null) setVisible('quick_enhance_strength_row', !!quickEnhanceChecked && !isScene);
     }
 
     function getTopbarParams() {
@@ -4367,12 +4370,12 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 
     document.addEventListener('input', (event) => {
-        if (event.target?.closest?.('#input_image_checkbox, #qwen_tts_checkbox, #advanced_checkbox, #prompt_panel_checkbox, #wc_method, #inpaint_advanced_masking_checkbox, #inpaint_mask_model, [id^="enhance_mask_model_"]')) {
+        if (event.target?.closest?.('#input_image_checkbox, #qwen_tts_checkbox, #advanced_checkbox, #quick_enhance, #prompt_panel_checkbox, #wc_method, #inpaint_advanced_masking_checkbox, #inpaint_mask_model, [id^="enhance_mask_model_"]')) {
             scheduleAllMountedDynamicVisibility();
         }
     }, true);
     document.addEventListener('change', (event) => {
-        if (event.target?.closest?.('#input_image_checkbox, #qwen_tts_checkbox, #advanced_checkbox, #prompt_panel_checkbox, #wc_method, #inpaint_advanced_masking_checkbox, #inpaint_mask_model, [id^="enhance_mask_model_"]')) {
+        if (event.target?.closest?.('#input_image_checkbox, #qwen_tts_checkbox, #advanced_checkbox, #quick_enhance, #prompt_panel_checkbox, #wc_method, #inpaint_advanced_masking_checkbox, #inpaint_mask_model, [id^="enhance_mask_model_"]')) {
             scheduleAllMountedDynamicVisibility();
         }
     }, true);

@@ -29,6 +29,7 @@ except Exception:
     api_params = None
 
 CANVAS_EXTRA_BACKEND_ARGS = (
+    "moss_spectrum",
     "pe_model",
     "pe_applied_prompt",
     "lora_stack",
@@ -1436,6 +1437,8 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
     params_backend["lora_stack"] = copy.deepcopy(models.get("lora_stack", []))
     params_backend["lora_stack_target"] = models.get("lora_stack_target", "auto")
     params_backend["pe_model"] = models.get("pe_model", "None")
+    if task_method == "moss_image_sft_aio_cn":
+        params_backend["moss_spectrum"] = models.get("moss_spectrum") is True
     params_backend["pe_applied_prompt"] = params.get("pe_applied_prompt", "")
     director_runtime = _director_runtime_from_params(params)
     if director_runtime:

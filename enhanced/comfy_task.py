@@ -149,6 +149,7 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("pe_model", "SimpAIPromptExpand:Flux3 Prompt Upsampler:pe_model")
         comfy_params.update_mapping_rule("pe_applied_prompt", "SimpAIPromptExpand:Flux3 Prompt Upsampler:applied_prompt")
     if task_method_l == "moss_image_sft_aio_cn":
+        comfy_params.update_mapping_rule("moss_spectrum", "SimpAIMossSpectrum:MOSS Spectrum:enabled")
         comfy_params.update_mapping_rule("pe_model", "SimpAIPromptExpand:MOSS Image PE:pe_model")
         comfy_params.update_mapping_rule("pe_applied_prompt", "SimpAIPromptExpand:MOSS Image PE:applied_prompt")
         comfy_params.update_mapping_rule("vae_model", "VAELoader:vae_model:vae_name")

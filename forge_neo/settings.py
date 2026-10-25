@@ -53,7 +53,7 @@ PRESET_SCHEDULERS: dict[str, str] = {
     "anima": "Simple",
 }
 PRESET_STEPS: dict[str, int] = {
-    "moss": 12,
+    "moss": 50,
     "sd": 32,
     "xl": 24,
     "flux": 20,
@@ -66,7 +66,7 @@ PRESET_STEPS: dict[str, int] = {
     "anima": 32,
 }
 PRESET_CFG: dict[str, float] = {
-    "moss": 1.0,
+    "moss": 3.0,
     "sd": 6.0,
     "xl": 4.5,
     "flux": 1.0,

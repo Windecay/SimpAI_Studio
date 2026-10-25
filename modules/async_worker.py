@@ -293,7 +293,7 @@ class AsyncTask:
         regen_manifest.ensure_api_params_backend_arg(api_params)
         backend_args = getattr(api_params, 'backend_args', None)
         if isinstance(backend_args, list):
-            for backend_arg_name in ('upscale_model', 'keep_vlm_model_loaded', 'cloud_config_name', 'cloud_protocol', 'cloud_base_url', 'cloud_api_key', 'cloud_model'):
+            for backend_arg_name in ('upscale_model', 'moss_spectrum', 'keep_vlm_model_loaded', 'cloud_config_name', 'cloud_protocol', 'cloud_base_url', 'cloud_api_key', 'cloud_model'):
                 if backend_arg_name not in backend_args:
                     backend_args.append(backend_arg_name)
 

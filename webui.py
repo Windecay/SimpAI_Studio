@@ -117,7 +117,7 @@ import logging
 logger = logging.getLogger(__name__)
 regen_manifest.ensure_api_params_backend_arg(api_params)
 if isinstance(getattr(api_params, "backend_args", None), list):
-    for backend_arg_name in ("upscale_model", "keep_vlm_model_loaded", "cloud_config_name", "cloud_protocol", "cloud_base_url", "cloud_api_key", "cloud_model"):
+    for backend_arg_name in ("upscale_model", "moss_spectrum", "keep_vlm_model_loaded", "cloud_config_name", "cloud_protocol", "cloud_base_url", "cloud_api_key", "cloud_model"):
         if backend_arg_name not in api_params.backend_args:
             api_params.backend_args.append(backend_arg_name)
 
@@ -8163,8 +8163,10 @@ with shared.gradio_root:
                                     return [skip_component_update(), skip_component_update(), skip_component_update(), None]
                                 with gr.Row():
                                     quick_enhance = gr.Checkbox(label='Quick Enhance', value=False, elem_id="quick_enhance")
-                                quick_enhance_uov_strength = gr.Slider(label='Denoising Strength of enhance',
-                                                 visible=False, minimum=0, maximum=1.0, step=0.01, value=0.2)
+                                # Keep the slider mounted and registered for workspace recovery; toggle its row in JS.
+                                with gr.Row(visible="hidden", elem_id="quick_enhance_strength_row"):
+                                    quick_enhance_uov_strength = gr.Slider(label='Denoising Strength of enhance',
+                                                     visible=True, minimum=0, maximum=1.0, step=0.01, value=0.2)
                                 output_format = gr.Radio(label='Output Format',
                                                  choices=flags.OutputFormat.list(),
                                                  value=modules.config.default_output_format)
@@ -8202,7 +8204,7 @@ with shared.gradio_root:
                                 return [quickEnabled, quickStrength, enhanceChecked, enhanceMethod, enhanceStrength];
                             }"""
 
-                            quick_enhance.input(fn=lambda x: [x, flags.upscale_15 if x else flags.disabled, gr_update(visible=x, value=0.2), 0.2 if x else 0],
+                            quick_enhance.input(fn=lambda x: [x, flags.upscale_15 if x else flags.disabled, gr_update(value=0.2), 0.2 if x else 0],
                                                 inputs=quick_enhance,outputs=[enhance_checkbox, enhance_uov_method, quick_enhance_uov_strength, enhance_uov_strength], queue=False, show_progress=False)
                             quick_enhance_uov_strength.input(fn=lambda x: x,inputs=quick_enhance_uov_strength,outputs=enhance_uov_strength, queue=False, show_progress=False)
 
