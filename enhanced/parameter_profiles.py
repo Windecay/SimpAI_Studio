@@ -29,6 +29,7 @@ _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 _MISSING_MODEL_MARKER = "\u2B07"
 _PROFILE_WARNING_LIMIT = 6
 _UI_LOAD_LOCK = threading.Lock()
+_PROFILE_SAVE_LOCK = threading.Lock()
 
 _SCENE_PROFILE_CONTROL_KEYS = (
     "scene_theme",
@@ -159,8 +160,22 @@ def _preset_profiles_dir(user_did: str, preset_name: str) -> str:
 
 
 def _profile_path(user_did: str, preset_name: str, name: str) -> str:
-    key = hashlib.sha256(_clean_name(name).encode("utf-8")).hexdigest()
-    return os.path.join(_preset_profiles_dir(user_did, preset_name), f"profile-{key}.json")
+    profile_name = _clean_name(name)
+    # Leave room for numbered suffixes on filesystems with byte-based limits.
+    stem = _safe_filename(profile_name).encode("utf-8")[:200].decode("utf-8", errors="ignore").rstrip(" .")
+    if re.match(r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", stem, re.I):
+        stem = f"_{stem}"
+    folder = _preset_profiles_dir(user_did, preset_name)
+    number = 1
+    while True:
+        filename = f"{stem}.json" if number == 1 else f"{stem} ({number}).json"
+        path = os.path.join(folder, filename)
+        if not os.path.lexists(path):
+            return path
+        existing = _load_json(path)
+        if isinstance(existing, dict) and _clean_name(existing.get("name")) == profile_name:
+            return path
+        number += 1
 
 
 def _load_json(path: str) -> dict[str, Any] | None:
@@ -431,9 +446,9 @@ def _lora_entries(values: dict[str, Any]) -> list[str]:
 
 def _scene_hidden_controls(preset_prepared: dict[str, Any]) -> set[str]:
     engine = preset_prepared.get("engine", {}) if isinstance(preset_prepared, dict) else {}
-    scene_frontend = engine.get("scene_frontend", {}) if isinstance(engine, dict) else {}
+    scene_frontend = engine.get("scene_frontend") if isinstance(engine, dict) else None
     if not isinstance(scene_frontend, dict):
-        return set()
+        return set(_SCENE_PROFILE_CONTROL_KEYS)
     try:
         return set(meta_parser.scene_disvisible_with_optional_inputs(scene_frontend))
     except Exception:
@@ -932,38 +947,32 @@ def save_profile(name: Any, values: dict[str, Any]):
             pass
         return refresh_dropdown(context, name)
     payload = build_profile_payload(profile_name, values)
-    entry = _find_profile_entry(payload["user_did"], payload["preset_name"], profile_name)
-    path = entry["path"] if entry else _profile_path(payload["user_did"], payload["preset_name"], profile_name)
-    existing = _load_json(path)
-    if entry is None and os.path.lexists(path) and (
-        not isinstance(existing, dict) or _clean_name(existing.get("name")) != profile_name
-    ):
+    with _PROFILE_SAVE_LOCK:
+        entry = _find_profile_entry(payload["user_did"], payload["preset_name"], profile_name)
+        path = entry["path"] if entry else _profile_path(payload["user_did"], payload["preset_name"], profile_name)
+        existing = _load_json(path)
+        if isinstance(existing, dict) and existing.get("created_at"):
+            payload["created_at"] = existing.get("created_at")
+        temporary_path = None
         try:
-            gr.Warning(_profile_text(
-                context,
-                "This name would overwrite an existing file. Choose a different parameter profile name.",
-                "此名称会覆盖已有文件，请更换参数预设名称。",
-            ), duration=3)
-        except Exception:
-            pass
-        return refresh_dropdown(context, profile_name)
-    if isinstance(existing, dict) and existing.get("created_at"):
-        payload["created_at"] = existing.get("created_at")
-    temporary_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=os.path.dirname(path),
-            prefix=".profile-", suffix=".tmp", delete=False,
-        ) as handle:
-            temporary_path = handle.name
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-        os.replace(temporary_path, path)
-    finally:
-        if temporary_path and os.path.exists(temporary_path):
-            try:
-                os.remove(temporary_path)
-            except OSError:
-                logger.warning("Failed to remove parameter profile temporary file %s", temporary_path, exc_info=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=os.path.dirname(path),
+                prefix=".profile-", suffix=".tmp", delete=False,
+            ) as handle:
+                temporary_path = handle.name
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            os.replace(temporary_path, path)
+        finally:
+            if temporary_path and os.path.exists(temporary_path):
+                try:
+                    os.remove(temporary_path)
+                except OSError:
+                    logger.warning("Failed to remove parameter profile temporary file %s", temporary_path, exc_info=True)
+        if entry and os.path.basename(path) == f"profile-{hashlib.sha256(profile_name.encode('utf-8')).hexdigest()}.json":
+            readable_path = _profile_path(payload["user_did"], payload["preset_name"], profile_name)
+            if readable_path != path:
+                os.rename(path, readable_path)
+                path = readable_path
     logger.info("Saved parameter profile %s for preset %s to %s", profile_name, payload["preset_name"], path)
     try:
         gr.Info(_profile_text(context, "Parameter profile saved.", "参数预设已保存。"), duration=2)
@@ -1047,10 +1056,13 @@ def _profile_capability(entry: dict[str, Any]) -> dict[str, Any]:
     metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
     manifest = regen_manifest.extract(metadata)
     ui_values = manifest.get("ui_values") if isinstance(manifest, dict) and isinstance(manifest.get("ui_values"), dict) else {}
+    scene_values = _remove_hidden_scene_values(
+        {"scene_theme": metadata.get("scene_theme") or ui_values.get("scene_theme")}, metadata,
+    )
     return {
         "name": _clean_name(entry.get("name")),
         "preset": _clean_name(entry.get("preset_name")),
-        "scene_theme": _clean_name(metadata.get("scene_theme") or ui_values.get("scene_theme")),
+        "scene_theme": _clean_name(scene_values.get("scene_theme")),
         "task_method": _clean_name(metadata.get("task_method") or ui_values.get("task_method")),
         "engine_type": _clean_name(metadata.get("engine_type")) or "image",
         "updated_at": _clean_name(entry.get("updated_at")),
