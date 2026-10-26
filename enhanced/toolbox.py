@@ -17,6 +17,7 @@ import enhanced.gallery as gallery
 import enhanced.version as version
 import modules.flags as flags
 import modules.meta_parser as meta_parser
+from modules.media_generation import generation_details
 import logging
 from enhanced.logger import format_name
 from ui.update_helpers import dataset_update, dropdown_update, gr_update, skip_update
@@ -77,7 +78,7 @@ toolbox_note_regenerate_title='Extract parameters to backfill for regeneration. 
 toolbox_note_embed_title='Embed parameters into images for easy identification of image sources and communication and learning.'
 toolbox_note_missing_muid='The model in the params and configuration is missing MUID. And the system will spend some time calculating the hash of model files and synchronizing information to obtain the muid for usability and transferability.'
 
-def make_infobox_markdown(info, theme):
+def make_infobox_markdown(info, theme, state_params=None):
     bgcolor = '#ddd'
     if theme == "dark":
         bgcolor = '#444'
@@ -106,15 +107,36 @@ def make_infobox_markdown(info, theme):
         value = escape(str(value), quote=False)
         return value.replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br/>')
 
+    facts = gallery.get_selected_gallery_media_facts(state_params) if info and isinstance(state_params, dict) else {}
+    labels = []
+    if facts:
+        chinese = str(state_params.get('__lang', 'en')).lower().startswith(('cn', 'zh'))
+        text = lambda en, cn: cn if chinese else en
+        if facts.get('width') and facts.get('height'):
+            labels.append((text('Output dimensions', '输出分辨率'), f"{facts['width']} × {facts['height']}"))
+        timing = generation_details(facts)
+        seconds = lambda value: f"{value / 1000:.3f}".rstrip('0').rstrip('.') + text(' seconds', ' 秒')
+        labels.append((text('Item generation time', '本次生成耗时'),
+                       seconds(timing['generation_duration_ms']) if timing['generation_duration_ms'] is not None
+                       else text('Not recorded', '未记录')))
+        if timing['generation_batch_duration_ms'] is not None:
+            count = timing['generation_batch_size']
+            suffix = f" ({count} {text('items', '项')})" if count and count > 1 else ''
+            labels.append((text('Batch generation time', '本批生成耗时'), seconds(timing['generation_batch_duration_ms']) + suffix))
+        if timing['generation_task_duration_ms'] is not None:
+            labels.append((text('Total task time', '所属任务总耗时'), seconds(timing['generation_task_duration_ms'])))
+
     # 为 div 添加 padding，特别是右侧留出空间给关闭按钮 (×)
     html = f'<div style="background: {bgcolor}; padding: 10px 35px 10px 15px; border-radius: 8px;">'
+    for label, value in labels:
+        html += f'<b>{escape(label)}:</b> {render_value(value)}<br/>'
     if info:
         for key in info:
             value = normalize_value(info[key])
             if key in hidden_keys or value in [None, '', 'None']:
                 continue
             html += f'<b>{escape(str(key))}:</b> {render_value(value)}<br/>'
-    else:
+    elif not labels:
         html += '<p>info</p>'
     html += '</div>'
     return html
@@ -158,7 +180,7 @@ def toggle_prompt_info(state_params):
     if prompt_info is None:
         prompt_info = gallery.get_images_prompt(choice, selected, state_params["__max_per_page"], user_did=state_params["user"].get_did(), media_type=gallery.get_gallery_engine_type(state_params))
     info_len = len(str(prompt_info)) if prompt_info is not None else 0
-    markdown = make_infobox_markdown(prompt_info, state_params['__theme'])
+    markdown = make_infobox_markdown(prompt_info, state_params['__theme'], state_params)
     util.log_ui_trace(
         logger,
         "[UI-TRACE] toolbox.toggle_prompt_info.exit | next=%r, choice=%r, selected=%r, info_len=%s, markdown_len=%s",

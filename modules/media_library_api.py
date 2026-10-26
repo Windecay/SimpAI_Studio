@@ -328,6 +328,7 @@ async def media_library_items(request: Request):
             tag=query.get("tag") or None,
             rating_min=_optional_int(query.get("rating_min")),
             model_query=query.get("model") or None,
+            preset_id=query.get("preset") or None,
             orientation=query.get("orientation") or None,
             collection_id=query.get("collection") or None,
             cursor=query.get("cursor") or None,
@@ -339,6 +340,16 @@ async def media_library_items(request: Request):
     )
     result["items"] = [_item_urls(request, item, library) for item in result.get("items") or []]
     return result
+
+
+@router.get("/simpleai/gallery/api/presets")
+async def media_library_presets(request: Request):
+    library = _library_for_request(request=request)
+    await _schedule_scan_if_needed(library)
+    include_trashed = _bool_query(request.query_params.get("trash")) is True
+    return {"ok": True, "presets": await run_in_threadpool(
+        lambda: library.list_presets(include_trashed=include_trashed)
+    )}
 
 
 @router.get("/simpleai/gallery/api/collections")

@@ -71,6 +71,7 @@ parser.add_argument("--base-directory", type=str, default=None, help="Set the Co
 parser.add_argument("--extra-model-paths-config", type=str, default=None, metavar="PATH", nargs='+', action='append', help="Load one or more extra_model_paths.yaml files.")
 parser.add_argument("--output-directory", type=str, default=None, help="Set the ComfyUI output directory. Overrides --base-directory.")
 parser.add_argument("--temp-directory", type=str, default=None, help="Set the ComfyUI temp directory (default is in the ComfyUI directory). Overrides --base-directory.")
+parser.add_argument("--preserve-temp", action="store_true", help="Keep temporary files and existing asset records across startup and shutdown; an external owner manages their retention.")
 parser.add_argument("--input-directory", type=str, default=None, help="Set the ComfyUI input directory. Overrides --base-directory.")
 parser.add_argument("--previews-directory", type=str, default=None, help="Set the directory for generated asset previews. Overrides --base-directory.")
 parser.add_argument("--auto-launch", action="store_true", help="Automatically launch ComfyUI in the default browser.")

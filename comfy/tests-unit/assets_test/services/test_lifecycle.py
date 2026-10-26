@@ -335,3 +335,58 @@ def test_wipe_with_metacharacter_temp_root_matches_only_literal_children(session
 
     assert is_path_under_prefixes(decoy, [temp_root]) is False
     assert _surviving_paths(session) == {decoy}
+
+
+def test_preserved_temp_survives_startup_and_shutdown_with_asset_records(
+    session, comfy_dirs, mock_create_session, monkeypatch
+):
+    monkeypatch.setattr(lifecycle.args, "preserve_temp", True)
+    kept_record, kept_content = _seed_temp_rows(session, comfy_dirs)
+    missing = comfy_dirs / "expired.png"
+    content = create_content(session, path=str(missing))
+    record = create_record(session, content_id=content.id, name="expired.png")
+    missing_record, missing_content = record.id, content.id
+    session.commit()
+
+    with patch.object(lifecycle, "enqueue_mode_transition_work"), patch.object(lifecycle, "start_asset_seeder", return_value=True):
+        run_asset_startup()
+    session.expire_all()
+    assert session.get(Asset, kept_record) is not None
+    assert session.get(AssetContent, kept_content) is not None
+    assert session.get(Asset, missing_record) is None
+    assert session.get(AssetContent, missing_content) is None
+    assert (comfy_dirs / "preview.png").is_file()
+
+    run_asset_shutdown_cleanup()
+    session.expire_all()
+    assert session.get(Asset, kept_record) is not None
+    assert session.get(AssetContent, kept_content) is not None
+    assert (comfy_dirs / "preview.png").is_file()
+
+
+def test_preserved_temp_survives_when_assets_are_disabled(comfy_dirs, monkeypatch):
+    monkeypatch.setattr(lifecycle.args, "preserve_temp", True)
+    monkeypatch.setattr(lifecycle, "can_create_session", lambda: False)
+    image = comfy_dirs / "preview.png"
+    image.write_bytes(b"retained")
+    run_startup(enable_assets=False)
+    lifecycle.run_shutdown()
+    assert image.read_bytes() == b"retained"
+    assert cleanup_temp_filesystem() is True
+
+
+def test_preserved_temp_stat_failure_does_not_delete_existing_records(session, comfy_dirs, monkeypatch):
+    monkeypatch.setattr(lifecycle.args, "preserve_temp", True)
+    record_id, content_id = _seed_temp_rows(session, comfy_dirs)
+    image = comfy_dirs / "preview.png"
+    original_stat = os.stat
+
+    def denied(path, *args, **kwargs):
+        if isinstance(path, (str, os.PathLike)) and Path(path) == image:
+            raise PermissionError("temporarily unavailable")
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(lifecycle.os, "stat", denied)
+    assert wipe_temp_db_rows(session) == (0, 0)
+    assert session.get(Asset, record_id) is not None
+    assert session.get(AssetContent, content_id) is not None

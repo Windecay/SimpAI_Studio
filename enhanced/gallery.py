@@ -965,6 +965,30 @@ def get_selected_gallery_media_metadata(state_params):
     return read_embedded_metadata_from_file(media_path, get_gallery_engine_type(state_params))
 
 
+def get_selected_gallery_media_facts(state_params):
+    if not isinstance(state_params, dict):
+        return {}
+    user_did = _user_did_from_state(state_params)
+    path = state_params.get("__selected_gallery_media_path")
+    if not path and state_params.get("gallery_state") == "main_browser":
+        path = get_main_gallery_browser_selected_path(state_params)
+    if not path:
+        selection = state_params.get("prompt_info")
+        choice, selected = selection[:2] if isinstance(selection, (list, tuple)) and len(selection) >= 2 else (None, 0)
+        if choice:
+            path = get_media_path_from_gallery_index(choice, selected, state_params.get("__max_per_page", 18),
+                                                     user_did, get_gallery_engine_type(state_params))
+    if not user_did or not path or not _gallery_display_preview_is_under_outputs(path, user_did):
+        return {}
+    try:
+        from modules.media_library import get_user_media_library
+
+        return get_user_media_library(user_did).file_facts(path)
+    except Exception:
+        logger.debug("Gallery output facts unavailable", exc_info=True)
+        return {}
+
+
 def remember_selected_gallery_media_path(choice, selected, state_params):
     if not isinstance(state_params, dict):
         return normalize_gallery_selected_index(selected), None
@@ -1637,10 +1661,10 @@ def images_list_update(choice, image_tools_checkbox, state_params):
     infobox_state = state_params.get("infobox_state", False)
     try:
         prompt_meta = get_images_prompt(choice, 0, state_params["__max_per_page"], user_did=user_did, media_type=index_type)
-        prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params['__theme'])
+        prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params['__theme'], state_params)
     except Exception as e:
         logger.exception(f'Selected_gallery_catalog: failed to load prompt metadata:{choice}, error={e}')
-        prompt_info_value = toolbox.make_infobox_markdown(None, state_params['__theme'])
+        prompt_info_value = toolbox.make_infobox_markdown(None, state_params['__theme'], state_params)
 
     infobox_updates = [
         gr_update(value=prompt_info_value, visible=infobox_state),
@@ -1808,7 +1832,7 @@ def switch_gallery_engine_type(target_engine_type, *args):
 
         infobox_state = state_params.get("infobox_state", False)
         prompt_meta = read_embedded_metadata_from_file(selected_path, target_engine_type) if selected_path else None
-        prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
+        prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"), state_params)
         label = _gallery_media_label(target_engine_type, state_params)
         progress_window_update = gr_update(visible=False, value=None)
         display_paths = gallery_display_paths_for_progress(media_paths, target_engine_type, user_did, state_params)
@@ -1884,7 +1908,7 @@ def switch_gallery_engine_type(target_engine_type, *args):
     gallery_update = gr_update(value=None, visible=False)
     toolbox_update = _hide_image_toolbox_for_gallery_grid(state_params, "media_switch.grid")
 
-    prompt_info_value = toolbox.make_infobox_markdown(None, state_params.get("__theme", "dark"))
+    prompt_info_value = toolbox.make_infobox_markdown(None, state_params.get("__theme", "dark"), state_params)
     if has_media:
         try:
             prompt_meta = get_images_prompt(
@@ -1894,7 +1918,7 @@ def switch_gallery_engine_type(target_engine_type, *args):
                 user_did=user_did,
                 media_type=target_engine_type,
             )
-            prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
+            prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"), state_params)
         except Exception as e:
             logger.exception("Switch gallery failed to load metadata: choice=%r, error=%s", choice, e)
 
@@ -1973,7 +1997,7 @@ def canvas_refresh_after_run(image_tools_checkbox, state_params):
     state_params["gallery_preview_open"] = False
     toolbox_update = _hide_image_toolbox_for_gallery_grid(state_params, "canvas_refresh.grid")
 
-    prompt_info_value = toolbox.make_infobox_markdown(None, state_params.get("__theme", "dark"))
+    prompt_info_value = toolbox.make_infobox_markdown(None, state_params.get("__theme", "dark"), state_params)
     if has_media:
         try:
             prompt_meta = get_images_prompt(
@@ -1983,7 +2007,7 @@ def canvas_refresh_after_run(image_tools_checkbox, state_params):
                 user_did=user_did,
                 media_type=target_engine_type,
             )
-            prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
+            prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"), state_params)
         except Exception as e:
             logger.exception("Canvas gallery refresh failed to load metadata: choice=%r, error=%s", choice, e)
 
@@ -2270,7 +2294,7 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
     state_params["prompt_info"] = [choice, selected_index]
     infobox_state = state_params.get("infobox_state", False)
     prompt_meta = read_embedded_metadata_from_file(selected_path, media_type) if selected_path else None
-    prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
+    prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"), state_params)
     label = _gallery_media_label(media_type, state_params)
     state_json = _main_gallery_browser_state_json(
         media_type=media_type,
@@ -2431,7 +2455,7 @@ def _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params
     state_params["prompt_info"] = [choice, selected_index]
     infobox_state = state_params.get("infobox_state", False)
     prompt_meta = read_embedded_metadata_from_file(selected_path, media_type) if selected_path else None
-    prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
+    prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"), state_params)
     label = _gallery_media_label(media_type, state_params)
     status = _gallery_browser_count_status(len(media_paths), media_type, state_params)
     progress_window_update = gr_update(visible=False, value=None)
@@ -2609,7 +2633,7 @@ def select_gallery(choice, image_tools_checkbox, state_params, backfill_prompt, 
 
     infobox_state = state_params.get("infobox_state", False)
     infobox_updates = [
-        gr_update(value=toolbox.make_infobox_markdown(result, state_params['__theme']), visible=infobox_state),
+        gr_update(value=toolbox.make_infobox_markdown(result, state_params['__theme'], state_params), visible=infobox_state),
         gr_update(visible=infobox_state),
         gr_update(visible=infobox_state)
     ]
@@ -2653,7 +2677,7 @@ def select_gallery_progress(image_tools_checkbox, state_params, backfill_prompt,
         result = get_main_gallery_browser_selected_metadata(state_params, selected_index) or {}
         infobox_state = state_params.get("infobox_state", False)
         infobox_updates = [
-            gr_update(value=toolbox.make_infobox_markdown(result, state_params['__theme']), visible=infobox_state),
+            gr_update(value=toolbox.make_infobox_markdown(result, state_params['__theme'], state_params), visible=infobox_state),
             gr_update(visible=infobox_state),
             gr_update(visible=infobox_state)
         ]
@@ -2673,7 +2697,7 @@ def select_gallery_progress(image_tools_checkbox, state_params, backfill_prompt,
 
     infobox_state = state_params.get("infobox_state", False)
     infobox_updates = [
-        gr_update(value=toolbox.make_infobox_markdown(result, state_params['__theme']), visible=infobox_state),
+        gr_update(value=toolbox.make_infobox_markdown(result, state_params['__theme'], state_params), visible=infobox_state),
         gr_update(visible=infobox_state),
         gr_update(visible=infobox_state)
     ]

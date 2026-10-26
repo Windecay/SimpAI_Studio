@@ -1095,6 +1095,12 @@ temp_path_cleanup_on_launch = get_config_item_or_set_default(
     validator=lambda x: isinstance(x, bool),
     expected_type=bool
 )
+temp_path_cleanup_interval_days = get_config_item_or_set_default(
+    key='temp_path_cleanup_interval_days',
+    default_value=7,
+    validator=lambda x: type(x) is int and x >= 1,
+    expected_type=int
+)
 default_engine = get_config_item_or_set_default(
     key='default_engine',
     default_value={},

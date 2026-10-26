@@ -870,6 +870,8 @@ def reset_simpleai_args():
     args_comfyd += [[default_cuda_malloc_arg]] if default_cuda_malloc_arg else []
     _, comfyd_intput, comfyd_output = update_comfyd_io_paths(update_runtime=False, update_startup=False)
     args_comfyd += [["--output-directory", comfyd_output], ["--temp-directory", shared.temp_path], ["--input-directory", comfyd_intput]]
+    # Studio owns the retention schedule for this shared temporary directory.
+    args_comfyd += [["--preserve-temp"]]
     cors_origin = os.environ.get("SIMPAI_COMFYD_CORS", "").strip()
     if cors_origin:
         args_comfyd += [["--enable-cors-header", cors_origin]]

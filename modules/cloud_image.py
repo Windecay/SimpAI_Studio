@@ -23,6 +23,7 @@ from modules.util import generate_temp_filename
 from modules.private_logger import log as private_log
 from modules.meta_parser import get_metadata_parser
 from modules.localization import localized_text
+from modules.media_generation import record_generation_batch
 from enhanced import version
 from enhanced.simpleai import get_path_in_user_dir
 
@@ -861,6 +862,8 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
     results = []
     result_prompts = []
     result_negative_prompts = []
+    result_batches = []
+    generation_batches = []
     request_errors = []
     try:
         progressbar(task, 10, "提交云端生图任务 ...")
@@ -872,6 +875,7 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                 break
             prompt = prompt_request["prompt"]
             rendered_negative_prompt = prompt_request["negative_prompt"]
+            request_started = time.perf_counter()
             logger.info(
                 "Cloud image final prompt: task_id=%s request_index=%s request_total=%s protocol=%s model=%s prompt=%r negative_prompt=%r",
                 getattr(task, "task_id", None),
@@ -969,6 +973,10 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                 break
             extracted = _extract_chat_images(response_data) if is_chat_response else _extract_images(response_data)
             if extracted:
+                batch = {"duration_ms": (time.perf_counter() - request_started) * 1000,
+                         "count": len(extracted), "paths": []}
+                generation_batches.append(batch)
+                result_batches.extend([batch] * len(extracted))
                 results.extend(extracted)
                 result_prompts.extend([prompt] * len(extracted))
                 result_negative_prompts.extend([rendered_negative_prompt] * len(extracted))
@@ -984,6 +992,8 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         download_errors = []
         for index, (kind, value) in enumerate(results, 1):
             progressbar(task, 35 + int(index * 60 / len(results)), f"保存第 {index} 张图片 ...")
+            batch = result_batches[index - 1]
+            saving_started = time.perf_counter()
             try:
                 raw = value if kind == "bytes" else _download_bytes(value, session)
                 rendered_prompt = result_prompts[index - 1] if index - 1 < len(result_prompts) else ""
@@ -991,9 +1001,15 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                 task.rendered_negative_prompt = rendered_negative_prompt
                 metadata = _build_metadata_entries(task, model, protocol, rendered_prompt, size, len(image_paths))
                 metadata_parser = _build_metadata_parser(task, rendered_prompt, rendered_negative_prompt)
-                paths.append(_save_with_metadata(task, raw, metadata, metadata_parser))
+                saved_path = _save_with_metadata(task, raw, metadata, metadata_parser)
+                paths.append(saved_path)
+                batch["paths"].append(saved_path)
             except (OSError, ValueError, requests.RequestException) as error:
                 download_errors.append(f"第 {index} 张: {error}")
+            finally:
+                batch["duration_ms"] += (time.perf_counter() - saving_started) * 1000
+        for batch in generation_batches:
+            record_generation_batch(task, batch["paths"], round(batch["duration_ms"]), output_count=batch["count"])
         task.simpleai_generation_had_output = bool(paths)
         if paths:
             yield_result(task, paths, 100, False, censor=False)

@@ -5,6 +5,8 @@ import re
 import shutil
 import subprocess
 
+from modules.media_generation import generation_details
+
 try:
     from PIL import Image
 except Exception:
@@ -202,6 +204,7 @@ def _metadata_from_structured(data, source="simpleai", scheme=""):
         manifest = _json_loads(data.get("simpleai_regen_manifest"))
         workflow = manifest.get("workflow") if isinstance(manifest, dict) else None
     return {
+        **generation_details(data),
         "source": source,
         "scheme": scheme or _decode_text(data.get("metadata_scheme") or data.get("fooocus_scheme")).strip(),
         "prompt": prompt,

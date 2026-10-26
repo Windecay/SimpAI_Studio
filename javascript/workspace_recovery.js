@@ -1798,6 +1798,21 @@
             const number = Number(rawValue);
             return Number.isFinite(number) ? number : rawValue;
         }
+        if (kind === 'file') {
+            // The native link is available before an asynchronous change callback
+            // necessarily saves the value. Preserve completed uploads on pagehide.
+            const links = Array.from(field.querySelectorAll?.('.file-preview-holder a[href]') || []);
+            if (links.length) {
+                const paths = links.map((link) => String(link.href || '')).filter((value) => (
+                    (value.startsWith('/') || /^https?:\/\//i.test(value)) && value.includes('/gradio_api/file=')
+                ));
+                if (paths.length !== links.length) return undefined;
+                return paths.length === 1 ? paths[0] : paths;
+            }
+            if (field.querySelector?.('.file-preview-holder')) return undefined;
+            const input = field.querySelector?.('input[type="file"]');
+            return input && !input.files?.length ? null : undefined;
+        }
         return undefined;
     }
 

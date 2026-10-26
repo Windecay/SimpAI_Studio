@@ -365,11 +365,47 @@ def get_words_with_wildcard(wildcard, rng, method='R', number=1, start_at=1, use
     return words_result
 
 
+def _prompt_syntax_matches(pattern, text):
+    # JSON containers are literal prompt data, including ones after trigger words.
+    json_ranges = []
+    protected_end = 0
+    decoder = json.JSONDecoder()
+    for candidate in re.finditer(r'[\[{]', text):
+        start = candidate.start()
+        if start < protected_end:
+            continue
+        try:
+            _, protected_end = decoder.raw_decode(text, start)
+        except (ValueError, RecursionError):
+            continue
+        json_ranges.append((start, protected_end))
+
+    json_index = 0
+    for match in pattern.finditer(text):
+        while json_index < len(json_ranges) and json_ranges[json_index][1] <= match.start():
+            json_index += 1
+        if json_index < len(json_ranges) and json_ranges[json_index][0] < match.end():
+            continue
+        yield match
+
+
+def _sub_prompt_syntax(pattern, replacement, text, count=0):
+    parts = []
+    last = 0
+    for index, match in enumerate(_prompt_syntax_matches(pattern, text), start=1):
+        parts.extend((text[last:match.start()], replacement(match)))
+        last = match.end()
+        if count and index >= count:
+            break
+    parts.append(text[last:])
+    return ''.join(parts)
+
+
 def compile_arrays(text, rng, user_did=None, allow_plain_bracket_arrays=True):
     global wildcards, wildcards_max_bfs_depth, array_regex, array_regex1, tag_regex1, tag_regex2, tag_regex3, tag_regex4, tag_regex5, tag_regex6
 
     _ = ensure_wildcards_loaded(user_did)
-    tag_arrays = array_regex1.findall(text)
+    tag_arrays = [match.group(1) for match in _prompt_syntax_matches(array_regex1, text)]
     arrays = []
     mult = 1
     seed_fixed = True
@@ -475,12 +511,12 @@ def compile_arrays(text, rng, user_did=None, allow_plain_bracket_arrays=True):
     def sub_outside_arrays(pattern, repl, input_text):
         parts = []
         last = 0
-        for m in array_regex1.finditer(input_text):
+        for m in _prompt_syntax_matches(array_regex1, input_text):
             outside = input_text[last:m.start()]
-            parts.append(pattern.sub(repl, outside))
+            parts.append(_sub_prompt_syntax(pattern, repl, outside))
             parts.append(input_text[m.start():m.end()])
             last = m.end()
-        parts.append(pattern.sub(repl, input_text[last:]))
+        parts.append(_sub_prompt_syntax(pattern, repl, input_text[last:]))
         return ''.join(parts)
 
     # Regex 5: __name__:M[N]:S
@@ -509,14 +545,17 @@ def compile_arrays(text, rng, user_did=None, allow_plain_bracket_arrays=True):
 def replace_wildcard(text, rng, user_did=None):
     global wildcards_max_bfs_depth, tag_regex2
     ctx = ensure_wildcards_loaded(user_did)
-    parts = tag_regex2.findall(text)
+
+    parts = [match.group(1) for match in _prompt_syntax_matches(tag_regex2, text)]
     i = 1
     while parts:
         for wildcard in parts:
             words = _get_wildcard_words(ctx, wildcard)
             if words:
-                text = text.replace(f'__{wildcard}__', rng.choice(words), 1)
-        parts = tag_regex2.findall(text)
+                word = rng.choice(words)
+                pattern = re.compile(re.escape(f'__{wildcard}__'))
+                text = _sub_prompt_syntax(pattern, lambda _match: word, text, count=1)
+        parts = [match.group(1) for match in _prompt_syntax_matches(tag_regex2, text)]
         i += 1
         if i > wildcards_max_bfs_depth:
             break
@@ -544,20 +583,15 @@ def apply_arrays(text, index, arrays, mult):
     if len(arrays) == 0 or mult == 0:
         return text
     
-    tags = array_regex1.findall(text)
+    tags = list(_prompt_syntax_matches(array_regex1, text))
 
     index %= mult
     chosen_words = get_words(arrays, mult, index)
 
-    i = 0
-    for arr in arrays:
-        if i<len(tags) and i<len(chosen_words):
-            if not tag_regex2.findall(chosen_words[i]):
-                text = text.replace(f'[{tags[i]}]', chosen_words[i], 1)
-            else:
-                text = text.replace(f'[{tags[i]}]', tags[i], 1)
-        i = i+1
-
+    for match, word in zip(tags, chosen_words):
+        replacement = match.group(1) if tag_regex2.findall(word) else word
+        pattern = re.compile(re.escape(match.group(0)))
+        text = _sub_prompt_syntax(pattern, lambda _match: replacement, text, count=1)
     return text
 
 
@@ -566,7 +600,7 @@ def apply_wildcards(wildcard_text, rng, user_did=None):
     ctx = ensure_wildcards_loaded(user_did)
 
     for _ in range(wildcards_max_bfs_depth):
-        placeholders = tag_regex2.findall(wildcard_text)
+        placeholders = [match.group(1) for match in _prompt_syntax_matches(tag_regex2, wildcard_text)]
         if len(placeholders) == 0:
             return wildcard_text
 
@@ -575,11 +609,13 @@ def apply_wildcards(wildcard_text, rng, user_did=None):
             try:
                 words = _get_wildcard_words(ctx, placeholder)
                 assert len(words) > 0
-                wildcard_text = wildcard_text.replace(f'__{placeholder}__', rng.choice(words), 1)
-            except:
+                word = rng.choice(words)
+            except Exception:
                 logger.info(f'[Wildcards] Warning: {placeholder}.txt missing or empty. '
-                      f'Using "{placeholder}" as a normal word.')
-                wildcard_text = wildcard_text.replace(f'__{placeholder}__', placeholder)
+                            f'Using "{placeholder}" as a normal word.')
+                word = placeholder
+            pattern = re.compile(re.escape(f'__{placeholder}__'))
+            wildcard_text = _sub_prompt_syntax(pattern, lambda _match: word, wildcard_text, count=1)
             logger.info(f'[Wildcards] {wildcard_text}')
 
     logger.info(f'[Wildcards] BFS stack overflow. Current text: {wildcard_text}')
@@ -784,7 +820,8 @@ def wildcard_catalog_payload(path="root", trans=False, user_did=None, lang=None)
 
 def _wildcard_tokens(text):
     result = []
-    for token in tag_regex2.findall("" if text is None else str(text)):
+    for match in _prompt_syntax_matches(tag_regex2, "" if text is None else str(text)):
+        token = match.group(1)
         if token not in result:
             result.append(token)
     return result

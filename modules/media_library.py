@@ -30,10 +30,11 @@ from typing import Any, Iterable, Iterator
 from urllib.parse import unquote, urlparse
 
 import shared
+from modules.media_generation import TIMING_FIELDS, generation_details
 
 
 DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov", ".mkv"})
@@ -581,6 +582,13 @@ class MediaLibrary:
                                 width INTEGER,
                                 height INTEGER,
                                 duration_ms INTEGER,
+                                preset_id TEXT NOT NULL DEFAULT '',
+                                generation_task_id TEXT NOT NULL DEFAULT '',
+                                generation_duration_ms INTEGER,
+                                generation_batch_duration_ms INTEGER,
+                                generation_task_duration_ms INTEGER,
+                                generation_batch_size INTEGER,
+                                generation_info_version INTEGER NOT NULL DEFAULT 0,
                                 generation_metadata_json TEXT NOT NULL DEFAULT '{}',
                                 generation_text TEXT NOT NULL DEFAULT '',
                                 title TEXT NOT NULL DEFAULT '',
@@ -621,6 +629,36 @@ class MediaLibrary:
                                 created_at REAL NOT NULL
                             );
                             """
+                        )
+                        columns = {row[1] for row in connection.execute("PRAGMA table_info(media)")}
+                        additions = {
+                            "preset_id": "TEXT NOT NULL DEFAULT ''",
+                            "generation_task_id": "TEXT NOT NULL DEFAULT ''",
+                            "generation_duration_ms": "INTEGER",
+                            "generation_batch_duration_ms": "INTEGER",
+                            "generation_task_duration_ms": "INTEGER",
+                            "generation_batch_size": "INTEGER",
+                            "generation_info_version": "INTEGER NOT NULL DEFAULT 0",
+                        }
+                        for column, definition in additions.items():
+                            if column not in columns:
+                                connection.execute(f"ALTER TABLE media ADD COLUMN {column} {definition}")
+                        if "preset_id" not in columns:
+                            rows = connection.execute("SELECT media_id, generation_metadata_json FROM media")
+                            while batch := rows.fetchmany(_INDEX_BATCH_SIZE):
+                                for row in batch:
+                                    details = generation_details(_json_loads(row["generation_metadata_json"], {}))
+                                    connection.execute(
+                                        "UPDATE media SET preset_id=?, generation_task_id=?, generation_duration_ms=? WHERE media_id=?",
+                                        (details["preset_id"], details["generation_task_id"], details["generation_duration_ms"], row["media_id"]),
+                                    )
+                        if "generation_task_duration_ms" not in columns:
+                            connection.execute(
+                                "UPDATE media SET generation_task_duration_ms=generation_duration_ms, generation_duration_ms=NULL"
+                            )
+                        connection.execute(
+                            "CREATE INDEX IF NOT EXISTS idx_media_preset "
+                            "ON media(preset_id, trashed_at, missing_at, created_at DESC, media_id DESC)"
                         )
                         connection.execute(
                             "INSERT OR IGNORE INTO library_meta(key, value) VALUES('schema_version', ?)",
@@ -669,11 +707,12 @@ class MediaLibrary:
         item["updated_at_iso"] = _datetime.datetime.fromtimestamp(float(item.get("created_at") or 0)).isoformat(timespec="seconds") if item.get("created_at") else ""
         item.pop("user_did", None)
         item.pop("generation_text", None)
+        item.pop("generation_info_version", None)
         return item
 
     @_serialize_media_write
     def _refresh_stale_embedded_metadata(self, row: sqlite3.Row, item: dict[str, Any]) -> dict[str, Any]:
-        if not _metadata_needs_refresh(item.get("generation_metadata")):
+        if not _metadata_needs_refresh(item.get("generation_metadata")) and row["generation_info_version"] >= 1:
             return item
         relative_path = str(row["relative_path"] or "")
         absolute_path = _path_under(self.outputs_root, relative_path)
@@ -683,15 +722,25 @@ class MediaLibrary:
         if not metadata or _metadata_needs_refresh(metadata):
             return item
         generation_text = _metadata_search_text(metadata)
+        details = generation_details(metadata)
+        details["preset_id"] = details["preset_id"] or item.get("preset_id", "")
+        details["generation_task_id"] = item.get("generation_task_id") or details["generation_task_id"]
+        for field in TIMING_FIELDS:
+            if item.get(field) is not None:
+                details[field] = item[field]
         with _media_write_lock_for(self.db_path):
             with self._connect() as connection:
                 connection.execute(
-                    "UPDATE media SET generation_metadata_json=?, generation_text=?, indexed_at=? WHERE media_id=?",
-                    (_json_dumps(metadata), generation_text, time.time(), str(row["media_id"])),
+                    "UPDATE media SET generation_metadata_json=?, generation_text=?, indexed_at=?, "
+                    "preset_id=?, generation_task_id=?, generation_duration_ms=?, generation_batch_duration_ms=?, "
+                    "generation_task_duration_ms=?, generation_batch_size=?, generation_info_version=1 WHERE media_id=?",
+                    (_json_dumps(metadata), generation_text, time.time(), details["preset_id"],
+                     details["generation_task_id"], *(details[field] for field in TIMING_FIELDS), str(row["media_id"])),
                 )
                 self._bump_revision(connection)
         self._clear_summary_cache()
         item["generation_metadata"] = metadata
+        item.update(details)
         return item
 
     def _legacy_for_date(self, date_key: str, cache: dict[str, dict[str, dict[str, str]]]) -> dict[str, dict[str, str]]:
@@ -721,7 +770,9 @@ class MediaLibrary:
         mime = _mime_for_path(absolute_path, media_type)
         media_id = _media_id(relative_path)
         row = connection.execute(
-            "SELECT media_id, size, mtime_ns, missing_at, trashed_at, media_type, width, height FROM media WHERE relative_path = ?",
+            "SELECT media_id, size, mtime_ns, missing_at, trashed_at, media_type, width, height, "
+            "preset_id, generation_task_id, generation_duration_ms, generation_batch_duration_ms, "
+            "generation_task_duration_ms, generation_batch_size, generation_info_version FROM media WHERE relative_path = ?",
             (relative_path,),
         ).fetchone()
         signature_same = bool(
@@ -730,7 +781,7 @@ class MediaLibrary:
             == _source_file_signature(stat.st_size, stat.st_mtime_ns)
             and str(row["media_type"] or "") == media_type
         )
-        if signature_same:
+        if signature_same and row["generation_info_version"] >= 1:
             dimensions = (row["width"], row["height"])
             if media_type in {"image", "video"} and (
                 int(row["width"] or 0) <= 0 or int(row["height"] or 0) <= 0
@@ -777,6 +828,13 @@ class MediaLibrary:
                         metadata.setdefault("parameters", {})["model"] = value
         width, height = _media_dimensions(absolute_path, media_type, mime)
         generation_text = _metadata_search_text(metadata)
+        details = generation_details(metadata)
+        if signature_same:
+            details["preset_id"] = details["preset_id"] or row["preset_id"]
+            details["generation_task_id"] = row["generation_task_id"] or details["generation_task_id"]
+            for field in TIMING_FIELDS:
+                if row[field] is not None:
+                    details[field] = row[field]
         now = time.time()
         if row:
             connection.execute(
@@ -784,6 +842,8 @@ class MediaLibrary:
                 UPDATE media
                 SET user_did=?, date_key=?, name=?, media_type=?, mime=?, size=?, mtime_ns=?,
                     created_at=?, width=?, height=?, generation_metadata_json=?, generation_text=?,
+                    preset_id=?, generation_task_id=?, generation_duration_ms=?, generation_batch_duration_ms=?,
+                    generation_task_duration_ms=?, generation_batch_size=?, generation_info_version=1,
                     missing_at=NULL, trashed_at=NULL, trash_path=NULL,
                     original_relative_path=COALESCE(original_relative_path, relative_path), indexed_at=?
                 WHERE relative_path=?
@@ -801,6 +861,9 @@ class MediaLibrary:
                     height,
                     _json_dumps(metadata),
                     generation_text,
+                    details["preset_id"],
+                    details["generation_task_id"],
+                    *(details[field] for field in TIMING_FIELDS),
                     now,
                     relative_path,
                 ),
@@ -812,8 +875,10 @@ class MediaLibrary:
             INSERT INTO media(
                 media_id, user_did, relative_path, date_key, name, media_type, mime,
                 size, mtime_ns, created_at, width, height,
-                generation_metadata_json, generation_text, original_relative_path, indexed_at
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                generation_metadata_json, generation_text, original_relative_path, indexed_at,
+                preset_id, generation_task_id, generation_duration_ms, generation_batch_duration_ms,
+                generation_task_duration_ms, generation_batch_size, generation_info_version
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
             """,
             (
                 media_id,
@@ -832,11 +897,14 @@ class MediaLibrary:
                 generation_text,
                 relative_path,
                 now,
+                details["preset_id"],
+                details["generation_task_id"],
+                *(details[field] for field in TIMING_FIELDS),
             ),
         )
         return {"ok": True, "indexed": True, "added": True, "changed": True, "summary_changed": True, "media_id": media_id}
 
-    def index_file(self, absolute_path: str) -> dict[str, Any]:
+    def index_file(self, absolute_path: str, *, generation: dict[str, Any] | None = None) -> dict[str, Any]:
         """Index one completed output without walking the whole outputs tree."""
 
         self.initialize()
@@ -845,6 +913,18 @@ class MediaLibrary:
             with self._connect() as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 result = self._index_file(connection, absolute_path, legacy_cache)
+                if result.get("indexed") and generation is not None:
+                    details = generation_details(generation)
+                    connection.execute(
+                        "UPDATE media SET preset_id=CASE WHEN ? <> '' THEN ? ELSE preset_id END, "
+                        "generation_task_id=?, generation_duration_ms=COALESCE(?, generation_duration_ms), "
+                        "generation_batch_duration_ms=COALESCE(?, generation_batch_duration_ms), "
+                        "generation_task_duration_ms=COALESCE(?, generation_task_duration_ms), "
+                        "generation_batch_size=COALESCE(?, generation_batch_size) WHERE media_id=?",
+                        (details["preset_id"], details["preset_id"], details["generation_task_id"],
+                         *(details[field] for field in TIMING_FIELDS), result["media_id"]),
+                    )
+                    result["changed"] = result["summary_changed"] = True
                 if result.get("summary_changed"):
                     self._bump_revision(connection)
                 if result.get("indexed"):
@@ -874,6 +954,10 @@ class MediaLibrary:
         except OSError:
             return False
         with self._connect() as connection:
+            if connection.execute(
+                "SELECT 1 FROM media WHERE generation_info_version < 1 AND trashed_at IS NULL AND missing_at IS NULL LIMIT 1"
+            ).fetchone():
+                return True
             row = connection.execute(
                 "SELECT value FROM library_meta WHERE key = 'last_scan_at'"
             ).fetchone()
@@ -1156,6 +1240,7 @@ class MediaLibrary:
         tag: str | None = None,
         rating_min: int | None = None,
         model_query: str | None = None,
+        preset_id: str | None = None,
         orientation: str | None = None,
         collection_id: str | None = None,
         cursor: str | None = None,
@@ -1201,6 +1286,9 @@ class MediaLibrary:
             clauses.append("height > width")
         elif orientation == "square":
             clauses.append("width = height AND width IS NOT NULL")
+        if preset_id:
+            clauses.append("preset_id = ?")
+            params.append(_safe_text(preset_id, 200).strip())
         if collection_id:
             clauses.append(
                 "EXISTS (SELECT 1 FROM collection_items AS membership "
@@ -1221,7 +1309,7 @@ class MediaLibrary:
             params.extend([decoded["created_at"], decoded["created_at"], decoded["id"]])
 
         order = "created_at DESC, media_id DESC" if sort == "newest" else "created_at ASC, media_id ASC"
-        sql = f"SELECT media_id, relative_path, date_key, name, media_type, mime, size, mtime_ns, created_at, width, height, duration_ms, title, tags_json, rating, favorite, notes, missing_at, trashed_at, trash_path, original_relative_path, indexed_at FROM media WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT ?"
+        sql = f"SELECT media_id, relative_path, date_key, name, media_type, mime, size, mtime_ns, created_at, width, height, duration_ms, preset_id, generation_task_id, generation_duration_ms, generation_batch_duration_ms, generation_task_duration_ms, generation_batch_size, title, tags_json, rating, favorite, notes, missing_at, trashed_at, trash_path, original_relative_path, indexed_at FROM media WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT ?"
         params.append(limit + 1)
         with self._connect() as connection:
             rows = connection.execute(sql, params).fetchall()
@@ -1240,6 +1328,16 @@ class MediaLibrary:
             "sort": sort,
             "trash": bool(include_trashed),
         }
+
+    def list_presets(self, *, include_trashed: bool = False) -> list[dict[str, Any]]:
+        self.initialize()
+        visibility = "trashed_at IS NOT NULL" if include_trashed else "trashed_at IS NULL AND missing_at IS NULL"
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT preset_id, COUNT(*) AS item_count FROM media WHERE {visibility} "
+                "AND preset_id <> '' GROUP BY preset_id ORDER BY preset_id COLLATE NOCASE"
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def list_collections(self) -> list[dict[str, Any]]:
         self.initialize()
@@ -1327,7 +1425,7 @@ class MediaLibrary:
             raise ValueError("View name is required.")
         if not isinstance(filters, dict):
             raise ValueError("Filters must be an object.")
-        allowed = {"date", "type", "q", "favorite", "sort", "tag", "rating_min", "model", "orientation", "collection"}
+        allowed = {"date", "type", "q", "favorite", "sort", "tag", "rating_min", "model", "preset", "orientation", "collection"}
         clean_filters = {key: value for key, value in filters.items()
                          if key in allowed and isinstance(value, (str, int, bool)) and len(str(value)) <= 200}
         view = {
@@ -1414,6 +1512,31 @@ class MediaLibrary:
         if include_generation_metadata:
             item = self._refresh_stale_embedded_metadata(row, item)
         return item
+
+    def file_facts(self, absolute_path: str) -> dict[str, Any]:
+        """Read dimensions and timing for a current output, without scanning or metadata decoding."""
+        try:
+            path = os.path.realpath(os.path.abspath(absolute_path))
+            relative = os.path.relpath(path, self.outputs_root).replace(os.sep, "/")
+            if not _path_under(self.outputs_root, relative):
+                return {}
+            stat = os.stat(path)
+        except (OSError, ValueError, TypeError):
+            return {}
+        facts = {"width": None, "height": None, **dict.fromkeys(TIMING_FIELDS)}
+        if os.path.isfile(self.db_path):
+            self.initialize()
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT size, mtime_ns, width, height, generation_duration_ms, generation_batch_duration_ms, "
+                    "generation_task_duration_ms, generation_batch_size FROM media WHERE relative_path=? "
+                    "AND trashed_at IS NULL AND missing_at IS NULL", (relative,),
+                ).fetchone()
+            if row and _source_file_signature(row["size"], row["mtime_ns"]) == _source_file_signature(stat.st_size, stat.st_mtime_ns):
+                facts.update({key: row[key] for key in facts})
+        if not (facts["width"] and facts["height"]) and os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS:
+            facts["width"], facts["height"] = _image_dimensions(path)
+        return facts
 
     def related_items(self, media_id: str, limit: int = 12) -> list[dict[str, Any]]:
         self.initialize()
@@ -1748,7 +1871,7 @@ def get_user_media_library(user_did: Any = None, state_params: dict[str, Any] | 
     return MediaLibrary(_default_outputs_root(did), _default_gallery_root(did), did)
 
 
-def queue_media_file_index(absolute_path: str, user_did: Any = None) -> bool:
+def queue_media_file_index(absolute_path: str, user_did: Any = None, *, generation: dict[str, Any] | None = None) -> bool:
     """Queue a completed output for indexing without blocking generation."""
 
     path = os.path.abspath(os.fspath(absolute_path)) if absolute_path else ""
@@ -1765,7 +1888,7 @@ def queue_media_file_index(absolute_path: str, user_did: Any = None) -> bool:
     def worker() -> None:
         try:
             library = get_user_media_library(did)
-            result = library.index_file(path)
+            result = library.index_file(path, generation=generation) if generation is not None else library.index_file(path)
             if result.get("indexed"):
                 _LOGGER.debug(
                     "Queued media index completed: user_did=%s path=%s added=%s changed=%s",

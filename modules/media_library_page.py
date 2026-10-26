@@ -167,6 +167,8 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
       </div>
       <div class="media-filter-panel" id="media-filter-panel" hidden>
         <div class="filter-panel-title" data-i18n="Filters">Filters</div>
+        <label for="filter-preset" data-i18n="Generation preset">Generation preset</label>
+        <select id="filter-preset"><option value="" data-i18n="All presets">All presets</option></select>
         <label for="filter-tag" data-i18n="Tag">Tag</label>
         <input id="filter-tag" type="search" autocomplete="off">
         <label for="filter-model" data-i18n="Model">Model</label>

@@ -27,7 +27,6 @@ from modules.launch_util import (
     run,
     python,
     requirements_met,
-    delete_folder_content,
     index_url,
     extra_index_url,
     target_path_install,
@@ -1188,6 +1187,7 @@ if shared.args.async_cuda_allocation:
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = env_var
 
 from modules import config
+from modules.temp_cleanup import cleanup_temp_directory_on_launch
 from modules.hash_cache import init_cache
 os.environ["U2NET_HOME"] = config.paths_inpaint[0]
 os.environ["BERT_HOME"] = config.paths_llms[0]
@@ -1198,12 +1198,12 @@ if shared.args.hf_mirror is not None :
     logger.info(f"Set hf_mirror to:{shared.args.hf_mirror}")
 
 if config.temp_path_cleanup_on_launch:
-    logger.info(f'Attempting to delete content of temp dir {config.temp_path}')
-    result = delete_folder_content(config.temp_path, '[Cleanup] ')
-    if result:
-        logger.info("[Cleanup] Cleanup successful")
-    else:
-        logger.info(f"[Cleanup] Failed to delete content of temp dir.")
+    cleanup_result = cleanup_temp_directory_on_launch(config.temp_path, config.temp_path_cleanup_interval_days)
+    logger.info(
+        "[Cleanup] Temporary media / 临时素材清理: status=%s, interval_days=%s, deleted=%s, retained=%s, errors=%s",
+        cleanup_result["status"], config.temp_path_cleanup_interval_days,
+        cleanup_result["deleted_files"], cleanup_result["retained_files"], cleanup_result["errors"],
+    )
 
 simpai_runtime_version = version.get_simpai_ver()
 pyhash_key = shared.token.get_pyhash_key(simpai_runtime_version, comfy_version.version, simpai_runtime_version)

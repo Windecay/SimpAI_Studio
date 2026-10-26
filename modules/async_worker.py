@@ -14,6 +14,7 @@ from modules.comfy_progress_filter import use_progress_profile
 from modules.comfy_prompt_compat import ComfyExecutionError
 from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task, exclusive_task_lock
 from modules.lora_stack import build_fooocus_stack, prepare_stack_params
+from modules.media_generation import start_generation_task, track_generation_output, record_generation_batch, finish_generation_task
 import modules.config
 
 patch_all()
@@ -799,6 +800,8 @@ def worker():
 
     def image_log(async_task, img, metadata, metadata_parser: MetadataParser | None = None, output_format=None, task=None, persist_image=True, user_did=None, remote_task=None):
         paths, image, log_item = log(img, metadata, metadata_parser, output_format, task, persist_image, user_did, remote_task)
+        if remote_task is None:
+            track_generation_output(async_task, paths)
         async_task.img_paths.append(paths)
         async_task.lasttime = time.time()
         if remote_task is not None:
@@ -806,9 +809,11 @@ def worker():
 
     def p2p_save_and_log(async_task, result_img, result_log):
         paths = p2p_log(result_img, result_log, async_task.output_format, persist_image=True, user_did=async_task.user_did)
+        track_generation_output(async_task, paths)
         async_task.img_paths.append(paths)
     
     def stop_processing(async_task, processing_start_time, status="Finished"):
+        finish_generation_task(async_task, status)
         async_task.processing = False
         async_task.img_paths = []
         processing_time = (int(time.time() * 1000) - processing_start_time)/1000.0
@@ -830,6 +835,7 @@ def worker():
         return
 
     def finalize_task(async_task):
+        finish_generation_task(async_task)
         if async_task.generate_image_grid:
             build_image_wall(async_task)
         async_task.yields.append(['finish', async_task.results])
@@ -1190,6 +1196,7 @@ def worker():
                 return
             async_task.processing = True
             async_task.cloud_error = ""
+            start_generation_task(async_task)
             cloud_image.generate(
                 async_task,
                 progressbar,
@@ -1281,6 +1288,8 @@ def worker():
                      denoising_strength, final_scheduler_name, goals, initial_latent, steps, switch, positive_cond,
                      negative_cond, task, loras, tiled, use_expansion, width, height, base_progress, preparation_steps,
                      total_count, show_intermediate_results, persist_image=True):
+        generation_started = time.perf_counter()
+        output_offset = len(getattr(async_task, 'media_generation_outputs', []))
         if async_task.last_stop is not False:
             interrupt_processing()
         
@@ -1570,6 +1579,10 @@ def worker():
             imgs = default_censor(imgs)
         progressbar(async_task, current_progress, f'保存已生成图片 {current_task_id + 1}/{total_count} ...')
         save_and_log(async_task, height, imgs, task, use_expansion, width, loras, goals, persist_image)
+        record_generation_batch(
+            async_task, getattr(async_task, 'media_generation_outputs', [])[output_offset:],
+            round((time.perf_counter() - generation_started) * 1000), output_count=len(imgs),
+        )
         yield_result(async_task, None, current_progress, async_task.black_out_nsfw, False,
                      do_not_show_finished_images=not show_intermediate_results or async_task.disable_intermediate_results)
         
@@ -2447,6 +2460,8 @@ def worker():
                         prompt, negative_prompt, final_scheduler_name, goals, height, img, mask,
                         preparation_steps, steps, switch, tiled, total_count, use_expansion, use_style,
                         use_synthetic_refiner, width, show_intermediate_results=True, persist_image=True):
+        enhancement_started = time.perf_counter()
+        output_offset = len(getattr(async_task, 'media_generation_outputs', []))
         steps, switch, _, _ = apply_overrides(async_task, steps, height, width)
         async_task.steps = steps
         base_model_additional_loras = []
@@ -2471,6 +2486,10 @@ def worker():
                     img = default_censor(img)
                 progressbar(async_task, current_progress, f'保存已生成图片 {current_task_id + 1}/{total_count} ...')
                 image_log(async_task, img, d, output_format=async_task.output_format, persist_image=persist_image, user_did=async_task.user_did, remote_task=async_task.remote_task)
+                record_generation_batch(
+                    async_task, getattr(async_task, 'media_generation_outputs', [])[output_offset:],
+                    round((time.perf_counter() - enhancement_started) * 1000), output_count=1,
+                )
                 yield_result(async_task, None, current_progress, async_task.black_out_nsfw, False,
                              do_not_show_finished_images=not show_intermediate_results or async_task.disable_intermediate_results)
                 return current_progress, img, prompt, negative_prompt
@@ -3528,8 +3547,17 @@ def worker():
                             task.yields.append(['finish', task.results])
                         elif task.task_class == "ImportedWorkflow":
                             from modules.agent_workflow_execution import execute
-                            execute(task)
+                            start_generation_task(task)
+                            workflow_started = time.perf_counter()
+                            try:
+                                execute(task)
+                                if not getattr(task, 'simpleai_workflow_error', None) and not getattr(task, 'user_cancel_action', None):
+                                    record_generation_batch(task, task.results, round((time.perf_counter() - workflow_started) * 1000))
+                            finally:
+                                finish_generation_task(task)
                         else:
+                            if task.task_class != 'Cloud':
+                                start_generation_task(task)
                             handler(task)
                             if task.task_class != 'Cloud':
                                 finalize_task(task)

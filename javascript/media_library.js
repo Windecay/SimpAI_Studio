@@ -10,6 +10,9 @@
     const MAX_RENDERED = 180;
     const WINDOW_BUFFER_PX = 2400;
     const PAGE_SIZE = 48;
+    const CARD_BODY_BASE_HEIGHT = 60;
+    const factsTextWidths = new Map();
+    let factsMeasureContext = null;
     const AUTOPLAY_STORAGE_KEY = 'simpai.mediaLibrary.videoAutoplay';
     const MAX_AUTOPLAY_BYTES = 256 * 1024 * 1024;
     const MAX_AUTOPLAY_EDGE = 3840;
@@ -30,6 +33,8 @@
         tag: '',
         ratingMin: '',
         modelQuery: '',
+        presetId: '',
+        presets: [],
         orientation: '',
         collectionId: '',
         collections: [],
@@ -115,9 +120,56 @@
         return `${size >= 10 || index === 0 ? Math.round(size) : size.toFixed(1)} ${units[index]}`;
     }
 
+    function validDuration(milliseconds) {
+        return milliseconds != null && Number.isFinite(Number(milliseconds)) && Number(milliseconds) >= 0;
+    }
+
+    function formatDuration(milliseconds) {
+        return validDuration(milliseconds)
+            ? `${(Number(milliseconds) / 1000).toLocaleString(state.__lang === 'cn' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 3 })} ${t('seconds')}`
+            : t('Not recorded');
+    }
+
+    function cardFacts(item) {
+        const width = Number(item.width);
+        const height = Number(item.height);
+        const dimensions = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+            ? `${width} × ${height}` : t('Not recorded');
+        const legacyTiming = !Object.prototype.hasOwnProperty.call(item, 'generation_task_duration_ms');
+        const candidates = [
+            [legacyTiming ? null : item.generation_duration_ms, 'Generation', 'Item generation time'],
+            [item.generation_batch_duration_ms, 'Batch time', 'Batch generation time'],
+            [legacyTiming ? item.generation_duration_ms : item.generation_task_duration_ms, 'Task total', 'Total task time']
+        ];
+        const [duration, label, title] = candidates.find(([value]) => validDuration(value)) || [null, 'Generation', 'Item generation time'];
+        const batchSize = title === 'Batch generation time' && Number(item.generation_batch_size) > 1
+            ? ` (${Number(item.generation_batch_size)} ${t('items')})` : '';
+        return {
+            dimensions,
+            duration: `${t(label)} · ${formatDuration(duration)}`,
+            title: `${t(title)}: ${formatDuration(duration)}${batchSize}`
+        };
+    }
+
     function starRating(rating) {
         const value = Math.max(0, Math.min(5, Number(rating || 0)));
         return `${'★'.repeat(value)}${'☆'.repeat(5 - value)}`;
+    }
+
+    function factsNeedWrap(item, columnWidth) {
+        const facts = cardFacts(item);
+        if (!factsMeasureContext) {
+            factsMeasureContext = document.createElement('canvas').getContext('2d');
+            factsMeasureContext.font = `11px ${getComputedStyle(document.body).fontFamily}`;
+        }
+        const textWidth = (text) => {
+            if (!factsTextWidths.has(text)) {
+                if (factsTextWidths.size > 600) factsTextWidths.clear();
+                factsTextWidths.set(text, factsMeasureContext.measureText(text).width);
+            }
+            return factsTextWidths.get(text);
+        };
+        return textWidth(facts.dimensions) + textWidth(facts.duration) + 10 > columnWidth - 20;
     }
 
     function apiUrl(path) {
@@ -239,14 +291,14 @@
                 `<div class="organizer-item${state.collectionId === collection.collection_id ? ' is-active' : ''}" data-collection="${escapeHtml(collection.collection_id)}">` +
                 `<button type="button" data-organizer-open="collection" title="${escapeHtml(collection.title)}"><i class="fa fa-folder"></i><span class="organizer-name">${escapeHtml(collection.title)}</span><span class="organizer-count">${Number(collection.item_count || 0)}</span></button>` +
                 `<button class="icon-button" type="button" data-organizer-delete="collection" title="${escapeHtml(t('Delete collection'))}" aria-label="${escapeHtml(t('Delete collection'))}"><i class="fa fa-xmark"></i></button></div>`
-            ).join('');
+            ).join('') || `<p class="organizer-empty">${escapeHtml(t('No collections'))}</p>`;
         }
         if (refs.viewList) {
             refs.viewList.innerHTML = state.savedViews.map((view) =>
                 `<div class="organizer-item${state.activeViewId === view.view_id ? ' is-active' : ''}" data-view="${escapeHtml(view.view_id)}">` +
                 `<button type="button" data-organizer-open="view" title="${escapeHtml(view.title)}"><i class="fa fa-filter"></i><span class="organizer-name">${escapeHtml(view.title)}</span></button>` +
                 `<button class="icon-button" type="button" data-organizer-delete="view" title="${escapeHtml(t('Delete view'))}" aria-label="${escapeHtml(t('Delete view'))}"><i class="fa fa-xmark"></i></button></div>`
-            ).join('');
+            ).join('') || `<p class="organizer-empty">${escapeHtml(t('No saved views'))}</p>`;
         }
         if (refs.selectionCollection) {
             const previous = refs.selectionCollection.value;
@@ -271,11 +323,32 @@
         }
     }
 
+    function renderPresetOptions(selected = state.presetId) {
+        if (!refs.filterPreset) return;
+        const options = state.presets.map((entry) => entry.preset_id);
+        if (selected && !options.includes(selected)) options.push(selected);
+        refs.filterPreset.innerHTML = `<option value="">${escapeHtml(t('All presets'))}</option>` + options.map((id) =>
+            `<option value="${escapeHtml(id)}">${escapeHtml(id)}</option>`
+        ).join('');
+        refs.filterPreset.value = selected;
+    }
+
+    async function loadPresets() {
+        if (!refs.filterPreset) return;
+        try {
+            const payload = await request(`/api/presets${state.trashMode ? '?trash=1' : ''}`);
+            state.presets = Array.isArray(payload.presets) ? payload.presets : [];
+            renderPresetOptions(refs.filterPreset.value);
+        } catch (err) {
+            showToast(t('Unable to load presets'), true);
+        }
+    }
+
     function currentFilters() {
         return {
             date: state.date, type: state.mediaType, q: state.query,
             favorite: state.favorite === true, sort: state.sort, tag: state.tag,
-            rating_min: state.ratingMin, model: state.modelQuery,
+            rating_min: state.ratingMin, model: state.modelQuery, preset: state.presetId,
             orientation: state.orientation, collection: state.collectionId
         };
     }
@@ -286,11 +359,12 @@
         if (refs.sort) refs.sort.value = state.sort;
         if (refs.filterTag) refs.filterTag.value = state.tag;
         if (refs.filterModel) refs.filterModel.value = state.modelQuery;
+        renderPresetOptions();
         if (refs.filterRating) refs.filterRating.value = state.ratingMin;
         if (refs.filterOrientation) refs.filterOrientation.value = state.orientation;
         if (refs.favoriteFilter) refs.favoriteFilter.setAttribute('aria-pressed', state.favorite === true ? 'true' : 'false');
         if (refs.filterToggle) {
-            const active = !!(state.tag || state.modelQuery || state.ratingMin || state.orientation);
+            const active = !!(state.tag || state.modelQuery || state.presetId || state.ratingMin || state.orientation);
             refs.filterToggle.setAttribute('aria-pressed', active ? 'true' : 'false');
         }
         renderDates();
@@ -307,6 +381,7 @@
         state.tag = String(value.tag || '');
         state.ratingMin = value.rating_min ? String(value.rating_min) : '';
         state.modelQuery = String(value.model || '');
+        state.presetId = String(value.preset || '');
         state.orientation = ['landscape', 'portrait', 'square'].includes(value.orientation) ? value.orientation : '';
         state.collectionId = String(value.collection || '');
         clearSelectionForQueryChange();
@@ -385,6 +460,7 @@
         if (state.tag) params.set('tag', state.tag);
         if (state.ratingMin) params.set('rating_min', state.ratingMin);
         if (state.modelQuery) params.set('model', state.modelQuery);
+        if (state.presetId) params.set('preset', state.presetId);
         if (state.orientation) params.set('orientation', state.orientation);
         if (state.collectionId) params.set('collection', state.collectionId);
         if (state.trashMode) params.set('trash', '1');
@@ -559,6 +635,7 @@
         const active = state.selectedId === item.media_id;
         const kind = item.media_type === 'video' ? t('Videos') : item.media_type === 'audio' ? t('Audio') : t('Images');
         const tags = Array.isArray(item.tags) ? item.tags.slice(0, 3).join(', ') : '';
+        const facts = cardFacts(item);
         return `<article class="media-card${selected ? ' selected' : ''}${active ? ' active' : ''}" style="--media-ratio:${mediaRatio(item).toFixed(4)}" data-id="${escapeHtml(item.media_id)}" data-date="${escapeHtml(item.date_key || '')}">
             <div class="media-card-preview">${cardPreview(item)}<span class="media-kind">${escapeHtml(kind)}</span>
                 <div class="media-card-overlay">
@@ -567,6 +644,7 @@
                 </div>
             </div>
             <div class="card-body"><div class="card-meta"><span class="card-name" title="${escapeHtml(item.title || item.name)}">${escapeHtml(item.title || item.name || '')}</span><span class="card-date">${escapeHtml(formatDate(item.date_key))}</span></div>
+                <div class="card-facts${factsNeedWrap(item, state.layout.metrics.innerWidth) ? ' is-wrapped' : ''}"><span class="card-resolution" title="${escapeHtml(t('Output dimensions'))}">${escapeHtml(facts.dimensions)}</span><span class="card-generation-time" title="${escapeHtml(facts.title)}">${escapeHtml(facts.duration)}</span></div>
                 <div class="card-footer"><span class="card-tags">${escapeHtml(tags || formatBytes(item.size))}</span><span class="card-rating">${escapeHtml(starRating(item.rating))}</span></div>
             </div>
         </article>`;
@@ -584,8 +662,8 @@
     }
 
     function estimatedCardHeight(item, columnWidth) {
-        const previewHeight = Math.max(1, columnWidth / mediaRatio(item));
-        return previewHeight + 62;
+        const previewHeight = Math.max(1, (columnWidth - 2) / Number(mediaRatio(item).toFixed(4)));
+        return previewHeight + CARD_BODY_BASE_HEIGHT + (factsNeedWrap(item, columnWidth) ? 34 : 16) + 2;
     }
 
     function feedMetrics(count) {
@@ -686,6 +764,11 @@
             item.date_key || '',
             item.media_type || '',
             item.thumbnail_url || '',
+            item.width || '', item.height || '', item.size || '',
+            item.generation_duration_ms ?? '', item.generation_batch_duration_ms ?? '',
+            item.generation_task_duration_ms ?? '', item.generation_batch_size ?? '',
+            state.__lang,
+            state.layout?.metrics.innerWidth,
             item.favorite ? '1' : '0',
             Number(item.rating || 0),
             tags,
@@ -719,6 +802,12 @@
         card.querySelector('.card-date').textContent = formatDate(item.date_key);
         card.querySelector('.card-tags').textContent = tags || formatBytes(item.size);
         card.querySelector('.card-rating').textContent = starRating(item.rating);
+        const facts = cardFacts(item);
+        card.querySelector('.card-facts').classList.toggle('is-wrapped', factsNeedWrap(item, state.layout.metrics.innerWidth));
+        card.querySelector('.card-resolution').textContent = facts.dimensions;
+        card.querySelector('.card-resolution').title = t('Output dimensions');
+        card.querySelector('.card-generation-time').textContent = facts.duration;
+        card.querySelector('.card-generation-time').title = facts.title;
         card.querySelector('.media-kind').textContent = kind;
 
         const selectButton = card.querySelector('.card-select');
@@ -1041,6 +1130,17 @@
         const entries = [];
         if (settings.prompt) entries.push([t('Prompt'), settings.prompt]);
         if (settings.negative_prompt) entries.push([t('Negative prompt'), settings.negative_prompt]);
+        entries.push([t('Generation preset'), item.preset_id || metadata.preset_id || t('Not recorded')]);
+        const legacyTiming = !Object.prototype.hasOwnProperty.call(item, 'generation_task_duration_ms');
+        entries.push([t('Item generation time'), formatDuration(legacyTiming ? null : item.generation_duration_ms)]);
+        if (item.generation_batch_duration_ms != null) {
+            const count = Number(item.generation_batch_size);
+            const batchSize = count > 1 ? ` (${count} ${t('items')})` : '';
+            entries.push([t('Batch generation time'), formatDuration(item.generation_batch_duration_ms) + batchSize]);
+        }
+        const totalDuration = legacyTiming ? item.generation_duration_ms : item.generation_task_duration_ms;
+        if (totalDuration != null) entries.push([t('Total task time'), formatDuration(totalDuration)]);
+        if (item.generation_task_id) entries.push([t('Generation task ID'), item.generation_task_id]);
         if (metadata.source) entries.push([t('Source'), metadata.source]);
         Object.entries(settings.parameters || {}).forEach(([key, value]) => {
             if (key !== 'prompt' && key !== 'negative_prompt') entries.push([t(labels[key] || key), value]);
@@ -2029,11 +2129,15 @@
         refs.filterToggle?.addEventListener('click', () => {
             refs.filterPanel.hidden = !refs.filterPanel.hidden;
             refs.filterToggle.setAttribute('aria-expanded', refs.filterPanel.hidden ? 'false' : 'true');
-            if (!refs.filterPanel.hidden) refs.dateSidebar.classList.remove('is-open');
+            if (!refs.filterPanel.hidden) {
+                refs.dateSidebar.classList.remove('is-open');
+                loadPresets();
+            }
         });
         refs.filterApply?.addEventListener('click', () => {
             state.tag = refs.filterTag.value.trim();
             state.modelQuery = refs.filterModel.value.trim();
+            state.presetId = refs.filterPreset?.value || '';
             state.ratingMin = refs.filterRating.value;
             state.orientation = refs.filterOrientation.value;
             state.activeViewId = '';
@@ -2047,6 +2151,7 @@
         refs.filterClear?.addEventListener('click', () => {
             state.tag = '';
             state.modelQuery = '';
+            state.presetId = '';
             state.ratingMin = '';
             state.orientation = '';
             state.activeViewId = '';
@@ -2195,6 +2300,7 @@
         refs.filterPanel = document.getElementById('media-filter-panel');
         refs.filterTag = document.getElementById('filter-tag');
         refs.filterModel = document.getElementById('filter-model');
+        refs.filterPreset = document.getElementById('filter-preset');
         refs.filterRating = document.getElementById('filter-rating');
         refs.filterOrientation = document.getElementById('filter-orientation');
         refs.filterApply = document.getElementById('filter-apply');
@@ -2269,7 +2375,7 @@
         updateAutoplayControl();
         updateViewControls();
         bindEvents();
-        await Promise.all([loadDates(), loadOrganizers()]);
+        await Promise.all([loadDates(), loadOrganizers(), loadPresets()]);
         await loadPage(true);
     }
 

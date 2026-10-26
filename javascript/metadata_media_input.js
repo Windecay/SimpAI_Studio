@@ -14,6 +14,7 @@
         ...config,
         currentFile: null,
         currentObjectUrl: '',
+        failedPreviewKey: '',
         observedRoot: null,
         rootObserver: null,
         renderFrame: 0,
@@ -91,16 +92,46 @@
             state.reconcileTimer = 0;
         }
         state.currentFile = null;
+        state.failedPreviewKey = '';
         state.preservePreviewUntil = 0;
         revokeObjectUrl(state);
         removeRenderedPreview(state);
     }
 
+    function restoredMediaSource(root) {
+        const href = root.querySelector('.file-preview-holder a[href]')?.getAttribute('href');
+        if (!href) return null;
+        try {
+            const url = new URL(href, window.location.href);
+            if (url.origin !== window.location.origin || !/^https?:$/.test(url.protocol)
+                || url.username || url.password || !/\/gradio_api\/file=/.test(url.pathname)) return null;
+            const path = decodeURIComponent(url.pathname);
+            if (!MEDIA_EXTENSION_PATTERN.test(path)) return null;
+            return { key: `server:${url.href}`, url: url.href, video: VIDEO_EXTENSION_PATTERN.test(path) };
+        } catch (error) {
+            return null;
+        }
+    }
+
     function renderCurrentPreview(state) {
         state.renderFrame = 0;
         const root = getRoot(state);
-        if (!root || !state.currentFile || !state.currentObjectUrl) return;
-        const key = previewKey(state.currentFile);
+        if (!root) return;
+        // A page restore has a native server file link, but no browser File/blob.
+        const source = state.currentFile && state.currentObjectUrl
+            ? { key: previewKey(state.currentFile), url: state.currentObjectUrl, video: isVideoFile(state.currentFile) }
+            : restoredMediaSource(root);
+        if (!source) {
+            state.failedPreviewKey = '';
+            removeRenderedPreview(state, root);
+            return;
+        }
+        const key = source.key;
+        if (state.failedPreviewKey === key) {
+            removeRenderedPreview(state, root);
+            return;
+        }
+        state.failedPreviewKey = '';
         const existing = root.querySelector(`.${PREVIEW_CLASS}`);
         if (existing?.dataset.previewKey === key) {
             root.classList.add(HAS_MEDIA_CLASS);
@@ -110,16 +141,23 @@
         const preview = document.createElement('div');
         preview.className = PREVIEW_CLASS;
         preview.dataset.previewKey = key;
-        if (isVideoFile(state.currentFile)) {
+        const onPreviewError = () => {
+            if (getRoot(state) !== root || root.querySelector(`.${PREVIEW_CLASS}`) !== preview) return;
+            state.failedPreviewKey = key;
+            removeRenderedPreview(state, root);
+        };
+        if (source.video) {
             const video = document.createElement('video');
-            video.src = state.currentObjectUrl;
+            video.addEventListener('error', onPreviewError, { once: true });
+            video.src = source.url;
             video.controls = true;
             video.preload = 'metadata';
             video.playsInline = true;
             preview.appendChild(video);
         } else {
             const image = document.createElement('img');
-            image.src = state.currentObjectUrl;
+            image.addEventListener('error', onPreviewError, { once: true });
+            image.src = source.url;
             image.alt = '';
             image.draggable = false;
             preview.appendChild(image);
@@ -135,6 +173,7 @@
 
     function setCurrentFile(state, file) {
         if (!isMediaFile(file)) return false;
+        state.failedPreviewKey = '';
         if (state.currentFile !== file) {
             revokeObjectUrl(state);
             state.currentFile = file;
@@ -287,7 +326,9 @@
             scheduleReconcile(state);
             scheduleRender(state);
         });
-        state.rootObserver.observe(root, { childList: true, subtree: true });
+        state.rootObserver.observe(root, {
+            childList: true, subtree: true, attributes: true, attributeFilter: ['href'],
+        });
         bindCurrentFileInput(state);
         scheduleReconcile(state);
         scheduleRender(state);

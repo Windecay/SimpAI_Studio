@@ -1,5 +1,5 @@
-"""Runs the asset system's startup and shutdown maintenance: clearing temp rows
-and files, recording a hash-mode transition, and handing the filesystem scan to
+"""Runs the asset system's startup and shutdown maintenance for temporary assets,
+recording a hash-mode transition, and handing the filesystem scan to
 the background seeder. Startup only enqueues transition work — draining it
 belongs to the seeder, so a large library cannot stall the server before it
 accepts requests.
@@ -51,6 +51,7 @@ def enqueue_mode_transition_work() -> None:
 
 
 def wipe_temp_db_rows(session) -> tuple[int, int]:
+    """With --preserve-temp, remove only records whose files no longer exist."""
     try:
         temp_root = os.path.abspath(folder_paths.get_temp_directory())
     except OSError:
@@ -58,6 +59,18 @@ def wipe_temp_db_rows(session) -> tuple[int, int]:
     # These rows are hard-deleted, so the predicate must stay case-SENSITIVE: admitting a
     # case-different persistent directory destroys user assets.
     under_temp = sql_path_under_prefix(AssetContent.path, temp_root)
+    if args.preserve_temp:
+        missing_ids = []
+        for content_id, path in session.execute(select(AssetContent.id, AssetContent.path).where(under_temp)).all():
+            try:
+                os.stat(path)
+            except FileNotFoundError:
+                missing_ids.append(content_id)
+            except OSError:
+                continue
+        if not missing_ids:
+            return 0, 0
+        under_temp = under_temp & AssetContent.id.in_(missing_ids)
 
     temp_records = session.execute(
         select(Asset.id, Asset.preview_id)
@@ -83,6 +96,8 @@ def wipe_temp_db_rows(session) -> tuple[int, int]:
 
 
 def cleanup_temp_filesystem() -> bool:
+    if args.preserve_temp:
+        return True
     temp_dir = os.path.abspath(folder_paths.get_temp_directory())
     if not os.path.exists(temp_dir):
         return True
