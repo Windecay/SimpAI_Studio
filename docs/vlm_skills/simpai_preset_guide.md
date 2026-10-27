@@ -27,8 +27,8 @@ SimpAI UI guide skill:
 - For a named Preset family, explain its specific workflow rather than inferring
   behavior from a broad model category. When the goal is ambiguous, give a short
   category overview and one concise choice question.
-- Follow `state.__lang` for visible text and Preset display names. Keep exact
-  Preset keys when the user needs to find the item in the catalog.
+- Follow `state.__lang` for visible text and Preset display names. Use the
+  matching localized name without combining English and Chinese names.
 
 ## Text-To-Image / First Image
 
@@ -379,27 +379,28 @@ SimpAI UI guide skill:
   `MiniMax-H3(I2V)`, `MiniMax-H3(R2V)`, `MiniMax-H3(R2C)`,
   `MiniMax-H3(R2I)`, `MiniMax-H3(Pose)`, `MiniMax-H3(Loop)`, and `MiniMax-H3(Upscale)`. Do not
   omit R2C or Upscale when explaining the available H3 workflows.
-- Recommend `MiniMax-H3(T2V)` / `MiniMax-H3文生` for text-to-video with native
+- Recommend `MiniMax-H3(T2V)` (Chinese display name `MiniMax-H3文生视频`) for text-to-video with native
   generated audio.
-- Recommend `MiniMax-H3(I2V)` / `MiniMax-H3图生` when the main image is the
+- Recommend `MiniMax-H3(I2V)` (Chinese display name `MiniMax-H3图生视频`) when the main image is the
   first frame and an optional second image is the last frame.
-- Recommend `MiniMax-H3(R2V)` / `MiniMax-H3多参` for mixed references: up to
+- Recommend `MiniMax-H3(R2V)` (Chinese display name `MiniMax-H3全能参考`) for mixed references: up to
   nine ordered images, three videos, and three standalone audio clips. Use
   `<Picture 1>`, `<Video 1>`, and `<Audio 1>` tags, numbered independently by
   media type; each reference video's soundtrack is paired with that video.
-- `MiniMax-H3(R2I)` / `MiniMax-H3图编` accepts one to nine ordered picture references
-  for still-image editing, with no video or audio input.
+- `MiniMax-H3(R2I)` (Chinese display name `MiniMax-H3图像编辑`) supports text-to-image
+  without references and accepts one to nine ordered picture references for
+  still-image editing, with no video or audio input.
 - For two-image character pose edits, `MiniMax-H3(Pose)` uses the character as
   `<Picture 1>` and the Pose Editor result as `<Picture 2>`, with 10 steps and
   the standard H3 Turbo distillation LoRA.
-- Recommend `MiniMax-H3(R2C)` / `MiniMax-H3续写` when the user wants to
+- Recommend `MiniMax-H3(R2C)` (Chinese display name `MiniMax-H3视频续写`) when the user wants to
   continue a previous H3 clip. It requires the previous video and accepts up
   to nine optional ordered identity/appearance pictures. Preserve the source
   clip's final state, subject identity, scene, camera direction, motion,
   pacing, style, and audio continuity. This is sequential continuation, not
   the R2V motion/reference-transfer route, and it does not accept standalone
   audio references.
-- Recommend `MiniMax-H3(Upscale)` / `MiniMax-H3视频放大` for H3 model-based
+- Recommend `MiniMax-H3(Upscale)` (Chinese display name `MiniMax-H3视频放大`) for H3 model-based
   video detail restoration and resolution enlargement. It requires one source
   video, processes the full duration in segments, preserves source timing,
   motion, composition, visible text, colors, and audio, and should only improve

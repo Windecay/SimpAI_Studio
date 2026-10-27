@@ -30,7 +30,8 @@
       "exclusive": true,
       "keywords": [
         "h3", "minimax", "minimax h3", "minimax-h3", "r2v", "r2c", "r2i",
-        "h3预设", "h3预置", "h3文生", "h3图生", "h3多参", "h3续写", "h3图编", "h3视频放大"
+        "h3预设", "h3预置", "h3文生", "h3图生", "h3多参", "h3续写", "h3图编",
+        "h3文生视频", "h3图生视频", "h3全能参考", "h3视频续写", "h3图像编辑", "h3视频放大"
       ],
       "sections": ["MiniMax H3 Preset Family"]
     },

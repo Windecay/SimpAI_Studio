@@ -432,6 +432,16 @@ default_class_params = {
             "task_method": "z_image_turbo_aio_cn",
             },
         },
+    'Cloud': {
+        'disvisible': [],
+        'disinteractive': [],
+        'available_aspect_ratios_selection': 'Flux',
+        'available_sampler_name': comfy_sampler_list,
+        'available_scheduler_name': comfy_scheduler_list,
+        'backend_params': {
+            "task_method": "cloud_image_generate",
+            },
+        },
     }
 
 get_engine_default_params = lambda x: default_class_params['Fooocus'] if x not in default_class_params else default_class_params[x]

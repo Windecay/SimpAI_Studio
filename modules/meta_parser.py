@@ -48,7 +48,7 @@ SCENE_SWITCH_OUTPUT_COUNT = SCENE_AUX_OUTPUT_COUNT + SCENE_PRIMARY_OUTPUT_COUNT
 
 
 def resolve_engine_class_display(template_engine, task_method):
-    if template_engine in ['Flux', 'Wan', 'Qwen', 'Z-image']:
+    if template_engine in ['Flux', 'Wan', 'Qwen', 'Z-image', 'Cloud']:
         return template_engine
     if template_engine == 'Comfy':
         if str(task_method or '').strip().lower().startswith('minimax_h3'):

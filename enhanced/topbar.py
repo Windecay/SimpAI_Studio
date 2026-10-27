@@ -22,6 +22,7 @@ import modules.constants as constants
 from modules.access_mode import get_access_mode, is_local_mode, state_has_full_local_access
 from modules.identity_session import resolve_session, session_cookie_days, update_identity_session
 import modules.meta_parser as meta_parser
+from modules.preset_name_aliases import h3_search_names
 import modules.sdxl_styles as sdxl_styles
 import modules.style_sorter as style_sorter
 import enhanced.all_parameters as ads
@@ -2004,7 +2005,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         samples = []
 
     sample_signature = (
-        "canvas_preset_meta_media_capability_v11",
+        "canvas_preset_meta_media_capability_v12",
         *(
             item[0] if isinstance(item, (list, tuple)) and item else item
             for item in samples
@@ -2203,6 +2204,7 @@ def _build_preset_store_meta(state, copy_cached=True):
             "missing": display_name.endswith(PRESET_MISSING_MARKER),
             "order": order,
             "source": "user" if preset_name.endswith('.') else "base",
+            "search_aliases": list(h3_search_names(preset_name)[1:]),
             **read_status,
             "invalid": read_status.get("load_status") == "error",
         }

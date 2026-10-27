@@ -36,6 +36,7 @@ import modules.vlm_roleplay_reply as vlm_roleplay_reply
 import modules.vlm_roleplay_outline as vlm_roleplay_outline
 import modules.vlm_tavern as vlm_tavern
 import modules.vlm_reply_options as vlm_reply_options
+from modules.preset_name_aliases import H3_LEGACY_NAMES, h3_search_names
 from modules.agent_service import AgentContext
 from modules.pe_models import prompt_expander_vlm_task
 
@@ -444,8 +445,8 @@ SimpAI UI guide skill:
   - For anime, illustration, 二次元, 动漫向, manhua, cel-shaded, or character-art image-to-video requests, recommend Dasiwa image-to-video first.
   - For text-to-video, recommend Wan(T2V); for image-to-video, recommend Wan(I2V); for video extension, recommend Wan-Extent or Dasiwa-Extent for anime.
   - For MiniMax H3 native-audio video generation, recommend MiniMax-H3(T2V) for text-to-video, MiniMax-H3(I2V) for first-frame image-to-video with an optional last frame, and MiniMax-H3(R2V) for mixed image, video, and standalone audio references.
-  - For continuing a previous H3 clip, recommend MiniMax-H3(R2C) / MiniMax-H3续写. It requires the previous video, accepts up to nine optional ordered identity/appearance pictures, preserves scene, camera, motion, style, and audio continuity, and is not the R2V motion/reference-transfer route.
-  - For H3 model-based video detail restoration and resolution enlargement, recommend MiniMax-H3(Upscale) / MiniMax-H3视频放大. It requires one source video, processes the full duration in segments, preserves source timing, motion, composition, visible text, colors, and audio, and changes only detail and edge clarity. Use Nvidia-VSR when the user specifically wants conventional dedicated VSR.
+  - For continuing a previous H3 clip, recommend MiniMax-H3(R2C), whose Chinese display name is MiniMax-H3视频续写. It requires the previous video, accepts up to nine optional ordered identity/appearance pictures, preserves scene, camera, motion, style, and audio continuity, and is not the R2V motion/reference-transfer route.
+  - For H3 model-based video detail restoration and resolution enlargement, recommend MiniMax-H3(Upscale), whose Chinese display name is MiniMax-H3视频放大. It requires one source video, processes the full duration in segments, preserves source timing, motion, composition, visible text, colors, and audio, and changes only detail and edge clarity. Use Nvidia-VSR when the user specifically wants conventional dedicated VSR.
   - For video object/person/face replacement with masks, recommend Wan-Animate with SAM3; for video removal/inpainting, recommend Wan-Remover with SAM3.
   - For video face swap, recommend ReActor-FaceSwap / ReActor Face Swap for a direct source-face-index workflow with a reference face image and source video. Offer Wan-Swap / Wan-Animate Face Swap when the user wants the Animate-style multimodal face-replacement route.
   - For motion transfer, character replacement, pose-following, or reusing a reference motion, recommend Wan-SCAIL2 or Wan-Swap motion transfer depending on whether identity/face replacement is involved. Wan-SCAIL2 separates the modes into two themes: Character Motion Transfer and Character Replacement; use Wan-Swap / Wan-Animate Motion Transfer as the Animate-style alternative.
@@ -478,17 +479,17 @@ SimpAI UI guide skill:
 SIMPAI_PRESET_GUIDE_SKILL_FILE = "simpai_preset_guide.md"
 ANIMA_PROMPT_SKILL_FILE = "anima_prompting.md"
 DESCRIBE_PRESET_GUIDE_ROUTE_MAX_CHARS = 3000
-H3_GUIDE_FALLBACK_RE = re.compile(r"(?<![a-z0-9])(?:minimax[\s_-]*)?h3(?![a-z0-9])|h3(?:预设|预置|文生|图生|多参|续写|图编|视频放大)", re.I)
+H3_GUIDE_FALLBACK_RE = re.compile(r"(?<![a-z0-9])(?:minimax[\s_-]*)?h3(?![a-z0-9])|h3(?:预设|预置|文生|图生|多参|全能参考|续写|视频续写|图编|图像编辑|视频放大)", re.I)
 H3_GUIDE_FALLBACK = """
 MiniMax H3 Preset family:
 - MiniMax H3 in SimpAI is a native-audio video generation, reference-image editing, continuation, and video-upscale workflow family. It is not a portrait, fashion, lighting, still-image aesthetic, or generic image-style Preset.
-- MiniMax-H3(T2V) / MiniMax-H3文生: text-to-video with native generated audio.
-- MiniMax-H3(I2V) / MiniMax-H3图生: first-frame image-to-video with an optional last-frame image.
-- MiniMax-H3(R2V) / MiniMax-H3多参: up to nine ordered pictures, three videos, and three standalone audio references.
-- MiniMax-H3(R2C) / MiniMax-H3续写: continue the previous H3 clip, with up to nine optional identity/appearance pictures.
-- MiniMax-H3(R2I) / MiniMax-H3图编: still-image reference editing with one to nine ordered pictures.
-- MiniMax-H3(Upscale) / MiniMax-H3视频放大: process one source video's full duration in segments while preserving content, motion, timing, and audio.
-- Follow state.__lang for visible names and answer in the user's UI language.
+- MiniMax-H3(T2V), Chinese name MiniMax-H3文生视频: text-to-video with native generated audio.
+- MiniMax-H3(I2V), Chinese name MiniMax-H3图生视频: first-frame image-to-video with an optional last-frame image.
+- MiniMax-H3(R2V), Chinese name MiniMax-H3全能参考: up to nine ordered pictures, three videos, and three standalone audio references.
+- MiniMax-H3(R2C), Chinese name MiniMax-H3视频续写: continue the previous H3 clip, with up to nine optional identity/appearance pictures.
+- MiniMax-H3(R2I), Chinese name MiniMax-H3图像编辑: still-image generation and reference editing with up to nine ordered pictures.
+- MiniMax-H3(Upscale), Chinese name MiniMax-H3视频放大: process one source video's full duration in segments while preserving content, motion, timing, and audio.
+- Follow state.__lang for visible names; do not display the English ID and Chinese name together.
 """.strip()
 
 
@@ -5073,15 +5074,59 @@ def _preset_family_names(preset):
     return ()
 
 
+def _explicit_h3_preset_selection(user_message, preset_capabilities=None):
+    source = str(user_message or "")
+    mentioned = set()
+    selected = set()
+    custom_names = [
+        str(item.get("name") or "").strip()
+        for item in (preset_capabilities or []) if isinstance(item, dict)
+        and str(item.get("name") or "").strip().endswith(".")
+        and h3_search_names(str(item.get("name") or "").strip()[:-1])
+    ]
+    for preset_id in H3_LEGACY_NAMES:
+        for name in h3_search_names(preset_id):
+            for match in re.finditer(re.escape(name), source, re.I):
+                end = source[match.end():]
+                mentioned.add(preset_id)
+                if end and not re.match(r"(?:[\s，。！？,.!?；;、：:）)\]】\"']|预置|预设|生成|制作|做|画|来|处理|编辑|续写|进行|的|和|与|以及|还是|或者|或是)", end):
+                    continue
+                if any(source[match.start():].casefold().startswith(custom.casefold()) for custom in custom_names):
+                    continue
+                prefix = source[max(0, match.start() - 35):match.start()]
+                if re.search(r"(?:不(?:想|希望|打算|要|需要|再)?|无需|别(?:再)?|避免)\s*(?:使用|采用|选用|选择|指定|用|选)?\s*[\"'“‘]*\s*$|(?:without|(?:don't|do not|never|not)\s+(?:use|choose|select))\s*[\"'“‘]*\s*$", prefix, re.I):
+                    continue
+                before = re.search(r"(?:使用|采用|选用|选择|指定|改用|换用|切换到|切换为|试用|用|选|use|using|choose|select|with)\s*[\"'“‘]*\s*$", prefix, re.I)
+                after = re.match(r"\s*(?:预置|预设)?\s*(?:来|去)?\s*(?:生成|制作|创建|生图|处理|编辑|续写|generate|create|edit)", end, re.I)
+                if before or after or source.strip() == name:
+                    selected.add(preset_id)
+    if len(mentioned) > 1 and re.search(r"还是|或者|或是|比较|对比|区别|哪个好|\bor\b", source, re.I):
+        clauses = [part.strip() for part in re.split(r"[，,。.!！？；;\n]", source) if part.strip()]
+        if len(clauses) > 1:
+            last_selection, _ = _explicit_h3_preset_selection(clauses[-1], preset_capabilities)
+            if last_selection:
+                return last_selection, mentioned
+        return "", mentioned
+    if len(selected) != 1:
+        return "", mentioned
+    return next(iter(selected)), mentioned
+
+
 def _explicit_preset_hint(value, user_message, preset_capabilities, task="", media_counts=None):
     hint = re.sub(r"[\x00-\x1f\x7f]+", "", str(value or "")).strip()[:120]
     message = str(user_message or "").lower()
     capability_map = _preset_capability_map(preset_capabilities)
     capability = capability_map.get(hint.lower())
-    if capability and hint.lower() in message:
+    h3_selection, h3_mentions = _explicit_h3_preset_selection(user_message, preset_capabilities)
+    if h3_selection:
+        selected = capability_map.get(h3_selection.lower())
+        return str(selected.get("name") or "").strip() if selected else ""
+    if capability and hint.lower() in message and str(capability.get("name") or "") not in H3_LEGACY_NAMES:
         return str(capability.get("name") or hint).strip()
 
     family = _explicit_preset_family(user_message)
+    if h3_mentions and family in {"h3", "minimax-h3", "minimax h3"}:
+        return ""
     if not family:
         return ""
     candidates = [
@@ -5356,6 +5401,7 @@ def compile_creative_execution_plan(
     parameter_profiles=None,
     preferred_parameter_profile="",
     infer_task=True,
+    honor_user_preset_selection=True,
 ):
     request = normalize_creative_task_request(task_request, available_media_refs, user_message, infer_task=infer_task)
     capabilities = [item for item in (preset_capabilities or []) if isinstance(item, dict)]
@@ -5371,7 +5417,8 @@ def compile_creative_execution_plan(
     preferred = str(preferred_preset or "").strip()
     hint = _explicit_preset_hint(
         request.get("preset_hint"), user_message, capabilities, task, media_counts
-    )
+    ) if honor_user_preset_selection else ""
+    explicit_h3 = _explicit_h3_preset_selection(user_message, capabilities)[0] if honor_user_preset_selection else ""
     explicit_profile, requested_profile_name, profile_error = _explicit_parameter_profile_hint(
         request.get("parameter_profile_hint"),
         user_message,
@@ -5379,7 +5426,8 @@ def compile_creative_execution_plan(
         hint,
     )
     session_profile = None
-    if not explicit_profile and not requested_profile_name and preferred_parameter_profile:
+    if (not explicit_profile and not requested_profile_name and preferred_parameter_profile
+            and (not explicit_h3 or explicit_h3.casefold() == preferred.casefold())):
         session_profile = _parameter_profile_by_name(
             preferred_parameter_profile,
             parameter_profiles,
@@ -5394,6 +5442,11 @@ def compile_creative_execution_plan(
         requested_profile_name, profile_error = "", ""
     parameter_profile_source = "request_hint" if explicit_profile else "session_preference" if session_profile else ""
     requested_preset = str((selected_profile or {}).get("preset") or hint or preferred).strip()
+    if explicit_h3 and not selected_profile:
+        route_rows = [
+            route for route in route_rows
+            if str(route["capability"].get("name") or "").casefold() == explicit_h3.casefold()
+        ]
     route_rows = [
         route for route in route_rows
         if str(route["capability"].get("name") or "").casefold() != "onekeykontext"
@@ -5445,6 +5498,7 @@ def compile_creative_execution_plan(
                 {**request, "task": fallback_task},
                 capabilities, available_media_refs, preferred_preset, user_message,
                 parameter_profiles, preferred_parameter_profile, infer_task=False,
+                honor_user_preset_selection=honor_user_preset_selection,
             )
             if fallback_plan.get("status") not in {
                 "no_compatible_route", "parameter_profile_missing", "parameter_profile_incompatible", "needs_media",

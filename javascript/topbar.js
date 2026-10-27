@@ -11625,6 +11625,7 @@ function getPresetStoreCandidateEntries() {
                 missing: !!item.missing,
                 order: Number.isFinite(orderValue) ? orderValue : index,
                 source,
+                searchAliases: Array.isArray(item.search_aliases) ? item.search_aliases : [],
             };
         })
         .filter(Boolean);
@@ -11657,6 +11658,7 @@ function getPresetStoreCandidateRenderRevision(entries = null) {
         entry.missing ? 1 : 0,
         entry.order,
         entry.source,
+        entry.searchAliases,
     ]);
     return `${owner}|${JSON.stringify(fallback)}`;
 }
@@ -11679,6 +11681,7 @@ function createPresetStoreCandidateElement(entry) {
         entry.engineType,
         entry.taskMethod,
         entry.backendEngine,
+        ...(entry.searchAliases || []),
         entry.source === "user" ? "user personal" : "system",
     ].join(" ").toLowerCase();
     button.dataset.saiSearch = `${button.dataset.saiSearchBase} ${getPresetStoreDisplayName(entry.name, entry.missing)}`.trim().toLowerCase();

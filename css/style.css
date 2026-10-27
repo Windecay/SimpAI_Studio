@@ -2960,6 +2960,12 @@ body.simpleai-navbar-resizing * {
     max-width: none !important;
 }
 
+#topbar_row > .bar_button[data-original-text^="MiniMax-H3("],
+#topbar_row > *:has(.bar_button[data-original-text^="MiniMax-H3("]),
+#topbar_row .bar_button[data-original-text^="MiniMax-H3("] {
+    min-width: min(100%, 128px) !important;
+}
+
 .topbar_line_break {
     display: none !important;
     flex-basis: 0 !important;

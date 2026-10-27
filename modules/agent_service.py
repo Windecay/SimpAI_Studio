@@ -22,6 +22,7 @@ from pydantic import ValidationError
 
 from modules.agent_api_contract import API_PREFIX, API_VERSION, MAX_ASSET_BYTES, OPERATIONS
 from modules.pe_models import pe_supported_task
+from modules.preset_name_aliases import h3_preset_id_for_name, h3_search_names
 
 
 PROJECT_ID = "agent_api"
@@ -505,8 +506,18 @@ class AgentService:
         from modules import describe_vlm_chat as chat
         rows = [self._summary(entry) for entry in self._catalog(context).values()]
         query = request.query.casefold()
+        exact_h3_name = h3_preset_id_for_name(query)
         inferred_task = chat._infer_specialized_generation_task(query) if query else ""
-        rows = [row for row in rows if (not query or query in " ".join([row["preset_id"], str(row["category"] or ""), *row["tasks"]]).casefold() or (inferred_task and inferred_task in row["tasks"]))
+
+        def matches_query(row):
+            if not query:
+                return True
+            if exact_h3_name:
+                return row["preset_id"].casefold() == exact_h3_name.casefold()
+            names = [row["preset_id"], *h3_search_names(row["preset_id"]), str(row["category"] or ""), *row["tasks"]]
+            return query in " ".join(names).casefold() or bool(inferred_task and inferred_task in row["tasks"])
+
+        rows = [row for row in rows if matches_query(row)
                 and (not request.task or request.task in row["tasks"])
                 and (not request.output_type or request.output_type == row["output_type"])]
         return {"items": rows[request.offset:request.offset + request.limit], "total": len(rows),
@@ -1091,7 +1102,8 @@ class AgentService:
             if declared_tasks and inferred not in declared_tasks:
                 task_request["task"] = declared_tasks[0]
         plan = chat.compile_creative_execution_plan(task_request, capabilities, manifest, preferred_preset=request.preset_id,
-                                                    user_message=request.instruction, infer_task=not bool(request.task))
+                                                    user_message=request.instruction, infer_task=not bool(request.task),
+                                                    honor_user_preset_selection=not bool(request.preset_id))
         if not plan.get("preset"):
             raise AgentAPIError("no_compatible_preset", "No available preset supports this task and these input types/counts.", 409, {"task": plan.get("task")})
         # Probe candidates until a ready route is found, without invoking a VLM.
