@@ -1,3 +1,4 @@
+from datetime import datetime
 from urllib.parse import urlsplit
 
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -20,6 +21,12 @@ class GradioHeartbeatWebSocketMiddleware:
             session = holder.session_data.get(session_hash) if holder is not None else None
             if session is not None:
                 session.is_closed = False
+                state_ttl = getattr(session, "_state_ttl", None)
+                if isinstance(state_ttl, dict):
+                    now = datetime.now()
+                    for state_id, (ttl, written_at) in list(state_ttl.items()):
+                        if ttl == float("inf") and state_ttl.get(state_id) == (ttl, written_at):
+                            state_ttl[state_id] = (ttl, now)
 
         async def heartbeat_send(message):
             nonlocal registered, successful

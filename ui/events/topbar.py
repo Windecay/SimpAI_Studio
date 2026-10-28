@@ -100,10 +100,38 @@ def bind_topbar_store_events(
     identity_export_btn,
     identity_ctrls,
     identity_input,
+    store_state_guard=None,
 ) -> None:
-    layout_refs.bar_store_button.click(
-        topbar_module.toggle_preset_store,
-        inputs=state_topbar,
+    toggle_store = topbar_module.toggle_preset_store
+    apply_store = topbar_module.apply_navbar_from_store_editor
+    delete_store = topbar_module.delete_user_preset_from_store
+    store_errors = {}
+    if store_state_guard is not None:
+        store_errors = {action: gr.Textbox(value="", visible="hidden")
+                        for action in ("toggle", "save", "delete")}
+
+        def guarded_result(fn, state, request, page_lang, args, output_count):
+            try:
+                store_state_guard(state, request, page_lang)
+            except gr.Error as error:
+                return [skip_update() for _ in range(output_count)] + [error.message]
+            return list(fn(*args)) + [""]
+
+        def toggle_store(state, page_lang, request: gr.Request):
+            return guarded_result(topbar_module.toggle_preset_store, state, request, page_lang, [state],
+                                  7 + len(identity_ctrls) + len(identity_input))
+
+        def apply_store(payload, state, page_lang, request: gr.Request):
+            return guarded_result(topbar_module.apply_navbar_from_store_editor, state, request, page_lang,
+                                  [payload, state], len(layout_refs.nav_bars) + 1)
+
+        def delete_store(payload, state, page_lang, request: gr.Request):
+            return guarded_result(topbar_module.delete_user_preset_from_store, state, request, page_lang,
+                                  [payload, state], len(layout_refs.nav_bars) + 2)
+
+    store_event = layout_refs.bar_store_button.click(
+        toggle_store,
+        inputs=[state_topbar, system_params] if store_errors else state_topbar,
         outputs=[
             layout_refs.preset_store,
             layout_refs.preset_store_list,
@@ -114,26 +142,58 @@ def bind_topbar_store_events(
             identity_export_btn,
         ]
         + identity_ctrls
-        + identity_input,
+        + identity_input
+        + ([store_errors["toggle"]] if store_errors else []),
         show_progress=False,
         queue=False,
-    ).then(fn=lambda x: None, inputs=system_params, js="(x)=>{refresh_topbar_status_js(x);}")
+        **({"js": "(state,params)=>[state,String(params?.__lang||window.simpleaiTopbarSystemParams?.__lang||'')]"}
+           if store_errors else {}),
+    )
+    if store_errors:
+        store_event.success(
+            fn=lambda params, error: None,
+            inputs=[system_params, store_errors["toggle"]],
+            js="(params,error)=>{if(error) window.simpleaiPresetStoreActionFailed?.(error,'toggle'); else refresh_topbar_status_js(params); return [params,error];}",
+        )
+        store_event.failure(
+            fn=None,
+            js="()=>{window.simpleaiCancelPresetStoreOptimisticIntent?.();}",
+            queue=False,
+            show_progress=False,
+        )
+    else:
+        store_event.success(fn=lambda x: None, inputs=system_params, js="(x)=>{refresh_topbar_status_js(x);}")
 
-    layout_refs.preset_store_apply_button.click(
-        topbar_module.apply_navbar_from_store_editor,
-        inputs=[layout_refs.preset_store_apply_payload, state_topbar],
-        outputs=layout_refs.nav_bars + [system_params],
+    apply_event = layout_refs.preset_store_apply_button.click(
+        apply_store,
+        inputs=[layout_refs.preset_store_apply_payload, state_topbar] + ([system_params] if store_errors else []),
+        outputs=layout_refs.nav_bars + [system_params] + ([store_errors["save"]] if store_errors else []),
         show_progress=False,
         queue=False,
-    ).then(fn=lambda x: None, inputs=system_params, js="(x)=>{refresh_topbar_status_js(x);}")
+        **({"js": "(payload,state,params)=>[payload,state,String(params?.__lang||window.simpleaiTopbarSystemParams?.__lang||'')]"}
+           if store_errors else {}),
+    )
 
-    layout_refs.preset_store_delete_button.click(
-        topbar_module.delete_user_preset_from_store,
-        inputs=[layout_refs.preset_store_delete_payload, state_topbar],
-        outputs=[layout_refs.preset_store_list] + layout_refs.nav_bars + [system_params],
+    delete_event = layout_refs.preset_store_delete_button.click(
+        delete_store,
+        inputs=[layout_refs.preset_store_delete_payload, state_topbar] + ([system_params] if store_errors else []),
+        outputs=[layout_refs.preset_store_list] + layout_refs.nav_bars + [system_params]
+        + ([store_errors["delete"]] if store_errors else []),
         show_progress=False,
         queue=False,
-    ).then(fn=lambda x: None, inputs=system_params, js="(x)=>{refresh_topbar_status_js(x);}")
+        **({"js": "(payload,state,params)=>[payload,state,String(params?.__lang||window.simpleaiTopbarSystemParams?.__lang||'')]"}
+           if store_errors else {}),
+    )
+    if store_errors:
+        for event, action in ((apply_event, "save"), (delete_event, "delete")):
+            event.success(
+                fn=lambda params, error: None,
+                inputs=[system_params, store_errors[action]],
+                js=f"(params,error)=>{{if(error) window.simpleaiPresetStoreActionFailed?.(error,'{action}'); else refresh_topbar_status_js(params); return [params,error];}}",
+            )
+    else:
+        apply_event.then(fn=lambda x: None, inputs=system_params, js="(x)=>{refresh_topbar_status_js(x);}")
+        delete_event.then(fn=lambda x: None, inputs=system_params, js="(x)=>{refresh_topbar_status_js(x);}")
 
 
 def bind_topbar_navigation_events(

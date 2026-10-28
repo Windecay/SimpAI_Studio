@@ -741,7 +741,7 @@ def _recover_preset_navigation_state(state, request, selected_preset):
     user_agent = str(_get_request_header(request, "user-agent", ""))
     ua_hash = hashlib.sha256(user_agent.encode("utf-8")).hexdigest()
     if is_local_mode():
-        did = canvas_workbench_request_identity.resolve_local_workspace_did(shared.token)
+        did = shared.token.get_guest_did()
         session = {"status": "valid", "did": did,
                    "sstoken": shared.token.get_guest_sstoken(ua_hash), "expires_in": 90 * 86400}
     else:
@@ -780,6 +780,59 @@ def _recover_preset_navigation_state(state, request, selected_preset):
     logger.info("[UI-TRACE] nav.session_recovered | preset=%r, is_mobile=%s",
                 recovered["__preset"], recovered["__is_mobile"])
     return recovered
+
+
+def _validate_preset_store_state(state, request, page_lang=None):
+    lang = state.get("__lang") if isinstance(state, dict) else None
+    lang = str(lang or page_lang or args_manager.args.language or "en").lower()
+    english = lang.startswith("en")
+    if not isinstance(state, dict) or not state.get("user") or not state.get("engine") or not state.get("__preset"):
+        raise gr.Error("The page session has expired. Reload the page and try again." if english
+                       else "页面状态已失效，请刷新页面后重试。")
+    if is_local_mode():
+        return
+    try:
+        did = str(state["user"].get_did() or "")
+        is_guest = bool(shared.token.is_guest(did))
+    except Exception:
+        did, is_guest = "", False
+    if not did or request is None:
+        raise gr.Error("The current identity could not be verified. Reload the page and try again." if english
+                       else "无法验证当前身份，请刷新页面后重试。")
+
+    session = _get_request_identity_session(request)
+    if session.get("status") != "valid":
+        if is_guest and session.get("status") == "missing" and not state.get("__identity_original_session"):
+            return
+        if session.get("status") == "unavailable":
+            raise gr.Error("Could not verify the current identity. Please try again shortly." if english
+                           else "暂时无法验证当前身份，请稍后重试。")
+        raise gr.Error("Your session has expired. Sign in again to continue." if english
+                       else "登录已失效，请重新登录后继续。")
+    if session.get("did") != did:
+        raise gr.Error("The current identity has changed. Reload the page and try again." if english
+                       else "当前身份已变化，请刷新页面后重试。")
+    try:
+        user = shared.token.get_user_context(did)
+        matches = user is not None and user.get_did() == did
+    except Exception:
+        matches = False
+    if not matches:
+        raise gr.Error("The current identity could not be verified. Reload the page and try again." if english
+                       else "无法验证当前身份，请刷新页面后重试。")
+
+    credential = session["sstoken"]
+    if state.get("__session") != credential:
+        state["__identity_session_seq"] = int(state.get("__identity_session_seq", 0) or 0) + 1
+    now = time.time()
+    user_agent = str(_get_request_header(request, "user-agent", ""))
+    state.update({
+        "user": user, "__session": credential, "sstoken": credential,
+        "ua_hash": hashlib.sha256(user_agent.encode("utf-8")).hexdigest(),
+        "__identity_status": "valid", "__identity_last_check": now,
+        "__identity_expires_at": now + session["expires_in"],
+    })
+    state.pop("__identity_original_session", None)
 
 
 def _main_vlm_state_from_request(state, request=None):
@@ -6359,6 +6412,7 @@ with shared.gradio_root:
                     identity_export_btn=identity_export_btn,
                     identity_ctrls=identity_ctrls,
                     identity_input=identity_input,
+                    store_state_guard=_validate_preset_store_state,
                 )
                 
             def render_selected_styles_html(selected_styles):

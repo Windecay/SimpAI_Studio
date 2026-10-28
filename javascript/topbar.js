@@ -10489,6 +10489,47 @@ function clearPresetStoreOptimisticIntent() {
     window.__simpleaiPresetStoreOptimisticIntent = null;
 }
 
+function cancelPresetStoreOptimisticIntent() {
+    const pendingSeq = Number(presetStoreUiState.optimistic_seq || 0);
+    if (pendingSeq && topbarLastPresetStoreSeq === pendingSeq) {
+        topbarLastPresetStoreSeq = Math.max(0, pendingSeq - 1);
+    }
+    clearPresetStoreOptimisticIntent();
+    presetStoreUiState.expand_flag = false;
+    presetStoreSaveState.keepOpen = false;
+    setPresetStoreOpen(getPresetStoreElement(), false);
+}
+window.simpleaiCancelPresetStoreOptimisticIntent = cancelPresetStoreOptimisticIntent;
+
+let presetStoreActionErrorTimer = 0;
+function showPresetStoreActionError(message, action) {
+    const text = String(message || "").trim();
+    if (!text) return;
+    if (action === "toggle") cancelPresetStoreOptimisticIntent();
+    if (action === "save" && presetStoreSaveState.pending) {
+        failPresetStoreSave(presetStoreSaveState.pending.id, text);
+    }
+    let toast = document.getElementById("simpai_preset_store_action_error");
+    if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "simpai_preset_store_action_error";
+        toast.setAttribute("role", "alert");
+        toast.style.cssText = [
+            "position:fixed", "right:18px", "bottom:18px", "z-index:2147483000",
+            "max-width:min(420px,calc(100vw - 36px))", "padding:10px 14px",
+            "border-radius:8px", "background:rgba(32,34,39,.96)", "color:#fff",
+            "border:1px solid rgba(255,255,255,.18)",
+            "font:14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif"
+        ].join(";");
+        (document.body || document.documentElement).appendChild(toast);
+    }
+    toast.textContent = text;
+    toast.hidden = false;
+    window.clearTimeout(presetStoreActionErrorTimer);
+    presetStoreActionErrorTimer = window.setTimeout(() => { toast.hidden = true; }, 10000);
+}
+window.simpleaiPresetStoreActionFailed = showPresetStoreActionError;
+
 function recordPresetStoreOptimisticIntent(isOpen) {
     if (!isOpen) presetStoreSaveState.keepOpen = false;
     const previousSeq = Math.max(0, Number(topbarLastPresetStoreSeq) || 0);
