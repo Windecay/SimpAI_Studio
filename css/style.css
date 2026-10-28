@@ -15095,8 +15095,30 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
     display: none;
 }
 
+#pose_studio_scene_control_html .sai-pose-gallery-link:not([hidden]) {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 8px auto 0 !important;
+    padding: 4px 8px;
+    color: var(--link-text-color, #f97316);
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: center;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+#pose_studio_scene_control_html .sai-pose-gallery-link[hidden] {
+    display: none !important;
+}
+
 .sai-qwen-pose-image-guide {
     display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
     gap: 4px;
     width: 100%;
     box-sizing: border-box;
@@ -15108,8 +15130,24 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
     line-height: 1.45;
 }
 
-.sai-qwen-pose-image-guide strong { font-size: 13px; }
-.sai-qwen-pose-image-guide small { font-size: 12px; opacity: 0.8; }
+.sai-qwen-pose-image-guide strong { font-size: 13px; min-width: 0; }
+.sai-qwen-pose-image-guide small { grid-column: 1 / -1; font-size: 12px; opacity: 0.8; }
+.sai-qwen-pose-image-guide .sai-pose-gallery-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    color: var(--link-text-color, #f97316);
+    font-size: 12px;
+    line-height: 1.4;
+    text-align: right;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
 
 /* The guide adds a row above Gradio's fixed-height image surface. */
 #scene_input_image1:has(> .sai-qwen-pose-image-guide):not(.fullscreen) {

@@ -236,9 +236,12 @@ SimpAI UI guide skill:
   do not add internal color instructions or invent mask image labels.
 - "Match original colors" defaults to 1.0; zero disables correction. Color
   matching uses the clean crop as reference and can be bypassed when confidence
-  is insufficient. Stitching uses generated alpha and an outward edge transition
-  extending at most 20 pixels per coordinate direction. Pixels outside that
-  expanded support are preserved exactly.
+  is insufficient. For a partial crop, stitching uses generated alpha and a
+  transition of 20 pixels inside crop edges adjoining retained source pixels.
+  Pixels outside the crop are preserved exactly; edges at the original image
+  boundary are not feathered. A full-image crop returns the generated image.
+  The model can change content anywhere in the crop, including outside the
+  painted area.
 - Without a mask, including an all-black mask, explicitly name the removal
   target. The whole image is processed within the same automatic budget and
   restored to its original dimensions. Do not promise exact preservation of

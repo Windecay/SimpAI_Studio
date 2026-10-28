@@ -294,23 +294,28 @@ class SimpAIQwen21EraseCrop:
         crop_mask = mask[:, y0:y1, x0:x1]
         crop_h, crop_w = crop.shape[1:3]
         generation_w, generation_h = erase_generation_size(crop_w, crop_h, max_resolution)
+        scale = min(1.0, generation_w / crop_w, generation_h / crop_h)
+        content_w = min(generation_w, max(1, round(crop_w * scale)))
+        content_h = min(generation_h, max(1, round(crop_h * scale)))
         resized_mask = crop_mask.unsqueeze(1)
-        if (generation_h, generation_w) != (crop_h, crop_w):
-            crop = comfy.utils.common_upscale(crop.movedim(-1, 1), generation_w, generation_h, "lanczos", "disabled").movedim(1, -1)
-            # Area/max pooling keeps tiny selected pixels when a large region is reduced.
-            if generation_h < crop_h or generation_w < crop_w:
-                resized_mask = torch.nn.functional.adaptive_max_pool2d(resized_mask, (generation_h, generation_w))
-            else:
-                resized_mask = torch.nn.functional.interpolate(resized_mask, size=(generation_h, generation_w), mode="nearest-exact")
+        if (content_h, content_w) != (crop_h, crop_w):
+            crop = comfy.utils.common_upscale(crop.movedim(-1, 1), content_w, content_h, "lanczos", "disabled").movedim(1, -1)
+            # Max pooling keeps tiny selected pixels when a large region is reduced.
+            resized_mask = torch.nn.functional.adaptive_max_pool2d(resized_mask, (content_h, content_w))
+        if (content_h, content_w) != (generation_h, generation_w):
+            padding = (0, generation_w - content_w, 0, generation_h - content_h)
+            crop = torch.nn.functional.pad(crop.movedim(-1, 1), padding, mode="replicate").movedim(1, -1)
+            resized_mask = torch.nn.functional.pad(resized_mask, padding, mode="replicate")
         instruction, marked, _, _ = SimpAIQwen21ErasePrepare().prepare(
             crop, prompt, generation_w, generation_h, resized_mask.movedim(1, -1),
         )
         stitch_data = {
             "source": source, "box": (x0, y0, x1, y1), "mask": crop_mask,
-            "generation_size": (generation_h, generation_w), "has_mask": has_mask,
+            "generation_size": (generation_h, generation_w), "content_size": (content_h, content_w),
+            "has_mask": has_mask,
         }
-        logging.info("Qwen erase: source=%dx%d, crop=(%d,%d,%d,%d), generation=%dx%d, output=%dx%d",
-                     width, height, x0, y0, crop_w, crop_h, generation_w, generation_h, width, height)
+        logging.info("Qwen erase: source=%dx%d, crop=(%d,%d,%d,%d), generation=%dx%d, content=%dx%d, output=%dx%d",
+                     width, height, x0, y0, crop_w, crop_h, generation_w, generation_h, content_w, content_h, width, height)
         reference = crop[..., :3]
         if crop.shape[-1] == 4:
             reference = reference * crop[..., 3:4] + (1 - crop[..., 3:4])
@@ -331,17 +336,30 @@ class SimpAIQwen21EraseStitch:
             raise ValueError("Qwen erase result does not match the cropped generation size.")
         source = stitch_data["source"]
         x0, y0, x1, y1 = stitch_data["box"]
-        generated = generated_image
+        content_h, content_w = stitch_data["content_size"]
+        generated = generated_image[:, :content_h, :content_w]
         if generated.shape[1:3] != (y1 - y0, x1 - x0):
             generated = comfy.utils.common_upscale(generated.movedim(-1, 1), x1 - x0, y1 - y0, "lanczos", "disabled").movedim(1, -1)
-        if not stitch_data["has_mask"]:
+        height, width = source.shape[1:3]
+        if (x0, y0, x1, y1) == (0, 0, width, height):
             return (generated,)
+
+        # Feather only edges where the crop meets retained source pixels.
+        def edge_weight(length, fade_start, fade_end):
+            position = torch.arange(length, dtype=torch.float32, device=generated.device)
+            weight = torch.ones_like(position)
+            if fade_start:
+                t = (position / 20).clamp(0, 1)
+                weight *= t * t * (3 - 2 * t)
+            if fade_end:
+                t = ((length - 1 - position) / 20).clamp(0, 1)
+                weight *= t * t * (3 - 2 * t)
+            return weight
+
+        horizontal = edge_weight(x1 - x0, x0 > 0, x1 < width)
+        vertical = edge_weight(y1 - y0, y0 > 0, y1 < height)
+        blend = (vertical[:, None] * horizontal[None, :]).unsqueeze(0)
         original = source[:, y0:y1, x0:x1].to(generated)
-        mask = stitch_data["mask"]
-        mask_array = mask[0].detach().float().cpu().numpy()
-        grown = cv2.dilate(mask_array, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (17, 17)))
-        blurred = cv2.GaussianBlur(grown, (25, 25), 4, borderType=cv2.BORDER_REFLECT_101)
-        blend = torch.from_numpy(np.maximum(mask_array, blurred)).unsqueeze(0).to(generated)
         patch = SimpAIQwen21EraseComposite().composite(original, generated, blend)[0]
         # Keep the 6000x4000 canvas on its original device; only the crop needs inference.
         output = source.clone()

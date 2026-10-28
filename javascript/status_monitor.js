@@ -2321,6 +2321,8 @@
             try {
                 if (!transferState.expanded) return;
                 if (!evt || evt.defaultPrevented) return;
+                if (evt.target?.closest?.('.simpai-sketch')
+                    || evt.composedPath?.().some(node => node?.classList?.contains('simpai-sketch'))) return;
                 if (transferState.pasteOverlayEl && transferState.pasteOverlayEl.classList && transferState.pasteOverlayEl.classList.contains('open')) return;
 
                 const data = evt.clipboardData || null;

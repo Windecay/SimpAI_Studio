@@ -1,4 +1,10 @@
 {
+  "Paste image from clipboard": "从剪贴板粘贴图片",
+  "Dismiss": "关闭提示",
+  "Clipboard access is unavailable. Press Ctrl+V to paste an image.": "浏览器无法直接读取剪贴板，请按 Ctrl+V 粘贴图片。",
+  "No image found in the clipboard. You can also press Ctrl+V.": "剪贴板中没有找到图片，也可以按 Ctrl+V 粘贴。",
+  "No image found in the clipboard.": "剪贴板中没有找到图片。",
+  "Could not load the clipboard image.": "无法读取剪贴板中的图片。",
   "Image references": "图像参考",
   "Image reference": "关联参考图",
   "Reference image {number}": "参考图 {number}",
@@ -1284,6 +1290,7 @@
   "QwenFaceSwap\u2B07":"Qwen换脸\u2B07",
   "Turbo": "极速",
   "Fixed 8-step sigmas": "固定 8 步 sigma",
+  "Online Pose Gallery": "在线姿势图库",
   "QwenPose":"Qwen2.1姿势",
   "QwenPose\u2B07":"Qwen2.1姿势\u2B07",
   "QwenPose Editor":"Qwen2.1姿势编辑",

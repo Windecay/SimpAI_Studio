@@ -17,7 +17,9 @@
 
         async function onDocumentPaste(evt) {
             const root = getRoot();
-            if (!root || root.hidden || isEditableElement(evt?.target)) return;
+            if (!root || root.hidden || isEditableElement(evt?.target)
+                || evt?.target?.closest?.('.simpai-sketch')
+                || evt?.composedPath?.().some(node => node?.classList?.contains('simpai-sketch'))) return;
             const items = Array.from(evt?.clipboardData?.items || []);
             const imageItems = items.filter(item => item?.type && item.type.startsWith('image/'));
             if (!imageItems.length) return;

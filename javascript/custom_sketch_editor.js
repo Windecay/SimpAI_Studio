@@ -152,6 +152,30 @@
                 z-index: 8;
                 pointer-events: none;
             }
+            .simpai-sketch__paste-status {
+                position: absolute;
+                left: 8px;
+                right: 8px;
+                bottom: 8px;
+                z-index: 11;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 8px;
+                border: 1px solid var(--border-color-primary, #d9d9e3);
+                border-radius: 4px;
+                background: var(--block-background-fill, #fff);
+                color: var(--body-text-color, #222);
+                font-size: 13px;
+            }
+            .simpai-sketch__paste-status[hidden] {
+                display: none;
+            }
+            .simpai-sketch__paste-status span {
+                flex: 1;
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
             .simpai-sketch__group {
                 display: inline-flex;
                 align-items: center;
@@ -1022,23 +1046,28 @@
 
     function sketchRuntimeLang() {
         const candidates = [];
-        try {
-            const search = new URLSearchParams(window.location.search || "");
-            candidates.push(search.get("__lang"));
-        } catch {
-        }
         [
+            window.stage,
+            window.simpleaiTopbarSystemParams,
             window.state,
             window.simpleaiState,
-            window.simpleaiTopbarSystemParams,
             window.system_params
         ].forEach((source) => {
             if (!source || typeof source !== "object") return;
             candidates.push(source.__lang, source.state?.__lang, source.lang, source.language);
         });
+        try {
+            const search = new URLSearchParams(window.location.search || "");
+            candidates.push(search.get("__lang"));
+        } catch {
+        }
         if (typeof window.locale_lang === "string") candidates.push(window.locale_lang);
         const raw = candidates.map((value) => String(value || "").trim().toLowerCase()).find(Boolean) || "en";
         return raw.startsWith("cn") || raw.startsWith("zh") ? "cn" : "en";
+    }
+
+    function sketchText(text) {
+        return sketchRuntimeLang() === "cn" ? (window.localization?.[text] || text) : text;
     }
 
     function syncSketchEmptyLocale(editor) {
@@ -1130,6 +1159,7 @@
 
         const editor = document.createElement("div");
         editor.className = "simpai-sketch";
+        editor.tabIndex = 0;
         editor.innerHTML = `
             <div class="simpai-sketch__stage">
                 <canvas data-role="background"></canvas>
@@ -1227,6 +1257,10 @@
                     </div>
                 </div>
             </div>
+            <div class="simpai-sketch__paste-status" data-role="paste-status" hidden>
+                <span data-role="paste-message" role="status" aria-live="polite"></span>
+                <button class="simpai-sketch__button" type="button" data-action="dismiss-paste"><i class="fa-solid fa-xmark"></i></button>
+            </div>
             <img class="simpai-sketch__image-proxy" alt="">
         `;
         root.appendChild(editor);
@@ -1251,6 +1285,10 @@
         const sizeInput = editor.querySelector("input[data-role='size']");
         const sizeValue = editor.querySelector("[data-role='size-value']");
         const sizeButton = editor.querySelector("button[data-action='size']");
+        const pasteButton = editor.querySelector("button[data-action='paste']");
+        const pasteStatus = editor.querySelector("[data-role='paste-status']");
+        const pasteMessage = editor.querySelector("[data-role='paste-message']");
+        const dismissPasteButton = editor.querySelector("button[data-action='dismiss-paste']");
         const undoButton = editor.querySelector("button[data-action='undo']");
         const redoButton = editor.querySelector("button[data-action='redo']");
         const clearButton = editor.querySelector("button[data-action='clear']");
@@ -2415,6 +2453,7 @@
         let internalWrite = false;
         let lastExternalValue = input.value || "";
         let payloadSequence = 0;
+        let pasteSequence = 0;
         let payloadCacheSnapshot = null;
         let payloadCacheTask = null;
         let payloadCacheTaskKey = null;
@@ -2763,6 +2802,7 @@
                 undoStack.length = 0;
                 redoStack.length = 0;
                 payloadLoadFailed = false;
+                clearPasteStatus();
                 empty.style.display = "none";
                 updateStageDisplay();
                 serialize({ change: options.change !== false });
@@ -2809,21 +2849,104 @@
             return source ? openImageSource(source) : false;
         }
 
-        async function pasteClipboardImage() {
+        function updatePasteLabels() {
+            const pasteTitle = sketchText("Paste image from clipboard");
+            pasteButton.title = pasteTitle;
+            pasteButton.setAttribute("aria-label", pasteTitle);
+            const dismissTitle = sketchText("Dismiss");
+            dismissPasteButton.title = dismissTitle;
+            dismissPasteButton.setAttribute("aria-label", dismissTitle);
+        }
+
+        function showPasteStatus(message) {
+            if (destroyed) return;
+            updatePasteLabels();
+            pasteMessage.textContent = sketchText(message);
+            pasteStatus.hidden = false;
+        }
+
+        function clearPasteStatus() {
+            pasteStatus.hidden = true;
+            pasteMessage.textContent = "";
+        }
+
+        function focusPasteButtonIfAppropriate() {
+            const active = editor.getRootNode()?.activeElement || document.activeElement;
+            if (active === document.body || editor.contains(active)) {
+                pasteButton.focus({ preventScroll: true });
+            }
+        }
+
+        function beginPaste() {
+            const request = ++pasteSequence;
+            const originalPayload = payloadSequence;
+            return {
+                isCurrent: () => !destroyed && request === pasteSequence && payloadSequence === originalPayload,
+                isLoadingCurrent: () => !destroyed && request === pasteSequence && payloadSequence === originalPayload + 1
+            };
+        }
+
+        async function openClipboardFile(file, request) {
+            let dataUrl;
             try {
-                if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") return false;
+                dataUrl = await readBlobAsDataUrl(file);
+            } catch {
+                if (request.isCurrent()) showPasteStatus("Could not load the clipboard image.");
+                return;
+            }
+            if (!request.isCurrent()) return;
+            if (!dataUrl) {
+                showPasteStatus("Could not load the clipboard image.");
+                return;
+            }
+            const loaded = await openImageDataUrl(dataUrl);
+            if (!request.isLoadingCurrent()) return;
+            if (loaded) {
+                clearPasteStatus();
+            } else {
+                showPasteStatus("Could not load the clipboard image.");
+            }
+        }
+
+        function clipboardImageFile(transfer) {
+            const files = Array.from(transfer?.files || []);
+            const direct = files.find(isImageFileLike);
+            if (direct) return direct;
+            for (const item of Array.from(transfer?.items || [])) {
+                if (item?.kind !== "file") continue;
+                const file = item.getAsFile?.();
+                if (file && (String(item.type || "").toLowerCase().startsWith("image/") || isImageFileLike(file))) return file;
+            }
+            return null;
+        }
+
+        async function pasteClipboardImage() {
+            const request = beginPaste();
+            clearPasteStatus();
+            try {
+                if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") {
+                    showPasteStatus("Clipboard access is unavailable. Press Ctrl+V to paste an image.");
+                    focusPasteButtonIfAppropriate();
+                    return;
+                }
                 const items = await navigator.clipboard.read();
+                if (!request.isCurrent()) return;
                 for (const item of items) {
-                    const imageType = item.types.find((type) => type.startsWith("image/"));
+                    const imageType = Array.from(item.types || []).find((type) => type.startsWith("image/"));
                     if (!imageType) continue;
                     const blob = await item.getType(imageType);
-                    await openFile(blob);
-                    return true;
+                    if (!request.isCurrent()) return;
+                    await openClipboardFile(blob, request);
+                    return;
                 }
+                showPasteStatus("No image found in the clipboard. You can also press Ctrl+V.");
+                focusPasteButtonIfAppropriate();
             } catch {
-                return false;
+                if (request.isCurrent()) {
+                    showPasteStatus("Clipboard access is unavailable. Press Ctrl+V to paste an image.");
+                    focusPasteButtonIfAppropriate();
+                }
             }
-            return false;
         }
 
         function point(event) {
@@ -2921,8 +3044,25 @@
         }
 
         editor.querySelector("button[data-action='upload']").addEventListener("click", () => fileInput.click());
-        editor.querySelector("button[data-action='paste']")?.addEventListener("click", () => {
-            pasteClipboardImage();
+        updatePasteLabels();
+        pasteButton.addEventListener("pointerenter", updatePasteLabels);
+        pasteButton.addEventListener("focus", updatePasteLabels);
+        pasteButton.addEventListener("click", () => pasteClipboardImage());
+        dismissPasteButton.addEventListener("click", clearPasteStatus);
+        editor.addEventListener("paste", (event) => {
+            if (event.defaultPrevented) return;
+            const file = clipboardImageFile(event.clipboardData);
+            if (!file) {
+                if (!pasteStatus.hidden || event.target === pasteButton) {
+                    showPasteStatus("No image found in the clipboard.");
+                }
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            clearPasteStatus();
+            const request = beginPaste();
+            openClipboardFile(file, request);
         });
         if (controls) {
             ["click", "pointerdown", "pointermove", "pointerup", "wheel"].forEach((eventName) => {
@@ -3043,6 +3183,10 @@
             try {
                 if (event.dataTransfer) event.dataTransfer.effectAllowed = "none";
             } catch (e) {}
+        }, true);
+        stage.addEventListener("pointerdown", (event) => {
+            if (event.isPrimary === false || (typeof event.button === "number" && event.button !== 0)) return;
+            editor.focus({ preventScroll: true });
         }, true);
         stage.addEventListener("click", () => {
             if (!hasImage) fileInput.click();

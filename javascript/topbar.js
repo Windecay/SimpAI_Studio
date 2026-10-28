@@ -6463,6 +6463,18 @@ function resolvePoseStudioSceneConfig(state = {}) {
     return {};
 }
 
+function syncScenePoseGalleryLink(showPoseStudio, state = {}) {
+    const app = gradioApp();
+    const link = app?.getElementById?.("pose_gallery_external_link")
+        || document.getElementById("pose_gallery_external_link");
+    if (!link) return;
+    const scene = resolvePoseStudioSceneConfig(state && typeof state === "object" ? state : {});
+    const slots = scene.pose_studio_reference_slots;
+    const qwenPose = scene.pose_studio_output_slot === "scene_canvas_image"
+        && Array.isArray(slots) && slots.includes("scene_input_image1");
+    link.hidden = !(showPoseStudio && Array.isArray(slots) && slots.length && !qwenPose);
+}
+
 function setQwenPoseCharacterImageValue(value) {
     qwenPoseCharacterValueReady = !!value;
     syncQwenPoseImageGuidance();
@@ -6488,7 +6500,8 @@ function syncQwenPoseImageGuidance() {
         else canvas.removeAttribute("aria-disabled");
         const editor = canvas.querySelector(".simpai-sketch");
         if (editor) editor.inert = locked;
-        if (locked && canvas.contains(document.activeElement)) document.activeElement.blur?.();
+        if (locked && canvas.contains(document.activeElement)
+            && !document.activeElement?.closest?.("[data-qwen-pose-gallery-link]")) document.activeElement.blur?.();
     }
     for (const [node, title, description] of [
         [canvas, translate("Image 1 · Pose image", "图1 · 姿势图"), locked
@@ -6506,6 +6519,17 @@ function syncQwenPoseImageGuidance() {
             guide.className = "sai-qwen-pose-image-guide";
             guide.append(document.createElement("strong"), document.createElement("small"));
             node.prepend(guide);
+        }
+        if (node === canvas && !guide.querySelector("[data-qwen-pose-gallery-link]")) {
+            const template = find("pose_gallery_external_link");
+            if (template) {
+                const link = template.cloneNode(true);
+                link.removeAttribute("id");
+                link.setAttribute("data-qwen-pose-gallery-link", "");
+                link.setAttribute("aria-disabled", "false");
+                link.hidden = false;
+                guide.append(link);
+            }
         }
         const heading = guide.querySelector("strong"), detail = guide.querySelector("small");
         if (heading.textContent !== title) heading.textContent = title;
@@ -6533,6 +6557,7 @@ function setQwenPoseSceneImageMode(showPoseStudio, langSource) {
         qwenPoseImageGuardBound = true;
         for (const type of ["click", "dblclick", "pointerdown", "mousedown", "dragenter", "dragover", "drop", "paste", "change", "keydown"]) {
             window.addEventListener(type, event => {
+                if (event.target?.closest?.("[data-qwen-pose-gallery-link]")) return;
                 if (!event.target?.closest?.("#scene_canvas.sai-qwen-pose-await-character")) return;
                 if (type === "keydown" && ["Tab", "Escape"].includes(event.key)) return;
                 if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
@@ -7000,6 +7025,7 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     setRelightLightSliderHidden(showRelightLight);
     setGaussianStudioSceneImageMode(showGaussianStudio, langSource);
     setQwenPoseSceneImageMode(showPoseStudio, langSource);
+    syncScenePoseGalleryLink(showPoseStudio, langSource);
     setLivePortraitExpressionSceneImageMode(showLivePortraitExpression, langSource);
     if (showRelightLight) syncRelightLightControl(langSource);
     if (!showPoseStudio && window.SimpAIPoseStudioEditor?.closeScenePreset) {

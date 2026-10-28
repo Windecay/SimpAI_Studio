@@ -5065,6 +5065,9 @@ with shared.gradio_root:
   <span data-pose-studio-scene-flow></span>
   <span data-pose-studio-scene-status></span>
 </div>
+<a id="pose_gallery_external_link" class="sai-pose-gallery-link" href="https://ai-pose-gallery.anhao.app/" target="_blank" rel="noopener noreferrer" hidden>
+  <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span data-original-text="Online Pose Gallery">Online Pose Gallery</span>
+</a>
 """,
                                 elem_id="pose_studio_scene_control_html",
                             )
