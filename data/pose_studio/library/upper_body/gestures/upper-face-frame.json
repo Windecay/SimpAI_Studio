@@ -1,0 +1,54 @@
+{
+  "bones": {
+    "upperarm_l": [
+      -55.91513,
+      -53.90041,
+      2.55514
+    ],
+    "upperarm_r": [
+      -55.91513,
+      53.90041,
+      -2.55514
+    ],
+    "lowerarm_l": [
+      -73.97658,
+      -41.76869,
+      -9.69655
+    ],
+    "lowerarm_r": [
+      -73.97658,
+      41.76869,
+      9.69655
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.28239,
+      0.05179
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 3.13538,
+    "offset_x": 0,
+    "offset_y": -3.72864,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Hands framing face",
+    "series": "upper_body",
+    "category_id": "gestures",
+    "tags": [
+      "gestures",
+      "face"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

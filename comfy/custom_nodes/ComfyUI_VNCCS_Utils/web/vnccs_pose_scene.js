@@ -1,5 +1,7 @@
 // The selected person uses the editable rig. Other people stay in the same
 // Three.js scene as posed meshes, sharing its camera, depth buffer and lighting.
+import { bakePoseLineartNormals } from './simpai_pose_lineart.js?v=20261029-1';
+
 export class PoseScene {
     constructor(viewer) {
         this.viewer = viewer;
@@ -60,12 +62,14 @@ export class PoseScene {
             mesh.getVertexPosition(i, point).applyMatrix4(mesh.matrixWorld);
             positions.setXYZ(i, point.x, point.y, point.z);
         }
+        bakePoseLineartNormals(v.THREE, mesh, geometry);
         geometry.deleteAttribute('skinIndex');
         geometry.deleteAttribute('skinWeight');
         geometry.computeVertexNormals();
         geometry.computeBoundingBox();
         geometry.computeBoundingSphere();
         const material = mesh.material.clone();
+        material.extensions = { ...mesh.material.extensions };
         material.onBeforeCompile = mesh.material.onBeforeCompile;
         person.snapshot = new v.THREE.Mesh(geometry, material);
         person.snapshot.userData.poseJoints = Object.fromEntries(v.boneList.map(bone => [

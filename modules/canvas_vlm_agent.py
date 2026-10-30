@@ -3760,10 +3760,12 @@ def _canvas_vlm_text_budget(params, version_name=None):
     version_cfg = version_cfg or {}
     n_ctx = max(
         1,
-        int(params.get("n_ctx") or version_cfg.get("n_ctx", 8192) or 8192),
+        int(params.get("describe_roleplay_context_window") or params.get("n_ctx") or version_cfg.get("n_ctx", 8192) or 8192),
     )
     default_chars = 6000 if n_ctx <= 8192 else min(18000, max(8000, int(n_ctx * 0.55)))
     max_chars = 6000 if n_ctx <= 8192 else min(18000, max(8000, int(n_ctx * 0.55)))
+    if params.get("describe_roleplay_enabled") and params.get("describe_roleplay_context_window") and n_ctx > 8192:
+        max_chars = min(131000, max(18000, int(n_ctx * 0.7)))
     return _canvas_vlm_int(params.get("context_chars") or params.get("rolling_context_chars"), default_chars, 1200, max_chars)
 
 
@@ -3777,6 +3779,9 @@ def _canvas_vlm_system_prompt_budget(params, version_name=None):
     roleplay_system = bool((params or {}).get("describe_roleplay_enabled")) or chat_mode_key == "roleplay"
     system_ratio = 0.9 if roleplay_system else (0.75 if chat_mode_key == "guide" else 0.5)
     system_cap = 16000 if roleplay_system else 5000
+    roleplay_window = _canvas_vlm_int((params or {}).get("describe_roleplay_context_window"), 0, 0, 131072)
+    if roleplay_system and roleplay_window > 8192:
+        system_cap = max(system_cap, min(65536, int(roleplay_window * 0.7)))
     system_budget = max(1200, min(system_cap, int(text_budget * system_ratio)))
     return {
         "enforced": bool(version_cfg.get("is_llamacpp")),
@@ -4007,7 +4012,8 @@ def _canvas_vlm_rolling_history(payload, params, version_name=None):
     client_omitted = _canvas_vlm_int(client_context.get("omitted"), 0, 0, 1000000)
     if not source or not _canvas_bool(params.get("save_context"), True):
         return [], {"omitted": len(source) + client_omitted, "chars": 0, "max_history": 0, "budget": 0}
-    max_history = _canvas_vlm_int(params.get("max_history"), 12, 1, 80)
+    history_limit = 512 if params.get("describe_roleplay_enabled") and params.get("describe_roleplay_context_window") else 80
+    max_history = _canvas_vlm_int(params.get("max_history"), 12, 1, history_limit)
     budget = _canvas_vlm_text_budget(params, version_name)
     selected = []
     used = 0
@@ -4024,6 +4030,8 @@ def _canvas_vlm_rolling_history(payload, params, version_name=None):
             omitted += 1
             continue
         max_one = max(500, min(1800, budget // 3))
+        if params.get("describe_roleplay_enabled") and params.get("describe_roleplay_context_window"):
+            max_one = _canvas_vlm_int(params.get("describe_roleplay_history_item_chars"), 1600, 1600, 6000) + 512
         if len(content) > max_one:
             content = content[-max_one:].lstrip()
         label_cost = len(role) + len(content) + 16

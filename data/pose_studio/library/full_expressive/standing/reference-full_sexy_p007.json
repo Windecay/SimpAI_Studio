@@ -1,0 +1,154 @@
+{
+  "bones": {
+    "pelvis": [
+      14,
+      0,
+      0
+    ],
+    "spine_01": [
+      3,
+      0,
+      0
+    ],
+    "spine_02": [
+      -7,
+      0,
+      0
+    ],
+    "spine_03": [
+      -12,
+      9,
+      0
+    ],
+    "thigh_l": [
+      -20.44564,
+      -2.64295,
+      6.05855
+    ],
+    "thigh_r": [
+      -20.44564,
+      2.64295,
+      -6.05855
+    ],
+    "calf_l": [
+      7.32206,
+      0.75323,
+      -4.47885
+    ],
+    "calf_r": [
+      7.32206,
+      -0.75323,
+      4.47885
+    ],
+    "foot_l": [
+      -7.20871,
+      2.7008,
+      1.77082
+    ],
+    "foot_r": [
+      -7.20871,
+      -2.7008,
+      -1.77082
+    ],
+    "neck_01": [
+      -4,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      7.66085,
+      5.31051,
+      -21.2049
+    ],
+    "upperarm_r": [
+      13.12178,
+      -8.07757,
+      25.51456
+    ],
+    "head": [
+      2,
+      -60,
+      7
+    ],
+    "lowerarm_l": [
+      33.46434,
+      1.16056,
+      -20.25386
+    ],
+    "lowerarm_r": [
+      27.69526,
+      -2.59778,
+      16.38607
+    ],
+    "hand_l": [
+      -1.56708,
+      6.27348,
+      5.96949
+    ],
+    "hand_r": [
+      -2.22655,
+      -5.78495,
+      -5.93402
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.29614,
+      0.0625
+    ]
+  },
+  "boneLengthParams": {
+    "shoulder_l": 0.5,
+    "shoulder_r": 0.5,
+    "hip_l": 0.5,
+    "hip_r": 0.5,
+    "upper_arm_l": 0.5,
+    "upper_arm_r": 0.5,
+    "forearm_l": 0.5,
+    "forearm_r": 0.5,
+    "thigh_l": 0.5,
+    "thigh_r": 0.5,
+    "shin_l": 0.5,
+    "shin_r": 0.5,
+    "spine": 0.5
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.50842,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": -155,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": -155,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": -105,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -35,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Standing looking over shoulder",
+    "series": "full_expressive",
+    "category_id": "standing",
+    "reference_pose_id": "full_sexy_P007",
+    "tags": [
+      "full_sexy_P007",
+      "P007"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

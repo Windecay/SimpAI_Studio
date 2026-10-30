@@ -1,0 +1,94 @@
+{
+  "bones": {
+    "thigh_l": [
+      -55,
+      0,
+      0
+    ],
+    "calf_l": [
+      115,
+      0,
+      0
+    ],
+    "foot_l": [
+      1.87203,
+      -1.6919,
+      -0.94035
+    ],
+    "upperarm_l": [
+      -0.48877,
+      -0.78948,
+      11.76628
+    ],
+    "upperarm_r": [
+      1.00605,
+      0.30241,
+      -80.72972
+    ],
+    "lowerarm_l": [
+      -50.24305,
+      -59.05186,
+      -102.44029
+    ],
+    "lowerarm_r": [
+      37.77044,
+      -27.89874,
+      12.47167
+    ],
+    "hand_l": [
+      -30.68227,
+      6.99223,
+      27.02549
+    ],
+    "hand_r": [
+      -3.64314,
+      -7.24635,
+      -7.76172
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.44266,
+      -7.00375,
+      -2.80319
+    ]
+  },
+  "modelRotation": [
+    -90,
+    0,
+    90
+  ],
+  "cameraParams": {
+    "zoom": 1.47751,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 90,
+    "pitch_deg": -55,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 90,
+      "pitch_deg": -55
+    },
+    "side": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": 55,
+      "pitch_deg": -55
+    }
+  },
+  "_library": {
+    "name": "Reclining with one knee raised",
+    "series": "full_standard",
+    "category_id": "lying",
+    "reference_pose_id": "full_single_P052",
+    "tags": [
+      "full_single_P052",
+      "P052"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

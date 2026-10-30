@@ -1,0 +1,59 @@
+{
+  "bones": {
+    "spine_03": [
+      0,
+      -10,
+      0
+    ],
+    "upperarm_l": [
+      12.41454,
+      10.0601,
+      -6.96965
+    ],
+    "upperarm_r": [
+      -17.75669,
+      14.61709,
+      5.35983
+    ],
+    "lowerarm_l": [
+      -46.28406,
+      -16.62211,
+      26.65677
+    ],
+    "lowerarm_r": [
+      32.58388,
+      53.18921,
+      52.26376
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.70023,
+      -8.28239,
+      -0.39093
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.47018,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Open presentation pose",
+    "series": "full_expressive",
+    "category_id": "standing",
+    "tags": [
+      "standing",
+      "present"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

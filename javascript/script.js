@@ -519,6 +519,142 @@ function simpleaiRehydrateModelsTabAfterPresetNav() {
 
 window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfterPresetNav;
 
+(function initSimpleAIVlmChatEntry() {
+    'use strict';
+    if (window.SimpAIVlmChatEntry) return;
+
+    // The launcher must work before the chat implementation is lazy-loaded.
+    const positionKey = 'simpai.describeVlmChat.edgePosition.v1';
+    const controllers = new WeakMap();
+    let savedPosition;
+    let syncPending = 0;
+
+    function bounds(host) {
+        const viewport = window.visualViewport;
+        const height = viewport?.height || window.innerHeight;
+        const top = viewport?.offsetTop || 0;
+        const half = Math.min(host.getBoundingClientRect().height, height) / 2;
+        const margin = Math.min(8, Math.max(0, height / 2 - half));
+        return { min: top + half + margin, max: top + height - half - margin, top, height };
+    }
+
+    function position(host, center, range = bounds(host)) {
+        const next = Math.max(range.min, Math.min(range.max, center));
+        host.style.setProperty('--describe-vlm-chat-edge-center', `${Math.round(next)}px`);
+        return next;
+    }
+
+    function installDrag(host) {
+        if (controllers.has(host)) return;
+        const controller = { drag: null, suppressClickUntil: 0 };
+        controllers.set(host, controller);
+        controller.start = (event) => {
+            if (event.button !== 0 || event.isPrimary === false || controller.drag) return;
+            const rect = host.getBoundingClientRect();
+            controller.suppressClickUntil = 0;
+            controller.drag = {
+                id: event.pointerId, x: event.clientX, y: event.clientY,
+                center: rect.top + rect.height / 2, moved: false
+            };
+            try { host.setPointerCapture(event.pointerId); } catch (error) {}
+        };
+        host.addEventListener('pointermove', (event) => {
+            const drag = controller.drag;
+            if (!drag || event.pointerId !== drag.id) return;
+            const dy = event.clientY - drag.y;
+            if (!drag.moved && Math.hypot(event.clientX - drag.x, dy) < 4) return;
+            drag.moved = true;
+            document.documentElement.classList.add('describe-vlm-chat-edge-dragging');
+            const range = bounds(host);
+            const center = position(host, drag.center + dy, range);
+            savedPosition = range.max > range.min ? (center - range.min) / (range.max - range.min) : 0.5;
+            event.preventDefault();
+        }, { passive: false });
+        const finish = (event) => {
+            const drag = controller.drag;
+            if (!drag || event.pointerId !== drag.id) return;
+            controller.drag = null;
+            document.documentElement.classList.remove('describe-vlm-chat-edge-dragging');
+            if (drag.moved) {
+                controller.suppressClickUntil = Date.now() + 500;
+                try { window.localStorage?.setItem(positionKey, String(savedPosition)); } catch (error) {}
+                event.preventDefault();
+            }
+            sync(host);
+            try { host.releasePointerCapture(event.pointerId); } catch (error) {}
+        };
+        host.addEventListener('pointerup', finish);
+        host.addEventListener('pointercancel', finish);
+        host.addEventListener('lostpointercapture', finish);
+    }
+
+    function sync(host) {
+        if (!host) {
+            host = document.getElementById('describe_vlm_chat_button');
+            if (!host) {
+                try { host = gradioApp()?.querySelector('#describe_vlm_chat_button'); } catch (error) {}
+            }
+        }
+        if (!host?.classList?.contains('describe-vlm-chat-edge-host')
+            && !host?.querySelector?.('.describe-vlm-chat-edge-entry')) return;
+        if (controllers.get(host)?.drag) return;
+        // Portal before pointer capture; a later shell update would cancel the drag.
+        if (host.parentElement?.id !== 'simpleai_floating_host') {
+            window.portalFloatingShells?.();
+        }
+        installDrag(host);
+        if (savedPosition === undefined) {
+            try {
+                const stored = window.localStorage?.getItem(positionKey);
+                const value = stored == null || stored.trim() === '' ? NaN : Number(stored);
+                savedPosition = Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+            } catch (error) {
+                savedPosition = null;
+            }
+        }
+        const range = bounds(host);
+        const offset = parseFloat(window.getComputedStyle(host).getPropertyValue('--simpai-vlm-edge-center-offset'));
+        const center = savedPosition == null
+            ? range.top + range.height / 2 + (Number.isFinite(offset) ? offset : 16) + 40
+            : range.min + (range.max - range.min) * savedPosition;
+        position(host, center, range);
+    }
+
+    function scheduleSync() {
+        if (syncPending) return;
+        syncPending = window.setTimeout(() => { syncPending = 0; sync(); }, 80);
+    }
+
+    window.SimpAIVlmChatEntry = { sync };
+    document.addEventListener('pointerdown', (event) => {
+        const host = event.target?.closest?.('#describe_vlm_chat_button');
+        if (host) {
+            sync(host);
+            controllers.get(host)?.start(event);
+        }
+    }, true);
+    // Consume drag clicks before the lazy loader can replay them as chat opens.
+    document.addEventListener('click', (event) => {
+        const host = event.target?.closest?.('#describe_vlm_chat_button');
+        const controller = controllers.get(host);
+        if (!controller || event.detail === 0 || Date.now() > controller.suppressClickUntil) return;
+        controller.suppressClickUntil = 0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }, true);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => sync(), { once: true });
+    } else {
+        sync();
+    }
+    if (window.MutationObserver) {
+        new MutationObserver(scheduleSync).observe(document.documentElement, { childList: true, subtree: true });
+    }
+    window.addEventListener('resize', scheduleSync, { passive: true });
+    window.visualViewport?.addEventListener('resize', scheduleSync, { passive: true });
+    window.visualViewport?.addEventListener('scroll', scheduleSync, { passive: true });
+})();
+
 (function() {
     const lazyAssetPromises = new Map();
     const lazyGroupsLoaded = new Set();

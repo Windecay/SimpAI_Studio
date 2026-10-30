@@ -1,0 +1,55 @@
+{
+  "bones": {
+    "pelvis": [0, 0, 2],
+    "spine_01": [0, 0, -3],
+    "thigh_l": [-8.77547, -0.54075, 3.67407],
+    "thigh_r": [-14.00499, 1.18216, -7.32739],
+    "calf_l": [11.61088, 1.19293, -5.87025],
+    "calf_r": [12.90911, -1.26621, 5.49746],
+    "upperarm_l": [17.06702, 19.20498, 13.52512],
+    "upperarm_r": [16.72233, -18.49847, -12.48579],
+    "head": [0, 0, 4],
+    "lowerarm_l": [-53.95191, -57.82256, -102.34945],
+    "lowerarm_r": [-49.99492, 58.49544, 99.85981],
+    "hand_l": [-43.94635, -7.52978, 19.01730],
+    "hand_r": [-44.90105, 8.96852, -17.37204]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.17814,
+      -0.25765
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.47454,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": { "yaw_deg": 0, "pitch_deg": 0 },
+    "side": { "yaw_deg": 90, "pitch_deg": 0 },
+    "diagonal": { "yaw_deg": -35, "pitch_deg": 0 }
+  },
+  "_library": {
+    "name": "Hands on hips",
+    "series": "full_standard",
+    "category_id": "standing",
+    "reference_pose_id": "full_single_P018",
+    "tags": [
+      "standing",
+      "hips",
+      "P018",
+      "full_single_P018"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

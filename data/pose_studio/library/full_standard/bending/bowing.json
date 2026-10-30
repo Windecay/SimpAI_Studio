@@ -1,0 +1,69 @@
+{
+  "bones": {
+    "spine_01": [
+      22,
+      0,
+      0
+    ],
+    "spine_03": [
+      15,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -3.58738,
+      -2.69646,
+      -7.75863
+    ],
+    "upperarm_r": [
+      -3.58738,
+      2.69646,
+      7.75863
+    ],
+    "head": [
+      8,
+      0,
+      0
+    ],
+    "lowerarm_l": [
+      20.85835,
+      -33.06485,
+      -34.67446
+    ],
+    "lowerarm_r": [
+      20.85835,
+      33.06485,
+      34.67446
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -7.67194,
+      -0.92078
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.56433,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Bowing",
+    "series": "full_standard",
+    "category_id": "bending",
+    "tags": [
+      "bending",
+      "relaxed"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

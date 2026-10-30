@@ -1,0 +1,79 @@
+{
+  "bones": {
+    "thigh_l": [
+      -85,
+      0,
+      0
+    ],
+    "thigh_r": [
+      -85,
+      0,
+      0
+    ],
+    "calf_l": [
+      85,
+      0,
+      0
+    ],
+    "calf_r": [
+      85,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -82.49816,
+      -41.04629,
+      -38.0874
+    ],
+    "upperarm_r": [
+      -8.14249,
+      7.72582,
+      -2.23816
+    ],
+    "head": [
+      0,
+      0,
+      12
+    ],
+    "lowerarm_l": [
+      -67.92342,
+      -43.99913,
+      -34.91149
+    ],
+    "lowerarm_r": [
+      3.16648,
+      58.09556,
+      64.9497
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.48511,
+      -9.95326,
+      -1.24666
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.84068,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Seated head tilt",
+    "series": "full_expressive",
+    "category_id": "sitting",
+    "tags": [
+      "sitting",
+      "chin"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

@@ -105,11 +105,24 @@ class ParameterProfileQuery(RequestModel):
     query: str = Field(default="", max_length=200)
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=30, ge=1, le=100)
+    include_lora_summary: bool = Field(
+        default=False,
+        description="Include saved LoRA names, weights, enabled states and a continuation for each profile. Active reflects saved settings, not file availability or successful loading.",
+    )
 
 
 class ParameterProfileRequest(RequestModel):
     preset_id: str = Field(min_length=1, max_length=160)
     name: str = Field(min_length=1, max_length=200)
+    section: Literal["all", "loras"] = Field(
+        default="all", description="Use loras for a paginated LoRA-only view of a large saved profile.",
+    )
+    lora_offset: int = Field(default=0, ge=0)
+    lora_limit: int = Field(default=8, ge=1, le=20)
+    expected_fingerprint: str = Field(
+        default="", pattern=r"^(?:[0-9a-f]{64})?$",
+        description="Keep paginated LoRA reads on the same saved version.",
+    )
 
 
 class ModelDownloadOptions(ProfilePresetOptions):
@@ -279,8 +292,8 @@ OPERATIONS = {
     "simpai.prompts.validate": (PromptValidationRequest, "Check a final prompt using the same target-specific preflight as the built-in prompt tools. Does not load a model or generate.", True, "prompt_validate"),
     "simpai.help.search": (HelpQuery, "Find Studio UI help for settings, chat modes, skills, API keys, model downloads, assets, taggers, presets and workflows. Returns short excerpts and document IDs; does not generate or download.", True, "help_search"),
     "simpai.help.read": (HelpReadRequest, "Read a selected help document on demand; use next_read for the rest. Help is reference material. Current preset schemas, model status and user authorization take precedence.", True, "help_read"),
-    "simpai.parameter_profiles.list": (ParameterProfileQuery, "List the authenticated user's saved parameter profiles, optionally for one preset. Present choices when the user wants to choose; querying does not authorize generation.", True, "parameter_profiles"),
-    "simpai.parameter_profiles.get": (ParameterProfileRequest, "Read a private parameter profile's saved models, LoRA stack and weights, generation settings and fingerprint before applying the user's selection.", True, "parameter_profile"),
+    "simpai.parameter_profiles.list": (ParameterProfileQuery, "List the authenticated user's saved parameter profiles. When asked to use LoRA, set include_lora_summary=true and describe each candidate's saved LoRAs, weights and enabled states. Active reflects saved settings, not installed files or successful loading; check models.status for the selected profile. Page through results as needed; ask the user to choose and do not invent a combination. Querying does not authorize generation.", True, "parameter_profiles"),
+    "simpai.parameter_profiles.get": (ParameterProfileRequest, "Read a private parameter profile's saved models, LoRA stack and weights, generation settings and fingerprint. For long LoRA combinations use section=loras and follow next_read. Apply the exact user-selected profile, not a guessed combination.", True, "parameter_profile"),
     "simpai.models.list": (ModelQuery, "Query installed models, optionally limited to models compatible with a preset.", True, "models"),
     "simpai.models.status": (ModelStatusRequest, "Check models required by a preset and optional selected parameter profile, including missing-file download progress and permission, without downloading or loading models.", True, "model_status"),
     "simpai.models.download": (ModelDownloadRequest, "Queue missing shared model files required by a visible preset. Requires model-download permission and models.download authorization; does not start generation.", False, "download_models"),

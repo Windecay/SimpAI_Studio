@@ -1,0 +1,59 @@
+{
+  "bones": {
+    "spine_01": [
+      20,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -35.44685,
+      -34.66821,
+      3.8209
+    ],
+    "upperarm_r": [
+      -35.44685,
+      34.66821,
+      -3.8209
+    ],
+    "lowerarm_l": [
+      -62.47956,
+      -40.5981,
+      -18.61449
+    ],
+    "lowerarm_r": [
+      -62.47956,
+      40.5981,
+      18.61449
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.03089,
+      -0.92837
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.51799,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Forward reach",
+    "series": "full_standard",
+    "category_id": "bending",
+    "tags": [
+      "bending",
+      "forward"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

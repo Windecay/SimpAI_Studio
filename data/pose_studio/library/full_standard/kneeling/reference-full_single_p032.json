@@ -1,0 +1,119 @@
+{
+  "bones": {
+    "spine_01": [
+      -8,
+      0,
+      0
+    ],
+    "spine_03": [
+      -8,
+      0,
+      0
+    ],
+    "thigh_l": [
+      -12,
+      0,
+      0
+    ],
+    "thigh_r": [
+      -12,
+      0,
+      0
+    ],
+    "calf_l": [
+      90.77682,
+      19.84786,
+      10.57875
+    ],
+    "calf_r": [
+      90.77682,
+      -19.84786,
+      -10.57875
+    ],
+    "foot_l": [
+      67.36687,
+      6.03654,
+      -2.74231
+    ],
+    "foot_r": [
+      67.36687,
+      -6.03654,
+      2.74231
+    ],
+    "upperarm_l": [
+      1.59699,
+      7.99982,
+      88.89764
+    ],
+    "upperarm_r": [
+      1.59699,
+      -7.99982,
+      -88.89764
+    ],
+    "lowerarm_l": [
+      -74.29469,
+      -2.29232,
+      97.27175
+    ],
+    "lowerarm_r": [
+      -74.29469,
+      2.29232,
+      -97.27175
+    ],
+    "hand_l": [
+      -25.06677,
+      -4.84572,
+      8.52112
+    ],
+    "hand_r": [
+      -25.06677,
+      4.84572,
+      -8.52112
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -10.12945,
+      1.85925
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.94995,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -30,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Kneeling with hands behind head",
+    "series": "full_standard",
+    "category_id": "kneeling",
+    "reference_pose_id": "full_single_P032",
+    "tags": [
+      "full_single_P032",
+      "P032"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

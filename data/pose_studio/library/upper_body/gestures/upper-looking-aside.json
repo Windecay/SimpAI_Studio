@@ -1,0 +1,64 @@
+{
+  "bones": {
+    "spine_03": [
+      0,
+      8,
+      0
+    ],
+    "upperarm_l": [
+      -12.03486,
+      -6.64655,
+      -23.96691
+    ],
+    "upperarm_r": [
+      -0.89229,
+      0.23625,
+      19.86895
+    ],
+    "head": [
+      0,
+      25,
+      0
+    ],
+    "lowerarm_l": [
+      55.48145,
+      0.81627,
+      -30.53159
+    ],
+    "lowerarm_r": [
+      47.27476,
+      4.9795,
+      28.56146
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.00145,
+      -8.28239,
+      0.33369
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 2.51017,
+    "offset_x": 0,
+    "offset_y": -2.88254,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Portrait looking aside",
+    "series": "upper_body",
+    "category_id": "gestures",
+    "tags": [
+      "gestures",
+      "relaxed"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

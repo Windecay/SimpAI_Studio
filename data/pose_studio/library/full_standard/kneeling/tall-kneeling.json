@@ -1,0 +1,74 @@
+{
+  "bones": {
+    "calf_l": [
+      90,
+      0,
+      0
+    ],
+    "calf_r": [
+      90,
+      0,
+      0
+    ],
+    "foot_l": [
+      -20,
+      0,
+      0
+    ],
+    "foot_r": [
+      -20,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -6.5567,
+      -3.69906,
+      -21.10703
+    ],
+    "upperarm_r": [
+      -6.5567,
+      3.69906,
+      21.10703
+    ],
+    "lowerarm_l": [
+      51.59528,
+      -2.9889,
+      -29.82299
+    ],
+    "lowerarm_r": [
+      51.59528,
+      2.9889,
+      29.82299
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -9.64634,
+      1.84046
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.77287,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Tall kneeling",
+    "series": "full_standard",
+    "category_id": "kneeling",
+    "tags": [
+      "kneeling",
+      "relaxed"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

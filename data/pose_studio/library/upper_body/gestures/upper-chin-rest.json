@@ -1,0 +1,59 @@
+{
+  "bones": {
+    "upperarm_l": [
+      -82.49816,
+      -41.04629,
+      -38.0874
+    ],
+    "upperarm_r": [
+      -8.14249,
+      7.72582,
+      -2.23816
+    ],
+    "head": [
+      0,
+      0,
+      8
+    ],
+    "lowerarm_l": [
+      -67.92342,
+      -43.99913,
+      -34.91149
+    ],
+    "lowerarm_r": [
+      3.16648,
+      58.09556,
+      64.9497
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.48511,
+      -8.27917,
+      -0.04687
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 3.03035,
+    "offset_x": 0.08252,
+    "offset_y": -3.57123,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Hand near chin",
+    "series": "upper_body",
+    "category_id": "gestures",
+    "tags": [
+      "gestures",
+      "chin"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

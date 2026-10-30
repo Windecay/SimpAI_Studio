@@ -1,0 +1,79 @@
+{
+  "bones": {
+    "spine_01": [
+      15,
+      0,
+      0
+    ],
+    "thigh_l": [
+      -110,
+      0,
+      12
+    ],
+    "thigh_r": [
+      -110,
+      0,
+      -12
+    ],
+    "calf_l": [
+      145,
+      0,
+      0
+    ],
+    "calf_r": [
+      145,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -45.30426,
+      -52.2621,
+      14.06776
+    ],
+    "upperarm_r": [
+      -39.93529,
+      31.53338,
+      8.73631
+    ],
+    "lowerarm_l": [
+      -100.9624,
+      -46.50825,
+      -30.89872
+    ],
+    "lowerarm_r": [
+      -103.66621,
+      44.43381,
+      57.69451
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.03433,
+      -10.5378,
+      -0.56451
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 2.31881,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Crouching guard",
+    "series": "full_standard",
+    "category_id": "crouching",
+    "tags": [
+      "crouching",
+      "guard"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

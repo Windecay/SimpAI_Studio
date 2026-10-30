@@ -1,0 +1,119 @@
+{
+  "bones": {
+    "pelvis": [
+      0,
+      0,
+      -6
+    ],
+    "spine_01": [
+      -5,
+      0,
+      5
+    ],
+    "thigh_l": [
+      5.07181,
+      -0.28087,
+      -4.64981
+    ],
+    "thigh_r": [
+      9.17549,
+      2.75845,
+      19.81073
+    ],
+    "calf_l": [
+      -10.61872,
+      -1.46058,
+      1.69895
+    ],
+    "calf_r": [
+      60.63219,
+      17.00293,
+      50.1492
+    ],
+    "foot_r": [
+      77.29404,
+      -53.41134,
+      12.94791
+    ],
+    "upperarm_l": [
+      1.95611,
+      20.84594,
+      91.26564
+    ],
+    "upperarm_r": [
+      0.64381,
+      -0.81994,
+      34.04159
+    ],
+    "head": [
+      -8,
+      0,
+      -10
+    ],
+    "lowerarm_l": [
+      -83.57863,
+      -32.17491,
+      95.13464
+    ],
+    "lowerarm_r": [
+      40.7339,
+      -24.11327,
+      15.67884
+    ],
+    "hand_l": [
+      65.95169,
+      -6.8344,
+      -23.46795
+    ],
+    "hand_r": [
+      1.23219,
+      -6.80562,
+      -4.70012
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.53059,
+      -8.22456,
+      2.09844
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.40141,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": 25,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Standing with one leg raised behind",
+    "series": "full_standard",
+    "category_id": "standing",
+    "reference_pose_id": "full_single_P024",
+    "tags": [
+      "full_single_P024",
+      "P024"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

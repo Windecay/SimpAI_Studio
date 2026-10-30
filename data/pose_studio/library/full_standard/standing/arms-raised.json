@@ -1,0 +1,109 @@
+{
+  "bones": {
+    "spine_01": [
+      -4,
+      0,
+      0
+    ],
+    "spine_03": [
+      -4,
+      0,
+      0
+    ],
+    "thigh_l": [
+      1.64769,
+      -0.04783,
+      -1.5289
+    ],
+    "thigh_r": [
+      1.64769,
+      0.04783,
+      1.5289
+    ],
+    "calf_l": [
+      -4.45973,
+      0.14815,
+      -4.44001
+    ],
+    "calf_r": [
+      -4.45973,
+      -0.14815,
+      4.44001
+    ],
+    "upperarm_l": [
+      5.69585,
+      -19.00023,
+      120.82157
+    ],
+    "upperarm_r": [
+      5.69585,
+      19.00023,
+      -120.82157
+    ],
+    "lowerarm_l": [
+      12.76811,
+      33.91158,
+      8.86052
+    ],
+    "lowerarm_r": [
+      12.76811,
+      -33.91158,
+      -8.86052
+    ],
+    "hand_l": [
+      3.79707,
+      11.09086,
+      6.41018
+    ],
+    "hand_r": [
+      3.79707,
+      -11.09086,
+      -6.41018
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -9.45469,
+      0.47733
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.23837,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -35,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Arms stretched overhead",
+    "series": "full_standard",
+    "category_id": "standing",
+    "reference_pose_id": "full_single_P019",
+    "tags": [
+      "full_single_P019",
+      "P019"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "bones": {
+    "spine_01": [
+      -4,
+      0,
+      8
+    ],
+    "thigh_l": [
+      -81.63768,
+      1.12288,
+      -9.65456
+    ],
+    "thigh_r": [
+      -78.64853,
+      -9.30977,
+      21.67613
+    ],
+    "calf_l": [
+      -13.28284,
+      -3.84253,
+      8.83109
+    ],
+    "calf_r": [
+      -15.08656,
+      3.99885,
+      -7.63552
+    ],
+    "foot_l": [
+      67.11277,
+      5.17905,
+      -1.13769
+    ],
+    "foot_r": [
+      67.1196,
+      -5.12396,
+      1.14262
+    ],
+    "neck_01": [
+      0,
+      0,
+      7
+    ],
+    "upperarm_l": [
+      -39.88489,
+      -10.86266,
+      -47.96774
+    ],
+    "upperarm_r": [
+      8.75835,
+      -5.16945,
+      27.53641
+    ],
+    "lowerarm_l": [
+      40.3852,
+      24.18109,
+      -15.42798
+    ],
+    "lowerarm_r": [
+      38.51633,
+      -23.42177,
+      14.43905
+    ],
+    "hand_l": [
+      -33.38711,
+      -7.7216,
+      9.52187
+    ],
+    "hand_r": [
+      -93.42944,
+      -34.88961,
+      -90.13748
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.96582,
+      -11.46987,
+      -2.73326
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 2.26754,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": -12,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": -12
+    },
+    "side": {
+      "yaw_deg": -90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -15,
+      "pitch_deg": -12
+    }
+  },
+  "_library": {
+    "name": "Seated with legs angled forward",
+    "series": "full_standard",
+    "category_id": "sitting",
+    "reference_pose_id": "full_single_P002",
+    "tags": [
+      "full_single_P002",
+      "P002"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

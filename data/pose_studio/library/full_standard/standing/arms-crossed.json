@@ -1,0 +1,54 @@
+{
+  "bones": {
+    "upperarm_l": [
+      -30.83269,
+      -10.45886,
+      -45.61596
+    ],
+    "upperarm_r": [
+      -28.77412,
+      10.67689,
+      42.32906
+    ],
+    "lowerarm_l": [
+      -42.41506,
+      -56.4911,
+      -84.20091
+    ],
+    "lowerarm_r": [
+      -8.78476,
+      53.05015,
+      59.29468
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.04991,
+      -8.28239,
+      0.29232
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.44769,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Arms crossed",
+    "series": "full_standard",
+    "category_id": "standing",
+    "tags": [
+      "standing",
+      "crossed"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

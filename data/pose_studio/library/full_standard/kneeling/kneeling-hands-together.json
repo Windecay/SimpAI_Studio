@@ -1,0 +1,74 @@
+{
+  "bones": {
+    "calf_l": [
+      90,
+      0,
+      0
+    ],
+    "calf_r": [
+      90,
+      0,
+      0
+    ],
+    "foot_l": [
+      -20,
+      0,
+      0
+    ],
+    "foot_r": [
+      -20,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -27.14398,
+      -16.03874,
+      -22.86678
+    ],
+    "upperarm_r": [
+      -27.14398,
+      16.03874,
+      22.86678
+    ],
+    "lowerarm_l": [
+      -67.76934,
+      -50.39813,
+      -82.45362
+    ],
+    "lowerarm_r": [
+      -67.76934,
+      50.39813,
+      82.45362
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -9.64634,
+      1.65613
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.78042,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Kneeling with hands together",
+    "series": "full_standard",
+    "category_id": "kneeling",
+    "tags": [
+      "kneeling",
+      "clasped"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

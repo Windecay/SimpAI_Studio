@@ -1,0 +1,54 @@
+{
+  "bones": {
+    "upperarm_l": [
+      -8.78984,
+      -21.5207,
+      48.31413
+    ],
+    "upperarm_r": [
+      -6.5567,
+      3.69906,
+      21.10703
+    ],
+    "lowerarm_l": [
+      -63.74956,
+      -17.1979,
+      56.71098
+    ],
+    "lowerarm_r": [
+      51.59528,
+      2.9889,
+      29.82299
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.5723,
+      -8.41599,
+      0.33298
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.41926,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Waving",
+    "series": "full_standard",
+    "category_id": "standing",
+    "tags": [
+      "standing",
+      "wave"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

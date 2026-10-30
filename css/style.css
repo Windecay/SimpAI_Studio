@@ -1511,7 +1511,7 @@ html.simpai-scene-director-mode-enabled #positive_prompt.scene-director-prompt-r
 #describe_vlm_chat_button.describe-vlm-chat-edge-host,
 #describe_vlm_chat_button.is-describe-chat-edge {
   position: fixed !important;
-  inset: calc(50% + var(--simpai-vlm-edge-center-offset, 16px)) max(0px, env(safe-area-inset-right)) auto auto !important;
+  inset: var(--describe-vlm-chat-edge-center, calc(50% + var(--simpai-vlm-edge-center-offset, 16px) + 40px)) max(0px, env(safe-area-inset-right)) auto auto !important;
   transform: translateY(-50%) !important;
   display: block !important;
   width: 42px !important;
@@ -1566,7 +1566,9 @@ html.simpai-scene-director-mode-enabled #positive_prompt.scene-director-prompt-r
   backdrop-filter: blur(14px) saturate(1.55) brightness(1.08) !important;
   box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.26) !important;
   color: #fff7ed !important;
-  cursor: pointer !important;
+  cursor: grab !important;
+  touch-action: none !important;
+  user-select: none !important;
   clip-path: polygon(0 50%, 100% 0, 100% 100%) !important;
   font-size: 16px !important;
   line-height: 1 !important;
@@ -1619,6 +1621,12 @@ html.describe-vlm-chat-open #describe_vlm_chat_button.describe-vlm-chat-edge-hos
 html.describe-vlm-chat-open #describe_vlm_chat_button.is-describe-chat-edge {
   opacity: 0 !important;
   pointer-events: none !important;
+}
+
+html.describe-vlm-chat-edge-dragging,
+html.describe-vlm-chat-edge-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 @media (max-width: 640px) {

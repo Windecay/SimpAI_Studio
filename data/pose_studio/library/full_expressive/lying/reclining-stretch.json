@@ -1,0 +1,76 @@
+{
+  "bones": {
+    "upperarm_l": [
+      0.10884,
+      -16.84798,
+      88.81899
+    ],
+    "upperarm_r": [
+      0.10884,
+      16.84798,
+      -88.81899
+    ],
+    "lowerarm_l": [
+      -45.95321,
+      27.24597,
+      66.82155
+    ],
+    "lowerarm_r": [
+      -45.95321,
+      -27.24597,
+      -66.82155
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.77236,
+      -1.94869
+    ]
+  },
+  "modelRotation": [
+    -90,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.29102,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 30,
+    "pitch_deg": -55,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": -55
+    },
+    "high": {
+      "yaw_deg": 0,
+      "pitch_deg": -80
+    },
+    "low": {
+      "yaw_deg": 0,
+      "pitch_deg": -15
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": 30,
+      "pitch_deg": -40
+    }
+  },
+  "_library": {
+    "name": "Reclining stretch",
+    "series": "full_expressive",
+    "category_id": "lying",
+    "tags": [
+      "lying",
+      "raised"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

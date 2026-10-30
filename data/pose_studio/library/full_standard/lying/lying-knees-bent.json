@@ -1,0 +1,96 @@
+{
+  "bones": {
+    "thigh_l": [
+      -55,
+      0,
+      0
+    ],
+    "thigh_r": [
+      -55,
+      0,
+      0
+    ],
+    "calf_l": [
+      95,
+      0,
+      0
+    ],
+    "calf_r": [
+      95,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -27.14398,
+      -16.03874,
+      -22.86678
+    ],
+    "upperarm_r": [
+      -27.14398,
+      16.03874,
+      22.86678
+    ],
+    "lowerarm_l": [
+      -67.76934,
+      -50.39813,
+      -82.45362
+    ],
+    "lowerarm_r": [
+      -67.76934,
+      50.39813,
+      82.45362
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.95755,
+      -2.85818
+    ]
+  },
+  "modelRotation": [
+    -90,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.62203,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 30,
+    "pitch_deg": -55,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": -55
+    },
+    "high": {
+      "yaw_deg": 0,
+      "pitch_deg": -80
+    },
+    "low": {
+      "yaw_deg": 0,
+      "pitch_deg": -15
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": 30,
+      "pitch_deg": -40
+    }
+  },
+  "_library": {
+    "name": "Lying with knees bent",
+    "series": "full_standard",
+    "category_id": "lying",
+    "tags": [
+      "lying",
+      "clasped"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

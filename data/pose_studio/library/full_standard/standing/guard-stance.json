@@ -1,0 +1,74 @@
+{
+  "bones": {
+    "thigh_l": [
+      0,
+      0,
+      16
+    ],
+    "thigh_r": [
+      0,
+      0,
+      -16
+    ],
+    "calf_l": [
+      12,
+      0,
+      0
+    ],
+    "calf_r": [
+      12,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -41.00137,
+      -32.51744,
+      -8.55411
+    ],
+    "upperarm_r": [
+      -30.23505,
+      23.61569,
+      8.78314
+    ],
+    "lowerarm_l": [
+      -78.18588,
+      -44.87909,
+      -37.26809
+    ],
+    "lowerarm_r": [
+      -73.24942,
+      45.72783,
+      48.21873
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.41257,
+      0.0152
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.51035,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Guard stance",
+    "series": "full_standard",
+    "category_id": "standing",
+    "tags": [
+      "standing",
+      "guard"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

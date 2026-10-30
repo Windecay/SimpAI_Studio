@@ -18,7 +18,7 @@ import shared
 
 
 CUSTOM_NODE_RELATIVE = Path("comfy") / "custom_nodes" / "ComfyUI_VNCCS_Utils"
-POSE_LIBRARY_RELATIVE = CUSTOM_NODE_RELATIVE / "PoseLibrary"
+POSE_LIBRARY_RELATIVE = Path("data") / "pose_studio" / "library"
 USER_POSE_LIBRARY_CATALOG = "pose_studio/library"
 DATA_URL_RE = re.compile(r"^data:(?P<mime>[^;,]+)?(?:;[^,]*)?;base64,(?P<data>.*)$", re.DOTALL)
 POSE_STUDIO_CHARACTER_CACHE: Dict[str, Any] = {
@@ -338,6 +338,8 @@ def resource_status(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "pose_studio_js": _check(root, "web/vnccs_pose_studio.js"),
         "pose_studio_core_js": _check(root, "web/vnccs_pose_studio_core.js"),
         "pose_studio_scene_js": _check(root, "web/vnccs_pose_scene.js"),
+        "pose_studio_lineart_js": _check(root, "web/simpai_pose_lineart.js"),
+        "pose_studio_library_camera_js": _check(root, "web/simpai_pose_library_camera.js"),
         "openpose_import_js": _check(root, "web/vnccs_openpose_import.js"),
         "hand_presets_js": _check(root, "web/vnccs_hand_presets.js"),
         "three_module_js": _check(root, "web/three.module.js"),
@@ -345,14 +347,14 @@ def resource_status(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "orbit_controls_js": _check(root, "web/OrbitControls.js"),
         "pose_studio_node_py": _check(root, "nodes/pose_studio.py"),
         "sam3d_pose_import_py": _check(root, "vnccs_sam3d/pose_import.py"),
-        "pose_library": _check(root, "PoseLibrary"),
+        "pose_library": _check(_repo_root(), POSE_LIBRARY_RELATIVE.as_posix()),
         "makehuman_base_obj": _check(root, "CharacterData/makehuman/makehuman/data/3dobjs/base.obj"),
         "makehuman_game_skeleton": _check(root, "CharacterData/makehuman/makehuman/data/rigs/game_engine.mhskel"),
         "makehuman_default_skeleton": _check(root, "CharacterData/makehuman/makehuman/data/rigs/default.mhskel"),
         "makehuman_default_weights": _check(root, "CharacterData/makehuman/makehuman/data/rigs/default_weights.mhw"),
     }
     missing = [key for key, value in checks.items() if not value.get("exists")]
-    core_keys = ["pose_studio_js", "pose_studio_core_js", "pose_studio_scene_js", "pose_studio_node_py", "makehuman_base_obj"]
+    core_keys = ["pose_studio_js", "pose_studio_core_js", "pose_studio_scene_js", "pose_studio_lineart_js", "pose_studio_library_camera_js", "pose_studio_node_py", "makehuman_base_obj"]
     available = root.exists() and all(checks[key].get("exists") for key in core_keys)
     sam3d = _sam3d_model_status()
     return {
@@ -401,18 +403,63 @@ def vendor_asset(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     }
 
 
-def _pose_category(path: Path, library_root: Path) -> str:
+POSE_LIBRARY_CATEGORIES = {
+    "standing": "Standing", "sitting": "Sitting", "kneeling": "Kneeling",
+    "floor_sitting": "Floor sitting", "lying": "Lying down", "crouching": "Crouching",
+    "bending": "Bending forward", "arching": "Leaning back", "twisting": "Twisting",
+    "kneeling_crawling": "Kneeling and crawling", "gestures": "Upper-body gestures",
+    "other": "Other poses",
+}
+POSE_LIBRARY_SERIES = [
+    {"id": "full_standard", "label": "Full body - Standard", "categories": ["standing", "sitting", "kneeling", "floor_sitting", "lying", "crouching", "bending", "arching", "twisting", "other"]},
+    {"id": "full_expressive", "label": "Full body - Expressive", "categories": ["standing", "sitting", "kneeling_crawling", "lying", "other"]},
+    {"id": "upper_body", "label": "Upper body", "categories": ["gestures", "other"]},
+]
+
+
+def _pose_category(path: Path, library_root: Path, source: str = "built_in") -> str:
     try:
         rel_parent = path.parent.relative_to(library_root)
         parts = rel_parent.parts
     except ValueError:
         parts = path.parent.parts
-    if len(parts) <= 1:
-        return ""
-    return "/".join(parts[1:])
+    return "/".join(parts[1:] if source == "built_in" else parts)
+
+
+def _pose_library_metadata(data: Dict[str, Any], path: Path, category: str) -> Dict[str, Any]:
+    metadata = data.get("_library") if isinstance(data.get("_library"), dict) else {}
+    series = metadata.get("series")
+    category_id = metadata.get("category_id")
+    if series not in {entry["id"] for entry in POSE_LIBRARY_SERIES}:
+        series = "upper_body" if path.stem.lower().startswith("closeup") else "full_standard"
+    if category_id not in POSE_LIBRARY_CATEGORIES:
+        legacy = str(metadata.get("category") or category).lower()
+        category_id = {"standing": "standing", "sitting": "sitting", "kneeling": "kneeling", "lying": "lying"}.get(legacy, "other")
+        if path.stem.lower().startswith("lying"):
+            category_id = "lying"
+        elif series == "upper_body":
+            category_id = "gestures"
+    if category_id not in next(entry["categories"] for entry in POSE_LIBRARY_SERIES if entry["id"] == series):
+        category_id = "other"
+    tags = metadata.get("tags")
+    return {
+        "series_id": series,
+        "series_label": next(entry["label"] for entry in POSE_LIBRARY_SERIES if entry["id"] == series),
+        "category_id": category_id,
+        "category_label": POSE_LIBRARY_CATEGORIES[category_id],
+        "tags": [tag for tag in tags if isinstance(tag, str)] if isinstance(tags, list) else [],
+    }
 
 
 def _pose_library_item(path: Path, library_root: Path, source: str, id_prefix: str = "") -> Dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError):
+        data = {}
+    metadata = data.get("_library") if isinstance(data, dict) else None
+    if source == "built_in" and isinstance(metadata, dict) and metadata.get("hidden") is True:
+        return {}
+    category = _pose_category(path, library_root, source)
     preview = path.with_suffix(".webp")
     if not preview.exists():
         preview = path.with_suffix(".png")
@@ -424,8 +471,9 @@ def _pose_library_item(path: Path, library_root: Path, source: str, id_prefix: s
         rel = path.name
     return {
         "id": f"{id_prefix}{rel}",
-        "name": path.stem,
-        "category": _pose_category(path, library_root),
+        "name": str(data.get("_library", {}).get("name") or path.stem) if source == "built_in" and isinstance(data, dict) and isinstance(data.get("_library"), dict) else path.stem,
+        "category": category,
+        **_pose_library_metadata(data if isinstance(data, dict) else {}, path, category),
         "source": source,
         "can_delete": source == "user",
         "path": _norm_path(path),
@@ -433,19 +481,20 @@ def _pose_library_item(path: Path, library_root: Path, source: str, id_prefix: s
         "preview_path": _norm_path(preview) if preview.exists() else "",
         "preview_url": _file_url(preview) if preview.exists() else "",
         "size": path.stat().st_size if path.exists() else 0,
+        "revision": str(path.stat().st_mtime_ns) if path.exists() else "",
     }
 
 
-def _list_library_root(library_root: Path, limit: int, source: str, id_prefix: str = "") -> List[Dict[str, Any]]:
+def _list_library_root(library_root: Path, source: str, id_prefix: str = "") -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     if not library_root.exists():
         return items
     for path in sorted(library_root.rglob("*.json"), key=lambda item: str(item).lower()):
-        if path.name.lower() == "repositories.user.json":
+        if path.name.lower() == "repositories.user.json" or not path.resolve().is_relative_to(library_root.resolve()):
             continue
-        if len(items) >= limit:
-            break
-        items.append(_pose_library_item(path, library_root, source, id_prefix=id_prefix))
+        item = _pose_library_item(path, library_root, source, id_prefix=id_prefix)
+        if item:
+            items.append(item)
     return items
 
 
@@ -454,18 +503,49 @@ def list_pose_library(payload: Optional[Dict[str, Any]] = None, state_params: Op
     state_params = state_params if isinstance(state_params, dict) else {}
     limit = int(payload.get("limit") or 500)
     limit = max(1, min(limit, 2000))
+    offset = max(0, int(payload.get("offset") or 0))
     built_in_root = _pose_library_root()
     user_root = _user_pose_library_root(state_params)
-    user_items = _list_library_root(user_root, limit, "user", id_prefix="user/")
-    built_in_items = _list_library_root(built_in_root, max(0, limit - len(user_items)), "built_in")
+    user_items = _list_library_root(user_root, "user", id_prefix="user/")
+    built_in_items = _list_library_root(built_in_root, "built_in")
     items = user_items + built_in_items
+    query = str(payload.get("query") or "").strip().casefold()
+    source = str(payload.get("source") or "")
+    if source in ("user", "built_in"):
+        items = [item for item in items if item["source"] == source]
+    if query:
+        try:
+            translations = json.loads((_repo_root() / "language" / "cn.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            translations = {}
+        items = [item for item in items if query in " ".join([
+            item["name"], translations.get(item["name"], ""), item["category"], item["category_label"],
+            translations.get(item["category_label"], ""), *item["tags"]
+        ]).casefold()]
+    series_counts = {entry["id"]: sum(item["series_id"] == entry["id"] for item in items) for entry in POSE_LIBRARY_SERIES}
+    series = str(payload.get("series") or "")
+    if series:
+        items = [item for item in items if item["series_id"] == series]
+    category_counts = {key: sum(item["category_id"] == key for item in items) for key in POSE_LIBRARY_CATEGORIES}
+    category = str(payload.get("category") or "")
+    if category:
+        items = [item for item in items if item["category_id"] == category]
+    total = len(items)
+    page = items[offset:offset + limit]
+    next_offset = offset + len(page) if offset + len(page) < total else None
     return {
         "ok": True,
-        "items": items,
+        "items": page,
         "root": _norm_path(built_in_root),
         "user_root": _norm_path(user_root),
-        "count": len(items),
-        "truncated": len(items) >= limit,
+        "count": len(page),
+        "total": total,
+        "offset": offset,
+        "next_offset": next_offset,
+        "truncated": next_offset is not None,
+        "taxonomy": {"series": POSE_LIBRARY_SERIES, "categories": POSE_LIBRARY_CATEGORIES},
+        "series_counts": series_counts,
+        "category_counts": category_counts,
     }
 
 
@@ -517,10 +597,11 @@ def get_pose(payload: Optional[Dict[str, Any]] = None, state_params: Optional[Di
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         return {"ok": False, "error": "failed to read pose", "details": str(exc)}
+    metadata = data.get("_library") if isinstance(data, dict) and isinstance(data.get("_library"), dict) else {}
     return {
         "ok": True,
         "id": f"user/{resolved['relative_path']}" if resolved.get("source") == "user" else resolved["relative_path"],
-        "name": path.stem,
+        "name": str(metadata.get("name") or path.stem) if resolved.get("source") == "built_in" else path.stem,
         "source": resolved.get("source"),
         "pose_data": _safe_json_value(data),
         "path": _norm_path(path),
@@ -1039,6 +1120,14 @@ def save_pose(payload: Optional[Dict[str, Any]] = None, state_params: Optional[D
 
     stem = _safe_file_stem(str(payload.get("name") or payload.get("title") or "pose"))
     data = _safe_json_value(pose_data)
+    classification = payload.get("classification")
+    if isinstance(classification, dict):
+        series = next((entry for entry in POSE_LIBRARY_SERIES if entry["id"] == classification.get("series")), None)
+        category_id = classification.get("category")
+        if series is None or category_id not in series["categories"]:
+            return {"ok": False, "error": "Choose a valid pose series and category."}
+        metadata = data.get("_library") if isinstance(data.get("_library"), dict) else {}
+        data["_library"] = {**metadata, "series": series["id"], "category_id": category_id}
     with _POSE_LIBRARY_SAVE_LOCK:
         path = _unique_pose_path(folder, stem, bool(payload.get("overwrite")))
         previous_json = path.read_bytes() if path.is_file() else None

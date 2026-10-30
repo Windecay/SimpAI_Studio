@@ -1,0 +1,119 @@
+{
+  "bones": {
+    "spine_01": [
+      35,
+      0,
+      0
+    ],
+    "thigh_l": [
+      -30,
+      0,
+      5
+    ],
+    "thigh_r": [
+      -30,
+      0,
+      -5
+    ],
+    "calf_l": [
+      30,
+      0,
+      0
+    ],
+    "calf_r": [
+      30,
+      0,
+      0
+    ],
+    "foot_l": [
+      -5.56475,
+      -5.16935,
+      -2.88086
+    ],
+    "foot_r": [
+      -5.56475,
+      5.16935,
+      2.88086
+    ],
+    "upperarm_l": [
+      -44.61257,
+      -18.19298,
+      -40.6691
+    ],
+    "upperarm_r": [
+      -44.61257,
+      18.19298,
+      40.6691
+    ],
+    "head": [
+      -35,
+      0,
+      0
+    ],
+    "lowerarm_l": [
+      40.93738,
+      24.57359,
+      -15.66911
+    ],
+    "lowerarm_r": [
+      40.93738,
+      -24.57359,
+      15.66911
+    ],
+    "hand_l": [
+      9.55102,
+      16.41616,
+      4.28005
+    ],
+    "hand_r": [
+      9.55102,
+      -16.41616,
+      -4.28005
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.02121,
+      -0.87352
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.64935,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -30,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Forward lean with hands near knees",
+    "series": "full_expressive",
+    "category_id": "standing",
+    "reference_pose_id": "full_sexy_P004",
+    "tags": [
+      "full_sexy_P004",
+      "P004"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

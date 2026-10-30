@@ -49,6 +49,10 @@ class ParameterProfileQueryParameters(ParameterProfileQuery):
     model_config = {"strict": False, "extra": "forbid"}
 
 
+class ParameterProfileRequestParameters(ParameterProfileRequest):
+    model_config = {"strict": False, "extra": "forbid"}
+
+
 class HelpQueryParameters(HelpQuery):
     model_config = {"strict": False, "extra": "forbid"}
 
@@ -218,7 +222,7 @@ def create_router(context_resolver, service=None, authorization=None):
         return await call("simpai.parameter_profiles.list", filters.model_dump(), request)
 
     @router.get("/parameter-profiles/detail", operation_id="simpai_parameter_profiles_get")
-    async def parameter_profile(request: Request, reference: Annotated[ParameterProfileRequest, Query()]):
+    async def parameter_profile(request: Request, reference: Annotated[ParameterProfileRequestParameters, Query()]):
         return await call("simpai.parameter_profiles.get", reference.model_dump(), request)
 
     @router.get("/help", operation_id="simpai_help_search")

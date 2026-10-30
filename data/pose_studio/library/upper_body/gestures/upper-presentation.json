@@ -1,0 +1,54 @@
+{
+  "bones": {
+    "upperarm_l": [
+      3.13,
+      2.70514,
+      -4.32272
+    ],
+    "upperarm_r": [
+      -8.29531,
+      7.45007,
+      0.51539
+    ],
+    "lowerarm_l": [
+      -42.2034,
+      -18.12357,
+      18.95999
+    ],
+    "lowerarm_r": [
+      21.05562,
+      54.33883,
+      55.22593
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.64793,
+      -8.28239,
+      -0.41447
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 2.13526,
+    "offset_x": 0,
+    "offset_y": -3.45679,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "One-arm presentation",
+    "series": "upper_body",
+    "category_id": "gestures",
+    "tags": [
+      "gestures",
+      "present"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

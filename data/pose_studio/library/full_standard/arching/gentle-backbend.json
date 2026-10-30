@@ -1,0 +1,64 @@
+{
+  "bones": {
+    "spine_01": [
+      -15,
+      0,
+      0
+    ],
+    "spine_03": [
+      -10,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -10.91412,
+      -8.35827,
+      -8.61749
+    ],
+    "upperarm_r": [
+      -10.91412,
+      8.35827,
+      8.61749
+    ],
+    "lowerarm_l": [
+      49.96064,
+      -41.18946,
+      -43.57578
+    ],
+    "lowerarm_r": [
+      49.96064,
+      41.18946,
+      43.57578
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.20411,
+      1.23228
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.43276,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Gentle backbend",
+    "series": "full_standard",
+    "category_id": "arching",
+    "tags": [
+      "arching",
+      "hips"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

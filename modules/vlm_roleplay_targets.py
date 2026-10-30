@@ -111,8 +111,9 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
     rules = (
         f"Hidden state director. Compact JSON only, no indentation; prose values use {language}. "
         f"Speaker={speaker}; user intent={intent}.\n"
-        "Write observations FIRST: exact newly spoken answers/instructions or consequential witnessed facts, "
-        "not a transcript. Combine present listeners in known_by_refs. Confusion is not deafness; exclude "
+        "Write observations FIRST: preserve each heard answer, agreement and next step, even when repeated. "
+        "Record witnessed time passage and completed arrivals/departures in order; they end old plans. "
+        "Combine actual listeners in known_by_refs. Confusion is not deafness; exclude "
         "unconscious/deaf/distant listeners. Omit operator instructions and unchanged conditions. "
         "Control alone grants no knowledge; declared in-scene speech has its actual listeners. "
         "Private whispers, thoughts and offstage facts are not shared. Every observation needs evidence_id.\n"
@@ -131,8 +132,8 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         "state_fields uses exact field_id,value; never clear or rename fields. "
         "Remove superseded claims (no bleeding after it stops). Preserve unrelated effects; treatment is not healed. "
         "Use appearance for appearance. Unnamed reminders of existing conditions need no preservation-only patch. "
-        "When only patients change, leave the healer's state_text untouched. Casting and not receiving "
-        "treatment are actions, not new conditions; use turn_facts.actions without repeating the old snapshot. "
+        "Casting and not receiving treatment are actions, not new conditions; use turn_facts.actions "
+        "without repeating the old snapshot. "
         "Condition evidence must identify the affected recipient. evidence_id uses numbered latest-exchange sources.\n"
         + (
             "A separate numeric adjudicator owns ALL numeric fields. Do not output numeric state_fields; "
@@ -193,7 +194,7 @@ def resolve_evidence(row, catalog):
     raw = row.get("evidence_id", row.get("evidence_ids"))
     if isinstance(raw, str):
         raw = raw.strip()
-        span = re.fullmatch(r"(user|reply)_(\d+)\s*[-\u2013]\s*\1_(\d+)", raw)
+        span = re.fullmatch(r"(user|reply)_(\d+)\s*[-\u2013]\s*(?:\1_)?(\d+)", raw)
         if span and 0 <= int(span[3]) - int(span[2]) < 8:
             raw = [f"{span[1]}_{index}" for index in range(int(span[2]), int(span[3]) + 1)]
         elif raw.startswith("["):
@@ -201,8 +202,8 @@ def resolve_evidence(row, catalog):
                 raw = json.loads(raw)
             except (ValueError, TypeError):
                 pass
-        elif raw not in catalog and re.fullmatch(r"(?:user|reply)_\d+(?:[\s,;，、]+(?:user|reply)_\d+)+", raw):
-            raw = re.split(r"[\s,;，、]+", raw)
+        elif raw not in catalog and re.fullmatch(r"(?:user|reply)_\d+(?:[\s,;，、/]+(?:user|reply)_\d+)+", raw):
+            raw = re.split(r"[\s,;，、/]+", raw)
     refs = raw if isinstance(raw, list) else [raw]
     if 0 < len(refs) <= 8 and all(isinstance(ref, str) and ref.strip() in catalog for ref in refs):
         quote = "\n".join(catalog[ref] for ref in dict.fromkeys(ref.strip() for ref in refs))

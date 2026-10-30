@@ -1,0 +1,54 @@
+{
+  "bones": {
+    "upperarm_l": [
+      -6.21535,
+      -7.34227,
+      12.96216
+    ],
+    "upperarm_r": [
+      -6.21535,
+      7.34227,
+      -12.96216
+    ],
+    "lowerarm_l": [
+      -39.9331,
+      44.39906,
+      67.76221
+    ],
+    "lowerarm_r": [
+      -39.9331,
+      -44.39906,
+      -67.76221
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.28239,
+      0.33298
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.25337,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Arms open",
+    "series": "full_standard",
+    "category_id": "standing",
+    "tags": [
+      "standing",
+      "open"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

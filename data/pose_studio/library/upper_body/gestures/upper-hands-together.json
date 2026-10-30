@@ -1,0 +1,54 @@
+{
+  "bones": {
+    "upperarm_l": [
+      -27.14398,
+      -16.03874,
+      -22.86678
+    ],
+    "upperarm_r": [
+      -27.14398,
+      16.03874,
+      22.86678
+    ],
+    "lowerarm_l": [
+      -67.76934,
+      -50.39813,
+      -82.45362
+    ],
+    "lowerarm_r": [
+      -67.76934,
+      50.39813,
+      82.45362
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.28239,
+      0.22503
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 3.12321,
+    "offset_x": 0,
+    "offset_y": -3.72864,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Hands together",
+    "series": "upper_body",
+    "category_id": "gestures",
+    "tags": [
+      "gestures",
+      "clasped"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

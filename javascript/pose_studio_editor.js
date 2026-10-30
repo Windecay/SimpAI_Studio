@@ -7,7 +7,7 @@
     const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
     const t = UTILS.t || ((en, cn) => {
         const state = window.simpleaiTopbarSystemParams || {};
-        return String(state.__lang || 'en').toLowerCase().startsWith('en') ? en : (cn || en);
+        return String(state.__lang || 'en').toLowerCase().startsWith('en') ? en : (window.localization?.[en] || cn || en);
     });
 
     let activeModal = null;
@@ -16,7 +16,13 @@
     const poseViewerModules = new Map();
     let handPresetsPromise = null;
     let sceneBridgeAttached = false;
-    const POSE_VIEWER_CORE_VERSION = 'simpai-pose-camera-20261011-1';
+    const POSE_VIEWER_CORE_VERSION = 'simpai-pose-library-20261029-3';
+    const RENDER_STYLES = { original: 'Original material', clay: 'Gray clay', lineart: 'Line art' };
+    const LIBRARY_VIEWS = {
+        current: { label: 'Default view' }, front: { label: 'Front view', yaw: 0, pitch: 0 },
+        high: { label: 'High angle', yaw: 0, pitch: -25 }, low: { label: 'Low angle', yaw: 0, pitch: 20 },
+        side: { label: 'Side view', yaw: 90, pitch: 0 }, diagonal: { label: 'Three-quarter view', yaw: 45, pitch: -10 }
+    };
 
     function call(options, name, ...args) {
         if (typeof options?.[name] !== 'function') return null;
@@ -382,14 +388,8 @@
         const reference = await readSceneReference();
         if (openingSequence !== openSequence) return null;
         const outputSlot = sceneOutputSlot();
-        if (outputSlot === 'scene_canvas_image' && sceneBridgeConfig().pose_studio_reference_slots?.includes('scene_input_image1') && !reference.dataUrl) {
-            updateSceneBridgePreview(null, t('Upload the character original to Image 2 first. Image 1 accepts your pose image after that.', '请先将人物原图上传到图2，再准备图1的姿势图或打开 Pose Studio。'));
-            findById('pose_studio_scene_control')?.querySelector?.('[data-pose-studio-scene-status]')?.setAttribute?.('data-pose-studio-needs-character', '');
-            return null;
-        }
         const poseData = state.pose_data || {};
         const editorState = state.editor_state || {};
-        const hasExistingPose = hasStoredPoseForEditing(poseData, editorState);
         return open({
             title: 'Pose Studio',
             context: 'scene_preset',
@@ -401,7 +401,6 @@
             referenceHeight: reference.height || 0,
             poseData,
             editorState,
-            autoParseReference: !hasExistingPose,
             detectTheme: detectPageTheme,
             onConfirm(response) {
                 const payload = JSON.stringify(Object.assign({}, response || {}, {
@@ -954,14 +953,15 @@
     }
 
     function renderLibraryItems(items) {
-        const rows = Array.isArray(items) ? items.slice(0, 120) : [];
+        const rows = Array.isArray(items) ? items : [];
         if (!rows.length) {
             return `<div class="sai-pose-studio-empty">${escapeHtml(t('No poses found.', '没有姿势。'))}</div>`;
         }
         return rows.map((item) => `
-<div class="sai-pose-studio-pose" role="button" tabindex="0" data-pose-id="${escapeHtml(item.id || item.relative_path || '')}" title="${escapeHtml(item.name || '')}">
-  <span>${item.preview_url ? `<img src="${escapeHtml(studioAssetUrl(item.preview_url))}" alt="" loading="lazy">` : '<i class="fa-solid fa-person-walking"></i>'}</span>
-  <b>${escapeHtml(item.name || '')}</b>
+<div class="sai-pose-studio-pose" role="button" tabindex="0" data-pose-id="${escapeHtml(item.id || item.relative_path || '')}" title="${escapeHtml(item.source === 'built_in' ? t(item.name || '') : item.name || '')}">
+  <span data-pose-library-preview>${item.preview_url && item.source !== 'built_in' ? `<img src="${escapeHtml(studioAssetUrl(item.preview_url))}" alt="" loading="lazy">` : '<i class="fa-solid fa-person-walking"></i>'}</span>
+  <b>${escapeHtml(item.source === 'built_in' ? t(item.name || '') : item.name || '')}</b>
+  <small>${escapeHtml(t(item.category_label || item.category || 'Other poses'))}</small>
   ${item.can_delete ? `<em class="sai-pose-studio-pose-actions">
     <button type="button" data-pose-library-action="rename" title="${escapeHtml(t('Rename', '重命名'))}"><i class="fa-solid fa-pen"></i></button>
     <button type="button" data-pose-library-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-trash"></i></button>
@@ -1091,6 +1091,12 @@
       <button type="button" data-pose-studio-action="save-library" title="${escapeHtml(t('Save pose to library', '保存到姿势库'))}"><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(t('Save', '保存'))}</span></button>
       <button type="button" data-pose-studio-action="status" title="${escapeHtml(t('Check resources', '检查资源'))}"><i class="fa-solid fa-circle-check"></i><span>${escapeHtml(t('Check', '检查'))}</span></button>
     </div>
+    <label class="sai-pose-studio-tool-group">
+      <span>${escapeHtml(t('Render style'))}</span>
+      <select data-pose-studio-render-style disabled aria-label="${escapeHtml(t('Render style'))}">
+        ${Object.entries(RENDER_STYLES).map(([value, label]) => `<option value="${value}">${escapeHtml(t(label))}</option>`).join('')}
+      </select>
+    </label>
     <input type="file" accept="image/*" data-pose-studio-reference-file hidden>
   </div>
   <div class="sai-pose-studio-body">
@@ -1180,7 +1186,7 @@
       </div>
     </div>
     <aside class="sai-pose-studio-library">
-      <details class="sai-pose-studio-spatial" data-pose-studio-spatial open>
+      <details class="sai-pose-studio-spatial" data-pose-studio-spatial>
         <summary>${escapeHtml(t('Camera & characters', '相机与角色'))}</summary>
         <div class="sai-pose-studio-spatial-tabs">
           <button type="button" data-pose-spatial-view="top" aria-pressed="true">${escapeHtml(t('Top view', '俯视'))}</button>
@@ -1195,7 +1201,38 @@
         <span>${escapeHtml(t('Pose Library', '姿势库'))}</span>
         <button type="button" data-pose-studio-action="refresh-library" title="${escapeHtml(t('Refresh', '刷新'))}"><i class="fa-solid fa-arrows-rotate"></i></button>
       </div>
+      <div class="sai-pose-library-filters" data-pose-library-filters>
+        <input type="search" data-pose-library-search placeholder="${escapeHtml(t('Search poses'))}" aria-label="${escapeHtml(t('Search poses'))}">
+        <div class="sai-pose-library-filter-row">
+          <select data-pose-library-source aria-label="${escapeHtml(t('Pose source'))}">
+            <option value="">${escapeHtml(t('All sources'))}</option>
+            <option value="built_in">${escapeHtml(t('Built-in poses'))}</option>
+            <option value="user">${escapeHtml(t('My poses'))}</option>
+          </select>
+          <select data-pose-library-series aria-label="${escapeHtml(t('Pose series'))}"><option value="">${escapeHtml(t('All series'))}</option></select>
+        </div>
+        <div class="sai-pose-library-filter-row">
+          <select data-pose-library-category aria-label="${escapeHtml(t('Pose category'))}"><option value="">${escapeHtml(t('All categories'))}</option></select>
+          <select data-pose-library-view aria-label="${escapeHtml(t('View angle'))}">
+            ${Object.entries(LIBRARY_VIEWS).map(([value, view]) => `<option value="${value}">${escapeHtml(t(view.label))}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <form class="sai-pose-library-save" data-pose-library-save hidden>
+        <label>${escapeHtml(t('Pose name', '姿势名称'))}<input data-pose-library-name required maxlength="100" autocomplete="off"></label>
+        <label>${escapeHtml(t('Pose series'))}<select data-pose-library-save-series></select></label>
+        <label>${escapeHtml(t('Pose category'))}<select data-pose-library-save-category></select></label>
+        <div class="sai-pose-library-filter-row">
+          <button type="submit"><i class="fa-solid fa-check"></i>${escapeHtml(t('Save', '保存'))}</button>
+          <button type="button" data-pose-library-cancel><i class="fa-solid fa-xmark"></i>${escapeHtml(t('Cancel', '取消'))}</button>
+        </div>
+      </form>
       <div class="sai-pose-studio-library-list" data-pose-library-list></div>
+      <div class="sai-pose-library-pagination">
+        <span data-pose-library-count aria-live="polite"></span>
+        <button type="button" data-pose-library-page="previous" title="${escapeHtml(t('Previous page'))}" disabled><i class="fa-solid fa-chevron-left"></i></button>
+        <button type="button" data-pose-library-page="next" title="${escapeHtml(t('Next page'))}" disabled><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
     </aside>
   </div>
   <div class="sai-pose-studio-status" data-pose-studio-status></div>
@@ -1216,10 +1253,29 @@
         const ctx = fallbackCanvas.getContext('2d');
         const status = modal.querySelector('[data-pose-studio-status]');
         const libraryList = modal.querySelector('[data-pose-library-list]');
+        const librarySearch = modal.querySelector('[data-pose-library-search]');
+        const librarySource = modal.querySelector('[data-pose-library-source]');
+        const librarySeries = modal.querySelector('[data-pose-library-series]');
+        const libraryCategory = modal.querySelector('[data-pose-library-category]');
+        const libraryView = modal.querySelector('[data-pose-library-view]');
+        const libraryCount = modal.querySelector('[data-pose-library-count]');
+        const librarySaveForm = modal.querySelector('[data-pose-library-save]');
+        const librarySaveSeries = modal.querySelector('[data-pose-library-save-series]');
+        const librarySaveCategory = modal.querySelector('[data-pose-library-save-category]');
+        const libraryName = modal.querySelector('[data-pose-library-name]');
+        let libraryRequestId = 0, poseLoadRequestId = 0, librarySearchTimer = null;
+        let libraryOffset = 0, libraryNextOffset = null, libraryItems = [];
+        let libraryTaxonomy = { series: [], categories: {} };
+        let thumbnailViewer = null, thumbnailData = null, thumbnailCore = null;
+        let libraryCameraParams = null;
+        let thumbnailRequestId = 0;
+        let thumbnailQueue = Promise.resolve();
+        const libraryThumbnails = new Map();
         const peopleControl = modal.querySelector('[data-pose-studio-people]');
         const personSelect = modal.querySelector('[data-pose-studio-person]');
         const maxPeopleInput = modal.querySelector('[data-pose-studio-max-people]');
         const personSelectionInput = modal.querySelector('[data-pose-studio-person-selection]');
+        const renderStyleInput = modal.querySelector('[data-pose-studio-render-style]');
         const selectRegionsButton = modal.querySelector('[data-pose-studio-action="select-regions"]');
         const clearRegionsButton = modal.querySelector('[data-pose-studio-action="clear-regions"]');
         const controlSliders = Array.from(modal.querySelectorAll('[data-pose-studio-slider]'));
@@ -1232,6 +1288,16 @@
         const toeStatus = modal.querySelector('[data-pose-studio-toe-status]');
         let poseData = options.poseData || {};
         let editorState = options.editorState || {};
+        let libraryCameraPose = editorState.library_camera_defaults || null;
+        const libraryFilters = Object.assign({ query: '', source: '', series: '', category: '', view: 'current' }, editorState.library_filters || {});
+        if (!['', 'built_in', 'user'].includes(libraryFilters.source)) libraryFilters.source = '';
+        if (!Object.hasOwn(LIBRARY_VIEWS, libraryFilters.view)) libraryFilters.view = 'current';
+        librarySearch.value = libraryFilters.query;
+        librarySource.value = libraryFilters.source;
+        libraryView.value = libraryFilters.view;
+        let renderStyle = editorState.render_style || poseData.render_style || 'original';
+        if (!Object.hasOwn(RENDER_STYLES, renderStyle)) renderStyle = 'original';
+        renderStyleInput.value = renderStyle;
         const storedMaxPeople = Number(editorState.max_people);
         let maxPeople = Number.isSafeInteger(storedMaxPeople) && storedMaxPeople > 0 ? storedMaxPeople : 2;
         maxPeopleInput.value = String(maxPeople);
@@ -1307,6 +1373,10 @@
             if (personSelect) personSelect.disabled = busyActive || meshUpdatePending;
             maxPeopleInput.disabled = busyActive;
             personSelectionInput.disabled = busyActive;
+            renderStyleInput.disabled = busyActive || !viewerReady;
+            libraryView.disabled = busyActive || !viewerReady;
+            libraryList.inert = busyActive || !viewerReady;
+            librarySaveForm.querySelectorAll('input, select, button').forEach(control => { control.disabled = busyActive || !viewerReady; });
             controlSliders.forEach(slider => { slider.disabled = busyActive || !viewerReady; });
             modal.querySelectorAll('[data-pose-studio-action]').forEach((button) => {
                 const action = button.getAttribute('data-pose-studio-action') || '';
@@ -1329,7 +1399,7 @@
         };
 
         const isPoseStudioScrollableArea = (target) => !!target?.closest?.(
-            '.sai-pose-studio-controls, .sai-pose-studio-library-list'
+            '.sai-pose-studio-body, .sai-pose-studio-controls, .sai-pose-studio-library-list'
         );
 
         const handleModalWheelBoundary = (evt) => {
@@ -1412,6 +1482,8 @@
             editorState = Object.assign({}, editorState, extra, {
                 mesh_params: Object.assign({}, meshParams),
                 export_params: Object.assign({}, exportParams),
+                render_style: renderStyle,
+                library_filters: { ...libraryFilters },
                 max_people: maxPeople,
                 person_selection: personSelection,
                 person_scene: personScene?.serialize(meshParams) || null
@@ -1431,6 +1503,14 @@
             personSelection = personSelectionInput.value;
             persistEditorState();
         });
+        const applyRenderStyle = (value) => {
+            renderStyle = viewer.setRenderStyle(value);
+            renderStyleInput.value = renderStyle;
+            persistEditorState();
+            libraryThumbnails.clear();
+            renderLibraryPreviews(libraryItems, libraryRequestId);
+        };
+        renderStyleInput.addEventListener('change', () => applyRenderStyle(renderStyleInput.value));
 
         const clampHandSliderValue = (key, value) => {
             const def = handSliderDefByKey.get(key) || {};
@@ -2126,6 +2206,9 @@
                     applyPoseToViewer(reshapedPose, true);
                 }
                 applyCameraToViewer(true);
+                thumbnailData = response;
+                libraryThumbnails.clear();
+                renderLibraryPreviews(libraryItems, libraryRequestId);
                 persistEditorState();
                 setStatus(t('Character updated.', '角色已更新。'), false);
                 return true;
@@ -2518,6 +2601,8 @@
         };
 
         const disposeViewer = () => {
+            thumbnailViewer?.dispose();
+            thumbnailViewer = null;
             viewportRotationDrag = null;
             cameraGestures = null;
             regionSelector?.dispose();
@@ -2542,6 +2627,9 @@
             ++exportRequestId;
             ++meshUpdateRequestId;
             stopImportStatusPolling();
+            ++libraryRequestId;
+            ++poseLoadRequestId;
+            if (librarySearchTimer) window.clearTimeout(librarySearchTimer);
             if (meshUpdateTimer) {
                 window.clearTimeout(meshUpdateTimer);
                 meshUpdateTimer = null;
@@ -2563,7 +2651,7 @@
             setStatus(t('Loading PoseViewerCore...', '正在载入 PoseViewerCore...'), false);
             setBusy(t('Loading Pose Studio resources...', '正在载入 Pose Studio 资源...'), true);
             try {
-                const [{ PoseViewerCore, PoseScene, PoseSpatialView, PoseRegionSelector, cameraKeyboardAction, cameraRotationPatch, cameraWheelPatch }, loadedHandPresets, modelData] = await Promise.all([
+                const [{ PoseViewerCore, PoseScene, PoseSpatialView, PoseRegionSelector, cameraKeyboardAction, cameraRotationPatch, cameraWheelPatch, libraryPoseCameraParams }, loadedHandPresets, modelData] = await Promise.all([
                     loadPoseViewerCore(),
                     loadHandPresets(),
                     API.poseStudioCharacterPreview(meshParams)
@@ -2573,6 +2661,9 @@
                 cameraGestures = { cameraKeyboardAction, cameraRotationPatch, cameraWheelPatch };
                 if (!PoseViewerCore) throw new Error('PoseViewerCore export is unavailable.');
                 if (!modelData?.ok) throw new Error(modelData?.details || modelData?.error || 'character preview failed');
+                thumbnailCore = PoseViewerCore;
+                libraryCameraParams = libraryPoseCameraParams;
+                thumbnailData = modelData;
                 viewer = new PoseViewerCore(viewerCanvas, {
                     enableLighting: false,
                     enableMultiPass: false,
@@ -2615,6 +2706,7 @@
                 }
                 if (!isCurrent()) return false;
                 viewer.loadData(modelData, true);
+                viewer.setRenderStyle(renderStyle);
                 personScene = new PoseScene(viewer);
                 personScene.meshData = modelData;
                 spatialView = new PoseSpatialView(modal.querySelector('[data-pose-studio-spatial]'), viewer, () => personScene, t, {
@@ -2650,27 +2742,10 @@
                 const initialPose = initialPoseState.pose || {};
                 const appliedInitialPose = applyPoseToViewer(initialPose, true);
                 if (hasStoredPose(initialPose) && !appliedInitialPose) throw new Error(t('Pose viewer is unavailable.', '姿势编辑器尚未就绪。'));
-                const rawStoredPose = hasStoredPose(editorState.sam3d_pose_data) ? editorState.sam3d_pose_data : null;
-                if (appliedInitialPose && rawStoredPose) {
-                    const overlayResult = await renderSAMOverlayForPose(rawStoredPose, {
-                        fitToOverlay: initialPoseState.source === 'sam3d_pose_data',
-                        restoreCamera: initialPoseState.source !== 'sam3d_pose_data'
-                    });
-                    if (!isCurrent()) return false;
-                    let restoredCamera = false;
-                    if (overlayResult.ok && exportParams.samApplyCamera) {
-                        if (editorState.sam3d_projection_frame && initialPoseState.source !== 'sam3d_pose_data') {
-                            viewer.setSAMProjectionCameraFrame(editorState.sam3d_projection_frame);
-                            restoredCamera = applyCameraToViewer(true);
-                        } else {
-                            const frameResult = applySAM3DFrameCameraParams(rawStoredPose, overlayResult.mesh || null);
-                            restoredCamera = !!frameResult.applied;
-                        }
-                    }
-                    if (!restoredCamera) applyCameraToViewer(true);
-                } else {
-                    applyCameraToViewer(true);
+                if (appliedInitialPose && editorState.sam3d_projection_frame && exportParams.samApplyCamera) {
+                    viewer.setSAMProjectionCameraFrame(editorState.sam3d_projection_frame);
                 }
+                applyCameraToViewer(true);
                 syncControlValues();
                 await activateHandSide(activeHandSide, false);
                 if (!isCurrent()) return false;
@@ -2688,31 +2763,191 @@
                 return false;
             } finally {
                 setBusy('', false);
+                if (isCurrent() && viewerReady) renderLibraryPreviews(libraryItems, libraryRequestId);
             }
         };
 
+        const renderLibraryPreviews = (items, requestId) => {
+            if (!viewerReady || !thumbnailCore || !thumbnailData || !API.poseStudioLibraryGet) return;
+            const generation = ++thumbnailRequestId;
+            const active = () => isCurrent() && generation === thumbnailRequestId && requestId === libraryRequestId;
+            thumbnailQueue = thumbnailQueue.then(async () => {
+                for (const item of items) {
+                    if (!active()) return;
+                    if (item.source !== 'built_in') continue;
+                    const key = `${item.id}:${item.revision || ''}:${renderStyle}:${libraryView.value}`;
+                    let image = libraryThumbnails.get(key);
+                    if (!image) {
+                        const response = await API.poseStudioLibraryGet({ id: item.id });
+                        if (!active()) return;
+                        if (!response?.ok || !response.pose_data?.bones) continue;
+                        if (!thumbnailViewer) {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = 192; canvas.height = 256;
+                            const instance = new thumbnailCore(canvas, {
+                                enableLighting: false, enableMultiPass: false, showSkeletonHelper: false,
+                                showCaptureFrame: false, showReferenceImage: false, orbitEnabled: false
+                            });
+                            thumbnailViewer = instance;
+                            await instance.init();
+                            if (!active()) {
+                                instance.dispose();
+                                if (thumbnailViewer === instance) thumbnailViewer = null;
+                                return;
+                            }
+                            instance.updateLights([{ type: 'ambient', color: '#ffffff', intensity: 1 }]);
+                        }
+                        const v = thumbnailViewer;
+                        v.loadData(thumbnailData, true);
+                        v.setPose(response.pose_data, true);
+                        v.setRenderStyle(renderStyle);
+                        const view = LIBRARY_VIEWS[libraryView.value] || LIBRARY_VIEWS.current;
+                        const camera = libraryCameraParams(v, response.pose_data, 192, 256, { ...view, key: libraryView.value });
+                        image = v.capture(192, 256, camera.zoom, [255, 255, 255], camera.offset_x, camera.offset_y,
+                            camera.yaw_deg, camera.pitch_deg, camera.distance_scale);
+                        if (!active()) return;
+                        if (libraryThumbnails.size >= 144) libraryThumbnails.delete(libraryThumbnails.keys().next().value);
+                        libraryThumbnails.set(key, image);
+                    }
+                    const target = libraryList.querySelector(`[data-pose-id="${cssEscape(item.id)}"] [data-pose-library-preview]`);
+                    if (target && image) {
+                        const img = document.createElement('img'); img.src = image; img.alt = '';
+                        target.replaceChildren(img);
+                    }
+                    await new Promise(window.requestAnimationFrame);
+                }
+            }).catch(error => {
+                if (active()) console.warn('[SimpAI Pose Studio] library preview failed:', error);
+            });
+        };
+
+        const setLibraryOptions = (select, entries, value, allLabel, counts = {}) => {
+            const rows = allLabel ? [['', allLabel], ...entries] : entries;
+            select.replaceChildren(...rows.map(([id, label]) => {
+                const option = document.createElement('option'); option.value = id;
+                option.textContent = `${t(label)}${id && counts[id] !== undefined ? ` (${counts[id]})` : ''}`;
+                return option;
+            }));
+            if (rows.some(([id]) => id === value)) select.value = value;
+        };
+        const categoryOptions = (series) => {
+            const keys = libraryTaxonomy.series.find(entry => entry.id === series)?.categories || Object.keys(libraryTaxonomy.categories);
+            return keys.map(id => [id, libraryTaxonomy.categories[id]]);
+        };
         const refreshLibrary = async () => {
             if (!isCurrent() || !libraryList || typeof API.poseStudioLibraryList !== 'function') return;
+            const requestId = ++libraryRequestId;
             libraryList.innerHTML = `<div class="sai-pose-studio-empty">${escapeHtml(t('Loading...', '加载中...'))}</div>`;
-            const response = await API.poseStudioLibraryList({ limit: 240 });
-            if (!isCurrent()) return;
-            if (!response?.ok) {
-                libraryList.innerHTML = `<div class="sai-pose-studio-empty">${escapeHtml(response?.error || t('Load failed.', '加载失败。'))}</div>`;
-                return;
+            modal.querySelectorAll('[data-pose-library-page]').forEach(button => { button.disabled = true; });
+            try {
+                const response = await API.poseStudioLibraryList({ ...libraryFilters, offset: libraryOffset, limit: 24 });
+                if (!isCurrent() || requestId !== libraryRequestId) return;
+                if (!response?.ok) throw new Error(response?.error || t('Load failed.', '加载失败。'));
+                if (response.taxonomy) {
+                    libraryTaxonomy = response.taxonomy;
+                    const series = libraryTaxonomy.series.some(entry => entry.id === libraryFilters.series) ? libraryFilters.series : '';
+                    const category = categoryOptions(series).some(([id]) => id === libraryFilters.category) ? libraryFilters.category : '';
+                    if (series !== libraryFilters.series || category !== libraryFilters.category) {
+                        Object.assign(libraryFilters, { series, category });
+                        libraryOffset = 0;
+                        persistEditorState();
+                        return refreshLibrary();
+                    }
+                }
+                libraryItems = response.items || [];
+                const total = Number(response.total ?? libraryItems.length);
+                if (!libraryItems.length && libraryOffset > 0) {
+                    libraryOffset = Math.max(0, Math.ceil(total / 24) - 1) * 24;
+                    return refreshLibrary();
+                }
+                libraryTaxonomy = response.taxonomy || libraryTaxonomy;
+                setLibraryOptions(librarySeries, libraryTaxonomy.series.map(entry => [entry.id, entry.label]), libraryFilters.series, 'All series', response.series_counts);
+                setLibraryOptions(libraryCategory, categoryOptions(libraryFilters.series), libraryFilters.category, 'All categories', response.category_counts);
+                libraryNextOffset = response.next_offset ?? null;
+                libraryCount.textContent = `${total ? libraryOffset + 1 : 0}-${libraryOffset + libraryItems.length} / ${total}`;
+                modal.querySelector('[data-pose-library-page="previous"]').disabled = libraryOffset === 0;
+                modal.querySelector('[data-pose-library-page="next"]').disabled = libraryNextOffset === null;
+                libraryList.innerHTML = renderLibraryItems(libraryItems);
+                libraryList.scrollTop = 0;
+                libraryList.querySelector(`[data-pose-id="${cssEscape(editorState.library_pose_id || '')}"]`)?.setAttribute('aria-current', 'true');
+                renderLibraryPreviews(libraryItems, requestId);
+            } catch (error) {
+                if (isCurrent() && requestId === libraryRequestId) {
+                    libraryItems = [];
+                    libraryCount.textContent = '';
+                    libraryList.innerHTML = `<div class="sai-pose-studio-empty">${escapeHtml(error.message)}</div>`;
+                }
             }
-            libraryList.innerHTML = renderLibraryItems(response.items || []);
         };
 
+        const changeLibraryFilter = () => {
+            Object.assign(libraryFilters, { query: librarySearch.value.trim(), source: librarySource.value,
+                series: librarySeries.value, category: libraryCategory.value });
+            libraryOffset = 0;
+            persistEditorState();
+            refreshLibrary();
+        };
+        librarySearch.addEventListener('input', () => {
+            ++libraryRequestId;
+            window.clearTimeout(librarySearchTimer);
+            librarySearchTimer = window.setTimeout(changeLibraryFilter, 180);
+        });
+        librarySource.addEventListener('change', changeLibraryFilter);
+        libraryCategory.addEventListener('change', changeLibraryFilter);
+        librarySeries.addEventListener('change', () => {
+            setLibraryOptions(libraryCategory, categoryOptions(librarySeries.value), '', 'All categories');
+            changeLibraryFilter();
+        });
+        libraryView.addEventListener('change', () => {
+            libraryFilters.view = libraryView.value;
+            const view = LIBRARY_VIEWS[libraryView.value];
+            if (libraryCameraPose && libraryCameraParams) {
+                applyLibraryCamera(libraryCameraPose, view);
+                applyCameraToViewer(true);
+            } else if (view?.yaw !== undefined) applyCameraGesturePatch({ cam_yaw_deg: view.yaw, cam_pitch_deg: view.pitch });
+            persistEditorState();
+            renderLibraryPreviews(libraryItems, libraryRequestId);
+        });
+        modal.querySelectorAll('[data-pose-library-page]').forEach(button => button.addEventListener('click', () => {
+            libraryOffset = button.dataset.poseLibraryPage === 'next' ? libraryNextOffset : Math.max(0, libraryOffset - 24);
+            refreshLibrary();
+        }));
+        libraryList.addEventListener('keydown', event => {
+            if (!['Enter', ' '].includes(event.key) || event.target.hasAttribute('data-pose-library-action')) return;
+            if (!event.target.matches('[data-pose-id]')) return;
+            event.preventDefault(); event.target.click();
+        });
+
+        const applyLibraryCamera = (pose, view = LIBRARY_VIEWS[libraryView.value] || LIBRARY_VIEWS.current) => {
+            const camera = libraryCameraParams(viewer, pose, exportParams.view_width, exportParams.view_height, { ...view, key: libraryView.value });
+            Object.assign(exportParams, {
+                cam_zoom: camera.zoom, cam_offset_x: camera.offset_x, cam_offset_y: camera.offset_y,
+                cam_yaw_deg: camera.yaw_deg, cam_pitch_deg: camera.pitch_deg, cam_distance: camera.distance_scale
+            });
+            syncControlValues();
+        };
         const loadPose = async (poseId) => {
             if (!isCurrent() || !poseId || typeof API.poseStudioLibraryGet !== 'function') return;
-            const response = await API.poseStudioLibraryGet({ id: poseId });
-            if (!isCurrent()) return;
+            const requestId = ++poseLoadRequestId;
+            let response;
+            try { response = await API.poseStudioLibraryGet({ id: poseId }); }
+            catch (error) {
+                if (isCurrent() && requestId === poseLoadRequestId) setStatus(error.message, true);
+                return;
+            }
+            if (!isCurrent() || requestId !== poseLoadRequestId) return;
             if (!response?.ok) {
                 setStatus(response?.error || t('Pose load failed.', '姿势加载失败。'), true);
                 return;
             }
             poseData = response.pose_data || {};
+            libraryCameraPose = response.source === 'built_in' && poseData.cameraParams
+                ? { cameraParams: { ...poseData.cameraParams }, cameraViews: poseData.cameraViews,
+                    _library: { series: poseData._library?.series } } : null;
+            persistEditorState({ library_camera_defaults: libraryCameraPose });
+            if (viewerReady && Object.hasOwn(RENDER_STYLES, poseData.render_style)) applyRenderStyle(poseData.render_style);
             editorState = Object.assign({}, editorState, { library_pose_id: poseId, library_pose_name: response.name || '', library_pose_source: response.source || '' });
+            libraryList.querySelectorAll('[data-pose-id]').forEach(card => card.setAttribute('aria-current', String(card.dataset.poseId === poseId)));
             if (poseData.format === 'simpai_pose_scene') {
                 setBusy(t('Loading pose scene...', '正在载入姿势场景...'), true);
                 try {
@@ -2728,6 +2963,11 @@
                 }
                 return;
             }
+            personScene?.clear();
+            viewer?.skinnedMesh?.position.set(0, 0, 0);
+            viewer?.clearSAMMeshOverlay?.();
+            syncPeopleControl();
+            persistEditorState({ sam3d_pose_data: null, sam3d_projection_frame: null });
             if (!applyPoseToViewer(poseData, true)) {
                 drawFallbackPose(ctx, fallbackCanvas.width, fallbackCanvas.height);
                 showFallbackCanvas(true);
@@ -2736,8 +2976,10 @@
                 return;
             }
             showFallbackCanvas(false);
+            if (libraryCameraPose && libraryCameraParams) applyLibraryCamera(libraryCameraPose);
+            applyCameraToViewer(true);
             setBusy('', false);
-            setStatus(response.name || poseId, false);
+            setStatus(response.source === 'built_in' ? t(response.name || poseId) : response.name || poseId, false);
         };
 
         const renameLibraryPose = async (poseId) => {
@@ -2783,7 +3025,7 @@
         };
 
         const parseReference = async () => {
-            if (!isCurrent() || busyActive) return;
+            if (!isCurrent() || busyActive || !viewerReady) return;
             if (typeof API.poseStudioImportReference !== 'function') {
                 setStatus('Pose Studio import API is not loaded.', true);
                 return;
@@ -2839,6 +3081,8 @@
                     return;
                 }
                 poseData = response.pose_data || {};
+                libraryCameraPose = null;
+                persistEditorState({ library_camera_defaults: null });
                 referenceAsset = response.reference_asset || referenceAsset || null;
                 referenceAssetSource = null;
                 if (!referenceSrc && referenceAsset) referenceSrc = referenceAsset.preview_url || referenceAsset.data_url || referenceAsset.thumb || '';
@@ -2888,19 +3132,32 @@
             }
         };
 
+        const closeLibrarySave = () => {
+            librarySaveForm.hidden = true;
+            modal.querySelector('[data-pose-library-filters]').hidden = false;
+        };
+        const openLibrarySave = () => {
+            if (!viewerReady || busyActive) return;
+            const selected = libraryItems.find(item => item.id === editorState.library_pose_id);
+            libraryName.value = editorState.library_pose_name || options.node?.title || 'pose';
+            setLibraryOptions(librarySaveSeries, libraryTaxonomy.series.map(entry => [entry.id, entry.label]), selected?.series_id || libraryFilters.series || 'full_standard');
+            setLibraryOptions(librarySaveCategory, categoryOptions(librarySaveSeries.value), selected?.category_id || libraryFilters.category || 'other');
+            modal.querySelector('[data-pose-library-filters]').hidden = true;
+            librarySaveForm.hidden = false;
+            libraryName.focus(); libraryName.select();
+        };
+        librarySaveSeries.addEventListener('change', () => setLibraryOptions(librarySaveCategory, categoryOptions(librarySaveSeries.value), 'other'));
+        modal.querySelector('[data-pose-library-cancel]').addEventListener('click', closeLibrarySave);
+        librarySaveForm.addEventListener('submit', event => { event.preventDefault(); savePoseToLibrary(); });
         const savePoseToLibrary = async () => {
-            if (!isCurrent()) return;
+            if (!isCurrent() || busyActive || !viewerReady) return;
             if (typeof API.poseStudioLibrarySave !== 'function') {
                 setStatus('Pose Studio library save API is not loaded.', true);
                 return;
             }
-            if (!poseData || typeof poseData !== 'object' || !Object.keys(poseData).length) {
-                setStatus(t('Parse or load a pose before saving.', '请先解析或载入姿势。'), true);
-                return;
-            }
-            const fallbackName = editorState.library_pose_name || options.node?.title || options.title || 'pose';
-            const name = window.prompt(t('Pose name', '姿势名称'), fallbackName);
+            const name = libraryName.value.trim();
             if (!name) return;
+            poseData = viewer.getPose();
             let previewDataUrl = '';
             try {
                 previewDataUrl = captureCurrentImage();
@@ -2908,13 +3165,23 @@
                 previewDataUrl = '';
             }
             persistEditorState();
-            const response = await API.poseStudioLibrarySave({
-                name,
-                category: 'Saved',
-                pose_data: personScene?.serialize(meshParams) || poseData,
-                editor_state: editorState,
-                preview_data_url: previewDataUrl
-            });
+            setBusy(t('Saving pose...'), true);
+            let response;
+            try {
+                response = await API.poseStudioLibrarySave({
+                    name,
+                    category: 'Saved',
+                    ...(librarySaveSeries.value && librarySaveCategory.value ? {
+                        classification: { series: librarySaveSeries.value, category: librarySaveCategory.value }
+                    } : {}),
+                    pose_data: Object.assign({}, personScene?.serialize(meshParams) || poseData, { render_style: renderStyle }),
+                    editor_state: editorState,
+                    preview_data_url: previewDataUrl
+                });
+            } catch (error) {
+                if (isCurrent()) setStatus(error.message, true);
+                return;
+            } finally { setBusy('', false); }
             if (!isCurrent()) return;
             if (!response?.ok) {
                 setStatus(response?.details || response?.error || t('Pose save failed.', '姿势保存失败。'), true);
@@ -2925,6 +3192,13 @@
                 library_pose_name: response.name || name,
                 library_pose_source: 'user'
             });
+            closeLibrarySave();
+            librarySource.value = 'user';
+            librarySearch.value = '';
+            librarySeries.value = ''; libraryCategory.value = '';
+            Object.assign(libraryFilters, { source: 'user', query: '', series: '', category: '' });
+            libraryOffset = 0;
+            persistEditorState();
             setStatus(t('Pose saved to user library.', '姿势已保存到用户姿势库。'), false);
             refreshLibrary();
         };
@@ -2955,7 +3229,7 @@
                 project_id: options.projectId || 'default',
                 node_id: options.node?.id || options.nodeId || '',
                 image_data_url: imageDataUrl,
-                pose_data: personScene?.serialize(meshParams) || poseData,
+                pose_data: Object.assign({}, personScene?.serialize(meshParams) || poseData, { render_style: renderStyle }),
                 editor_state: Object.assign({}, editorState, {
                     reference_drawn: referenceDrawn,
                     viewer_enabled: viewerReady,
@@ -3142,7 +3416,7 @@
                 return;
             }
             if (action === 'save-library') {
-                savePoseToLibrary();
+                openLibrarySave();
                 return;
             }
             if (action === 'refresh-library') {
@@ -3171,28 +3445,17 @@
             loadReferenceFile(referenceFileInput.files?.[0] || null);
         });
 
-        const shouldAutoParseReference = () => {
-            if (!options.autoParseReference) return false;
-            if (typeof API.poseStudioImportReference !== 'function') return false;
-            if (hasStoredPoseForEditing(poseData, editorState)) return false;
-            return !!(referenceDataUrl || currentReferenceSrc());
-        };
-        const autoParseOnOpen = shouldAutoParseReference();
-
         showFallbackCanvas(true);
-        const initialReferencePromise = drawReference(ctx, fallbackCanvas, currentReferenceSrc()).then((ok) => {
+        drawReference(ctx, fallbackCanvas, currentReferenceSrc()).then((ok) => {
             if (!isCurrent()) return false;
             referenceDrawn = !!ok;
             setStatus(ok
-                ? (autoParseOnOpen ? t('Reference loaded. Preparing pose parser...', '参考图已载入，正在准备姿势解析...') : t('Reference loaded.', '参考图已载入。'))
+                ? t('Reference loaded.', '参考图已载入。')
                 : t('Default pose ready.', '默认姿势已就绪。'), false);
             return ok;
         });
-        const viewerReadyPromise = initializeViewer();
+        initializeViewer();
         refreshLibrary();
-        Promise.allSettled([initialReferencePromise, viewerReadyPromise]).then(() => {
-            if (isCurrent() && autoParseOnOpen) parseReference();
-        });
         return modal;
     }
 

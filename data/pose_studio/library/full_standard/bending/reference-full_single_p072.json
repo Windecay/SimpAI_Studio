@@ -1,0 +1,129 @@
+{
+  "bones": {
+    "spine_01": [
+      50,
+      0,
+      0
+    ],
+    "spine_03": [
+      30,
+      0,
+      0
+    ],
+    "thigh_l": [
+      5.07537,
+      -0.16908,
+      -3.81364
+    ],
+    "thigh_r": [
+      85.30743,
+      -27.62037,
+      -18.15023
+    ],
+    "calf_l": [
+      -10.72152,
+      -0.70208,
+      -2.22695
+    ],
+    "calf_r": [
+      -10.72152,
+      0.70208,
+      2.22695
+    ],
+    "foot_l": [
+      3.95245,
+      1.31755,
+      0.4976
+    ],
+    "foot_r": [
+      67.36687,
+      -6.03654,
+      2.74231
+    ],
+    "neck_01": [
+      -50,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -93.80693,
+      -70.97771,
+      -17.67661
+    ],
+    "upperarm_r": [
+      -93.80693,
+      70.97771,
+      17.67661
+    ],
+    "head": [
+      -20,
+      0,
+      0
+    ],
+    "lowerarm_l": [
+      37.77044,
+      27.89874,
+      -12.47167
+    ],
+    "lowerarm_r": [
+      37.77044,
+      -27.89874,
+      12.47167
+    ],
+    "hand_l": [
+      5.08136,
+      12.91585,
+      6.94481
+    ],
+    "hand_r": [
+      5.08136,
+      -12.91585,
+      -6.94481
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.81848,
+      -6.69311,
+      1.70313
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.72605,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": -15,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": -15
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -15,
+      "pitch_deg": -15
+    }
+  },
+  "_library": {
+    "name": "Forward balance with rear leg raised",
+    "series": "full_standard",
+    "category_id": "bending",
+    "reference_pose_id": "full_single_P072",
+    "tags": [
+      "full_single_P072",
+      "P072"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "bones": {
+    "pelvis": [
+      18,
+      0,
+      0
+    ],
+    "spine_03": [
+      12,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      1.62446,
+      1.49327,
+      3.09233
+    ],
+    "upperarm_r": [
+      1.62446,
+      -1.49327,
+      -3.09233
+    ],
+    "lowerarm_l": [
+      -13.40188,
+      -56.70643,
+      -68.20556
+    ],
+    "lowerarm_r": [
+      -13.40188,
+      56.70643,
+      68.20556
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -7.873,
+      0.14828
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.48191,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Leaning forward",
+    "series": "full_standard",
+    "category_id": "bending",
+    "tags": [
+      "bending",
+      "hips"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

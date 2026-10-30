@@ -1,0 +1,76 @@
+{
+  "bones": {
+    "upperarm_l": [
+      -6.5567,
+      -3.69906,
+      -21.10703
+    ],
+    "upperarm_r": [
+      -6.5567,
+      3.69906,
+      21.10703
+    ],
+    "lowerarm_l": [
+      51.59528,
+      -2.9889,
+      -29.82299
+    ],
+    "lowerarm_r": [
+      51.59528,
+      2.9889,
+      29.82299
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.00677,
+      -1.94869
+    ]
+  },
+  "modelRotation": [
+    -90,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.40045,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 30,
+    "pitch_deg": -55,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": -55
+    },
+    "high": {
+      "yaw_deg": 0,
+      "pitch_deg": -80
+    },
+    "low": {
+      "yaw_deg": 0,
+      "pitch_deg": -15
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": 30,
+      "pitch_deg": -40
+    }
+  },
+  "_library": {
+    "name": "Lying with legs straight",
+    "series": "full_standard",
+    "category_id": "lying",
+    "tags": [
+      "lying",
+      "relaxed"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

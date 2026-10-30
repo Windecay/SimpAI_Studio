@@ -1,0 +1,79 @@
+{
+  "bones": {
+    "spine_01": [
+      15,
+      0,
+      0
+    ],
+    "thigh_l": [
+      -110,
+      0,
+      12
+    ],
+    "thigh_r": [
+      -110,
+      0,
+      -12
+    ],
+    "calf_l": [
+      145,
+      0,
+      0
+    ],
+    "calf_r": [
+      145,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -36.6429,
+      -32.76529,
+      -1.45432
+    ],
+    "upperarm_r": [
+      -36.6429,
+      32.76529,
+      1.45432
+    ],
+    "lowerarm_l": [
+      -52.29344,
+      -38.39829,
+      -18.1351
+    ],
+    "lowerarm_r": [
+      -52.29344,
+      38.39829,
+      18.1351
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -10.5378,
+      -1.0722
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 2.3452,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Balanced crouch",
+    "series": "full_standard",
+    "category_id": "crouching",
+    "tags": [
+      "crouching",
+      "forward"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

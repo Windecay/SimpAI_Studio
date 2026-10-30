@@ -1,0 +1,64 @@
+{
+  "bones": {
+    "thigh_l": [
+      -85,
+      0,
+      30
+    ],
+    "thigh_r": [
+      -85,
+      0,
+      -30
+    ],
+    "upperarm_l": [
+      -42.01285,
+      -30.05773,
+      -14.34689
+    ],
+    "upperarm_r": [
+      -42.01285,
+      30.05773,
+      14.34689
+    ],
+    "lowerarm_l": [
+      -18.75334,
+      -26.40031,
+      -13.65146
+    ],
+    "lowerarm_r": [
+      -18.75334,
+      26.40031,
+      13.65146
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -11.4467,
+      -2.10827
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.33321,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Floor sitting with legs apart",
+    "series": "full_standard",
+    "category_id": "floor_sitting",
+    "tags": [
+      "floor_sitting",
+      "forward"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

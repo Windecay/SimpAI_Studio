@@ -4,6 +4,9 @@
  * Extracted reusable 3D viewer logic.
  */
 
+import { preparePoseLineart, LINEART_VERTEX, LINEART_FRAGMENT } from './simpai_pose_lineart.js?v=20261029-1';
+export { libraryPoseCameraParams } from './simpai_pose_library_camera.js?v=20261029-1';
+
 // Determine the extension's base URL dynamically to support varied directory names
 const EXTENSION_URL = new URL(".", import.meta.url).toString();
 
@@ -930,6 +933,8 @@ export class PoseViewerCore {
         this.transform = null;
 
         this.skinnedMesh = null;
+        this.renderStyle = 'original';
+        this.renderStyleUniform = { value: 0 };
         this.skeleton = null;
         this.boneList = [];
         this.bones = {};
@@ -2608,14 +2613,38 @@ export class PoseViewerCore {
         const material = new THREE.MeshPhongMaterial({
             map: skinTex, color: 0xffffff, specular: 0x111111, shininess: 5, side: THREE.DoubleSide
         });
+        material.extensions = { derivatives: true };
+        const lineartUniforms = preparePoseLineart(THREE, geometry, this.boneList);
 
+        // Share the style uniform with posed snapshots and rebuilt body meshes.
         material.onBeforeCompile = (shader) => {
+            Object.assign(shader.uniforms, lineartUniforms);
+            shader.uniforms.poseRenderStyle = this.renderStyleUniform;
+            shader.vertexShader = LINEART_VERTEX + shader.vertexShader.replace('#include <begin_vertex>', `
+                #include <begin_vertex>
+                vPoseRestPosition = poseRestPosition;
+                vPoseLineRegion = poseLineRegion;
+            `).replace('#include <beginnormal_vertex>', `
+                #include <beginnormal_vertex>
+                if (poseRenderStyle == 2) {
+                    objectNormal = poseLineNormal;
+                }
+            `);
+            shader.fragmentShader = 'uniform int poseRenderStyle;\n' + LINEART_FRAGMENT + shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <dithering_fragment>',
                 `
                 #include <dithering_fragment>
-                float rim = 1.0 - abs(vNormal.z);
-                gl_FragColor.rgb *= (1.0 - pow(rim, 3.0) * 0.4);
+                if (poseRenderStyle == 0) {
+                    float rim = 1.0 - abs(vNormal.z);
+                    gl_FragColor.rgb *= (1.0 - pow(rim, 3.0) * 0.4);
+                } else if (poseRenderStyle == 1) {
+                    float keyLight = max(dot(normal, normalize(vec3(-0.5, 0.7, 1.0))), 0.0);
+                    float fillLight = max(dot(normal, normalize(vec3(0.8, 0.1, 0.5))), 0.0);
+                    gl_FragColor.rgb = vec3(0.72) * (0.4 + 0.45 * keyLight + 0.15 * fillLight);
+                } else {
+                    gl_FragColor.rgb = poseConstructionInk(normal, normalize(vViewPosition));
+                }
                 `
             );
         };
@@ -2830,6 +2859,14 @@ export class PoseViewerCore {
         this.updateBoneLengthScale('shin_l', this.boneLengthParams.shin_l ?? this.boneLengthParams.shin ?? this.boneLengthParams.leg ?? 0.5);
         this.updateBoneLengthScale('shin_r', this.boneLengthParams.shin_r ?? this.boneLengthParams.shin ?? this.boneLengthParams.leg ?? 0.5);
         this.updateBoneLengthScale('spine', this.boneLengthParams.spine ?? 0.5);
+    }
+
+    setRenderStyle(style) {
+        const styles = { original: 0, clay: 1, lineart: 2 };
+        this.renderStyle = Object.hasOwn(styles, style) ? style : 'original';
+        this.renderStyleUniform.value = styles[this.renderStyle];
+        this.requestRender();
+        return this.renderStyle;
     }
 
     setSkinTexture(skinType) {
@@ -4144,7 +4181,7 @@ export class PoseViewerCore {
 
             // Restore renderer
             this.renderer.setPixelRatio(oldPixelRatio);
-            this.renderer.setSize(originalSize.x, originalSize.y, true); // Update style back
+            this.renderer.setSize(originalSize.x, originalSize.y, false);
 
         } catch (e) {
             console.error("Capture failed:", e);

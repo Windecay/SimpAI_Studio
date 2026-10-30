@@ -1,0 +1,84 @@
+{
+  "bones": {
+    "spine_03": [
+      0,
+      20,
+      0
+    ],
+    "thigh_l": [
+      -85,
+      0,
+      0
+    ],
+    "thigh_r": [
+      -85,
+      0,
+      0
+    ],
+    "calf_l": [
+      85,
+      0,
+      0
+    ],
+    "calf_r": [
+      85,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -36.80788,
+      -7.62267,
+      -59.4543
+    ],
+    "upperarm_r": [
+      -9.99764,
+      5.83835,
+      21.04438
+    ],
+    "head": [
+      0,
+      15,
+      0
+    ],
+    "lowerarm_l": [
+      40.46802,
+      23.56098,
+      -15.67804
+    ],
+    "lowerarm_r": [
+      17.84554,
+      16.64202,
+      21.67045
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.00352,
+      -9.96054,
+      -1.12669
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.83297,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Seated looking aside",
+    "series": "full_standard",
+    "category_id": "sitting",
+    "tags": [
+      "sitting",
+      "lap"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

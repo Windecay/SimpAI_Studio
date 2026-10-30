@@ -8,6 +8,8 @@ HTTP Agent 可以通过 capabilities 返回的 `tool_index_url` 搜索简短索�
 
 用户保存的参数预设也通过动态工具发现：`simpai.parameter_profiles.list` 返回当前用户的名称、所属 preset 与选择引用，`simpai.parameter_profiles.get` 读取保存的模型、LoRA 和参数。用户要求先选择时，由 MCP 客户端展示列表并等待用户选择，再把选项中的 `selection` 合并到 `simpai.routes.preview` / `simpai.runs.submit` 请求。列表查询不会生成，也不会改变 Studio 浏览器的会话偏好。详细字段见 `docs/agent-api-v1.md` 的“用户参数预设查询与选择”。
 
+用户要求使用 LoRA 时，可在列表请求中设置 `include_lora_summary=true`，向用户说明保存的 LoRA、权重和启用状态。摘要的 `active` 只反映保存的开关与权重；文件是否就绪需要用选定组合查询 `simpai.models.status`。较长组合通过摘要的 `next_read` 调用 `simpai.parameter_profiles.get` 继续读取；列表还有后续页面时不能将当前页描述为完整列表。用户选择后沿用该项的 `selection` 预览和提交，不自行改变组合。若用户已经明确指定参数预设，读取并核对该预设即可。已连接的 MCP 适配器动态读取 Studio 工具 schema，无需因这项功能更换 MCP 小包；Studio 需加载更新后的服务。
+
 使用问题可调用 `simpai.help.search` 搜索界面帮助、预置包简介和工作流指南，调用 `simpai.help.read` 按需读取；长文档使用返回的 `next_read` 继续。两个工具只需要 `read` 权限，不加载模型或触发生成。帮助内容不能替代当前参数 schema、模型状态或用户授权。协议与示例见 `docs/agent-api-v1.md` 的“按需阅读使用帮助”。
 
 ## 从界面开始配置

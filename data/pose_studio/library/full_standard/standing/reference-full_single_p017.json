@@ -1,0 +1,119 @@
+{
+  "bones": {
+    "pelvis": [
+      0,
+      0,
+      4
+    ],
+    "spine_01": [
+      0,
+      0,
+      -4
+    ],
+    "thigh_l": [
+      -6.29585,
+      -0.6779,
+      -7.70624
+    ],
+    "thigh_r": [
+      14.70079,
+      -3.45866,
+      -11.01326
+    ],
+    "calf_l": [
+      -4.01056,
+      -0.11275,
+      -2.28699
+    ],
+    "calf_r": [
+      -12.33546,
+      1.73364,
+      -1.98472
+    ],
+    "neck_01": [
+      8,
+      -15,
+      5
+    ],
+    "upperarm_l": [
+      6.41073,
+      4.54598,
+      -17.11153
+    ],
+    "upperarm_r": [
+      -0.04445,
+      -0.30621,
+      20.38359
+    ],
+    "head": [
+      14,
+      -15,
+      8
+    ],
+    "lowerarm_l": [
+      27.26805,
+      -3.88449,
+      -18.7593
+    ],
+    "lowerarm_r": [
+      26.19004,
+      -4.78116,
+      14.03259
+    ],
+    "hand_l": [
+      4.32301,
+      11.09699,
+      6.11814
+    ],
+    "hand_r": [
+      11.26299,
+      -10.46611,
+      -1.97453
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.26615,
+      -8.27483,
+      0.16129
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.48397,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": -90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -35,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Look over shoulder",
+    "series": "full_standard",
+    "category_id": "standing",
+    "reference_pose_id": "full_single_P017",
+    "tags": [
+      "full_single_P017",
+      "P017"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

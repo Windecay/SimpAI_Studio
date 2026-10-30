@@ -1,0 +1,114 @@
+{
+  "bones": {
+    "spine_01": [
+      75,
+      0,
+      0
+    ],
+    "spine_03": [
+      5,
+      0,
+      0
+    ],
+    "thigh_l": [
+      5.05665,
+      0.43701,
+      0.7245
+    ],
+    "thigh_r": [
+      5.05665,
+      -0.43701,
+      -0.7245
+    ],
+    "calf_l": [
+      -10.73569,
+      -0.26298,
+      -4.47799
+    ],
+    "calf_r": [
+      -10.73569,
+      0.26298,
+      4.47799
+    ],
+    "upperarm_l": [
+      -85.03508,
+      -30.75059,
+      -50.6244
+    ],
+    "upperarm_r": [
+      -85.03508,
+      30.75059,
+      50.6244
+    ],
+    "head": [
+      20,
+      0,
+      0
+    ],
+    "lowerarm_l": [
+      37.77044,
+      27.89874,
+      -12.47167
+    ],
+    "lowerarm_r": [
+      37.77044,
+      -27.89874,
+      12.47167
+    ],
+    "hand_l": [
+      -5.09985,
+      13.99475,
+      14.02522
+    ],
+    "hand_r": [
+      -5.09985,
+      -13.99475,
+      -14.02522
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -5.78449,
+      -1.78605
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 2.14516,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": 25,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Standing forward bend with arms hanging",
+    "series": "full_standard",
+    "category_id": "bending",
+    "reference_pose_id": "full_single_P071",
+    "tags": [
+      "full_single_P071",
+      "P071"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

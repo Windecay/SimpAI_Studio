@@ -1,0 +1,124 @@
+{
+  "bones": {
+    "spine_01": [
+      -6,
+      0,
+      0
+    ],
+    "spine_03": [
+      -5,
+      0,
+      0
+    ],
+    "thigh_l": [
+      5.07402,
+      0.13474,
+      -1.54099
+    ],
+    "thigh_r": [
+      5.07402,
+      -0.13474,
+      1.54099
+    ],
+    "calf_l": [
+      -10.72152,
+      -0.70208,
+      -2.22695
+    ],
+    "calf_r": [
+      -10.72152,
+      0.70208,
+      2.22695
+    ],
+    "foot_l": [
+      40.86428,
+      2.41147,
+      -1.03797
+    ],
+    "foot_r": [
+      40.86428,
+      -2.41147,
+      1.03797
+    ],
+    "upperarm_l": [
+      1.38376,
+      9.0681,
+      92.8464
+    ],
+    "upperarm_r": [
+      1.38376,
+      -9.0681,
+      -92.8464
+    ],
+    "head": [
+      -12,
+      0,
+      0
+    ],
+    "lowerarm_l": [
+      37.77044,
+      27.89874,
+      -12.47167
+    ],
+    "lowerarm_r": [
+      37.77044,
+      -27.89874,
+      12.47167
+    ],
+    "hand_l": [
+      51.76793,
+      -9.6205,
+      81.34482
+    ],
+    "hand_r": [
+      -6.51602,
+      -64.9242,
+      62.62926
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.00876,
+      -8.34747,
+      1.12388
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.28213,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": -90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -25,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Standing with arms raised wide",
+    "series": "full_standard",
+    "category_id": "standing",
+    "reference_pose_id": "full_single_P030",
+    "tags": [
+      "full_single_P030",
+      "P030"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

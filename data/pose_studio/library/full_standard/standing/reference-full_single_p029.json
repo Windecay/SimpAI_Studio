@@ -1,0 +1,124 @@
+{
+  "bones": {
+    "pelvis": [
+      0,
+      0,
+      -3
+    ],
+    "spine_01": [
+      0,
+      0,
+      3
+    ],
+    "thigh_l": [
+      -8.85091,
+      -0.47468,
+      10.16107
+    ],
+    "thigh_r": [
+      -6.24383,
+      0.58746,
+      5.03825
+    ],
+    "calf_l": [
+      0.2563,
+      0.47146,
+      -4.57516
+    ],
+    "calf_r": [
+      4.51749,
+      -0.71326,
+      4.04828
+    ],
+    "foot_l": [
+      6.84587,
+      -2.42038,
+      -1.36839
+    ],
+    "foot_r": [
+      -0.18543,
+      -0.12924,
+      -0.07642
+    ],
+    "upperarm_l": [
+      3.15228,
+      30.18241,
+      88.14102
+    ],
+    "upperarm_r": [
+      16.6762,
+      -18.82045,
+      -13.71665
+    ],
+    "head": [
+      0,
+      0,
+      5
+    ],
+    "lowerarm_l": [
+      -79.01338,
+      6.21097,
+      111.55937
+    ],
+    "lowerarm_r": [
+      -51.85181,
+      58.18816,
+      101.01129
+    ],
+    "hand_l": [
+      -88.63974,
+      -23.67764,
+      70.80072
+    ],
+    "hand_r": [
+      -44.69184,
+      8.49163,
+      -18.03094
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.09862,
+      -8.31639,
+      -0.0473
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.44656,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -35,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Hand behind head",
+    "series": "full_standard",
+    "category_id": "standing",
+    "reference_pose_id": "full_single_P029",
+    "tags": [
+      "full_single_P029",
+      "P029"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

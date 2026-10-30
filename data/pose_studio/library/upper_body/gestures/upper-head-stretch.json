@@ -1,0 +1,54 @@
+{
+  "bones": {
+    "upperarm_l": [
+      2.0314,
+      -33.82453,
+      98.36695
+    ],
+    "upperarm_r": [
+      2.0314,
+      33.82453,
+      -98.36695
+    ],
+    "lowerarm_l": [
+      -57.4712,
+      -4.47484,
+      60.81228
+    ],
+    "lowerarm_r": [
+      -57.4712,
+      4.47484,
+      -60.81228
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.53362,
+      0.33298
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 2.89398,
+    "offset_x": 0,
+    "offset_y": -3.72864,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Arms around head",
+    "series": "upper_body",
+    "category_id": "gestures",
+    "tags": [
+      "gestures",
+      "head"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

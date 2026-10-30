@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
 from modules.agent_service import AgentAPIError, AgentContext
-from modules import agent_help, vlm_skill_runtime, vlm_tool_runtime
+from modules import agent_help, agent_lora_intent, vlm_skill_runtime, vlm_tool_runtime
 
 
 logger = logging.getLogger(__name__)
@@ -289,6 +289,50 @@ def _bounded_result(result, budget):
     return shortened
 
 
+def _lora_profile_notice(data, lang):
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        return ""
+    chinese = lang == "cn"
+    rows = data["items"]
+    if not rows:
+        return ("当前身份没有找到已保存的参数预设，可以先在界面保存包含 LoRA 的组合。"
+                if chinese else "No saved parameter profiles were found for this identity. Save a LoRA combination first.")
+
+    def clean(value):
+        return re.sub(r"[\x00-\x1f\x7f]+", " ", str(value or "")).strip()
+
+    lines = ["已保存的参数预设：" if chinese else "Saved parameter profiles:"]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        summary = row.get("lora_summary") if isinstance(row.get("lora_summary"), dict) else {}
+        title = f"{clean(row.get('name'))} ({clean(row.get('preset_id'))})"
+        if summary.get("error") or "total" not in summary:
+            detail = "LoRA 组合读取失败" if chinese else "LoRA details are unavailable"
+        else:
+            descriptions = []
+            for item in summary.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                state = (("启用" if item.get("active") else "启用但权重为零")
+                         if item.get("enabled") else "已禁用") if chinese else (
+                    ("enabled" if item.get("active") else "enabled, zero weight")
+                    if item.get("enabled") else "disabled")
+                if item.get("source") == "slot":
+                    weight = f"weight={item.get('weight')}"
+                else:
+                    weight = f"MODEL={item.get('strength_model')}, CLIP={item.get('strength_clip')}"
+                descriptions.append(f"{clean(item.get('model'))} ({weight}, {state})")
+            detail = "; ".join(descriptions) if descriptions else ("未保存 LoRA" if chinese else "no saved LoRA")
+            if summary.get("has_more"):
+                remaining = max(0, int(summary.get("total") or 0) - len(summary.get("items") or []))
+                detail += f"；另有 {remaining} 项" if chinese else f"; {remaining} more"
+        lines.append(f"- {title}: {detail}")
+    if data.get("has_more"):
+        lines.append("还有其他参数预设，可继续查询。" if chinese else "More saved profiles are available.")
+    return "\n".join(lines)
+
+
 def _structured_final_reply(text):
     """The existing creative/guide final envelope remains valid after progress."""
     text = str(text or "").strip()
@@ -364,6 +408,11 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
         principal = context["agent_api_context"]
         lang = (principal.state.get("__lang") if isinstance(principal, AgentContext) else payload.get("lang")) or "en"
         help_topic = agent_help.usage_topic(payload.get("message") or original_prompt, lang)
+    lora_request = (
+        str(payload.get("chat_mode") or original_params.get("describe_chat_mode") or "").lower() == "creative"
+        and agent_lora_intent.requests_lora(payload.get("message") or original_prompt)
+        and "simpai.parameter_profiles.list" in context["allowed_tool_names"]
+    )
     transcript, trace, completed, messages = [], [], {}, []
     discovered_profiles = {}
     rounds = 0
@@ -464,11 +513,28 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
         "explicitly names a different application. Read the relevant help before giving UI steps. "
         "A feature need not be a preset: also inspect help about shared editors and libraries. "
     )
+    lora_contract = (
+        "The user asked to use or choose LoRA. Read the saved profile summaries returned by the runtime. "
+        "Tell the user the profile names, saved LoRA names, weights and enabled/active states. "
+        "Those states reflect saved settings, not file availability or successful loading; "
+        "check simpai.models.status with the selected profile when readiness matters. "
+        "Follow pagination when more results are needed and never present a partial list as complete. "
+        "Use simpai.parameter_profiles.get with section=loras and next_read for longer combinations. "
+        "If nothing suitable is saved, say so and ask the user to save or choose a combination; "
+        "do not invent LoRAs, weights or compatibility. A list alone is not a request to generate. "
+        "For a creative task with no explicitly selected profile, preserve the task and media, "
+        "set parameter_profile_selection_required=true and wait for the user's choice, even with automatic generation. "
+        "The runtime may already display the returned profile summary; do not repeat that message. "
+        "If a query fails or is incomplete, say the search is incomplete, not that no profiles exist. "
+        "Do not change session preferences. A user-named saved profile may be used after verification. "
+        if lora_request else ""
+    )
     contract = (
         "Studio tool runtime: you may query current facts before answering. "
         'To call tools, return ONLY {"tool_calls":[{"name":"exact tool name","arguments":{}}]}. '
         f"{call_id_contract}"
         f"{product_help_contract}"
+        f"{lora_contract}"
         "Answer directly when no tool is needed; reading an attached image or rewriting its description "
         "does not by itself require a tool call. "
         "Do not mix a reply or actions with tool_calls. Read returned results, then continue querying or give the final reply "
@@ -511,6 +577,7 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
             'to query; use vlm.tool_schema for schemas. Read results and continue until the task is complete. '
             f"{call_id_contract}"
             f"{product_help_contract}"
+            f"{lora_contract}"
             "Answer directly when no tool is needed. "
             'For separate visible replies, send {"assistant_message":{"text":"next message","continue":true}}; '
             'use continue=false for the final reply. Do not repeat delivered messages. '
@@ -551,6 +618,7 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
                 f"{call_id_contract}"
                 f"{model_identity_contract}"
                 f"{product_help_contract}"
+                f"{lora_contract}"
                 'When the user requests multiple separate replies, you MUST return {"assistant_message":{"text":"next message","continue":true}} '
                 "for each non-final message. Only text is shown to the user; the envelope is invisible runtime control, "
                 "so it does not violate a request for no explanations or JSON. Use continue=false for the last message. "
@@ -611,7 +679,13 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
                 "enable_prompt_review": False, "enable_danbooru_review": False,
             }}
             try:
-                if rounds == 1 and help_topic:
+                if rounds == 1 and lora_request:
+                    log_step("lora_profiles_requested", origin="runtime")
+                    result = {"ok": True, "text": _json({"tool_calls": [{
+                        "id": "runtime-lora-profiles", "name": "simpai.parameter_profiles.list",
+                        "arguments": {"include_lora_summary": True, "limit": 3},
+                    }]})}
+                elif rounds == 1 and help_topic:
                     # Metadata names the document; the regular read-only tool
                     # enforces identity, scope, paging, cancellation and limits.
                     log_step("help_requested", document_id=help_topic, origin="runtime")
@@ -645,7 +719,7 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
             # boundaries; a tool request must not become part of visible prose.
             native = result.get("harness_output_messages")
             blocks = [item.strip() for item in native if isinstance(item, str) and item.strip()] if isinstance(native, list) else []
-            if not (rounds == 1 and help_topic):
+            if not (rounds == 1 and (lora_request or help_topic)):
                 log_step("model_returned", response_chars=len(text), native_messages=len(blocks),
                          response_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest())
             message, calls, prelude = None, None, []
@@ -833,6 +907,12 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
                 transcript.append({"tool_call": {**call, "id": call_id},
                                    "tool_result": _bounded_result(output.get("result", output), limits.result_chars),
                                    **({"cached": True} if cached else {})})
+                if call_id == "runtime-lora-profiles" and output.get("ok"):
+                    principal = context.get("agent_api_context")
+                    lang = principal.state.get("__lang") if isinstance(principal, AgentContext) else payload.get("lang")
+                    notice = _lora_profile_notice(output.get("result", {}).get("data"), lang or "en")
+                    if notice:
+                        deliver(notice)
                 emit("agent_tool_finished", name=name, round=rounds, ok=bool(output.get("ok")))
         raise HarnessStopped("harness_step_limit")
     except (HarnessStopped, AgentAPIError) as exc:

@@ -1,0 +1,119 @@
+{
+  "bones": {
+    "pelvis": [
+      0,
+      0,
+      -4
+    ],
+    "spine_01": [
+      0,
+      0,
+      7
+    ],
+    "spine_03": [
+      0,
+      0,
+      6
+    ],
+    "thigh_l": [
+      1.77615,
+      1.90457,
+      16.76207
+    ],
+    "thigh_r": [
+      2.21504,
+      0.32492,
+      4.3677
+    ],
+    "calf_l": [
+      -5.52617,
+      0.84058,
+      -9.59598
+    ],
+    "calf_r": [
+      -5.6123,
+      -0.24369,
+      5.59326
+    ],
+    "neck_01": [
+      0,
+      0,
+      6
+    ],
+    "upperarm_l": [
+      1.07526,
+      1.4628,
+      127.6557
+    ],
+    "upperarm_r": [
+      18.92454,
+      -22.46825,
+      -16.75492
+    ],
+    "lowerarm_l": [
+      37.77044,
+      27.89874,
+      -12.47167
+    ],
+    "lowerarm_r": [
+      -68.29079,
+      54.22635,
+      109.99545
+    ],
+    "hand_l": [
+      -4.30045,
+      7.81104,
+      8.60279
+    ],
+    "hand_r": [
+      -39.70969,
+      1.33039,
+      -24.77409
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.16123,
+      -9.62117,
+      0.43859
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.22604,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": -90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -35,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "One arm raised, hand on hip",
+    "series": "full_standard",
+    "category_id": "standing",
+    "reference_pose_id": "full_single_P026",
+    "tags": [
+      "full_single_P026",
+      "P026"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

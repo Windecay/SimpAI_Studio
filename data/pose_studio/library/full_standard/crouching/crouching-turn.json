@@ -1,0 +1,84 @@
+{
+  "bones": {
+    "spine_01": [
+      15,
+      0,
+      0
+    ],
+    "spine_03": [
+      0,
+      25,
+      0
+    ],
+    "thigh_l": [
+      -110,
+      0,
+      12
+    ],
+    "thigh_r": [
+      -110,
+      0,
+      -12
+    ],
+    "calf_l": [
+      145,
+      0,
+      0
+    ],
+    "calf_r": [
+      145,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -46.1112,
+      -18.72655,
+      -40.9953
+    ],
+    "upperarm_r": [
+      4.60079,
+      -2.73988,
+      32.3268
+    ],
+    "lowerarm_l": [
+      -77.45404,
+      -50.19248,
+      -105.50352
+    ],
+    "lowerarm_r": [
+      -108.0538,
+      38.51212,
+      99.24201
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -10.54209,
+      -0.56451
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 2.31657,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Turning crouch",
+    "series": "full_standard",
+    "category_id": "crouching",
+    "tags": [
+      "crouching",
+      "clasped"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

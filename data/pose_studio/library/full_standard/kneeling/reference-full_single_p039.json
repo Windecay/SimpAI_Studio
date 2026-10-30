@@ -1,0 +1,124 @@
+{
+  "bones": {
+    "spine_01": [
+      -10,
+      0,
+      0
+    ],
+    "spine_03": [
+      -10,
+      0,
+      0
+    ],
+    "thigh_l": [
+      -21.45408,
+      -1.21203,
+      -2.17752
+    ],
+    "thigh_r": [
+      -21.45408,
+      1.21203,
+      2.17752
+    ],
+    "calf_l": [
+      94.23994,
+      28.56784,
+      19.11063
+    ],
+    "calf_r": [
+      94.23994,
+      -28.56784,
+      -19.11063
+    ],
+    "foot_l": [
+      80,
+      0,
+      0
+    ],
+    "foot_r": [
+      80,
+      0,
+      0
+    ],
+    "neck_01": [
+      -15,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      9.5546,
+      11.06036,
+      15.88296
+    ],
+    "upperarm_r": [
+      9.5546,
+      -11.06036,
+      -15.88296
+    ],
+    "lowerarm_l": [
+      -48.01019,
+      -60.94458,
+      -106.9311
+    ],
+    "lowerarm_r": [
+      -48.01019,
+      60.94458,
+      106.9311
+    ],
+    "hand_l": [
+      -38.37225,
+      4.18401,
+      31.01889
+    ],
+    "hand_r": [
+      -38.37225,
+      -4.18401,
+      -31.01889
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -10.22313,
+      1.33173
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.9998,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -35,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Kneeling backbend, hands on hips",
+    "series": "full_standard",
+    "category_id": "kneeling",
+    "reference_pose_id": "full_single_P039",
+    "tags": [
+      "full_single_P039",
+      "P039"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

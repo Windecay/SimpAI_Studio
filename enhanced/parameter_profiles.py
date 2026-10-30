@@ -1082,11 +1082,11 @@ def list_agent_profile_capabilities(context: Any = None, preset_names: Any = Non
         capability = _profile_capability(entry)
         if allowed and capability["preset"].casefold() not in allowed:
             continue
-        key = (capability["preset"].casefold(), capability["name"].casefold())
+        key = (capability["preset"].casefold(), capability["name"])
         if key in seen:
             continue
         seen.add(key)
-        result.append(capability)
+        result.append({**capability, "fingerprint": _profile_fingerprint(entry)})
     return result
 
 
@@ -1115,9 +1115,10 @@ def _profile_fingerprint(entry: dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
-def list_agent_profiles(context: Any = None, preset_names: Any = None) -> list[dict[str, Any]]:
+def list_agent_profiles(context: Any = None, preset_names: Any = None, *, include_metadata: bool = False) -> list[dict[str, Any]]:
     allowed = {_clean_name(name).casefold() for name in (preset_names or [])}
-    return [{**_profile_capability(entry), "fingerprint": _profile_fingerprint(entry)}
+    return [{**_profile_capability(entry), "fingerprint": _profile_fingerprint(entry),
+             **({"_metadata": entry["metadata"]} if include_metadata else {})}
             for entry in _all_user_profile_payloads(context)
             if entry["preset_name"].casefold() in allowed]
 

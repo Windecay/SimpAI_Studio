@@ -1,0 +1,89 @@
+{
+  "bones": {
+    "thigh_l": [
+      0,
+      0,
+      5
+    ],
+    "thigh_r": [
+      0,
+      0,
+      -5
+    ],
+    "upperarm_l": [
+      19.82057,
+      19.36298,
+      4.7558
+    ],
+    "upperarm_r": [
+      19.82057,
+      -19.36298,
+      -4.7558
+    ],
+    "lowerarm_l": [
+      -25.77684,
+      -57.00936,
+      -74.63092
+    ],
+    "lowerarm_r": [
+      -25.77684,
+      57.00936,
+      74.63092
+    ],
+    "hand_l": [
+      -45.28325,
+      -17.25076,
+      1.48571
+    ],
+    "hand_r": [
+      -45.28325,
+      17.25076,
+      -1.48571
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -8.31293,
+      0.4669
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.44861,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -30,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Standing with hands on hips",
+    "series": "full_standard",
+    "category_id": "standing",
+    "reference_pose_id": "full_single_P025",
+    "tags": [
+      "full_single_P025",
+      "P025"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

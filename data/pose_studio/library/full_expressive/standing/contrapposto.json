@@ -1,0 +1,69 @@
+{
+  "bones": {
+    "pelvis": [
+      0,
+      0,
+      8
+    ],
+    "spine_01": [
+      0,
+      0,
+      -8
+    ],
+    "thigh_l": [
+      0,
+      0,
+      10
+    ],
+    "upperarm_l": [
+      -8.04282,
+      -7.44114,
+      0.97092
+    ],
+    "upperarm_r": [
+      -6.74453,
+      3.75773,
+      21.71016
+    ],
+    "lowerarm_l": [
+      20.65796,
+      -54.4598,
+      -55.43772
+    ],
+    "lowerarm_r": [
+      51.83176,
+      3.97316,
+      30.2124
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.89343,
+      -8.19864,
+      0.33298
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.43697,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "_library": {
+    "name": "Weight-shift stance",
+    "series": "full_expressive",
+    "category_id": "standing",
+    "tags": [
+      "standing",
+      "oneHip"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

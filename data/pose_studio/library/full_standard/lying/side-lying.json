@@ -1,0 +1,96 @@
+{
+  "bones": {
+    "thigh_l": [
+      -65,
+      0,
+      0
+    ],
+    "thigh_r": [
+      -35,
+      0,
+      0
+    ],
+    "calf_l": [
+      110,
+      0,
+      0
+    ],
+    "calf_r": [
+      75,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -50.22906,
+      -32.25834,
+      -20.86382
+    ],
+    "upperarm_r": [
+      2.0314,
+      33.82453,
+      -98.36695
+    ],
+    "lowerarm_l": [
+      -20.975,
+      -28.85678,
+      -15.99105
+    ],
+    "lowerarm_r": [
+      -57.4712,
+      4.47484,
+      -60.81228
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      1.50289,
+      -8.76067,
+      -1.95153
+    ]
+  },
+  "modelRotation": [
+    -90,
+    90,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.46302,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 30,
+    "pitch_deg": -55,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": -55
+    },
+    "high": {
+      "yaw_deg": 0,
+      "pitch_deg": -80
+    },
+    "low": {
+      "yaw_deg": 0,
+      "pitch_deg": -15
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": 30,
+      "pitch_deg": -40
+    }
+  },
+  "_library": {
+    "name": "Side lying",
+    "series": "full_standard",
+    "category_id": "lying",
+    "tags": [
+      "lying",
+      "sideRest"
+    ],
+    "origin": "SimpAI procedural poses"
+  }
+}

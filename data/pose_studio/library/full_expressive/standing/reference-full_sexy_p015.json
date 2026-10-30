@@ -1,0 +1,279 @@
+{
+  "bones": {
+    "pelvis": [
+      8,
+      0,
+      -7
+    ],
+    "spine_01": [
+      -16,
+      0,
+      18
+    ],
+    "spine_03": [
+      -8,
+      0,
+      0
+    ],
+    "thigh_l": [
+      -4.78227,
+      -0.64988,
+      2.87072
+    ],
+    "thigh_r": [
+      -23.58555,
+      -3.8735,
+      22.43751
+    ],
+    "calf_l": [
+      -10.3979,
+      -1.15302,
+      1.44572
+    ],
+    "calf_r": [
+      12.65558,
+      -4.48877,
+      -29.19357
+    ],
+    "foot_r": [
+      24.54699,
+      13.80827,
+      3.78891
+    ],
+    "upperarm_l": [
+      2.07912,
+      1.88051,
+      11.55579
+    ],
+    "upperarm_r": [
+      4.43017,
+      -4.6289,
+      -16.45977
+    ],
+    "head": [
+      18,
+      0,
+      -22
+    ],
+    "lowerarm_l": [
+      -31.72899,
+      -64.47309,
+      -90.16988
+    ],
+    "lowerarm_r": [
+      -59.98784,
+      50.28886,
+      117.26122
+    ],
+    "hand_l": [
+      -40.81248,
+      -0.7447,
+      28.05786
+    ],
+    "hand_r": [
+      -43.2682,
+      -22.03159,
+      -43.68425
+    ],
+    "index_01_l": [
+      4,
+      0,
+      0
+    ],
+    "index_01_r": [
+      4,
+      0,
+      0
+    ],
+    "index_02_l": [
+      14,
+      0,
+      0
+    ],
+    "index_02_r": [
+      14,
+      0,
+      0
+    ],
+    "index_03_l": [
+      8,
+      0,
+      0
+    ],
+    "index_03_r": [
+      8,
+      0,
+      0
+    ],
+    "middle_01_l": [
+      4,
+      0,
+      0
+    ],
+    "middle_01_r": [
+      4,
+      0,
+      0
+    ],
+    "middle_02_l": [
+      14,
+      0,
+      0
+    ],
+    "middle_02_r": [
+      14,
+      0,
+      0
+    ],
+    "middle_03_l": [
+      8,
+      0,
+      0
+    ],
+    "middle_03_r": [
+      8,
+      0,
+      0
+    ],
+    "pinky_01_l": [
+      4,
+      0,
+      0
+    ],
+    "pinky_01_r": [
+      4,
+      0,
+      0
+    ],
+    "pinky_02_l": [
+      14,
+      0,
+      0
+    ],
+    "pinky_02_r": [
+      14,
+      0,
+      0
+    ],
+    "pinky_03_l": [
+      8,
+      0,
+      0
+    ],
+    "pinky_03_r": [
+      8,
+      0,
+      0
+    ],
+    "ring_01_l": [
+      4,
+      0,
+      0
+    ],
+    "ring_01_r": [
+      4,
+      0,
+      0
+    ],
+    "ring_02_l": [
+      14,
+      0,
+      0
+    ],
+    "ring_02_r": [
+      14,
+      0,
+      0
+    ],
+    "ring_03_l": [
+      8,
+      0,
+      0
+    ],
+    "ring_03_r": [
+      8,
+      0,
+      0
+    ],
+    "thumb_02_l": [
+      8,
+      0,
+      0
+    ],
+    "thumb_02_r": [
+      8,
+      0,
+      0
+    ],
+    "thumb_03_l": [
+      8,
+      0,
+      0
+    ],
+    "thumb_03_r": [
+      8,
+      0,
+      0
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.01513,
+      -8.21849,
+      0.60462
+    ]
+  },
+  "boneLengthParams": {
+    "shoulder_l": 0.5,
+    "shoulder_r": 0.5,
+    "hip_l": 0.5,
+    "hip_r": 0.5,
+    "upper_arm_l": 0.5,
+    "upper_arm_r": 0.5,
+    "forearm_l": 0.5,
+    "forearm_r": 0.5,
+    "thigh_l": 0.5,
+    "thigh_r": 0.5,
+    "shin_l": 0.5,
+    "shin_r": 0.5,
+    "spine": 0.5
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.46512,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": -60,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": 35,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Hands on hips with inward knee",
+    "series": "full_expressive",
+    "category_id": "standing",
+    "reference_pose_id": "full_sexy_P015",
+    "tags": [
+      "full_sexy_P015",
+      "P015"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

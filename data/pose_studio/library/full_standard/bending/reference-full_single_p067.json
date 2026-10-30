@@ -1,0 +1,119 @@
+{
+  "bones": {
+    "spine_01": [
+      50,
+      0,
+      0
+    ],
+    "thigh_l": [
+      -35,
+      0,
+      -3
+    ],
+    "thigh_r": [
+      -35,
+      0,
+      3
+    ],
+    "calf_l": [
+      35,
+      0,
+      0
+    ],
+    "calf_r": [
+      35,
+      0,
+      0
+    ],
+    "foot_l": [
+      -5.36018,
+      0.43269,
+      0.46857
+    ],
+    "foot_r": [
+      -5.36018,
+      -0.43269,
+      -0.46857
+    ],
+    "upperarm_l": [
+      -60.79159,
+      -23.17071,
+      -45.1176
+    ],
+    "upperarm_r": [
+      -60.79159,
+      23.17071,
+      45.1176
+    ],
+    "head": [
+      -20,
+      0,
+      0
+    ],
+    "lowerarm_l": [
+      40.17575,
+      23.67638,
+      -15.44984
+    ],
+    "lowerarm_r": [
+      40.17575,
+      -23.67638,
+      15.44984
+    ],
+    "hand_l": [
+      -9.1276,
+      10.19851,
+      13.6027
+    ],
+    "hand_r": [
+      -9.1276,
+      -10.19851,
+      -13.6027
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -7.58734,
+      -1.34059
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.78991,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -30,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Forward bend with hands on knees",
+    "series": "full_standard",
+    "category_id": "bending",
+    "reference_pose_id": "full_single_P067",
+    "tags": [
+      "full_single_P067",
+      "P067"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

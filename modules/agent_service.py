@@ -129,9 +129,10 @@ class StudioBackend:
     def _profile_context(context):
         return {**context.state, "user_did": context.user_id, "__user_did": context.user_id}
 
-    def parameter_profiles(self, preset_names, context):
+    def parameter_profiles(self, preset_names, context, *, include_metadata=False):
         from enhanced import parameter_profiles
-        return parameter_profiles.list_agent_profiles(self._profile_context(context), preset_names)
+        return parameter_profiles.list_agent_profiles(self._profile_context(context), preset_names,
+                                                      include_metadata=include_metadata)
 
     def parameter_profile(self, preset_id, name, context):
         from enhanced import parameter_profiles
@@ -767,10 +768,23 @@ class AgentService:
     def parameter_profiles(self, request, context):
         catalog = self._catalog(context)
         names = [self._entry(request.preset_id, context, catalog)["name"]] if request.preset_id else list(catalog)
-        rows = self.backend.parameter_profiles(names, context)
-        rows = [self._public_profile(row) for row in rows
-                if request.query.casefold() in row.get("name", "").casefold()]
-        return {"items": rows[request.offset:request.offset + request.limit], "total": len(rows),
+        rows = self.backend.parameter_profiles(names, context, include_metadata=True) if request.include_lora_summary else (
+            self.backend.parameter_profiles(names, context))
+        rows = [row for row in rows if request.query.casefold() in row.get("name", "").casefold()]
+        items = []
+        for row in rows[request.offset:request.offset + request.limit]:
+            public = self._public_profile({key: value for key, value in row.items() if key != "_metadata"})
+            if request.include_lora_summary:
+                try:
+                    models = self._public_profile_models(row.get("_metadata") or {})
+                    loras = self._profile_lora_items(models)
+                    public["lora_summary"] = self._profile_lora_page(public, loras, 0, 3)
+                    if "base_model" in models:
+                        public["lora_summary"]["base_model"] = models["base_model"]
+                except AgentAPIError:
+                    public["lora_summary"] = {"error": "parameter_profile_invalid", "items": []}
+            items.append(public)
+        return {"items": items, "total": len(rows),
                 "offset": request.offset, "limit": request.limit,
                 "has_more": request.offset + request.limit < len(rows), "scope": "user",
                 "generation_started": False}
@@ -786,7 +800,7 @@ class AgentService:
         return snapshot
 
     @staticmethod
-    def _public_profile_settings(metadata):
+    def _public_profile_models(metadata):
         from enhanced import parameter_profiles as profiles
         from modules import lora_stack
         def model_name(value):
@@ -801,6 +815,12 @@ class AgentService:
             raise AgentAPIError("parameter_profile_invalid", "The saved LoRA stack is invalid.", 409) from None
         models["lora_stack"] = [{**row, "model": model_name(row["model"])} for row in stack]
         models["lora_stack_target"] = metadata.get("lora_stack_target") or "auto"
+        return models
+
+    @classmethod
+    def _public_profile_settings(cls, metadata):
+        from enhanced import parameter_profiles as profiles
+        models = cls._public_profile_models(metadata)
         return {"models": models,
                 "parameters": {key: copy.deepcopy(metadata[key]) for key in profiles._CANVAS_PROFILE_PARAM_KEYS if key in metadata},
                 "generation": {target: copy.deepcopy(metadata[source]) for source, target in profiles._CANVAS_PROFILE_GENERATION_KEYS.items() if source in metadata},
@@ -808,10 +828,43 @@ class AgentService:
                 "styles": copy.deepcopy(metadata.get("styles") or []),
                 **({"seed": metadata["seed"]} if "seed" in metadata else {})}
 
+    @staticmethod
+    def _profile_lora_items(models):
+        from modules import lora_stack
+        items = []
+        for row in models.get("loras") or []:
+            if str(row.get("model") or "").casefold() in {"", "none", lora_stack.PLACEHOLDER_LORA_NAME.casefold()}:
+                continue
+            items.append({"source": "slot", **row,
+                          "active": bool(row.get("enabled") and row.get("weight") != 0)})
+        for row in models.get("lora_stack") or []:
+            if str(row.get("model") or "").casefold() in {"", "none", lora_stack.PLACEHOLDER_LORA_NAME.casefold()}:
+                continue
+            items.append({"source": "stack", **row, "active": lora_stack._active(row)})
+        return items
+
+    @staticmethod
+    def _profile_lora_page(profile, items, offset, limit):
+        end = min(len(items), offset + limit)
+        has_more = end < len(items)
+        next_read = ({"preset_id": profile["preset_id"], "name": profile["name"], "section": "loras",
+                      "lora_offset": end, "lora_limit": limit,
+                      "expected_fingerprint": profile["fingerprint"]} if has_more else None)
+        return {"items": items[offset:end], "total": len(items),
+                "active_count": sum(1 for item in items if item["active"]),
+                "offset": offset, "limit": limit, "has_more": has_more, "next_read": next_read}
+
     def parameter_profile(self, request, context):
         entry = self._entry(request.preset_id, context)
-        snapshot = self._profile_snapshot(entry["name"], request.name, context)
-        return {**self._public_profile(snapshot["profile"]), "settings": self._public_profile_settings(snapshot["metadata"])}
+        snapshot = self._profile_snapshot(entry["name"], request.name, context, request.expected_fingerprint)
+        profile = self._public_profile(snapshot["profile"])
+        if request.section == "loras":
+            models = self._public_profile_models(snapshot["metadata"])
+            result = self._profile_lora_page(profile, self._profile_lora_items(models), request.lora_offset, request.lora_limit)
+            return {**profile, "lora_summary": {**result,
+                    "base_model": models.get("base_model", ""),
+                    "lora_stack_target": models["lora_stack_target"]}}
+        return {**profile, "settings": self._public_profile_settings(snapshot["metadata"])}
 
     def _apply_profile(self, node, request, context, profile=None):
         name = getattr(request, "parameter_profile", "")
@@ -1103,7 +1156,8 @@ class AgentService:
                 task_request["task"] = declared_tasks[0]
         plan = chat.compile_creative_execution_plan(task_request, capabilities, manifest, preferred_preset=request.preset_id,
                                                     user_message=request.instruction, infer_task=not bool(request.task),
-                                                    honor_user_preset_selection=not bool(request.preset_id))
+                                                    honor_user_preset_selection=not bool(request.preset_id),
+                                                    honor_lora_intent=False)
         if not plan.get("preset"):
             raise AgentAPIError("no_compatible_preset", "No available preset supports this task and these input types/counts.", 409, {"task": plan.get("task")})
         # Probe candidates until a ready route is found, without invoking a VLM.
@@ -1151,7 +1205,8 @@ class AgentService:
                 if capability["name"] == entry["name"]:
                     capability["model_status"] = "missing"
             next_plan = chat.compile_creative_execution_plan(task_request, capabilities, manifest,
-                                                             user_message=request.instruction, infer_task=not bool(request.task))
+                                                             user_message=request.instruction, infer_task=not bool(request.task),
+                                                             honor_lora_intent=False)
             if next_plan.get("preset") in checked or not next_plan.get("preset"):
                 break
             plan = next_plan

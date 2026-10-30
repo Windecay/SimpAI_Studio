@@ -1,0 +1,109 @@
+{
+  "bones": {
+    "thigh_l": [
+      -10.54427,
+      -0.69421,
+      -2.10558
+    ],
+    "thigh_r": [
+      -10.54427,
+      0.69421,
+      2.10558
+    ],
+    "calf_l": [
+      85.18233,
+      24.26091,
+      18.64267
+    ],
+    "calf_r": [
+      85.18233,
+      -24.26091,
+      -18.64267
+    ],
+    "foot_l": [
+      80,
+      0,
+      0
+    ],
+    "foot_r": [
+      80,
+      0,
+      0
+    ],
+    "upperarm_l": [
+      -12.93179,
+      -5.84508,
+      -32.33222
+    ],
+    "upperarm_r": [
+      -12.93179,
+      5.84508,
+      32.33222
+    ],
+    "lowerarm_l": [
+      35.81717,
+      -5.12732,
+      -23.48696
+    ],
+    "lowerarm_r": [
+      35.81717,
+      5.12732,
+      23.48696
+    ],
+    "hand_l": [
+      1.04774,
+      23.33038,
+      16.61498
+    ],
+    "hand_r": [
+      1.04774,
+      -23.33038,
+      -16.61498
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0,
+      -10.15602,
+      1.66801
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.93995,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -35,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Kneeling with hands on thighs",
+    "series": "full_standard",
+    "category_id": "kneeling",
+    "reference_pose_id": "full_single_P031",
+    "tags": [
+      "full_single_P031",
+      "P031"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

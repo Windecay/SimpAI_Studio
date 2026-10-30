@@ -1,0 +1,139 @@
+{
+  "bones": {
+    "pelvis": [
+      4,
+      0,
+      -7
+    ],
+    "spine_01": [
+      -8,
+      0,
+      15
+    ],
+    "spine_03": [
+      -8,
+      0,
+      0
+    ],
+    "thigh_l": [
+      -21.90728,
+      -4.03949,
+      14.41101
+    ],
+    "thigh_r": [
+      -0.81652,
+      0.38915,
+      6.50869
+    ],
+    "calf_l": [
+      19.78406,
+      2.54564,
+      -8.28484
+    ],
+    "calf_r": [
+      -10.49827,
+      0.26758,
+      1.8893
+    ],
+    "foot_l": [
+      4.55255,
+      -4.45991,
+      -1.97991
+    ],
+    "upperarm_l": [
+      23.91639,
+      17.55153,
+      -12.39821
+    ],
+    "upperarm_r": [
+      34.07534,
+      -25.02045,
+      12.17981
+    ],
+    "head": [
+      -12,
+      0,
+      8
+    ],
+    "lowerarm_l": [
+      42.56777,
+      -52.32383,
+      -52.7888
+    ],
+    "lowerarm_r": [
+      19.99009,
+      58.26292,
+      63.11845
+    ],
+    "hand_l": [
+      -37.67759,
+      20.61222,
+      45.43475
+    ],
+    "hand_r": [
+      -41.85045,
+      -26.21573,
+      -65.47044
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      0.16378,
+      -8.25691,
+      0.54505
+    ]
+  },
+  "boneLengthParams": {
+    "shoulder_l": 0.5,
+    "shoulder_r": 0.5,
+    "hip_l": 0.5,
+    "hip_r": 0.5,
+    "upper_arm_l": 0.5,
+    "upper_arm_r": 0.5,
+    "forearm_l": 0.5,
+    "forearm_r": 0.5,
+    "thigh_l": 0.5,
+    "thigh_r": 0.5,
+    "shin_l": 0.5,
+    "shin_r": 0.5,
+    "spine": 0.5
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.48621,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": -90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": -20,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Standing chest lift with hands behind back",
+    "series": "full_expressive",
+    "category_id": "standing",
+    "reference_pose_id": "full_sexy_P013",
+    "tags": [
+      "full_sexy_P013",
+      "P013"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

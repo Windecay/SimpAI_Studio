@@ -1,0 +1,119 @@
+{
+  "bones": {
+    "spine_01": [
+      14,
+      0,
+      0
+    ],
+    "thigh_l": [
+      5.07537,
+      -0.16908,
+      -3.81364
+    ],
+    "thigh_r": [
+      -90.0541,
+      4.14024,
+      3.4603
+    ],
+    "calf_l": [
+      69.82981,
+      20.94443,
+      22.7914
+    ],
+    "calf_r": [
+      84.30583,
+      -2.63751,
+      9.88786
+    ],
+    "foot_l": [
+      75.26304,
+      -21.77152,
+      1.30439
+    ],
+    "foot_r": [
+      -5.9619,
+      -1.19454,
+      -0.9552
+    ],
+    "upperarm_l": [
+      -29.37804,
+      -14.16846,
+      -23.50908
+    ],
+    "upperarm_r": [
+      -28.44558,
+      16.81296,
+      23.299
+    ],
+    "head": [
+      10,
+      0,
+      0
+    ],
+    "lowerarm_l": [
+      -18.51337,
+      -38.2714,
+      -51.44167
+    ],
+    "lowerarm_r": [
+      -8.29198,
+      31.45091,
+      31.64965
+    ],
+    "hand_l": [
+      69.64452,
+      -42.04335,
+      88.97297
+    ],
+    "hand_r": [
+      74.25744,
+      56.0093,
+      -100.95907
+    ]
+  },
+  "bonePositions": {
+    "Root": [
+      -0.27102,
+      -9.92817,
+      0.52423
+    ]
+  },
+  "modelRotation": [
+    0,
+    0,
+    0
+  ],
+  "cameraParams": {
+    "zoom": 1.90826,
+    "offset_x": 0,
+    "offset_y": 0,
+    "yaw_deg": 0,
+    "pitch_deg": 0,
+    "distance_scale": 1
+  },
+  "cameraViews": {
+    "front": {
+      "yaw_deg": 0,
+      "pitch_deg": 0
+    },
+    "side": {
+      "yaw_deg": 90,
+      "pitch_deg": 0
+    },
+    "diagonal": {
+      "yaw_deg": 25,
+      "pitch_deg": 0
+    }
+  },
+  "_library": {
+    "name": "Half kneeling with hands on knee",
+    "series": "full_standard",
+    "category_id": "kneeling",
+    "reference_pose_id": "full_single_P033",
+    "tags": [
+      "full_single_P033",
+      "P033"
+    ],
+    "origin": "SimpAI reference pose study"
+  }
+}

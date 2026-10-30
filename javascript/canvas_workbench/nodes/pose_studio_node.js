@@ -209,26 +209,6 @@
         return patch?.pose_studio || fallback.pose_studio;
     }
 
-    function hasStoredPose(data) {
-        if (!data || typeof data !== 'object') return false;
-        const pose = Array.isArray(data.poses) ? (data.poses[0] || {}) : data;
-        if (!pose || typeof pose !== 'object') return false;
-        return Object.keys(pose).some((key) => {
-            const value = pose[key];
-            if (value == null) return false;
-            if (Array.isArray(value)) return value.length > 0;
-            if (typeof value === 'object') return Object.keys(value).length > 0;
-            return value !== '';
-        });
-    }
-
-    function hasStoredPoseState(state) {
-        const editorState = state?.editor_state || {};
-        return hasStoredPose(state?.pose_data)
-            || hasStoredPose(editorState.viewer_pose)
-            || hasStoredPose(editorState.sam3d_pose_data);
-    }
-
     function renderNodeStateBadges(node, context) {
         return call(context, 'renderNodeStateBadges', '', node);
     }
@@ -390,7 +370,6 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : '
             referenceAssetSource,
             referenceWidth: Number(referenceAsset?.width || 0),
             referenceHeight: Number(referenceAsset?.height || 0),
-            autoParseReference: !!referenceAssetSource && !hasStoredPoseState(state),
             poseData: state.pose_data || {},
             editorState: state.editor_state || {},
             detectTheme: () => call(context, 'detectWorkbenchTheme', 'dark'),
