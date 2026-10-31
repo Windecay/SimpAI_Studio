@@ -25877,6 +25877,7 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 
 .describe-vlm-chat-roleplay-resource-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   min-width: 0;
   margin-top: 6px;
@@ -25884,6 +25885,23 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 5px;
   background: rgba(15, 23, 42, 0.44);
+}
+
+[data-resource-review-list],
+[data-resource-review-list] details {
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-resource-review-list] pre {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
 }
 
 .describe-vlm-chat-roleplay-resource-row-head {

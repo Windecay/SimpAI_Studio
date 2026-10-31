@@ -638,6 +638,7 @@
             history_budget_chars: Math.max(0, Math.round(Number(value.history_budget_chars) || 0)),
             history_omitted: Math.max(0, Math.round(Number(value.history_omitted) || 0)),
             memory_selection: normalizeRoleplayMemorySelection(value.memory_selection),
+            ...(value.request_budget ? { request_budget: normalizeRequestContextBudget(value.request_budget) } : {}),
             blocks
         };
     }
@@ -696,6 +697,7 @@
 
     function roleplayContextBlockLabel(blockId) {
         if (blockId === 'tavern_preset') return localText('Tavern prompt assembly', '酒馆提示词组装');
+        if (blockId === 'request_budget') return roleplayDictionaryText('Complete request budget');
         const labels = {
             scene: 'Current scene and continuity',
             speaker: 'Speaking character and runtime state',
@@ -797,10 +799,14 @@
             return;
         }
         if (summary) {
-            summary.textContent = localText(
+            const blockCounts = localText(
                 `System ${report.system_chars}/${report.budget_chars} chars · Dialogue ${report.history_chars}/${report.history_budget_chars}`,
                 `系统 ${report.system_chars}/${report.budget_chars} 字符 · 对话 ${report.history_chars}/${report.history_budget_chars}`
             );
+            summary.textContent = report.request_budget
+                ? requestContextBudgetText(report.request_budget)
+                : blockCounts;
+            summary.title = blockCounts;
         }
         const previous = String(root.dataset.roleplayContextBlock || select?.value || '').trim();
         const selected = report.blocks.find((block) => block.id === previous) || report.blocks[0];
@@ -819,7 +825,9 @@
         if (content) content.textContent = roleplayContextPrettyContent(selected);
         if (note) {
             const omitted = selected.id === 'recent_dialogue' ? report.history_omitted : selected.omitted;
-            note.textContent = selected.id === 'tavern_preset'
+            note.textContent = selected.id === 'request_budget'
+                ? roleplayDictionaryText('Includes system rules, character cards, selected memories and lore, examples, dialogue and the current input. Token counts are estimates; output and template space are reserved separately.')
+                : selected.id === 'tavern_preset'
                 ? localText('Lists applied prompt IDs, message roles and compatibility notes. This report is not sent to the model.', '显示已应用条目、消息角色及兼容提示。这份报告不会发送给模型。')
                 : selected.id === 'world_book'
                 ? `${roleplayDictionaryText('Entries omitted by context budget')}: ${omitted} · ${roleplayDictionaryText('Entries shortened for this reply')}: ${selected.truncated_ids.length}`
@@ -1146,7 +1154,7 @@
                 : item.kind === 'world_book'
                     ? localText('Write concise reusable lore (max 1200 characters)', '填写简洁、可复用的世界设定（最多 1200 字）')
                     : localText('Write a concise chapter summary', '填写简洁的章节摘要');
-            return `<article class="describe-vlm-chat-roleplay-resource-row"><strong>${escapeHtml(label)}</strong><small>${escapeHtml(localText(`Reason: ${item.failure_reason || item.reason || 'verification failed'}`, `未写入原因：${item.failure_reason || item.reason || '核对未通过'}`))}</small><details><summary>${escapeHtml(localText('Original source', '查看原文依据'))}</summary><pre>${escapeHtml(item.source.slice(0, 12000))}${item.source.length > 12000 ? `\n\n${escapeHtml(localText('[Source preview truncated; the full source remains in the task record.]', '[原文预览已截短，完整来源仍保留在任务记录中。]'))}` : ''}</pre></details><textarea data-resource-review-content="${escapeHtml(item.id)}" rows="3" maxlength="${limit}" placeholder="${escapeHtml(placeholder)}"></textarea><div><button type="button" data-resource-review-action="confirm" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Confirm and write', '确认并写入'))}</button><button type="button" data-resource-review-action="ignore" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Ignore', '忽略'))}</button></div></article>`;
+            return `<article class="describe-vlm-chat-roleplay-resource-row" data-resource-review-item><strong>${escapeHtml(label)}</strong><small>${escapeHtml(localText(`Reason: ${item.failure_reason || item.reason || 'verification failed'}`, `未写入原因：${item.failure_reason || item.reason || '核对未通过'}`))}</small><details><summary>${escapeHtml(localText('Original source', '查看原文依据'))}</summary><pre>${escapeHtml(item.source.slice(0, 12000))}${item.source.length > 12000 ? `\n\n${escapeHtml(localText('[Source preview truncated; the full source remains in the task record.]', '[原文预览已截短，完整来源仍保留在任务记录中。]'))}` : ''}</pre></details><textarea data-resource-review-content="${escapeHtml(item.id)}" rows="3" maxlength="${limit}" placeholder="${escapeHtml(placeholder)}"></textarea><div><button type="button" data-resource-review-action="confirm" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Confirm and write', '确认并写入'))}</button><button type="button" data-resource-review-action="ignore" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Ignore', '忽略'))}</button></div></article>`;
         }).join('')}` : '';
         if (stores.world_book.metadata && typeof stores.world_book.metadata === 'object') {
             root.setAttribute('data-roleplay-world-book-metadata', encodeURIComponent(JSON.stringify(stores.world_book.metadata)));
@@ -16496,6 +16504,41 @@
         };
     }
 
+    function normalizeRequestContextBudget(value) {
+        if (!value || typeof value !== 'object' || !(Number(value.context_window) > 0)
+            || !Number.isFinite(Number(value.input_tokens))) return null;
+        const normalized = {};
+        for (const key of [
+            'context_window', 'input_tokens', 'input_budget_tokens', 'output_tokens',
+            'reserve_tokens', 'total_tokens', 'chars', 'message_count', 'history_omitted'
+        ]) normalized[key] = Math.max(0, Math.round(Number(value[key]) || 0));
+        normalized.source = 'estimated';
+        normalized.fits = value.fits !== false;
+        return normalized;
+    }
+
+    function requestContextBudgetText(budget) {
+        return roleplayDictionaryText('Input estimate {input} / {budget} tokens · Output reserve {output}')
+            .replace('{input}', formatContextUsageTokenCount(budget.input_tokens))
+            .replace('{budget}', formatContextUsageTokenCount(budget.input_budget_tokens))
+            .replace('{output}', formatContextUsageTokenCount(budget.output_tokens));
+    }
+
+    function setRequestContextBudgetPreview(runtime, report, version, mediaCount = 0) {
+        const budget = normalizeRequestContextBudget(report);
+        if (!runtime || !budget) return;
+        const latestAssistant = (Array.isArray(runtime.messages) ? runtime.messages : [])
+            .slice().reverse().find(message => message?.role === 'assistant' && !message.pending);
+        runtime.contextUsage = normalizeConversationContextUsage({
+            used_tokens: budget.input_tokens, context_window: budget.context_window,
+            source: 'preflight', request_budget: budget, model: version, media_count: mediaCount,
+            message_id: latestAssistant?.id || '',
+            branch_id: normalizeChatMode(runtime.chatMode) === 'roleplay'
+                ? String(runtime.roleplaySession?.active_branch_id || 'main') : '',
+            updated_at: new Date().toISOString()
+        });
+    }
+
     function normalizeConversationContextUsage(value) {
         if (!value || typeof value !== 'object') return null;
         const usedTokens = Number(value.used_tokens ?? value.input_tokens);
@@ -16506,7 +16549,8 @@
         return {
             used_tokens: Math.round(usedTokens),
             context_window: Math.round(contextWindow),
-            source: value.source === 'reported' ? 'reported' : 'estimated',
+            source: ['reported', 'preflight'].includes(value.source) ? value.source : 'estimated',
+            request_budget: normalizeRequestContextBudget(value.request_budget),
             model: String(value.model || '').trim().slice(0, 240),
             media_count: Math.max(0, Math.round(Number(value.media_count) || 0)),
             updated_at: String(value.updated_at || '').trim().slice(0, 80),
@@ -16535,6 +16579,7 @@
                 used_tokens: completion.input_tokens,
                 context_window: contextWindow,
                 source: completion.context_usage_source || 'reported',
+                request_budget: message.roleplay_context?.request_budget,
                 model: message.response_source?.model || '',
                 media_count: Number(message.image_count || message.images?.length || 0),
                 updated_at: message.created_at || '',
@@ -16642,7 +16687,11 @@
         }
         const percent = Math.max(0, Math.round(usage.used_tokens / usage.context_window * 100));
         const ring = indicator.querySelector('[data-describe-vlm-chat-context-usage-ring]');
-        const title = usage.source === 'reported'
+        const title = usage.source === 'preflight' && usage.request_budget
+            ? `${roleplayDictionaryText('Latest send check')}: ${requestContextBudgetText(usage.request_budget)}. ${roleplayDictionaryText('Template and estimation reserve')}: ${formatContextUsageTokenCount(usage.request_budget.reserve_tokens)}`
+            : usage.source === 'estimated' && usage.request_budget
+            ? `${roleplayDictionaryText('Last request estimate')}: ${requestContextBudgetText(usage.request_budget)}`
+            : usage.source === 'reported'
             ? localText(
                 `Last request: ${formatContextUsageTokenCount(usage.used_tokens)} of ${formatContextUsageTokenCount(usage.context_window)} tokens (${percent}%).`,
                 `上次请求：已用 ${formatContextUsageTokenCount(usage.used_tokens)} / ${formatContextUsageTokenCount(usage.context_window)} Token（${percent}%）。`
@@ -16655,8 +16704,9 @@
         ring?.style?.setProperty('--context-usage-progress', `${Math.min(100, percent)}%`);
         indicator.title = title;
         indicator.setAttribute('aria-label', title);
-        indicator.classList.toggle('is-warning', percent >= 80);
-        indicator.classList.toggle('is-over-limit', usage.used_tokens > usage.context_window);
+        const overBudget = usage.source === 'preflight' && usage.request_budget?.fits === false;
+        indicator.classList.toggle('is-warning', percent >= 80 || overBudget);
+        indicator.classList.toggle('is-over-limit', usage.used_tokens > usage.context_window || overBudget);
     }
 
     function completionReasoningHtml(completion, id = '') {
@@ -26990,6 +27040,7 @@
         const presetCapabilities = selectedMode === 'creative' ? creativePresetCapabilitiesPayload() : [];
         const parameterProfiles = selectedMode === 'creative' ? creativeParameterProfilesPayload() : [];
         let systemPromptChars = 0;
+        let requestContextBudget = null;
         if (!isDirectRun) {
             const budgetRequestId = uid('describe_vlm_chat_budget');
             const budgetResponse = await postJson('/describe-image/vlm-chat-run', {
@@ -27067,6 +27118,13 @@
             if (requestToken !== runtime.requestToken || !queuedMessageStillPending()) {
                 releaseBudgetCheckBusy(runtime, modal);
                 return;
+            }
+            requestContextBudget = normalizeRequestContextBudget(
+                budgetResponse?.context_budget || budgetResponse?.skill_budget?.request_context
+            );
+            if (requestContextBudget) {
+                setRequestContextBudgetPreview(runtime, requestContextBudget, version, images.length);
+                if (isCurrentConversationRuntime(runtime)) syncConversationContextUsage(modal, runtime);
             }
             if (!budgetResponse?.ok) {
                 const warning = skillBudgetWarningText(budgetResponse);
@@ -27486,7 +27544,8 @@
                 : history.messages;
             const usedTokens = reported
                 ? Math.max(0, Math.round(Number(inputTokensReported)))
-                : estimateContextTokensFromText(
+                : (normalizeRequestContextBudget(response?.context_budget) || requestContextBudget)?.input_tokens
+                    ?? estimateContextTokensFromText(
                     contextInputMessages,
                     message,
                     currentPromptForRequest,
@@ -27496,6 +27555,7 @@
                 used_tokens: usedTokens,
                 context_window: contextWindow,
                 source: reported ? 'reported' : 'estimated',
+                request_budget: normalizeRequestContextBudget(response?.context_budget) || requestContextBudget,
                 model: version,
                 media_count: images.length,
                 updated_at: new Date().toISOString(),

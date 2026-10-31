@@ -38,8 +38,10 @@ import modules.vlm_roleplay_reply as vlm_roleplay_reply
 import modules.vlm_roleplay_outline as vlm_roleplay_outline
 import modules.vlm_tavern as vlm_tavern
 import modules.vlm_reply_options as vlm_reply_options
+import modules.vlm_context_budget as vlm_context_budget
 from modules.preset_name_aliases import H3_LEGACY_NAMES, h3_search_names
 from modules.agent_service import AgentContext
+from modules.localization import localized_text
 from modules.pe_models import prompt_expander_vlm_task
 
 
@@ -2439,6 +2441,60 @@ def _roleplay_runtime_context_chars(context, extension_chars=0):
     return max(6000, min(131000, system_budget + history_budget + max(0, extension_chars) + 3200))
 
 
+def _roleplay_fit_actor_context(session, context, params, history, latest_user_text):
+    selected = list(history)
+    original_prompt = params["prompt"]
+    use_tavern = vlm_tavern.has_actor_instructions(session, context.get("speaker_id", ""))
+    removed = 0
+    while True:
+        context["history"]["messages"] = selected
+        prompt = vlm_roleplay.build_actor_turn_task(context, original_prompt)
+        tavern = vlm_tavern.build_actor_messages(
+            session, context, params["user_system_prompt"], selected, prompt,
+            latest_user_text=latest_user_text,
+        ) if use_tavern else {}
+        messages = tavern.get("messages") or [
+            {"role": "system", "content": params["user_system_prompt"]},
+            *selected,
+            {"role": "user", "content": prompt},
+        ]
+        budget = vlm_context_budget.request_budget(messages, context["n_ctx"], params["max_tokens"])
+        budget["history_omitted"] = int(context.get("history_omitted") or 0) + removed
+        if budget["fits"] or not selected:
+            break
+        # Remove only an oldest prefix. Persistent story data and the current input stay intact.
+        excess = budget["input_tokens"] - budget["input_budget_tokens"]
+        drop = 0
+        released = 0
+        while drop < len(selected) and released < excess:
+            released += vlm_context_budget.estimate_message_tokens(selected[drop])
+            drop += 1
+        selected = selected[max(1, drop):]
+        removed += max(1, drop)
+    context["request_budget"] = budget
+    context["history_omitted"] = budget["history_omitted"]
+    history_chars = sum(len(row["role"]) + len(row["content"]) + 16 for row in selected)
+    context["history_chars"] = history_chars
+    context["history"].update(messages=selected, chars=history_chars, omitted=budget["history_omitted"])
+    for block in context.get("blocks", []):
+        if block.get("id") == "recent_dialogue":
+            block.update(
+                content="\n".join(f"{row['role']}: {row['content']}" for row in selected) or "(no recent dialogue)",
+                items=len(selected), omitted=budget["history_omitted"],
+            )
+            block["chars"] = len(block["content"])
+    params["prompt"] = prompt
+    params["describe_roleplay_turn_task"] = prompt != original_prompt
+    params["max_history"] = max(1, len(selected))
+    params["describe_context_budget"] = budget
+    report_content = json.dumps(budget, ensure_ascii=False, indent=2)
+    context.setdefault("blocks", []).append({
+        "id": "request_budget", "transport": "report",
+        "content": report_content, "chars": len(report_content), "items": len(messages), "omitted": 0,
+    })
+    return selected, tavern, budget
+
+
 def _thinking_runtime_params(payload, *, force_disabled=False):
     payload = payload if isinstance(payload, dict) else {}
     enabled = False if force_disabled else _truthy(payload.get("enable_thinking"), False)
@@ -2876,11 +2932,6 @@ def build_runtime_payload(payload):
         if isinstance(roleplay_context.get("history"), dict)
         else None
     )
-    if roleplay_active and roleplay_request_kind in {"character", "character_reply", "reply", ""}:
-        actor_task = vlm_roleplay.build_actor_turn_task(roleplay_context, params["prompt"])
-        if actor_task != params["prompt"]:
-            params["prompt"] = actor_task
-            params["describe_roleplay_turn_task"] = True
     if player_proxy_request and isinstance(selected_roleplay_history, list):
         proxy_session = prompt_options["roleplay_session"]
         player_absent = proxy_session["story_state"]["player_state"]["status"] == "absent"
@@ -2966,29 +3017,37 @@ def build_runtime_payload(payload):
                 ensure_ascii=False, separators=(",", ":"),
             )
     tavern_report = {}
-    if (roleplay_active and roleplay_request_kind in {"character", "character_reply", "reply", ""}
-            and vlm_tavern.has_actor_instructions(
-                prompt_options["roleplay_session"], roleplay_context.get("speaker_id", ""),
-            )):
-        tavern = vlm_tavern.build_actor_messages(
-            prompt_options["roleplay_session"], roleplay_context, system_prompt,
-            selected_roleplay_history or [], params["prompt"], latest_user_text=message,
+    request_context_budget = {}
+    if roleplay_active and roleplay_request_kind in {"character", "character_reply", "reply", ""}:
+        selected_roleplay_history, tavern, request_context_budget = _roleplay_fit_actor_context(
+            prompt_options["roleplay_session"], roleplay_context, params,
+            selected_roleplay_history or [], message,
         )
-        tavern_report = tavern["report"]
-        preset_budget = _describe_context_text_budget_chars(roleplay_context_n_ctx)
-        if roleplay_context_n_ctx > 8192:
-            preset_budget = max(preset_budget, _roleplay_runtime_context_chars(roleplay_context) + user_extension_chars)
-        if tavern_report["chars"] > preset_budget:
+        if not request_context_budget["fits"]:
+            preset_enabled = bool(tavern.get("report", {}).get("enabled"))
+            input_tokens = request_context_budget["input_tokens"]
+            input_budget = request_context_budget["input_budget_tokens"]
             return {
-                "ok": False, "error": "tavern_preset_context_budget",
-                "details": (
-                    "The Tavern prompts exceed the selected context budget. Shorten the preset or increase context."
-                    if lang == "en" else "酒馆预设与当前故事资料超出上下文预算，请精简预设或增加上下文。"
-                ),
-                "tavern_preset": dict(tavern_report, budget_chars=preset_budget),
+                "ok": False,
+                "error": "tavern_preset_context_budget" if preset_enabled else "roleplay_context_budget",
+                "details": localized_text({"__lang": lang}, (
+                    "Story materials and the current input need about {input} input tokens; "
+                    "{budget} are available after reserving {output} output tokens. "
+                    "Lower the output limit, shorten the materials, or increase context."
+                )).format(input=input_tokens, budget=input_budget, output=max_tokens),
+                "context_budget": request_context_budget,
+                "tavern_preset": tavern.get("report", {}),
             }
+        skill_budget["request_context"] = request_context_budget
+        params["describe_skill_budget"] = dict(skill_budget)
+    else:
+        tavern = {}
+    if tavern:
+        tavern_report = tavern["report"]
         params["describe_tavern_messages"] = tavern["messages"]
-        params["describe_tavern_preset"] = dict(tavern_report, budget_chars=preset_budget)
+        params["describe_tavern_preset"] = dict(
+            tavern_report, budget_tokens=request_context_budget["input_budget_tokens"],
+        )
         roleplay_context["tavern_preset"] = params["describe_tavern_preset"]
         report_content = json.dumps({
             **params["describe_tavern_preset"],
@@ -3076,6 +3135,7 @@ def build_runtime_payload(payload):
         "ok": True,
         "runtime_payload": runtime_payload,
         "roleplay_context": roleplay_context,
+        "context_budget": request_context_budget,
         "skill_budget": dict(skill_budget),
     }
 
@@ -8186,6 +8246,7 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
             "conversation_id": conversation_id,
             "request_id": request_id,
             "skill_budget": built.get("skill_budget") or {},
+            "context_budget": built.get("context_budget") or {},
         }
     if request_kind == "creative_prompt_reformat":
         try:
@@ -8753,6 +8814,7 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
     result["input_media_assets"] = _describe_input_media_assets(payload, result.get("asset_refs"))
     if roleplay_context:
         result["roleplay_context"] = roleplay_context
+        result["context_budget"] = roleplay_context.get("request_budget") or {}
     if roleplay_update is not None:
         result["roleplay"] = roleplay_update
         result["roleplay_agent_route"] = roleplay_update.get("agent_route") or None
