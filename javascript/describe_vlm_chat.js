@@ -5126,6 +5126,12 @@
     function syncInputPolishControls(modal = document.getElementById('describe_vlm_chat_modal')) {
         const wand = modal?.querySelector('[data-describe-vlm-chat-input-polish]');
         if (!wand) return;
+        const setProperty = (element, name, value) => {
+            if (element && element[name] !== value) element[name] = value;
+        };
+        const setAttribute = (element, name, value) => {
+            if (element && element.getAttribute(name) !== value) element.setAttribute(name, value);
+        };
         const runtime = currentConversationRuntime();
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
         const owner = inputPolishRequest || inputPolishResult || inputPolishFeedback;
@@ -5135,69 +5141,70 @@
         }
         const busy = !!inputPolishRequest;
         const playerDraft = inputPolishRequest?.purpose === 'player_draft';
-        wand.disabled = !busy && (!!runtime.busy || !String(input?.value || '').trim());
-        wand.classList.toggle('is-active', busy);
-        wand.setAttribute('aria-busy', busy ? 'true' : 'false');
+        setProperty(wand, 'disabled', !busy && (!!runtime.busy || !String(input?.value || '').trim()));
+        if (wand.classList.contains('is-active') !== busy) wand.classList.toggle('is-active', busy);
+        setAttribute(wand, 'aria-busy', busy ? 'true' : 'false');
         const title = roleplayDictionaryText(busy ? (playerDraft ? 'Stop player drafting' : 'Stop polishing') : 'Polish input');
-        wand.title = title;
-        wand.setAttribute('aria-label', title);
+        setProperty(wand, 'title', title);
+        setAttribute(wand, 'aria-label', title);
         const icon = wand.querySelector('i');
-        if (icon) icon.className = busy ? 'fa-solid fa-stop' : 'fa-solid fa-wand-magic-sparkles';
+        setProperty(icon, 'className', busy ? 'fa-solid fa-stop' : 'fa-solid fa-wand-magic-sparkles');
         const menuToggle = modal.querySelector('[data-describe-vlm-chat-input-assistant-menu-toggle]');
         const menu = modal.querySelector('[data-describe-vlm-chat-input-assistant-menu]');
         const roleplay = runtime.chatMode === 'roleplay';
         if (!roleplay) inputAssistantMenuOpen = false;
         if (menuToggle) {
-            menuToggle.hidden = !roleplay;
-            menuToggle.disabled = busy || !!runtime.busy;
-            menuToggle.setAttribute('aria-expanded', inputAssistantMenuOpen ? 'true' : 'false');
-            menuToggle.title = roleplayDictionaryText('Input assistant options');
-            menuToggle.setAttribute('aria-label', menuToggle.title);
+            setProperty(menuToggle, 'hidden', !roleplay);
+            setProperty(menuToggle, 'disabled', busy || !!runtime.busy);
+            setAttribute(menuToggle, 'aria-expanded', inputAssistantMenuOpen ? 'true' : 'false');
+            setProperty(menuToggle, 'title', roleplayDictionaryText('Input assistant options'));
+            setAttribute(menuToggle, 'aria-label', menuToggle.title);
         }
         if (menu) {
-            menu.hidden = !roleplay || !inputAssistantMenuOpen;
-            menu.querySelector('[data-describe-vlm-chat-input-assistant-polish]').disabled = wand.disabled || busy;
-            menu.querySelector('[data-describe-vlm-chat-player-draft]').disabled = busy || !!runtime.busy;
-            menu.querySelector('[data-describe-vlm-chat-input-assistant-polish] span').textContent = roleplayDictionaryText('Polish input');
-            menu.querySelector('[data-describe-vlm-chat-player-draft] span').textContent = roleplayDictionaryText('Draft next player input');
+            setProperty(menu, 'hidden', !roleplay || !inputAssistantMenuOpen);
+            setProperty(menu.querySelector('[data-describe-vlm-chat-input-assistant-polish]'), 'disabled', wand.disabled || busy);
+            setProperty(menu.querySelector('[data-describe-vlm-chat-player-draft]'), 'disabled', busy || !!runtime.busy);
+            setProperty(menu.querySelector('[data-describe-vlm-chat-input-assistant-polish] span'), 'textContent', roleplayDictionaryText('Polish input'));
+            setProperty(menu.querySelector('[data-describe-vlm-chat-player-draft] span'), 'textContent', roleplayDictionaryText('Draft next player input'));
         }
         const undo = modal.querySelector('[data-describe-vlm-chat-input-polish-undo]');
         if (undo) {
-            undo.hidden = busy || !(inputPolishResult?.kind === 'applied'
+            setProperty(undo, 'hidden', busy || !(inputPolishResult?.kind === 'applied'
                 && inputPolishResult.text === input?.value
                 && inputPolishResult.revision === inputPolishRevision
-                && inputPolishResult.contextKey === inputPolishContextKey(runtime));
-            undo.title = roleplayDictionaryText(inputPolishResult?.purpose === 'player_draft' ? 'Undo player drafting' : 'Undo input polishing');
-            undo.setAttribute('aria-label', undo.title);
+                && inputPolishResult.contextKey === inputPolishContextKey(runtime)));
+            setProperty(undo, 'title', roleplayDictionaryText(inputPolishResult?.purpose === 'player_draft' ? 'Undo player drafting' : 'Undo input polishing'));
+            setAttribute(undo, 'aria-label', undo.title);
         }
         const feedback = modal.querySelector('[data-describe-vlm-chat-input-polish-feedback]');
         if (!feedback) return;
-        feedback.hidden = !inputPolishFeedback || inputAssistantMenuOpen;
-        feedback.classList.toggle('is-error', !!inputPolishFeedback?.error);
+        setProperty(feedback, 'hidden', !inputPolishFeedback || inputAssistantMenuOpen);
+        const feedbackError = !!inputPolishFeedback?.error;
+        if (feedback.classList.contains('is-error') !== feedbackError) feedback.classList.toggle('is-error', feedbackError);
         const status = feedback.querySelector('[data-describe-vlm-chat-input-polish-status]');
-        status.textContent = inputPolishFeedback?.text || '';
-        status.title = inputPolishFeedback?.details || '';
+        setProperty(status, 'textContent', inputPolishFeedback?.text || '');
+        setProperty(status, 'title', inputPolishFeedback?.details || '');
         const candidate = !busy && inputPolishResult?.kind === 'candidate' ? inputPolishResult.text : '';
         const preview = feedback.querySelector('[data-describe-vlm-chat-input-polish-preview]');
-        preview.hidden = !candidate;
-        if (preview.textContent !== candidate) preview.textContent = candidate;
+        setProperty(preview, 'hidden', !candidate);
+        setProperty(preview, 'textContent', candidate);
         const apply = feedback.querySelector('[data-describe-vlm-chat-input-polish-apply]');
-        apply.hidden = !candidate || busy;
-        apply.title = roleplayDictionaryText(inputPolishResult?.purpose === 'player_draft' ? 'Use player draft' : 'Use polished draft');
-        apply.setAttribute('aria-label', apply.title);
+        setProperty(apply, 'hidden', !candidate || busy);
+        setProperty(apply, 'title', roleplayDictionaryText(inputPolishResult?.purpose === 'player_draft' ? 'Use player draft' : 'Use polished draft'));
+        setAttribute(apply, 'aria-label', apply.title);
         const reroll = feedback.querySelector('[data-describe-vlm-chat-player-draft-reroll]');
         if (reroll) {
-            reroll.hidden = busy || inputPolishResult?.purpose !== 'player_draft'
+            setProperty(reroll, 'hidden', busy || inputPolishResult?.purpose !== 'player_draft'
                 || (inputPolishResult.kind === 'applied' && (
                     inputPolishResult.text !== input?.value || inputPolishResult.revision !== inputPolishRevision
-                ));
-            reroll.title = roleplayDictionaryText('Redraft with the same guidance');
-            reroll.setAttribute('aria-label', reroll.title);
+                )));
+            setProperty(reroll, 'title', roleplayDictionaryText('Redraft with the same guidance'));
+            setAttribute(reroll, 'aria-label', reroll.title);
         }
         const dismiss = feedback.querySelector('[data-describe-vlm-chat-input-polish-dismiss]');
-        dismiss.title = roleplayDictionaryText(inputPolishFeedback?.purpose === 'player_draft'
-            ? 'Dismiss player draft feedback' : 'Dismiss polishing feedback');
-        dismiss.setAttribute('aria-label', dismiss.title);
+        setProperty(dismiss, 'title', roleplayDictionaryText(inputPolishFeedback?.purpose === 'player_draft'
+            ? 'Dismiss player draft feedback' : 'Dismiss polishing feedback'));
+        setAttribute(dismiss, 'aria-label', dismiss.title);
     }
 
     function setInputPolishFeedback(key, error = false, details = '') {
@@ -6933,8 +6940,12 @@
     function hideRoleplayMemoryMentionMenu() {
         const modal = document.getElementById('describe_vlm_chat_modal');
         const menu = modal?.querySelector('[data-roleplay-memory-mention-menu]');
-        if (menu) { menu.hidden = true; menu.innerHTML = ''; }
-        modal?.querySelector('[data-describe-vlm-chat-input]')?.setAttribute('aria-expanded', 'false');
+        if (menu) {
+            if (!menu.hidden) menu.hidden = true;
+            if (menu.firstChild) menu.replaceChildren();
+        }
+        const input = modal?.querySelector('[data-describe-vlm-chat-input]');
+        if (input && input.getAttribute('aria-expanded') !== 'false') input.setAttribute('aria-expanded', 'false');
     }
 
     function renderRoleplayMemoryMentionMenu(input) {
@@ -6944,7 +6955,7 @@
             hideRoleplayMemoryMentionMenu();
             return;
         }
-        const session = normalizeRoleplaySession(currentConversationRuntime()?.roleplaySession);
+        const session = currentConversationRuntime()?.roleplaySession || {};
         const visibleRows = visibleRoleplayResourceRows(input.closest('#describe_vlm_chat_modal'), 'memory');
         const memories = visibleRows.length ? visibleRows.map((row) => ({
             id: row.getAttribute('data-resource-id'),
@@ -20281,7 +20292,7 @@
     }
 
     function setStatus(message, isError) {
-        const modal = ensureModal();
+        const modal = document.getElementById('describe_vlm_chat_modal') || ensureModal();
         const status = modal.querySelector('[data-describe-vlm-chat-status]');
         if (!status) return;
         status.classList.remove('is-actionable');
@@ -26611,8 +26622,10 @@
     function pauseRoleplayForUserInput(runtime = currentConversationRuntime()) {
         const target = runtime || currentConversationRuntime();
         const current = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
-        if (!['running', 'paused'].includes(current.phase)) return false;
         const requestId = String(current.request_id || '').trim();
+        if (current.phase !== 'running' && (
+            current.phase !== 'paused' || (!requestId && !current.abort_controller)
+        )) return false;
         try {
             current.abort_controller?.abort?.();
         } catch (err) {}
@@ -28597,7 +28610,7 @@
             return;
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-input]')) {
-            pauseRoleplayForUserInput(syncCurrentRuntimeFromState());
+            pauseRoleplayForUserInput(currentConversationRuntime());
             inputPolishRevision += 1;
             if (inputPolishResult?.kind === 'applied') {
                 if (inputPolishResult.purpose === 'player_draft') {
@@ -28609,7 +28622,8 @@
                 }
             }
             syncInputPolishControls();
-            renderRoleplayMemoryMentionMenu(evt.target);
+            if (evt.isComposing) hideRoleplayMemoryMentionMenu();
+            else renderRoleplayMemoryMentionMenu(evt.target);
         }
         const mentionInput = evt.target.closest?.('[data-roleplay-character-mention-input]');
         if (mentionInput) refreshRoleplayCharacterMentionMenu(mentionInput).catch(() => {});

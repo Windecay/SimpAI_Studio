@@ -936,14 +936,18 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                     try:
                         field = "image" if len(handles) == 1 else "image[]"
                         files = [(field, (os.path.basename(path), handle, _mime_type(path))) for path, handle in zip(image_paths, handles)]
-                        data = {"model": model, "prompt": prompt, "n": 1, "size": size, "response_format": "b64_json"}
+                        data = {"model": model, "prompt": prompt, "n": 1, "size": size}
+                        if "gpt-image" not in model.lower():
+                            data["response_format"] = "b64_json"
                         response = session.post(endpoint, headers=headers, data=data, files=files, timeout=request_timeout)
                     finally:
                         for handle in handles:
                             handle.close()
                     is_chat_response = False
                 else:
-                    payload = {"model": model, "prompt": prompt, "n": 1, "size": size, "response_format": "b64_json"}
+                    payload = {"model": model, "prompt": prompt, "n": 1, "size": size}
+                    if "gpt-image" not in model.lower():
+                        payload["response_format"] = "b64_json"
                     response = session.post(endpoint, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=request_timeout)
                     is_chat_response = False
             except requests.RequestException as error:
