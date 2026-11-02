@@ -299,6 +299,22 @@ def _metadata_value_html(label, key, value):
     return _escape_log_text(value_txt)
 
 
+def _record_saved_media(file_path, date_string, item_html, user_did=None):
+    html_name = os.path.join(os.path.dirname(file_path), "log.html")
+    try:
+        append_item_to_html_log(html_name, date_string, item_html)
+    except Exception as exc:
+        logger.warning("Optional HTML log update failed: path=%s error=%s", html_name, exc)
+    else:
+        logger.info("Media saved with private log at: %s", html_name)
+
+    _queue_media_library_index(file_path, user_did=user_did)
+    try:
+        log_ext(file_path)
+    except Exception as exc:
+        logger.warning("Optional advanced parameters log update failed: media=%s error=%s", file_path, exc)
+
+
 def log_audio_file(audio_path: str, metadata, user_did=None):
     if not audio_path:
         return audio_path
@@ -316,8 +332,6 @@ def log_audio_file(audio_path: str, metadata, user_did=None):
     if not date_string:
         date_string = "unknown"
 
-    html_name = os.path.join(out_dir, "log.html")
-
     item_head = item_head_html(only_name)
 
     item = "<td><table class='metadata'>"
@@ -331,12 +345,7 @@ def log_audio_file(audio_path: str, metadata, user_did=None):
     item += "</td>"
     item += "</tr></table></div>\n\n"
 
-    append_item_to_html_log(html_name, date_string, item_head + item)
-    _queue_media_library_index(local_audio_path, user_did=user_did)
-    try:
-        log_ext(local_audio_path)
-    except Exception:
-        pass
+    _record_saved_media(local_audio_path, date_string, item_head + item, user_did=user_did)
 
     return audio_path
 
@@ -434,8 +443,6 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
             _queue_media_library_index(local_temp_filename, user_did=user_did)
         return local_temp_filename, img_result, ''
 
-    html_name = os.path.join(os.path.dirname(local_temp_filename), 'log.html')
-
     item_head = item_head_html(only_name)
     
     item = "<td><table class='metadata'>"
@@ -455,12 +462,7 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
     item += "</tr></table></div>\n\n"
 
     if remote_task is None:
-        append_item_to_html_log(html_name, date_string, item_head + item)
-        _queue_media_library_index(local_temp_filename, user_did=user_did)
-
-        logger.info(f'Image generated with private log at: {html_name}')
-    
-        log_ext(local_temp_filename)
+        _record_saved_media(local_temp_filename, date_string, item_head + item, user_did=user_did)
 
     return local_temp_filename, img_result, item
 
@@ -503,16 +505,9 @@ def p2p_log(result_img, result_log, output_format, persist_image=True, user_did=
         _queue_media_library_index(local_temp_filename, user_did=user_did)
         return local_temp_filename
 
-    html_name = os.path.join(os.path.dirname(local_temp_filename), 'log.html')
-    
     item_head = item_head_html(only_name)
 
-    append_item_to_html_log(html_name, date_string, item_head + result_log)
-    _queue_media_library_index(local_temp_filename, user_did=user_did)
-
-    logger.info(f'Image generated with private log at: {html_name}')
-
-    log_ext(local_temp_filename)
+    _record_saved_media(local_temp_filename, date_string, item_head + result_log, user_did=user_did)
 
     return local_temp_filename
 

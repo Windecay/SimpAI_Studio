@@ -41,7 +41,8 @@ CONTEXT_SCHEMA = "simpai.vlm_roleplay.context"
 
 MAX_TEXT = 12000
 MAX_LIST_ITEMS = 80
-MAX_MEMORY_ITEMS = 120
+MAX_MEMORY_OPERATIONS = 120
+MAX_LEGACY_MEMORY_ITEMS = 120
 MAX_EVENT_BYTES = 512 * 1024
 MAX_AUTOPLAY_TURNS = 1000
 MAX_CURRENT_APPEARANCE_IMAGES = 3
@@ -165,7 +166,7 @@ def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def _list(value: Any, limit: int = MAX_LIST_ITEMS) -> list[Any]:
+def _list(value: Any, limit: int | None = MAX_LIST_ITEMS) -> list[Any]:
     return list(value)[:limit] if isinstance(value, list) else []
 
 
@@ -173,7 +174,7 @@ def _dict(value: Any) -> dict[str, Any]:
     return copy.deepcopy(value) if isinstance(value, dict) else {}
 
 
-def _clean_string_list(value: Any, limit: int = MAX_LIST_ITEMS) -> list[str]:
+def _clean_string_list(value: Any, limit: int | None = MAX_LIST_ITEMS) -> list[str]:
     result: list[str] = []
     for item in _list(value, limit):
         text = _text(item, 500)
@@ -3401,12 +3402,12 @@ def normalize_memory_store(value: Any = None, legacy_memories: Any = None) -> di
     source = _dict(value)
     raw_items = source.get("items")
     if not isinstance(raw_items, list):
-        raw_items = source.get("memories") if isinstance(source.get("memories"), list) else []
-    if not raw_items and isinstance(legacy_memories, list):
-        raw_items = legacy_memories
+        raw_items = source.get("memories")
+    if not isinstance(raw_items, list):
+        raw_items = legacy_memories if isinstance(legacy_memories, list) else []
     items = []
     seen = set()
-    for index, item in enumerate(raw_items[-MAX_MEMORY_ITEMS:]):
+    for index, item in enumerate(raw_items):
         normalized = normalize_memory_item(item, index)
         if not normalized or normalized["id"] in seen:
             continue
@@ -3415,7 +3416,7 @@ def normalize_memory_store(value: Any = None, legacy_memories: Any = None) -> di
     return {
         "schema": "simpai.vlm_roleplay.memory_store",
         "version": 1,
-        "items": items[-MAX_MEMORY_ITEMS:],
+        "items": items,
         "updated_at": _text(source.get("updated_at"), 80) or _now(),
     }
 
@@ -3446,7 +3447,7 @@ def normalize_chapter(value: Any = None, index: int = 0, branch_id: str = "main"
         "end_turn_id": _text(source.get("end_turn_id"), 200),
         "turn_count": max(0, min(MAX_AUTOPLAY_TURNS, turn_count)),
         "last_summary_turn_count": max(0, min(MAX_AUTOPLAY_TURNS, last_summary_turn_count)),
-        "memory_ids": _clean_string_list(source.get("memory_ids"), MAX_MEMORY_ITEMS),
+        "memory_ids": _clean_string_list(source.get("memory_ids"), None),
         "open_threads": _clean_string_list(source.get("open_threads"), 40),
         "locked": bool(source.get("locked", False)),
         "created_at": _text(source.get("created_at"), 80) or _now(),
@@ -3520,7 +3521,7 @@ def default_story_state(value: Any = None) -> dict[str, Any]:
         "relationships": _list(source.get("relationships"), 80),
         "world_facts": _clean_string_list(source.get("world_facts"), 80),
         "knowledge": _normalize_knowledge(source.get("knowledge")),
-        "memories": _list(source.get("memories"), MAX_MEMORY_ITEMS),
+        "memories": _list(source.get("memories"), None),
         "recent_turn_facts": [
             normalize_turn_facts(item)
             for item in _list(source.get("recent_turn_facts"), MAX_RECENT_TURN_FACTS)
@@ -3749,7 +3750,7 @@ def normalize_roleplay_session(value: Any = None) -> dict[str, Any]:
         session.get("active_branch_id") or "main",
     )
     session["active_chapter_id"] = session["chapters"]["active_id"]
-    session["story_state"]["memories"] = copy.deepcopy(session["memory_store"]["items"][-MAX_MEMORY_ITEMS:])
+    session["story_state"]["memories"] = copy.deepcopy(session["memory_store"]["items"][-MAX_LEGACY_MEMORY_ITEMS:])
     active_chapter = next(
         (item for item in session["chapters"]["items"] if item["id"] == session["active_chapter_id"]),
         None,
@@ -6689,7 +6690,7 @@ def parse_director_response(text: Any, session: Any = None) -> dict[str, Any]:
         "patches": patches,
         "memories": _list(data.get("memories"), 20),
         "world_book_updates": _list(data.get("world_book_updates") or data.get("world_book"), 20),
-        "memory_deletions": _clean_string_list(data.get("memory_deletions"), MAX_MEMORY_ITEMS),
+        "memory_deletions": _clean_string_list(data.get("memory_deletions"), MAX_MEMORY_OPERATIONS),
         "chapter_update": _dict(data.get("chapter_update") or data.get("chapter")),
         "visual_candidate": _dict(data.get("visual_candidate")),
         "chapter_summary": _text(data.get("chapter_summary"), 4000),
@@ -6718,7 +6719,7 @@ def parse_director_resource_response(text: Any) -> dict[str, Any]:
         "reviews": _list(data.get("reviews"), 20),
         "memories": _list(data.get("memories"), 20),
         "world_book_updates": _list(data.get("world_book_updates") or data.get("world_book"), 20),
-        "memory_deletions": _clean_string_list(data.get("memory_deletions"), MAX_MEMORY_ITEMS),
+        "memory_deletions": _clean_string_list(data.get("memory_deletions"), MAX_MEMORY_OPERATIONS),
         "chapter_update": _dict(data.get("chapter_update") or data.get("chapter")),
         "visual_candidate": _dict(data.get("visual_candidate")),
         "chapter_summary": _text(data.get("chapter_summary"), 4000),
@@ -10639,7 +10640,7 @@ def apply_director_result(
             result["world_book_updates"] = [*_list(result.get("world_book_updates"), 20), *control_world_updates]
         if control_memory_deletions:
             result["memory_deletions"] = list(dict.fromkeys(
-                [*_clean_string_list(result.get("memory_deletions"), MAX_MEMORY_ITEMS), *control_memory_deletions]
+                [*_clean_string_list(result.get("memory_deletions"), MAX_MEMORY_OPERATIONS), *control_memory_deletions]
             ))
         if control_chapter_update:
             chapter_update = _dict(result.get("chapter_update"))
@@ -10849,7 +10850,7 @@ def apply_director_result(
     resource_changes.extend(_apply_world_book_updates(normalized, result.get("world_book_updates")))
     memory_store = normalize_memory_store(normalized.get("memory_store"), state.get("memories"))
     memories = memory_store["items"]
-    for memory_id in _clean_string_list(result.get("memory_deletions"), MAX_MEMORY_ITEMS):
+    for memory_id in _clean_string_list(result.get("memory_deletions"), MAX_MEMORY_OPERATIONS):
         existing_index = next(
             (index for index, item in enumerate(memories) if item.get("id") == memory_id),
             -1,
@@ -10891,17 +10892,15 @@ def apply_director_result(
             resource_changes.append({"op": "update", "kind": "memory", "id": normalized_memory["id"],
                                      "title": normalized_memory["text"][:120]})
         else:
-            if len(memories) >= MAX_MEMORY_ITEMS:
-                continue
             if normalized_memory["id"] in {item["id"] for item in memories}:
                 normalized_memory["id"] = f"memory_{uuid.uuid4().hex[:12]}"
             memories.append(normalized_memory)
             resource_changes.append({"op": "add", "kind": "memory", "id": normalized_memory["id"],
                                      "title": normalized_memory["text"][:120]})
-    memory_store["items"] = memories[-MAX_MEMORY_ITEMS:]
+    memory_store["items"] = memories
     memory_store["updated_at"] = _now()
     normalized["memory_store"] = memory_store
-    state["memories"] = copy.deepcopy(memory_store["items"])
+    state["memories"] = copy.deepcopy(memory_store["items"][-MAX_LEGACY_MEMORY_ITEMS:])
     summary = _text(result.get("chapter_summary"), 4000)
     chapter_update = _dict(result.get("chapter_update"))
     if summary and not chapter_update.get("summary"):
@@ -11392,7 +11391,7 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
             patches = _skill_scene_patches(payload, replace_id=action == "transition_scene")
         memories = [item for item in payload.get("memories", []) if isinstance(item, dict)][:20]
         world_book_updates = [item for item in payload.get("world_book_updates", []) if isinstance(item, dict)][:20]
-        memory_deletions = _clean_string_list(payload.get("memory_deletions"), MAX_MEMORY_ITEMS)
+        memory_deletions = _clean_string_list(payload.get("memory_deletions"), MAX_MEMORY_OPERATIONS)
         chapter_update = _dict(payload.get("chapter_update"))
         chapter_summary = _text(payload.get("chapter_summary"), 4000)
         turn_facts = _dict(payload.get("turn_facts"))

@@ -44,7 +44,7 @@
     const MAX_ROLEPLAY_REFERENCE_BYTES = 80 * 1024 * 1024;
     const MAX_ROLEPLAY_WORLD_BOOK_ENTRIES = 400;
     const MAX_ROLEPLAY_WORLD_BOOK_KEYS = 256;
-    const MAX_ROLEPLAY_MEMORIES = 120;
+    const MAX_ROLEPLAY_LEGACY_MEMORIES = 120;
     const MAX_ROLEPLAY_CHAPTERS = 80;
     const IMAGE_COMPRESSION_CANDIDATES = [
         { maxSide: IMAGE_PRIMARY_MAX_SIDE, quality: 0.85 },
@@ -960,7 +960,7 @@
             end_turn_id: roleplayResourceText(source.end_turn_id, 200),
             turn_count: Math.max(0, Math.min(1000, Math.round(Number(source.turn_count) || 0))),
             last_summary_turn_count: Math.max(0, Math.min(1000, Math.round(Number(source.last_summary_turn_count) || 0))),
-            memory_ids: roleplayResourceList(source.memory_ids, MAX_ROLEPLAY_MEMORIES),
+            memory_ids: roleplayResourceList(source.memory_ids, Infinity),
             open_threads: roleplayResourceList(source.open_threads, 40),
             locked: !!source.locked,
             created_at: roleplayResourceText(source.created_at, 80) || new Date().toISOString(),
@@ -990,7 +990,7 @@
             ? memorySource.items
             : (Array.isArray(stateSource.memories) ? stateSource.memories : []);
         const seenMemories = new Set();
-        const memories = rawMemories.slice(-MAX_ROLEPLAY_MEMORIES).map(normalizeRoleplayMemory).filter((item) => {
+        const memories = rawMemories.map(normalizeRoleplayMemory).filter((item) => {
             if (!item || seenMemories.has(item.id)) return false;
             seenMemories.add(item.id);
             return true;
@@ -1207,6 +1207,8 @@
         root.querySelectorAll('[data-resource-panel]').forEach((panel) => {
             panel.hidden = collapsed || panel.getAttribute('data-resource-panel') !== activeTab;
         });
+        const collapseButton = root.querySelector('[data-resource-collapse]');
+        if (collapseButton) collapseButton.hidden = collapsed;
     }
 
     function setRoleplayResourceTab(root, tab, toggle = false) {
@@ -1323,7 +1325,7 @@
         }
         const storyState = Object.assign({}, target.story_state, {
             world_facts: worldEntries.filter((item) => item.mode === 'always').map((item) => item.content),
-            memories: memories.slice(-MAX_ROLEPLAY_MEMORIES),
+            memories: memories.slice(-MAX_ROLEPLAY_LEGACY_MEMORIES),
             chapter_summary: chapters.find((item) => item.id === selectedChapter)?.summary || ''
         });
         return normalizeRoleplaySession(Object.assign({}, target, {
@@ -1338,7 +1340,7 @@
     function addRoleplayResource(modal, kind, runtime = null) {
         const target = runtime || currentConversationRuntime();
         const rows = visibleRoleplayResourceRows(modal, kind);
-        const limit = kind === 'world' ? MAX_ROLEPLAY_WORLD_BOOK_ENTRIES : kind === 'memory' ? MAX_ROLEPLAY_MEMORIES : MAX_ROLEPLAY_CHAPTERS;
+        const limit = kind === 'world' ? MAX_ROLEPLAY_WORLD_BOOK_ENTRIES : kind === 'memory' ? Infinity : MAX_ROLEPLAY_CHAPTERS;
         if (rows.length >= limit) {
             setConversationStatus(target, localText('The resource limit has been reached.', '资源数量已达到上限。'), true);
             return false;
@@ -2292,7 +2294,7 @@
                 relationships: Array.isArray(stateSource.relationships) ? stateSource.relationships.slice(0, 80) : [],
                 world_facts: resources.world_book.entries.filter((item) => item.mode === 'always' && item.enabled).map((item) => item.content).slice(0, 80),
                 knowledge: stateSource.knowledge && typeof stateSource.knowledge === 'object' ? stateSource.knowledge : {},
-                memories: resources.memory_store.items.slice(-MAX_ROLEPLAY_MEMORIES),
+                memories: resources.memory_store.items.slice(-MAX_ROLEPLAY_LEGACY_MEMORIES),
                 recent_turn_facts: Array.isArray(stateSource.recent_turn_facts)
                     ? stateSource.recent_turn_facts.filter((item) => item && typeof item === 'object').slice(-12)
                     : [],
@@ -4494,6 +4496,7 @@
             persistenceSavedAt: String(source.persistenceSavedAt ?? source.saved_at ?? '').trim().slice(0, 80),
             archiveHydrationPromise: null,
             archiveHydrationPending: false,
+            archiveIndexOnly: source.archiveIndexOnly === true || source.archive_index_only === true,
             archiveHydrated: !!source.archiveHydrated,
             archiveHydrationRequired: !!source.archiveHydrationRequired,
             archiveHydrationFailed: false,
@@ -15965,23 +15968,25 @@
         </div>
       </div>
       <div class="describe-vlm-chat-roleplay-section describe-vlm-chat-roleplay-resource-section" data-describe-vlm-chat-roleplay-resources data-resource-tab="world" data-resource-collapsed="true">
-        <div class="describe-vlm-chat-roleplay-section-head"><strong>${escapeHtml(localText('Story resources', '故事资源'))}</strong><span class="describe-vlm-chat-roleplay-resource-total" data-resource-total>${escapeHtml(localText('World book, memory, chapters', '世界书、记忆、章节'))}</span></div>
+        <div class="describe-vlm-chat-roleplay-resource-navigation">
+        <div class="describe-vlm-chat-roleplay-section-head"><strong>${escapeHtml(localText('Story resources', '故事资源'))}</strong><span class="describe-vlm-chat-roleplay-resource-total" data-resource-total>${escapeHtml(localText('World book, memory, chapters', '世界书、记忆、章节'))}</span><button type="button" data-resource-collapse title="${escapeHtml(roleplayDictionaryText('Collapse story resources'))}" aria-label="${escapeHtml(roleplayDictionaryText('Collapse story resources'))}" hidden><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button></div>
         <div class="describe-vlm-chat-roleplay-resource-tabs" role="tablist" aria-label="${escapeHtml(localText('Story resources', '故事资源'))}">
           <button type="button" data-resource-tab="world" role="tab" aria-selected="false" aria-expanded="false"><i class="fa-solid fa-book-open"></i><span>${escapeHtml(localText('World book', '世界书'))}</span><b data-resource-count="world">0</b></button>
           <button type="button" data-resource-tab="memory" role="tab" aria-selected="false" aria-expanded="false"><i class="fa-solid fa-brain"></i><span>${escapeHtml(localText('Memory', '记忆'))}</span><b data-resource-count="memory">0</b></button>
           <button type="button" data-resource-tab="chapter" role="tab" aria-selected="false" aria-expanded="false"><i class="fa-solid fa-bookmark"></i><span>${escapeHtml(localText('Chapters', '章节'))}</span><b data-resource-count="chapter">0</b></button>
         </div>
+        </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="world" role="tabpanel" hidden>
           <div class="describe-vlm-chat-roleplay-resource-toolbar"><label><span>${escapeHtml(localText('New entry', '新条目'))}</span><input data-describe-vlm-chat-roleplay-world-book-draft-context type="text" maxlength="5000" placeholder="${escapeHtml(localText('Describe the lore, rule, place, faction, or item', '描述要生成的设定、规则、地点、势力或物品'))}" aria-label="${escapeHtml(localText('World book generation request', '世界书生成要求'))}"></label><button type="button" data-describe-vlm-chat-roleplay-draft="world_book" title="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}" aria-label="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button><button type="button" data-resource-import="world" title="${escapeHtml(roleplayDictionaryText('Import world book entries from a world book JSON or a PNG/JSON character card with embedded lore. This does not add the character to the story.'))}" aria-label="${escapeHtml(localText('Import Tavern world book', '导入酒馆世界书'))}"><i class="fa-solid fa-file-import"></i></button><input type="file" accept=".json,.png,application/json,image/png" data-resource-import-file="world" hidden><button type="button" data-resource-add="world" title="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}" aria-label="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}"><i class="fa-solid fa-plus"></i></button></div>
-          <div data-resource-list="world"></div>
+          <div class="describe-vlm-chat-roleplay-resource-list" data-resource-list="world" role="region" tabindex="0" aria-label="${escapeHtml(roleplayDictionaryText('World book entries'))}"></div>
         </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="memory" role="tabpanel" hidden>
           <div class="describe-vlm-chat-roleplay-resource-toolbar"><span>${escapeHtml(localText('Durable facts and events are selected for the current speaker and chapter.', '持久事实和事件会按当前发言者与章节筛选。'))}</span><button type="button" data-resource-add="memory" title="${escapeHtml(localText('Add memory', '新增记忆'))}" aria-label="${escapeHtml(localText('Add memory', '新增记忆'))}"><i class="fa-solid fa-plus"></i></button></div>
-          <div data-resource-list="memory"></div>
+          <div class="describe-vlm-chat-roleplay-resource-list" data-resource-list="memory" role="region" tabindex="0" aria-label="${escapeHtml(roleplayDictionaryText('Memory entries'))}"></div>
         </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="chapter" role="tabpanel" hidden>
           <div class="describe-vlm-chat-roleplay-resource-toolbar"><label><span>${escapeHtml(localText('Current chapter', '当前章节'))}</span><select data-resource-active-chapter aria-label="${escapeHtml(localText('Current chapter', '当前章节'))}"></select></label><button type="button" data-resource-add="chapter" title="${escapeHtml(localText('Add chapter', '新增章节'))}" aria-label="${escapeHtml(localText('Add chapter', '新增章节'))}"><i class="fa-solid fa-plus"></i></button></div>
-          <div data-resource-list="chapter"></div>
+          <div class="describe-vlm-chat-roleplay-resource-list" data-resource-list="chapter" role="region" tabindex="0" aria-label="${escapeHtml(roleplayDictionaryText('Chapter entries'))}"></div>
         </div>
       </div>
       <div class="describe-vlm-chat-roleplay-section">
@@ -16047,6 +16052,7 @@
     <div data-describe-vlm-help-status></div>
     <div class="describe-vlm-chat-preference-mount" data-describe-vlm-chat-preference-mount hidden></div>
     <div class="describe-vlm-chat-log" data-describe-vlm-chat-log></div>
+    <button type="button" class="describe-vlm-chat-scroll-latest" data-describe-vlm-chat-scroll-latest title="${escapeHtml(roleplayDictionaryText('Back to latest message'))}" aria-label="${escapeHtml(roleplayDictionaryText('Back to latest message'))}" hidden><i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button>
     <div class="describe-vlm-chat-guidance-review" data-roleplay-guidance-review hidden>
       <strong>${escapeHtml(localText('Autoplay candidate requires your review', '托管草稿需要你确认'))}</strong>
       <small data-roleplay-guidance-reason role="status"></small>
@@ -16121,6 +16127,7 @@
   </div>
 </div>`;
         installDescribeFloatingLayer(modal);
+        setupChatScrollControls(modal);
         syncChatSettingsControls(modal);
         syncBusyControls(modal);
         renderMessages();
@@ -18178,6 +18185,12 @@
         }
     }
 
+    function reportIncompleteConversationArchive(runtime) {
+        reportConversationArchiveError(runtime, new Error('conversation_archive_incomplete'));
+        runtime.archiveHydrationRequired = true;
+        setConversationStatus(runtime, t('Only a conversation preview is available. Saving, exporting and new turns are paused to protect the full archive. Reconnect or import a complete backup.'), true);
+    }
+
     function startConversationArchiveQueue(conversationId, queue) {
         if (!queue || queue.running) return queue?.promise || Promise.resolve(false);
         queue.running = true;
@@ -18194,6 +18207,7 @@
                         pending.runtime.archiveHydrationFailed = false;
                         pending.runtime.archiveHydrationRequired = false;
                         pending.runtime.archiveHydrated = true;
+                        pending.runtime.archiveIndexOnly = false;
                     }
                 } catch (error) {
                     lastError = error;
@@ -18266,6 +18280,7 @@
     }
 
     function archiveSnapshotIsRicher(runtime, archivePayload) {
+        if (runtime?.archiveIndexOnly && archivePayload && !archivePayload.archiveIndexOnly && !archivePayload.archive_index_only) return true;
         const currentRevision = normalizeConversationPersistenceRevision(runtime?.persistenceRevision);
         const archivedRevision = normalizeConversationPersistenceRevision(
             archivePayload?.persistenceRevision ?? archivePayload?.persistence_revision
@@ -18294,7 +18309,7 @@
 
     async function restoreConversationArchiveForRuntime(runtime, options = {}) {
         if (!runtime || runtime.deleted) return { ok: false, restored: false };
-        if (runtime.archiveHydrated) return { ok: true, restored: false, available: true };
+        if (runtime.archiveHydrated && !runtime.archiveIndexOnly) return { ok: true, restored: false, available: true };
         if (runtime.archiveHydrationPromise) return runtime.archiveHydrationPromise;
         const conversationId = String(runtime.conversationId || '').trim();
         if (!conversationId) return { ok: false, restored: false };
@@ -18318,6 +18333,10 @@
                 reportConversationArchiveError(runtime, error);
                 return { ok: false, restored: false, error };
             }
+            if (runtime.archiveIndexOnly && (!restored || restored.archiveIndexOnly)) {
+                reportIncompleteConversationArchive(runtime);
+                return { ok: false, restored: false, available: false };
+            }
             const currentRevision = normalizeConversationPersistenceRevision(runtime.persistenceRevision);
             const archiveRevision = normalizeConversationPersistenceRevision(restored?.persistenceRevision);
             const recoveryRevision = normalizeConversationPersistenceRevision(recovery?.persistence_revision);
@@ -18333,7 +18352,7 @@
                 return { ok: true, restored: false, available: !!restored };
             }
             if (
-                runtime.persistenceDirty
+                (runtime.persistenceDirty && !runtime.archiveIndexOnly)
                 || runtime.busy
                 || runtime.activeAbortController
                 || runtime.activeRequestId
@@ -18406,6 +18425,7 @@
                     : normalizeConversationSavedAt(archiveSource.savedAt || archiveSource.persistenceSavedAt),
                 persistenceDirty: recoveryApplies,
                 archiveHydrated: true,
+                archiveIndexOnly: false,
                 archiveHydrationRequired: false,
                 archiveHydrationFailed: false
             }));
@@ -18440,7 +18460,7 @@
             runtime.archiveHydrationPending = false;
             runtime.archiveHydrationPromise = null;
             const activeRuntime = state.conversationRuntimes.get(conversationId) || runtime;
-            if (runtime.archiveSaveRequested && !activeRuntime.deleted) {
+            if (runtime.archiveSaveRequested && !activeRuntime.deleted && activeRuntime.archiveHydrated && !activeRuntime.archiveIndexOnly) {
                 runtime.archiveSaveRequested = false;
                 saveConversationSnapshot(activeRuntime);
             }
@@ -18652,6 +18672,7 @@
             title: String(expandedData.title || expandedData.title_text || '').replace(/\s+/g, ' ').trim().slice(0, 120),
             savedAt: normalizeConversationSavedAt(expandedData.saved_at),
             persistenceRevision: normalizeConversationPersistenceRevision(expandedData.persistence_revision),
+            archiveIndexOnly: expandedData.archive_index_only === true || expandedData.archiveIndexOnly === true,
             messages: roleplayData?.messages || normalizePersistedMessages(expandedData.messages, {
                 conversationId,
                 maxMessages: archiveHistory ? null : undefined
@@ -18956,6 +18977,13 @@
             const target = runtime || syncCurrentRuntimeFromState();
             if (target?.deleted) return;
             cancelScheduledConversationPersist(target);
+            if (target.archiveIndexOnly) {
+                target.archiveSaveRequested = true;
+                if (!target.archiveHydrationPending && !target.archiveHydrationFailed) {
+                    restoreConversationArchiveForRuntime(target).catch(() => {});
+                }
+                return false;
+            }
             if (target.archiveHydrationPending && !target.archiveHydrated) {
                 target.archiveSaveRequested = true;
                 return false;
@@ -19042,6 +19070,7 @@
     function persistConversationBeforePageHide() {
         try {
             const runtime = currentConversationRuntime();
+            if (runtime.archiveIndexOnly) return;
             if (!runtime?.messages?.length && !conversationRecordHasHistory({
                 chatMode: runtime?.chatMode,
                 roleplay_branches: runtime?.roleplayBranches
@@ -19102,6 +19131,7 @@
             creativeInitiative: restored.creativeInitiative,
             persistenceRevision: restored.persistenceRevision,
             persistenceSavedAt: restored.savedAt,
+            archiveIndexOnly: restored.archiveIndexOnly,
             archiveHydrated: options.archiveHydrated === true,
             archiveHydrationRequired: options.archiveHydrated !== true
                 && normalizeChatMode(restored.chatMode) === 'roleplay'
@@ -19143,7 +19173,15 @@
     }
 
     async function downloadConversation() {
-        const runtime = syncCurrentRuntimeFromState();
+        let runtime = syncCurrentRuntimeFromState();
+        if (runtime.archiveIndexOnly) {
+            const restored = await restoreConversationArchiveForRuntime(runtime);
+            runtime = restored?.runtime || runtime;
+            if (!restored?.ok || runtime.archiveIndexOnly) {
+                reportIncompleteConversationArchive(runtime);
+                return false;
+            }
+        }
         syncConversationArchiveHistory(runtime);
         let payload = conversationPayload(runtime, { fullHistory: true, storageCompactLevel: 0 });
         try {
@@ -19548,7 +19586,7 @@
                 const modal = document.getElementById('describe_vlm_chat_modal');
                 syncChatSettingsControls(modal);
                 renderPendingImages();
-                renderMessages();
+                renderMessages({ scrollToLatest: true });
                 window.setTimeout(resumeCreativeGenerationPolls, 0);
                 setStatus(archiveSaved
                     ? localText(
@@ -19627,7 +19665,7 @@
         syncChatSettingsControls(modal);
         syncBusyControls(modal);
         renderPendingImages();
-        renderMessages();
+        renderMessages({ scrollToLatest: true });
         markVlmChatPerformance('vlm_chat.conversation.switch', targetRuntime, {
             duration_ms: Math.max(0, vlmChatPerformanceNow() - switchStartedAt)
         });
@@ -19647,6 +19685,10 @@
             renderPendingImages();
             renderMessages();
             syncRoleplayControls(modal, activeRuntime);
+            if (!result?.ok && activeRuntime.archiveIndexOnly) {
+                reportIncompleteConversationArchive(activeRuntime);
+                return;
+            }
             setStatus(activeRuntime.busy
                 ? t('Conversation switched. The reply is still running.', '已切换对话，原回复仍在运行。')
                 : t('Conversation switched.', '已切换对话。'));
@@ -20557,6 +20599,7 @@
             paragraph.__renderedSource = nextContent;
         }
         log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
+        syncChatScrollControls(log);
         return true;
     }
 
@@ -20633,6 +20676,7 @@
             panel?.remove();
         }
         log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
+        syncChatScrollControls(log);
         return true;
     }
 
@@ -20843,6 +20887,7 @@
             || target.queueDraining
             || target.queuePaused
             || !isCurrentConversationRuntime(target)
+            || target.archiveIndexOnly
             || (target.archiveHydrationPending && !target.archiveHydrated)
             || (target.archiveHydrationFailed && target.archiveHydrationRequired && !target.archiveHydrated)
             || normalizeRoleplayAutoplayState(target.roleplayAutoplayState).phase === 'running'
@@ -25616,6 +25661,49 @@
         return String(participant?.name || explicitName || '').trim();
     }
 
+    function syncChatScrollControls(log) {
+        if (!log) return;
+        const button = log.parentElement?.querySelector('[data-describe-vlm-chat-scroll-latest]');
+        if (!button) return;
+        const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+        if (log.clientHeight && log.__chatScrollControls) {
+            log.__chatScrollControls.followLatest = nearBottom;
+        }
+        button.hidden = !log.clientHeight || nearBottom;
+        if (!button.hidden) {
+            button.style.bottom = `${Math.max(12, log.parentElement.getBoundingClientRect().bottom - log.getBoundingClientRect().bottom + 12)}px`;
+        }
+    }
+
+    function scrollChatToLatest(log) {
+        if (!log) return;
+        if (log.__chatScrollControls) log.__chatScrollControls.followLatest = true;
+        log.scrollTop = log.scrollHeight;
+        syncChatScrollControls(log);
+        log.__chatScrollControls?.refresh();
+    }
+
+    function setupChatScrollControls(modal) {
+        const log = modal?.querySelector('[data-describe-vlm-chat-log]');
+        if (!log || log.__chatScrollControls) return;
+        const controls = { followLatest: true, frame: 0 };
+        log.__chatScrollControls = controls;
+        controls.refresh = () => {
+            if (controls.frame) return;
+            controls.frame = window.requestAnimationFrame(() => {
+                controls.frame = 0;
+                if (controls.followLatest) log.scrollTop = log.scrollHeight;
+                syncChatScrollControls(log);
+            });
+        };
+        log.addEventListener('scroll', () => syncChatScrollControls(log), { passive: true });
+        log.addEventListener('load', controls.refresh, true);
+        if (typeof ResizeObserver === 'function') {
+            controls.observer = new ResizeObserver(controls.refresh);
+            controls.observer.observe(log);
+        }
+    }
+
     function renderMessages(options = {}) {
         const modal = ensureModal();
         const log = modal.querySelector('[data-describe-vlm-chat-log]');
@@ -25627,7 +25715,9 @@
         ).map(element => element.dataset.reasoningId));
         renderCreativePreferenceMount(modal);
         const previousScrollTop = log.scrollTop;
-        const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+        const wasNearBottom = options.scrollToLatest === true
+            || log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+        if (options.scrollToLatest && log.__chatScrollControls) log.__chatScrollControls.followLatest = true;
         const anchorRef = String(options?.anchorGenerationRef || '');
         const oldAnchorCard = anchorRef
             ? Array.from(log.querySelectorAll('[data-describe-vlm-chat-generation-ref]')).find((node) => node.getAttribute('data-describe-vlm-chat-generation-ref') === anchorRef)
@@ -25640,6 +25730,7 @@
             log.innerHTML = `${renderChatEmptyState(runtime)}${renderQueuedConversationMessages(runtime)}`;
             renderRoleplayInlineGenerationResults(modal);
             syncCreativePresetSearch(modal);
+            syncChatScrollControls(log);
             return;
         }
         const isRoleplay = normalizeChatMode(state.chatMode) === 'roleplay';
@@ -25771,6 +25862,8 @@
         }
         restoreRoleplaySpeakerCardStates(log, speakerCardStates);
         syncCreativePresetSearch(modal);
+        syncChatScrollControls(log);
+        log.__chatScrollControls?.refresh();
     }
 
     function historyTextForMessage(message) {
@@ -26772,6 +26865,10 @@
                 'Wait for the full conversation archive to finish restoring.',
                 '请等待完整会话档案恢复完成。'
             ));
+            return;
+        }
+        if (runtime.archiveIndexOnly) {
+            reportIncompleteConversationArchive(runtime);
             return;
         }
         if (runtime.archiveHydrationFailed && runtime.archiveHydrationRequired && !runtime.archiveHydrated) {
@@ -29308,6 +29405,14 @@
             setRoleplayResourceTab(resources, String(resourceTab.getAttribute('data-resource-tab') || 'world'), true);
             return;
         }
+        const resourceCollapse = evt.target.closest('[data-resource-collapse]');
+        if (resourceCollapse) {
+            const resources = resourceCollapse.closest('[data-describe-vlm-chat-roleplay-resources]');
+            resources.setAttribute('data-resource-collapsed', 'true');
+            syncRoleplayResourceTabState(resources);
+            resources.querySelector(`[role="tab"][data-resource-tab="${resources.getAttribute('data-resource-tab')}"]`)?.focus({ preventScroll: true });
+            return;
+        }
         const resourceAdd = evt.target.closest('[data-resource-add]');
         if (resourceAdd) {
             const kind = String(resourceAdd.getAttribute('data-resource-add') || '').trim();
@@ -29630,6 +29735,10 @@
         }
         if (evt.target.closest('[data-describe-vlm-chat-import]')) {
             modal.querySelector('[data-describe-vlm-chat-conversation-file]')?.click();
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-scroll-latest]')) {
+            scrollChatToLatest(modal.querySelector('[data-describe-vlm-chat-log]'));
             return;
         }
         const correctState = evt.target.closest('[data-roleplay-state-correct]');

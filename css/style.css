@@ -5946,6 +5946,39 @@ html.describe-vlm-chat-resizing * {
   gap: 10px;
 }
 
+.describe-vlm-chat-scroll-latest {
+  position: absolute;
+  right: 22px;
+  bottom: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border: 1px solid var(--describe-chat-line, #63666f);
+  border-radius: 50%;
+  background: var(--describe-chat-button, #3b3d46);
+  color: var(--describe-chat-text, #f3f4f8);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+
+.describe-vlm-chat-scroll-latest:hover {
+  background: var(--describe-chat-button-hover, #4c4f5a);
+}
+
+.describe-vlm-chat-scroll-latest:focus-visible {
+  outline: 2px solid var(--describe-chat-text, #f3f4f8);
+  outline-offset: 2px;
+}
+
+.describe-vlm-chat-scroll-latest[hidden] {
+  display: none !important;
+}
+
 .describe-vlm-chat-chat-area:has(.describe-vlm-chat-preference-mount:not([hidden])) .describe-vlm-chat-log {
   padding-left: 64px;
 }
@@ -25751,7 +25784,21 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   grid-column: 1 / -1;
 }
 
+.describe-vlm-chat-roleplay-resource-navigation {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+  background: var(--describe-chat-panel, #242529);
+}
+
+.describe-vlm-chat-roleplay-resource-navigation [data-resource-collapse][hidden] {
+  display: none !important;
+}
+
 .describe-vlm-chat-roleplay-resource-total {
+  flex: 1 1 auto;
   min-width: 0;
   color: var(--describe-chat-muted, #a4a8b4);
   font-size: 10px;
@@ -25812,6 +25859,20 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 
 .describe-vlm-chat-roleplay-resource-panel[hidden] {
   display: none !important;
+}
+
+.describe-vlm-chat-roleplay-resource-list {
+  min-width: 0;
+  max-width: 100%;
+  max-height: min(420px, 46dvh);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+.describe-vlm-chat-roleplay-resource-list:focus-visible {
+  outline: 1px solid var(--describe-chat-muted, #a4a8b4);
+  outline-offset: 2px;
 }
 
 .describe-vlm-chat-roleplay-resource-toolbar {
