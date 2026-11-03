@@ -62,7 +62,7 @@
     const CHAT_MAX_TOKENS_MAX = 65536;
     const CHAT_MAX_TOKEN_CHOICES = Object.freeze([256, 512, 1024, 2048, 3072, 4096, 8192, 16384, 32768, 65536]);
     const VLM_N_CTX_MIN = 512;
-    const VLM_N_CTX_MAX = 131072;
+    const VLM_N_CTX_MAX = 262144;
     const VLM_N_CTX_STEP = 512;
     const VLM_API_CONTEXT_DEFAULT = 32768;
     const VLM_SKILLS_ENDPOINT = '/describe-image/vlm-skills';
@@ -612,7 +612,7 @@
         const blocks = (Array.isArray(value.blocks) ? value.blocks : []).slice(0, 20).map((block) => {
             if (!block || typeof block !== 'object') return null;
             const id = String(block.id || '').trim().slice(0, 80);
-            const content = String(block.content || '').slice(0, id === 'recent_dialogue' ? 100000 : 30000);
+            const content = String(block.content || '').slice(0, id === 'recent_dialogue' ? 200000 : 30000);
             if (!id || !content) return null;
             return {
                 id,
@@ -25933,10 +25933,10 @@
             return { maxMessages: 32, budgetChars: FULL_HISTORY_BUDGET, maxMessageChars: 1800, archiveLimit: 0 };
         }
         return {
-            maxMessages: Math.min(512, Math.max(32, Math.floor(nCtx / 256))),
-            budgetChars: Math.min(100000, Math.max(FULL_HISTORY_BUDGET, Math.floor(nCtx * 0.8))),
+            maxMessages: Math.min(1024, Math.max(32, Math.floor(nCtx / 256))),
+            budgetChars: Math.min(nCtx > 131072 ? 200000 : 100000, Math.max(FULL_HISTORY_BUDGET, Math.floor(nCtx * 0.8))),
             maxMessageChars: Math.min(6000, Math.max(1800, Math.floor(nCtx / 8))),
-            archiveLimit: 512
+            archiveLimit: Math.min(1024, Math.max(512, Math.floor(nCtx / 256)))
         };
     }
 

@@ -2370,7 +2370,7 @@ def _describe_system_prompt_budget(params, version_name=""):
     chat_mode_key = str(params.get("describe_chat_mode") or "").strip().lower()
     roleplay_system = bool(params.get("describe_roleplay_enabled")) or chat_mode_key == "roleplay"
     if roleplay_system and n_ctx > 8192 and params.get("describe_roleplay_context_window"):
-        max_chars = min(131000, max(18000, int(n_ctx * 0.7)))
+        max_chars = min(262000, max(18000, int(n_ctx * 0.7)))
         text_budget = max(1200, min(max_chars, requested_chars))
     system_ratio = 0.9 if roleplay_system else (0.75 if chat_mode_key == "guide" else 0.5)
     system_cap = 16000 if roleplay_system else max(5000, min(40000, int(n_ctx * 0.3)))
@@ -2438,7 +2438,7 @@ def _roleplay_runtime_context_chars(context, extension_chars=0):
         history_budget = max(0, int(source.get("history_budget_chars") or 0))
     except (TypeError, ValueError):
         history_budget = 0
-    return max(6000, min(131000, system_budget + history_budget + max(0, extension_chars) + 3200))
+    return max(6000, min(262000, system_budget + history_budget + max(0, extension_chars) + 3200))
 
 
 def _roleplay_fit_actor_context(session, context, params, history, latest_user_text):

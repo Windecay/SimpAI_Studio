@@ -51,7 +51,7 @@ MAX_ROLEPLAY_CHARACTERS = 20
 MAX_ROLEPLAY_FORM_REFERENCES = 8
 MAX_CHARACTER_STATE_FIELDS = 40
 MAX_RECENT_TURN_FACTS = 12
-MAX_CONTEXT_HISTORY_MESSAGES = 512
+MAX_CONTEXT_HISTORY_MESSAGES = 1024
 MAX_RUNTIME_STATE_TEXT = 4000
 MAX_STATE_TEXT_SEGMENTS = 8
 MAX_STATE_TEXT_SEGMENT_LENGTH = 520
@@ -4025,6 +4025,14 @@ def _query_roleplay_memories(
     """Select memories from the current request's normalized snapshot."""
     actor_id = _text(speaker_id, 160)
     active_chapter_id = _text(normalized.get("active_chapter_id"), 160)
+    chapter_ids = [
+        item.get("id") for item in normalized.get("chapters", {}).get("items", [])
+        if item.get("id")
+    ]
+    future_chapter_ids = (
+        set(chapter_ids[chapter_ids.index(active_chapter_id) + 1:])
+        if active_chapter_id in chapter_ids else set()
+    )
     search_text = _roleplay_context_query(normalized, query, "" if include_hidden else actor_id)
     requested_memory_ids = set(re.findall(r"@(?:记忆|memory)\[([^\]\r\n]{1,160})\]", _text(query, 5000), re.I))
     rows: list[tuple[bool, float, dict[str, Any]]] = []
@@ -4041,7 +4049,7 @@ def _query_roleplay_memories(
         ):
             continue
         chapter_id = _text(memory.get("chapter_id"), 160)
-        if chapter_id and chapter_id != active_chapter_id and not include_hidden and not manually_requested:
+        if chapter_id in future_chapter_ids and not include_hidden and not manually_requested:
             continue
         text_hits = _resource_key_hits(search_text, [memory.get("text")])
         keyword_hits = _resource_key_hits(search_text, memory.get("keywords"))
@@ -4397,7 +4405,7 @@ def roleplay_context_limits(
         if available_chars < 3100:
             raise ValueError("roleplay_output_context_budget")
         limits["system_chars"] = min(limits["system_chars"], max(2200, int(available_chars * 0.6)))
-        limits["history_chars"] = min(100000, max(900, available_chars - limits["system_chars"]))
+        limits["history_chars"] = min(200000, max(900, available_chars - limits["system_chars"]))
         limits["history_messages"] = min(MAX_CONTEXT_HISTORY_MESSAGES, max(6, context_window // 256))
         limits["history_item_chars"] = min(6000, max(1600, context_window // 8))
         limits["memories"] = min(20, max(limits["memories"], context_window // 4096))
@@ -5234,7 +5242,7 @@ def build_roleplay_context(
     history_limits = dict(limits)
     if private_audience and limits["n_ctx"] > 8192:
         history_limits["history_chars"] = min(
-            100000, limits["history_chars"] + max(0, system_budget - used_system_chars),
+            200000, limits["history_chars"] + max(0, system_budget - used_system_chars),
         )
     history_pack = _context_history(
         vlm_roleplay_cognition.filter_history(history, normalized, actor_id) if private_audience else history,

@@ -11,7 +11,7 @@ LLAMA_CPP_MIN_VRAM_RESERVE_GB = 1.0
 LLAMA_CPP_UNKNOWN_KV_GB_AT_16K = 4.0
 LLAMA_CPP_GEMMA4_N_UBATCH = 512
 LLAMA_CPP_N_CTX_MIN = 512
-LLAMA_CPP_N_CTX_MAX = 131072
+LLAMA_CPP_N_CTX_MAX = 262144
 _GIB = float(1024 ** 3)
 
 # llama.cpp uses ggml type ids for the optional KV cache quantization fields.
