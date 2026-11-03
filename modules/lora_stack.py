@@ -2,6 +2,7 @@ import copy
 import json
 import math
 import re
+from collections import Counter
 
 from modules.lora_params import PLACEHOLDER_LORA_NAME, normalize_lora_model_name, resolve_lora_filename
 
@@ -9,6 +10,8 @@ from modules.lora_params import PLACEHOLDER_LORA_NAME, normalize_lora_model_name
 BACKEND_FIELDS = ("lora_stack", "lora_stack_target")
 TARGETS = ("auto", "main", "high", "low", "both")
 TAG_PATTERN = re.compile(r"<lora:([^:<>]+):([^<>]+)>")
+# Older peers display this warning as ordinary progress text.
+REMOTE_LORA_WARNING_PROGRESS = -101
 NOISE_TARGET_PATTERN = re.compile(
     r"(?<![a-z0-9])(high|low)(?:[\s._-]*noise)?(?![a-z0-9])"
     r"|(?<=[_-])([hl])(?![a-z0-9])",
@@ -62,19 +65,24 @@ def normalize_stack(value, lang=None):
     return result
 
 
-def extract_prompt_loras(prompt, filenames, target="auto", lang=None):
+def extract_prompt_loras(prompt, filenames, target="auto", lang=None, missing_tags=None):
     items = []
 
     def replace(match):
         name = match.group(1).strip()
         model = resolve_lora_filename(name, filenames)
         if model is None:
-            raise ValueError(_message(lang, f"LoRA tag model not found: {name}", f"LoRA 标签模型不存在：{name}"))
-        items.extend(normalize_stack([{
-            "model": model,
+            if missing_tags is None:
+                raise ValueError(_message(lang, f"LoRA tag model not found: {name}", f"LoRA 标签模型不存在：{name}"))
+        normalized = normalize_stack([{
+            "model": model or name,
             "strength_model": match.group(2).strip(),
             "target": target or "auto",
-        }], lang))
+        }], lang)
+        if model is None:
+            missing_tags.append({"name": name, "tag": match.group(0)})
+        else:
+            items.extend(normalized)
         return ""
 
     cleaned = TAG_PATTERN.sub(replace, str(prompt or ""))
@@ -89,14 +97,63 @@ def _active(item):
     )
 
 
-def prepare_stack_params(prompt, params, filenames, supports_stack=True, lang=None):
+def prepare_stack_params(prompt, params, filenames, supports_stack=True, lang=None, missing_tags=None):
     manual = normalize_stack(params.get("lora_stack"), lang)
-    tags, cleaned = extract_prompt_loras(prompt, filenames, params.get("lora_stack_target", "auto"), lang)
+    missing = [] if missing_tags is not None else None
+    tags, cleaned = extract_prompt_loras(prompt, filenames, params.get("lora_stack_target", "auto"), lang, missing)
     if not supports_stack and any(_active(item) for item in manual + tags):
         raise ValueError(_message(lang, "LoRA stacks and prompt tags require a Comfy workflow with SimpAILoraStack.", "LoRA 堆和提示词标签需要带有 SimpAILoraStack 节点的 Comfy 工作流。"))
     params["lora_stack"] = manual
     params["lora_stack_prompt"] = tags
+    if missing:
+        params["lora_stack_prompt_missing"] = [item["tag"] for item in missing]
+    else:
+        params.pop("lora_stack_prompt_missing", None)
+    if missing_tags is not None:
+        missing_tags.extend(missing)
     return cleaned
+
+
+def report_missing_prompt_loras(task, missing_tags):
+    if not missing_tags:
+        return
+    from modules.localization import localized_text
+
+    names = list(getattr(task, "simpleai_missing_lora_names", ()) or ())
+    seen = {name.casefold() for name in names}
+    new_names = []
+    for item in missing_tags:
+        name = item["name"]
+        if name.casefold() not in seen:
+            names.append(name)
+            new_names.append(name)
+            seen.add(name.casefold())
+    if not new_names:
+        return
+
+    template = localized_text(
+        {"__lang": getattr(task, "simpleai_lang", None)},
+        "LoRA models not found and skipped: {names}. Generation will continue without them.",
+    )
+    task.simpleai_missing_lora_names = names
+    task.simpleai_lora_warning = template.format(names=", ".join(names))
+    warning = template.format(names=", ".join(new_names))
+    if getattr(task, "remote_task", None) is None:
+        task.yields.append(["warning", warning])
+    return warning
+
+
+def receive_remote_lora_warning(task, warning):
+    warning = str(warning or "").strip()
+    if not warning:
+        return
+    warnings = list(getattr(task, "simpleai_remote_lora_warnings", ()) or ())
+    if warning in warnings:
+        return
+    warnings.append(warning)
+    task.simpleai_remote_lora_warnings = warnings
+    task.simpleai_lora_warning = "\n".join(warnings)
+    task.yields.append(["warning", warning])
 
 
 def active_stack_items(value, lang=None):
@@ -125,8 +182,9 @@ def build_fooocus_stack(params, legacy_loras=(), filenames=()):
     return result
 
 
-def restore_prompt_tags(prompt, items):
+def restore_prompt_tags(prompt, items, missing_tags=()):
     existing = {match.group(1).replace("\\", "/").casefold() for match in TAG_PATTERN.finditer(str(prompt or ""))}
+    existing_tags = Counter(match.group(0) for match in TAG_PATTERN.finditer(str(prompt or "")))
     additions = []
     for item in normalize_stack(items):
         model = item["model"]
@@ -136,6 +194,14 @@ def restore_prompt_tags(prompt, items):
             continue
         additions.append(f'<lora:{model}:{item["strength_model"]:g}>')
         existing.update(names)
+    if isinstance(missing_tags, (list, tuple)):
+        for tag in missing_tags:
+            if not isinstance(tag, str) or not TAG_PATTERN.fullmatch(tag):
+                continue
+            if existing_tags[tag]:
+                existing_tags[tag] -= 1
+            else:
+                additions.append(tag)
     return str(prompt or "") if not additions else str(prompt or "").rstrip() + "\n" + ", ".join(additions)
 
 

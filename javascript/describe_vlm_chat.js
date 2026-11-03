@@ -6977,21 +6977,27 @@
             visibility: readRoleplayResourceField(row, 'visibility'),
             known_by: roleplayResourceCommaList(readRoleplayResourceField(row, 'known_by'), 20)
         })) : session.memory_store?.items || [];
-        const matches = memories.filter((item) => (
-            item.enabled && (!item.chapter_id || item.chapter_id === session.active_chapter_id)
-            && (!query.fragment || [item.text, item.id, ...(item.keywords || [])]
+        const enabledMemories = memories.filter((item) => item.enabled && String(item.text || '').trim());
+        const matches = enabledMemories.filter((item) => (
+            !query.fragment || [item.text, item.id, ...(item.keywords || [])]
                 .some((part) => String(part || '').toLocaleLowerCase().includes(query.fragment)))
-        )).slice(0, 8);
-        menu.innerHTML = matches.length
+        );
+        const chapterTitles = new Map((session.chapters?.items || []).map((item) => [item.id, item.title]));
+        const summary = roleplayDictionaryText('Matching memories: {matched} / {total}')
+            .replace('{matched}', String(matches.length)).replace('{total}', String(enabledMemories.length));
+        menu.innerHTML = `<div class="describe-vlm-chat-roleplay-memory-mention-summary" role="presentation">${escapeHtml(summary)}</div>` + (matches.length
             ? matches.map((item, index) => {
                 const shared = item.visibility === 'private' && !(item.known_by || []).length;
                 const detail = [
+                    item.chapter_id ? roleplayDictionaryText('Chapter: {title}')
+                        .replace('{title}', chapterTitles.get(item.chapter_id) || item.chapter_id) : '',
                     (item.keywords || []).join(' · ').slice(0, 100),
                     shared ? roleplayDictionaryText('Private, shared only for this reply') : ''
                 ].filter(Boolean).join(' · ');
                 return `<button type="button" role="option" data-roleplay-memory-mention-option="${escapeHtml(item.id)}" data-active="${index === 0 ? 'true' : 'false'}"><b>${escapeHtml(String(item.text || '').slice(0, 120))}</b><small>${escapeHtml(detail)}</small></button>`;
             }).join('')
-            : `<span>${escapeHtml(localText('No matching memories', '没有匹配的记忆'))}</span>`;
+            : `<span>${escapeHtml(localText('No matching memories', '没有匹配的记忆'))}</span>`);
+        menu.scrollTop = 0;
         menu.hidden = false;
         input.setAttribute('aria-expanded', 'true');
     }
@@ -7022,6 +7028,7 @@
         if (evt.key === 'ArrowDown' || evt.key === 'ArrowUp') {
             active = (active + (evt.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
             options.forEach((option, index) => { option.dataset.active = index === active ? 'true' : 'false'; });
+            options[active].scrollIntoView({ block: 'nearest', inline: 'nearest' });
             evt.preventDefault();
             return true;
         }

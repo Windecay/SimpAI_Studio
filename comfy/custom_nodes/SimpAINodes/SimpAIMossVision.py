@@ -25,7 +25,11 @@ SOFTWARE.
 
 import math
 
+import torch
+
+import comfy.text_encoders.qwen_vl
 import comfy.utils
+import node_helpers
 
 
 VISION_BLOCK = "<|vision_start|><|image_pad|><|vision_end|>"
@@ -57,7 +61,7 @@ class TextEncodeMOSSImageVision:
         return prefix + f"<|im_start|>user\n{refs}{text}<|im_end|>\n<|im_start|>assistant\n<think>\n"
 
     @staticmethod
-    def _prepare_references(image, vision_megapixels=1.0, image_weight=1.0):
+    def _prepare_references(image, vision_megapixels=1.0):
         if image is None or image.numel() == 0:
             return []
         if image.dim() == 3:
@@ -76,18 +80,31 @@ class TextEncodeMOSSImageVision:
             if resized.shape[-1] > 3:
                 alpha = resized[..., 3:4]
                 rgb = rgb * alpha + (1.0 - alpha)
-            # Upstream weight controls pixel contrast before vision encoding.
-            if image_weight != 1.0:
-                rgb = (0.5 + image_weight * (rgb - 0.5)).clamp(0.0, 1.0)
             result.append(rgb)
         return result
 
-    def encode_images(self, clip, prompt, negative_prompt, images, labels, system_prompt=""):
+    def encode_images(self, clip, prompt, negative_prompt, images, labels, system_prompt="", image_strengths=None):
+        if image_strengths is None:
+            image_strengths = [1.0] * len(images)
+
         def encode(text):
             try:
-                return clip.encode_from_tokens_scheduled(
-                    clip.tokenize(self._build_prompt(system_prompt, text, labels), images=images),
-                )
+                tokens = clip.tokenize(self._build_prompt(system_prompt, text, labels), images=images)
+                conditioning = clip.encode_from_tokens_scheduled(tokens)
+                if any(strength != 1.0 for strength in image_strengths):
+                    bias = []
+                    image_index = 0
+                    for token in next(iter(tokens.values()))[0]:
+                        if isinstance(token[0], dict):
+                            _, grid = comfy.text_encoders.qwen_vl.process_qwen2vl_images(token[0]["data"], patch_size=16)
+                            bias += [math.log(image_strengths[image_index])] * (int(grid[0, 1] * grid[0, 2]) // 4)
+                            image_index += 1
+                        else:
+                            bias.append(0.0)
+                    conditioning = node_helpers.conditioning_set_values(
+                        conditioning, {"context_attention_bias": torch.tensor([bias])},
+                    )
+                return conditioning
             except NotImplementedError as error:
                 if images and "Float8" in str(error):
                     raise RuntimeError(
@@ -102,11 +119,14 @@ class TextEncodeMOSSImageVision:
                vision_megapixels=1.0, system_prompt="", image_2=None, image_3=None, image_4=None):
         images, labels = [], []
         for slot, value in enumerate((image, image_2, image_3, image_4), 1):
-            prepared = self._prepare_references(value, vision_megapixels, image_weight) if image_weight > 0 else []
+            prepared = self._prepare_references(value, vision_megapixels) if image_weight > 0 else []
             images.extend(prepared)
             labels.extend([str(slot) if len(prepared) == 1 else f"{slot}.{i + 1}"
                            for i in range(len(prepared))])
-        return self.encode_images(clip, prompt, negative_prompt, images, labels, system_prompt)
+        return self.encode_images(
+            clip, prompt, negative_prompt, images, labels, system_prompt,
+            image_strengths=[image_weight] * len(images),
+        )
 
 
 class SimpAIMossVisionConditioning:
@@ -132,7 +152,7 @@ class SimpAIMossVisionConditioning:
             return positive, negative
         encoder = TextEncodeMOSSImageVision()
         prepared = {
-            slot: encoder._prepare_references(ref["image"], image_weight=ref["weight"])
+            slot: encoder._prepare_references(ref["image"])
             for slot, ref in active
         }
         result = [[], []]
@@ -142,7 +162,10 @@ class SimpAIMossVisionConditioning:
             images = [image for slot, _ in current for image in prepared[slot]]
             labels = [str(slot) if len(prepared[slot]) == 1 else f"{slot}.{i + 1}"
                       for slot, _ in current for i in range(len(prepared[slot]))]
-            conditioned = encoder.encode_images(clip, prompt, negative_prompt, images, labels)
+            image_strengths = [ref["weight"] for slot, ref in current for _ in prepared[slot]]
+            conditioned = encoder.encode_images(
+                clip, prompt, negative_prompt, images, labels, image_strengths=image_strengths,
+            )
             for index, conditioning in enumerate(conditioned):
                 for embedding, values in conditioning:
                     left = max(start, values.get("start_percent", 0.0))

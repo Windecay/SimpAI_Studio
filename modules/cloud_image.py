@@ -93,9 +93,13 @@ def save_configs(data, user_did=None):
     return normalized
 
 
-def upsert_config(name, protocol, base_url, api_key, model, user_did=None, config_id=None):
+def upsert_config(name, protocol, base_url, api_key, model, user_did=None, config_id=None, transparent_background=None):
     data = load_configs(user_did)
     item_id = str(config_id or uuid.uuid4().hex)
+    existing = next((item for item in data["items"] if str(item.get("id")) == item_id), {})
+    defaults = dict(existing.get("defaults") or {}) if isinstance(existing.get("defaults"), dict) else {}
+    if transparent_background is not None:
+        defaults["transparent_background"] = bool(transparent_background)
     item = {
         "id": item_id,
         "name": name,
@@ -103,6 +107,7 @@ def upsert_config(name, protocol, base_url, api_key, model, user_did=None, confi
         "base_url": base_url,
         "api_key": api_key,
         "model": model,
+        "defaults": defaults,
     }
     items = [item if str(x.get("id")) == item_id else x for x in data["items"]]
     if not any(str(x.get("id")) == item_id for x in data["items"]):
@@ -136,6 +141,11 @@ def config_by_id(config_id, user_did=None):
             if str(item.get("id")) == str(data["default_id"]):
                 return item
     return data["items"][0] if data["items"] else None
+
+
+def config_transparent_background(item):
+    defaults = item.get("defaults") if isinstance(item, dict) else None
+    return isinstance(defaults, dict) and defaults.get("transparent_background") is True
 
 
 def config_choices(user_did=None):
@@ -174,6 +184,8 @@ def _resolve_task_cloud_params(task):
     for target, source in mapping.items():
         if not str(params.get(target) or "").strip():
             params[target] = str(saved.get(source) or "").strip()
+    if "cloud_transparent_background" not in params and config_transparent_background(saved):
+        params["cloud_transparent_background"] = True
     logger.info(
         "Loaded saved Cloud Image API configuration for task: name=%s model=%s user=%s",
         params.get("cloud_config_name") or "",
@@ -658,6 +670,26 @@ def _error_message(response):
     return f"API 请求失败 ({response.status_code}){trace_suffix}: {detail}"
 
 
+def _transparent_parameter_error(response, lang):
+    if response.status_code not in (400, 422):
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    detail = error.get("message") if isinstance(error, dict) else error
+    if not detail and isinstance(payload, dict):
+        detail = payload.get("message") or payload.get("detail")
+    detail = str(detail or response.text or response.reason or "")
+    if not any(key in detail.lower() for key in ("background", "output_format", "webp", "transparent")):
+        return None
+    return localized_text(
+        {"__lang": lang},
+        "The API rejected the transparent background or WebP setting. Check provider support. Details: {detail}",
+    ).format(detail=detail[:500])
+
+
 def _request_exception_message(error):
     if isinstance(error, requests.Timeout):
         return "请求超时。服务端处理过慢、网络不稳定，或该接口不适合同步长耗时生图。"
@@ -700,7 +732,8 @@ def _download_bytes(url, session):
 
 def _raw_to_array(raw):
     with Image.open(io.BytesIO(raw)) as image:
-        return np.array(image.convert("RGBA" if image.mode == "RGBA" else "RGB"))
+        has_alpha = "A" in image.getbands() or "transparency" in image.info
+        return np.array(image.convert("RGBA" if has_alpha else "RGB"))
 
 
 def _build_metadata_entries(task, model, protocol, prompt, size, source_image_count):
@@ -749,9 +782,9 @@ def _build_metadata_parser(task, prompt, negative_prompt=None):
     return parser
 
 
-def _save_with_metadata(task, raw, metadata, metadata_parser):
+def _save_with_metadata(task, image, metadata, metadata_parser):
     path, _image_bytes, _log_item = private_log(
-        _raw_to_array(raw),
+        image,
         metadata,
         metadata_parser=metadata_parser,
         output_format=getattr(task, "output_format", None),
@@ -820,6 +853,7 @@ def _build_prompt_requests(task, count):
 def generate(task, progressbar, yield_result, stop_processing, started_at):
     task.simpleai_generation_had_output = False
     task.cloud_error = ""
+    task.cloud_warning = ""
     params = _resolve_task_cloud_params(task)
     base_url = str(params.get("cloud_base_url") or "").strip().rstrip("/")
     api_key = str(params.get("cloud_api_key") or "").strip()
@@ -827,6 +861,13 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
     if not base_url or not api_key or not model:
         raise ValueError("请先配置 API 地址、API Key 和模型")
     protocol = _protocol(params.get("cloud_protocol"), base_url, model)
+    transparent_background = params.get("cloud_transparent_background") is True
+    lang = getattr(task, "simpleai_lang", None)
+    if transparent_background and protocol != "openai_images":
+        raise ValueError(localized_text(
+            {"__lang": lang},
+            "Transparent background is available only with the OpenAI Images protocol. Change the protocol or turn it off.",
+        ))
     count = max(1, min(int(getattr(task, "image_number", 1) or 1), 8))
     prompt_requests = _build_prompt_requests(task, count)
     image_paths = _image_paths(task)
@@ -836,7 +877,7 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
     input_image_bytes = sum(Path(path).stat().st_size for path in image_paths if os.path.isfile(path))
     request_timeout = _request_timeout(protocol, image_paths)
     logger.info(
-        "Cloud image request prepared: task_id=%s protocol=%s model=%s size=%s overwrite_width=%s overwrite_height=%s aspect_ratios_selection=%s image_count=%s request_count=%s input_images=%s input_image_bytes=%s request_timeout=%s scene_canvas=%s scene_input1=%s scene_input2=%s scene_input3=%s scene_input4=%s scene_input5=%s scene_input6=%s scene_input7=%s scene_input8=%s",
+        "Cloud image request prepared: task_id=%s protocol=%s model=%s size=%s overwrite_width=%s overwrite_height=%s aspect_ratios_selection=%s image_count=%s request_count=%s input_images=%s input_image_bytes=%s request_timeout=%s scene_canvas=%s scene_input1=%s scene_input2=%s scene_input3=%s scene_input4=%s scene_input5=%s scene_input6=%s scene_input7=%s scene_input8=%s transparent_background=%s",
         getattr(task, "task_id", None),
         protocol,
         model,
@@ -858,6 +899,7 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         getattr(task, "scene_input_image6", None) is not None,
         getattr(task, "scene_input_image7", None) is not None,
         getattr(task, "scene_input_image8", None) is not None,
+        transparent_background,
     )
     results = []
     result_prompts = []
@@ -939,6 +981,8 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                         data = {"model": model, "prompt": prompt, "n": 1, "size": size}
                         if "gpt-image" not in model.lower():
                             data["response_format"] = "b64_json"
+                        if transparent_background:
+                            data.update({"background": "transparent", "output_format": "webp"})
                         response = session.post(endpoint, headers=headers, data=data, files=files, timeout=request_timeout)
                     finally:
                         for handle in handles:
@@ -948,6 +992,8 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                     payload = {"model": model, "prompt": prompt, "n": 1, "size": size}
                     if "gpt-image" not in model.lower():
                         payload["response_format"] = "b64_json"
+                    if transparent_background:
+                        payload.update({"background": "transparent", "output_format": "webp"})
                     response = session.post(endpoint, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=request_timeout)
                     is_chat_response = False
             except requests.RequestException as error:
@@ -955,6 +1001,11 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                 request_errors.append(message)
                 continue
             if not response.ok:
+                if transparent_background:
+                    message = _transparent_parameter_error(response, lang)
+                    if message:
+                        request_errors.append(message.replace(api_key, "[redacted]"))
+                        break
                 message = _onethingai_http_error(response, getattr(task, "simpleai_lang", None)) if protocol == "onethingai_v2" else _error_message(response)
                 request_errors.append(message)
                 continue
@@ -994,6 +1045,7 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         output_dir = config.get_user_path_outputs(task.user_did)
         paths = []
         download_errors = []
+        missing_transparency = False
         for index, (kind, value) in enumerate(results, 1):
             progressbar(task, 35 + int(index * 60 / len(results)), f"保存第 {index} 张图片 ...")
             batch = result_batches[index - 1]
@@ -1005,9 +1057,17 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                 task.rendered_negative_prompt = rendered_negative_prompt
                 metadata = _build_metadata_entries(task, model, protocol, rendered_prompt, size, len(image_paths))
                 metadata_parser = _build_metadata_parser(task, rendered_prompt, rendered_negative_prompt)
-                saved_path = _save_with_metadata(task, raw, metadata, metadata_parser)
+                image = _raw_to_array(raw)
+                saved_path = _save_with_metadata(task, image, metadata, metadata_parser)
                 paths.append(saved_path)
                 batch["paths"].append(saved_path)
+                if transparent_background:
+                    has_transparent_pixels = image.shape[-1] == 4 and bool(np.any(image[:, :, 3] < 255))
+                    logger.info(
+                        "Cloud image transparency result: task_id=%s index=%s channels=%s has_transparent_pixels=%s",
+                        getattr(task, "task_id", None), index, image.shape[-1], has_transparent_pixels,
+                    )
+                    missing_transparency = missing_transparency or not has_transparent_pixels
             except (OSError, ValueError, requests.RequestException) as error:
                 download_errors.append(f"第 {index} 张: {error}")
             finally:
@@ -1015,6 +1075,11 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         for batch in generation_batches:
             record_generation_batch(task, batch["paths"], round(batch["duration_ms"]), output_count=batch["count"])
         task.simpleai_generation_had_output = bool(paths)
+        if missing_transparency:
+            task.cloud_warning = localized_text(
+                {"__lang": lang}, "One or more returned images have no transparent pixels.",
+            )
+            logger.warning("Cloud image response has no transparent pixels: task_id=%s", getattr(task, "task_id", None))
         if paths:
             yield_result(task, paths, 100, False, censor=False)
         if not paths:

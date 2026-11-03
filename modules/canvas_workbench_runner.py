@@ -41,6 +41,7 @@ CANVAS_EXTRA_BACKEND_ARGS = (
     "cloud_base_url",
     "cloud_api_key",
     "cloud_model",
+    "cloud_transparent_background",
     "simpleai_regen_manifest",
     "scene_video_duration",
     "reference_video2",
@@ -2442,6 +2443,10 @@ def _apply_task_yields(record):
         if flag == "status":
             record["state"] = "running"
             record["message"] = str(product or "Running")
+        elif flag == "warning":
+            record["state"] = "running"
+            record["message"] = str(product or "")
+            _add_run_event(record, "warn", record["message"])
         elif flag == "preview":
             preview = _preview_from_product(product)
             record["state"] = "running"
@@ -2469,6 +2474,9 @@ def _apply_task_yields(record):
             backend_error = str(getattr(task, "backend_error", "") or "").strip()
             cloud_error = (str(getattr(task, "cloud_error", "") or "").strip()
                            if getattr(task, "task_class", None) == "Cloud" else "")
+            cloud_warning = (str(getattr(task, "cloud_warning", "") or "").strip()
+                             if getattr(task, "task_class", None) == "Cloud" else "")
+            lora_warning = str(getattr(task, "simpleai_lora_warning", "") or "").strip()
             if (getattr(task, "task_class", None) == "ImportedWorkflow" and isinstance(workflow_error, dict)
                     and isinstance(workflow_error.get("code"), str) and isinstance(workflow_error.get("message"), str)):
                 record["state"] = "failed"
@@ -2512,6 +2520,10 @@ def _apply_task_yields(record):
                 record["gallery"] = _build_gallery_refresh_info(record)
                 record["finished_ts"] = time.time()
                 _add_run_event(record, "info", record["message"], {"outputs": len(assets)})
+                warnings = [warning for warning in (cloud_warning, lora_warning) if warning]
+                if warnings:
+                    record["message"] = "\n".join(warnings)
+                    _add_run_event(record, "warn", record["message"])
             else:
                 record["state"] = "failed"
                 record["percent"] = 0.0

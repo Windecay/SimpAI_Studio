@@ -1167,9 +1167,13 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         if metadata_value is not None:
             restored[canonical_key] = metadata_value
 
-    if backend_params.get("lora_stack_prompt"):
+    if backend_params.get("lora_stack_prompt") or backend_params.get("lora_stack_prompt_missing"):
         from modules.lora_stack import restore_prompt_tags
-        restored["prompt"] = restore_prompt_tags(restored.get("prompt", ""), backend_params["lora_stack_prompt"])
+        restored["prompt"] = restore_prompt_tags(
+            restored.get("prompt", ""),
+            backend_params.get("lora_stack_prompt", []),
+            backend_params.get("lora_stack_prompt_missing", []),
+        )
 
     if state_params.get("task_method"):
         restored["task_method"] = state_params.get("task_method")

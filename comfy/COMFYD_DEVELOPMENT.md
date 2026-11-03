@@ -334,4 +334,27 @@
 - Studio 两份 requirements、启动器、更新器、相关合同和 Forge 的两个 Kitchen 声明对齐 `0.2.40`；aimdo `0.6.0`、模板 `0.11.96`、Pillow `>=10.1.0` 同步对齐。默认 compiler/CUDA graphs 策略和现有 offload 契约不变。
 - 在 Studio checkout 验证：后端 `339 passed, 18 failed`；Studio 集成 `324 passed, 1 failed, 53 subtests passed`；指定 Forge 合同 `1 passed, 1 failed`。合计 `664 passed, 20 failed, 53 subtests passed`，不累计基线或修正过程的重测。18 项为旧 Kitchen 接口限制；另外两项分别为既有 Forge 预览 block/flex 断言，以及 LoRA 再生测试模拟配置缺少 `lora_filenames`，对应测试与生产函数均未因本次同步改动。
 - 迁移后的原作者 CPU 对照 `18` 组通过，最大误差 `1.430511474609375e-06`，`4` 组 SIGMAS 逐值一致。测试覆盖完整工作流校验、分数 Shift、参考图片顺序、CFG 共享条件、原生 LoRA、依赖声明、compiler、模型管理及受影响内核；未执行真实 GPU、浏览器、付费 API 或完整服务验收。
-- 以独立 cached patch 暂存本次范围；Forge 两个已有开发文件只暂存 Kitchen 版本变化，其余无关暂存/工作区内容保留。
+- 以独立 cached patch 暂存本次范围；Forge 两个已有开发文件只暂存 Kitchen 版本变化，其余无关暂存/工作区内容保留。证据位于 `.git/audit-studio-bef11fcbf-20261023/`。未安装依赖、下载模型、重启服务、同步 E 盘、提交或推送；当前环境仍安装 Kitchen `0.2.39`、aimdo `0.5.6` 和模板 `0.11.93`。
+
+## 2026-11-03 上游更新
+
+- 从干净的 `0fbc34215` 合并官方 `origin/master` 至 `6b904b5fafd062effc1acbc46b1d3196922f7055`，新增 48 个上游提交。源码版本为 `0.43.0`，私有版本标记更新为 `6b904b5fa`；HEAD 不变，保留未提交 merge，结果暂存审阅。
+- H3 新增 Sol-H3-VAE、latent 放大模型及节点、保持音视频时间对应的 context windows。原 H3 VAE 的官方分块融合及私有 MLP 分批保留；新解码器按自身非因果逻辑处理整段 latent，不能把原 VAE 的分块内存估算用于该解码器。
+- MOSS 编辑增加 attention bias 和参考图强度，降低峰值内存，并增加模型合并节点。VAE 输入变为可选；本地测试改用命名参数匹配上游接口。已有编辑格式、时间编码精度及参考 K/V 显存预算保留。
+- 同步 Flux2 VAE Kitchen 融合、VAE compute dtype 节点、LTX 2.5 解码 dtype 修复、动态 VRAM 的 FP8 计算修复、MTP 预取清理修复、ProRes/色度采样、ACEScg/EXR 和 TextGenerateV2 多模态输入。缓存输出使用当前节点的元数据，保留本地任务幂等入队及执行成功状态处理。
+- 比较 Studio 私有后端后，带回 `--preserve-temp` 及其素材记录维护和测试：保留现存临时文件与记录，仅删除文件已不存在的记录，文件访问异常时不误删记录。本次没有写入或同步 Studio。
+- 依赖声明更新为 frontend `1.57.6`、workflow templates `0.11.100`、embedded docs `0.5.15`；Kitchen `0.2.40` 和 aimdo `0.6.0` 不变。未安装依赖，验证环境中的前三项仍分别为 `1.57.1`、`0.11.96`、`0.5.14`。
+- 按现有范围保留已授权 BFL 视频放大更新及共享代理、取消和错误处理修复；排除本次其他新增云端服务、云部署接口、安装清单上传、持久化 headless 标记和商业控制台提示，也不保留仅供被排除节点使用的 Router helper。
+- 检查上游启动入口后，`main.py` 与 `main_comfyd.py` 无需增加上述云部署或商业提示。Memory compiler/CUDA graphs 默认关闭，DynamicVRAM、aimdo、SLA、offload 及独立数据库策略不变。
+- CPU 验证共 `452 passed, 2 skipped`，覆盖私有启动、素材生命周期、缓存元数据、H3/MOSS、LTX VAE dtype、预取清理、节点替换、前端版本查找、视频编码与色彩空间。包含 7 项独立 H3 小模型/节点检查；2 项跳过来自已有云服务测试标记，没有调用真实云 API。首次收集受 GPU 探测影响，调整测试进程的 CPU 隔离后执行；3 项旧 MOSS 参数顺序测试更新后通过，没有为测试改变生产接口。
+- 审计和日志位于 `.git/audit-upstream-20261103-093437/`。未下载模型、启动或重启服务、同步 Studio、提交或推送；CPU 检查不能代替真实权重、GPU 显存、长视频或 Studio 界面验收。
+
+### Studio 开发端同步
+
+- 按用户后续授权复制 58 个后端文件，并对齐 Studio 根 requirements、启动器、更新器与 3 个合同测试文件，共暂存 64 个文件。3 个临时素材保留相关文件在 Studio 已经一致；不复制源仓库 AGENTS 和 README。
+- MOSS Edit 在上次更新中已经迁移到官方内核；本次保留 `SimpAIMossEditReference`、标准 LoRA、V2 时间表、单主图、Original 和按输出面积匹配参考尺寸。没有重新迁移预置或增加参考图输入。新增 `image_strength` 面向文本编码器视觉 token，当前参考 latent 路径不自动获得这个调节项。
+- 同步前基线为 `231 passed, 49 failed, 56 subtests passed`。49 项失败集中在两处旧测试替身：素材注册回调缺少 previews 参数，启动参数缺少 enable_agent。仅更新这两处测试数据后验证生产行为，没有为测试修改启动或执行逻辑。
+- Studio checkout 的后端检查为 `452 passed, 2 skipped`，Studio 启动、更新器、依赖、MOSS 工作流、数据库和循环缓存为 `280 passed, 56 subtests passed`；合计 `732 passed, 2 skipped, 56 subtests passed`，不累计同步前基线与源仓库重复结果。
+- Pose 编辑器、姿态库、审阅工具、中文翻译及其他既有开发文件不在同步或暂存清单中；同步前后核对受保护文件内容和 index。两仓库 HEAD 保持原样，源仓库继续保留未提交 merge。
+- 最终复查时中文翻译文件出现清单外的并发未暂存修改，保留其当前内容；其余 47 个受保护路径的内容哈希和全部 48 个原 index 条目保持不变。
+- 本次仅同步代码和依赖声明，未安装依赖、下载模型、启动或重启服务、提交或推送。新增 H3 后端能力没有自动加入 Studio 预置；完整文件清单与验证日志位于 `.git/audit-studio-6b904b5fa-20261103/`。

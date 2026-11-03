@@ -219,8 +219,9 @@ def test_encoding_selects_the_trained_layout_and_vision_contract(edit_format):
         return torch.zeros(1, 128, image.shape[1] // 16, image.shape[2] // 16)
 
     images = {"image_2": torch.ones(1, 32, 64, 3), "image_0": torch.zeros(1, 400, 800, 3), "image_1": None}
-    conditioning, = TextEncodeMOSSImageEdit.execute(clip, "change the jacket", SimpleNamespace(encode=encode),
-                                                  edit_format, images).result
+    conditioning, = TextEncodeMOSSImageEdit.execute(
+        clip=clip, prompt="change the jacket", vae=SimpleNamespace(encode=encode),
+        edit_format=edit_format, images=images).result
     method, vision = EDIT_FORMATS[edit_format]
     assert conditioning[0][1]["reference_latents_method"] == method
     assert len(conditioning[0][1]["reference_latents"]) == 2
@@ -232,3 +233,20 @@ def test_encoding_selects_the_trained_layout_and_vision_contract(edit_format):
     assert ("Picture 1:" in seen["prompt"]) == vision
     if not vision:
         assert seen["prompt"] == "change the jacket"
+
+
+@pytest.mark.parametrize("image_strength,expected_images", [(0.0, 0), (1.0, 1)])
+def test_encoding_without_vae_only_conditions_the_text_encoder(image_strength, expected_images):
+    seen = {}
+
+    def tokenize(prompt, **kwargs):
+        seen.update(prompt=prompt, **kwargs)
+        return prompt
+
+    clip = SimpleNamespace(tokenize=tokenize, encode_from_tokens_scheduled=lambda tokens: [[torch.zeros(1, 2, 32), {}]])
+    conditioning, = TextEncodeMOSSImageEdit.execute(
+        clip=clip, prompt="change the jacket", edit_format="Moss-Image-Edit",
+        images={"image_0": torch.zeros(1, 32, 48, 3)}, image_strength=image_strength).result
+    assert len(seen["images"]) == expected_images
+    assert "reference_latents" not in conditioning[0][1]
+    assert "reference_latents_method" not in conditioning[0][1]

@@ -13,7 +13,10 @@ from modules.comfy_progress_profile import format_profile_progress, format_sampl
 from modules.comfy_progress_filter import use_progress_profile
 from modules.comfy_prompt_compat import ComfyExecutionError
 from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task, exclusive_task_lock
-from modules.lora_stack import build_fooocus_stack, prepare_stack_params
+from modules.lora_stack import (
+    REMOTE_LORA_WARNING_PROGRESS, build_fooocus_stack, prepare_stack_params,
+    receive_remote_lora_warning, report_missing_prompt_loras,
+)
 from modules.media_generation import start_generation_task, track_generation_output, record_generation_batch, finish_generation_task
 import modules.config
 
@@ -294,7 +297,7 @@ class AsyncTask:
         regen_manifest.ensure_api_params_backend_arg(api_params)
         backend_args = getattr(api_params, 'backend_args', None)
         if isinstance(backend_args, list):
-            for backend_arg_name in ('upscale_model', 'moss_spectrum', 'keep_vlm_model_loaded', 'cloud_config_name', 'cloud_protocol', 'cloud_base_url', 'cloud_api_key', 'cloud_model'):
+            for backend_arg_name in ('upscale_model', 'moss_spectrum', 'keep_vlm_model_loaded', 'cloud_config_name', 'cloud_protocol', 'cloud_base_url', 'cloud_api_key', 'cloud_model', 'cloud_transparent_background'):
                 if backend_arg_name not in backend_args:
                     backend_args.append(backend_arg_name)
 
@@ -740,6 +743,11 @@ def worker():
     def progressbar(async_task, number, text, img=None):
         if async_task.remote_task is not None:
             p2p_task.call_remote_progress(async_task, number, text, img)
+            return
+
+        if number == REMOTE_LORA_WARNING_PROGRESS:
+            receive_remote_lora_warning(async_task, text)
+            async_task.lasttime = time.time()
             return
 
         async_task.yields.append(['preview', (number, text, img)])
@@ -2053,11 +2061,16 @@ def worker():
         layout_prompt = prompt if moss_layout else None
         lora_filenames = modules.util.remove_performance_lora(modules.config.lora_filenames,
                                                               async_task.performance_selection)
+        missing_lora_tags = []
         prompt = prepare_stack_params(
             "" if moss_layout else prompt, async_task.params_backend, lora_filenames,
             supports_stack=async_task.task_class in flags.comfy_classes or async_task.task_class == 'Fooocus',
             lang=async_task.simpleai_lang,
+            missing_tags=missing_lora_tags,
         )
+        lora_warning = report_missing_prompt_loras(async_task, missing_lora_tags)
+        if lora_warning and getattr(async_task, "remote_task", None) is not None:
+            progressbar(async_task, REMOTE_LORA_WARNING_PROGRESS, lora_warning)
         if moss_layout:
             prompt = layout_prompt
         preserve_prompt_newlines = async_task.task_class in flags.comfy_classes
@@ -2728,11 +2741,16 @@ def worker():
             skip_use_expansion = fooocus_expansion in async_task.style_selections
             lora_filenames = modules.util.remove_performance_lora(modules.config.lora_filenames,
                                                                  async_task.performance_selection)
+            missing_lora_tags = []
             prepare_stack_params(
                 async_task.prompt, async_task.params_backend, lora_filenames,
                 supports_stack=async_task.task_class in flags.comfy_classes or async_task.task_class == 'Fooocus',
                 lang=async_task.simpleai_lang,
+                missing_tags=missing_lora_tags,
             )
+            lora_warning = report_missing_prompt_loras(async_task, missing_lora_tags)
+            if lora_warning and getattr(async_task, "remote_task", None) is not None:
+                progressbar(async_task, REMOTE_LORA_WARNING_PROGRESS, lora_warning)
             regen_manifest.sync_lora_backend_params(
                 async_task.simpleai_regen_manifest, async_task.params_backend, modules.config.default_max_lora_number,
             )

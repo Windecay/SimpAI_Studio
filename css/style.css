@@ -9020,6 +9020,18 @@ dialog.describe-vlm-state-correction {
   display: none;
 }
 
+.describe-vlm-chat-roleplay-memory-mention-summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.24);
+  background: #11161d;
+  color: var(--body-text-color-subdued, #a4a8b4);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .describe-vlm-chat-roleplay-memory-mention-menu button {
   display: block;
   width: 100% !important;
@@ -9030,6 +9042,7 @@ dialog.describe-vlm-state-correction {
   padding: 8px 10px !important;
   text-align: left !important;
   white-space: normal;
+  scroll-margin-block-start: 30px;
   color: var(--body-text-color, #f8fafc);
 }
 

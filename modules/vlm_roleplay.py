@@ -4041,7 +4041,7 @@ def _query_roleplay_memories(
         ):
             continue
         chapter_id = _text(memory.get("chapter_id"), 160)
-        if chapter_id and chapter_id != active_chapter_id and not include_hidden:
+        if chapter_id and chapter_id != active_chapter_id and not include_hidden and not manually_requested:
             continue
         text_hits = _resource_key_hits(search_text, [memory.get("text")])
         keyword_hits = _resource_key_hits(search_text, memory.get("keywords"))
@@ -5280,8 +5280,6 @@ def build_roleplay_context(
             and memory.get("visibility") == "private" and not memory.get("known_by")
         ):
             reason = "not_visible"
-        elif memory.get("chapter_id") and memory["chapter_id"] != normalized.get("active_chapter_id"):
-            reason = "inactive_chapter"
         else:
             reason = "context_limit"
         unavailable_memories.append({"id": memory_id, "reason": reason})

@@ -50,7 +50,7 @@ def sync_lora_backend_params(manifest, backend_params, max_lora_number):
             else:
                 snapshot.pop(key, None)
 
-    for key in ("loras", "use_lora", "lora_stack", "lora_stack_target", "lora_stack_prompt"):
+    for key in ("loras", "use_lora", "lora_stack", "lora_stack_target", "lora_stack_prompt", "lora_stack_prompt_missing"):
         if key in backend_params:
             snapshot[key] = json_safe(backend_params.get(key))
         else:
