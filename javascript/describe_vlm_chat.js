@@ -105,6 +105,21 @@
     const CONVERSATIONS_VERSION = 2;
     const CONVERSATION_ARCHIVE_DB_NAME = 'simpai.describeVlmChat.archive.v1';
     const CONVERSATION_ARCHIVE_DB_VERSION = 2;
+    const CONVERSATION_EDITOR_DB_NAME = 'simpai.describeVlmChat.editors.v1';
+    const CONVERSATION_EDITOR_RECOVERY_PREFIX = 'simpai.describeVlmChat.editorRecovery.v1:';
+    const CONVERSATION_EDITOR_PROMPT_FIELDS = [
+        'customSystemPrompt', 'systemPromptTemplateId', 'systemPromptPickerValue',
+        'baseSystemPromptContent', 'userSystemPromptTemplateId', 'userSystemPromptTemplateName',
+        'userSystemPromptContent', 'systemPromptManualOverride'
+    ];
+    const conversationEditorStates = new Map();
+    const conversationEditorLoads = new Map();
+    const loadedConversationEditors = new Set();
+    const conversationEditorTimers = new Map();
+    const conversationEditorWrites = new Map();
+    const pendingEditorCatalogs = new Set();
+    const deletedConversationEditors = new Set();
+    let conversationEditorDbPromise = null;
     const CONVERSATION_ARCHIVE_STORE = 'conversation_archives';
     const CONVERSATION_ARCHIVE_CHUNK_STORE = 'conversation_archive_chunks';
     const CONVERSATION_ARCHIVE_STORAGE_FORMAT = 'json-chunks-v1';
@@ -4409,6 +4424,7 @@
             : sourceMessages;
         return {
             conversationId,
+            editorState: normalizeConversationEditorState(source.editorState || source.editor_state, conversationId),
             messages: visibleMessages,
             archiveMessages,
             archiveVisibleMessageIds: persistedMessageIds(visibleMessages),
@@ -4715,8 +4731,14 @@
         if (!runtime) return false;
         const previousConversationId = String(state.conversationId || '').trim();
         if (previousConversationId && previousConversationId !== String(runtime.conversationId || '').trim()) {
+            captureConversationEditor(true);
             resetInputPolish();
             clearRoleplayPanelFeedback();
+        }
+        const editor = conversationEditorStates.get(runtime.conversationId) || runtime.editorState;
+        if (editor) {
+            conversationEditorStates.set(runtime.conversationId, editor);
+            Object.assign(runtime, editor.prompt_settings);
         }
         state.conversationId = runtime.conversationId;
         state.messages = runtime.messages;
@@ -4757,6 +4779,7 @@
         state.persistenceRevision = runtime.persistenceRevision;
         state.persistenceSavedAt = runtime.persistenceSavedAt;
         state.persistenceDirty = runtime.persistenceDirty;
+        syncConversationEditorControls(document.getElementById('describe_vlm_chat_modal'), runtime);
         return true;
     }
 
@@ -5644,7 +5667,7 @@
         return next;
     }
 
-    function saveChatSettings() {
+    function saveChatSettings(editorChanged = false) {
         try {
             window.localStorage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
                 chatMode: state.chatMode,
@@ -5671,6 +5694,201 @@
         } catch (err) {
             // Ignore storage failures in private or restricted browser contexts.
         }
+        captureConversationEditor(false, editorChanged);
+    }
+
+    function normalizeConversationEditorState(value, conversationId) {
+        if (!value || typeof value !== 'object') return null;
+        const prompt = value.prompt_settings && typeof value.prompt_settings === 'object' ? value.prompt_settings : {};
+        const text = String(value.text || '');
+        return {
+            conversation_id: String(conversationId || value.conversation_id || ''),
+            updated_at: Math.max(0, Number(value.updated_at) || 0),
+            text,
+            selection_start: Math.max(0, Math.min(text.length, Number(value.selection_start) || 0)),
+            selection_end: Math.max(0, Math.min(text.length, Number(value.selection_end) || 0)),
+            scroll_top: Math.max(0, Number(value.scroll_top) || 0),
+            prompt_settings: Object.fromEntries(CONVERSATION_EDITOR_PROMPT_FIELDS
+                .filter(field => Object.hasOwn(prompt, field))
+                .map(field => [field, field === 'systemPromptManualOverride' ? !!prompt[field] : String(prompt[field] || '')]))
+        };
+    }
+
+    function conversationEditorStore(mode, operation) {
+        if (!conversationEditorDbPromise) {
+            conversationEditorDbPromise = new Promise((resolve, reject) => {
+                const request = window.indexedDB.open(CONVERSATION_EDITOR_DB_NAME, 1);
+                request.onupgradeneeded = () => request.result.createObjectStore('editors', { keyPath: 'conversation_id' });
+                request.onsuccess = () => {
+                    request.result.onversionchange = () => {
+                        request.result.close();
+                        conversationEditorDbPromise = null;
+                    };
+                    resolve(request.result);
+                };
+                request.onerror = () => reject(request.error);
+                request.onblocked = () => reject(new Error('editor_storage_blocked'));
+            }).catch(error => {
+                conversationEditorDbPromise = null;
+                throw error;
+            });
+        }
+        return conversationEditorDbPromise.then(db => new Promise((resolve, reject) => {
+            const transaction = db.transaction('editors', mode);
+            const request = operation(transaction.objectStore('editors'));
+            let result;
+            request.onsuccess = () => { result = request.result; };
+            transaction.oncomplete = () => resolve(result);
+            transaction.onerror = transaction.onabort = () => reject(transaction.error || request.error);
+        }));
+    }
+
+    function writeConversationEditorRecovery(record) {
+        try {
+            const key = CONVERSATION_EDITOR_RECOVERY_PREFIX + record.conversation_id;
+            let previous = null;
+            try { previous = JSON.parse(window.localStorage.getItem(key) || 'null'); } catch (error) {}
+            if (previous?.updated_at > record.updated_at) return true;
+            window.localStorage.setItem(key, JSON.stringify(record));
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function persistConversationEditor(runtime, urgent = false) {
+        const id = runtime?.conversationId;
+        const record = conversationEditorStates.get(id);
+        if (!record || runtime?.deleted || deletedConversationEditors.has(id)) return;
+        if (pendingEditorCatalogs.has(id)) {
+            if (persistConversationCatalog()) pendingEditorCatalogs.delete(id);
+            else if (isCurrentConversationRuntime(runtime)) {
+                setStatus(roleplayDictionaryText('The input draft could not be saved. Keep this page open until storage is available.'), true);
+            }
+        }
+        window.clearTimeout(conversationEditorTimers.get(id));
+        conversationEditorTimers.delete(id);
+        if (urgent) writeConversationEditorRecovery(record);
+        const persist = () => {
+            conversationEditorTimers.delete(id);
+            const pending = conversationEditorWrites.get(id) || Promise.resolve();
+            const write = pending.catch(() => {}).then(async () => {
+                if (runtime.deleted || deletedConversationEditors.has(id)) return;
+                await conversationEditorStore('readwrite', store => store.put(record));
+                try {
+                    const key = CONVERSATION_EDITOR_RECOVERY_PREFIX + id;
+                    const recovery = JSON.parse(window.localStorage.getItem(key) || 'null');
+                    if (recovery && recovery.updated_at <= record.updated_at) window.localStorage.removeItem(key);
+                } catch (error) {}
+            }).catch(() => {
+                if (runtime.deleted || deletedConversationEditors.has(id)) return;
+                if (!writeConversationEditorRecovery(record) && isCurrentConversationRuntime(runtime)) {
+                    setStatus(roleplayDictionaryText('The input draft could not be saved. Keep this page open until storage is available.'), true);
+                }
+            });
+            conversationEditorWrites.set(id, write);
+        };
+        if (urgent) persist();
+        else conversationEditorTimers.set(id, window.setTimeout(persist, 150));
+    }
+
+    function captureConversationEditor(urgent = false, edited = false) {
+        const input = document.getElementById('describe_vlm_chat_modal')?.querySelector('[data-describe-vlm-chat-input]');
+        const id = String(state.conversationId || '');
+        const runtime = state.conversationRuntimes.get(id);
+        if (!runtime || runtime.deleted || deletedConversationEditors.has(id) || !input || input.dataset.editorConversationId !== id) return;
+        const previous = conversationEditorStates.get(id) || runtime.editorState;
+        // Opening a conversation must not save its empty editor before the stored draft arrives.
+        if (!previous && !loadedConversationEditors.has(id) && !edited) return;
+        const prompt = Object.fromEntries(CONVERSATION_EDITOR_PROMPT_FIELDS.map(field => [field, state[field]]));
+        const text = String(input.value || '');
+        if (previous && previous.text === text
+            && previous.selection_start === input.selectionStart && previous.selection_end === input.selectionEnd
+            && previous.scroll_top === input.scrollTop
+            && CONVERSATION_EDITOR_PROMPT_FIELDS.every(field => previous.prompt_settings[field] === prompt[field])) {
+            if (urgent) persistConversationEditor(runtime, true);
+            return;
+        }
+        const record = normalizeConversationEditorState({
+            text, prompt_settings: prompt, selection_start: input.selectionStart, selection_end: input.selectionEnd,
+            scroll_top: input.scrollTop, updated_at: Math.max(Date.now(), (previous?.updated_at || 0) + 1)
+        }, id);
+        conversationEditorStates.set(id, record);
+        runtime.editorState = record;
+        Object.assign(runtime, record.prompt_settings);
+        persistConversationEditor(runtime, urgent);
+        if (text.length) {
+            ensureConversationCatalogLoaded();
+            if (!state.conversationCatalog.some(item => item.conversation_id === id)) {
+                const saved = upsertConversationRecord({
+                    schema: CONVERSATION_SCHEMA, version: CONVERSATION_VERSION, conversation_id: id,
+                    chatMode: runtime.chatMode, messages: [], saved_at: new Date().toISOString(),
+                    title: text.replace(/\s+/g, ' ').trim().slice(0, 120),
+                    persistence_revision: 0, editor_only: true
+                });
+                if (!saved) {
+                    pendingEditorCatalogs.add(id);
+                    setStatus(roleplayDictionaryText('The input draft could not be saved. Keep this page open until storage is available.'), true);
+                }
+                syncConversationControls(document.getElementById('describe_vlm_chat_modal'));
+            }
+        }
+    }
+
+    function syncConversationEditorControls(modal, runtime = currentConversationRuntime()) {
+        const input = modal?.querySelector('[data-describe-vlm-chat-input]');
+        if (!input || !runtime || runtime.deleted || deletedConversationEditors.has(runtime.conversationId)) return;
+        const id = runtime.conversationId;
+        const editor = conversationEditorStates.get(id) || runtime.editorState;
+        if (input.dataset.editorConversationId !== id) {
+            input.dataset.editorConversationId = id;
+            input.value = editor?.text || '';
+            if (editor) {
+                input.setSelectionRange(editor.selection_start, editor.selection_end);
+                input.scrollTop = editor.scroll_top;
+            }
+        }
+        if (conversationEditorLoads.has(id)) return;
+        const load = conversationEditorStore('readonly', store => store.get(id)).catch(() => null).then(stored => {
+            let recovery = null;
+            try { recovery = JSON.parse(window.localStorage.getItem(CONVERSATION_EDITOR_RECOVERY_PREFIX + id) || 'null'); } catch (error) {}
+            const cached = conversationEditorStates.get(id) || runtime.editorState;
+            const loaded = normalizeConversationEditorState(
+                recovery && (!stored || recovery.updated_at > stored.updated_at) ? recovery : stored, id
+            );
+            if (runtime.deleted || deletedConversationEditors.has(id) || !loaded || (cached && cached.updated_at >= loaded.updated_at)) return;
+            conversationEditorStates.set(id, loaded);
+            const activeRuntime = state.conversationRuntimes.get(id) || runtime;
+            activeRuntime.editorState = loaded;
+            Object.assign(activeRuntime, loaded.prompt_settings);
+            if (!isCurrentConversationRuntime(activeRuntime) || input.dataset.editorConversationId !== id) return;
+            Object.assign(state, loaded.prompt_settings);
+            input.value = loaded.text;
+            input.setSelectionRange(loaded.selection_start, loaded.selection_end);
+            input.scrollTop = loaded.scroll_top;
+            syncSystemPromptTemplateControls(modal);
+            syncInputPolishControls(modal);
+        }).finally(() => {
+            loadedConversationEditors.add(id);
+        });
+        conversationEditorLoads.set(id, load);
+    }
+
+    function deleteConversationEditor(id) {
+        deletedConversationEditors.add(id);
+        window.clearTimeout(conversationEditorTimers.get(id));
+        conversationEditorTimers.delete(id);
+        conversationEditorStates.delete(id);
+        conversationEditorLoads.delete(id);
+        loadedConversationEditors.delete(id);
+        pendingEditorCatalogs.delete(id);
+        try { window.localStorage.removeItem(CONVERSATION_EDITOR_RECOVERY_PREFIX + id); } catch (error) {}
+        const pending = conversationEditorWrites.get(id) || Promise.resolve();
+        const deletion = pending.catch(() => {}).then(() => conversationEditorStore('readwrite', store => store.delete(id)))
+            .catch(() => {}).finally(() => {
+                if (conversationEditorWrites.get(id) === deletion) conversationEditorWrites.delete(id);
+            });
+        conversationEditorWrites.set(id, deletion);
     }
 
     function chatInputPlaceholder(mode) {
@@ -6774,6 +6992,7 @@
         syncRoleplayControls(modal);
         syncChatSettingsSummary(modal);
         syncInputPolishControls(modal);
+        syncConversationEditorControls(modal);
         syncMobileChatSettingsDrawerBounds(modal, modal.querySelector('.describe-vlm-chat-panel'));
     }
 
@@ -13267,14 +13486,26 @@
             return controls;
         };
         target.querySelectorAll('[data-describe-vlm-chat-template]').forEach((select) => {
-            select.innerHTML = renderSystemPromptTemplateOptions();
-            select.value = activeSystemPromptPickerValue();
-            select.disabled = state.systemPromptTemplatesLoading && !state.systemPromptTemplatesLoaded;
+            const markup = renderSystemPromptTemplateOptions();
+            if (select.__templateMarkup !== markup) {
+                select.innerHTML = markup;
+                select.__templateMarkup = markup;
+            }
+            const value = activeSystemPromptPickerValue();
+            if (select.value !== value) select.value = value;
+            const disabled = state.systemPromptTemplatesLoading && !state.systemPromptTemplatesLoaded;
+            if (select.disabled !== disabled) select.disabled = disabled;
         });
         userTemplateControls('[data-describe-vlm-chat-user-template-dialog-select]').forEach((select) => {
-            select.innerHTML = renderUserSystemPromptTemplateOptions();
-            select.value = state.userSystemPromptTemplateId || selectedUserSystemPromptTemplateIdForContent(state.userSystemPromptContent);
-            select.disabled = state.systemPromptTemplatesLoading && !state.systemPromptTemplatesLoaded;
+            const markup = renderUserSystemPromptTemplateOptions();
+            if (select.__templateMarkup !== markup) {
+                select.innerHTML = markup;
+                select.__templateMarkup = markup;
+            }
+            const value = state.userSystemPromptTemplateId || selectedUserSystemPromptTemplateIdForContent(state.userSystemPromptContent);
+            if (select.value !== value) select.value = value;
+            const disabled = state.systemPromptTemplatesLoading && !state.systemPromptTemplatesLoaded;
+            if (select.disabled !== disabled) select.disabled = disabled;
         });
         userTemplateControls('[data-describe-vlm-chat-user-template-name]').forEach((input) => {
             if (input.value !== state.userSystemPromptTemplateName) input.value = state.userSystemPromptTemplateName;
@@ -13382,7 +13613,7 @@
         state.systemPromptManualOverride = false;
         state.customSystemPrompt = mergedSystemPromptContent();
         const target = modal || document.getElementById('describe_vlm_chat_modal');
-        saveChatSettings();
+        saveChatSettings(true);
         syncSystemPromptTemplateControls(target);
         const modeChanged = template?.recommendedChatMode === 'raw' && activateChatMode('raw', target);
         if (!modeChanged) saveConversationSnapshot();
@@ -13403,7 +13634,7 @@
             state.systemPromptManualOverride = false;
             state.customSystemPrompt = mergedSystemPromptContent();
             const target = modal || document.getElementById('describe_vlm_chat_modal');
-            saveChatSettings();
+            saveChatSettings(true);
             syncSystemPromptTemplateControls(target);
             setStatus(localText('User document cleared.', '用户项目已清除。'));
             return;
@@ -13419,7 +13650,7 @@
         state.systemPromptManualOverride = false;
         state.customSystemPrompt = mergedSystemPromptContent();
         const target = modal || document.getElementById('describe_vlm_chat_modal');
-        saveChatSettings();
+        saveChatSettings(true);
         syncSystemPromptTemplateControls(target);
         setStatus(template
             ? localText(`User document loaded: ${template.name}`, `已载入用户文档：${template.name}`)
@@ -18550,6 +18781,9 @@
             saved_at: savedAt,
             persistence_revision: persistenceRevision,
             conversation_id: conversationId,
+            editor_state: normalizeConversationEditorState(
+                conversationEditorStates.get(conversationId) || target.editorState || target.editor_state, conversationId
+            ),
             title: conversationCatalogTitle(target),
             messages,
             chatMode: mode,
@@ -18676,6 +18910,7 @@
         const selection = normalizeStoredSystemPromptSelection(expandedData);
         return {
             conversationId,
+            editorState: normalizeConversationEditorState(expandedData.editor_state, conversationId),
             title: String(expandedData.title || expandedData.title_text || '').replace(/\s+/g, ' ').trim().slice(0, 120),
             savedAt: normalizeConversationSavedAt(expandedData.saved_at),
             persistenceRevision: normalizeConversationPersistenceRevision(expandedData.persistence_revision),
@@ -18725,6 +18960,8 @@
             persistenceRevision: value.persistence_revision
         });
         record.title = String(value.title || value.title_text || normalized.title || record.title || '').slice(0, 120);
+        record.editor_only = value.editor_only === true;
+        delete record.editor_state;
         record.archive_index_only = value.archive_index_only === true;
         if (record.archive_index_only && value.archive_roleplay_history_only === true) record.archive_roleplay_history_only = true;
         return record;
@@ -18747,7 +18984,7 @@
                 .map(normalizeConversationRecordForCatalog)
                 .filter((record) => {
                     const id = String(record?.conversation_id || '').trim();
-                    if (!id || seen.has(id) || !conversationRecordHasHistory(record)) return false;
+                    if (!id || seen.has(id) || (!conversationRecordHasHistory(record) && !record.editor_only)) return false;
                     seen.add(id);
                     return true;
                 })
@@ -19039,14 +19276,22 @@
             } else {
                 deleteConversationArchive(fullSnapshot.conversation_id).catch(() => {});
             }
-            const snapshot = compactConversationCatalogSnapshot(fullSnapshot);
+            const editor = conversationEditorStates.get(target.conversationId) || target.editorState;
+            const hasHistory = conversationRecordHasHistory(fullSnapshot);
+            const snapshot = hasHistory ? compactConversationCatalogSnapshot(fullSnapshot) : {
+                schema: CONVERSATION_SCHEMA, version: CONVERSATION_VERSION,
+                conversation_id: target.conversationId, chatMode: target.chatMode,
+                messages: [], saved_at: persistenceSavedAt, persistence_revision: persistenceRevision,
+                title: editor?.text?.replace(/\s+/g, ' ').trim().slice(0, 120) || '',
+                editor_only: !!editor?.text?.length
+            };
             markVlmChatPerformance('vlm_chat.persist.prepare', target, {
                 duration_ms: Math.max(0, vlmChatPerformanceNow() - prepareStartedAt),
                 persistence_revision: persistenceRevision,
                 reason: persistReason,
                 archive_format: String(snapshot.roleplay_archive_format || CONVERSATION_ARCHIVE_FORMAT)
             });
-            if (!conversationRecordHasHistory(snapshot)) {
+            if (!hasHistory && !snapshot.editor_only) {
                 const removed = removeConversationRecord(snapshot.conversation_id, false);
                 deleteConversationArchive(snapshot.conversation_id).catch(() => {});
                 target.persistenceDirty = false;
@@ -19076,6 +19321,7 @@
 
     function persistConversationBeforePageHide() {
         try {
+            captureConversationEditor(true);
             const runtime = currentConversationRuntime();
             if (runtime.archiveIndexOnly) return;
             if (!runtime?.messages?.length && !conversationRecordHasHistory({
@@ -19110,6 +19356,7 @@
         const conversationId = restored.conversationId || uid('describe_vlm_chat');
         const runtime = ensureConversationRuntime(conversationId, {
             conversationId,
+            editorState: restored.editorState,
             messages: restored.messages,
             archiveMessages: restored.archiveMessages,
             contextSummary: restored.contextSummary,
@@ -19180,7 +19427,10 @@
     }
 
     async function downloadConversation() {
+        captureConversationEditor(true);
         let runtime = syncCurrentRuntimeFromState();
+        const editorLoad = conversationEditorLoads.get(runtime.conversationId);
+        if (editorLoad) await editorLoad;
         if (runtime.archiveIndexOnly) {
             const restored = await restoreConversationArchiveForRuntime(runtime);
             runtime = restored?.runtime || runtime;
@@ -19206,6 +19456,9 @@
                 });
             }
         } catch (error) {}
+        payload.editor_state = normalizeConversationEditorState(
+            conversationEditorStates.get(runtime.conversationId) || runtime.editorState, runtime.conversationId
+        );
         payload = buildConversationArchivePayload(payload);
         const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -19613,6 +19866,7 @@
 
     function closeModal() {
         const modal = ensureModal();
+        captureConversationEditor(true);
         closeCreativePresetSearch();
         resetInputPolish(modal);
         setChatMediaDropFeedback(false);
@@ -19657,7 +19911,7 @@
         if (!target) return;
         const previousRuntime = syncCurrentRuntimeFromState();
         pauseRoleplayAutoplayOnConversationLeave(previousRuntime);
-        if (previousRuntime.persistenceDirty || previousRuntime.messages.length) {
+        if (previousRuntime.persistenceDirty) {
             scheduleConversationPersist(previousRuntime, 'conversation_switch', 'soon');
         }
         const targetRuntime = ensureConversationRuntime(id, target);
@@ -19668,6 +19922,7 @@
         state.persistenceDirty = false;
         state.persistenceRestored = true;
         state.conversationCatalogActiveId = state.conversationId;
+        persistConversationCatalog();
         const modal = document.getElementById('describe_vlm_chat_modal');
         syncChatSettingsControls(modal);
         syncBusyControls(modal);
@@ -19685,7 +19940,7 @@
             const activeRuntime = currentConversationRuntime();
             if (result?.ok) {
                 saveChatSettings();
-                saveConversationSnapshot(activeRuntime);
+                if (activeRuntime.persistenceDirty) scheduleConversationPersist(activeRuntime, 'archive_restore', 'soon');
             }
             syncChatSettingsControls(modal);
             syncBusyControls(modal);
@@ -19714,7 +19969,7 @@
         ensureConversationCatalogLoaded();
         const previousRuntime = syncCurrentRuntimeFromState();
         pauseRoleplayAutoplayOnConversationLeave(previousRuntime);
-        if (previousRuntime.persistenceDirty || previousRuntime.messages.length) {
+        if (previousRuntime.persistenceDirty) {
             scheduleConversationPersist(previousRuntime, 'new_conversation_previous', 'soon');
         }
         const runtime = createDefaultConversationRuntime();
@@ -20206,6 +20461,7 @@
             runtime.archiveVisibleMessageIds = [];
         }
         removeConversationRecord(id, false);
+        deleteConversationEditor(id);
         state.conversationRuntimes.delete(id);
         deleteConversationArchive(id).catch(() => {});
 
@@ -20816,7 +21072,21 @@
 
     function consumeSentComposerState(input, inputSnapshot, sentPendingImages, runtime = currentConversationRuntime()) {
         // Current UI mirror: state.pendingImages.filter
-        if (isCurrentConversationRuntime(runtime) && input && String(input.value || '') === inputSnapshot) input.value = '';
+        if (isCurrentConversationRuntime(runtime) && input && String(input.value || '') === inputSnapshot) {
+            input.value = '';
+            captureConversationEditor(true);
+        } else if (!isCurrentConversationRuntime(runtime)) {
+            const previous = conversationEditorStates.get(runtime.conversationId) || runtime.editorState;
+            if (previous?.text === inputSnapshot) {
+                const editor = normalizeConversationEditorState({
+                    ...previous, text: '', selection_start: 0, selection_end: 0, scroll_top: 0,
+                    updated_at: Math.max(Date.now(), previous.updated_at + 1)
+                }, runtime.conversationId);
+                conversationEditorStates.set(runtime.conversationId, editor);
+                runtime.editorState = editor;
+                persistConversationEditor(runtime, true);
+            }
+        }
         const sentObjects = new Set(Array.isArray(sentPendingImages) ? sentPendingImages : []);
         const sentIds = new Set(Array.from(sentObjects).map(image => String(image?.id || '')).filter(Boolean));
         runtime.pendingImages = (Array.isArray(runtime.pendingImages) ? runtime.pendingImages : []).filter((image) => {
@@ -28774,6 +29044,7 @@
             return;
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-input]')) {
+            captureConversationEditor(false, true);
             pauseRoleplayForUserInput(currentConversationRuntime());
             inputPolishRevision += 1;
             if (inputPolishResult?.kind === 'applied') {
@@ -30472,19 +30743,18 @@
             state.systemPromptManualOverride = String(state.customSystemPrompt || '').trim()
                 !== mergedSystemPromptContent().trim();
             syncSystemPromptTemplateControls(document.getElementById('describe_vlm_chat_modal'));
-            saveChatSettings();
-            scheduleConversationPersist(syncCurrentRuntimeFromState(), 'system_prompt_edit');
+            saveChatSettings(true);
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-user-template-name]')) {
             state.userSystemPromptTemplateName = evt.target.value || '';
-            saveChatSettings();
+            saveChatSettings(true);
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-user-template-content]')) {
             state.userSystemPromptContent = evt.target.value || '';
             state.systemPromptManualOverride = false;
             state.customSystemPrompt = mergedSystemPromptContent();
             syncSystemPromptTemplateControls(document.getElementById('describe_vlm_chat_modal'));
-            saveChatSettings();
+            saveChatSettings(true);
         }
         if (evt.target?.closest?.('#describe_vlm_model_dropdown, #describe_vlm_model, #describe_vlm_custom_panel')) {
             updateAnswerModelIndicator();

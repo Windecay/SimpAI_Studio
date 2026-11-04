@@ -2899,6 +2899,12 @@ function guardSimpleAIPresetNavigationClick(event) {
     const button = event.target?.closest?.("#topbar_row button.bar_button");
     if (!button || button.disabled || !/^bar\d+$/.test(button.id)) return;
     window.__simpleaiPresetNavigationManaged = true;
+    if (!window.__simpleai_main_load_complete) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        presetNavigationQueuedButtonId = button.id;
+        return;
+    }
     if (!presetNavigationRequestButtonId) {
         presetNavigationRequestButtonId = button.id;
         return;
@@ -2912,9 +2918,14 @@ function guardSimpleAIPresetNavigationClick(event) {
 }
 
 function finishSimpleAIPresetNavigationRequest() {
+    presetNavigationRequestButtonId = "";
+    dispatchQueuedSimpleAIPresetNavigation();
+}
+
+function dispatchQueuedSimpleAIPresetNavigation() {
+    if (!window.__simpleai_main_load_complete || presetNavigationRequestButtonId) return;
     const nextButtonId = presetNavigationQueuedButtonId;
     presetNavigationQueuedButtonId = "";
-    presetNavigationRequestButtonId = "";
     const button = nextButtonId ? document.getElementById(nextButtonId) : null;
     if (button?.isConnected && !button.disabled) button.click();
 }
@@ -3003,6 +3014,7 @@ async function completeSimpleAIStudioLoad(params, aspect) {
     window.__simpleai_main_load_complete = true;
     window.dispatchEvent(new CustomEvent("simpai:studio-load-completed"));
     window.SimpAIStudioPerformance?.mark?.("studio.load_ready", { preset: String(params?.__preset || "") });
+    dispatchQueuedSimpleAIPresetNavigation();
     return [];
 }
 
@@ -3704,6 +3716,7 @@ function setTopbarNavButtonOriginalText(button, originalText) {
     const raw = String(originalText || "").trim();
     const label = topbarLocalizedPresetNavLabel(raw);
     try { button.setAttribute("data-original-text", raw); } catch (e) {}
+    try { button.setAttribute("data-simpleai-preset-name", normalizePresetName(raw)); } catch (e) {}
     try { button.value = raw; } catch (e) {}
     const textTargets = button.querySelectorAll
         ? Array.from(button.querySelectorAll("span, div")).filter((item) => !item.children || item.children.length === 0)
@@ -4078,8 +4091,8 @@ function getPresetNameForBarButton(barButtonEl) {
             }
         }
     }
-    const fromText = normalizePresetName(getTopbarNavButtonOriginalText(barButtonEl));
-    return fromText || null;
+    const canonicalName = normalizePresetName(barButtonEl.getAttribute?.("data-simpleai-preset-name"));
+    return canonicalName || null;
 }
 
 function collapsePresetStoreImmediate() {

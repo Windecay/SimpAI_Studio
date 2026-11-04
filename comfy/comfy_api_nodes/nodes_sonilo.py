@@ -68,7 +68,7 @@ class SoniloVideoToMusic(IO.ComfyNode):
             ],
             is_api_node=True,
             price_badge=IO.PriceBadge(
-                expr='{"type":"usd","usd":0.009,"format":{"suffix":"/second"}}',
+                expr='{"type":"usd","usd":0.01287,"format":{"suffix":"/second"}}',
             ),
         )
 
@@ -135,7 +135,7 @@ class SoniloTextToMusic(IO.ComfyNode):
             is_api_node=True,
             price_badge=IO.PriceBadge(
                 depends_on=IO.PriceBadgeDepends(widgets=["duration"]),
-                expr='{"type":"usd","usd": 0.0025 * widgets.duration}',
+                expr='{"type":"usd","usd": 0.0032175 * widgets.duration}',
             ),
         )
 

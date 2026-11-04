@@ -93,6 +93,8 @@
   "Open presentation pose": "舒展展示姿势",
   "Seated head tilt": "歪头坐姿",
   "Kneeling with arms raised": "跪姿举臂",
+  "High kneeling upward stretch": "高跪双臂上举伸展",
+  "Kneeling side stretch": "跪坐侧伸单手支撑",
   "Reclining stretch": "仰卧伸展",
   "Portrait with crossed arms": "上半身抱臂",
   "Portrait waving": "上半身挥手",
@@ -3819,5 +3821,6 @@
   "Memory entries": "记忆条目",
   "Chapter entries": "章节条目",
   "Matching memories: {matched} / {total}": "匹配记忆：{matched} / {total}",
-  "Chapter: {title}": "章节：{title}"
+  "Chapter: {title}": "章节：{title}",
+  "The input draft could not be saved. Keep this page open until storage is available.": "输入草稿暂时无法保存。请保持页面打开，待浏览器存储恢复后再关闭。"
 }

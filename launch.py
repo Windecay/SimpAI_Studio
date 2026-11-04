@@ -766,9 +766,9 @@ def check_base_environment():
         logger.error("Online translation dependencies are unavailable; see the dependency report above.")
 
     update_pkgs = [
-        ('comfyui-frontend-package', '1.57.6', None),
-        ('comfyui-workflow-templates', '0.11.100', None),
-        ('comfyui-embedded-docs', '0.5.15', None),
+        ('comfyui-frontend-package', '1.58.5', None),
+        ('comfyui-workflow-templates', '0.11.101', None),
+        ('comfyui-embedded-docs', '0.5.16', None),
         ('comfy-kitchen', '0.2.40', None),
         ('comfy-aimdo', '0.6.0', None),
         ('Pillow', None, '>=10.1.0'),
