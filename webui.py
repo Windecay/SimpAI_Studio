@@ -18782,12 +18782,12 @@ async def describe_image_vlm_roleplay_branch_load_endpoint(request: Request, pay
     if not session_id:
         return JSONResponse({"ok": False, "error": "session_id_required"}, status_code=400)
     user_did = _roleplay_endpoint_user_did(payload, request)
-    session = await run_in_threadpool(
-        lambda: vlm_roleplay.load_roleplay_branch(session_id, branch_id, user_did=user_did)
+    branch = await run_in_threadpool(
+        lambda: vlm_roleplay.load_roleplay_branch_record(session_id, branch_id, user_did=user_did)
     )
-    if not session:
+    if not branch:
         return JSONResponse({"ok": False, "error": "branch_not_found", "session_id": session_id, "branch_id": branch_id}, status_code=404)
-    return JSONResponse({"ok": True, "session_id": session_id, "branch_id": session.get("active_branch_id", branch_id), "session": session}, status_code=200)
+    return JSONResponse({"ok": True, "session_id": session_id, **branch}, status_code=200)
 
 
 @app.post("/describe-image/vlm-roleplay/branches/save")
@@ -18804,8 +18804,12 @@ async def describe_image_vlm_roleplay_branch_save_endpoint(request: Request, pay
     user_did = _roleplay_endpoint_user_did(payload, request)
 
     def save_branch():
-        saved = vlm_roleplay.save_roleplay_session(session, user_did=user_did)
-        return vlm_roleplay.save_roleplay_branch(saved, branch_id=branch_id, user_did=user_did)
+        if payload.get("activate", True):
+            vlm_roleplay.save_roleplay_session(session, user_did=user_did)
+        return vlm_roleplay.save_roleplay_branch(
+            session, branch_id=branch_id, user_did=user_did,
+            metadata=payload.get("branch_metadata"), messages=payload.get("messages"),
+        )
 
     saved = await run_in_threadpool(save_branch)
     return JSONResponse({"ok": True, "session_id": session_id, "branch_id": saved.get("active_branch_id", branch_id), "session": saved}, status_code=200)
@@ -18819,9 +18823,14 @@ async def describe_image_vlm_roleplay_branch_delete_endpoint(request: Request, p
     if not session_id or not branch_id:
         return JSONResponse({"ok": False, "error": "session_and_branch_required"}, status_code=400)
     user_did = _roleplay_endpoint_user_did(payload, request)
-    removed = await run_in_threadpool(
-        lambda: vlm_roleplay.delete_roleplay_branch(session_id, branch_id, user_did=user_did)
-    )
+    try:
+        removed = await run_in_threadpool(
+            lambda: vlm_roleplay.delete_roleplay_branch(session_id, branch_id, user_did=user_did)
+        )
+    except ValueError as error:
+        if str(error) != "branch_has_children":
+            raise
+        return JSONResponse({"ok": False, "error": "branch_has_children"}, status_code=409)
     if not removed:
         return JSONResponse({"ok": False, "error": "branch_not_deleted", "session_id": session_id, "branch_id": branch_id}, status_code=400)
     return JSONResponse({"ok": True, "session_id": session_id, "branch_id": branch_id}, status_code=200)

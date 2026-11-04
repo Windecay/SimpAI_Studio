@@ -603,23 +603,38 @@
         return `${kindLabel} · ${operationLabel}`;
     }
 
-    function renderRoleplayResourceChanges(value) {
+    function renderRoleplayMemoryActions(message, memoryId, session) {
+        if (!message?.id || !memoryId) return '';
+        const text = roleplayDictionaryText;
+        const edit = normalizeRoleplayMemoryEdits(message.roleplay_memory_edits).find(item => item.id === memoryId
+            && item.session_id === session?.id && item.branch_id === session?.active_branch_id);
+        const current = session?.memory_store?.items?.find(item => item.id === memoryId);
+        const canUndo = edit && roleplayCorrectionEqual(current, edit.after);
+        return `<span class="describe-vlm-memory-actions">${edit ? `<i class="fa-solid fa-check" title="${escapeHtml(text('Manually corrected'))}" aria-label="${escapeHtml(text('Manually corrected'))}"></i>` : ''}<button type="button" data-roleplay-memory-edit="${escapeHtml(memoryId)}" data-memory-message="${escapeHtml(message.id)}" title="${escapeHtml(text('Edit this memory'))}" aria-label="${escapeHtml(text('Edit this memory'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>${canUndo ? `<button type="button" data-roleplay-memory-undo="${escapeHtml(memoryId)}" data-memory-message="${escapeHtml(message.id)}" title="${escapeHtml(text('Undo memory correction'))}" aria-label="${escapeHtml(text('Undo memory correction'))}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>` : ''}</span>`;
+    }
+
+    function renderRoleplayResourceChanges(value, options = {}) {
         const changes = normalizeRoleplayResourceChanges(value);
         if (!changes.length) return '';
-        const rows = changes.slice(0, 8).map((change) => {
-            const name = change.title || change.id;
+        const rows = changes.map((change) => {
+            const edit = (options.message ? normalizeRoleplayMemoryEdits(options.message.roleplay_memory_edits) : []).find(item =>
+                change.kind === 'memory' && item.id === change.id && item.session_id === options.session?.id
+                && item.branch_id === options.session?.active_branch_id);
+            const name = edit?.after.text || change.title || change.id;
             const suffix = change.field && change.value
                 ? change.kind === 'outline'
                     ? ` · ${roleplayDictionaryText({ completed: 'Completed', blocked: 'Blocked' }[change.value] || 'Progress')}`
                     : ` · ${change.field}: ${change.value}`
                 : '';
-            return `<li><b>${escapeHtml(roleplayResourceChangeLabel(change))}</b><span title="${escapeHtml(`${name}${suffix}`)}">${escapeHtml(`${name}${suffix}`)}</span>${change.kind === 'outline' ? `<button type="button" class="describe-vlm-chat-outline-correction" data-roleplay-outline-open${normalizeChatMode(state.chatMode) === 'roleplay' ? '' : ' hidden'} title="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>` : ''}</li>`;
-        }).join('');
+            const actions = options.editable && change.kind === 'memory' && !['remove', 'delete'].includes(change.op)
+                ? renderRoleplayMemoryActions(options.message, change.id, options.session) : '';
+            return `<li><b>${escapeHtml(roleplayResourceChangeLabel(change))}</b><span title="${escapeHtml(`${name}${suffix}`)}">${escapeHtml(`${name}${suffix}`)}</span>${actions}${change.kind === 'outline' ? `<button type="button" class="describe-vlm-chat-outline-correction" data-roleplay-outline-open${normalizeChatMode(state.chatMode) === 'roleplay' ? '' : ' hidden'} title="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>` : ''}</li>`;
+        });
         const hiddenCount = Math.max(0, changes.length - 8);
         const more = hiddenCount
-            ? `<small>${escapeHtml(localText(`${hiddenCount} more resource changes`, `还有 ${hiddenCount} 项资源变化`))}</small>`
+            ? `<details class="describe-vlm-resource-changes-more"><summary>${escapeHtml(localText(`${hiddenCount} more resource changes`, `还有 ${hiddenCount} 项资源变化`))}</summary><ul>${rows.slice(8).join('')}</ul></details>`
             : '';
-        return `<div class="describe-vlm-chat-roleplay-resource-changes" data-describe-vlm-chat-roleplay-resource-changes><div class="describe-vlm-chat-roleplay-resource-changes-head"><i class="fa-solid fa-book-bookmark"></i><span>${escapeHtml(localText('Story resources updated', '故事资源已更新'))}</span></div><ul>${rows}</ul>${more}</div>`;
+        return `<div class="describe-vlm-chat-roleplay-resource-changes" data-describe-vlm-chat-roleplay-resource-changes><div class="describe-vlm-chat-roleplay-resource-changes-head"><i class="fa-solid fa-book-bookmark"></i><span>${escapeHtml(localText('Story resources updated', '故事资源已更新'))}</span></div><ul>${rows.slice(0, 8).join('')}</ul>${more}</div>`;
     }
 
     function normalizeRoleplayContextReport(value) {
@@ -676,7 +691,7 @@
         };
     }
 
-    function renderRoleplayMemoryUsage(message, session) {
+    function renderRoleplayMemoryUsage(message, session, options = {}) {
         const selection = normalizeRoleplayMemorySelection(message.roleplay_memory_selection || message.roleplay_context?.memory_selection);
         const automatic = selection.automatic_ids;
         const manual = selection.manual_ids;
@@ -707,7 +722,7 @@
             manual.length ? localText(`${manual.length} manual memory reference(s)`, `手动引用 ${manual.length} 条记忆`) : '',
             unavailable.length ? localText(`${unavailable.length} requested memory reference(s) not used`, `${unavailable.length} 条手动记忆未引用`) : ''
         ].filter(Boolean).join(' · ');
-        return `<details class="describe-vlm-chat-roleplay-memory-usage" data-roleplay-memory-usage><summary><i class="fa-solid fa-brain" aria-hidden="true"></i>${escapeHtml(summary)}</summary><ul>${rows.map((row) => `<li><b>${escapeHtml(row.mode)}</b> ${escapeHtml(label(row.id))}${row.reason ? ` · ${escapeHtml(reasons[row.reason] || localText('Not included in context', '未加入上下文'))}` : ''}</li>`).join('')}</ul></details>`;
+        return `<details class="describe-vlm-chat-roleplay-memory-usage" data-roleplay-memory-usage><summary><i class="fa-solid fa-brain" aria-hidden="true"></i>${escapeHtml(summary)}</summary><ul>${rows.map((row) => `<li><span><b>${escapeHtml(row.mode)}</b> ${escapeHtml(label(row.id))}${row.reason ? ` · ${escapeHtml(reasons[row.reason] || localText('Not included in context', '未加入上下文'))}` : ''}</span>${options.editable ? renderRoleplayMemoryActions(message, row.id, session) : ''}</li>`).join('')}</ul></details>`;
     }
 
     function roleplayContextBlockLabel(blockId) {
@@ -1584,6 +1599,246 @@
             facts_before: Array.isArray(value.facts_before) ? structuredClone(value.facts_before.slice(-12)) : [],
             facts_after: Array.isArray(value.facts_after) ? structuredClone(value.facts_after.slice(-12)) : []
         };
+    }
+
+    function normalizeRoleplayMemoryEdits(value) {
+        const seen = new Set();
+        return (Array.isArray(value) ? value : []).slice(-40).flatMap(item => {
+            if (!item?.id || item.before?.id !== item.id || item.after?.id !== item.id || seen.has(item.id)) return [];
+            const before = normalizeRoleplayMemory(item.before);
+            const after = normalizeRoleplayMemory(item.after);
+            if (!before || !after) return [];
+            seen.add(item.id);
+            return [{
+                id: String(item.id).slice(0, 160),
+                session_id: String(item.session_id || '').slice(0, 160),
+                branch_id: String(item.branch_id || '').slice(0, 160),
+                before, after
+            }];
+        });
+    }
+
+    function roleplayMemoryCorrectionContext(runtime, messageId, memoryId) {
+        if (!runtime || runtime.deleted || normalizeChatMode(runtime.chatMode) !== 'roleplay') {
+            throw new Error('This story is no longer active.');
+        }
+        const message = runtime.messages.find(item => item.id === messageId);
+        if (!message || message.pending) throw new Error('This memory card is no longer available.');
+        const selection = normalizeRoleplayMemorySelection(message.roleplay_memory_selection || message.roleplay_context?.memory_selection);
+        const referenced = normalizeRoleplayResourceChanges(message.roleplay_resource_changes).some(item =>
+            item.kind === 'memory' && item.id === memoryId && !['remove', 'delete'].includes(item.op))
+            || [...selection.manual_ids, ...selection.automatic_ids, ...selection.unavailable.map(item => item.id)].includes(memoryId);
+        if (!referenced) throw new Error('This memory card is no longer available.');
+        const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        const memory = session.memory_store.items.find(item => item.id === memoryId);
+        if (!memory) throw new Error('This memory no longer exists in the current branch.');
+        const edit = normalizeRoleplayMemoryEdits(message.roleplay_memory_edits).find(item =>
+            item.id === memoryId && item.session_id === session.id && item.branch_id === session.active_branch_id);
+        return { message, session, memory, edit };
+    }
+
+    function applyRoleplayMemoryCorrection(runtime, messageId, memoryId, draft, undo = false) {
+        const { message, session, memory, edit } = roleplayMemoryCorrectionContext(runtime, messageId, memoryId);
+        if (undo && (!edit || !roleplayCorrectionEqual(memory, edit.after))) {
+            throw new Error('This memory changed after the correction. Review it before editing again.');
+        }
+        if (!undo && (typeof draft?.text !== 'string' || !draft.text.trim() || draft.text.length > 1600)) {
+            throw new Error('Memory text must contain 1 to 1600 characters.');
+        }
+        if (!undo && (!['public', 'restricted', 'private'].includes(draft.visibility)
+            || !Array.isArray(draft.known_by) || draft.known_by.length > 20
+            || draft.known_by.some(id => typeof id !== 'string' || id.length > 160)
+            || new Set(draft.known_by).size !== draft.known_by.length)) {
+            throw new Error('Invalid memory visibility or known characters.');
+        }
+        const now = new Date().toISOString();
+        const updated = undo ? { ...edit.before, updated_at: now } : normalizeRoleplayMemory({
+            ...memory, text: draft.text, visibility: draft.visibility, known_by: draft.known_by,
+            enabled: draft.enabled, locked: draft.locked, updated_at: now
+        });
+        const next = structuredClone(session);
+        next.memory_store.items = next.memory_store.items.map(item => item.id === memoryId ? updated : item);
+        next.memory_store.updated_at = now;
+        next.story_state.memories = next.memory_store.items.slice(-120);
+        next.state_version = Math.max(session.state_version || 0, session.story_state.state_version || 0) + 1;
+        next.story_state.state_version = next.state_version;
+        next.updated_at = next.story_state.updated_at = now;
+        const edits = normalizeRoleplayMemoryEdits(message.roleplay_memory_edits).filter(item => item.id !== memoryId);
+        if (!undo) edits.push({
+            id: memoryId, session_id: session.id, branch_id: session.active_branch_id,
+            before: structuredClone(memory), after: structuredClone(updated)
+        });
+        const latestId = [...runtime.messages].reverse().find(item => item.role === 'assistant' && !item.pending)?.id;
+        // Correct only the current checkpoint; earlier turns and alternative replies retain their history.
+        const updateSnapshot = snapshot => {
+            if (!snapshot || snapshot.id !== session.id || snapshot.active_branch_id !== session.active_branch_id) return snapshot;
+            const copy = normalizeRoleplaySession(snapshot, runtime.conversationId);
+            copy.memory_store.items = copy.memory_store.items.filter(item => item.id !== memoryId);
+            const index = session.memory_store.items.findIndex(item => item.id === memoryId);
+            copy.memory_store.items.splice(Math.min(index, copy.memory_store.items.length), 0, structuredClone(updated));
+            copy.memory_store.updated_at = now;
+            copy.story_state.memories = copy.memory_store.items.slice(-120);
+            copy.state_version = copy.story_state.state_version = next.state_version;
+            copy.updated_at = copy.story_state.updated_at = now;
+            return copy;
+        };
+        const revise = row => {
+            if (row.id !== messageId && row.id !== latestId) return row;
+            const copy = { ...row, revision: (Number(row.revision) || 1) + 1 };
+            if (row.id === messageId) copy.roleplay_memory_edits = edits;
+            if (row.id === latestId) copy.roleplay_session_after = updateSnapshot(row.roleplay_session_after);
+            if (Array.isArray(row.variants)) copy.variants = row.variants.map((variant, index) =>
+                index === (row.active_variant_index || 0) ? {
+                    ...variant, revision: (Number(variant.revision) || 1) + 1,
+                    ...(row.id === messageId ? { roleplay_memory_edits: edits } : {}),
+                    ...(row.id === latestId ? { roleplay_session_after: updateSnapshot(variant.roleplay_session_after),
+                        state_version: next.state_version } : {})
+                } : variant);
+            return copy;
+        };
+        runtime.roleplaySession = next;
+        runtime.messages = runtime.messages.map(revise);
+        if (runtime.archiveMessages) runtime.archiveMessages = runtime.archiveMessages.map(revise);
+        runtime.persistenceDirty = true;
+        return updated;
+    }
+
+    function openRoleplayMemoryCorrection(messageId, memoryId, undo = false) {
+        if (document.getElementById('describe_vlm_memory_correction')) return;
+        const runtime = syncCurrentRuntimeFromState();
+        const text = roleplayDictionaryText;
+        if (!runtime.busy && runtime.roleplayAutoplayState?.phase === 'running') pauseRoleplayAutoplay();
+        if (conversationHistoryBusy(runtime)) {
+            setConversationStatus(runtime, text('Wait for the current reply before editing memory.'), true);
+            return;
+        }
+        let context;
+        try {
+            context = roleplayMemoryCorrectionContext(runtime, messageId, memoryId);
+            if (undo && (!context.edit || !roleplayCorrectionEqual(context.memory, context.edit.after))) {
+                throw new Error('This memory changed after the correction. Review it before editing again.');
+            }
+        } catch (error) {
+            setConversationStatus(runtime, text(error.message), true);
+            return;
+        }
+        const fingerprint = JSON.stringify(runtime.roleplaySession);
+        const revision = context.message.revision;
+        const draft = undo ? context.edit.before : context.memory;
+        const actorNames = new Map([
+            [context.session.persona.id, context.session.persona.name || text('Player')],
+            ...Object.entries(context.session.characters).map(([id, card]) => [id, card.name || id])
+        ]);
+        const knownBy = new Set(draft.known_by.map(reference => {
+            if (actorNames.has(reference)) return reference;
+            const matches = [...actorNames].filter(([, name]) => name === reference);
+            if (matches.length === 1) return matches[0][0];
+            actorNames.set(reference, reference);
+            return reference;
+        }));
+        const dialog = document.createElement('dialog');
+        dialog.id = 'describe_vlm_memory_correction';
+        dialog.className = 'describe-vlm-state-correction describe-vlm-memory-correction';
+        dialog.setAttribute('aria-labelledby', 'describe_vlm_memory_correction_title');
+        dialog.innerHTML = `<header><strong id="describe_vlm_memory_correction_title">${escapeHtml(text(undo ? 'Undo memory correction' : 'Edit memory'))}</strong><button type="button" data-memory-close title="${escapeHtml(text('Close'))}" aria-label="${escapeHtml(text('Close'))}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+<div class="describe-vlm-state-correction-body">
+  <label><span>${escapeHtml(text('Memory text'))}</span><textarea data-memory-text rows="7" maxlength="1600"${undo ? ' readonly' : ''}>${escapeHtml(draft.text)}</textarea></label>
+  <label><span>${escapeHtml(text('Visibility'))}</span><select data-memory-visibility${undo ? ' disabled' : ''}>${['public', 'restricted', 'private'].map(value => roleplayResourceOption(value, draft.visibility, text({ public: 'Public', restricted: 'Selected characters', private: 'Private' }[value]))).join('')}</select></label>
+  <fieldset class="describe-vlm-memory-known"><legend>${escapeHtml(text('Known by'))}</legend>${[...actorNames].map(([id, name]) => `<label><input type="checkbox" data-memory-known value="${escapeHtml(id)}"${knownBy.has(id) ? ' checked' : ''}${undo ? ' disabled' : ''}><span>${escapeHtml(name)}</span></label>`).join('')}<small>${escapeHtml(text('These are the characters who know this memory. Correct names and events in the text above.'))}</small></fieldset>
+  <p class="describe-vlm-memory-visibility-note" data-memory-visibility-note></p>
+  <div class="describe-vlm-memory-flags"><label><input type="checkbox" data-memory-enabled${draft.enabled ? ' checked' : ''}${undo ? ' disabled' : ''}><span>${escapeHtml(text('Enabled'))}</span></label><label title="${escapeHtml(text('Locked memories cannot be changed automatically by the director.'))}"><input type="checkbox" data-memory-locked${draft.locked ? ' checked' : ''}${undo ? ' disabled' : ''}><span>${escapeHtml(text('Locked'))}</span></label></div>
+</div><p data-memory-feedback role="status" aria-live="polite"></p>
+<footer><button type="button" data-memory-cancel>${escapeHtml(text('Cancel'))}</button><button type="button" class="is-primary" data-memory-save><i class="fa-solid fa-check" aria-hidden="true"></i><span>${escapeHtml(text(undo ? 'Undo memory correction' : 'Save correction'))}</span></button></footer>`;
+        let saving = false, applied = false, locallySaved = false, appliedFingerprint = '';
+        const opener = document.activeElement;
+        const readDraft = () => ({
+            text: dialog.querySelector('[data-memory-text]').value,
+            visibility: dialog.querySelector('[data-memory-visibility]').value,
+            known_by: [...dialog.querySelectorAll('[data-memory-known]:checked')].map(input => input.value),
+            enabled: dialog.querySelector('[data-memory-enabled]').checked,
+            locked: dialog.querySelector('[data-memory-locked]').checked
+        });
+        const initialDraft = JSON.stringify(readDraft());
+        const feedback = (message, error = false) => {
+            const element = dialog.querySelector('[data-memory-feedback]');
+            element.textContent = text(message);
+            element.classList.toggle('is-error', error);
+        };
+        const visibilityNote = () => {
+            const values = readDraft();
+            dialog.querySelector('[data-memory-visibility-note]').textContent = text(values.known_by.length
+                ? 'Only the selected characters can recall this memory.'
+                : values.visibility === 'public' ? 'All characters can recall this public memory.'
+                    : 'No characters are selected. This memory will not be recalled by characters.');
+        };
+        const close = () => {
+            if (saving) return;
+            if (applied && !locallySaved && !window.confirm(text('The memory correction has not been saved. Close anyway?'))) return;
+            if (applied && locallySaved && dialog.querySelector('[data-memory-feedback]').classList.contains('is-error')
+                && !window.confirm(text('The memory correction is saved locally. Close without syncing to the server?'))) return;
+            if (!applied && JSON.stringify(readDraft()) !== initialDraft
+                && !window.confirm(text('Discard unsaved memory changes?'))) return;
+            dialog.close();
+            dialog.remove();
+            if (opener?.isConnected) opener.focus();
+        };
+        dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+        dialog.addEventListener('change', visibilityNote);
+        dialog.querySelector('[data-memory-close]').addEventListener('click', close);
+        dialog.querySelector('[data-memory-cancel]').addEventListener('click', close);
+        dialog.querySelector('[data-memory-save]').addEventListener('click', async () => {
+            if (saving) return;
+            saving = true;
+            let persistenceStage = '';
+            try {
+                if (conversationHistoryBusy(runtime) || !isCurrentConversationRuntime(runtime)
+                    || JSON.stringify(runtime.roleplaySession) !== (applied ? appliedFingerprint : fingerprint)
+                    || (!applied && roleplayMemoryCorrectionContext(runtime, messageId, memoryId).message.revision !== revision)) {
+                    throw new Error('The story changed while editing memory. Close and reopen this editor.');
+                }
+                if (!applied) {
+                    applyRoleplayMemoryCorrection(runtime, messageId, memoryId, readDraft(), undo);
+                    applied = true;
+                    appliedFingerprint = JSON.stringify(runtime.roleplaySession);
+                    state.messages = runtime.messages;
+                    state.roleplaySession = runtime.roleplaySession;
+                    state.persistenceDirty = true;
+                    syncRoleplayControls(document.getElementById('describe_vlm_chat_modal'), runtime);
+                    renderMessages();
+                }
+                dialog.querySelectorAll('input, textarea, select, [data-memory-save]').forEach(element => { element.disabled = true; });
+                feedback('Saving memory correction...');
+                persistenceStage = 'local';
+                cancelScheduledConversationPersist(runtime);
+                runtime.persistenceScheduleReason = 'roleplay_memory_correction';
+                if (saveConversationSnapshot(runtime) === false || !runtime.archiveSavePromise) {
+                    throw new Error('Memory correction could not be saved. Retry before closing.');
+                }
+                await runtime.archiveSavePromise;
+                locallySaved = true;
+                persistenceStage = '';
+                if (!isCurrentConversationRuntime(runtime) || JSON.stringify(runtime.roleplaySession) !== appliedFingerprint) {
+                    throw new Error('The story changed while editing memory. Close and reopen this editor.');
+                }
+                persistenceStage = 'remote';
+                const response = await persistRoleplayBranchRemote(runtime, '', { includeHistory: true });
+                if (!response?.ok) throw new Error('The memory correction is saved locally, but server sync failed. Retry to sync.');
+                saving = false;
+                setConversationStatus(runtime, text('Memory correction saved.'));
+                close();
+            } catch (error) {
+                feedback(persistenceStage === 'remote'
+                    ? 'The memory correction is saved locally, but server sync failed. Retry to sync.'
+                    : persistenceStage === 'local' ? 'Memory correction could not be saved. Retry before closing.' : error.message, true);
+                dialog.querySelector('[data-memory-save]').disabled = false;
+                if (applied) dialog.querySelector('[data-memory-save] span').textContent = text('Retry saving');
+            } finally {
+                saving = false;
+            }
+        });
+        document.body.appendChild(dialog);
+        visibilityNote();
+        dialog.showModal();
     }
 
     function applyRoleplayStateCorrection(runtime, messageId, changeIndex, target, value, mode = 'edit') {
@@ -3267,6 +3522,13 @@
             created_at: String(source.created_at || '').trim().slice(0, 80),
             updated_at: String(source.updated_at || session.updated_at || '').trim().slice(0, 80),
             remote: !!source.remote,
+            history_available: typeof source.history_available === 'boolean'
+                ? source.history_available
+                : Array.isArray(source.archive_messages) || Array.isArray(source.archiveMessages) || Array.isArray(source.messages),
+            snapshot_available: typeof source.snapshot_available === 'boolean' ? source.snapshot_available : !!source.session,
+            message_count: Number.isFinite(source.message_count) ? source.message_count : archiveMessages.length,
+            scene: source.scene || null,
+            chapters: source.chapters || null,
             session,
             messages: options.fullHistory
                 ? archiveMessages
@@ -3291,7 +3553,7 @@
         const id = String(branch?.branch_id || 'main');
         if (String(branch?.label || '').trim()) return String(branch.label).trim();
         if (id === 'main') return localText('Main story', '主线剧情');
-        const location = String(branch?.session?.story_state?.scene?.location || '').trim();
+        const location = String(branch?.scene?.location || branch?.session?.story_state?.scene?.location || '').trim();
         return location
             ? localText(`Branch · ${location}`, `分支 · ${location}`)
             : localText(`Branch ${id.slice(-8)}`, `分支 ${id.slice(-8)}`);
@@ -11249,6 +11511,7 @@
         const synced = syncRoleplayStrip(modal, runtimeOverride);
         if (!synced) return;
         const { active, runtime, session, autoplayState } = synced;
+        if (roleplayStoryTree && (!active || roleplayStoryTree.ownerId !== runtime.conversationId)) closeRoleplayStoryTree();
         if (roleplayOutlineEditor && (!active || roleplayOutlineEditor.ownerId !== runtime.conversationId)) closeRoleplayOutline();
         syncRoleplayGuidanceControls(modal, runtime);
         if (!active || !state.roleplayPanelOpen) {
@@ -12627,6 +12890,491 @@
         };
     }
 
+    async function postRoleplayBranchJson(endpoint, payload) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 30000);
+        try {
+            return await postJson(endpoint, payload, { signal: controller.signal });
+        } finally {
+            window.clearTimeout(timer);
+        }
+    }
+
+    let roleplayStoryTree = null;
+
+    function closeRoleplayStoryTree() {
+        const viewer = roleplayStoryTree;
+        if (!viewer) return;
+        roleplayStoryTree = null;
+        window.clearTimeout(viewer.searchTimer);
+        viewer.dialog.close();
+        viewer.dialog.remove();
+        if (viewer.opener?.isConnected) viewer.opener.focus();
+    }
+
+    function roleplayStoryTreeIsCurrent(viewer) {
+        return roleplayStoryTree === viewer && !viewer.runtime.deleted
+            && isCurrentConversationRuntime(viewer.runtime) && normalizeChatMode(state.chatMode) === 'roleplay';
+    }
+
+    function roleplayStoryTreeFeedback(viewer, message, error = false) {
+        if (!roleplayStoryTreeIsCurrent(viewer)) return;
+        const status = viewer.dialog.querySelector('[data-story-tree-status]');
+        status.textContent = message;
+        status.dataset.error = String(error);
+    }
+
+    function roleplayStoryTreeModel(runtime) {
+        const branches = new Map((runtime.roleplayBranches || []).map(branch => [branch.branch_id, branch]));
+        const parents = new Map();
+        const detached = new Set();
+        for (const [id, branch] of branches) {
+            const parent = String(branch.parent_branch_id || '');
+            if (parent && parent !== id && branches.has(parent)) parents.set(id, parent);
+            else if (parent || id !== 'main') detached.add(id);
+        }
+        // Imported routes can contain missing parents or cycles. Keep every route reachable.
+        for (const id of branches.keys()) {
+            const seen = new Set([id]);
+            let cursor = parents.get(id);
+            while (cursor) {
+                if (seen.has(cursor)) { parents.delete(id); detached.add(id); break; }
+                seen.add(cursor);
+                cursor = parents.get(cursor);
+            }
+        }
+        const children = new Map();
+        for (const id of branches.keys()) {
+            const parent = parents.get(id) || '';
+            if (!children.has(parent)) children.set(parent, []);
+            children.get(parent).push(id);
+        }
+        for (const rows of children.values()) rows.sort((a, b) => {
+            if (a === 'main') return -1;
+            if (b === 'main') return 1;
+            return String(branches.get(a).created_at || a).localeCompare(String(branches.get(b).created_at || b));
+        });
+        return { branches, parents, children, detached };
+    }
+
+    function roleplayStoryTreeChapters(branch, runtime) {
+        const session = branch.branch_id === runtime.roleplaySession?.active_branch_id
+            ? runtime.roleplaySession : branch.snapshot_available ? branch.session : null;
+        const chapters = session?.chapters || branch.chapters || {};
+        return Array.isArray(chapters.items) ? chapters.items : [];
+    }
+
+    function roleplayStoryTreePoint(viewer) {
+        const runtime = viewer.runtime;
+        const branch = (runtime.roleplayBranches || []).find(item => item.branch_id === viewer.selectedId);
+        if (!branch?.snapshot_available || !branch.history_available) return null;
+        const messages = branch.branch_id === runtime.roleplaySession.active_branch_id
+            ? runtime.archiveMessages : branch.archive_messages || branch.messages;
+        const session = branch.branch_id === runtime.roleplaySession.active_branch_id ? runtime.roleplaySession : branch.session;
+        if (!viewer.chapterId) return { session, messages, turnId: session.active_turn_id || '' };
+        const chapter = roleplayStoryTreeChapters(branch, runtime).find(item => item.id === viewer.chapterId);
+        if (!chapter) return null;
+        const turnId = chapter.end_turn_id || (chapter.id === session.chapters?.active_id
+            ? session.active_turn_id : chapter.start_turn_id);
+        if (!turnId) return null;
+        const index = messages.findIndex(message => message.role === 'assistant' && (
+            message.id === turnId || message.turn_id === turnId
+            || message.roleplay_session_after?.active_turn_id === turnId
+            || message.variants?.[message.active_variant_index || 0]?.turn_id === turnId));
+        if (index < 0) return null;
+        const snapshot = roleplaySessionAfterMessage(messages[index], runtime.conversationId);
+        if (!snapshot) return null;
+        return { session: snapshot, messages: messages.slice(0, index + 1), turnId, messageId: messages[index].id };
+    }
+
+    function renderRoleplayStoryTree(viewer) {
+        if (!roleplayStoryTreeIsCurrent(viewer)) return;
+        const runtime = viewer.runtime;
+        const model = roleplayStoryTreeModel(runtime);
+        const activeId = String(runtime.roleplaySession.active_branch_id || 'main');
+        const query = viewer.query.toLocaleLowerCase();
+        const visible = new Set();
+        for (const [id, branch] of model.branches) {
+            if (query && ![roleplayBranchDisplayName(branch), branch.reason,
+                ...roleplayStoryTreeChapters(branch, runtime).flatMap(chapter => [chapter.title, chapter.summary])]
+                .some(value => String(value || '').toLocaleLowerCase().includes(query))) continue;
+            visible.add(id);
+            let parent = model.parents.get(id);
+            while (parent) { visible.add(parent); parent = model.parents.get(parent); }
+        }
+        const text = key => escapeHtml(roleplayDictionaryText(key));
+        const renderBranch = (id, depth) => {
+            if (!visible.has(id)) return '';
+            const branch = model.branches.get(id);
+            const children = model.children.get(id) || [];
+            const chapters = roleplayStoryTreeChapters(branch, runtime);
+            const expanded = !!query || viewer.expanded.has(id);
+            const hasChildren = children.length || chapters.length;
+            const name = roleplayBranchDisplayName(branch);
+            const selected = viewer.selectedId === id && !viewer.chapterId;
+            const placed = new Set();
+            const chapterRows = chapters.map(chapter => {
+                const forks = children.filter(child => {
+                    const fork = model.branches.get(child).fork_turn_id;
+                    return fork && !placed.has(child) && [chapter.start_turn_id, chapter.end_turn_id].includes(fork);
+                });
+                forks.forEach(child => placed.add(child));
+                const currentChapter = id === activeId && chapter.id === runtime.roleplaySession.chapters.active_id;
+                return `<li role="none"><button type="button" role="treeitem" aria-level="${depth + 1}" aria-selected="${viewer.selectedId === id && viewer.chapterId === chapter.id}" class="describe-vlm-story-tree-chapter" style="--story-tree-level:${Math.min(depth, 7)}" data-story-tree-select="${escapeHtml(id)}" data-story-tree-chapter="${escapeHtml(chapter.id)}" title="${escapeHtml(chapter.title)}"><i class="fa-regular fa-bookmark" aria-hidden="true"></i><span>${escapeHtml(chapter.title)}</span>${currentChapter ? `<small>${text('Current chapter')}</small>` : chapter.branch_id && chapter.branch_id !== id ? `<small>${text('Shared history')}</small>` : ''}</button></li>${forks.map(child => renderBranch(child, depth + 1)).join('')}`;
+            }).join('');
+            return `<li role="none"><div class="describe-vlm-story-tree-row" style="--story-tree-level:${Math.min(depth - 1, 7)}" data-story-tree-current="${id === activeId}" data-story-tree-root="${depth === 1}"><button type="button" data-story-tree-toggle="${escapeHtml(id)}" title="${text(expanded ? 'Collapse route' : 'Expand route')}" aria-label="${text(expanded ? 'Collapse route' : 'Expand route')}"${hasChildren ? '' : ' disabled'}><i class="fa-solid fa-${expanded ? 'chevron-down' : 'chevron-right'}" aria-hidden="true"></i></button><button type="button" role="treeitem" aria-level="${depth}" aria-selected="${selected}"${hasChildren ? ` aria-expanded="${expanded}"` : ''} data-story-tree-select="${escapeHtml(id)}" title="${escapeHtml(name)}"><i class="fa-solid fa-${id === 'main' ? 'book-open' : 'code-branch'}" aria-hidden="true"></i><span>${escapeHtml(name)}</span>${id === activeId ? `<small>${text('Current route')}</small>` : ''}</button></div>${expanded ? `<ul role="group">${chapterRows}${children.filter(child => !placed.has(child)).map(child => renderBranch(child, depth + 1)).join('')}</ul>` : ''}</li>`;
+        };
+        const tree = viewer.dialog.querySelector('[data-story-tree-nodes]');
+        const focused = tree.contains(document.activeElement) ? {
+            id: document.activeElement.dataset.storyTreeSelect,
+            chapter: document.activeElement.dataset.storyTreeChapter || '',
+            toggle: document.activeElement.dataset.storyTreeToggle
+        } : null;
+        const scroll = tree.scrollTop;
+        tree.innerHTML = (model.children.get('') || []).map(id => renderBranch(id, 1)).join('')
+            || `<li role="none" class="describe-vlm-story-tree-empty">${text('No matching routes')}</li>`;
+        tree.scrollTop = scroll;
+        if (focused) Array.from(tree.querySelectorAll('[data-story-tree-select], [data-story-tree-toggle]')).find(node =>
+            focused.toggle ? node.dataset.storyTreeToggle === focused.toggle
+                : node.dataset.storyTreeSelect === focused.id && (node.dataset.storyTreeChapter || '') === focused.chapter
+        )?.focus({ preventScroll: true });
+        viewer.dialog.querySelector('[data-story-tree-count]').textContent =
+            roleplayDictionaryText('{count} routes').replace('{count}', model.branches.size);
+        renderRoleplayStoryTreeDetails(viewer, model);
+    }
+
+    function renderRoleplayStoryTreeDetails(viewer, model = roleplayStoryTreeModel(viewer.runtime)) {
+        if (!roleplayStoryTreeIsCurrent(viewer)) return;
+        const branch = model.branches.get(viewer.selectedId);
+        const root = viewer.dialog.querySelector('[data-story-tree-detail]');
+        if (!branch) { root.replaceChildren(); return; }
+        const text = key => escapeHtml(roleplayDictionaryText(key));
+        const runtime = viewer.runtime;
+        const isActive = branch.branch_id === runtime.roleplaySession.active_branch_id;
+        const session = isActive ? runtime.roleplaySession : branch.snapshot_available ? branch.session : null;
+        const chapter = roleplayStoryTreeChapters(branch, runtime).find(item => item.id === viewer.chapterId);
+        const point = roleplayStoryTreePoint(viewer);
+        const scene = session?.story_state?.scene || branch.scene || {};
+        const parent = model.branches.get(branch.parent_branch_id);
+        const busy = viewer.pending || viewer.loading || runtime.busy || normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState).phase === 'running'
+            || activeCreativeRunIds(runtime.messages).length;
+        const usable = !!point;
+        const hasChildren = (model.children.get(branch.branch_id) || []).length > 0;
+        const deleteNote = branch.branch_id === 'main' ? 'The main route is kept as the story origin.'
+            : isActive ? 'Switch to another route before deleting this one.'
+            : hasChildren ? 'Delete child routes before deleting their parent.' : '';
+        const reason = ({
+            context_edit: 'Edited history', reply_regenerate: 'Alternative reply',
+            reply_variant: 'Alternative reply', manual_fork: 'Manual branch',
+            chapter_fork: 'Chapter branch'
+        })[branch.reason] || 'Story route';
+        const messages = branch.branch_id === runtime.roleplaySession.active_branch_id
+            ? runtime.archiveMessages || [] : branch.archive_messages || branch.messages || [];
+        const preview = point?.messageId ? point.messages.slice(-1) : messages.slice(-2);
+        const activeChapter = session?.chapters?.items?.find(item => item.id === session.chapters.active_id);
+        const sourceChapter = parent ? roleplayStoryTreeChapters(parent, runtime)
+            .find(item => branch.fork_turn_id && [item.start_turn_id, item.end_turn_id].includes(branch.fork_turn_id)) : null;
+        const summary = chapter?.summary || activeChapter?.summary || scene.current_event;
+        root.innerHTML = `
+          <header class="describe-vlm-story-tree-detail-head"><span>${text(chapter ? 'Chapter' : reason)}</span><strong>${escapeHtml(chapter?.title || roleplayBranchDisplayName(branch))}</strong>${isActive ? `<small>${text('Current route')}</small>` : ''}</header>
+          ${viewer.renaming && !chapter ? `<form data-story-tree-rename-form><label>${text('Route name')}<input data-story-tree-name maxlength="160" value="${escapeHtml(branch.label || '')}" placeholder="${escapeHtml(roleplayBranchDisplayName({ ...branch, label: '' }))}"></label><button type="submit" title="${text('Save name')}" aria-label="${text('Save name')}"><i class="fa-solid fa-check" aria-hidden="true"></i></button><button type="button" data-story-tree-rename-cancel title="${text('Cancel')}" aria-label="${text('Cancel')}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></form>` : ''}
+          <dl><dt>${text('Source route')}</dt><dd>${escapeHtml(parent ? roleplayBranchDisplayName(parent) : branch.branch_id === 'main' ? roleplayDictionaryText('Story start') : roleplayDictionaryText('Source unavailable'))}</dd>
+          ${sourceChapter ? `<dt>${text('Branch point')}</dt><dd>${escapeHtml(sourceChapter.title)}</dd>` : ''}
+          <dt>${text('Scene')}</dt><dd>${escapeHtml([scene.location, scene.time].filter(Boolean).join(' · ') || roleplayDictionaryText('No scene snapshot'))}</dd>
+          <dt>${text('Route message count')}</dt><dd>${branch.history_available ? messages.length : text('History unavailable')}</dd>
+          ${activeChapter ? `<dt>${text('Current chapter')}</dt><dd>${escapeHtml(activeChapter.title)}</dd>` : ''}</dl>
+          ${summary ? `<p class="describe-vlm-story-tree-summary">${escapeHtml(summary)}</p>` : ''}
+          ${chapter?.goal ? `<p>${escapeHtml(chapter.goal)}</p>` : ''}
+          ${model.detached.has(branch.branch_id) ? `<p class="describe-vlm-story-tree-note">${text('The source of this route is unavailable. Its saved content is kept separately.')}</p>` : ''}
+          ${viewer.loading ? `<p role="status">${text('Loading route details...')}</p>` : ''}
+          ${busy && !viewer.pending && !viewer.loading ? `<p class="describe-vlm-story-tree-note">${text('Wait for active work to finish or pause autoplay before changing routes.')}</p>` : ''}
+          ${!branch.history_available && !viewer.loading ? `<p class="describe-vlm-story-tree-note">${text('This route has no complete chat archive. Switching and branching are disabled to protect the current story.')}</p>` : ''}
+          ${chapter && !point && branch.history_available ? `<p class="describe-vlm-story-tree-note">${text('This chapter has no matching turn snapshot. Its summary can be viewed, but a branch cannot be created here.')}</p>` : ''}
+          <div class="describe-vlm-story-tree-commands">
+            <button type="button" data-story-tree-action="history"${busy || !branch.history_available ? ' disabled' : ''}><i class="fa-solid fa-align-left" aria-hidden="true"></i><span>${text('View original text')}</span></button>
+            <button type="button" data-story-tree-action="switch"${busy || isActive || !branch.history_available || !branch.snapshot_available ? ' disabled' : ''}><i class="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i><span>${text('Switch to route')}</span></button>
+            <button type="button" data-story-tree-action="fork"${busy || !usable ? ' disabled' : ''}><i class="fa-solid fa-code-branch" aria-hidden="true"></i><span>${text('Branch from here')}</span></button>
+            <button type="button" data-story-tree-action="conversation"${busy || !branch.history_available || !branch.snapshot_available ? ' disabled' : ''}><i class="fa-solid fa-comments" aria-hidden="true"></i><span>${text('New conversation from route')}</span></button>
+            <button type="button" data-story-tree-action="rename"${busy || !!chapter || !branch.snapshot_available ? ' disabled' : ''}><i class="fa-solid fa-pen" aria-hidden="true"></i><span>${text('Rename route')}</span></button>
+            <button type="button" data-story-tree-action="delete"${busy || isActive || branch.branch_id === 'main' || hasChildren || !!chapter ? ' disabled' : ''}><i class="fa-solid fa-trash" aria-hidden="true"></i><span>${text('Delete route')}</span></button>
+          </div>
+          ${deleteNote ? `<small class="describe-vlm-story-tree-note">${text(deleteNote)}</small>` : ''}
+          ${viewer.confirmDelete ? `<section class="describe-vlm-story-tree-delete" role="alert"><p>${text('Delete this route and its saved chat? This cannot be undone. Other routes will be kept.')}</p><button type="button" data-story-tree-action="confirm-delete">${text('Delete route')}</button><button type="button" data-story-tree-delete-cancel>${text('Cancel')}</button></section>` : ''}
+          ${preview.length ? `<section class="describe-vlm-story-tree-preview"><strong>${text('Nearby dialogue')}</strong>${preview.map(message => `<article><small>${escapeHtml(conversationHistorySpeaker(message, runtime, branch.branch_id))}</small><p>${escapeHtml(String(message.content || '').slice(0, 1200))}</p></article>`).join('')}</section>` : ''}`;
+    }
+
+    async function loadRoleplayStoryTreeSelection(viewer) {
+        const token = ++viewer.selectionToken;
+        viewer.loading = true;
+        renderRoleplayStoryTreeDetails(viewer);
+        const branchId = viewer.selectedId;
+        const runtime = viewer.runtime;
+        try {
+            const response = await postRoleplayBranchJson('/describe-image/vlm-roleplay/branches/load', {
+                ...roleplayBranchRequestPayload(runtime), branch_id: branchId
+            });
+            if (!roleplayStoryTreeIsCurrent(viewer) || token !== viewer.selectionToken) return;
+            if (!response?.ok || !response.session) throw new Error('route_unavailable');
+            const previous = (runtime.roleplayBranches || []).find(item => item.branch_id === branchId);
+            const branch = normalizeRoleplayBranch({
+                ...previous, ...response, branch_id: branchId, snapshot_available: true, remote: true,
+                history_available: Array.isArray(response.messages),
+                ...(Array.isArray(response.messages) ? { archive_messages: response.messages } : {})
+            }, runtime.conversationId);
+            runtime.roleplayBranches = (runtime.roleplayBranches || []).map(item => item.branch_id === branchId ? branch : item);
+            state.roleplayBranches = runtime.roleplayBranches;
+        } catch (error) {
+            roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Route details could not be loaded. The current story is unchanged.'), true);
+        } finally {
+            if (roleplayStoryTreeIsCurrent(viewer) && token === viewer.selectionToken) {
+                viewer.loading = false;
+                renderRoleplayStoryTree(viewer);
+            }
+        }
+    }
+
+    async function forkRoleplayStoryTreePoint(viewer) {
+        const runtime = viewer.runtime;
+        const point = roleplayStoryTreePoint(viewer);
+        if (!point || runtime.busy || !roleplayStoryTreeIsCurrent(viewer)) return false;
+        const parentId = viewer.selectedId;
+        upsertRoleplayBranchSnapshot(runtime);
+        if (saveConversationSnapshot(runtime) === false) return false;
+        await runtime.archiveSavePromise;
+        if (!roleplayStoryTreeIsCurrent(viewer) || runtime.busy) return false;
+        await persistRoleplayBranchRemote(runtime, '', { includeHistory: true }).catch(() => {});
+        if (!roleplayStoryTreeIsCurrent(viewer) || runtime.busy) return false;
+        const nextId = uid('roleplay_branch');
+        runtime.roleplaySession = roleplaySessionForHistoryRestore(point.session, runtime);
+        runtime.roleplaySession.active_branch_id = nextId;
+        runtime.roleplaySession.active_turn_id = point.turnId;
+        runtime.archiveMessages = normalizePersistedMessages(point.messages, { conversationId: runtime.conversationId, maxMessages: null });
+        runtime.messages = visibleConversationMessages(runtime.archiveMessages);
+        runtime.archiveVisibleMessageIds = persistedMessageIds(runtime.messages);
+        updateRoleplayAutoplayState(runtime, { phase: 'paused', reason: 'branch_restore' });
+        upsertRoleplayBranchSnapshot(runtime, {
+            branch_id: nextId, parent_branch_id: parentId, fork_turn_id: point.turnId,
+            reason: viewer.chapterId ? 'chapter_fork' : 'manual_fork'
+        });
+        runtime.persistenceDirty = true;
+        applyConversationRuntime(runtime);
+        saveConversationSnapshot(runtime);
+        syncChatSettingsControls(document.getElementById('describe_vlm_chat_modal'));
+        renderMessages({ scrollToLatest: true });
+        viewer.selectedId = nextId;
+        viewer.chapterId = '';
+        viewer.expanded.add(parentId);
+        viewer.expanded.add(nextId);
+        persistRoleplayBranchRemote(runtime, nextId, { includeHistory: true }).catch(() => {});
+        return true;
+    }
+
+    async function runRoleplayStoryTreeAction(viewer, action) {
+        if (!roleplayStoryTreeIsCurrent(viewer) || viewer.pending || viewer.loading) return;
+        const runtime = viewer.runtime;
+        if (runtime.busy || normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState).phase === 'running'
+            || activeCreativeRunIds(runtime.messages).length) {
+            roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Wait for active work before changing story routes.'), true);
+            return;
+        }
+        if (action === 'rename') {
+            viewer.renaming = true;
+            renderRoleplayStoryTreeDetails(viewer);
+            viewer.dialog.querySelector('[data-story-tree-name]')?.focus();
+            return;
+        }
+        if (action === 'delete') {
+            viewer.confirmDelete = true;
+            renderRoleplayStoryTreeDetails(viewer);
+            viewer.dialog.querySelector('[data-story-tree-action="confirm-delete"]')?.focus();
+            return;
+        }
+        if (action === 'history') {
+            const point = roleplayStoryTreePoint(viewer);
+            const branchId = viewer.selectedId;
+            const messages = conversationHistoryBranchMessages(runtime, branchId);
+            const branch = (runtime.roleplayBranches || []).find(item => item.branch_id === branchId);
+            const chapter = branch && roleplayStoryTreeChapters(branch, runtime).find(item => item.id === viewer.chapterId);
+            const turnId = chapter?.start_turn_id || chapter?.end_turn_id;
+            const anchor = turnId && messages.find(item => item.id === turnId || item.turn_id === turnId
+                || item.roleplay_session_after?.active_turn_id === turnId
+                || item.variants?.[item.active_variant_index || 0]?.turn_id === turnId);
+            const messageId = anchor?.id || point?.messageId || messages.at(-1)?.id || '';
+            closeRoleplayStoryTree();
+            await openConversationHistory(messageId, { branchId, preview: true });
+            return;
+        }
+        const selectedId = viewer.selectedId;
+        const name = viewer.dialog.querySelector('[data-story-tree-name]')?.value.trim().slice(0, 160);
+        viewer.pending = true;
+        roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Saving story routes...'));
+        renderRoleplayStoryTreeDetails(viewer);
+        try {
+            let ok = false;
+            if (action === 'switch') ok = await restoreRoleplayBranch(selectedId, runtime, {
+                guard: () => roleplayStoryTreeIsCurrent(viewer)
+            });
+            if (action === 'fork') ok = await forkRoleplayStoryTreePoint(viewer);
+            if (action === 'conversation') ok = await startRoleplayConversationFromBranch(selectedId, runtime, {
+                guard: () => roleplayStoryTreeIsCurrent(viewer)
+            });
+            if (action === 'confirm-delete') {
+                ok = await deleteRoleplayBranch(selectedId, runtime);
+                if (ok) { viewer.selectedId = runtime.roleplaySession.active_branch_id; viewer.chapterId = ''; }
+            }
+            if (action === 'save-name') {
+                const branch = (runtime.roleplayBranches || []).find(item => item.branch_id === selectedId);
+                if (branch) {
+                    branch.label = name || '';
+                    runtime.persistenceDirty = true;
+                    if (saveConversationSnapshot(runtime) === false) throw new Error('archive_unavailable');
+                    await runtime.archiveSavePromise;
+                    const response = await persistRoleplayBranchRemote(runtime, selectedId, { activate: false });
+                    ok = true;
+                    if (!response?.ok) {
+                        roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Saved on this device. Server synchronization is unavailable.'), true);
+                        return;
+                    }
+                }
+            }
+            if (roleplayStoryTreeIsCurrent(viewer)) roleplayStoryTreeFeedback(viewer,
+                roleplayDictionaryText(ok ? 'Story routes saved.' : 'The route could not be changed. The current story was kept.'), !ok);
+        } catch (error) {
+            roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('The route could not be changed. Check storage or connection and try again.'), true);
+        } finally {
+            if (roleplayStoryTreeIsCurrent(viewer)) {
+                viewer.pending = false; viewer.renaming = false; viewer.confirmDelete = false;
+                renderRoleplayStoryTree(viewer);
+            }
+        }
+    }
+
+    async function openRoleplayStoryTree(opener = null) {
+        if (normalizeChatMode(state.chatMode) !== 'roleplay') return;
+        closeRoleplayStoryTree();
+        let runtime = syncCurrentRuntimeFromState();
+        const text = key => escapeHtml(roleplayDictionaryText(key));
+        const dialog = document.createElement('dialog');
+        dialog.className = 'describe-vlm-story-tree';
+        dialog.dataset.storyTreePane = 'tree';
+        dialog.setAttribute('aria-label', roleplayDictionaryText('Story tree'));
+        const icon = (attr, glyph, label) => `<button type="button" ${attr} title="${text(label)}" aria-label="${text(label)}"><i class="fa-solid fa-${glyph}" aria-hidden="true"></i></button>`;
+        dialog.innerHTML = `<header><strong><i class="fa-solid fa-code-branch" aria-hidden="true"></i>${text('Story tree')}</strong><small data-story-tree-count></small>${icon('data-story-tree-close', 'xmark', 'Close')}</header>
+          <div class="describe-vlm-story-tree-tools"><input type="search" data-story-tree-search placeholder="${text('Search routes and chapters')}" aria-label="${text('Search routes and chapters')}">${icon('data-story-tree-locate', 'location-crosshairs', 'Locate current route')}${icon('data-story-tree-collapse', 'angles-up', 'Collapse routes')}${icon('data-story-tree-refresh', 'rotate', 'Refresh routes')}</div>
+          <nav class="describe-vlm-story-tree-mobile-tabs" aria-label="${text('Story tree views')}"><button type="button" data-story-tree-view="tree" aria-pressed="true">${text('Routes')}</button><button type="button" data-story-tree-view="detail" aria-pressed="false">${text('Node details')}</button></nav>
+          <div class="describe-vlm-story-tree-body"><ul data-story-tree-nodes role="tree" aria-label="${text('Story routes')}"></ul><section data-story-tree-detail aria-label="${text('Node details')}" tabindex="0"></section></div>
+          <footer data-story-tree-status role="status" aria-live="polite">${text('Loading story routes...')}</footer>`;
+        const viewer = {
+            dialog, runtime, opener, ownerId: runtime.conversationId, selectedId: runtime.roleplaySession.active_branch_id || 'main',
+            chapterId: '', expanded: new Set(), query: '', pending: false, loading: false, selectionToken: 0
+        };
+        roleplayStoryTree = viewer;
+        document.getElementById('describe_vlm_chat_modal').querySelector('.describe-vlm-chat-panel').append(dialog);
+        dialog.addEventListener('cancel', event => { event.preventDefault(); closeRoleplayStoryTree(); });
+        const setView = view => {
+            dialog.dataset.storyTreePane = view;
+            dialog.querySelectorAll('[data-story-tree-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.storyTreeView === view)));
+        };
+        const locate = () => {
+            viewer.selectedId = runtime.roleplaySession.active_branch_id || 'main';
+            viewer.chapterId = ''; viewer.query = '';
+            dialog.querySelector('[data-story-tree-search]').value = '';
+            const model = roleplayStoryTreeModel(runtime);
+            let cursor = viewer.selectedId;
+            while (cursor) { viewer.expanded.add(cursor); cursor = model.parents.get(cursor); }
+            renderRoleplayStoryTree(viewer);
+            setView('tree');
+            dialog.querySelector('[data-story-tree-current="true"]')?.scrollIntoView({ block: 'nearest' });
+        };
+        dialog.addEventListener('click', event => {
+            event.stopPropagation();
+            if (event.target.closest('[data-story-tree-close]')) return closeRoleplayStoryTree();
+            const view = event.target.closest('button[data-story-tree-view]')?.dataset.storyTreeView;
+            if (view) return setView(view);
+            if (viewer.pending) return;
+            const toggle = event.target.closest('[data-story-tree-toggle]');
+            if (toggle) {
+                const id = toggle.dataset.storyTreeToggle;
+                if (viewer.expanded.has(id)) viewer.expanded.delete(id); else viewer.expanded.add(id);
+                renderRoleplayStoryTree(viewer);
+                return;
+            }
+            const select = event.target.closest('[data-story-tree-select]');
+            if (select) {
+                viewer.selectedId = select.dataset.storyTreeSelect;
+                viewer.chapterId = select.dataset.storyTreeChapter || '';
+                viewer.renaming = false; viewer.confirmDelete = false; viewer.loading = false;
+                viewer.selectionToken += 1;
+                renderRoleplayStoryTree(viewer);
+                setView('detail');
+                const branch = (runtime.roleplayBranches || []).find(item => item.branch_id === viewer.selectedId);
+                if (branch && (!branch.snapshot_available || (!branch.history_available && branch.remote))) loadRoleplayStoryTreeSelection(viewer);
+                return;
+            }
+            if (event.target.closest('[data-story-tree-locate]')) return locate();
+            if (event.target.closest('[data-story-tree-collapse]')) {
+                viewer.expanded.clear(); renderRoleplayStoryTree(viewer); return;
+            }
+            if (event.target.closest('[data-story-tree-refresh]')) {
+                refreshRoleplayBranches(runtime).then(ok => {
+                    if (!roleplayStoryTreeIsCurrent(viewer)) return;
+                    renderRoleplayStoryTree(viewer);
+                    roleplayStoryTreeFeedback(viewer, roleplayDictionaryText(ok ? 'Story routes refreshed.' : 'Using routes saved on this device.'), !ok);
+                }).catch(() => roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Using routes saved on this device.'), true));
+            }
+            if (event.target.closest('[data-story-tree-rename-cancel], [data-story-tree-delete-cancel]')) {
+                viewer.renaming = false; viewer.confirmDelete = false; renderRoleplayStoryTreeDetails(viewer);
+            }
+            const action = event.target.closest('[data-story-tree-action]')?.dataset.storyTreeAction;
+            if (action) runRoleplayStoryTreeAction(viewer, action);
+        });
+        dialog.addEventListener('input', event => {
+            event.stopPropagation();
+            if (!event.target.matches('[data-story-tree-search]')) return;
+            window.clearTimeout(viewer.searchTimer);
+            viewer.searchTimer = window.setTimeout(() => {
+                viewer.query = event.target.value.trim(); renderRoleplayStoryTree(viewer);
+            }, 140);
+        });
+        dialog.addEventListener('submit', event => {
+            event.preventDefault(); event.stopPropagation();
+            if (event.target.matches('[data-story-tree-rename-form]')) runRoleplayStoryTreeAction(viewer, 'save-name');
+        });
+        dialog.addEventListener('keydown', event => {
+            if (event.key === 'Escape') { event.stopPropagation(); return; }
+            if (!event.target.matches('[data-story-tree-select]')) return;
+            const nodes = Array.from(dialog.querySelectorAll('[data-story-tree-select]'));
+            const index = nodes.indexOf(event.target);
+            if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+                event.preventDefault();
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? nodes.length - 1
+                    : Math.max(0, Math.min(nodes.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
+                nodes[next]?.focus();
+            }
+        });
+        dialog.showModal();
+        try {
+            const hydration = await restoreConversationArchiveForRuntime(runtime);
+            if (!roleplayStoryTreeIsCurrent(viewer)) return;
+            if (!hydration.ok) throw new Error('archive_unavailable');
+            viewer.runtime = state.conversationRuntimes.get(runtime.conversationId) || runtime;
+            runtime = viewer.runtime;
+            const activeId = String(runtime.roleplaySession.active_branch_id || 'main');
+            const previous = (runtime.roleplayBranches || []).find(branch => branch.branch_id === activeId);
+            const current = {
+                ...previous, branch_id: activeId, session: runtime.roleplaySession,
+                archive_messages: runtime.archiveMessages, messages: runtime.messages,
+                history_available: true, snapshot_available: true
+            };
+            runtime.roleplayBranches = (runtime.roleplayBranches || []).filter(branch => branch.branch_id !== activeId).concat(current);
+            state.roleplayBranches = runtime.roleplayBranches;
+            locate();
+            roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Select a route or chapter to preview it.'));
+        } catch (error) {
+            roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Full history is unavailable. Reconnect or import a complete backup.'), true);
+        }
+    }
+
     function mergeRoleplayBranchRows(runtime, rows) {
         const target = runtime || currentConversationRuntime();
         const local = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId);
@@ -12637,7 +13385,11 @@
             const existing = byId.get(branch.branch_id);
             byId.set(branch.branch_id, existing
                 ? Object.assign({}, existing, {
-                    state_version: branch.state_version || existing.state_version,
+                    label: branch.label || existing.label,
+                    parent_branch_id: branch.parent_branch_id || existing.parent_branch_id,
+                    fork_turn_id: branch.fork_turn_id || existing.fork_turn_id,
+                    reason: row.reason || existing.reason,
+                    state_version: Math.max(branch.state_version, existing.state_version),
                     active_turn_id: branch.active_turn_id || existing.active_turn_id,
                     updated_at: branch.updated_at || existing.updated_at,
                     remote: true
@@ -12653,66 +13405,44 @@
         if (!modal) return;
         const target = runtime || currentConversationRuntime();
         if (normalizeChatMode(target.chatMode) !== 'roleplay') return;
-        const select = modal.querySelector('[data-describe-vlm-chat-roleplay-branch-select]');
-        const meta = modal.querySelector('[data-describe-vlm-chat-roleplay-branch-meta]');
-        const restore = modal.querySelector('[data-describe-vlm-chat-roleplay-branch-restore]');
-        const remove = modal.querySelector('[data-describe-vlm-chat-roleplay-branch-delete]');
-        if (!select) return;
-        const activeId = String(target.roleplaySession?.active_branch_id || 'main');
-        const previousSelection = String(select.value || '').trim();
-        let branches = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId);
-        if (!branches.some((item) => item.branch_id === activeId)) {
-            upsertRoleplayBranchSnapshot(target, { branch_id: activeId });
-            branches = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId);
-        }
-        select.innerHTML = branches.map((branch) => {
-            const label = `${roleplayBranchDisplayName(branch)} · v${Math.max(0, Number(branch.state_version) || 0)}`;
-            return `<option value="${escapeHtml(branch.branch_id)}" ${branch.branch_id === activeId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-        }).join('');
-        const selectedId = branches.some((item) => item.branch_id === previousSelection)
-            ? previousSelection
-            : activeId;
-        select.value = selectedId;
-        const selected = branches.find((item) => item.branch_id === selectedId) || branches.find((item) => item.branch_id === activeId);
-        if (meta) {
-            const scene = String(selected?.session?.story_state?.scene?.location || '').trim();
-            const version = Math.max(0, Number(selected?.state_version || selected?.session?.state_version) || 0);
-            meta.textContent = [
-                localText(`State version ${version}`, `状态版本 ${version}`),
-                scene || localText('No scene snapshot', '暂无场景快照')
-            ].join(' · ');
-        }
-        if (restore) {
-            restore.disabled = !selected || selected.branch_id === activeId;
-            restore.title = localText('Restore selected branch', '恢复选中的剧情分支');
-            restore.setAttribute('aria-label', restore.title);
-        }
-        if (remove) {
-            remove.disabled = !selected || selected.branch_id === activeId || selected.branch_id === 'main';
-            remove.title = localText('Delete selected branch', '删除选中的剧情分支');
-            remove.setAttribute('aria-label', remove.title);
+        const summary = modal.querySelector('[data-roleplay-story-tree-summary]');
+        if (summary) {
+            const activeId = String(target.roleplaySession?.active_branch_id || 'main');
+            const branch = (target.roleplayBranches || []).find(item => item.branch_id === activeId) || { branch_id: activeId };
+            const chapter = target.roleplaySession?.chapters?.items?.find(item => item.id === target.roleplaySession.chapters.active_id);
+            summary.textContent = [roleplayBranchDisplayName(branch), chapter?.title].filter(Boolean).join(' · ');
         }
     }
 
     async function refreshRoleplayBranches(runtime = currentConversationRuntime()) {
         const target = runtime || currentConversationRuntime();
         if (normalizeChatMode(target.chatMode) !== 'roleplay') return false;
-        const response = await postJson('/describe-image/vlm-roleplay/branches/list', roleplayBranchRequestPayload(target));
+        const response = await postRoleplayBranchJson('/describe-image/vlm-roleplay/branches/list', roleplayBranchRequestPayload(target));
         if (!response?.ok) return false;
         mergeRoleplayBranchRows(target, response.branches);
         if (isCurrentConversationRuntime(target)) syncRoleplayBranchControls(document.getElementById('describe_vlm_chat_modal'), target);
         return true;
     }
 
-    function persistRoleplayBranchRemote(runtime, branchId = '') {
+    function persistRoleplayBranchRemote(runtime, branchId = '', options = {}) {
         const target = runtime || currentConversationRuntime();
-        const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        const selectedId = String(branchId || session.active_branch_id || 'main').trim() || 'main';
-        return postJson('/describe-image/vlm-roleplay/branches/save', Object.assign(
+        const activeId = String(target.roleplaySession?.active_branch_id || 'main');
+        const selectedId = String(branchId || activeId).trim() || 'main';
+        const branch = (target.roleplayBranches || []).find(item => item.branch_id === selectedId);
+        const session = normalizeRoleplaySession(selectedId === activeId ? target.roleplaySession : branch?.session, target.conversationId);
+        session.active_branch_id = selectedId;
+        return postRoleplayBranchJson('/describe-image/vlm-roleplay/branches/save', Object.assign(
             roleplayBranchRequestPayload(target),
             {
                 branch_id: selectedId,
-                session
+                session,
+                activate: options.activate !== undefined ? options.activate : selectedId === activeId,
+                branch_metadata: compactRoleplayBranchIndex(branch || { branch_id: selectedId }),
+                ...(options.includeHistory ? {
+                    messages: selectedId === activeId
+                        ? target.archiveMessages || target.messages
+                        : branch?.archive_messages || branch?.messages || []
+                } : {})
             }
         ));
     }
@@ -12730,7 +13460,7 @@
         ));
     }
 
-    async function restoreRoleplayBranch(branchId, runtime = currentConversationRuntime()) {
+    async function restoreRoleplayBranch(branchId, runtime = currentConversationRuntime(), options = {}) {
         const target = runtime || currentConversationRuntime();
         if (normalizeChatMode(target.chatMode) !== 'roleplay') return false;
         const selectedId = String(branchId || '').trim();
@@ -12746,22 +13476,28 @@
         }
         const branches = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId);
         let branch = branches.find((item) => item.branch_id === selectedId) || null;
-        if (!branch || !branch.session || (branch.remote && !branch.messages.length)) {
-            const response = await postJson('/describe-image/vlm-roleplay/branches/load', Object.assign(
+        if (!branch?.snapshot_available || !branch.history_available) {
+            const response = await postRoleplayBranchJson('/describe-image/vlm-roleplay/branches/load', Object.assign(
                 roleplayBranchRequestPayload(target),
                 { branch_id: selectedId }
             ));
-            if (!response?.ok || !response.session) {
+            if (!response?.ok || !response.session || !Array.isArray(response.messages)) {
                 setConversationStatus(target, localText('The selected branch is unavailable.', '选中的剧情分支不可用。'), true);
                 return false;
             }
             branch = normalizeRoleplayBranch({
+                ...branch,
+                ...response,
                 branch_id: selectedId,
                 session: response.session,
+                archive_messages: response.messages,
+                history_available: true,
+                snapshot_available: true,
                 remote: true
             }, target.conversationId);
-            mergeRoleplayBranchRows(target, [branch]);
         }
+        if ((options.guard && !options.guard()) || !isCurrentConversationRuntime(target) || target.deleted || target.busy
+            || String(target.roleplaySession?.active_branch_id || 'main') !== activeId) return false;
         const autoplay = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
         if (['running', 'paused'].includes(autoplay.phase)) {
             updateRoleplayAutoplayState(target, {
@@ -12774,6 +13510,12 @@
             reason: 'branch_restore',
             fork_turn_id: target.roleplaySession?.active_turn_id || ''
         });
+        if (saveConversationSnapshot(target) === false) return false;
+        await target.archiveSavePromise;
+        if ((options.guard && !options.guard()) || !isCurrentConversationRuntime(target) || target.deleted || target.busy) return false;
+        await persistRoleplayBranchRemote(target, activeId, { includeHistory: true }).catch(() => {});
+        if ((options.guard && !options.guard()) || !isCurrentConversationRuntime(target) || target.deleted || target.busy) return false;
+        target.roleplayBranches = (target.roleplayBranches || []).filter(item => item.branch_id !== selectedId).concat(branch);
         target.roleplaySession = roleplaySessionForHistoryRestore(branch.session, target);
         target.roleplaySession.active_branch_id = selectedId;
         target.archiveMessages = normalizePersistedMessages(
@@ -12789,7 +13531,7 @@
         saveConversationSnapshot(target);
         const modal = document.getElementById('describe_vlm_chat_modal');
         syncChatSettingsControls(modal);
-        renderMessages();
+        renderMessages({ scrollToLatest: true });
         syncRoleplayControls(modal, target);
         persistRoleplayBranchRemote(target, selectedId).catch(() => {});
         setConversationStatus(target, target.messages.length
@@ -12802,8 +13544,9 @@
         const target = runtime || currentConversationRuntime();
         const selectedId = String(branchId || '').trim();
         const activeId = String(target.roleplaySession?.active_branch_id || 'main');
-        if (!selectedId || selectedId === activeId || selectedId === 'main') return false;
-        const response = await postJson('/describe-image/vlm-roleplay/branches/delete', Object.assign(
+        if (!selectedId || selectedId === activeId || selectedId === 'main' || target.busy) return false;
+        if ((target.roleplayBranches || []).some(item => item.parent_branch_id === selectedId)) return false;
+        const response = await postRoleplayBranchJson('/describe-image/vlm-roleplay/branches/delete', Object.assign(
             roleplayBranchRequestPayload(target),
             { branch_id: selectedId }
         ));
@@ -12820,7 +13563,7 @@
         return true;
     }
 
-    async function startRoleplayConversationFromBranch(branchId, runtime = currentConversationRuntime()) {
+    async function startRoleplayConversationFromBranch(branchId, runtime = currentConversationRuntime(), options = {}) {
         const sourceRuntime = runtime || currentConversationRuntime();
         const selectedId = String(branchId || '').trim();
         if (normalizeChatMode(sourceRuntime.chatMode) !== 'roleplay' || !selectedId) return false;
@@ -12833,30 +13576,34 @@
         }
         let branch = normalizeRoleplayBranches(sourceRuntime.roleplayBranches, sourceRuntime.conversationId)
             .find((item) => item.branch_id === selectedId) || null;
-        if (!branch || !branch.session || (branch.remote && !branch.messages.length)) {
-            const response = await postJson('/describe-image/vlm-roleplay/branches/load', Object.assign(
+        if (!branch?.snapshot_available || !branch.history_available) {
+            const response = await postRoleplayBranchJson('/describe-image/vlm-roleplay/branches/load', Object.assign(
                 roleplayBranchRequestPayload(sourceRuntime),
                 { branch_id: selectedId }
             ));
-            if (!response?.ok || !response.session) {
+            if (!response?.ok || !response.session || !Array.isArray(response.messages)) {
                 setConversationStatus(sourceRuntime, localText('The selected branch is unavailable.', '选中的剧情分支不可用。'), true);
                 return false;
             }
             branch = normalizeRoleplayBranch({
+                ...branch,
+                ...response,
                 branch_id: selectedId,
                 session: response.session,
+                archive_messages: response.messages,
+                history_available: true,
+                snapshot_available: true,
                 remote: true
             }, sourceRuntime.conversationId);
         }
+        if ((options.guard && !options.guard()) || !isCurrentConversationRuntime(sourceRuntime) || sourceRuntime.deleted || sourceRuntime.busy) return false;
         syncCurrentRuntimeFromState();
         stopRoleplayAutoplayRuntime(currentConversationRuntime());
-        saveConversationSnapshot();
+        if (saveConversationSnapshot(sourceRuntime) === false) return false;
+        await sourceRuntime.archiveSavePromise;
+        if ((options.guard && !options.guard()) || !isCurrentConversationRuntime(sourceRuntime) || sourceRuntime.deleted || sourceRuntime.busy) return false;
         const conversationId = uid('describe_vlm_chat');
-        const session = normalizeRoleplaySession(Object.assign({}, branch.session, {
-            id: uid('roleplay_session'),
-            conversation_id: conversationId,
-            active_branch_id: 'main'
-        }), conversationId);
+        const session = rebindRoleplaySessionIdentity(branch.session, conversationId, uid('roleplay_session'), { branchId: 'main' });
         const nextRuntime = createEmptyConversationRuntime({
             conversationId,
             chatMode: 'roleplay',
@@ -12866,9 +13613,11 @@
             copySkillNames: true,
             customSkillNames: sourceRuntime.customSkillNames
         }, conversationId);
-        nextRuntime.archiveMessages = normalizePersistedMessages(
-            Array.isArray(branch.archive_messages) ? branch.archive_messages : branch.messages,
-            { conversationId, maxMessages: null }
+        nextRuntime.archiveMessages = rebindRoleplayMessageIdentities(
+            normalizePersistedMessages(
+                Array.isArray(branch.archive_messages) ? branch.archive_messages : branch.messages,
+                { conversationId, maxMessages: null }
+            ), conversationId, session.id, { branchId: 'main' }
         );
         nextRuntime.messages = visibleConversationMessages(nextRuntime.archiveMessages);
         nextRuntime.archiveVisibleMessageIds = persistedMessageIds(nextRuntime.messages);
@@ -12881,16 +13630,21 @@
         });
         nextRuntime.persistenceDirty = true;
         state.conversationRuntimes.set(conversationId, nextRuntime);
+        if (saveConversationSnapshot(nextRuntime) === false) {
+            state.conversationRuntimes.delete(conversationId);
+            return false;
+        }
+        await nextRuntime.archiveSavePromise;
+        if ((options.guard && !options.guard()) || !isCurrentConversationRuntime(sourceRuntime) || sourceRuntime.deleted) return false;
         applyConversationRuntime(nextRuntime);
         state.persistenceRestored = true;
         state.persistenceDirty = true;
-        saveConversationSnapshot(nextRuntime);
         const modal = document.getElementById('describe_vlm_chat_modal');
         syncChatSettingsControls(modal);
         syncBusyControls(modal);
         syncRoleplayControls(modal, nextRuntime);
         renderPendingImages();
-        renderMessages();
+        renderMessages({ scrollToLatest: true });
         setStatus(localText(
             `New conversation created from branch ${selectedId}.`,
             `已从分支 ${selectedId} 新建独立对话。`
@@ -16038,6 +16792,7 @@
     <div class="describe-vlm-chat-roleplay-autoplay-controls" role="group" aria-label="${escapeHtml(localText('Autoplay controls', '托管控制'))}">
       <button type="button" data-roleplay-story-packs title="${escapeHtml(roleplayDictionaryText('Preview reusable characters, player, scene, world book and outline, then start an independent story. Built-in examples are available here.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Story packs'))}"><i class="fa-solid fa-book-open" aria-hidden="true"></i></button>
       <button type="button" class="describe-vlm-chat-outline-indicator" data-roleplay-outline-open title="${escapeHtml(roleplayDictionaryText('Private outline'))}" aria-label="${escapeHtml(roleplayDictionaryText('Private outline'))}"><i class="fa-solid fa-route" aria-hidden="true"></i><span data-roleplay-outline-status hidden></span></button>
+      <button type="button" data-roleplay-story-tree-open title="${escapeHtml(roleplayDictionaryText('Browse chapters, preview story routes and continue from a saved branch.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Story tree'))}"><i class="fa-solid fa-code-branch" aria-hidden="true"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-play title="${escapeHtml(localText('Start autoplay', '开始托管'))}" aria-label="${escapeHtml(localText('Start autoplay', '开始托管'))}"><i class="fa-solid fa-play"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-step title="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}" aria-label="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}"><i class="fa-solid fa-forward-step"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-pause title="${escapeHtml(localText('Pause autoplay', '暂停托管'))}" aria-label="${escapeHtml(localText('Pause autoplay', '暂停托管'))}"><i class="fa-solid fa-pause"></i></button>
@@ -16223,7 +16978,7 @@
           <div class="describe-vlm-chat-roleplay-resource-list" data-resource-list="memory" role="region" tabindex="0" aria-label="${escapeHtml(roleplayDictionaryText('Memory entries'))}"></div>
         </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="chapter" role="tabpanel" hidden>
-          <div class="describe-vlm-chat-roleplay-resource-toolbar"><label><span>${escapeHtml(localText('Current chapter', '当前章节'))}</span><select data-resource-active-chapter aria-label="${escapeHtml(localText('Current chapter', '当前章节'))}"></select></label><button type="button" data-resource-add="chapter" title="${escapeHtml(localText('Add chapter', '新增章节'))}" aria-label="${escapeHtml(localText('Add chapter', '新增章节'))}"><i class="fa-solid fa-plus"></i></button></div>
+          <div class="describe-vlm-chat-roleplay-resource-toolbar"><label><span>${escapeHtml(localText('Current chapter', '当前章节'))}</span><select data-resource-active-chapter aria-label="${escapeHtml(localText('Current chapter', '当前章节'))}"></select></label><button type="button" data-roleplay-story-tree-open title="${escapeHtml(roleplayDictionaryText('Story tree'))}" aria-label="${escapeHtml(roleplayDictionaryText('Story tree'))}"><i class="fa-solid fa-code-branch" aria-hidden="true"></i></button><button type="button" data-resource-add="chapter" title="${escapeHtml(localText('Add chapter', '新增章节'))}" aria-label="${escapeHtml(localText('Add chapter', '新增章节'))}"><i class="fa-solid fa-plus"></i></button></div>
           <div class="describe-vlm-chat-roleplay-resource-list" data-resource-list="chapter" role="region" tabindex="0" aria-label="${escapeHtml(roleplayDictionaryText('Chapter entries'))}"></div>
         </div>
       </div>
@@ -16251,15 +17006,9 @@
         <label class="describe-vlm-chat-roleplay-check"><input data-describe-vlm-chat-roleplay-visual-enabled type="checkbox"><span>${escapeHtml(localText('Offer story images at key moments', '在关键时刻生成故事场照'))}</span></label>
       </div>
       <div class="describe-vlm-chat-roleplay-section describe-vlm-chat-roleplay-branch-section" data-describe-vlm-chat-roleplay-branch-section>
-        <strong>${escapeHtml(localText('Story branches', '剧情分支'))}</strong>
-        <label><span>${escapeHtml(localText('Current branch', '当前分支'))}</span><select data-describe-vlm-chat-roleplay-branch-select aria-label="${escapeHtml(localText('Current story branch', '当前剧情分支'))}"></select></label>
-        <small data-describe-vlm-chat-roleplay-branch-meta></small>
-        <div class="describe-vlm-chat-roleplay-branch-actions">
-          <button type="button" data-describe-vlm-chat-roleplay-branch-refresh title="${escapeHtml(localText('Refresh branch list', '刷新分支列表'))}" aria-label="${escapeHtml(localText('Refresh branch list', '刷新分支列表'))}"><i class="fa-solid fa-rotate"></i></button>
-          <button type="button" data-describe-vlm-chat-roleplay-branch-restore title="${escapeHtml(localText('Restore selected branch', '恢复选中的剧情分支'))}" aria-label="${escapeHtml(localText('Restore selected branch', '恢复选中的剧情分支'))}"><i class="fa-solid fa-clock-rotate-left"></i></button>
-          <button type="button" data-describe-vlm-chat-roleplay-branch-new-conversation title="${escapeHtml(localText('Start a new conversation from the selected branch', '从所选分支新建对话'))}" aria-label="${escapeHtml(localText('Start a new conversation from the selected branch', '从所选分支新建对话'))}"><i class="fa-solid fa-comments"></i></button>
-          <button type="button" data-describe-vlm-chat-roleplay-branch-delete title="${escapeHtml(localText('Delete selected branch', '删除选中的剧情分支'))}" aria-label="${escapeHtml(localText('Delete selected branch', '删除选中的剧情分支'))}"><i class="fa-solid fa-trash"></i></button>
-        </div>
+        <strong>${escapeHtml(roleplayDictionaryText('Story tree'))}</strong>
+        <small data-roleplay-story-tree-summary></small>
+        <button type="button" class="describe-vlm-story-tree-open" data-roleplay-story-tree-open title="${escapeHtml(roleplayDictionaryText('Browse chapters, preview story routes and continue from a saved branch.'))}"><i class="fa-solid fa-code-branch" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Open story tree'))}</span></button>
       </div>
       <details class="describe-vlm-chat-roleplay-section describe-vlm-chat-tavern-preset" data-roleplay-tavern-preset>
         <summary>${escapeHtml(localText('Regex and presets', '正则与预设'))}</summary>
@@ -16648,6 +17397,7 @@
             response_source: normalizeResponseSource(value.response_source || value),
             roleplay_state_changes: normalizeRoleplayStateChanges(value.roleplay_state_changes),
             roleplay_state_edit: normalizeRoleplayStateEdit(value.roleplay_state_edit),
+            roleplay_memory_edits: normalizeRoleplayMemoryEdits(value.roleplay_memory_edits),
             roleplay_resource_changes: normalizeRoleplayResourceChanges(value.roleplay_resource_changes),
             roleplay_memory_selection: normalizeRoleplayMemorySelection(value.roleplay_memory_selection),
             roleplay_speaker_id: String(value.roleplay_speaker_id || '').slice(0, 160),
@@ -17180,6 +17930,7 @@
             response_source: normalizeResponseSource(message.response_source || message),
             roleplay_state_changes: normalizeRoleplayStateChanges(message.roleplay_state_changes),
             roleplay_state_edit: normalizeRoleplayStateEdit(message.roleplay_state_edit),
+            roleplay_memory_edits: normalizeRoleplayMemoryEdits(message.roleplay_memory_edits),
             roleplay_resource_changes: normalizeRoleplayResourceChanges(message.roleplay_resource_changes),
             roleplay_speaker_id: String(message.roleplay_speaker_id || '').slice(0, 160),
             roleplay_speaker_name: String(message.roleplay_speaker_name || '').slice(0, 200),
@@ -17321,12 +18072,20 @@
         };
     }
 
-    function rebindRoleplaySessionIdentity(value, conversationId, sessionId = '') {
+    function rebindRoleplaySessionIdentity(value, conversationId, sessionId = '', options = {}) {
         const session = normalizeRoleplaySession(value, conversationId);
         const nextConversationId = String(conversationId || '').trim();
         const nextSessionId = String(sessionId || session.id || uid('roleplay_session')).trim();
         if (nextConversationId) session.conversation_id = nextConversationId.slice(0, 200);
         if (nextSessionId) session.id = nextSessionId.slice(0, 160);
+        if (options.branchId) {
+            session.active_branch_id = options.branchId;
+            session.chapters.items = session.chapters.items.map(chapter => ({ ...chapter, branch_id: options.branchId }));
+            session.memory_store.items = session.memory_store.items.map(memory => ({
+                ...memory, branch_id: memory.branch_id ? options.branchId : ''
+            }));
+            session.story_state.memories = session.memory_store.items.slice(-MAX_ROLEPLAY_LEGACY_MEMORIES);
+        }
         return session;
     }
 
@@ -17347,14 +18106,20 @@
         return action;
     }
 
-    function rebindRoleplayMessageIdentity(value, conversationId, sessionId = '') {
+    function rebindRoleplayMessageIdentity(value, conversationId, sessionId = '', options = {}) {
         if (!value || typeof value !== 'object') return value;
         const next = Object.assign({}, value);
+        if (options.branchId && next.branch_id !== undefined) next.branch_id = options.branchId;
         const rebindSession = (snapshot) => snapshot && typeof snapshot === 'object'
-            ? rebindRoleplaySessionIdentity(snapshot, conversationId, sessionId)
+            ? rebindRoleplaySessionIdentity(snapshot, conversationId, sessionId, options)
             : snapshot;
+        const rebindAction = action => {
+            const rebound = rebindPersistedActionIdentity(action, sessionId);
+            if (rebound && options.branchId) rebound.branch_id = options.branchId;
+            return rebound;
+        };
         if (Array.isArray(next.actions)) {
-            next.actions = next.actions.map((action) => rebindPersistedActionIdentity(action, sessionId)).filter(Boolean);
+            next.actions = next.actions.map(rebindAction).filter(Boolean);
         }
         if (next.roleplay_session_before && typeof next.roleplay_session_before === 'object') {
             next.roleplay_session_before = rebindSession(next.roleplay_session_before);
@@ -17366,9 +18131,10 @@
             next.variants = next.variants.map((variant) => {
                 if (!variant || typeof variant !== 'object') return variant;
                 const nextVariant = Object.assign({}, variant);
+                if (options.branchId) nextVariant.branch_id = options.branchId;
                 if (Array.isArray(nextVariant.actions)) {
                     nextVariant.actions = nextVariant.actions
-                        .map((action) => rebindPersistedActionIdentity(action, sessionId))
+                        .map(rebindAction)
                         .filter(Boolean);
                 }
                 if (nextVariant.roleplay_session_before && typeof nextVariant.roleplay_session_before === 'object') {
@@ -17383,9 +18149,9 @@
         return next;
     }
 
-    function rebindRoleplayMessageIdentities(messages, conversationId, sessionId = '') {
+    function rebindRoleplayMessageIdentities(messages, conversationId, sessionId = '', options = {}) {
         return (Array.isArray(messages) ? messages : [])
-            .map((message) => rebindRoleplayMessageIdentity(message, conversationId, sessionId))
+            .map((message) => rebindRoleplayMessageIdentity(message, conversationId, sessionId, options))
             .filter(Boolean);
     }
 
@@ -17479,7 +18245,16 @@
             active_turn_id: String(branch.active_turn_id || '').slice(0, 200),
             created_at: String(branch.created_at || '').slice(0, 80),
             updated_at: String(branch.updated_at || '').slice(0, 80),
-            remote: !!branch.remote
+            remote: !!branch.remote,
+            history_available: !!branch.history_available,
+            snapshot_available: false,
+            message_count: branch.message_count ?? branch.archive_messages?.length ?? branch.messages?.length ?? 0,
+            scene: { location: branch.scene?.location || branch.session?.story_state?.scene?.location || '',
+                time: branch.scene?.time || branch.session?.story_state?.scene?.time || '' },
+            chapters: { items: (branch.chapters?.items || branch.session?.chapters?.items || []).map(chapter => ({
+                id: chapter.id, title: chapter.title, status: chapter.status, branch_id: chapter.branch_id,
+                start_turn_id: chapter.start_turn_id, end_turn_id: chapter.end_turn_id
+            })) }
         };
     }
 
@@ -18835,22 +19610,20 @@
         if (options.syncArchive !== false) syncConversationArchiveHistory(target);
         const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const branchId = String(options.branch_id || session.active_branch_id || 'main').trim() || 'main';
-        const previous = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId)
-            .find((item) => item.branch_id === branchId);
+        const previous = (target.roleplayBranches || []).find((item) => item.branch_id === branchId);
         const now = new Date().toISOString();
         const branch = normalizeRoleplayBranch({
             branch_id: branchId,
             label: options.label || previous?.label || '',
             parent_branch_id: options.parent_branch_id || previous?.parent_branch_id || '',
-            fork_turn_id: options.fork_turn_id || previous?.fork_turn_id || '',
-            reason: options.reason || previous?.reason || '',
+            fork_turn_id: previous ? previous.fork_turn_id : options.fork_turn_id || '',
+            reason: previous?.reason || options.reason || '',
             created_at: previous?.created_at || now,
             updated_at: now,
             session,
             messages: Array.isArray(target.archiveMessages) ? target.archiveMessages : target.messages
         }, target.conversationId);
-        const rows = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId)
-            .filter((item) => item.branch_id !== branchId);
+        const rows = (target.roleplayBranches || []).filter((item) => item.branch_id !== branchId);
         target.roleplayBranches = [...rows, branch];
         if (isCurrentConversationRuntime(target)) state.roleplayBranches = target.roleplayBranches;
         return branch;
@@ -19698,7 +20471,7 @@
         }
     }
 
-    async function openConversationHistory(messageId = '') {
+    async function openConversationHistory(messageId = '', options = {}) {
         if (conversationHistoryViewer) {
             conversationHistoryViewer.dialog.focus();
             return;
@@ -19798,20 +20571,23 @@
             const restored = conversationHistoryRuntime(viewer);
             if (!restored || restored.deleted) throw new Error('conversation_unavailable');
             syncConversationArchiveHistory(restored);
-            viewer.branchId = String(restored.roleplaySession?.active_branch_id || 'main');
+            viewer.branchId = String(options.branchId || restored.roleplaySession?.active_branch_id || 'main');
             const branches = new Map([[viewer.branchId, `${text('Current branch')} (${viewer.branchId})`]]);
             (restored.roleplayBranches || []).forEach(branch => {
                 if (!branches.has(branch.branch_id)) branches.set(branch.branch_id, branch.label || branch.branch_id);
             });
             dialog.querySelector('[data-history-branch]').innerHTML = Array.from(branches, ([id, label]) =>
                 `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`).join('');
+            dialog.querySelector('[data-history-branch]').value = viewer.branchId;
             dialog.querySelector('[data-history-browse]').hidden = false;
             viewer.ready = true;
             const index = conversationHistoryBranchMessages(restored, viewer.branchId).findIndex(item => item.id === messageId);
             if (index >= 0) viewer.page = Math.floor(index / CONVERSATION_HISTORY_PAGE_SIZE);
             renderConversationHistory(viewer);
             conversationHistoryStatus(viewer, text('Only this branch and reply version are edited. Story state, memories and chapters are not recalculated.'));
-            if (messageId) startConversationHistoryEdit(viewer, messageId);
+            if (messageId && !options.preview) startConversationHistoryEdit(viewer, messageId);
+            else if (messageId) Array.from(dialog.querySelectorAll('[data-history-message]'))
+                .find(node => node.dataset.historyMessage === messageId)?.scrollIntoView({ block: 'center' });
         } catch (error) {
             conversationHistoryStatus(viewer, text('Full history is unavailable. Wait for active tasks to finish, then reopen this window.'), true);
         }
@@ -19865,6 +20641,7 @@
     }
 
     function closeModal() {
+        closeRoleplayStoryTree();
         const modal = ensureModal();
         captureConversationEditor(true);
         closeCreativePresetSearch();
@@ -20781,6 +21558,11 @@
         syncInputPolishControls(targetModal);
         const activeRuntime = runtime || currentConversationRuntime();
         const requestBusy = !!(activeRuntime?.busy || state.busy);
+        if (roleplayStoryTree && roleplayStoryTreeIsCurrent(roleplayStoryTree)
+            && roleplayStoryTree.lastBusy !== requestBusy) {
+            roleplayStoryTree.lastBusy = requestBusy;
+            renderRoleplayStoryTreeDetails(roleplayStoryTree);
+        }
         const autoplayRunning = normalizeRoleplayAutoplayState(activeRuntime?.roleplayAutoplayState).phase === 'running';
         const isBusy = requestBusy || autoplayRunning;
         const queueCount = Array.isArray(activeRuntime?.queuedMessages)
@@ -21435,7 +22217,7 @@
 
     function roleplaySessionForHistoryRestore(snapshot, runtime = currentConversationRuntime()) {
         const current = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
-        const restored = normalizeRoleplaySession(snapshot, runtime.conversationId);
+        const restored = rebindRoleplaySessionIdentity(snapshot, runtime.conversationId, current.id);
         // Model selection belongs to the conversation settings, not to story history.
         restored.agent_routing = current.agent_routing;
         restored.autoplay_config.guidance = current.autoplay_config.guidance;
@@ -21925,6 +22707,7 @@
         liveMessage.response_source = variant.response_source || null;
         liveMessage.roleplay_state_changes = normalizeRoleplayStateChanges(variant.roleplay_state_changes);
         liveMessage.roleplay_state_edit = normalizeRoleplayStateEdit(variant.roleplay_state_edit);
+        liveMessage.roleplay_memory_edits = normalizeRoleplayMemoryEdits(variant.roleplay_memory_edits);
         liveMessage.roleplay_resource_changes = normalizeRoleplayResourceChanges(variant.roleplay_resource_changes);
         liveMessage.roleplay_memory_selection = normalizeRoleplayMemorySelection(variant.roleplay_memory_selection);
         delete liveMessage.roleplay_known_by;
@@ -26130,10 +26913,12 @@
                 })
                 : '';
             const resourceChangesHtml = role === 'assistant' && !pending
-                ? renderRoleplayResourceChanges(message.roleplay_resource_changes)
+                ? renderRoleplayResourceChanges(message.roleplay_resource_changes, {
+                    message, session: roleplaySession, editable: isRoleplay
+                })
                 : '';
             const memoryUsageHtml = role === 'assistant' && !pending && isRoleplay
-                ? renderRoleplayMemoryUsage(message, roleplaySession)
+                ? renderRoleplayMemoryUsage(message, roleplaySession, { editable: true })
                 : '';
             return `<div class="describe-vlm-chat-msg is-${role} ${pending ? 'is-pending' : ''}" data-describe-vlm-chat-message="${messageIndex}">
     <div class="describe-vlm-chat-msg-head">${roleplayIdentityHtml}<span>
@@ -29508,6 +30293,10 @@
             closeModal();
             return;
         }
+        if (evt.target.closest('[data-roleplay-story-tree-open]')) {
+            openRoleplayStoryTree(evt.target.closest('[data-roleplay-story-tree-open]'));
+            return;
+        }
         if (evt.target.closest('[data-describe-vlm-chat-thinking]')) {
             state.thinkingEnabled = !state.thinkingEnabled;
             saveChatSettings();
@@ -29932,41 +30721,6 @@
             });
             return;
         }
-        if (evt.target.closest('[data-describe-vlm-chat-roleplay-branch-refresh]')) {
-            const runtime = syncCurrentRuntimeFromState();
-            refreshRoleplayBranches(runtime).then((ok) => {
-                setConversationStatus(runtime, ok
-                    ? localText('Branch list refreshed.', '分支列表已刷新。')
-                    : localText('Branch list is only available locally.', '当前只能使用本地分支列表。'));
-            }).catch(() => {
-                setConversationStatus(runtime, localText('Branch list is only available locally.', '当前只能使用本地分支列表。'));
-            });
-            return;
-        }
-        if (evt.target.closest('[data-describe-vlm-chat-roleplay-branch-restore]')) {
-            const runtime = syncCurrentRuntimeFromState();
-            const branchId = modal.querySelector('[data-describe-vlm-chat-roleplay-branch-select]')?.value || '';
-            restoreRoleplayBranch(branchId, runtime).catch(() => {
-                setConversationStatus(runtime, localText('The branch could not be restored.', '剧情分支恢复失败。'), true);
-            });
-            return;
-        }
-        if (evt.target.closest('[data-describe-vlm-chat-roleplay-branch-new-conversation]')) {
-            const runtime = syncCurrentRuntimeFromState();
-            const branchId = modal.querySelector('[data-describe-vlm-chat-roleplay-branch-select]')?.value || '';
-            startRoleplayConversationFromBranch(branchId, runtime).catch(() => {
-                setConversationStatus(runtime, localText('The new conversation could not be created from this branch.', '无法从此分支新建对话。'), true);
-            });
-            return;
-        }
-        if (evt.target.closest('[data-describe-vlm-chat-roleplay-branch-delete]')) {
-            const runtime = syncCurrentRuntimeFromState();
-            const branchId = modal.querySelector('[data-describe-vlm-chat-roleplay-branch-select]')?.value || '';
-            deleteRoleplayBranch(branchId, runtime).catch(() => {
-                setConversationStatus(runtime, localText('The branch could not be deleted.', '剧情分支删除失败。'), true);
-            });
-            return;
-        }
         if (evt.target.closest('[data-describe-vlm-chat-roleplay-save]')) {
             const appliedAt = vlmChatPerformanceNow();
             const runtime = syncCurrentRuntimeFromState();
@@ -30063,6 +30817,17 @@
             openRoleplayStateCorrection(
                 (correctState || undoState).getAttribute(correctState ? 'data-roleplay-state-correct' : 'data-roleplay-state-undo'),
                 Number(correctState?.getAttribute('data-state-change-index') ?? -1), !!undoState
+            );
+            return;
+        }
+        const editMemory = evt.target.closest('[data-roleplay-memory-edit]');
+        const undoMemory = evt.target.closest('[data-roleplay-memory-undo]');
+        if (editMemory || undoMemory) {
+            const button = editMemory || undoMemory;
+            openRoleplayMemoryCorrection(
+                button.getAttribute('data-memory-message'),
+                button.getAttribute(editMemory ? 'data-roleplay-memory-edit' : 'data-roleplay-memory-undo'),
+                !!undoMemory
             );
             return;
         }
@@ -30701,9 +31466,6 @@
                 evt.target.value
             );
             return;
-        }
-        if (evt.target?.matches?.('[data-describe-vlm-chat-roleplay-branch-select]')) {
-            syncRoleplayBranchControls(document.getElementById('describe_vlm_chat_modal'), syncCurrentRuntimeFromState());
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-template]')) {
             applySystemPromptTemplate(evt.target.value, document.getElementById('describe_vlm_chat_modal'));

@@ -10,6 +10,7 @@ import math
 import os
 import re
 import struct
+import threading
 import time
 import uuid
 import zlib
@@ -38,6 +39,7 @@ WORLD_BOOK_SCHEMA = "simpai.vlm_roleplay.world_book"
 MEMORY_SCHEMA = "simpai.vlm_roleplay.memory"
 CHAPTER_SCHEMA = "simpai.vlm_roleplay.chapter"
 CONTEXT_SCHEMA = "simpai.vlm_roleplay.context"
+_BRANCH_STORAGE_LOCK = threading.RLock()
 
 MAX_TEXT = 12000
 MAX_LIST_ITEMS = 80
@@ -12832,7 +12834,23 @@ def append_roleplay_event(event: Any, session_id: Any, user_did: Any = "", root:
     return True
 
 
-def save_roleplay_branch(session: Any, branch_id: Any = "", user_did: Any = "", root: Any = None) -> dict[str, Any]:
+def _roleplay_branch_metadata(value: Any, branch_id: str) -> dict[str, Any]:
+    source = _dict(value)
+    parent = _text(source.get("parent_branch_id"), 160)
+    return {
+        "branch_id": branch_id,
+        "label": _text(source.get("label"), 160),
+        "parent_branch_id": parent if parent != branch_id and branch_id != "main" else "",
+        "fork_turn_id": _text(source.get("fork_turn_id"), 200),
+        "reason": _text(source.get("reason"), 240),
+        "created_at": _text(source.get("created_at"), 80),
+    }
+
+
+def save_roleplay_branch(
+    session: Any, branch_id: Any = "", user_did: Any = "", root: Any = None,
+    *, metadata: Any = None, messages: Any = None,
+) -> dict[str, Any]:
     """Persist a branch snapshot without replacing the session's active snapshot."""
     normalized = normalize_roleplay_session(session)
     branch = _branch_id(branch_id or normalized.get("active_branch_id"))
@@ -12840,7 +12858,32 @@ def save_roleplay_branch(session: Any, branch_id: Any = "", user_did: Any = "", 
     session_dir = _safe_child(base, "sessions", normalized["id"])
     branch_session = copy.deepcopy(normalized)
     branch_session["active_branch_id"] = branch
-    _atomic_write_json(session_dir / "branches" / f"{branch}.json", branch_session)
+    path = session_dir / "branches" / f"{branch}.json"
+    with _BRANCH_STORAGE_LOCK:
+        try:
+            previous = _dict(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            previous = {}
+        # Agent state saves must preserve the route's name, ancestry and chat history.
+        combined = dict(_dict(previous.get("_branch")))
+        if isinstance(metadata, dict):
+            combined.update(metadata)
+        record = dict(branch_session)
+        record["_branch"] = _roleplay_branch_metadata(combined, branch)
+        if isinstance(messages, list):
+            history = {
+                "revision": uuid.uuid4().hex,
+                "active_turn_id": branch_session.get("active_turn_id", ""),
+                "message_count": len(messages),
+            }
+            _atomic_write_json(
+                session_dir / "branch_history" / f"{branch}.json",
+                {**history, "messages": messages},
+            )
+            record["_history"] = history
+        elif isinstance(previous.get("_history"), dict):
+            record["_history"] = previous["_history"]
+        _atomic_write_json(path, record)
     return branch_session
 
 
@@ -12859,6 +12902,39 @@ def load_roleplay_branch(
         return None
 
 
+def load_roleplay_branch_record(
+    session_id: Any, branch_id: Any = "main", user_did: Any = "", root: Any = None,
+) -> dict[str, Any] | None:
+    branch = _branch_id(branch_id)
+    path = _safe_child(roleplay_user_root(user_did, root), "sessions", _id(session_id, "roleplay_session"))
+    try:
+        record = json.loads((path / "branches" / f"{branch}.json").read_text(encoding="utf-8"))
+        if not isinstance(record, dict):
+            return None
+        session = normalize_roleplay_session(record)
+    except (OSError, ValueError, TypeError):
+        return None
+    history = {}
+    with _BRANCH_STORAGE_LOCK:
+        try:
+            history = json.loads((path / "branch_history" / f"{branch}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    history_matches = (
+        isinstance(history, dict) and isinstance(history.get("messages"), list)
+        and history.get("revision") == _dict(record.get("_history")).get("revision")
+        and history.get("active_turn_id") == session.get("active_turn_id", "")
+    )
+    result = {
+        **_roleplay_branch_metadata(record.get("_branch"), branch),
+        "session": session,
+        "history_available": bool(history_matches),
+    }
+    if result["history_available"]:
+        result["messages"] = history["messages"]
+    return result
+
+
 def list_roleplay_branches(
     session_id: Any,
     user_did: Any = "",
@@ -12874,8 +12950,9 @@ def list_roleplay_branches(
     session_path = session_dir / "session.json"
     try:
         session = normalize_roleplay_session(json.loads(session_path.read_text(encoding="utf-8")))
-        rows["main"] = {
-            "branch_id": "main",
+        active_branch = _branch_id(session.get("active_branch_id"))
+        rows[active_branch] = {
+            "branch_id": active_branch,
             "state_version": session["state_version"],
             "active_turn_id": session.get("active_turn_id", ""),
             "updated_at": session.get("updated_at", ""),
@@ -12891,15 +12968,30 @@ def list_roleplay_branches(
     for path in paths:
         branch_id = _branch_id(path.stem)
         try:
-            session = normalize_roleplay_session(json.loads(path.read_text(encoding="utf-8")))
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(record, dict):
+                continue
+            session = normalize_roleplay_session(record)
         except (OSError, ValueError, json.JSONDecodeError):
             continue
         rows[branch_id] = {
+            **_roleplay_branch_metadata(record.get("_branch"), branch_id),
             "branch_id": branch_id,
             "state_version": session["state_version"],
             "active_turn_id": session.get("active_turn_id", ""),
             "updated_at": session.get("updated_at", ""),
             "scene": copy.deepcopy(session.get("story_state", {}).get("scene", {})),
+            "chapters": {
+                "items": [{key: chapter.get(key, "") for key in (
+                    "id", "title", "status", "branch_id", "start_turn_id", "end_turn_id"
+                )} for chapter in session.get("chapters", {}).get("items", [])],
+            },
+            "history_available": (
+                isinstance(record.get("_history"), dict)
+                and record["_history"].get("active_turn_id") == session.get("active_turn_id", "")
+                and (session_dir / "branch_history" / f"{branch_id}.json").is_file()
+            ),
+            "message_count": _dict(record.get("_history")).get("message_count"),
         }
     return sorted(
         rows.values(),
@@ -12924,15 +13016,21 @@ def delete_roleplay_branch(
     base = roleplay_user_root(user_did, root)
     session_dir = _safe_child(base, "sessions", _id(session_id, "roleplay_session"))
     removed = False
-    for path in (
-        session_dir / "branches" / f"{branch}.json",
-        session_dir / "branches" / f"{branch}.jsonl",
-    ):
-        try:
-            path.unlink()
-            removed = True
-        except FileNotFoundError:
-            pass
+    with _BRANCH_STORAGE_LOCK:
+        if any(row.get("parent_branch_id") == branch for row in list_roleplay_branches(
+            session_id, user_did=user_did, root=root
+        )):
+            raise ValueError("branch_has_children")
+        for path in (
+            session_dir / "branches" / f"{branch}.json",
+            session_dir / "branches" / f"{branch}.jsonl",
+            session_dir / "branch_history" / f"{branch}.json",
+        ):
+            try:
+                path.unlink()
+                removed = True
+            except FileNotFoundError:
+                pass
     return removed
 
 
@@ -13090,6 +13188,7 @@ __all__ = [
     "append_roleplay_event",
     "save_roleplay_branch",
     "load_roleplay_branch",
+    "load_roleplay_branch_record",
     "list_roleplay_branches",
     "delete_roleplay_branch",
     "save_roleplay_character",

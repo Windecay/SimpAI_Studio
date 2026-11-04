@@ -7030,6 +7030,53 @@ dialog.describe-vlm-state-correction {
 .describe-vlm-state-correction [data-state-feedback].is-error { color: #ffb4b4; }
 .describe-vlm-state-correction [data-state-restore-note] { color: #f1d097; font-size: 12px; }
 .describe-vlm-state-correction [hidden] { display: none !important; }
+
+.describe-vlm-memory-correction[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  overflow: hidden;
+}
+.describe-vlm-memory-correction .describe-vlm-state-correction-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.describe-vlm-memory-correction .describe-vlm-state-correction-body > label:first-child { margin-top: 0; }
+.describe-vlm-memory-correction textarea { max-height: 240px; overflow-wrap: anywhere; }
+.describe-vlm-memory-known {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #505860;
+  border-radius: 4px;
+}
+.describe-vlm-memory-known legend { color: #c3c9cf; padding: 0 4px; }
+.describe-vlm-memory-correction .describe-vlm-memory-known label,
+.describe-vlm-memory-correction .describe-vlm-memory-flags label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  max-width: 100%;
+  cursor: pointer;
+}
+.describe-vlm-memory-correction input[type="checkbox"] {
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  margin: 0;
+  accent-color: #61a9ce;
+}
+.describe-vlm-memory-known small { flex-basis: 100%; color: #a7afb8; font-size: 11px; }
+.describe-vlm-memory-visibility-note { margin: 6px 0 12px; color: #a7afb8; font-size: 12px; overflow-wrap: anywhere; }
+.describe-vlm-memory-flags { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+.describe-vlm-memory-correction [data-memory-feedback] { margin: 0; padding: 0 16px 10px; color: #b2d5e8; overflow-wrap: anywhere; }
+.describe-vlm-memory-correction [data-memory-feedback]:empty { padding: 0; }
+.describe-vlm-memory-correction [data-memory-feedback].is-error { color: #ffb4b4; }
 @media (max-width: 480px) {
   .describe-vlm-state-correction-fields { grid-template-columns: minmax(0, 1fr); }
   .describe-vlm-state-correction footer { flex-wrap: wrap; }
@@ -7183,6 +7230,51 @@ dialog.describe-vlm-state-correction {
   margin-top: 4px;
   color: rgba(219, 234, 254, 0.72);
   font-size: 11px;
+}
+
+.describe-vlm-chat-roleplay-resource-changes li:has(> .describe-vlm-memory-actions) {
+  grid-template-columns: minmax(66px, 24%) minmax(0, 1fr) auto;
+}
+.describe-vlm-chat-roleplay-memory-usage li:has(> .describe-vlm-memory-actions) {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.describe-vlm-chat-roleplay-memory-usage li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.describe-vlm-chat-roleplay-resource-changes li > .describe-vlm-memory-actions,
+.describe-vlm-chat-roleplay-memory-usage .describe-vlm-memory-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  overflow: visible;
+  white-space: nowrap;
+  color: #b5d4ee;
+}
+.describe-vlm-memory-actions > i { font-size: 11px; color: #a7d8bc; }
+.describe-vlm-memory-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  border: 1px solid #596674;
+  border-radius: 4px;
+  background: #343d47;
+  color: #e0e7ee;
+  font-size: 11px;
+  cursor: pointer;
+}
+.describe-vlm-memory-actions button:hover { background: #46515e; border-color: #93a8bd; }
+.describe-vlm-memory-actions button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+.describe-vlm-resource-changes-more { margin-top: 4px; }
+.describe-vlm-resource-changes-more > summary { font-size: 11px; color: #b5d4ee; cursor: pointer; }
+@media (pointer: coarse) {
+  .describe-vlm-memory-actions button { width: 36px; height: 36px; min-width: 36px; flex-basis: 36px; }
 }
 
 @media (min-width: 861px) {
@@ -25801,6 +25893,119 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 .describe-vlm-chat-roleplay-branch-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
+}
+
+.describe-vlm-story-tree {
+  box-sizing: border-box;
+  width: min(1060px, calc(100vw - 32px));
+  height: min(760px, calc(100dvh - 32px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--describe-chat-line, #494c56);
+  border-radius: 8px;
+  background: var(--describe-chat-panel, #242529);
+  color: var(--describe-chat-text, #f3f4f8);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+.describe-vlm-story-tree[open] { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.describe-vlm-story-tree::backdrop { background: rgb(0 0 0 / 50%); }
+.describe-vlm-story-tree [hidden] { display: none !important; }
+.describe-vlm-story-tree * { box-sizing: border-box; min-width: 0; letter-spacing: 0; }
+.describe-vlm-story-tree > header,
+.describe-vlm-story-tree-tools { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--describe-chat-line, #494c56); }
+.describe-vlm-story-tree > header strong { display: flex; align-items: center; gap: 8px; flex: 1; font-size: 14px; }
+.describe-vlm-story-tree > header strong i,
+.describe-vlm-story-tree [data-story-tree-current="true"] > [data-story-tree-select] > i { color: #e8a96e; }
+.describe-vlm-story-tree small,
+.describe-vlm-story-tree dt,
+.describe-vlm-story-tree-note { color: var(--describe-chat-muted, #a4a8b4); }
+.describe-vlm-story-tree input {
+  width: 100%; height: 34px; padding: 5px 8px;
+  border: 1px solid var(--describe-chat-line, #494c56); border-radius: 5px;
+  background: var(--describe-chat-input, #1e1f23); color: inherit; font: inherit;
+}
+.describe-vlm-story-tree button,
+.describe-vlm-story-tree-open {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 34px; padding: 6px 9px; margin: 0;
+  border: 1px solid var(--describe-chat-line, #494c56); border-radius: 5px;
+  background: var(--describe-chat-button, #3b3d46); color: inherit;
+  font: inherit; line-height: 1.4; cursor: pointer;
+}
+.describe-vlm-story-tree button:hover:not(:disabled) { background: color-mix(in srgb, var(--describe-chat-button, #3b3d46) 85%, var(--describe-chat-text, white)); }
+.describe-vlm-story-tree button:disabled { opacity: 0.4; cursor: default; }
+.describe-vlm-story-tree :focus-visible { outline: 2px solid #e8a96e; outline-offset: -2px; }
+.describe-vlm-story-tree > header > button,
+.describe-vlm-story-tree-tools > button { flex: 0 0 34px; width: 34px; padding: 0; }
+.describe-vlm-story-tree-tools > input { flex: 1; }
+.describe-vlm-story-tree-body { display: grid; grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1.5fr); min-height: 0; overflow: hidden; }
+.describe-vlm-story-tree [data-story-tree-nodes] {
+  margin: 0; padding: 10px 8px; overflow: auto; overscroll-behavior: contain;
+  border-inline-end: 1px solid var(--describe-chat-line, #494c56);
+}
+.describe-vlm-story-tree ul { margin: 0; padding: 0; list-style: none; }
+.describe-vlm-story-tree-row { display: flex; position: relative; margin-inline-start: calc(var(--story-tree-level) * 12px); margin-block: 3px; }
+.describe-vlm-story-tree-row:not([data-story-tree-root="true"])::before {
+  content: ""; position: absolute; inset-inline-start: -7px; top: 0; width: 7px; height: 50%;
+  border-inline-start: 1px solid var(--describe-chat-line, #494c56);
+  border-bottom: 1px solid var(--describe-chat-line, #494c56);
+}
+.describe-vlm-story-tree-row > [data-story-tree-toggle] {
+  flex: 0 0 24px; width: 24px; min-height: 36px; padding: 0; border: 0; background: transparent;
+}
+.describe-vlm-story-tree-row > [data-story-tree-toggle]:disabled { visibility: hidden; }
+.describe-vlm-story-tree [data-story-tree-select] { justify-content: flex-start; text-align: start; min-height: 36px; }
+.describe-vlm-story-tree-row > [data-story-tree-select] { flex: 1; background: transparent; border-color: transparent; }
+.describe-vlm-story-tree [data-story-tree-select] > span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.describe-vlm-story-tree [data-story-tree-select] > i { flex: 0 0 16px; text-align: center; }
+.describe-vlm-story-tree [data-story-tree-select] > small { flex: 0 0 auto; font-size: 10px; }
+.describe-vlm-story-tree [data-story-tree-select][aria-selected="true"] { background: var(--describe-chat-button, #3b3d46); border-color: var(--describe-chat-line, #686b75); }
+.describe-vlm-story-tree .describe-vlm-story-tree-chapter {
+  width: calc(100% - var(--story-tree-level) * 12px - 24px);
+  margin-inline-start: calc(var(--story-tree-level) * 12px + 24px);
+  border-color: transparent; background: transparent; font-size: 12px;
+}
+.describe-vlm-story-tree [data-story-tree-detail] { overflow: auto; overscroll-behavior: contain; padding: 16px; overflow-wrap: anywhere; }
+.describe-vlm-story-tree-detail-head { display: flex; align-items: flex-start; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.describe-vlm-story-tree-detail-head > span { font-size: 11px; color: var(--describe-chat-muted, #a4a8b4); }
+.describe-vlm-story-tree-detail-head > strong { font-size: 16px; line-height: 1.45; }
+.describe-vlm-story-tree dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 12px 0; }
+.describe-vlm-story-tree dt,
+.describe-vlm-story-tree dd { margin: 0; }
+.describe-vlm-story-tree p { white-space: pre-wrap; margin: 10px 0; }
+.describe-vlm-story-tree-summary { line-height: 1.75; }
+.describe-vlm-story-tree-commands { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
+.describe-vlm-story-tree-preview { margin-top: 20px; border-top: 1px solid var(--describe-chat-line, #494c56); padding-top: 12px; }
+.describe-vlm-story-tree-preview > strong { font-size: 12px; }
+.describe-vlm-story-tree-preview article { padding-block: 8px; border-bottom: 1px solid var(--describe-chat-line, #494c56); }
+.describe-vlm-story-tree-preview p { margin: 4px 0; }
+.describe-vlm-story-tree [data-story-tree-rename-form] { display: flex; align-items: flex-end; gap: 6px; margin-bottom: 14px; }
+.describe-vlm-story-tree [data-story-tree-rename-form] label { display: flex; flex: 1; flex-direction: column; gap: 4px; }
+.describe-vlm-story-tree [data-story-tree-rename-form] button { width: 34px; height: 34px; padding: 0; }
+.describe-vlm-story-tree-delete { margin-top: 12px; padding-block: 10px; border-block: 1px solid var(--describe-chat-line, #494c56); }
+.describe-vlm-story-tree-delete [data-story-tree-action="confirm-delete"] { color: #f2a2a2; border-color: #965656; margin-inline-end: 6px; }
+.describe-vlm-story-tree > footer { min-height: 40px; padding: 9px 12px; border-top: 1px solid var(--describe-chat-line, #494c56); font-size: 12px; overflow-wrap: anywhere; color: var(--describe-chat-muted, #a4a8b4); }
+.describe-vlm-story-tree > footer[data-error="true"] { color: #e7a892; }
+.describe-vlm-story-tree-empty { padding: 16px 8px; color: var(--describe-chat-muted, #a4a8b4); }
+.describe-vlm-story-tree-mobile-tabs { display: none; }
+@media (max-width: 640px) {
+  .describe-vlm-story-tree { width: calc(100vw - 12px); height: calc(100dvh - 16px); }
+  .describe-vlm-story-tree[open] { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+  .describe-vlm-story-tree-mobile-tabs { display: flex; padding: 6px 10px; gap: 4px; border-bottom: 1px solid var(--describe-chat-line, #494c56); }
+  .describe-vlm-story-tree-mobile-tabs button { flex: 1; background: transparent; border-color: transparent; }
+  .describe-vlm-story-tree-mobile-tabs button[aria-pressed="true"] { background: var(--describe-chat-button, #3b3d46); border-color: var(--describe-chat-line, #494c56); }
+  .describe-vlm-story-tree-body { display: block; position: relative; }
+  .describe-vlm-story-tree [data-story-tree-nodes],
+  .describe-vlm-story-tree [data-story-tree-detail] { height: 100%; border: 0; }
+  .describe-vlm-story-tree[data-story-tree-pane="tree"] [data-story-tree-detail],
+  .describe-vlm-story-tree[data-story-tree-pane="detail"] [data-story-tree-nodes] { display: none; }
+  .describe-vlm-story-tree-tools { gap: 6px; padding: 8px 10px; }
+  .describe-vlm-story-tree-commands button { min-height: 40px; }
 }
 
 .describe-vlm-chat-roleplay-resource-section {
