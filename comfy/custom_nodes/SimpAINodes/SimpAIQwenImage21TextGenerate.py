@@ -35,6 +35,7 @@ _SYSTEM_PROMPTS = _catalog_path.parents[1] / "docs" / "vlm_system_prompts"
 T2I_SYSTEM = (_SYSTEM_PROMPTS / "qwen21_pe_t2i.md").read_text(encoding="utf-8")
 I2I_SYSTEM = (_SYSTEM_PROMPTS / "qwen21_pe_i2i.md").read_text(encoding="utf-8")
 FLUX3_SYSTEM_PATH = _SYSTEM_PROMPTS / "flux3_pup.md"
+PH3_SYSTEM_PATH = _SYSTEM_PROMPTS / "ph3_image_pe.md"
 
 
 def _model_rows():
@@ -186,7 +187,7 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
                 io.Autogrow.Input("images", optional=True, template=io.Autogrow.TemplatePrefix(
                     io.Image.Input("image", optional=True), prefix="image_", min=0, max=100,
                 )),
-                io.Combo.Input("target", options=["qwen_image21", "flux3", "moss_image"], default="qwen_image21", optional=True),
+                io.Combo.Input("target", options=["qwen_image21", "flux3", "moss_image", "ph3_image"], default="qwen_image21", optional=True),
                 io.Clip.Input("clip", optional=True),
                 io.String.Input("applied_prompt", default="", optional=True, multiline=True),
             ],
@@ -215,9 +216,12 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
             task = pe_model_task(pe_model)
             edit = task == "i2i" or (task is None and bool(image_list))
             image_list = image_list if edit else []
-            system = FLUX3_SYSTEM_PATH.read_text(encoding="utf-8") if target == "flux3" else (
-                I2I_SYSTEM if edit else T2I_SYSTEM
-            )
+            if target == "ph3_image":
+                system = PH3_SYSTEM_PATH.read_text(encoding="utf-8")
+            elif target == "flux3":
+                system = FLUX3_SYSTEM_PATH.read_text(encoding="utf-8")
+            else:
+                system = I2I_SYSTEM if edit else T2I_SYSTEM
             if filename.endswith(".gguf"):
                 text = _gguf_generate(row, prompt, system, image_list, seed, max_length)
             elif filename.endswith(".safetensors"):

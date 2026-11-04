@@ -4,6 +4,8 @@ import re
 
 def prompt_target_key(backend_engine, task_method, target_text):
     haystack = f"{backend_engine} {task_method} {target_text}".lower()
+    if re.search(r"p[ ._-]?h3[ ._-]?image", haystack):
+        return "ph3_image"
     if "minimax" in haystack and "h3" in haystack:
         return "minimax_h3"
     if re.search(r"moss[ ._-]?(?:image[ ._-]?)?edit", haystack):

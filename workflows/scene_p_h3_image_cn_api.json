@@ -1,0 +1,128 @@
+{
+  "1": {
+    "class_type": "SceneInput", "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "", "additional_prompt": "",
+      "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
+      "inpaint_image": "None", "inpaint_mask": "None",
+      "width": 2048, "height": 2048, "cfg": 1, "steps": 8,
+      "var_number": 0, "var_number2": 0, "var_number3": 0, "var_number4": 0,
+      "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
+      "var_number9": 0, "var_number10": 0,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "model_type": 1, "model_type2": 1, "clip_type": 1,
+      "negative_prompt": "", "sampler": "euler", "scheduler": "simple", "video_duration": 0,
+      "ip_image4": "None", "ip_image5": "None", "ip_image6": "None", "ip_image7": "None"
+    }
+  },
+  "2": {"class_type": "SeedInput", "_meta": {"title": "SeedInput"}, "inputs": {"seed": 0}},
+  "3": {
+    "class_type": "UNETLoader", "_meta": {"title": "base_model"},
+    "inputs": {"unet_name": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors", "weight_dtype": "default"}
+  },
+  "4": {
+    "class_type": "CLIPLoader", "_meta": {"title": "clip_model"},
+    "inputs": {"clip_name": "p-h3-image_text_encoder_int8_convrot.safetensors", "type": "minimax", "device": "default"}
+  },
+  "5": {
+    "class_type": "VAELoader", "_meta": {"title": "vae_model"},
+    "inputs": {"vae_name": "p-h3-image_vae_int8_convrot.safetensors"}
+  },
+  "h3_dense_attention": {
+    "class_type": "ModelAttentionBackend",
+    "inputs": {"model": ["3", 0], "attention": "comfy kitchen attention"}
+  },
+  "h3_sparse_attention": {
+    "class_type": "BlockSparseAttention",
+    "inputs": {
+      "model": ["3", 0], "selection": "sla", "selection.keep_percent": 10.0,
+      "start_percent": 0.0, "end_percent": 1.0, "min_tokens": 8192,
+      "dense_blocks": "", "extra_tokens": 0, "sink_conditioning": "exact_kv", "verbose": true
+    }
+  },
+  "h3_attention_switch": {
+    "class_type": "easy ifElse",
+    "inputs": {
+      "boolean": ["1", 23], "on_true": ["h3_sparse_attention", 0], "on_false": ["h3_dense_attention", 0]
+    }
+  },
+  "6": {
+    "class_type": "MiniMaxH3SigmaShift",
+    "inputs": {"model": ["simpai_lora_stack_main", 0], "shift_video": 1.0, "shift_audio": 1.0}
+  },
+  "7": {
+    "class_type": "PH3ImageConditioning", "_meta": {"title": "P-H3 Image Conditioning"},
+    "inputs": {
+      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "prompt": ["simpai_ph3_pe", 0],
+      "width": ["1", 6], "height": ["1", 7],
+      "images.image_1": ["22", 0], "images.image_2": ["25", 0],
+      "images.image_3": ["28", 0], "images.image_4": ["31", 0],
+      "images.image_5": ["34", 0], "images.image_6": ["37", 0],
+      "images.image_7": ["40", 0], "images.image_8": ["43", 0]
+    }
+  },
+  "simpai_ph3_pe": {
+    "class_type": "SimpAIPromptExpand", "_meta": {"title": "P-H3 Image PE"},
+    "inputs": {
+      "prompt": ["1", 0], "pe_model": "None", "seed": ["2", 0],
+      "max_length": 8192, "applied_prompt": "", "target": "ph3_image",
+      "images.image_1": ["22", 0], "images.image_2": ["25", 0],
+      "images.image_3": ["28", 0], "images.image_4": ["31", 0],
+      "images.image_5": ["34", 0], "images.image_6": ["37", 0],
+      "images.image_7": ["40", 0], "images.image_8": ["43", 0]
+    }
+  },
+  "8": {"class_type": "BasicGuider", "inputs": {"model": ["6", 0], "conditioning": ["7", 0]}},
+  "9": {
+    "class_type": "ManualSigmas", "_meta": {"title": "SimpAI Sampling Sigmas"},
+    "inputs": {"sigmas": "1.0, 0.984753, 0.967905, 0.951688, 0.925372, 0.881923, 0.810083, 0.528718, 0.0"}
+  },
+  "10": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+  "11": {"class_type": "RandomNoise", "inputs": {"noise_seed": ["2", 0]}},
+  "12": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {"noise": ["11", 0], "guider": ["8", 0], "sampler": ["10", 0], "sigmas": ["9", 0], "latent_image": ["7", 1]}
+  },
+  "13": {"class_type": "VAEDecode", "inputs": {"samples": ["12", 0], "vae": ["5", 0]}},
+  "14": {"class_type": "SaveImageWebsocket", "_meta": {"title": "SaveImageWebsocket"}, "inputs": {"images": ["13", 0]}},
+  "17": {"class_type": "noneNode", "inputs": {}},
+  "18": {"class_type": "easy string", "inputs": {"value": "None"}},
+  "20": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 4], "image": "None"}},
+  "21": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 4], "b": ["18", 0]}},
+  "22": {"class_type": "easy ifElse", "inputs": {"boolean": ["21", 0], "on_true": ["17", 0], "on_false": ["20", 0]}},
+  "23": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 2], "image": "None"}},
+  "24": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 2], "b": ["18", 0]}},
+  "25": {"class_type": "easy ifElse", "inputs": {"boolean": ["24", 0], "on_true": ["17", 0], "on_false": ["23", 0]}},
+  "26": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 3], "image": "None"}},
+  "27": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 3], "b": ["18", 0]}},
+  "28": {"class_type": "easy ifElse", "inputs": {"boolean": ["27", 0], "on_true": ["17", 0], "on_false": ["26", 0]}},
+  "29": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 27], "image": "None"}},
+  "30": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 27], "b": ["18", 0]}},
+  "31": {"class_type": "easy ifElse", "inputs": {"boolean": ["30", 0], "on_true": ["17", 0], "on_false": ["29", 0]}},
+  "32": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 28], "image": "None"}},
+  "33": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 28], "b": ["18", 0]}},
+  "34": {"class_type": "easy ifElse", "inputs": {"boolean": ["33", 0], "on_true": ["17", 0], "on_false": ["32", 0]}},
+  "35": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 33], "image": "None"}},
+  "36": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 33], "b": ["18", 0]}},
+  "37": {"class_type": "easy ifElse", "inputs": {"boolean": ["36", 0], "on_true": ["17", 0], "on_false": ["35", 0]}},
+  "38": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 34], "image": "None"}},
+  "39": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 34], "b": ["18", 0]}},
+  "40": {"class_type": "easy ifElse", "inputs": {"boolean": ["39", 0], "on_true": ["17", 0], "on_false": ["38", 0]}},
+  "41": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 35], "image": "None"}},
+  "42": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 35], "b": ["18", 0]}},
+  "43": {"class_type": "easy ifElse", "inputs": {"boolean": ["42", 0], "on_true": ["17", 0], "on_false": ["41", 0]}},
+  "56": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_1"}, "inputs": {"model": ["h3_attention_switch", 0], "lora_name": "p-h3-image_lora_bf16.safetensors", "strength_model": 1.0}},
+  "57": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_2"}, "inputs": {"model": ["56", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "58": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_3"}, "inputs": {"model": ["57", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "59": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_4"}, "inputs": {"model": ["58", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "60": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_5"}, "inputs": {"model": ["59", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "61": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_6"}, "inputs": {"model": ["60", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "62": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_7"}, "inputs": {"model": ["61", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "63": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_8"}, "inputs": {"model": ["62", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "64": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_9"}, "inputs": {"model": ["63", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "65": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_10"}, "inputs": {"model": ["64", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "simpai_lora_stack_main": {
+    "class_type": "SimpAILoraStack", "_meta": {"title": "lora_stack_main"},
+    "inputs": {"model": ["65", 0], "clip": ["4", 0], "stack_json": "{\"version\":1,\"items\":[]}", "branch": "main"}
+  }
+}

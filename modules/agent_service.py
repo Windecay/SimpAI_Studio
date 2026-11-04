@@ -602,7 +602,7 @@ class AgentService:
         spec = {**self._summary(entry), "theme": theme, "task_method": method,
                 "inputs": {key: copy.deepcopy(value) for key, value in capability.items() if key not in {"supported_tasks", "output_type"}},
                 "mask": "required" if "mask" in capability.get("interaction_requirements", []) else "unavailable" if schema.get("disable_canvas_mask", True) else "optional",
-                "prompt_reference_format": "<imageN>" if qwen21 else "<Picture N>" if "minimax_h3" in method else "natural_language",
+                "prompt_reference_format": "<imageN>" if qwen21 else "<Picture N>" if "minimax_h3" in method or "p_h3_image" in method else "natural_language",
                 "parameters": parameters,
                 "parameter_schema": {"type": "object", "properties": properties, "additionalProperties": False},
                 "generation_defaults": {

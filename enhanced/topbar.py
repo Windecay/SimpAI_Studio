@@ -318,6 +318,7 @@ PRESET_STORE_ORDER = [
     "MiniMax-H3(Avatar)",
     "MiniMax-H3(R2C)",
     "MiniMax-H3(R2I)",
+    "P-H3-Image",
     "MiniMax-H3(Pose)",
     "Bernini-ImageEdit",
     "Bernini-MultiI2V",
@@ -1745,6 +1746,9 @@ def _build_canvas_scene_schema(scene_frontend, _include_theme_params=True):
                     "interactive": control not in disabled,
                     "value": defaults[control],
                 }
+        for control in ("overwrite_step", "guidance_scale", "sharpness", "sampler_name", "scheduler_name"):
+            if control in disabled:
+                per_theme[theme]["generation_config_props"].setdefault(control, {})["interactive"] = False
         if sampling_sigmas:
             per_theme[theme]["generation_config_props"]["scheduler_name"].update(
                 visible=False, label="Fixed 8-step sigmas",

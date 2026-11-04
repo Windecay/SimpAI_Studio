@@ -4325,6 +4325,19 @@ packages = {'base_package': {'id': 1,
     'info_links': ['https://modelscope.cn/models/ChenkinLab/Moss-Image-Edit', 'https://github.com/Chenkin-x/ComfyUI-Moss-Image-Edit', 'https://huggingface.co/chinoll/Moss-Image-Edit'],
     'preset_sample': [],
  },
+ 'p_h3_image_package': {
+     'id': 52,
+     'name': '[52]P-H3-Image',
+     'note': 'P-H3 文生图与多图编辑，复用 H3 混合模型，包含 P-H3 LoRA、INT8 文本编码器和图像 VAE，固定 8 步。',
+     'files': [
+         'diffusion_models,minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,20970379632,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,https://huggingface.co/smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models/resolve/main/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors',
+         'loras,p-h3-image_lora_bf16.safetensors,1956195360,0e9013ae2873e3415dcb7bb59a9677293bdbdb6f663e138a79bb9bdced00ea61,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/p-h3-image_lora_bf16.safetensors,https://huggingface.co/PrunaAI/P-H3-Image-Comfy/resolve/main/loras/p-h3-image_lora_bf16.safetensors',
+         'text_encoders,p-h3-image_text_encoder_int8_convrot.safetensors,5120870504,fb42c9ff0597e61729475d0b48b69b591ffe06d0b442a79dde22b14fadbe1c0f,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/p-h3-image_text_encoder_int8_convrot.safetensors,https://huggingface.co/PrunaAI/P-H3-Image-Comfy/resolve/main/text_encoders/p-h3-image_text_encoder_int8_convrot.safetensors',
+         'vae,p-h3-image_vae_int8_convrot.safetensors,3146996440,583e0d43354b6b833aa9a0815a5fac831b1ef6d0c19a7eaa0616980a3dab5ffe,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/p-h3-image_vae_int8_convrot.safetensors,https://huggingface.co/PrunaAI/P-H3-Image-Comfy/resolve/main/vae/p-h3-image_vae_int8_convrot.safetensors',
+     ],
+     'info_links': ['https://huggingface.co/PrunaAI/P-H3-Image-Comfy'],
+     'preset_sample': [],
+ },
 }
 MANUAL_DOWNLOAD_MAP = {
 }

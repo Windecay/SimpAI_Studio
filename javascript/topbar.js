@@ -3903,8 +3903,8 @@ function bindTopbarNavDrawer() {
             childList: true, subtree: true, characterData: true,
             attributes: true, attributeFilter: ["style", "class", "hidden"],
         });
+        scheduleTopbarNavDrawerUpdate();
     }
-    scheduleTopbarNavDrawerUpdate();
 }
 
 function getTopbarActiveGradient(baseColor, highlightAlpha) {

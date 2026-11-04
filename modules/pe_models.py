@@ -64,7 +64,10 @@ def prompt_expander_template(task):
 
 def pe_supported_task(task_method):
     method = str(task_method or "").lower()
-    return "qwen_image21" in method or "flux3" in method or method == "moss_image_sft_aio_cn"
+    return (
+        "qwen_image21" in method or "flux3" in method
+        or method in {"moss_image_sft_aio_cn", "p_h3_image_cn", "scene_p_h3_image_cn"}
+    )
 
 
 def prompt_was_expanded(prompt, applied_prompt):

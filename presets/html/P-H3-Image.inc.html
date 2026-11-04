@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>P-H3 Image</title>
+<style>body{margin:0;font:12px/1.6 sans-serif}p{margin:0 0 6px}</style></head>
+<body>
+<p id="description">P-H3-Image generates still images and edits with up to eight ordered images. The canvas is Picture 1 when present, followed by the references. With no image, it generates from the prompt. Default resolution is 2048 x 2048; 2912 x 2912 is also available. Mask editing is disabled.</p>
+<p id="prompt">Write a specific English description or edit instruction, or use the prompt assistant. PE is optional: choose an installed PE model in the model panel, or None to disable it. A prompt already applied by the assistant is not expanded again. Name references as &lt;Picture 1&gt;, &lt;Picture 2&gt; and so on, and quote visible lettering exactly in its original language. Preserve the source identity and all content outside the requested change.</p>
+<p id="attention">Comfy Kitchen attention is the default. Enable Sparse Attention Acceleration in Advanced Parameters to use SLA with 10% retention. Image quality with SLA needs separate comparison.</p>
+<p id="models">This preset reuses the H3 hybrid model with P-H3 LoRA at strength 1, a dedicated INT8 text encoder and image VAE. Sampling uses Euler, the fixed eight-step schedule and shifts of 1/1. The hybrid combination needs visual comparison against the official FL2VA combination; official speed and memory measurements do not describe this preset.</p>
+<script>
+const stage = Object.fromEntries(new URLSearchParams(location.search));
+stage.__lang = stage.__lang === 'en' ? 'en' : 'cn';
+document.documentElement.lang = stage.__lang === 'en' ? 'en' : 'zh-CN';
+document.body.style.color = stage.__theme === 'dark' ? '#f9fafb' : '#1f2937';
+if (stage.__lang === 'cn') {
+    document.getElementById('description').textContent = 'P-H3-Image 支持文生图与最多八张图片的编辑。有画布图时，画布为第 1 张图片，其余参考图按顺序编号；没有图片时按提示词生成。默认分辨率为 2048 x 2048，也可选择 2912 x 2912。蒙版编辑已关闭。';
+    document.getElementById('prompt').textContent = '可以直接填写具体的英文画面描述或编辑指令，也可以使用提示助手。PE 为可选项，在模型面板选择已安装的 PE 模型，选择 None 关闭；提示助手已经应用的同一段提示词不会重复扩写。参考图使用 <Picture 1>、<Picture 2> 等编号；画面文字使用原语言并放在双引号内。保留人物身份和未要求改变的内容。';
+    document.getElementById('attention').textContent = '默认使用 Comfy Kitchen 注意力。在高级参数中开启“稀疏注意力加速”后使用 SLA，保留比例为 10%。SLA 的画面效果需要另外对照验证。';
+    document.getElementById('models').textContent = '本预置复用 H3 混合模型，搭配权重为 1 的 P-H3 LoRA、专用 INT8 文本编码器和图像 VAE。使用 Euler、固定 8 步时间表及 1/1 Shift。混合模型组合仍需与官方 FL2VA 组合进行画面对照，官方速度与显存数据不代表本预置的实测结果。';
+}
+</script>
+</body></html>

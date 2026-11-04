@@ -1,0 +1,114 @@
+{
+  "supported_tasks": ["text_to_image", "image_edit", "multi_image_edit", "image_object_transfer"],
+  "interaction_requirements": [],
+  "prompt_agent_required": false,
+  "preset_category": "H3",
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "backend_params": {"pe_model": "None"},
+    "engine_type": "image",
+    "disvisible": [
+      "input_image_checkbox", "prompt_panel_checkbox", "performance_selection",
+      "negative_prompt", "sampler_name", "scheduler_name", "guidance_scale"
+    ],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "switch_option4_title": "Sparse Attention Acceleration",
+      "switch_option4": false,
+      "version": "m1.1",
+      "theme": ["P-H3 Image"],
+      "theme_title": "P-H3 Text-to-Image and Image Edit [up to 8 images]",
+      "disable_canvas_mask": true,
+      "director_capability": {
+        "image_policy": "optional",
+        "audio_policy": "forbidden",
+        "video_policy": "forbidden",
+        "min_images": 0,
+        "max_images": 8,
+        "image_modes": ["none", "reference_set"],
+        "audio_output": "silent",
+        "mixed_segments": false
+      },
+      "divisible": [
+        "scene_input_image3", "scene_input_image4", "scene_input_image5",
+        "scene_input_image6", "scene_input_image7"
+      ],
+      "disvisible": [
+        "scene_input_image8", "scene_additional_prompt", "scene_additional_prompt_2",
+        "scene_var_number", "scene_var_number2", "scene_var_number3", "scene_var_number4",
+        "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8",
+        "scene_var_number9", "scene_var_number10",
+        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3",
+        "scene_refiner_model", "scene_video", "scene_reference_video", "scene_audio",
+        "scene_video_duration", "sam3_input_video", "sam3_mask_video", "scene_batch",
+        "minimax_h3_storyboard_control"
+      ],
+      "task_method": {"P-H3 Image": "p_h3_image_cn"},
+      "prompt": {"P-H3 Image": ""},
+      "prompt_skill_docs": {
+        "default": {"en": ["ph3_image_prompting_en.md"], "cn": ["ph3_image_prompting_cn.md"]}
+      },
+      "agent_prompt": {
+        "P-H3 Image": "Write a complete, specific English prompt for P-H3-Image. With no images, describe the intended still frame, subjects, composition, lighting, materials and style. With images, describe the requested edit and identify what each actual image contributes using <Picture 1>, <Picture 2>, and so on. Images are ordered as the canvas when present, followed by non-empty reference slots; empty slots do not consume a number. The first actual image is the edit source, with the remaining images as references. Preserve identity and all unrequested content, and preserve exact visible wording in its original language inside straight double quotes. Do not invent images, audio, video, masks or a timeline. Avoid hype words, negative prompts and unrelated detail. Return only the final prompt, without reasoning, JSON, Markdown or H3 video sections."
+      },
+      "overwrite_step": {"P-H3 Image": 8},
+      "overwrite_step_min": 8,
+      "overwrite_step_max": 8,
+      "steps_readonly": true,
+      "theme_disinteractive": {
+        "P-H3 Image": ["sampler_name", "scheduler_name", "guidance_scale", "sharpness"]
+      },
+      "sampling_sigmas": {
+        "P-H3 Image": "1.0, 0.984753, 0.967905, 0.951688, 0.925372, 0.881923, 0.810083, 0.528718, 0.0"
+      },
+      "sampler": {"P-H3 Image": "euler"},
+      "scheduler": {"P-H3 Image": "simple"},
+      "aspect_ratio": ["2048|1:1", "2912|1:1", "origin|Original"],
+      "resolution_control": {
+        "mode": "image_keep_input_area",
+        "source": "scene_canvas",
+        "base_width": 2048,
+        "base_height": 2048,
+        "quantize": 32,
+        "interactive": true,
+        "frontend_preprocess": false,
+        "preprocess_target": "none",
+        "preprocess_fit": "proportional"
+      },
+      "image_preprocessor_method": [["-normalization"]]
+    }
+  },
+  "default_model": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+  "default_clip_model": "p-h3-image_text_encoder_int8_convrot.safetensors",
+  "default_vae": "p-h3-image_vae_int8_convrot.safetensors",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_loras": [
+    ["p-h3-image_lora_bf16.safetensors", 1.0],
+    ["None", 1], ["None", 1], ["None", 1], ["None", 1]
+  ],
+  "default_cfg_scale": 1,
+  "default_sample_sharpness": 2,
+  "default_sampler": "euler",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "2048*2048",
+  "default_resolution_quantize_step": 32,
+  "default_image_number": 1,
+  "default_overwrite_step": 8,
+  "default_prompt": "",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,20970379632,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,https://huggingface.co/smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models/resolve/main/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+    "loras,p-h3-image_lora_bf16.safetensors,1956195360,0e9013ae2873e3415dcb7bb59a9677293bdbdb6f663e138a79bb9bdced00ea61,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/p-h3-image_lora_bf16.safetensors,https://huggingface.co/PrunaAI/P-H3-Image-Comfy/resolve/main/loras/p-h3-image_lora_bf16.safetensors",
+    "text_encoders,p-h3-image_text_encoder_int8_convrot.safetensors,5120870504,fb42c9ff0597e61729475d0b48b69b591ffe06d0b442a79dde22b14fadbe1c0f,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/p-h3-image_text_encoder_int8_convrot.safetensors,https://huggingface.co/PrunaAI/P-H3-Image-Comfy/resolve/main/text_encoders/p-h3-image_text_encoder_int8_convrot.safetensors",
+    "vae,p-h3-image_vae_int8_convrot.safetensors,3146996440,583e0d43354b6b833aa9a0815a5fac831b1ef6d0c19a7eaa0616980a3dab5ffe,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/p-h3-image_vae_int8_convrot.safetensors,https://huggingface.co/PrunaAI/P-H3-Image-Comfy/resolve/main/vae/p-h3-image_vae_int8_convrot.safetensors"
+  ]
+}

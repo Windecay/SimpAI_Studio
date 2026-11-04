@@ -8,6 +8,24 @@
   },
   "areas": [
     {
+      "key": "ph3_image_prompting_en",
+      "title": "P-H3-Image Prompting",
+      "doc": "ph3_image_prompting_en.md",
+      "language": "en",
+      "ownership": "hybrid",
+      "source": {"repository": "PrunaAI/P-H3-Image-Comfy", "path": "README.md"},
+      "contract_summary": "Specific English still-image descriptions and edits with ordered Picture references; preserve visible wording and reference roles."
+    },
+    {
+      "key": "ph3_image_prompting_cn",
+      "title": "P-H3-Image 提示词",
+      "doc": "ph3_image_prompting_cn.md",
+      "language": "cn",
+      "ownership": "hybrid",
+      "source": {"repository": "PrunaAI/P-H3-Image-Comfy", "path": "README.md"},
+      "contract_summary": "英文静态画面描述与编辑指令，使用有序 Picture 参考，保留画面文字和参考图用途。"
+    },
+    {
       "key": "moss_image_prompting_en",
       "title": "MOSS-Image Prompting",
       "doc": "moss_image_prompting_en.md",

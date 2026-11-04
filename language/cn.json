@@ -3822,5 +3822,8 @@
   "Chapter entries": "章节条目",
   "Matching memories: {matched} / {total}": "匹配记忆：{matched} / {total}",
   "Chapter: {title}": "章节：{title}",
-  "The input draft could not be saved. Keep this page open until storage is available.": "输入草稿暂时无法保存。请保持页面打开，待浏览器存储恢复后再关闭。"
+  "The input draft could not be saved. Keep this page open until storage is available.": "输入草稿暂时无法保存。请保持页面打开，待浏览器存储恢复后再关闭。",
+  "P-H3-Image": "P-H3 图像",
+  "P-H3 Image": "P-H3 图像",
+  "P-H3 Text-to-Image and Image Edit [up to 8 images]": "P-H3 文生图与图像编辑 [最多 8 张图片]"
 }

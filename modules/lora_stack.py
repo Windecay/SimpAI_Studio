@@ -237,7 +237,10 @@ def _legacy_names(prompt, stack_node):
         node_id = str(link[0])
         visited.add(node_id)
         node = prompt.get(node_id, {})
-        if node.get("class_type") not in ("LoraLoaderModelOnly", "LoraLoader"):
+        if node.get("class_type") not in (
+            "LoraLoaderModelOnly", "LoraLoader",
+            "LoraLoaderBypassModelOnly", "LoraLoaderBypass",
+        ):
             break
         inputs = node.get("inputs", {})
         if inputs.get("strength_model", 0) != 0 or inputs.get("strength_clip", 0) != 0:

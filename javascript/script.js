@@ -2066,7 +2066,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         panel.querySelectorAll('[data-simpai-lora-enabled]').forEach(syncLoraRowInteractivity);
         syncModelsPanelRefinerAvailability(panel);
         // PE availability belongs to the active task, not the asynchronous file catalog.
-        const peEnabled = /qwen_image21|flux3|^moss_image_sft_aio_cn$/i.test(modelsPanelActiveTaskMethod());
+        const peEnabled = /qwen_image21|flux3|^moss_image_sft_aio_cn$|^(?:scene_)?p_h3_image_cn$/i.test(modelsPanelActiveTaskMethod());
         const peField = panel.querySelector('[data-simpai-model-card="pe"]');
         if (peField) peField.hidden = !peEnabled;
         const previous = modelsPanelControlStates.get(panel);
@@ -2775,7 +2775,7 @@ function mutationNeedsUiUpdateCallbacks(mutation) {
         ? mutation.target
         : mutation?.target?.parentElement;
     if (!target?.closest) return true;
-    return !target.closest('.status-monitor-tile, .vram-usage, .ram-usage, .online-users-badge, .admin-access-pending-badge');
+    return !target.closest('.status-monitor-tile, .vram-usage, .ram-usage, .online-users-badge, .admin-access-pending-badge, [data-describe-vlm-message-body], .describe-vlm-chat-reasoning-text');
 }
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -2785,9 +2785,10 @@ document.addEventListener("DOMContentLoaded", function() {
             executeCallbacks(uiLoadedCallbacks);
         }
 
-        if (!m.some(mutationNeedsUiUpdateCallbacks)) return;
+        const changes = m.filter(mutationNeedsUiUpdateCallbacks);
+        if (!changes.length) return;
 
-        executeCallbacks(uiUpdateCallbacks, m);
+        executeCallbacks(uiUpdateCallbacks, changes);
         scheduleAfterUiUpdateCallbacks();
         const newTab = get_uiCurrentTab();
         if (newTab && (newTab !== uiCurrentTab)) {

@@ -51,7 +51,7 @@ def resolve_engine_class_display(template_engine, task_method):
     if template_engine in ['Flux', 'Wan', 'Qwen', 'Z-image', 'Cloud']:
         return template_engine
     if template_engine == 'Comfy':
-        if str(task_method or '').strip().lower().startswith('minimax_h3'):
+        if str(task_method or '').strip().lower().startswith(('minimax_h3', 'p_h3_image')):
             return 'H3'
         return {
             'sd15_aio': 'SD15',

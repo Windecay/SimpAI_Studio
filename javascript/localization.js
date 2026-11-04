@@ -88,7 +88,14 @@ function hasLocalization() {
 }
 
 function textNodesUnder(el) {
-    var n, a = [], walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+    var n, a = [], walk = document.createTreeWalker(el, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                return isTagCartLocalizationExcluded(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+        }
+    });
     while ((n = walk.nextNode())) a.push(n);
     return a;
 }
@@ -100,7 +107,7 @@ function isTagCartLocalizationExcluded(target) {
     if (!element || !element.closest) return false;
 
     return !!element.closest(
-        '[translate="no"], #draggable-container, #custom-tags-editor, #selected-tags-container, #tag-display-container, .tagcart-panel, .tagcart-editor'
+        '[translate="no"], #draggable-container, #custom-tags-editor, #selected-tags-container, #tag-display-container, .tagcart-panel, .tagcart-editor, [data-describe-vlm-message-body], .describe-vlm-chat-reasoning-text'
     );
 }
 
@@ -258,7 +265,7 @@ function processNode(node) {
 
     if (node.title) {
         let tl = getTranslation(node.title);
-        if (tl !== undefined) {
+        if (tl !== undefined && node.title !== tl) {
             node.title = tl;
         }
     }
@@ -1672,6 +1679,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             const observer = new MutationObserver((mutations) => {
                 for (const mutation of mutations) {
+                    if (isTagCartLocalizationExcluded(mutation.target)) continue;
                     if (mutation.type === 'childList') {
                         mutation.addedNodes.forEach((n) => pending.add(n));
                         if (mutation.target) pending.add(mutation.target);
@@ -1683,7 +1691,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         if (mutation.target) pending.add(mutation.target);
                     }
                 }
-                scheduleFlush();
+                if (pending.size) scheduleFlush();
             });
 
             observer.observe(root, {

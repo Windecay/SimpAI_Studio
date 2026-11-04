@@ -148,6 +148,17 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
     if "flux3" in task_method_l:
         comfy_params.update_mapping_rule("pe_model", "SimpAIPromptExpand:Flux3 Prompt Upsampler:pe_model")
         comfy_params.update_mapping_rule("pe_applied_prompt", "SimpAIPromptExpand:Flux3 Prompt Upsampler:applied_prompt")
+    if task_method_l == "scene_p_h3_image_cn":
+        comfy_params.update_mapping_rule("vae_model", "VAELoader:vae_model:vae_name")
+        comfy_params.update_mapping_rule("pe_model", "SimpAIPromptExpand:P-H3 Image PE:pe_model")
+        comfy_params.update_mapping_rule("pe_applied_prompt", "SimpAIPromptExpand:P-H3 Image PE:applied_prompt")
+        for index in range(1, 11):
+            comfy_params.update_mapping_rule(
+                f"lora_{index}", f"LoraLoaderBypassModelOnly:lora_{index}:lora_name",
+            )
+            comfy_params.update_mapping_rule(
+                f"lora_{index}_strength", f"LoraLoaderBypassModelOnly:lora_{index}:strength_model",
+            )
     if task_method_l == "moss_image_sft_aio_cn":
         comfy_params.update_mapping_rule("moss_spectrum", "SimpAIMossSpectrum:MOSS Spectrum:enabled")
         comfy_params.update_mapping_rule("pe_model", "SimpAIPromptExpand:MOSS Image PE:pe_model")

@@ -25944,7 +25944,12 @@
         if (!button) return;
         const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
         if (log.clientHeight && log.__chatScrollControls) {
-            log.__chatScrollControls.followLatest = nearBottom;
+            const controls = log.__chatScrollControls;
+            // Growing content is not a request to stop following; scrolling upward is.
+            if (nearBottom || log.scrollTop < controls.lastScrollTop - 1) {
+                controls.followLatest = nearBottom;
+            }
+            controls.lastScrollTop = log.scrollTop;
         }
         button.hidden = !log.clientHeight || nearBottom;
         if (!button.hidden) {
@@ -25963,17 +25968,23 @@
     function setupChatScrollControls(modal) {
         const log = modal?.querySelector('[data-describe-vlm-chat-log]');
         if (!log || log.__chatScrollControls) return;
-        const controls = { followLatest: true, frame: 0 };
+        const controls = { followLatest: true, lastScrollTop: log.scrollTop, frame: 0 };
         log.__chatScrollControls = controls;
         controls.refresh = () => {
             if (controls.frame) return;
             controls.frame = window.requestAnimationFrame(() => {
                 controls.frame = 0;
+                if (log.__contentContainmentWidth && log.clientWidth !== log.__contentContainmentWidth) {
+                    prepareChatMessageContainment(log);
+                }
                 if (controls.followLatest) log.scrollTop = log.scrollHeight;
                 syncChatScrollControls(log);
             });
         };
-        log.addEventListener('scroll', () => syncChatScrollControls(log), { passive: true });
+        log.addEventListener('scroll', () => {
+            syncChatScrollControls(log);
+            if (controls.followLatest && log.scrollHeight - log.scrollTop - log.clientHeight >= 80) controls.refresh();
+        }, { passive: true });
         log.addEventListener('load', controls.refresh, true);
         if (typeof ResizeObserver === 'function') {
             controls.observer = new ResizeObserver(controls.refresh);
@@ -25981,10 +25992,36 @@
         }
     }
 
+    function prepareChatMessageContainment(log) {
+        log.classList.remove('has-contained-messages');
+        log.__contentContainmentWidth = 0;
+        if (!window.CSS?.supports?.('content-visibility', 'auto')
+            || !window.CSS.supports('contain-intrinsic-block-size', 'auto 1px')) return;
+        const messages = Array.from(log.querySelectorAll(':scope > [data-describe-vlm-chat-message]'));
+        if (messages.length < 24) return;
+        // Measure once before skipping offscreen layout so scroll positions keep their actual sizes.
+        const sizes = messages.map(message => {
+            const rect = message.getBoundingClientRect();
+            const style = window.getComputedStyle(message);
+            const inset = names => names.reduce((sum, name) => sum + (parseFloat(style[name]) || 0), 0);
+            return {
+                width: Math.max(0, rect.width - inset(['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'])),
+                height: Math.max(0, rect.height - inset(['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']))
+            };
+        });
+        messages.forEach((message, index) => {
+            message.style.setProperty('contain-intrinsic-inline-size', `auto ${sizes[index].width}px`);
+            message.style.setProperty('contain-intrinsic-block-size', `auto ${sizes[index].height}px`);
+        });
+        log.__contentContainmentWidth = log.clientWidth;
+        log.classList.add('has-contained-messages');
+    }
+
     function renderMessages(options = {}) {
         const modal = ensureModal();
         const log = modal.querySelector('[data-describe-vlm-chat-log]');
         if (!log) return;
+        log.classList.remove('has-contained-messages');
         const runtime = currentConversationRuntime();
         const speakerCardStates = captureRoleplaySpeakerCardStates(log);
         const openReasoningIds = new Set(Array.from(
@@ -26127,6 +26164,7 @@
             element.open = openReasoningIds.has(element.dataset.reasoningId);
         });
         renderRoleplayInlineGenerationResults(modal);
+        prepareChatMessageContainment(log);
         if (oldAnchor && Number.isFinite(oldAnchorTop)) {
             const newAnchorCard = Array.from(log.querySelectorAll('[data-describe-vlm-chat-generation-ref]')).find((node) => node.getAttribute('data-describe-vlm-chat-generation-ref') === anchorRef);
             const newAnchor = newAnchorCard?.querySelector?.('[data-describe-vlm-chat-generation-stop]') || newAnchorCard;
@@ -30996,7 +31034,11 @@
                 updateAnswerModelIndicator();
             }, 80);
         };
-        new MutationObserver(scheduleAnchor).observe(document.body, { childList: true, subtree: true });
+        new MutationObserver(mutations => {
+            if (mutations.some(mutation => !eventTargetElement(mutation.target)?.closest(
+                '[data-describe-vlm-message-body], .describe-vlm-chat-reasoning-text'
+            ))) scheduleAnchor();
+        }).observe(document.body, { childList: true, subtree: true });
         window.addEventListener('resize', scheduleAnchor, { passive: true });
     } catch (err) {
         // MutationObserver can be unavailable in unusual embedded contexts.

@@ -7705,6 +7705,16 @@ dialog.describe-vlm-state-correction {
   border-color: #484b54;
 }
 
+.describe-vlm-chat-log.has-contained-messages > .describe-vlm-chat-msg {
+  flex-shrink: 0;
+  content-visibility: auto;
+}
+
+.describe-vlm-chat-log.has-contained-messages > .describe-vlm-chat-msg:is(.is-pending, :hover, :focus-within),
+.describe-vlm-chat-log.has-contained-messages > .describe-vlm-chat-msg:has([data-describe-vlm-chat-roleplay-speaker-identity].is-open) {
+  content-visibility: visible;
+}
+
 .describe-vlm-chat-msg p {
   font-size: 14px;
   line-height: 1.55;

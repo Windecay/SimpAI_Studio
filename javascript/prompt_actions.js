@@ -1180,7 +1180,8 @@
         const anchors = [rootById("tag_helper_btn"), field.parentElement.querySelector(".sai-vpe-entry")]
             .map(node => node?.getBoundingClientRect()).filter(rect => rect?.width > 0 && rect.left >= host.left && rect.right <= host.right + 1);
         const anchorLeft = anchors.length ? Math.min(...anchors.map(rect => rect.left)) : host.right;
-        button.style.right = `${Math.max(8, Math.ceil(host.right - anchorLeft + 8))}px`;
+        const right = `${Math.max(8, Math.ceil(host.right - anchorLeft + 8))}px`;
+        if (button.style.right !== right) button.style.right = right;
     }
 
     function scheduleRegionalPromptPosition() {
@@ -1221,11 +1222,14 @@
         }
         const label = currentLang() === "en" ? "Regional Prompt"
             : window.localization?.["Regional Prompt"] || "Regional Prompt";
-        regionalPromptButton.querySelector("span").textContent = currentLang() === "en" ? "Regional"
+        const text = currentLang() === "en" ? "Regional"
             : window.localization?.["Regional"] || "Regional";
-        regionalPromptButton.title = label;
-        regionalPromptButton.setAttribute("aria-label", label);
-        regionalPromptButton.disabled = field.disabled || pending || isGenerationActive();
+        const caption = regionalPromptButton.querySelector("span");
+        if (caption.textContent !== text) caption.textContent = text;
+        if (regionalPromptButton.title !== label) regionalPromptButton.title = label;
+        if (regionalPromptButton.getAttribute("aria-label") !== label) regionalPromptButton.setAttribute("aria-label", label);
+        const disabled = field.disabled || pending || isGenerationActive();
+        if (regionalPromptButton.disabled !== disabled) regionalPromptButton.disabled = disabled;
         scheduleRegionalPromptPosition();
     }
 
