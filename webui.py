@@ -133,6 +133,7 @@ COMPARE_BUTTON_ICON = "🔍"
 _REFRESH_FILES_CACHE_KEY = "__refresh_files_cache"
 _REFRESH_FILES_CHOICES_KEY = "__refresh_files_choices_signature"
 MAIN_VLM_USER_VERSION_KEY = "main_vlm_version"
+MAIN_VLM_USER_DEFAULT_KEY = "main_vlm_default_version"
 MAIN_VLM_LOCAL_SETTINGS_KEY = "main_vlm_custom_api"
 MAIN_VLM_EMPTY_PROFILE_VALUE = "__empty_vlm_api_profile__"
 MAIN_VLM_CUSTOM_KEYS = {
@@ -469,15 +470,23 @@ def _activate_main_vlm_version(version, custom_settings=None):
 
 def _main_vlm_selected_version_from_state(state, request=None):
     state = _main_vlm_state_from_request(state, request)
+    default_version = _main_vlm_selectable_version(ads.get_admin_default('vlm_version'))
     if is_local_mode():
         saved = _main_vlm_read_local_settings().get("version")
     else:
+        user_did = identity_access.current_user_did(state)
+        if not user_did or shared.token.is_guest(user_did):
+            return default_version
+        # Saved overrides apply only to the administrator default they were chosen against.
+        selected_default = ads.get_user_default(MAIN_VLM_USER_DEFAULT_KEY, state, None)
+        if selected_default != default_version:
+            return default_version
         saved = ads.get_user_default(MAIN_VLM_USER_VERSION_KEY, state, None)
         if str(saved or "").strip() in {"", "None", "Unknown"}:
             saved = None
     if saved:
         return _main_vlm_selectable_version(saved)
-    return _main_vlm_selectable_version(ads.get_admin_default('vlm_version'))
+    return default_version
 
 
 def _main_vlm_save_user_default(key, value, state, request=None):
@@ -505,13 +514,22 @@ def _main_vlm_save_admin_version(version, state, request=None):
 
 
 def _main_vlm_save_selected_version(version, state, persist_admin=False, request=None):
+    state = _main_vlm_state_from_request(state, request)
     version = _vlm_resolve_version(version)
+    if persist_admin:
+        _main_vlm_save_admin_version(version, state, request=request)
     if is_local_mode():
         _main_vlm_write_local_settings({"version": version})
     else:
-        _main_vlm_save_user_default(MAIN_VLM_USER_VERSION_KEY, version, state, request=request)
-    if persist_admin:
-        _main_vlm_save_admin_version(version, state, request=request)
+        user_did = identity_access.current_user_did(state)
+        if user_did and not shared.token.is_guest(user_did):
+            if _main_vlm_save_user_default(MAIN_VLM_USER_VERSION_KEY, version, state, request=request):
+                _main_vlm_save_user_default(
+                    MAIN_VLM_USER_DEFAULT_KEY,
+                    _main_vlm_selectable_version(ads.get_admin_default('vlm_version')),
+                    state,
+                    request=request,
+                )
     return version
 
 
@@ -9796,7 +9814,7 @@ with shared.gradio_root:
                         gr_update(value=texts["fetch_models"]),
                         gr_update(value=texts["test_api"]),
                         _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else "",
-                        _describe_vlm_dropdown_update(version, state, request),
+                        _describe_vlm_dropdown_update(ads.get_admin_default('vlm_version'), state, request),
                     )
 
                 def set_describe_vlm_version(version, state, api_name, provider, api_format, base_url, model, api_key, supports_images, request: gr.Request):
@@ -9810,7 +9828,7 @@ with shared.gradio_root:
                         _vlm_model_status_html(version, state),
                         gr_update(visible=False),
                         "",
-                        _describe_vlm_dropdown_update(version, state, request),
+                        _describe_vlm_dropdown_update(ads.get_admin_default('vlm_version'), state, request),
                     )
 
                 def set_admin_vlm_version(version, state, request: gr.Request):
@@ -10013,14 +10031,14 @@ with shared.gradio_root:
                     state = _main_vlm_state_from_request(state, request)
                     if not _main_vlm_can_manage_profiles(state, request):
                         text = _main_vlm_text(state, "Only the administrator can save shared VLM API configurations.", "只有管理员可以保存共享 VLM API 配置。")
-                        return skip_component_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION, state), gr_update(visible=False), _main_vlm_custom_message_html(text, "missing"), gr_update(value=VLM.DEFAULT_VERSION)
+                        return skip_component_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION, state), gr_update(visible=False), _main_vlm_custom_message_html(text, "missing"), skip_component_update()
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
                     _apply_main_vlm_custom_settings(settings)
                     missing = VLM.get_custom_missing_settings()
                     if missing:
                         version = _main_vlm_selected_version_from_state(state, request=request)
                         text = _main_vlm_text(state, f"Configuration is incomplete: {', '.join(missing)}", f"配置不完整：{', '.join(missing)}")
-                        return skip_component_update(), _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version, state), gr_update(visible=True), _main_vlm_custom_message_html(text, "missing"), _describe_vlm_dropdown_update(version, state, request)
+                        return skip_component_update(), _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version, state), gr_update(visible=True), _main_vlm_custom_message_html(text, "missing"), _describe_vlm_dropdown_update(ads.get_admin_default('vlm_version'), state, request)
                     profile_id = "" if profile_id == MAIN_VLM_EMPTY_PROFILE_VALUE else profile_id
                     profile = vlm_api_profiles.upsert_profile(settings, profile_id=profile_id)
                     version = vlm_api_profiles.profile_version(profile["id"])
@@ -10033,7 +10051,7 @@ with shared.gradio_root:
                         _vlm_model_status_html(version, state),
                         gr_update(visible=False),
                         _main_vlm_custom_message_html(text, "ready"),
-                        _describe_vlm_dropdown_update(version, state, request),
+                        _describe_vlm_dropdown_update(ads.get_admin_default('vlm_version'), state, request),
                     )
 
                 def delete_main_vlm_api_profile(profile_id, state, request: gr.Request):
@@ -18836,6 +18854,38 @@ async def describe_image_vlm_roleplay_branch_delete_endpoint(request: Request, p
     return JSONResponse({"ok": True, "session_id": session_id, "branch_id": branch_id}, status_code=200)
 
 
+@app.post("/describe-image/vlm-roleplay/branches/cleanup")
+async def describe_image_vlm_roleplay_branch_cleanup_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    session_id = str(payload.get("session_id") or "").strip()
+    active_id = str(payload.get("active_branch_id") or "").strip()
+    if not session_id or not active_id:
+        return JSONResponse({"ok": False, "error": "session_and_branch_required"}, status_code=400)
+    user_did = _roleplay_endpoint_user_did(payload, request)
+
+    def cleanup():
+        arguments = {
+            "session_id": session_id, "active_branch_id": active_id,
+            "mode": str(payload.get("mode") or "ancestors"),
+            "client_branches": payload.get("client_branches"), "user_did": user_did,
+        }
+        if payload.get("apply") is True:
+            if not payload.get("request_id") or not payload.get("fingerprint"):
+                raise ValueError("cleanup_confirmation_required")
+            return vlm_roleplay.cleanup_roleplay_branches(
+                **arguments, fingerprint=payload["fingerprint"], request_id=payload["request_id"]
+            )
+        return vlm_roleplay.plan_roleplay_branch_cleanup(**arguments)
+
+    try:
+        result = await run_in_threadpool(cleanup)
+    except ValueError as error:
+        return JSONResponse({"ok": False, "error": str(error)}, status_code=409)
+    except OSError:
+        return JSONResponse({"ok": False, "error": "cleanup_storage_failed"}, status_code=500)
+    return JSONResponse({"ok": True, **result}, status_code=200)
+
+
 @app.post("/describe-image/vlm-chat-cancel")
 async def describe_image_vlm_chat_cancel_endpoint(payload: dict = Body(default={})):
     try:
@@ -18869,10 +18919,13 @@ async def describe_image_vlm_chat_cancel_endpoint(payload: dict = Body(default={
         outline_canvas_result = canvas_vlm_runtime.request_canvas_vlm_cancel(
             "", "", f"{conversation_id}:outline-draft:{request_id}", request_id,
         )
+        memory_repair_canvas_result = canvas_vlm_runtime.request_canvas_vlm_cancel(
+            "", "", f"{conversation_id}:memory-repair:{request_id}", request_id,
+        )
         result["canvas_cancelled"] = bool(
             canvas_result.get("cancelled") or summary_canvas_result.get("cancelled")
             or polish_canvas_result.get("cancelled") or draft_canvas_result.get("cancelled")
-            or outline_canvas_result.get("cancelled")
+            or outline_canvas_result.get("cancelled") or memory_repair_canvas_result.get("cancelled")
         )
         return JSONResponse(result, status_code=200)
     except Exception as e:

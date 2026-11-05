@@ -100,7 +100,7 @@
     const CONVERSATION_RECOVERY_SCHEMA = 'simpai.describeVlmChat.recovery';
     const CONVERSATION_RECOVERY_VERSION = 1;
     const CONVERSATION_SCHEMA = 'simpai.describeVlmChat.conversation';
-    const CONVERSATION_VERSION = 8;
+    const CONVERSATION_VERSION = 9;
     const CONVERSATIONS_SCHEMA = 'simpai.describeVlmChat.conversations';
     const CONVERSATIONS_VERSION = 2;
     const CONVERSATION_ARCHIVE_DB_NAME = 'simpai.describeVlmChat.archive.v1';
@@ -148,6 +148,15 @@
     const MAX_PERSISTED_THUMB_TOTAL = 480000;
     const MAX_ROLEPLAY_BRANCH_MESSAGES = 80;
     const MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES = 3;
+    const ROLEPLAY_HISTORY_SCHEMA = 'simpai.vlm_roleplay.state_history';
+    const ROLEPLAY_HISTORY_REF_SCHEMA = 'simpai.vlm_roleplay.state_ref';
+    const ROLEPLAY_HISTORY_INTERVAL = 16;
+    const ROLEPLAY_HISTORY_MAX_NODES = 100000;
+    const ROLEPLAY_HISTORY_MAX_CHANGES = 100000;
+    const roleplayHistoryCache = new Map();
+    const roleplayHistoryValidatedNodes = new WeakSet();
+    let roleplayMemoryLibrary = null;
+    let roleplayAgendaViewer = null;
     let conversationArchiveDbPromise = null;
     let conversationHistoryViewer = null;
     const CONVERSATION_HISTORY_PAGE_SIZE = 20;
@@ -567,7 +576,7 @@
         const source = Array.isArray(value) ? value : [];
         return source.slice(0, 40).map((item) => {
             if (!item || typeof item !== 'object') return null;
-            const kind = ['world', 'memory', 'chapter', 'outline'].includes(String(item.kind || '').trim().toLowerCase())
+            const kind = ['world', 'memory', 'chapter', 'outline', 'agenda'].includes(String(item.kind || '').trim().toLowerCase())
                 ? String(item.kind).trim().toLowerCase()
                 : '';
             const operation = String(item.op || item.action || 'update').trim().toLowerCase().slice(0, 40);
@@ -578,6 +587,7 @@
                 id: String(item.id || '').trim().slice(0, 160),
                 title: String(item.title || item.name || item.id || '').trim().slice(0, 240),
                 field: String(item.field || '').trim().slice(0, 120),
+                ...(kind === 'agenda' ? { before: String(item.before || '').slice(0, 40), after: String(item.after || item.value || '').slice(0, 40) } : {}),
                 value: item.value === undefined || item.value === null
                     ? ''
                     : String(item.value).trim().slice(0, 1200)
@@ -590,7 +600,8 @@
             world: localText('World book', '世界书'),
             memory: localText('Memory', '记忆'),
             chapter: localText('Chapter', '章节'),
-            outline: roleplayDictionaryText('Private outline')
+            outline: roleplayDictionaryText('Private outline'),
+            agenda: roleplayDictionaryText('Story obligations')
         }[change.kind] || localText('Story resource', '故事资源');
         const operationLabel = {
             add: localText('Added', '新增'),
@@ -624,11 +635,20 @@
             const suffix = change.field && change.value
                 ? change.kind === 'outline'
                     ? ` · ${roleplayDictionaryText({ completed: 'Completed', blocked: 'Blocked' }[change.value] || 'Progress')}`
-                    : ` · ${change.field}: ${change.value}`
+                    : change.kind === 'agenda' ? ` · ${roleplayAgendaStatusLabel(change.value)}` : ` · ${change.field}: ${change.value}`
                 : '';
+            const agendaItem = change.kind === 'agenda' && options.session?.story_state?.agenda?.items?.find(row => row.id === change.id);
+            const agendaUndo = options.session?.story_state?.agenda?.undo;
+            const canUndoAgenda = agendaItem && agendaUndo?.session_id === options.session.id
+                && agendaUndo.branch_id === options.session.active_branch_id && agendaUndo.after.some(row =>
+                    row.id === change.id && roleplayHistoryCanonical(row) === roleplayHistoryCanonical(agendaItem));
             const actions = options.editable && change.kind === 'memory' && !['remove', 'delete'].includes(change.op)
-                ? renderRoleplayMemoryActions(options.message, change.id, options.session) : '';
-            return `<li><b>${escapeHtml(roleplayResourceChangeLabel(change))}</b><span title="${escapeHtml(`${name}${suffix}`)}">${escapeHtml(`${name}${suffix}`)}</span>${actions}${change.kind === 'outline' ? `<button type="button" class="describe-vlm-chat-outline-correction" data-roleplay-outline-open${normalizeChatMode(state.chatMode) === 'roleplay' ? '' : ' hidden'} title="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>` : ''}</li>`;
+                ? renderRoleplayMemoryActions(options.message, change.id, options.session)
+                : options.editable && agendaItem
+                    ? `<button type="button" data-roleplay-agenda-open="${escapeHtml(change.id)}" title="${escapeHtml(roleplayDictionaryText('Edit story obligation'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit story obligation'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>${canUndoAgenda ? `<button type="button" data-roleplay-agenda-undo="${escapeHtml(change.id)}" title="${escapeHtml(roleplayDictionaryText('Undo latest obligation update'))}" aria-label="${escapeHtml(roleplayDictionaryText('Undo latest obligation update'))}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>` : ''}` : '';
+            const agendaProgress = change.kind === 'agenda' && change.after
+                ? `${escapeHtml(name)} · ${change.before ? `<small class="describe-vlm-agenda-before">${escapeHtml(roleplayAgendaStatusLabel(change.before))}</small> → ` : ''}<strong>${escapeHtml(roleplayAgendaStatusLabel(change.after))}</strong>` : escapeHtml(`${name}${suffix}`);
+            return `<li><b>${escapeHtml(roleplayResourceChangeLabel(change))}</b><span title="${escapeHtml(`${name}${suffix}`)}">${agendaProgress}</span>${actions}${change.kind === 'outline' ? `<button type="button" class="describe-vlm-chat-outline-correction" data-roleplay-outline-open${normalizeChatMode(state.chatMode) === 'roleplay' ? '' : ' hidden'} title="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>` : ''}</li>`;
         });
         const hiddenCount = Math.max(0, changes.length - 8);
         const more = hiddenCount
@@ -712,6 +732,8 @@
         const reasons = {
             not_found: localText('Memory no longer exists in this story', '当前故事中找不到该记忆'),
             disabled: localText('Memory is disabled', '记忆已停用'),
+            invalid: roleplayDictionaryText('Invalid memory'),
+            superseded: roleplayDictionaryText('Merged memory'),
             empty: localText('Memory has no text', '记忆正文为空'),
             not_visible: localText('Memory is not visible to this character', '记忆对当前角色不可见'),
             inactive_chapter: localText('Memory belongs to another chapter', '记忆属于其他章节'),
@@ -737,6 +759,8 @@
             chapter: 'Active chapter summary',
             world_book: 'Triggered world book',
             memories: 'Relevant long-term memories',
+            reentry: 'Returning to the scene',
+            agenda: 'Story obligations',
             outline_direction: 'Current character direction',
             recent_dialogue: 'Recent dialogue'
         };
@@ -941,6 +965,514 @@
         };
     }
 
+    function normalizeRoleplayAgenda(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const text = (value, size) => typeof value === 'string' ? value.trim().slice(0, size) : '';
+        const list = (value, size = 21, length = 160) => [...new Set((Array.isArray(value) ? value : [])
+            .map(value => text(value, length)).filter(Boolean))].slice(0, size);
+        const count = value => Math.max(0, Math.min(2000000000, Math.floor(Number(value) || 0)));
+        const ref = value => ({
+            turn_id: text(value?.turn_id, 200), branch_id: text(value?.branch_id, 160),
+            chapter_id: text(value?.chapter_id, 160), message_ids: list(value?.message_ids, 20, 240),
+            evidence: text(value?.evidence, 700), origin: value?.origin === 'director' ? 'director' : 'manual'
+        });
+        const statuses = ['pending', 'active', 'completed', 'cancelled'];
+        const item = row => {
+            if (!text(row?.id, 160) || !text(row?.title, 200)) return null;
+            return {
+                id: text(row.id, 160), title: text(row.title, 200),
+                kind: ['promise', 'task', 'foreshadowing'].includes(row.kind) ? row.kind : 'task',
+                status: statuses.includes(row.status) ? row.status : 'pending',
+                condition: text(row.condition, 500), note: text(row.note, 700),
+                participant_ids: list(row.participant_ids), known_by: list(row.known_by),
+                source: ref(row.source), revision: count(row.revision), updated_at: text(row.updated_at, 80),
+                progress: (Array.isArray(row.progress) ? row.progress : []).filter(step => step && statuses.includes(step.status))
+                    .map(step => ({ ...ref(step), status: step.status, note: text(step.note, 700), known_by: list(step.known_by) }))
+            };
+        };
+        const items = [], seen = new Set();
+        for (const raw of Array.isArray(source.items) ? source.items : []) {
+            const row = item(raw);
+            if (row && !seen.has(row.id)) { items.push(row); seen.add(row.id); }
+        }
+        const result = { schema: 'simpai.vlm_roleplay.agenda', version: 1, items, revision: count(source.revision) };
+        if (Array.isArray(source.undo?.before) && Array.isArray(source.undo?.after)
+            && source.undo.before.length <= 6 && source.undo.after.length > 0 && source.undo.after.length <= 6) {
+            const before = source.undo.before.map(item), after = source.undo.after.map(item);
+            if (before.every(Boolean) && after.every(Boolean)
+                && new Set(before.map(row => row.id)).size === before.length
+                && new Set(after.map(row => row.id)).size === after.length
+                && before.every(row => after.some(next => next.id === row.id))) {
+                const undo = { session_id: text(source.undo.session_id, 160), branch_id: text(source.undo.branch_id, 160), before, after };
+                if (JSON.stringify(undo).length <= 300000) result.undo = undo;
+            }
+        }
+        return result;
+    }
+
+    function roleplayAgendaStatusLabel(value) {
+        return roleplayDictionaryText({ pending: 'Obligation pending', active: 'Obligation active',
+            completed: 'Obligation completed', cancelled: 'Obligation cancelled' }[value] || 'Progress');
+    }
+
+    function applyRoleplayAgendaEdit(value, operation) {
+        const session = normalizeRoleplaySession(value, value.conversation_id);
+        const agenda = normalizeRoleplayAgenda(session.story_state.agenda);
+        const current = agenda.items.find(row => row.id === operation.id);
+        if (operation.action === 'undo') {
+            const receipt = agenda.undo;
+            if (!receipt || receipt.session_id !== session.id || receipt.branch_id !== session.active_branch_id
+                || receipt.after.some(row => roleplayHistoryCanonical(row) !== roleplayHistoryCanonical(agenda.items.find(item => item.id === row.id)))) {
+                throw new Error('This obligation changed. Refresh before editing or undoing.');
+            }
+            const before = new Map(receipt.before.map(row => [row.id, row])), after = new Set(receipt.after.map(row => row.id));
+            agenda.items = agenda.items.flatMap(row => !after.has(row.id) ? [row] : before.has(row.id) ? [before.get(row.id)] : []);
+            delete agenda.undo;
+        } else {
+            if ((operation.action === 'edit' && !current) || (current && roleplayHistoryCanonical(current) !== roleplayHistoryCanonical(operation.expected))) {
+                throw new Error('This obligation changed. Refresh before editing or undoing.');
+            }
+            const patch = operation.patch || {};
+            if (typeof patch.title !== 'string' || !patch.title.trim() || patch.title.length > 200
+                || typeof patch.condition !== 'string' || patch.condition.length > 500
+                || typeof patch.note !== 'string' || patch.note.length > 700 || !['promise', 'task', 'foreshadowing'].includes(patch.kind)
+                || !['pending', 'active', 'completed', 'cancelled'].includes(patch.status)) throw new Error('Check the obligation title, conditions and progress.');
+            if (!['add', 'edit'].includes(operation.action)) throw new Error('Check the obligation title, conditions and progress.');
+            for (const key of ['participant_ids', 'known_by']) {
+                if (!Array.isArray(patch[key]) || patch[key].length > 21 || patch[key].some(id => typeof id !== 'string' || id.length > 160)) {
+                    throw new Error('Check the obligation characters and knowledge scope.');
+                }
+            }
+            const id = current?.id || uid('agenda');
+            const ref = { turn_id: session.active_turn_id, branch_id: session.active_branch_id,
+                chapter_id: session.active_chapter_id, message_ids: [], evidence: '', origin: 'manual' };
+            const next = normalizeRoleplayAgenda({ items: [{
+                ...(current || {}), id, ...Object.fromEntries(['title', 'kind', 'status', 'condition', 'note', 'participant_ids', 'known_by'].map(key => [key, patch[key]])),
+                source: current?.source || ref, revision: (current?.revision || 0) + 1, updated_at: new Date().toISOString(),
+                progress: [...(current?.progress || []), { ...ref, status: patch.status, note: patch.note || '', known_by: patch.known_by }]
+            }] }).items[0];
+            agenda.items = current ? agenda.items.map(row => row.id === id ? next : row) : [...agenda.items, next];
+            agenda.undo = { session_id: session.id, branch_id: session.active_branch_id, before: current ? [current] : [], after: [next] };
+        }
+        agenda.revision++;
+        session.story_state.agenda = agenda;
+        session.state_version = session.story_state.state_version = Math.max(session.state_version || 0, session.story_state.state_version || 0) + 1;
+        session.updated_at = session.story_state.updated_at = new Date().toISOString();
+        return session;
+    }
+
+    function roleplayAgendaCurrent(viewer) {
+        return roleplayAgendaViewer === viewer && viewer.dialog.isConnected && !viewer.runtime.deleted
+            && state.conversationRuntimes.get(viewer.runtime.conversationId) === viewer.runtime
+            && isCurrentConversationRuntime(viewer.runtime) && viewer.runtime.roleplaySession.active_branch_id === viewer.branchId;
+    }
+
+    function roleplayAgendaDraftSignature(viewer) {
+        return JSON.stringify([...viewer.dialog.querySelectorAll('[data-agenda-detail] input,[data-agenda-detail] textarea,[data-agenda-detail] select')]
+            .map(field => [field.value, field.type === 'checkbox' ? field.checked : null]));
+    }
+
+    function roleplayAgendaCanDiscard(viewer) {
+        return !viewer.edit || viewer.signature === roleplayAgendaDraftSignature(viewer)
+            || window.confirm(roleplayDictionaryText('Discard unsaved obligation changes?'));
+    }
+
+    function closeRoleplayAgenda() {
+        const viewer = roleplayAgendaViewer;
+        if (!viewer || viewer.saving || (!viewer.unsaved && !roleplayAgendaCanDiscard(viewer))) return;
+        if (viewer.unsaved && !window.confirm(roleplayDictionaryText('Obligation changes are not saved. Close anyway?'))) return;
+        clearTimeout(viewer.searchTimer); viewer.dialog.close(); viewer.dialog.remove(); roleplayAgendaViewer = null;
+        viewer.opener?.focus();
+    }
+
+    function renderRoleplayAgenda(viewer) {
+        if (!roleplayAgendaCurrent(viewer)) return;
+        const dialog = viewer.dialog, agenda = normalizeRoleplayAgenda(viewer.runtime.roleplaySession.story_state.agenda);
+        const query = dialog.querySelector('[data-agenda-search]').value.toLocaleLowerCase();
+        const status = dialog.querySelector('[data-agenda-status-filter]').value, actor = dialog.querySelector('[data-agenda-actor-filter]').value;
+        const rows = agenda.items.filter(row => (!query || [row.title, row.condition, row.note].join('\n').toLocaleLowerCase().includes(query))
+            && (!status || row.status === status) && (!actor || row.participant_ids.includes(actor)));
+        const pages = Math.max(1, Math.ceil(rows.length / 20));
+        viewer.page = Math.max(0, Math.min(pages - 1, viewer.page));
+        dialog.querySelector('[data-agenda-count]').textContent = `${rows.length} / ${agenda.items.length}`;
+        dialog.querySelector('[data-agenda-page]').textContent = `${viewer.page + 1} / ${pages}`;
+        dialog.querySelector('[data-agenda-prev]').disabled = viewer.page === 0;
+        dialog.querySelector('[data-agenda-next]').disabled = viewer.page + 1 >= pages;
+        dialog.querySelector('[data-agenda-undo]').disabled = !agenda.undo || viewer.saving || viewer.unsaved;
+        dialog.querySelector('[data-agenda-list]').innerHTML = rows.slice(viewer.page * 20, viewer.page * 20 + 20).map(row =>
+            `<button type="button" data-agenda-item="${escapeHtml(row.id)}" aria-pressed="${viewer.edit?.id === row.id}"><span>${escapeHtml(row.title)}</span><small>${escapeHtml(roleplayAgendaStatusLabel(row.status))} · ${escapeHtml(row.participant_ids.map(id => viewer.names.get(id) || id).join(' · '))}</small></button>`).join('')
+            || `<p>${escapeHtml(roleplayDictionaryText('No matching obligations'))}</p>`;
+        dialog.querySelector('[data-agenda-retry]').hidden = !viewer.unsaved;
+        dialog.querySelectorAll('[data-agenda-detail] input,[data-agenda-detail] textarea,[data-agenda-detail] select,[data-agenda-save],[data-agenda-retry],[data-agenda-add]')
+            .forEach(node => { node.disabled = viewer.saving || (viewer.unsaved && !node.hasAttribute('data-agenda-retry')); });
+    }
+
+    function showRoleplayAgendaItem(viewer, id = '') {
+        if (!roleplayAgendaCurrent(viewer) || viewer.saving || viewer.unsaved || !roleplayAgendaCanDiscard(viewer)) return;
+        const session = viewer.runtime.roleplaySession;
+        const row = normalizeRoleplayAgenda(session.story_state.agenda).items.find(item => item.id === id);
+        if (id && !row) return;
+        viewer.progressCount = 20;
+        viewer.edit = row ? structuredClone(row) : { id: '', title: '', kind: 'task', status: 'pending',
+            participant_ids: [session.active_character_id], known_by: [session.active_character_id],
+            condition: '', note: '', progress: [], source: {} };
+        const text = roleplayDictionaryText, html = key => escapeHtml(text(key)), draft = viewer.edit;
+        const names = new Map(viewer.names);
+        for (const reference of [...draft.participant_ids, ...draft.known_by]) if (!names.has(reference)) names.set(reference, `${text('Unresolved character')}: ${reference}`);
+        const actors = (field, label) => `<fieldset><legend${field === 'knower' ? ` title="${html('Only selected characters receive this obligation. Select none to keep it author-only.')}"` : ''}>${html(label)}</legend>${[...names].map(([key, name]) =>
+            `<label><input type="checkbox" data-agenda-${field}="${escapeHtml(key)}" ${draft[field === 'participant' ? 'participant_ids' : 'known_by'].includes(key) ? 'checked' : ''}>${escapeHtml(name)}</label>`).join('')}</fieldset>`;
+        viewer.dialog.querySelector('[data-agenda-detail]').innerHTML = `<h3>${html(row ? 'Edit story obligation' : 'Add story obligation')}</h3>
+          <label>${html('Obligation title')}<input data-agenda-title maxlength="200" value="${escapeHtml(draft.title)}"></label>
+          <div class="describe-vlm-agenda-pair"><label>${html('Obligation type')}<select data-agenda-kind>${['promise','task','foreshadowing'].map(kind =>
+            `<option value="${kind}" ${draft.kind === kind ? 'selected' : ''}>${html({promise:'Promise',task:'Task',foreshadowing:'Unresolved clue'}[kind])}</option>`).join('')}</select></label>
+          <label>${html('Progress')}<select data-agenda-status>${['pending','active','completed','cancelled'].map(status =>
+            `<option value="${status}" ${draft.status === status ? 'selected' : ''}>${escapeHtml(roleplayAgendaStatusLabel(status))}</option>`).join('')}</select></label></div>
+          <label>${html('Trigger or completion condition')}<textarea data-agenda-condition maxlength="500" rows="3">${escapeHtml(draft.condition)}</textarea></label>
+          <label>${html('Progress note')}<textarea data-agenda-note maxlength="700" rows="3">${escapeHtml(draft.note)}</textarea></label>
+          ${actors('participant','Related characters')}${actors('knower','Known by')}
+          <button type="button" data-agenda-save>${html('Save obligation')}</button>
+          <details class="describe-vlm-agenda-evidence"><summary>${html('Progress and evidence')} (${draft.progress.length})</summary><div data-agenda-progress>${renderRoleplayAgendaProgress(viewer)}</div></details>`;
+        viewer.signature = roleplayAgendaDraftSignature(viewer);
+        viewer.dialog.querySelector('[data-agenda-feedback]').textContent = '';
+        viewer.dialog.dataset.agendaPane = 'detail';
+        renderRoleplayAgenda(viewer);
+    }
+
+    function renderRoleplayAgendaProgress(viewer) {
+        const html = key => escapeHtml(roleplayDictionaryText(key)), progress = viewer.edit?.progress || [];
+        return progress.slice(-viewer.progressCount).reverse().map(step =>
+            `<section><b>${escapeHtml(roleplayAgendaStatusLabel(step.status))}</b><p>${escapeHtml(step.note)}</p>${step.evidence ? `<blockquote>${escapeHtml(step.evidence)}</blockquote>` : `<small>${html('Manually corrected')}</small>`}<small>${escapeHtml(step.known_by.map(key => viewer.names.get(key) || key).join(' · '))}</small>${step.turn_id ? `<button type="button" data-agenda-source="${escapeHtml(step.turn_id)}" title="${html('View source dialogue')}" aria-label="${html('View source dialogue')}"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>` : ''}</section>`).join('')
+            + (progress.length > viewer.progressCount ? `<button type="button" class="describe-vlm-agenda-earlier" data-agenda-earlier>${html('Show earlier progress')}</button>` : '');
+    }
+
+    async function saveRoleplayAgenda(viewer, action = 'edit') {
+        if (!roleplayAgendaCurrent(viewer) || viewer.saving) return;
+        const status = (message, error = false) => {
+            const node = viewer.dialog.querySelector('[data-agenda-feedback]');
+            node.textContent = roleplayDictionaryText(message); node.classList.toggle('is-error', error);
+        };
+        if (conversationHistoryBusy(viewer.runtime)) return status('Wait for the current reply before editing obligations.', true);
+        viewer.saving = true; renderRoleplayAgenda(viewer);
+        try {
+            if (!viewer.unsaved) {
+                if (action !== 'undo' && !viewer.edit) return;
+                if (action !== 'undo' && viewer.edit.id && viewer.signature === roleplayAgendaDraftSignature(viewer)) {
+                    status('No obligation changes to save.'); return;
+                }
+                const get = key => viewer.dialog.querySelector(`[data-agenda-${key}]`)?.value || '';
+                const patch = { title: get('title'), kind: get('kind'), status: get('status'), condition: get('condition'), note: get('note'),
+                    participant_ids: [...viewer.dialog.querySelectorAll('[data-agenda-participant]:checked')].map(node => node.dataset.agendaParticipant),
+                    known_by: [...viewer.dialog.querySelectorAll('[data-agenda-knower]:checked')].map(node => node.dataset.agendaKnower) };
+                const previous = normalizeRoleplayAgenda(viewer.runtime.roleplaySession.story_state.agenda);
+                const session = applyRoleplayAgendaEdit(viewer.runtime.roleplaySession, {
+                    action: action === 'undo' ? 'undo' : viewer.edit.id ? 'edit' : 'add',
+                    id: viewer.edit?.id, expected: viewer.edit, patch
+                });
+                const ids = action === 'undo' ? previous.undo.after.map(row => row.id) : session.story_state.agenda.undo.after.map(row => row.id);
+                updateRoleplayMemoryRepairCheckpoint(viewer.runtime, session, ids.map(id => {
+                    const before = previous.items.find(row => row.id === id), after = session.story_state.agenda.items.find(row => row.id === id);
+                    return { kind: 'agenda', op: after ? before ? 'update' : 'add' : 'remove', id, title: (after || before).title,
+                        field: 'status', value: after?.status || '', before: before?.status || '', after: after?.status || '' };
+                }));
+                viewer.runtime.persistenceDirty = true; viewer.unsaved = true;
+                renderMessages();
+            }
+            status('Saving obligation changes...');
+            if (saveConversationSnapshot(viewer.runtime) === false || !viewer.runtime.archiveSavePromise) throw new Error('Obligation changes could not be saved. Retry before closing.');
+            await viewer.runtime.archiveSavePromise;
+            if (!roleplayAgendaCurrent(viewer)) return;
+            const response = await persistRoleplayResourcesRemote(viewer.runtime);
+            if (!roleplayAgendaCurrent(viewer)) return;
+            if (!response?.ok) throw new Error('Obligations are saved locally. Retry to synchronize the server.');
+            if (response.session && roleplayHistoryCanonical(normalizeRoleplayAgenda(response.session.story_state?.agenda))
+                !== roleplayHistoryCanonical(normalizeRoleplayAgenda(viewer.runtime.roleplaySession.story_state.agenda))) {
+                throw new Error('Obligations are saved locally, but the server did not retain them. Update the server and retry.');
+            }
+            viewer.unsaved = false; viewer.edit = null;
+            viewer.dialog.querySelector('[data-agenda-detail]').replaceChildren(); viewer.dialog.dataset.agendaPane = 'list';
+            status('Obligation changes saved.');
+        } catch (error) { status(error.message, true); }
+        finally { viewer.saving = false; if (roleplayAgendaCurrent(viewer)) renderRoleplayAgenda(viewer); }
+    }
+
+    function openRoleplayAgenda(opener, selectedId = '') {
+        if (roleplayAgendaViewer) { roleplayAgendaViewer.dialog.focus(); return; }
+        const runtime = syncCurrentRuntimeFromState();
+        if (normalizeChatMode(runtime.chatMode) !== 'roleplay') return;
+        const session = runtime.roleplaySession, text = roleplayDictionaryText, html = key => escapeHtml(text(key));
+        const names = new Map([[session.persona.id, session.persona.name || text('Player')], ...Object.entries(session.characters).map(([id, row]) => [id, row.name || id])]);
+        const icon = (key, name, label) => `<button type="button" data-agenda-${key} title="${html(label)}" aria-label="${html(label)}"><i class="fa-solid fa-${name}" aria-hidden="true"></i></button>`;
+        const dialog = document.createElement('dialog');
+        dialog.className = 'describe-vlm-history-dialog describe-vlm-agenda-dialog';
+        dialog.setAttribute('aria-label', text('Story obligations')); dialog.dataset.agendaPane = 'list';
+        dialog.innerHTML = `<header class="describe-vlm-history-head">${icon('back','arrow-left','Back to obligations')}<h2>${html('Story obligations')}</h2>${icon('close','xmark','Close')}</header>
+          <div class="describe-vlm-agenda-tools"><input type="search" data-agenda-search placeholder="${html('Search obligations')}" aria-label="${html('Search obligations')}">
+          <select data-agenda-status-filter aria-label="${html('Progress')}"><option value="">${html('All statuses')}</option>${['pending','active','completed','cancelled'].map(value => `<option value="${value}">${escapeHtml(roleplayAgendaStatusLabel(value))}</option>`).join('')}</select>
+          <select data-agenda-actor-filter aria-label="${html('Character')}"><option value="">${html('All characters')}</option>${[...names].map(([key,name]) => `<option value="${escapeHtml(key)}">${escapeHtml(name)}</option>`).join('')}</select></div>
+          <nav class="describe-vlm-agenda-nav"><small data-agenda-count></small>${icon('add','plus','Add story obligation')}${icon('undo','rotate-left','Undo obligation changes')}${icon('refresh','rotate','Refresh')}${icon('prev','angle-left','Previous page')}<small data-agenda-page></small>${icon('next','angle-right','Next page')}</nav>
+          <div class="describe-vlm-agenda-body"><section data-agenda-list tabindex="0" aria-label="${html('Story obligations')}"></section><section data-agenda-detail tabindex="0" aria-label="${html('Edit story obligation')}"></section></div>
+          <footer><span data-agenda-feedback role="status" aria-live="polite"></span><button type="button" data-agenda-retry hidden>${html('Retry saving')}</button></footer>`;
+        const viewer = { runtime, dialog, opener, names, branchId: session.active_branch_id, page: 0, edit: null, saving: false, unsaved: false };
+        roleplayAgendaViewer = viewer; document.body.appendChild(dialog);
+        dialog.addEventListener('cancel', event => { event.preventDefault(); closeRoleplayAgenda(); });
+        dialog.addEventListener('input', event => {
+            if (event.target.hasAttribute('data-agenda-search')) { clearTimeout(viewer.searchTimer); viewer.page = 0; viewer.searchTimer = setTimeout(() => renderRoleplayAgenda(viewer), 160); }
+            if (event.target.closest('[data-agenda-detail]')) {
+                const feedback = dialog.querySelector('[data-agenda-feedback]');
+                feedback.textContent = text('Unsaved obligation changes.'); feedback.classList.remove('is-error');
+            }
+        });
+        dialog.addEventListener('change', event => {
+            if (event.target.matches('[data-agenda-status-filter],[data-agenda-actor-filter]')) { viewer.page = 0; renderRoleplayAgenda(viewer); }
+        });
+        dialog.addEventListener('click', event => {
+            event.stopPropagation();
+            const button = event.target.closest('button'); if (!button) return;
+            if (button.hasAttribute('data-agenda-close')) return closeRoleplayAgenda();
+            if (!roleplayAgendaCurrent(viewer) || viewer.saving) return;
+            if (button.dataset.agendaItem) return showRoleplayAgendaItem(viewer, button.dataset.agendaItem);
+            if (button.hasAttribute('data-agenda-add')) return showRoleplayAgendaItem(viewer);
+            if (button.hasAttribute('data-agenda-save')) return saveRoleplayAgenda(viewer);
+            if (button.hasAttribute('data-agenda-retry')) return saveRoleplayAgenda(viewer, 'retry');
+            if (button.hasAttribute('data-agenda-undo')) return roleplayAgendaCanDiscard(viewer) && saveRoleplayAgenda(viewer, 'undo');
+            if (button.hasAttribute('data-agenda-back')) dialog.dataset.agendaPane = 'list';
+            if (button.hasAttribute('data-agenda-refresh') && !viewer.unsaved && roleplayAgendaCanDiscard(viewer)) {
+                viewer.edit = null; dialog.querySelector('[data-agenda-detail]').replaceChildren(); renderRoleplayAgenda(viewer);
+            }
+            if (button.hasAttribute('data-agenda-prev')) { viewer.page--; renderRoleplayAgenda(viewer); }
+            if (button.hasAttribute('data-agenda-next')) { viewer.page++; renderRoleplayAgenda(viewer); }
+            if (button.hasAttribute('data-agenda-earlier')) {
+                viewer.progressCount += 20;
+                dialog.querySelector('[data-agenda-progress]').innerHTML = renderRoleplayAgendaProgress(viewer);
+            }
+            if (button.dataset.agendaSource && roleplayAgendaCanDiscard(viewer)) {
+                const id = button.dataset.agendaSource;
+                const message = (runtime.archiveMessages || runtime.messages).find(row => row.id === id || row.turn_id === id || row.roleplay_session_after?.active_turn_id === id);
+                if (!message) {
+                    dialog.querySelector('[data-agenda-feedback]').textContent = text('The source dialogue is not available in this route.'); return;
+                }
+                viewer.edit = null; closeRoleplayAgenda(); openConversationHistory(message.id, { preview: true });
+            }
+        });
+        dialog.showModal(); renderRoleplayAgenda(viewer);
+        if (selectedId) showRoleplayAgendaItem(viewer, selectedId);
+    }
+
+    function roleplayMemoryMetadata(source) {
+        const metadata = {};
+        if (['invalid', 'superseded'].includes(source.status)) metadata.status = source.status;
+        for (const key of ['aliases', 'subject_ids']) {
+            const items = roleplayResourceList(source[key], key === 'aliases' ? 24 : 21).map(item => item.slice(0, 240));
+            if (items.length) metadata[key] = [...new Set(items)];
+        }
+        for (const key of ['invalid_reason', 'merged_into']) {
+            if (source[key]) metadata[key] = String(source[key]).slice(0, key === 'invalid_reason' ? 400 : 160);
+        }
+        if (Array.isArray(source.sources) && source.sources.length) metadata.sources = source.sources.slice(0, 40).map(row =>
+            Object.fromEntries(['memory_id', 'turn_id', 'chapter_id', 'branch_id', 'created_at']
+                .map(key => [key, String(row?.[key] || '').slice(0, 240)])));
+        return metadata;
+    }
+
+    function roleplayMemoryIsActive(memory) {
+        return memory.enabled !== false && (!memory.status || memory.status === 'active') && !memory.merged_into;
+    }
+
+    function normalizeRoleplayMemoryUndo(value) {
+        if (!value || !Array.isArray(value.before) || !Array.isArray(value.after)
+            || !value.before.length || value.before.length > 20 || value.before.length !== value.after.length) return null;
+        const before = value.before.map(normalizeRoleplayMemory).filter(Boolean), after = value.after.map(normalizeRoleplayMemory).filter(Boolean);
+        if (before.length !== value.before.length || after.length !== before.length
+            || new Set(before.map(row => row.id)).size !== before.length
+            || [...before.map(row => row.id)].sort().join('\n') !== [...after.map(row => row.id)].sort().join('\n')) return null;
+        const receipt = { session_id: String(value.session_id || '').slice(0, 160), branch_id: String(value.branch_id || '').slice(0, 160),
+            action: String(value.action || '').slice(0, 40), before, after };
+        return JSON.stringify(receipt).length <= 160000 ? receipt : null;
+    }
+
+    function roleplayMemorySearchTerms(value) {
+        const text = String(value || '').normalize('NFKC').toLocaleLowerCase();
+        const terms = text.match(/[a-z0-9_]+/g) || [];
+        for (const run of text.match(/[\u3400-\u9fff]+/g) || []) {
+            if (run.length === 1) terms.push(run);
+            for (let index = 0; index < run.length - 1; index++) terms.push(run.slice(index, index + 2));
+        }
+        return new Set(terms);
+    }
+
+    function roleplayMemorySearchScore(memory, query) {
+        const search = String(query || '').trim().toLocaleLowerCase();
+        if (!search) return 1;
+        const text = [memory.id, memory.text, ...(memory.keywords || []), ...(memory.aliases || [])].join('\n').toLocaleLowerCase();
+        if (text.includes(search)) return 100;
+        const queryTerms = roleplayMemorySearchTerms(search), terms = roleplayMemorySearchTerms(text);
+        const matched = [...queryTerms].filter(term => terms.has(term));
+        return matched.length >= 2 || matched.some(term => /^[a-z0-9_]{3,}$/.test(term))
+            ? matched.length / Math.max(1, queryTerms.size) : 0;
+    }
+
+    function roleplayMemoryAccessKey(memory, session) {
+        const entities = new Map([[session.persona.id, session.persona.name],
+            ...Object.entries(session.characters).map(([id, card]) => [id, card.name])]);
+        const knowers = (memory.known_by || []).map(reference => {
+            const matches = [...entities].filter(([, name]) => name === reference);
+            return entities.has(reference) ? reference : matches.length === 1 ? matches[0][0] : reference;
+        });
+        return JSON.stringify([memory.visibility, [...new Set(knowers)].sort(), memory.chapter_id || '', memory.branch_id || '']);
+    }
+
+    function normalizeRoleplayContinuity(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const index = value => Math.max(0, Math.min(1000000000, Math.floor(Number(value) || 0)));
+        const strings = (value, limit, length) => [...new Set((Array.isArray(value) ? value : [])
+            .filter(item => typeof item === 'string').map(item => item.slice(0, length)))].slice(0, limit);
+        const events = new Map();
+        for (const row of Array.isArray(source.events) ? source.events : []) {
+            if (!row || typeof row.id !== 'string' || !row.id || events.has(row.id.slice(0, 160))) continue;
+            events.set(row.id.slice(0, 160), {
+                id: row.id.slice(0, 160), text: String(row.text || '').slice(0, 700), evidence: String(row.evidence || '').slice(0, 700),
+                known_by: strings(row.known_by, 21, 160),
+                message_ids: strings(row.message_ids, 20, 240),
+                turn_id: String(row.turn_id || '').slice(0, 200), branch_id: String(row.branch_id || '').slice(0, 160),
+                channel: ['observed', 'manual', 'reported'].includes(row.channel) ? row.channel : 'observed'
+            });
+        }
+        const presence = {};
+        for (const [key, row] of Object.entries(source.presence && typeof source.presence === 'object' ? source.presence : {})) {
+            if (!row || typeof row !== 'object') continue;
+            const record = { is_present: !!row.is_present };
+            for (const key of ['last_seen_turn_id', 'entry_turn_id']) if (Object.hasOwn(row, key)) record[key] = String(row[key] || '').slice(0, 200);
+            for (const key of ['last_seen_index', 'entry_index']) if (Object.hasOwn(row, key)) record[key] = index(row[key]);
+            if (row.departure && typeof row.departure === 'object') record.departure = {
+                turn_id: String(row.departure.turn_id || '').slice(0, 200), index: index(row.departure.index),
+                location: String(row.departure.location || '').slice(0, 500),
+                known_facts: [...new Set((Array.isArray(row.departure.known_facts) ? row.departure.known_facts : [])
+                    .filter(item => typeof item === 'string').map(item => item.slice(0, 700)))].slice(0, 20)
+            };
+            Object.defineProperty(presence, key.slice(0, 160), { value: record, enumerable: true, writable: true, configurable: true });
+        }
+        return { version: 1, turn_index: index(source.turn_index), turn_id: String(source.turn_id || '').slice(0, 200),
+            branch_id: String(source.branch_id || '').slice(0, 160), events: [...events.values()], presence };
+    }
+
+    function roleplayMemoryIssues(memories, session) {
+        const duplicates = new Set(), conflicts = new Set(), groups = new Map(), anchors = new Map();
+        let compared = 0;
+        const canonical = value => String(value || '').normalize('NFKC').toLocaleLowerCase().replace(/[\s\p{P}]/gu, '');
+        for (const memory of memories.filter(roleplayMemoryIsActive)) {
+            const key = roleplayMemoryAccessKey(memory, session) + '\n' + canonical(memory.text);
+            if (groups.has(key)) { duplicates.add(memory.id); duplicates.add(groups.get(key)); }
+            else groups.set(key, memory.id);
+            const keys = [...(memory.subject_ids || []), ...(memory.keywords || [])].map(canonical).filter(key => key.length >= 2);
+            for (const key of keys.slice(0, 6)) {
+                const candidates = anchors.get(key) || [];
+                for (const previous of candidates.slice(-24)) {
+                    if (++compared > 10000) break;
+                    if (roleplayMemoryAccessKey(previous, session) !== roleplayMemoryAccessKey(memory, session)) continue;
+                    const a = roleplayMemorySearchTerms(previous.text), b = roleplayMemorySearchTerms(memory.text);
+                    const overlap = [...a].filter(term => b.has(term)).length / Math.max(1, new Set([...a, ...b]).size);
+                    if (overlap > 0.88) { duplicates.add(previous.id); duplicates.add(memory.id); }
+                    const numbers = value => (String(value).match(/\d+(?:\.\d+)?/g) || []).join(',');
+                    const negative = value => /(?:不是|没有|未曾|并非|不再|\bnot\b|\bnever\b|\bno\b)/i.test(value);
+                    if (overlap > 0.55 && previous.turn_id && previous.turn_id === memory.turn_id
+                        && (numbers(previous.text) !== numbers(memory.text) || negative(previous.text) !== negative(memory.text))) {
+                        conflicts.add(previous.id); conflicts.add(memory.id);
+                    }
+                }
+                if (compared <= 10000) anchors.set(key, [...candidates.slice(-23), memory]);
+            }
+        }
+        return { duplicates, conflicts };
+    }
+
+    function applyRoleplayMemoryMaintenance(value, operation) {
+        const session = normalizeRoleplaySession(value, value.conversation_id);
+        const rows = session.memory_store.items, byId = new Map(rows.map(row => [row.id, row]));
+        const ids = [...new Set(operation.ids || [])];
+        if (operation.action === 'undo') {
+            const receipt = session.memory_store.maintenance_undo;
+            if (!receipt || receipt.session_id !== session.id || receipt.branch_id !== session.active_branch_id
+                || receipt.after.some(row => roleplayHistoryCanonical(byId.get(row.id)) !== roleplayHistoryCanonical(row))) {
+                throw new Error('These memories changed. Refresh the library before editing or undoing.');
+            }
+            const originals = new Map(receipt.before.map(row => [row.id, row]));
+            session.memory_store.items = rows.map(row => originals.has(row.id) ? structuredClone(originals.get(row.id)) : row);
+            delete session.memory_store.maintenance_undo;
+        } else {
+            if (!ids.length || ids.length > 20 || ids.some(id => !byId.has(id))) throw new Error('Select up to 20 existing memories.');
+            if (operation.action === 'edit' && ids.length !== 1) throw new Error('Select up to 20 existing memories.');
+            const selected = ids.map(id => byId.get(id));
+            if (operation.expected && selected.some(row =>
+                roleplayHistoryCanonical(row) !== roleplayHistoryCanonical(operation.expected.find(item => item.id === row.id)))) {
+                throw new Error('These memories changed. Refresh the library before editing or undoing.');
+            }
+            const before = structuredClone(selected);
+            const patch = operation.patch || {};
+            if (patch.known_by && (!Array.isArray(patch.known_by) || patch.known_by.length > 20
+                || patch.known_by.some(id => typeof id !== 'string' || id.length > 160))) {
+                throw new Error('Invalid memory visibility or known characters.');
+            }
+            if (operation.action === 'merge' && (selected.length < 2 || selected.some(row =>
+                !roleplayMemoryIsActive(row) || roleplayMemoryAccessKey(row, session) !== roleplayMemoryAccessKey(selected[0], session)))) {
+                throw new Error('Only active memories with the same chapter and knowledge scope can be merged.');
+            }
+            if (['edit', 'merge'].includes(operation.action) && (!String(patch.text || '').trim() || patch.text.length > 1600)) {
+                throw new Error('Memory text must contain 1 to 1600 characters.');
+            }
+            const now = new Date().toISOString(), target = selected[0];
+            const updates = new Map();
+            if (operation.action === 'merge') {
+                const sources = [...selected.map(row => ({ memory_id: row.id, turn_id: row.turn_id,
+                    chapter_id: row.chapter_id, branch_id: row.branch_id, created_at: row.created_at })),
+                    ...selected.flatMap(row => row.sources || [])];
+                updates.set(target.id, normalizeRoleplayMemory({ ...target, text: patch.text,
+                    keywords: [...new Set(selected.flatMap(row => row.keywords || []))].slice(0, 24),
+                    aliases: [...new Set(selected.flatMap(row => row.aliases || []))].slice(0, 24),
+                    subject_ids: [...new Set(selected.flatMap(row => row.subject_ids || []))].slice(0, 21),
+                    locked: selected.some(row => row.locked), pinned: selected.some(row => row.pinned),
+                    sources: [...new Map(sources.map(row => [JSON.stringify(row), row])).values()].slice(0, 40), updated_at: now }));
+                selected.slice(1).forEach(row => updates.set(row.id, { ...row, status: 'superseded', merged_into: target.id, updated_at: now }));
+            } else if (operation.action === 'edit') {
+                const fields = Object.fromEntries(Object.entries(patch).filter(([key]) =>
+                    ['text', 'aliases', 'keywords', 'visibility', 'known_by', 'enabled', 'locked', 'pinned', 'subject_ids'].includes(key)));
+                updates.set(target.id, normalizeRoleplayMemory({ ...target, ...fields, id: target.id, updated_at: now }));
+            } else if (operation.action === 'invalidate' || operation.action === 'restore') {
+                selected.forEach(row => updates.set(row.id, normalizeRoleplayMemory({ ...row,
+                    status: operation.action === 'invalidate' ? 'invalid' : 'active', merged_into: '',
+                    invalid_reason: operation.action === 'invalidate' ? String(patch.invalid_reason || '') : '', updated_at: now })));
+            } else throw new Error('Unknown memory operation.');
+            session.memory_store.items = rows.map(row => updates.get(row.id) || row);
+            session.memory_store.maintenance_undo = {
+                session_id: session.id, branch_id: session.active_branch_id, action: operation.action,
+                before, after: session.memory_store.items.filter(row => updates.has(row.id))
+            };
+        }
+        touchRoleplayMemoryRepairSession(session);
+        return session;
+    }
+
+    function recordRoleplayPresence(previous, next) {
+        const observers = session => new Set([...(session.story_state.scene.present_character_ids || []),
+            ...(session.story_state.player_state.status !== 'absent' ? [session.persona.id] : [])]);
+        const before = observers(previous), after = observers(next);
+        if ([...before].every(id => after.has(id)) && before.size === after.size) return next;
+        const data = normalizeRoleplayContinuity(next.story_state.cognition || {
+            version: 1, turn_id: next.active_turn_id, branch_id: next.active_branch_id, turn_index: 0, events: [], presence: {}
+        });
+        for (const id of new Set([...before, ...after])) {
+            const row = data.presence[id] || {};
+            if (before.has(id) && !after.has(id)) row.departure = {
+                turn_id: next.active_turn_id, index: data.turn_index, location: previous.story_state.scene.location,
+                known_facts: (previous.story_state.knowledge[id] || []).slice(-20)
+            };
+            if (after.has(id) && !before.has(id)) { row.entry_turn_id = next.active_turn_id; row.entry_index = data.turn_index; }
+            if (after.has(id)) { row.last_seen_turn_id = next.active_turn_id; row.last_seen_index = data.turn_index; }
+            row.is_present = after.has(id); data.presence[id] = row;
+        }
+        next.story_state.cognition = data;
+        return next;
+    }
+
     function normalizeRoleplayMemory(value, index = 0) {
         const source = value && typeof value === 'object' ? value : {};
         const text = roleplayResourceText(source.text || source.content || source.summary, 1600);
@@ -969,8 +1501,300 @@
             source: roleplayResourceText(source.source, 80) || 'manual',
             turn_id: roleplayResourceText(source.turn_id || source.source_turn_id, 200),
             created_at: roleplayResourceText(source.created_at, 80) || new Date().toISOString(),
-            updated_at: roleplayResourceText(source.updated_at, 80) || new Date().toISOString()
+            updated_at: roleplayResourceText(source.updated_at, 80) || new Date().toISOString(),
+            ...roleplayMemoryMetadata(source)
         };
+    }
+
+    function roleplayMemoryLibraryCurrent(viewer) {
+        return roleplayMemoryLibrary === viewer && viewer.dialog.isConnected && !viewer.runtime.deleted
+            && state.conversationRuntimes.get(viewer.runtime.conversationId) === viewer.runtime
+            && isCurrentConversationRuntime(viewer.runtime) && viewer.runtime.roleplaySession.active_branch_id === viewer.branchId;
+    }
+
+    function roleplayMemoryLibraryStatus(viewer, message, error = false) {
+        if (!viewer.dialog.isConnected) return;
+        const status = viewer.dialog.querySelector('[data-memory-library-status]');
+        status.textContent = roleplayDictionaryText(message);
+        status.classList.toggle('is-error', error);
+    }
+
+    function roleplayMemoryLibraryDraft(viewer) {
+        return JSON.stringify([...viewer.dialog.querySelectorAll('[data-memory-library-detail] textarea,[data-memory-library-detail] input,[data-memory-library-detail] select')]
+            .map(field => [field.tagName, field.type, field.value, field.type === 'checkbox' ? field.checked : null]));
+    }
+
+    function roleplayMemoryLibraryCanDiscard(viewer) {
+        return !viewer.edit || viewer.draftSignature === roleplayMemoryLibraryDraft(viewer)
+            || window.confirm(roleplayDictionaryText('Discard unsaved memory changes?'));
+    }
+
+    function closeRoleplayMemoryLibrary() {
+        const viewer = roleplayMemoryLibrary;
+        if (!viewer || viewer.saving) return;
+        if (viewer.unsaved && !window.confirm(roleplayDictionaryText('Memory changes have not been saved. Close anyway?'))) return;
+        if (!viewer.unsaved && !roleplayMemoryLibraryCanDiscard(viewer)) return;
+        clearTimeout(viewer.searchTimer);
+        viewer.dialog.close(); viewer.dialog.remove(); roleplayMemoryLibrary = null;
+        viewer.opener?.focus();
+    }
+
+    function roleplayMemoryLibraryRows(viewer) {
+        const session = viewer.runtime.roleplaySession;
+        if (viewer.tab === 'knowledge') {
+            const actorId = viewer.dialog.querySelector('[data-memory-library-person]').value;
+            const events = session.story_state.cognition?.events || [];
+            const rows = events.filter(row => !actorId || row.known_by.includes(actorId));
+            const known = new Set(rows.flatMap(row => row.known_by.map(id => `${id}\n${row.text}`)));
+            Object.entries(session.story_state.knowledge || {}).forEach(([id, facts]) => {
+                if (actorId && id !== actorId) return;
+                (Array.isArray(facts) ? facts : []).forEach((text, index) => {
+                    if (!known.has(`${id}\n${text}`)) rows.push({ id: `legacy:${id}:${index}`, text,
+                        known_by: [id], channel: 'legacy', turn_id: '', branch_id: '', message_ids: [] });
+                });
+            });
+            const search = viewer.dialog.querySelector('[data-memory-library-query]').value;
+            return rows.filter(row => roleplayMemorySearchScore(row, search) > 0);
+        }
+        const rows = session.memory_store.items;
+        const filters = name => viewer.dialog.querySelector(`[data-memory-library-${name}]`).value;
+        const search = filters('query'), actorId = filters('person'), chapterId = filters('chapter'), status = filters('state');
+        const from = filters('from'), until = filters('until');
+        const actorName = session.characters[actorId]?.name || (actorId === session.persona.id ? session.persona.name : '');
+        if (viewer.issues?.items !== rows) viewer.issues = { items: rows, ...roleplayMemoryIssues(rows, session) };
+        return rows.filter(row => {
+            const current = row.status || (row.enabled === false ? 'disabled' : 'active');
+            return (!status || (status === 'duplicates' || status === 'conflicts'
+                ? viewer.issues[status].has(row.id) : current === status))
+                && (!actorId || (row.subject_ids || []).includes(actorId) || (actorName && row.text.includes(actorName)))
+                && (!chapterId || row.chapter_id === chapterId)
+                && (!from || String(row.created_at).slice(0, 10) >= from) && (!until || String(row.created_at).slice(0, 10) <= until)
+                && roleplayMemorySearchScore(row, search) > 0;
+        }).sort((a, b) => roleplayMemorySearchScore(b, search) - roleplayMemorySearchScore(a, search));
+    }
+
+    function renderRoleplayMemoryLibrary(viewer) {
+        if (!roleplayMemoryLibraryCurrent(viewer)) return;
+        const text = roleplayDictionaryText, html = key => escapeHtml(text(key));
+        const rows = roleplayMemoryLibraryRows(viewer), size = 20, pages = Math.max(1, Math.ceil(rows.length / size));
+        viewer.page = Math.max(0, Math.min(pages - 1, viewer.page));
+        viewer.rows = rows;
+        viewer.dialog.querySelector('[data-memory-library-count]').textContent =
+            `${rows.length} / ${viewer.tab === 'memory' ? viewer.runtime.roleplaySession.memory_store.items.length : rows.length}`;
+        viewer.dialog.querySelector('[data-memory-library-page]').textContent = `${viewer.page + 1} / ${pages}`;
+        viewer.dialog.querySelector('[data-memory-library-prev]').disabled = viewer.page === 0;
+        viewer.dialog.querySelector('[data-memory-library-next]').disabled = viewer.page >= pages - 1;
+        viewer.dialog.querySelector('[data-memory-library-selected]').textContent = String(viewer.selected.size);
+        viewer.dialog.querySelector('[data-memory-library-merge]').disabled = viewer.selected.size < 2 || viewer.saving || viewer.unsaved || viewer.tab !== 'memory';
+        viewer.dialog.querySelector('[data-memory-library-undo]').disabled = !viewer.runtime.roleplaySession.memory_store.maintenance_undo || viewer.saving;
+        viewer.dialog.querySelector('[data-memory-library-list]').innerHTML = rows.slice(viewer.page * size, (viewer.page + 1) * size).map(row =>
+            `<div class="describe-vlm-memory-list-row">${viewer.tab === 'memory' ? `<input type="checkbox" data-memory-library-check="${escapeHtml(row.id)}" aria-label="${html('Select memory')}" ${viewer.selected.has(row.id) ? 'checked' : ''} ${viewer.merging || viewer.saving || viewer.unsaved ? 'disabled' : ''}>` : ''}<button type="button" data-memory-library-open="${escapeHtml(row.id)}" aria-pressed="${viewer.edit?.id === row.id}"><span>${escapeHtml(row.text)}</span><small>${escapeHtml(viewer.tab === 'memory'
+                ? [text(row.status === 'invalid' ? 'Invalid memory' : row.status === 'superseded' ? 'Merged memory' : row.enabled === false ? 'Disabled' : 'Active memory'), row.chapter_id, row.created_at?.slice(0, 10)].filter(Boolean).join(' · ')
+                : (row.known_by || []).map(id => viewer.names.get(id) || id).join(' · '))}</small></button></div>`).join('')
+            || `<p>${html('No matching memories')}</p>`;
+        viewer.dialog.querySelectorAll('[data-memory-library-tab]').forEach(button =>
+            button.setAttribute('aria-selected', String(button.dataset.memoryLibraryTab === viewer.tab)));
+        viewer.dialog.querySelectorAll('[data-memory-only]').forEach(node => { node.hidden = viewer.tab !== 'memory'; });
+        viewer.dialog.querySelector('[data-memory-library-retry]').hidden = !viewer.unsaved;
+        viewer.dialog.querySelector('[data-memory-library-retry]').disabled = viewer.saving;
+        viewer.dialog.querySelectorAll('[data-memory-library-detail] textarea,[data-memory-library-detail] input,[data-memory-library-detail] select,[data-memory-library-save],[data-memory-library-invalidate]')
+            .forEach(field => { field.disabled = viewer.saving || viewer.unsaved; });
+    }
+
+    function showRoleplayMemoryLibraryEntry(viewer, id, merging = false) {
+        if (!roleplayMemoryLibraryCurrent(viewer) || viewer.saving || viewer.unsaved) return;
+        const session = viewer.runtime.roleplaySession, text = roleplayDictionaryText, html = key => escapeHtml(text(key));
+        const row = (viewer.tab === 'memory' ? session.memory_store.items : viewer.rows).find(item => item.id === id);
+        if (!row) return;
+        if (!roleplayMemoryLibraryCanDiscard(viewer)) return;
+        viewer.edit = structuredClone(row); viewer.merging = merging;
+        viewer.dialog.dataset.memoryLibraryPane = 'detail';
+        const pane = viewer.dialog.querySelector('[data-memory-library-detail]');
+        const sourceButton = turnId => turnId ? `<button type="button" data-memory-library-source="${escapeHtml(turnId)}" title="${html('View source dialogue')}" aria-label="${html('View source dialogue')}"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>` : '';
+        if (viewer.tab === 'knowledge') {
+            const presence = session.story_state.cognition?.presence || {};
+            pane.innerHTML = `<h3>${html('Knowledge source')}</h3><p>${escapeHtml(row.text)}</p>
+                <dl><dt>${html('Known by')}</dt><dd>${escapeHtml(row.known_by.map(id => viewer.names.get(id) || id).join(' · '))}</dd>
+                <dt>${html('Source')}</dt><dd>${html(row.channel === 'legacy' ? 'Source not recorded' : 'Witnessed in dialogue')} ${sourceButton(row.turn_id)}</dd>
+                <dt>${html('Turn')}</dt><dd>${escapeHtml(row.turn_id || '—')}</dd></dl>
+                ${row.evidence ? `<blockquote>${escapeHtml(row.evidence)}</blockquote>` : ''}
+                ${row.known_by.map(id => presence[id]?.departure ? `<details><summary>${escapeHtml(viewer.names.get(id) || id)} · ${html('Last departure')}</summary><p>${escapeHtml(presence[id].departure.location || '')}</p><p>${escapeHtml((presence[id].departure.known_facts || []).join('\n'))}</p></details>` : '').join('')}`;
+        } else {
+            const selected = merging ? [...viewer.selected].map(id => session.memory_store.items.find(row => row.id === id)).filter(Boolean) : [row];
+            viewer.expected = structuredClone(selected);
+            const draft = merging ? [...new Set(selected.map(row => row.text))].join('\n\n') : row.text;
+            const knowerNames = new Map(viewer.names), checkedKnowers = new Set();
+            for (const reference of row.known_by || []) {
+                const matches = [...viewer.names].filter(([, name]) => name === reference);
+                const actorId = viewer.names.has(reference) ? reference : matches.length === 1 ? matches[0][0] : reference;
+                checkedKnowers.add(actorId);
+                if (!knowerNames.has(actorId)) knowerNames.set(actorId, `${text('Unresolved character')}: ${reference}`);
+            }
+            pane.innerHTML = `<h3>${html(merging ? 'Review memory merge' : 'Edit memory')}</h3>
+              ${merging ? `<details open><summary>${html('Original memories')} (${selected.length})</summary>${selected.map(item => `<p>${escapeHtml(item.text)}</p>`).join('')}</details>` : ''}
+              <label>${html('Memory text')}<textarea data-memory-library-text rows="7" maxlength="1600">${escapeHtml(draft)}</textarea></label>
+              ${!merging ? `<label>${html('Recall aliases')}<input data-memory-library-aliases value="${escapeHtml((row.aliases || []).join(', '))}" placeholder="${html('Alternative phrases, separated by commas')}"></label>
+              <label>${html('Keywords')}<input data-memory-library-keywords value="${escapeHtml((row.keywords || []).join(', '))}"></label>
+              <label>${html('Visibility')}<select data-memory-library-visibility>${['public', 'restricted', 'private'].map(value => `<option value="${value}" ${row.visibility === value ? 'selected' : ''}>${html({public:'Public',restricted:'Selected characters',private:'Private'}[value])}</option>`).join('')}</select></label>
+              <fieldset><legend>${html('Known by')}</legend>${[...knowerNames].map(([actorId, name]) => `<label><input type="checkbox" data-memory-library-knower="${escapeHtml(actorId)}" ${checkedKnowers.has(actorId) ? 'checked' : ''}>${escapeHtml(name)}</label>`).join('')}</fieldset>` : ''}
+              <small>${escapeHtml(row.chapter_id || '')} · ${escapeHtml(row.created_at || '')}</small>
+              ${sourceButton(row.turn_id)}${(row.sources || []).map(source => sourceButton(source.turn_id)).join('')}
+              ${row.merged_into ? `<p>${html('Merged into')} ${escapeHtml(row.merged_into)}</p>` : ''}
+              <div class="describe-vlm-memory-detail-actions"><button type="button" data-memory-library-save>${html(merging ? 'Apply merge' : 'Save memory')}</button>
+              ${!merging && row.status !== 'superseded' ? `<button type="button" data-memory-library-invalidate>${html(row.status === 'invalid' ? 'Restore memory' : 'Mark as invalid')}</button>` : ''}</div>`;
+            viewer.edit.text = draft;
+        }
+        viewer.draftSignature = roleplayMemoryLibraryDraft(viewer);
+        renderRoleplayMemoryLibrary(viewer);
+    }
+
+    async function saveRoleplayMemoryLibrary(viewer, action) {
+        if (!roleplayMemoryLibraryCurrent(viewer) || viewer.saving || conversationHistoryBusy(viewer.runtime)) {
+            roleplayMemoryLibraryStatus(viewer, 'Wait for the current reply before editing memory.', true); return;
+        }
+        const runtime = viewer.runtime;
+        viewer.saving = true;
+        renderRoleplayMemoryLibrary(viewer);
+        try {
+            if (!viewer.unsaved) {
+                const ids = action === 'undo' ? [] : viewer.merging ? viewer.expected.map(row => row.id) : [viewer.edit?.id].filter(Boolean);
+                const touched = action === 'undo' ? runtime.roleplaySession.memory_store.maintenance_undo?.after?.map(row => row.id) || [] : ids;
+                const modal = document.getElementById('describe_vlm_chat_modal');
+                for (const row of modal.querySelectorAll('[data-roleplay-resource-row="memory"]')) {
+                    if (!touched.includes(row.dataset.resourceId)) continue;
+                    const memory = runtime.roleplaySession.memory_store.items.find(item => item.id === row.dataset.resourceId);
+                    if (memory && (readRoleplayResourceField(row, 'text') !== memory.text
+                        || roleplayResourceJoin(memory.keywords) !== readRoleplayResourceField(row, 'keywords')
+                        || roleplayResourceJoin(memory.known_by) !== readRoleplayResourceField(row, 'known_by'))) {
+                        throw new Error('Apply or discard memory edits in settings before changing these entries.');
+                    }
+                }
+                const get = name => viewer.dialog.querySelector(`[data-memory-library-${name}]`)?.value;
+                const patch = { text: get('text'), aliases: roleplayResourceCommaList(get('aliases')),
+                    keywords: roleplayResourceCommaList(get('keywords')), visibility: get('visibility'),
+                    known_by: [...viewer.dialog.querySelectorAll('[data-memory-library-knower]:checked')].map(node => node.dataset.memoryLibraryKnower) };
+                const session = applyRoleplayMemoryMaintenance(runtime.roleplaySession, {
+                    action, ids, patch, expected: action === 'undo' ? undefined : viewer.expected
+                });
+                viewer.unsaved = true;
+                updateRoleplayMemoryRepairCheckpoint(runtime, session,
+                    ids.map(id => ({ kind: 'memory', op: 'update', id })));
+                runtime.persistenceDirty = true;
+                for (const memory of session.memory_store.items) {
+                    const row = [...modal.querySelectorAll('[data-roleplay-resource-row="memory"]')].find(row => row.dataset.resourceId === memory.id);
+                    if (row && (ids.includes(memory.id) || action === 'undo')) row.outerHTML = renderRoleplayResourceMemoryEntry(memory, 0);
+                }
+                renderMessages();
+            }
+            roleplayMemoryLibraryStatus(viewer, 'Saving memory changes...');
+            if (saveConversationSnapshot(runtime) === false || !runtime.archiveSavePromise) throw new Error('Memory changes could not be saved. Retry before closing.');
+            await runtime.archiveSavePromise;
+            if (!roleplayMemoryLibraryCurrent(viewer)) return;
+            const response = await persistRoleplayResourcesRemote(runtime);
+            if (!response?.ok) throw new Error('Memory changes are saved locally. Retry to synchronize the server.');
+            viewer.unsaved = false; viewer.selected.clear(); viewer.edit = null; viewer.merging = false;
+            viewer.dialog.dataset.memoryLibraryPane = 'list';
+            viewer.dialog.querySelector('[data-memory-library-detail]').replaceChildren();
+            roleplayMemoryLibraryStatus(viewer, 'Memory changes saved.');
+        } catch (error) {
+            roleplayMemoryLibraryStatus(viewer, error.message, true);
+        } finally {
+            viewer.saving = false;
+            if (roleplayMemoryLibraryCurrent(viewer)) renderRoleplayMemoryLibrary(viewer);
+        }
+    }
+
+    function openRoleplayMemoryLibrary(opener) {
+        if (roleplayMemoryLibrary) { roleplayMemoryLibrary.dialog.focus(); return; }
+        const runtime = syncCurrentRuntimeFromState();
+        if (normalizeChatMode(runtime.chatMode) !== 'roleplay') return;
+        const session = runtime.roleplaySession, text = roleplayDictionaryText, html = key => escapeHtml(text(key));
+        const names = new Map([[session.persona.id, session.persona.name || text('Player')],
+            ...Object.entries(session.characters).map(([id, card]) => [id, card.name || id])]);
+        const dialog = document.createElement('dialog');
+        dialog.className = 'describe-vlm-history-dialog describe-vlm-memory-library';
+        dialog.setAttribute('aria-label', text('Memory and knowledge'));
+        const icon = (attribute, name, label) => `<button type="button" ${attribute} aria-label="${html(label)}" title="${html(label)}"><i class="fa-solid fa-${name}" aria-hidden="true"></i></button>`;
+        dialog.dataset.memoryLibraryPane = 'list';
+        dialog.innerHTML = `<header class="describe-vlm-history-head">${icon('data-memory-library-back','arrow-left','Back to memories')}<h2>${html('Memory and knowledge')}</h2>${icon('data-memory-library-close','xmark','Close')}</header>
+          <div class="describe-vlm-memory-library-tools"><div role="tablist"><button type="button" role="tab" data-memory-library-tab="memory" aria-selected="true">${html('Memories')}</button><button type="button" role="tab" data-memory-library-tab="knowledge" aria-selected="false">${html('Who knows what')}</button></div>
+          <input type="search" data-memory-library-query placeholder="${html('Search memories or alternative wording')}" aria-label="${html('Search memories')}">
+          <details class="describe-vlm-memory-library-filters" ${window.innerWidth >= 700 ? 'open' : ''}><summary>${html('Filters')}</summary><div>
+          <select data-memory-library-person aria-label="${html('Character')}"><option value="">${html('All characters')}</option>${[...names].map(([id,name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('')}</select>
+          <select data-memory-library-chapter data-memory-only aria-label="${html('Chapter')}"><option value="">${html('All chapters')}</option>${session.chapters.items.map(row => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.title)}</option>`).join('')}</select>
+          <select data-memory-library-state data-memory-only aria-label="${html('Memory status')}"><option value="">${html('All statuses')}</option>${['active','invalid','superseded','disabled','duplicates','conflicts'].map(value => `<option value="${value}">${html({active:'Active memory',invalid:'Invalid memory',superseded:'Merged memory',disabled:'Disabled',duplicates:'Possible duplicates',conflicts:'Possible conflicts'}[value])}</option>`).join('')}</select>
+          <label data-memory-only>${html('Recorded from')}<input type="date" data-memory-library-from></label><label data-memory-only>${html('Recorded until')}<input type="date" data-memory-library-until></label>
+          </div></details></div><nav class="describe-vlm-memory-library-nav"><small data-memory-library-count></small><span data-memory-only>${html('Selected')} <b data-memory-library-selected>0</b></span>${icon('data-memory-library-merge','object-group','Merge selected memories')}${icon('data-memory-library-undo','rotate-left','Undo library change')}${icon('data-memory-library-refresh','rotate','Refresh')}${icon('data-memory-library-prev','angle-left','Previous page')}<small data-memory-library-page></small>${icon('data-memory-library-next','angle-right','Next page')}</nav>
+          <div class="describe-vlm-memory-library-body"><section data-memory-library-list aria-label="${html('Memory entries')}" tabindex="0"></section><section data-memory-library-detail aria-label="${html('Memory details')}" tabindex="0"></section></div>
+          <footer><span data-memory-library-status role="status" aria-live="polite">${html('Suggestions need review; memories are never merged automatically.')}</span><button type="button" data-memory-library-retry hidden>${html('Retry saving')}</button></footer>`;
+        const viewer = { dialog, runtime, names, opener, branchId: session.active_branch_id,
+            tab: 'memory', page: 0, selected: new Set(), edit: null, saving: false, unsaved: false };
+        roleplayMemoryLibrary = viewer;
+        document.body.appendChild(dialog);
+        dialog.addEventListener('cancel', event => { event.preventDefault(); closeRoleplayMemoryLibrary(); });
+        dialog.addEventListener('input', event => {
+            if (event.target.matches('[data-memory-library-query]')) {
+                clearTimeout(viewer.searchTimer); viewer.page = 0;
+                viewer.searchTimer = setTimeout(() => renderRoleplayMemoryLibrary(viewer), 160);
+            }
+        });
+        dialog.addEventListener('change', event => {
+            if (viewer.saving || viewer.unsaved) return;
+            if (event.target.matches('[data-memory-library-check]')) {
+                const id = event.target.dataset.memoryLibraryCheck;
+                if (event.target.checked && viewer.selected.size >= 20) { event.target.checked = false; roleplayMemoryLibraryStatus(viewer, 'Select up to 20 existing memories.', true); return; }
+                event.target.checked ? viewer.selected.add(id) : viewer.selected.delete(id);
+                dialog.querySelector('[data-memory-library-selected]').textContent = String(viewer.selected.size);
+                dialog.querySelector('[data-memory-library-merge]').disabled = viewer.selected.size < 2;
+                return;
+            } else if (event.target.matches('[data-memory-library-person],[data-memory-library-chapter],[data-memory-library-state],[data-memory-library-from],[data-memory-library-until]')) viewer.page = 0;
+            else return;
+            renderRoleplayMemoryLibrary(viewer);
+        });
+        dialog.addEventListener('click', event => {
+            event.stopPropagation();
+            if (event.target.closest('[data-memory-library-close]')) return closeRoleplayMemoryLibrary();
+            if (!roleplayMemoryLibraryCurrent(viewer) || viewer.saving) return;
+            const button = event.target.closest('button');
+            if (!button) return;
+            if (button.dataset.memoryLibraryOpen) return showRoleplayMemoryLibraryEntry(viewer, button.dataset.memoryLibraryOpen);
+            if (button.dataset.memoryLibraryTab && !viewer.unsaved && roleplayMemoryLibraryCanDiscard(viewer)) {
+                viewer.tab = button.dataset.memoryLibraryTab; viewer.page = 0; viewer.edit = null; viewer.merging = false;
+                dialog.dataset.memoryLibraryPane = 'list';
+                dialog.querySelector('[data-memory-library-detail]').replaceChildren(); return renderRoleplayMemoryLibrary(viewer);
+            }
+            if (button.hasAttribute('data-memory-library-back')) {
+                if (viewer.merging) {
+                    if (!roleplayMemoryLibraryCanDiscard(viewer)) return;
+                    viewer.edit = null; viewer.merging = false;
+                    dialog.querySelector('[data-memory-library-detail]').replaceChildren();
+                    renderRoleplayMemoryLibrary(viewer);
+                }
+                dialog.dataset.memoryLibraryPane = 'list';
+            }
+            if (button.hasAttribute('data-memory-library-merge')) {
+                const id = [...viewer.selected][0];
+                if (id) showRoleplayMemoryLibraryEntry(viewer, id, true);
+            }
+            if (button.hasAttribute('data-memory-library-save')) saveRoleplayMemoryLibrary(viewer, viewer.merging ? 'merge' : 'edit');
+            if (button.hasAttribute('data-memory-library-invalidate')) saveRoleplayMemoryLibrary(viewer, viewer.edit.status === 'invalid' ? 'restore' : 'invalidate');
+            if (button.hasAttribute('data-memory-library-undo')) saveRoleplayMemoryLibrary(viewer, 'undo');
+            if (button.hasAttribute('data-memory-library-retry')) saveRoleplayMemoryLibrary(viewer, 'retry');
+            if (button.hasAttribute('data-memory-library-refresh') && !viewer.unsaved && roleplayMemoryLibraryCanDiscard(viewer)) { viewer.edit = null; viewer.merging = false; viewer.issues = null; dialog.querySelector('[data-memory-library-detail]').replaceChildren(); renderRoleplayMemoryLibrary(viewer); }
+            if (button.hasAttribute('data-memory-library-prev')) { viewer.page--; renderRoleplayMemoryLibrary(viewer); }
+            if (button.hasAttribute('data-memory-library-next')) { viewer.page++; renderRoleplayMemoryLibrary(viewer); }
+            if (button.dataset.memoryLibrarySource) {
+                const turnId = button.dataset.memoryLibrarySource;
+                const source = (runtime.archiveMessages || runtime.messages).find(row => row.id === turnId || row.turn_id === turnId
+                    || row.roleplay_session_after?.active_turn_id === turnId
+                    || row.variants?.[row.active_variant_index || 0]?.turn_id === turnId);
+                if (source) {
+                    if (roleplayMemoryLibraryCanDiscard(viewer)) { viewer.edit = null; closeRoleplayMemoryLibrary(); openConversationHistory(source.id, {preview:true}); }
+                } else roleplayMemoryLibraryStatus(viewer, 'The source dialogue is not available in this route.', true);
+            }
+        });
+        dialog.showModal(); renderRoleplayMemoryLibrary(viewer);
+        installRoleplayEditorViewport(dialog);
     }
 
     function normalizeRoleplayChapter(value, index = 0, branchId = 'main') {
@@ -1016,6 +1840,7 @@
             return true;
         });
         const memorySource = source.memory_store && typeof source.memory_store === 'object' ? source.memory_store : {};
+        const memoryUndo = normalizeRoleplayMemoryUndo(memorySource.maintenance_undo);
         const rawMemories = Array.isArray(memorySource.items)
             ? memorySource.items
             : (Array.isArray(stateSource.memories) ? stateSource.memories : []);
@@ -1049,7 +1874,8 @@
         });
         return {
             world_book: { schema: 'simpai.vlm_roleplay.world_book', version: 1, enabled: worldSource.enabled !== false, entries: worldEntries, metadata: worldSource.metadata && typeof worldSource.metadata === 'object' ? worldSource.metadata : {}, updated_at: roleplayResourceText(worldSource.updated_at, 80) || new Date().toISOString() },
-            memory_store: { schema: 'simpai.vlm_roleplay.memory_store', version: 1, items: memories, updated_at: roleplayResourceText(memorySource.updated_at, 80) || new Date().toISOString() },
+            memory_store: { schema: 'simpai.vlm_roleplay.memory_store', version: 1, items: memories, updated_at: roleplayResourceText(memorySource.updated_at, 80) || new Date().toISOString(),
+                ...(memoryUndo ? { maintenance_undo: memoryUndo } : {}) },
             chapters: { schema: 'simpai.vlm_roleplay.chapter_store', version: 1, active_id: activeId, items: chapters, updated_at: roleplayResourceText(chapterSource.updated_at, 80) || new Date().toISOString() },
             active_chapter_id: activeId
         };
@@ -1088,6 +1914,8 @@
                 required: item.required === true, reason: String(item.reason || '').slice(0, 100),
                 failure_reason: String(item.failure_reason || '').slice(0, 100),
                 source: String(item.source || '').slice(0, 1000000),
+                source_turn_ids: Array.isArray(item.source_turn_ids)
+                    ? [...new Set(item.source_turn_ids.map(value => String(value || '').slice(0, 200)).filter(Boolean))].slice(0, 1000) : [],
                 attempt_count: Math.max(0, Math.min(3, Number(item.attempt_count) || 0))
             })) : [],
             last_checked_turn_id: String(source.last_checked_turn_id || '').slice(0, 200),
@@ -1097,6 +1925,554 @@
 
     function roleplayResourceJoin(value) {
         return Array.isArray(value) ? value.filter(Boolean).join(', ') : '';
+    }
+
+    function normalizeRoleplayMemoryRepair(value, importedSessionId = '') {
+        const source = value && typeof value === 'object' ? value : {};
+        const scope = item => ({
+            session_id: String(importedSessionId || item.session_id || '').slice(0, 160),
+            branch_id: String(item.branch_id || 'main').slice(0, 160),
+            task_id: String(item.task_id || '').slice(0, 160),
+            source_hash: String(item.source_hash || '').slice(0, 80)
+        });
+        return {
+            tasks: (Array.isArray(source.tasks) ? source.tasks : []).filter(item => item?.task_id).map(item => ({
+                ...scope(item),
+                offset: Math.max(0, Math.min(1000000, Math.floor(Number(item.offset) || 0))),
+                candidates: (Array.isArray(item.candidates) ? item.candidates : [])
+                    .map(normalizeRoleplayMemory).filter(Boolean),
+                existing_ids: roleplayResourceList(item.existing_ids, Infinity),
+                status: item.status === 'failed' ? 'failed' : 'paused',
+                error: String(item.error || '').slice(0, 240)
+            })),
+            receipts: (Array.isArray(source.receipts) ? source.receipts : []).slice(-12).filter(item => item?.task_id).map(item => ({
+                ...scope(item), id: String(item.id || '').slice(0, 160),
+                message_id: String(item.message_id || '').slice(0, 200),
+                task: normalizeRoleplayResourceReview({ failed: [item.task] }).failed[0] || null,
+                memories: (Array.isArray(item.memories) ? item.memories : []).map(normalizeRoleplayMemory).filter(Boolean),
+                existing_ids: roleplayResourceList(item.existing_ids, Infinity)
+            }))
+        };
+    }
+
+    function roleplayMemoryRepairKey(text) {
+        return String(text || '').replace(/[\s。.!！?？,，;；:："“”‘’]+/g, '').toLowerCase();
+    }
+
+    const roleplayMemoryRepairHashes = new WeakMap();
+
+    function roleplayMemoryRepairSourceHash(task) {
+        const version = JSON.stringify([task.turn_id, task.chapter_id, task.source_turn_ids || []]);
+        const previous = roleplayMemoryRepairHashes.get(task);
+        if (previous?.source === task.source && previous.version === version) return previous.hash;
+        const hash = conversationArchiveHash(JSON.stringify([
+            task.source, task.turn_id, task.chapter_id, task.source_turn_ids || []
+        ]));
+        roleplayMemoryRepairHashes.set(task, { source: task.source, version, hash });
+        return hash;
+    }
+
+    function roleplayMemoryRepairScope(runtime, item) {
+        const session = runtime?.roleplaySession;
+        return item?.session_id === session?.id && item?.branch_id === session?.active_branch_id;
+    }
+
+    function roleplayMemoryRepairProgress(runtime, task) {
+        const store = runtime.roleplayMemoryRepair ||= normalizeRoleplayMemoryRepair(null);
+        return store.tasks.find(item => item.task_id === task.id && roleplayMemoryRepairScope(runtime, item)
+            && item.source_hash === roleplayMemoryRepairSourceHash(task));
+    }
+
+    function roleplayMemoryRepairHistory(runtime, task) {
+        const session = runtime.roleplaySession;
+        const turns = [...new Set([task.turn_id, ...(task.source_turn_ids || [])].filter(Boolean))];
+        const rows = new Map([...(runtime.archiveMessages || []), ...(runtime.messages || [])].map(row => [row.id, row]));
+        const actorIds = new Set([session.persona.id, ...Object.keys(session.characters)]);
+        const attribution = [];
+        const addAttribution = (content, role, actorId) => {
+            let text = String(content || '').trim();
+            if (!text || (role !== 'control' && !actorIds.has(actorId))) return;
+            let start = task.source.indexOf(text);
+            if (start < 0 && text.length > (role === 'assistant' ? 4000 : 2500)) {
+                text = text.slice(0, role === 'assistant' ? 4000 : 2500);
+                start = task.source.indexOf(text);
+            }
+            if (start < 0 || task.source.indexOf(text, start + 1) >= 0) return;
+            attribution.push({ start, end: start + text.length, role, actor_id: actorId });
+        };
+        let witnesses = null, speaker = '';
+        for (const turn of turns) {
+            const row = [...rows.values()].find(message => {
+                const variant = activeRoleplayMessageVariant(message);
+                return message.role === 'assistant' && [message.id, message.turn_id, message.request_id,
+                    variant?.turn_id].includes(turn);
+            });
+            if (!row) return { witnesses: [], speaker: '', attribution: [] };
+            const variant = activeRoleplayMessageVariant(row);
+            const explicit = variant?.roleplay_known_by || row.roleplay_known_by;
+            const before = roleplaySessionBeforeMessage(row, runtime.conversationId);
+            const ids = (variant?.roleplay_visibility || row.roleplay_visibility) === 'private' ? []
+                : Array.isArray(explicit) ? explicit
+                : before ? roleplayTurnKnowledgeFields(before, 'player').roleplay_known_by : [];
+            const allowed = ids.filter(id => actorIds.has(id));
+            witnesses = witnesses === null ? allowed : witnesses.filter(id => allowed.includes(id));
+            if (turns.length === 1) speaker = variant?.roleplay_speaker_id || row.roleplay_speaker_id || '';
+            addAttribution(row.content, 'assistant', variant?.roleplay_speaker_id || row.roleplay_speaker_id || '');
+            const preceding = [...rows.values()].slice(0, [...rows.keys()].indexOf(row.id)).reverse().find(item => item.role === 'user');
+            if (preceding) {
+                const control = preceding.roleplay_control_only || preceding.roleplay_turn_intent === 'story_control';
+                addAttribution(preceding.content, control ? 'control' : 'user', control ? '' : session.persona.id);
+            }
+        }
+        const segments = [];
+        attribution.sort((a, b) => a.start - b.start).forEach(item => {
+            if (item.start >= (segments.at(-1)?.end || 0)) segments.push(item);
+        });
+        return { witnesses: witnesses || [], speaker, attribution: segments.slice(0, 32) };
+    }
+
+    function roleplayMemoryRepairPage(source, offset) {
+        let end = Math.min(source.length, offset + 4000);
+        if (end < source.length) {
+            const boundary = Math.max(...['\n', '。', '！', '？', '. '].map(mark => source.lastIndexOf(mark, end - 1)));
+            if (boundary > offset + 2400) end = boundary + 1;
+            if (/[\uD800-\uDBFF]/.test(source[end - 1])) end -= 1;
+        }
+        let start = Math.max(0, offset - 200);
+        if (/[\uDC00-\uDFFF]/.test(source[start])) start += 1;
+        return { source: source.slice(start, end), page_start: start, source_offset: offset,
+            next_offset: end, source_chars: source.length };
+    }
+
+    function renderRoleplayMemoryRepairPanel(runtime) {
+        if (!runtime || normalizeChatMode(runtime.chatMode) !== 'roleplay') return '';
+        const t = key => escapeHtml(roleplayDictionaryText(key));
+        const failed = (runtime.roleplaySession?.story_state?.resource_review?.failed || []).filter(item => item.kind === 'memory');
+        const job = runtime.memoryRepairJob;
+        const store = runtime.roleplayMemoryRepair || { tasks: [], receipts: [] };
+        const receipts = store.receipts.filter(item => roleplayMemoryRepairScope(runtime, item)
+            && !(runtime.roleplaySession.story_state.resource_review.failed || []).some(task => task.id === item.task_id));
+        if (!failed.length && !job && !receipts.length && !runtime.memoryRepairSaveFailed) return '';
+        const current = failed.find(item => item.id === job?.taskId);
+        const progress = current && roleplayMemoryRepairProgress(runtime, current);
+        const percent = current ? Math.floor((progress?.offset || 0) / Math.max(1, current.source.length) * 100) : 0;
+        const resumable = failed.some(task => roleplayMemoryRepairProgress(runtime, task)?.offset > 0);
+        const status = job ? roleplayDictionaryText({
+            waiting: 'Waiting for the current story turn...', saving: 'Saving summarized memories...',
+            summarizing: 'Summarizing source...'
+        }[job.phase] || 'Preparing memory summaries...') : roleplayDictionaryText(failed.length
+            ? resumable ? 'Summarizing is paused. Retry to continue from saved progress.'
+                : 'Failed memories can be summarized without leaving the chat.' : 'Memory summaries have been saved.');
+        return `<div class="describe-vlm-memory-repair-head"><strong>${t('Memory recovery')}${failed.length ? ` · ${failed.length}` : ''}</strong><div>${job
+            ? `<button type="button" data-memory-repair-action="stop"><i class="fa-solid fa-stop" aria-hidden="true"></i><span>${t('Stop summarizing')}</span></button>`
+            : `${failed.length ? `<button type="button" data-memory-repair-action="start"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>${t('Summarize failed memories')}</span></button>` : ''}${runtime.memoryRepairSaveFailed ? `<button type="button" data-memory-repair-action="retry-save"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span>${t('Retry saving')}</span></button>` : ''}`}</div></div>
+<p role="status">${escapeHtml(status)}${job ? ` (${job.index + 1}/${job.ids.length}${current ? ` · ${percent}%` : ''})` : ''}</p>
+${!job && failed.some(task => roleplayMemoryRepairProgress(runtime, task)?.error)
+    ? `<p class="is-error">${t('Some summaries are unfinished. Retry to continue from the saved progress.')}</p>` : ''}
+${receipts.length ? `<details data-memory-repair-results open><summary>${t('Saved summaries')} · ${receipts.reduce((sum, item) => sum + item.memories.length, 0)}</summary>${receipts.slice().reverse().map(receipt => {
+    const message = runtime.messages.find(row => row.id === receipt.message_id)
+        || [...runtime.messages].reverse().find(row => row.role === 'assistant' && !row.pending);
+    const items = receipt.memories.map(row => runtime.roleplaySession.memory_store.items.find(item => item.id === row.id)).filter(Boolean);
+    return `<div class="describe-vlm-memory-repair-result">${items.length ? `<ul>${items.map(memory => `<li><span>${escapeHtml(memory.text)}</span>${message ? renderRoleplayMemoryActions(message, memory.id, runtime.roleplaySession) : ''}</li>`).join('')}</ul>` : `<p>${t('The confirmed facts were already recorded.')}</p>`}<button type="button" data-memory-repair-action="undo" data-memory-repair-receipt="${escapeHtml(receipt.id)}"${job ? ' disabled' : ''}><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>${t('Undo this summary write')}</span></button></div>`;
+}).join('')}</details>` : ''}`;
+    }
+
+    function syncRoleplayMemoryRepairUI(runtime) {
+        if (!isCurrentConversationRuntime(runtime)
+            || state.conversationRuntimes.get(runtime.conversationId) !== runtime) return;
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (!modal) return;
+        const html = renderRoleplayMemoryRepairPanel(runtime);
+        modal.querySelectorAll('[data-memory-repair-panel]').forEach(panel => {
+            const open = panel.querySelector('[data-memory-repair-results]')?.open;
+            panel.innerHTML = html;
+            panel.hidden = !html;
+            if (open === false && panel.querySelector('details')) panel.querySelector('details').open = false;
+        });
+        modal.querySelectorAll('[data-resource-review-action="summarize"]').forEach(button => {
+            button.disabled = !!runtime.memoryRepairJob;
+        });
+        modal.querySelectorAll('[data-memory-repair-task-status]').forEach(element => {
+            const task = runtime.roleplaySession.story_state.resource_review.failed.find(item =>
+                item.id === element.getAttribute('data-memory-repair-task-status'));
+            const progress = task && roleplayMemoryRepairProgress(runtime, task);
+            element.textContent = progress ? `${Math.floor(progress.offset / Math.max(1, task.source.length) * 100)}%${progress.error
+                ? ` · ${roleplayDictionaryText({
+                    memory_repair_timeout: 'Summarizing timed out. Retry to continue.',
+                    memory_repair_context_budget: 'This source exceeds the selected context budget. Increase context and retry.',
+                    memory_repair_save_failed: 'Memory recovery could not be saved. Keep this page open and retry saving.',
+                    memory_repair_no_facts: 'No confirmed new facts were found. The source is kept for review.'
+                }[progress.error] || 'Summary verification failed. The source and completed pages are kept for retry.')}` : ''}` : '';
+        });
+    }
+
+    function stopRoleplayMemoryRepair(runtime) {
+        const job = runtime?.memoryRepairJob;
+        if (!job) return;
+        runtime.memoryRepairJob = null;
+        job.stopped = true;
+        if (job.request) {
+            job.request.controller.abort();
+            notifyBackendChatCancel(job.request.conversationId, job.request.id).catch(() => {});
+        }
+        runtime.persistenceDirty = true;
+        scheduleConversationPersist(runtime, 'roleplay_memory_repair_stop', 'soon');
+        syncRoleplayMemoryRepairUI(runtime);
+    }
+
+    function roleplayMemoryRepairTask(job, id) {
+        const runtime = job.runtime;
+        if (job.stopped || runtime.deleted || runtime.memoryRepairJob !== job
+            || state.conversationRuntimes.get(runtime.conversationId) !== runtime
+            || !isCurrentConversationRuntime(runtime) || normalizeChatMode(runtime.chatMode) !== 'roleplay'
+            || runtime.roleplaySession.id !== job.sessionId || runtime.roleplaySession.active_branch_id !== job.branchId) {
+            throw new Error('memory_repair_stale');
+        }
+        const task = runtime.roleplaySession.story_state.resource_review.failed.find(item => item.id === id && item.kind === 'memory');
+        if (!task || task.source !== job.sources[id]
+            || roleplayMemoryRepairSourceHash(task) !== job.hashes[id]) throw new Error('memory_repair_stale');
+        return task;
+    }
+
+    async function saveRoleplayMemoryRepair(runtime) {
+        runtime.persistenceDirty = true;
+        if (isCurrentConversationRuntime(runtime)) state.persistenceDirty = true;
+        cancelScheduledConversationPersist(runtime);
+        runtime.persistenceScheduleReason = 'roleplay_memory_repair';
+        try {
+            if (saveConversationSnapshot(runtime) === false || !runtime.archiveSavePromise) throw new Error('memory_repair_save_failed');
+            await runtime.archiveSavePromise;
+            runtime.memoryRepairSaveFailed = false;
+        } catch (error) {
+            runtime.memoryRepairSaveFailed = runtime.persistenceDirty = true;
+            if (isCurrentConversationRuntime(runtime)) state.persistenceDirty = true;
+            syncRoleplayMemoryRepairUI(runtime);
+            throw new Error('memory_repair_save_failed');
+        }
+    }
+
+    async function waitRoleplayMemoryRepairTurn(job, id) {
+        while (conversationHistoryBusy(job.runtime)) {
+            roleplayMemoryRepairTask(job, id);
+            if (job.phase !== 'waiting') {
+                job.phase = 'waiting';
+                syncRoleplayMemoryRepairUI(job.runtime);
+            }
+            await new Promise(resolve => window.setTimeout(resolve, 250));
+        }
+        return roleplayMemoryRepairTask(job, id);
+    }
+
+    function updateRoleplayMemoryRepairCheckpoint(runtime, session, changes = []) {
+        const message = [...runtime.messages].reverse().find(row => row.role === 'assistant' && !row.pending);
+        if (message) {
+            const revise = row => {
+                if (row.id !== message.id) return row;
+                const updated = { ...row, revision: (Number(row.revision) || 1) + 1,
+                    roleplay_session_after: structuredClone(session),
+                    roleplay_resource_changes: [...(row.roleplay_resource_changes || []), ...changes] };
+                if (row.variants?.length) updated.variants = row.variants.map((variant, index) =>
+                    index === (row.active_variant_index || 0) ? { ...variant,
+                        revision: (Number(variant.revision) || 1) + 1, state_version: session.state_version,
+                        roleplay_session_after: structuredClone(session),
+                        roleplay_resource_changes: [...(variant.roleplay_resource_changes || []), ...changes] } : variant);
+                return updated;
+            };
+            runtime.messages = runtime.messages.map(revise);
+            if (runtime.archiveMessages) runtime.archiveMessages = runtime.archiveMessages.map(revise);
+        }
+        runtime.roleplaySession = session;
+        if (isCurrentConversationRuntime(runtime)) {
+            state.roleplaySession = session;
+            state.messages = runtime.messages;
+        }
+        return message?.id || '';
+    }
+
+    function touchRoleplayMemoryRepairSession(session) {
+        const now = new Date().toISOString();
+        session.memory_store.updated_at = session.story_state.updated_at = session.updated_at = now;
+        session.story_state.memories = session.memory_store.items.slice(-MAX_ROLEPLAY_LEGACY_MEMORIES);
+        session.state_version = session.story_state.state_version = Math.max(session.state_version || 0, session.story_state.state_version || 0) + 1;
+    }
+
+    function syncRoleplayMemoryRepairResources(runtime, removedIds = []) {
+        if (!isCurrentConversationRuntime(runtime)) return;
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (!roleplayFormCanWriteTo(modal, runtime)) return;
+        const root = modal?.querySelector('[data-describe-vlm-chat-roleplay-resources]');
+        const list = root?.querySelector('[data-resource-list="memory"]');
+        if (root?.dataset.roleplayResourcesRendered !== 'true' || !list) return;
+        const ids = new Set([...list.querySelectorAll('[data-resource-id]')].map(row => row.dataset.resourceId));
+        for (const memory of runtime.roleplaySession.memory_store.items) {
+            if (!ids.has(memory.id)) {
+                list.querySelector('.describe-vlm-chat-roleplay-resource-empty')?.remove();
+                list.insertAdjacentHTML('beforeend', renderRoleplayResourceMemoryEntry(memory, 0));
+            }
+        }
+        removedIds.forEach(id => list.querySelector(`[data-resource-id="${CSS.escape(id)}"]`)?.remove());
+        const count = root.querySelector('[data-resource-count="memory"]');
+        if (count) count.textContent = String(list.querySelectorAll('[data-resource-id]').length);
+        const failedIds = new Set(runtime.roleplaySession.story_state.resource_review.failed.map(item => item.id));
+        root.querySelectorAll('[data-resource-review-item]').forEach(row => {
+            const id = row.querySelector('[data-resource-review-id]')?.getAttribute('data-resource-review-id');
+            if (id && !failedIds.has(id)) row.remove();
+        });
+        const reviewList = root.querySelector('[data-resource-review-list]');
+        const present = new Set([...reviewList?.querySelectorAll('[data-resource-review-id]') || []]
+            .map(element => element.getAttribute('data-resource-review-id')));
+        runtime.roleplaySession.story_state.resource_review.failed.forEach(task => {
+            if (!present.has(task.id)) reviewList?.insertAdjacentHTML('beforeend', renderRoleplayResourceReviewEntry(task, runtime));
+        });
+        const heading = reviewList?.querySelector('h4');
+        if (heading) {
+            heading.hidden = !failedIds.size;
+            heading.textContent = `${localText('Needs your review', '待人工确认')} (${failedIds.size})`;
+        }
+        if (reviewList) reviewList.hidden = failedIds.size === 0 && !renderRoleplayMemoryRepairPanel(runtime);
+    }
+
+    async function commitRoleplayMemoryRepair(job, id, progress) {
+        const task = await waitRoleplayMemoryRepairTurn(job, id);
+        const runtime = job.runtime;
+        let session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        const storedIds = new Set(session.memory_store.items.map(item => item.id));
+        if (!progress.candidates.length && !progress.existing_ids.some(id => storedIds.has(id))) {
+            throw new Error('memory_repair_no_facts');
+        }
+        job.phase = 'saving';
+        syncRoleplayMemoryRepairUI(runtime);
+        const newMemories = [];
+        const existingIds = new Set(progress.existing_ids.filter(id => storedIds.has(id)));
+        for (const candidate of progress.candidates) {
+            const duplicate = session.memory_store.items.find(item =>
+                item.id === candidate.id || roleplayMemoryRepairKey(item.text) === roleplayMemoryRepairKey(candidate.text));
+            if (duplicate) {
+                if (duplicate.id !== candidate.id) existingIds.add(duplicate.id);
+                else newMemories.push(duplicate);
+            } else {
+                session.memory_store.items.push(candidate);
+                newMemories.push(candidate);
+            }
+        }
+        touchRoleplayMemoryRepairSession(session);
+        const changes = newMemories.map(item => ({ kind: 'memory', op: 'add', id: item.id, title: item.text }));
+        const messageId = updateRoleplayMemoryRepairCheckpoint(runtime, session, changes.filter(change =>
+            !runtime.messages.at(-1)?.roleplay_resource_changes?.some(item => item.id === change.id)));
+        // Keep the source task until the summarized memories have been durably saved.
+        await saveRoleplayMemoryRepair(runtime);
+        await waitRoleplayMemoryRepairTurn(job, id);
+        session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        if (newMemories.some(row => !session.memory_store.items.some(item => item.id === row.id))) {
+            throw new Error('memory_repair_stale');
+        }
+        const store = runtime.roleplayMemoryRepair;
+        const receipt = { session_id: job.sessionId, branch_id: job.branchId,
+            task_id: id, source_hash: job.hashes[id], id: uid('memory_repair_receipt'),
+            task: structuredClone(task), memories: structuredClone(newMemories), existing_ids: [...existingIds],
+            message_id: messageId };
+        store.receipts = [...store.receipts.filter(item => !(roleplayMemoryRepairScope(runtime, item) && item.task_id === id)), receipt].slice(-12);
+        session.story_state.resource_review.failed = session.story_state.resource_review.failed.filter(item => item.id !== id);
+        touchRoleplayMemoryRepairSession(session);
+        updateRoleplayMemoryRepairCheckpoint(runtime, session);
+        try { await saveRoleplayMemoryRepair(runtime); }
+        catch (error) {
+            if (roleplayMemoryRepairScope(runtime, receipt)
+                && !runtime.roleplaySession.story_state.resource_review.failed.some(item => item.id === id)) {
+                runtime.roleplaySession.story_state.resource_review.failed.push(structuredClone(task));
+                touchRoleplayMemoryRepairSession(runtime.roleplaySession);
+                updateRoleplayMemoryRepairCheckpoint(runtime, runtime.roleplaySession);
+            }
+            store.receipts = store.receipts.filter(item => item.id !== receipt.id);
+            throw error;
+        }
+        store.tasks = store.tasks.filter(item => item !== progress);
+        runtime.persistenceDirty = true;
+        scheduleConversationPersist(runtime, 'roleplay_memory_repair_done', 'soon');
+        syncRoleplayMemoryRepairResources(runtime);
+        if (isCurrentConversationRuntime(runtime)) renderMessages();
+        // Session persistence uses the same branch API as ordinary manual memory edits.
+        persistRoleplayBranchRemote(runtime, '', { includeHistory: true }).then(response => {
+            if (!response?.ok && isCurrentConversationRuntime(runtime)) setConversationStatus(runtime,
+                roleplayDictionaryText('Summaries are saved locally. Server sync will be retried with the story.'), true);
+        }).catch(() => {});
+    }
+
+    async function startRoleplayMemoryRepair(runtime, taskId = '') {
+        if (!runtime || runtime.memoryRepairJob || normalizeChatMode(runtime.chatMode) !== 'roleplay') return;
+        if (runtime.archiveIndexOnly || runtime.archiveHydrationPending
+            || (runtime.archiveHydrationRequired && !runtime.archiveHydrated)) {
+            const restored = await restoreConversationArchiveForRuntime(runtime);
+            if (!restored.ok || currentConversationRuntime()?.conversationId !== runtime.conversationId) {
+                if (isCurrentConversationRuntime(runtime)) setConversationStatus(runtime,
+                    roleplayDictionaryText('Full history is unavailable. Reconnect or import a complete backup.'), true);
+                return;
+            }
+            runtime = currentConversationRuntime();
+            if (runtime.memoryRepairJob || !runtime.archiveHydrated) return;
+        }
+        const failed = runtime.roleplaySession.story_state.resource_review.failed.filter(item =>
+            item.kind === 'memory' && (!taskId || item.id === taskId));
+        if (!failed.length) return;
+        const job = { runtime, ids: failed.map(item => item.id), sources: Object.fromEntries(failed.map(item =>
+            [item.id, item.source])), hashes: Object.fromEntries(failed.map(item =>
+            [item.id, roleplayMemoryRepairSourceHash(item)])), index: 0, phase: 'summarizing',
+            sessionId: runtime.roleplaySession.id, branchId: runtime.roleplaySession.active_branch_id };
+        runtime.memoryRepairJob = job;
+        runtime.roleplayMemoryRepair ||= normalizeRoleplayMemoryRepair(null);
+        syncRoleplayMemoryRepairUI(runtime);
+        try {
+            for (; job.index < job.ids.length && runtime.memoryRepairJob === job; job.index += 1) {
+                const id = job.ids[job.index];
+                job.taskId = id;
+                let progress;
+                try {
+                    const task = roleplayMemoryRepairTask(job, id);
+                    progress = roleplayMemoryRepairProgress(runtime, task);
+                    if (!progress) {
+                        runtime.roleplayMemoryRepair.tasks = runtime.roleplayMemoryRepair.tasks.filter(item =>
+                            !(item.task_id === id && roleplayMemoryRepairScope(runtime, item)));
+                        progress = { session_id: job.sessionId, branch_id: job.branchId, task_id: id,
+                            source_hash: job.hashes[id], offset: 0, candidates: [], existing_ids: [], status: 'paused', error: '' };
+                        runtime.roleplayMemoryRepair.tasks.push(progress);
+                    }
+                    progress.error = '';
+                    const history = roleplayMemoryRepairHistory(runtime, task);
+                    while (progress.offset < task.source.length) {
+                        roleplayMemoryRepairTask(job, id);
+                        job.phase = 'summarizing';
+                        syncRoleplayMemoryRepairUI(runtime);
+                        const page = roleplayMemoryRepairPage(task.source, progress.offset);
+                        const session = runtime.roleplaySession;
+                        const known = [...session.memory_store.items, ...progress.candidates];
+                        const pageKey = roleplayMemoryRepairKey(page.source);
+                        const relevant = known.map(item => ({ item, score: (item.keywords || [])
+                            .reduce((sum, word) => sum + (pageKey.includes(roleplayMemoryRepairKey(word)) ? 1 : 0), 0) }))
+                            .sort((a, b) => b.score - a.score).slice(0, 32).map(row => row.item);
+                        const lean = { id: session.id, conversation_id: runtime.conversationId,
+                            active_branch_id: session.active_branch_id, active_character_id: session.active_character_id,
+                            characters: Object.fromEntries(Object.entries(session.characters).map(([key, card]) =>
+                                [key, { id: key, name: card.name }])), persona: { id: session.persona.id, name: session.persona.name },
+                            memory_store: { items: relevant.map(item => ({
+                                id: item.id, text: item.text, known_by: item.known_by, visibility: item.visibility
+                            })) }, agent_routing: session.agent_routing };
+                        const version = readSelectedVlmVersion();
+                        const routing = roleplayAgentRequestRouting(lean);
+                        const request = { id: uid('memory_repair'), conversationId: `${runtime.conversationId}:memory-repair`,
+                            controller: new AbortController() };
+                        job.request = request;
+                        let timedOut = false;
+                        const timer = window.setTimeout(() => {
+                            timedOut = true;
+                            request.controller.abort();
+                            notifyBackendChatCancel(request.conversationId, request.id).catch(() => {});
+                        }, 155000);
+                        let response;
+                        try {
+                            response = await postJson('/describe-image/vlm-chat-run', {
+                                request_kind: 'roleplay_memory_repair', request_id: request.id,
+                                conversation_id: request.conversationId, chat_mode: 'roleplay',
+                                ...routing, roleplay_session: { ...lean, agent_routing: routing.agent_routing },
+                                version, custom_api: readDescribeCustomApi(version),
+                                n_ctx: currentVlmNctx(version), context_window: vlmContextWindowForVersion(version),
+                                vram_policy: state.vramPolicy, kv_cache_type: state.kvCacheType,
+                                unload_after_chat: !!runtime.unloadAfterChat, load_mtp: !!state.mtpEnabled,
+                                __lang: state.__lang, lang: state.__lang,
+                                memory_repair_task: { id, kind: 'memory', ...page },
+                                memory_repair_witness_ids: history.witnesses, memory_repair_speaker_id: history.speaker,
+                                memory_repair_attribution: history.attribution.filter(item =>
+                                    item.start < page.next_offset && item.end > page.page_start).map(item => ({
+                                    ...item, start: Math.max(item.start, page.page_start) - page.page_start,
+                                    end: Math.min(item.end, page.next_offset) - page.page_start
+                                }))
+                            }, { signal: request.controller.signal });
+                        } finally { window.clearTimeout(timer); job.request = null; }
+                        roleplayMemoryRepairTask(job, id);
+                        if (!response?.ok) throw new Error(timedOut ? 'memory_repair_timeout' : response?.code || 'memory_repair_failed');
+                        const result = response.memory_repair;
+                        if (result?.task_id !== id || result.source_offset !== progress.offset
+                            || result.next_offset !== page.next_offset || result.source_chars !== task.source.length
+                            || !Array.isArray(result.memories) || result.memories.length > 3) throw new Error('memory_repair_invalid_result');
+                        const keys = new Set(progress.candidates.map(item => roleplayMemoryRepairKey(item.text)));
+                        const candidates = result.memories.map(item => {
+                            if (!item?.text?.trim() || item.text.length > 600 || !item.evidence
+                                || !page.source.includes(item.evidence) || !Array.isArray(item.known_by)
+                                || item.known_by.some(id => !history.witnesses.includes(id))) throw new Error('memory_repair_invalid_result');
+                            return normalizeRoleplayMemory({ ...item, id: uid('memory_repair'),
+                                chapter_id: task.chapter_id, turn_id: task.turn_id, branch_id: job.branchId,
+                                source: 'automatic_review', visibility: item.known_by.length ? 'restricted' : 'private' });
+                        }).filter(item => { const key = roleplayMemoryRepairKey(item.text); if (keys.has(key)) return false; keys.add(key); return true; });
+                        progress.candidates.push(...candidates);
+                        progress.existing_ids = [...new Set([...progress.existing_ids,
+                            ...(Array.isArray(result.existing_ids) ? result.existing_ids.filter(id => known.some(item => item.id === id)) : [])])];
+                        progress.offset = result.next_offset;
+                        await saveRoleplayMemoryRepair(runtime);
+                    }
+                    await commitRoleplayMemoryRepair(job, id, progress);
+                } catch (error) {
+                    if (job.stopped || runtime.memoryRepairJob !== job || error.message === 'memory_repair_stale') break;
+                    if (progress) {
+                        progress.status = 'failed';
+                        progress.error = error.message;
+                        if (error.message === 'memory_repair_no_facts') {
+                            progress.offset = 0;
+                            progress.existing_ids = [];
+                        }
+                    }
+                    runtime.persistenceDirty = true;
+                    scheduleConversationPersist(runtime, 'roleplay_memory_repair_failed', 'soon');
+                }
+            }
+        } finally {
+            if (runtime.memoryRepairJob === job) runtime.memoryRepairJob = null;
+            syncRoleplayMemoryRepairUI(runtime);
+        }
+    }
+
+    async function undoRoleplayMemoryRepair(runtime, receiptId) {
+        if (runtime?.memoryRepairJob || conversationHistoryBusy(runtime)) {
+            setConversationStatus(runtime, roleplayDictionaryText('Wait for the current reply before editing memory.'), true);
+            return;
+        }
+        const store = runtime.roleplayMemoryRepair;
+        const receipt = store?.receipts.find(item => item.id === receiptId && roleplayMemoryRepairScope(runtime, item));
+        if (!receipt?.task) return;
+        const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        if (receipt.memories.some(row => !roleplayCorrectionEqual(
+            session.memory_store.items.find(item => item.id === row.id), row))) {
+            setConversationStatus(runtime, roleplayDictionaryText('These memories changed after summarizing. Review them before undoing.'), true);
+            return;
+        }
+        const ids = receipt.memories.map(item => item.id);
+        session.memory_store.items = session.memory_store.items.filter(item => !ids.includes(item.id));
+        if (!session.story_state.resource_review.failed.some(item => item.id === receipt.task_id)) {
+            session.story_state.resource_review.failed.push(structuredClone(receipt.task));
+        }
+        store.receipts = store.receipts.filter(item => item !== receipt);
+        store.tasks = store.tasks.filter(item => !(roleplayMemoryRepairScope(runtime, item) && item.task_id === receipt.task_id));
+        touchRoleplayMemoryRepairSession(session);
+        updateRoleplayMemoryRepairCheckpoint(runtime, session);
+        syncRoleplayMemoryRepairResources(runtime, ids);
+        renderMessages();
+        try {
+            await saveRoleplayMemoryRepair(runtime);
+            setConversationStatus(runtime, roleplayDictionaryText('Summary write undone. The source is available for another attempt.'));
+            persistRoleplayBranchRemote(runtime, '', { includeHistory: true }).catch(() => {});
+        } catch (error) {
+            setConversationStatus(runtime, roleplayDictionaryText('Memory recovery could not be saved. Keep this page open and retry saving.'), true);
+        }
+        syncRoleplayMemoryRepairUI(runtime);
+    }
+
+    function renderRoleplayResourceReviewEntry(item, runtime) {
+        const label = ({ memory: localText('Memory', '记忆'), world_book: localText('World book', '世界书'), chapter: localText('Chapter summary', '章节摘要') })[item.kind];
+        const limit = item.kind === 'memory' ? 600 : item.kind === 'world_book' ? 1200 : 6000;
+        const placeholder = item.kind === 'memory'
+            ? localText('Write one concise, confirmed fact (max 600 characters)', '填写一条确认过的简短记忆（最多 600 字）')
+            : item.kind === 'world_book'
+                ? localText('Write concise reusable lore (max 1200 characters)', '填写简洁、可复用的世界设定（最多 1200 字）')
+                : localText('Write a concise chapter summary', '填写简洁的章节摘要');
+        return `<article class="describe-vlm-chat-roleplay-resource-row" data-resource-review-item><strong>${escapeHtml(label)}</strong><small>${escapeHtml(localText(`Reason: ${item.failure_reason || item.reason || 'verification failed'}`, `未写入原因：${item.failure_reason || item.reason || '核对未通过'}`))}</small><details><summary>${escapeHtml(localText('Original source', '查看原文依据'))}</summary><pre>${escapeHtml(item.source.slice(0, 12000))}${item.source.length > 12000 ? `\n\n${escapeHtml(localText('[Source preview truncated; the full source remains in the task record.]', '[原文预览已截短，完整来源仍保留在任务记录中。]'))}` : ''}</pre></details><textarea data-resource-review-content="${escapeHtml(item.id)}" rows="3" maxlength="${limit}" placeholder="${escapeHtml(placeholder)}"></textarea><small data-memory-repair-task-status="${escapeHtml(item.id)}"></small><div class="describe-vlm-memory-repair-buttons">${item.kind === 'memory' ? `<button type="button" data-resource-review-action="summarize" data-resource-review-id="${escapeHtml(item.id)}"${runtime?.memoryRepairJob ? ' disabled' : ''}><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Summarize and save'))}</span></button>` : ''}<button type="button" data-resource-review-action="confirm" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Confirm and write', '确认并写入'))}</button><button type="button" data-resource-review-action="ignore" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Ignore', '忽略'))}</button></div></article>`;
     }
 
     function roleplayResourceChecked(value) {
@@ -1175,17 +2551,10 @@
             root.prepend(reviewList);
         }
         const failedResources = session.story_state?.resource_review?.failed || [];
-        reviewList.hidden = failedResources.length === 0;
-        reviewList.innerHTML = failedResources.length ? `<h4>${escapeHtml(localText('Needs your review', '待人工确认'))} (${failedResources.length})</h4>${failedResources.map((item) => {
-            const label = ({ memory: localText('Memory', '记忆'), world_book: localText('World book', '世界书'), chapter: localText('Chapter summary', '章节摘要') })[item.kind];
-            const limit = item.kind === 'memory' ? 600 : item.kind === 'world_book' ? 1200 : 6000;
-            const placeholder = item.kind === 'memory'
-                ? localText('Write one concise, confirmed fact (max 600 characters)', '填写一条确认过的简短记忆（最多 600 字）')
-                : item.kind === 'world_book'
-                    ? localText('Write concise reusable lore (max 1200 characters)', '填写简洁、可复用的世界设定（最多 1200 字）')
-                    : localText('Write a concise chapter summary', '填写简洁的章节摘要');
-            return `<article class="describe-vlm-chat-roleplay-resource-row" data-resource-review-item><strong>${escapeHtml(label)}</strong><small>${escapeHtml(localText(`Reason: ${item.failure_reason || item.reason || 'verification failed'}`, `未写入原因：${item.failure_reason || item.reason || '核对未通过'}`))}</small><details><summary>${escapeHtml(localText('Original source', '查看原文依据'))}</summary><pre>${escapeHtml(item.source.slice(0, 12000))}${item.source.length > 12000 ? `\n\n${escapeHtml(localText('[Source preview truncated; the full source remains in the task record.]', '[原文预览已截短，完整来源仍保留在任务记录中。]'))}` : ''}</pre></details><textarea data-resource-review-content="${escapeHtml(item.id)}" rows="3" maxlength="${limit}" placeholder="${escapeHtml(placeholder)}"></textarea><div><button type="button" data-resource-review-action="confirm" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Confirm and write', '确认并写入'))}</button><button type="button" data-resource-review-action="ignore" data-resource-review-id="${escapeHtml(item.id)}">${escapeHtml(localText('Ignore', '忽略'))}</button></div></article>`;
-        }).join('')}` : '';
+        const repairPanel = renderRoleplayMemoryRepairPanel(target);
+        reviewList.hidden = failedResources.length === 0 && !repairPanel;
+        reviewList.innerHTML = `<section class="describe-vlm-memory-repair" data-memory-repair-panel${repairPanel ? '' : ' hidden'}>${repairPanel}</section>`
+            + (failedResources.length ? `<h4>${escapeHtml(localText('Needs your review', '待人工确认'))} (${failedResources.length})</h4>${failedResources.map(item => renderRoleplayResourceReviewEntry(item, target)).join('')}` : '');
         if (stores.world_book.metadata && typeof stores.world_book.metadata === 'object') {
             root.setAttribute('data-roleplay-world-book-metadata', encodeURIComponent(JSON.stringify(stores.world_book.metadata)));
         }
@@ -1301,7 +2670,9 @@
             extensions: readRoleplayResourceExtensions(row),
             source: row.getAttribute('data-resource-source') || 'manual'
         })).filter(Boolean);
+        const memoryById = new Map(target.memory_store.items.map(item => [item.id, item]));
         const memories = visibleRoleplayResourceRows(modal, 'memory').map((row) => normalizeRoleplayMemory({
+            ...memoryById.get(row.getAttribute('data-resource-id')),
             id: row.getAttribute('data-resource-id'),
             text: readRoleplayResourceField(row, 'text'),
             type: readRoleplayResourceField(row, 'type'),
@@ -1313,8 +2684,8 @@
             pinned: readRoleplayResourceField(row, 'pinned'),
             locked: readRoleplayResourceField(row, 'locked'),
             chapter_id: readRoleplayResourceField(row, 'chapter_id'),
-            branch_id: branchId,
-            source: 'manual'
+            branch_id: memoryById.get(row.getAttribute('data-resource-id'))?.branch_id || branchId,
+            source: memoryById.get(row.getAttribute('data-resource-id'))?.source || 'manual'
         })).filter(Boolean);
         const chapters = visibleRoleplayResourceRows(modal, 'chapter').map((row) => {
             const chapterId = row.getAttribute('data-resource-id');
@@ -1361,7 +2732,7 @@
         return normalizeRoleplaySession(Object.assign({}, target, {
             story_state: storyState,
             world_book: { schema: 'simpai.vlm_roleplay.world_book', version: 1, enabled: target.world_book?.enabled !== false, entries: worldEntries, metadata: worldBookMetadata },
-            memory_store: { schema: 'simpai.vlm_roleplay.memory_store', version: 1, items: memories },
+            memory_store: { ...target.memory_store, schema: 'simpai.vlm_roleplay.memory_store', version: 1, items: memories },
             chapters: chapterStore,
             active_chapter_id: selectedChapter
         }), target.conversation_id || target.conversationId || '');
@@ -1627,7 +2998,9 @@
         const selection = normalizeRoleplayMemorySelection(message.roleplay_memory_selection || message.roleplay_context?.memory_selection);
         const referenced = normalizeRoleplayResourceChanges(message.roleplay_resource_changes).some(item =>
             item.kind === 'memory' && item.id === memoryId && !['remove', 'delete'].includes(item.op))
-            || [...selection.manual_ids, ...selection.automatic_ids, ...selection.unavailable.map(item => item.id)].includes(memoryId);
+            || [...selection.manual_ids, ...selection.automatic_ids, ...selection.unavailable.map(item => item.id)].includes(memoryId)
+            || runtime.roleplayMemoryRepair?.receipts.some(item => roleplayMemoryRepairScope(runtime, item)
+                && item.memories.some(row => row.id === memoryId));
         if (!referenced) throw new Error('This memory card is no longer available.');
         const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
         const memory = session.memory_store.items.find(item => item.id === memoryId);
@@ -1839,6 +3212,7 @@
         document.body.appendChild(dialog);
         visibilityNote();
         dialog.showModal();
+        installRoleplayEditorViewport(dialog);
     }
 
     function applyRoleplayStateCorrection(runtime, messageId, changeIndex, target, value, mode = 'edit') {
@@ -2374,6 +3748,7 @@
     }
 
     function normalizeRoleplaySession(value, conversationId = '') {
+        if (isRoleplayHistoryReference(value)) value = resolveRoleplayHistoryReference(value);
         const source = value && typeof value === 'object' ? value : {};
         const cardTextLimit = 240000;
         const characterSource = source.character || source.character_card || {};
@@ -2564,6 +3939,10 @@
                 relationships: Array.isArray(stateSource.relationships) ? stateSource.relationships.slice(0, 80) : [],
                 world_facts: resources.world_book.entries.filter((item) => item.mode === 'always' && item.enabled).map((item) => item.content).slice(0, 80),
                 knowledge: stateSource.knowledge && typeof stateSource.knowledge === 'object' ? stateSource.knowledge : {},
+                ...(stateSource.cognition && typeof stateSource.cognition === 'object'
+                    ? { cognition: normalizeRoleplayContinuity(stateSource.cognition) } : {}),
+                ...(stateSource.agenda && typeof stateSource.agenda === 'object'
+                    ? { agenda: normalizeRoleplayAgenda(stateSource.agenda) } : {}),
                 memories: resources.memory_store.items.slice(-MAX_ROLEPLAY_LEGACY_MEMORIES),
                 recent_turn_facts: Array.isArray(stateSource.recent_turn_facts)
                     ? stateSource.recent_turn_facts.filter((item) => item && typeof item === 'object').slice(-12)
@@ -3496,17 +4875,15 @@
         const branchId = String(source.branch_id || source.id || session.active_branch_id || (index === 0 ? 'main' : ''))
             .trim().slice(0, 160) || `roleplay_branch_${index + 1}`;
         session.active_branch_id = branchId;
-        const archiveSource = Array.isArray(source.archive_messages)
+        const archiveSource = unpackRoleplayHistoryMessages(Array.isArray(source.archive_messages)
             ? source.archive_messages
             : Array.isArray(source.archiveMessages)
                 ? source.archiveMessages
                 : Array.isArray(source.messages)
                     ? source.messages
-                    : [];
-        const archiveMessages = Array.isArray(source.archive_messages)
-            ? source.archive_messages.filter((message) => !message?.pending)
-            : Array.isArray(source.archiveMessages)
-                ? source.archiveMessages.filter((message) => !message?.pending)
+                    : []);
+        const archiveMessages = Array.isArray(source.archive_messages) || Array.isArray(source.archiveMessages)
+            ? archiveSource.filter((message) => !message?.pending)
                 : normalizePersistedMessages(archiveSource, {
                     conversationId,
                     maxMessages: null
@@ -4717,6 +6094,8 @@
             roleplayBranches: normalizeRoleplayBranches(source.roleplayBranches || source.roleplay_branches, conversationId),
             roleplayFormDraftUndo: normalizeRoleplayFormDraftReview(source.roleplayFormDraftUndo),
             roleplayOutlineUndo: normalizeRoleplayOutlineUndo(source.roleplayOutlineUndo),
+            roleplayMemoryRepair: normalizeRoleplayMemoryRepair(source.roleplayMemoryRepair),
+            memoryRepairJob: null,
             roleplayPanelOpen: !!source.roleplayPanelOpen,
             roleplayTurnIntent: normalizeRoleplayTurnIntentSetting(source.roleplayTurnIntent || source.roleplay_turn_intent),
             roleplayReplySpeakerId: String(source.roleplayReplySpeakerId || source.roleplay_reply_speaker_id || '').trim().slice(0, 160),
@@ -4993,6 +6372,7 @@
         if (!runtime) return false;
         const previousConversationId = String(state.conversationId || '').trim();
         if (previousConversationId && previousConversationId !== String(runtime.conversationId || '').trim()) {
+            stopRoleplayMemoryRepair(state.conversationRuntimes.get(previousConversationId));
             captureConversationEditor(true);
             resetInputPolish();
             clearRoleplayPanelFeedback();
@@ -7450,6 +8830,7 @@
         const session = currentConversationRuntime()?.roleplaySession || {};
         const visibleRows = visibleRoleplayResourceRows(input.closest('#describe_vlm_chat_modal'), 'memory');
         const memories = visibleRows.length ? visibleRows.map((row) => ({
+            ...(session.memory_store?.items || []).find(item => item.id === row.getAttribute('data-resource-id')),
             id: row.getAttribute('data-resource-id'),
             text: readRoleplayResourceField(row, 'text'),
             keywords: roleplayResourceCommaList(readRoleplayResourceField(row, 'keywords')),
@@ -7458,11 +8839,9 @@
             visibility: readRoleplayResourceField(row, 'visibility'),
             known_by: roleplayResourceCommaList(readRoleplayResourceField(row, 'known_by'), 20)
         })) : session.memory_store?.items || [];
-        const enabledMemories = memories.filter((item) => item.enabled && String(item.text || '').trim());
-        const matches = enabledMemories.filter((item) => (
-            !query.fragment || [item.text, item.id, ...(item.keywords || [])]
-                .some((part) => String(part || '').toLocaleLowerCase().includes(query.fragment)))
-        );
+        const enabledMemories = memories.filter((item) => roleplayMemoryIsActive(item) && String(item.text || '').trim());
+        const matches = enabledMemories.map(item => ({ item, score: roleplayMemorySearchScore(item, query.fragment) }))
+            .filter(row => row.score > 0).sort((a, b) => b.score - a.score).map(row => row.item);
         const chapterTitles = new Map((session.chapters?.items || []).map((item) => [item.id, item.title]));
         const summary = roleplayDictionaryText('Matching memories: {matched} / {total}')
             .replace('{matched}', String(matches.length)).replace('{total}', String(enabledMemories.length));
@@ -8293,7 +9672,8 @@
         }
         session.active_character_id = targetId;
         session.character = card;
-        target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
+        target.roleplaySession = normalizeRoleplaySession(recordRoleplayPresence(
+            normalizeRoleplaySession(target.roleplaySession, target.conversationId), session), target.conversationId);
         delete target.roleplayReferenceDraft;
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
@@ -11273,7 +12653,8 @@
             target.roleplayReplySpeakerId = '';
             if (isCurrentConversationRuntime(target)) state.roleplayReplySpeakerId = '';
         }
-        target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
+        target.roleplaySession = normalizeRoleplaySession(recordRoleplayPresence(
+            normalizeRoleplaySession(target.roleplaySession, target.conversationId), session), target.conversationId);
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
         scheduleConversationPersist(target, 'roleplay_presence', 'soon');
@@ -12905,6 +14286,9 @@
     function closeRoleplayStoryTree() {
         const viewer = roleplayStoryTree;
         if (!viewer) return;
+        if (viewer.cleanup?.applying) return;
+        if (viewer.cleanup?.applied && !viewer.cleanup.locallySaved
+            && !window.confirm(roleplayDictionaryText('Route cleanup has not been saved on this device. Close anyway?'))) return;
         roleplayStoryTree = null;
         window.clearTimeout(viewer.searchTimer);
         viewer.dialog.close();
@@ -12924,6 +14308,172 @@
         status.dataset.error = String(error);
     }
 
+    function roleplayBranchCleanupKey(runtime) {
+        return JSON.stringify([
+            runtime.roleplaySession,
+            (runtime.archiveMessages || runtime.messages).map(message => [
+                message.id, message.revision, message.active_variant_index, message.variants?.length
+            ]),
+            runtime.roleplayBranches.map(branch => [branch.branch_id, branch.parent_branch_id, branch.label])
+        ]);
+    }
+
+    function pruneRoleplayReplyVariants(messages, removedIds, currentOnly = false) {
+        let count = 0;
+        const rows = (messages || []).map(message => {
+            if (!Array.isArray(message.variants) || !message.variants.length) return message;
+            const active = Math.max(0, Math.min(message.variants.length - 1, Number(message.active_variant_index) || 0));
+            let nextActive = 0;
+            const variants = [];
+            message.variants.forEach((variant, index) => {
+                const branch = variant.branch_id || variant.roleplay_session_after?.active_branch_id || '';
+                if (index !== active && (currentOnly || removedIds.has(branch))) { count += 1; return; }
+                if (index === active) nextActive = variants.length;
+                variants.push(variant);
+            });
+            return variants.length === message.variants.length ? message
+                : { ...message, variants, active_variant_index: nextActive, revision: (Number(message.revision) || 1) + 1 };
+        });
+        return { messages: rows, count };
+    }
+
+    function renderRoleplayBranchCleanup(viewer) {
+        const cleanup = viewer.cleanup;
+        viewer.dialog.querySelector('[data-story-tree-cleanup]').disabled = true;
+        const text = key => escapeHtml(roleplayDictionaryText(key));
+        const plan = cleanup.plan;
+        const ids = plan?.removed_ids || [];
+        const branches = new Map(viewer.runtime.roleplayBranches.map(branch => [branch.branch_id, branch]));
+        const count = pruneRoleplayReplyVariants(viewer.runtime.archiveMessages || viewer.runtime.messages,
+            new Set(ids), cleanup.mode === 'current').count;
+        const describe = (key, values) => escapeHtml(roleplayDictionaryText(key).replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match));
+        viewer.dialog.querySelector('[data-story-tree-detail]').innerHTML = `
+          <header class="describe-vlm-story-tree-detail-head"><strong>${text('Clean up unused routes')}</strong></header>
+          <fieldset class="describe-vlm-story-tree-cleanup-scopes"${viewer.pending || cleanup.applied ? ' disabled' : ''}>
+            <legend>${text('Keep routes')}</legend>
+            <label><input type="radio" name="story-tree-cleanup-mode" data-story-tree-cleanup-mode value="ancestors"${cleanup.mode === 'ancestors' ? ' checked' : ''}><span>${text('Current route and its sources')}<small>${text('Remove side routes while keeping the current route and its ancestry.')}</small></span></label>
+            <label><input type="radio" name="story-tree-cleanup-mode" data-story-tree-cleanup-mode value="current"${cleanup.mode === 'current' ? ' checked' : ''}><span>${text('Current route only')}<small>${text('Keep the full current story and remove all other routes and unused reply versions.')}</small></span></label>
+          </fieldset>
+          ${plan ? `<p>${describe('Remove {count} routes and {replies} unused replies from the current story.', {count: ids.length, replies: count})}</p>
+          ${ids.length ? `<ul class="describe-vlm-story-tree-cleanup-list">${ids.map(id => `<li>${escapeHtml(roleplayBranchDisplayName(branches.get(id) || {branch_id:id}))}</li>`).join('')}</ul>` : ''}` : `<p role="status">${text('Checking saved routes...')}</p>`}
+          <p class="describe-vlm-story-tree-note">${text('The current chat, characters, memories and chapters are kept. Removed routes cannot be restored. Export a backup before cleanup if needed.')}</p>
+          <div class="describe-vlm-story-tree-commands">
+            <button type="button" data-story-tree-action="cleanup-backup"${viewer.pending ? ' disabled' : ''}><i class="fa-solid fa-download" aria-hidden="true"></i><span>${text('Export backup')}</span></button>
+            <button type="button" data-story-tree-action="cleanup-apply"${viewer.pending || !plan || (!ids.length && !count && !cleanup.applied) ? ' disabled' : ''}><i class="fa-solid fa-broom" aria-hidden="true"></i><span>${text(cleanup.applied ? 'Retry saving' : 'Confirm cleanup')}</span></button>
+            <button type="button" data-story-tree-cleanup-cancel${viewer.pending ? ' disabled' : ''}>${text(cleanup.applied ? 'Close' : 'Cancel')}</button>
+          </div>`;
+    }
+
+    async function prepareRoleplayBranchCleanup(viewer, saveCurrent = false) {
+        const cleanup = viewer.cleanup;
+        const runtime = viewer.runtime;
+        viewer.pending = true;
+        cleanup.plan = null;
+        renderRoleplayBranchCleanup(viewer);
+        try {
+            if (conversationHistoryBusy(runtime)) throw new Error('busy');
+            if (saveCurrent || !cleanup.prepared) {
+                if (saveConversationSnapshot(runtime) === false || !runtime.archiveSavePromise) throw new Error('storage');
+                await runtime.archiveSavePromise;
+                const response = await persistRoleplayBranchRemote(runtime, '', {includeHistory:true});
+                if (!response?.ok) throw new Error('sync');
+                cleanup.prepared = true;
+            }
+            if (!roleplayStoryTreeIsCurrent(viewer) || viewer.cleanup !== cleanup) return;
+            cleanup.key = roleplayBranchCleanupKey(runtime);
+            cleanup.request = {
+                ...roleplayBranchRequestPayload(runtime), active_branch_id: runtime.roleplaySession.active_branch_id,
+                mode: cleanup.mode, client_branches: runtime.roleplayBranches.map(compactRoleplayBranchIndex)
+            };
+            const plan = await postRoleplayBranchJson('/describe-image/vlm-roleplay/branches/cleanup', cleanup.request);
+            if (!roleplayStoryTreeIsCurrent(viewer) || viewer.cleanup !== cleanup) return;
+            if (!plan?.ok || roleplayBranchCleanupKey(runtime) !== cleanup.key) throw new Error('changed');
+            cleanup.plan = plan;
+            cleanup.requestId = uid('branch_cleanup');
+            roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Review the routes before confirming cleanup.'));
+        } catch (error) {
+            roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Cleanup preview is unavailable. Check the connection and update the server before trying again.'), true);
+        } finally {
+            if (roleplayStoryTreeIsCurrent(viewer) && viewer.cleanup === cleanup) {
+                viewer.pending = false;
+                renderRoleplayBranchCleanup(viewer);
+            }
+        }
+    }
+
+    async function applyRoleplayBranchCleanup(viewer) {
+        const cleanup = viewer.cleanup;
+        const runtime = viewer.runtime;
+        if (!cleanup?.plan || viewer.pending) return;
+        if (conversationHistoryBusy(runtime) || roleplayBranchCleanupKey(runtime) !== cleanup.key) {
+            roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('The story changed. Reopen cleanup to review the updated routes.'), true);
+            return;
+        }
+        viewer.pending = true;
+        cleanup.applying = true;
+        renderRoleplayBranchCleanup(viewer);
+        roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Cleaning up unused routes...'));
+        try {
+            if (!cleanup.applied) {
+                const response = await postRoleplayBranchJson('/describe-image/vlm-roleplay/branches/cleanup', {
+                    ...cleanup.request, apply: true, fingerprint: cleanup.plan.fingerprint, request_id: cleanup.requestId
+                });
+                if (!response?.ok) throw new Error(response?.error || 'cleanup_failed');
+                const removed = new Set(response.removed_ids);
+                const currentOnly = cleanup.mode === 'current';
+                const current = pruneRoleplayReplyVariants(runtime.archiveMessages || runtime.messages, removed, currentOnly);
+                cleanup.removedReplies = current.count;
+                runtime.archiveMessages = current.messages;
+                runtime.messages = pruneRoleplayReplyVariants(runtime.messages, removed, currentOnly).messages;
+                runtime.roleplayBranches = runtime.roleplayBranches.filter(branch => !removed.has(branch.branch_id)).map(branch => ({
+                    ...branch,
+                    ...(removed.has(branch.parent_branch_id) || (currentOnly && branch.branch_id !== 'main')
+                        ? {parent_branch_id:'',fork_turn_id:'',reason:'branch_cleanup'} : {}),
+                    messages: pruneRoleplayReplyVariants(branch.messages, removed, currentOnly).messages,
+                    ...(Array.isArray(branch.archive_messages)
+                        ? {archive_messages:pruneRoleplayReplyVariants(branch.archive_messages, removed, currentOnly).messages} : {})
+                }));
+                cleanup.applied = true;
+                cleanup.key = roleplayBranchCleanupKey(runtime);
+                runtime.persistenceDirty = true;
+                state.messages = runtime.messages;
+                state.roleplayBranches = runtime.roleplayBranches;
+                state.persistenceDirty = true;
+                syncRoleplayBranchControls(document.getElementById('describe_vlm_chat_modal'), runtime);
+                renderMessages();
+            }
+            cancelScheduledConversationPersist(runtime);
+            runtime.persistenceScheduleReason = 'roleplay_branch_cleanup';
+            if (saveConversationSnapshot(runtime) === false || !runtime.archiveSavePromise) throw new Error('local_save');
+            await runtime.archiveSavePromise;
+            cleanup.locallySaved = true;
+            const response = await persistRoleplayBranchRemote(runtime, '', {includeHistory:true});
+            if (!response?.ok) throw new Error('sync');
+            const message = roleplayDictionaryText('Removed {count} routes and {replies} unused replies.')
+                .replace('{count}', cleanup.plan.removed_ids.length).replace('{replies}', cleanup.removedReplies);
+            viewer.selectedId = runtime.roleplaySession.active_branch_id;
+            viewer.chapterId = '';
+            viewer.cleanup = null;
+            renderRoleplayStoryTree(viewer);
+            roleplayStoryTreeFeedback(viewer, message);
+        } catch (error) {
+            roleplayStoryTreeFeedback(viewer, roleplayDictionaryText(cleanup.applied
+                ? 'Cleanup is applied. Saving or synchronization failed; retry saving before closing.'
+                : error.message === 'cleanup_story_changed'
+                    ? 'The story changed. Reopen cleanup to review the updated routes.'
+                    : 'Cleanup failed. Your local story is kept; retry to check the server result.'), true);
+        } finally {
+            cleanup.applying = false;
+            viewer.pending = false;
+            if (roleplayStoryTreeIsCurrent(viewer)) {
+                if (viewer.cleanup) {
+                    cleanup.key = roleplayBranchCleanupKey(runtime);
+                    renderRoleplayBranchCleanup(viewer);
+                } else renderRoleplayStoryTree(viewer);
+            }
+        }
+    }
+
     function roleplayStoryTreeModel(runtime) {
         const branches = new Map((runtime.roleplayBranches || []).map(branch => [branch.branch_id, branch]));
         const parents = new Map();
@@ -12931,7 +14481,7 @@
         for (const [id, branch] of branches) {
             const parent = String(branch.parent_branch_id || '');
             if (parent && parent !== id && branches.has(parent)) parents.set(id, parent);
-            else if (parent || id !== 'main') detached.add(id);
+            else if (parent || id !== 'main' && branch.reason !== 'branch_cleanup') detached.add(id);
         }
         // Imported routes can contain missing parents or cycles. Keep every route reachable.
         for (const id of branches.keys()) {
@@ -13045,6 +14595,8 @@
 
     function renderRoleplayStoryTreeDetails(viewer, model = roleplayStoryTreeModel(viewer.runtime)) {
         if (!roleplayStoryTreeIsCurrent(viewer)) return;
+        viewer.dialog.querySelector('[data-story-tree-cleanup]').disabled = !!viewer.pending || conversationHistoryBusy(viewer.runtime);
+        if (viewer.cleanup) { renderRoleplayBranchCleanup(viewer); return; }
         const branch = model.branches.get(viewer.selectedId);
         const root = viewer.dialog.querySelector('[data-story-tree-detail]');
         if (!branch) { root.replaceChildren(); return; }
@@ -13078,7 +14630,7 @@
         root.innerHTML = `
           <header class="describe-vlm-story-tree-detail-head"><span>${text(chapter ? 'Chapter' : reason)}</span><strong>${escapeHtml(chapter?.title || roleplayBranchDisplayName(branch))}</strong>${isActive ? `<small>${text('Current route')}</small>` : ''}</header>
           ${viewer.renaming && !chapter ? `<form data-story-tree-rename-form><label>${text('Route name')}<input data-story-tree-name maxlength="160" value="${escapeHtml(branch.label || '')}" placeholder="${escapeHtml(roleplayBranchDisplayName({ ...branch, label: '' }))}"></label><button type="submit" title="${text('Save name')}" aria-label="${text('Save name')}"><i class="fa-solid fa-check" aria-hidden="true"></i></button><button type="button" data-story-tree-rename-cancel title="${text('Cancel')}" aria-label="${text('Cancel')}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></form>` : ''}
-          <dl><dt>${text('Source route')}</dt><dd>${escapeHtml(parent ? roleplayBranchDisplayName(parent) : branch.branch_id === 'main' ? roleplayDictionaryText('Story start') : roleplayDictionaryText('Source unavailable'))}</dd>
+          <dl><dt>${text('Source route')}</dt><dd>${escapeHtml(parent ? roleplayBranchDisplayName(parent) : branch.branch_id === 'main' || branch.reason === 'branch_cleanup' ? roleplayDictionaryText('Story start') : roleplayDictionaryText('Source unavailable'))}</dd>
           ${sourceChapter ? `<dt>${text('Branch point')}</dt><dd>${escapeHtml(sourceChapter.title)}</dd>` : ''}
           <dt>${text('Scene')}</dt><dd>${escapeHtml([scene.location, scene.time].filter(Boolean).join(' · ') || roleplayDictionaryText('No scene snapshot'))}</dd>
           <dt>${text('Route message count')}</dt><dd>${branch.history_available ? messages.length : text('History unavailable')}</dd>
@@ -13133,39 +14685,77 @@
         }
     }
 
-    async function forkRoleplayStoryTreePoint(viewer) {
-        const runtime = viewer.runtime;
-        const point = roleplayStoryTreePoint(viewer);
-        if (!point || runtime.busy || !roleplayStoryTreeIsCurrent(viewer)) return false;
-        const parentId = viewer.selectedId;
+    async function forkRoleplayHistoryPoint(runtime, point, options = {}) {
+        const guard = () => isCurrentConversationRuntime(runtime) && !conversationHistoryBusy(runtime)
+            && state.conversationRuntimes.get(runtime.conversationId) === runtime
+            && normalizeChatMode(runtime.chatMode) === 'roleplay' && (!options.guard || options.guard());
+        if (!point?.session || !guard()) return false;
+        const parentId = options.parentId || runtime.roleplaySession.active_branch_id || 'main';
         upsertRoleplayBranchSnapshot(runtime);
         if (saveConversationSnapshot(runtime) === false) return false;
         await runtime.archiveSavePromise;
-        if (!roleplayStoryTreeIsCurrent(viewer) || runtime.busy) return false;
+        if (!guard()) return false;
+        const revision = runtime.persistenceRevision;
+        const currentSession = JSON.stringify(runtime.roleplaySession);
+        const stillCurrent = () => guard() && runtime.persistenceRevision === revision
+            && JSON.stringify(runtime.roleplaySession) === currentSession;
         await persistRoleplayBranchRemote(runtime, '', { includeHistory: true }).catch(() => {});
-        if (!roleplayStoryTreeIsCurrent(viewer) || runtime.busy) return false;
+        if (!stillCurrent()) return false;
         const nextId = uid('roleplay_branch');
-        runtime.roleplaySession = roleplaySessionForHistoryRestore(point.session, runtime);
-        runtime.roleplaySession.active_branch_id = nextId;
-        runtime.roleplaySession.active_turn_id = point.turnId;
-        runtime.archiveMessages = normalizePersistedMessages(point.messages, { conversationId: runtime.conversationId, maxMessages: null });
-        runtime.messages = visibleConversationMessages(runtime.archiveMessages);
-        runtime.archiveVisibleMessageIds = persistedMessageIds(runtime.messages);
-        updateRoleplayAutoplayState(runtime, { phase: 'paused', reason: 'branch_restore' });
-        upsertRoleplayBranchSnapshot(runtime, {
-            branch_id: nextId, parent_branch_id: parentId, fork_turn_id: point.turnId,
-            reason: viewer.chapterId ? 'chapter_fork' : 'manual_fork'
+        const session = roleplaySessionForHistoryRestore(point.session, runtime);
+        session.active_branch_id = nextId;
+        session.active_turn_id = point.turnId || session.active_turn_id;
+        if (session.memory_store.maintenance_undo) session.memory_store.maintenance_undo.branch_id = nextId;
+        if (session.story_state.agenda?.undo) session.story_state.agenda.undo.branch_id = nextId;
+        const messages = normalizePersistedMessages(point.messages, { conversationId: runtime.conversationId, maxMessages: null });
+        const branch = normalizeRoleplayBranch({
+            branch_id: nextId, parent_branch_id: parentId, fork_turn_id: session.active_turn_id,
+            reason: options.reason || 'history_fork', created_at: new Date().toISOString(),
+            session, archive_messages: messages, history_available: true, snapshot_available: true
+        }, runtime.conversationId);
+        const candidate = {
+            ...runtime, roleplaySession: session, roleplayBranches: runtime.roleplayBranches.concat(branch),
+            archiveMessages: messages, messages: visibleConversationMessages(messages),
+            contextSummary: '', contextSummaryThroughMessageId: '', contextSummaryBranchId: '', contextUsage: null,
+            roleplayAutoplayState: { ...runtime.roleplayAutoplayState, phase: 'paused', reason: 'branch_restore' }
+        };
+        const record = conversationRecordFromSource(candidate, {
+            fullHistory: true, savedAt: new Date().toISOString(), persistenceRevision: revision + 1
         });
-        runtime.persistenceDirty = true;
+        // Save the new route before replacing the visible story.
+        await queueConversationArchiveSave(buildConversationArchivePayload(record));
+        if (!stillCurrent()) {
+            if (!runtime.deleted) saveConversationSnapshot(runtime);
+            return false;
+        }
+        cancelConversationContextSummary(runtime);
+        Object.assign(runtime, {
+            roleplaySession: session, roleplayBranches: candidate.roleplayBranches,
+            archiveMessages: messages, messages: candidate.messages,
+            archiveVisibleMessageIds: persistedMessageIds(candidate.messages),
+            contextSummary: '', contextSummaryThroughMessageId: '', contextSummaryBranchId: '', contextUsage: null,
+            roleplayAutoplayState: candidate.roleplayAutoplayState,
+            persistenceRevision: record.persistence_revision, persistenceSavedAt: record.saved_at, persistenceDirty: false
+        });
         applyConversationRuntime(runtime);
-        saveConversationSnapshot(runtime);
+        upsertConversationRecord(compactConversationCatalogSnapshot(record));
         syncChatSettingsControls(document.getElementById('describe_vlm_chat_modal'));
         renderMessages({ scrollToLatest: true });
+        persistRoleplayBranchRemote(runtime, nextId, { includeHistory: true }).catch(() => {});
+        return nextId;
+    }
+
+    async function forkRoleplayStoryTreePoint(viewer) {
+        const parentId = viewer.selectedId;
+        const nextId = await forkRoleplayHistoryPoint(viewer.runtime, roleplayStoryTreePoint(viewer), {
+            parentId, reason: viewer.chapterId ? 'chapter_fork' : 'manual_fork',
+            guard: () => roleplayStoryTreeIsCurrent(viewer)
+        });
+        if (!nextId) return false;
         viewer.selectedId = nextId;
         viewer.chapterId = '';
         viewer.expanded.add(parentId);
         viewer.expanded.add(nextId);
-        persistRoleplayBranchRemote(runtime, nextId, { includeHistory: true }).catch(() => {});
         return true;
     }
 
@@ -13260,7 +14850,7 @@
         dialog.setAttribute('aria-label', roleplayDictionaryText('Story tree'));
         const icon = (attr, glyph, label) => `<button type="button" ${attr} title="${text(label)}" aria-label="${text(label)}"><i class="fa-solid fa-${glyph}" aria-hidden="true"></i></button>`;
         dialog.innerHTML = `<header><strong><i class="fa-solid fa-code-branch" aria-hidden="true"></i>${text('Story tree')}</strong><small data-story-tree-count></small>${icon('data-story-tree-close', 'xmark', 'Close')}</header>
-          <div class="describe-vlm-story-tree-tools"><input type="search" data-story-tree-search placeholder="${text('Search routes and chapters')}" aria-label="${text('Search routes and chapters')}">${icon('data-story-tree-locate', 'location-crosshairs', 'Locate current route')}${icon('data-story-tree-collapse', 'angles-up', 'Collapse routes')}${icon('data-story-tree-refresh', 'rotate', 'Refresh routes')}</div>
+          <div class="describe-vlm-story-tree-tools"><input type="search" data-story-tree-search placeholder="${text('Search routes and chapters')}" aria-label="${text('Search routes and chapters')}">${icon('data-story-tree-locate', 'location-crosshairs', 'Locate current route')}${icon('data-story-tree-collapse', 'angles-up', 'Collapse routes')}${icon('data-story-tree-refresh', 'rotate', 'Refresh routes')}${icon('data-story-tree-cleanup', 'broom', 'Clean up unused routes')}</div>
           <nav class="describe-vlm-story-tree-mobile-tabs" aria-label="${text('Story tree views')}"><button type="button" data-story-tree-view="tree" aria-pressed="true">${text('Routes')}</button><button type="button" data-story-tree-view="detail" aria-pressed="false">${text('Node details')}</button></nav>
           <div class="describe-vlm-story-tree-body"><ul data-story-tree-nodes role="tree" aria-label="${text('Story routes')}"></ul><section data-story-tree-detail aria-label="${text('Node details')}" tabindex="0"></section></div>
           <footer data-story-tree-status role="status" aria-live="polite">${text('Loading story routes...')}</footer>`;
@@ -13292,6 +14882,32 @@
             const view = event.target.closest('button[data-story-tree-view]')?.dataset.storyTreeView;
             if (view) return setView(view);
             if (viewer.pending) return;
+            if (event.target.closest('[data-story-tree-cleanup]')) {
+                if (conversationHistoryBusy(runtime)) {
+                    roleplayStoryTreeFeedback(viewer, roleplayDictionaryText('Wait for active work before changing story routes.'), true);
+                    return;
+                }
+                viewer.cleanup = {mode:'ancestors'};
+                viewer.chapterId = ''; viewer.renaming = false; viewer.confirmDelete = false;
+                setView('detail');
+                prepareRoleplayBranchCleanup(viewer, true);
+                return;
+            }
+            if (event.target.closest('[data-story-tree-cleanup-cancel]')) {
+                if (viewer.cleanup?.applied) { closeRoleplayStoryTree(); return; }
+                viewer.cleanup = null;
+                renderRoleplayStoryTreeDetails(viewer);
+                return;
+            }
+            if (event.target.closest('[data-story-tree-action="cleanup-apply"]')) {
+                applyRoleplayBranchCleanup(viewer);
+                return;
+            }
+            if (event.target.closest('[data-story-tree-action="cleanup-backup"]')) {
+                downloadConversation();
+                return;
+            }
+            if (viewer.cleanup) return;
             const toggle = event.target.closest('[data-story-tree-toggle]');
             if (toggle) {
                 const id = toggle.dataset.storyTreeToggle;
@@ -13335,6 +14951,13 @@
             viewer.searchTimer = window.setTimeout(() => {
                 viewer.query = event.target.value.trim(); renderRoleplayStoryTree(viewer);
             }, 140);
+        });
+        dialog.addEventListener('change', event => {
+            if (!event.target.matches('[data-story-tree-cleanup-mode]')) return;
+            event.stopPropagation();
+            if (viewer.pending || !viewer.cleanup || viewer.cleanup.applied) return;
+            viewer.cleanup.mode = event.target.value;
+            prepareRoleplayBranchCleanup(viewer);
         });
         dialog.addEventListener('submit', event => {
             event.preventDefault(); event.stopPropagation();
@@ -13439,9 +15062,9 @@
                 activate: options.activate !== undefined ? options.activate : selectedId === activeId,
                 branch_metadata: compactRoleplayBranchIndex(branch || { branch_id: selectedId }),
                 ...(options.includeHistory ? {
-                    messages: selectedId === activeId
+                    messages: packRoleplayHistoryMessages(selectedId === activeId
                         ? target.archiveMessages || target.messages
-                        : branch?.archive_messages || branch?.messages || []
+                        : branch?.archive_messages || branch?.messages || [])
                 } : {})
             }
         ));
@@ -13450,7 +15073,7 @@
     function persistRoleplayResourcesRemote(runtime = currentConversationRuntime()) {
         const target = runtime || currentConversationRuntime();
         const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        return postJson('/describe-image/vlm-roleplay/resources/save', Object.assign(
+        return postRoleplayBranchJson('/describe-image/vlm-roleplay/resources/save', Object.assign(
             roleplayBranchRequestPayload(target),
             {
                 session,
@@ -13474,6 +15097,7 @@
             ), true);
             return false;
         }
+        stopRoleplayMemoryRepair(target);
         const branches = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId);
         let branch = branches.find((item) => item.branch_id === selectedId) || null;
         if (!branch?.snapshot_available || !branch.history_available) {
@@ -15214,6 +16838,7 @@
         if (!modal || !target?.roleplaySession) return null;
         if (!roleplayFormCanWriteTo(modal, target)) return null;
         const includePresence = options.includePresence !== false;
+        const presenceBefore = target.roleplaySession;
         let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const read = (selector) => {
             const field = modal.querySelector(selector);
@@ -15374,6 +16999,7 @@
         target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
+        target.roleplaySession = recordRoleplayPresence(presenceBefore, target.roleplaySession);
         target.roleplayFormSnapshot = captureRoleplayFormSnapshot(modal, target, target.roleplayFormSnapshot);
         return target.roleplaySession;
     }
@@ -15891,6 +17517,7 @@
         const controller = chatSettingsDrawerState(modal);
         const surface = chatSettingsSurfaceElement(modal, kind);
         const maximum = Math.max(0, controller.maxHeight || 0);
+        if (modal.dataset.describeVlmSettingsEditing === kind) return maximum;
         const natural = kind === 'roleplay' ? maximum
             : Math.min(maximum, (surface.querySelector('[data-describe-vlm-chat-mobile-settings-body]')?.scrollHeight || 0) + 33);
         return Math.min(maximum, controller.preferredHeights[kind] || natural);
@@ -15921,7 +17548,8 @@
             delete surface.dataset.chatSettingsAnimating;
         };
         const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        if (reducedMotion || Math.abs(from - height) < 1 || typeof surface.animate !== 'function') {
+        if (reducedMotion || modal.dataset.describeVlmKeyboardOpen === '1'
+            || Math.abs(from - height) < 1 || typeof surface.animate !== 'function') {
             finish();
             return;
         }
@@ -16141,11 +17769,16 @@
         const strip = modal.querySelector('[data-describe-vlm-chat-roleplay-strip]');
         const stripBottom = strip && !strip.hidden && strip.parentElement === panel
             ? strip.getBoundingClientRect().bottom : 0;
-        const drawerTop = Math.max(head.bottom, stripBottom);
-        const panelTop = panel.getBoundingClientRect().top;
+        const panelRect = panel.getBoundingClientRect();
+        const editing = !!panel.dataset.describeVlmSettingsEditing;
+        const drawerTop = editing ? panelRect.top : Math.max(head.bottom, stripBottom);
+        const viewport = describeViewportRect();
+        const drawerBottom = editing
+            ? Math.min(panelRect.bottom, viewport.top + viewport.height)
+            : compose.top - 6;
         const controller = chatSettingsDrawerState(modal);
-        controller.maxHeight = Math.max(0, compose.top - drawerTop - 6);
-        panel.style.setProperty('--describe-vlm-mobile-drawer-top', `${Math.max(0, drawerTop - panelTop)}px`);
+        controller.maxHeight = Math.max(0, drawerBottom - drawerTop);
+        panel.style.setProperty('--describe-vlm-mobile-drawer-top', `${Math.max(0, drawerTop - panelRect.top)}px`);
         panel.style.setProperty('--describe-vlm-mobile-drawer-height', `${controller.maxHeight}px`);
         Object.keys(controller.surfaces).forEach(kind => {
             if (controller.surfaces[kind].open) animateChatSettingsSurface(modal, kind);
@@ -16189,14 +17822,65 @@
         const focusedEditable = !!active
             && (!panel || panel.contains(active))
             && (active.matches?.('textarea, input, select, [contenteditable="true"]') || false);
+        const wasOpen = panel?.dataset.describeVlmKeyboardOpen === '1';
+        const previous = panel?.__describeVlmKeyboardViewport;
+        // Some mobile browsers shrink the layout viewport along with the keyboard.
+        const baselineHeight = previous && Math.abs(previous.width - rect.width) < 2
+            && (focusedEditable || wasOpen)
+            ? Math.max(previous.height, layoutHeight)
+            : layoutHeight;
+        if (panel) panel.__describeVlmKeyboardViewport = { width: rect.width, height: baselineHeight };
+        const heightReduction = Math.max(inset, Math.round(baselineHeight - rect.height));
         return {
             inset,
-            open: compact && focusedEditable && inset >= 80,
+            open: compact && (focusedEditable || wasOpen) && heightReduction >= 80,
             width: rect.width,
             height: rect.height,
             top: rect.top,
             bottom: visualBottom
         };
+    }
+
+    function installRoleplayEditorViewport(dialog) {
+        let frame = 0;
+        const sync = () => {
+            frame = 0;
+            if (!dialog.open) return;
+            const metrics = describeKeyboardMetrics(dialog);
+            dialog.dataset.describeVlmKeyboardOpen = metrics.open ? '1' : '0';
+            if (metrics.open) {
+                const viewport = describeViewportRect();
+                dialog.style.setProperty('--describe-vlm-editor-top', `${Math.round(viewport.top + 4)}px`);
+                dialog.style.setProperty('--describe-vlm-editor-left', `${Math.round(viewport.left + 6)}px`);
+                dialog.style.setProperty('--describe-vlm-editor-width', `${Math.max(1, Math.round(viewport.width - 12))}px`);
+                dialog.style.setProperty('--describe-vlm-editor-height', `${Math.max(1, Math.round(viewport.height - 8))}px`);
+                frame = window.requestAnimationFrame(() => {
+                    frame = 0;
+                    const active = document.activeElement;
+                    if (dialog.open && dialog.contains(active)) {
+                        active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                    }
+                });
+            }
+        };
+        const schedule = () => {
+            if (frame) window.cancelAnimationFrame(frame);
+            frame = window.requestAnimationFrame(sync);
+        };
+        window.addEventListener('resize', schedule);
+        window.visualViewport?.addEventListener('resize', schedule);
+        window.visualViewport?.addEventListener('scroll', schedule);
+        dialog.addEventListener('focusin', schedule);
+        dialog.addEventListener('focusout', schedule);
+        dialog.addEventListener('close', () => {
+            if (frame) window.cancelAnimationFrame(frame);
+            window.removeEventListener('resize', schedule);
+            window.visualViewport?.removeEventListener('resize', schedule);
+            window.visualViewport?.removeEventListener('scroll', schedule);
+            dialog.removeEventListener('focusin', schedule);
+            dialog.removeEventListener('focusout', schedule);
+        }, { once: true });
+        sync();
     }
 
     function syncDescribeKeyboardState(modal, panel) {
@@ -16207,6 +17891,21 @@
         modal.style.setProperty('--describe-vlm-keyboard-inset', `${metrics.inset}px`);
         modal.style.setProperty('--describe-vlm-visual-height', `${Math.round(metrics.height)}px`);
         modal.style.setProperty('--describe-vlm-visual-bottom', `${Math.round(metrics.bottom)}px`);
+        let editing = '';
+        if (metrics.open && panel.dataset.describeVlmMobileSettings === '1') {
+            const active = document.activeElement;
+            editing = ['roleplay', 'general'].find(kind => {
+                const surface = chatSettingsSurfaceElement(modal, kind);
+                return surface && !surface.hidden && !surface.inert && surface.contains(active);
+            }) || '';
+            if (!editing && active === document.body) {
+                const previous = panel.dataset.describeVlmSettingsEditing || '';
+                const surface = previous && chatSettingsSurfaceElement(modal, previous);
+                if (surface && !surface.hidden && !surface.inert) editing = previous;
+            }
+        }
+        modal.dataset.describeVlmSettingsEditing = editing;
+        panel.dataset.describeVlmSettingsEditing = editing;
         syncMobileChatSettingsDrawerBounds(modal, panel);
         if (metrics.open && document.activeElement && panel.contains(document.activeElement)) {
             if (describeKeyboardSyncFrame) window.cancelAnimationFrame(describeKeyboardSyncFrame);
@@ -16792,6 +18491,8 @@
     <div class="describe-vlm-chat-roleplay-autoplay-controls" role="group" aria-label="${escapeHtml(localText('Autoplay controls', '托管控制'))}">
       <button type="button" data-roleplay-story-packs title="${escapeHtml(roleplayDictionaryText('Preview reusable characters, player, scene, world book and outline, then start an independent story. Built-in examples are available here.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Story packs'))}"><i class="fa-solid fa-book-open" aria-hidden="true"></i></button>
       <button type="button" class="describe-vlm-chat-outline-indicator" data-roleplay-outline-open title="${escapeHtml(roleplayDictionaryText('Private outline'))}" aria-label="${escapeHtml(roleplayDictionaryText('Private outline'))}"><i class="fa-solid fa-route" aria-hidden="true"></i><span data-roleplay-outline-status hidden></span></button>
+      <button type="button" data-roleplay-agenda-open title="${escapeHtml(roleplayDictionaryText('Track promises, tasks and unresolved clues, and correct their progress.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Story obligations'))}"><i class="fa-solid fa-list-check" aria-hidden="true"></i></button>
+      <button type="button" data-roleplay-memory-library title="${escapeHtml(roleplayDictionaryText('Search and maintain memories, inspect who knows each fact and its source.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Memory and knowledge'))}"><i class="fa-solid fa-brain" aria-hidden="true"></i></button>
       <button type="button" data-roleplay-story-tree-open title="${escapeHtml(roleplayDictionaryText('Browse chapters, preview story routes and continue from a saved branch.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Story tree'))}"><i class="fa-solid fa-code-branch" aria-hidden="true"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-play title="${escapeHtml(localText('Start autoplay', '开始托管'))}" aria-label="${escapeHtml(localText('Start autoplay', '开始托管'))}"><i class="fa-solid fa-play"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-step title="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}" aria-label="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}"><i class="fa-solid fa-forward-step"></i></button>
@@ -16974,7 +18675,7 @@
           <div class="describe-vlm-chat-roleplay-resource-list" data-resource-list="world" role="region" tabindex="0" aria-label="${escapeHtml(roleplayDictionaryText('World book entries'))}"></div>
         </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="memory" role="tabpanel" hidden>
-          <div class="describe-vlm-chat-roleplay-resource-toolbar"><span>${escapeHtml(localText('Durable facts and events are selected for the current speaker and chapter.', '持久事实和事件会按当前发言者与章节筛选。'))}</span><button type="button" data-resource-add="memory" title="${escapeHtml(localText('Add memory', '新增记忆'))}" aria-label="${escapeHtml(localText('Add memory', '新增记忆'))}"><i class="fa-solid fa-plus"></i></button></div>
+          <div class="describe-vlm-chat-roleplay-resource-toolbar"><span>${escapeHtml(localText('Durable facts and events are selected for the current speaker and chapter.', '持久事实和事件会按当前发言者与章节筛选。'))}</span><button type="button" data-roleplay-memory-library title="${escapeHtml(roleplayDictionaryText('Search and maintain memories, inspect who knows each fact and its source.'))}" aria-label="${escapeHtml(roleplayDictionaryText('Memory and knowledge'))}"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></button><button type="button" data-resource-add="memory" title="${escapeHtml(localText('Add memory', '新增记忆'))}" aria-label="${escapeHtml(localText('Add memory', '新增记忆'))}"><i class="fa-solid fa-plus"></i></button></div>
           <div class="describe-vlm-chat-roleplay-resource-list" data-resource-list="memory" role="region" tabindex="0" aria-label="${escapeHtml(roleplayDictionaryText('Memory entries'))}"></div>
         </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="chapter" role="tabpanel" hidden>
@@ -17405,10 +19106,10 @@
             ...roleplayMessageKnowledgeFields(value),
             roleplay_internal_turn: !!value.roleplay_internal_turn,
             roleplay_session_before: before && typeof before === 'object'
-                ? normalizeRoleplaySession(before, conversationId)
+                ? normalizeRoleplayHistorySnapshot(before, conversationId)
                 : null,
             roleplay_session_after: after && typeof after === 'object'
-                ? normalizeRoleplaySession(after, conversationId)
+                ? normalizeRoleplayHistorySnapshot(after, conversationId)
                 : null,
             branch_id: String(value.branch_id || after?.active_branch_id || '').slice(0, 160),
             state_version: Math.max(0, Math.round(Number(value.state_version || after?.state_version) || 0)),
@@ -17965,13 +19666,13 @@
         const roleplayBefore = message.roleplay_session_before || message.session_before;
         const roleplayAfter = message.roleplay_session_after || message.session_after;
         if (roleplayBefore && typeof roleplayBefore === 'object') {
-            normalized.roleplay_session_before = normalizeRoleplaySession(
+            normalized.roleplay_session_before = normalizeRoleplayHistorySnapshot(
                 roleplayBefore,
                 options.conversationId || roleplayBefore.conversation_id || ''
             );
         }
         if (roleplayAfter && typeof roleplayAfter === 'object') {
-            normalized.roleplay_session_after = normalizeRoleplaySession(
+            normalized.roleplay_session_after = normalizeRoleplayHistorySnapshot(
                 roleplayAfter,
                 options.conversationId || roleplayAfter.conversation_id || ''
             );
@@ -17988,6 +19689,7 @@
     }
 
     function normalizePersistedMessages(messages, options = {}) {
+        messages = unpackRoleplayHistoryMessages(messages);
         const rows = (Array.isArray(messages) ? messages : []).filter((message) => !message?.pending);
         const limit = persistedMessageLimit(options);
         const source = limit === null ? rows : limit > 0 ? rows.slice(-limit) : [];
@@ -17996,7 +19698,7 @@
         for (let index = source.length - 1; index >= 0; index -= 1) {
             normalized.unshift(normalizePersistedMessage(source[index], Object.assign({}, options, { thumbBudget })));
         }
-        return retainLatestRoleplayContextReport(normalized.filter(Boolean));
+        return compactPersistedRoleplayMessages(retainLatestRoleplayContextReport(normalized.filter(Boolean)));
     }
 
     function visibleConversationMessages(messages) {
@@ -18078,6 +19780,18 @@
         const nextSessionId = String(sessionId || session.id || uid('roleplay_session')).trim();
         if (nextConversationId) session.conversation_id = nextConversationId.slice(0, 200);
         if (nextSessionId) session.id = nextSessionId.slice(0, 160);
+        if (session.story_state.agenda?.undo) {
+            session.story_state.agenda.undo.session_id = session.id;
+            session.story_state.agenda.undo.branch_id = options.branchId || session.active_branch_id;
+        }
+        if (session.memory_store.maintenance_undo) {
+            const receipt = session.memory_store.maintenance_undo;
+            receipt.session_id = session.id;
+            receipt.branch_id = options.branchId || session.active_branch_id;
+            if (options.branchId) {
+                for (const row of [...receipt.before, ...receipt.after]) if (row.branch_id) row.branch_id = options.branchId;
+            }
+        }
         if (options.branchId) {
             session.active_branch_id = options.branchId;
             session.chapters.items = session.chapters.items.map(chapter => ({ ...chapter, branch_id: options.branchId }));
@@ -18094,6 +19808,8 @@
             fullHistory: !!options.fullHistory
         });
         branch.session = rebindRoleplaySessionIdentity(branch.session, conversationId, sessionId);
+        branch.archive_messages = rebindRoleplayMessageIdentities(branch.archive_messages, conversationId, branch.session.id, options);
+        branch.messages = options.fullHistory ? branch.archive_messages : visibleConversationMessages(branch.archive_messages);
         if (options.localOnly) branch.remote = false;
         return branch;
     }
@@ -18111,7 +19827,9 @@
         const next = Object.assign({}, value);
         if (options.branchId && next.branch_id !== undefined) next.branch_id = options.branchId;
         const rebindSession = (snapshot) => snapshot && typeof snapshot === 'object'
-            ? rebindRoleplaySessionIdentity(snapshot, conversationId, sessionId, options)
+            ? isRoleplayHistoryReference(snapshot)
+                ? rebindRoleplayHistoryReference(snapshot, conversationId, sessionId, options)
+                : rebindRoleplaySessionIdentity(snapshot, conversationId, sessionId, options)
             : snapshot;
         const rebindAction = action => {
             const rebound = rebindPersistedActionIdentity(action, sessionId);
@@ -18188,6 +19906,315 @@
         return { session, branches, messages };
     }
 
+    function roleplayHistoryCanonical(value) {
+        if (value === null || typeof value !== 'object') return JSON.stringify(value);
+        if (Array.isArray(value)) return `[${value.map(item => roleplayHistoryCanonical(item) ?? 'null').join(',')}]`;
+        return `{${Object.keys(value).sort().filter(key => value[key] !== undefined)
+            .map(key => `${JSON.stringify(key)}:${roleplayHistoryCanonical(value[key])}`).join(',')}}`;
+    }
+
+    function roleplayHistoryClone(value) {
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    function roleplayHistoryFingerprint(serialized) {
+        return `${serialized.length}:${conversationArchiveHash(serialized)}`;
+    }
+
+    function isRoleplayHistoryReference(value) {
+        return value?.schema === ROLEPLAY_HISTORY_REF_SCHEMA;
+    }
+
+    function roleplayHistoryMetadata(value) {
+        return {
+            id: String(value.id || '').slice(0, 160),
+            conversation_id: String(value.conversation_id || '').slice(0, 200),
+            active_branch_id: String(value.active_branch_id || 'main').slice(0, 160),
+            active_turn_id: String(value.active_turn_id || '').slice(0, 200),
+            state_version: Math.max(0, Number(value.state_version) || 0)
+        };
+    }
+
+    function roleplayHistoryChanges(before, after, path = [], changes = []) {
+        if (before === after) return changes;
+        if (path.length > 64 || !before || !after || typeof before !== 'object' || typeof after !== 'object'
+            || Array.isArray(before) !== Array.isArray(after)) {
+            if (before !== after) changes.push(['set', path, after]);
+            return changes;
+        }
+        if (Array.isArray(after)) {
+            for (let index = 0; index < after.length; index++) {
+                if (index >= before.length) changes.push(['set', path.concat(index), after[index]]);
+                else roleplayHistoryChanges(before[index], after[index], path.concat(index), changes);
+            }
+            if (after.length < before.length) changes.push(['length', path, after.length]);
+        } else {
+            for (const key of Object.keys(before)) {
+                if (!Object.hasOwn(after, key)) changes.push(['remove', path.concat(key)]);
+            }
+            for (const key of Object.keys(after)) {
+                if (!Object.hasOwn(before, key)) changes.push(['set', path.concat(key), after[key]]);
+                else roleplayHistoryChanges(before[key], after[key], path.concat(key), changes);
+            }
+        }
+        return changes;
+    }
+
+    function applyRoleplayHistoryChanges(base, changes) {
+        if (!Array.isArray(changes) || changes.length > ROLEPLAY_HISTORY_MAX_CHANGES) throw new Error('invalid_story_history_changes');
+        let result = roleplayHistoryClone(base);
+        const keyValid = (target, key) => Array.isArray(target)
+            ? Number.isSafeInteger(key) && key >= 0 && key <= target.length
+            : typeof key === 'string' && key.length <= 10000;
+        for (const change of changes) {
+            if (!Array.isArray(change) || !['set', 'remove', 'length'].includes(change[0])
+                || !Array.isArray(change[1]) || change[1].length > 65
+                || change.length !== (change[0] === 'remove' ? 2 : 3)) throw new Error('invalid_story_history_change');
+            const [operation, path, value] = change;
+            let target = result;
+            for (const key of path.slice(0, operation === 'length' ? undefined : -1)) {
+                if (!target || typeof target !== 'object' || !keyValid(target, key) || !Object.hasOwn(target, key)) {
+                    throw new Error('invalid_story_history_path');
+                }
+                target = target[key];
+            }
+            if (operation === 'length') {
+                if (!Array.isArray(target) || !Number.isSafeInteger(value) || value < 0 || value > target.length) {
+                    throw new Error('invalid_story_history_length');
+                }
+                target.length = value;
+            } else if (!path.length) {
+                if (operation !== 'set') throw new Error('invalid_story_history_root');
+                result = roleplayHistoryClone(value);
+            } else {
+                const key = path.at(-1);
+                if (!target || typeof target !== 'object' || !keyValid(target, key)) throw new Error('invalid_story_history_path');
+                if (operation === 'remove') {
+                    if (Array.isArray(target) || !Object.hasOwn(target, key)) throw new Error('invalid_story_history_remove');
+                    delete target[key];
+                } else {
+                    Object.defineProperty(target, key, { value: roleplayHistoryClone(value), enumerable: true, writable: true, configurable: true });
+                }
+            }
+        }
+        return result;
+    }
+
+    function roleplayHistoryNodeValue(node, visiting = new Set()) {
+        if (!node || typeof node !== 'object' || visiting.has(node) || visiting.size >= ROLEPLAY_HISTORY_INTERVAL) {
+            throw new Error('invalid_story_history_chain');
+        }
+        if (roleplayHistoryCache.has(node)) return roleplayHistoryCache.get(node);
+        visiting.add(node);
+        let value;
+        if (node.kind === 'checkpoint' && node.depth === 0) value = node.value;
+        else if (node.kind === 'delta' && node.base && node.depth === node.base.depth + 1
+            && node.depth < ROLEPLAY_HISTORY_INTERVAL) {
+            value = applyRoleplayHistoryChanges(roleplayHistoryNodeValue(node.base, visiting), node.changes);
+        } else throw new Error('invalid_story_history_node');
+        visiting.delete(node);
+        if (!value || typeof value !== 'object' || Array.isArray(value)
+            || roleplayHistoryFingerprint(roleplayHistoryCanonical(value)) !== node.hash) throw new Error('damaged_story_history');
+        roleplayHistoryValidatedNodes.add(node);
+        roleplayHistoryCache.set(node, value);
+        while (roleplayHistoryCache.size > 8) roleplayHistoryCache.delete(roleplayHistoryCache.keys().next().value);
+        return value;
+    }
+
+    function resolveRoleplayHistoryReference(reference) {
+        const value = roleplayHistoryClone(roleplayHistoryNodeValue(reference.node));
+        Object.assign(value, roleplayHistoryMetadata(reference));
+        if (value.story_state?.agenda?.undo && typeof value.story_state.agenda.undo === 'object') {
+            value.story_state.agenda.undo.session_id = value.id;
+            value.story_state.agenda.undo.branch_id = value.active_branch_id;
+        }
+        const receipt = value.memory_store?.maintenance_undo;
+        if (receipt && typeof receipt === 'object' && !Array.isArray(receipt)) {
+            receipt.session_id = value.id;
+            receipt.branch_id = value.active_branch_id;
+            if (reference.rebind_branch) {
+                for (const rows of [receipt.before, receipt.after]) {
+                    for (const row of Array.isArray(rows) ? rows : []) if (row?.branch_id) row.branch_id = reference.active_branch_id;
+                }
+            }
+        }
+        if (reference.rebind_branch) {
+            if (Array.isArray(value.chapters?.items)) value.chapters.items.forEach(item => { item.branch_id = reference.active_branch_id; });
+            if (Array.isArray(value.memory_store?.items)) {
+                value.memory_store.items.forEach(item => { if (item.branch_id) item.branch_id = reference.active_branch_id; });
+                if (value.story_state) value.story_state.memories = value.memory_store.items.slice(-MAX_ROLEPLAY_LEGACY_MEMORIES);
+            }
+        }
+        return value;
+    }
+
+    function normalizeRoleplayHistorySnapshot(value, conversationId = '') {
+        if (isRoleplayHistoryReference(value)) {
+            if (!roleplayHistoryValidatedNodes.has(value.node)) roleplayHistoryNodeValue(value.node);
+            return rebindRoleplayHistoryReference(value, conversationId);
+        }
+        return normalizeRoleplaySession(value, conversationId);
+    }
+
+    function rebindRoleplayHistoryReference(value, conversationId = '', sessionId = '', options = {}) {
+        return {
+            ...value, ...roleplayHistoryMetadata(value),
+            ...(conversationId ? { conversation_id: String(conversationId).slice(0, 200) } : {}),
+            ...(sessionId ? { id: String(sessionId).slice(0, 160) } : {}),
+            ...(options.branchId ? { active_branch_id: options.branchId, rebind_branch: true } : {})
+        };
+    }
+
+    function createRoleplayHistoryEncoder() {
+        const buckets = new Map();
+        let previous = null;
+        return value => {
+            if (isRoleplayHistoryReference(value)) {
+                previous = value.node;
+                return value;
+            }
+            const serialized = roleplayHistoryCanonical(value);
+            const hash = roleplayHistoryFingerprint(serialized);
+            const candidates = buckets.get(hash) || [];
+            let node = candidates.find(item => roleplayHistoryCanonical(roleplayHistoryNodeValue(item)) === serialized);
+            if (!node && previous?.hash === hash && roleplayHistoryCanonical(roleplayHistoryNodeValue(previous)) === serialized) node = previous;
+            if (!node) {
+                const changes = previous && previous.depth + 1 < ROLEPLAY_HISTORY_INTERVAL
+                    ? roleplayHistoryChanges(roleplayHistoryNodeValue(previous), value) : null;
+                node = changes && changes.length <= ROLEPLAY_HISTORY_MAX_CHANGES && JSON.stringify(changes).length < serialized.length * 0.85
+                    ? { kind: 'delta', base: previous, changes: roleplayHistoryClone(changes), depth: previous.depth + 1, hash }
+                    : { kind: 'checkpoint', value: JSON.parse(serialized), depth: 0, hash };
+                candidates.push(node);
+                buckets.set(hash, candidates);
+            }
+            previous = node;
+            return { schema: ROLEPLAY_HISTORY_REF_SCHEMA, node, ...roleplayHistoryMetadata(value) };
+        };
+    }
+
+    function mapRoleplayHistorySnapshots(message, map) {
+        if (!message || typeof message !== 'object') return message;
+        const next = { ...message };
+        for (const suffix of ['before', 'after']) {
+            const key = `roleplay_session_${suffix}`;
+            if (next[key] && typeof next[key] === 'object') next[key] = map(next[key], suffix, next);
+        }
+        if (Array.isArray(next.variants)) next.variants = next.variants.map(variant => mapRoleplayHistorySnapshots(variant, map));
+        return next;
+    }
+
+    function createRoleplayHistoryWriter() {
+        const encode = createRoleplayHistoryEncoder();
+        const nodes = Object.create(null);
+        const ids = new Map();
+        const signatures = new Map();
+        const writeNode = node => {
+            if (ids.has(node)) return ids.get(node);
+            const base = node.kind === 'delta' ? writeNode(node.base) : '';
+            const encoded = node.kind === 'delta'
+                ? { kind: 'delta', base, changes: node.changes, hash: node.hash }
+                : { kind: 'checkpoint', value: node.value, hash: node.hash };
+            const signature = roleplayHistoryCanonical(encoded);
+            if (signatures.has(signature)) {
+                const id = signatures.get(signature);
+                ids.set(node, id);
+                return id;
+            }
+            const id = `s${signatures.size}`;
+            if (signatures.size >= ROLEPLAY_HISTORY_MAX_NODES) throw new Error('story_history_too_large');
+            ids.set(node, id);
+            signatures.set(signature, id);
+            nodes[id] = encoded;
+            return id;
+        };
+        return {
+            bundle: { schema: ROLEPLAY_HISTORY_SCHEMA, version: 1, checkpoint_interval: ROLEPLAY_HISTORY_INTERVAL, nodes },
+            messages: rows => unpackRoleplayHistoryMessages(rows).map(message => mapRoleplayHistorySnapshots(message, (value, suffix, target) => {
+                const reference = encode(value);
+                target[`roleplay_history_${suffix}`] = {
+                    ref: writeNode(reference.node), ...roleplayHistoryMetadata(reference),
+                    ...(reference.rebind_branch ? { rebind_branch: true } : {})
+                };
+                return null;
+            })).map(message => {
+                const clean = target => {
+                    delete target.roleplay_session_before;
+                    delete target.roleplay_session_after;
+                    if (Array.isArray(target.variants)) target.variants.forEach(clean);
+                };
+                clean(message);
+                return message;
+            })
+        };
+    }
+
+    function createRoleplayHistoryReader(bundle) {
+        if (bundle?.schema !== ROLEPLAY_HISTORY_SCHEMA || bundle.version !== 1 || bundle.checkpoint_interval !== ROLEPLAY_HISTORY_INTERVAL
+            || !bundle.nodes || typeof bundle.nodes !== 'object' || Array.isArray(bundle.nodes)) throw new Error('invalid_story_history');
+        const entries = Object.entries(bundle.nodes);
+        if (entries.length > ROLEPLAY_HISTORY_MAX_NODES) throw new Error('story_history_too_large');
+        const nodes = new Map();
+        const readNode = (id, visiting = new Set()) => {
+            if (nodes.has(id)) return nodes.get(id);
+            if (typeof id !== 'string' || !/^s\d+$/.test(id) || !Object.hasOwn(bundle.nodes, id)
+                || visiting.has(id) || visiting.size >= ROLEPLAY_HISTORY_INTERVAL) throw new Error('invalid_story_history_chain');
+            const encoded = bundle.nodes[id];
+            if (!encoded || typeof encoded !== 'object') throw new Error('invalid_story_history_node');
+            visiting.add(id);
+            const base = encoded.kind === 'delta' ? readNode(encoded.base, visiting) : null;
+            const node = encoded.kind === 'checkpoint'
+                ? { kind: 'checkpoint', value: encoded.value, hash: encoded.hash, depth: 0 }
+                : { kind: encoded.kind, base, changes: encoded.changes, hash: encoded.hash, depth: (base?.depth ?? -1) + 1 };
+            roleplayHistoryNodeValue(node);
+            nodes.set(id, node);
+            visiting.delete(id);
+            return node;
+        };
+        entries.forEach(([id]) => readNode(id));
+        return rows => (Array.isArray(rows) ? rows : []).map(message => {
+            const read = target => {
+                if (!target || typeof target !== 'object') throw new Error('invalid_story_history_message');
+                const next = { ...target };
+                delete next.roleplay_state_history;
+                for (const suffix of ['before', 'after']) {
+                    const key = `roleplay_history_${suffix}`;
+                    if (!Object.hasOwn(next, key)) continue;
+                    const encoded = next[key];
+                    const node = nodes.get(encoded?.ref);
+                    if (!node || !encoded || typeof encoded !== 'object') throw new Error('missing_story_history_state');
+                    next[`roleplay_session_${suffix}`] = {
+                        schema: ROLEPLAY_HISTORY_REF_SCHEMA, node, ...roleplayHistoryMetadata(encoded),
+                        ...(encoded.rebind_branch ? { rebind_branch: true } : {})
+                    };
+                    delete next[key];
+                }
+                if (Array.isArray(next.variants)) next.variants = next.variants.map(read);
+                return next;
+            };
+            return read(message);
+        });
+    }
+
+    function packRoleplayHistoryMessages(messages) {
+        const writer = createRoleplayHistoryWriter();
+        const encoded = writer.messages(messages);
+        if (encoded.length && Object.keys(writer.bundle.nodes).length) encoded[0].roleplay_state_history = writer.bundle;
+        return encoded;
+    }
+
+    function unpackRoleplayHistoryMessages(messages) {
+        if (!Array.isArray(messages)) return [];
+        const owners = messages.filter(message => message?.roleplay_state_history);
+        if (owners.length > 1) throw new Error('ambiguous_story_history_bundle');
+        const bundle = owners[0]?.roleplay_state_history;
+        if (bundle) return createRoleplayHistoryReader(bundle)(messages);
+        if (messages.some(message => message?.roleplay_history_before || message?.roleplay_history_after
+            || message?.variants?.some(variant => variant?.roleplay_history_before || variant?.roleplay_history_after))) {
+            throw new Error('missing_story_history_bundle');
+        }
+        return messages;
+    }
+
     function stripPersistedRoleplaySnapshots(message) {
         if (!message || typeof message !== 'object') return message;
         const next = Object.assign({}, message);
@@ -18208,17 +20235,20 @@
     function compactPersistedRoleplayMessages(messages, keepSnapshots = MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES) {
         const rows = Array.isArray(messages) ? messages : [];
         const cutoff = Math.max(0, rows.length - Math.max(0, Number(keepSnapshots) || 0));
-        return rows.map((message, index) => index >= cutoff ? message : stripPersistedRoleplaySnapshots(message));
+        const encode = createRoleplayHistoryEncoder();
+        return rows.map((message, index) => index >= cutoff ? message : mapRoleplayHistorySnapshots(message, encode));
     }
 
     function compactConversationRoleplayStorage(roleplayData, level = 0) {
         if (!roleplayData || typeof roleplayData !== 'object' || level <= 0) return roleplayData;
         const keepSnapshots = level >= 2 ? 0 : MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES;
-        roleplayData.messages = compactPersistedRoleplayMessages(roleplayData.messages, keepSnapshots);
+        roleplayData.messages = level >= 2
+            ? roleplayData.messages.map(stripPersistedRoleplaySnapshots)
+            : compactPersistedRoleplayMessages(roleplayData.messages, keepSnapshots);
         roleplayData.branches = (Array.isArray(roleplayData.branches) ? roleplayData.branches : [])
             .map((branch) => {
                 const compact = Object.assign({}, branch);
-                compact.messages = compactPersistedRoleplayMessages(
+                compact.messages = level >= 2 ? (branch?.messages || []).map(stripPersistedRoleplaySnapshots) : compactPersistedRoleplayMessages(
                     branch?.messages,
                     level >= 2 ? 0 : Math.min(24, MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES)
                 );
@@ -18912,47 +20942,67 @@
     }
 
     function buildConversationArchivePayload(snapshot) {
+        if (snapshot?.roleplay_archive_format) snapshot = expandConversationArchivePayload(snapshot);
         if (
             !snapshot
             || typeof snapshot !== 'object'
             || !Array.isArray(snapshot.messages)
             || !Array.isArray(snapshot.roleplay_branches)
         ) return snapshot;
+        const writer = createRoleplayHistoryWriter();
         const messagePool = Object.create(null);
+        const messageSignatures = new Map();
         const addMessages = (messages) => (Array.isArray(messages) ? messages : []).map((message, index) => {
-            const ref = conversationArchiveMessageKey(message, index);
-            if (!Object.prototype.hasOwnProperty.call(messagePool, ref)) messagePool[ref] = message;
+            const signature = roleplayHistoryCanonical(message);
+            const key = `${String(message.id || index).slice(0, 240)}:${roleplayHistoryFingerprint(signature)}`;
+            let ref = key;
+            let collision = 0;
+            while (messageSignatures.has(ref) && messageSignatures.get(ref) !== signature) ref = `${key}:${++collision}`;
+            messageSignatures.set(ref, signature);
+            messagePool[ref] = message;
             return ref;
         });
         const archive = Object.assign({}, snapshot);
+        archive.version = CONVERSATION_VERSION;
         archive.roleplay_archive_format = CONVERSATION_ARCHIVE_FORMAT;
-        archive.roleplay_active_message_refs = addMessages(snapshot.messages);
+        archive.roleplay_active_message_refs = addMessages(writer.messages(snapshot.messages));
         archive.roleplay_message_pool = messagePool;
         archive.messages = [];
         archive.roleplay_branches = snapshot.roleplay_branches.map((branch) => {
             const compact = Object.assign({}, branch);
-            compact.roleplay_message_refs = addMessages(branch?.messages);
+            compact.roleplay_message_refs = addMessages(writer.messages(branch?.messages));
             delete compact.messages;
             return compact;
         });
+        if (Object.keys(writer.bundle.nodes).length) archive.roleplay_state_history = writer.bundle;
         return archive;
     }
 
     function expandConversationArchivePayload(data) {
         const archiveFormat = String(data?.roleplay_archive_format || '').trim();
-        if (
-            !data
-            || typeof data !== 'object'
-            || ![CONVERSATION_ARCHIVE_FORMAT, LEGACY_CONVERSATION_ARCHIVE_FORMAT].includes(archiveFormat)
-        ) return data;
+        if (!data || typeof data !== 'object') return data;
+        const read = data.roleplay_state_history ? createRoleplayHistoryReader(data.roleplay_state_history) : rows => rows;
+        if (![CONVERSATION_ARCHIVE_FORMAT, LEGACY_CONVERSATION_ARCHIVE_FORMAT].includes(archiveFormat)) {
+            if (!data.roleplay_state_history) return data;
+            const expanded = { ...data, messages: read(data.messages),
+                roleplay_branches: (data.roleplay_branches || []).map(branch => ({ ...branch, messages: read(branch.messages) })) };
+            delete expanded.roleplay_state_history;
+            return expanded;
+        }
         const pool = data.roleplay_message_pool && typeof data.roleplay_message_pool === 'object'
             ? data.roleplay_message_pool
             : archiveFormat === LEGACY_CONVERSATION_ARCHIVE_FORMAT
                 ? []
                 : {};
-        const expandRefs = (refs) => (Array.isArray(refs) ? refs : [])
-            .map((ref) => Array.isArray(pool) ? pool[Number(ref)] : pool[String(ref)])
-            .filter((message) => message && typeof message === 'object');
+        const decodedPool = new Map(Object.entries(pool).map(([id, message]) => [id, read([message])[0]]));
+        const expandRefs = refs => {
+            if (!Array.isArray(refs)) throw new Error('invalid_story_message_refs');
+            return refs.map(ref => {
+                const message = decodedPool.get(String(ref));
+                if (!message || typeof message !== 'object') throw new Error('missing_story_message');
+                return message;
+            });
+        };
         const expanded = Object.assign({}, data, {
             messages: expandRefs(data.roleplay_active_message_refs),
             roleplay_branches: (Array.isArray(data.roleplay_branches) ? data.roleplay_branches : []).map((branch) => ({
@@ -18963,6 +21013,7 @@
         delete expanded.roleplay_archive_format;
         delete expanded.roleplay_active_message_refs;
         delete expanded.roleplay_message_pool;
+        delete expanded.roleplay_state_history;
         expanded.roleplay_branches.forEach((branch) => delete branch.roleplay_message_refs);
         return expanded;
     }
@@ -19145,6 +21196,7 @@
     async function deleteConversationArchive(conversationId) {
         const id = String(conversationId || '').trim();
         if (!id) return false;
+        roleplayHistoryCache.clear();
         clearConversationRecoveryRecord(id);
         const queue = conversationArchiveQueues.get(id);
         if (queue) {
@@ -19338,9 +21390,17 @@
                     return { ok: false, restored: false, error };
                 }
             }
-            const restored = record?.payload
-                ? normalizeConversationPayload(record.payload, { preserveId: true, fullHistory: true })
-                : null;
+            let restored;
+            try {
+                restored = record?.payload
+                    ? normalizeConversationPayload(record.payload, { preserveId: true, fullHistory: true })
+                    : null;
+            } catch (error) {
+                runtime.archiveHydrationRequired = true;
+                reportConversationArchiveError(runtime, error);
+                setConversationStatus(runtime, roleplayDictionaryText('The saved story history could not be read. The stored archive is kept; retry or import a complete backup.'), true);
+                return { ok: false, restored: false, error };
+            }
             if (record?.payload && !restored) {
                 const error = new Error('invalid_conversation_archive');
                 reportConversationArchiveError(runtime, error);
@@ -19417,6 +21477,7 @@
                 roleplayBranches: archiveSource.roleplayBranches,
                 roleplayFormDraftUndo: archiveSource.roleplayFormDraftUndo,
                 roleplayOutlineUndo: archiveSource.roleplayOutlineUndo,
+                roleplayMemoryRepair: archiveSource.roleplayMemoryRepair,
                 roleplayPanelOpen: settingsSource.roleplayPanelOpen,
                 roleplayAutoplayState: settingsSource.roleplayAutoplayState,
                 customSystemPrompt: settingsSource.customSystemPrompt,
@@ -19600,7 +21661,8 @@
             roleplay_session: roleplayData.session,
             roleplay_branches: roleplayData.branches,
             roleplay_form_draft_undo: normalizeRoleplayFormDraftReview(target.roleplayFormDraftUndo),
-            roleplay_outline_undo: normalizeRoleplayOutlineUndo(target.roleplayOutlineUndo)
+            roleplay_outline_undo: normalizeRoleplayOutlineUndo(target.roleplayOutlineUndo),
+            roleplay_memory_repair: normalizeRoleplayMemoryRepair(target.roleplayMemoryRepair)
         } : {});
     }
 
@@ -19660,7 +21722,7 @@
             !data
             || typeof data !== 'object'
             || data.schema !== CONVERSATION_SCHEMA
-            || Number(data.version) !== CONVERSATION_VERSION
+            || ![8, CONVERSATION_VERSION].includes(Number(data.version))
             || !Array.isArray(data.messages)
         ) return null;
         const archiveHistory = options.fullHistory === true
@@ -19704,6 +21766,8 @@
             roleplayBranches: roleplayData?.branches || normalizeRoleplayBranches(expandedData.roleplay_branches, conversationId),
             roleplayFormDraftUndo: normalizeRoleplayFormDraftReview(expandedData.roleplay_form_draft_undo),
             roleplayOutlineUndo: normalizeRoleplayOutlineUndo(expandedData.roleplay_outline_undo),
+            roleplayMemoryRepair: normalizeRoleplayMemoryRepair(expandedData.roleplay_memory_repair,
+                options.import ? roleplayData?.session.id : ''),
             roleplayPanelOpen: !!expandedData.roleplay_panel_open,
             roleplayAutoplayState: normalizeRoleplayAutoplayState(expandedData.roleplay_autoplay_state),
             contextSummary: String(expandedData.context_summary || '').slice(0, CONTEXT_SUMMARY_MAX_CHARS),
@@ -20140,6 +22204,7 @@
             roleplayBranches: restored.roleplayBranches,
             roleplayFormDraftUndo: restored.roleplayFormDraftUndo,
             roleplayOutlineUndo: restored.roleplayOutlineUndo,
+            roleplayMemoryRepair: restored.roleplayMemoryRepair,
             roleplayPanelOpen: restored.roleplayPanelOpen,
             roleplayAutoplayState: restored.roleplayAutoplayState,
             customSkillNames: restored.customSkillNames,
@@ -20331,9 +22396,14 @@
             const variant = message.variants?.[message.active_variant_index || 0];
             const canUndo = message.text_edit_previous
                 && message.text_edit_previous.variant_id === String(variant?.id || '');
+            const hasStoryState = !!(variant?.roleplay_session_after || message.roleplay_session_after || message.session_after);
+            const forkTitle = text(hasStoryState
+                ? 'Continue from this reply in a new route, restoring its story state. The current route is kept.'
+                : 'This reply has no saved story state. Import a backup containing its state to continue from here.');
             return `<article data-history-message="${escapeHtml(message.id)}">
   <header><span><small>#${index + 1}</small><strong>${escapeHtml(title)}</strong>${message.text_edited_at ? `<small>${escapeHtml(text('Text edited'))}</small>` : ''}</span><span>
     ${canUndo ? `<button type="button" data-history-undo="${escapeHtml(message.id)}" title="${escapeHtml(text('Undo text edit'))}" aria-label="${escapeHtml(text('Undo text edit'))}"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
+    ${message.role === 'assistant' && normalizeChatMode(runtime.chatMode) === 'roleplay' ? `<button type="button" data-history-fork="${escapeHtml(message.id)}" title="${escapeHtml(forkTitle)}" aria-label="${escapeHtml(text('Continue from here'))}" ${!hasStoryState || viewer.saving ? 'disabled' : ''}><i class="fa-solid fa-code-branch" aria-hidden="true"></i></button>` : ''}
     <button type="button" data-history-edit="${escapeHtml(message.id)}" title="${escapeHtml(text('Edit message text'))}" aria-label="${escapeHtml(text('Edit message text'))}"><i class="fa-solid fa-pen"></i></button>
   </span></header>${renderDocumentAttachments(message.documents)}<div class="describe-vlm-chat-rich-text" data-describe-vlm-message-body>${renderChatMessageText(message.content, runtime)}</div>${renderReplyOptions(message, runtime)}</article>`;
         }).join('') || `<p class="describe-vlm-history-empty">${escapeHtml(text('No matching messages'))}</p>`;
@@ -20377,6 +22447,44 @@
         draft.focus();
         conversationHistoryStatus(viewer, roleplayDictionaryText('Only this branch and reply version are edited. Story state, memories and chapters are not recalculated.'));
         return true;
+    }
+
+    async function forkConversationHistoryMessage(viewer, messageId) {
+        const runtime = conversationHistoryRuntime(viewer);
+        if (viewer.saving || viewer.edit || !isCurrentConversationRuntime(runtime)) return;
+        if (conversationHistoryBusy(runtime)) {
+            conversationHistoryStatus(viewer, roleplayDictionaryText('Wait for active work before changing story routes.'), true);
+            return;
+        }
+        const branchId = viewer.branchId;
+        const messages = conversationHistoryBranchMessages(runtime, branchId);
+        const index = messages.findIndex(message => message.id === messageId && message.role === 'assistant');
+        if (index < 0) return;
+        const message = messages[index];
+        const session = roleplaySessionAfterMessage(message, runtime.conversationId);
+        if (!session) return;
+        viewer.saving = true;
+        renderConversationHistory(viewer);
+        conversationHistoryStatus(viewer, roleplayDictionaryText('Saving the current route and restoring story state...'));
+        try {
+            const nextId = await forkRoleplayHistoryPoint(runtime, {
+                session, messages: messages.slice(0, index + 1), messageId, turnId: session.active_turn_id || message.turn_id || messageId
+            }, {
+                parentId: branchId, reason: 'history_fork',
+                guard: () => conversationHistoryViewer === viewer && viewer.dialog.isConnected
+                    && viewer.branchId === branchId && conversationHistoryBranchMessages(runtime, branchId)[index]?.id === messageId
+            });
+            if (!nextId) throw new Error('story_restore_interrupted');
+            viewer.saving = false;
+            viewer.unsavedWrite = false;
+            closeConversationHistory(viewer);
+            setConversationStatus(runtime, roleplayDictionaryText('Story state restored in a new route. The previous route is kept in the story tree.'));
+        } catch (error) {
+            conversationHistoryStatus(viewer, roleplayDictionaryText('Story state could not be restored. The current route is unchanged; check storage and try again.'), true);
+        } finally {
+            viewer.saving = false;
+            if (viewer.dialog.isConnected) renderConversationHistory(viewer);
+        }
     }
 
     function cancelConversationHistoryEdit(viewer, ask = true) {
@@ -20521,6 +22629,8 @@
             }
             const edit = event.target.closest('[data-history-edit]');
             if (edit) startConversationHistoryEdit(viewer, edit.dataset.historyEdit);
+            const fork = event.target.closest('[data-history-fork]');
+            if (fork && !fork.disabled) forkConversationHistoryMessage(viewer, fork.dataset.historyFork);
             if (event.target.closest('[data-history-edit-cancel]')) cancelConversationHistoryEdit(viewer);
             if (event.target.closest('[data-history-edit-save]')) saveConversationHistoryEdit(viewer);
             const undo = event.target.closest('[data-history-undo]');
@@ -20584,7 +22694,9 @@
             const index = conversationHistoryBranchMessages(restored, viewer.branchId).findIndex(item => item.id === messageId);
             if (index >= 0) viewer.page = Math.floor(index / CONVERSATION_HISTORY_PAGE_SIZE);
             renderConversationHistory(viewer);
-            conversationHistoryStatus(viewer, text('Only this branch and reply version are edited. Story state, memories and chapters are not recalculated.'));
+            conversationHistoryStatus(viewer, text(normalizeChatMode(restored.chatMode) === 'roleplay'
+                ? 'Edit message text, or continue from a reply using its branch button. Continuing restores the saved story state in a new route.'
+                : 'Only this branch and reply version are edited. Story state, memories and chapters are not recalculated.'));
             if (messageId && !options.preview) startConversationHistoryEdit(viewer, messageId);
             else if (messageId) Array.from(dialog.querySelectorAll('[data-history-message]'))
                 .find(node => node.dataset.historyMessage === messageId)?.scrollIntoView({ block: 'center' });
@@ -20656,6 +22768,7 @@
 
     function stopActiveConversationWork() {
         const runtime = syncCurrentRuntimeFromState();
+        stopRoleplayMemoryRepair(runtime);
         const previousConversationId = runtime.conversationId;
         const previousRequestId = runtime.activeRequestId;
         const creativeRunIds = activeCreativeRunIds(runtime.messages);
@@ -21217,7 +23330,10 @@
 
         const isCurrent = id === state.conversationId;
         const runtime = state.conversationRuntimes.get(id);
-        if (runtime) cancelConversationContextSummary(runtime);
+        if (runtime) {
+            stopRoleplayMemoryRepair(runtime);
+            cancelConversationContextSummary(runtime);
+        }
         const nextRecord = state.conversationCatalog[index + 1] || state.conversationCatalog[index - 1] || null;
         let requestId = String(runtime?.activeRequestId || '');
         cancelScheduledConversationPersist(runtime);
@@ -21281,6 +23397,7 @@
 
     async function clearConversation() {
         const previousConversationId = state.conversationId;
+        stopRoleplayMemoryRepair(currentConversationRuntime());
         clearRoleplayPanelFeedback();
         cancelConversationContextSummary(currentConversationRuntime());
         cancelScheduledConversationPersist(currentConversationRuntime());
@@ -21495,10 +23612,8 @@
             `${evidenceCount} 项状态变化的原文依据未能通过核对，未写入，请检查角色状态。`
         ) : ''].filter(Boolean).join(' ');
         if (failedCount > 0) {
-            const failedNote = localText(
-                `${failedCount} story resource task(s) were not saved after three checks. Open Roleplay settings > Story resources > Needs your review to confirm or dismiss them.`,
-                `${failedCount} 项故事资料连续三次未能写入。请打开角色设置 > 故事资源 > 待人工确认，选择确认写入或忽略。`
-            );
+            const failedNote = roleplayDictionaryText('{count} story resource tasks were not saved. Use Memory recovery in chat to summarize failed memories, or review other entries in Story resources.')
+                .replace('{count}', String(failedCount));
             if (Number(review.pending_count) > 0) return `${failedNote} ${roleplayDictionaryText('Story resource checks pending')}: ${review.pending_count}`;
             return failedNote;
         }
@@ -22181,12 +24296,18 @@
             if (targetIndex < 0 && list === messages) targetIndex = fallbackIndex;
             if (targetIndex < 0 || targetIndex >= list.length) return null;
             const targetMessage = list[targetIndex];
+            if (list !== messages && (targetMessage.content !== selected.content
+                || (targetMessage.revision || 1) !== (selected.revision || 1)
+                || String(activeRoleplayMessageVariant(targetMessage)?.id || '') !== String(activeRoleplayMessageVariant(selected)?.id || ''))) {
+                return null;
+            }
             const direct = roleplaySessionBeforeMessage(targetMessage, conversationId);
             if (targetMessage?.role === 'assistant' && direct) return direct;
 
             if (targetMessage?.role === 'user') {
                 for (let cursor = targetIndex + 1; cursor < list.length; cursor += 1) {
                     const next = list[cursor];
+                    if (next?.role === 'user') break;
                     if (next?.pending || next?.role !== 'assistant') continue;
                     const before = roleplaySessionBeforeMessage(next, conversationId);
                     if (before) return before;
@@ -22194,33 +24315,40 @@
                 }
             }
 
-            for (let cursor = Math.min(targetIndex - 1, list.length - 1); cursor >= 0; cursor -= 1) {
-                const previous = list[cursor];
-                if (previous?.pending || previous?.role !== 'assistant') continue;
-                const after = roleplaySessionAfterMessage(previous, conversationId);
-                if (after) return after;
-            }
             return direct;
         };
         const direct = findSnapshot(messages);
         if (direct) return direct;
 
-        // Compacted conversations may have lost snapshots on the live messages,
-        // while an older local branch copy still contains the same turn.
+        const archived = findSnapshot(target.archiveMessages);
+        if (archived) return archived;
         const branches = normalizeRoleplayBranches(target.roleplayBranches, conversationId).slice().reverse();
         for (const branch of branches) {
-            const snapshot = findSnapshot(branch.messages, -1);
+            if (branch.branch_id !== target.roleplaySession?.active_branch_id) continue;
+            const matching = (branch.archive_messages || branch.messages || []).find(item => item.id === selectedId);
+            if (!matching || matching.content !== selected.content
+                || (matching.revision || 1) !== (selected.revision || 1)
+                || String(activeRoleplayMessageVariant(matching)?.id || '') !== String(activeRoleplayMessageVariant(selected)?.id || '')) continue;
+            if (selected.role === 'assistant') {
+                const exact = roleplaySessionBeforeMessage(matching, conversationId);
+                if (exact) return exact;
+                continue;
+            }
+            const snapshot = findSnapshot(branch.archive_messages || branch.messages, -1);
             if (snapshot) return snapshot;
         }
         return null;
     }
 
     function roleplaySessionForHistoryRestore(snapshot, runtime = currentConversationRuntime()) {
+        stopRoleplayMemoryRepair(runtime);
         const current = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
         const restored = rebindRoleplaySessionIdentity(snapshot, runtime.conversationId, current.id);
-        // Model selection belongs to the conversation settings, not to story history.
+        // Conversation preferences stay current when restoring historical story data.
         restored.agent_routing = current.agent_routing;
-        restored.autoplay_config.guidance = current.autoplay_config.guidance;
+        restored.autoplay_config = current.autoplay_config;
+        restored.director_config = current.director_config;
+        restored.visual_config = current.visual_config;
         return restored;
     }
 
@@ -22241,6 +24369,8 @@
             active_branch_id: nextBranch,
             active_turn_id: String(turnId || '').slice(0, 200)
         }), runtime.conversationId);
+        if (runtime.roleplaySession.memory_store.maintenance_undo) runtime.roleplaySession.memory_store.maintenance_undo.branch_id = nextBranch;
+        if (runtime.roleplaySession.story_state.agenda?.undo) runtime.roleplaySession.story_state.agenda.undo.branch_id = nextBranch;
         upsertRoleplayBranchSnapshot(runtime, {
             branch_id: nextBranch,
             parent_branch_id: previousBranch,
@@ -26824,7 +28954,7 @@
         syncBusyControls(modal);
         syncConversationContextUsage(modal, runtime);
         if (!state.messages.length) {
-            log.innerHTML = `${renderChatEmptyState(runtime)}${renderQueuedConversationMessages(runtime)}`;
+            log.innerHTML = `${renderChatEmptyState(runtime)}<section class="describe-vlm-memory-repair" data-memory-repair-panel>${renderRoleplayMemoryRepairPanel(runtime)}</section>${renderQueuedConversationMessages(runtime)}`;
             renderRoleplayInlineGenerationResults(modal);
             syncCreativePresetSearch(modal);
             syncChatScrollControls(log);
@@ -26944,7 +29074,8 @@
   ${actionHtml}
   ${renderReplyOptions(message, runtime, true)}
 </div>`;
-        }).join('') + renderQueuedConversationMessages(runtime);
+        }).join('') + `<section class="describe-vlm-memory-repair" data-memory-repair-panel>${renderRoleplayMemoryRepairPanel(runtime)}</section>`
+            + renderQueuedConversationMessages(runtime);
         log.querySelectorAll('.describe-vlm-chat-reasoning').forEach(element => {
             element.open = openReasoningIds.has(element.dataset.reasoningId);
         });
@@ -26961,6 +29092,7 @@
             log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
         }
         restoreRoleplaySpeakerCardStates(log, speakerCardStates);
+        syncRoleplayMemoryRepairUI(runtime);
         syncCreativePresetSearch(modal);
         syncChatScrollControls(log);
         log.__chatScrollControls?.refresh();
@@ -30387,6 +32519,19 @@
             openRoleplayOutline(evt.target.closest('[data-roleplay-outline-open]'));
             return;
         }
+        if (evt.target.closest('[data-roleplay-memory-library]')) {
+            openRoleplayMemoryLibrary(evt.target.closest('[data-roleplay-memory-library]'));
+            return;
+        }
+        if (evt.target.closest('[data-roleplay-agenda-open]')) {
+            const opener = evt.target.closest('[data-roleplay-agenda-open]');
+            openRoleplayAgenda(opener, opener.dataset.roleplayAgendaOpen); return;
+        }
+        if (evt.target.closest('[data-roleplay-agenda-undo]')) {
+            const opener = evt.target.closest('[data-roleplay-agenda-undo]');
+            openRoleplayAgenda(opener, opener.dataset.roleplayAgendaUndo);
+            if (roleplayAgendaViewer) saveRoleplayAgenda(roleplayAgendaViewer, 'undo'); return;
+        }
         if (evt.target.closest('[data-roleplay-guidance-clear]')) {
             updateRoleplayGuidanceFromForm(modal, syncCurrentRuntimeFromState(), true);
             return;
@@ -30460,6 +32605,25 @@
             syncRoleplayControls(modal);
             return;
         }
+        const memoryRepairAction = evt.target.closest('[data-memory-repair-action]');
+        if (memoryRepairAction) {
+            const runtime = syncCurrentRuntimeFromState();
+            const action = memoryRepairAction.getAttribute('data-memory-repair-action');
+            if (action === 'start') startRoleplayMemoryRepair(runtime);
+            else if (action === 'stop') stopRoleplayMemoryRepair(runtime);
+            else if (action === 'retry-save') saveRoleplayMemoryRepair(runtime).then(() => {
+                syncRoleplayMemoryRepairUI(runtime);
+                if (isCurrentConversationRuntime(runtime)) setConversationStatus(runtime,
+                    roleplayDictionaryText('Memory recovery changes saved.'));
+                persistRoleplayBranchRemote(runtime, '', { includeHistory: true }).catch(() => {});
+            }).catch(() => {
+                if (isCurrentConversationRuntime(runtime)) setConversationStatus(runtime,
+                    roleplayDictionaryText('Memory recovery could not be saved. Keep this page open and retry saving.'), true);
+            });
+            else if (action === 'undo') undoRoleplayMemoryRepair(runtime,
+                memoryRepairAction.getAttribute('data-memory-repair-receipt'));
+            return;
+        }
         const reviewAction = evt.target.closest('[data-resource-review-action]');
         if (reviewAction) {
             const runtime = syncCurrentRuntimeFromState();
@@ -30468,6 +32632,11 @@
             const id = String(reviewAction.getAttribute('data-resource-review-id') || '');
             const item = review.failed.find((entry) => entry.id === id);
             if (!item) return;
+            if (reviewAction.getAttribute('data-resource-review-action') === 'summarize') {
+                startRoleplayMemoryRepair(runtime, id);
+                return;
+            }
+            if (runtime.memoryRepairJob?.ids.includes(id)) stopRoleplayMemoryRepair(runtime);
             if (reviewAction.getAttribute('data-resource-review-action') === 'confirm') {
                 const stores = normalizeRoleplayResourceStores(session, session.story_state, session.active_branch_id);
                 const editor = reviewAction.closest('[data-resource-review-item]')?.querySelector(`[data-resource-review-content="${CSS.escape(id)}"]`);
@@ -30485,7 +32654,14 @@
                     ), true);
                     return;
                 }
-                if (item.kind === 'memory') stores.memory_store.items.push(normalizeRoleplayMemory({ id: uid('memory'), text: content, type: 'event', chapter_id: item.chapter_id, branch_id: session.active_branch_id, turn_id: item.turn_id, source: 'manual_review' }, stores.memory_store.items.length));
+                if (item.kind === 'memory') {
+                    const knownBy = roleplayMemoryRepairHistory(runtime, item).witnesses;
+                    stores.memory_store.items.push(normalizeRoleplayMemory({
+                        id: uid('memory'), text: content, type: 'event', chapter_id: item.chapter_id,
+                        branch_id: session.active_branch_id, turn_id: item.turn_id, source: 'manual_review',
+                        known_by: knownBy, visibility: knownBy.length ? 'restricted' : 'private'
+                    }, stores.memory_store.items.length));
+                }
                 else if (item.kind === 'world_book') stores.world_book.entries.push(normalizeRoleplayWorldBookEntry({ id: uid('world'), title: content.slice(0, 120), content, source: 'manual_review' }, stores.world_book.entries.length));
                 else if (chapter) chapter.summary = [chapter.summary, content].filter(Boolean).join('\n\n');
                 session.world_book = stores.world_book;
@@ -30493,12 +32669,15 @@
                 session.chapters = stores.chapters;
             }
             review.failed = review.failed.filter((entry) => entry.id !== id);
+            if (runtime.roleplayMemoryRepair) runtime.roleplayMemoryRepair.tasks = runtime.roleplayMemoryRepair.tasks.filter(entry =>
+                !(entry.task_id === id && roleplayMemoryRepairScope(runtime, entry)));
             session.story_state.resource_review = review;
             runtime.roleplaySession = normalizeRoleplaySession(session, runtime.conversationId);
             runtime.persistenceDirty = true;
             if (isCurrentConversationRuntime(runtime)) state.roleplaySession = runtime.roleplaySession;
             scheduleConversationPersist(runtime, 'roleplay_resource_manual_review', 'soon');
             renderRoleplayResourceManager(modal, runtime);
+            syncRoleplayMemoryRepairUI(runtime);
             setConversationStatus(runtime, reviewAction.getAttribute('data-resource-review-action') === 'confirm'
                 ? localText('Resource confirmed and saved.', '已确认并保存故事资料。')
                 : localText('Resource review dismissed.', '已忽略这项待确认资料。'));

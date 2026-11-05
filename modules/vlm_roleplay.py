@@ -21,6 +21,8 @@ from typing import Any
 import modules.vlm_agent_router as vlm_agent_router
 import modules.vlm_autoplay_guidance as vlm_autoplay_guidance
 import modules.vlm_roleplay_cognition as vlm_roleplay_cognition
+import modules.vlm_roleplay_agenda as vlm_roleplay_agenda
+import modules.vlm_roleplay_memory as vlm_roleplay_memory
 import modules.vlm_roleplay_resources as vlm_roleplay_resources
 import modules.vlm_roleplay_outline as vlm_roleplay_outline
 import modules.vlm_tavern as vlm_tavern
@@ -3397,6 +3399,7 @@ def normalize_memory_item(value: Any = None, index: int = 0) -> dict[str, Any] |
         "turn_id": _text(source.get("turn_id") or source.get("source_turn_id"), 200),
         "created_at": _text(source.get("created_at"), 80) or _now(),
         "updated_at": _text(source.get("updated_at"), 80) or _now(),
+        **vlm_roleplay_memory.normalize_metadata(source),
     }
 
 
@@ -3415,11 +3418,23 @@ def normalize_memory_store(value: Any = None, legacy_memories: Any = None) -> di
             continue
         seen.add(normalized["id"])
         items.append(normalized)
+    raw_undo = _dict(source.get("maintenance_undo"))
+    undo = {}
+    if all(isinstance(raw_undo.get(key), list) and 0 < len(raw_undo[key]) <= 20 for key in ("before", "after")):
+        before_rows = [normalize_memory_item(row, index) for index, row in enumerate(raw_undo["before"])]
+        after_rows = [normalize_memory_item(row, index) for index, row in enumerate(raw_undo["after"])]
+        if (all(before_rows) and all(after_rows) and len(before_rows) == len(after_rows)
+                and len({row["id"] for row in before_rows}) == len(before_rows)
+                and {row["id"] for row in before_rows} == {row["id"] for row in after_rows}):
+            undo = {"session_id": _text(raw_undo.get("session_id"), 160),
+                    "branch_id": _text(raw_undo.get("branch_id"), 160),
+                    "action": _text(raw_undo.get("action"), 40), "before": before_rows, "after": after_rows}
     return {
         "schema": "simpai.vlm_roleplay.memory_store",
         "version": 1,
         "items": items,
         "updated_at": _text(source.get("updated_at"), 80) or _now(),
+        **({"maintenance_undo": undo} if undo and len(json.dumps(undo, ensure_ascii=False)) <= 160000 else {}),
     }
 
 
@@ -3523,6 +3538,10 @@ def default_story_state(value: Any = None) -> dict[str, Any]:
         "relationships": _list(source.get("relationships"), 80),
         "world_facts": _clean_string_list(source.get("world_facts"), 80),
         "knowledge": _normalize_knowledge(source.get("knowledge")),
+        **({"cognition": vlm_roleplay_cognition.normalize_continuity(source["cognition"])}
+           if isinstance(source.get("cognition"), dict) else {}),
+        **({"agenda": vlm_roleplay_agenda.normalize(source["agenda"])}
+           if isinstance(source.get("agenda"), dict) else {}),
         "memories": _list(source.get("memories"), None),
         "recent_turn_facts": [
             normalize_turn_facts(item)
@@ -4037,9 +4056,15 @@ def _query_roleplay_memories(
     )
     search_text = _roleplay_context_query(normalized, query, "" if include_hidden else actor_id)
     requested_memory_ids = set(re.findall(r"@(?:记忆|memory)\[([^\]\r\n]{1,160})\]", _text(query, 5000), re.I))
+    authorized = [
+        memory for memory in normalized.get("memory_store", {}).get("items", [])
+        if vlm_roleplay_memory.active(memory) and _resource_visible_to_actor(memory, actor_id, include_hidden, session=normalized)
+        and (include_hidden or memory.get("chapter_id") not in future_chapter_ids or memory["id"] in requested_memory_ids)
+    ]
+    recall_scores = vlm_roleplay_memory.recall_scores(authorized, _text(query, 5000))
     rows: list[tuple[bool, float, dict[str, Any]]] = []
     for memory in normalized.get("memory_store", {}).get("items", []):
-        if not memory.get("enabled") or not memory.get("text"):
+        if not vlm_roleplay_memory.active(memory) or not memory.get("text"):
             continue
         manually_requested = memory.get("id") in requested_memory_ids
         shared_this_turn = (
@@ -4054,7 +4079,7 @@ def _query_roleplay_memories(
         if chapter_id in future_chapter_ids and not include_hidden and not manually_requested:
             continue
         text_hits = _resource_key_hits(search_text, [memory.get("text")])
-        keyword_hits = _resource_key_hits(search_text, memory.get("keywords"))
+        keyword_hits = _resource_key_hits(search_text, [*memory.get("keywords", []), *memory.get("aliases", [])])
         question_text = _text(query, 5000).casefold()
         question_hits = sum(
             keyword.casefold() in question_text
@@ -4062,9 +4087,10 @@ def _query_roleplay_memories(
             if len(keyword) >= 2
         )
         importance = _bounded_float(memory.get("importance"), 0.5)
-        if not manually_requested and not text_hits and not keyword_hits and not memory.get("pinned") and importance < 0.8:
+        recall = recall_scores.get(memory["id"], 0)
+        if not manually_requested and not text_hits and not keyword_hits and not recall and not memory.get("pinned") and importance < 0.8:
             continue
-        score = importance * 10 + text_hits * 2 + keyword_hits * 5 + question_hits * 40
+        score = importance * 10 + text_hits * 2 + keyword_hits * 5 + question_hits * 40 + recall
         if memory.get("pinned"):
             score += 20
         if chapter_id and chapter_id == active_chapter_id:
@@ -4191,6 +4217,8 @@ def state_summary(session: Any) -> dict[str, Any]:
 def _visible_state(session: Any, knowledge_id: str = "", visual: bool = False) -> dict[str, Any]:
     normalized = normalize_roleplay_session(session)
     state = copy.deepcopy(normalized["story_state"])
+    state.pop("cognition", None)
+    state.pop("agenda", None)
     state["knowledge"] = {} if visual else {knowledge_id: state.get("knowledge", {}).get(knowledge_id, [])}
     # Filter persistent resource stores independently from the raw state snapshot.
     state["world_facts"] = []
@@ -4872,6 +4900,13 @@ def _context_compact_entity_payload(value: Any, limit: int) -> str:
 
 
 def _context_compact_required_block(block_id: str, data: Any, limit: int) -> str:
+    if block_id == "agenda":
+        rows = _list(_dict(data).get("items"), max(1, min(8, limit // 130)))
+        per_item = max(80, (limit - 50) // max(1, len(rows)))
+        return _context_text("Known obligations; plans are not completion.\n" + "\n".join(
+            _context_text(f"{row['id']} [{row['status']}] {row['title']} | {row['condition']} | {row['note']}", per_item)
+            for row in rows
+        ), limit)
     if block_id == "scene":
         source = _dict(data)
         scene = _dict(source.get("scene"))
@@ -4914,6 +4949,7 @@ def _fit_required_context_blocks(specs: list[tuple[str, Any, int]], budget: int)
         "speaker": 1.85,
         "player": 1.15,
         "present_characters": 1.45,
+        "agenda": 1.2,
     }
     count = max(1, len(specs))
     base = min(96, max(64, budget // count // 3))
@@ -5093,6 +5129,16 @@ def build_roleplay_context(
                 "name": _text(normalized.get("persona", {}).get("name"), 200),
             }
         required_specs.append(("player", player_payload, 1))
+
+    if private_audience and (reentry := vlm_roleplay_cognition.reentry_material(normalized, actor_id)):
+        required_specs.append(("reentry", reentry, 1))
+    agenda_material = vlm_roleplay_agenda.material(normalized, actor_id, private=private_audience, query=_text(query, 5000))
+    if agenda_material:
+        required_specs.append(("agenda", {
+            "items": agenda_material,
+            "rule": "Track only your known obligations. A promise or plan is not its completion. "
+                    "Respect player refusal and current presence; do not repeat confirmation or invent elapsed time.",
+        }, len(agenda_material)))
 
     character_rows = []
     for character_id in present_ids:
@@ -5281,7 +5327,9 @@ def build_roleplay_context(
         memory = memory_catalog.get(memory_id)
         if memory is None:
             reason = "not_found"
-        elif not memory.get("enabled"):
+        elif memory.get("status") in {"invalid", "superseded"}:
+            reason = memory["status"]
+        elif not vlm_roleplay_memory.active(memory):
             reason = "disabled"
         elif not memory.get("text"):
             reason = "empty"
@@ -5335,6 +5383,8 @@ def roleplay_context_prompt_sections(context: Any) -> list[str]:
         "world_book": "Triggered world-book entries",
         "memories": "Relevant long-term memories",
         "outline_direction": "Author-approved direction for your current next attempt, not established facts",
+        "reentry": "Your last known information and directly visible situation on returning",
+        "agenda": "Known story obligations, tasks and unresolved clues",
     }
     sections = []
     for block in source.get("blocks", []):
@@ -5903,6 +5953,12 @@ def build_director_prompt(
             "reasons": [],
         },
         "warnings": [],
+        "story_items": [{
+            "op": "add", "id": "",
+            "kind": "promise", "title": "", "condition": "",
+            "participant_ids": [], "known_by": [], "status": "pending",
+            "note": "", "evidence": "exact quote from the latest user message or reply",
+        }],
     }
     return "\n\n".join(
         [
@@ -5910,6 +5966,14 @@ def build_director_prompt(
             f"Return JSON only. Natural-language state_text and evidence use {reply_language}.",
             "Record only facts explicitly happening in the latest exchange or directly implied by an explicit action.",
             "Do not rewrite the full state. Return incremental patches.",
+            "Use story_items to track concrete promises, accepted tasks and unresolved clues established in this exchange. "
+            "Do not turn every conversation into a task. On add include a short title, kind, participant_ids, known_by, "
+            "condition and pending/active status. For existing items use op=update with its exact agenda id, status, "
+            "known_by and evidence; never replace its definition, participants or knowledge scope. "
+            "A renewed promise, question, wish, refusal to act now or future plan is not completion. "
+            "Record completed/cancelled only when the latest evidence establishes that result. "
+            "Copy exact configured actor IDs and quote evidence verbatim. Limit known_by to actual witnesses; "
+            "an absent person does not automatically learn a progress change. Use story_items=[] when nothing changed.",
             "Patch target attribution is mandatory: choose the entity whose body, mind, position, action, inventory, or condition actually changed. The acting or speaking entity and the affected entity may be different.",
             "Every state patch must use target_entity_type, target_entity_id, field, value, and evidence. Copy target_entity_id exactly from the entity attribution map. Do not use a guessed path, a character name in place of an id, or a generic current-character target.",
             "Use target_entity_type=player with the exact player id for player_state changes, target_entity_type=character with the exact configured character id for character changes, and target_entity_type=scene with target_entity_id=scene for scene changes.",
@@ -6705,6 +6769,7 @@ def parse_director_response(text: Any, session: Any = None) -> dict[str, Any]:
         "turn_facts": normalize_turn_facts(data.get("turn_facts")),
         "resource_signals": normalize_director_resource_signals(data.get("resource_signals"), session),
         "outline_progress": data.get("outline_progress") if isinstance(data.get("outline_progress"), dict) else None,
+        "story_items": _list(data.get("story_items"), 6),
         "warnings": warnings,
     }
 
@@ -10584,11 +10649,13 @@ def apply_director_result(
     attribution_text: Any = "",
     numeric_source_text: Any = "",
     instruction_text: Any = "",
+    agenda_assistant_reply: Any = None,
 ) -> dict[str, Any]:
     normalized = normalize_roleplay_session(session)
     result = copy.deepcopy(director_result) if isinstance(director_result, dict) else {}
     state = normalized["story_state"]
     knowledge_witnesses = vlm_roleplay_cognition.observer_ids(normalized)
+    previous_scene = copy.deepcopy(state.get("scene") or {})
     locked_fields = _clean_string_list(normalized["character"].get("locked_fields"), 40)
     applied: list[dict[str, Any]] = []
     resource_changes: list[dict[str, Any]] = []
@@ -10608,6 +10675,7 @@ def apply_director_result(
         result["chapter_update"] = {}
         result["chapter_summary"] = ""
         result["turn_facts"] = {}
+        result["story_items"] = []
         warnings.append("director_read_only_turn")
     elif incremental_runtime_state and _director_instruction_is_non_fact_command(instruction_text):
         patches = []
@@ -10618,6 +10686,7 @@ def apply_director_result(
         result["chapter_update"] = {}
         result["chapter_summary"] = ""
         warnings.append("director_non_fact_instruction_ignored")
+        result["story_items"] = []
     patches = _director_reuse_character_target_ids(
         normalized,
         patches,
@@ -10863,13 +10932,15 @@ def apply_director_result(
             (index for index, item in enumerate(memories) if item.get("id") == memory_id),
             -1,
         )
-        if existing_index < 0 or memories[existing_index].get("locked"):
+        if existing_index < 0 or memories[existing_index].get("locked") or memories[existing_index].get("status", "active") != "active":
             continue
         removed = memories.pop(existing_index)
         resource_changes.append({"op": "remove", "kind": "memory", "id": removed.get("id")})
     for memory in _list(result.get("memories"), 20):
         if not isinstance(memory, dict):
             continue
+        memory = {key: value for key, value in memory.items()
+                  if key not in {"status", "merged_into", "invalid_reason", "aliases", "sources", "subject_ids"}}
         existing_index = next(
             (index for index, item in enumerate(memories)
              if (memory.get("id") and item.get("id") == memory["id"])
@@ -10877,6 +10948,9 @@ def apply_director_result(
             -1,
         )
         existing = memories[existing_index] if existing_index >= 0 else {}
+        if existing and existing.get("status", "active") != "active":
+            warnings.append("director_inactive_memory_preserved")
+            continue
         payload = {**existing, **memory}
         if existing_index < 0 and incremental_runtime_state and not vlm_roleplay_cognition.resolve_actor_ids(
             normalized, payload.get("known_by") or payload.get("visible_to") or [],
@@ -10924,6 +10998,20 @@ def apply_director_result(
         for entry in normalized["world_book"]["entries"]
         if entry.get("enabled") and entry.get("mode") == "always" and entry.get("content")
     ][:80]
+    if not read_only_turn:
+        agenda_changes, agenda_warnings = vlm_roleplay_agenda.apply_updates(
+            normalized, result.get("story_items"), turn_id=turn_id, witnesses=knowledge_witnesses,
+            user_message=_text(instruction_text, 20000),
+            assistant_reply=(_text(agenda_assistant_reply, 20000) if isinstance(agenda_assistant_reply, str)
+                             else _text(attribution_text, 20000) or _text(numeric_source_text, 20000)),
+            speaker_id=_text(speaker_id, 160), message_ids=_clean_string_list(evidence_message_ids, 20),
+        )
+        resource_changes.extend(agenda_changes)
+        warnings.extend(agenda_warnings)
+        vlm_roleplay_cognition.record_continuity(
+            normalized, knowledge_witnesses, previous_scene, turn_facts.get("observations", []),
+            turn_id, _clean_string_list(evidence_message_ids, 20),
+        )
     normalized["story_state"] = normalize_story_state(state)
     state = normalized["story_state"]
     before = normalized["state_version"]
@@ -11479,6 +11567,7 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
             "chapter_summary": chapter_summary,
             "turn_facts": turn_facts,
             "resource_signals": resource_signals,
+            "story_items": _list(payload.get("story_items"), 6) if action in {"transition_scene", "update_scene"} else [],
             "warnings": _clean_string_list(payload.get("warnings"), 30),
         },
         turn_id=turn_id,
@@ -11489,6 +11578,7 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
         attribution_text=director_attribution.get("text"),
         numeric_source_text=numeric_source_text,
         instruction_text=instruction_text,
+        agenda_assistant_reply=director_attribution.get("agenda_assistant_reply"),
     )
     receipt = {
         "action_id": action_id,
@@ -12805,7 +12895,8 @@ def save_roleplay_session(session: Any, user_did: Any = "", root: Any = None) ->
     normalized = normalize_roleplay_session(session)
     base = roleplay_user_root(user_did, root)
     session_dir = _safe_child(base, "sessions", normalized["id"])
-    _atomic_write_json(session_dir / "session.json", normalized)
+    with _BRANCH_STORAGE_LOCK:
+        _atomic_write_json(session_dir / "session.json", normalized)
     return normalized
 
 
@@ -13034,6 +13125,212 @@ def delete_roleplay_branch(
     return removed
 
 
+def _prune_roleplay_history_nodes(messages: list) -> list:
+    """Release unused compressed states after reply variants are removed."""
+    owners = [index for index, message in enumerate(messages) if isinstance(message, dict) and message.get("roleplay_state_history")]
+    if not owners:
+        return messages
+    if len(owners) != 1:
+        raise ValueError("invalid_story_history_bundle")
+    index = owners[0]
+    bundle = _dict(messages[index].get("roleplay_state_history"))
+    if bundle.get("schema") != "simpai.vlm_roleplay.state_history" or bundle.get("version") != 1:
+        return messages
+    nodes = bundle.get("nodes")
+    if not isinstance(nodes, dict) or len(nodes) > 100000:
+        raise ValueError("invalid_story_history_nodes")
+    needed: set[str] = set()
+
+    def retain(node_id: Any, visiting: set[str]) -> None:
+        if not isinstance(node_id, str) or node_id not in nodes or node_id in visiting or len(visiting) >= 16:
+            raise ValueError("invalid_story_history_reference")
+        if node_id in needed:
+            return
+        node = _dict(nodes[node_id])
+        if node.get("kind") == "delta":
+            retain(node.get("base"), visiting | {node_id})
+        elif node.get("kind") != "checkpoint":
+            raise ValueError("invalid_story_history_node")
+        needed.add(node_id)
+
+    def visit(message: Any) -> None:
+        if not isinstance(message, dict):
+            return
+        for suffix in ("before", "after"):
+            reference = message.get(f"roleplay_history_{suffix}")
+            if reference is not None:
+                retain(_dict(reference).get("ref"), set())
+        for variant in message.get("variants", []) if isinstance(message.get("variants"), list) else []:
+            visit(variant)
+
+    for message in messages:
+        visit(message)
+    compact = dict(messages[index])
+    if needed:
+        compact["roleplay_state_history"] = {**bundle, "nodes": {key: value for key, value in nodes.items() if key in needed}}
+    else:
+        compact.pop("roleplay_state_history", None)
+    return messages[:index] + [compact] + messages[index + 1:]
+
+
+def prune_roleplay_reply_variants(messages: Any, removed_ids: set[str], *, current_only: bool = False) -> tuple[list, int]:
+    """Keep the selected reply and its snapshots while releasing discarded alternatives."""
+    result = []
+    removed = 0
+    for message in messages if isinstance(messages, list) else []:
+        if not isinstance(message, dict) or not isinstance(message.get("variants"), list):
+            result.append(message)
+            continue
+        variants = message["variants"]
+        try:
+            active = max(0, min(len(variants) - 1, int(message.get("active_variant_index") or 0)))
+        except (ValueError, TypeError, OverflowError):
+            active = 0
+        kept = []
+        next_active = 0
+        for index, variant in enumerate(variants):
+            branch = str(
+                _dict(variant).get("branch_id")
+                or _dict(_dict(variant).get("roleplay_session_after")).get("active_branch_id")
+                or _dict(_dict(variant).get("roleplay_history_after")).get("active_branch_id")
+                or ""
+            )
+            if index != active and (current_only or branch in removed_ids):
+                removed += 1
+                continue
+            if index == active:
+                next_active = len(kept)
+            kept.append(variant)
+        result.append({**message, "variants": kept, "active_variant_index": next_active})
+    return _prune_roleplay_history_nodes(result), removed
+
+
+def plan_roleplay_branch_cleanup(
+    session_id: Any, active_branch_id: Any, mode: str = "ancestors", client_branches: Any = None,
+    user_did: Any = "", root: Any = None,
+) -> dict[str, Any]:
+    if mode not in {"ancestors", "current"}:
+        raise ValueError("invalid_cleanup_mode")
+    active = _branch_id(active_branch_id)
+    session_dir = _safe_child(roleplay_user_root(user_did, root), "sessions", _id(session_id, "roleplay_session"))
+    with _BRANCH_STORAGE_LOCK:
+        current = load_roleplay_session(session_id, user_did=user_did, root=root)
+        if not current or current.get("active_branch_id") != active:
+            raise ValueError("cleanup_story_changed")
+        rows = {
+            _branch_id(row["branch_id"]): _roleplay_branch_metadata(row, _branch_id(row["branch_id"]))
+            for row in client_branches if isinstance(row, dict) and row.get("branch_id")
+        } if isinstance(client_branches, list) else {}
+        for row in list_roleplay_branches(session_id, user_did=user_did, root=root):
+            key = row["branch_id"]
+            metadata = _roleplay_branch_metadata(row, key)
+            rows[key] = {**metadata, "parent_branch_id": metadata["parent_branch_id"] or rows.get(key, {}).get("parent_branch_id", "")}
+        rows.setdefault(active, {"branch_id": active, "parent_branch_id": ""})
+        keep = {active}
+        cursor = active
+        while mode == "ancestors":
+            cursor = str(rows.get(cursor, {}).get("parent_branch_id") or "")
+            if not cursor or cursor in keep or cursor not in rows:
+                break
+            keep.add(cursor)
+        removed = sorted(set(rows) - keep)
+        files = []
+        for folder, patterns in (("branches", ("*.json", "*.jsonl")), ("branch_history", ("*.json",))):
+            for pattern in patterns:
+                for path in sorted((session_dir / folder).glob(pattern)):
+                    stat = path.stat()
+                    files.append((folder, path.name, stat.st_size, stat.st_mtime_ns))
+        state_path = session_dir / "session.json"
+        stat = state_path.stat()
+        fingerprint = hashlib.sha256(json.dumps({
+            "active": active, "mode": mode, "rows": rows, "files": files,
+            "session": (stat.st_size, stat.st_mtime_ns),
+        }, sort_keys=True, ensure_ascii=True).encode("utf-8")).hexdigest()
+        return {
+            "active_branch_id": active, "mode": mode, "keep_ids": sorted(keep), "removed_ids": removed,
+            "fingerprint": fingerprint,
+            "server_bytes": sum(size for _, name, size, _ in files if Path(name).stem in removed),
+        }
+
+
+def cleanup_roleplay_branches(
+    session_id: Any, active_branch_id: Any, mode: str, client_branches: Any, fingerprint: Any,
+    request_id: Any, user_did: Any = "", root: Any = None,
+) -> dict[str, Any]:
+    session_dir = _safe_child(roleplay_user_root(user_did, root), "sessions", _id(session_id, "roleplay_session"))
+    request_key = _id(request_id, "cleanup")
+    receipt_path = _safe_child(session_dir, "cleanup_receipts", f"{request_key}.json")
+    with _BRANCH_STORAGE_LOCK:
+        if receipt_path.is_file():
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            if receipt.get("fingerprint") != fingerprint or receipt.get("mode") != mode:
+                raise ValueError("cleanup_story_changed")
+            return receipt
+        plan = plan_roleplay_branch_cleanup(
+            session_id, active_branch_id, mode, client_branches, user_did=user_did, root=root
+        )
+        if not fingerprint or fingerprint != plan["fingerprint"]:
+            raise ValueError("cleanup_story_changed")
+        removed = set(plan["removed_ids"])
+        rewritten = []
+        variant_count = 0
+        for branch in plan["keep_ids"]:
+            record_path = session_dir / "branches" / f"{branch}.json"
+            if not record_path.is_file():
+                continue
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            next_record = copy.deepcopy(record)
+            metadata = _dict(next_record.get("_branch"))
+            if metadata.get("parent_branch_id") in removed or (mode == "current" and branch != "main"):
+                next_record["_branch"] = {**metadata, "parent_branch_id": "", "fork_turn_id": "", "reason": "branch_cleanup"}
+            history_path = session_dir / "branch_history" / f"{branch}.json"
+            if history_path.is_file():
+                history = json.loads(history_path.read_text(encoding="utf-8"))
+                messages, count = prune_roleplay_reply_variants(
+                    history.get("messages"), removed, current_only=mode == "current"
+                )
+                variant_count += count
+                if count:
+                    headers = {
+                        "revision": uuid.uuid4().hex, "active_turn_id": history.get("active_turn_id", ""),
+                        "message_count": len(messages),
+                    }
+                    rewritten.append((history_path, history, {**headers, "messages": messages}))
+                    next_record["_history"] = headers
+            if next_record != record:
+                rewritten.append((record_path, record, next_record))
+        transaction = _safe_child(session_dir, f".branch_cleanup_{uuid.uuid4().hex}")
+        staged = []
+        written = []
+        result = {**plan, "request_id": request_key, "removed_variants": variant_count}
+        try:
+            transaction.mkdir(parents=True)
+            for branch in plan["removed_ids"]:
+                for folder, suffix in (("branches", ".json"), ("branches", ".jsonl"), ("branch_history", ".json")):
+                    source = _safe_child(session_dir, folder, f"{branch}{suffix}")
+                    if source.exists():
+                        target = transaction / str(len(staged))
+                        source.replace(target)
+                        staged.append((source, target))
+            for path, original, updated in rewritten:
+                _atomic_write_json(path, updated)
+                written.append((path, original))
+            _atomic_write_json(receipt_path, result)
+        except Exception:
+            for path, original in reversed(written):
+                _atomic_write_json(path, original)
+            for source, target in reversed(staged):
+                target.replace(source)
+            raise
+        finally:
+            if receipt_path.is_file():
+                for _, path in staged:
+                    path.unlink(missing_ok=True)
+            if transaction.exists() and not any(transaction.iterdir()):
+                transaction.rmdir()
+        return result
+
+
 def save_roleplay_character(character: Any, user_did: Any = "", root: Any = None) -> dict[str, Any]:
     from modules.character_storage import snapshot
 
@@ -13191,6 +13488,8 @@ __all__ = [
     "load_roleplay_branch_record",
     "list_roleplay_branches",
     "delete_roleplay_branch",
+    "plan_roleplay_branch_cleanup",
+    "cleanup_roleplay_branches",
     "save_roleplay_character",
     "load_roleplay_character",
     "list_roleplay_characters",

@@ -275,6 +275,9 @@ def normalize_review(value):
             "reason": _text(raw.get("reason"), 100),
             "failure_reason": _text(raw.get("failure_reason"), 100),
             "source": _text(raw.get("source"), MAX_RESOURCE_SOURCE_CHARS),
+            "source_turn_ids": list(dict.fromkeys(
+                _text(item, 200) for item in raw.get("source_turn_ids", []) if _text(item, 200)
+            )) if isinstance(raw.get("source_turn_ids"), list) else [],
             "attempt_count": max(0, min(MAX_RESOURCE_TASK_ATTEMPTS, int(raw.get("attempt_count") or 0)))
                              if str(raw.get("attempt_count") or 0).isdigit() else MAX_RESOURCE_TASK_ATTEMPTS,
         })

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import re
 from typing import Any
 
@@ -174,3 +175,126 @@ def visible_turn_fact(value: dict[str, Any], session: dict[str, Any], actor_id: 
     if value.get("known_by") and resource_is_visible(value, session, actor_id):
         return copy.deepcopy(value)
     return {}
+
+
+def normalize_continuity(value: Any) -> dict[str, Any]:
+    source = value if isinstance(value, dict) else {}
+    def index(value: Any) -> int:
+        try:
+            return max(0, min(1000000000, int(value or 0)))
+        except (TypeError, ValueError, OverflowError):
+            return 0
+
+    def strings(value: Any, limit: int, length: int) -> list[str]:
+        return list(dict.fromkeys(item[:length] for item in value if isinstance(item, str)))[:limit] if isinstance(value, list) else []
+
+    events = []
+    seen = set()
+    for row in source.get("events", []) if isinstance(source.get("events"), list) else []:
+        if not isinstance(row, dict) or not isinstance(row.get("id"), str) or not row["id"] or row["id"][:160] in seen:
+            continue
+        seen.add(row["id"][:160])
+        events.append({
+            "id": str(row["id"])[:160], "text": str(row.get("text") or "")[:700],
+            "evidence": str(row.get("evidence") or "")[:700],
+            "known_by": strings(row.get("known_by"), 21, 160),
+            "turn_id": str(row.get("turn_id") or "")[:200], "branch_id": str(row.get("branch_id") or "")[:160],
+            "channel": row.get("channel") if isinstance(row.get("channel"), str) and row["channel"] in {"observed", "manual", "reported"} else "observed",
+            "message_ids": strings(row.get("message_ids"), 20, 240),
+        })
+    presence = {}
+    for key, row in source.get("presence", {}).items() if isinstance(source.get("presence"), dict) else []:
+        if not isinstance(row, dict):
+            continue
+        item = {"is_present": bool(row.get("is_present"))}
+        for name in ("last_seen_turn_id", "entry_turn_id"):
+            if name in row:
+                item[name] = str(row[name] or "")[:200]
+        for name in ("last_seen_index", "entry_index"):
+            if name in row:
+                item[name] = index(row[name])
+        if isinstance(row.get("departure"), dict):
+            departure = row["departure"]
+            item["departure"] = {"turn_id": str(departure.get("turn_id") or "")[:200],
+                "index": index(departure.get("index")), "location": str(departure.get("location") or "")[:500],
+                "known_facts": strings(departure.get("known_facts"), 20, 700)}
+        presence[str(key)[:160]] = item
+    return {
+        "version": 1, "turn_id": str(source.get("turn_id") or "")[:200],
+        "branch_id": str(source.get("branch_id") or "")[:160],
+        "turn_index": index(source.get("turn_index")),
+        "events": events,
+        "presence": presence,
+    }
+
+
+def record_continuity(
+    session: dict[str, Any], previous_observers: list[str], previous_scene: dict[str, Any],
+    observations: list[dict[str, Any]], turn_id: str, message_ids: list[str],
+) -> None:
+    if not turn_id:
+        return
+    state = session["story_state"]
+    data = normalize_continuity(state.get("cognition"))
+    branch = session.get("active_branch_id") or "main"
+    if (data["turn_id"], data["branch_id"]) != (turn_id, branch):
+        data["turn_index"] += 1
+    data["turn_id"], data["branch_id"] = turn_id, branch
+    index = data["turn_index"]
+    current = set(observer_ids(session))
+    previous = set(previous_observers)
+    for actor_id in dict.fromkeys([*(session.get("characters") or {}), (session.get("persona") or {}).get("id")]):
+        if not actor_id:
+            continue
+        record = data["presence"].setdefault(actor_id, {})
+        if actor_id in previous and actor_id not in current:
+            record["departure"] = {
+                "turn_id": turn_id, "index": index, "location": previous_scene.get("location", ""),
+                "known_facts": list(state.get("knowledge", {}).get(actor_id) or [])[-20:],
+            }
+        if actor_id in current and actor_id not in previous:
+            record["entry_turn_id"], record["entry_index"] = turn_id, index
+        if actor_id in current:
+            record["last_seen_turn_id"], record["last_seen_index"] = turn_id, index
+        record["is_present"] = actor_id in current
+    existing = {row["id"]: row for row in data["events"]}
+    for observation in observations:
+        identifier = "knowledge_" + hashlib.sha256(
+            f"{branch}\n{turn_id}\n{observation['text']}\n{observation['evidence']}".encode("utf-8")
+        ).hexdigest()[:24]
+        if identifier in existing:
+            existing[identifier]["known_by"] = list(dict.fromkeys([*existing[identifier]["known_by"], *observation["known_by"]]))
+        else:
+            row = {
+                "id": identifier, "text": observation["text"], "evidence": observation["evidence"],
+                "known_by": list(observation["known_by"]), "turn_id": turn_id, "branch_id": branch,
+                "channel": "observed", "message_ids": list(message_ids),
+            }
+            data["events"].append(row)
+            existing[identifier] = row
+    state["cognition"] = data
+
+
+def reentry_material(session: dict[str, Any], actor_id: str) -> dict[str, Any] | None:
+    data = (session.get("story_state") or {}).get("cognition") or {}
+    record = (data.get("presence") or {}).get(actor_id) or {}
+    departure = record.get("departure") or {}
+    if actor_id not in observer_ids(session) or not departure or record.get("entry_index") is None:
+        return None
+    if int(data.get("turn_index") or 0) - int(record["entry_index"]) > 1:
+        return None
+    state = session["story_state"]
+    scene = state.get("scene") or {}
+    return {
+        "last_seen_turn_id": departure.get("turn_id", ""),
+        "last_known_location": str(departure.get("location") or "")[:160],
+        "last_known_facts": [str(item)[:180] for item in list(departure.get("known_facts") or [])[-4:]],
+        "away_turns": max(0, int(record["entry_index"]) - int(departure.get("index") or 0)),
+        "visible_now": {
+            "location": str(scene.get("location") or "")[:500], "time": str(scene.get("time") or "")[:200],
+            "people": [{"id": key, "name": str(session["characters"][key].get("name") or key)[:100]}
+                       for key in scene.get("present_character_ids") or []
+                       if key in session.get("characters", {}) and key != actor_id][:6],
+        },
+        "rule": "You did not witness events while absent. Current appearances do not reveal their causes. Do not infer elapsed days.",
+    }

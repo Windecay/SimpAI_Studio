@@ -24967,6 +24967,82 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   scroll-padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
 
+/* Give settings editors the visible phone viewport while the keyboard is open. */
+.describe-vlm-chat-panel:is([data-describe-vlm-settings-editing="roleplay"], [data-describe-vlm-settings-editing="general"]) > :is(
+  .describe-vlm-chat-head, .describe-vlm-chat-roleplay-strip, .describe-vlm-chat-status, .describe-vlm-chat-compose
+) {
+  display: none !important;
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-settings-editing="roleplay"] .describe-vlm-chat-roleplay-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-settings-editing="roleplay"] .describe-vlm-chat-roleplay-panel-head {
+  min-height: 0;
+  padding: 4px 8px;
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-settings-editing="roleplay"] .describe-vlm-chat-roleplay-panel-actions {
+  padding: 5px 8px max(5px, env(safe-area-inset-bottom));
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-settings-editing="roleplay"] :is(
+  [data-describe-vlm-chat-roleplay-drawer-handle],
+  .describe-vlm-chat-roleplay-panel-actions [data-describe-vlm-chat-roleplay-play],
+  .describe-vlm-chat-roleplay-panel-actions [data-describe-vlm-chat-roleplay-step]
+) {
+  display: none !important;
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-settings-editing="roleplay"] .describe-vlm-chat-roleplay-resource-navigation {
+  position: static;
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-settings-editing="roleplay"] .describe-vlm-chat-roleplay-resource-list {
+  max-height: max(80px, calc(var(--describe-vlm-mobile-drawer-height) - 110px));
+  scroll-padding-block: 8px;
+}
+
+.describe-vlm-chat-panel[data-describe-vlm-settings-editing="roleplay"] .describe-vlm-chat-roleplay-panel-body textarea {
+  max-height: max(68px, calc(var(--describe-vlm-mobile-drawer-height) - 110px));
+}
+
+.describe-vlm-memory-library[data-describe-vlm-keyboard-open="1"],
+.describe-vlm-memory-correction[data-describe-vlm-keyboard-open="1"] {
+  position: fixed;
+  top: var(--describe-vlm-editor-top);
+  left: var(--describe-vlm-editor-left);
+  right: auto;
+  bottom: auto;
+  width: var(--describe-vlm-editor-width);
+  height: var(--describe-vlm-editor-height);
+  max-width: var(--describe-vlm-editor-width);
+  max-height: var(--describe-vlm-editor-height);
+  margin: 0;
+}
+
+.describe-vlm-history-dialog.describe-vlm-memory-library[open][data-describe-vlm-keyboard-open="1"][data-memory-library-pane="detail"] {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.describe-vlm-memory-library[data-describe-vlm-keyboard-open="1"][data-memory-library-pane="detail"] :is(
+  .describe-vlm-memory-library-tools, .describe-vlm-memory-library-nav
+) {
+  display: none;
+}
+
+.describe-vlm-memory-library[data-describe-vlm-keyboard-open="1"] :is(.describe-vlm-history-head, footer),
+.describe-vlm-memory-correction[data-describe-vlm-keyboard-open="1"] :is(header, footer) {
+  padding: 6px 10px;
+}
+
+.describe-vlm-memory-library[data-describe-vlm-keyboard-open="1"] textarea,
+.describe-vlm-memory-correction[data-describe-vlm-keyboard-open="1"] textarea {
+  min-height: 68px;
+  max-height: max(68px, calc(var(--describe-vlm-editor-height) - 110px));
+}
+
 .describe-vlm-chat-roleplay-strip {
   position: relative;
   z-index: 2;
@@ -25870,6 +25946,19 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   overflow-wrap: anywhere;
 }
 
+.describe-vlm-chat-roleplay-branch-section .describe-vlm-story-tree-open {
+  min-height: 36px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--describe-chat-text, #f3f4f8);
+}
+.describe-vlm-chat-roleplay-branch-section .describe-vlm-story-tree-open > i { font-size: 13px; }
+.describe-vlm-chat-roleplay-branch-section .describe-vlm-story-tree-open:hover {
+  background: color-mix(in srgb, var(--describe-chat-button, #3b3d46) 82%, var(--describe-chat-text, white));
+}
+
 .describe-vlm-chat-roleplay-branch-actions {
   display: flex;
   justify-content: flex-end;
@@ -25973,7 +26062,7 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 .describe-vlm-story-tree [data-story-tree-detail] { overflow: auto; overscroll-behavior: contain; padding: 16px; overflow-wrap: anywhere; }
 .describe-vlm-story-tree-detail-head { display: flex; align-items: flex-start; flex-direction: column; gap: 4px; margin-bottom: 14px; }
 .describe-vlm-story-tree-detail-head > span { font-size: 11px; color: var(--describe-chat-muted, #a4a8b4); }
-.describe-vlm-story-tree-detail-head > strong { font-size: 16px; line-height: 1.45; }
+.describe-vlm-story-tree-detail-head > strong { font-size: 14px; line-height: 1.45; }
 .describe-vlm-story-tree dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 12px 0; }
 .describe-vlm-story-tree dt,
 .describe-vlm-story-tree dd { margin: 0; }
@@ -25993,6 +26082,27 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
 .describe-vlm-story-tree > footer[data-error="true"] { color: #e7a892; }
 .describe-vlm-story-tree-empty { padding: 16px 8px; color: var(--describe-chat-muted, #a4a8b4); }
 .describe-vlm-story-tree-mobile-tabs { display: none; }
+.describe-vlm-story-tree-cleanup-scopes {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--describe-chat-line, #494c56);
+  border-radius: 5px;
+}
+.describe-vlm-story-tree-cleanup-scopes legend { padding: 0 5px; font-size: 12px; }
+.describe-vlm-story-tree-cleanup-scopes label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.describe-vlm-story-tree-cleanup-scopes input[type="radio"] {
+  flex: 0 0 15px; width: 15px; height: 15px; margin: 3px 0 0; padding: 0;
+  accent-color: #e8a96e;
+}
+.describe-vlm-story-tree-cleanup-scopes small { display: block; margin-top: 3px; font-size: 11px; }
+.describe-vlm-story-tree .describe-vlm-story-tree-cleanup-list {
+  max-height: 160px; overflow: auto; overscroll-behavior: contain;
+  padding: 6px 10px; border-inline-start: 2px solid var(--describe-chat-line, #494c56);
+}
+.describe-vlm-story-tree-cleanup-list li { padding-block: 3px; overflow-wrap: anywhere; }
+.describe-vlm-story-tree [data-story-tree-action="cleanup-apply"] { color: #efb6a5; border-color: #8c6256; }
 @media (max-width: 640px) {
   .describe-vlm-story-tree { width: calc(100vw - 12px); height: calc(100dvh - 16px); }
   .describe-vlm-story-tree[open] { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
@@ -26192,6 +26302,58 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   overflow-wrap: anywhere;
   overscroll-behavior: contain;
 }
+
+.describe-vlm-memory-repair {
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.describe-vlm-memory-repair[hidden],
+.describe-vlm-memory-repair:empty { display: none; }
+.describe-vlm-memory-repair-head,
+.describe-vlm-memory-repair-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.describe-vlm-memory-repair-head { justify-content: space-between; }
+.describe-vlm-memory-repair-head strong { font: inherit; font-weight: 600; }
+.describe-vlm-memory-repair p { margin: 5px 0; color: var(--body-text-color-subdued, #a1a1aa); }
+.describe-vlm-memory-repair p.is-error { color: #dfaa74; }
+.describe-vlm-memory-repair button,
+.describe-vlm-memory-repair-buttons button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 5px;
+  background: rgba(128, 128, 128, 0.12);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.describe-vlm-memory-repair button:hover,
+.describe-vlm-memory-repair-buttons button:hover { background: rgba(128, 128, 128, 0.23); }
+.describe-vlm-memory-repair button:disabled,
+.describe-vlm-memory-repair-buttons button:disabled { opacity: 0.5; cursor: default; }
+.describe-vlm-memory-repair summary { cursor: pointer; padding: 6px 0; }
+.describe-vlm-memory-repair-result { margin: 6px 0 10px; }
+.describe-vlm-memory-repair ul { margin: 0 0 7px; padding-left: 18px; }
+.describe-vlm-memory-repair li { margin: 5px 0; }
+.describe-vlm-memory-repair li > span:first-child { white-space: pre-wrap; }
+.describe-vlm-memory-repair .describe-vlm-memory-actions { margin-left: 6px; vertical-align: middle; }
+.describe-vlm-memory-repair .describe-vlm-memory-actions button { min-width: 30px; padding: 4px; }
 
 .describe-vlm-chat-roleplay-resource-row-head {
   display: flex;
@@ -30611,4 +30773,194 @@ html.simpai-h3-director #scene_director_editor .h3-timeline-gap:focus-visible {
 
 .describe-vlm-chat-tavern-notes:empty {
   display: none;
+}
+
+.describe-vlm-memory-library {
+  width: min(1120px, calc(100vw - 24px));
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+.describe-vlm-history-dialog.describe-vlm-memory-library[open] {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+.describe-vlm-memory-library button { font: inherit; }
+.describe-vlm-memory-library [role="tab"],
+.describe-vlm-memory-library [data-memory-library-save],
+.describe-vlm-memory-library [data-memory-library-invalidate],
+.describe-vlm-memory-library [data-memory-library-retry] {
+  width: auto;
+  min-height: 34px;
+  height: auto;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+.describe-vlm-memory-library input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  padding: 0;
+  margin: 0;
+}
+.describe-vlm-memory-library-tools {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 16px;
+}
+.describe-vlm-memory-library-tools [role="tablist"] {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+}
+.describe-vlm-memory-library [role="tab"][aria-selected="true"] {
+  border-color: #9ca3af;
+  background: #42464d;
+}
+.describe-vlm-memory-library-tools [type="search"] { grid-column: 1 / -1; }
+.describe-vlm-memory-library-filters { grid-column: 1 / -1; }
+.describe-vlm-memory-library-filters > summary { cursor: pointer; color: #c4c8ce; font-size: 13px; }
+.describe-vlm-memory-library-filters > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.describe-vlm-memory-library-tools label { display: grid; gap: 4px; font-size: 12px; color: #c4c8ce; }
+.describe-vlm-memory-library-nav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  border-block: 1px solid #414753;
+}
+.describe-vlm-memory-library-nav [data-memory-library-count] { margin-right: auto; }
+.describe-vlm-memory-library-body {
+  display: grid;
+  grid-template-columns: minmax(240px, 38%) minmax(0, 1fr);
+  overflow: hidden;
+  min-height: 0;
+}
+.describe-vlm-memory-library-body > section {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.describe-vlm-memory-library [data-memory-library-list] { border-right: 1px solid #414753; }
+.describe-vlm-memory-list-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding-block: 8px;
+  border-bottom: 1px solid #414753;
+}
+.describe-vlm-memory-list-row input[type="checkbox"] { margin-top: 10px; flex: 0 0 16px; }
+.describe-vlm-memory-list-row button {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  font: inherit;
+  height: auto;
+  width: auto;
+  min-height: 58px;
+  padding: 8px;
+}
+.describe-vlm-memory-list-row button[aria-pressed="true"] { border-color: #9ca3af; background: #363b43; }
+.describe-vlm-memory-list-row span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.describe-vlm-memory-library [data-memory-library-detail] { display: block; }
+.describe-vlm-memory-library [data-memory-library-detail] h3 { font: inherit; font-weight: 600; margin: 0 0 12px; }
+.describe-vlm-memory-library [data-memory-library-detail] > label { display: grid; gap: 6px; margin-bottom: 12px; }
+.describe-vlm-memory-library textarea { min-height: 160px; resize: vertical; width: 100%; line-height: 1.6; }
+.describe-vlm-memory-library fieldset { display: flex; flex-wrap: wrap; min-width: 0; gap: 10px; margin: 12px 0; border: 1px solid #535963; }
+.describe-vlm-memory-library fieldset label { display: flex; max-width: 100%; gap: 6px; align-items: center; font-size: 13px; overflow-wrap: anywhere; }
+.describe-vlm-memory-library p, .describe-vlm-memory-library blockquote, .describe-vlm-memory-library dd {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0 14px;
+}
+.describe-vlm-memory-library blockquote { padding-left: 12px; border-left: 2px solid #777e89; color: #c4c8ce; }
+.describe-vlm-memory-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.describe-vlm-memory-library footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #414753;
+  font-size: 12px;
+  color: #b5bbc5;
+}
+.describe-vlm-memory-library .is-error { color: #fca5a5; }
+.describe-vlm-agenda-dialog { width: min(1080px, calc(100vw - 24px)); }
+.describe-vlm-history-dialog.describe-vlm-agenda-dialog[open] { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+.describe-vlm-agenda-dialog button { font: inherit; }
+.describe-vlm-agenda-tools { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px 16px; }
+.describe-vlm-agenda-tools > *, .describe-vlm-agenda-pair > * { min-width: 0; width: 100%; }
+.describe-vlm-agenda-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; border-block: 1px solid #414753; }
+.describe-vlm-agenda-nav [data-agenda-count] { margin-right: auto; }
+.describe-vlm-agenda-body { display: grid; grid-template-columns: minmax(220px, 36%) minmax(0, 1fr); min-height: 0; overflow: hidden; }
+.describe-vlm-agenda-body > section { min-width: 0; min-height: 0; overflow: auto; padding: 14px 16px; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.describe-vlm-agenda-dialog [data-agenda-list] { border-right: 1px solid #414753; }
+.describe-vlm-agenda-dialog [data-agenda-item] { display: grid; gap: 7px; width: 100%; height: auto; padding: 10px; margin-bottom: 8px; text-align: left; }
+.describe-vlm-agenda-dialog [data-agenda-item][aria-pressed="true"] { border-color: #9ca3af; background: #363b43; }
+.describe-vlm-agenda-dialog [data-agenda-item] span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.describe-vlm-agenda-dialog span, .describe-vlm-agenda-dialog p, .describe-vlm-agenda-dialog small, .describe-vlm-agenda-dialog blockquote { overflow-wrap: anywhere; white-space: pre-wrap; }
+.describe-vlm-agenda-dialog label { display: grid; gap: 6px; margin-bottom: 12px; min-width: 0; }
+.describe-vlm-agenda-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.describe-vlm-agenda-dialog textarea { min-height: 80px; width: 100%; resize: vertical; line-height: 1.6; }
+.describe-vlm-agenda-dialog fieldset { display: flex; gap: 10px; flex-wrap: wrap; min-width: 0; margin: 12px 0; border: 1px solid #535963; }
+.describe-vlm-agenda-dialog fieldset label { display: flex; gap: 6px; max-width: 100%; align-items: center; overflow-wrap: anywhere; }
+.describe-vlm-agenda-dialog input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; padding: 0; margin: 0; }
+.describe-vlm-agenda-dialog [data-agenda-save], .describe-vlm-agenda-dialog [data-agenda-retry], .describe-vlm-agenda-dialog .describe-vlm-agenda-earlier { width: auto; height: auto; min-height: 34px; padding: 6px 12px; white-space: nowrap; }
+.describe-vlm-agenda-dialog h3 { font: inherit; font-weight: 600; margin: 0 0 12px; }
+.describe-vlm-agenda-evidence { margin-top: 18px; }
+.describe-vlm-agenda-evidence summary { cursor: pointer; }
+.describe-vlm-agenda-evidence section { padding-block: 12px; border-bottom: 1px solid #414753; }
+.describe-vlm-agenda-evidence blockquote { padding-left: 10px; border-left: 2px solid #777e89; color: #c4c8ce; margin: 8px 0; }
+.describe-vlm-agenda-before { color: #a0a5af; text-decoration: underline; }
+.describe-vlm-agenda-dialog footer { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 16px; border-top: 1px solid #414753; font-size: 12px; }
+.describe-vlm-agenda-dialog .is-error { color: #fca5a5; }
+.describe-vlm-agenda-dialog [data-agenda-back] { display: none; }
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-strip {
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  grid-template-rows: 28px 25px;
+}
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-autoplay-controls {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  position: static;
+  flex-wrap: nowrap;
+}
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-more { grid-column: 3; grid-row: 1; }
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-participant-summary { grid-column: 1 / -1; grid-row: 2; margin-right: 64px; }
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-autoplay-controls > [data-roleplay-agenda-open],
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-autoplay-controls > [data-roleplay-memory-library] { position: absolute; bottom: 4px; }
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-autoplay-controls > [data-roleplay-agenda-open] { right: 8px; }
+.describe-vlm-chat-panel[data-describe-vlm-mobile-settings="1"] .describe-vlm-chat-roleplay-autoplay-controls > [data-roleplay-memory-library] { right: 40px; }
+@media (max-width: 640px) {
+  .describe-vlm-agenda-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px 10px; }
+  .describe-vlm-agenda-tools [type="search"] { grid-column: 1 / -1; }
+  .describe-vlm-agenda-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .describe-vlm-agenda-dialog[data-agenda-pane="list"] [data-agenda-detail],
+  .describe-vlm-agenda-dialog[data-agenda-pane="detail"] [data-agenda-list] { display: none; }
+  .describe-vlm-agenda-dialog[data-agenda-pane="detail"] [data-agenda-back] { display: inline-flex; }
+  .describe-vlm-agenda-dialog [data-agenda-list] { border: 0; }
+  .describe-vlm-agenda-body > section { padding: 10px; }
+  .describe-vlm-agenda-nav { padding: 6px 10px; gap: 6px; }
+}
+.describe-vlm-memory-library [data-memory-library-back] { display: none; }
+@media (max-width: 640px) {
+  .describe-vlm-memory-library-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px 10px; }
+  .describe-vlm-memory-library-filters > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .describe-vlm-memory-library-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .describe-vlm-memory-library[data-memory-library-pane="list"] [data-memory-library-detail],
+  .describe-vlm-memory-library[data-memory-library-pane="detail"] [data-memory-library-list] { display: none; }
+  .describe-vlm-memory-library[data-memory-library-pane="detail"] [data-memory-library-back] { display: inline-flex; }
+  .describe-vlm-memory-library [data-memory-library-list] { border-right: 0; border-bottom: 1px solid #414753; }
+  .describe-vlm-memory-library-body > section { padding: 10px; }
+  .describe-vlm-memory-library-nav { padding: 6px 10px; gap: 6px; }
 }

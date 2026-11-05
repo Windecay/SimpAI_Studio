@@ -1428,9 +1428,10 @@ def bind_topbar_identity_events(
             show_progress=False,
             queue=False,
         ).then(
-            fn=None,
+            # Gradio needs a backend completion to continue the identity chain.
+            fn=lambda x: None,
             inputs=system_params,
-            js="(x)=>{refresh_topbar_status_js(x);}",
+            js="(x)=>{refresh_topbar_status_js(x); return [x];}",
             queue=False,
             show_progress=False,
         )

@@ -3948,6 +3948,7 @@ def _run_roleplay_director(
                 {
                     "patches": parsed.get("patches") or [],
                     "turn_facts": parsed.get("turn_facts") or {},
+                    "story_items": parsed.get("story_items") or [],
                     "resource_signals": resource_signals,
                     "warnings": parsed.get("warnings") or [],
                 },
@@ -4098,10 +4099,12 @@ def _run_roleplay_director(
                     "warnings": parsed.get("warnings") or [],
                     "visual_candidate": parsed.get("visual_candidate") or {},
                     "turn_facts": parsed.get("turn_facts") or {},
+                    "story_items": parsed.get("story_items") or [],
                     "resource_signals": resource_signals,
                     "_incremental_runtime_state": True,
                     "_director_attribution": {
                         "enabled": True,
+                        "agenda_assistant_reply": _clean_text(assistant_reply),
                         "speaker_id": _clean_text(speaker_id),
                         "text": "\n\n".join(
                             item
@@ -7764,6 +7767,95 @@ def _run_context_summary(payload, stream_callback=None):
         clear_describe_vlm_chat_cancel(conversation_id, request_id)
 
 
+def _run_memory_repair(payload, stream_callback=None):
+    from modules import vlm_memory_repair
+
+    conversation_id = str(payload.get("conversation_id") or "")
+    request_id = str(payload.get("request_id") or "")
+    cancelled = lambda: is_describe_vlm_chat_cancelled(conversation_id, request_id)
+    try:
+        if not isinstance(payload.get("roleplay_session"), dict):
+            raise ValueError("memory_repair_session_required")
+        session = vlm_roleplay.normalize_roleplay_session(payload["roleplay_session"])
+        data = vlm_memory_repair.request_data(payload, session, _payload_lang(payload))
+        n_ctx = _n_ctx_override(payload.get("n_ctx")) or _n_ctx_override(payload.get("context_window")) or 8192
+        prompt_limit = max(6000, min(18000, int(n_ctx * 1.15)))
+        prompt = vlm_memory_repair.prompt_text(data)
+        while len(prompt) > prompt_limit and data["existing_memories"]:
+            data["existing_memories"].pop()
+            prompt = vlm_memory_repair.prompt_text(data)
+        if len(prompt) > prompt_limit:
+            raise ValueError("memory_repair_context_budget")
+    except ValueError as exc:
+        return {"ok": False, "code": str(exc), "failure_stage": "memory_repair"}
+    if cancelled():
+        return {"ok": False, "cancelled": True, "code": "memory_repair_cancelled"}
+    _roleplay_trace(
+        "[RoleplayDirector] memory_repair_start request_id=%s task_id=%s offset=%s next=%s total=%s witnesses=%s",
+        request_id, data["task_id"], data["source_offset"], data["next_offset"],
+        data["source_chars"], _roleplay_log_value(data["allowed_witness_ids"]),
+    )
+    model_payload = {
+        key: payload[key] for key in (
+            "version", "custom_api", "vram_policy", "kv_cache_type", "n_ctx", "context_window",
+            "load_mtp", "unload_after_chat", "user_did", "lang", "__lang", "conversation_id", "request_id",
+            "agent_routing", "agent_routing_local_version", "agent_routing_api_profile",
+            "agent_routing_api_profile_version",
+        ) if key in payload
+    }
+    model_payload.update({"chat_mode": "raw", "message": data["source"], "max_tokens": 1900})
+    built = build_runtime_payload(model_payload)
+    if not built.get("ok"):
+        return _describe_vlm_chat_failure(built, "memory_repair")
+    runtime = built["runtime_payload"]
+    runtime["chat_messages"] = []
+    runtime["chat_messages_full"] = []
+    runtime["params"].update({
+        "user_system_prompt": vlm_memory_repair.SYSTEM_PROMPT,
+        "prompt": prompt,
+        "save_context": False, "reset_context": True, "max_history": 1,
+        "context_chars": 18000, "disable_streaming": True, "disable_llm_draft_retry": True,
+        "roleplay_request_kind": "memory_repair",
+        "roleplay_agent_routing": payload.get("agent_routing") or session.get("agent_routing"),
+        "enable_thinking": False, "disable_thinking": True, "temperature": 0.15,
+        "_harness_deadline": time.monotonic() + 150,
+        "conversation_id": f"{conversation_id}:memory-repair:{request_id}",
+    })
+    runtime["conversation_id"] = runtime["params"]["conversation_id"]
+
+    def check_repair_cancel(event):
+        if cancelled():
+            raise RuntimeError("Memory repair cancelled.")
+        if callable(stream_callback):
+            stream_callback(event)
+
+    result = _run_vlm_with_agent_router(
+        runtime, model_payload, vlm_agent_router.ROLE_DIRECTOR_STATE, session,
+        stream_callback=check_repair_cancel,
+    )
+    if cancelled() or (isinstance(result, dict) and result.get("cancelled")):
+        return {"ok": False, "cancelled": True, "code": "memory_repair_cancelled"}
+    if not isinstance(result, dict) or not result.get("ok"):
+        return _describe_vlm_chat_failure(result, "memory_repair")
+    try:
+        if (result.get("completion") or {}).get("output_limited"):
+            raise ValueError("memory_repair_output_limited")
+        parsed = _extract_json_object(result.get("text") or "")
+        summary = vlm_memory_repair.validate_result(parsed, data, session)
+    except ValueError as exc:
+        _roleplay_trace("[RoleplayDirector] memory_repair_rejected request_id=%s task_id=%s reason=%s",
+                        request_id, data["task_id"], str(exc))
+        return {"ok": False, "code": str(exc), "failure_stage": "memory_repair"}
+    _roleplay_trace(
+        "[RoleplayDirector] memory_repair_validated request_id=%s task_id=%s memories=%s existing=%s next=%s",
+        request_id, data["task_id"], len(summary["memories"]), len(summary["existing_ids"]), data["next_offset"],
+    )
+    return {
+        "ok": True, "memory_repair": summary, "conversation_id": conversation_id, "request_id": request_id,
+        "response_source": _response_source_from_result(result),
+    }
+
+
 def _run_outline_draft(payload, stream_callback=None):
     conversation_id = str(payload.get("conversation_id") or "")
     request_id = str(payload.get("request_id") or "")
@@ -8208,6 +8300,11 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
     conversation_id = str(payload.get("conversation_id") or "").strip()
     request_id = str(payload.get("request_id") or "").strip()
     request_kind = str(payload.get("request_kind") or "").strip().lower()
+    if request_kind == "roleplay_memory_repair":
+        try:
+            return _run_memory_repair(payload, stream_callback=stream_callback)
+        finally:
+            clear_describe_vlm_chat_cancel(conversation_id, request_id)
     if request_kind == "roleplay_outline_draft":
         try:
             return _run_outline_draft(payload, stream_callback=stream_callback)
@@ -8857,7 +8954,9 @@ def _clear_describe_vlm_chat_runtime_cancel(conversation_id, request_id, request
         else f"{conversation_id}:player-draft:{request_id}"
         if request_kind == "roleplay_player_draft"
         else f"{conversation_id}:outline-draft:{request_id}"
-        if request_kind == "roleplay_outline_draft" else conversation_id
+        if request_kind == "roleplay_outline_draft"
+        else f"{conversation_id}:memory-repair:{request_id}"
+        if request_kind == "roleplay_memory_repair" else conversation_id
     )
     try:
         canvas_vlm_runtime = sys.modules.get("modules.canvas_vlm_runtime")

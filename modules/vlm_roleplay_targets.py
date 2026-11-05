@@ -10,6 +10,7 @@ from collections import Counter
 from modules import vlm_roleplay as rp
 from modules import vlm_roleplay_numeric as numeric
 from modules import vlm_roleplay_outline as outline
+from modules import vlm_roleplay_agenda as agenda
 
 
 def entity_table(session, speaker_id=""):
@@ -146,7 +147,7 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         "turn_facts actions: actor_ref,target_ref,action,result,evidence_id; "
         "state_changes: target_ref,fields,summary,evidence_id; observations: text,known_by_refs,evidence_id. "
         "Preserve concrete spoken answers even without state changes. Empty arrays are valid after auditing. "
-        "No resource content. resource_signals flags durable events, permanent lore, chapter or distinctive visuals. "
+        "No memory/world/chapter content. resource_signals flags durable events, permanent lore, chapter or distinctive visuals. "
         "Routine numeric changes or unchanged conditions alone need no memory."
     )
     shape = {
@@ -154,7 +155,14 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
                        "scene_changes": [], "durable_facts": [], "unchanged_entity_ids": []},
         "patches": [],
         "resource_signals": {"memory": False, "world_book": False, "chapter": False, "visual": False},
+        "story_items": [],
     }
+    rules += " Audit story_items."
+    agenda_rules = (
+        "story_items: obligations only. Add: op=add,kind=promise/task/foreshadowing,title,condition,participant_refs,status=pending/active. "
+        "Update: op=update,exact id,status=active/completed/cancelled; keep definitions. "
+        "Both: known_by_refs,note,evidence_id. No absent knowers."
+    )
     outline_task = outline.director_task(session)
     if outline_task:
         shape["outline_progress"] = {
@@ -169,6 +177,7 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         )
     sections = [
         "JSON shape (fill only established changes):", _json(shape),
+        "Story obligations contract:", agenda_rules,
         "Authoritative request entity table:",
         _json(public_table(session, table, numeric_enabled=numeric_enabled)),
         "Numbered latest-exchange evidence:",
@@ -176,6 +185,8 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
     ]
     if outline_task:
         sections += ["Private current-outline progress review (not story facts):", _json(outline_task)]
+    ids_to_refs = {row["id"]: row["ref"] for row in table if row["type"] in {"character", "player"}}
+    agenda_rows = []
     if review:
         sections += [
             "Focused review: " + str(review),
@@ -183,6 +194,17 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         ]
         if previous:
             sections += ["Previous proposals:", _json(_public_previous(previous, table))]
+    remaining = prompt_budget(n_ctx) - len("\n".join(sections)) - (0 if as_request else len(rules) + 1) - 100
+    for row in agenda.material(session, private=False, query=f"{user_message}\n{assistant_reply}"):
+        item = {**row, "title": row["title"][:160], "condition": row["condition"][:180], "note": row["note"][:120],
+                "participant_refs": [ids_to_refs[key] for key in row["participant_ids"] if key in ids_to_refs]}
+        item.pop("participant_ids", None)
+        size = len(_json(item)) + 1
+        if size <= remaining and len(agenda_rows) < 8:
+            agenda_rows.append(item)
+            remaining -= size
+    if agenda_rows:
+        sections += ["Current story obligations (use their exact ids for updates):", _json(agenda_rows)]
     prompt = "\n".join(sections if as_request else [rules, *sections])
     if len(prompt) > prompt_budget(n_ctx):
         raise ValueError("director_input_budget_exceeded")
@@ -226,7 +248,7 @@ def decode_response(text, session, table, user_message="", assistant_reply=""):
     identities = {(item["type"], item["id"]) for item in table}
     prose_fields = {
         "action", "appearance", "current_action", "description", "location",
-        "new_state_text", "result", "state_text", "summary", "text", "value",
+        "new_state_text", "result", "state_text", "summary", "text", "value", "title", "condition", "note",
     }
     ref_names = {
         ref: str(entity.get("name") or ref)
@@ -267,6 +289,13 @@ def decode_response(text, session, table, user_message="", assistant_reply=""):
                 if isinstance(ref, str) and ref in by_ref
                 and by_ref[ref]["type"] in {"player", "character"} and by_ref[ref].get("present")
             ] if isinstance(references, list) else []
+        if "participant_refs" in result:
+            refs = result.pop("participant_refs")
+            result["participant_ids"] = [
+                by_ref[ref]["id"] if isinstance(ref, str) and ref in by_ref
+                and by_ref[ref]["type"] in {"character", "player"} else "__invalid_agenda_participant__"
+                for ref in refs[:22]
+            ] if isinstance(refs, list) else ["__invalid_agenda_participant__"]
         for prefix in ("target", "actor"):
             key = f"{prefix}_ref"
             candidate = result.get(key)
