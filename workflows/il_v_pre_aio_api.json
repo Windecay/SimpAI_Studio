@@ -870,6 +870,10 @@
       "clip": [
         "simpai_lora_stack_main",
         1
+      ],
+      "tile_control_net": [
+        "581",
+        0
       ]
     },
     "class_type": "SimpAIAIOUOVSDXL",
@@ -1135,6 +1139,10 @@
       ],
       "inpaint_control_net": [
         "489",
+        0
+      ],
+      "tile_control_net": [
+        "581",
         0
       ]
     },

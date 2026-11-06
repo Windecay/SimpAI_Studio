@@ -197,6 +197,8 @@ class _SimpAIAIOImproveDetailBase:
         }
         if cls.FAMILY == "anima":
             optional["model_patch"] = ("MODEL_PATCH", {"lazy": True})
+        if cls.FAMILY == "sdxl":
+            optional["tile_control_net"] = ("CONTROL_NET", {"lazy": True})
         return {
             "required": {
                 "image": ("IMAGE",),
@@ -224,7 +226,7 @@ class _SimpAIAIOImproveDetailBase:
     FUNCTION = "expand"
     CATEGORY = "SimpAI/AIO/Improve Detail"
 
-    def check_lazy_status(self, image, model, clip, positive, negative, vae, upscale_model, region_1, region_2, region_3, enhance_uov, seed, steps, cfg, sampler_name, scheduler, fallback_image=None, inpaint_model=None, inpaint_control_net=None, model_patch=None):
+    def check_lazy_status(self, image, model, clip, positive, negative, vae, upscale_model, region_1, region_2, region_3, enhance_uov, seed, steps, cfg, sampler_name, scheduler, fallback_image=None, inpaint_model=None, inpaint_control_net=None, model_patch=None, **kwargs):
         required = []
         image_is_empty = float(image.detach().abs().max()) == 0.0
         if image_is_empty and fallback_image is None:
@@ -255,6 +257,8 @@ class _SimpAIAIOImproveDetailBase:
                 required.append("clip")
         if self.FAMILY == "anima" and method in ("upscale (1.5x)", "upscale (2x)"):
             required.append("model_patch")
+        if method in ("upscale (1.5x)", "upscale (2x)") and "tile_control_net" in kwargs:
+            required.append("tile_control_net")
 
         values = {
             "model": model,
@@ -267,6 +271,7 @@ class _SimpAIAIOImproveDetailBase:
             "inpaint_model": inpaint_model,
             "inpaint_control_net": inpaint_control_net,
             "model_patch": model_patch,
+            "tile_control_net": kwargs.get("tile_control_net"),
         }
         return list(dict.fromkeys(name for name in required if values[name] is None))
 
@@ -294,7 +299,7 @@ class _SimpAIAIOImproveDetailBase:
             "moss_image": "SimpAIAIOInpaintMoss",
         }[self.FAMILY]
 
-    def _apply_uov(self, graph, image, model, clip, positive, negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch=None):
+    def _apply_uov(self, graph, image, model, clip, positive, negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch=None, tile_control_net=None):
         methods = {
             "disabled": 0,
             "upscale (fast 2x)": 1,
@@ -347,6 +352,8 @@ class _SimpAIAIOImproveDetailBase:
         }
         if self.FAMILY == "anima":
             inputs["model_patch"] = model_patch
+        if self.FAMILY == "sdxl" and tile_control_net is not None:
+            inputs["tile_control_net"] = tile_control_net
         applied = graph.node(self._uov_node(), **inputs)
         return applied.out(0)
 
@@ -364,7 +371,7 @@ class _SimpAIAIOImproveDetailBase:
             _conditioning_for_region(graph, self.FAMILY, clip, negative, selected["negative_prompt"], cfg),
         )
 
-    def expand(self, image, model, clip, positive, negative, vae, upscale_model, region_1, region_2, region_3, enhance_uov, seed, steps, cfg, sampler_name, scheduler, fallback_image=None, inpaint_model=None, inpaint_control_net=None, model_patch=None):
+    def expand(self, image, model, clip, positive, negative, vae, upscale_model, region_1, region_2, region_3, enhance_uov, seed, steps, cfg, sampler_name, scheduler, fallback_image=None, inpaint_model=None, inpaint_control_net=None, model_patch=None, tile_control_net=None):
         graph = GraphBuilder()
         if fallback_image is not None and float(image.detach().abs().max()) == 0.0:
             image = fallback_image
@@ -374,7 +381,7 @@ class _SimpAIAIOImproveDetailBase:
         active = enhance_uov["method"] != "disabled" or any(region["detection_prompt"] for region in regions)
         uov_positive, uov_negative = self._uov_conditioning(graph, clip, positive, negative, regions, enhance_uov, cfg)
         if enhance_uov["method"] != "disabled" and enhance_uov["processing_order"] == "Before First Enhancement":
-            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch)
+            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch, tile_control_net)
 
         for index, region in enumerate(regions):
             if not region["detection_prompt"]:
@@ -403,7 +410,7 @@ class _SimpAIAIOImproveDetailBase:
             current = graph.node("SimpAIAIOApplyRegion", **inputs).out(0)
 
         if enhance_uov["method"] != "disabled" and enhance_uov["processing_order"] == "After Last Enhancement":
-            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch)
+            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch, tile_control_net)
 
         return {"result": (current, active, source_image), "expand": graph.finalize()}
 

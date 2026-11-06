@@ -89,7 +89,7 @@ class _SimpAIAIOUOVBase:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {
+        types = {
             "required": {
                 "model": ("MODEL", {"lazy": True}),
                 "clip": ("CLIP", {"lazy": True}),
@@ -109,13 +109,16 @@ class _SimpAIAIOUOVBase:
                 "denoise": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 1.0, "step": 0.01}),
             },
         }
+        if cls.FAMILY == "sdxl":
+            types["optional"]["tile_control_net"] = ("CONTROL_NET", {"lazy": True})
+        return types
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "expand"
     CATEGORY = "SimpAI/AIO/UOV"
 
-    def check_lazy_status(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0):
+    def check_lazy_status(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0, **kwargs):
         mode = int(uov.get("mode", 0))
         if mode <= 0:
             return []
@@ -127,6 +130,8 @@ class _SimpAIAIOUOVBase:
             required = ["model", "positive", "negative", "vae", "upscale_model"]
             if _tiled_guard_needs_quality_prompt(uov["image"], uov.get("multiple", 1.5)):
                 required.append("clip")
+            if "tile_control_net" in kwargs:
+                required.append("tile_control_net")
         values = {
             "model": model,
             "clip": clip,
@@ -134,6 +139,7 @@ class _SimpAIAIOUOVBase:
             "negative": negative,
             "vae": vae,
             "upscale_model": upscale_model,
+            "tile_control_net": kwargs.get("tile_control_net"),
         }
         return [name for name in required if values[name] is None]
 
@@ -150,7 +156,7 @@ class _SimpAIAIOUOVBase:
             long_edge_threshold=TILED_PROMPT_GUARD_LONG_EDGE,
         ).out(0)
 
-    def expand(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0):
+    def expand(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0, tile_control_net=None):
         mode = int(uov.get("mode", 0))
         image = uov["image"]
         if mode <= 0:
@@ -194,6 +200,17 @@ class _SimpAIAIOUOVBase:
             output = decoded.out(0)
         else:
             positive = self._guard_tiled_positive(graph, image, clip, positive, multiple, cfg)
+            if self.FAMILY == "sdxl" and tile_control_net is not None:
+                tile_control = graph.node("SetUnionControlNetType", control_net=tile_control_net, type="tile")
+                tile_image = graph.node(
+                    "TTPlanet_TileSimple_Preprocessor", image=image, scale_factor=1.0, blur_strength=2.0,
+                )
+                applied = graph.node(
+                    "ControlNetApplyAdvanced", positive=positive, negative=negative,
+                    control_net=tile_control.out(0), image=tile_image.out(0), vae=vae,
+                    strength=0.3, start_percent=0.0, end_percent=1.0,
+                )
+                positive, negative = applied.out(0), applied.out(1)
             tiled = graph.node(
                 "UltimateSDUpscale",
                 image=image,

@@ -4057,5 +4057,18 @@
   "Only selected characters receive this obligation. Select none to keep it author-only.": "只有勾选的角色会读到这项事项；全部取消勾选则仅作者可见。",
   "Unsaved obligation changes.": "事项修改尚未保存。",
   "No obligation changes to save.": "没有需要保存的事项修改。",
-  "Obligations are saved locally, but the server did not retain them. Update the server and retry.": "事项已在本机保存，但服务端未能保留这些数据，请更新服务端后重试。"
+  "Obligations are saved locally, but the server did not retain them. Update the server and retry.": "事项已在本机保存，但服务端未能保留这些数据，请更新服务端后重试。",
+  "Importing conversation": "正在导入对话",
+  "Cancel import": "取消导入",
+  "Reading conversation file": "正在读取对话文件",
+  "Parsing conversation file": "正在解析对话文件",
+  "Preparing conversation history": "正在处理分支与历史快照",
+  "Preparing conversation archive": "正在整理对话档案",
+  "Saving conversation archive": "正在保存对话档案",
+  "Restoring conversation view": "正在恢复对话界面",
+  "Conversation import cancelled.": "已取消导入，原对话保持不变。",
+  "Conversation background processing is unavailable.": "当前浏览器无法启动后台处理，请更新浏览器后重试。",
+  "Conversation processing timed out.": "对话处理超时，原对话保持不变。",
+  "Conversation import failed. The current conversation has been kept.": "对话导入失败，原对话已保留。",
+  "Conversation export failed. Saved data has been kept.": "对话导出失败，已保存的数据保持不变。"
 }

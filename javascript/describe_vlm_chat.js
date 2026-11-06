@@ -11,6 +11,7 @@
         .replace(/'/g, '&#39;'));
     const getUiLang = UTILS.getUiLang || (() => 'en');
     const mobileChatSettingsDrawers = new WeakMap();
+    const roleplayResourceManagerStores = new WeakMap();
     const CHAT_SETTINGS_COMPACT_WIDTH = 640;
     const CHAT_SETTINGS_ANIMATION_MS = 200;
 
@@ -155,6 +156,9 @@
     const ROLEPLAY_HISTORY_MAX_CHANGES = 100000;
     const roleplayHistoryCache = new Map();
     const roleplayHistoryValidatedNodes = new WeakSet();
+    const conversationArchiveWorkerTasks = new Map();
+    let conversationArchiveWorkerUrl = '';
+    let activeConversationImport = null;
     let roleplayMemoryLibrary = null;
     let roleplayAgendaViewer = null;
     let conversationArchiveDbPromise = null;
@@ -2558,13 +2562,14 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         if (stores.world_book.metadata && typeof stores.world_book.metadata === 'object') {
             root.setAttribute('data-roleplay-world-book-metadata', encodeURIComponent(JSON.stringify(stores.world_book.metadata)));
         }
-        const setList = (kind, html) => {
-            const list = root.querySelector(`[data-resource-list="${kind}"]`);
-            if (list) list.innerHTML = html || `<div class="describe-vlm-chat-roleplay-resource-empty">${escapeHtml(localText('No entries yet', '还没有条目'))}</div>`;
-        };
-        setList('world', stores.world_book.entries.map(renderRoleplayResourceWorldEntry).join(''));
-        setList('memory', stores.memory_store.items.map(renderRoleplayResourceMemoryEntry).join(''));
-        setList('chapter', stores.chapters.items.map((item, index) => renderRoleplayResourceChapterEntry(item, index, stores.active_chapter_id)).join(''));
+        roleplayResourceManagerStores.set(root, stores);
+        root.querySelectorAll('[data-resource-list]').forEach(list => {
+            list.replaceChildren();
+            list.dataset.roleplayResourceLoaded = 'false';
+        });
+        if (root.getAttribute('data-resource-collapsed') !== 'true') {
+            ensureRoleplayResourceList(root, root.getAttribute('data-resource-tab') || 'world');
+        }
         const activeChapter = root.querySelector('[data-resource-active-chapter]');
         if (activeChapter) {
             activeChapter.innerHTML = stores.chapters.items.map((item) => `<option value="${escapeHtml(item.id)}"${item.id === stores.active_chapter_id ? ' selected' : ''}>${escapeHtml(item.title)}</option>`).join('');
@@ -2583,9 +2588,25 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         root.dataset.roleplayResourcesRendered = 'true';
     }
 
+    function ensureRoleplayResourceList(root, kind) {
+        const stores = roleplayResourceManagerStores.get(root);
+        const list = root?.querySelector(`[data-resource-list="${kind}"]`);
+        if (!stores || !list || list.dataset.roleplayResourceLoaded === 'true') return;
+        const html = kind === 'memory' ? stores.memory_store.items.map(renderRoleplayResourceMemoryEntry).join('')
+            : kind === 'chapter' ? stores.chapters.items.map((item, index) =>
+                renderRoleplayResourceChapterEntry(item, index, stores.active_chapter_id)).join('')
+                : stores.world_book.entries.map(renderRoleplayResourceWorldEntry).join('');
+        list.innerHTML = html || `<div class="describe-vlm-chat-roleplay-resource-empty">${escapeHtml(localText('No entries yet', '还没有条目'))}</div>`;
+        list.dataset.roleplayResourceLoaded = 'true';
+    }
+
     function clearRoleplayResourceManager(root) {
         if (!root || root.dataset.roleplayResourcesRendered !== 'true') return;
-        root.querySelectorAll('[data-resource-list]').forEach((list) => list.replaceChildren());
+        root.querySelectorAll('[data-resource-list]').forEach((list) => {
+            list.replaceChildren();
+            list.dataset.roleplayResourceLoaded = 'false';
+        });
+        roleplayResourceManagerStores.delete(root);
         root.querySelector('[data-resource-active-chapter]')?.replaceChildren();
         root.dataset.roleplayResourcesRendered = 'false';
     }
@@ -2618,12 +2639,15 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const shouldCollapse = toggle && currentTab === activeTab && !collapsed;
         root.setAttribute('data-resource-tab', activeTab);
         root.setAttribute('data-resource-collapsed', shouldCollapse ? 'true' : 'false');
+        if (!shouldCollapse) ensureRoleplayResourceList(root, activeTab);
         syncRoleplayResourceTabState(root);
     }
 
     function updateRoleplayResourceCounts(root) {
         if (!root) return;
         ['world', 'memory', 'chapter'].forEach((kind) => {
+            const list = root.querySelector(`[data-resource-list="${kind}"]`);
+            if (list?.dataset.roleplayResourceLoaded === 'false') return;
             const count = root.querySelectorAll(`[data-roleplay-resource-row="${kind}"]`).length;
             root.querySelector(`[data-resource-count="${kind}"]`)?.replaceChildren(document.createTextNode(String(count)));
         });
@@ -2654,7 +2678,8 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const target = session && typeof session === 'object' ? session : normalizeRoleplaySession(null);
         if (!roleplayFormCanWriteTo(modal, target)) return target;
         const branchId = String(target.active_branch_id || 'main');
-        const worldEntries = visibleRoleplayResourceRows(modal, 'world').map((row) => normalizeRoleplayWorldBookEntry({
+        const loaded = kind => modal?.querySelector(`[data-resource-list="${kind}"]`)?.dataset.roleplayResourceLoaded !== 'false';
+        const worldEntries = !loaded('world') ? target.world_book.entries : visibleRoleplayResourceRows(modal, 'world').map((row) => normalizeRoleplayWorldBookEntry({
             id: row.getAttribute('data-resource-id'),
             title: readRoleplayResourceField(row, 'title'),
             content: readRoleplayResourceField(row, 'content'),
@@ -2671,7 +2696,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             source: row.getAttribute('data-resource-source') || 'manual'
         })).filter(Boolean);
         const memoryById = new Map(target.memory_store.items.map(item => [item.id, item]));
-        const memories = visibleRoleplayResourceRows(modal, 'memory').map((row) => normalizeRoleplayMemory({
+        const memories = !loaded('memory') ? target.memory_store.items : visibleRoleplayResourceRows(modal, 'memory').map((row) => normalizeRoleplayMemory({
             ...memoryById.get(row.getAttribute('data-resource-id')),
             id: row.getAttribute('data-resource-id'),
             text: readRoleplayResourceField(row, 'text'),
@@ -2687,7 +2712,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             branch_id: memoryById.get(row.getAttribute('data-resource-id'))?.branch_id || branchId,
             source: memoryById.get(row.getAttribute('data-resource-id'))?.source || 'manual'
         })).filter(Boolean);
-        const chapters = visibleRoleplayResourceRows(modal, 'chapter').map((row) => {
+        const chapters = !loaded('chapter') ? target.chapters.items : visibleRoleplayResourceRows(modal, 'chapter').map((row) => {
             const chapterId = row.getAttribute('data-resource-id');
             const existingChapter = target.chapters?.items?.find((item) => String(item?.id || '') === String(chapterId || '')) || {};
             return normalizeRoleplayChapter({
@@ -2705,6 +2730,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         }).filter(Boolean);
         const selectedChapter = String(modal?.querySelector('[data-resource-active-chapter]')?.value || '').trim()
             || String(modal?.querySelector('[data-resource-active]:checked')?.getAttribute('data-resource-active') || '').trim()
+            || target.active_chapter_id
             || chapters[0]?.id
             || 'chapter_1';
         const chapterStore = {
@@ -2740,6 +2766,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
 
     function addRoleplayResource(modal, kind, runtime = null) {
         const target = runtime || currentConversationRuntime();
+        ensureRoleplayResourceList(modal?.querySelector('[data-describe-vlm-chat-roleplay-resources]'), kind);
         const rows = visibleRoleplayResourceRows(modal, kind);
         const limit = kind === 'world' ? MAX_ROLEPLAY_WORLD_BOOK_ENTRIES : kind === 'memory' ? Infinity : MAX_ROLEPLAY_CHAPTERS;
         if (rows.length >= limit) {
@@ -6045,7 +6072,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         return state.conversationId;
     }
 
-    function createConversationRuntime(source = {}) {
+    function createConversationRuntime(source = {}, options = {}) {
         const conversationId = String(source.conversationId || source.conversation_id || uid('describe_vlm_chat')).trim();
         const sourceMessages = Array.isArray(source.messages) ? source.messages : [];
         const sourceArchiveMessages = Array.isArray(source.archiveMessages)
@@ -6090,8 +6117,8 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             describeMediaReferencePromise: source.describeMediaReferencePromise || null,
             chatMode: storedChatMode(source),
             customSkillNames: normalizeVlmSkillNames(source.customSkillNames ?? source.skill_names),
-            roleplaySession: normalizeRoleplaySession(source.roleplaySession || source.roleplay_session, conversationId),
-            roleplayBranches: normalizeRoleplayBranches(source.roleplayBranches || source.roleplay_branches, conversationId),
+            roleplaySession: options.normalizedRoleplay ? source.roleplaySession : normalizeRoleplaySession(source.roleplaySession || source.roleplay_session, conversationId),
+            roleplayBranches: options.normalizedRoleplay ? source.roleplayBranches : normalizeRoleplayBranches(source.roleplayBranches || source.roleplay_branches, conversationId),
             roleplayFormDraftUndo: normalizeRoleplayFormDraftReview(source.roleplayFormDraftUndo),
             roleplayOutlineUndo: normalizeRoleplayOutlineUndo(source.roleplayOutlineUndo),
             roleplayMemoryRepair: normalizeRoleplayMemoryRepair(source.roleplayMemoryRepair),
@@ -6368,7 +6395,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         return runtime;
     }
 
-    function applyConversationRuntime(runtime) {
+    function applyConversationRuntime(runtime, options = {}) {
         if (!runtime) return false;
         const previousConversationId = String(state.conversationId || '').trim();
         if (previousConversationId && previousConversationId !== String(runtime.conversationId || '').trim()) {
@@ -6390,8 +6417,8 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         state.describeMediaReferencePromise = runtime.describeMediaReferencePromise;
         state.chatMode = runtime.chatMode;
         state.customSkillNames = normalizeVlmSkillNames(runtime.customSkillNames);
-        state.roleplaySession = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
-        state.roleplayBranches = normalizeRoleplayBranches(runtime.roleplayBranches, runtime.conversationId);
+        state.roleplaySession = options.normalizedRoleplay ? runtime.roleplaySession : normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        state.roleplayBranches = options.normalizedRoleplay ? runtime.roleplayBranches : normalizeRoleplayBranches(runtime.roleplayBranches, runtime.conversationId);
         state.roleplayPanelOpen = !!runtime.roleplayPanelOpen;
         state.roleplayTurnIntent = normalizeRoleplayTurnIntentSetting(runtime.roleplayTurnIntent);
         state.roleplayReplySpeakerId = String(runtime.roleplayReplySpeakerId || '').trim().slice(0, 160);
@@ -20065,19 +20092,30 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         };
     }
 
-    function createRoleplayHistoryEncoder() {
+    function createRoleplayHistoryEncoder(options = {}) {
         const buckets = new Map();
+        const serializedNodes = new WeakMap();
+        const references = options.reuseObjects ? new WeakMap() : null;
         let previous = null;
         return value => {
             if (isRoleplayHistoryReference(value)) {
                 previous = value.node;
                 return value;
             }
+            if (references?.has(value)) {
+                const reference = references.get(value);
+                previous = reference.node;
+                return reference;
+            }
             const serialized = roleplayHistoryCanonical(value);
             const hash = roleplayHistoryFingerprint(serialized);
             const candidates = buckets.get(hash) || [];
-            let node = candidates.find(item => roleplayHistoryCanonical(roleplayHistoryNodeValue(item)) === serialized);
-            if (!node && previous?.hash === hash && roleplayHistoryCanonical(roleplayHistoryNodeValue(previous)) === serialized) node = previous;
+            const signature = node => {
+                if (!serializedNodes.has(node)) serializedNodes.set(node, roleplayHistoryCanonical(roleplayHistoryNodeValue(node)));
+                return serializedNodes.get(node);
+            };
+            let node = candidates.find(item => signature(item) === serialized);
+            if (!node && previous?.hash === hash && signature(previous) === serialized) node = previous;
             if (!node) {
                 const changes = previous && previous.depth + 1 < ROLEPLAY_HISTORY_INTERVAL
                     ? roleplayHistoryChanges(roleplayHistoryNodeValue(previous), value) : null;
@@ -20087,8 +20125,11 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                 candidates.push(node);
                 buckets.set(hash, candidates);
             }
+            serializedNodes.set(node, serialized);
             previous = node;
-            return { schema: ROLEPLAY_HISTORY_REF_SCHEMA, node, ...roleplayHistoryMetadata(value) };
+            const reference = { schema: ROLEPLAY_HISTORY_REF_SCHEMA, node, ...roleplayHistoryMetadata(value) };
+            references?.set(value, reference);
+            return reference;
         };
     }
 
@@ -20104,10 +20145,11 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
     }
 
     function createRoleplayHistoryWriter() {
-        const encode = createRoleplayHistoryEncoder();
+        const encode = createRoleplayHistoryEncoder({ reuseObjects: true });
         const nodes = Object.create(null);
         const ids = new Map();
         const signatures = new Map();
+        const messages = new WeakMap();
         const writeNode = node => {
             if (ids.has(node)) return ids.get(node);
             const base = node.kind === 'delta' ? writeNode(node.base) : '';
@@ -20129,21 +20171,24 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         };
         return {
             bundle: { schema: ROLEPLAY_HISTORY_SCHEMA, version: 1, checkpoint_interval: ROLEPLAY_HISTORY_INTERVAL, nodes },
-            messages: rows => unpackRoleplayHistoryMessages(rows).map(message => mapRoleplayHistorySnapshots(message, (value, suffix, target) => {
-                const reference = encode(value);
-                target[`roleplay_history_${suffix}`] = {
-                    ref: writeNode(reference.node), ...roleplayHistoryMetadata(reference),
-                    ...(reference.rebind_branch ? { rebind_branch: true } : {})
-                };
-                return null;
-            })).map(message => {
+            messages: rows => unpackRoleplayHistoryMessages(rows).map(message => {
+                if (messages.has(message)) return messages.get(message);
+                const encoded = mapRoleplayHistorySnapshots(message, (value, suffix, target) => {
+                    const reference = encode(value);
+                    target[`roleplay_history_${suffix}`] = {
+                        ref: writeNode(reference.node), ...roleplayHistoryMetadata(reference),
+                        ...(reference.rebind_branch ? { rebind_branch: true } : {})
+                    };
+                    return null;
+                });
                 const clean = target => {
                     delete target.roleplay_session_before;
                     delete target.roleplay_session_after;
                     if (Array.isArray(target.variants)) target.variants.forEach(clean);
                 };
-                clean(message);
-                return message;
+                clean(encoded);
+                messages.set(message, encoded);
+                return encoded;
             })
         };
     }
@@ -20232,25 +20277,27 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         return next;
     }
 
-    function compactPersistedRoleplayMessages(messages, keepSnapshots = MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES) {
+    function compactPersistedRoleplayMessages(messages, keepSnapshots = MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES, encoder = null) {
         const rows = Array.isArray(messages) ? messages : [];
         const cutoff = Math.max(0, rows.length - Math.max(0, Number(keepSnapshots) || 0));
-        const encode = createRoleplayHistoryEncoder();
+        const encode = encoder || createRoleplayHistoryEncoder({ reuseObjects: true });
         return rows.map((message, index) => index >= cutoff ? message : mapRoleplayHistorySnapshots(message, encode));
     }
 
     function compactConversationRoleplayStorage(roleplayData, level = 0) {
         if (!roleplayData || typeof roleplayData !== 'object' || level <= 0) return roleplayData;
         const keepSnapshots = level >= 2 ? 0 : MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES;
+        const encode = createRoleplayHistoryEncoder({ reuseObjects: true });
         roleplayData.messages = level >= 2
             ? roleplayData.messages.map(stripPersistedRoleplaySnapshots)
-            : compactPersistedRoleplayMessages(roleplayData.messages, keepSnapshots);
+            : compactPersistedRoleplayMessages(roleplayData.messages, keepSnapshots, encode);
         roleplayData.branches = (Array.isArray(roleplayData.branches) ? roleplayData.branches : [])
             .map((branch) => {
                 const compact = Object.assign({}, branch);
                 compact.messages = level >= 2 ? (branch?.messages || []).map(stripPersistedRoleplaySnapshots) : compactPersistedRoleplayMessages(
                     branch?.messages,
-                    level >= 2 ? 0 : Math.min(24, MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES)
+                    level >= 2 ? 0 : Math.min(24, MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES),
+                    encode
                 );
                 if (level >= 2) compact.messages = compact.messages.slice(-24);
                 return compact;
@@ -20941,7 +20988,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         return `${id}:${conversationArchiveHash(signature)}`;
     }
 
-    function buildConversationArchivePayload(snapshot) {
+    function buildConversationArchivePayload(snapshot, options = {}) {
         if (snapshot?.roleplay_archive_format) snapshot = expandConversationArchivePayload(snapshot);
         if (
             !snapshot
@@ -20952,7 +20999,9 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const writer = createRoleplayHistoryWriter();
         const messagePool = Object.create(null);
         const messageSignatures = new Map();
+        const messageReferences = new WeakMap();
         const addMessages = (messages) => (Array.isArray(messages) ? messages : []).map((message, index) => {
+            if (messageReferences.has(message)) return messageReferences.get(message);
             const signature = roleplayHistoryCanonical(message);
             const key = `${String(message.id || index).slice(0, 240)}:${roleplayHistoryFingerprint(signature)}`;
             let ref = key;
@@ -20960,6 +21009,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             while (messageSignatures.has(ref) && messageSignatures.get(ref) !== signature) ref = `${key}:${++collision}`;
             messageSignatures.set(ref, signature);
             messagePool[ref] = message;
+            messageReferences.set(message, ref);
             return ref;
         });
         const archive = Object.assign({}, snapshot);
@@ -20968,10 +21018,11 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         archive.roleplay_active_message_refs = addMessages(writer.messages(snapshot.messages));
         archive.roleplay_message_pool = messagePool;
         archive.messages = [];
-        archive.roleplay_branches = snapshot.roleplay_branches.map((branch) => {
+        archive.roleplay_branches = snapshot.roleplay_branches.map((branch, index) => {
             const compact = Object.assign({}, branch);
             compact.roleplay_message_refs = addMessages(writer.messages(branch?.messages));
             delete compact.messages;
+            options.onProgress?.(index + 1, snapshot.roleplay_branches.length);
             return compact;
         });
         if (Object.keys(writer.bundle.nodes).length) archive.roleplay_state_history = writer.bundle;
@@ -21016,6 +21067,272 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         delete expanded.roleplay_state_history;
         expanded.roleplay_branches.forEach((branch) => delete branch.roleplay_message_refs);
         return expanded;
+    }
+
+    function supportsConversationArchiveWorker() {
+        return typeof window.Worker === 'function' && typeof Blob === 'function'
+            && typeof URL.createObjectURL === 'function';
+    }
+
+    function conversationArchiveWorkerMain() {
+        let progressStage = '', progressAt = 0;
+        const progress = (stage, completed = 0, total = 0) => {
+            const now = performance.now();
+            if (stage !== progressStage || (total > 0 && completed === total) || now - progressAt >= 50) {
+                self.postMessage({ progress: { stage, completed, total } });
+                progressStage = stage;
+                progressAt = now;
+            }
+        };
+        const openDb = () => new Promise((resolve, reject) => {
+            const request = indexedDB.open(CONVERSATION_ARCHIVE_DB_NAME, CONVERSATION_ARCHIVE_DB_VERSION);
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                if (!db.objectStoreNames.contains(CONVERSATION_ARCHIVE_STORE)) {
+                    db.createObjectStore(CONVERSATION_ARCHIVE_STORE, { keyPath: 'conversation_id' }).createIndex('saved_at', 'saved_at');
+                }
+                const store = db.objectStoreNames.contains(CONVERSATION_ARCHIVE_CHUNK_STORE)
+                    ? request.transaction.objectStore(CONVERSATION_ARCHIVE_CHUNK_STORE)
+                    : db.createObjectStore(CONVERSATION_ARCHIVE_CHUNK_STORE, { keyPath: 'chunk_id' });
+                if (!store.indexNames.contains('conversation_id')) store.createIndex('conversation_id', 'conversation_id');
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error || new Error('indexeddb_open_failed'));
+            request.onblocked = () => reject(new Error('indexeddb_open_blocked'));
+        });
+        const readRequest = request => new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error || new Error('indexeddb_read_failed'));
+        });
+        const prepare = async data => {
+            const expanded = expandConversationArchivePayload(data);
+            const encode = createRoleplayHistoryEncoder({ reuseObjects: true });
+            const messages = new WeakMap();
+            const convert = message => {
+                if (!message || typeof message !== 'object') throw new Error('invalid_story_history_message');
+                if (!messages.has(message)) messages.set(message, mapRoleplayHistorySnapshots(message, value => {
+                    if (isRoleplayHistoryReference(value) && !roleplayHistoryValidatedNodes.has(value.node)) {
+                        roleplayHistoryNodeValue(value.node);
+                    }
+                    return encode(value);
+                }));
+                return messages.get(message);
+            };
+            const branches = Array.isArray(expanded.roleplay_branches) ? expanded.roleplay_branches
+                : Array.isArray(expanded.roleplayBranches) ? expanded.roleplayBranches : [];
+            const activeMessages = Array.isArray(expanded.archiveMessages) ? expanded.archiveMessages : expanded.messages || [];
+            expanded.messages = unpackRoleplayHistoryMessages(activeMessages).map(convert);
+            if (Array.isArray(expanded.archiveMessages)) expanded.archiveMessages = expanded.messages;
+            expanded.roleplay_branches = branches;
+            for (let index = 0; index < branches.length; index++) {
+                const branch = branches[index];
+                const rows = Array.isArray(branch.archive_messages) ? branch.archive_messages
+                    : Array.isArray(branch.archiveMessages) ? branch.archiveMessages : branch.messages || [];
+                const prepared = unpackRoleplayHistoryMessages(rows).map(convert);
+                branches[index] = { ...branch, messages: prepared };
+                if (Array.isArray(branch.archive_messages)) branches[index].archive_messages = prepared;
+                if (Array.isArray(branch.archiveMessages)) branches[index].archiveMessages = prepared;
+                progress('history', index + 1, branches.length);
+                if (index % 8 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            return expanded;
+        };
+        self.onmessage = async event => {
+            const { command, payload } = event.data;
+            let db;
+            const startedAt = performance.now();
+            const timings = {};
+            try {
+                let result;
+                if (command === 'parse') {
+                    progress('read');
+                    let text = await payload.file.text();
+                    timings.file_read_ms = performance.now() - startedAt;
+                    progress('parse');
+                    const parseStarted = performance.now();
+                    const data = JSON.parse(text);
+                    text = '';
+                    timings.json_parse_ms = performance.now() - parseStarted;
+                    if (data?.schema !== CONVERSATION_SCHEMA || ![8, CONVERSATION_VERSION].includes(Number(data.version))
+                        || !Array.isArray(data.messages)) throw new Error('invalid_conversation');
+                    progress('history');
+                    const historyStarted = performance.now();
+                    result = await prepare(data);
+                    timings.history_prepare_ms = performance.now() - historyStarted;
+                } else if (command === 'read') {
+                    db = await openDb();
+                    const transaction = db.transaction([CONVERSATION_ARCHIVE_STORE, CONVERSATION_ARCHIVE_CHUNK_STORE], 'readonly');
+                    const metadataRequest = readRequest(transaction.objectStore(CONVERSATION_ARCHIVE_STORE).get(payload.conversation_id));
+                    const chunksRequest = readRequest(transaction.objectStore(CONVERSATION_ARCHIVE_CHUNK_STORE)
+                        .index('conversation_id').getAll(payload.conversation_id));
+                    const [metadata, rows] = await Promise.all([metadataRequest, chunksRequest]);
+                    result = metadata || null;
+                    if (metadata?.storage_format === CONVERSATION_ARCHIVE_STORAGE_FORMAT && !metadata.payload) {
+                        rows.sort((left, right) => left.chunk_index - right.chunk_index);
+                        if (rows.length !== metadata.chunk_count || rows.some((row, index) => row.chunk_index !== index)) {
+                            throw new Error('indexeddb_archive_chunk_missing');
+                        }
+                        const text = rows.map(row => row.data).join('');
+                        if (text.length !== metadata.serialized_length) throw new Error('indexeddb_archive_length_mismatch');
+                        result = { ...metadata, payload: JSON.parse(text) };
+                    }
+                    timings.archive_read_ms = performance.now() - startedAt;
+                    if (result?.payload && payload.hydrate) {
+                        const historyStarted = performance.now();
+                        result.payload = await prepare(result.payload);
+                        timings.history_prepare_ms = performance.now() - historyStarted;
+                    }
+                } else {
+                    progress('history');
+                    const historyStarted = performance.now();
+                    const archive = buildConversationArchivePayload(payload.snapshot, {
+                        onProgress: (completed, total) => progress('history', completed, total)
+                    });
+                    timings.history_prepare_ms = performance.now() - historyStarted;
+                    progress('serialize');
+                    const serializeStarted = performance.now();
+                    const text = JSON.stringify(archive);
+                    timings.json_serialize_ms = performance.now() - serializeStarted;
+                    if (!text) throw new Error('archive_serialization_failed');
+                    if (command === 'export') {
+                        result = new Blob([text], { type: 'application/json' });
+                    } else if (command === 'save') {
+                        progress('write');
+                        const writeStarted = performance.now();
+                        db = await openDb();
+                        const id = String(archive.conversation_id || '').trim();
+                        if (!id) throw new Error('conversation_id_missing');
+                        const count = Math.ceil(text.length / CONVERSATION_ARCHIVE_CHUNK_CHARS);
+                        await new Promise((resolve, reject) => {
+                            const transaction = db.transaction([CONVERSATION_ARCHIVE_STORE, CONVERSATION_ARCHIVE_CHUNK_STORE], 'readwrite');
+                            transaction.objectStore(CONVERSATION_ARCHIVE_STORE).put({
+                                conversation_id: id, saved_at: archive.saved_at || new Date().toISOString(),
+                                persistence_revision: Math.max(0, Math.round(Number(archive.persistence_revision) || 0)),
+                                storage_format: CONVERSATION_ARCHIVE_STORAGE_FORMAT, chunk_count: count,
+                                serialized_length: text.length, roleplay_archive_format: archive.roleplay_archive_format || ''
+                            });
+                            const store = transaction.objectStore(CONVERSATION_ARCHIVE_CHUNK_STORE);
+                            const request = store.index('conversation_id').getAllKeys(id);
+                            request.onsuccess = () => {
+                                request.result.forEach(key => store.delete(key));
+                                for (let index = 0; index < count; index++) store.put({
+                                    chunk_id: `${id}:${index}`, conversation_id: id, chunk_index: index,
+                                    data: text.slice(index * CONVERSATION_ARCHIVE_CHUNK_CHARS, (index + 1) * CONVERSATION_ARCHIVE_CHUNK_CHARS)
+                                });
+                            };
+                            request.onerror = () => transaction.abort();
+                            transaction.oncomplete = resolve;
+                            transaction.onerror = transaction.onabort = () => reject(transaction.error || new Error('indexeddb_write_failed'));
+                        });
+                        result = { archive_chars: text.length, archive_chunks: count };
+                        timings.archive_write_ms = performance.now() - writeStarted;
+                    } else throw new Error('invalid_archive_operation');
+                }
+                self.postMessage({ result, duration_ms: performance.now() - startedAt, timings });
+            } catch (error) {
+                self.postMessage({ error: String(error?.message || 'conversation_worker_failed') });
+            } finally {
+                db?.close();
+            }
+        };
+    }
+
+    function conversationArchiveWorkerSource() {
+        const constants = {
+            CONVERSATION_SCHEMA, CONVERSATION_VERSION, CONVERSATION_ARCHIVE_FORMAT, LEGACY_CONVERSATION_ARCHIVE_FORMAT,
+            CONVERSATION_ARCHIVE_DB_NAME, CONVERSATION_ARCHIVE_DB_VERSION, CONVERSATION_ARCHIVE_STORE,
+            CONVERSATION_ARCHIVE_CHUNK_STORE, CONVERSATION_ARCHIVE_STORAGE_FORMAT, CONVERSATION_ARCHIVE_CHUNK_CHARS,
+            ROLEPLAY_HISTORY_SCHEMA, ROLEPLAY_HISTORY_REF_SCHEMA, ROLEPLAY_HISTORY_INTERVAL,
+            ROLEPLAY_HISTORY_MAX_NODES, ROLEPLAY_HISTORY_MAX_CHANGES
+        };
+        const functions = [
+            conversationArchiveHash, roleplayHistoryCanonical, roleplayHistoryClone, roleplayHistoryFingerprint,
+            isRoleplayHistoryReference, roleplayHistoryMetadata, roleplayHistoryChanges, applyRoleplayHistoryChanges,
+            roleplayHistoryNodeValue, createRoleplayHistoryEncoder, mapRoleplayHistorySnapshots,
+            createRoleplayHistoryWriter, createRoleplayHistoryReader, unpackRoleplayHistoryMessages,
+            buildConversationArchivePayload, expandConversationArchivePayload, conversationArchiveWorkerMain
+        ];
+        return "'use strict';\n" + Object.entries(constants).map(([key, value]) => `const ${key}=${JSON.stringify(value)};`).join('\n')
+            + '\nconst roleplayHistoryCache=new Map();const roleplayHistoryValidatedNodes=new WeakSet();\n'
+            + functions.map(value => value.toString()).join('\n') + '\nconversationArchiveWorkerMain();';
+    }
+
+    function acceptConversationWorkerHistory(payload) {
+        if (!payload || typeof payload !== 'object') return;
+        const messages = new WeakSet();
+        const accept = message => {
+            if (!message || typeof message !== 'object' || messages.has(message)) return;
+            messages.add(message);
+            for (const suffix of ['before', 'after']) {
+                const reference = message[`roleplay_session_${suffix}`];
+                if (!isRoleplayHistoryReference(reference)) continue;
+                let node = reference.node;
+                while (node && !roleplayHistoryValidatedNodes.has(node)) {
+                    roleplayHistoryValidatedNodes.add(node);
+                    node = node.kind === 'delta' ? node.base : null;
+                }
+            }
+            if (Array.isArray(message.variants)) message.variants.forEach(accept);
+        };
+        for (const message of payload.messages || []) accept(message);
+        for (const branch of payload.roleplay_branches || []) {
+            for (const message of branch.messages || []) accept(message);
+        }
+    }
+
+    function runConversationArchiveWorker(command, payload, options = {}) {
+        return new Promise((resolve, reject) => {
+            if (!supportsConversationArchiveWorker()) return reject(new Error('conversation_worker_unavailable'));
+            if (options.signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+            let worker, timeout, settled = false;
+            const conversationId = String(options.conversationId || payload.conversation_id || payload.snapshot?.conversation_id || '');
+            const tasks = conversationArchiveWorkerTasks.get(conversationId) || new Set();
+            const finish = (error, value) => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeout);
+                worker?.terminate();
+                options.signal?.removeEventListener('abort', abort);
+                tasks.delete(abort);
+                if (!tasks.size) conversationArchiveWorkerTasks.delete(conversationId);
+                error ? reject(error) : resolve(value);
+            };
+            const abort = () => finish(new DOMException('Aborted', 'AbortError'));
+            try {
+                if (!conversationArchiveWorkerUrl) conversationArchiveWorkerUrl = URL.createObjectURL(
+                    new Blob([conversationArchiveWorkerSource()], { type: 'text/javascript' })
+                );
+                worker = new window.Worker(conversationArchiveWorkerUrl);
+                tasks.add(abort);
+                conversationArchiveWorkerTasks.set(conversationId, tasks);
+                options.signal?.addEventListener('abort', abort, { once: true });
+                timeout = window.setTimeout(() => finish(new Error('conversation_worker_timeout')), 300000);
+                worker.onmessage = event => {
+                    if (settled) return;
+                    if (event.data.progress) {
+                        options.onProgress?.(event.data.progress);
+                    } else if (event.data.error) {
+                        finish(new Error(event.data.error));
+                    } else {
+                        if (command === 'parse') acceptConversationWorkerHistory(event.data.result);
+                        if (command === 'read' && payload.hydrate) acceptConversationWorkerHistory(event.data.result?.payload);
+                        markVlmChatPerformance('vlm_chat.archive.background', options.runtime || null, {
+                            operation: command, conversation_id: conversationId,
+                            duration_ms: event.data.duration_ms, ...event.data.timings
+                        });
+                        finish(null, event.data.result);
+                    }
+                };
+                worker.onerror = event => {
+                    event.preventDefault();
+                    finish(new Error('conversation_worker_failed'));
+                };
+                worker.onmessageerror = () => finish(new Error('conversation_worker_failed'));
+                worker.postMessage({ command, payload });
+            } catch (error) {
+                finish(error);
+            }
+        });
     }
 
     function openConversationArchiveDb() {
@@ -21068,6 +21385,16 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const conversationId = String(payload?.conversation_id || '').trim();
         if (!conversationId) throw new Error('conversation_id_missing');
         const startedAt = vlmChatPerformanceNow();
+        if (supportsConversationArchiveWorker()) {
+            const result = await runConversationArchiveWorker('save', { snapshot: payload });
+            clearConversationRecoveryRecord(conversationId, normalizeConversationPersistenceRevision(payload.persistence_revision));
+            markVlmChatPerformance('vlm_chat.persist.indexeddb', runtime, {
+                duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt),
+                persistence_revision: normalizeConversationPersistenceRevision(payload.persistence_revision),
+                ...result, background: true
+            });
+            return true;
+        }
         const archivePayload = payload?.roleplay_archive_format
             ? payload
             : buildConversationArchivePayload(payload);
@@ -21141,9 +21468,12 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         });
     }
 
-    async function readConversationArchivePayload(conversationId) {
+    async function readConversationArchivePayload(conversationId, options = {}) {
         const id = String(conversationId || '').trim();
         if (!id) return null;
+        if (supportsConversationArchiveWorker()) {
+            return runConversationArchiveWorker('read', { conversation_id: id, hydrate: options.hydrate === true });
+        }
         const db = await openConversationArchiveDb();
         const metadata = await new Promise((resolve, reject) => {
             let transaction;
@@ -21196,6 +21526,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
     async function deleteConversationArchive(conversationId) {
         const id = String(conversationId || '').trim();
         if (!id) return false;
+        for (const cancel of [...(conversationArchiveWorkerTasks.get(id) || [])]) cancel();
         roleplayHistoryCache.clear();
         clearConversationRecoveryRecord(id);
         const queue = conversationArchiveQueues.get(id);
@@ -21383,7 +21714,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             const recovery = readConversationRecoveryRecord(conversationId);
             let record = null;
             try {
-                record = await readConversationArchivePayload(conversationId);
+                record = await readConversationArchivePayload(conversationId, { hydrate: true });
             } catch (error) {
                 if (!recovery) {
                     reportConversationArchiveError(runtime, error);
@@ -21592,7 +21923,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         });
         let roleplayData = null;
         if (roleplayHasData) {
-            roleplayData = normalizeConversationRoleplayData(target, conversationId, {
+            roleplayData = options.roleplayData || normalizeConversationRoleplayData(target, conversationId, {
                 sessionId: options.roleplaySessionId || '',
                 localOnlyBranches: !!options.localOnlyBranches,
                 fullHistory
@@ -21731,12 +22062,12 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                 String(data.roleplay_archive_format || '').trim()
             );
         const expandedData = expandConversationArchivePayload(data);
-        const conversationId = options.preserveId
+        const conversationId = options.conversationId || (options.preserveId
             ? String(expandedData.conversation_id || '').trim() || uid('describe_vlm_chat')
-            : uid('describe_vlm_chat_import');
+            : uid('describe_vlm_chat_import'));
         const roleplayHasData = conversationHasRoleplayData(expandedData, conversationId);
         const roleplayData = roleplayHasData
-            ? normalizeConversationRoleplayData(expandedData, conversationId, {
+            ? options.roleplayData || normalizeConversationRoleplayData(expandedData, conversationId, {
                 sessionId: options.import ? uid('roleplay_session_import') : '',
                 localOnlyBranches: !!options.import,
                 fullHistory: archiveHistory
@@ -21942,7 +22273,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                     if (normalizeConversationPersistenceRevision(current.persistence_revision) !== revision) continue;
                     let archiveAvailable = false;
                     try {
-                        const existingRecord = await readConversationArchivePayload(conversationId);
+                        const existingRecord = await readConversationArchivePayload(conversationId, { hydrate: true });
                         const existingPayload = existingRecord?.payload
                             ? normalizeConversationPayload(existingRecord.payload, { preserveId: true })
                             : null;
@@ -22104,10 +22435,11 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             ]);
             const fullSnapshot = conversationPayload(target, Object.assign({}, persistenceOptions, {
                 fullHistory: true,
+                storageCompactLevel: supportsConversationArchiveWorker() ? 0 : 1,
                 updateRoleplayBranch: !skipBranchSnapshotReasons.has(persistReason)
             }));
             if (conversationRecordHasHistory(fullSnapshot)) {
-                const archiveSnapshot = buildConversationArchivePayload(fullSnapshot);
+                const archiveSnapshot = supportsConversationArchiveWorker() ? fullSnapshot : buildConversationArchivePayload(fullSnapshot);
                 target.archiveSavePromise = queueConversationArchiveSave(archiveSnapshot, target);
                 target.archiveSavePromise.catch(() => {});
             } else {
@@ -22191,7 +22523,8 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             : normalizeConversationPayload(snapshot, { preserveId: true });
         if (!restored) return false;
         const conversationId = restored.conversationId || uid('describe_vlm_chat');
-        const runtime = ensureConversationRuntime(conversationId, {
+        if (options.runtime && options.runtime.conversationId !== conversationId) return false;
+        const runtime = options.runtime || ensureConversationRuntime(conversationId, {
             conversationId,
             editorState: restored.editorState,
             messages: restored.messages,
@@ -22230,7 +22563,8 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                 && (restored.messages.length > 0 || restored.roleplayBranches.length > 0),
             persistenceDirty: false
         }, { forceRefresh: true });
-        applyConversationRuntime(runtime);
+        if (options.runtime) state.conversationRuntimes.set(conversationId, runtime);
+        applyConversationRuntime(runtime, { normalizedRoleplay: !!options.runtime });
         // Restored state mirrors: state.creativePreference = restored.creativePreference;
         // Restored state mirrors: state.creativeInitiative = restored.creativeInitiative;
         state.missingVlmModelRequest = null;
@@ -22280,7 +22614,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         syncConversationArchiveHistory(runtime);
         let payload = conversationPayload(runtime, { fullHistory: true, storageCompactLevel: 0 });
         try {
-            const record = await readConversationArchivePayload(runtime.conversationId);
+            const record = await readConversationArchivePayload(runtime.conversationId, { hydrate: true });
             const archived = record?.payload
                 ? normalizeConversationPayload(record.payload, { preserveId: true, fullHistory: true })
                 : null;
@@ -22297,8 +22631,15 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         payload.editor_state = normalizeConversationEditorState(
             conversationEditorStates.get(runtime.conversationId) || runtime.editorState, runtime.conversationId
         );
-        payload = buildConversationArchivePayload(payload);
-        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        let blob;
+        try {
+            blob = supportsConversationArchiveWorker()
+                ? await runConversationArchiveWorker('export', { snapshot: payload })
+                : new Blob([JSON.stringify(buildConversationArchivePayload(payload))], { type: 'application/json' });
+        } catch (error) {
+            setStatus(roleplayDictionaryText('Conversation export failed. Saved data has been kept.'), true);
+            return false;
+        }
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -22705,51 +23046,156 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         }
     }
 
-    function importConversationFile(file) {
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async () => {
-            try {
-                const restored = normalizeConversationPayload(JSON.parse(String(reader.result || '')), { import: true, fullHistory: true });
-                if (!restored) throw new Error('invalid conversation');
-                activeCreativeRunIds().forEach((runId) => creativeCanvasApi()?.controlRun?.(runId, 'stop', {
-                    user_context: creativeUserContext()
-                }).catch(() => {}));
-                stopCreativePolls();
-                state.requestToken += 1;
-                abortActiveChatRequest();
-                abortCreativeDirectorRequest(true);
-                state.busy = false;
-                if (!applyConversationSnapshot(restored, { archiveHydrated: true })) throw new Error('invalid conversation');
-                state.persistenceRestored = true;
-                saveChatSettings();
-                const importedRuntime = currentConversationRuntime();
-                saveConversationSnapshot(importedRuntime);
-                let archiveSaved = true;
-                try {
-                    if (importedRuntime.archiveSavePromise) await importedRuntime.archiveSavePromise;
-                } catch (error) {
-                    archiveSaved = false;
-                }
-                const modal = document.getElementById('describe_vlm_chat_modal');
-                syncChatSettingsControls(modal);
-                renderPendingImages();
-                renderMessages({ scrollToLatest: true });
-                window.setTimeout(resumeCreativeGenerationPolls, 0);
-                setStatus(archiveSaved
-                    ? localText(
-                        `Conversation imported with ${importedRuntime.roleplayBranches.length} story branches.`,
-                        `对话已导入，包含 ${importedRuntime.roleplayBranches.length} 个剧情分支。`
-                    )
-                    : localText(
-                        'Conversation imported, but the full archive could not be saved locally.',
-                        '对话已导入，但完整会话档案未能保存到本机。'
-                    ), !archiveSaved);
-            } catch (err) {
-                setStatus(t('Invalid conversation file.', '对话文件格式无效。'), true);
+    async function normalizeConversationImportPayload(data, check, progress) {
+        const conversationId = uid('describe_vlm_chat_import');
+        if (!conversationHasRoleplayData(data, conversationId)) {
+            return normalizeConversationPayload(data, { import: true, fullHistory: true, conversationId });
+        }
+        const session = rebindRoleplaySessionIdentity(data.roleplay_session || data.roleplaySession, conversationId, uid('roleplay_session_import'));
+        const branches = [], seen = new Set();
+        const source = Array.isArray(data.roleplay_branches) ? data.roleplay_branches : [];
+        for (let index = 0; index < source.length; index++) {
+            check();
+            const branch = normalizeRoleplayBranch(source[index], conversationId, index, { fullHistory: true });
+            if (!seen.has(branch.branch_id)) {
+                seen.add(branch.branch_id);
+                branches.push(rebindRoleplayBranchIdentity(branch, conversationId, session.id, { localOnly: true, fullHistory: true }));
             }
+            if (index % 4 === 3) {
+                progress.update({ stage: 'history', completed: index + 1, total: source.length });
+                await new Promise(resolve => window.setTimeout(resolve, 0));
+            }
+        }
+        check();
+        const messages = rebindRoleplayMessageIdentities(
+            normalizePersistedMessages(data.messages, { conversationId, maxMessages: null }), conversationId, session.id
+        );
+        return normalizeConversationPayload(data, {
+            import: true, fullHistory: true, conversationId, roleplayData: { session, branches, messages }
+        });
+    }
+
+    function createConversationImportProgress(controller) {
+        const dialog = document.createElement('dialog');
+        dialog.className = 'describe-vlm-conversation-import';
+        dialog.setAttribute('aria-label', roleplayDictionaryText('Importing conversation'));
+        dialog.innerHTML = `<div class="describe-vlm-conversation-import-head"><strong>${escapeHtml(roleplayDictionaryText('Importing conversation'))}</strong><button type="button" title="${escapeHtml(roleplayDictionaryText('Cancel import'))}" aria-label="${escapeHtml(roleplayDictionaryText('Cancel import'))}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div><p role="status"></p><progress aria-label="${escapeHtml(roleplayDictionaryText('Importing conversation'))}"></progress>`;
+        dialog.querySelector('button').addEventListener('click', () => controller.abort());
+        dialog.addEventListener('cancel', event => { event.preventDefault(); controller.abort(); });
+        document.body.append(dialog);
+        dialog.showModal();
+        return {
+            update(value) {
+                const labels = {
+                    read: 'Reading conversation file', parse: 'Parsing conversation file',
+                    history: 'Preparing conversation history', serialize: 'Preparing conversation archive',
+                    write: 'Saving conversation archive', view: 'Restoring conversation view'
+                };
+                const label = roleplayDictionaryText(labels[value.stage] || labels.history);
+                const status = dialog.querySelector('[role="status"]');
+                if (status.textContent !== label) status.textContent = label;
+                const progress = dialog.querySelector('progress');
+                if (value.total > 0) {
+                    progress.max = value.total;
+                    progress.value = value.completed;
+                } else progress.removeAttribute('value');
+            },
+            close() { dialog.close(); dialog.remove(); }
         };
-        reader.readAsText(file);
+    }
+
+    async function importConversationFile(file) {
+        if (!file) return;
+        activeConversationImport?.abort();
+        const controller = new AbortController();
+        activeConversationImport = controller;
+        const progress = createConversationImportProgress(controller);
+        const startedAt = vlmChatPerformanceNow();
+        let importedId = '', committed = false;
+        const check = () => {
+            if (controller.signal.aborted || activeConversationImport !== controller) throw new DOMException('Aborted', 'AbortError');
+        };
+        try {
+            progress.update({ stage: 'read' });
+            await new Promise(resolve => window.requestAnimationFrame(() => window.setTimeout(resolve, 0)));
+            check();
+            let data;
+            if (supportsConversationArchiveWorker()) {
+                data = await runConversationArchiveWorker('parse', { file }, {
+                    signal: controller.signal, onProgress: value => progress.update(value)
+                });
+            } else {
+                if (file.size > 2 * 1024 * 1024) throw new Error('conversation_worker_unavailable');
+                data = JSON.parse(await file.text());
+            }
+            check();
+            progress.update({ stage: 'view' });
+            await new Promise(resolve => window.setTimeout(resolve, 0));
+            check();
+            const restored = supportsConversationArchiveWorker()
+                ? await normalizeConversationImportPayload(data, check, progress)
+                : normalizeConversationPayload(data, { import: true, fullHistory: true });
+            if (!restored) throw new Error('invalid_conversation');
+            importedId = restored.conversationId;
+            const preparedRuntime = createConversationRuntime(restored, { normalizedRoleplay: true });
+            const snapshot = conversationRecordFromSource(preparedRuntime, {
+                fullHistory: true, storageCompactLevel: 0,
+                roleplayData: { session: restored.roleplaySession, branches: restored.roleplayBranches, messages: restored.archiveMessages },
+                savedAt: new Date().toISOString(), persistenceRevision: restored.persistenceRevision + 1
+            });
+            progress.update({ stage: 'write' });
+            check();
+            if (supportsConversationArchiveWorker()) {
+                await runConversationArchiveWorker('save', { snapshot }, {
+                    signal: controller.signal, onProgress: value => progress.update(value)
+                });
+            } else await writeConversationArchivePayload(snapshot);
+            check();
+            restored.persistenceRevision = snapshot.persistence_revision;
+            restored.savedAt = snapshot.saved_at;
+            preparedRuntime.persistenceRevision = snapshot.persistence_revision;
+            preparedRuntime.persistenceSavedAt = snapshot.saved_at;
+            preparedRuntime.archiveHydrated = true;
+            activeCreativeRunIds().forEach(runId => creativeCanvasApi()?.controlRun?.(runId, 'stop', {
+                user_context: creativeUserContext()
+            }).catch(() => {}));
+            stopCreativePolls();
+            state.requestToken += 1;
+            abortActiveChatRequest();
+            abortCreativeDirectorRequest(true);
+            state.busy = false;
+            if (!applyConversationSnapshot(restored, { archiveHydrated: true, runtime: preparedRuntime })) throw new Error('invalid_conversation');
+            committed = true;
+            state.persistenceRestored = true;
+            saveChatSettings();
+            upsertConversationRecord(compactConversationCatalogSnapshot(snapshot));
+            const runtime = currentConversationRuntime();
+            runtime.archiveSavePromise = Promise.resolve(true);
+            markVlmChatPerformance('vlm_chat.import.complete', runtime, {
+                duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt), background: supportsConversationArchiveWorker(),
+                file_bytes: file.size
+            });
+            syncChatSettingsControls(document.getElementById('describe_vlm_chat_modal'));
+            renderPendingImages();
+            renderMessages({ scrollToLatest: true });
+            window.setTimeout(resumeCreativeGenerationPolls, 0);
+            setStatus(localText(
+                `Conversation imported with ${runtime.roleplayBranches.length} story branches.`,
+                `对话已导入，包含 ${runtime.roleplayBranches.length} 个剧情分支。`
+            ));
+        } catch (error) {
+            if (importedId && !committed) await deleteConversationArchive(importedId).catch(() => {});
+            if (activeConversationImport === controller) {
+                const message = error.name === 'AbortError' ? 'Conversation import cancelled.'
+                    : error.message === 'conversation_worker_unavailable' ? 'Conversation background processing is unavailable.'
+                    : error.message === 'conversation_worker_timeout' ? 'Conversation processing timed out.'
+                    : 'Conversation import failed. The current conversation has been kept.';
+                setStatus(roleplayDictionaryText(message), error.name !== 'AbortError');
+            }
+        } finally {
+            progress.close();
+            if (activeConversationImport === controller) activeConversationImport = null;
+        }
     }
 
     function closeModal() {

@@ -30964,3 +30964,48 @@ html.simpai-h3-director #scene_director_editor .h3-timeline-gap:focus-visible {
   .describe-vlm-memory-library-body > section { padding: 10px; }
   .describe-vlm-memory-library-nav { padding: 6px 10px; gap: 6px; }
 }
+
+.describe-vlm-conversation-import {
+  width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid #555b66;
+  border-radius: 6px;
+  background: var(--body-background-fill, #22252b);
+  color: var(--body-text-color, #f4f5f7);
+}
+
+.describe-vlm-conversation-import::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.describe-vlm-conversation-import-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.describe-vlm-conversation-import-head button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #555b66;
+  border-radius: 4px;
+  background: #30343c;
+  color: inherit;
+}
+
+.describe-vlm-conversation-import p {
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-conversation-import progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+}
