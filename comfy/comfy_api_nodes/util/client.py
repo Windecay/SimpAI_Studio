@@ -108,6 +108,10 @@ _IDEMPOTENCY_IN_FLIGHT = frozenset({"idempotency_in_flight", "concurrency_limit_
 _IDEMPOTENCY_TERMINAL = frozenset({"idempotency_consumed", "idempotency_mismatch", "invalid_input"})
 _IDEMPOTENCY_IN_FLIGHT_WAIT = 2.0
 _IDEMPOTENCY_IN_FLIGHT_MAX_WAIT = 30.0
+_ROUTER_QUEUE_STATUS = {"IN_QUEUE": "queued", "IN_PROGRESS": "processing", "COMPLETED": "completed"}
+_ROUTER_POLL_INTERVAL = 2.0
+_ROUTER_MAX_POLL_INTERVAL = 10.0
+_ROUTER_MAX_POLL_ATTEMPTS = 720
 
 PRICE_CREDITS_HEADER = "X-Comfy-Credits-Used"
 """Proxy response header with the actual cost in Comfy credits. When present on any successful proxied response,
@@ -359,6 +363,9 @@ async def poll_op_raw(
     cancel_endpoint: ApiEndpoint | None = None,
     cancel_timeout: float = 10.0,
     extra_text: str | None = None,
+    max_poll_interval: float | None = None,
+    queue_position_extractor: Callable[[dict[str, Any]], int | None] | None = None,
+    server_estimate_includes_queue: bool = True,
 ) -> dict[str, Any]:
     """
     Polls an endpoint until the task reaches a terminal state. Displays time while queued/processing,
@@ -377,17 +384,24 @@ async def poll_op_raw(
     progress_bar = utils.ProgressBar(100) if progress_extractor else None
     last_progress: int | None = None
 
-    server_estimate = _server_estimates_by_execution.pop(cls, None)
-    if server_estimate is not None:
-        state = _PollUIState(
-            started=started,
-            estimated_duration=server_estimate.p50_seconds,
-            estimated_p90=server_estimate.p90_seconds,
-            estimate_includes_queue=True,
-        )
-    else:
-        state = _PollUIState(started=started, estimated_duration=estimated_duration)
-    estimate_bar = utils.ProgressBar(100) if progress_bar is None and server_estimate is not None else None
+    state = _PollUIState(started=started, estimated_duration=estimated_duration)
+    estimate_bar: utils.ProgressBar | None = None
+
+    def _adopt_server_estimate():
+        nonlocal estimate_bar
+        server_estimate = _server_estimates_by_execution.pop(cls, None)
+        if server_estimate is None:
+            return
+        if not server_estimate_includes_queue and state.estimated_duration is None:
+            state.base_processing_elapsed = 0.0
+            state.active_since = time.monotonic()
+        state.estimated_duration = server_estimate.p50_seconds
+        state.estimated_p90 = server_estimate.p90_seconds
+        state.estimate_includes_queue = server_estimate_includes_queue
+        if progress_bar is None and estimate_bar is None:
+            estimate_bar = utils.ProgressBar(100)
+
+    _adopt_server_estimate()
     stop_ticker = asyncio.Event()
 
     async def _cancel():
@@ -418,7 +432,8 @@ async def poll_op_raw(
                     (now - state.active_since) if state.active_since is not None else 0.0
                 )
                 if estimate_bar is not None:
-                    pct = _estimate_progress_pct(now - state.started, state.estimated_duration, state.estimated_p90)
+                    estimate_elapsed = now - state.started if state.estimate_includes_queue else proc_elapsed
+                    pct = _estimate_progress_pct(estimate_elapsed, state.estimated_duration, state.estimated_p90)
                     if pct != last_estimate_pct:
                         try:
                             estimate_bar.update_absolute(pct, total=100)
@@ -443,6 +458,8 @@ async def poll_op_raw(
             logging.debug("Polling ticker exited: %s", exc)
 
     ticker_task = asyncio.create_task(_ticker())
+    interval = poll_interval
+    last_status: str | int | None = None
     try:
         while consumed_attempts < max_poll_attempts:
             try:
@@ -471,6 +488,7 @@ async def poll_op_raw(
                 await _cancel()
                 raise
 
+            _adopt_server_estimate()
             try:
                 status = _normalize_status_value(status_extractor(resp_json))
             except Exception as e:
@@ -512,6 +530,10 @@ async def poll_op_raw(
 
             state.is_queued = is_queued
             state.status_label = status or ("Queued" if is_queued else "Processing")
+            if is_queued and queue_position_extractor:
+                position = queue_position_extractor(resp_json)
+                if position is not None:
+                    state.status_label = f"{state.status_label} ({position} ahead)"
             if status in completed_states:
                 if state.active_since is not None:
                     state.base_processing_elapsed += now_ts - state.active_since
@@ -543,8 +565,11 @@ async def poll_op_raw(
                 logging.error(msg)
                 raise Exception(msg)
 
+            if max_poll_interval is not None:
+                interval = poll_interval if status != last_status else min(interval + 1.0, max_poll_interval)
+                last_status = status
             try:
-                await sleep_with_interrupt(poll_interval, cls, None, None)
+                await sleep_with_interrupt(interval, cls, None, None)
             except ProcessingInterrupted:
                 await _cancel()
                 raise
@@ -554,7 +579,7 @@ async def poll_op_raw(
         await _cancel()
         raise Exception(
             f"Polling timed out after {max_poll_attempts} non-queued attempts "
-            f"(~{int(max_poll_attempts * poll_interval)}s of active polling)."
+            f"(~{int(max_poll_attempts * (max_poll_interval or poll_interval))}s of active polling)."
         )
     except ProcessingInterrupted:
         raise
@@ -569,6 +594,54 @@ async def poll_op_raw(
         stop_ticker.set()
         with contextlib.suppress(Exception):
             await ticker_task
+
+
+async def router_op_raw(
+    cls: type[IO.ComfyNode],
+    model: str,
+    *,
+    data: dict[str, Any] | BaseModel,
+) -> dict[str, Any]:
+    requests_path = f"/v2/models/{model}/requests"
+    submit = await sync_op_raw(
+        cls, ApiEndpoint(path=requests_path, method="POST"), data=data, final_label_on_success=None
+    )
+    path = f"{requests_path}/{submit['request_id']}"
+    started = time.monotonic()
+    status = await poll_op_raw(
+        cls,
+        ApiEndpoint(path=f"{path}/status"),
+        status_extractor=lambda r: _ROUTER_QUEUE_STATUS.get(r["status"], "processing"),
+        queue_position_extractor=lambda r: r.get("queue_position"),
+        completed_statuses=["completed"],
+        failed_statuses=[],
+        queued_statuses=["queued"],
+        poll_interval=_ROUTER_POLL_INTERVAL,
+        max_poll_interval=_ROUTER_MAX_POLL_INTERVAL,
+        max_poll_attempts=_ROUTER_MAX_POLL_ATTEMPTS,
+        server_estimate_includes_queue=False,
+        cancel_endpoint=ApiEndpoint(path=f"{path}/cancel", method="PUT"),
+    )
+    failed = bool(status.get("error_type"))
+    return await sync_op_raw(
+        cls,
+        ApiEndpoint(path=path),
+        timeout=120.0,
+        max_retries=0 if failed else 10,
+        retry_backoff=1.4,
+        max_retries_on_rate_limit=0 if failed else 16,
+        progress_origin_ts=started,
+    )
+
+
+async def router_op(
+    cls: type[IO.ComfyNode],
+    model: str,
+    *,
+    response_model: type[M],
+    data: dict[str, Any] | BaseModel,
+) -> M:
+    return _validate_or_raise(response_model, await router_op_raw(cls, model, data=data))
 
 
 def _display_text(

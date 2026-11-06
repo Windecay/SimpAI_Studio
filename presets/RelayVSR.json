@@ -1,0 +1,79 @@
+{
+  "supported_tasks": ["video_upscale"],
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "video",
+    "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "Flux",
+    "scene_frontend": {
+      "version": "v1.1",
+      "theme": ["RelayVSR Video Upscale 2x", "RelayVSR Video Upscale 4x"],
+      "theme_title": "RelayVSR Video Upscale",
+      "task_method": {
+        "RelayVSR Video Upscale 2x": "relayvsr_x2",
+        "RelayVSR Video Upscale 4x": "relayvsr_x4"
+      },
+      "director_capability": {
+        "image_policy": "forbidden", "min_images": 0, "max_images": 0,
+        "image_modes": ["none"], "video_policy": "required", "video_modes": ["explicit"],
+        "audio_policy": "forbidden", "audio_output": "source_audio",
+        "duration_strategy": "video_min", "mixed_segments": false
+      },
+      "disvisible": [
+        "scene_canvas_image", "scene_additional_prompt", "scene_additional_prompt_2",
+        "scene_aspect_ratio", "scene_image_number", "scene_use_lora",
+        "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4",
+        "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8",
+        "scene_reference_video", "scene_reference_video2", "scene_audio", "scene_audio2",
+        "scene_audio3", "scene_video_duration", "scene_base_model", "scene_refiner_model",
+        "scene_steps", "scene_var_number2", "scene_var_number4", "scene_var_number5",
+        "scene_var_number6", "scene_var_number7", "scene_var_number9", "scene_var_number10",
+        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3",
+        "scene_switch_option4", "sam3_input_video", "sam3_mask_video"
+      ],
+      "prompt": {"RelayVSR Video Upscale 2x": "", "RelayVSR Video Upscale 4x": ""},
+      "var_number_title": "Save quality (lower = better, larger file size)",
+      "var_number": {"RelayVSR Video Upscale 2x": 18, "RelayVSR Video Upscale 4x": 18},
+      "var_number_min": 0, "var_number_max": 51, "var_number_step": 1,
+      "var_number3_title": "Detail strength",
+      "var_number3": {"RelayVSR Video Upscale 2x": 1.0, "RelayVSR Video Upscale 4x": 1.0},
+      "var_number3_min": 0.0, "var_number3_max": 1.0, "var_number3_step": 0.01,
+      "var_number8_title": "Duration limit (seconds) [0 = no limit]",
+      "var_number8": {"RelayVSR Video Upscale 2x": 0, "RelayVSR Video Upscale 4x": 0},
+      "var_number8_min": 0, "var_number8_max": 36000, "var_number8_step": 1,
+      "aspect_ratio": ["origin|Original"],
+      "resolution_control": {
+        "mode": "input_passthrough", "source": "scene_video",
+        "interactive": false, "frontend_preprocess": false
+      }
+    }
+  },
+  "default_model": "None",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "Default (model)",
+  "default_loras": [["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0]],
+  "default_cfg_scale": 1,
+  "default_sample_sharpness": 0,
+  "default_sampler": "euler",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "origin|Original",
+  "default_image_number": 1,
+  "default_overwrite_step": 1,
+  "default_prompt": "",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,relayvsr_x2_int8_convrot.safetensors,5163295248,240e75e0c17cf2845d559b25254a230ff7458f81449d7a8c5e7e3fb8275c7b3c,https://modelscope.cn/models/Comfy-Org/RelayVSR/resolve/e3fa046f9e828f1040fede44cd23422374914e3d/diffusion_models/relayvsr_x2_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/RelayVSR/resolve/340486a3adf9544e660e9146911c3ced59e58dd3/diffusion_models/relayvsr_x2_lightx2v_int8_convrot.safetensors",
+    "diffusion_models,relayvsr_x4_int8_convrot.safetensors,5164179952,21303b3c5f9ab4e1fd3fe00df5dd2e0b343f0cf2e3d269e03a9872000a313a2e,https://modelscope.cn/models/Comfy-Org/RelayVSR/resolve/e3fa046f9e828f1040fede44cd23422374914e3d/diffusion_models/relayvsr_x4_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/RelayVSR/resolve/340486a3adf9544e660e9146911c3ced59e58dd3/diffusion_models/relayvsr_x4_int8_convrot.safetensors",
+    "vae,relayvsr_flash_vae_x2_fp32.safetensors,127759464,b5bb0339acb5b52545911ea29a51b4c5b805776a779222b5a14591571f42e21c,https://modelscope.cn/models/Comfy-Org/RelayVSR/resolve/e3fa046f9e828f1040fede44cd23422374914e3d/vae/relayvsr_flash_vae_x2_fp32.safetensors,https://huggingface.co/Comfy-Org/RelayVSR/resolve/340486a3adf9544e660e9146911c3ced59e58dd3/vae/relayvsr_flash_vae_x2_fp32.safetensors",
+    "vae,relayvsr_flash_vae_x4_fp32.safetensors,127759784,7b8b8c99275fd5c4501b0589cc7b4c4506456a5df83160ef4e207e147b30f714,https://modelscope.cn/models/Comfy-Org/RelayVSR/resolve/e3fa046f9e828f1040fede44cd23422374914e3d/vae/relayvsr_flash_vae_x4_fp32.safetensors,https://huggingface.co/Comfy-Org/RelayVSR/resolve/340486a3adf9544e660e9146911c3ced59e58dd3/vae/relayvsr_flash_vae_x4_fp32.safetensors"
+  ]
+}

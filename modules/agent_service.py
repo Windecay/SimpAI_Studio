@@ -167,7 +167,12 @@ class StudioBackend:
                         continue
                     rows.extend({"name": name, "kind": kind} for name in values if name not in {"None", "Default (model)"})
             rows = [row for row in rows if request.query.casefold() in row["name"].casefold()]
-            return {"items": rows[request.offset:request.offset + request.limit], "total": len(rows),
+            page_rows = rows[request.offset:request.offset + request.limit]
+            for row in page_rows:
+                if row["kind"] == "lora":
+                    path = canvas_workbench_models._existing_model_path(row["name"], ("loras",))
+                    row["path_exists"] = bool(path and Path(path).is_file())
+            return {"items": page_rows, "total": len(rows),
                     "kinds": kinds}
         from modules import model_browser_service
         kinds = list(model_browser_service.TYPE_CONFIG)
@@ -908,7 +913,37 @@ class AgentService:
             entry = self._entry(request.preset_id, context)
             spec = self._spec(entry, request.theme, "", context)
             node = self._node(entry, spec)
-        return self.backend.models(request, node, context)
+        result = copy.deepcopy(self.backend.models(request, node, context))
+        for row in result.get("items") or []:
+            if not isinstance(row, dict) or (row.get("kind") or row.get("type") or request.kind) != "lora":
+                continue
+            name = str(row.get("name") or "").strip().replace("\\", "/")
+            safe_name = (
+                name and not ntpath.isabs(name) and not re.search(r"[:<>\x00-\x1f\x7f]", name)
+                and ".." not in name.split("/")
+                and name.casefold() not in {"none", "placeholder.safetensors"}
+            )
+            row["prompt_tag"] = f"<lora:{name}:1>" if safe_name and row.get("path_exists") is not False else None
+        has_more = request.offset + request.limit < result.get("total", 0)
+        next_query = {**request.model_dump(), "offset": request.offset + request.limit} if has_more else None
+        result.update(offset=request.offset, limit=request.limit, has_more=has_more,
+                      next_query=next_query,
+                      next_url=f"{API_PREFIX}/models?" + urlencode(next_query) if next_query else None)
+        if request.kind == "lora":
+            result["prompt_usage"] = {
+                "format": "<lora:relative-model-name:weight>", "field": "prompt", "placement": "end",
+                "strength_clip": 0, "compatibility_verified": False,
+                "instructions": (
+                    "Use an exact returned prompt_tag, replacing its example weight 1 with the user's weight. "
+                    "The example is not a model-specific recommended strength. Preserve trigger words as normal prompt text. "
+                    "Select a preset and query with preset_id/theme to narrow the inventory; filtering is not proof of compatibility. "
+                    "Comfy requires SimpAILoraStack; Fooocus uses its native stack. Do not append tags to fixed prompts or layout JSON. "
+                    "Manual stack and enabled legacy slots take precedence for the same model. "
+                    "Missing prompt LoRAs are warned about and skipped by the worker, so a finished task alone does not prove loading. "
+                    "A saved parameter profile is optional; querying models does not authorize generation or downloads."
+                ),
+            }
+        return result
 
     def model_status(self, request, context):
         entry, spec, node = self._model_request_node(request, context)

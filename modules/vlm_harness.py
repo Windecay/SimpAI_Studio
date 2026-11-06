@@ -333,6 +333,28 @@ def _lora_profile_notice(data, lang):
     return "\n".join(lines)
 
 
+def _lora_models_notice(data, lang):
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        return ""
+    chinese = lang == "cn"
+    rows = data["items"]
+    if not rows:
+        return ("当前查询没有返回 LoRA 文件，可以调整筛选条件继续查询。"
+                if chinese else "No LoRA files were returned for this query. Try different filters.")
+    lines = ["LoRA 文件：" if chinese else "LoRA files:"]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = re.sub(r"[\x00-\x1f\x7f]+", " ", str(row.get("name") or "")).strip()
+        if not name:
+            continue
+        suffix = ("（文件不存在）" if chinese else " (file missing)") if row.get("path_exists") is False else ""
+        lines.append(f"- {name}{suffix}")
+    if data.get("has_more"):
+        lines.append("还有其他 LoRA，可继续查询。" if chinese else "More LoRA files are available.")
+    return "\n".join(lines)
+
+
 def _structured_final_reply(text):
     """The existing creative/guide final envelope remains valid after progress."""
     text = str(text or "").strip()
@@ -408,10 +430,13 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
         principal = context["agent_api_context"]
         lang = (principal.state.get("__lang") if isinstance(principal, AgentContext) else payload.get("lang")) or "en"
         help_topic = agent_help.usage_topic(payload.get("message") or original_prompt, lang)
+    lora_message = payload.get("message") or original_prompt
+    saved_lora_request = agent_lora_intent.requests_saved_profiles(lora_message)
+    lora_tool_name = "simpai.parameter_profiles.list" if saved_lora_request else "simpai.models.list"
     lora_request = (
         str(payload.get("chat_mode") or original_params.get("describe_chat_mode") or "").lower() == "creative"
-        and agent_lora_intent.requests_lora(payload.get("message") or original_prompt)
-        and "simpai.parameter_profiles.list" in context["allowed_tool_names"]
+        and agent_lora_intent.requests_lora(lora_message)
+        and lora_tool_name in context["allowed_tool_names"]
     )
     transcript, trace, completed, messages = [], [], {}, []
     discovered_profiles = {}
@@ -513,7 +538,7 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
         "explicitly names a different application. Read the relevant help before giving UI steps. "
         "A feature need not be a preset: also inspect help about shared editors and libraries. "
     )
-    lora_contract = (
+    lora_contract = ((
         "The user asked to use or choose LoRA. Read the saved profile summaries returned by the runtime. "
         "Tell the user the profile names, saved LoRA names, weights and enabled/active states. "
         "Those states reflect saved settings, not file availability or successful loading; "
@@ -527,8 +552,22 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
         "The runtime may already display the returned profile summary; do not repeat that message. "
         "If a query fails or is incomplete, say the search is incomplete, not that no profiles exist. "
         "Do not change session preferences. A user-named saved profile may be used after verification. "
-        if lora_request else ""
-    )
+    ) if saved_lora_request else (
+        "The user asked to use or choose individual LoRA files. Read simpai.models.list with kind=lora; "
+        "the runtime supplies the first page. Query again with the selected preset_id/theme or search term as needed "
+        "and follow next_query for further pages. Never describe a partial page as the complete inventory. "
+        "Use exact returned names and prompt_tag values; the weight 1 in the example is not a recommended strength. "
+        "After an explicit file selection or a user-delegated choice, append <lora:relative-file-name:weight> "
+        "at the end of the normal generate_image action prompt. Retain requested weights, normal trigger words, "
+        "the original task and media. The worker extracts the tags and sends them to its LoRA stack. "
+        "Do not invent files or compatibility; verify preset scope and available metadata. "
+        "When the user wants to choose or has not selected a LoRA, show real candidates and wait without a generation action. "
+        "Do not force parameter_profile_selection_required for individual files or require saving a profile. "
+        "Saved combinations remain available only when requested. Do not append tags to fixed prompts or layout JSON. "
+        "Manual stacks and enabled legacy slots win for the same model. Missing prompt LoRAs are warned about and skipped, "
+        "so generation completion alone does not prove loading. Follow normal generation consent and session settings. "
+        "If the query fails, report that the search is incomplete, not that no files exist. "
+    )) if lora_request else ""
     contract = (
         "Studio tool runtime: you may query current facts before answering. "
         'To call tools, return ONLY {"tool_calls":[{"name":"exact tool name","arguments":{}}]}. '
@@ -680,10 +719,12 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
             }}
             try:
                 if rounds == 1 and lora_request:
-                    log_step("lora_profiles_requested", origin="runtime")
+                    log_step("lora_profiles_requested" if saved_lora_request else "lora_models_requested", origin="runtime")
                     result = {"ok": True, "text": _json({"tool_calls": [{
-                        "id": "runtime-lora-profiles", "name": "simpai.parameter_profiles.list",
-                        "arguments": {"include_lora_summary": True, "limit": 3},
+                        "id": "runtime-lora-profiles" if saved_lora_request else "runtime-lora-models",
+                        "name": lora_tool_name,
+                        "arguments": ({"include_lora_summary": True, "limit": 3} if saved_lora_request
+                                      else {"kind": "lora", "limit": 5}),
                     }]})}
                 elif rounds == 1 and help_topic:
                     # Metadata names the document; the regular read-only tool
@@ -907,10 +948,11 @@ def run_tool_loop(runtime_payload, payload, invoke, *, stream_callback=None, can
                 transcript.append({"tool_call": {**call, "id": call_id},
                                    "tool_result": _bounded_result(output.get("result", output), limits.result_chars),
                                    **({"cached": True} if cached else {})})
-                if call_id == "runtime-lora-profiles" and output.get("ok"):
+                if call_id in {"runtime-lora-profiles", "runtime-lora-models"} and output.get("ok"):
                     principal = context.get("agent_api_context")
                     lang = principal.state.get("__lang") if isinstance(principal, AgentContext) else payload.get("lang")
-                    notice = _lora_profile_notice(output.get("result", {}).get("data"), lang or "en")
+                    render_notice = _lora_profile_notice if saved_lora_request else _lora_models_notice
+                    notice = render_notice(output.get("result", {}).get("data"), lang or "en")
                     if notice:
                         deliver(notice)
                 emit("agent_tool_finished", name=name, round=rounds, ok=bool(output.get("ok")))

@@ -155,14 +155,16 @@ def guidance(entry, spec, lang):
 
 def validate(prompt, guide, instruction=""):
     from modules.canvas_danbooru_preflight import prompt_preflight_check
-    result = prompt_preflight_check({"prompt": prompt, "user_prompt": instruction,
+    from modules.lora_stack import TAG_PATTERN
+    encoder_prompt = TAG_PATTERN.sub("", prompt)
+    result = prompt_preflight_check({"prompt": encoder_prompt, "user_prompt": instruction,
                                     "prompt_target": guide["target"], "preset_defaults": guide["generation_defaults"]})
     policy = guide.get("prompt_policy") or {}
     if policy.get("mode") == "preset_fixed" and prompt != policy.get("value"):
         result["checks"].append({"level": "block", "code": "preset_prompt_fixed",
                                 "message": "Use the selected theme's fixed prompt unchanged."})
         result["state"] = "block"
-    if guide["prompt_language"] == "en" and re.search(r"[\u3400-\u9fff]", prompt) and not any(row["level"] == "block" for row in result["checks"]):
+    if guide["prompt_language"] == "en" and re.search(r"[\u3400-\u9fff]", encoder_prompt) and not any(row["level"] == "block" for row in result["checks"]):
         result["checks"].append({"level": "block", "code": "prompt_language", "message": "This target requires an English model prompt.", "suggestion": "Read prompts.guidance and rewrite the final prompt; instruction can remain in the user's language."})
         result["state"] = "block"
     return {"state": result["state"], "checks": result["checks"], "guidance_url": guide["guidance_url"]}

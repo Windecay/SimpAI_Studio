@@ -102,6 +102,11 @@
         }
     }
 
+    function isStackedLayout() {
+        return document.documentElement.classList.contains("simpai-main-layout-stacked")
+            || !!state.workspace?.classList.contains("simpai-main-workspace-stacked");
+    }
+
     function cssNumber(name, fallback) {
         try {
             const value = parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue(name) || "");
@@ -193,7 +198,7 @@
     }
 
     function syncGeometry() {
-        if (!state.resizer || !state.workspace || !state.column || !isDesktop() || state.collapsed) return;
+        if (!state.resizer || !state.workspace || !state.column || !isDesktop() || isStackedLayout() || state.collapsed) return;
         try {
             const workspaceRect = state.workspace.getBoundingClientRect();
             const columnRect = state.column.getBoundingClientRect();
@@ -219,8 +224,10 @@
     function syncControls() {
         if (!state.workspace || !state.column || !state.resizer || !state.toggle) return;
         const desktop = isDesktop();
+        const resizable = desktop && !isStackedLayout();
         const panelVisible = panelVisibilityControlledByCheckbox();
-        state.resizer.hidden = !desktop || !panelVisible || state.collapsed;
+        if (!resizable && state.dragging) finishResize();
+        state.resizer.hidden = !resizable || !panelVisible || state.collapsed;
         state.toggle.hidden = !desktop || !panelVisible || !state.collapsed;
         updateLabels();
         syncGeometry();
@@ -254,7 +261,7 @@
     }
 
     function startResize(event) {
-        if (!isDesktop() || state.collapsed || !panelVisibilityControlledByCheckbox() || event.button !== 0) return;
+        if (!isDesktop() || isStackedLayout() || state.collapsed || !panelVisibilityControlledByCheckbox() || event.button !== 0) return;
         if (state.dragging) return;
         state.dragBounds = getDrawerBounds();
         state.pointerId = event.pointerId;
@@ -316,7 +323,7 @@
     }
 
     function handleResizeKey(event) {
-        if (!isDesktop() || state.collapsed) return;
+        if (!isDesktop() || isStackedLayout() || state.collapsed) return;
         const key = String(event.key || "");
         if (key === "Home") {
             event.preventDefault();
@@ -401,6 +408,14 @@
                 state.mutationObserver.observe(state.column, {
                     attributes: true,
                     attributeFilter: ["aria-hidden", "class", "hidden", "style"],
+                });
+                state.mutationObserver.observe(state.workspace, {
+                    attributes: true,
+                    attributeFilter: ["class"],
+                });
+                state.mutationObserver.observe(document.documentElement, {
+                    attributes: true,
+                    attributeFilter: ["class"],
                 });
             } catch (e) {}
         }

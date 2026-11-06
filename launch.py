@@ -17,7 +17,6 @@ import socket
 import logging
 import shutil
 import subprocess
-import torch
 import requests
 from build_launcher import download_if_updated
 from modules.launch_util import (
@@ -696,7 +695,7 @@ def install_onnxruntime_gpu_cuda13():
     )
     return False
 
-def check_base_environment():
+def init_base_environment():
     print(f"{now_string()} Python {sys.version}")
     print(f"{now_string()} Comfyd version: {comfy_version.version}")
     print(f'{now_string()} {version.get_branch()} version: {version.get_simpai_ver()}')
@@ -740,6 +739,22 @@ def check_base_environment():
                 else:
                     logger.warning(f"无法下载或校验更新包 {base_pkg}，将继续使用当前版本 {version_installed}。")
 
+    if not is_installed(base_pkg):
+        logger.error(f"FATAL ERROR: {base_pkg} is not installed and could not be downloaded/installed.")
+        logger.error("程序缺失必要的组件且下载失败，无法继续启动。请检查网络连接并重新启动程序。")
+        sys.exit(1)
+
+    from simpleai_base import simpleai_base
+    logger.info("Checking ...")
+    token = simpleai_base.init_local()
+    sysinfo = json.loads(token.get_sysinfo().to_json())
+    sysinfo.update(dict(did=token.get_sys_did()))
+    logger.info(f'GPU: {sysinfo.get("gpu_name")}, RAM: {sysinfo.get("ram_total")}MB, SWAP: {sysinfo.get("ram_swap")}MB, VRAM: {sysinfo.get("gpu_memory")}MB, DiskFree: {sysinfo.get("disk_free")}MB, CUDA: {sysinfo.get("cuda")}, HOST: {sysinfo.get("host_type")}')
+    return token, sysinfo
+
+
+def check_base_environment():
+    token, sysinfo = shared.token, shared.sysinfo
     runtime_profile = detect_runtime_profile(torch)
 
     if runtime_profile.profile_name == "nvidia_cuda" and torch.__version__ == '2.9.1+cu130':
@@ -767,9 +782,9 @@ def check_base_environment():
 
     update_pkgs = [
         ('comfyui-frontend-package', '1.58.5', None),
-        ('comfyui-workflow-templates', '0.11.101', None),
+        ('comfyui-workflow-templates', '0.11.103', None),
         ('comfyui-embedded-docs', '0.5.16', None),
-        ('comfy-kitchen', '0.2.40', None),
+        ('comfy-kitchen', '0.2.41', None),
         ('comfy-aimdo', '0.6.0', None),
         ('Pillow', None, '>=10.1.0'),
         ('av', '17.0.0', None),
@@ -796,17 +811,6 @@ def check_base_environment():
             if not success:
                 logger.error("无法安装 bitsandbytes，请检查网络状态")
 
-    if not is_installed(base_pkg):
-        logger.error(f"FATAL ERROR: {base_pkg} is not installed and could not be downloaded/installed.")
-        logger.error("程序缺失必要的组件且下载失败，无法继续启动。请检查网络连接并重新启动程序。")
-        sys.exit(1)
-
-    from simpleai_base import simpleai_base
-    logger.info("Checking ...")
-    token = simpleai_base.init_local()
-    sysinfo = json.loads(token.get_sysinfo().to_json())
-    sysinfo.update(dict(did=token.get_sys_did()))
-    logger.info(f'GPU: {sysinfo.get("gpu_name")}, RAM: {sysinfo.get("ram_total")}MB, SWAP: {sysinfo.get("ram_swap")}MB, VRAM: {sysinfo.get("gpu_memory")}MB, DiskFree: {sysinfo.get("disk_free")}MB, CUDA: {sysinfo.get("cuda")}, HOST: {sysinfo.get("host_type")}')
     logger.info(f"Launch runtime profile: {_runtime_profile_summary(runtime_profile)}")
     #print(f'[SimpleAI] root: {sysinfo["root_dir"]}, sys_name: {sysinfo["root_name"]}, dev_name:{sysinfo["host_name"]}')
 
@@ -1130,6 +1134,30 @@ def reset_env_args():
     reset_simpleai_args()
 
 shared.args = ini_args()
+shared.token, shared.sysinfo = init_base_environment()
+
+if shared.args.gpu_device_id is not None:
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(shared.args.gpu_device_id)
+    logger.info(f"Set device to: {shared.args.gpu_device_id}")
+
+if shared.sysinfo["gpu_memory"]<4000 and not shared.args.disable_backend:
+    logger.info(f'The GPU memory capacity of the system is too small to run the latest models such as Flux, SD3m, Kolors, and HyDiT properly, and the Comfyd engine will be automatically disabled.')
+    logger.info(f'系统GPU显存容量太小，或是检测不到GPU实际容量，可能是操作系统阻止或需要升级硬件。')
+    logger.info(f'有任何疑问可到QQ群交流: 1005085136')
+    shared.args.async_cuda_allocation = False
+    shared.args.disable_async_cuda_allocation = True
+
+if shared.args.async_cuda_allocation:
+    env_var = os.environ.get('PYTORCH_CUDA_ALLOC_CONF', '')
+    alloc_options = [
+        option for option in env_var.split(',')
+        if option.strip() and option.partition(':')[0].strip() != 'backend'
+    ]
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = ','.join(alloc_options + ['backend:cudaMallocAsync'])
+
+# The allocator backend is selected when PyTorch's native libraries are loaded.
+import torch
+
 shared.token, shared.sysinfo = check_base_environment()
 
 prepare_environment()
@@ -1154,17 +1182,6 @@ if shared.args.node_type is not None:
 if shared.args.reset_admin is not None:
     shared.token.reset_admin(shared.args.reset_admin)
 
-if shared.args.gpu_device_id is not None:
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(shared.args.gpu_device_id)
-    logger.info(f"Set device to: {shared.args.gpu_device_id}")
-
-if shared.sysinfo["gpu_memory"]<4000 and not shared.args.disable_backend:
-    logger.info(f'The GPU memory capacity of the system is too small to run the latest models such as Flux, SD3m, Kolors, and HyDiT properly, and the Comfyd engine will be automatically disabled.')
-    logger.info(f'系统GPU显存容量太小，或是检测不到GPU实际容量，可能是操作系统阻止或需要升级硬件。')
-    logger.info(f'有任何疑问可到QQ群交流: 1005085136')
-    shared.args.async_cuda_allocation = False
-    shared.args.disable_async_cuda_allocation = True
-
 launch_runtime_profile = detect_runtime_profile(torch)
 if (
     launch_runtime_profile.profile_name != "nvidia_cuda"
@@ -1177,14 +1194,6 @@ if (
         f"Detected non-NVIDIA launch profile ({_runtime_profile_summary(launch_runtime_profile)}); "
         "defaulting to disable async cuda allocation in launcher."
     )
-
-if shared.args.async_cuda_allocation:
-    env_var = os.environ.get('PYTORCH_CUDA_ALLOC_CONF', None)
-    if env_var is None:
-        env_var = "backend:cudaMallocAsync"
-    else:
-        env_var += ",backend:cudaMallocAsync"
-    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = env_var
 
 from modules import config
 from modules.temp_cleanup import cleanup_temp_directory_on_launch

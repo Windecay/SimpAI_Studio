@@ -4338,6 +4338,19 @@ packages = {'base_package': {'id': 1,
      'info_links': ['https://huggingface.co/PrunaAI/P-H3-Image-Comfy'],
      'preset_sample': [],
  },
+ 'relayvsr_package': {
+     'id': 53,
+     'name': '[53]RelayVSR 视频放大',
+     'note': 'RelayVSR视频超分，提供 2 倍 和 4 倍放大，包含配对的 INT8 模型与 Flash 解码器，保留源帧率和音轨。',
+     'files': [
+         'diffusion_models,relayvsr_x2_int8_convrot.safetensors,5163295248,240e75e0c17cf2845d559b25254a230ff7458f81449d7a8c5e7e3fb8275c7b3c,https://modelscope.cn/models/Comfy-Org/RelayVSR/resolve/e3fa046f9e828f1040fede44cd23422374914e3d/diffusion_models/relayvsr_x2_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/RelayVSR/resolve/340486a3adf9544e660e9146911c3ced59e58dd3/diffusion_models/relayvsr_x2_lightx2v_int8_convrot.safetensors',
+         'diffusion_models,relayvsr_x4_int8_convrot.safetensors,5164179952,21303b3c5f9ab4e1fd3fe00df5dd2e0b343f0cf2e3d269e03a9872000a313a2e,https://modelscope.cn/models/Comfy-Org/RelayVSR/resolve/e3fa046f9e828f1040fede44cd23422374914e3d/diffusion_models/relayvsr_x4_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/RelayVSR/resolve/340486a3adf9544e660e9146911c3ced59e58dd3/diffusion_models/relayvsr_x4_int8_convrot.safetensors',
+         'vae,relayvsr_flash_vae_x2_fp32.safetensors,127759464,b5bb0339acb5b52545911ea29a51b4c5b805776a779222b5a14591571f42e21c,https://modelscope.cn/models/Comfy-Org/RelayVSR/resolve/e3fa046f9e828f1040fede44cd23422374914e3d/vae/relayvsr_flash_vae_x2_fp32.safetensors,https://huggingface.co/Comfy-Org/RelayVSR/resolve/340486a3adf9544e660e9146911c3ced59e58dd3/vae/relayvsr_flash_vae_x2_fp32.safetensors',
+         'vae,relayvsr_flash_vae_x4_fp32.safetensors,127759784,7b8b8c99275fd5c4501b0589cc7b4c4506456a5df83160ef4e207e147b30f714,https://modelscope.cn/models/Comfy-Org/RelayVSR/resolve/e3fa046f9e828f1040fede44cd23422374914e3d/vae/relayvsr_flash_vae_x4_fp32.safetensors,https://huggingface.co/Comfy-Org/RelayVSR/resolve/340486a3adf9544e660e9146911c3ced59e58dd3/vae/relayvsr_flash_vae_x4_fp32.safetensors',
+     ],
+     'info_links': ['https://modelscope.cn/models/Comfy-Org/RelayVSR', 'https://huggingface.co/Comfy-Org/RelayVSR', 'https://github.com/kopperx/RelayVSR'],
+     'preset_sample': [],
+ },
 }
 MANUAL_DOWNLOAD_MAP = {
 }

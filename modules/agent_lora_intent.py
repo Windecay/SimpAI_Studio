@@ -11,7 +11,7 @@ _NEGATED = re.compile(
 )
 _BEFORE = re.compile(
     r"(?:使用|用上|选用|采用|选择|挑选|添加|加载|搭配|启用|加入|带上|应用|套用|"
-    r"用|选|加|\b(?:use|using|with|apply|add|choose|select|include|enable)\b)"
+    r"查询|列出|查看|搜索|寻找|查找|用|选|加|\b(?:use|using|with|apply|add|choose|select|include|enable|list|show|find|search)\b)"
     r"[^，。；,;.!?！？\n]{0,24}$", re.I,
 )
 _AFTER = re.compile(
@@ -21,6 +21,10 @@ _AFTER = re.compile(
 _EXISTING = re.compile(
     r"(?:内置|自带|默认|当前|原有|已选|之前)(?:的)?\s*$|"
     r"\b(?:built[- ]in|default|current|existing|selected)\s*$", re.I,
+)
+_SAVED_PROFILES = re.compile(
+    r"参数(?:预设|方案|组合)|(?:已保存|已存|保存的)(?:的)?(?:组合|预设|配置)|"
+    r"\b(?:parameter\s+profiles?|saved\s+(?:profiles?|combinations?|settings?))\b", re.I,
 )
 
 
@@ -34,3 +38,7 @@ def requests_lora(text):
         if _BEFORE.search(before) or _AFTER.search(after):
             return True
     return False
+
+
+def requests_saved_profiles(text):
+    return requests_lora(text) and bool(_SAVED_PROFILES.search(str(text or "")))

@@ -11,6 +11,7 @@ import time
 
 import modules.canvas_danbooru_service as canvas_danbooru_service
 import modules.agent_lora_intent as agent_lora_intent
+from modules.lora_stack import TAG_PATTERN as LORA_TAG_PATTERN
 import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
 from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task
 from modules.llama_cpp_runtime import (
@@ -255,10 +256,15 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "Do not choose or invent a Preset, theme, task_method, input slot, model, API route, or canvas node. "
     "Do not choose or invent a parameter profile. Set preset_hint or parameter_profile_hint only when the user's latest message explicitly names it. Never invent media refs. "
     "Use simpai.parameter_profiles.list/get to discover private profiles and their saved settings. "
-    "When the user asks to use or choose LoRA, query saved profiles with include_lora_summary=true, "
-    "report actual LoRA names, weights and enabled states, and follow pagination for additional items. "
-    "Never invent a LoRA, weight or compatibility. When no saved combination matches, explain that "
-    "and let the user save or choose a combination; do not generate with an unrelated default. "
+    "When the user asks to use or choose LoRA files, query simpai.models.list with kind=lora, "
+    "then narrow by the selected preset_id/theme when known. Follow pagination and use actual returned file names. "
+    "After the user names a LoRA or authorizes your choice, append its <lora:relative-file-name:weight> tag "
+    "to the final action prompt. Preserve requested weights and trigger words; never invent files or compatibility. "
+    "The worker removes tags from encoder text and sends them to its LoRA stack. Tags do not require a saved profile. "
+    "Do not append tags to fixed prompts or layout JSON. Manual stack/legacy selections take precedence for the same model. "
+    "If the user wants to choose or has not specified a LoRA, show actual candidates and wait without a generate_image action. "
+    "Do not replace this file selection with a mandatory parameter profile. Only query saved profile summaries "
+    "with include_lora_summary=true when the user asks for saved combinations or parameter profiles. "
     "When the user asks to choose a parameter profile before generation, query the list, preserve the complete creative task "
     "in a generate_image action with parameter_profile_selection_required=true, and leave parameter_profile_hint empty. "
     "The task card will wait for the user's choice even if automatic generation is enabled. Do not treat asking for a list alone as a request to generate. "
@@ -5664,7 +5670,7 @@ def compile_creative_execution_plan(
         parameter_profiles,
         hint,
     )
-    if (honor_lora_intent and agent_lora_intent.requests_lora(user_message)
+    if (honor_lora_intent and agent_lora_intent.requests_saved_profiles(user_message)
             and not explicit_profile and not requested_profile_name):
         request["parameter_profile_selection_required"] = True
     session_profile = None
@@ -6112,6 +6118,12 @@ def _creative_h3_target(action, runtime_payload, payload):
     return target
 
 
+def _restore_creative_lora_tags(prompt, original):
+    tags = [match.group(0) for match in LORA_TAG_PATTERN.finditer(str(original or ""))]
+    text = LORA_TAG_PATTERN.sub("", str(prompt or "")).strip()
+    return "\n".join([text, *tags]).strip()
+
+
 def _format_creative_h3_action(action, runtime_payload, payload, stream_callback=None):
     if action.get("type") != "generate_image" or action.get("direct_run"):
         return action
@@ -6125,7 +6137,8 @@ def _format_creative_h3_action(action, runtime_payload, payload, stream_callback
         return action
     item = dict(action)
     prompt = str(item.get("prompt") or "").strip()
-    validation = minimax_h3_prompt_compiler.validate_prompt(prompt, target)
+    encoder_prompt = LORA_TAG_PATTERN.sub("", prompt).strip()
+    validation = minimax_h3_prompt_compiler.validate_prompt(encoder_prompt, target)
     error = ""
     if not validation["ok"]:
         from modules import canvas_vlm_agent
@@ -6158,7 +6171,7 @@ def _format_creative_h3_action(action, runtime_payload, payload, stream_callback
             "save_context": False,
             "conversation_id": f"{params.get('conversation_id', '')}:h3_prompt:{params.get('request_id', '')}",
             "user_system_prompt": canvas_vlm_agent._canvas_vlm_prompt_rewrite_system_prompt("", rewrite_payload),
-            "prompt": minimax_h3_prompt_compiler.build_rewrite_request(prompt, target),
+            "prompt": minimax_h3_prompt_compiler.build_rewrite_request(encoder_prompt, target),
             "max_tokens": 3072 if validation["mode"] == minimax_h3_prompt_compiler.MODE_REF2VA else 2048,
             "temperature": 0.25,
             "enable_thinking": False,
@@ -6184,11 +6197,12 @@ def _format_creative_h3_action(action, runtime_payload, payload, stream_callback
                 failure = rewritten if isinstance(rewritten, dict) else {}
                 raise ValueError(str(failure.get("details") or failure.get("error") or "H3 prompt adaptation failed."))
             candidate = str(rewritten.get("text") or rewritten.get("raw_text") or "").strip()
-            validation = minimax_h3_prompt_compiler.validate_prompt(candidate, target)
+            candidate_text = LORA_TAG_PATTERN.sub("", candidate).strip()
+            validation = minimax_h3_prompt_compiler.validate_prompt(candidate_text, target)
             if validation["ok"]:
-                item["prompt"] = candidate
+                item["prompt"] = _restore_creative_lora_tags(candidate_text, prompt)
                 if isinstance(item.get("task_request"), dict):
-                    item["task_request"] = {**item["task_request"], "instruction": candidate}
+                    item["task_request"] = {**item["task_request"], "instruction": item["prompt"]}
             else:
                 error = "; ".join(validation.get("errors") or [])
         except Exception as exc:
@@ -6317,11 +6331,12 @@ def normalize_creative_action_prompt_languages(
             continue
         item = dict(action)
         target = _creative_action_prompt_target(item, preset_capabilities)
-        prompt = str(item.get("prompt") or "").strip()
+        original_prompt = str(item.get("prompt") or "").strip()
+        prompt = LORA_TAG_PATTERN.sub("", original_prompt).strip()
         if target in {"outpaint_instruction", "flux_t5_en"} and re.search(r"[\u3400-\u9fff]", prompt):
             translated = str(translate_en(prompt) or "").strip()
             if translated and not re.search(r"[\u3400-\u9fff]", translated):
-                item["prompt"] = translated
+                item["prompt"] = _restore_creative_lora_tags(translated, original_prompt)
         elif target == "multilingual_natural":
             translated = ""
             if requested_language == "cn" and prompt and not re.search(r"[\u3400-\u9fff]", prompt):
@@ -6333,10 +6348,10 @@ def normalize_creative_action_prompt_languages(
                 if translated and re.search(r"[\u3400-\u9fff]", translated):
                     translated = ""
             if translated:
-                item["prompt"] = translated
+                item["prompt"] = _restore_creative_lora_tags(translated, original_prompt)
                 if isinstance(item.get("task_request"), dict):
                     item["task_request"] = dict(item["task_request"])
-                    item["task_request"]["instruction"] = translated
+                    item["task_request"]["instruction"] = item["prompt"]
         normalized.append(item)
     return normalized
 
@@ -6613,6 +6628,8 @@ def _upgrade_creative_action_prompts(actions, response_text, raw_json=None, user
             candidate = canvas_danbooru_service._canvas_prompt_safe_danbooru_text(
                 sanitize_danbooru_character_outfit_tags(candidate)
             )
+            if LORA_TAG_PATTERN.search(current):
+                candidate = _restore_creative_lora_tags(candidate, current)
             item["prompt"] = candidate
             request = dict(item.get("task_request") or {})
             request["instruction"] = candidate
@@ -6928,7 +6945,7 @@ _ANIMA_RATING_RE = re.compile(r"(?:^|,\s*)(?:safe|sensitive|nsfw|explicit)(?:\s*
 
 
 def _is_anima_positive_prompt(prompt):
-    source = str(prompt or "").strip()
+    source = LORA_TAG_PATTERN.sub("", str(prompt or "")).strip()
     if not source or _ANIMA_PROMPT_CJK_RE.search(source) or source.count(",") < 4:
         return False
     return bool(
@@ -6948,12 +6965,12 @@ def _repair_creative_anima_prompt(item, source_prompt=""):
 
     effective_prompt = "\n".join(part for part in (str(source_prompt or "").strip(), prompt) if part)
     composed = canvas_vlm_agent._canvas_compose_anima_prompt(
-        effective_prompt,
-        {"type": "generate_image", "prompt": prompt},
+        LORA_TAG_PATTERN.sub("", effective_prompt).strip(),
+        {"type": "generate_image", "prompt": LORA_TAG_PATTERN.sub("", prompt).strip()},
     )
     repaired_prompt = str(composed.get("prompt") or "").strip()
     if repaired_prompt and not _ANIMA_PROMPT_CJK_RE.search(repaired_prompt):
-        action["prompt"] = repaired_prompt
+        action["prompt"] = _restore_creative_lora_tags(repaired_prompt, prompt)
     return action
 
 

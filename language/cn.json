@@ -251,7 +251,7 @@
   "Studio help": "Studio 使用帮助",
   "Switch to {mode}": "切换到{mode}",
   "Before writing a model prompt, read prompts.guidance for the selected preset, then read its recommended skills. Use prompts.tags for Anima/Danbooru lookup and prompts.validate before preview/submission. Keep the original user instruction separate from the final model prompt.": "撰写提示词前，按选定预置读取 prompts.guidance，再阅读其中推荐的技能。Anima/Danbooru 使用 prompts.tags 查询本地标签，预览与提交前调用 prompts.validate。原始中文需求放在 instruction，按模型规范整理后的最终提示词放在 prompt。",
-  "When the user asks to use LoRA, query parameter_profiles.list with include_lora_summary=true. Show saved LoRA names, weights and enabled states; use parameter_profiles.get with section=loras and next_read for longer combinations. Preserve the task and ask the user to choose a saved profile before generation. Do not invent LoRAs or replace the chosen combination.": "用户要求使用 LoRA 时，调用 parameter_profiles.list 并设置 include_lora_summary=true，展示保存的 LoRA 名称、权重和启用状态。组合较长时，使用 parameter_profiles.get 的 section=loras 及返回的 next_read 继续读取。保留原任务，等待用户选择参数预设后再生成；不要编造 LoRA 或替换用户选择的组合。",
+  "For LoRA files, query models.list with kind=lora and the selected preset_id/theme. Follow next_query, then append the selected prompt_tag to the final prompt with the requested weight; keep trigger words as ordinary prompt text. A saved profile is optional. For saved combinations, use parameter_profiles.list with include_lora_summary=true and parameter_profiles.get with section=loras and next_read. Preserve the task, media and generation consent.": "查询 LoRA 文件时，调用 models.list，设置 kind=lora，并提供选定的 preset_id 和 theme。使用 next_query 继续分页，按用户指定的权重将选中的 prompt_tag 追加到最终 prompt 末尾；触发词保留为普通提示词。无需先保存参数预设。用户要求使用已保存组合时，调用 parameter_profiles.list 并设置 include_lora_summary=true，使用 parameter_profiles.get 的 section=loras 及 next_read 读取更多内容。保留原任务、素材和生成授权设置。",
   "Send JSON as UTF-8 bytes. In Windows PowerShell, read a UTF-8 JSON file with System.IO.File.ReadAllBytes and send application/json; charset=utf-8. Do not pipe Chinese Python source through the default PowerShell encoding. Compare preview source_instruction and prompt with the original text; question marks or replacement characters mean the request must be corrected before generation.": "JSON 必须以 UTF-8 字节发送。Windows PowerShell 使用 System.IO.File.ReadAllBytes 读取 UTF-8 JSON 文件，并指定 application/json; charset=utf-8。不要用默认编码的 PowerShell 管道传送含中文的 Python 代码。预览后核对 source_instruction 和 prompt 是否与原文一致；出现问号或替换字符时，修正请求后才能生成。",
   "No images on this date": "该日期没有图片",
   "No videos on this date": "该日期没有视频",
@@ -4070,5 +4070,10 @@
   "Conversation background processing is unavailable.": "当前浏览器无法启动后台处理，请更新浏览器后重试。",
   "Conversation processing timed out.": "对话处理超时，原对话保持不变。",
   "Conversation import failed. The current conversation has been kept.": "对话导入失败，原对话已保留。",
-  "Conversation export failed. Saved data has been kept.": "对话导出失败，已保存的数据保持不变。"
+  "Conversation export failed. Saved data has been kept.": "对话导出失败，已保存的数据保持不变。",
+  "RelayVSR": "RelayVSR 视频放大",
+  "RelayVSR\u2B07": "RelayVSR 视频放大\u2B07",
+  "RelayVSR Video Upscale": "RelayVSR 视频放大",
+  "RelayVSR Video Upscale 2x": "RelayVSR 视频放大 2 倍",
+  "RelayVSR Video Upscale 4x": "RelayVSR 视频放大 4 倍"
 }

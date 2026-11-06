@@ -55,12 +55,14 @@ def _register_runtime_preview_nodes():
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanVaceLatentLoop")
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanVaceLatentLoop")
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("VOSR2Upscale")
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIRelayVSRVideo")
     install_aio_enhance_uov_progress_filter(comfyclient_pipeline)
     install_advanced_sampler_known_total_progress_filter(comfyclient_pipeline)
     install_progress_profile_reset_filter(comfyclient_pipeline)
 
 
 _register_runtime_preview_nodes()
+comfyclient_pipeline.SAVE_NODE_CLASS_TYPES.add("SimpAIRelayVSRSaveVideo")
 
 
 class ComfyTask:
@@ -97,7 +99,7 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
     if progress_profile is not None:
         total_steps = progress_profile.total_steps
     task_method_l = (task_method or "").lower()
-    if task_method_l in ("scene_vosr2", "scene_vosr2_video"):
+    if task_method_l in ("scene_vosr2", "scene_vosr2_video", "scene_relayvsr_x2", "scene_relayvsr_x4"):
         # The node reports actual decoded frames and stages, independent of steps.
         total_steps = None
     if "infinitetalk" in task_method_l:
@@ -138,6 +140,8 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         else:
             default_params.pop("i2i_clip_type", None)
     comfy_params = ComfyTaskParams(default_params, user_did)
+    if task_method_l in ("scene_relayvsr_x2", "scene_relayvsr_x4"):
+        comfy_params.update_mapping_rule("video", "LoadVideo:RelayVSR Source:file")
     if sampling_sigmas is not None:
         comfy_params.update_mapping_rule("sampling_sigmas", "ManualSigmas:SimpAI Sampling Sigmas:sigmas")
         comfy_params.update_mapping_rule("use_sampling_sigmas", "ComfySwitchNode:SimpAI Sampling Branch:switch")

@@ -1,0 +1,51 @@
+{
+  "1": {
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "", "additional_prompt": "",
+      "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
+      "inpaint_image": "None", "inpaint_mask": "None",
+      "width": 512, "height": 512, "cfg": 1, "steps": 1,
+      "var_number": 18, "var_number2": 0, "var_number3": 1.0, "var_number4": 0,
+      "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
+      "var_number9": 0, "var_number10": 0,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "model_type": 1, "model_type2": 1, "clip_type": 1,
+      "negative_prompt": "", "sampler": "euler", "scheduler": "simple", "video_duration": 0
+    }
+  },
+  "2": {
+    "class_type": "UNETLoader",
+    "_meta": {"title": "RelayVSR 2x Model"},
+    "inputs": {"unet_name": "relayvsr_x2_int8_convrot.safetensors", "weight_dtype": "default"}
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "RelayVSR 2x Decoder"},
+    "inputs": {"vae_name": "relayvsr_flash_vae_x2_fp32.safetensors"}
+  },
+  "4": {
+    "class_type": "LoadVideo",
+    "_meta": {"title": "RelayVSR Source"},
+    "inputs": {"file": "example.mp4"}
+  },
+  "5": {
+    "class_type": "SeedInput",
+    "_meta": {"title": "SeedInput"},
+    "inputs": {"seed": 42}
+  },
+  "6": {
+    "class_type": "SimpAIRelayVSRVideo",
+    "_meta": {"title": "RelayVSR Video Processing"},
+    "inputs": {
+      "model": ["2", 0], "vae": ["3", 0], "video": ["4", 0], "seed": ["5", 0],
+      "crf": ["1", 10], "detail": ["1", 12], "duration_limit": ["1", 17]
+    }
+  },
+  "7": {
+    "class_type": "SimpAIRelayVSRSaveVideo",
+    "_meta": {"title": "RelayVSR Video Result"},
+    "inputs": {"video": ["6", 0], "filename_prefix": "RelayVSR"}
+  }
+}

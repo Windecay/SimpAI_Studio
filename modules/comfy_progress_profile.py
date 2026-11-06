@@ -124,6 +124,22 @@ def format_vosr2_progress(step, total_steps, lang, media_type="image"):
     return f"VOSR2：已完成 {completed_frames}/{total_frames} {unit}，{status} ..."
 
 
+def format_relayvsr_progress(step, total_steps, lang):
+    frames = max(1, int(total_steps) // 100)
+    completed = min(frames, max(0, (int(step) - frames * 40) // 59))
+    if str(lang or "").lower().startswith("en"):
+        if step < frames * 40:
+            return "RelayVSR: processing keyframes ..."
+        if step >= frames * 99:
+            return f"RelayVSR: saving {frames} frames ..."
+        return f"RelayVSR: restoring {completed}/{frames} frames ..."
+    if step < frames * 40:
+        return "RelayVSR：正在处理关键帧 ..."
+    if step >= frames * 99:
+        return f"RelayVSR：正在保存 {frames} 帧 ..."
+    return f"RelayVSR：已恢复 {completed}/{frames} 帧 ..."
+
+
 def build_progress_profile(task_method, params, base_steps, duration_probe=None, frame_rate_probe=None):
     method = str(task_method or "").lower()
     if not isinstance(params, dict):

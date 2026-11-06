@@ -16216,8 +16216,8 @@ html.simpai-main-layout-stacked .simpai-main-workspace-row,
   align-items: stretch !important;
 }
 
-html.simpai-main-layout-stacked .simpai-main-workspace-row > *,
-.simpai-main-workspace-row.simpai-main-workspace-stacked > * {
+html.simpai-main-layout-stacked .simpai-main-workspace-row > :not(.simpai-advanced-drawer-resizer),
+.simpai-main-workspace-row.simpai-main-workspace-stacked > :not(.simpai-advanced-drawer-resizer) {
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
@@ -16235,13 +16235,18 @@ html.simpai-main-layout-stacked #advanced_column,
   max-height: none !important;
 }
 
+html.simpai-main-layout-stacked .simpai-advanced-drawer-resizer,
+.simpai-main-workspace-stacked > .simpai-advanced-drawer-resizer {
+  display: none !important;
+}
+
 @media (max-width: 960px) {
   div:has(> #advanced_column) {
     flex-direction: column !important;
     align-items: stretch !important;
   }
 
-  div:has(> #advanced_column) > * {
+  div:has(> #advanced_column) > :not(.simpai-advanced-drawer-resizer) {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
