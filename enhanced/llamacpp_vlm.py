@@ -266,6 +266,7 @@ from modules.llama_cpp_multimodal import (
 )
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
 from modules.llama_cpp_moe import read_qwen_moe_layout, qwen_moe_cache_plan, available_host_memory_gb
+from modules.llama_cpp_mtp import embedded_mtp_availability
 from modules.vlm_model_catalog import (
     gguf_int_values,
     gguf_split_paths,
@@ -1389,6 +1390,14 @@ class LlamaCppVLM:
             handler_class = self.get_chat_handler_class(chat_handler_name)
             mmproj_path = self._resolve_mmproj_path(model_path, mmproj_name=mmproj_name) if handler_class else None
             mtp_path = self._resolve_mtp_path(model_path) if requested_mtp else None
+            if mtp_attempt_allowed and not mtp_path:
+                mtp_attempt_allowed, mtp_failure = embedded_mtp_availability(model_path)
+                if not mtp_attempt_allowed:
+                    logger.warning(
+                        "llama.cpp MTP requested but no usable embedded draft weights were found; "
+                        "using standard decoding: %s",
+                        mtp_failure,
+                    )
             qwen_hybrid_vision = bool(mmproj_path) and is_qwen_hybrid_vision_handler(chat_handler_name)
             logger.info(
                 "llama.cpp VLM runtime wiring: handler_name=%s handler_class=%s mmproj=%s vision_enabled=%s image_min_tokens=%s image_max_tokens=%s mtp_requested=%s",

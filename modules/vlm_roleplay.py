@@ -1632,6 +1632,47 @@ def _merge_state_text(existing: Any, incoming: Any) -> str:
     return _text("\n".join(merged[-MAX_STATE_TEXT_SEGMENTS:]), MAX_RUNTIME_STATE_TEXT)
 
 
+def normalize_runtime_provenance(value: Any, state: Any = None) -> list[dict[str, Any]]:
+    records: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in value[-320:] if isinstance(value, list) else []:
+        if not isinstance(row, dict):
+            continue
+        entity_type = _text(row.get("entity_type"), 20)
+        entity_id = _text(row.get("entity_id"), 160)
+        field = _text(row.get("field"), 80)
+        allowed = (
+            DIRECTOR_CHARACTER_FIELDS if entity_type == "character" else
+            DIRECTOR_PLAYER_FIELDS if entity_type == "player" else
+            DIRECTOR_SCENE_FIELDS if entity_type == "scene" else set()
+        )
+        digest = _text(row.get("value_hash"), 64)
+        if not entity_id or field not in allowed or not re.fullmatch(r"[a-f0-9]{64}", digest):
+            continue
+        if isinstance(state, dict):
+            runtime = (
+                state.get("characters", {}).get(entity_id) if entity_type == "character" else
+                state.get("player_state") if entity_type == "player" else state.get("scene")
+            )
+            if not isinstance(runtime, dict) or runtime_value_hash(runtime.get(field)) != digest:
+                continue
+        try:
+            version = max(0, int(row.get("state_version") or 0))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        records[(entity_type, entity_id, field)] = {
+            "entity_type": entity_type, "entity_id": entity_id, "field": field,
+            "turn_id": _text(row.get("turn_id"), 200),
+            "state_version": version, "value_hash": digest,
+        }
+    return list(records.values())[-240:]
+
+
+def runtime_value_hash(value: Any) -> str:
+    return hashlib.sha256(json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
+
+
 def _merge_string_list(existing: Any, incoming: Any) -> list[str]:
     merged = _clean_string_list(existing)
     for value in _clean_string_list(incoming):
@@ -3521,7 +3562,7 @@ def default_story_state(value: Any = None) -> dict[str, Any]:
         _id(key, "character"): _normalize_character_runtime(item)
         for key, item in _dict(source.get("characters")).items()
     }
-    return {
+    result = {
         "schema": STATE_SCHEMA,
         "version": 1,
         "scene": {
@@ -3555,6 +3596,9 @@ def default_story_state(value: Any = None) -> dict[str, Any]:
         "state_version": max(0, int(source.get("state_version") or 0)),
         "updated_at": _text(source.get("updated_at"), 80) or _now(),
     }
+    if source.get("runtime_provenance"):
+        result["runtime_provenance"] = normalize_runtime_provenance(source["runtime_provenance"], result)
+    return result
 
 
 def _normalize_director_config(value: Any) -> dict[str, Any]:
@@ -5442,7 +5486,10 @@ def build_roleplay_system_prompt(
         "Other minds and hidden identities are unknown; rumors may be false.",
         "other_character/witnessed_observation history is not yours; its 'I' refers to speaker_id.",
         "Do not decide the player's private thoughts, emotions, or irreversible actions.",
-        "REAL-TIME STATE OVERRIDE: the runtime state below is authoritative for this turn and overrides the character card's initial state, imported examples, and older dialogue.",
+        "REAL-TIME STATE OVERRIDE: runtime state overrides initial setup and older dialogue. "
+        "It is a pre-turn snapshot, not a timeless fact. A later explicitly established outcome or elapsed "
+        "story phase in your witnessed recent facts/latest exchange supersedes the conflicting temporary "
+        "claim; do not revert the story to reconcile a stale label. Plans and guesses are not outcomes.",
         "Preserve conditions, buffs/debuffs, injuries, equipment effects, restraints, positions and ability "
         "restrictions until explicitly ended/replaced, including across scene changes.",
         "Name each condition's owner. Invent no injuries, bandages, equipment or effects; "
@@ -5457,7 +5504,8 @@ def build_roleplay_system_prompt(
             if player_state.get("status") == "absent"
             else "Player persona:"
         ),
-        "Context Builder: omitted history and static setup never override current state.",
+        "Context Builder: omitted history and static setup never override current state. "
+        "Apply known facts in story order; an old current_action is not an instruction to repeat it.",
     ]
     if include_context:
         sections.extend(roleplay_context_prompt_sections(vlm_tavern.actor_context(
@@ -5493,7 +5541,8 @@ def build_actor_turn_task(context: Any, user_message: Any) -> str:
         "task": "reply_as_the_assigned_character",
         "latest_user_input": str(user_message or ""),
         "rules": [
-            "Write natural dialogue/narration, not JSON. The named speaker's current state overrides older replies.",
+            "Write natural dialogue/narration, not JSON. The named speaker's pre-turn state overrides older "
+            "replies, while a later witnessed completed outcome supersedes an outdated temporary claim.",
             "Respond to the latest action instead of postponing it. Do not invent the number, contents, history "
             "or identity of a player-provided object; ask when unknown. New character actions remain possible.",
             "These are pre-turn conditions, not a command to replay the current action. Continue after the latest "
@@ -7297,7 +7346,22 @@ def build_director_empty_state_review_prompt(
 
 
 def _path_parts(path: Any) -> list[str]:
+    if isinstance(path, (list, tuple)):
+        return [_text(part, 200) for part in path[:6] if _text(part, 200)]
     return [part.strip() for part in str(path or "").split(".") if part.strip()][:6]
+
+
+def _applied_runtime_path(session: dict[str, Any], patch: dict[str, Any]) -> list[str]:
+    entity_type, entity_id, field = (
+        patch.get("target_entity_type"), patch.get("target_entity_id"), patch.get("field"),
+    )
+    if entity_type == "character" and entity_id in session.get("characters", {}) and field in DIRECTOR_CHARACTER_FIELDS:
+        return ["characters", entity_id, field]
+    if entity_type == "player" and entity_id == session.get("persona", {}).get("id") and field in DIRECTOR_PLAYER_FIELDS:
+        return ["player_state", field]
+    if entity_type == "scene" and entity_id == "scene" and field in DIRECTOR_SCENE_FIELDS:
+        return ["scene", field]
+    return _path_parts(patch.get("path"))
 
 
 def _locked_path(path: list[str], locked_fields: list[str]) -> bool:
@@ -7693,6 +7757,90 @@ def _director_patch_raw_value_text(patch: dict[str, Any]) -> str:
         except (TypeError, ValueError):
             return ""
     return _text(value, 12000)
+
+
+def _director_state_attribution_patch(
+    normalized: dict[str, Any],
+    patch: dict[str, Any],
+) -> dict[str, Any]:
+    if not patch.get("_director_bound_target") or patch.get("field") != "state_text" or not (
+        patch.get("op") in {"replace", "clear"} or patch.get("replace") is True
+        or _text(patch.get("mode"), 20).lower() in {"replace", "clear"}
+    ):
+        return patch
+    state = normalized.get("story_state", {})
+    runtime = (
+        state.get("characters", {}).get(patch.get("target_entity_id"), {})
+        if patch.get("target_entity_type") == "character" else
+        state.get("player_state", {}) if patch.get("target_entity_type") == "player" else {}
+    )
+    previous = {_state_text_key(part) for part in _state_text_segments(runtime.get("state_text"))}
+    # Retained facts can name other people without making them the new state's owner.
+    return {**patch, "value": "\n".join(
+        part for part in _state_text_segments(patch.get("value"))
+        if _state_text_key(part) not in previous
+    )}
+
+
+def _director_state_continuity_rejection(
+    normalized: dict[str, Any], patch: dict[str, Any], target: dict[str, str],
+    instruction_text: Any, attribution_text: Any,
+) -> str:
+    if target.get("field") not in {"state_text", "current_action"}:
+        return ""
+    entity_type, entity_id = target.get("entity_type", ""), target.get("entity_id", "")
+    value = _director_patch_raw_value_text(patch)
+    instruction = _director_target_attribution_evidence(
+        normalized, instruction_text, entity_type, entity_id,
+    )
+    if instruction and not (_director_entity_mentions(normalized, instruction) - {entity_id}):
+        instruction = re.sub(
+            r"(?:不再|并非|不是)\s*(?:不能|无法)|\bno longer\s+(?:unable to|cannot)",
+            "", instruction, flags=re.IGNORECASE,
+        )
+        for action in (
+            r"(?:站立|站起(?:来)?|起身|\bstand(?:s|ing)?(?: up)?\b)",
+            r"(?:行走|走路|\bwalk(?:s|ing)?\b)",
+            r"(?:说话|开口|\bspeak(?:s|ing)?\b)",
+        ):
+            restriction = r"(?:不能|无法|不得|不许|禁止|\b(?:cannot|can't|must not|unable to)\s+)\s*" + action
+            if re.search(restriction, instruction, re.IGNORECASE) and re.search(
+                action, re.sub(restriction, "", value, flags=re.IGNORECASE), re.IGNORECASE,
+            ):
+                return "director_explicit_state_conflict_rejected"
+    if target.get("field") != "state_text" or not (
+        patch.get("op") in {"replace", "remove", "clear"} or patch.get("replace") is True
+        or _text(patch.get("mode"), 20).lower() in {"replace", "clear"}
+    ):
+        return ""
+    state = normalized.get("story_state", {})
+    runtime = (
+        state.get("characters", {}).get(entity_id, {}) if entity_type == "character"
+        else state.get("player_state", {}) if entity_type == "player" else {}
+    )
+    source = _text(attribution_text, 12000)
+    evidence = "\n".join((
+        _text(patch.get("evidence"), 1200), instruction,
+        source if not (_director_entity_mentions(normalized, source) - {entity_id}) else
+        _director_target_attribution_evidence(normalized, source, entity_type, entity_id),
+    ))
+    for segment in _state_text_segments(runtime.get("state_text")):
+        effect = re.match(
+            r"([^，,。！？!?；;\n]{2,80}?)(?:持续生效|持续中|\s+remains?\s+active\b)",
+            segment, re.IGNORECASE,
+        )
+        if not effect:
+            continue
+        name = effect.group(1).strip()
+        if _state_text_key(name) in _state_text_key(value):
+            continue
+        ongoing = _director_condition_is_explicitly_ongoing(evidence, (name,)) or re.search(
+            re.escape(name) + r"[^，,。！？!?；;\n]{0,12}(?:仍在|还在)(?:[。！？!?；;\n]|$)",
+            evidence, re.IGNORECASE,
+        )
+        if ongoing:
+            return "director_persistent_state_loss_rejected"
+    return ""
 
 
 def _director_reuse_character_target_ids(
@@ -9996,6 +10144,11 @@ def _director_patch_target(
                 rejection = "director_character_target_not_present"
         if rejection:
             return [], {}, [*warnings, rejection]
+        rejection = _director_state_continuity_rejection(
+            normalized, patch, target, instruction_text, attribution_text,
+        )
+        if rejection:
+            return [], {}, [*warnings, rejection]
     return path, target, warnings
 
 
@@ -10029,7 +10182,8 @@ def _director_resolve_patch_target(
         return [], {}, warnings
 
     speaker = _director_resolve_speaker_id(normalized, speaker_id)
-    patch_text = _director_patch_value_text(patch)
+    attribution_patch = _director_state_attribution_patch(normalized, patch)
+    patch_text = _director_patch_value_text(attribution_patch)
     internal_repair_warning = _text(patch.pop("_director_target_repair_warning", ""), 120)
     internal_repair_evidence = _text(patch.pop("_director_target_repair_evidence", ""), 1200)
     authoritative_numeric = bool(patch.pop("_director_authoritative_numeric", False))
@@ -10286,7 +10440,7 @@ def _director_resolve_patch_target(
         if not evidence:
             warnings.append("director_patch_evidence_missing")
             return [], {}, warnings
-        patch_text = _director_patch_value_text(patch)
+        patch_text = _director_patch_value_text(attribution_patch)
         exchange_text = _text(attribution_scope, 8000)
         exchange_mentions = _director_entity_mentions(normalized, exchange_text)
         patch_mentions = _director_entity_mentions(normalized, patch_text)
@@ -10351,8 +10505,8 @@ def _director_resolve_patch_target(
     # The evidence may include dialogue addressed to somebody else.
     # Resolve this condition's subject from the proposed condition itself.
     patch_text = (
-        _director_patch_raw_value_text(patch)
-        if patch.get("_director_bound_target") else _director_patch_value_text(patch)
+        _director_patch_raw_value_text(attribution_patch)
+        if patch.get("_director_bound_target") else _director_patch_value_text(attribution_patch)
     )
     group_effects = [
         effect
@@ -11015,6 +11169,25 @@ def apply_director_result(
     normalized["story_state"] = normalize_story_state(state)
     state = normalized["story_state"]
     before = normalized["state_version"]
+    provenance = list(state.get("runtime_provenance") or [])
+    for patch in applied:
+        parts = _applied_runtime_path(normalized, patch)
+        if parts[:1] == ["characters"] and len(parts) == 3:
+            entity_type, entity_id, field = "character", parts[1], parts[2]
+            runtime = state.get("characters", {}).get(entity_id, {})
+        elif parts[:1] in (["player_state"], ["scene"]) and len(parts) == 2:
+            entity_type = "player" if parts[0] == "player_state" else "scene"
+            entity_id = normalized["persona"]["id"] if entity_type == "player" else "scene"
+            field, runtime = parts[1], state.get(parts[0], {})
+        else:
+            continue
+        provenance.append({
+            "entity_type": entity_type, "entity_id": entity_id, "field": field,
+            "turn_id": _text(turn_id, 200), "state_version": before + 1,
+            "value_hash": runtime_value_hash(runtime.get(field)),
+        })
+    if provenance:
+        state["runtime_provenance"] = normalize_runtime_provenance(provenance, state)
     state["state_version"] = before + 1
     state["updated_at"] = _now()
     normalized["state_version"] = state["state_version"]
@@ -11136,7 +11309,7 @@ def build_roleplay_state_changes(before: Any, after: Any, applied: Any) -> list[
     for patch in _list(applied, 80):
         if not isinstance(patch, dict):
             continue
-        parts = _path_parts(patch.get("path"))
+        parts = _applied_runtime_path(current, patch)
         entity_type = ""
         entity_id = ""
         field = ""
@@ -11150,8 +11323,8 @@ def build_roleplay_state_changes(before: Any, after: Any, applied: Any) -> list[
             field = parts[2]
         if not entity_type or field not in visible_fields:
             continue
-        before_value = _state_path_value(previous, ".".join(parts))
-        after_value = _state_path_value(current, ".".join(parts))
+        before_value = _state_path_value(previous, parts)
+        after_value = _state_path_value(current, parts)
         if field == "state_fields":
             filtered_values = _changed_state_field_values(before_value, after_value)
             if filtered_values is None:

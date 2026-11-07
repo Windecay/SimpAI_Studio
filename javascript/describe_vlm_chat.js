@@ -486,6 +486,27 @@
         }).filter(Boolean);
     }
 
+    function normalizeRoleplayRuntimeProvenance(value) {
+        const records = new Map();
+        (Array.isArray(value) ? value.slice(-240) : []).forEach((row) => {
+            if (!row || typeof row !== 'object') return;
+            const entityType = String(row.entity_type || '').slice(0, 20);
+            const entityId = String(row.entity_id || '').slice(0, 160);
+            const field = String(row.field || '').slice(0, 80);
+            const hash = String(row.value_hash || '');
+            if (!['player', 'character', 'scene'].includes(entityType) || !entityId
+                || !/^[a-z_]{1,80}$/.test(field) || !/^[a-f0-9]{64}$/.test(hash)) return;
+            const version = Number(row.state_version);
+            if (!Number.isSafeInteger(version) || version < 0) return;
+            records.set(JSON.stringify([entityType, entityId, field]), {
+                entity_type: entityType, entity_id: entityId, field,
+                turn_id: String(row.turn_id || '').slice(0, 200),
+                state_version: version, value_hash: hash
+            });
+        });
+        return [...records.values()];
+    }
+
     function normalizeRoleplayPlayerState(value) {
         const source = value && typeof value === 'object' ? value : {};
         let status = String(source.status || '').trim().toLowerCase();
@@ -649,7 +670,7 @@
             const actions = options.editable && change.kind === 'memory' && !['remove', 'delete'].includes(change.op)
                 ? renderRoleplayMemoryActions(options.message, change.id, options.session)
                 : options.editable && agendaItem
-                    ? `<button type="button" data-roleplay-agenda-open="${escapeHtml(change.id)}" title="${escapeHtml(roleplayDictionaryText('Edit story obligation'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit story obligation'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>${canUndoAgenda ? `<button type="button" data-roleplay-agenda-undo="${escapeHtml(change.id)}" title="${escapeHtml(roleplayDictionaryText('Undo latest obligation update'))}" aria-label="${escapeHtml(roleplayDictionaryText('Undo latest obligation update'))}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>` : ''}` : '';
+                    ? `<span class="describe-vlm-memory-actions"><button type="button" data-roleplay-agenda-open="${escapeHtml(change.id)}" title="${escapeHtml(roleplayDictionaryText('Edit story obligation'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit story obligation'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>${canUndoAgenda ? `<button type="button" data-roleplay-agenda-undo="${escapeHtml(change.id)}" title="${escapeHtml(roleplayDictionaryText('Undo latest obligation update'))}" aria-label="${escapeHtml(roleplayDictionaryText('Undo latest obligation update'))}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>` : ''}</span>` : '';
             const agendaProgress = change.kind === 'agenda' && change.after
                 ? `${escapeHtml(name)} · ${change.before ? `<small class="describe-vlm-agenda-before">${escapeHtml(roleplayAgendaStatusLabel(change.before))}</small> → ` : ''}<strong>${escapeHtml(roleplayAgendaStatusLabel(change.after))}</strong>` : escapeHtml(`${name}${suffix}`);
             return `<li><b>${escapeHtml(roleplayResourceChangeLabel(change))}</b><span title="${escapeHtml(`${name}${suffix}`)}">${agendaProgress}</span>${actions}${change.kind === 'outline' ? `<button type="button" class="describe-vlm-chat-outline-correction" data-roleplay-outline-open${normalizeChatMode(state.chatMode) === 'roleplay' ? '' : ' hidden'} title="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit outline progress'))}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>` : ''}</li>`;
@@ -3970,6 +3991,8 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                     ? { cognition: normalizeRoleplayContinuity(stateSource.cognition) } : {}),
                 ...(stateSource.agenda && typeof stateSource.agenda === 'object'
                     ? { agenda: normalizeRoleplayAgenda(stateSource.agenda) } : {}),
+                ...(Array.isArray(stateSource.runtime_provenance)
+                    ? { runtime_provenance: normalizeRoleplayRuntimeProvenance(stateSource.runtime_provenance) } : {}),
                 memories: resources.memory_store.items.slice(-MAX_ROLEPLAY_LEGACY_MEMORIES),
                 recent_turn_facts: Array.isArray(stateSource.recent_turn_facts)
                     ? stateSource.recent_turn_facts.filter((item) => item && typeof item === 'object').slice(-12)
@@ -20439,6 +20462,8 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                 },
                 player_state: normalizeRoleplayPlayerState(source.story_state?.player_state),
                 characters: runtimes,
+                ...(Array.isArray(source.story_state?.runtime_provenance)
+                    ? { runtime_provenance: normalizeRoleplayRuntimeProvenance(source.story_state.runtime_provenance) } : {}),
                 relationships: [],
                 world_facts: [],
                 knowledge: {},
@@ -24092,6 +24117,23 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                 'The director input exceeds the available context budget. Increase the context setting or shorten this message; no incomplete input was sent.',
                 '导演输入超过当前可用上下文预算。请提高上下文设置或缩短本次消息；此次未发送缺失资料的请求。'
             );
+        }
+        if (codes.some(code => String(code).startsWith('persistence:'))) {
+            return roleplayDictionaryText('Some story records could not be saved. Export a backup before reloading.');
+        }
+        if (codes.includes('director_output_limited')) {
+            return roleplayDictionaryText('The director reached its output limit. Accepted changes were kept, but some checks may be unfinished.');
+        }
+        if (codes.some(code => ['director_explicit_state_conflict_rejected', 'director_persistent_state_loss_rejected'].includes(code))) {
+            return roleplayDictionaryText('A proposed state change contradicted your instructions or removed an explicitly ongoing effect. That change was not written.');
+        }
+        const runtimePending = Math.max(0, Number(director.runtime_review?.pending_count || 0));
+        if (runtimePending > 0) {
+            return roleplayDictionaryText('{count} current-state fields still need review. Their earlier values were retained; check the character states.')
+                .replace('{count}', String(runtimePending));
+        }
+        if (codes.includes('director_fact_evidence_pending')) {
+            return roleplayDictionaryText('Some recent facts lack verified source evidence and were not recorded.');
         }
         if (Number(director.target_review?.pending_count || 0) > 0) return '';
         if (codes.some(code => /director_.*target.*(unknown|mismatch|invalid|rejected)/.test(String(code)))) {

@@ -2630,7 +2630,7 @@ def build_runtime_payload(payload):
     prompt_options["media_only"] = media_only
     vram_policy = normalize_llama_cpp_vram_policy(payload.get("vram_policy"))
     kv_cache_type = normalize_llama_cpp_kv_cache_type(payload.get("kv_cache_type"))
-    n_ctx = _n_ctx_override(payload.get("n_ctx"))
+    n_ctx = _n_ctx_override(payload.get("n_ctx")) or _n_ctx_override(payload.get("context_window"))
     roleplay_context_n_ctx = n_ctx or _n_ctx_override(payload.get("context_window")) or 8192
     budget_n_ctx = n_ctx or _n_ctx_override(payload.get("context_window")) or 8192
     load_mtp = _truthy(payload.get("load_mtp"), False)
@@ -3160,7 +3160,7 @@ def _build_roleplay_director_runtime_payload(
     conversation_id = _clean_text(payload.get("conversation_id")) or session.get("conversation_id")
     request_id = _clean_text(payload.get("request_id")) or f"roleplay:{int(time.time() * 1000)}"
     lang = _payload_lang(payload)
-    n_ctx = _n_ctx_override(payload.get("n_ctx"))
+    n_ctx = _n_ctx_override(payload.get("n_ctx")) or _n_ctx_override(payload.get("context_window"))
     roleplay_context_n_ctx = n_ctx or _n_ctx_override(payload.get("context_window")) or 8192
     context = vlm_roleplay.build_roleplay_context(
         normalized_session,
@@ -3179,6 +3179,7 @@ def _build_roleplay_director_runtime_payload(
         n_ctx=n_ctx,
         numeric_enabled=bool(vlm_roleplay_numeric.settlement_catalog(session, user_message, speaker_id)),
         as_request=True,
+        context=context,
     )
     params = {
         **_thinking_runtime_params(payload, force_disabled=True),
@@ -3236,6 +3237,10 @@ def _build_roleplay_director_runtime_payload(
                 "audience": context.get("audience"),
                 "system_chars": context.get("system_chars"),
                 "budget_chars": context.get("budget_chars"),
+                "blocks": [
+                    block for block in context.get("blocks", [])
+                    if block.get("id") == "turn_facts" and block.get("transport") == "system"
+                ],
             },
         },
         "agent_context": None,
@@ -3256,7 +3261,7 @@ def _build_roleplay_resource_runtime_payload(
     payload = payload if isinstance(payload, dict) else {}
     conversation_id = _clean_text(payload.get("conversation_id")) or session.get("conversation_id")
     request_id = _clean_text(payload.get("request_id")) or f"roleplay:{int(time.time() * 1000)}"
-    n_ctx = _n_ctx_override(payload.get("n_ctx"))
+    n_ctx = _n_ctx_override(payload.get("n_ctx")) or _n_ctx_override(payload.get("context_window"))
     roleplay_context_n_ctx = n_ctx or _n_ctx_override(payload.get("context_window")) or 8192
     if resource_plan:
         resource_signals = {**resource_signals, **{task["kind"]: True for task in resource_plan["tasks"]}}
@@ -3454,6 +3459,14 @@ def _run_roleplay_director(
     target_review = None
     incomplete_stages = []
 
+    def record_output_limit(response):
+        completion = response.get("completion") if isinstance(response, dict) else None
+        if isinstance(completion, dict) and (
+            completion.get("output_limited")
+            or completion.get("finish_reason") in {"length", "max_tokens", "max_output_tokens"}
+        ):
+            incomplete_stages.append("director_output")
+
     def ensure_active(response=None):
         runtime_cancelled = isinstance(response, dict) and (
             response.get("cancelled")
@@ -3561,6 +3574,8 @@ def _run_roleplay_director(
                     director_error=failure["error"],
                 )
             return failure
+        record_output_limit(result)
+
         def parse_state(text):
             decoded = vlm_roleplay_targets.decode_response(
                 text, normalized_session, target_table, user_message, assistant_reply,
@@ -3579,6 +3594,7 @@ def _run_roleplay_director(
                 turn_intent=turn_intent or payload.get("roleplay_turn_intent") or "",
                 lang=lang, n_ctx=runtime_payload["params"].get("n_ctx"),
                 numeric_enabled=bool(numeric_catalog), review=reason, previous=previous, as_request=True,
+                context=runtime_payload["context"]["context_builder"],
             )["prompt"]
 
         def run_state_review(suffix, reason, previous=None):
@@ -3598,6 +3614,7 @@ def _run_roleplay_director(
             except (OSError, ValueError, RuntimeError) as exc:
                 response = {"ok": False, "error": str(exc)}
             ensure_active(response)
+            record_output_limit(response)
             return response if isinstance(response, dict) else {"ok": False}
 
         parsed = parse_state(runtime_text)
@@ -3627,15 +3644,27 @@ def _run_roleplay_director(
             turn_intent=turn_intent or payload.get("roleplay_turn_intent") or "",
             speaker_id=speaker_id,
         )
+        lifecycle_plan = vlm_roleplay_targets.runtime_review_plan(
+            normalized_session, user_message, assistant_reply, target_table,
+            turn_intent=turn_intent or payload.get("roleplay_turn_intent") or "",
+            speaker_id=resolved_speaker_id,
+        )
+        lifecycle_review = vlm_roleplay_targets.inspect_runtime_review(
+            normalized_session, parsed, lifecycle_plan, target_table,
+            speaker_id=resolved_speaker_id, user_message=user_message, assistant_reply=assistant_reply,
+        )
         recovered_observations = 0
-        if empty_state_review.get("needs_review") and parsed.get("ok"):
+        if (empty_state_review.get("needs_review") or lifecycle_review["pending_count"]) and parsed.get("ok"):
             ensure_active()
             emit_status("roleplay_state_field_repair_started")
             review_result = run_state_review(
                 "state_audit",
-                "The previous JSON was valid but empty. Audit established new plot consequences; "
-                "do not invent changes to satisfy this review. Triggers: "
-                + ", ".join(empty_state_review.get("reasons") or []), None,
+                "Audit missing state consequences and superseded temporary phases; preserve valid proposals "
+                "and unrelated persistent effects. For each pending runtime field return a grounded patch "
+                "or an unchanged runtime_audit with reason and current evidence_id. Do not invent effects. "
+                "Triggers: " + ", ".join(empty_state_review.get("reasons") or [])
+                + "; pending runtime fields: " + json.dumps(lifecycle_review["pending"], ensure_ascii=False),
+                parsed if lifecycle_plan else None,
             )
             review_text = (
                 str(review_result.get("text") or review_result.get("raw_text") or "")
@@ -3643,6 +3672,10 @@ def _run_roleplay_director(
                 else ""
             )
             review_parsed = parse_state(review_text)
+            if review_result.get("ok") and review_parsed.get("ok"):
+                review_parsed = vlm_roleplay_targets.merge_runtime_review(
+                    parsed, review_parsed, lifecycle_review["pending"], target_table,
+                )
             _roleplay_trace(
                 "[RoleplayDirector] empty_state_review request_id=%s runtime_ok=%s json_ok=%s "
                 "reasons=%s patches=%s output_chars=%s",
@@ -3692,32 +3725,54 @@ def _run_roleplay_director(
             elif isinstance(review_result, dict) and review_result.get("ok") and review_parsed.get("ok"):
                 if "director_fact_evidence_rejected" in (parsed.get("warnings") or []):
                     recovered_observations = _merge_roleplay_director_review_observations(parsed, review_parsed)
+                if lifecycle_plan:
+                    parsed["runtime_audit"] = review_parsed.get("runtime_audit") or []
+                parsed["turn_facts"] = review_parsed.get("turn_facts") or parsed.get("turn_facts") or {}
+                parsed["rejected_facts"] = review_parsed.get("rejected_facts") or []
+                if review_parsed.get("fact_review"):
+                    parsed["fact_review"] = review_parsed["fact_review"]
+                parsed["resource_signals"] = review_parsed.get("resource_signals") or parsed.get("resource_signals")
+                for key in ("outline_progress", "story_items"):
+                    if review_parsed.get(key):
+                        parsed[key] = review_parsed[key]
                 parsed.setdefault("warnings", []).append("director_empty_state_review_no_change")
             else:
                 parsed.setdefault("warnings", []).append("director_empty_state_review_failed")
                 incomplete_stages.append("state_review")
-        if (
-            parsed.get("ok") and "director_fact_evidence_rejected" in (parsed.get("warnings") or [])
-            and not recovered_observations
-        ):
+        fact_review = parsed.get("fact_review")
+        legacy_fact_review = (
+            "director_fact_evidence_rejected" in (parsed.get("warnings") or [])
+            and not fact_review and not parsed.get("rejected_facts") and not recovered_observations
+        )
+        if parsed.get("ok") and (parsed.get("rejected_facts") or legacy_fact_review):
             ensure_active()
             emit_status("roleplay_evidence_repair_started")
             fact_result = run_state_review(
                 "fact_evidence",
-                "Some observations had invalid evidence IDs. Recheck the latest exchange and output only "
-                "witnessed observations with exact evidence_id keys from the numbered source, such as "
+                "Some turn facts had invalid evidence IDs. Correct every listed fact's evidence_id only; "
+                "keep its exact text, actor, recipient, result and original maximum knowledge scope. "
+                "Return corrected turn_facts, no state patches. Use exact evidence_id keys from the source, such as "
                 "user_1 or reply_1; do not use bare numbers or slash-separated IDs. "
-                "Consider whether P0 directly witnesses each shared in-scene action, not only its actor. "
-                "Presence alone is not proof: exclude distant observers, private thoughts and offstage events.",
+                "Do not add witnesses to private facts. Omit unresolved facts rather than invent evidence. "
+                "Rejected facts: " + json.dumps(vlm_roleplay_targets._public_previous(
+                    parsed.get("rejected_facts") or [], target_table,
+                ), ensure_ascii=False),
             )
             fact_text = str(fact_result.get("text") or fact_result.get("raw_text") or "")
             fact_parsed = parse_state(fact_text)
             if fact_result.get("ok") and fact_parsed.get("ok"):
-                recovered_observations = _merge_roleplay_director_review_observations(parsed, fact_parsed)
+                if parsed.get("rejected_facts"):
+                    parsed, fact_review = vlm_roleplay_targets.merge_fact_repairs(parsed, fact_parsed)
+                    recovered_observations = fact_review["recovered"]
+                else:
+                    recovered_observations = _merge_roleplay_director_review_observations(parsed, fact_parsed)
             _roleplay_trace(
                 "[RoleplayDirector] fact_evidence_review request_id=%s runtime_ok=%s json_ok=%s recovered=%s",
                 request_id, bool(fact_result.get("ok")), bool(fact_parsed.get("ok")), recovered_observations,
             )
+            if parsed.get("rejected_facts") or (legacy_fact_review and not recovered_observations):
+                incomplete_stages.append("fact_evidence")
+                parsed.setdefault("warnings", []).append("director_fact_evidence_pending")
         current_observations = vlm_roleplay_cognition.normalize_observations(
             (parsed.get("turn_facts") or {}).get("observations"),
         )
@@ -3794,6 +3849,7 @@ def _run_roleplay_director(
                 _roleplay_trace("[RoleplayDirector] target_repair_failed request_id=%s error=%s",
                                 request_id, _roleplay_log_value(exc, 500))
             ensure_active(target_result)
+            record_output_limit(target_result)
             parsed, target_review = vlm_roleplay_targets.merge_repairs(
                 normalized_session, parsed, target_table, failed_targets, target_text,
                 speaker_id=resolved_speaker_id, user_message=user_message, assistant_reply=assistant_reply,
@@ -3884,6 +3940,7 @@ def _run_roleplay_director(
                 **({"stream_callback": stream_callback} if callable(stream_callback) else {}),
             )
             ensure_active(numeric_result)
+            record_output_limit(numeric_result)
             numeric_settlement = vlm_roleplay_numeric.parse_settlement(
                 (numeric_result.get("text") or numeric_result.get("raw_text") or "")
                 if isinstance(numeric_result, dict) and numeric_result.get("ok") else "",
@@ -3934,10 +3991,13 @@ def _run_roleplay_director(
         ):
             def run_resource(runtime):
                 try:
-                    return _run_vlm_with_agent_router(
+                    response = _run_vlm_with_agent_router(
                         runtime, payload, vlm_agent_router.ROLE_DIRECTOR_STATE, normalized_session,
                         **({"stream_callback": stream_callback} if callable(stream_callback) else {}),
                     )
+                    ensure_active(response)
+                    record_output_limit(response)
+                    return response
                 except (OSError, ValueError, RuntimeError) as exc:
                     ensure_active()
                     return {"ok": False, "error": str(exc)}
@@ -4164,6 +4224,11 @@ def _run_roleplay_director(
                     director_error=str(applied.get("error") or "director_skill_failed"),
                 )
             return applied
+        if "director_output" in incomplete_stages:
+            applied.setdefault("warnings", []).append("director_output_limited")
+        if fact_review:
+            applied["fact_review"] = fact_review
+            applied["event"]["fact_review"] = fact_review
         if any(
             warning == "invalid_or_locked_patch"
             or (warning != "director_fact_evidence_rejected"
@@ -4171,6 +4236,22 @@ def _run_roleplay_director(
             for warning in applied.get("warnings", [])
         ):
             incomplete_stages.append("state_validation")
+        if lifecycle_plan:
+            lifecycle_review = vlm_roleplay_targets.inspect_runtime_review(
+                normalized_session, {**parsed, "patches": applied.get("applied") or []},
+                lifecycle_plan, target_table, speaker_id=resolved_speaker_id,
+                user_message=user_message, assistant_reply=assistant_reply,
+            )
+            applied["runtime_review"] = lifecycle_review
+            applied["event"]["runtime_review"] = lifecycle_review
+            if lifecycle_review["pending_count"]:
+                incomplete_stages.append("state_review")
+                applied.setdefault("warnings", []).append("director_runtime_audit_pending")
+            _roleplay_trace(
+                "[RoleplayDirector] runtime_continuity request_id=%s required=%s pending=%s fields=%s",
+                request_id, lifecycle_review["required"], lifecycle_review["pending_count"],
+                _roleplay_log_value(lifecycle_review["pending"], 1600),
+            )
         ensure_active()
         if (not vlm_roleplay._director_instruction_is_read_only(user_message)
                 and vlm_roleplay_outline.actor_material(normalized_session, resolved_speaker_id)
@@ -4249,12 +4330,14 @@ def _run_roleplay_director(
                 user_did,
                 root=payload.get("roleplay_storage_root"),
             )
-            vlm_roleplay.append_roleplay_event(
+            event_saved = vlm_roleplay.append_roleplay_event(
                 applied["event"],
                 applied["session"]["id"],
                 user_did,
                 root=payload.get("roleplay_storage_root"),
             )
+            if event_saved is False:
+                raise ValueError("roleplay_event_not_saved")
             _roleplay_trace(
                 "[RoleplayDirector] persisted request_id=%s session_id=%s state_version=%s",
                 request_id,

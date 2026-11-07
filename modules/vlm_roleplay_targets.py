@@ -54,6 +54,9 @@ def _runtime(session, entity):
 def public_table(session, table, *, numeric_enabled=False):
     rows = []
     refs = {item["id"]: item["ref"] for item in table if item["type"] == "character"}
+    provenance = rp.normalize_runtime_provenance(
+        session["story_state"].get("runtime_provenance"), session["story_state"],
+    )
     for entity in table:
         row = {key: value for key, value in entity.items() if key != "id"}
         runtime = _runtime(session, entity)
@@ -78,6 +81,14 @@ def public_table(session, table, *, numeric_enabled=False):
         if fields:
             row["fields"].append("state_fields")
             row["state_fields"] = fields
+        sources = {
+            item["field"]: {"turn_id": item["turn_id"], "state_version": item["state_version"]}
+            for item in provenance
+            if (item["entity_type"], item["entity_id"]) == (entity["type"], entity["id"])
+            and item["field"] in row["state"]
+        }
+        if sources:
+            row["state_sources"] = sources
         rows.append(row)
     return rows
 
@@ -102,9 +113,279 @@ def _public_previous(previous, table):
     return convert(previous)
 
 
+_ELAPSED_TIME_RE = re.compile(
+    r"(?:过了|过去了|已过|时隔|转眼|转瞬)[^。！？!?\n]{0,16}"
+    r"[一二三四五六七八九十百两几数半\d]+(?:个)?(?:年|月|天|日|小时|分钟)"
+    r"|[一二三四五六七八九十百两几数半\d]+(?:个)?(?:年|月|天|日|小时|分钟)(?:之后|以后|后)"
+    r"|(?:翌日|次日|第二天|满月当天)"
+    r"|\b(?:\w+|\d+)\s+(?:days?|weeks?|months?|years?|hours?|minutes?)\s+later\b"
+    r"|\b(?:the next (?:day|morning)|time has passed)\b", re.I,
+)
+_COMPLETED_ACTION_RE = re.compile(
+    r"(?:已经|终于|完成了|结束了|不再|停止了|到达了|抵达了|回到了)"
+    r"|\b(?:has finished|has completed|has arrived|no longer|returned to)\b", re.I,
+)
+_NON_OUTCOME_RE = re.compile(
+    r"(?:如果|假如|假设|计划|打算|准备|希望|等到|将会|会在)"
+    r"|\b(?:if|plans? to|intends? to|will|would|hopes? to)\b", re.I,
+)
+
+
+def runtime_review_plan(session, user_message, assistant_reply, table, *, turn_intent="", speaker_id=""):
+    """Request lifecycle decisions only when the latest exchange establishes a transition."""
+    if rp._director_instruction_is_read_only(user_message) or rp._director_instruction_is_non_fact_command(user_message):
+        return []
+    intent = rp.normalize_roleplay_turn_intent(turn_intent, session["story_state"]["player_state"])
+    sources = [assistant_reply]
+    if intent == "story_control":
+        sources.insert(0, user_message)
+    established = []
+    for source in sources:
+        unquoted = re.sub(r'“[^”]*”|「[^」]*」|『[^』]*』|"[^"]*"', "", str(source or ""))
+        established.extend(
+            part for part in re.split(r"(?<=[。！？!?])|\n+", unquoted)
+            if not _NON_OUTCOME_RE.search(part) and not re.search(r"[？?]", part)
+        )
+    text = "\n".join(established)
+    elapsed = bool(_ELAPSED_TIME_RE.search(text))
+    completed = bool(_COMPLETED_ACTION_RE.search(text))
+    if not elapsed and not completed:
+        return []
+    mentioned = rp._director_entity_mentions(session, text)
+    rows = []
+    for entity in table:
+        if entity["type"] not in {"character", "player"} or not entity.get("present"):
+            continue
+        if not elapsed and entity["id"] not in mentioned and entity["id"] != speaker_id:
+            continue
+        runtime = _runtime(session, entity)
+        for field in ("state_text", "current_action"):
+            if runtime.get(field):
+                rows.append({
+                    "target_ref": entity["ref"], "field": field,
+                    "reason": "elapsed_story_time" if elapsed else "completed_story_beat",
+                })
+    return rows
+
+
+def inspect_runtime_review(session, parsed, plan, table, *, speaker_id="", user_message="", assistant_reply=""):
+    by_ref = {item["ref"]: item for item in table}
+    patches = parsed.get("patches") or []
+    audits = parsed.get("runtime_audit") or []
+    pending = []
+    for requirement in plan:
+        entity = by_ref[requirement["target_ref"]]
+        field = requirement["field"]
+        accepted_patch = False
+        for patch in patches:
+            if not isinstance(patch, dict) or (
+                patch.get("target_entity_type"), patch.get("target_entity_id"), patch.get("field")
+            ) != (entity["type"], entity["id"], field):
+                continue
+            if patch.get("op", "set") in {"set", "replace"} and patch.get("value") == _runtime(session, entity).get(field):
+                continue
+            path, target, _ = rp._director_patch_target(
+                session, copy.deepcopy(patch), speaker_id=speaker_id, instruction_text=user_message,
+                attribution_text=user_message + "\n" + assistant_reply,
+            )
+            if path and (target.get("entity_type"), target.get("entity_id")) == (entity["type"], entity["id"]):
+                accepted_patch = True
+                break
+        unchanged = [
+            row for row in audits if isinstance(row, dict)
+            and (row.get("target_entity_type"), row.get("target_entity_id"), row.get("field")) == (
+                entity["type"], entity["id"], field,
+            )
+            and row.get("status") == "unchanged" and str(row.get("reason") or "").strip()
+            and row.get("evidence") and not row.get("_director_evidence_invalid")
+            and not row.get("_director_target_ref_invalid")
+            and rp.vlm_roleplay_cognition.evidence_is_grounded(
+                str(row["evidence"]), user_message + "\n" + assistant_reply,
+            )
+        ]
+        if not accepted_patch and len(unchanged) != 1:
+            pending.append(requirement)
+    return {"required": len(plan), "pending_count": len(pending), "pending": pending}
+
+
+def merge_runtime_review(original, reviewed, plan, table):
+    """Keep unrelated accepted proposals when a lifecycle audit corrects only selected fields."""
+    output = copy.deepcopy(original)
+    entities = {item["ref"]: item for item in table}
+    allowed = {
+        (entities[row["target_ref"]]["type"], entities[row["target_ref"]]["id"], row["field"])
+        for row in plan
+    }
+    original_fields = {
+        (row.get("target_entity_type"), row.get("target_entity_id"), row.get("field"))
+        for row in original.get("patches") or [] if isinstance(row, dict)
+    }
+    additions = [
+        row for row in reviewed.get("patches") or [] if isinstance(row, dict)
+        and ((row.get("target_entity_type"), row.get("target_entity_id"), row.get("field")) in allowed
+             or (row.get("target_entity_type"), row.get("target_entity_id"), row.get("field")) not in original_fields)
+    ]
+    replaced = {(row["target_entity_type"], row["target_entity_id"], row["field"]) for row in additions}
+    output["patches"] = [
+        row for row in output.get("patches") or [] if not isinstance(row, dict) or
+        (row.get("target_entity_type"), row.get("target_entity_id"), row.get("field")) not in replaced
+    ] + additions
+    audits = {
+        (row.get("target_entity_type"), row.get("target_entity_id"), row.get("field")): copy.deepcopy(row)
+        for row in output.get("runtime_audit") or [] if isinstance(row, dict)
+    }
+    for row in reviewed.get("runtime_audit") or []:
+        if not isinstance(row, dict):
+            continue
+        key = (row.get("target_entity_type"), row.get("target_entity_id"), row.get("field"))
+        if key not in audits or key in allowed:
+            audits[key] = copy.deepcopy(row)
+    output["runtime_audit"] = list(audits.values())
+    for key in ("warnings", "reference_issues"):
+        output[key] = [*(output.get(key) or []), *(reviewed.get(key) or [])]
+    for key in ("memory", "world_book", "chapter", "visual", "summary_due"):
+        output.setdefault("resource_signals", {})[key] = bool(
+            (original.get("resource_signals") or {}).get(key) or (reviewed.get("resource_signals") or {}).get(key)
+        )
+    output["resource_signals"]["reasons"] = list(dict.fromkeys([
+        *((original.get("resource_signals") or {}).get("reasons") or []),
+        *((reviewed.get("resource_signals") or {}).get("reasons") or []),
+    ]))
+    old_outline, new_outline = original.get("outline_progress"), reviewed.get("outline_progress")
+    if new_outline and (not old_outline or (
+        old_outline.get("status") == "unchanged" and new_outline.get("status") in {"completed", "blocked"}
+        and all(old_outline.get(key) == new_outline.get(key) for key in ("node_id", "revision"))
+    )):
+        output["outline_progress"] = copy.deepcopy(new_outline)
+    output["story_items"] = list({
+        _json(row): copy.deepcopy(row)
+        for row in [*(original.get("story_items") or []), *(reviewed.get("story_items") or [])]
+    }.values())
+    pending = list({
+        _json(row): copy.deepcopy(row)
+        for row in [*(original.get("rejected_facts") or []), *(reviewed.get("rejected_facts") or [])]
+    }.values())
+    if pending:
+        output["rejected_facts"] = pending
+    pending_keys = {(row["kind"], _fact_identity(row["kind"], row["item"])) for row in pending}
+    before, after = output.setdefault("turn_facts", {}), reviewed.get("turn_facts") or {}
+    for key, value in after.items():
+        if isinstance(value, list):
+            additions = [row for row in value if (key, _fact_identity(key, row)) not in pending_keys]
+            before[key] = list({_json(row): row for row in [*(before.get(key) or []), *additions]}.values())
+        elif value and not before.get(key):
+            before[key] = copy.deepcopy(value)
+    if pending:
+        output, _ = merge_fact_repairs(output, reviewed)
+    return output
+
+
+def _fact_identity(kind, row):
+    normalized = rp.normalize_turn_facts({kind: [row]}).get(kind) or []
+    if not normalized or not isinstance(normalized[0], dict):
+        return _json(row)
+    return _json({
+        key: value for key, value in normalized[0].items()
+        if key not in {"evidence", "known_by"}
+    })
+
+
+def merge_fact_repairs(original, reviewed):
+    """Repair each rejected fact without changing its subject, text, or privacy scope."""
+    output = copy.deepcopy(original)
+    rejected = output.get("rejected_facts") or []
+    remaining = []
+    facts = output.setdefault("turn_facts", {})
+    for request in rejected:
+        kind, old = request["kind"], request["item"]
+        identity = _fact_identity(kind, old)
+        candidates = [
+            row for row in (reviewed.get("turn_facts") or {}).get(kind, [])
+            if isinstance(row, dict) and row.get("evidence") and _fact_identity(kind, row) == identity
+            and not row.get("_director_evidence_invalid")
+        ]
+        if not candidates:
+            remaining.append(request)
+            continue
+        candidate = copy.deepcopy(candidates[0])
+        if kind == "observations":
+            candidate["known_by"] = [
+                key for key in candidate.get("known_by") or [] if key in (old.get("known_by") or [])
+            ]
+            if not candidate["known_by"]:
+                remaining.append(request)
+                continue
+        rows = facts.setdefault(kind, [])
+        if _json(candidate) not in {_json(row) for row in rows}:
+            rows.append(candidate)
+    output["rejected_facts"] = remaining
+    required = max(len(rejected), (original.get("fact_review") or {}).get("required", 0))
+    report = {
+        "required": required, "recovered": required - len(remaining), "pending_count": len(remaining),
+        "pending": [{"kind": row["kind"], "target_entity_id": row["item"].get("target_entity_id", "")}
+                    for row in remaining],
+    }
+    output["fact_review"] = report
+    return output, report
+
+
+def _recent_context_facts(session, context, table, budget):
+    blocks = context.get("blocks") or [] if isinstance(context, dict) else []
+    block = next((item for item in blocks if isinstance(item, dict) and item.get("id") == "turn_facts"), {})
+    try:
+        facts = json.loads(block["content"]) if block else session["story_state"].get("recent_turn_facts", [])
+    except (TypeError, ValueError, KeyError):
+        facts = session["story_state"].get("recent_turn_facts", [])
+    if not isinstance(facts, list):
+        return []
+    saved = session["story_state"].get("recent_turn_facts") or []
+    if saved:
+        by_turn = {row["turn_id"]: row for row in facts if isinstance(row, dict) and row.get("turn_id")}
+        # The director context can contain fewer, larger facts than an actor's
+        # summary view. Compact before dropping whole earlier turns.
+        facts = [
+            by_turn.get(row.get("turn_id"), row) if isinstance(row, dict) and row.get("turn_id") else row
+            for row in saved[-rp.MAX_RECENT_TURN_FACTS:]
+        ]
+    refs = {row["id"]: row["ref"] for row in table if row["type"] in {"character", "player"}}
+    rows = []
+    for fact in facts[-rp.MAX_RECENT_TURN_FACTS:]:
+        if not isinstance(fact, dict):
+            continue
+        compact = rp._context_turn_fact(fact)
+        compact.pop("unchanged_entity_ids", None)
+        for key in ("actions", "state_changes", "appearance_changes"):
+            compact[key] = [
+                {name: value for name, value in item.items() if name != "evidence"}
+                for item in compact.get(key, [])[:3]
+            ]
+        if compact.get("observations"):
+            compact["observations"] = [
+                {"text": item["text"], "known_by_refs": [refs[key] for key in item["known_by"] if key in refs]}
+                for item in compact["observations"][:4]
+            ]
+        compact = {key: value for key, value in compact.items() if value not in ("", [], {})}
+        if compact:
+            rows.append(_public_previous(compact, table))
+    while rows and len(_json(rows)) > budget:
+        largest = max(rows, key=lambda row: len(_json(row)))
+        if any(key in largest for key in ("actions", "appearance_changes", "state_changes", "observations")):
+            if not largest.get("summary"):
+                largest["summary"] = "；".join(
+                    str(item.get("text") or item.get("summary") or item.get("result") or "")
+                    for key in ("observations", "state_changes", "actions", "appearance_changes")
+                    for item in largest.get(key, [])
+                )[:700]
+            for key in ("actions", "appearance_changes", "state_changes", "observations"):
+                largest.pop(key, None)
+        else:
+            rows.pop(0)
+    return rows
+
+
 def build_prompt(session, user_message, assistant_reply, table, *, speaker_id="",
                  turn_intent="", lang="cn", n_ctx=None, numeric_enabled=False,
-                 review=None, previous=None, as_request=False):
+                 review=None, previous=None, as_request=False, context=None):
     language = "English" if str(lang).lower().startswith("en") else "Chinese"
     intent = rp.normalize_roleplay_turn_intent(turn_intent, session["story_state"]["player_state"])
     speaker = next((item["ref"] for item in table
@@ -112,7 +393,7 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
     rules = (
         f"Hidden state director. Compact JSON only, no indentation; prose values use {language}. "
         f"Speaker={speaker}; user intent={intent}.\n"
-        "Write observations FIRST: preserve each heard answer, agreement and next step, even when repeated. "
+        "Observations FIRST: retain heard answers, agreements and next steps, including repeats. "
         "Record witnessed time passage and completed arrivals/departures in order; they end old plans. "
         "Combine actual listeners in known_by_refs. Confusion is not deafness; exclude "
         "unconscious/deaf/distant listeners. Omit operator instructions and unchanged conditions. "
@@ -135,7 +416,7 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         "Use appearance for appearance. Unnamed reminders of existing conditions need no preservation-only patch. "
         "Casting and not receiving treatment are actions, not new conditions; use turn_facts.actions "
         "without repeating the old snapshot. "
-        "Condition evidence must identify the affected recipient. evidence_id uses numbered latest-exchange sources.\n"
+        "Evidence must identify the affected recipient; evidence_id uses latest-exchange sources.\n"
         + (
             "A separate numeric adjudicator owns ALL numeric fields. Do not output numeric state_fields; "
             "record physical/mental effects in text and turn_facts, including each affected recipient.\n"
@@ -146,7 +427,7 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         + "patches: op,target_ref,field,value,evidence_id. "
         "turn_facts actions: actor_ref,target_ref,action,result,evidence_id; "
         "state_changes: target_ref,fields,summary,evidence_id; observations: text,known_by_refs,evidence_id. "
-        "Preserve concrete spoken answers even without state changes. Empty arrays are valid after auditing. "
+        "Empty arrays are valid after auditing. "
         "No memory/world/chapter content. resource_signals flags durable events, permanent lore, chapter or distinctive visuals. "
         "Routine numeric changes or unchanged conditions alone need no memory."
     )
@@ -175,6 +456,11 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
             "criterion, blocked for an explicit obstruction, otherwise unchanged. "
             "Keep the provided node_id and integer revision; use an exact assistant quote as evidence."
         )
+    lifecycle_plan = runtime_review_plan(
+        session, user_message, assistant_reply, table, turn_intent=turn_intent, speaker_id=speaker_id,
+    )
+    if lifecycle_plan:
+        shape["runtime_audit"] = []
     sections = [
         "JSON shape (fill only established changes):", _json(shape),
         "Story obligations contract:", agenda_rules,
@@ -182,7 +468,26 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         _json(public_table(session, table, numeric_enabled=numeric_enabled)),
         "Numbered latest-exchange evidence:",
         _json(numeric.evidence_catalog(user_message, assistant_reply)),
+        "Evidence: exact user_N/reply_N; <=8 IDs/1200 characters; no broad ranges or bare numbers.",
     ]
+    if session["story_state"].get("recent_turn_facts") or any(
+        _runtime(session, row).get(field) for row in table for field in ("state_text", "current_action")
+    ):
+        sections += [
+            "State continuity contract:",
+            "The table is a PRE-TURN snapshot. Recent facts are ordered background, never numbered "
+            "evidence for a new patch. Later established phases end obsolete temporary claims and completed "
+            "actions; audit state_text separately from current_action. Preserve unrelated persistent effects; "
+            "elapsed time is not healing. replace is a complete corrected snapshot.",
+        ]
+    if lifecycle_plan:
+        sections += [
+            "Required runtime lifecycle audit:", _json(lifecycle_plan),
+            "For each listed field, provide a grounded patch OR runtime_audit entry "
+            "{target_ref,field,status:\"unchanged\",reason,evidence_id} explaining why it still applies. "
+            "Use current_action=\"\" when explicitly finished without a new ongoing action. "
+            "Do not keep an outdated phase by merely repeating it. Unregistered people are not the speaker.",
+        ]
     if outline_task:
         sections += ["Private current-outline progress review (not story facts):", _json(outline_task)]
     ids_to_refs = {row["id"]: row["ref"] for row in table if row["type"] in {"character", "player"}}
@@ -195,6 +500,11 @@ def build_prompt(session, user_message, assistant_reply, table, *, speaker_id=""
         if previous:
             sections += ["Previous proposals:", _json(_public_previous(previous, table))]
     remaining = prompt_budget(n_ctx) - len("\n".join(sections)) - (0 if as_request else len(rules) + 1) - 100
+    recent = _recent_context_facts(session, context, table, min(6000, max(0, int(remaining * .8))))
+    if recent:
+        material = ["Recent established turn facts (oldest to newest; context only):", _json(recent)]
+        sections += material
+        remaining -= len("\n".join(material)) + 1
     for row in agenda.material(session, private=False, query=f"{user_message}\n{assistant_reply}"):
         item = {**row, "title": row["title"][:160], "condition": row["condition"][:180], "note": row["note"][:120],
                 "participant_refs": [ids_to_refs[key] for key in row["participant_ids"] if key in ids_to_refs]}
@@ -338,6 +648,10 @@ def decode_response(text, session, table, user_message="", assistant_reply=""):
                     "field": str(result.get("field") or ""),
                     "reference": str(result.get("evidence_id", result.get("evidence_ids", "")))[:180],
                 })
+        elif result.get("evidence") and not rp.vlm_roleplay_cognition.evidence_is_grounded(
+            str(result["evidence"]), str(user_message) + "\n" + str(assistant_reply),
+        ):
+            result["_director_evidence_invalid"] = True
         if result.get("field") == "present_character_ids" and isinstance(result.get("value"), list):
             character_ids = {item["id"] for item in table if item["type"] == "character"}
             has_character = any(
@@ -401,6 +715,7 @@ def decode_response(text, session, table, user_message="", assistant_reply=""):
             kept_patches.append(patch)
         decoded["patches"] = kept_patches
     fact_warnings = []
+    rejected_facts = []
     facts = decoded.get("turn_facts")
     if isinstance(facts, dict):
         for key, rows in list(facts.items()):
@@ -415,11 +730,23 @@ def decode_response(text, session, table, user_message="", assistant_reply=""):
                     fact_warnings.append("director_fact_target_unknown")
                     continue
                 if isinstance(row, dict) and row.get("_director_evidence_invalid"):
+                    normalized = rp.normalize_turn_facts({key: [row]}).get(key) or []
+                    if key == "actions" and normalized and not normalized[0].get("result"):
+                        fact_warnings.append("director_optional_action_evidence_ignored")
+                        continue
                     fact_warnings.append("director_fact_evidence_rejected")
+                    if normalized and isinstance(normalized[0], dict):
+                        item = {**normalized[0], "evidence": ""}
+                        rejected_facts.append({"kind": key, "item": item})
                     continue
                 kept.append(row)
             facts[key] = kept
     parsed = rp.parse_director_response(_json(decoded), session)
+    parsed["rejected_facts"] = list({_json(row): row for row in rejected_facts}.values())
+    parsed["runtime_audit"] = [
+        row for row in decoded.get("runtime_audit", [])[:40]
+        if isinstance(row, dict)
+    ] if isinstance(decoded.get("runtime_audit"), list) else []
     dialogue_rows = [
         patch for patch in parsed.get("patches", [])
         if rp.director_non_state_dialogue_reason(patch)
