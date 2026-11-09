@@ -1,0 +1,174 @@
+{
+  "preset_category": "Anima",
+  "supported_tasks": ["image_edit", "multi_image_edit"],
+  "prompt_agent_required": true,
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "SDXL",
+    "scene_frontend": {
+      "version": "m1.1",
+      "theme": ["Anima Reference", "Anima Character Reference"],
+      "theme_labels": {
+        "Anima Reference": {"en": "Character & Style Reference", "zh": "角色与画风参考"},
+        "Anima Character Reference": {"en": "Character Reference", "zh": "角色参考"}
+      },
+      "theme_title": "Anima Reference Modes",
+      "task_method": {
+        "Anima Reference": "anima_reference",
+        "Anima Character Reference": "anima_character_reference"
+      },
+      "prompt_skill_docs": {
+        "default": {
+          "cn": ["anima_reference_prompting_cn.md"],
+          "en": ["anima_reference_prompting_en.md"]
+        }
+      },
+      "director_capability": {
+        "image_policy": "required",
+        "min_images": 1,
+        "max_images": 2,
+        "image_modes": ["reference_set"],
+        "video_policy": "forbidden",
+        "audio_policy": "forbidden",
+        "audio_output": "none",
+        "mixed_segments": false
+      },
+      "disable_canvas_mask": true,
+      "disvisible": [
+        "scene_additional_prompt",
+        "scene_additional_prompt_2",
+        "scene_input_image2",
+        "scene_input_image3",
+        "scene_input_image4",
+        "scene_input_image5",
+        "scene_input_image6",
+        "scene_input_image7",
+        "scene_input_image8",
+        "scene_video",
+        "scene_reference_video",
+        "scene_reference_video2",
+        "scene_audio",
+        "scene_audio2",
+        "scene_audio3",
+        "scene_video_duration",
+        "scene_refiner_model",
+        "scene_var_number",
+        "scene_var_number2",
+        "scene_var_number7",
+        "scene_var_number8",
+        "scene_var_number9",
+        "scene_var_number10",
+        "scene_switch_option1",
+        "scene_switch_option2",
+        "scene_switch_option3",
+        "scene_switch_option4",
+        "pose_studio",
+        "gaussian_studio",
+        "camera_control_accordion",
+        "anglelight_control_accordion",
+        "style_transfer_accordion",
+        "sam3_video_mask_accordion",
+        "sam3_input_video",
+        "sam3_mask_video"
+      ],
+      "prompt": {
+        "Anima Reference": "",
+        "Anima Character Reference": ""
+      },
+      "agent_prompt": {
+        "Anima Reference": "Follow the Anima Reference prompt contract. Reuse Anima text-to-image's shared local Rust tag lookup: select relevant returned prompt_tag values from injected candidates, or call simpai.prompts.tags when using Agent tools. Except for fixed Anima quality/score/rating controls, never invent tags from memory, translate prose into pseudo-tags, or use unrelated artist/series matches. Express unmatched concepts as short English nltags and validate with the existing Anima checks. Describe only the desired scene, count, action, pose, expression, framing and light. The references provide appearance and style; do not recaption hair, eyes, clothes or artist unless explicitly changing them. Both slots show the same character; two distinct people need one joint reference. Preserve explicit requirements such as sleeping and closed eyes without adding conflicting expressions. Do not preserve an unwanted reference pose, add image-number tags or a SnapRef LoRA tag. Return only the final English prompt; settings remain in parameter fields.",
+        "Anima Character Reference": "Follow the Anima Reference prompt contract. Reuse Anima text-to-image's shared local Rust tag lookup: select relevant returned prompt_tag values from injected candidates, or call simpai.prompts.tags when using Agent tools. Except for fixed Anima quality/score/rating controls, never invent tags from memory, translate prose into pseudo-tags, or use unrelated artist/series matches. Express unmatched concepts as short English nltags and validate with the existing Anima checks. Describe the desired scene, count, action, pose, expression, framing, light and requested style. The references provide appearance; do not recaption hair, eyes or clothes unless explicitly changing them. Both slots show the same character; two distinct people need one joint reference. Preserve explicit requirements such as sleeping and closed eyes without adding conflicting expressions. Do not preserve an unwanted reference pose, add image-number tags or a SnapRef LoRA tag. Return only the final English prompt; settings remain in parameter fields."
+      },
+      "image_preprocessor_method": {
+        "Anima Reference": [["-normalization"], ["-normalization"]],
+        "Anima Character Reference": [["-normalization"], ["-normalization"]]
+      },
+      "steps": {
+        "Anima Reference": 28,
+        "Anima Character Reference": 28
+      },
+      "steps_min": 1,
+      "steps_max": 60,
+      "var_number3_title": "Reference Image 1 Weight",
+      "var_number3_min": 0.0,
+      "var_number3_max": 2.0,
+      "var_number3_step": 0.05,
+      "var_number3": {
+        "Anima Reference": 1.0,
+        "Anima Character Reference": 1.0
+      },
+      "var_number4_title": "Reference Image 2 Weight",
+      "var_number4_min": 0.0,
+      "var_number4_max": 2.0,
+      "var_number4_step": 0.05,
+      "var_number4": {
+        "Anima Reference": 1.0,
+        "Anima Character Reference": 1.0
+      },
+      "var_number5_title": "Fidelity",
+      "var_number5_min": 0.0,
+      "var_number5_max": 1.0,
+      "var_number5_step": 0.05,
+      "var_number5": {
+        "Anima Reference": 1.0,
+        "Anima Character Reference": 1.0
+      },
+      "var_number6_title": "Reference Megapixels",
+      "var_number6_min": 0.25,
+      "var_number6_max": 1.0,
+      "var_number6_step": 0.05,
+      "var_number6": {
+        "Anima Reference": 1.0,
+        "Anima Character Reference": 1.0
+      },
+      "aspect_ratio": ["832*1216", "1024*1024", "1216*832"],
+      "resolution_control": {
+        "mode": "standard",
+        "source": "none",
+        "base_width": 832,
+        "base_height": 1216,
+        "quantize": 16,
+        "interactive": true,
+        "frontend_preprocess": false,
+        "preprocess_target": "none",
+        "preprocess_fit": "scale"
+      }
+    }
+  },
+  "default_model": "anima-base-v1.0.safetensors",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "qwen_3_06b_base.safetensors",
+  "default_vae": "qwen_image_vae.safetensors",
+  "default_loras": [
+    ["None", 1.0],
+    ["None", 1.0],
+    ["None", 1.0],
+    ["None", 1.0],
+    ["None", 1.0]
+  ],
+  "default_cfg_scale": 4.5,
+  "default_sample_sharpness": 0,
+  "default_sampler": "euler",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "832*1216",
+  "default_image_number": 1,
+  "default_overwrite_step": 28,
+  "default_prompt": "",
+  "default_prompt_negative": "worst quality, low quality, score_1, score_2, score_3, artist name, blurry, jpeg artifacts, lowres, censor",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,anima-base-v1.0.safetensors,4182218328,0,https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/split_files/diffusion_models/anima-base-v1.0.safetensors,https://huggingface.co/circlestone-labs/Anima/resolve/main/split_files/diffusion_models/anima-base-v1.0.safetensors",
+    "text_encoders,qwen_3_06b_base.safetensors,1192135096,0,https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/split_files/text_encoders/qwen_3_06b_base.safetensors,https://huggingface.co/circlestone-labs/Anima/resolve/main/split_files/text_encoders/qwen_3_06b_base.safetensors",
+    "vae,qwen_image_vae.safetensors,253806246,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/vae/qwen_image_vae.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors",
+    "loras,snapref_v2a.safetensors,381821960,8a22fc28d060447544eda283b36efe2dcdbad7422cbc0b8d42828d55a8a61ab4,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/snapref_v2a.safetensors,https://huggingface.co/0ppxnhximxr/snapref-v2a/resolve/main/snapref_v2a.safetensors"
+  ]
+}

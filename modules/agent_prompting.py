@@ -129,6 +129,9 @@ def guidance(entry, spec, lang):
     builtin = _builtin_catalog()
     wanted = {str(doc).replace("\\", "/") for doc in docs}
     skills = [public_skill(row) for row in builtin if row["_path"].relative_to(SKILLS.resolve()).as_posix() in wanted]
+    workflow = "Read the selected skills, use local tag lookup when available, write the final prompt in the required language, then validate and preview. Put the user's original request in instruction and the final model prompt in prompt. Do not infer model limits from an unreviewed output."
+    if key == "anima_aio":
+        workflow = "Read the selected skills, query short concepts with simpai.prompts.tags using the shared local Rust tag lookup, and select only relevant returned prompt_tag values. Except for fixed Anima quality/score/rating controls, do not invent tags from model memory; express unmatched concepts as short English nltags. Use simpai.prompts.validate and route preview before submission. Keep the original request in instruction and the final English prompt in prompt. Do not claim failed lookup or validation passed."
     result = {"preset_id": entry["name"], "theme": spec["theme"], "target": target,
             "prompt_language": "en" if english else "multilingual", "format": formats.get(key, "natural_language"),
             "reference_format": spec["prompt_reference_format"], "instruction_language": "user_language",
@@ -137,7 +140,7 @@ def guidance(entry, spec, lang):
             "tools": ["simpai.skills.read", "simpai.prompts.validate"] + (["simpai.prompts.tags"] if key in {"anima_aio", "sdxl_danbooru"} else []),
             "guidance_url": f"{API_PREFIX}/prompts/guidance?" + urlencode({"preset_id": entry["name"], "theme": spec["theme"], "lang": lang}),
             "generation_defaults": {"styles": entry.get("default_styles") or [], "prompt": entry.get("default_prompt") or "", "negative_prompt": entry.get("default_prompt_negative") or ""},
-            "workflow": "Read the selected skills, use local tag lookup when available, write the final prompt in the required language, then validate and preview. Put the user's original request in instruction and the final model prompt in prompt. Do not infer model limits from an unreviewed output."}
+            "workflow": workflow}
     if key in {"flux3_natural", "ph3_image"}:
         result.update(preferred_prompt_language="en", requires_final_prompt=False)
     if key == "moss_image":

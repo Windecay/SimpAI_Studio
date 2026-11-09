@@ -3075,6 +3075,34 @@
     "cn": "SAM3 蒙版：上传源视频后，双击画面选择目标点选跟踪或固定多边形，也可在右侧上传 mask 视频（仅支持视频文件）。检查蒙版后再执行主生成。"
   },
   "presetGuides": {
+    "Anima-Reference": {
+      "intro": {
+        "en": "Generate a new anime scene from character references. Character Reference guides appearance; Character & Style Reference also follows the reference's visual style. Use retrieved English tags plus short scene sentences. The prompt assistant uses the same local tag lookup as Anima text-to-image.",
+        "cn": "根据角色参考图生成新的动漫场景。“角色参考”参考人物外观；“角色与画风参考”同时参考原图画风。提示词使用检索确认的英文标签和简短场景句子，提示词助手沿用 Anima 文生图的本地标签检索。"
+      },
+      "inputs": {
+        "en": "Put the primary reference on the sketch canvas. Image 2 is optional and supplies another view of the same character. For two distinct characters, prepare one joint or side-by-side reference on the canvas and specify their count and left/right positions in the prompt. No mask is needed.",
+        "cn": "主参考图放在 sketch canvas；图 2 可选，用于同一角色的另一张参考。两个不同角色请使用一张合照或左右拼图作为主参考，并在提示词里写明人数和左右位置。无需蒙版。"
+      },
+      "keyPoint": {
+        "en": "The whole scene is generated again, so pose, framing and background can change. Set output dimensions separately. Reference Megapixels controls the input detail per image; Fidelity starts at 1, and lowering it gives the prompt more freedom. The two weights balance the references; an empty Image 2 is ignored.",
+        "cn": "整个场景会重新生成，动作、构图和背景都可能变化。输出尺寸单独设置；“参考图像素量”控制每张输入的细节；“参考保真度”默认 1，降低后提示词有更大的发挥空间。两项参考图权重用于调整两张图的影响，未上传图 2 时会自动忽略。"
+      },
+      "notes": [
+        {
+          "en": "One-character nap example: masterpiece, best quality, score_7, safe, 1girl, solo, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. She is taking an afternoon nap on her side, with her eyes closed and her head resting on a pillow. Soft window light fills the bedroom.",
+          "cn": "单人午睡示例：masterpiece, best quality, score_7, safe, 1girl, solo, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. She is taking an afternoon nap on her side, with her eyes closed and her head resting on a pillow. Soft window light fills the bedroom."
+        },
+        {
+          "en": "Two-character example: masterpiece, best quality, score_7, safe, 2girls, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. Both characters are taking an afternoon nap side by side, with their eyes closed and their heads resting on separate pillows. Soft window light fills the bedroom. Match the subject-count tags to the characters; remove solo for two people.",
+          "cn": "双人示例：masterpiece, best quality, score_7, safe, 2girls, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. Both characters are taking an afternoon nap side by side, with their eyes closed and their heads resting on separate pillows. Soft window light fills the bedroom. 按实际角色修改人数与性别标签，双人时删除 solo。"
+        },
+        {
+          "en": "Choose tags from relevant lookup results instead of inventing them. Similar artist or series names do not describe afternoon light; put unmatched concepts in short English sentences. The reference already provides appearance, so do not repeat hair, eyes, clothes or artist unless requesting a change.",
+          "cn": "标签从符合需求的检索结果中选择，不凭记忆编写。相似的画师或作品名不能描述午后光线；查不到的概念用简短英文句子表达。参考图已经提供外观，只有明确要求改变时才写发色、眼色、服装或画师。"
+        }
+      ]
+    },
     "Qwen2.1-Edit": {
       "intro": {
         "en": "Upload an image and describe how to edit it, or combine several images using clearly assigned references. Without any image, this preset generates a new image from text.",

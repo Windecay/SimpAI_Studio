@@ -112,7 +112,31 @@
       "auto_generated": false,
       "edit_target": "docs/vlm_skills/anima_prompting.md",
       "reason": "Anima uses a hybrid prompt shape: English Danbooru/Anima anchors plus short nltags control sentences, and should not inherit generic Qwen natural-language behavior or pure SDXL tag-only behavior.",
-      "contract_summary": "For Anima targets, output English Anima-positive prompts with quality/period/rating, subject count, resolved character/series/artist anchors, hard visual tags, and short nltags sentences."
+      "contract_summary": "For Anima targets, select relevant prompt_tag values from the shared local Rust lookup, retain model control tokens, and express unmatched concepts as English nltags. Do not invent tags from memory; validate before submission."
+    },
+    {
+      "key": "anima_reference_prompting_en",
+      "title": "Anima Reference Prompting",
+      "doc": "anima_reference_prompting_en.md",
+      "language": "en",
+      "ownership": "manual_review",
+      "manual_required": true,
+      "auto_generated": false,
+      "edit_target": "docs/vlm_skills/anima_reference_prompting_en.md",
+      "reason": "Reference generation using Anima's existing Rust tag lookup, reference roles, and scene-only prompts.",
+      "contract_summary": "Select relevant returned prompt_tag values via shared Rust lookup, never invent tags; use English nltags for unmatched ideas. Two slots show one character; distinct characters need a joint reference."
+    },
+    {
+      "key": "anima_reference_prompting_cn",
+      "title": "Anima 参考生图提示词",
+      "doc": "anima_reference_prompting_cn.md",
+      "language": "cn",
+      "ownership": "manual_review",
+      "manual_required": true,
+      "auto_generated": false,
+      "edit_target": "docs/vlm_skills/anima_reference_prompting_cn.md",
+      "reason": "角色参考与角色画风参考沿用 Anima 的 Rust 标签检索，明确素材角色和场景提示词。",
+      "contract_summary": "从共享 Rust 检索结果中筛选 prompt_tag，禁止自造标签；未匹配概念用英文 nltags。双参考用于同一角色，两个不同角色使用合照或拼图。"
     },
     {
       "key": "danbooru_prompt_review",

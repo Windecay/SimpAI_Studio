@@ -10909,6 +10909,7 @@ function schedulePresetStoreViewportRefresh() {
 function inferPresetStoreEngine(name) {
     const text = String(name || "").toLowerCase();
     if (/(?:^|[^a-z0-9])(?:moss[ ._-]?(?:image|turbo|edit)|kromoss)(?:[^a-z0-9]|$)/.test(text)) return "MOSS";
+    if (/(?:^|[^a-z0-9])anima(?:[^a-z0-9]|$)/.test(text)) return "Anima";
     if (text.includes("wan")) return "Wan";
     if (text.includes("flux") || text.includes("nf4") || text.includes("fp4")) return "Flux";
     if (text.includes("qwen") || text.includes("nunqwen")) return "Qwen";

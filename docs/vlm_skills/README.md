@@ -45,6 +45,9 @@ Documents:
 - `anima_prompting.md`: Anima-specific hybrid prompt contract for Anima
   presets, using English Danbooru/Anima anchors plus short `nltags` control
   sentences.
+- `anima_reference_prompting_cn.md` / `anima_reference_prompting_en.md`:
+  Anima reference generation, character/style themes, reference image roles,
+  and single/multiple-character scene prompts.
 - `danbooru_prompt_review.md`: optional second-pass review rules for final
   SDXL/Danbooru prompts, including scoring, conflict checks, and narrow prompt
   fixes before confirmation or submission.

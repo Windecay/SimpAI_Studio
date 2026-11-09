@@ -34,9 +34,17 @@ Recommended order:
 quality / period / rating, subject count, character, series, artist, appearance, hard tags, environment tags, nltags
 ```
 
-Use Anima-compatible English tags. Character, series, artist, clothing, pose,
-expression, camera, scene, and light anchors should come from local lookup when
-available. Do not invent long underscore pseudo-tags from prose.
+Use Anima-compatible English tags from Studio's shared local Rust tag lookup.
+The prompt assistant receives its candidates; an external Agent must call
+`simpai.prompts.tags` with short concepts before selecting tags. Use returned
+`prompt_tag` values and preserve their escapes. Except for fixed Anima
+quality/score/rating controls, do not supply tags from model memory or invent
+underscore pseudo-tags from prose.
+
+Filter lookup results by meaning and category: a matching artist or series
+name is not an action, time or light tag. Unmatched concepts belong in short
+English `nltags`; lookup failure must not be reported as successful validation.
+Use `simpai.prompts.validate` and the existing Anima preflight before submission.
 
 Character lookup confirms identity tags only. Do not treat character aliases as
 appearance, outfit, prop, or color facts. When a named character's design is

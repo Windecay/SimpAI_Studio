@@ -85,6 +85,15 @@ SimpAI UI guide skill:
 
 ## Input Image / Reference Controls
 
+- Anima-Reference generates new anime scenes from character references.
+  Choose Character Reference for appearance or Character & Style Reference
+  for appearance and visual style. Upload the main reference to
+  `Upload and canvas(1)`; optional `Upload prompt image(2)` shows the same
+  character from another view. For two different characters, put one joint
+  image or side-by-side collage in the main input and specify their count and
+  positions. Use Prompt Tools to prepare retrieved English tags plus short
+  scene sentences. This is full-scene regeneration; use a dedicated
+  image-editing workflow when unchanged regions must be preserved.
 - Image Prompt is usually a style/reference semantic-vector input. Some model
   families hide it because they do not have the matching module.
 - For ControlNet choices, Canny / PyraCanny preserves line contours, Depth
