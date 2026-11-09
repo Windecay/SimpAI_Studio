@@ -36,7 +36,7 @@ def check_model_availability():
         return {"available": False, "reason": "error", "message": str(e)}
 
 
-def process_sam3_image_mask(image_data_url, positive_points=None, negative_points=None, threshold=None, fill_holes=False, mask_threshold=0.5, close_radius=1):
+def process_sam3_image_mask(image_data_url, positive_points=None, negative_points=None, threshold=None, fill_holes=False, mask_threshold=0.5, close_radius=1, mask_only=False):
     _ensure_project_root_on_path()
     import enhanced.sam3_image_mask as sam3_image_mask
 
@@ -48,6 +48,7 @@ def process_sam3_image_mask(image_data_url, positive_points=None, negative_point
         fill_holes=bool(fill_holes),
         mask_threshold=mask_threshold,
         close_radius=close_radius,
+        mask_only=mask_only,
     )
 
 

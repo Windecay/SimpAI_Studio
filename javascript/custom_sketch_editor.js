@@ -176,6 +176,42 @@
                 min-width: 0;
                 overflow-wrap: anywhere;
             }
+            .simpai-sketch__selection-status {
+                left: 42px;
+            }
+            .simpai-sketch__selection-points {
+                position: absolute;
+                inset: 0;
+                z-index: 4;
+                pointer-events: none;
+            }
+            .simpai-sketch__selection-point {
+                position: absolute;
+                width: 12px;
+                height: 12px;
+                box-sizing: border-box;
+                border: 2px solid #fff;
+                border-radius: 50%;
+                background: #189653;
+                box-shadow: 0 0 0 1px #123d28;
+                transform: translate(-50%, -50%);
+            }
+            .simpai-sketch__selection-point.is-negative {
+                background: #d94359;
+                box-shadow: 0 0 0 1px #5f1826;
+            }
+            .simpai-sketch [data-group="selection"][hidden],
+            .simpai-sketch__selection-points[hidden],
+            .simpai-sketch__selection-status button[hidden],
+            .simpai-sketch.is-smart-selecting [data-group="size"] {
+                display: none;
+            }
+            .simpai-sketch.is-smart-selecting .simpai-sketch__stage.has-image canvas.mask {
+                cursor: crosshair;
+            }
+            .simpai-sketch.is-smart-selecting .simpai-sketch__brush-cursor {
+                display: none;
+            }
             .simpai-sketch__group {
                 display: inline-flex;
                 align-items: center;
@@ -1165,6 +1201,7 @@
                 <canvas data-role="background"></canvas>
                 <canvas data-role="mask" data-key="mask" class="mask"></canvas>
                 <canvas data-role="outpaint-preview" class="simpai-sketch__outpaint-preview"></canvas>
+                <div class="simpai-sketch__selection-points" data-role="selection-points" hidden></div>
                 <div class="simpai-sketch__brush-cursor" data-role="brush-cursor"></div>
                 <div class="simpai-sketch__crop" data-role="crop-overlay">
                     <div class="simpai-sketch__crop-box" data-role="crop-box">
@@ -1190,7 +1227,13 @@
                         <div class="simpai-sketch__group simpai-sketch__group--vertical" data-group="tools">
                             <button class="simpai-sketch__button active" type="button" data-action="brush" title="Brush" aria-label="Brush"><i class="fa-solid fa-paintbrush"></i></button>
                             <button class="simpai-sketch__button" type="button" data-action="eraser" title="Eraser" aria-label="Eraser"><i class="fa-solid fa-eraser"></i></button>
+                            <button class="simpai-sketch__button" type="button" data-action="smart-select"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
                             <input type="color" data-role="color" value="#ffffff" title="Brush color" aria-label="Brush color">
+                        </div>
+                        <div class="simpai-sketch__group simpai-sketch__group--vertical" data-group="selection" hidden>
+                            <button class="simpai-sketch__button" type="button" data-action="select-positive"><i class="fa-solid fa-circle-plus"></i></button>
+                            <button class="simpai-sketch__button" type="button" data-action="select-negative"><i class="fa-solid fa-circle-minus"></i></button>
+                            <button class="simpai-sketch__button" type="button" data-action="select-reset"><i class="fa-solid fa-rotate-left"></i></button>
                         </div>
                         <div class="simpai-sketch__group simpai-sketch__group--size" data-group="size">
                             <button class="simpai-sketch__button simpai-sketch__size-button" type="button" data-action="size" title="Brush size" aria-label="Brush size">${DEFAULT_BRUSH_SIZE}</button>
@@ -1261,6 +1304,11 @@
                 <span data-role="paste-message" role="status" aria-live="polite"></span>
                 <button class="simpai-sketch__button" type="button" data-action="dismiss-paste"><i class="fa-solid fa-xmark"></i></button>
             </div>
+            <div class="simpai-sketch__paste-status simpai-sketch__selection-status" data-role="selection-status" hidden>
+                <span data-role="selection-message" role="status" aria-live="polite"></span>
+                <button class="simpai-sketch__button" type="button" data-action="select-retry" hidden><i class="fa-solid fa-rotate-right"></i></button>
+                <button class="simpai-sketch__button" type="button" data-action="select-stop"><i class="fa-solid fa-xmark"></i></button>
+            </div>
             <img class="simpai-sketch__image-proxy" alt="">
         `;
         root.appendChild(editor);
@@ -1298,6 +1346,12 @@
         const cropCancelButton = editor.querySelector("button[data-action='crop-cancel']");
         const brushButton = editor.querySelector("button[data-action='brush']");
         const eraserButton = editor.querySelector("button[data-action='eraser']");
+        const smartButton = editor.querySelector("[data-action='smart-select']");
+        const selectionGroup = editor.querySelector("[data-group='selection']");
+        const selectionPoints = editor.querySelector("[data-role='selection-points']");
+        const selectionStatus = editor.querySelector("[data-role='selection-status']");
+        const selectionMessage = editor.querySelector("[data-role='selection-message']");
+        const selectionRetry = editor.querySelector("[data-action='select-retry']");
         const bgCtx = bgCanvas.getContext("2d", { willReadFrequently: true });
         const maskCtx = maskCanvas.getContext("2d", { willReadFrequently: true });
         editor.querySelectorAll(".simpai-sketch__dock").forEach(bindSketchDockAutoHide);
@@ -1368,6 +1422,259 @@
         let outpaintSyncFrame = null;
         let outpaintSaveTimer = null;
         let outpaintSaveTask = null;
+        let smartPoints = [];
+        let smartBase = null;
+        let smartApplied = false;
+        let smartPointMode = "positive";
+        let smartEpoch = 0;
+        let smartRevision = 0;
+        let smartTimer = null;
+        let smartTask = null;
+        let smartController = null;
+        let smartSource = "";
+        let smartIdentity = "";
+        let smartStatus = "";
+        let smartError = false;
+
+        function selectionIdentity() {
+            return JSON.stringify([window.stage, window.simpleaiTopbarSystemParams].map((state) => [
+                state?.user_did || "", state?.__identity_session_seq ?? "", state?.user_role || ""
+            ]));
+        }
+
+        function refreshSelectionControls() {
+            const active = mode === "smart-select";
+            editor.classList.toggle("is-smart-selecting", active);
+            smartButton.classList.toggle("active", active);
+            smartButton.setAttribute("aria-pressed", String(active));
+            smartButton.disabled = !hasImage || !sourceImageDataUrl || maskDisabled || cropMode || !!outpaintConfig.enabled;
+            smartButton.firstElementChild.className = active && smartTask
+                ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-wand-magic-sparkles";
+            selectionGroup.hidden = !active;
+            selectionPoints.hidden = !active;
+            const labels = {
+                "smart-select": "Smart selection",
+                "select-positive": "Include point",
+                "select-negative": "Exclude point",
+                "select-reset": "Reset selection",
+                "select-retry": "Retry selection",
+                "select-stop": "Finish selection"
+            };
+            for (const [action, label] of Object.entries(labels)) {
+                const button = editor.querySelector(`[data-action="${action}"]`);
+                button.title = sketchText(label);
+                button.setAttribute("aria-label", sketchText(label));
+            }
+            for (const sign of ["positive", "negative"]) {
+                const button = editor.querySelector(`[data-action="select-${sign}"]`);
+                button.classList.toggle("active", smartPointMode === sign);
+                button.setAttribute("aria-pressed", String(smartPointMode === sign));
+            }
+            editor.querySelector("[data-action='select-reset']").disabled = !smartPoints.length;
+            selectionStatus.hidden = !active || !smartStatus;
+            selectionMessage.textContent = sketchText(smartStatus);
+            selectionRetry.hidden = !smartError || !smartPoints.length;
+        }
+
+        function drawSelectionPoints() {
+            selectionPoints.replaceChildren(...smartPoints.map((point) => {
+                const marker = document.createElement("span");
+                marker.className = `simpai-sketch__selection-point${point.negative ? " is-negative" : ""}`;
+                marker.style.left = `${point.x * 100}%`;
+                marker.style.top = `${point.y * 100}%`;
+                return marker;
+            }));
+        }
+
+        function stopSmartSelection() {
+            smartEpoch += 1;
+            smartRevision += 1;
+            if (smartTimer) clearTimeout(smartTimer);
+            smartTimer = null;
+            smartController?.abort();
+            smartController = null;
+            smartPoints = [];
+            smartBase = null;
+            smartSource = "";
+            smartApplied = false;
+            smartStatus = "";
+            smartError = false;
+            if (mode === "smart-select") mode = "brush";
+            drawSelectionPoints();
+            refreshSelectionControls();
+        }
+
+        function startSmartSelection() {
+            if (!hasImage || !sourceImageDataUrl || maskDisabled || cropMode || outpaintConfig.enabled) return false;
+            stopSmartSelection();
+            mode = "smart-select";
+            smartBase = captureMaskState();
+            smartPointMode = "positive";
+            smartIdentity = selectionIdentity();
+            stage.classList.remove("is-cursor-visible");
+            refreshToolbarState();
+            return true;
+        }
+
+        function queueSmartRecognition(delay = 160) {
+            if (smartTimer) clearTimeout(smartTimer);
+            smartTimer = setTimeout(() => {
+                smartTimer = null;
+                runSmartRecognition();
+            }, delay);
+        }
+
+        async function recognizeSelection(job) {
+            const current = () => !destroyed && mode === "smart-select" && !maskDisabled && !cropMode
+                && job.epoch === smartEpoch && job.revision === smartRevision
+                && job.source === payloadSequence && job.identity === selectionIdentity() && isSketchVisible();
+            const controller = new AbortController();
+            smartController = controller;
+            const request = async (path, body, timeout) => {
+                const timer = setTimeout(() => controller.abort(), timeout);
+                try {
+                    const url = window.SimpAICanvasWorkbenchUtils?.studioEndpointUrl?.(path) || path;
+                    const response = await fetch(url, {
+                        method: body ? "POST" : "GET",
+                        ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+                        signal: controller.signal
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error("Could not recognize the selection. Please retry.");
+                    return result;
+                } finally {
+                    clearTimeout(timer);
+                }
+            };
+            try {
+                if (!current()) return false;
+                smartStatus = "Checking selection model...";
+                smartError = false;
+                refreshSelectionControls();
+                const model = await request("/sam3/check-model", null, 15000);
+                if (!current()) return false;
+                if (!model.available) {
+                    if (model.reason === "not_downloaded") {
+                        let opened = false;
+                        try {
+                            if (fullscreenMode) exitFullscreen({ keepHotkey: true });
+                            if (panFloatingMode) exitPanFloating({ keepHotkey: true });
+                            opened = window.triggerMissingModelCheck?.({ kind: "sam3" }) === true;
+                        } catch (error) {
+                            console.warn("[SimpAI Sketch] Model download window could not be opened", error);
+                        }
+                        throw new Error(opened
+                            ? "SAM3.1 is not installed. Download it in the model download window, then retry."
+                            : "SAM3.1 is not installed. Download it in model management.");
+                    }
+                    throw new Error("The selection model is unavailable. Please retry.");
+                }
+                smartStatus = "Recognizing selection...";
+                refreshSelectionControls();
+                if (!smartSource) smartSource = bgCanvas.toDataURL("image/webp", 0.92);
+                const result = await request("/sam3/image-mask", {
+                    image: smartSource,
+                    positive_points: job.points.filter((point) => !point.negative).map(({ x, y }) => ({ x, y })),
+                    negative_points: job.points.filter((point) => point.negative).map(({ x, y }) => ({ x, y })),
+                    mask_threshold: 0.5, close_radius: 1, fill_holes: false, mask_only: true
+                }, 180000);
+                if (!current()) return false;
+                if (!isDataImageUrl(result.mask) || result.width !== width || result.height !== height) {
+                    throw new Error("Could not recognize the selection. Please retry.");
+                }
+                const image = await loadImage(result.mask);
+                if (!current()) return false;
+                const overlay = document.createElement("canvas");
+                overlay.width = width;
+                overlay.height = height;
+                const context = overlay.getContext("2d", { willReadFrequently: true });
+                context.drawImage(image, 0, 0, width, height);
+                const pixels = context.getImageData(0, 0, width, height);
+                const color = hexToRgb(colorInput.value || "#ffffff") || { r: 255, g: 255, b: 255 };
+                for (let i = 0; i < pixels.data.length; i += 4) {
+                    const alpha = Math.round(Math.max(pixels.data[i], pixels.data[i + 1], pixels.data[i + 2]) * pixels.data[i + 3] / 255);
+                    pixels.data[i] = color.r;
+                    pixels.data[i + 1] = color.g;
+                    pixels.data[i + 2] = color.b;
+                    pixels.data[i + 3] = alpha;
+                }
+                context.putImageData(pixels, 0, 0);
+                pushUndoState(true, true);
+                await drawCapturedMaskState(smartBase);
+                if (!current()) return false;
+                maskCtx.drawImage(overlay, 0, 0);
+                overlay.width = overlay.height = 1;
+                smartApplied = true;
+                smartStatus = "";
+                smartError = false;
+                markDirty();
+                serialize({ change: true });
+                refreshToolbarState();
+                return true;
+            } catch (error) {
+                if (current()) {
+                    smartError = true;
+                    const known = [
+                        "SAM3.1 is not installed. Download it in model management.",
+                        "SAM3.1 is not installed. Download it in the model download window, then retry.",
+                        "The selection model is unavailable. Please retry."
+                    ];
+                    smartStatus = controller.signal.aborted ? "Selection timed out. Please retry."
+                        : known.includes(error.message) ? error.message : "Could not recognize the selection. Please retry.";
+                    console.warn("[SimpAI Sketch] Smart selection failed", error);
+                    refreshSelectionControls();
+                }
+                return false;
+            } finally {
+                if (smartController === controller) smartController = null;
+            }
+        }
+
+        function runSmartRecognition() {
+            if (smartTask || mode !== "smart-select" || !smartPoints.length) return smartTask;
+            const job = {
+                epoch: smartEpoch, revision: smartRevision, source: payloadSequence,
+                identity: smartIdentity, points: smartPoints.map((point) => ({ ...point }))
+            };
+            const finish = (result) => {
+                if (smartTask === task) smartTask = null;
+                if (!destroyed) {
+                    if (mode === "smart-select" && (smartIdentity !== selectionIdentity() || !isSketchVisible())) {
+                        stopSmartSelection();
+                        refreshToolbarState();
+                    } else if (mode === "smart-select" && smartPoints.length && smartRevision !== job.revision
+                        && smartIdentity === selectionIdentity()) queueSmartRecognition(0);
+                    refreshSelectionControls();
+                }
+                return result;
+            };
+            const task = recognizeSelection(job).then(finish, () => finish(false));
+            smartTask = task;
+            refreshSelectionControls();
+            return task;
+        }
+
+        function selectTarget(event) {
+            consumeSketchPaintEvent(event, { immediate: true });
+            if (smartIdentity !== selectionIdentity()) {
+                stopSmartSelection();
+                refreshToolbarState();
+                return;
+            }
+            const negative = event.button === 2 || smartPointMode === "negative";
+            if (negative && !smartPoints.some((point) => !point.negative)) return;
+            const p = point(event);
+            smartPoints.push({
+                x: Math.min(1, Math.max(0, p.x / width)),
+                y: Math.min(1, Math.max(0, p.y / height)), negative
+            });
+            smartRevision += 1;
+            smartError = false;
+            smartStatus = "Recognizing selection...";
+            drawSelectionPoints();
+            refreshSelectionControls();
+            queueSmartRecognition();
+        }
 
         function outpaintText(en, cn) {
             return outpaintConfig.lang === "cn" ? cn : en;
@@ -1560,6 +1867,7 @@
                 return !maskDisabled;
             }
             if (maskDisabled) {
+                stopSmartSelection();
                 drawing = false;
                 mode = "brush";
                 editor.classList.remove("is-drawing");
@@ -1574,6 +1882,9 @@
         }
 
         function refreshToolbarState() {
+            if (mode === "smart-select" && (!hasImage || !sourceImageDataUrl || maskDisabled || cropMode || outpaintConfig.enabled)) {
+                stopSmartSelection();
+            }
             if (!hasImage && cropMode) {
                 cropMode = false;
                 cropDrag = null;
@@ -1591,11 +1902,13 @@
             if (brushButton) brushButton.classList.toggle("active", mode === "brush");
             if (eraserButton) eraserButton.classList.toggle("active", mode === "eraser");
             if (toolHandleIcon) {
-                toolHandleIcon.className = mode === "eraser" ? "fa-solid fa-eraser" : "fa-solid fa-paintbrush";
+                toolHandleIcon.className = mode === "smart-select" ? "fa-solid fa-wand-magic-sparkles"
+                    : mode === "eraser" ? "fa-solid fa-eraser" : "fa-solid fa-paintbrush";
             }
             if (toolHandle) {
-                toolHandle.title = mode === "eraser" ? "Eraser" : "Brush";
+                toolHandle.title = mode === "smart-select" ? sketchText("Smart selection") : mode === "eraser" ? "Eraser" : "Brush";
             }
+            refreshSelectionControls();
             updateBrushCursor();
             if (undoButton) undoButton.disabled = !hasImage || undoStack.length === 0;
             if (redoButton) redoButton.disabled = !hasImage || redoStack.length === 0;
@@ -1814,6 +2127,7 @@
         }
 
         async function undoMask() {
+            stopSmartSelection();
             const previous = undoStack.pop();
             if (!previous || !hasImage) return false;
             if (isFullHistoryState(previous)) {
@@ -1835,6 +2149,7 @@
         }
 
         async function redoMask() {
+            stopSmartSelection();
             const next = redoStack.pop();
             if (!next || !hasImage) return false;
             if (isFullHistoryState(next)) {
@@ -2086,6 +2401,7 @@
 
         function enterCropMode() {
             if (!hasImage) return false;
+            stopSmartSelection();
             cancelOutpaintSave();
             if (panFloatingMode) exitPanFloating();
             cropMode = true;
@@ -2633,6 +2949,15 @@
         }
 
         async function flush(options = {}) {
+            while (mode === "smart-select" && (smartTimer || smartTask)) {
+                if (smartTimer) {
+                    clearTimeout(smartTimer);
+                    smartTimer = null;
+                    runSmartRecognition();
+                }
+                if (smartTask) await smartTask;
+            }
+            if (mode === "smart-select" && smartError) return false;
             if (payloadLoadTask) {
                 await payloadLoadTask;
             }
@@ -2652,6 +2977,7 @@
         }
 
         function clearImage(options = {}) {
+            stopSmartSelection();
             cancelOutpaintSave();
             payloadSequence += 1;
             exitCropMode();
@@ -2681,6 +3007,7 @@
         }
 
         async function applyPayload(text) {
+            stopSmartSelection();
             cancelOutpaintSave();
             const sequence = ++payloadSequence;
             if (!text) {
@@ -2786,6 +3113,7 @@
 
         async function openImageDataUrl(dataUrl, options = {}) {
             if (!dataUrl) return false;
+            stopSmartSelection();
             cancelOutpaintSave();
             const sequence = ++payloadSequence;
             try {
@@ -2972,7 +3300,7 @@
 
         function updateBrushCursor(event) {
             if (!brushCursor) return;
-            if (maskDisabled) {
+            if (maskDisabled || mode === "smart-select") {
                 brushCursor.style.transform = "translate(-9999px, -9999px)";
                 stage.classList.remove("is-cursor-visible");
                 return;
@@ -3193,6 +3521,7 @@
         });
         brushButton.addEventListener("click", () => {
             if (maskDisabled) return;
+            stopSmartSelection();
             mode = "brush";
             brushButton.classList.add("active");
             eraserButton.classList.remove("active");
@@ -3200,13 +3529,53 @@
         });
         eraserButton.addEventListener("click", () => {
             if (maskDisabled) return;
+            stopSmartSelection();
             mode = "eraser";
             eraserButton.classList.add("active");
             brushButton.classList.remove("active");
             refreshToolbarState();
         });
+        smartButton.addEventListener("pointerenter", refreshSelectionControls);
+        smartButton.addEventListener("focus", refreshSelectionControls);
+        smartButton.addEventListener("click", () => {
+            if (mode === "smart-select") {
+                stopSmartSelection();
+                refreshToolbarState();
+            } else {
+                startSmartSelection();
+            }
+        });
+        for (const sign of ["positive", "negative"]) {
+            editor.querySelector(`[data-action="select-${sign}"]`).addEventListener("click", () => {
+                smartPointMode = sign;
+                refreshSelectionControls();
+            });
+        }
+        editor.querySelector("[data-action='select-reset']").addEventListener("click", async () => {
+            const base = smartBase;
+            const restore = smartApplied;
+            stopSmartSelection();
+            if (restore && base) {
+                pushUndoState(true, true);
+                await drawCapturedMaskState(base);
+                markDirty();
+                serialize({ change: true });
+            }
+            startSmartSelection();
+        });
+        selectionRetry.addEventListener("click", () => {
+            if (mode !== "smart-select" || !smartPoints.length) return;
+            smartRevision += 1;
+            smartError = false;
+            queueSmartRecognition(0);
+        });
+        editor.querySelector("[data-action='select-stop']").addEventListener("click", () => {
+            stopSmartSelection();
+            refreshToolbarState();
+        });
         editor.querySelector("button[data-action='clear']").addEventListener("click", () => {
             if (maskDisabled) return;
+            stopSmartSelection();
             pushUndoState(true, true);
             clearMaskPixels();
             serialize();
@@ -3300,6 +3669,10 @@
             if (maskDisabled || cropMode || panGestureMode || panFloatingMode) return;
             if (!hasImage) return;
             if (event.isPrimary === false) return;
+            if (mode === "smart-select") {
+                if (event.button === 0 || event.button === 2) selectTarget(event);
+                return;
+            }
             if (typeof event.button === "number" && event.button !== 0) return;
             consumeSketchPaintEvent(event, { immediate: true });
             editor.classList.add("is-drawing");
@@ -3316,6 +3689,7 @@
         });
         maskCanvas.addEventListener("pointermove", (event) => {
             if (maskDisabled || cropMode || panGestureMode || panFloatingMode) return;
+            if (mode === "smart-select") return;
             if (drawing) consumeSketchPaintEvent(event);
             if (hasImage) {
                 stage.classList.add("is-cursor-visible");
@@ -3325,6 +3699,7 @@
         });
         maskCanvas.addEventListener("pointerenter", (event) => {
             if (maskDisabled || cropMode || panGestureMode || panFloatingMode) return;
+            if (mode === "smart-select") return;
             if (!hasImage) return;
             stage.classList.add("is-cursor-visible");
             updateBrushCursor(event);
@@ -3332,6 +3707,9 @@
         maskCanvas.addEventListener("pointerleave", () => {
             if (drawing) return;
             stage.classList.remove("is-cursor-visible");
+        });
+        maskCanvas.addEventListener("contextmenu", (event) => {
+            if (mode === "smart-select") consumeSketchPaintEvent(event);
         });
         maskCanvas.addEventListener("pointerup", (event) => {
             if (!drawing) return;
@@ -3411,6 +3789,7 @@
                 ? sketchHotkeyActive
                 : fullscreenMode
                 || panFloatingMode
+                || (mode === "smart-select" && event.code === "Escape" && sketchHotkeyActive)
                 || (historyAction && hasImage && (pointerInsideEditor || event.target?.closest?.(".simpai-sketch")))
                 || (event.code === "KeyS" && sketchHotkeyActive && isPointerCurrentlyInsideEditor() && hasImage)
                 || ((event.code === "KeyF" || event.code === "KeyQ") && sketchHotkeyActive && pointerInsideEditor && hasImage);
@@ -3422,6 +3801,13 @@
                 return;
             }
             if (event.ctrlKey || event.metaKey || event.altKey) return;
+            if (mode === "smart-select" && event.code === "Escape") {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                stopSmartSelection();
+                refreshToolbarState();
+                return;
+            }
             if (event.code === "KeyQ") {
                 event.preventDefault();
                 event.stopImmediatePropagation();
@@ -3488,6 +3874,7 @@
 
         function destroy() {
             if (destroyed) return false;
+            stopSmartSelection();
             destroyed = true;
             cancelOutpaintSave();
             if (outpaintSyncFrame) cancelAnimationFrame(outpaintSyncFrame);
@@ -3571,6 +3958,7 @@
             async setMask(mask, options = {}) {
                 if (maskDisabled && options.force !== true) return false;
                 if (!mask || !hasImage) return false;
+                stopSmartSelection();
                 if (options.history !== false) {
                     pushUndoState();
                 }
@@ -3581,6 +3969,7 @@
                 return true;
             },
             clearMask(options = {}) {
+                stopSmartSelection();
                 pushUndoState(true, true);
                 clearMaskPixels();
                 serialize({ change: !!options.change });

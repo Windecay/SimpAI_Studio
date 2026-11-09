@@ -1089,6 +1089,7 @@
     <div class="sai-pose-studio-tool-group">
       <span>${escapeHtml(t('Pose', '姿势'))}</span>
       <button type="button" data-pose-studio-action="save-library" title="${escapeHtml(t('Save pose to library', '保存到姿势库'))}"><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(t('Save', '保存'))}</span></button>
+      <button type="button" data-pose-studio-action="export-json" title="${escapeHtml(t('Export pose JSON'))}" aria-label="${escapeHtml(t('Export pose JSON'))}"><i class="fa-solid fa-file-arrow-down"></i></button>
       <button type="button" data-pose-studio-action="status" title="${escapeHtml(t('Check resources', '检查资源'))}"><i class="fa-solid fa-circle-check"></i><span>${escapeHtml(t('Check', '检查'))}</span></button>
     </div>
     <label class="sai-pose-studio-tool-group">
@@ -1199,6 +1200,7 @@
       </details>
       <div class="sai-pose-studio-library-head">
         <span>${escapeHtml(t('Pose Library', '姿势库'))}</span>
+        <button type="button" data-pose-library-folder title="${escapeHtml(t('Show personal pose library folder'))}" aria-label="${escapeHtml(t('Show personal pose library folder'))}" disabled><i class="fa-solid fa-folder-open"></i></button>
         <button type="button" data-pose-studio-action="refresh-library" title="${escapeHtml(t('Refresh', '刷新'))}"><i class="fa-solid fa-arrows-rotate"></i></button>
       </div>
       <div class="sai-pose-library-filters" data-pose-library-filters>
@@ -1258,13 +1260,14 @@
         const librarySeries = modal.querySelector('[data-pose-library-series]');
         const libraryCategory = modal.querySelector('[data-pose-library-category]');
         const libraryView = modal.querySelector('[data-pose-library-view]');
+        const libraryFolderButton = modal.querySelector('[data-pose-library-folder]');
         const libraryCount = modal.querySelector('[data-pose-library-count]');
         const librarySaveForm = modal.querySelector('[data-pose-library-save]');
         const librarySaveSeries = modal.querySelector('[data-pose-library-save-series]');
         const librarySaveCategory = modal.querySelector('[data-pose-library-save-category]');
         const libraryName = modal.querySelector('[data-pose-library-name]');
         let libraryRequestId = 0, poseLoadRequestId = 0, librarySearchTimer = null;
-        let libraryOffset = 0, libraryNextOffset = null, libraryItems = [];
+        let libraryOffset = 0, libraryNextOffset = null, libraryItems = [], libraryUserRoot = '';
         let libraryTaxonomy = { series: [], categories: {} };
         let thumbnailViewer = null, thumbnailData = null, thumbnailCore = null;
         let libraryCameraParams = null;
@@ -1380,7 +1383,7 @@
             controlSliders.forEach(slider => { slider.disabled = busyActive || !viewerReady; });
             modal.querySelectorAll('[data-pose-studio-action]').forEach((button) => {
                 const action = button.getAttribute('data-pose-studio-action') || '';
-                button.disabled = action === 'export'
+                button.disabled = ['export', 'export-json'].includes(action)
                     ? busyActive || !viewerReady || usingFallbackCanvas
                     : busyActive && action !== 'status';
             });
@@ -2837,12 +2840,16 @@
         const refreshLibrary = async () => {
             if (!isCurrent() || !libraryList || typeof API.poseStudioLibraryList !== 'function') return;
             const requestId = ++libraryRequestId;
+            libraryUserRoot = '';
+            libraryFolderButton.disabled = true;
             libraryList.innerHTML = `<div class="sai-pose-studio-empty">${escapeHtml(t('Loading...', '加载中...'))}</div>`;
             modal.querySelectorAll('[data-pose-library-page]').forEach(button => { button.disabled = true; });
             try {
                 const response = await API.poseStudioLibraryList({ ...libraryFilters, offset: libraryOffset, limit: 24 });
                 if (!isCurrent() || requestId !== libraryRequestId) return;
                 if (!response?.ok) throw new Error(response?.error || t('Load failed.', '加载失败。'));
+                libraryUserRoot = typeof response.user_root === 'string' ? response.user_root : '';
+                libraryFolderButton.disabled = !libraryUserRoot;
                 if (response.taxonomy) {
                     libraryTaxonomy = response.taxonomy;
                     const series = libraryTaxonomy.series.some(entry => entry.id === libraryFilters.series) ? libraryFilters.series : '';
@@ -2893,6 +2900,9 @@
             librarySearchTimer = window.setTimeout(changeLibraryFilter, 180);
         });
         librarySource.addEventListener('change', changeLibraryFilter);
+        libraryFolderButton.addEventListener('click', () => {
+            if (libraryUserRoot) window.prompt(t('Personal pose library folder'), libraryUserRoot);
+        });
         libraryCategory.addEventListener('change', changeLibraryFilter);
         librarySeries.addEventListener('change', () => {
             setLibraryOptions(libraryCategory, categoryOptions(librarySeries.value), '', 'All categories');
@@ -2941,7 +2951,8 @@
                 return;
             }
             poseData = response.pose_data || {};
-            libraryCameraPose = response.source === 'built_in' && poseData.cameraParams
+            libraryCameraPose = (response.source === 'built_in' || poseData._library?.origin === 'SimpAI Pose Workbench')
+                && (poseData.cameraParams || poseData.cameraViews)
                 ? { cameraParams: { ...poseData.cameraParams }, cameraViews: poseData.cameraViews,
                     _library: { series: poseData._library?.series } } : null;
             persistEditorState({ library_camera_defaults: libraryCameraPose });
@@ -3203,6 +3214,29 @@
             refreshLibrary();
         };
 
+        const exportPoseJson = () => {
+            if (!isCurrent() || busyActive || !viewerReady || !viewer) return;
+            if (personScene?.people.length) {
+                setStatus(t('Only single-person pose JSON is supported.'), true);
+                return;
+            }
+            const data = {
+                ...viewer.getPose(),
+                cameraParams: {
+                    zoom: exportParams.cam_zoom, offset_x: exportParams.cam_offset_x,
+                    offset_y: exportParams.cam_offset_y, yaw_deg: exportParams.cam_yaw_deg,
+                    pitch_deg: exportParams.cam_pitch_deg, distance_scale: exportParams.cam_distance,
+                },
+                render_style: renderStyle,
+            };
+            const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'pose-studio.json';
+            link.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        };
+
         const exportPose = async () => {
             if (!isCurrent() || busyActive) return;
             if (typeof API.poseStudioExport !== 'function') {
@@ -3417,6 +3451,10 @@
             }
             if (action === 'save-library') {
                 openLibrarySave();
+                return;
+            }
+            if (action === 'export-json') {
+                exportPoseJson();
                 return;
             }
             if (action === 'refresh-library') {

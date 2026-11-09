@@ -103,21 +103,24 @@ def optimize_masks(masks: torch.Tensor) -> torch.Tensor:
     return torch.from_numpy(masks)
 
 
-def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=None,
+def generate_mask_from_image(image: np.ndarray | dict | str | None, mask_model: str = 'sam', extras=None,
                              sam_options: SAMOptions | None = SAMOptions,
                              backend=None) -> tuple[np.ndarray | None, int | None, int | None, int | None]:
     dino_detection_count = 0
     sam_detection_count = 0
     sam_detection_on_mask_count = 0
 
+    if image is not None and not isinstance(image, np.ndarray):
+        from modules.util import normalize_gradio_sketch_value
+
+        sketch = normalize_gradio_sketch_value(image, image_mode="RGBA")
+        image = sketch["image"] if sketch is not None else None
+
     if image is None:
         return None, dino_detection_count, sam_detection_count, sam_detection_on_mask_count
 
     if extras is None:
         extras = {}
-
-    if 'image' in image:
-        image = image['image']
 
     image = HWC3(image)
 

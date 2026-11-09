@@ -3629,6 +3629,8 @@ with shared.gradio_root:
                 def _missing_model_context_token(context):
                     context = context if isinstance(context, dict) else {}
                     kind = str(context.get("kind") or "preset").strip().lower()
+                    if kind == "sam3":
+                        return ("sam3",)
                     if kind == "vlm":
                         custom_api = context.get("custom_api") if isinstance(context.get("custom_api"), dict) else {}
                         try:
@@ -3705,6 +3707,20 @@ with shared.gradio_root:
                     params = status_payload.get("params") if isinstance(status_payload.get("params"), dict) else {}
                     version = str(status.get("version") or params.get("version") or VLM.DEFAULT_VERSION)
                     return f"VLM: {version}", _missing_models_from_vlm_status(status), status
+
+                def _get_missing_models_for_sam3_request(user_did=None):
+                    from enhanced import sam3_comfy31
+
+                    entry = (
+                        f"checkpoints,{sam3_comfy31.SAM31_CHECKPOINT_FILENAME},"
+                        f"{sam3_comfy31.SAM31_CHECKPOINT_SIZE},0,"
+                        f"{sam3_comfy31.SAM31_CHECKPOINT_URL},"
+                        f"{sam3_comfy31.SAM31_CHECKPOINT_FALLBACK_URL}"
+                    )
+                    missing_models = model_loader.get_missing_model_list_from_entries(
+                        "SAM3.1", [entry], user_did=user_did,
+                    )
+                    return "SAM3.1", missing_models, []
 
                 def _fallback_progress_rows(fallback_models):
                     rows = []
@@ -4284,6 +4300,13 @@ with shared.gradio_root:
                         return [gr_update(visible=False), _missing_model_title_update(state_params), gr_update(value=""), gr_update(visible=False, value=""), gr_update(visible=False)]
                     request_payload = _parse_missing_model_request(button_value)
                     request_kind = str(request_payload.get("kind") or "").strip().lower()
+                    if request_kind == "sam3":
+                        user_did = _get_state_user_did(state_params)
+                        _set_missing_model_active_context(state_params, {"kind": "sam3"}, user_did=user_did)
+                        _, missing_models, _ = _get_missing_models_for_sam3_request(user_did=user_did)
+                        return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + [
+                            gr_update(visible=bool(missing_models), value=_missing_model_text("download_all", state_params))
+                        ]
                     if request_kind == "vlm":
                         user_did = _get_state_user_did(state_params)
                         start_perf = time.perf_counter()
@@ -4417,7 +4440,11 @@ with shared.gradio_root:
                 def _render_active_missing_model_modal_updates(state_params, user_did=None):
                     active_context = _get_missing_model_active_context(state_params, user_did=user_did)
                     payload_extra = None
-                    if active_context.get("kind") == "vlm":
+                    if active_context.get("kind") == "sam3":
+                        preset_name, missing_models, fallback_models = _get_missing_models_for_sam3_request(user_did=user_did)
+                        resource_bundles = []
+                        payload_extra = {"kind": "sam3"}
+                    elif active_context.get("kind") == "vlm":
                         preset_name, missing_models, status = _get_missing_models_for_vlm_request(active_context, user_did=user_did)
                         fallback_models = []
                         payload_extra = {"kind": "vlm", "version": str(status.get("version") or active_context.get("version") or VLM.DEFAULT_VERSION)}
@@ -4493,7 +4520,9 @@ with shared.gradio_root:
                             model_loader.download_model_entry(cata, path_file, size=size, url=url, user_did=user_did, async_task=True)
                         return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
 
-                    if active_context.get("kind") == "preset":
+                    if active_context.get("kind") == "sam3":
+                        preset_name = "SAM3.1"
+                    elif active_context.get("kind") == "preset":
                         preset_name = str(active_context.get("preset") or "").strip()
                     else:
                         preset_name = str(state_params.get('__preset', '') or '').strip()
@@ -4509,6 +4538,12 @@ with shared.gradio_root:
                     if shared.args.disable_backend:
                         gr.Info(_studio_text(state_params, "Model download tasks are disabled because the app was started with --disable-backend.", "应用使用 --disable-backend 启动，模型下载任务已禁用。"))
                         return [gr_update(visible=True), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
+
+                    if active_context.get("kind") == "sam3":
+                        _, missing_models, _ = _get_missing_models_for_sam3_request(user_did=user_did)
+                        for cata, path_file, human_size, url, size in missing_models:
+                            model_loader.download_model_entry(cata, path_file, size=size, url=url, user_did=user_did, async_task=True)
+                        return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
 
                     gr.Info(_studio_text(
                         state_params,
@@ -4564,7 +4599,11 @@ with shared.gradio_root:
                         return [gr_update(visible=True), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
 
                     payload_extra = None
-                    if payload_kind == "vlm":
+                    if payload_kind == "sam3":
+                        preset_name, missing_models, fallback_models = _get_missing_models_for_sam3_request(user_did=user_did)
+                        resource_bundles = []
+                        payload_extra = {"kind": "sam3"}
+                    elif payload_kind == "vlm":
                         preset_name, missing_models, status = _get_missing_models_for_vlm_request(payload, user_did=user_did)
                         fallback_models = []
                         resource_bundles = []
@@ -4623,6 +4662,8 @@ with shared.gradio_root:
                         return [gr_update(visible=True), _missing_model_title_update(state_params), gr_update(value=_render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params, payload_extra=payload_extra, resource_bundles=resource_bundles)), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
 
                     util.log_ui_trace(logger, "[UI-TRACE] missing_model_modal.download_one | preset=%r, cata=%r, path=%r", preset_name, cata, path_file)
+                    if payload_kind == "sam3":
+                        url, size = allowed[3], allowed[4]
                     model_loader.download_model_entry(cata, path_file, size=size, url=url, user_did=user_did, async_task=True, cleanup_file_path=cleanup_file_path)
                     return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
 
@@ -4663,6 +4704,10 @@ with shared.gradio_root:
                     payload_extra = None
                     if payload_kind == "queue":
                         return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
+                    elif payload_kind == "sam3":
+                        preset_name, missing_models, fallback_models = _get_missing_models_for_sam3_request(user_did=user_did)
+                        resource_bundles = []
+                        payload_extra = {"kind": "sam3"}
                     elif payload_kind == "vlm":
                         preset_name, missing_models, status = _get_missing_models_for_vlm_request(payload, user_did=user_did)
                         fallback_models = []
@@ -7900,7 +7945,7 @@ with shared.gradio_root:
 
                             mask, _, _, _ = generate_mask_from_image(image, mask_model, extras, sam_options)
 
-                            return {"mask": mask}
+                            return inpaint_mask_image.postprocess({"mask": mask})
 
 
                         inpaint_mask_model.change(lambda x: [skip_component_update()] * 3 +
@@ -19224,6 +19269,9 @@ async def sam3_image_mask_endpoint(payload: dict = Body(...)):
         mask_threshold = payload.get("mask_threshold", 0.5)
         close_radius = payload.get("close_radius", 1)
         fill_holes = payload.get("fill_holes", False)
+        mask_only = payload.get("mask_only", False)
+        if not isinstance(mask_only, bool):
+            raise ValueError("mask_only must be a boolean.")
         if not isinstance(image_data, str) or not image_data.startswith("data:image"):
             return JSONResponse(
                 {
@@ -19243,6 +19291,7 @@ async def sam3_image_mask_endpoint(payload: dict = Body(...)):
                     fill_holes=fill_holes,
                     mask_threshold=mask_threshold,
                     close_radius=close_radius,
+                    mask_only=mask_only,
                 )
 
         result = await run_in_threadpool(safe_process)

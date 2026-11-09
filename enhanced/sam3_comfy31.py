@@ -17,6 +17,8 @@ from PIL import Image
 
 SAM31_CHECKPOINT_URL = "https://www.modelscope.cn/models/Comfy-Org/sam3.1/resolve/master/checkpoints/sam3.1_multiplex_fp16.safetensors"
 SAM31_CHECKPOINT_FILENAME = "sam3.1_multiplex_fp16.safetensors"
+SAM31_CHECKPOINT_SIZE = 1745546848
+SAM31_CHECKPOINT_FALLBACK_URL = "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors"
 
 _MODEL_LOCK = threading.Lock()
 _MODEL: Any = None

@@ -25596,6 +25596,25 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   flex: 0 0 auto;
 }
 
+.describe-vlm-chat-roleplay-character-selection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.describe-vlm-chat-roleplay-character-selection label,
+.describe-vlm-chat-roleplay-character-selection select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.describe-vlm-chat-roleplay-character-selection select {
+  width: 100%;
+  text-overflow: ellipsis;
+}
+
 .describe-vlm-chat-roleplay-section-head > strong {
   min-width: 0;
   overflow: hidden;
@@ -25619,7 +25638,8 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   background: #fb923c;
 }
 
-.describe-vlm-chat-roleplay-section-head button {
+.describe-vlm-chat-roleplay-section-head button,
+.describe-vlm-chat-roleplay-character-selection button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -25635,17 +25655,27 @@ html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome
   color: inherit;
 }
 
-.describe-vlm-chat-roleplay-section-head button:hover {
+.describe-vlm-chat-roleplay-character-selection button {
+  width: 32px;
+  min-width: 32px;
+  height: 34px;
+  min-height: 34px;
+}
+
+.describe-vlm-chat-roleplay-section-head button:hover,
+.describe-vlm-chat-roleplay-character-selection button:hover {
   background: var(--describe-chat-button-hover, #4c4f5a);
 }
 
-.describe-vlm-chat-roleplay-section-head button[data-describe-vlm-chat-roleplay-import-draft] {
+.describe-vlm-chat-roleplay-section-head button[data-describe-vlm-chat-roleplay-import-draft],
+.describe-vlm-chat-roleplay-character-selection button[data-describe-vlm-chat-roleplay-import-draft] {
   border-color: rgba(34, 197, 94, 0.62);
   background: rgba(22, 101, 52, 0.40);
   color: #86efac;
 }
 
-.describe-vlm-chat-roleplay-section-head button[data-describe-vlm-chat-roleplay-import-draft]:hover {
+.describe-vlm-chat-roleplay-section-head button[data-describe-vlm-chat-roleplay-import-draft]:hover,
+.describe-vlm-chat-roleplay-character-selection button[data-describe-vlm-chat-roleplay-import-draft]:hover {
   background: rgba(22, 163, 74, 0.52);
   color: #dcfce7;
 }

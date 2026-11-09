@@ -236,6 +236,7 @@ def build_sam3_image_response(
     fill_holes: bool = False,
     mask_threshold: float = 0.5,
     close_radius: int = 1,
+    mask_only: bool = False,
 ) -> dict[str, Any]:
     radius = float(close_radius)
     if isinstance(close_radius, bool) or not math.isfinite(radius) or not radius.is_integer() or not 0 <= radius <= 6:
@@ -251,7 +252,6 @@ def build_sam3_image_response(
     mask_u8 = close_mask(mask_u8, radius=int(radius))
     if bool(fill_holes):
         mask_u8 = fill_mask_holes(mask_u8)
-    cutout = apply_mask_to_image(image_rgb, mask_u8, original_alpha=original_alpha)
     pos_hit, neg_hit = compute_point_hits(
         mask_u8,
         positive_points=positive_points,
@@ -259,12 +259,15 @@ def build_sam3_image_response(
         radius=2,
     )
 
-    return {
+    result = {
         "mask": mask_u8_to_data_url(mask_u8),
-        "cutout_image": pil_to_data_url(cutout),
         "width": int(image_rgb.width),
         "height": int(image_rgb.height),
         "pos_hit": pos_hit,
         "neg_hit": neg_hit,
         "id": uuid.uuid4().hex,
     }
+    if not mask_only:
+        cutout = apply_mask_to_image(image_rgb, mask_u8, original_alpha=original_alpha)
+        result["cutout_image"] = pil_to_data_url(cutout)
+    return result

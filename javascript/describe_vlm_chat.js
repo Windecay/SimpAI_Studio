@@ -8705,6 +8705,15 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             return `<option value="${escapeHtml(character.id)}">${escapeHtml(label)}</option>`;
         }).join('');
         select.value = normalized.active_character_id;
+        const remove = modal.querySelector('[data-describe-vlm-chat-roleplay-character-remove]');
+        if (remove) {
+            const character = normalized.characters[select.value];
+            const label = roleplayDictionaryText('Remove {name} from this story')
+                .replace('{name}', character?.name || select.value);
+            remove.title = label;
+            remove.setAttribute('aria-label', label);
+            remove.disabled = !character || Object.keys(normalized.characters).length <= 1;
+        }
     }
 
     function roleplayCharacterHasDetails(character) {
@@ -9748,6 +9757,8 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         session.story_origin.character_id = characterId;
         session.story_origin.character_name = session.characters[characterId].name;
         session.story_origin.opening_index = 0;
+        session.active_character_id = characterId;
+        session.character = session.characters[characterId];
         addRoleplayStoryWorldBookEntries(
             session, characterId, roleplayStoryWorldBookEntries(session.characters[characterId]).map((_, index) => index), true
         );
@@ -18589,7 +18600,11 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         <label class="describe-vlm-chat-roleplay-check"><input type="checkbox" data-describe-vlm-chat-dialogue-emphasis ${state.dialogueEmphasis ? 'checked' : ''}><span>${escapeHtml(roleplayDictionaryText('Highlight quoted dialogue'))}</span></label>
       </div>
       <div class="describe-vlm-chat-roleplay-section describe-vlm-chat-roleplay-character-section">
-        <div class="describe-vlm-chat-roleplay-section-head"><strong>${escapeHtml(localText('Characters', '角色列表'))}</strong><span class="describe-vlm-chat-roleplay-section-actions"><button type="button" data-describe-vlm-chat-roleplay-character-add title="${escapeHtml(localText('Add character', '增加角色'))}" aria-label="${escapeHtml(localText('Add character', '增加角色'))}"><i class="fa-solid fa-plus"></i></button><button type="button" data-describe-vlm-chat-roleplay-character-remove title="${escapeHtml(localText('Remove current character', '删除当前角色'))}" aria-label="${escapeHtml(localText('Remove current character', '删除当前角色'))}"><i class="fa-solid fa-trash"></i></button><button type="button" data-describe-vlm-chat-roleplay-import-draft title="${escapeHtml(localText('Ask the assistant to create a character draft', '让助手生成角色草稿'))}" aria-label="${escapeHtml(localText('Ask the assistant to create a character draft', '让助手生成角色草稿'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button></span></div>
+        <div class="describe-vlm-chat-roleplay-section-head"><strong>${escapeHtml(localText('Characters', '角色列表'))}</strong></div>
+        <div class="describe-vlm-chat-roleplay-character-selection">
+          <label><span>${escapeHtml(localText('Current character', '当前角色'))}</span><select data-describe-vlm-chat-roleplay-character-select aria-label="${escapeHtml(localText('Current character', '当前角色'))}"></select></label>
+          <span class="describe-vlm-chat-roleplay-section-actions"><button type="button" data-describe-vlm-chat-roleplay-character-add title="${escapeHtml(localText('Add character', '增加角色'))}" aria-label="${escapeHtml(localText('Add character', '增加角色'))}"><i class="fa-solid fa-plus"></i></button><button type="button" data-describe-vlm-chat-roleplay-character-remove title="${escapeHtml(localText('Remove current character', '删除当前角色'))}" aria-label="${escapeHtml(localText('Remove current character', '删除当前角色'))}"><i class="fa-solid fa-trash"></i></button><button type="button" data-describe-vlm-chat-roleplay-import-draft title="${escapeHtml(localText('Ask the assistant to create a character draft', '让助手生成角色草稿'))}" aria-label="${escapeHtml(localText('Ask the assistant to create a character draft', '让助手生成角色草稿'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button></span>
+        </div>
         <div class="describe-vlm-chat-roleplay-character-guidance" data-describe-vlm-chat-roleplay-character-guidance hidden>
           <div class="describe-vlm-chat-roleplay-character-guidance-copy"><i class="fa-solid fa-sparkles"></i><div><strong>${escapeHtml(localText('Start with a character', '先创建一个角色'))}</strong><span>${escapeHtml(localText('Let the assistant fill the form, or start with the name field.', '可以让助手填写表格，也可以先填写名称。'))}</span></div></div>
           <div class="describe-vlm-chat-roleplay-character-guidance-actions">
@@ -18623,7 +18638,6 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             <button type="button" data-roleplay-story-book-add><i class="fa-solid fa-plus" aria-hidden="true"></i><span>${escapeHtml(localText('Add selected entries to this story', '将勾选条目加入当前故事'))}</span></button>
           </details>
         </div>
-        <label><span>${escapeHtml(localText('Current character', '当前角色'))}</span><select data-describe-vlm-chat-roleplay-character-select aria-label="${escapeHtml(localText('Current character', '当前角色'))}"></select></label>
         <label><span>${escapeHtml(localText('Name', '名称'))}</span><input data-describe-vlm-chat-roleplay-character-name type="text" maxlength="200"></label>
         <label><span>${escapeHtml(localText('Fixed appearance', '固定形象'))}</span><textarea data-describe-vlm-chat-roleplay-character-appearance rows="2" placeholder="${escapeHtml(localText('Face, hair, body type, age, and other stable visual traits', '脸型、发型、体型、年龄等不会随剧情轻易改变的特征'))}"></textarea></label>
         <label><span>${escapeHtml(localText('Identity and background', '身份与背景'))}</span><textarea data-describe-vlm-chat-roleplay-character-identity rows="3"></textarea></label>
