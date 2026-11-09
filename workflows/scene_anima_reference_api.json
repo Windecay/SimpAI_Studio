@@ -100,7 +100,7 @@
     "class_type": "SnapRef",
     "_meta": {"title": "Anima SnapRef"},
     "inputs": {
-      "model": ["simpai_lora_stack_main", 0],
+      "model": ["28", 0],
       "clip": ["simpai_lora_stack_main", 1],
       "vae": ["5", 0],
       "image": ["6", 0],
@@ -177,11 +177,29 @@
     "_meta": {"title": "result_image1"},
     "inputs": {"images": ["16", 0]}
   },
+  "18": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}, "inputs": {"model": ["3", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "19": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_2"}, "inputs": {"model": ["18", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "20": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_3"}, "inputs": {"model": ["19", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "21": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_4"}, "inputs": {"model": ["20", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "22": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_5"}, "inputs": {"model": ["21", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "23": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_6"}, "inputs": {"model": ["22", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "24": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_7"}, "inputs": {"model": ["23", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "25": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_8"}, "inputs": {"model": ["24", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "26": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_9"}, "inputs": {"model": ["25", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "27": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_10"}, "inputs": {"model": ["26", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "28": {
+    "class_type": "ModelAttentionBackend",
+    "_meta": {"title": "Anima Attention Backend"},
+    "inputs": {
+      "model": ["simpai_lora_stack_main", 0],
+      "attention": "comfy kitchen attention"
+    }
+  },
   "simpai_lora_stack_main": {
     "class_type": "SimpAILoraStack",
     "_meta": {"title": "SimpAI LoRA Stack Main"},
     "inputs": {
-      "model": ["3", 0],
+      "model": ["27", 0],
       "clip": ["4", 0],
       "stack_json": "{\"version\":1,\"items\":[]}",
       "branch": "main"
