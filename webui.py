@@ -11239,6 +11239,8 @@ with shared.gradio_root:
                 console.warn("[UI-TRACE] generation_preparing_progress_failed", e);
             }
             let sketchFlushOk = true;
+            const sketchFlushStartedAt = performance.now();
+            perfMark("generation.sketch_flush_start", {});
             try {
                 if (window.SimpAISketch?.flushAll) {
                     sketchFlushOk = await window.SimpAISketch.flushAll({
@@ -11252,6 +11254,10 @@ with shared.gradio_root:
                 sketchFlushOk = false;
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
             }
+            perfMark("generation.sketch_flush_end", {
+                duration_ms: Math.round((performance.now() - sketchFlushStartedAt) * 10) / 10,
+                ok: sketchFlushOk !== false
+            });
             if (sketchFlushOk === false) {
                 try { window.finishSimpleAIGenerationStartSurface?.(); } catch (e) {}
                 const messageKey = "Canvas data could not be restored. Reload the source image and try again.";

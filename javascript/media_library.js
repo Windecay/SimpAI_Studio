@@ -16,6 +16,8 @@
     const AUTOPLAY_STORAGE_KEY = 'simpai.mediaLibrary.videoAutoplay';
     const MAX_AUTOPLAY_BYTES = 256 * 1024 * 1024;
     const MAX_AUTOPLAY_EDGE = 3840;
+    const DETAIL_REQUEST_TIMEOUT_MS = 8000;
+    const DETAIL_METADATA_TIMEOUT_MS = 15000;
 
     const state = {
         __lang: config.lang,
@@ -63,6 +65,8 @@
         selectedIds: new Set(),
         selectionAnchorId: '',
         selectedId: '',
+        detailRequest: null,
+        detailRequestSerial: 0,
         viewerId: '',
         viewerZoom: 1,
         renderedStart: -1,
@@ -73,6 +77,11 @@
         request: null,
         requestSerial: 0,
         dateSignature: '',
+        dateRequestSerial: 0,
+        mutationSerial: 0,
+        pendingMutations: 0,
+        removedIds: new Set(),
+        itemsRefreshPending: false,
         dateRefreshTimer: 0,
         toastTimer: 0,
         refreshing: false,
@@ -80,6 +89,10 @@
     };
 
     const refs = {};
+    let dateSidebarHistoryToken = '';
+    let dateSidebarHistoryClosing = false;
+    let dateSidebarPendingOpen = false;
+    let studioReturnHistoryAvailable = false;
     const t = (text) => {
         const lang = state.__lang || config.lang;
         if (window.SimpAII18n && typeof window.SimpAII18n.t === 'function') {
@@ -188,6 +201,37 @@
         return payload;
     }
 
+    async function requestDetail(path, signal, timeoutMs = DETAIL_REQUEST_TIMEOUT_MS) {
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        let timedOut = false;
+        if (signal?.aborted) controller.abort();
+        else signal?.addEventListener('abort', abort, { once: true });
+        const timer = window.setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, timeoutMs);
+        try {
+            return await request(path, { signal: controller.signal });
+        } catch (err) {
+            if (timedOut) {
+                const error = new Error('Details loading timed out');
+                error.name = 'TimeoutError';
+                throw error;
+            }
+            throw err;
+        } finally {
+            window.clearTimeout(timer);
+            signal?.removeEventListener('abort', abort);
+        }
+    }
+
+    function cancelDetailRequests() {
+        state.detailRequestSerial += 1;
+        state.detailRequest?.abort();
+        state.detailRequest = null;
+    }
+
     function setRefreshBusy(busy) {
         state.refreshing = !!busy;
         [refs.refresh, refs.rescan].forEach((button) => {
@@ -240,6 +284,8 @@
         document.documentElement.lang = config.lang === 'cn' ? 'zh-CN' : 'en';
         document.title = t('Media Library');
         [
+            ['library-back', 'Back to Studio'], ['dates-toggle', 'Dates'],
+            ['dates-close', 'Close sidebar'],
             ['filter-toggle', 'Filters'], ['collection-create-toggle', 'New collection'],
             ['view-save', 'Save view'], ['selection-add-collection', 'Add to collection'],
             ['selection-remove-collection', 'Remove from collection'],
@@ -266,6 +312,55 @@
         } catch (err) {
             // English labels remain usable when the optional locale file is unavailable.
         }
+    }
+
+    function setDateSidebarOpen(open, fromHistory = false) {
+        if (!refs.dateSidebar) return;
+        const mobile = window.matchMedia('(max-width: 700px)').matches;
+        if (open && dateSidebarHistoryClosing) {
+            dateSidebarPendingOpen = true;
+            return;
+        }
+        refs.dateSidebar.classList.toggle('is-open', !!open);
+        refs.dateSidebar.setAttribute('aria-hidden', mobile && !open ? 'true' : 'false');
+        refs.dateSidebar.inert = mobile && !open;
+        refs.datesToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (refs.datesBackdrop) refs.datesBackdrop.hidden = !open || !mobile;
+        if (open && mobile && !dateSidebarHistoryToken) {
+            try {
+                dateSidebarHistoryToken = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+                history.pushState({ ...history.state, __simpleaiLibrarySidebar: dateSidebarHistoryToken }, '');
+            } catch (err) {
+                dateSidebarHistoryToken = '';
+            }
+        } else if (!open && !fromHistory && !dateSidebarHistoryClosing && dateSidebarHistoryToken
+            && history.state?.__simpleaiLibrarySidebar === dateSidebarHistoryToken) {
+            dateSidebarHistoryClosing = true;
+            history.back();
+        }
+    }
+
+    function returnToStudio(event) {
+        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        const destination = refs.libraryBack?.href;
+        if (!destination) return;
+        event.preventDefault();
+        let fromStudio = false;
+        try {
+            const referrer = new URL(document.referrer);
+            const studio = new URL(destination);
+            fromStudio = referrer.origin === studio.origin && referrer.pathname === studio.pathname;
+        } catch (err) {}
+        if (!studioReturnHistoryAvailable && fromStudio) {
+            window.close();
+            window.setTimeout(() => window.location.assign(destination), 100);
+            return;
+        }
+        if (studioReturnHistoryAvailable && fromStudio) {
+            history.back();
+            return;
+        }
+        window.location.assign(destination);
     }
 
     function renderDates() {
@@ -408,24 +503,35 @@
         }, delayMilliseconds);
     }
 
+    function isBrowsingFeed() {
+        return (refs.feedScroll?.scrollTop || 0) > 1 || state.items.length > PAGE_SIZE
+            || state.selectedId || state.viewerId || state.selectionMode
+            || refs.compare?.getAttribute('aria-hidden') === 'false';
+    }
+
     async function loadDates(options = {}) {
         window.clearTimeout(state.dateRefreshTimer);
         state.dateRefreshTimer = 0;
+        const serial = ++state.dateRequestSerial;
+        const mutationSerial = state.mutationSerial;
         try {
             const suffix = state.trashMode ? '?trash=1' : '';
             const payload = await request(`/api/dates${suffix}`);
+            if (serial !== state.dateRequestSerial || mutationSerial !== state.mutationSerial) return;
             const dates = Array.isArray(payload.dates) ? payload.dates : [];
             const changed = dateSummarySignature(dates) !== state.dateSignature;
             state.dates = dates;
             state.dateSignature = dateSummarySignature(dates);
             renderDates();
-            if (changed && options.syncItems && !state.loading && !state.refreshing) {
-                await loadPage(true);
+            if (changed && options.syncItems) state.itemsRefreshPending = true;
+            if (state.itemsRefreshPending && options.syncItems && !isBrowsingFeed()
+                && !state.loading && !state.refreshing && !state.pendingMutations) {
+                await loadPage(true, { automatic: true });
             }
         } catch (err) {
             if (!options.silent) showToast(t('Unable to load dates'), true);
         } finally {
-            scheduleDatePolling();
+            if (serial === state.dateRequestSerial) scheduleDatePolling();
         }
     }
 
@@ -435,7 +541,7 @@
             state.itemById.clear();
         }
         (Array.isArray(items) ? items : []).forEach((item) => {
-            if (!item || !item.media_id) return;
+            if (!item || !item.media_id || state.removedIds.has(item.media_id)) return;
             const existing = state.itemById.get(item.media_id);
             if (existing) Object.assign(existing, item);
             else {
@@ -449,10 +555,10 @@
         state.renderedKey = '';
     }
 
-    function queryParams() {
+    function queryParams(cursor = state.cursor) {
         const params = new URLSearchParams();
         params.set('limit', String(PAGE_SIZE));
-        if (state.cursor) params.set('cursor', state.cursor);
+        if (cursor) params.set('cursor', cursor);
         if (state.date) params.set('date', state.date);
         if (state.mediaType !== 'all') params.set('type', state.mediaType);
         if (state.query) params.set('q', state.query);
@@ -469,11 +575,13 @@
         return params.toString();
     }
 
-    async function loadPage(reset) {
+    async function loadPage(reset, { automatic = false } = {}) {
         if ((state.loading && !reset) || (!reset && !state.hasMore)) return;
         if (reset) {
-            state.cursor = null;
-            state.hasMore = true;
+            if (!automatic) {
+                state.cursor = null;
+                state.hasMore = true;
+            }
             if (state.request) state.request.abort();
             state.request = new AbortController();
         }
@@ -481,12 +589,18 @@
         state.loading = true;
         setStatus(t(reset ? 'Loading...' : 'Loading more...'));
         try {
-            const payload = await request(`/api/items?${queryParams()}`, { signal: state.request ? state.request.signal : undefined });
+            const payload = await request(`/api/items?${queryParams(reset ? null : state.cursor)}`, { signal: state.request ? state.request.signal : undefined });
             if (serial !== state.requestSerial) return;
+            if (automatic && (isBrowsingFeed() || state.pendingMutations)) {
+                setStatus(state.items.length ? `${state.items.length}${state.hasMore ? '+' : ''} ${t('items')}` : '');
+                return;
+            }
+            const anchor = reset ? null : captureFeedAnchor();
             addItems(payload.items, !!reset);
             state.cursor = payload.next_cursor || null;
             state.hasMore = !!payload.has_more;
-            renderWindow(true);
+            if (reset) state.itemsRefreshPending = false;
+            renderWindow(true, anchor);
             refs.empty.hidden = state.items.length > 0;
             setStatus(state.items.length ? `${state.items.length}${state.hasMore ? '+' : ''} ${t('items')}` : '');
         } catch (err) {
@@ -730,9 +844,9 @@
         return layout;
     }
 
-    function visiblePositions(layout) {
+    function visiblePositions(layout, viewportTop = refs.feedScroll?.scrollTop || 0) {
         if (state.items.length <= MAX_RENDERED || !refs.feedScroll) return layout.positions;
-        const scrollTop = refs.feedScroll.scrollTop || 0;
+        const scrollTop = viewportTop;
         const viewportBottom = scrollTop + refs.feedScroll.clientHeight;
         const buffer = Math.max(WINDOW_BUFFER_PX, Math.floor(refs.feedScroll.clientHeight * 1.5));
         const contentTop = layout.metrics.paddingTop;
@@ -915,11 +1029,31 @@
         refs.bottomSpacer.style.height = '0px';
     }
 
-    function renderWindow(force) {
+    function captureFeedAnchor(excluded = new Set()) {
+        const scrollTop = refs.feedScroll?.scrollTop || 0;
+        const layout = state.layout;
+        if (!layout) return { scrollTop };
+        const positions = layout.positions.filter((position) => !excluded.has(position.item.media_id));
+        const position = positions.filter((entry) => entry.top + layout.metrics.paddingTop + entry.height > scrollTop)
+            .sort((left, right) => left.top - right.top || left.column - right.column)[0] || positions.at(-1);
+        return position ? {
+            scrollTop, mediaId: position.item.media_id,
+            offset: position.top + layout.metrics.paddingTop - scrollTop
+        } : { scrollTop };
+    }
+
+    function renderWindow(force, anchor = null) {
         if (!refs.feed) return;
         const columns = columnCount();
+        if (!anchor && state.layout && (state.layout.count !== columns || state.layout.width !== refs.feed.clientWidth)) {
+            anchor = captureFeedAnchor();
+        }
         const layout = ensureLayout(columns);
-        const positions = visiblePositions(layout);
+        const anchoredPosition = anchor?.mediaId && layout.byId.get(anchor.mediaId);
+        const scrollTop = anchoredPosition
+            ? Math.max(0, anchoredPosition.top + layout.metrics.paddingTop - anchor.offset)
+            : anchor?.scrollTop ?? refs.feedScroll?.scrollTop ?? 0;
+        const positions = visiblePositions(layout, scrollTop);
         const start = positions.length ? Math.min(...positions.map((position) => position.index)) : -1;
         const end = positions.length ? Math.max(...positions.map((position) => position.index)) + 1 : -1;
         const renderedKey = positions.map((position) => position.item.media_id).join('\u001f');
@@ -932,6 +1066,7 @@
         state.renderedColumnCount = columns;
         state.renderedKey = renderedKey;
         renderMasonry(positions, layout);
+        if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
         updateActiveDateFromViewport();
         scheduleVideoAutoplay();
     }
@@ -1197,12 +1332,12 @@
         showToast(t(copied ? 'Settings copied' : 'Unable to copy settings'), !copied);
     }
 
-    async function loadRelated(item) {
+    async function loadRelated(item, signal) {
         const container = refs.detail?.querySelector('#detail-related');
         if (!container) return;
         try {
-            const payload = await request(`/api/items/${encodeURIComponent(item.media_id)}/related`);
-            if (state.selectedId !== item.media_id || !container.isConnected) return;
+            const payload = await requestDetail(`/api/items/${encodeURIComponent(item.media_id)}/related`, signal);
+            if (signal?.aborted || state.selectedId !== item.media_id || !container.isConnected) return;
             const items = Array.isArray(payload.items) ? payload.items : [];
             container.hidden = !items.length;
             if (!items.length) return;
@@ -1216,7 +1351,7 @@
                 button.addEventListener('click', () => openDetail(button.dataset.relatedId));
             });
         } catch (err) {
-            container.hidden = true;
+            if (!signal?.aborted && state.selectedId === item.media_id && container.isConnected) container.hidden = true;
         }
     }
 
@@ -1243,24 +1378,102 @@
         });
     }
 
+    function detailLoadStatusMarkup() {
+        return `<div class="detail-load-status" id="detail-load-status" role="status" hidden>` +
+            `<i class="fa fa-spinner fa-spin" aria-hidden="true"></i><span></span>` +
+            `<button class="icon-button" type="button" id="detail-retry" title="${escapeHtml(t('Retry'))}" aria-label="${escapeHtml(t('Retry'))}" hidden><i class="fa fa-rotate-right"></i></button></div>`;
+    }
+
+    function setDetailLoadStatus(message = '', retry = false) {
+        const status = refs.detail.querySelector('#detail-load-status');
+        if (!status) return;
+        status.hidden = !message;
+        status.querySelector('span').textContent = message;
+        status.querySelector('.fa-spinner').hidden = retry;
+        const button = status.querySelector('#detail-retry');
+        button.hidden = !retry;
+        button.onclick = () => openDetail(state.selectedId);
+    }
+
+    function applyDetailItem(data) {
+        if (data.media_id !== state.selectedId) throw new Error('Media item not found.');
+        const existing = state.itemById.get(data.media_id);
+        const previous = Object.assign({}, existing);
+        const item = Object.assign(existing || {}, data);
+        ['generation_duration_ms', 'generation_batch_duration_ms', 'generation_task_duration_ms', 'generation_batch_size']
+            .forEach((key) => {
+                if (!Object.prototype.hasOwnProperty.call(data, key)) delete item[key];
+            });
+        item.generation_metadata_needs_refresh = !!data.generation_metadata_needs_refresh;
+        state.itemById.set(item.media_id, item);
+        const fields = refs.detail.querySelector('#detail-generation-fields');
+        if (!fields || refs.detail.dataset.mediaId !== item.media_id) {
+            renderDetail(item, { pending: true });
+        } else {
+            // Keep the preview player and any edits made while details were loading.
+            fields.innerHTML = generationFields(item);
+            const values = {
+                title: (value) => String(value.title || ''),
+                tags: (value) => Array.isArray(value.tags) ? value.tags.join(', ') : '',
+                rating: (value) => String(Number(value.rating) || 0),
+                notes: (value) => String(value.notes || '')
+            };
+            Object.entries(values).forEach(([key, value]) => {
+                const input = refs.detail.querySelector(`#detail-${key}`);
+                if (input && input.value === value(previous)) input.value = value(item);
+            });
+            refs.detail.querySelector('#detail-copy-prompt').disabled = false;
+            refs.detail.querySelector('#detail-copy-settings').disabled = false;
+        }
+        return item;
+    }
+
     async function openDetail(mediaId) {
+        const id = String(mediaId || '');
+        if (!id) return;
         const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
-        state.selectedId = String(mediaId || '');
+        const keepContent = state.selectedId === id && refs.detail.dataset.mediaId === id;
+        cancelDetailRequests();
+        const controller = new AbortController();
+        state.detailRequest = controller;
+        const serial = state.detailRequestSerial;
+        const isCurrent = () => !controller.signal.aborted
+            && serial === state.detailRequestSerial && state.selectedId === id;
+        state.selectedId = id;
         refs.drawer.setAttribute('aria-hidden', 'false');
         stopAllVideoPreviews();
         syncDetailLayout();
         renderWindow(true);
         if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
-        refs.detail.innerHTML = `<div class="empty-state"><div class="empty-icon"><i class="fa fa-spinner fa-spin"></i></div><p>${escapeHtml(t('Loading...'))}</p></div>`;
+        const cached = state.itemById.get(id);
+        if (!keepContent) {
+            if (cached) renderDetail(cached, { pending: true });
+            else {
+                refs.detail.dataset.mediaId = id;
+                refs.detail.innerHTML = detailLoadStatusMarkup();
+            }
+        }
+        setDetailLoadStatus(t('Loading generation metadata...'));
         try {
-            const trashQuery = state.trashMode ? '?trash=1' : '';
-            const payload = await request(`/api/items/${encodeURIComponent(state.selectedId)}${trashQuery}`);
-            if (state.selectedId !== mediaId) return;
-            const detailItem = payload.item || payload;
-            state.itemById.set(detailItem.media_id, detailItem);
-            renderDetail(detailItem);
+            const path = `/api/items/${encodeURIComponent(id)}`;
+            const query = new URLSearchParams();
+            if (state.trashMode) query.set('trash', '1');
+            query.set('refresh_metadata', '0');
+            const payload = await requestDetail(`${path}?${query}`, controller.signal);
+            if (!isCurrent()) return;
+            let detailItem = applyDetailItem(payload.item || payload);
+            if (detailItem.generation_metadata_needs_refresh) {
+                query.delete('refresh_metadata');
+                const refreshed = await requestDetail(
+                    `${path}${query.size ? `?${query}` : ''}`, controller.signal, DETAIL_METADATA_TIMEOUT_MS);
+                if (!isCurrent()) return;
+                detailItem = applyDetailItem(refreshed.item || refreshed);
+            }
+            setDetailLoadStatus();
+            loadDetailExtras(detailItem, controller.signal);
         } catch (err) {
-            refs.detail.innerHTML = `<div class="empty-state"><p>${escapeHtml(t('Unable to load details'))}</p></div>`;
+            if (!isCurrent() || err.name === 'AbortError') return;
+            setDetailLoadStatus(t(err.name === 'TimeoutError' ? 'Details loading timed out' : 'Unable to load details'), true);
         }
     }
 
@@ -1271,7 +1484,7 @@
         return '';
     }
 
-    function renderDetail(item) {
+    function renderDetail(item, { pending = false } = {}) {
         const metadata = item.generation_metadata && typeof item.generation_metadata === 'object' ? item.generation_metadata : {};
         const tags = Array.isArray(item.tags) ? item.tags.join(', ') : '';
         const copyPromptLabel = t('Copy prompt');
@@ -1285,6 +1498,7 @@
             ? `<button class="primary-button" type="button" id="detail-viewer"><i class="fa fa-expand"></i> ${escapeHtml(t('View full screen'))}</button><button class="primary-button" type="button" id="detail-restore"><i class="fa fa-rotate-left"></i> ${escapeHtml(t('Restore media'))}</button><button class="danger-button" type="button" id="detail-purge"><i class="fa fa-trash"></i> ${escapeHtml(t('Delete permanently'))}</button>`
             : `<button class="primary-button" type="button" id="detail-viewer"><i class="fa fa-expand"></i> ${escapeHtml(t('View full screen'))}</button>${item.media_type !== 'audio' ? `<a class="secondary-button" id="detail-open-canvas" href="${escapeHtml(canvasHref)}" target="_blank" rel="noopener"><i class="fa fa-layer-group"></i> ${escapeHtml(t('Open in Canvas'))}</a>` : ''}<a class="secondary-button" href="${escapeHtml(item.download_url || item.media_url || '#')}" download><i class="fa fa-download"></i> ${escapeHtml(t('Download'))}</a><button class="danger-button" type="button" id="detail-trash"><i class="fa fa-trash"></i> ${escapeHtml(t('Delete'))}</button>`;
         const folderAction = `<button class="secondary-button" type="button" id="detail-open-folder" title="${escapeHtml(t('Open containing folder'))}"><i class="fa fa-folder-open"></i> ${escapeHtml(t('Open containing folder'))}</button>`;
+        refs.detail.dataset.mediaId = item.media_id;
         refs.detail.innerHTML = `<div class="detail-preview">${detailPreview(item)}</div>
             <p class="detail-file-status" id="detail-file-status" hidden></p>
             <div class="detail-actions">${lifecycleActions}${folderAction}</div>
@@ -1296,7 +1510,7 @@
                 <div class="detail-actions"><button class="primary-button" type="button" id="detail-save"><i class="fa fa-floppy-disk"></i> ${escapeHtml(t('Save'))}</button><button class="secondary-button" type="button" id="detail-favorite"><i class="fa fa-star"></i> ${escapeHtml(item.favorite ? t('Unfavorite') : t('Favorite'))}</button></div>
             </div></section>
             <section class="detail-section"><h3>${escapeHtml(t('File'))}</h3><dl class="detail-grid"><dt>${escapeHtml(t('Name'))}</dt><dd>${escapeHtml(item.name || '')}</dd><dt>${escapeHtml(t('Date'))}</dt><dd>${escapeHtml(formatDate(item.date_key))}</dd><dt>${escapeHtml(t('Size'))}</dt><dd>${escapeHtml(formatBytes(item.size))}</dd><dt>${escapeHtml(t('Dimensions'))}</dt><dd>${item.width && item.height ? `${item.width} × ${item.height}` : '-'}</dd></dl></section>
-            <section class="detail-section"><div class="detail-section-heading"><h3>${escapeHtml(t('Generation metadata'))}</h3><div class="detail-actions"><button class="secondary-button copy-prompt-button" type="button" id="detail-copy-prompt" title="${escapeHtml(copyPromptLabel)}" aria-label="${escapeHtml(copyPromptLabel)}"><i class="fa fa-copy"></i><span>${escapeHtml(copyPromptLabel)}</span></button><button class="secondary-button copy-prompt-button" type="button" id="detail-copy-settings"><i class="fa fa-copy"></i><span>${escapeHtml(t('Copy settings'))}</span></button></div></div>${generationFields(item)}</section>
+            <section class="detail-section"><div class="detail-section-heading"><h3>${escapeHtml(t('Generation metadata'))}</h3><div class="detail-actions"><button class="secondary-button copy-prompt-button" type="button" id="detail-copy-prompt" title="${escapeHtml(copyPromptLabel)}" aria-label="${escapeHtml(copyPromptLabel)}"><i class="fa fa-copy"></i><span>${escapeHtml(copyPromptLabel)}</span></button><button class="secondary-button copy-prompt-button" type="button" id="detail-copy-settings"><i class="fa fa-copy"></i><span>${escapeHtml(t('Copy settings'))}</span></button></div></div>${detailLoadStatusMarkup()}<div id="detail-generation-fields">${generationFields(item)}</div></section>
             <section class="detail-section" id="detail-related" hidden></section>`;
         refs.detail.querySelector('#detail-save').addEventListener('click', () => saveDetail(item));
         refs.detail.querySelector('#detail-favorite').addEventListener('click', () => saveDetail(item, { favorite: !item.favorite }));
@@ -1307,17 +1521,29 @@
         refs.detail.querySelector('#detail-open-folder')?.addEventListener('click', () => openContainingFolder(item.media_id));
         refs.detail.querySelector('#detail-copy-prompt')?.addEventListener('click', () => copyPrompt(item));
         refs.detail.querySelector('#detail-copy-settings')?.addEventListener('click', () => copySettings(item));
+        const metadataPending = pending && !Object.prototype.hasOwnProperty.call(item, 'generation_metadata');
+        refs.detail.querySelector('#detail-copy-prompt').disabled = metadataPending;
+        refs.detail.querySelector('#detail-copy-settings').disabled = metadataPending;
         const canvasLink = refs.detail.querySelector('#detail-open-canvas');
         if (canvasLink) {
-            const href = canvasLink.href;
+            canvasLink.dataset.href = canvasLink.href;
             canvasLink.removeAttribute('href');
             canvasLink.setAttribute('aria-disabled', 'true');
-            request(`/api/items/${encodeURIComponent(item.media_id)}/canvas`).then(() => {
-                if (!canvasLink.isConnected || state.selectedId !== item.media_id) return;
-                canvasLink.href = href;
+        }
+        if (!pending) loadDetailExtras(item, state.detailRequest?.signal);
+    }
+
+    function loadDetailExtras(item, signal) {
+        const canvasLink = refs.detail.querySelector('#detail-open-canvas');
+        if (canvasLink) {
+            requestDetail(`/api/items/${encodeURIComponent(item.media_id)}/canvas`, signal).then(() => {
+                if (signal?.aborted || !canvasLink.isConnected || state.selectedId !== item.media_id) return;
+                canvasLink.href = canvasLink.dataset.href;
                 canvasLink.removeAttribute('aria-disabled');
+                canvasLink.removeAttribute('title');
+                refs.detail.querySelector('#detail-file-status').hidden = true;
             }).catch((err) => {
-                if (!canvasLink.isConnected || state.selectedId !== item.media_id) return;
+                if (signal?.aborted || !canvasLink.isConnected || state.selectedId !== item.media_id) return;
                 const message = t(err?.payload?.error === 'Media file not found.' ? 'Media file not found.' : 'Media unavailable in Canvas');
                 canvasLink.title = message;
                 const status = refs.detail.querySelector('#detail-file-status');
@@ -1325,10 +1551,11 @@
                 status.hidden = false;
             });
         }
-        loadRelated(item);
+        loadRelated(item, signal);
     }
 
     async function saveDetail(item, override) {
+        cancelDetailRequests();
         const payload = Object.assign({
             title: refs.detail.querySelector('#detail-title')?.value || '',
             tags: (refs.detail.querySelector('#detail-tags')?.value || '').split(',').map((value) => value.trim()).filter(Boolean),
@@ -1349,15 +1576,18 @@
 
     async function trashItem(mediaId) {
         if (!window.confirm(t('Move this media to the trash?'))) return;
+        const trashMode = state.trashMode;
+        state.pendingMutations += 1;
+        state.mutationSerial += 1;
         try {
             const result = await request('/api/items/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [mediaId] }) });
-            removeItemFromState(mediaId);
-            updateSelectionControls();
-            await loadPage(true);
-            loadDates();
+            applyRemovedMedia(result, 'trash', [mediaId], trashMode);
             showToast(t(result.removed_missing?.length ? 'Missing record removed' : 'Moved to trash'));
         } catch (err) {
+            applyRemovedMedia(err.payload, 'trash', [mediaId], trashMode);
             showToast(actionError(err, 'Unable to delete media'), true);
+        } finally {
+            await finishMediaMutation();
         }
     }
 
@@ -1376,18 +1606,46 @@
         }
     }
 
-    function removeItemFromState(mediaId) {
-        state.items = state.items.filter((item) => item.media_id !== mediaId);
-        state.itemById.delete(mediaId);
-        state.selectedIds.delete(mediaId);
-        if (state.selectionAnchorId === mediaId) state.selectionAnchorId = '';
-        state.selectedId = '';
+    function applyRemovedMedia(result, action, requestedIds, trashMode) {
+        if (!result || trashMode !== state.trashMode) return;
+        const keys = action === 'trash' ? ['trashed', 'removed_missing'] : [action === 'restore' ? 'restored' : 'purged'];
+        const requested = new Set(requestedIds);
+        const removed = new Set(keys.flatMap((key) => Array.isArray(result[key]) ? result[key] : [])
+            .filter((id) => requested.has(id)));
+        if (!removed.size) return;
+        const anchor = captureFeedAnchor(removed);
+        state.items = state.items.filter((item) => !removed.has(item.media_id));
+        removed.forEach((id) => {
+            state.itemById.delete(id);
+            state.selectedIds.delete(id);
+            state.removedIds.add(id);
+        });
+        if (removed.has(state.selectionAnchorId)) state.selectionAnchorId = '';
+        if (removed.has(state.selectedId)) {
+            cancelDetailRequests();
+            state.selectedId = '';
+            refs.drawer.setAttribute('aria-hidden', 'true');
+            syncDetailLayout();
+        }
+        if (removed.has(state.viewerId)) closeViewer();
         state.layout = null;
         state.renderedStart = -1;
         state.renderedEnd = -1;
         state.renderedKey = '';
-        refs.drawer.setAttribute('aria-hidden', 'true');
-        syncDetailLayout();
+        renderWindow(true, anchor);
+        updateSelectionControls();
+        refs.empty.hidden = state.items.length > 0 || state.hasMore;
+        setStatus(state.items.length ? `${state.items.length}${state.hasMore ? '+' : ''} ${t('items')}` : '');
+        maybeLoadMore();
+    }
+
+    async function finishMediaMutation() {
+        try {
+            await loadDates({ silent: true });
+            loadOrganizers();
+        } finally {
+            state.pendingMutations -= 1;
+        }
     }
 
     function renderSelection() {
@@ -1480,49 +1738,56 @@
             }
         }[action];
         if (!actionConfig || !window.confirm(actionConfig.confirm)) return;
+        const trashMode = state.trashMode;
+        state.pendingMutations += 1;
+        state.mutationSerial += 1;
         try {
             const result = await request(actionConfig.path, {
                 method: actionConfig.method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ids })
             });
-            ids.forEach((id) => removeItemFromState(id));
-            state.selectedIds.clear();
-            updateSelectionControls();
-            await loadPage(true);
-            loadDates();
+            applyRemovedMedia(result, action, ids, trashMode);
             showToast(t(action === 'trash' && result.removed_missing?.length && !result.trashed?.length ? 'Missing records removed' : actionConfig.success));
         } catch (err) {
-            await loadPage(true);
-            loadDates();
+            applyRemovedMedia(err.payload, action, ids, trashMode);
             showToast(actionError(err, actionConfig.error), true);
+        } finally {
+            await finishMediaMutation();
         }
     }
 
     async function restoreItem(mediaId) {
         if (!window.confirm(t('Restore this media from the trash?'))) return;
+        const trashMode = state.trashMode;
+        state.pendingMutations += 1;
+        state.mutationSerial += 1;
         try {
-            await request('/api/items/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [mediaId] }) });
-            removeItemFromState(mediaId);
-            updateSelectionControls();
-            await loadPage(true);
-            loadDates();
+            const result = await request('/api/items/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [mediaId] }) });
+            applyRemovedMedia(result, 'restore', [mediaId], trashMode);
             showToast(t('Restored from trash'));
         } catch (err) {
+            applyRemovedMedia(err.payload, 'restore', [mediaId], trashMode);
             showToast(t('Unable to restore media'), true);
+        } finally {
+            await finishMediaMutation();
         }
     }
 
     async function purgeItem(mediaId) {
         if (!window.confirm(t('Delete this media permanently?'))) return;
+        const trashMode = state.trashMode;
+        state.pendingMutations += 1;
+        state.mutationSerial += 1;
         try {
-            await request('/api/trash', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [mediaId] }) });
-            removeItemFromState(mediaId);
-            updateSelectionControls();
-            await loadPage(true);
+            const result = await request('/api/trash', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [mediaId] }) });
+            applyRemovedMedia(result, 'purge', [mediaId], trashMode);
             showToast(t('Permanently deleted'));
         } catch (err) {
+            applyRemovedMedia(err.payload, 'purge', [mediaId], trashMode);
             showToast(t('Unable to permanently delete media'), true);
+        } finally {
+            await finishMediaMutation();
         }
     }
 
@@ -1549,6 +1814,9 @@
     }
 
     async function toggleTrashMode() {
+        cancelDetailRequests();
+        state.removedIds.clear();
+        state.itemsRefreshPending = false;
         state.trashMode = !state.trashMode;
         state.date = '';
         state.favorite = null;
@@ -1567,6 +1835,7 @@
 
     function closeDetail() {
         const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
+        cancelDetailRequests();
         state.selectedId = '';
         refs.drawer.setAttribute('aria-hidden', 'true');
         syncDetailLayout();
@@ -1649,7 +1918,7 @@
                 syncFilterFields();
                 refs.feedScroll.scrollTop = 0;
                 loadPage(true);
-                refs.dateSidebar.classList.remove('is-open');
+                setDateSidebarOpen(false);
             }
         } else if (kind === 'view') {
             const id = row.dataset.view;
@@ -1665,7 +1934,7 @@
                 if (!view) return;
                 state.activeViewId = id;
                 applySavedFilters(view.filters);
-                refs.dateSidebar.classList.remove('is-open');
+                setDateSidebarOpen(false);
             }
         }
     }
@@ -2084,7 +2353,7 @@
             state.activeViewId = '';
             clearSelectionForQueryChange();
             renderDates();
-            refs.dateSidebar.classList.remove('is-open');
+            setDateSidebarOpen(false);
             loadPage(true);
             refs.feedScroll.scrollTop = 0;
         });
@@ -2093,6 +2362,7 @@
             state.activeViewId = '';
             clearSelectionForQueryChange();
             renderDates();
+            setDateSidebarOpen(false);
             loadPage(true);
         });
         refs.closeDetail.addEventListener('click', closeDetail);
@@ -2130,7 +2400,7 @@
             refs.filterPanel.hidden = !refs.filterPanel.hidden;
             refs.filterToggle.setAttribute('aria-expanded', refs.filterPanel.hidden ? 'false' : 'true');
             if (!refs.filterPanel.hidden) {
-                refs.dateSidebar.classList.remove('is-open');
+                setDateSidebarOpen(false);
                 loadPresets();
             }
         });
@@ -2179,11 +2449,24 @@
         refs.refresh.addEventListener('click', refreshLibrary);
         refs.rescan.addEventListener('click', refreshLibrary);
         refs.datesToggle.addEventListener('click', () => {
-            refs.dateSidebar.classList.toggle('is-open');
+            setDateSidebarOpen(!refs.dateSidebar.classList.contains('is-open'));
             if (refs.filterPanel && !refs.filterPanel.hidden) {
                 refs.filterPanel.hidden = true;
                 refs.filterToggle.setAttribute('aria-expanded', 'false');
             }
+        });
+        refs.datesClose?.addEventListener('click', () => setDateSidebarOpen(false));
+        refs.datesBackdrop?.addEventListener('click', () => setDateSidebarOpen(false));
+        refs.libraryBack?.addEventListener('click', returnToStudio);
+        window.addEventListener('popstate', (event) => {
+            if (!dateSidebarHistoryToken && !dateSidebarHistoryClosing) return;
+            if (!dateSidebarHistoryClosing && event.state?.__simpleaiLibrarySidebar === dateSidebarHistoryToken) return;
+            const reopen = dateSidebarPendingOpen;
+            dateSidebarPendingOpen = false;
+            dateSidebarHistoryToken = '';
+            dateSidebarHistoryClosing = false;
+            setDateSidebarOpen(false, true);
+            if (reopen) setDateSidebarOpen(true);
         });
         refs.viewerClose.addEventListener('click', closeViewer);
         refs.viewerBackdrop.addEventListener('click', closeViewer);
@@ -2242,7 +2525,8 @@
         refs.compareGrid?.addEventListener('pointerup', () => { state.compareDrag = null; });
         refs.compareGrid?.addEventListener('pointercancel', () => { state.compareDrag = null; });
         document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && refs.compare?.getAttribute('aria-hidden') === 'false') closeCompare();
+            if (event.key === 'Escape' && refs.dateSidebar.classList.contains('is-open')) setDateSidebarOpen(false);
+            else if (event.key === 'Escape' && refs.compare?.getAttribute('aria-hidden') === 'false') closeCompare();
             else if (event.key === 'Escape' && refs.filterPanel && !refs.filterPanel.hidden) {
                 refs.filterPanel.hidden = true;
                 refs.filterToggle.setAttribute('aria-expanded', 'false');
@@ -2261,6 +2545,7 @@
             });
         }, { passive: true });
         window.addEventListener('resize', () => window.requestAnimationFrame(() => {
+            if (!window.matchMedia('(max-width: 700px)').matches) setDateSidebarOpen(false);
             renderWindow(true);
             scheduleVideoAutoplay();
             updateCompareTransforms();
@@ -2286,6 +2571,10 @@
         refs.status = document.getElementById('feed-status');
         refs.dateList = document.getElementById('date-list');
         refs.dateSidebar = document.getElementById('date-sidebar');
+        refs.datesClose = document.getElementById('dates-close');
+        refs.datesBackdrop = document.getElementById('dates-backdrop');
+        refs.libraryBack = document.getElementById('library-back');
+        studioReturnHistoryAvailable = history.length > 1;
         refs.clearDate = document.getElementById('clear-date');
         refs.drawer = document.getElementById('detail-drawer');
         refs.detailBackdrop = document.getElementById('detail-backdrop');
@@ -2334,6 +2623,7 @@
         refs.batchFavorite = document.getElementById('batch-favorite');
         refs.batchSave = document.getElementById('batch-save');
         refs.datesToggle = document.getElementById('dates-toggle');
+        setDateSidebarOpen(false);
         refs.emptyTitle = document.querySelector('#empty-state h2');
         refs.emptyDescription = document.querySelector('#empty-state p');
         refs.viewer = document.getElementById('media-viewer');

@@ -3077,29 +3077,47 @@
   "presetGuides": {
     "Anima-Reference": {
       "intro": {
-        "en": "Generate a new anime scene from character references. Character Reference guides appearance; Character & Style Reference also follows the reference's visual style. Use retrieved English tags plus short scene sentences. The prompt assistant uses the same local tag lookup as Anima text-to-image.",
-        "cn": "根据角色参考图生成新的动漫场景。“角色参考”参考人物外观；“角色与画风参考”同时参考原图画风。提示词使用检索确认的英文标签和简短场景句子，提示词助手沿用 Anima 文生图的本地标签检索。"
+        "en": "Use a character image to generate a new anime picture with a different pose, expression or setting. Character & Style Reference follows appearance and visual style; Character Reference guides appearance while allowing the prompt to set the style.",
+        "cn": "让参考图中的角色做出新的动作、表情，或出现在新的场景中。“角色与画风参考”同时参考人物外观和画风；“角色参考”参考人物外观，画风可通过提示词描述。"
       },
       "inputs": {
-        "en": "Put the primary reference on the sketch canvas. Image 2 is optional and supplies another view of the same character. For two distinct characters, prepare one joint or side-by-side reference on the canvas and specify their count and left/right positions in the prompt. No mask is needed.",
-        "cn": "主参考图放在 sketch canvas；图 2 可选，用于同一角色的另一张参考。两个不同角色请使用一张合照或左右拼图作为主参考，并在提示词里写明人数和左右位置。无需蒙版。"
+        "en": "Upload a character reference to \"Upload and canvas(1)\". One image is enough; \"Upload prompt image(2)\" is optional and supplies another view or detail of the same character. For two different characters, put one joint image or side-by-side collage in \"Upload and canvas(1)\". No mask is needed.",
+        "cn": "在“主体图片(1)”上传角色参考图，一张就能使用。“参考图片(2)”可留空；需要同一角色的其他视角或细节时再上传。两个不同角色请将合照或左右拼图放在“主体图片(1)”。无需绘制蒙版。"
       },
+      "steps": [
+        {
+          "en": "Choose Character & Style Reference or Character Reference, then upload the reference to \"Upload and canvas(1)\".",
+          "cn": "选择“角色与画风参考”或“角色参考”，在“主体图片(1)”上传参考图。"
+        },
+        {
+          "en": "Describe the picture you want, for example: this character taking an afternoon nap on a bed, lying on their side with closed eyes and soft window light. Use Prompt Tools to prepare English tags and short English sentences. For two characters, specify their count and left/right positions.",
+          "cn": "在提示词框描述目标画面，例如“让这个角色闭着眼侧躺在床上午睡，柔和的午后光从窗边照入”。建议使用“提示工具”整理为英文标签和简短英文句子。双人时写明人数和左右位置。"
+        },
+        {
+          "en": "Set the output size, keep the other defaults and click Generate. Check the result's appearance, subject count, pose and expression.",
+          "cn": "设置成图尺寸，其他参数保持默认，点击“生成”。查看人物外观、人数、动作与表情是否符合要求。"
+        }
+      ],
       "keyPoint": {
-        "en": "The whole scene is generated again, so pose, framing and background can change. Set output dimensions separately. Reference Megapixels controls the input detail per image; Fidelity starts at 1, and lowering it gives the prompt more freedom. The two weights balance the references; an empty Image 2 is ignored.",
-        "cn": "整个场景会重新生成，动作、构图和背景都可能变化。输出尺寸单独设置；“参考图像素量”控制每张输入的细节；“参考保真度”默认 1，降低后提示词有更大的发挥空间。两项参考图权重用于调整两张图的影响，未上传图 2 时会自动忽略。"
+        "en": "Pose, framing and background are generated again. Reference Fidelity defaults to 1; lower it if the reference constrains the new pose too much. Reference Megapixels affects input detail only; set the output size separately.",
+        "cn": "动作、构图和背景会重新生成。“参考保真度”默认 1，参考图过度限制新动作时可适当降低。“参考图像素量（MP）”只影响输入细节，成图尺寸需单独设置。"
       },
       "notes": [
         {
-          "en": "One-character nap example: masterpiece, best quality, score_7, safe, 1girl, solo, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. She is taking an afternoon nap on her side, with her eyes closed and her head resting on a pillow. Soft window light fills the bedroom.",
-          "cn": "单人午睡示例：masterpiece, best quality, score_7, safe, 1girl, solo, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. She is taking an afternoon nap on her side, with her eyes closed and her head resting on a pillow. Soft window light fills the bedroom."
+          "en": "Reference Image 1 Weight controls the influence of \"Upload and canvas(1)\"; Reference Image 2 Weight controls \"Upload prompt image(2)\". Leave the second weight alone when no second image is uploaded.",
+          "cn": "“参考图 1 权重”控制“主体图片(1)”的影响，“参考图 2 权重”控制“参考图片(2)”的影响；第二张图留空时无需调整其权重。"
         },
         {
-          "en": "Two-character example: masterpiece, best quality, score_7, safe, 2girls, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. Both characters are taking an afternoon nap side by side, with their eyes closed and their heads resting on separate pillows. Soft window light fills the bedroom. Match the subject-count tags to the characters; remove solo for two people.",
-          "cn": "双人示例：masterpiece, best quality, score_7, safe, 2girls, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. Both characters are taking an afternoon nap side by side, with their eyes closed and their heads resting on separate pillows. Soft window light fills the bedroom. 按实际角色修改人数与性别标签，双人时删除 solo。"
+          "en": "One-character nap example: 1girl, solo, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. She is taking an afternoon nap on her side, with her eyes closed and her head resting on a pillow. Soft window light fills the bedroom.",
+          "cn": "单人午睡示例：1girl, solo, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. She is taking an afternoon nap on her side, with her eyes closed and her head resting on a pillow. Soft window light fills the bedroom."
         },
         {
-          "en": "Choose tags from relevant lookup results instead of inventing them. Similar artist or series names do not describe afternoon light; put unmatched concepts in short English sentences. The reference already provides appearance, so do not repeat hair, eyes, clothes or artist unless requesting a change.",
-          "cn": "标签从符合需求的检索结果中选择，不凭记忆编写。相似的画师或作品名不能描述午后光线；查不到的概念用简短英文句子表达。参考图已经提供外观，只有明确要求改变时才写发色、眼色、服装或画师。"
+          "en": "Two-character example: 2girls, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. Both characters are taking an afternoon nap side by side, with their eyes closed and their heads resting on separate pillows. Soft window light fills the bedroom. Match the subject-count tags to the characters; remove solo for two people.",
+          "cn": "双人示例：2girls, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. Both characters are taking an afternoon nap side by side, with their eyes closed and their heads resting on separate pillows. Soft window light fills the bedroom. 按实际角色修改人数与性别标签，双人时删除 solo。"
+        },
+        {
+          "en": "Prompt Tools uses the same local tag lookup as Anima text-to-image. Select relevant results; put unmatched concepts such as time or lighting in short English sentences. The reference provides appearance, so describe hair, eyes or clothes only when requesting a change.",
+          "cn": "提示工具沿用 Anima 文生图的本地标签检索。标签从符合需求的结果中选择；时间和光线等查不到的内容写成简短英文句子。参考图提供角色外观，只有需要改变时才描述发色、眼色或服装。"
         }
       ]
     },

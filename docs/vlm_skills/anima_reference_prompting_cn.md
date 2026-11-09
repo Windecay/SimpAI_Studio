@@ -29,10 +29,12 @@ Agent 负责筛选检索结果、组织场景句子，不能凭记忆自造 tag�
 
 ## 最终提示词
 
-顺序为“质量与评级前缀，人数，检索确认的动作／姿态／表情／场景标签。
-2 至 4 句简短英文 nltags”。句子描述人物位置、相互关系、时间、光线等具体要求。
+顺序为“人数，检索确认的动作／姿态／表情／场景标签，2 至 4 句简短英文 nltags”。
+默认选中的 Anima 风格已提供质量、评分和评级词，正文不必重复添加；默认负面词由预置的
+负面提示词提供。需要其他评级时，调整所选风格及评级词，避免相互矛盾。
+句子描述人物位置、相互关系、时间、光线等具体要求。
 单人和多人不混用人数标签；多人删除 `solo`；闭眼睡觉不同时写睁眼、看镜头。
-评分标签保留 `score_7` 等原文，普通标签直接采用 `prompt_tag` 的显示写法。
+普通标签直接采用 `prompt_tag` 的显示写法。
 不要自动添加画师、年代、额外人物或与需求无关的内容。
 
 输入框只写最终英文正文，不写解释、JSON、Markdown、图片编号、尺寸、CFG 或 seed。
@@ -47,7 +49,7 @@ SnapRef 由工作流加载，不添加 `<lora:snapref_v2a:...>`。
 单人，按实际人物选择人数与性别标签：
 
 ```text
-masterpiece, best quality, score_7, safe, 1girl, solo, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom.
+1girl, solo, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom.
 She is taking an afternoon nap on her side, with her eyes closed and her head resting on a pillow.
 A light blanket covers her lower body, and soft window light fills the bedroom.
 ```
@@ -55,7 +57,7 @@ A light blanket covers her lower body, and soft window light fills the bedroom.
 双人，主参考图包含两个角色：
 
 ```text
-masterpiece, best quality, score_7, safe, 2girls, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom.
+2girls, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom.
 Both characters are taking an afternoon nap side by side, with their eyes closed and their heads resting on separate pillows.
 The character on the left lies on her left side, and the character on the right lies on her right side.
 Soft window light fills the bedroom.

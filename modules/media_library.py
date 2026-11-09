@@ -710,7 +710,6 @@ class MediaLibrary:
         item.pop("generation_info_version", None)
         return item
 
-    @_serialize_media_write
     def _refresh_stale_embedded_metadata(self, row: sqlite3.Row, item: dict[str, Any]) -> dict[str, Any]:
         if not _metadata_needs_refresh(item.get("generation_metadata")) and row["generation_info_version"] >= 1:
             return item
@@ -728,17 +727,32 @@ class MediaLibrary:
         for field in TIMING_FIELDS:
             if item.get(field) is not None:
                 details[field] = item[field]
-        with _media_write_lock_for(self.db_path):
-            with self._connect() as connection:
-                connection.execute(
-                    "UPDATE media SET generation_metadata_json=?, generation_text=?, indexed_at=?, "
-                    "preset_id=?, generation_task_id=?, generation_duration_ms=?, generation_batch_duration_ms=?, "
-                    "generation_task_duration_ms=?, generation_batch_size=?, generation_info_version=1 WHERE media_id=?",
-                    (_json_dumps(metadata), generation_text, time.time(), details["preset_id"],
-                     details["generation_task_id"], *(details[field] for field in TIMING_FIELDS), str(row["media_id"])),
-                )
-                self._bump_revision(connection)
-        self._clear_summary_cache()
+        # Reading details must not wait for a background scan to finish writing.
+        write_lock = _media_write_lock_for(self.db_path)
+        if write_lock.acquire(blocking=False):
+            try:
+                with self._connect() as connection:
+                    connection.execute("PRAGMA busy_timeout = 100")
+                    result = connection.execute(
+                        "UPDATE media SET generation_metadata_json=?, generation_text=?, indexed_at=?, "
+                        "preset_id=?, generation_task_id=?, generation_duration_ms=?, generation_batch_duration_ms=?, "
+                        "generation_task_duration_ms=?, generation_batch_size=?, generation_info_version=1 "
+                        "WHERE media_id=? AND size=? AND mtime_ns=? AND indexed_at=? "
+                        "AND preset_id=? AND generation_task_id=? AND "
+                        + " AND ".join(f"{field} IS ?" for field in TIMING_FIELDS),
+                        (_json_dumps(metadata), generation_text, time.time(), details["preset_id"],
+                         details["generation_task_id"], *(details[field] for field in TIMING_FIELDS),
+                         str(row["media_id"]), row["size"], row["mtime_ns"], row["indexed_at"],
+                         row["preset_id"], row["generation_task_id"], *(row[field] for field in TIMING_FIELDS)),
+                    )
+                    if result.rowcount:
+                        self._bump_revision(connection)
+                        self._clear_summary_cache()
+            except sqlite3.OperationalError as exc:
+                if not any(word in str(exc).lower() for word in ("locked", "busy")):
+                    raise
+            finally:
+                write_lock.release()
         item["generation_metadata"] = metadata
         item.update(details)
         return item
@@ -1498,6 +1512,7 @@ class MediaLibrary:
         include_trashed: bool = False,
         *,
         include_generation_metadata: bool = True,
+        refresh_generation_metadata: bool = True,
     ) -> dict[str, Any] | None:
         self.initialize()
         clauses = ["media_id = ?"]
@@ -1509,8 +1524,12 @@ class MediaLibrary:
         if not row:
             return None
         item = self._row_to_item(row, include_generation_metadata=include_generation_metadata)
-        if include_generation_metadata:
+        if include_generation_metadata and refresh_generation_metadata:
             item = self._refresh_stale_embedded_metadata(row, item)
+        elif include_generation_metadata:
+            item["generation_metadata_needs_refresh"] = (
+                _metadata_needs_refresh(item.get("generation_metadata")) or row["generation_info_version"] < 1
+            )
         return item
 
     def file_facts(self, absolute_path: str) -> dict[str, Any]:

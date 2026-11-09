@@ -145,6 +145,7 @@ let simpleaiGenerationAwaitingNewMedia = false;
 let simpleaiGenerationCompleted = false;
 let simpleaiGenerationStartGallerySignatures = {};
 let simpleaiGenerationResultObserver = null;
+let simpleaiGenerationResultMediaCleanup = null;
 const SIMPLEAI_COMPARE_BUTTON_ICON = "🔍";
 const SIMPLEAI_PRESET_SWITCH_GALLERY_IDS = [
     "finished_gallery",
@@ -380,10 +381,27 @@ function getSimpleAIPresetCatalogBodies(root) {
 function getSimpleAIGalleryMediaIdentity(root) {
     if (!root?.querySelectorAll) return "";
     const media = Array.from(root.querySelectorAll("img, video"));
-    return media.map((node) => {
+    const sources = media.map((node) => {
         const source = node.currentSrc || node.src || node.getAttribute("src") || "";
-        return finishedGalleryMediaPathFromElement(node) || source;
-    }).filter(Boolean).join("|");
+        const path = finishedGalleryMediaPathFromElement(node);
+        return path ? normalizeFinishedGalleryMediaPath(path) : source;
+    }).filter(Boolean);
+    return sources.length ? JSON.stringify(Array.from(new Set(sources)).sort()) : "";
+}
+
+function hasSimpleAIGenerationNewMedia(identity) {
+    if (!identity) return false;
+    const previous = new Set(Object.values(simpleaiGenerationStartGallerySignatures)
+        .flatMap(value => value ? JSON.parse(value) : []));
+    return JSON.parse(identity).some(source => !previous.has(source));
+}
+
+function isSimpleAIPreviousGenerationPayload(payload) {
+    const paths = payload?.__post_generation_image_paths;
+    if (!simpleaiGenerationAwaitingNewMedia || !payload?.__post_generation_has_output
+        || !Array.isArray(paths) || !paths.length) return false;
+    const identity = JSON.stringify(paths.map(normalizeFinishedGalleryMediaPath).filter(Boolean));
+    return !hasSimpleAIGenerationNewMedia(identity);
 }
 
 function setSimpleAIPresetCatalogAttributeIfChanged(element, name, value) {
@@ -1188,6 +1206,9 @@ function scheduleCloseSimpleAIOpenGalleriesForPresetSwitch(reason) {
 
 function clearSimpleAIPresetSwitchGalleryHidden(reason) {
     const reasonText = String(reason || "");
+    if (/generation_done/i.test(reasonText) && simpleaiGenerationAwaitingNewMedia && !simpleaiGenerationCompleted) {
+        return false;
+    }
     if (shouldKeepPresetSwitchGalleryHiddenDuringNavClear(reasonText)) {
         try { closeSimpleAIOpenGalleriesForPresetSwitch(`preset_nav_clear_blocked:${reasonText}`, { suppressMs: SIMPLEAI_PRESET_SWITCH_GALLERY_SUPPRESS_MS }); } catch (e) {}
         simpaiUiTrace("log", "[UI-TRACE] preset_gallery.clear_deferred_during_nav", { reason: reason || "preset_nav" });
@@ -1267,23 +1288,30 @@ function scheduleSimpleAIPresetGalleryClear(reason) {
 function prepareSimpleAIGenerationStartSurface(reason, state) {
     const reasonText = String(reason || "generation_start");
     if (simpleaiGenerationResultObserver) simpleaiGenerationResultObserver.disconnect();
+    if (simpleaiGenerationResultMediaCleanup) simpleaiGenerationResultMediaCleanup();
+    simpleaiGenerationResultMediaCleanup = null;
     simpleaiGenerationCompleted = false;
     simpleaiGenerationStartGallerySignatures = {};
     ["finished_gallery", "final_gallery"].forEach((id) => {
         const gallery = getSimpleAIElementById(id);
         simpleaiGenerationStartGallerySignatures[id] = getSimpleAIGalleryMediaIdentity(gallery);
     });
+    const previousPaths = [state, window.simpleaiTopbarSystemParams, topbarLastSystemParams].flatMap(params =>
+        ["__post_generation_image_paths", "__main_gallery_browser_paths"].flatMap(key =>
+            Array.isArray(params?.[key]) ? params[key] : []));
+    simpleaiGenerationStartGallerySignatures.known_paths = JSON.stringify(
+        previousPaths.map(normalizeFinishedGalleryMediaPath).filter(Boolean));
     simpleaiGenerationAwaitingNewMedia = true;
     document.documentElement.classList.add("simpai-generation-awaiting-result");
     const resultRow = getSimpleAIElementById("preview_generating")?.closest(".row");
     if (resultRow) {
-        simpleaiGenerationResultObserver = new MutationObserver(() => {
+        const checkNewMedia = () => {
             if (!simpleaiGenerationAwaitingNewMedia) return;
             let hasOldMedia = false;
             for (const id of ["finished_gallery", "final_gallery"]) {
                 const gallery = getSimpleAIElementById(id);
                 const identity = getSimpleAIGalleryMediaIdentity(gallery);
-                if (identity && identity !== simpleaiGenerationStartGallerySignatures[id]) {
+                if (hasSimpleAIGenerationNewMedia(identity)) {
                     finishSimpleAIGenerationStartSurface();
                     syncGenerationResultGallerySurface("generation_new_media");
                     return;
@@ -1291,7 +1319,14 @@ function prepareSimpleAIGenerationStartSurface(reason, state) {
                 hasOldMedia = hasOldMedia || !!identity;
             }
             if (simpleaiGenerationCompleted && !hasOldMedia) finishSimpleAIGenerationStartSurface();
-        });
+        };
+        simpleaiGenerationResultObserver = new MutationObserver(checkNewMedia);
+        resultRow.addEventListener?.("load", checkNewMedia, true);
+        resultRow.addEventListener?.("loadedmetadata", checkNewMedia, true);
+        simpleaiGenerationResultMediaCleanup = () => {
+            resultRow.removeEventListener?.("load", checkNewMedia, true);
+            resultRow.removeEventListener?.("loadedmetadata", checkNewMedia, true);
+        };
         simpleaiGenerationResultObserver.observe(resultRow, {
             childList: true, subtree: true, attributes: true, attributeFilter: ["src", "poster"],
         });
@@ -1328,6 +1363,7 @@ function prepareSimpleAIGenerationStartSurface(reason, state) {
         document.documentElement.classList.remove("simpai-comparison-preview");
         document.documentElement.classList.add("simpai-main-gallery-browser-closed");
     } catch (e) {}
+    try { preservePreviewGeneratingForActiveGeneration(null, reasonText); } catch (e) {}
     simpaiUiTrace("log", "[UI-TRACE] generation_start.surface_prepared", {
         reason: reasonText,
         hadState: !!nextState,
@@ -1342,12 +1378,14 @@ function finishSimpleAIGenerationStartSurface() {
     simpleaiGenerationStartGallerySignatures = {};
     if (simpleaiGenerationResultObserver) simpleaiGenerationResultObserver.disconnect();
     simpleaiGenerationResultObserver = null;
+    if (simpleaiGenerationResultMediaCleanup) simpleaiGenerationResultMediaCleanup();
+    simpleaiGenerationResultMediaCleanup = null;
     document.documentElement.classList.remove("simpai-generation-awaiting-result");
 }
 window.finishSimpleAIGenerationStartSurface = finishSimpleAIGenerationStartSurface;
 
 function completeSimpleAIGenerationStartSurface(state) {
-    if (!simpleaiGenerationAwaitingNewMedia) return;
+    if (!simpleaiGenerationAwaitingNewMedia || !state || isSimpleAIPreviousGenerationPayload(state)) return;
     simpleaiGenerationCompleted = true;
     if (state && state.__post_generation_has_output === false) {
         closeSimpleAICatalogLinkedGallery("generation_done_empty", { markWrappers: false });
@@ -1357,7 +1395,7 @@ function completeSimpleAIGenerationStartSurface(state) {
     const identities = ["finished_gallery", "final_gallery"].map((id) =>
         getSimpleAIGalleryMediaIdentity(getSimpleAIElementById(id)));
     if (identities.every((identity) => !identity)
-        || identities.some((identity, index) => identity && identity !== simpleaiGenerationStartGallerySignatures[["finished_gallery", "final_gallery"][index]])) {
+        || identities.some(hasSimpleAIGenerationNewMedia)) {
         finishSimpleAIGenerationStartSurface();
     }
 }
@@ -9162,6 +9200,7 @@ function applySimpleAIPostGenerationResultPayload(payload) {
     if (!payload || typeof payload !== "object" || !Object.prototype.hasOwnProperty.call(payload, "gallery_state")) {
         return null;
     }
+    if (isSimpleAIPreviousGenerationPayload(payload)) return null;
     const current = window.simpleaiTopbarSystemParams || topbarLastSystemParams || {};
     const state = Object.assign({}, current, payload);
     topbarLastSystemParams = state;
@@ -12826,9 +12865,10 @@ function clearPostGenerationOwnedLayoutNode(node) {
 }
 
 function preservePreviewGeneratingForActiveGeneration(resultEl, reason) {
-    let activeGeneration = false;
+    let activeGeneration = simpleaiGenerationAwaitingNewMedia && !simpleaiGenerationCompleted;
     try {
-        activeGeneration = typeof hasSimpleAIActiveGenerationControls === "function" && hasSimpleAIActiveGenerationControls();
+        activeGeneration = activeGeneration
+            || (typeof hasSimpleAIActiveGenerationControls === "function" && hasSimpleAIActiveGenerationControls());
     } catch (e) {}
     if (!activeGeneration) return false;
 
@@ -12842,6 +12882,9 @@ function preservePreviewGeneratingForActiveGeneration(resultEl, reason) {
     const previewWrap = preview.closest(".form, .block");
     [previewRow, previewWrap, preview].filter(Boolean).forEach((node) => {
         clearPostGenerationOwnedLayoutNode(node);
+        delete node.dataset.simpleaiPreviewFitHidden;
+        delete node.dataset.simpleaiGalleryWelcomeHiddenForGallery;
+        node.classList.remove("simpai-gallery-browser-welcome-hidden");
     });
 
     revealSimpleAIGenerationResultNode(previewRow, "flex");
@@ -13495,6 +13538,13 @@ function isSceneThemeSwitchInProgress() {
 window.hasSimpleAIComparableInputFromDom = hasSimpleAIComparableInputFromDom;
 
 function syncPostGenerationResultControls(stateOverride) {
+    // Button visibility can arrive after the new request has started.
+    if (simpleaiGenerationAwaitingNewMedia && !simpleaiGenerationCompleted) {
+        if (getPreviewGeneratingFitHiddenOwner(getWelcomePreviewElement())) {
+            preservePreviewGeneratingForActiveGeneration(null, "generation_pending_result_controls");
+        }
+        return;
+    }
     const app = gradioApp();
     try {
         ensurePreviewGeneratingFitObserver();
@@ -14243,7 +14293,7 @@ function syncGenerationResultGallerySurface(reason) {
         if (!currentSignature) return;
         if (simpleaiGenerationAwaitingNewMedia) {
             const identity = getSimpleAIGalleryMediaIdentity(gallery);
-            if (!identity || identity === simpleaiGenerationStartGallerySignatures[id]) return;
+            if (!hasSimpleAIGenerationNewMedia(identity)) return;
             finishSimpleAIGenerationStartSurface();
         }
         const hiddenSignature = gallery.dataset?.simpleaiCatalogLinkedGalleryHiddenSignature || "";
@@ -14303,7 +14353,14 @@ function syncPreviewGeneratingImageFit() {
     }
     try { syncGenerationResultGallerySurface("preview_fit_sync"); } catch (e) {}
     try { syncPostGenerationGalleryResponsiveFit("preview_fit_sync"); } catch (e) {}
-    const hiddenOwner = getPreviewGeneratingFitHiddenOwner(root);
+    let hiddenOwner = getPreviewGeneratingFitHiddenOwner(root);
+    if (hiddenOwner) {
+        try {
+            if (preservePreviewGeneratingForActiveGeneration(null, "generation_preview_fit")) {
+                hiddenOwner = getPreviewGeneratingFitHiddenOwner(root);
+            }
+        } catch (e) {}
+    }
     if (hiddenOwner) {
         applyPreviewGeneratingFitHiddenState(root, hiddenOwner);
         return;

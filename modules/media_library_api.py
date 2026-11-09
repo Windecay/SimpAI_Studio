@@ -489,7 +489,10 @@ async def media_library_open_folder(request: Request, media_id: str):
 async def media_library_item(request: Request, media_id: str):
     library = _library_for_request(request=request)
     include_trashed = _bool_query(request.query_params.get("trash")) is True
-    item = await run_in_threadpool(lambda: library.get_item(media_id, include_trashed=include_trashed))
+    refresh_metadata = _bool_query(request.query_params.get("refresh_metadata")) is not False
+    item = await run_in_threadpool(lambda: library.get_item(
+        media_id, include_trashed=include_trashed, refresh_generation_metadata=refresh_metadata,
+    ))
     if not item:
         return JSONResponse({"ok": False, "error": "Media item not found."}, status_code=404)
     return {"ok": True, "item": _item_urls(request, item, library)}

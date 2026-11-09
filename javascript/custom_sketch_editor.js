@@ -2834,6 +2834,7 @@
             if (proxyImage.src !== payload.image) {
                 proxyImage.src = payload.image;
             }
+            if (input.value === text && lastExternalValue === text) return;
             internalWrite = true;
             setInputValue(input, text, options);
             lastExternalValue = text;

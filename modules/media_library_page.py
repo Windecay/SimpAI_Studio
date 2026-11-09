@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from html import escape
 from pathlib import Path
 
 
@@ -43,6 +44,7 @@ def _icon_font_css(font_url: str) -> str:
         "expand": "\\f065",
         "compress": "\\f066",
         "chevron-left": "\\f053",
+        "arrow-left": "\\f060",
         "chevron-right": "\\f054",
         "minus": "\\f068",
         "plus": "\\f067",
@@ -98,12 +100,14 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
     script_url = _gradio_asset_url(root_path, "javascript/media_library.js")
     icon_font_url = _gradio_asset_url(root_path, "webfonts/fa-solid-900.woff2")
     cn_url = _gradio_asset_url(root_path, "language/cn.json")
+    studio_url = f"{_join_url(root_path, '')}?__theme={normalized_theme}&__lang={normalized_lang}"
     config = {
         "theme": normalized_theme,
         "lang": normalized_lang,
         "apiBase": api_base,
         "assetBase": str(root_path or "").rstrip("/"),
         "cnUrl": cn_url,
+        "studioUrl": studio_url,
     }
     config_json = json.dumps(config, ensure_ascii=False).replace("</", "<\\/")
     return f'''<!doctype html>
@@ -122,7 +126,10 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
   <div class="media-library-app" id="media-library-app">
     <header class="media-library-toolbar">
       <div class="media-library-brand">
-        <button class="icon-button mobile-only" id="dates-toggle" type="button" title="Dates" aria-label="Dates">
+        <a class="icon-button" id="library-back" href="{escape(studio_url, quote=True)}" title="Back to Studio" aria-label="Back to Studio">
+          <i class="fa fa-arrow-left" aria-hidden="true"></i>
+        </a>
+        <button class="icon-button mobile-only" id="dates-toggle" type="button" title="Dates" aria-label="Dates" aria-controls="date-sidebar" aria-expanded="false">
           <i class="fa fa-calendar-days"></i>
         </button>
         <div class="brand-mark"><i class="fa fa-images"></i></div>
@@ -198,7 +205,14 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
     </header>
 
     <div class="media-library-layout" id="media-library-layout">
+      <div class="dates-backdrop" id="dates-backdrop" hidden></div>
       <aside class="date-sidebar" id="date-sidebar" aria-label="Dates">
+        <div class="sidebar-heading mobile-only">
+          <span data-i18n="Dates">Dates</span>
+          <button class="icon-button subtle" id="dates-close" type="button" title="Close sidebar" aria-label="Close sidebar">
+            <i class="fa fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
         <div class="sidebar-heading"><span data-i18n="Collections">Collections</span>
           <button class="icon-button subtle" id="collection-create-toggle" type="button" title="New collection" aria-label="New collection"><i class="fa fa-plus"></i></button>
         </div>

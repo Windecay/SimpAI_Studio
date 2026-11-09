@@ -765,10 +765,13 @@
                         render_start_ms: round(entry.renderStart, 1),
                         style_layout_start_ms: round(entry.styleAndLayoutStart, 1),
                         drag_id: activeDrag?.id || null,
-                        scripts: Array.from(entry.scripts || []).slice(0, 8).map((script) => ({
+                        scripts: Array.from(entry.scripts || []).sort((left, right) => right.duration - left.duration).slice(0, 8).map((script) => ({
                             source: scriptLabel(script.sourceURL),
+                            source_function: String(script.sourceFunctionName || '').slice(0, 160),
+                            source_char_position: Number.isFinite(script.sourceCharPosition) ? script.sourceCharPosition : null,
                             invoker_type: String(script.invokerType || '').slice(0, 100),
                             duration_ms: round(script.duration, 1),
+                            forced_style_layout_ms: round(script.forcedStyleAndLayoutDuration, 1),
                             execution_start_ms: round(script.executionStart, 1),
                         })),
                     });
