@@ -163,6 +163,8 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
             comfy_params.update_mapping_rule(
                 f"lora_{index}_strength", f"LoraLoaderBypassModelOnly:lora_{index}:strength_model",
             )
+    if task_method_l == "scene_minimax_h3_r2i_image_cn":
+        comfy_params.update_mapping_rule("vae_model", "VAELoader:vae_model:vae_name")
     if task_method_l == "moss_image_sft_aio_cn":
         comfy_params.update_mapping_rule("moss_spectrum", "SimpAIMossSpectrum:MOSS Spectrum:enabled")
         comfy_params.update_mapping_rule("pe_model", "SimpAIPromptExpand:MOSS Image PE:pe_model")

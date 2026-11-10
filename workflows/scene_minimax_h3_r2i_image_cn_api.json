@@ -1,0 +1,120 @@
+{
+  "1": {
+    "class_type": "SceneInput", "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "", "additional_prompt": "",
+      "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
+      "inpaint_image": "None", "inpaint_mask": "None",
+      "width": 2048, "height": 2048, "cfg": 1, "steps": 6,
+      "var_number": 0, "var_number2": 0, "var_number3": 0, "var_number4": 0,
+      "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
+      "var_number9": 0, "var_number10": 0,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "model_type": 1, "model_type2": 1, "clip_type": 1,
+      "negative_prompt": "", "sampler": "euler", "scheduler": "simple", "video_duration": 0,
+      "ip_image4": "None", "ip_image5": "None", "ip_image6": "None", "ip_image7": "None"
+    }
+  },
+  "2": {"class_type": "SeedInput", "_meta": {"title": "SeedInput"}, "inputs": {"seed": 0}},
+  "3": {
+    "class_type": "UNETLoader", "_meta": {"title": "base_model"},
+    "inputs": {"unet_name": "minimax_h3_image_pruned_int8_convrot.safetensors", "weight_dtype": "default"}
+  },
+  "4": {
+    "class_type": "CLIPLoader", "_meta": {"title": "clip_model"},
+    "inputs": {"clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "type": "minimax", "device": "default"}
+  },
+  "5": {
+    "class_type": "VAELoader", "_meta": {"title": "vae_model"},
+    "inputs": {"vae_name": "minimax_h3_image_vae_fp16.safetensors"}
+  },
+  "8": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": ["1", 30]}},
+  "9": {"class_type": "BasicScheduler", "inputs": {"model": ["simpai_lora_stack_main", 0], "scheduler": ["1", 31], "steps": ["1", 9], "denoise": 1}},
+  "10": {"class_type": "RandomNoise", "inputs": {"noise_seed": ["2", 0]}},
+  "11": {
+    "class_type": "MiniMaxH3ImageConditioning", "_meta": {"title": "MiniMax H3 Image Conditioning"},
+    "inputs": {
+      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "prompt": ["1", 0],
+      "width": ["70", 1], "height": ["71", 1],
+      "images.image_1": ["21", 0], "images.image_2": ["25", 0], "images.image_3": ["29", 0],
+      "images.image_4": ["33", 0], "images.image_5": ["37", 0], "images.image_6": ["103", 0],
+      "images.image_7": ["107", 0], "images.image_8": ["111", 0], "images.image_9": ["115", 0]
+    }
+  },
+  "12": {"class_type": "BasicGuider", "inputs": {"model": ["simpai_lora_stack_main", 0], "conditioning": ["11", 0]}},
+  "13": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {"noise": ["10", 0], "guider": ["12", 0], "sampler": ["8", 0], "sigmas": ["9", 0], "latent_image": ["129", 0]}
+  },
+  "14": {"class_type": "VAEDecode", "inputs": {"samples": ["13", 0], "vae": ["5", 0]}},
+  "16": {"class_type": "SaveImageWebsocket", "_meta": {"title": "SaveImageWebsocket"}, "inputs": {"images": ["14", 0]}},
+  "17": {"class_type": "noneNode", "inputs": {}},
+  "19": {"class_type": "easy string", "inputs": {"value": "None"}},
+  "18": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 4], "image": "None"}},
+  "20": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 4], "b": ["19", 0]}},
+  "21": {"class_type": "easy ifElse", "inputs": {"boolean": ["20", 0], "on_true": ["17", 0], "on_false": ["18", 0]}},
+  "22": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 2], "image": "None"}},
+  "24": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 2], "b": ["19", 0]}},
+  "25": {"class_type": "easy ifElse", "inputs": {"boolean": ["24", 0], "on_true": ["17", 0], "on_false": ["22", 0]}},
+  "26": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 3], "image": "None"}},
+  "28": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 3], "b": ["19", 0]}},
+  "29": {"class_type": "easy ifElse", "inputs": {"boolean": ["28", 0], "on_true": ["17", 0], "on_false": ["26", 0]}},
+  "30": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 27], "image": "None"}},
+  "32": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 27], "b": ["19", 0]}},
+  "33": {"class_type": "easy ifElse", "inputs": {"boolean": ["32", 0], "on_true": ["17", 0], "on_false": ["30", 0]}},
+  "34": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 28], "image": "None"}},
+  "36": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 28], "b": ["19", 0]}},
+  "37": {"class_type": "easy ifElse", "inputs": {"boolean": ["36", 0], "on_true": ["17", 0], "on_false": ["34", 0]}},
+  "100": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 33], "image": "None"}},
+  "102": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 33], "b": ["19", 0]}},
+  "103": {"class_type": "easy ifElse", "inputs": {"boolean": ["102", 0], "on_true": ["17", 0], "on_false": ["100", 0]}},
+  "104": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 34], "image": "None"}},
+  "106": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 34], "b": ["19", 0]}},
+  "107": {"class_type": "easy ifElse", "inputs": {"boolean": ["106", 0], "on_true": ["17", 0], "on_false": ["104", 0]}},
+  "108": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 35], "image": "None"}},
+  "110": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 35], "b": ["19", 0]}},
+  "111": {"class_type": "easy ifElse", "inputs": {"boolean": ["110", 0], "on_true": ["17", 0], "on_false": ["108", 0]}},
+  "112": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 36], "image": "None"}},
+  "114": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 36], "b": ["19", 0]}},
+  "115": {"class_type": "easy ifElse", "inputs": {"boolean": ["114", 0], "on_true": ["17", 0], "on_false": ["112", 0]}},
+  "40": {"class_type": "UnetLoaderGGUF", "_meta": {"title": "base_model_gguf"}, "inputs": {"unet_name": "placeholder.gguf"}},
+  "41": {"class_type": "easy int", "inputs": {"value": 1}},
+  "42": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 24], "b": ["41", 0]}},
+  "43": {"class_type": "easy ifElse", "inputs": {"boolean": ["42", 0], "on_true": ["3", 0], "on_false": ["40", 0]}},
+  "44": {
+    "class_type": "BlockSparseAttention",
+    "inputs": {"model": ["43", 0], "selection": "sla", "selection.keep_percent": 10.0, "start_percent": 0.0, "end_percent": 1.0, "min_tokens": 8192, "dense_blocks": "", "extra_tokens": 0, "sink_conditioning": "exact_kv", "verbose": true}
+  },
+  "46": {"class_type": "CLIPLoaderGGUF", "_meta": {"title": "clip_model"}, "inputs": {"clip_name": "placeholder.safetensors", "type": "minimax"}},
+  "47": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 26], "b": ["41", 0]}},
+  "48": {"class_type": "easy ifElse", "inputs": {"boolean": ["47", 0], "on_true": ["4", 0], "on_false": ["46", 0]}},
+  "h3_dense_attention": {"class_type": "ModelAttentionBackend", "inputs": {"model": ["43", 0], "attention": "comfy kitchen attention"}},
+  "h3_attention_switch": {"class_type": "easy ifElse", "inputs": {"boolean": ["1", 23], "on_true": ["44", 0], "on_false": ["h3_dense_attention", 0]}},
+  "59": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}, "inputs": {"model": ["h3_attention_switch", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "60": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_2"}, "inputs": {"model": ["59", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "61": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_3"}, "inputs": {"model": ["60", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "62": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_4"}, "inputs": {"model": ["61", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "63": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_5"}, "inputs": {"model": ["62", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "64": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_6"}, "inputs": {"model": ["63", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "65": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_7"}, "inputs": {"model": ["64", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "66": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_8"}, "inputs": {"model": ["65", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "67": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_9"}, "inputs": {"model": ["66", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "68": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_10"}, "inputs": {"model": ["67", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "simpai_lora_stack_main": {"class_type": "SimpAILoraStack", "_meta": {"title": "lora_stack_main"}, "inputs": {"model": ["68", 0], "clip": ["48", 0], "stack_json": "{\"version\":1,\"items\":[]}", "branch": "main"}},
+  "70": {"class_type": "ComfyMathExpression", "inputs": {"expression": "ceil(a / 32) * 32", "values.a": ["1", 6]}},
+  "71": {"class_type": "ComfyMathExpression", "inputs": {"expression": "ceil(a / 32) * 32", "values.a": ["1", 7]}},
+  "116": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 5], "b": ["19", 0]}},
+  "117": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 5], "image": "None"}},
+  "118": {"class_type": "ImageToMask", "inputs": {"image": ["117", 0], "channel": "red"}},
+  "119": {"class_type": "SolidMask", "inputs": {"value": 0.0, "width": 64, "height": 64}},
+  "120": {"class_type": "easy ifElse", "inputs": {"boolean": ["116", 0], "on_true": ["119", 0], "on_false": ["118", 0]}},
+  "121": {"class_type": "easy isMaskEmpty", "inputs": {"mask": ["120", 0]}},
+  "122": {
+    "class_type": "GrowMaskWithBlur",
+    "inputs": {"expand": 20, "incremental_expandrate": 0, "tapered_corners": true, "flip_input": false, "blur_radius": 10, "lerp_alpha": 1, "decay_factor": 1, "fill_holes": false, "mask": ["120", 0]}
+  },
+  "123": {"class_type": "ImageScale", "inputs": {"image": ["18", 0], "upscale_method": "lanczos", "width": ["70", 1], "height": ["71", 1], "crop": "disabled"}},
+  "124": {"class_type": "VAEEncode", "inputs": {"pixels": ["123", 0], "vae": ["5", 0]}},
+  "125": {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["124", 0], "mask": ["122", 0]}},
+  "129": {"class_type": "easy ifElse", "inputs": {"boolean": ["121", 0], "on_true": ["11", 1], "on_false": ["125", 0]}}
+}

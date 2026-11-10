@@ -386,3 +386,8 @@
 - 云节点及网页登录 feature flags 跟随上游默认值，保留现有 compiler/CUDA graphs 默认关闭和显存卸载策略。
 - Studio checkout 检查：后端 `138 passed`，启动、依赖与更新器 `55 passed, 56 subtests passed`；合计 `193 passed, 56 subtests passed`。
 - 同步前已有的 77 项 Pose、VLM 等开发内容及其 index 保持原样。本次仅同步代码和依赖声明，依赖由用户后续安装；未下载模型、重启服务、生成真实视频或提交。
+
+## 2026-11-11 上游更新
+
+- 合并上游至 `989d93d0d`（ComfyUI `0.45.0`），增加 MiniMax H3 Image 模型和图像 VAE 支持，保留 P-H3 批量参考图、设备侧编码噪声及视频控制功能。
+- 上游未修改启动入口；Comfyd 的 compiler 和显存卸载策略不变。workflow templates 声明更新至 `0.11.105`。

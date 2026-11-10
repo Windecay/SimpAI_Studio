@@ -4352,6 +4352,18 @@ packages = {'base_package': {'id': 1,
      'info_links': ['https://modelscope.cn/models/Comfy-Org/RelayVSR', 'https://huggingface.co/Comfy-Org/RelayVSR', 'https://github.com/kopperx/RelayVSR'],
      'preset_sample': [],
  },
+ 'minimax_h3_image_package': {
+     'id': 54,
+     'name': '[54]MiniMax H3 Image',
+     'note': 'MiniMax H3 Image 文生图与多图编辑，包含 INT8 剪枝模型和图像 VAE。',
+     'files': [
+         'diffusion_models,minimax_h3_image_pruned_int8_convrot.safetensors,20979314802,83eb140f1ff95c068f8a6886e6d3f3d0d4ab2e07bb2fe6d2ef992a51146ee622,https://modelscope.cn/models/Comfy-Org/MiniMax-H3-Image/resolve/b8ebf14be96f02e5c58960620a101de71b0bd9f3/diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3-Image/resolve/main/diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors',
+         'text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+         'vae,minimax_h3_image_vae_fp16.safetensors,1168505312,d80e9c2e5cfc9844869961ff5a58c9a9e52182df6bfb30b26018dd7f348721af,https://modelscope.cn/models/Comfy-Org/MiniMax-H3-Image/resolve/b8ebf14be96f02e5c58960620a101de71b0bd9f3/vae/minimax_h3_image_vae_fp16.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3-Image/resolve/main/vae/minimax_h3_image_vae_fp16.safetensors',
+     ],
+     'info_links': ['https://modelscope.cn/models/Comfy-Org/MiniMax-H3-Image', 'https://huggingface.co/Comfy-Org/MiniMax-H3-Image'],
+     'preset_sample': [],
+ },
 }
 MANUAL_DOWNLOAD_MAP = {
 }

@@ -8,7 +8,9 @@
     "disvisible": [
       "input_image_checkbox",
       "prompt_panel_checkbox",
-      "performance_selection"
+      "performance_selection",
+      "negative_prompt",
+      "guidance_scale"
     ],
     "disinteractive": [
       "input_image_checkbox",
@@ -18,12 +20,11 @@
     "available_aspect_ratios_selection": "Custom",
     "scene_frontend": {
       "switch_option4_title": "Sparse Attention Acceleration",
-      "switch_option4": true,
+      "switch_option4": false,
       "version": "m1.1",
-      "theme": ["Basic", "2 pass"],
+      "theme": ["Basic"],
       "theme_labels": {
-        "Basic": {"en": "Basic", "zh": "\u57fa\u7840"},
-        "2 pass": {"en": "2 pass", "zh": "\u53cc\u91c7\u6837"}
+        "Basic": {"en": "Basic", "zh": "\u57fa\u7840"}
       },
       "theme_title": "MiniMax H3 Text/Reference-to-Image [Optional mask, up to 9 images]",
       "director_capability": {
@@ -44,7 +45,10 @@
         "scene_additional_prompt_2",
         "scene_var_number",
         "scene_var_number2",
+        "scene_var_number3",
         "scene_var_number4",
+        "scene_var_number5",
+        "scene_var_number6",
         "scene_var_number7",
         "scene_var_number8",
         "scene_var_number9",
@@ -61,48 +65,38 @@
         "sam3_mask_video",
         "scene_batch"
       ],
-      "prompt": {"Basic": "", "2 pass": ""},
-      "task_method": {"Basic": "minimax_h3_r2i_cn", "2 pass": "minimax_h3_r2i_2_pass_cn"},
-      "prompt_compiler": {"Basic": "minimax_h3_r2i", "2 pass": "minimax_h3_r2i"},
-      "overwrite_step": {"Basic": 10, "2 pass": 15},
+      "prompt": {"Basic": ""},
+      "task_method": {"Basic": "minimax_h3_r2i_image_cn"},
+      "prompt_compiler": {"Basic": "minimax_h3_r2i"},
+      "overwrite_step": {"Basic": 6},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "The canvas mask is optional and selects the route automatically without changing picture order or numbering. The canvas is always <Picture 1> when present, followed by additional images as <Picture 2>, <Picture 3>, and so on in upload order. With a non-empty painted mask, <Picture 1> is also the source image being edited. Treat the mask as execution data, never as a picture. Describe only the requested change inside the mask and explicitly preserve all content outside it. Use only runtime labels that exist. When no canvas or reference image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media.",
-        "2 pass": "The canvas mask is optional and selects the route automatically without changing picture order or numbering. The canvas is always <Picture 1> when present, followed by additional images as <Picture 2>, <Picture 3>, and so on in upload order. With a non-empty painted mask, <Picture 1> is also the source image being edited. Treat the mask as execution data, never as a picture. Describe only the requested change inside the mask and explicitly preserve all content outside it. Use only runtime labels that exist. When no canvas or reference image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media."
+        "Basic": "The canvas mask is optional and selects the route automatically without changing picture order or numbering. The canvas is always <Picture 1> when present, followed by additional images as <Picture 2>, <Picture 3>, and so on in upload order. With a non-empty painted mask, <Picture 1> is also the source image being edited. Treat the mask as execution data, never as a picture. Describe only the requested change inside the mask and explicitly preserve all content outside it. Use only runtime labels that exist. When no canvas or reference image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,
       "video_duration_max": 30,
-      "video_duration": {"Basic": 5, "2 pass": 5},
+      "video_duration": {"Basic": 5},
       "var_number3_title": "Video Shift",
       "var_number3_min": 0.01,
       "var_number3_step": 0.01,
       "var_number3_max": 100.0,
-      "var_number3": {"Basic": 12.0, "2 pass": 12.0},
+      "var_number3": {"Basic": 12.0},
       "var_number4_title": "Audio Shift",
       "var_number4_min": 0.01,
       "var_number4_step": 0.01,
       "var_number4_max": 100.0,
-      "var_number4": {"Basic": 3.0, "2 pass": 3.0},
-      "var_number5_title": "Downsample factor",
-      "var_number5_min": 1.0,
-      "var_number5_max": 4.0,
-      "var_number5": {"Basic": 1.5, "2 pass": 1.5},
-      "var_number6_title": "2-pass denoise",
-      "var_number6_min": 0.0,
-      "var_number6_max": 1.0,
-      "var_number6_step": 0.01,
-      "var_number6": {"Basic": 0.35, "2 pass": 0.35},
+      "var_number4": {"Basic": 3.0},
       "aspect_ratio": ["1024|1:1", "1536|1:1", "2048|1:1", "origin|Original"],
       "resolution_control": {
-      "mode": "image_keep_input_area",
-      "source": "scene_canvas",
-      "base_width": 1024,
-      "base_height": 1024,
-      "quantize": 32,
-      "interactive": true,
-      "frontend_preprocess": false,
-      "preprocess_target": "image",
+        "mode": "image_keep_input_area",
+        "source": "scene_canvas",
+        "base_width": 2048,
+        "base_height": 2048,
+        "quantize": 32,
+        "interactive": true,
+        "frontend_preprocess": false,
+        "preprocess_target": "image",
         "preprocess_fit": "pad"
       },
       "image_preprocessor_method": [["-normalization"]],
@@ -110,42 +104,37 @@
       "overwrite_step_max": 50
     }
   },
-  "default_model": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
-  "previous_default_models": [
-    "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
-  ],
+  "default_model": "minimax_h3_image_pruned_int8_convrot.safetensors",
+  "previous_default_models": [],
   "default_refiner": "None",
   "default_refiner_switch": 0.5,
   "default_upscale_model": "default",
   "default_clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
   "default_loras": [
-    ["minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", 1.0],
+    ["None", 1],
     ["None", 1],
     ["None", 1],
     ["None", 1],
     ["None", 1]
   ],
   "default_cfg_scale": 1,
-  "default_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
+  "default_vae": "minimax_h3_image_vae_fp16.safetensors",
   "default_sample_sharpness": 2,
-  "default_sampler": "er_sde",
-  "default_scheduler": "beta57",
+  "default_sampler": "euler",
+  "default_scheduler": "simple",
   "default_performance": "Speed",
   "default_styles": [],
-  "default_aspect_ratio": "1024*1024",
+  "default_aspect_ratio": "2048*2048",
   "default_image_number": 1,
-  "default_overwrite_step": 10,
+  "default_overwrite_step": 6,
   "default_prompt_negative": "",
   "checkpoint_downloads": {},
   "embeddings_downloads": {},
   "lora_downloads": {},
   "vae_downloads": {},
   "model_list": [
-    "diffusion_models,minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,20970379632,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,https://huggingface.co/smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models/resolve/main/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
-    "loras,minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "diffusion_models,minimax_h3_image_pruned_int8_convrot.safetensors,20979314802,83eb140f1ff95c068f8a6886e6d3f3d0d4ab2e07bb2fe6d2ef992a51146ee622,https://modelscope.cn/models/Comfy-Org/MiniMax-H3-Image/resolve/b8ebf14be96f02e5c58960620a101de71b0bd9f3/diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3-Image/resolve/main/diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors",
     "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-    "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors",
-    "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors",
-    "latent_upscale_models,minimax_h3_latent_upscaler_3d_bf16.safetensors,690592992,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/latent_upscale_models/minimax_h3_latent_upscaler_3d_bf16.safetensors,https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors"
+    "vae,minimax_h3_image_vae_fp16.safetensors,1168505312,d80e9c2e5cfc9844869961ff5a58c9a9e52182df6bfb30b26018dd7f348721af,https://modelscope.cn/models/Comfy-Org/MiniMax-H3-Image/resolve/b8ebf14be96f02e5c58960620a101de71b0bd9f3/vae/minimax_h3_image_vae_fp16.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3-Image/resolve/main/vae/minimax_h3_image_vae_fp16.safetensors"
   ]
 }

@@ -6,20 +6,21 @@ from torch import nn
 
 from comfy.ldm.minimax.vae import (
     MiniMaxH3VideoVAE,
-    PH3_IMAGE_ENCODE_SEED,
+    IMAGE_ENCODE_SEED,
     PH3_IMAGE_FRAME_POSITION,
     PH3ImageDecoder,
     PH3ImageVAE,
     create_token_ids,
 )
 from comfy.text_encoders.minimax import MiniMaxH3Tokenizer, PH3ImageTokenizer, TextConnector
-from comfy_extras.nodes_minimax_h3 import MiniMaxH3Extension, PH3ImageConditioning
+from comfy_extras.nodes_minimax_h3 import MiniMaxH3Extension, MiniMaxH3ImageConditioning, PH3ImageConditioning
 
 
 class FakeClip:
-    def tokenize(self, prompt, images):
+    def tokenize(self, prompt, images, picture_label=None):
         self.prompt = prompt
         self.images = images
+        self.picture_label = picture_label
         return "tokens"
 
     def encode_from_tokens_scheduled(self, tokens):
@@ -110,11 +111,37 @@ def test_edit_keeps_preformatted_prompts(prompt):
     assert clip.prompt == prompt
 
 
-def test_reference_requires_vae():
-    with pytest.raises(ValueError, match="vae"):
-        PH3ImageConditioning.execute(
-            FakeClip(), "edit", 64, 64, images={"image_1": torch.ones(1, 64, 64, 3)},
-        )
+def test_reference_without_vae_still_conditions_the_text_encoder():
+    clip = FakeClip()
+    conditioning, _ = PH3ImageConditioning.execute(
+        clip, "edit", 64, 64, images={"image_1": torch.ones(1, 64, 64, 3)},
+    ).result
+    assert len(clip.images) == 1
+    assert "minimax_refs" not in conditioning[0][1]
+
+
+def test_h3_image_conditioning_keeps_batched_references_and_image_latent(monkeypatch):
+    monkeypatch.setattr("comfy_extras.nodes_minimax_h3._resize_to", lambda image, size: image)
+    clip = FakeClip()
+    vae = FakeVAE()
+    batch = torch.stack([torch.full((32, 32, 3), 0.1), torch.full((32, 32, 3), 0.2)])
+    conditioning, latent = MiniMaxH3ImageConditioning.execute(
+        clip, "edit", 96, 64, vae=vae,
+        images={"image_3": torch.full((1, 32, 32, 3), 0.4),
+                "image_2": torch.full((1, 32, 32, 3), 0.3), "image_1": batch},
+    ).result
+    assert clip.picture_label == "Picture %d: "
+    assert [image[0, 0, 0, 0].item() for image in clip.images] == pytest.approx([0.1, 0.2, 0.3, 0.4])
+    assert len(conditioning[0][1]["minimax_refs"]) == 4
+    assert latent["samples"].shape == (1, 24, 1, 4, 6)
+
+
+def test_h3_image_without_references_or_vae():
+    clip = FakeClip()
+    conditioning, latent = MiniMaxH3ImageConditioning.execute(clip, "a garden", 64, 32).result
+    assert clip.images == []
+    assert "minimax_refs" not in conditioning[0][1]
+    assert latent["samples"].shape == (1, 24, 1, 2, 4)
 
 
 @pytest.mark.parametrize(
@@ -188,9 +215,9 @@ def test_image_vae_encodes_with_seeded_noise_on_input_device(monkeypatch):
 
     assert calls[0]["device"] == image.device
     assert calls[0]["dtype"] == torch.float32
-    assert calls[0]["generator"].initial_seed() == PH3_IMAGE_ENCODE_SEED
+    assert calls[0]["generator"].initial_seed() == IMAGE_ENCODE_SEED
     torch.testing.assert_close(first, second)
-    expected = original_randn(first.shape, generator=torch.Generator().manual_seed(PH3_IMAGE_ENCODE_SEED))
+    expected = original_randn(first.shape, generator=torch.Generator().manual_seed(IMAGE_ENCODE_SEED))
     torch.testing.assert_close(first, expected)
 
 

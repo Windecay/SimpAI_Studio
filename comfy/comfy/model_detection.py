@@ -398,9 +398,21 @@ def detect_unet_config(state_dict, key_prefix, metadata=None):
         # PixArt diffusers
         return None
 
-    if '{}video_patch_proj.weight'.format(key_prefix) in state_dict_keys and '{}audio_patch_proj.weight'.format(key_prefix) in state_dict_keys: # MiniMax H3
+    h3_required = (
+        "video_patch_proj.weight", "condition_proj.weight", "final_layer.video_out.weight",
+        "blocks.0.attn.q_norm.weight", "blocks.0.attn.qkv_proj.weight",
+        "blocks.0.mlp.fc1.weight", "rope.inv_freq",
+    )
+    h3_audio = '{}audio_patch_proj.weight'.format(key_prefix) in state_dict_keys
+    h3_time = '{}adaln_t_table'.format(key_prefix) in state_dict_keys or all(
+        '{}{}'.format(key_prefix, key) in state_dict_keys
+        for key in ("time_embedder.proj_in.weight", "time_embedder.proj_out.weight")
+    )
+    if (all('{}{}'.format(key_prefix, key) in state_dict_keys for key in h3_required)
+            and h3_time and (not h3_audio or '{}final_layer.audio_out.weight'.format(key_prefix) in state_dict_keys)): # MiniMax H3
         dit_config = {}
-        dit_config["image_model"] = "minimax_h3"
+        audio = h3_audio  # the image checkpoints have no audio stream
+        dit_config["image_model"] = "minimax_h3" if audio else "minimax_h3_image"
         dit_config["num_layers"] = count_blocks(state_dict_keys, '{}blocks.'.format(key_prefix) + '{}.')
         dit_config["token_refiner_num_layers"] = count_blocks(state_dict_keys, '{}token_refiner.blocks.'.format(key_prefix) + '{}.')
         dit_config["hidden_size"] = state_dict['{}video_patch_proj.weight'.format(key_prefix)].shape[0]
@@ -409,7 +421,8 @@ def detect_unet_config(state_dict, key_prefix, metadata=None):
         if metadata is not None and "config" in metadata:
             pdd_steps = json.loads(metadata["config"]).get("transformer", {}).get("pdd_steps", 1)
         dit_config["latents_dim"] = state_dict['{}final_layer.video_out.weight'.format(key_prefix)].shape[0] // (4 * pdd_steps)  # patch 1x2x2
-        dit_config["audio_latents_dim"] = state_dict['{}final_layer.audio_out.weight'.format(key_prefix)].shape[0] // pdd_steps
+        if audio:
+            dit_config["audio_latents_dim"] = state_dict['{}final_layer.audio_out.weight'.format(key_prefix)].shape[0] // pdd_steps
         dit_config["attention_head_dim"] = state_dict['{}blocks.0.attn.q_norm.weight'.format(key_prefix)].shape[0]
         qkv = state_dict['{}blocks.0.attn.qkv_proj.weight'.format(key_prefix)]
         dit_config["num_attention_heads"] = qkv.shape[0] // (3 * dit_config["attention_head_dim"])

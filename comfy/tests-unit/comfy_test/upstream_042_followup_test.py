@@ -20,7 +20,7 @@ from comfy_api_nodes import nodes_bfl, nodes_bria
 def test_top_p_retains_the_token_that_crosses_the_threshold(top_p, retained):
     probabilities = torch.tensor([[0.5, 0.25, 0.15, 0.1]])
     actual, indices = BaseGenerate.processed_probs(
-        None, probabilities.log(), 1.0, 0, top_p, 0.0, 1.0, [],
+        None, probabilities.log(), 1.0, 0, top_p, 0.0,
     )
     expected = probabilities.clone()
     expected[:, retained:] = 0

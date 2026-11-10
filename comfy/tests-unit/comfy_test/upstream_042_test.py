@@ -10,7 +10,7 @@ import comfy.model_management
 import comfy.sd1_clip
 import comfy.text_encoders.qwen35
 from comfy.ldm.flux.layers import EmbedND
-from comfy.ldm.minimax.model import FinalLayer
+from comfy.ldm.minimax.model import FinalLayer, pdd_grid
 from comfy.ldm.moss_image.model import MOSSImage
 from comfy.model_detection import detect_unet_config
 from comfy.ops import manual_cast
@@ -86,15 +86,40 @@ def test_h3_baked_pdd_detection_keeps_native_channel_counts(pdd_steps):
     assert config["pdd_steps"] == pdd_steps
 
 
+def test_h3_image_detection_requires_a_complete_signature():
+    state = {
+        "video_patch_proj.weight": torch.empty(8, 8, device="meta"),
+        "final_layer.video_out.weight": torch.empty(48, 8, device="meta"),
+        "blocks.0.attn.q_norm.weight": torch.empty(4, device="meta"),
+        "blocks.0.attn.qkv_proj.weight": torch.empty(24, 8, device="meta"),
+        "blocks.0.mlp.fc1.weight": torch.empty(32, 8, device="meta"),
+        "condition_proj.weight": torch.empty(8, 6, device="meta"),
+        "time_embedder.proj_in.weight": torch.empty(8, 4, device="meta"),
+        "time_embedder.proj_out.weight": torch.empty(8, 8, device="meta"),
+        "rope.inv_freq": torch.empty(2, device="meta"),
+    }
+    metadata = {"config": json.dumps({"transformer": {"pdd_steps": 6, "pdd_sigmas": [1, 0]}})}
+    config = detect_unet_config(state, "", metadata)
+    assert config["image_model"] == "minimax_h3_image"
+    assert config["latents_dim"] == 2
+    assert "audio_latents_dim" not in config
+    for key in state:
+        partial = state.copy()
+        del partial[key]
+        result = detect_unet_config(partial, "", metadata)
+        assert result is None or result.get("image_model") != "minimax_h3_image"
+
+
 def test_h3_baked_pdd_heads_require_schedule_and_return_native_width():
     layer = FinalLayer(8, 4, 2, 3, 1e-5, pdd_steps=3, dtype=torch.float32, device="cpu", operations=manual_cast)
     layer.load_state_dict({name: torch.randn_like(value) * 0.02 for name, value in layer.state_dict().items()})
     assert layer.video_out.weight.shape == (6, 8)
     assert layer.audio_out.weight.shape == (9, 8)
     arguments = (torch.randn(4, 8), torch.randn(1, 4), (0, 2, 0), (2, 4, 0), torch.tensor(0.5))
+    grids = (pdd_grid(3, 12.0), pdd_grid(3, 3.0))
     with pytest.raises(ValueError, match="sigma schedule"):
-        layer(*arguments, None, (12.0, 3.0))
-    video, audio = layer(*arguments, torch.tensor([1.0, 0.5, 0.0]), (12.0, 3.0))
+        layer(*arguments, None, grids)
+    video, audio = layer(*arguments, torch.tensor([1.0, 0.5, 0.0]), grids)
     assert video.shape == (2, 2)
     assert audio.shape == (2, 3)
     assert torch.isfinite(video).all() and torch.isfinite(audio).all()
