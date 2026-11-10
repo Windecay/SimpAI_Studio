@@ -127,9 +127,10 @@
     },
     {
       "path": "model_patch.py",
-      "upstream_sha256": "255de08565da883ac257fe4c8e4b13d1280a4decc2b40e2cbc2c875f61dd908d",
-      "upstream_text_sha256": "255de08565da883ac257fe4c8e4b13d1280a4decc2b40e2cbc2c875f61dd908d",
-      "shipped_text_sha256": "255de08565da883ac257fe4c8e4b13d1280a4decc2b40e2cbc2c875f61dd908d"
+      "upstream_commit": "7b3774e11123bc1403d3fa26aeb8155e2400ca2a",
+      "upstream_sha256": "d3e9075416059c45caa03b094f54d1c560ed2e29cebeb9410240c039bf13da4a",
+      "upstream_text_sha256": "d3e9075416059c45caa03b094f54d1c560ed2e29cebeb9410240c039bf13da4a",
+      "shipped_text_sha256": "d3e9075416059c45caa03b094f54d1c560ed2e29cebeb9410240c039bf13da4a"
     },
     {
       "path": "model_patch_moss.py",

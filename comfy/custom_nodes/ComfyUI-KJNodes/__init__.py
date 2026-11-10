@@ -69,7 +69,7 @@ from .nodes.model_optimization_nodes import (
     DiffusionModelLoaderKJ, ModelPatchTorchSettings, PatchModelPatcherOrder,
     TorchCompileModelFluxAdvancedV2, TorchCompileModelWanVideoV2,
     TorchCompileModelAdvanced, TorchCompileVAE, TorchCompileControlNet,
-    WanVideoTeaCacheKJ, WanVideoEnhanceAVideoKJ, LTXVEnhanceAVideoKJ, WanVideoNAG, Krea2PromptWeight,
+    WanVideoTeaCacheKJ, WanVideoEnhanceAVideoKJ, LTXVEnhanceAVideoKJ, WanVideoNAG, Krea2PromptWeight, MossImagePromptWeight,
     SkipLayerGuidanceWanVideo, CFGZeroStarAndInit, GGUFLoaderKJ, NABLA_AttentionKJ,
     StartRecordCUDAMemoryHistory, EndRecordCUDAMemoryHistory, VisualizeCUDAMemoryHistory,
     ModelMemoryUseReportPatch, ModelMemoryUsageFactorOverride, WanChunkFeedForward,
@@ -77,12 +77,15 @@ from .nodes.model_optimization_nodes import (
 )
 from .nodes.lora_nodes import LoraExtractKJ, LoraReduceRank
 from .nodes.image_transform_node import ImageTransformKJ, BBOXToBoundingBoxKJ
+from .nodes.image_compare_node import ImageCompareKJ
 from .nodes.sharpen_nodes import ImageSharpenKJ
 from .nodes.nodes_looping import LOOP_NODES
 from .nodes.hdr_preview_node import HDRPreviewKJ
 from .nodes.preview_override_node import ModelPreviewOverrideKJ, GetPreviewOverrideFramesKJ
 from .nodes.context_windows_visualizer import ContextWindowsVisualizerKJ
 from .nodes.ideogram4_nodes import Ideogram4PromptBuilderKJ
+from .nodes.flux3_nodes import Flux3PromptBuilderKJ, Flux3BoxReconcileKJ
+from .nodes.moss_image_nodes import MossImagePromptBuilderKJ
 
 import logging
 
@@ -189,8 +192,12 @@ NODE_CONFIG = {
     "EncodeVideoComponents": {"class": EncodeVideoComponents, "name": "Encode Video Components"},
     "DecodeAndSaveVideo": {"class": DecodeAndSaveVideo, "name": "Decode And Save Video"},
     "ImageTransformKJ": {"class": ImageTransformKJ, "name": "Image Transform KJ"},
+    "ImageCompareKJ": {"class": ImageCompareKJ, "name": "Image Compare KJ"},
     "BBOXToBoundingBoxKJ": {"class": BBOXToBoundingBoxKJ, "name": "BBOX to Bounding Box KJ"},
     "Ideogram4PromptBuilderKJ": {"class": Ideogram4PromptBuilderKJ, "name": "Ideogram 4 Prompt Builder KJ"},
+    "Flux3PromptBuilderKJ": {"class": Flux3PromptBuilderKJ, "name": "FLUX.3 Prompt Builder KJ"},
+    "Flux3BoxReconcileKJ": {"class": Flux3BoxReconcileKJ, "name": "FLUX.3 Box Reconcile KJ"},
+    "MossImagePromptBuilderKJ": {"class": MossImagePromptBuilderKJ, "name": "MOSS-Image Prompt Builder KJ"},
     "HDRPreviewKJ": {"class": HDRPreviewKJ, "name": "HDR Preview KJ"},
     "ModelPreviewOverrideKJ": {"class": ModelPreviewOverrideKJ, "name": "Model Preview Override KJ"},
     "GetPreviewOverrideFramesKJ": {"class": GetPreviewOverrideFramesKJ, "name": "Get Preview Override Frames KJ"},
@@ -300,6 +307,7 @@ NODE_CONFIG = {
     "ModelPatchTorchSettings": {"class": ModelPatchTorchSettings, "name": "Model Patch Torch Settings"},
     "WanVideoNAG": {"class": WanVideoNAG, "name": "WanVideoNAG"},
     "Krea2PromptWeight": {"class": Krea2PromptWeight, "name": "Krea2 Prompt Weight"},
+    "MossImagePromptWeight": {"class": MossImagePromptWeight, "name": "MOSS-Image Prompt Weight"},
     "GGUFLoaderKJ": {"class": GGUFLoaderKJ, "name": "GGUF Loader KJ"},
     "LatentInpaintTTM": {"class": LatentInpaintTTM, "name": "Latent Inpaint TTM"},
     "NABLA_AttentionKJ": {"class": NABLA_AttentionKJ, "name": "NABLA Attention KJ"},
@@ -419,3 +427,32 @@ if hasattr(PromptServer, "instance"):
             )
         except Exception:
             logging.exception("KJNodes: failed to register /kjweb_async static route")
+
+    import asyncio
+    import os
+    import folder_paths
+
+    @PromptServer.instance.routes.post("/kjnodes/model_mtimes")
+    async def kjnodes_model_mtimes(request):
+        # modified times for a combo's model files (Nodes 2.0 folder view date sort); only names already in a model folder listing
+        try:
+            values = (await request.json()).get("values")
+        except Exception:
+            values = None
+        if not isinstance(values, list):
+            return web.json_response({"error": "values must be a list"}, status=400)
+        wanted = {v for v in values[:50000] if isinstance(v, str)}
+
+        def stat():
+            # the combo list came from object_info, so its folder is already in the filename cache; pick the best match
+            folder, names = max(((name, wanted.intersection(entry[0])) for name, entry in list(folder_paths.filename_list_cache.items())),
+                                key=lambda x: len(x[1]), default=(None, set()))
+            out = {}
+            for name in names:
+                try:
+                    out[name] = os.path.getmtime(folder_paths.get_full_path(folder, name))
+                except (OSError, TypeError):
+                    pass
+            return out
+
+        return web.json_response(await asyncio.to_thread(stat))

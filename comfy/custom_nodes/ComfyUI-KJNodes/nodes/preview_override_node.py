@@ -724,9 +724,15 @@ class _PreviewOverrideWrapper:
         audio_vae = self.audio_vae if (has_audio_latent and animate_video) else None
         audio_rate = 0
         frame_pattern = _frames_per_token(model_patcher.model.latent_format)
-        # the sampler carries the audio stream scaled by audio_scale and only process_latent_out undoes it
-        audio_scale = getattr(model_patcher.model, "audio_scale", None)
-        audio_scale = float(audio_scale()) if callable(audio_scale) else 1.0
+        # the sampler carries audio scaled by audio_scale; object patches aren't applied yet, so read through get_model_object
+        audio_scale = 1.0
+        if has_audio_latent:
+            sampling_audio_scale = getattr(model_patcher.get_model_object("model_sampling"), "audio_scale", None)
+            if sampling_audio_scale is None:
+                logging.warning("[KJ PreviewOverride] model_sampling has no audio_scale; audio preview disabled")
+                audio_vae = None
+            else:
+                audio_scale = float(sampling_audio_scale)
         if audio_vae is not None:
             # core's vae_decode_audio prefers the output rate; the LTX audio VAE only sets that one
             audio_rate = int(getattr(audio_vae, "audio_sample_rate_output", None) or getattr(audio_vae, "audio_sample_rate", 0) or 0)
@@ -1049,18 +1055,21 @@ class ModelPreviewOverrideKJ(io.ComfyNode):
                 ),
             ],
             outputs=[io.Model.Output(tooltip="Model with preview override attached.")],
-            hidden=[io.Hidden.unique_id],
+            hidden=[io.Hidden.unique_id, io.Hidden.dynprompt],
             is_experimental=True,
         )
 
     @classmethod
     def execute(cls, model, max_resolution, jpeg_quality, suppress_default_preview, preview_frames, preview_fps, vae=None, tiny_vae="none", audio_vae=None) -> io.NodeOutput:
+        # loop/expansion copies run under generated ids; the widget listens on the display id
+        dynprompt = cls.hidden.dynprompt
+        node_id = dynprompt.get_display_node_id(cls.hidden.unique_id) if dynprompt is not None else cls.hidden.unique_id
         m = model.clone()
         m.add_wrapper_with_key(
             comfy.patcher_extension.WrappersMP.OUTER_SAMPLE,
             "kj_preview_override",
             _PreviewOverrideWrapper(
-                max_resolution, cls.hidden.unique_id, jpeg_quality, suppress_default_preview,
+                max_resolution, node_id, jpeg_quality, suppress_default_preview,
                 preview_frames, preview_fps, vae, tiny_vae, audio_vae,
             ),
         )

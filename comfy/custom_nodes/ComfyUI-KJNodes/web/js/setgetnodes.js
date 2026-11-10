@@ -1,4 +1,5 @@
 const { app } = window.comfyAPI.app;
+import { connectById } from "./utility.js";
 
 // originally based on diffus3's SetGet: https://github.com/diffus3/ComfyUI-extensions
 
@@ -32,6 +33,12 @@ function setColorAndBgColor(node, type) {
 		node.bgcolor = colors.bgcolor;
 	}
 }
+// LGraphEventMode values
+const MODE_ALWAYS = 0;
+const MODE_BYPASS = 4;
+// graphToPrompt calls in progress; GetNode ignores bypass while > 0
+let _resolvingPrompt = 0;
+
 function getDisablePrefix() {
 	return app.ui.settings.getSettingValue("KJNodes.disablePrefix") ?? false;
 }
@@ -530,8 +537,9 @@ function convertSetGetToLinks(graph, setNode) {
 	if (setInput.link == null) return;
 	const sourceLink = getLink(graph, setInput.link);
 	if (!sourceLink) return;
-	const sourceNode = graph.getNodeById(sourceLink.origin_id);
-	if (!sourceNode) return;
+	const sourceId = sourceLink.origin_id;
+	// Source may be the subgraph input boundary, which isn't in graph._nodes
+	if (!graph.getNodeById(sourceId) && sourceId !== graph.inputNode?.id) return;
 	const sourceSlot = sourceLink.origin_slot;
 
 	// Collect all consumer connections from Get nodes and SetNode's own output passthrough
@@ -550,10 +558,7 @@ function convertSetGetToLinks(graph, setNode) {
 
 	// Create direct links from source to each consumer
 	for (const conn of connections) {
-		const targetNode = graph.getNodeById(conn.targetId);
-		if (targetNode) {
-			sourceNode.connect(sourceSlot, targetNode, conn.targetSlot);
-		}
+		connectById(graph, sourceId, sourceSlot, conn.targetId, conn.targetSlot);
 	}
 
 	app.canvas?.setDirty(true, true);
@@ -1003,6 +1008,16 @@ app.registerExtension({
 				this.addOutput("*", '*');
 			}
 
+			// A bypassed node passes its input through, but GetNode has no inputs, so a bypassed
+			// group would drop the value. While building the prompt, report BYPASS as ALWAYS.
+			get mode() {
+				const mode = super.mode;
+				return _resolvingPrompt > 0 && mode === MODE_BYPASS ? MODE_ALWAYS : mode;
+			}
+			set mode(value) {
+				super.mode = value;
+			}
+
 			onConnectionsChange() {
 				if (app.configuringGraph) return;
 				this.validateLinks();
@@ -1148,10 +1163,30 @@ app.registerExtension({
 				const link = getLink(setterGraph, slotInfo.link);
 				if (!link) return undefined;
 
-				const sourceNode = setterGraph.getNodeById(link.origin_id);
+				let sourceGraph = setterGraph;
+				let sourceLink = link;
+				const visitedGraphs = new Set();
+				// Follow connected inputs through parent subgraphs.
+				while (sourceLink.origin_id === sourceGraph.inputNode?.id) {
+					if (visitedGraphs.has(sourceGraph)) return undefined;
+					visitedGraphs.add(sourceGraph);
+					const parentGraph = getGraphAncestors(sourceGraph)[1];
+					const parents = parentGraph?._nodes?.filter(n => n.subgraph === sourceGraph) ?? [];
+					if (parents.length !== 1) return undefined;
+					const parentLinkId = parents[0].inputs[sourceLink.origin_slot]?.link;
+					sourceLink = getLink(parentGraph, parentLinkId);
+					if (!sourceLink) return undefined;
+					sourceGraph = parentGraph;
+				}
+				const sourceGraphs = getGraphAncestors(sourceGraph);
+				for (let i = 0; i + 1 < sourceGraphs.length; i++) {
+					const parents = sourceGraphs[i + 1]?._nodes?.filter(n => n.subgraph === sourceGraphs[i]) ?? [];
+					if (parents.length !== 1) return undefined;
+				}
+				const sourceNode = sourceGraph.getNodeById(sourceLink.origin_id);
 				if (!sourceNode) return undefined;
 
-				return { node: sourceNode, slot: link.origin_slot };
+				return { node: sourceNode, slot: sourceLink.origin_slot };
 			}
 			getExtraMenuOptions(_, options) {
 				this.currentSetter = this.findSetter(this.graph)
@@ -1319,19 +1354,19 @@ app.registerExtension({
 							callback: () => {
 								const selected = Object.values(app.canvas.selected_nodes || {});
 								if (selected.length === 0) return;
-								for (const n of selected) convertOutputsToSetGet(app.graph, n);
+								for (const n of selected) convertOutputsToSetGet(n.graph, n);
 							},
 						},
 						{
 							content: "Convert selected Set/Get to links",
 							callback: () => {
-								const graph = app.graph;
 								const selected = Object.values(app.canvas.selected_nodes || {});
 								const setNodes = selected.filter(n => n.type === 'SetNode');
 								const getNodes = selected.filter(n => n.type === 'GetNode');
-								for (const n of setNodes) convertSetGetToLinks(graph, n);
-								const setters = new Set(getNodes.map(n => n.findSetter?.(graph)).filter(Boolean));
-								for (const s of setters) convertSetGetToLinks(graph, s);
+								for (const n of setNodes) convertSetGetToLinks(n.graph, n);
+								// Setter may live in an ancestor graph
+								const setters = new Set(getNodes.map(n => n.findSetter?.(n.graph)).filter(Boolean));
+								for (const s of setters) convertSetGetToLinks(s.graph, s);
 							},
 						},
 					],
@@ -1563,8 +1598,8 @@ app.registerExtension({
 	}
 });
 
-// Temporary backwards-compat patch: makes cross-subgraph Set/Get work on frontends
-// that don't natively support resolveVirtualOutput. Remove when no longer needed.
+// Counts graphToPrompt calls for bypassed GetNodes (see GetNode.mode), plus a temporary cross-subgraph Set/Get patch for
+// frontends without resolveVirtualOutput; remove only the patch part when no longer needed.
 app.registerExtension({
 	name: "KJNodes.CrossGraphSetGet",
 	setup() {
@@ -1601,6 +1636,26 @@ app.registerExtension({
 									return origResolveOutput.call(this, slot, type, visited);
 								};
 							}
+							// Shared subgraphs need the setter from the current execution path.
+							const resolveOutput = proto.resolveOutput;
+							proto.resolveOutput = function(slot, type, visited) {
+								const result = resolveOutput.call(this, slot, type, visited);
+								if (result !== undefined || this.mode !== MODE_ALWAYS || this.node?.type !== 'GetNode'
+										|| !Array.isArray(this.subgraphNodePath)) return result;
+								const setter = this.node.findSetter?.(this.graph);
+								if (!setter || setter.graph === this.graph) return result;
+								const sameName = collectNodesOfType(getGraphAncestors(this.graph), 'SetNode')
+									.filter(entry => entry.node.widgets[0].value === this.node.widgets[0].value);
+								if (sameName.length !== 1) return result;
+								for (let depth = this.subgraphNodePath.length; depth >= 0; depth--) {
+									const id = [...this.subgraphNodePath.slice(0, depth), setter.id].join(':');
+									const setterDto = this.nodesByExecutionId?.get?.(id);
+									if (setterDto?.node === setter && typeof setterDto.resolveInput === 'function') {
+										return setterDto.resolveInput(slot, visited, type);
+									}
+								}
+								return result;
+							};
 							patched = true;
 						}
 					}
@@ -1608,7 +1663,12 @@ app.registerExtension({
 					console.warn('[KJNodes] Failed to probe ExecutableNodeDTO for cross-graph patch:', e);
 				}
 			}
-			return originalGraphToPrompt(...args);
+			_resolvingPrompt++;
+			try {
+				return await originalGraphToPrompt(...args);
+			} finally {
+				_resolvingPrompt--;
+			}
 		};
 	}
 });
@@ -1620,15 +1680,16 @@ app.registerExtension({
 	name: "KJNodes.LinkToSetGet",
 	setup() {
 		const originalShowLinkMenu = LGraphCanvas.prototype.showLinkMenu;
-		LGraphCanvas.prototype.showLinkMenu = function(segment, e) {
+		LGraphCanvas.prototype.showLinkMenu = function(segment, e, presentationLink) {
 			const menusBefore = document.querySelectorAll(".litecontextmenu").length;
-			const result = originalShowLinkMenu.call(this, segment, e);
+			const result = originalShowLinkMenu.apply(this, arguments);
 
 			const graph = this.graph;
 			if (!graph) return result;
 
-			// Get the full link object to access target info
-			const link = getLink(graph, segment.id);
+			// Get the full link object to access target info; a Reroute segment's id is a reroute id, not a link id
+			const linkId = presentationLink?.id ?? (segment.linkIds instanceof Set ? segment.linkIds.values().next().value : segment.id);
+			const link = getLink(graph, linkId);
 			if (!link || link.origin_id == null || link.target_id == null) return result;
 
 			// Find the newly created context menu
@@ -1656,11 +1717,14 @@ app.registerExtension({
 				// Close menu
 				lastMenu.remove();
 
-				const originNode = graph.getNodeById(link.origin_id);
-				const targetNode = graph.getNodeById(link.target_id);
+				// Subgraph IO boundaries aren't in graph._nodes
+				const originNode = graph.getNodeById(link.origin_id)
+					?? (link.origin_id === graph.inputNode?.id ? graph.inputNode : null);
+				const targetNode = graph.getNodeById(link.target_id)
+					?? (link.target_id === graph.outputNode?.id ? graph.outputNode : null);
 				if (!originNode || !targetNode) return;
 
-				const outputSlot = originNode.outputs[link.origin_slot];
+				const outputSlot = originNode.outputs?.[link.origin_slot] ?? originNode.slots?.[link.origin_slot];
 				const linkType = outputSlot?.type || "*";
 				const linkName = outputSlot?.name || linkType;
 
@@ -1686,7 +1750,7 @@ app.registerExtension({
 				graph.removeLink(link.id);
 
 				// Connect source -> Set node input
-				originNode.connect(link.origin_slot, setNode, 0);
+				connectById(graph, link.origin_id, link.origin_slot, setNode.id, 0);
 
 				// Set the name widget on the Set node
 				setNode.widgets[0].value = linkName;
@@ -1700,7 +1764,7 @@ app.registerExtension({
 				getNode.onRename();
 
 				// Connect Get node output -> target node input
-				getNode.connect(0, targetNode, link.target_slot);
+				connectById(graph, getNode.id, 0, link.target_id, link.target_slot);
 
 				canvas.setDirty(true, true);
 			});

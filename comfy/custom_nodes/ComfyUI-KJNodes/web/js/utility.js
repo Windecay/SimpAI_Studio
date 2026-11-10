@@ -84,6 +84,22 @@ export function getSlotPos(node, isInput, slotIdx) {
   return out;
 }
 
+// Link by node id; subgraph IO nodes aren't in graph._nodes and have no connect(), so go through their slot objects
+export function connectById(graph, originId, originSlot, targetId, targetSlot, afterRerouteId) {
+  const target = graph.getNodeById(targetId);
+  if (graph.inputNode && originId === graph.inputNode.id) {
+    const input = target?.inputs?.[targetSlot];
+    return input ? graph.inputNode.slots[originSlot]?.connect(input, target, afterRerouteId) ?? null : null;
+  }
+  const origin = graph.getNodeById(originId);
+  if (!origin) return null;
+  if (graph.outputNode && targetId === graph.outputNode.id) {
+    const output = origin.outputs?.[originSlot];
+    return output ? graph.outputNode.slots[targetSlot]?.connect(output, origin, afterRerouteId) ?? null : null;
+  }
+  return target ? origin.connect(originSlot, target, targetSlot, afterRerouteId) : null;
+}
+
 // ─── Middle-click pan passthrough for DOM widgets ───
 // Allows panning the LiteGraph canvas via middle-click drag on any DOM element
 export function addMiddleClickPan(element) {
@@ -111,6 +127,9 @@ export function addMiddleClickPan(element) {
   return () => element.removeEventListener('mousedown', onMouseDown);
 }
 
+// The widget holding a loader's input file: Load Image "image", VHS-style "video", core Load Video "file"
+const sourceFileWidget = (srcNode) => srcNode.widgets?.find((w) => w.name === "image" || w.name === "video" || (w.name === "file" && srcNode.comfyClass === "LoadVideo"));
+
 // ─── Resolve preview image/video from a connected source node ───
 // Walks the graph link to find what's connected to node.inputs[inputSlot]
 // and returns { url, isVideo, videoEl } or null
@@ -129,13 +148,12 @@ export function resolveSourcePreview(node, inputSlot) {
     return { isVideo: true, videoEl: vpWidget.videoEl };
   }
 
-  // Look for a LoadImage "image" widget or LoadVideo "video" widget
-  const w = srcNode.widgets?.find((w) => w.name === "image" || w.name === "video");
+  const w = sourceFileWidget(srcNode);
   if (w?.value) {
     let subfolder = "", fname = w.value;
     const lastSlash = fname.lastIndexOf("/");
     if (lastSlash >= 0) { subfolder = fname.substring(0, lastSlash); fname = fname.substring(lastSlash + 1); }
-    const isVideo = w.name === "video";
+    const isVideo = w.name !== "image";
     const url = `/view?filename=${encodeURIComponent(fname)}&type=input&subfolder=${encodeURIComponent(subfolder)}`;
     return { url, isVideo };
   }
@@ -148,12 +166,15 @@ export function resolveSourcePreview(node, inputSlot) {
 }
 
 // ─── Source input watcher ───
-// Watches a named IMAGE input for connection changes and source widget changes.
+// Watches IMAGE inputs for connection changes and source widget changes.
 // Calls onChange(sources) when connections change or the source node's image/video widget changes.
-// sources: array of { url, isVideo, videoEl } per connected IMAGE input matching inputName (or all if inputName is null).
+// inputName: an input name, a predicate (input) => bool, or null for every IMAGE input.
+// sources: array of { url, isVideo, videoEl, name } per connected matching input (name = that input's name).
 // Returns a cleanup function.
 export function watchImageInputs(node, inputName, onChange) {
   let watchedWidgets = [];
+  const matches = (inp) => typeof inputName === "function" ? inputName(inp) : inputName ? inp.name === inputName : inp.type === "IMAGE";
+  const matchingSlots = () => node.inputs.map((inp, i) => matches(inp) ? i : -1).filter(i => i >= 0);
 
   function unwatchWidgets() {
     for (const { widget, origCb } of watchedWidgets) widget.callback = origCb;
@@ -162,18 +183,16 @@ export function watchImageInputs(node, inputName, onChange) {
 
   function resolve() {
     if (!node.inputs) return [];
-    const slots = inputName
-      ? node.inputs.map((inp, i) => inp.name === inputName ? i : -1).filter(i => i >= 0)
-      : node.inputs.map((inp, i) => inp.type === "IMAGE" ? i : -1).filter(i => i >= 0);
-    return slots.map(i => resolveSourcePreview(node, i)).filter(s => s !== null);
+    return matchingSlots().map(i => {
+      const s = resolveSourcePreview(node, i);
+      return s && { ...s, name: node.inputs[i].name };
+    }).filter(s => s);
   }
 
   function watch() {
     unwatchWidgets();
     if (!node.inputs || !node.graph) return;
-    const slots = inputName
-      ? node.inputs.map((inp, i) => inp.name === inputName ? i : -1).filter(i => i >= 0)
-      : node.inputs.map((inp, i) => inp.type === "IMAGE" ? i : -1).filter(i => i >= 0);
+    const slots = matchingSlots();
     for (const slotIdx of slots) {
       const input = node.inputs[slotIdx];
       if (!input || input.link == null) continue;
@@ -181,7 +200,7 @@ export function watchImageInputs(node, inputName, onChange) {
       if (!link) continue;
       const srcNode = node.graph.getNodeById(link.origin_id);
       if (!srcNode) continue;
-      const w = srcNode.widgets?.find(w => w.name === "image" || w.name === "video");
+      const w = sourceFileWidget(srcNode);
       if (!w) continue;
       const origCb = w.callback;
       w.callback = function (...args) {

@@ -5,6 +5,11 @@ Vendored from `n0va39/ComfyUI-Spectrum-KSampler`, commit
 `sorryhyun/ComfyUI-Spectrum-KSampler` (MIT, see LICENSE).
 Integrated on 2026-10-26 after the 2026-10-25 native MOSS benchmark.
 
+`model_patch.py` also includes upstream commit
+`7b3774e11123bc1403d3fa26aeb8155e2400ca2a` (Spectrum 2.13.3), which
+allocates captured features outside ComfyUI's memory-compiler scope. Other
+vendored files retain the original revision.
+
 This contains the native MODEL adapter, shared forecast implementation and
 its import dependencies. Only `SimpAIMossSpectrum` exposes it as a Studio node.
 The upstream plugin initializer, node catalogue, sampler registration and

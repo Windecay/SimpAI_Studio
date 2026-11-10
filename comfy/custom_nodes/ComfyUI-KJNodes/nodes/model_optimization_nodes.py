@@ -3,6 +3,7 @@ import sys
 import logging
 import torch
 import importlib
+import inspect
 import math
 import datetime
 import pickle
@@ -25,30 +26,44 @@ except ImportError:
 
 sageattn_modes = ["disabled", "auto", "sageattn_qk_int8_pv_fp16_cuda", "sageattn_qk_int8_pv_fp16_triton", "sageattn_qk_int8_pv_fp8_cuda", "sageattn_qk_int8_pv_fp8_cuda++", "sageattn3", "sageattn3_per_block_mean"]
 
+def _takes_attn_mask(f):
+    # most sage kernels swallow attn_mask through **kwargs and ignore it; only an explicit parameter applies it
+    try:
+        return "attn_mask" in inspect.signature(f).parameters
+    except (TypeError, ValueError):
+        return False
+
 def get_sage_func(sage_attention, allow_compile=False):
     logging.info(f"Using sage attention mode: {sage_attention}")
+    mask_ok = False
     if sage_attention == "auto":
         from sageattention import sageattn
+        mask_ok = _takes_attn_mask(sageattn)
         def sage_func(q, k, v, is_causal=False, attn_mask=None, tensor_layout="NHD"):
             return sageattn(q, k, v, is_causal=is_causal, attn_mask=attn_mask, tensor_layout=tensor_layout)
     elif sage_attention == "sageattn_qk_int8_pv_fp16_cuda":
         from sageattention import sageattn_qk_int8_pv_fp16_cuda
+        mask_ok = _takes_attn_mask(sageattn_qk_int8_pv_fp16_cuda)
         def sage_func(q, k, v, is_causal=False, attn_mask=None, tensor_layout="NHD"):
             return sageattn_qk_int8_pv_fp16_cuda(q, k, v, is_causal=is_causal, attn_mask=attn_mask, pv_accum_dtype="fp32", tensor_layout=tensor_layout)
     elif sage_attention == "sageattn_qk_int8_pv_fp16_triton":
         from sageattention import sageattn_qk_int8_pv_fp16_triton
+        mask_ok = _takes_attn_mask(sageattn_qk_int8_pv_fp16_triton)
         def sage_func(q, k, v, is_causal=False, attn_mask=None, tensor_layout="NHD"):
             return sageattn_qk_int8_pv_fp16_triton(q, k, v, is_causal=is_causal, attn_mask=attn_mask, tensor_layout=tensor_layout)
     elif sage_attention == "sageattn_qk_int8_pv_fp8_cuda":
         from sageattention import sageattn_qk_int8_pv_fp8_cuda
+        mask_ok = _takes_attn_mask(sageattn_qk_int8_pv_fp8_cuda)
         def sage_func(q, k, v, is_causal=False, attn_mask=None, tensor_layout="NHD"):
             return sageattn_qk_int8_pv_fp8_cuda(q, k, v, is_causal=is_causal, attn_mask=attn_mask, pv_accum_dtype="fp32+fp32", tensor_layout=tensor_layout)
     elif sage_attention == "sageattn_qk_int8_pv_fp8_cuda++":
         from sageattention import sageattn_qk_int8_pv_fp8_cuda
+        mask_ok = _takes_attn_mask(sageattn_qk_int8_pv_fp8_cuda)
         def sage_func(q, k, v, is_causal=False, attn_mask=None, tensor_layout="NHD"):
             return sageattn_qk_int8_pv_fp8_cuda(q, k, v, is_causal=is_causal, attn_mask=attn_mask, pv_accum_dtype="fp32+fp16", tensor_layout=tensor_layout)
     elif "sageattn3" in sage_attention:
         from sageattn3 import sageattn3_blackwell
+        mask_ok = _takes_attn_mask(sageattn3_blackwell)
         def sage_func(q, k, v, is_causal=False, attn_mask=None, tensor_layout="NHD", **kwargs):
             q, k, v = [x.transpose(1, 2) if tensor_layout == "NHD" else x for x in (q, k, v)]
             out = sageattn3_blackwell(q, k, v, is_causal=is_causal, attn_mask=attn_mask, per_block_mean=(sage_attention == "sageattn3_per_block_mean"))
@@ -59,11 +74,13 @@ def get_sage_func(sage_attention, allow_compile=False):
 
     @wrap_attn
     def attention_sage(q, k, v, heads, mask=None, attn_precision=None, skip_reshape=False, skip_output_reshape=False, **kwargs):
-        if kwargs.get("low_precision_attention", True) is False:
+        if kwargs.get("low_precision_attention", True) is False or (mask is not None and not mask_ok):
             return attention_pytorch(q, k, v, heads, mask=mask, skip_reshape=skip_reshape, skip_output_reshape=skip_output_reshape, **kwargs)
         in_dtype = v.dtype
         if q.dtype == torch.float32 or k.dtype == torch.float32 or v.dtype == torch.float32:
             q, k, v = q.to(torch.float16), k.to(torch.float16), v.to(torch.float16)
+        if mask is not None and mask.dtype != torch.bool:
+            mask = mask.to(q.dtype)                          # sage wants a bool mask or q's dtype
         if skip_reshape:
             b, _, _, dim_head = q.shape
             tensor_layout="HND"
@@ -101,6 +118,7 @@ def get_sage_func(sage_attention, allow_compile=False):
     return attention_sage
 
 
+import comfy.patcher_extension
 from comfy.patcher_extension import CallbacksMP
 class PathchSageAttentionKJ():
     @classmethod
@@ -1321,13 +1339,14 @@ class WanVideoNAG:
 # every block's self-attention
 _QWEN_IM_START, _QWEN_USER, _QWEN_NL, _QWEN_IM_END = 151644, 872, 198, 151645
 
-def _krea2_user_content_span(ids):
+def _krea2_user_content_span(ids, specials=(_QWEN_IM_START, _QWEN_USER, _QWEN_NL, _QWEN_IM_END)):
     # token span of the user prompt, between '<|im_start|>user\n' and the next '<|im_end|>'
+    im_start, user, nl, im_end = specials
     for i in range(len(ids) - 2):
-        if ids[i] == _QWEN_IM_START and ids[i + 1] == _QWEN_USER and ids[i + 2] == _QWEN_NL:
+        if ids[i] == im_start and ids[i + 1] == user and ids[i + 2] == nl:
             start = i + 3
             end = start
-            while end < len(ids) and ids[end] != _QWEN_IM_END:
+            while end < len(ids) and ids[end] != im_end:
                 end += 1
             return start, end
     return None, None
@@ -1346,6 +1365,49 @@ def _find_subsequence(seq, sub, lo, hi):
         if seq[i:i + n] == sub:
             out.append(i)
     return out
+
+def _prompt_token_weights(clip, text, strength, specials, name):
+    # parse (phrase:weight) terms, encode the clean prompt, locate each phrase's tokens in the conditioning.
+    # returns (cond, [(cond position, value multiplier, logit bias)])
+    import re
+    pattern = re.compile(r"\(([^():]+):(-?\d*\.?\d+)\)")
+    terms = [(m.group(1).strip(), float(m.group(2))) for m in pattern.finditer(text)]
+    tok = clip.tokenize(pattern.sub(lambda m: m.group(1), text))
+    ids = [t[0] for t in next(iter(tok.values()))[0]]
+    cond = clip.encode_from_tokens_scheduled(tok)
+    cond_len = cond[0][0].shape[1]
+    visible_start = len(ids) - cond_len            # conditioning == ids[visible_start:]
+    start, end = _krea2_user_content_span(ids, specials)
+    if start is None:
+        start, end = visible_start, len(ids)
+
+    pairs = []
+    for phrase, w in terms:
+        # emphasis via attention logit bias, de-emphasis / removal via value scaling
+        v_factor, k_bias = (1.0, strength * (w - 1.0) * 2.0) if w > 1.0 else (1.0 + strength * (w - 1.0), 0.0)
+        positions = []
+        for variant in (" " + phrase, phrase):     # words usually carry a leading-space token in context
+            # raw chat text skips the tokenizer's template (and MOSS's strip()) so the leading space survives
+            sub = _krea2_token_ids(clip, "<|im_start|>user\n" + variant + "<|im_end|>")
+            ps, pe = _krea2_user_content_span(sub, specials)
+            if ps is None:
+                continue
+            sub = sub[ps:pe]
+            for mi in _find_subsequence(ids, sub, start, end):
+                positions.extend(range(mi - visible_start, mi - visible_start + len(sub)))
+            if positions:
+                break
+        if not positions:
+            logging.warning(f"{name}: phrase '{phrase}' not found in prompt; skipped.")
+        pairs.extend((cp, v_factor, k_bias) for cp in positions if 0 <= cp < cond_len)
+    merged = {}
+    for cp, vf, kb in pairs:                       # a position hit by several phrases: factors multiply, biases add
+        pvf, pkb = merged.get(cp, (1.0, 0.0))
+        merged[cp] = (pvf * vf, pkb + kb)
+    pairs = [(cp, vf, kb) for cp, (vf, kb) in sorted(merged.items())]
+    if pairs:
+        logging.info(f"{name}: weighting {pairs}")
+    return cond, pairs
 
 
 def krea2_attn_forward_weight(self, x, freqs=None, mask=None, transformer_options={}):
@@ -1409,49 +1471,9 @@ class Krea2PromptWeight:
     EXPERIMENTAL = True
 
     def encode(self, clip, model, text, strength):
-        import re
-        pattern = re.compile(r"\(([^():]+):(-?\d*\.?\d+)\)")
-        terms = [(m.group(1).strip(), float(m.group(2))) for m in pattern.finditer(text)]
-        clean = pattern.sub(lambda m: m.group(1), text)
-
-        tok = clip.tokenize(clean)
-        key = next(iter(tok))
-        ids = [t[0] for t in tok[key][0]]
-        cond = clip.encode_from_tokens_scheduled(tok)
-        cond_len = cond[0][0].shape[1]
-        visible_start = len(ids) - cond_len            # conditioning == ids[visible_start:]
-        start, end = _krea2_user_content_span(ids)
-        if start is None:
-            start, end = visible_start, len(ids)
-
-        weight_pairs = []                              # (conditioning position, value multiplier)
-        for phrase, w in terms:
-            if w > 1.0:
-                v_factor, k_bias = 1.0, strength * (w - 1.0) * 2.0   # emphasis via attention boost
-            else:
-                v_factor, k_bias = 1.0 + strength * (w - 1.0), 0.0   # de-emphasis / removal via value scaling
-            positions = []
-            for variant in (" " + phrase, phrase):     # words usually carry a leading-space token in context
-                sub = _krea2_token_ids(clip, variant)
-                ps, pe = _krea2_user_content_span(sub)
-                if ps is None:
-                    continue
-                sub = sub[ps:pe]
-                matches = _find_subsequence(ids, sub, start, end)
-                if matches:
-                    for mi in matches:
-                        positions.extend(mi + off - visible_start for off in range(len(sub)))
-                    break
-            if not positions:
-                logging.warning(f"Krea2PromptWeight: phrase '{phrase}' not found in prompt; skipped.")
-                continue
-            for cp in positions:
-                if 0 <= cp < cond_len:
-                    weight_pairs.append((cp, v_factor, k_bias))
-
+        cond, weight_pairs = _prompt_token_weights(clip, text, strength, (_QWEN_IM_START, _QWEN_USER, _QWEN_NL, _QWEN_IM_END), "Krea2PromptWeight")
         if not weight_pairs:
             return (model, cond)
-        logging.info(f"Krea2PromptWeight: weighting {weight_pairs}")
 
         model_clone = model.clone()
         diffusion_model = model_clone.get_model_object("diffusion_model")
@@ -1465,6 +1487,149 @@ class Krea2PromptWeight:
             model_clone.add_object_patch(f"diffusion_model.blocks.{idx}.attn.forward", patched_attn)
 
         return (model_clone, cond)
+
+# MOSS-Image per-token prompt weighting, same mechanism as Krea2. MOSS is single-stream: every block self-attends over
+# [image tokens (H*W) | text tokens], so a conditioning index cp lives at sequence position H*W + cp.
+# Newer core takes the emphasis logit bias as conditioning (context_attention_bias); then only value scaling needs the
+# model patch. The patch: a DIFFUSION_MODEL wrapper builds the weights as device tensors once per forward (checking the
+# text length and the cond/uncond batch layout); a single_block replace patch then runs each block with an attention
+# override that scales v (and adds the logit bias on older core), so comfy's block and attention code stay untouched.
+import node_helpers
+
+_QWEN35_SPECIALS = (248045, 846, 198, 248046)  # <|im_start|>, user, \n, <|im_end|> in the Qwen3.5 vocab
+
+def _moss_core_attention_bias(diffusion_model):
+    # core MOSS-Image applies a context_attention_bias conditioning (additive logit bias on the text keys) itself
+    try:
+        return "context_attention_bias" in inspect.signature(type(diffusion_model)._forward).parameters
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+def _moss_weight_rows(transformer_options, B):
+    # batch rows that belong to a positive cond (the sampler stacks len(cond_or_uncond) equal chunks); None if unknown
+    cond_or_uncond = transformer_options.get("cond_or_uncond")
+    if not cond_or_uncond or B % len(cond_or_uncond) != 0:
+        return None
+    chunk = B // len(cond_or_uncond)
+    return [b for b in range(B) if cond_or_uncond[b // chunk] == 0]
+
+def _moss_weight_wrapper(pairs, text_len, name):
+    # DIFFUSION_MODEL wrapper: puts (rows, v_idx, v_factor, bias) for this forward in transformer_options
+    v_pos, v_fac = [p for p, vf, _ in pairs if vf != 1.0], [vf for _, vf, _ in pairs if vf != 1.0]
+    k_pos, k_bias = [p for p, _, kb in pairs if kb != 0.0], [kb for _, _, kb in pairs if kb != 0.0]
+    warned = set()
+    def warn_once(key, msg):
+        if key not in warned:
+            warned.add(key)
+            logging.warning(f"{name}: {msg}")
+    def wrapper(executor, x, timestep, context, transformer_options={}, **kwargs):
+        B, _, H, W = x.shape
+        rows = _moss_weight_rows(transformer_options, B)
+        if context.shape[1] != text_len:
+            warn_once("len", f"conditioning length {context.shape[1]} is not this node's {text_len}; weighting skipped "
+                             "(wire this node's conditioning output to the sampler)")
+        elif rows is None:
+            warn_once("rows", "cond_or_uncond missing or uneven; cannot tell positive from negative, weighting skipped")
+        elif rows:
+            dev, dtype, text_start = x.device, x.dtype, H * W
+            rows_t = torch.tensor(rows, device=dev)[:, None]
+            v_idx = torch.tensor(v_pos, device=dev) + text_start if v_pos else None
+            v_fac_t = torch.tensor(v_fac, device=dev, dtype=dtype)[:, None] if v_pos else None
+            bias = None
+            if k_pos:
+                bias = torch.zeros(B, 1, 1, text_start + text_len, device=dev, dtype=dtype)
+                bias[rows_t, 0, 0, torch.tensor(k_pos, device=dev) + text_start] = torch.tensor(k_bias, device=dev, dtype=dtype)
+            transformer_options["moss_token_weights"] = (rows_t, v_idx, v_fac_t, bias)
+        return executor(x, timestep, context, transformer_options, **kwargs)
+    return wrapper
+
+def _moss_attn_override(weights, prev):
+    # optimized_attention override for one block call: q/k arrive post-norm/rope, v raw, all this call's own tensors
+    rows, v_idx, v_fac, bias = weights
+    def override(func, q, k, v, heads, mask=None, **kwargs):
+        if v_idx is not None:
+            v[rows, v_idx] = v[rows, v_idx] * v_fac.to(v.dtype)
+        if bias is not None and mask is None:
+            n_k = k.shape[-2] if kwargs.get("skip_reshape") else k.shape[1]
+            m = bias if bias.shape[-1] == n_k else torch.nn.functional.pad(bias, (0, n_k - bias.shape[-1]))  # edit LoRAs append reference tokens to k/v
+            # comfy's own backend takes the additive mask (sage/sol fall back to sdpa); a sage/flash override would not
+            return func(q, k, v, heads, mask=m.to(q.dtype), **kwargs)
+        if prev is not None:
+            return prev(func, q, k, v, heads, mask=mask, **kwargs)
+        return func(q, k, v, heads, mask=mask, **kwargs)
+    return override
+
+def _moss_block_patch(prev_patch):
+    # single_block replace: run the block with the attention override carrying this forward's weights
+    def patch(args, extra):
+        to = args["transformer_options"]
+        weights = to.get("moss_token_weights")
+        if weights is not None:
+            to = {**to, "optimized_attention_override": _moss_attn_override(weights, to.get("optimized_attention_override"))}
+            args = {**args, "transformer_options": to}
+        return prev_patch(args, extra) if prev_patch is not None else extra["original_block"](args)
+    return patch
+
+
+class MossImagePromptWeight(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="MossImagePromptWeight",
+            display_name="MOSS-Image Prompt Weight",
+            category="KJNodes/experimental",
+            is_experimental=True,
+            description="Per-token prompt weighting for MOSS-Image via attention value scaling, same approach as Krea2 Prompt Weight. "
+                        "Use (word:-1) to remove a concept, (word:1.5) to emphasize one -- works through the Qwen3.5 encoder where "
+                        "normal weighting doesn't. Outputs the model + conditioning; wire both to the sampler. On a ComfyUI that "
+                        "takes attention bias conditioning, emphasis rides on the conditioning and the model is only patched for "
+                        "weights below 1.",
+            inputs=[
+                io.Clip.Input("clip"),
+                io.Model.Input("model"),
+                io.String.Input("text", multiline=True, default="",
+                                tooltip="Prompt with per-token weights in parentheses, e.g. (word:-1) removes/represses a concept, (word:2) "
+                                        "emphasizes it, plain text = 1.0. Works on MOSS-Image where ComfyUI's normal (word:weight) does nothing "
+                                        "(the Qwen3.5 LLM encoder ignores it). weight<1 scales the token's attention VALUE (subtracts/removes at "
+                                        "<0); weight>1 boosts how much the image ATTENDS to the token (adds more of it). Only positive conds are "
+                                        "weighted, negative prompts pass through untouched."),
+                io.Float.Input("strength", default=1.0, min=0.0, max=4.0, step=0.05,
+                               tooltip="Global multiplier on the weighting effect. Effect compounds over all 42 blocks; lower if results break "
+                                       "up, raise for a stronger effect. Removal (weight<0) is the reliable direction; emphasis (weight>1) works "
+                                       "but is looser."),
+            ],
+            outputs=[io.Model.Output(display_name="model"), io.Conditioning.Output(display_name="conditioning")],
+        )
+
+    @classmethod
+    def execute(cls, clip, model, text, strength) -> io.NodeOutput:
+        cond, pairs = _prompt_token_weights(clip, text, strength, _QWEN35_SPECIALS, "MossImagePromptWeight")
+        if not pairs:
+            return io.NodeOutput(model, cond)
+
+        diffusion_model = model.get_model_object("diffusion_model")
+        if not hasattr(diffusion_model, "text_embedder"):
+            raise ValueError("MossImagePromptWeight: model is not a MOSS-Image diffusion model")
+
+        if _moss_core_attention_bias(diffusion_model):
+            # emphasis as conditioning: core biases the text keys in every block, only for the conds that carry it
+            k_terms = [(p, kb) for p, _, kb in pairs if kb != 0.0]
+            if k_terms:
+                bias = torch.zeros(1, cond[0][0].shape[1])
+                for p, kb in k_terms:
+                    bias[0, p] = kb
+                cond = node_helpers.conditioning_set_values(cond, {"context_attention_bias": bias})
+            pairs = [(p, vf, 0.0) for p, vf, _ in pairs if vf != 1.0]   # value scaling still needs the model patch
+            if not pairs:
+                return io.NodeOutput(model, cond)
+
+        model_clone = model.clone()
+        model_clone.add_wrapper_with_key(comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL, "MossImagePromptWeight",
+                                         _moss_weight_wrapper(pairs, cond[0][0].shape[1], "MossImagePromptWeight"))
+        existing = model_clone.model_options.get("transformer_options", {}).get("patches_replace", {}).get("dit", {})
+        for idx in range(len(diffusion_model.layers)):
+            model_clone.set_model_patch_replace(_moss_block_patch(existing.get(("single_block", idx))), "dit", "single_block", idx)
+        return io.NodeOutput(model_clone, cond)
 
 class SkipLayerGuidanceWanVideo:
     @classmethod
@@ -2137,9 +2302,8 @@ class WanChunkFeedForward(io.ComfyNode):
         return io.NodeOutput(model_clone)
 
 
-# Ideogram4 peak-VRAM patches (FFN sequence chunking + bf16 RoPE)
+# Ideogram4 peak-VRAM patch (FFN sequence chunking)
 from comfy.ldm.lumina.model import FeedForward as _Ideogram4FeedForward
-from comfy.ldm.modules.attention import optimized_attention_masked as _ideogram4_attn
 
 
 def ideogram4_ffn_chunked_forward(self, x):
@@ -2163,40 +2327,6 @@ class Ideogram4FFNChunkPatch:
         return types.MethodType(wrapped_forward, obj)
 
 
-def _ideogram4_apply_rope_lowp(xq, xk, freqs_cis):
-    # (bf16/fp16) instead of being upcast to fp32 -> ~halves RoPE activation memory.
-    cos = freqs_cis[0].to(xq.dtype)
-    sin = freqs_cis[1].to(xq.dtype)
-    nsin = freqs_cis[2].to(xq.dtype)
-
-    q_embed = xq * cos
-    qs = q_embed.shape[-1] // 2
-    q_embed[..., :qs].addcmul_(xq[..., qs:], nsin)
-    q_embed[..., qs:].addcmul_(xq[..., :qs], sin)
-
-    k_embed = xk * cos
-    ks = k_embed.shape[-1] // 2
-    k_embed[..., :ks].addcmul_(xk[..., ks:], nsin)
-    k_embed[..., ks:].addcmul_(xk[..., :ks], sin)
-    return q_embed, k_embed
-
-
-def ideogram4_attention_lowp_rope_forward(self, x, attn_mask, freqs_cis, transformer_options={}):
-    batch_size, seq_len, _ = x.shape
-    q, k, v = self.qkv(x).view(batch_size, seq_len, 3, self.num_heads, self.head_dim).unbind(dim=2)
-    q = self.norm_q(q).transpose(1, 2)
-    k = self.norm_k(k).transpose(1, 2)
-    v = v.transpose(1, 2)
-    q, k = _ideogram4_apply_rope_lowp(q, k, freqs_cis)
-    out = _ideogram4_attn(q, k, v, self.num_heads, attn_mask, skip_reshape=True, transformer_options=transformer_options)
-    return self.o(out)
-
-
-class Ideogram4RopePatch:
-    def __get__(self, obj, objtype=None):
-        return types.MethodType(ideogram4_attention_lowp_rope_forward, obj)
-
-
 class Ideogram4OptimizationsKJ(io.ComfyNode):
 
     @classmethod
@@ -2206,8 +2336,7 @@ class Ideogram4OptimizationsKJ(io.ComfyNode):
             display_name="Ideogram4 Optimizations KJ",
             category="KJNodes/experimental",
             description="EXPERIMENTAL AND MAY CHANGE THE MODEL OUTPUT!! Reduces peak VRAM of the Ideogram4 forward. "
-                        "chunk_ffn splits the SwiGLU activations over the token dim; bf16_rope applies RoPE in the model "
-                        "dtype instead of upcasting to fp32. Both target the two largest transient tensors in the block.",
+                        "chunk_ffn splits the SwiGLU activations over the token dim, the largest transient tensor in the block.",
             is_experimental=True,
             inputs=[
                 io.Model.Input("model"),
@@ -2218,7 +2347,7 @@ class Ideogram4OptimizationsKJ(io.ComfyNode):
                 io.Int.Input("ffn_seq_threshold", default=1024, min=256, max=65536, step=256,
                              tooltip="Only chunk when the token sequence length exceeds this (skips chunking for tiny sequences)."),
                 io.Boolean.Input("bf16_rope", default=True,
-                                 tooltip="Apply RoPE in the input dtype instead of fp32. ~Halves RoPE activation memory; matches the HF reference dtype."),
+                                 tooltip="DEPRECATED, does nothing: ComfyUI core now fuses RMSNorm + RoPE in a single kernel without fp32 intermediates. Kept for old workflows."),
             ],
             outputs=[
                 io.Model.Output(display_name="model"),
@@ -2226,8 +2355,8 @@ class Ideogram4OptimizationsKJ(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, model, chunk_ffn, ffn_chunks, ffn_seq_threshold, bf16_rope) -> io.NodeOutput:
-        if not chunk_ffn and not bf16_rope:
+    def execute(cls, model, chunk_ffn, ffn_chunks, ffn_seq_threshold, bf16_rope=True) -> io.NodeOutput:
+        if not chunk_ffn or ffn_chunks <= 1:
             return io.NodeOutput(model)
 
         m = model.clone()
@@ -2240,12 +2369,8 @@ class Ideogram4OptimizationsKJ(io.ComfyNode):
             return io.NodeOutput(model)
 
         for idx, block in enumerate(layers):
-            if chunk_ffn and ffn_chunks > 1:
-                patched_ffn = Ideogram4FFNChunkPatch(ffn_chunks, ffn_seq_threshold).__get__(block.feed_forward, block.feed_forward.__class__)
-                m.add_object_patch(f"diffusion_model.layers.{idx}.feed_forward.forward", patched_ffn)
-            if bf16_rope:
-                patched_attn = Ideogram4RopePatch().__get__(block.attention, block.attention.__class__)
-                m.add_object_patch(f"diffusion_model.layers.{idx}.attention.forward", patched_attn)
+            patched_ffn = Ideogram4FFNChunkPatch(ffn_chunks, ffn_seq_threshold).__get__(block.feed_forward, block.feed_forward.__class__)
+            m.add_object_patch(f"diffusion_model.layers.{idx}.feed_forward.forward", patched_ffn)
 
         return io.NodeOutput(m)
 

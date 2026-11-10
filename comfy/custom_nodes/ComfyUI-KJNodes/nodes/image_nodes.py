@@ -35,7 +35,7 @@ from fractions import Fraction
 import node_helpers
 import folder_paths
 
-from ..utility.utility import string_to_color, normalize_bboxes, BBOX_TYPES
+from ..utility.utility import string_to_color, normalize_bboxes, BBOX_TYPES, BrowserH264, VideoFileReader
 
 try:
     from server import PromptServer, BinaryEventTypes
@@ -3043,7 +3043,7 @@ highest dimension.
                 bytes_per_elem = image.element_size()  # typically 4 for float32
                 est_total_bytes = B * height * width * C * bytes_per_elem
                 est_mb = est_total_bytes / (1024 * 1024)
-                msg = f"<tr><td>Resize v2</td><td>estimated output ~{est_mb:.2f} MB; batching {per_batch}/{B}</td></tr>"
+                msg = f"Resize v2: estimated output ~{est_mb:.2f} MB; batching {per_batch}/{B}"
                 if unique_id and PromptServer is not None:
                     try:
                         PromptServer.instance.send_progress_text(msg, unique_id)
@@ -3167,7 +3167,7 @@ highest dimension.
                 if unique_id and PromptServer is not None:
                     try:
                         PromptServer.instance.send_progress_text(
-                            f"<tr><td>Resize v2</td><td>batch {current_batch}/{total_batches} · images {end_idx}/{B}</td></tr>",
+                            f"Resize v2: batch {current_batch}/{total_batches} · images {end_idx}/{B}",
                             unique_id
                         )
                     except Exception:
@@ -3191,7 +3191,7 @@ highest dimension.
                 element_size = out_image.element_size()
                 memory_size_mb = (num_elements * element_size) / (1024 * 1024)
                 PromptServer.instance.send_progress_text(
-                    f"<tr><td>Output: </td><td><b>{out_image.shape[0]}</b> x <b>{out_image.shape[2]}</b> x <b>{out_image.shape[1]} | {memory_size_mb:.2f}MB</b></td></tr>",
+                    f"Output: {out_image.shape[0]} x {out_image.shape[2]} x {out_image.shape[1]} | {memory_size_mb:.2f}MB",
                     unique_id
                 )
             except Exception:
@@ -3856,15 +3856,16 @@ class FastPreviewBatch(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="FastPreviewBatch",
-            display_name="Fast Preview Batch",
+            display_name="Fast Preview Image Batch",
+            search_aliases=["fast", "preview", "image", "batch", "video", "grid", "thumbnail"],
             category="KJNodes/experimental",
-            description="Encodes an image batch as an all-I-frame H.264 MP4 thumbnail strip "
+            description="Encodes an image batch or video as an all-I-frame H.264 MP4 thumbnail strip "
                         "and shows it as an interactive grid. Click a tile to enlarge with "
                         "prev/next browsing. Avoids materializing N PNGs.",
             inputs=[
-                io.MultiType.Input("input", [io.Image, io.Mask], tooltip="Image or mask batch to preview."),
+                io.MultiType.Input("input", [io.Image, io.Mask, io.Video], tooltip="Image/mask batch or video to preview."),
                 io.Int.Input("max_thumb_size", default=512, min=512, max=1024, step=8,
-                             tooltip="Detail-view (mp4) thumbnail max side. Strip thumbs for the grid are auto-capped at 256."),
+                             tooltip="Detail-view (mp4) thumbnail max side. Strip thumbs for the grid are auto-capped at 256 (smaller above 1024 frames)."),
                 io.Int.Input("crf", default=25, min=0, max=51, step=1,
                              tooltip="H.264 CRF. Lower = higher quality / larger file."),
                 io.Int.Input("max_grid_frames", default=1024, min=1, max=4096, step=1,
@@ -3878,126 +3879,187 @@ class FastPreviewBatch(io.ComfyNode):
         import av
         import threading
         import queue as _queue
-        if input.ndim == 3:
-            images = input.reshape((-1, 1, input.shape[-2], input.shape[-1])).movedim(1, -1).expand(-1, -1, -1, 3)
-        else:
-            images = input
-        B, H, W, _ = images.shape
-
-        if B > max_grid_frames:
-            idx = torch.linspace(0, B - 1, max_grid_frames).round().long().tolist()
-        else:
-            idx = list(range(B))
-        total = len(idx)
-
-        scale = min(1.0, max_thumb_size / max(H, W))
-        new_w = max(2, int(round(W * scale)))
-        new_h = max(2, int(round(H * scale)))
-        # yuv420p needs even dimensions
-        new_w -= new_w & 1
-        new_h -= new_h & 1
-
-        # Strip thumbs serve the grid only; cap at 256 so the tiled JPEG stays well
-        # under any browser image-decode limit regardless of detail-view size.
-        STRIP_MAX = 256
-        strip_scale = min(1.0, STRIP_MAX / max(new_h, new_w))
-        strip_w = max(2, int(round(new_w * strip_scale)))
-        strip_h = max(2, int(round(new_h * strip_scale)))
-
-        output_dir = folder_paths.get_temp_directory()
-        prefix = "kj_batch_preview_" + ''.join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(6))
-        full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
-            prefix, output_dir, new_w, new_h
-        )
-        file = f"{filename}_{counter:05}_.mp4"
-        filepath = os.path.join(full_output_folder, file)
-        strip_file = f"{filename}_{counter:05}_grid.jpg"
-        strip_path = os.path.join(full_output_folder, strip_file)
-
-        # Square-ish tiling for the JS grid renderer.
-        strip_cols = max(1, int(math.ceil(math.sqrt(total))))
-        strip_rows = int(math.ceil(total / strip_cols))
-        strip_arr = np.zeros((strip_rows * strip_h, strip_cols * strip_w, 3), dtype=np.uint8)
-
+        from av.video.reformatter import VideoReformatter
         fps = 30
-        container = av.open(filepath, mode="w")
+        crop = None
+        reader = writer = producer_thread = None
+        stop = threading.Event()
+        frame_queue = _queue.Queue(maxsize=2)
         try:
-            stream = container.add_stream("libx264", rate=Fraction(fps, 1))
-            stream.width = new_w
-            stream.height = new_h
-            stream.pix_fmt = "yuv420p"
-            stream.options = {"crf": str(crf), "preset": "ultrafast", "g": "1", "tune": "fastdecode"}
+            # File-backed video is decoded straight to thumbnail size instead of materializing full-res float frames.
+            # Without a frame count (B None) the stream is taken unstrided
+            stream_video = VideoFileReader.supports(input)
+            if stream_video:
+                reader = VideoFileReader(input)
+                B, fps, W, H, src_rot, crop = reader.count, reader.fps, reader.width, reader.height, reader.rotation, reader.crop
+            else:
+                if isinstance(input, torch.Tensor):
+                    images = input
+                else:
+                    components = input.get_components()
+                    images, fps = components.images, components.frame_rate
+                if images.ndim == 3:
+                    images = images.reshape((-1, 1, images.shape[-2], images.shape[-1])).movedim(1, -1).expand(-1, -1, -1, 3)
+                B, H, W, _ = images.shape
+                if B == 0:
+                    raise ValueError("Nothing to preview, the input is empty.")
+            fps = Fraction(fps).limit_denominator(1001) if fps and fps > 0 else Fraction(30)
 
-            chunk_size = 32
-            need_resize = (new_h, new_w) != (H, W)
+            idx = torch.linspace(0, B - 1, max_grid_frames).round().long().tolist() if B is not None and B > max_grid_frames else None
+            # Planned frame count; for video B can be a metadata estimate, the strip grows or trims to what arrives
+            total = len(idx) if idx is not None else min(B or max_grid_frames, max_grid_frames)
+
+            scale = min(1.0, max_thumb_size / max(H, W))
+            new_w = max(2, int(round(W * scale)))
+            new_h = max(2, int(round(H * scale)))
+            # yuv420p needs even dimensions
+            new_w -= new_w & 1
+            new_h -= new_h & 1
+
+            # Strip thumbs serve the grid only; cap cells at 256 and the whole tiled JPEG at
+            # ~8192px per side so it stays under browser image-decode limits at any frame count.
+            strip_cols = max(1, int(math.ceil(math.sqrt(total))))
+            strip_scale = min(1.0, min(256, 8192 // strip_cols) / max(new_h, new_w))
+            strip_w = max(2, int(round(new_w * strip_scale)))
+            strip_h = max(2, int(round(new_h * strip_scale)))
             need_strip_resize = (strip_h, strip_w) != (new_h, new_w)
-            mode = 'area' if scale < 1.0 else 'bilinear'
-            work_device = model_management.get_torch_device()
 
-            def _to_numpy_nhwc_u8(t):
-                return (t.mul(255).clamp(0, 255)
-                         .to(dtype=torch.uint8, device='cpu')
-                         .permute(0, 2, 3, 1).contiguous().numpy())
+            output_dir = folder_paths.get_temp_directory()
+            prefix = "kj_batch_preview_" + ''.join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(6))
+            full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
+                prefix, output_dir, new_w, new_h
+            )
+            file = f"{filename}_{counter:05}_.mp4"
+            filepath = os.path.join(full_output_folder, file)
+            strip_file = f"{filename}_{counter:05}_grid.jpg"
+            strip_path = os.path.join(full_output_folder, strip_file)
 
-            # Producer: GPU resize + transfer; consumer (this thread): PyAV encode.
-            # PyTorch GPU ops, host transfers, and PyAV's libx264 call all release the
-            # GIL, so threading actually overlaps the two stages.
-            frame_queue = _queue.Queue(maxsize=2)
+            # Tagged BT.709 like core's sRGB video so the mp4 matches the JPEG grid strip in the browser
+            writer = BrowserH264(filepath, new_w, new_h, fps, {"crf": str(crf), "preset": "ultrafast", "g": "1", "tune": "fastdecode"})
+
+            # Image batches: GPU resize in chunks of 32
+            def tensor_chunks(chunk_size=32):
+                order = idx if idx is not None else list(range(B))
+                need_resize = (new_h, new_w) != (H, W)
+                mode = 'area' if scale < 1.0 else 'bilinear'
+                work_device = model_management.get_torch_device()
+
+                def _to_numpy_nhwc_u8(t):
+                    return (t.mul(255).clamp(0, 255)
+                             .to(dtype=torch.uint8, device='cpu')
+                             .permute(0, 2, 3, 1).contiguous().numpy())
+
+                for c_start in range(0, len(order), chunk_size):
+                    sel = (images[order[c_start:c_start + chunk_size], ..., :3].permute(0, 3, 1, 2).contiguous()
+                                                                          .to(device=work_device, non_blocking=True))
+                    sel_video = F.interpolate(sel, size=(new_h, new_w), mode=mode) if need_resize else sel
+                    sel_strip = F.interpolate(sel_video, size=(strip_h, strip_w), mode='area') if need_strip_resize else sel_video
+                    video_frames = _to_numpy_nhwc_u8(sel_video)
+                    strip_frames = video_frames if sel_strip is sel_video else _to_numpy_nhwc_u8(sel_strip)
+                    del sel, sel_video, sel_strip
+                    yield video_frames, strip_frames
+
+            # Video: swscale converts and downscales in one pass. One frame per item, a sparse stride decodes
+            # many source frames per kept one. Shared reformatters, a fresh SwsContext per frame costs ~3ms.
+            def video_chunks():
+                limit = total if idx is not None else max_grid_frames
+                thumb_ref, strip_ref = VideoReformatter(), VideoReformatter()
+                out_i = 0
+                for src_i, frame in enumerate(reader):
+                    # Stop is checked per decoded frame, not per kept one, so cancel never waits out a sparse stride
+                    if stop.is_set() or out_i >= limit:
+                        break
+                    if idx is not None and src_i < idx[out_i]:
+                        continue
+                    if crop is None:
+                        rot = src_rot
+                        tw, th = (new_h, new_w) if rot % 2 else (new_w, new_h)
+                        small = thumb_ref.reformat(frame, width=tw, height=th, format="rgb24", interpolation="AREA")
+                    else:
+                        # Rotate and crop at full res in display coordinates like core, then downscale
+                        rot = 0
+                        region = av.VideoFrame.from_ndarray(reader.rgb(frame), format="rgb24")
+                        small = thumb_ref.reformat(region, width=new_w, height=new_h, interpolation="AREA")
+                    v = small.to_ndarray()
+                    if need_strip_resize:
+                        sw, sh = (strip_h, strip_w) if rot % 2 else (strip_w, strip_h)
+                        s = strip_ref.reformat(small, width=sw, height=sh, interpolation="AREA").to_ndarray()
+                    else:
+                        s = v
+                    if rot:
+                        v = np.rot90(v, k=rot, axes=(0, 1))
+                        s = np.rot90(s, k=rot, axes=(0, 1))
+                    out_i += 1
+                    yield [np.ascontiguousarray(v)], [s]
+
+            # Producer thread prepares frames while this thread encodes; torch, swscale and libx264 release the GIL
             producer_error = [None]
 
-            def producer():
+            def producer(chunks):
                 try:
-                    for c_start in range(0, total, chunk_size):
-                        c_idx = idx[c_start:c_start + chunk_size]
-                        sel = (images[c_idx, ..., :3].permute(0, 3, 1, 2).contiguous()
-                                                      .to(device=work_device, non_blocking=True))
-                        sel_video = F.interpolate(sel, size=(new_h, new_w), mode=mode) if need_resize else sel
-                        sel_strip = F.interpolate(sel_video, size=(strip_h, strip_w), mode='area') if need_strip_resize else sel_video
-                        video_frames = _to_numpy_nhwc_u8(sel_video)
-                        strip_frames = video_frames if sel_strip is sel_video else _to_numpy_nhwc_u8(sel_strip)
-                        del sel, sel_video, sel_strip
-                        frame_queue.put((c_start, video_frames, strip_frames))
+                    for item in chunks:
+                        if stop.is_set():
+                            break
+                        frame_queue.put(item)
                 except Exception as e:
                     producer_error[0] = e
                 finally:
                     frame_queue.put(None)
 
-            producer_thread = threading.Thread(target=producer, daemon=True)
+            producer_thread = threading.Thread(target=producer, args=(video_chunks() if stream_video else tensor_chunks(),), daemon=True)
             producer_thread.start()
 
             pbar = ProgressBar(total)
+            strip_arr = np.zeros((int(math.ceil(total / strip_cols)) * strip_h, strip_cols * strip_w, 3), dtype=np.uint8)
+            count = 0
             while True:
-                item = frame_queue.get()
+                # Checked per wait as well as via pbar, a sparse stride can decode for seconds per kept frame
+                model_management.throw_exception_if_processing_interrupted()
+                try:
+                    item = frame_queue.get(timeout=0.25)
+                except _queue.Empty:
+                    continue
                 if item is None:
                     break
-                c_start, video_frames, strip_frames = item
-                for i in range(video_frames.shape[0]):
-                    global_idx = c_start + i
-                    sr = global_idx // strip_cols
-                    sc = global_idx % strip_cols
-                    strip_arr[sr * strip_h:(sr + 1) * strip_h, sc * strip_w:(sc + 1) * strip_w] = strip_frames[i]
-                    frame = av.VideoFrame.from_ndarray(video_frames[i], format="rgb24")
-                    for packet in stream.encode(frame):
-                        container.mux(packet)
+                for v, s in zip(*item):
+                    r, c = divmod(count, strip_cols)
+                    if (r + 1) * strip_h > strip_arr.shape[0]:
+                        strip_arr = np.concatenate([strip_arr, np.zeros((strip_h,) + strip_arr.shape[1:], dtype=np.uint8)])
+                    strip_arr[r * strip_h:(r + 1) * strip_h, c * strip_w:(c + 1) * strip_w] = s
+                    writer.write(v)
+                    count += 1
                     pbar.update(1)
 
             producer_thread.join()
             if producer_error[0] is not None:
                 raise producer_error[0]
+            if count == 0:
+                raise ValueError("No frames could be decoded from the input.")
 
-            for packet in stream.encode():
-                container.mux(packet)
+            writer.flush()
         finally:
-            container.close()
+            # On interrupt or error, unblock the producer so it exits instead of hanging on a full queue
+            if producer_thread is not None and producer_thread.is_alive():
+                stop.set()
+                while producer_thread.is_alive():
+                    try:
+                        frame_queue.get(timeout=0.1)
+                    except _queue.Empty:
+                        pass
+            if reader is not None:
+                reader.close()
+            if writer is not None:
+                writer.close()
 
-        Image.fromarray(strip_arr).save(strip_path, quality=85)
+        total = count
+        Image.fromarray(strip_arr[:int(math.ceil(total / strip_cols)) * strip_h]).save(strip_path, quality=85)
 
         return io.NodeOutput(ui={"kj_batch_preview": [{
             "filename": file,
             "subfolder": subfolder,
             "type": "temp",
             "frame_count": total,
-            "fps": fps,
+            "fps": float(fps),
             "thumb_w": new_w,
             "thumb_h": new_h,
             "strip_filename": strip_file,
