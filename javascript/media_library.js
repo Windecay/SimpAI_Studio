@@ -12,6 +12,7 @@
     const PAGE_SIZE = 48;
     const CARD_BODY_BASE_HEIGHT = 60;
     const factsTextWidths = new Map();
+    const stoppedVideoPreviews = new WeakSet();
     let factsMeasureContext = null;
     const AUTOPLAY_STORAGE_KEY = 'simpai.mediaLibrary.videoAutoplay';
     const MAX_AUTOPLAY_BYTES = 256 * 1024 * 1024;
@@ -645,6 +646,7 @@
         const preview = card?.querySelector?.('.media-card-preview');
         const video = preview?.querySelector?.('video[data-auto-preview]');
         if (!video) return;
+        stoppedVideoPreviews.add(video);
         video.pause();
         video.removeAttribute('src');
         video.load();
@@ -688,9 +690,10 @@
         video.preload = 'none';
         video.setAttribute('aria-hidden', 'true');
         video.addEventListener('playing', () => {
-            if (video.isConnected) preview.classList.add('is-playing');
+            if (video.isConnected && !stoppedVideoPreviews.has(video)) preview.classList.add('is-playing');
         });
         video.addEventListener('error', () => {
+            if (!video.isConnected || stoppedVideoPreviews.has(video)) return;
             state.failedPreviews.add(item.media_id);
             stopVideoPreview(card);
         });
@@ -699,8 +702,9 @@
         const pending = video.play();
         if (pending && typeof pending.catch === 'function') {
             pending.catch(() => {
+                if (!video.isConnected || stoppedVideoPreviews.has(video)) return;
                 state.failedPreviews.add(item.media_id);
-                if (video.isConnected) stopVideoPreview(card);
+                stopVideoPreview(card);
             });
         }
     }
@@ -708,25 +712,37 @@
     function syncVideoAutoplay() {
         if (!videoAutoplayAllowed()) {
             stopAllVideoPreviews();
+            state.failedPreviews.clear();
             return;
         }
+        const visibleVideos = new Set();
         refs.feed?.querySelectorAll('.media-card').forEach((card) => {
             const item = state.itemById.get(card.dataset.id);
-            if (videoAutoplayEligible(item) && !state.failedPreviews.has(item.media_id) && previewVisible(card)) {
+            const visible = videoAutoplayEligible(item) && previewVisible(card);
+            if (visible) visibleVideos.add(item.media_id);
+            if (visible && !state.failedPreviews.has(item.media_id)) {
                 startVideoPreview(card, item);
             } else {
                 stopVideoPreview(card);
             }
         });
+        state.failedPreviews.forEach((id) => {
+            if (!visibleVideos.has(id)) state.failedPreviews.delete(id);
+        });
     }
 
     function scheduleVideoAutoplay() {
-        window.clearTimeout(state.autoplayTimer);
         if (!videoAutoplayAllowed()) {
-            stopAllVideoPreviews();
+            window.clearTimeout(state.autoplayTimer);
+            state.autoplayTimer = 0;
+            syncVideoAutoplay();
             return;
         }
-        state.autoplayTimer = window.setTimeout(syncVideoAutoplay, 180);
+        if (state.autoplayTimer) return;
+        state.autoplayTimer = window.setTimeout(() => {
+            state.autoplayTimer = 0;
+            syncVideoAutoplay();
+        }, 180);
     }
 
     function updateAutoplayControl() {
