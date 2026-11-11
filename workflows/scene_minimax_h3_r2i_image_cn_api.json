@@ -34,8 +34,19 @@
   "11": {
     "class_type": "MiniMaxH3ImageConditioning", "_meta": {"title": "MiniMax H3 Image Conditioning"},
     "inputs": {
-      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "prompt": ["1", 0],
+      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "prompt": ["simpai_h3_image_pe", 0],
       "width": ["70", 1], "height": ["71", 1],
+      "images.image_1": ["21", 0], "images.image_2": ["25", 0], "images.image_3": ["29", 0],
+      "images.image_4": ["33", 0], "images.image_5": ["37", 0], "images.image_6": ["103", 0],
+      "images.image_7": ["107", 0], "images.image_8": ["111", 0], "images.image_9": ["115", 0]
+    }
+  },
+  "simpai_h3_image_pe": {
+    "class_type": "SimpAIPromptExpand", "_meta": {"title": "MiniMax H3 Image PE"},
+    "inputs": {
+      "prompt": ["1", 0], "pe_model": "None", "seed": ["2", 0],
+      "max_length": 8192, "applied_prompt": "", "target": "minimax_h3_image",
+      "mask_empty": ["121", 0],
       "images.image_1": ["21", 0], "images.image_2": ["25", 0], "images.image_3": ["29", 0],
       "images.image_4": ["33", 0], "images.image_5": ["37", 0], "images.image_6": ["103", 0],
       "images.image_7": ["107", 0], "images.image_8": ["111", 0], "images.image_9": ["115", 0]

@@ -1004,8 +1004,8 @@
     },
     "pe": {
       "intro": {
-        "en": "PE optionally rewrites prompts for the Qwen Image 2.1 workflow. It does not replace the generation text encoder or the image model.",
-        "cn": "PE 可为 Qwen Image 2.1 流程改写提示词，不会替代生成用文本编码器或图像模型。"
+        "en": "PE optionally rewrites prompts for supported image workflows, including Qwen Image 2.1 and native H3-Image. It does not replace the generation text encoder or image model.",
+        "cn": "PE 可为 Qwen Image 2.1、原生 H3-Image 等支持的图像流程改写提示词，不会替代生成用文本编码器或图像模型。"
       },
       "sections": [
         [

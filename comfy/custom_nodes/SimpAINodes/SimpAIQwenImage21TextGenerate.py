@@ -36,6 +36,7 @@ T2I_SYSTEM = (_SYSTEM_PROMPTS / "qwen21_pe_t2i.md").read_text(encoding="utf-8")
 I2I_SYSTEM = (_SYSTEM_PROMPTS / "qwen21_pe_i2i.md").read_text(encoding="utf-8")
 FLUX3_SYSTEM_PATH = _SYSTEM_PROMPTS / "flux3_pup.md"
 PH3_SYSTEM_PATH = _SYSTEM_PROMPTS / "ph3_image_pe.md"
+H3_IMAGE_SYSTEM_PATH = _SYSTEM_PROMPTS / "h3_image_pe.md"
 
 
 def _model_rows():
@@ -187,16 +188,17 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
                 io.Autogrow.Input("images", optional=True, template=io.Autogrow.TemplatePrefix(
                     io.Image.Input("image", optional=True), prefix="image_", min=0, max=100,
                 )),
-                io.Combo.Input("target", options=["qwen_image21", "flux3", "moss_image", "ph3_image"], default="qwen_image21", optional=True),
+                io.Combo.Input("target", options=["qwen_image21", "flux3", "moss_image", "ph3_image", "minimax_h3_image"], default="qwen_image21", optional=True),
                 io.Clip.Input("clip", optional=True),
                 io.String.Input("applied_prompt", default="", optional=True, multiline=True),
+                io.Boolean.Input("mask_empty", default=True, optional=True),
             ],
             outputs=[io.String.Output(display_name="prompt")],
         )
 
     @classmethod
     def execute(cls, prompt, pe_model, seed, max_length=4096, images=None,
-                target="qwen_image21", clip=None, applied_prompt=""):
+                target="qwen_image21", clip=None, applied_prompt="", mask_empty=True):
         if pe_model in (None, "", "None"):
             return _prompt_output(prompt, pe_model, "disabled")
         if _is_moss_layout_prompt(prompt, target):
@@ -216,7 +218,15 @@ class SimpAIQwenImage21TextGenerate(io.ComfyNode):
             task = pe_model_task(pe_model)
             edit = task == "i2i" or (task is None and bool(image_list))
             image_list = image_list if edit else []
-            if target == "ph3_image":
+            if target == "minimax_h3_image":
+                system = H3_IMAGE_SYSTEM_PATH.read_text(encoding="utf-8")
+                if not mask_empty:
+                    system += (
+                        "\nA painted canvas mask is present. <Picture 1> is the source image. "
+                        "Limit the requested change to the masked region and explicitly preserve "
+                        "all content outside it. The mask is execution data, not a numbered picture.\n"
+                    )
+            elif target == "ph3_image":
                 system = PH3_SYSTEM_PATH.read_text(encoding="utf-8")
             elif target == "flux3":
                 system = FLUX3_SYSTEM_PATH.read_text(encoding="utf-8")
@@ -263,25 +273,25 @@ class SimpAIPromptExpand(io.ComfyNode):
 
     @classmethod
     def execute(cls, prompt, pe_model, seed, max_length=4096, images=None,
-                target="qwen_image21", clip=None, applied_prompt=""):
+                target="qwen_image21", clip=None, applied_prompt="", mask_empty=True):
         if (pe_model in (None, "", "None") or _is_moss_layout_prompt(prompt, target)
                 or prompt_was_expanded(prompt, applied_prompt) or clip is not None):
-            return SimpAIQwenImage21TextGenerate.execute(prompt, pe_model, seed, max_length, images, target, clip, applied_prompt)
+            return SimpAIQwenImage21TextGenerate.execute(prompt, pe_model, seed, max_length, images, target, clip, applied_prompt, mask_empty)
         try:
             row = _resolve_model(pe_model)
         except FileNotFoundError:
-            return SimpAIQwenImage21TextGenerate.execute(prompt, pe_model, seed, max_length, images, target, clip, applied_prompt)
+            return SimpAIQwenImage21TextGenerate.execute(prompt, pe_model, seed, max_length, images, target, clip, applied_prompt, mask_empty)
         registered_path = folder_paths.get_full_path("text_encoders", row["name"])
         if (not row["name"].lower().endswith(".safetensors") or not registered_path
                 or os.path.normcase(os.path.realpath(registered_path)) != os.path.normcase(os.path.realpath(row["path"]))):
-            return SimpAIQwenImage21TextGenerate.execute(prompt, pe_model, seed, max_length, images, target, clip, applied_prompt)
+            return SimpAIQwenImage21TextGenerate.execute(prompt, pe_model, seed, max_length, images, target, clip, applied_prompt, mask_empty)
 
         # Use the same loader signature as manually loaded Text Encoder models.
         graph = GraphBuilder()
         loader = graph.node("CLIPLoader", clip_name=row["name"], type="stable_diffusion")
         inputs = {
             "prompt": prompt, "pe_model": pe_model, "seed": seed, "max_length": max_length,
-            "target": target, "clip": loader.out(0),
+            "target": target, "clip": loader.out(0), "mask_empty": mask_empty,
             **{f"images.{name}": image for name, image in (images or {}).items()},
         }
         result = graph.node("SimpAIQwenImage21TextGenerate", **inputs)

@@ -2066,7 +2066,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         panel.querySelectorAll('[data-simpai-lora-enabled]').forEach(syncLoraRowInteractivity);
         syncModelsPanelRefinerAvailability(panel);
         // PE availability belongs to the active task, not the asynchronous file catalog.
-        const peEnabled = /qwen_image21|flux3|^moss_image_sft_aio_cn$|^(?:scene_)?p_h3_image_cn$/i.test(modelsPanelActiveTaskMethod());
+        const peEnabled = /qwen_image21|flux3|^moss_image_sft_aio_cn$|^(?:scene_)?(?:p_h3_image_cn|minimax_h3_r2i_image_cn)$/i.test(modelsPanelActiveTaskMethod());
         const peField = panel.querySelector('[data-simpai-model-card="pe"]');
         if (peField) peField.hidden = !peEnabled;
         const previous = modelsPanelControlStates.get(panel);
@@ -6784,6 +6784,29 @@ function _rc_quantize(value, step) {
     return Math.max(step, q);
 }
 
+function _rc_resolutionViewport(width, height) {
+    // A virtual pixel workspace, not a full-resolution preview canvas.
+    const side = Math.max(2048, Math.ceil(Math.max(width, height) / 1024) * 1024);
+    return { width: side, height: side };
+}
+
+function _rc_clampResolutionDims(width, height, step, preserveRatio = false, quantize = true) {
+    const max = 8192;
+    let w = Number(width);
+    let h = Number(height);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+        return { width: -1, height: -1 };
+    }
+    if (preserveRatio) {
+        const scale = Math.min(1, max / w, max / h);
+        w *= scale;
+        h *= scale;
+    }
+    const clamp = value => Math.max(64, Math.min(max, value));
+    const normalize = value => clamp(quantize ? _rc_quantize(clamp(value), step) : Math.round(value));
+    return { width: normalize(w), height: normalize(h) };
+}
+
 function _rc_getResolutionProfile() {
     const params = window.simpleaiTopbarSystemParams
         || (typeof topbarLastSystemParams !== 'undefined' ? topbarLastSystemParams : null);
@@ -7065,6 +7088,7 @@ function initResolutionControlWidget(widget, options = {}) {
     const hInput = widget.querySelector('[data-role="hinput"]');
     const qStepSelect = widget.querySelector('[data-role="qstep"]');
     const multiplierInput = widget.querySelector('[data-role="multiplier"]');
+    const multiplierValue = widget.querySelector('[data-role="multiplier-value"]');
     const pad = widget.querySelector('[data-role="pad"]');
     const rect = widget.querySelector('[data-role="rect"]');
     const rectLabel = widget.querySelector('[data-role="rect-label"]');
@@ -7421,7 +7445,7 @@ function initResolutionControlWidget(widget, options = {}) {
             width = Math.max(width, 2048);
             height = Math.max(height, 2048);
         }
-        return { width, height };
+        return _rc_resolutionViewport(width, height);
     };
 
     const getRatios = () => {
@@ -7449,51 +7473,16 @@ function initResolutionControlWidget(widget, options = {}) {
         const step = readStep();
         for (const input of [wInput, hInput]) {
             if (input.min !== "64") input.min = "64";
-            if (input.max !== "2048") input.max = "2048";
+            if (input.max !== "8192") input.max = "8192";
             if (input.step !== String(step)) input.step = String(step);
         }
     };
 
-    const clampDim = (value) => {
-        const step = readStep();
-        let v = parseInt(value, 10);
-        if (!Number.isFinite(v) || v <= 0) return -1;
-        v = Math.max(64, Math.min(2048, v));
-        return _rc_quantize(v, step);
-    };
     const clampRawDim = (value) => {
-        let v = parseInt(value, 10);
-        if (!Number.isFinite(v) || v <= 0) return -1;
-        return Math.max(64, Math.min(2048, v));
+        return _rc_clampResolutionDims(value, value, readStep(), false, false).width;
     };
     const clampDims = (width, height, preserveRatio = false, quantize = true) => {
-        const step = readStep();
-        let w = Number(width);
-        let h = Number(height);
-        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
-            return { width: -1, height: -1 };
-        }
-        if (preserveRatio) {
-            const ratio = w / Math.max(1, h);
-            const scale = Math.min(1, 2048 / Math.max(1, w), 2048 / Math.max(1, h));
-            w = Math.max(64, w * scale);
-            h = Math.max(64, h * scale);
-            if (h >= w / Math.max(0.0001, ratio)) {
-                h = Math.max(64, Math.min(2048, h));
-                w = h * ratio;
-            } else {
-                w = Math.max(64, Math.min(2048, w));
-                h = w / Math.max(0.0001, ratio);
-            }
-            return {
-                width: quantize ? _rc_quantize(w, step) : Math.round(w),
-                height: quantize ? _rc_quantize(h, step) : Math.round(h),
-            };
-        }
-        return {
-            width: quantize ? clampDim(w) : clampRawDim(w),
-            height: quantize ? clampDim(h) : clampRawDim(h),
-        };
+        return _rc_clampResolutionDims(width, height, readStep(), preserveRatio, quantize);
     };
     const parseRatioValue = (value) => {
         const text = String(value || '').trim();
@@ -7897,7 +7886,7 @@ function initResolutionControlWidget(widget, options = {}) {
         const step = readStep();
         const current = clampRawDim(input.value);
         if (!(current > 0)) return;
-        const next = Math.max(64, Math.min(2048, current + direction * step));
+        const next = clampRawDim(current + direction * step);
         input.value = String(next);
         previewManualDraft(input === hInput ? 'height' : 'width');
     };
@@ -8009,6 +7998,8 @@ function initResolutionControlWidget(widget, options = {}) {
         );
         syncRatioLockControls();
         const multiplier = parseFloat(multiplierInput.value || "1") || 1;
+        setResolutionText(multiplierValue, `${multiplier.toFixed(1)}\u00d7`);
+        setResolutionAttribute(multiplierInput, 'aria-valuetext', `${multiplier.toFixed(1)}\u00d7`);
         const step = readStep();
         syncDimensionInputStep();
         const effectiveW = waitingOriginal ? 0 : _rc_quantize(dims.width * multiplier, step);
@@ -8025,8 +8016,9 @@ function initResolutionControlWidget(widget, options = {}) {
         setResolutionText(rectLabel, rectText);
         syncAccordionTitle(effectiveW, effectiveH, { waitingOriginal });
         if (status) {
-            const sourceText = dims.source ? `${dims.source.width}\u00d7${dims.source.height}` : `${dims.width}\u00d7${dims.height}`;
-            setResolutionText(status, waitingOriginal ? '' : `${sourceText} \u2192 ${effectiveW}\u00d7${effectiveH}`);
+            const baseText = `${dims.width}\u00d7${dims.height}`;
+            const megapixels = (effectiveW * effectiveH / 1000000).toFixed(2);
+            setResolutionText(status, waitingOriginal ? '' : `${baseText} \u00d7 ${multiplier.toFixed(1)} \u2192 ${effectiveW}\u00d7${effectiveH} \u00b7 ${megapixels} MP`);
         }
         if (waitingOriginal) {
             _rc_clearResolutionPreviewCanvas(canvas);

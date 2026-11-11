@@ -8,6 +8,24 @@
   },
   "areas": [
     {
+      "key": "h3_image_prompting_en",
+      "title": "Native MiniMax H3-Image Prompting",
+      "doc": "h3_image_prompting_en.md",
+      "language": "en",
+      "ownership": "hybrid",
+      "source": {"path": "workflows/scene_minimax_h3_r2i_image_cn_api.json", "official_guide_review": "reviewed_github_skill", "repository": "MiniMax-AI/MiniMax-H3-Image", "official_skill": "skills/h3-image-prompt-writing/SKILL.md", "references": ["skills/h3-image-prompt-writing/references/t2i-en.txt", "skills/h3-image-prompt-writing/references/edit-en.txt"]},
+      "contract_summary": "Native H3-Image English visual narration, ordered Picture references and stable Subject relationships; preserve literal text and actual mask boundaries, with no video sections."
+    },
+    {
+      "key": "h3_image_prompting_cn",
+      "title": "原生 MiniMax H3-Image 提示词",
+      "doc": "h3_image_prompting_cn.md",
+      "language": "cn",
+      "ownership": "hybrid",
+      "source": {"path": "workflows/scene_minimax_h3_r2i_image_cn_api.json", "official_guide_review": "reviewed_github_skill", "repository": "MiniMax-AI/MiniMax-H3-Image", "official_skill": "skills/h3-image-prompt-writing/SKILL.md", "references": ["skills/h3-image-prompt-writing/references/t2i-en.txt", "skills/h3-image-prompt-writing/references/edit-en.txt"]},
+      "contract_summary": "原生 H3-Image 英文视觉叙述，有序 Picture 与稳定 Subject 的独立保留和迁移关系；文字保留要求的语言，遵守实际蒙版边界，不使用视频章节。"
+    },
+    {
       "key": "ph3_image_prompting_en",
       "title": "P-H3-Image Prompting",
       "doc": "ph3_image_prompting_en.md",

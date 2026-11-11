@@ -143,6 +143,17 @@ def guidance(entry, spec, lang):
             "workflow": workflow}
     if key in {"flux3_natural", "ph3_image"}:
         result.update(preferred_prompt_language="en", requires_final_prompt=False)
+    if compiler and compiler.get("route") == "image_reference":
+        result["format"] = "natural_language"
+        if method.removeprefix("scene_").startswith("minimax_h3_r2i_image"):
+            result.update(preferred_prompt_language="en", requires_final_prompt=False)
+            result["workflow"] = (
+                "Read the native H3-Image skills and use English visual narration for the final model prompt; "
+                "keep instruction in the user's language and visible lettering in its required language. "
+                "For edits use one paragraph with source definitions, target overview and independent Subject "
+                "relationships, then changed details. Preserve runtime Picture order and mask boundaries. "
+                "Validate and preview before submission."
+            )
     if key == "moss_image":
         result.update(preferred_prompt_language="user_language", format="caption_or_layout_json", requires_final_prompt=False)
     if spec.get("prompt_policy", {}).get("mode") == "preset_fixed":

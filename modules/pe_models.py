@@ -66,7 +66,8 @@ def pe_supported_task(task_method):
     method = str(task_method or "").lower()
     return (
         "qwen_image21" in method or "flux3" in method
-        or method in {"moss_image_sft_aio_cn", "p_h3_image_cn", "scene_p_h3_image_cn"}
+        or method in {"moss_image_sft_aio_cn", "p_h3_image_cn", "scene_p_h3_image_cn",
+                      "minimax_h3_r2i_image_cn", "scene_minimax_h3_r2i_image_cn"}
     )
 
 

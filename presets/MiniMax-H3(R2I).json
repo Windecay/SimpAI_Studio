@@ -4,6 +4,7 @@
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",
+    "backend_params": {"pe_model": "None"},
     "engine_type": "image",
     "disvisible": [
       "input_image_checkbox",
@@ -68,6 +69,9 @@
       "prompt": {"Basic": ""},
       "task_method": {"Basic": "minimax_h3_r2i_image_cn"},
       "prompt_compiler": {"Basic": "minimax_h3_r2i"},
+      "prompt_skill_docs": {
+        "default": {"en": ["h3_image_prompting_en.md"], "cn": ["h3_image_prompting_cn.md"]}
+      },
       "overwrite_step": {"Basic": 6},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
@@ -87,7 +91,7 @@
       "var_number4_step": 0.01,
       "var_number4_max": 100.0,
       "var_number4": {"Basic": 3.0},
-      "aspect_ratio": ["1024|1:1", "1536|1:1", "2048|1:1", "origin|Original"],
+      "aspect_ratio": ["2048|1:1", "1024|1:1", "1536|1:1", "3072|1:1", "4096|1:1", "origin|Original"],
       "resolution_control": {
         "mode": "image_keep_input_area",
         "source": "scene_canvas",

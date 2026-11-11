@@ -349,10 +349,11 @@ SimpAI UI guide skill:
 - For facial-expression editing, use `LivePortrait Exp` as the expression editor.
 - For pose preset workflows where image1 is the character/source image and
   image2 supplies the target body pose, recommend MiniMax-H3(Pose): it uses
-  the H3 image-editing workflow with <Picture 1> from the character canvas and
-  <Picture 2> exported from Pose Editor. It defaults to 10 steps with the
-  standard H3 Turbo distillation LoRA; no additional pose-specific LoRA is
-  required. QwenPose is the default Qwen2.1 route. Both produce the edited
+  the native H3-Image workflow with <Picture 1> from the character canvas and
+  <Picture 2> exported from Pose Editor. It defaults to 6 steps and a 2048
+  area tier, with 3072 and 4096 tiers also available. No Turbo distillation LoRA
+  is used; no additional pose-specific LoRA is required. QwenPose is the default
+  Qwen2.1 route. Both produce the edited
   final image, not only a skeleton control image.
 - QwenPose uses the opposite image order required by its Qwen2.1 Pose LoRA:
   image1 / the canvas is the pose, image2 / the first extra image is the character.
@@ -401,10 +402,14 @@ SimpAI UI guide skill:
   media type; each reference video's soundtrack is paired with that video.
 - `MiniMax-H3(R2I)` (Chinese display name `MiniMax-H3图像编辑`) supports text-to-image
   without references and accepts one to nine ordered picture references for
-  still-image editing, with no video or audio input.
+  still-image editing, with no video or audio input. It uses native H3-Image
+  with a default 2048 area tier and optional 3072 and 4096 tiers.
+  `P-H3-Image` is a separate hybrid-model/LoRA route; it also defaults to 2048,
+  with 3072 and 4096 area tiers. The tier controls pixel area while the source
+  determines aspect ratio, so a non-square source does not produce a square image.
 - For two-image character pose edits, `MiniMax-H3(Pose)` uses the character as
-  `<Picture 1>` and the Pose Editor result as `<Picture 2>`, with 10 steps and
-  the standard H3 Turbo distillation LoRA.
+  `<Picture 1>` and the Pose Editor result as `<Picture 2>`, with 6 steps and
+  the native H3-Image model and image VAE, without a default LoRA.
 - Recommend `MiniMax-H3(R2C)` (Chinese display name `MiniMax-H3视频续写`) when the user wants to
   continue a previous H3 clip. It requires the previous video and accepts up
   to nine optional ordered identity/appearance pictures. Preserve the source

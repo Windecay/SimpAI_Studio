@@ -155,18 +155,18 @@ def render_resolution_control_html(
   <div class="resolution-control-grid resolution-control-grid-compact">
     <label>
       <span>Width</span>
-      <input data-role="winput" title="Width" type="number" min="-1" max="4096" step="1" value="-1" />
+      <input data-role="winput" title="Width" type="number" min="-1" max="8192" step="1" value="-1" />
     </label>
     <label>
       <span>Height</span>
-      <input data-role="hinput" title="Height" type="number" min="-1" max="4096" step="1" value="-1" />
+      <input data-role="hinput" title="Height" type="number" min="-1" max="8192" step="1" value="-1" />
     </label>
     <label>
       <span>Normalize</span>
       <select data-role="qstep" title="Quantize step">{step_options}</select>
     </label>
     <label>
-      <span>Scale</span>
+      <span class="resolution-control-scale-label"><span>Scale</span><output data-role="multiplier-value">1.0&#215;</output></span>
       <input data-role="multiplier" title="Resolution Multiply" type="range" min="1" max="2" step="0.1" value="1" />
     </label>
   </div>

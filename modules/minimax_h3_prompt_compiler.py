@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 
 COMPILER_ID = "minimax_h3"
@@ -717,6 +718,11 @@ def _ref2va_continuation_rules(context=None):
     )
 
 
+def _is_native_image_target(target, media):
+    method = str(media.get("task_method") or target.get("task_method") or "").lower()
+    return method.removeprefix("scene_").startswith("minimax_h3_r2i_image")
+
+
 def build_system_instructions(target_or_compiler, context=None):
     target = target_or_compiler if isinstance(target_or_compiler, dict) else {"prompt_compiler": target_or_compiler}
     compiler = target_compiler(target) or normalize_compiler(target_or_compiler)
@@ -728,6 +734,12 @@ def build_system_instructions(target_or_compiler, context=None):
         return ""
     media = normalize_context(target_context)
     if mode == MODE_R2I:
+        if _is_native_image_target(target, media):
+            # Keep assistant rewriting and optional PE on the same reviewed contract.
+            rules = (Path(__file__).resolve().parents[1] /
+                     "docs/vlm_system_prompts/h3_image_pe.md").read_text(encoding="utf-8")
+            inventory = _r2i_context_note({**media, "language": "en"})
+            return f"MiniMax H3 prompt compiler mode: R2I.\n{rules}\nRuntime picture inventory:\n{inventory}"
         if media["language"] == "cn":
             language_rule = "Write the single editable prompt in fluent Simplified Chinese."
         elif media["language"] == "en":
@@ -1036,6 +1048,12 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
                 "appear: "
                 + ", ".join(protected_references)
                 + ". Use only these picture labels and never add video or audio labels."
+            )
+        if _is_native_image_target(target, media):
+            rules = build_system_instructions(target, target_context)
+            return (
+                "Compile this rough request into one complete native MiniMax H3-Image still-image prompt.\n\n"
+                f"{rules}\n\nUser intent:\n{user_intent}{reference_lock}"
             )
         if media.get("is_masked_image_edit"):
             source_rule = (

@@ -57,11 +57,12 @@ in English and Chinese stages.
 
 ## R2I / 图编路线
 
-- Contract reviewed: 2026-09-01.
-- `MiniMax-H3(R2I)` is a still-image generation and editing route. With no
-  painted mask, the canvas and additional images are numbered `<Picture N>` in
-  upload order. With a non-empty painted mask, the canvas becomes the
-  unnumbered source image and additional references begin at `<Picture 1>`.
+- Native H3-Image prompt contract reviewed: 2026-11-11 against MiniMax's
+  `skills/h3-image-prompt-writing` and its T2I/Edit guides.
+- `MiniMax-H3(R2I)` now uses the native `minimax_h3_r2i_image_cn` still-image
+  route. The canvas remains `<Picture 1>` when present, including with a painted
+  mask; non-empty additional images continue in upload order. Empty slots do not
+  consume a number. The mask itself is never a numbered picture.
 - The painted mask selects the edit branch automatically. Do not add a separate
   mask-mode option, and never describe the mask itself as a picture reference.
 - In masked editing, describe only the requested change inside the mask and
@@ -71,6 +72,12 @@ in English and Chinese stages.
 - Use the H3 R2I still-image compiler with `<Picture N>` labels, but do not
   create H3 storyboard sections, video shots, dialogue, synchronized sound,
   audio references, or video references for this route.
+- Native H3-Image final prompts use English visual narration while image text
+  retains its required language. Follow `h3_image_prompting_cn.md` or
+  `h3_image_prompting_en.md`: one paragraph of source definitions with stable
+  `<Subject N>` labels, target overview and individual preservation/transfer
+  relationships, then changed details. These are inline relationships, not the
+  video `subject_definitions` section or a one-Subject-per-picture mapping.
 - `MiniMax-H3(R2I)` may be selected for `image_edit`, `multi_image_edit`, or
   `image_object_transfer` after the normal edit queue candidates. The result
   still needs the normal confirmation and model-readiness checks.
@@ -84,8 +91,9 @@ in English and Chinese stages.
 
 ## H3 Pose Source Retention / H3 姿势源图保留
 
-- `MiniMax-H3(Pose)` uses exactly two pictures through the H3 R2I still-image
-  route. `<Picture 1>` is the source image to edit, including its character
+- `MiniMax-H3(Pose)` uses exactly two pictures through the native H3-Image
+  route, with the image model and image VAE, 6 steps, and no default LoRA.
+  `<Picture 1>` is the source image to edit, including its character
   and original scene. `<Picture 2>` is the Pose Editor output and supplies
   only the target body pose, orientation, and visible gestures.
   图 1 同时提供角色和原场景；图 2 只提供姿势，不能沿用人偶外观或纯色背景。
@@ -104,7 +112,9 @@ in English and Chinese stages.
   This preset still uses one self-contained R2I image-editing instruction, not
   the Ref2VA video timeline. Its two image labels remain unchanged, and it does
   not require a mask, video, audio, or an additional pose-specific LoRA.
-  保留 10 步、权重 1.0 的 H3 Turbo 蒸馏设置；界面语言读取 `state.__lang`。
+  使用原生 H3-Image 的 6 步设置，不挂默认 Turbo LoRA；界面语言读取 `state.__lang`。
+  Read `h3_image_prompting_cn.md` or `h3_image_prompting_en.md` for the native
+  still-image rules. Optional PE uses the same picture order and mask context.
 - Validation on 2026-09-13 used one actual source/pose pair, four candidate
   prompts, and two seeds per candidate. Explicit scene and worn-item retention
   kept the hall background and hat in both tested outputs. This is not a
