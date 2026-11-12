@@ -2108,6 +2108,7 @@ def worker():
         tasks = []
         task_rng = random.Random(async_task.seed % (constants.MAX_SEED + 1))
         allow_plain_bracket_arrays = not _is_minimax_h3_task(async_task)
+        allow_inline_groups = allow_plain_bracket_arrays and not moss_layout
         if not allow_plain_bracket_arrays:
             logger.info(
                 '[Wildcards] Preserving plain bracket groups for MiniMax H3 prompt: task_method=%s',
@@ -2136,10 +2137,16 @@ def worker():
             task_rng = random.Random(task_seed)  # may bind to inpaint noise in the future
             task_prompt = prompt if moss_layout else wildcards.apply_arrays(prompt, i, wildcards_arrays, arrays_mult)
             if not moss_layout:
-                task_prompt = wildcards.replace_wildcard(task_prompt, task_rng, user_did=async_task.user_did)
-            task_negative_prompt = wildcards.apply_wildcards(negative_prompt, task_rng, user_did=async_task.user_did)
-            task_extra_positive_prompts = [wildcards.apply_wildcards(pmt, task_rng, user_did=async_task.user_did) for pmt in extra_positive_prompts]
-            task_extra_negative_prompts = [wildcards.apply_wildcards(pmt, task_rng, user_did=async_task.user_did) for pmt in extra_negative_prompts]
+                task_prompt = wildcards.replace_wildcard(
+                    task_prompt, task_rng, user_did=async_task.user_did,
+                    allow_pipe_groups=allow_inline_groups)
+            task_negative_prompt = wildcards.apply_wildcards(
+                negative_prompt, task_rng, user_did=async_task.user_did,
+                allow_pipe_groups=allow_inline_groups)
+            task_extra_positive_prompts = [wildcards.apply_wildcards(pmt, task_rng, user_did=async_task.user_did,
+                                    allow_pipe_groups=allow_inline_groups) for pmt in extra_positive_prompts]
+            task_extra_negative_prompts = [wildcards.apply_wildcards(pmt, task_rng, user_did=async_task.user_did,
+                                    allow_pipe_groups=allow_inline_groups) for pmt in extra_negative_prompts]
            
             if needs_vlm_translation:
                 task_prompt = vlm.translate(task_prompt, async_task.translation_methods)

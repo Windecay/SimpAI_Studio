@@ -722,7 +722,17 @@ def h3_director_prompt_state(state, scene_resources=None, input_text=""):
     if not segment:
         return state
     name, profile, _method, _compiler = scene_director_h3.route(segment)
-    data = copy.deepcopy(state if isinstance(state, dict) else {})
+    source_state = state if isinstance(state, dict) else {}
+    try:
+        data = copy.deepcopy(source_state)
+    except (TypeError, AttributeError):
+        # Native contexts such as UserContext cannot be deep-copied.
+        data = {}
+        for key, value in source_state.items():
+            try:
+                data[key] = copy.deepcopy(value)
+            except (TypeError, AttributeError):
+                data[key] = value
     scene = copy.deepcopy(scene_director_h3.route_preset(name)["default_engine"]["scene_frontend"])
     data.update(
         __is_scene_frontend=True, __preset=f"MiniMax-H3({name})",

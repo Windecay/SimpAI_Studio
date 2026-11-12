@@ -42,6 +42,9 @@ tag_regex6 = re.compile(r'__([\w/-]+)__:([\d]+):([\d]+)')
 
 wildcard_regex = re.compile(r'-([\w-]+)-')
 
+# Inline variant group, e.g. "[from above|from below|in a mirror]".
+pipe_group_regex = re.compile(r'\[([^\[\]\r\n|]+(?:\|[^\[\]\r\n|]+)+)\]')
+
 def set_wildcard_path_list(name, list_value):
     global wildcards_list
     if name in wildcards_list.keys():
@@ -143,6 +146,23 @@ def _scan_wildcards_sources(user_did=None):
     return dirs, wildcard_sources, tuple(sorted(signature_items))
 
 
+def _split_word_metadata(line):
+    # Only a pipe outside [...] separates the legacy "word|template|weight" tail, so
+    # an inline "[a|b|c]" group may stay inside one entry.
+    depth = 0
+    for position, char in enumerate(line):
+        if char == '[':
+            depth += 1
+        elif char == ']':
+            depth = max(0, depth - 1)
+        elif char == '|' and depth == 0:
+            tail = line[position + 1:].split('|')
+            template = tail[0] if len(tail) > 0 else ''
+            weight_range = tail[1] if len(tail) > 1 else ''
+            return line[:position], template, weight_range
+    return line, '', ''
+
+
 def _read_wildcard_file(file_path):
     try:
         with open(file_path, encoding='utf-8') as file:
@@ -154,18 +174,16 @@ def _read_wildcard_file(file_path):
     words = [x.split('?')[0] for x in raw_lines if x != '' and not wildcard_regex.findall(x)]
     templates = {}
     weight_ranges = {}
+    entries = []
     for line in words:
-        if '|' not in line:
-            continue
-        parts = line.split("|")
-        word = parts[0]
-        template = parts[1] if len(parts) > 1 else ''
-        weight_range = parts[2] if len(parts) > 2 else ''
-        templates[word if word else None] = template
-        if len(weight_range.strip()) > 0:
-            weight_ranges[word if word else None] = weight_range
+        word, template, weight_range = _split_word_metadata(line)
+        entries.append(word)
+        if template or weight_range:
+            templates[word if word else None] = template
+            if len(weight_range.strip()) > 0:
+                weight_ranges[word if word else None] = weight_range
 
-    return [x.split("|")[0] for x in words], templates, weight_ranges
+    return entries, templates, weight_ranges
 
 
 def _build_wildcards_list(wildcard_sources):
@@ -360,7 +378,11 @@ def get_words_with_wildcard(wildcard, rng, method='R', number=1, start_at=1, use
         for i in range(number):
             words_each = rng.sample(words, nums)
             words_result.append(words_each[0] if nums==1 else ", ".join(words_each))
-    words_result = [replace_wildcard(txt, rng, user_did=user_did) for txt in words_result]
+    # Batch compilation must leave inline groups for the per-image RNG and policy.
+    words_result = [
+        replace_wildcard(txt, rng, user_did=user_did, allow_pipe_groups=False)
+        for txt in words_result
+    ]
     logger.info(f'Get words from wildcard:__{wildcard}__, method:{method}, number:{number}, start_at:{start_at}, result:{words_result}')
     return words_result
 
@@ -399,6 +421,20 @@ def _sub_prompt_syntax(pattern, replacement, text, count=0):
             break
     parts.append(text[last:])
     return ''.join(parts)
+
+
+def expand_pipe_groups(text, rng):
+    # Each group resolves once per image and never joins the batch arrays, so the
+    # image count stays what the user asked for.
+    if '|' not in text:
+        return text
+
+    def pick(match):
+        options = [option.strip() for option in match.group(1).split('|')]
+        options = [option for option in options if option]
+        return match.group(0) if len(options) < 2 else rng.choice(options)
+
+    return _sub_prompt_syntax(pipe_group_regex, pick, text)
 
 
 def compile_arrays(text, rng, user_did=None, allow_plain_bracket_arrays=True):
@@ -542,7 +578,7 @@ def compile_arrays(text, rng, user_did=None, allow_plain_bracket_arrays=True):
     logger.info(f'Copmile text in prompt to arrays: {text} -> arrays:{arrays}, mult:{mult}')
     return text, arrays, mult, seed_fixed
 
-def replace_wildcard(text, rng, user_did=None):
+def replace_wildcard(text, rng, user_did=None, allow_pipe_groups=True):
     global wildcards_max_bfs_depth, tag_regex2
     ctx = ensure_wildcards_loaded(user_did)
 
@@ -559,6 +595,9 @@ def replace_wildcard(text, rng, user_did=None):
         i += 1
         if i > wildcards_max_bfs_depth:
             break
+    if allow_pipe_groups:
+        # Runs last so that a chosen wildcard entry may bring its own groups here.
+        text = expand_pipe_groups(text, rng)
     return text
 
 
@@ -595,14 +634,14 @@ def apply_arrays(text, index, arrays, mult):
     return text
 
 
-def apply_wildcards(wildcard_text, rng, user_did=None):
+def apply_wildcards(wildcard_text, rng, user_did=None, allow_pipe_groups=True):
     global tag_regex2
     ctx = ensure_wildcards_loaded(user_did)
 
     for _ in range(wildcards_max_bfs_depth):
         placeholders = [match.group(1) for match in _prompt_syntax_matches(tag_regex2, wildcard_text)]
         if len(placeholders) == 0:
-            return wildcard_text
+            break
 
         logger.info(f'[Wildcards] processing: {wildcard_text}')
         for placeholder in placeholders:
@@ -618,7 +657,11 @@ def apply_wildcards(wildcard_text, rng, user_did=None):
             wildcard_text = _sub_prompt_syntax(pattern, lambda _match: word, wildcard_text, count=1)
             logger.info(f'[Wildcards] {wildcard_text}')
 
-    logger.info(f'[Wildcards] BFS stack overflow. Current text: {wildcard_text}')
+    else:
+        logger.info(f'[Wildcards] BFS stack overflow. Current text: {wildcard_text}')
+    if allow_pipe_groups:
+        # Resolve groups introduced by entries, including recursive wildcards.
+        wildcard_text = expand_pipe_groups(wildcard_text, rng)
     return wildcard_text
 
 
