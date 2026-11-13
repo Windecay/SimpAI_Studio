@@ -71,8 +71,9 @@
         const editing = active?.matches("textarea, [contenteditable]:not([contenteditable='false']), input:not([type])")
             || (active?.matches("input") && /^(text|search|email|url|tel|number|password)$/.test(active.type));
         if (editing || document.fullscreenElement) return true;
+        // The chat launcher is a persistent portal, not an open dialog.
         return Array.from(document.querySelectorAll(
-            "#lightboxModal, .modal, .simpleai-floating-portal-node, [role='dialog'], [aria-modal='true'], dialog[open], .block.fullscreen, .is-zoomed-active"
+            "#lightboxModal, .modal, .simpleai-floating-portal-node:not(#describe_vlm_chat_button), [role='dialog'], [aria-modal='true'], dialog[open], .block.fullscreen, .is-zoomed-active"
         )).some(visible);
     }
 
