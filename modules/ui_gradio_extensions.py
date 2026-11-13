@@ -186,6 +186,7 @@ def javascript_html():
     image_viewer_js_path = webpath('javascript/imageviewer.js')
     topbar_js_path = webpath('javascript/topbar.js')
     advanced_column_drawer_js_path = webpath('javascript/advanced_column_drawer.js')
+    mobile_generation_bar_js_path = webpath('javascript/mobile_generation_bar.js')
     canvg_min_js_path = webpath('javascript/umd.min.js')
     workspace_recovery_path = webpath('javascript/workspace_recovery.js')
     status_monitor_path = webpath('javascript/status_monitor.js') 
@@ -361,6 +362,7 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{image_viewer_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{topbar_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{advanced_column_drawer_js_path}"></script>\n'
+    head += f'<script type="text/javascript" src="{mobile_generation_bar_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{canvas_workbench_utils_path}"></script>\n'
     head += f'<script type="text/javascript" src="{canvas_workbench_api_path}"></script>\n'
     head += f'<script type="text/javascript" src="{workspace_recovery_path}"></script>\n'

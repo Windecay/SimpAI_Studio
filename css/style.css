@@ -31068,3 +31068,75 @@ html.simpai-h3-director #scene_director_editor .h3-timeline-gap:focus-visible {
   width: 100%;
   height: 8px;
 }
+
+/* A shortcut only; the original Gradio controls stay in their workspace. */
+#simpai_mobile_generation_bar {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  html.simpai-mobile-generation-bar-active body {
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  #simpai_mobile_generation_bar:not([hidden]) {
+    display: flex !important;
+    flex-direction: column;
+    gap: 6px;
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 80;
+    box-sizing: border-box;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: var(--block-background-fill, #24262b);
+    color: var(--body-text-color, #eeeeee);
+    border-top: 1px solid var(--border-color-primary, #555b66);
+    box-shadow: 0 -3px 14px rgb(0 0 0 / 15%);
+  }
+
+  .simpai-mobile-generation-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  #simpai_mobile_generation_bar button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px;
+    border: 1px solid var(--border-color-primary, #555b66);
+    border-radius: 8px;
+    background: var(--button-secondary-background-fill, #30343c);
+    color: var(--body-text-color, #eeeeee);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #simpai_mobile_generation_bar button[data-action="primary"] {
+    flex-grow: 1.4;
+    background: var(--button-primary-background-fill, #e87524);
+    color: var(--button-primary-text-color, #ffffff);
+  }
+
+  #simpai_mobile_generation_bar button:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  #simpai_mobile_generation_bar [hidden] {
+    display: none !important;
+  }
+
+  .simpai-mobile-generation-status {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  html.simpai-mobile-generation-bar-active #main_layout_row > .preview_column {
+    scroll-margin-top: 64px;
+  }
+}
