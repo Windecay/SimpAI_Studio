@@ -1662,6 +1662,9 @@ def canvas_vlm_run(payload, stream_callback=None):
         video_decode_warnings.append(
             "Custom API image input is disabled; visual references were not sent to the agent."
         )
+    from modules.canvas_workbench_project import _state_params_for_payload
+
+    media_state = _state_params_for_payload(payload, {})
     for source in sources:
         if not isinstance(source, dict):
             continue
@@ -1670,7 +1673,7 @@ def canvas_vlm_run(payload, stream_callback=None):
         if is_llama_cpp_vlm_version() and source_kind_hint == "video":
             budget_index = video_source_ordinal
             video_source_ordinal += 1
-        resolved = canvas_workbench_assets.materialize_node_asset(payload.get("project_id") or "default", {}, source)
+        resolved = canvas_workbench_assets.materialize_node_asset(payload.get("project_id") or "default", media_state, source)
         asset_ref = resolved.get("asset_ref") if isinstance(resolved, dict) else None
         image_path = asset_ref.get("path") if isinstance(asset_ref, dict) else ""
         source_token = str(source.get("reference_token") or "").strip()

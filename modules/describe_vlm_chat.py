@@ -1858,11 +1858,13 @@ def _materialize_direct_run_media(payload, conversation_id):
 
     from modules import canvas_workbench_assets
 
+    principal = payload.get("_agent_api_context")
+    media_state = {**principal.state, "user_did": principal.user_id} if isinstance(principal, AgentContext) else {}
     asset_refs = []
     for source in sources:
         resolved = canvas_workbench_assets.materialize_node_asset(
             payload.get("project_id") or "default",
-            {},
+            media_state,
             source,
         )
         asset_ref = resolved.get("asset_ref") if isinstance(resolved, dict) else None
@@ -7262,6 +7264,10 @@ def _resolve_roleplay_local_version(value, payload):
 
 
 def _run_standalone_vlm_runtime(runtime_payload, payload, stream_callback=None, status_callback=None):
+    principal = payload.get("_agent_api_context")
+    if isinstance(principal, AgentContext):
+        # Attachment storage must use the same server identity as generation.
+        runtime_payload = {**runtime_payload, "user_context": dict(principal.user_context)}
     params = runtime_payload.get("params") or {}
     version = str(params.get("version") or "").strip()
     conversation_id = str(

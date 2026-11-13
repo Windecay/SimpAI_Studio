@@ -16515,6 +16515,14 @@ async def canvas_workbench_run_node_endpoint(request: Request, payload: dict = B
 
         result = await run_in_threadpool(safe_process)
         status_code = 200 if result.get("ok") else 400
+        if not result.get("ok"):
+            logger.warning(
+                "Canvas run rejected: run_id=%s preset=%s error=%r input_errors=%r",
+                payload.get("run_id"),
+                payload["preset_node"].get("preset") if isinstance(payload.get("preset_node"), dict) else None,
+                str(result.get("error") or "")[:2000],
+                str(result.get("errors") or [])[:2000],
+            )
         return JSONResponse(result, status_code=status_code)
     except Exception as e:
         import traceback
@@ -16943,6 +16951,13 @@ async def canvas_workbench_preset_model_status_endpoint(request: Request, payloa
             return canvas_workbench_models.get_preset_model_status(payload)
 
         result = await run_in_threadpool(safe_process)
+        if not result.get("ok"):
+            logger.warning(
+                "Canvas model check rejected: project_id=%s preset=%s error=%r",
+                payload.get("project_id"),
+                payload["preset_node"].get("preset") if isinstance(payload.get("preset_node"), dict) else None,
+                str(result.get("error") or "")[:2000],
+            )
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback

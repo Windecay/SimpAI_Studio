@@ -331,7 +331,7 @@
                     ok: false,
                     error: data?.error || `HTTP ${response.status}`,
                     http_status: response.status,
-                    details: data?.details || response.statusText || '',
+                    details: data?.details || data?.detail || (data?.error ? '' : response.statusText) || '',
                     errors: data?.errors || []
                 });
                 if (response.status >= 500 && response.status < 600 && !data?.state) failure.transport_error = true;

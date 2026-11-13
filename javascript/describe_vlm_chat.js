@@ -27230,7 +27230,12 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         if (code === 'parameter_profile_incompatible') {
             return localText('The private parameter profile does not match this Preset method.', '私人参数预设与当前 Preset 处理方式不兼容。');
         }
-        return String(response?.details || response?.error || localText('Generation failed.', '生成失败。'));
+        const message = String(response?.details || response?.error || localText('Generation failed.', '生成失败。'));
+        const inputErrors = (Array.isArray(response?.errors) ? response.errors : []).slice(0, 8)
+            .map(item => typeof item === 'string' ? item
+                : [item?.slot, item?.error].filter(Boolean).join(': '))
+            .filter(Boolean);
+        return [message, ...inputErrors].join('\n').slice(0, 2000);
     }
 
     function creativeStateLabel(generation) {
