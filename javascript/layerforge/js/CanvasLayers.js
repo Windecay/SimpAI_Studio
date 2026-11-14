@@ -10,6 +10,7 @@ import { app } from "./comfy_shim.js?v=patch26";
 import { ComfyApp } from "./comfy_shim.js?v=patch26";
 import { ClipboardManager } from "./utils/ClipboardManager.js?v=patch26";
 import { createDistanceFieldMaskSync } from "./utils/ImageAnalysis.js?v=patch26";
+import { normalizeDimension } from "./utils/DimensionUtils.js?v=patch1";
 const log = createModuleLogger('CanvasLayers');
 export class CanvasLayers {
     constructor(canvas) {
@@ -284,8 +285,10 @@ export class CanvasLayers {
             }
         });
         // Calculate new dimensions without padding for precise fit
-        const newWidth = Math.ceil(maxX - minX);
-        const newHeight = Math.ceil(maxY - minY);
+        const step = this.canvas.dimensionStep || 1;
+        // Fit must round outward so alignment never cuts off selected content.
+        const newWidth = Math.ceil((maxX - minX) / step) * step;
+        const newHeight = Math.ceil((maxY - minY) / step) * step;
         if (newWidth <= 0 || newHeight <= 0) {
             log.error("Cannot calculate valid output area dimensions");
             return false;
@@ -1108,11 +1111,15 @@ export class CanvasLayers {
         }
     }
     updateOutputAreaSize(width, height, saveHistory = true) {
+        width = normalizeDimension(width, this.canvas.dimensionStep);
+        height = normalizeDimension(height, this.canvas.dimensionStep);
         if (saveHistory) {
             this.canvas.saveState();
         }
         this.canvas.width = width;
         this.canvas.height = height;
+        this.canvas.outputAreaBounds.width = width;
+        this.canvas.outputAreaBounds.height = height;
         this.canvas.maskTool.resize(width, height);
         this.canvas.canvas.width = width;
         this.canvas.canvas.height = height;
@@ -1125,6 +1132,8 @@ export class CanvasLayers {
      * Ustawia nowy rozmiar output area względem środka, resetuje rozszerzenia.
      */
     setOutputAreaSize(width, height) {
+        width = normalizeDimension(width, this.canvas.dimensionStep);
+        height = normalizeDimension(height, this.canvas.dimensionStep);
         // Reset rozszerzeń
         this.canvas.outputAreaExtensions = { top: 0, bottom: 0, left: 0, right: 0 };
         this.canvas.outputAreaExtensionEnabled = false;

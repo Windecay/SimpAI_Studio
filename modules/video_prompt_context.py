@@ -4,6 +4,7 @@ import logging
 import math
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 
 import numpy as np
 from PIL import Image
@@ -11,6 +12,7 @@ from PIL import Image
 from modules import prompt_actions
 from modules.custom_llm_api import strip_reasoning_text
 from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task
+from modules.vlm_context_budget import estimate_text_tokens
 
 
 MAX_SEGMENTS = 16
@@ -18,10 +20,87 @@ SUMMARY_CHARS = 6000
 DEFAULT_IMAGE_LIMIT = 16
 DEFAULT_REQUEST_BYTES = 8 * 1024 * 1024
 logger = logging.getLogger(__name__)
+_adaptive_context = ContextVar("prompt_action_context", default=None)
 
 
 class VideoPromptContextError(RuntimeError):
     pass
+
+
+def _context_state(vlm):
+    state = _adaptive_context.get()
+    if state is not None and state["owner"] is vlm and state["version"] == getattr(vlm, "current_version", None):
+        return state
+    return None
+
+
+def context_window(vlm):
+    state = _context_state(vlm)
+    return state["n_ctx"] if state is not None else int(getattr(vlm, "n_ctx", 8192) or 8192)
+
+
+@contextmanager
+def adaptive_context(vlm):
+    """Keep automatic capacity changes within this prompt operation."""
+    custom_check = getattr(vlm, "is_custom_version", None)
+    if (getattr(vlm, "is_llamacpp", False) is not True
+            or (callable(custom_check) and custom_check() is True)
+            or not callable(getattr(type(vlm), "n_ctx_limit_for_version", None))
+            or _context_state(vlm) is not None):
+        yield
+        return
+    token = _adaptive_context.set({
+        "owner": vlm, "version": getattr(vlm, "current_version", None),
+        "n_ctx": int(vlm.n_ctx or 8192), "limit": None,
+    })
+    try:
+        yield
+    finally:
+        _adaptive_context.reset(token)
+
+
+def ensure_context(vlm, required_tokens):
+    current = context_window(vlm)
+    state = _context_state(vlm)
+    if state is None or required_tokens <= current:
+        return current
+    if state["limit"] is None:
+        state["limit"] = int(vlm.n_ctx_limit_for_version())
+    target = min(state["limit"], math.ceil(required_tokens / 4096) * 4096)
+    if target > current:
+        state["n_ctx"] = target
+        logger.info("Adapted prompt context: previous=%s requested=%s required=%s limit=%s",
+                    current, target, required_tokens, state["limit"])
+    return state["n_ctx"]
+
+
+def inference_context(vlm, images, prompt, max_tokens=2048, system_prompt=None):
+    current = context_window(vlm)
+    if _context_state(vlm) is None:
+        return current
+    image_count = (sum(image is not None for image in images)
+                   if isinstance(images, (list, tuple)) else int(images is not None))
+    if not image_count:
+        return current
+    image_tokens = max(int(vlm.image_min_tokens or 0), int(vlm.image_max_tokens or 0), 1024)
+    required = (image_count * image_tokens + estimate_text_tokens(prompt)
+                + estimate_text_tokens(system_prompt) + int(max_tokens or 2048) + 1024)
+    return ensure_context(vlm, required)
+
+
+def retry_with_larger_context(vlm, result):
+    if (_context_state(vlm) is None or not isinstance(result, str)
+            or not result.lower().startswith("error during inference:")):
+        return False
+    message = result.lower()
+    capacity_error = (
+        ("exceed" in message and "context" in message)
+        or "context window is full" in message
+        or "context size is too small" in message
+        or ("prompt is too long" in message and "context" in message)
+    )
+    current = context_window(vlm)
+    return capacity_error and ensure_context(vlm, current * 2) > current
 
 
 @contextmanager
@@ -37,7 +116,7 @@ def inference_slot(vlm, *, enabled=True, cancel_check=None):
         return
     deadline = time.monotonic() + 300
     try:
-        with exclusive_gpu_task(cancel_check=lambda: (callable(cancel_check) and cancel_check()) or time.monotonic() > deadline):
+        with exclusive_gpu_task(cancel_check=lambda: (callable(cancel_check) and cancel_check()) or time.monotonic() > deadline), adaptive_context(vlm):
             yield
     except GpuTaskCancelled as error:
         if callable(cancel_check) and cancel_check():
@@ -58,12 +137,12 @@ def request_budget(vlm, instruction=""):
     if not local and byte_limit <= 0:
         raise VideoPromptContextError("The video request byte budget must be positive.")
     if local:
-        context = int(getattr(vlm, "n_ctx", 8192) or 8192)
+        context = context_window(vlm)
         image_tokens = max(
             int(getattr(vlm, "image_min_tokens", 0) or 0),
             int(getattr(vlm, "image_max_tokens", 0) or 0), 1024,
         )
-        estimated_text = math.ceil(len(str(instruction).encode("utf-8")) / 3)
+        estimated_text = estimate_text_tokens(instruction)
         reserve = 4096 + max(0, estimated_text - 1024)
         image_limit = min(image_limit, max(0, (context - reserve) // image_tokens))
         if getattr(vlm, "is_llamacpp", False) is not True and getattr(vlm, "backend", "") != "comfy_textgen":
@@ -72,6 +151,8 @@ def request_budget(vlm, instruction=""):
         "max_images": image_limit, "max_request_bytes": byte_limit,
         "local": local,
         "text_bytes": max(65536, len(str(instruction).encode("utf-8")) + 16384),
+        "reserve_tokens": reserve if local else 0,
+        "image_tokens": image_tokens if local else 0,
     }
 
 
@@ -164,6 +245,9 @@ def analyze_video(vlm, images, media, instruction="", output_chinese=False, canc
         frames = list(images[start:start + count])
         times = list(media.get("timestamps") or [])
     if not frames:
+        if budget["local"] and not fits(images[start:start + count]):
+            ensure_context(vlm, budget["reserve_tokens"] + (len(references) + count) * budget["image_tokens"])
+            budget = request_budget(vlm, instruction)
         if not fits(images[start:start + count]):
             raise VideoPromptContextError("The video and all reference images exceed the request budget.")
         direct_media = dict(media, video_request_mode="direct", video_request_groups=1, video_analysis_segments=0)
@@ -180,6 +264,12 @@ def analyze_video(vlm, images, media, instruction="", output_chinese=False, canc
         direct_media.update(video_request_mode="direct", video_request_groups=1, video_analysis_segments=0)
         return images if not batches else references[:start] + frames + references[start:], direct_media
     sheets = [prompt_actions._build_contact_sheet(page["frames"], page["timestamps"]) for page in pages]
+    if not fits(sheets) and budget["local"]:
+        limits = getattr(vlm, "video_request_limits", None)
+        image_limit = int((limits if isinstance(limits, dict) else {}).get("max_images", DEFAULT_IMAGE_LIMIT))
+        visual_count = max(1, min(len(sheets), image_limit - len(references)))
+        ensure_context(vlm, budget["reserve_tokens"] + (len(references) + visual_count) * budget["image_tokens"])
+        budget = request_budget(vlm, instruction)
     if fits(sheets):
         direct_media = _visual_metadata(media, pages, "contact_sheets" if len(sheets) > 1 else "contact_sheet")
         direct_media.update(video_request_mode="direct", video_request_groups=1, video_analysis_segments=0)
@@ -210,8 +300,12 @@ def analyze_video(vlm, images, media, instruction="", output_chinese=False, canc
     deadline = time.monotonic() + 300
     summary_chars = SUMMARY_CHARS
     if budget["local"] and getattr(vlm, "is_llamacpp", False) is True:
-        image_tokens = max(int(vlm.image_min_tokens or 0), int(vlm.image_max_tokens or 0), 1024)
-        remaining = int(vlm.n_ctx or 8192) - 4096 - (len(references) + len(overview)) * image_tokens - len(groups) * 48
+        image_tokens = budget["image_tokens"]
+        desired_chars = min(SUMMARY_CHARS, len(groups) * 1200)
+        summary_tokens = desired_chars * 2 if output_chinese else math.ceil(desired_chars / 3)
+        reserve = budget["reserve_tokens"] + (len(references) + len(overview)) * image_tokens + len(groups) * 48
+        ensure_context(vlm, reserve + summary_tokens)
+        remaining = context_window(vlm) - reserve
         summary_chars = min(summary_chars, remaining // 2 if output_chinese else remaining * 3)
     if summary_chars < len(groups) * 64:
         raise VideoPromptContextError("The context is too small for all chronological video observations.")

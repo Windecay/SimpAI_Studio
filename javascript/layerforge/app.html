@@ -81,6 +81,32 @@
         #status-text {
             white-space: nowrap;
         }
+        #dimension-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+            font-size: 12px;
+        }
+        #dimension-controls label {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+        #dimension-controls input, #dimension-controls select {
+            box-sizing: border-box;
+            height: 30px;
+            border: 1px solid #666;
+            border-radius: 4px;
+            background: #3d3d3d;
+            color: #fff;
+            font: 12px sans-serif;
+        }
+        #dimension-controls input {
+            width: 76px;
+            padding-left: 6px;
+        }
         #toolbar [hidden] {
             display: none !important;
         }
@@ -213,6 +239,21 @@
     <div id="toolbar">
         <button class="btn btn-primary" id="save-btn">保存并关闭</button>
         <button class="btn" id="cancel-btn">取消</button>
+        <div id="dimension-controls">
+            <label title="裁剪与输出尺寸按最近倍数对齐；小于步长的原图保持原尺寸">
+                尺寸规格化
+                <select id="dimension-step" aria-label="尺寸规格化">
+                    <option value="0">自由</option>
+                    <option value="8">8 px</option>
+                    <option value="16">16 px</option>
+                    <option value="32">32 px</option>
+                    <option value="64">64 px</option>
+                </select>
+            </label>
+            <label>输出宽<input id="output-width" aria-label="输出宽" type="number" min="1" step="1" value="512"></label>
+            <label>输出高<input id="output-height" aria-label="输出高" type="number" min="1" step="1" value="512"></label>
+            <button class="btn" id="apply-output-size">应用尺寸</button>
+        </div>
         <button class="btn" id="paint-toggle">彩色画笔</button>
         <button class="btn" id="paint-eraser">橡皮擦</button>
         <button class="btn" id="pen-selection">钢笔选区</button>
@@ -225,15 +266,16 @@
     </div>
     <div id="editor-container"></div>
 
-    <script src="./js/i18n.js?v=patch5"></script>
+    <script src="./js/i18n.js?v=patch6"></script>
     <script type="module">
-        import { createCanvasWidget } from './js/CanvasView.js?v=patch67';
+        import { createCanvasWidget } from './js/CanvasView.js?v=patch68';
         import { app } from './js/comfy_shim.js?v=patch26';
         import { createEmptyImage } from './js/utils/ImageUtils.js?v=patch26';
         import { saveImage } from './js/db.js?v=patch26';
         import { generateUUID, createCanvas } from './js/utils/CommonUtils.js?v=patch26';
         import { AnnotationTool } from './js/AnnotationTool.js?v=patch3';
         import { isEditingText, nextBrushSize } from './js/KeyboardUtils.js?v=patch1';
+        import { dimensionStep, normalizeCropBounds } from './js/utils/DimensionUtils.js?v=patch1';
 
         window.comfy_api_url = "http://127.0.0.1:8188";
         
@@ -314,6 +356,57 @@
                 await window.LayerForgeI18n.ready;
                 const result = await createCanvasWidget(mockNode, mockWidget, app);
                 canvasInstance = result.canvas;
+                const stepSelect = document.getElementById('dimension-step');
+                const outputWidth = document.getElementById('output-width');
+                const outputHeight = document.getElementById('output-height');
+                const pendingDimensions = new Set();
+                const syncDimensions = () => {
+                    const step = canvasInstance.dimensionStep || 1;
+                    for (const input of [outputWidth, outputHeight]) {
+                        input.step = step;
+                        input.min = step;
+                    }
+                    if (!pendingDimensions.has(outputWidth)) outputWidth.value = Math.round(canvasInstance.outputAreaBounds.width);
+                    if (!pendingDimensions.has(outputHeight)) outputHeight.value = Math.round(canvasInstance.outputAreaBounds.height);
+                };
+                stepSelect.addEventListener('change', () => {
+                    pendingDimensions.clear();
+                    canvasInstance.dimensionStep = dimensionStep(stepSelect.value);
+                    for (const layer of canvasInstance.canvasSelection.selectedLayers) {
+                        if (!layer.cropMode || !layer.cropBounds) continue;
+                        layer.cropBounds = normalizeCropBounds(layer.cropBounds, layer.originalWidth,
+                            layer.originalHeight, canvasInstance.dimensionStep);
+                        canvasInstance.canvasLayers.handleCropBoundsTransformEnd(layer);
+                    }
+                    canvasInstance.canvasLayers.setOutputAreaSize(canvasInstance.width, canvasInstance.height);
+                    syncDimensions();
+                });
+                const applyOutputSize = () => {
+                    const width = Number(outputWidth.value);
+                    const height = Number(outputHeight.value);
+                    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) return;
+                    pendingDimensions.clear();
+                    canvasInstance.canvasLayers.setOutputAreaSize(width, height);
+                    outputWidth.value = canvasInstance.width;
+                    outputHeight.value = canvasInstance.height;
+                    syncDimensions();
+                };
+                document.getElementById('apply-output-size').addEventListener('click', applyOutputSize);
+                for (const input of [outputWidth, outputHeight]) {
+                    input.addEventListener('input', () => pendingDimensions.add(input));
+                    input.addEventListener('keydown', (event) => {
+                        if (event.key !== 'Enter') return;
+                        event.preventDefault();
+                        applyOutputSize();
+                    });
+                }
+                const originalRender = canvasInstance.render.bind(canvasInstance);
+                canvasInstance.render = (...args) => {
+                    const result = originalRender(...args);
+                    syncDimensions();
+                    return result;
+                };
+                syncDimensions();
                 const layerMasks = canvasInstance.layerMasks;
                 let layerMaskStroke = null;
                 let layerMaskUi = null;

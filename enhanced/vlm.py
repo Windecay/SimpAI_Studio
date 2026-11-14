@@ -31,6 +31,7 @@ from modules.llama_cpp_runtime import (
 )
 from modules.vlm_model_catalog import (
     gguf_split_paths,
+    gguf_context_window,
     gguf_vision_expected,
     gguf_vision_status,
     infer_gguf_handler,
@@ -966,7 +967,13 @@ class VLM:
     def n_ctx_limit_for_version(cls, version=None):
         config_data = cls.get_version_config(version or cls.current_version) or {}
         default = cls.default_n_ctx_for_version(version)
-        maximum = config_data.get("context_window") or config_data.get("n_ctx") or default
+        maximum = config_data.get("context_window")
+        if not maximum and config_data.get("is_llamacpp") and config_data.get("gguf_file"):
+            model_path = os.path.join(str(config_data.get("model") or ""), config_data["gguf_file"])
+            found = model_path if os.path.isabs(model_path) and os.path.isfile(model_path) else find_model_in_dirs(config.paths_LLM, model_path)
+            if found:
+                maximum = gguf_context_window(found, default=default)
+        maximum = maximum or config_data.get("n_ctx") or default
         return normalize_llama_cpp_n_ctx(maximum, default=default)
 
     @classmethod
@@ -1321,7 +1328,7 @@ class VLM:
     def get_processing_status(cls):
         with cls.processing_lock:
             return cls.is_processing
-    def load_model(self, download=False, *, load_mtp=None):
+    def load_model(self, download=False, *, load_mtp=None, n_ctx=None):
         if VLM.is_custom_version():
             return
         if VLM.backend == "comfy_textgen":
@@ -1417,7 +1424,7 @@ class VLM:
             llamacpp_vlm.load_model(
                 model_file,
                 chat_handler_name,
-                n_ctx=VLM.n_ctx,
+                n_ctx=VLM.n_ctx if n_ctx is None else n_ctx,
                 image_min_tokens=VLM.image_min_tokens,
                 image_max_tokens=VLM.image_max_tokens,
                 mmproj_name=VLM.mmproj_file or None,
@@ -1891,26 +1898,33 @@ class VLM:
 
             if VLM.is_llamacpp:
                 VLM.ensure_model_files_ready(VLM.current_version)
-                self.load_model(
-                    download=False,
-                    **({"load_mtp": load_mtp} if load_mtp is not None else {}),
-                )
-                res = llamacpp_vlm.inference(
-                    image=image,
-                    prompt=prompt,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    top_p=top_p,
-                    top_k=top_k,
-                    repetition_penalty=repetition_penalty,
-                    seed=seed,
-                    system_prompt=system_prompt,
-                    enable_thinking=enable_thinking,
-                    cancel_check=cancel_check,
-                    **({"response_format": response_format} if response_format is not None else {}),
-                    **({"reject_truncated": True} if reject_truncated else {}),
-                )
-                return res
+                request_n_ctx = video_prompt_context.inference_context(self, image, prompt, max_tokens, system_prompt)
+                while True:
+                    if callable(cancel_check) and cancel_check():
+                        raise LlamaCppRequestCancelled("Stopped by user.")
+                    self.load_model(
+                        download=False,
+                        **({"n_ctx": request_n_ctx} if request_n_ctx != VLM.n_ctx else {}),
+                        **({"load_mtp": load_mtp} if load_mtp is not None else {}),
+                    )
+                    res = llamacpp_vlm.inference(
+                        image=image,
+                        prompt=prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                        top_k=top_k,
+                        repetition_penalty=repetition_penalty,
+                        seed=seed,
+                        system_prompt=system_prompt,
+                        enable_thinking=enable_thinking,
+                        cancel_check=cancel_check,
+                        **({"response_format": response_format} if response_format is not None else {}),
+                        **({"reject_truncated": True} if reject_truncated else {}),
+                    )
+                    if not video_prompt_context.retry_with_larger_context(self, res):
+                        return res
+                    request_n_ctx = video_prompt_context.context_window(self)
 
             if VLM.model_runtime is None or VLM.tokenizer is None:
                 VLM.ensure_model_files_ready(VLM.current_version)
@@ -1995,7 +2009,8 @@ class VLM:
             config_data = VLM.get_version_config(VLM.current_version, scan_catalog=False) or {}
             if config_data.get("prompt_mtp_default"):
                 kwargs.setdefault("load_mtp", image is None)
-        return self.inference(image, *args, **kwargs)
+        with video_prompt_context.adaptive_context(self):
+            return self.inference(image, *args, **kwargs)
 
     def extended_prompt_with_skills(
         self,

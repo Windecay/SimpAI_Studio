@@ -1,6 +1,7 @@
 import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
 import { isEditingText } from "./KeyboardUtils.js?v=patch1";
 import { snapToGrid, getSnapAdjustment } from "./utils/CommonUtils.js?v=patch26";
+import { normalizeDimension, normalizeCropBounds } from "./utils/DimensionUtils.js?v=patch1";
 const log = createModuleLogger('CanvasInteractions');
 export class CanvasInteractions {
     constructor(canvas) {
@@ -663,7 +664,7 @@ export class CanvasInteractions {
         }
     }
     calculateGridBasedScaling(oldHeight, deltaY) {
-        const gridSize = 64; // Grid size - could be made configurable in the future
+        const gridSize = this.canvas.dimensionStep || 64;
         const direction = deltaY > 0 ? -1 : 1;
         let targetHeight;
         if (direction > 0) {
@@ -902,8 +903,8 @@ export class CanvasInteractions {
     }
     startCanvasResize(worldCoords) {
         this.interaction.mode = 'resizingCanvas';
-        const startX = snapToGrid(worldCoords.x);
-        const startY = snapToGrid(worldCoords.y);
+        const startX = snapToGrid(worldCoords.x, this.canvas.dimensionStep || 64);
+        const startY = snapToGrid(worldCoords.y, this.canvas.dimensionStep || 64);
         this.interaction.canvasResizeStart = { x: startX, y: startY };
         this.interaction.canvasResizeRect = { x: startX, y: startY, width: 0, height: 0 };
         this.canvas.render();
@@ -920,8 +921,8 @@ export class CanvasInteractions {
         // Po prostu przesuwamy outputAreaBounds
         const bounds = this.canvas.outputAreaBounds;
         this.interaction.canvasMoveRect = {
-            x: snapToGrid(bounds.x + dx),
-            y: snapToGrid(bounds.y + dy),
+            x: snapToGrid(bounds.x + dx, this.canvas.dimensionStep || 64),
+            y: snapToGrid(bounds.y + dy, this.canvas.dimensionStep || 64),
             width: bounds.width,
             height: bounds.height
         };
@@ -979,7 +980,7 @@ export class CanvasInteractions {
                     x: originalPos.x + totalDx,
                     y: originalPos.y + totalDy
                 };
-                const snapAdjustment = getSnapAdjustment(tempLayerForSnap);
+                const snapAdjustment = getSnapAdjustment(tempLayerForSnap, this.canvas.dimensionStep || 64);
                 if (snapAdjustment) {
                     finalDx += snapAdjustment.x;
                     finalDy += snapAdjustment.y;
@@ -1003,8 +1004,9 @@ export class CanvasInteractions {
         let mouseY = worldCoords.y;
         if (this.interaction.isCtrlPressed) {
             const snapThreshold = 10 / this.canvas.viewport.zoom;
-            mouseX = Math.abs(mouseX - snapToGrid(mouseX)) < snapThreshold ? snapToGrid(mouseX) : mouseX;
-            mouseY = Math.abs(mouseY - snapToGrid(mouseY)) < snapThreshold ? snapToGrid(mouseY) : mouseY;
+            const gridSize = this.canvas.dimensionStep || 64;
+            mouseX = Math.abs(mouseX - snapToGrid(mouseX, gridSize)) < snapThreshold ? snapToGrid(mouseX, gridSize) : mouseX;
+            mouseY = Math.abs(mouseY - snapToGrid(mouseY, gridSize)) < snapThreshold ? snapToGrid(mouseY, gridSize) : mouseY;
         }
         const o = this.interaction.transformOrigin;
         if (!o)
@@ -1114,7 +1116,10 @@ export class CanvasInteractions {
             if (newCropBounds.y + newCropBounds.height > o.originalHeight) {
                 newCropBounds.height = o.originalHeight - newCropBounds.y;
             }
-            layer.cropBounds = newCropBounds;
+            layer.cropBounds = normalizeCropBounds(newCropBounds, o.originalWidth, o.originalHeight,
+                this.canvas.dimensionStep,
+                layer.flipH ? handle?.includes('e') : handle?.includes('w'),
+                layer.flipV ? handle?.includes('s') : handle?.includes('n'));
         }
         else {
             // TRANSFORM MODE: Resize the layer's main transform frame
@@ -1169,8 +1174,8 @@ export class CanvasInteractions {
     updateCanvasResize(worldCoords) {
         if (!this.interaction.canvasResizeRect)
             return;
-        const snappedMouseX = snapToGrid(worldCoords.x);
-        const snappedMouseY = snapToGrid(worldCoords.y);
+        const snappedMouseX = snapToGrid(worldCoords.x, this.canvas.dimensionStep || 64);
+        const snappedMouseY = snapToGrid(worldCoords.y, this.canvas.dimensionStep || 64);
         const start = this.interaction.canvasResizeStart;
         this.interaction.canvasResizeRect.x = Math.min(snappedMouseX, start.x);
         this.interaction.canvasResizeRect.y = Math.min(snappedMouseY, start.y);
@@ -1509,16 +1514,28 @@ export class CanvasInteractions {
         }
         // Snap to grid if Ctrl is held
         if (this.interaction.isCtrlPressed) {
-            newX = snapToGrid(newX);
-            newY = snapToGrid(newY);
-            newWidth = snapToGrid(newWidth);
-            newHeight = snapToGrid(newHeight);
+            const gridSize = this.canvas.dimensionStep || 64;
+            newX = snapToGrid(newX, gridSize);
+            newY = snapToGrid(newY, gridSize);
+            newWidth = snapToGrid(newWidth, gridSize);
+            newHeight = snapToGrid(newHeight, gridSize);
         }
         // Apply minimum size
-        if (newWidth < 10)
-            newWidth = 10;
-        if (newHeight < 10)
-            newHeight = 10;
+        const minimumSize = this.canvas.dimensionStep || 10;
+        if (newWidth < minimumSize)
+            newWidth = minimumSize;
+        if (newHeight < minimumSize)
+            newHeight = minimumSize;
+        newWidth = normalizeDimension(newWidth, this.canvas.dimensionStep);
+        newHeight = normalizeDimension(newHeight, this.canvas.dimensionStep);
+        if (this.canvas.dimensionStep) {
+            if (handle?.includes('w') || handle?.includes('e')) {
+                newX = worldCoords.x < anchor.x ? anchor.x - newWidth : anchor.x;
+            }
+            if (handle?.includes('n') || handle?.includes('s')) {
+                newY = worldCoords.y < anchor.y ? anchor.y - newHeight : anchor.y;
+            }
+        }
         // Update output area bounds temporarily for preview
         this.canvas.outputAreaBounds = {
             x: newX,

@@ -4,10 +4,11 @@ import { app } from "./comfy_shim.js?v=patch26";
 import { $el } from "./comfy_shim.js?v=patch26";
 import { api } from "./api_shim.js?v=patch26";
 import { addStylesheet, getUrl, loadTemplate } from "./utils/ResourceManager.js?v=patch26";
-import { Canvas } from "./Canvas.js?v=patch66";
+import { Canvas } from "./Canvas.js?v=patch68";
 import { clearAllCanvasStates } from "./db.js?v=patch26";
 import { ImageCache } from "./ImageCache.js?v=patch26";
 import { createCanvas } from "./utils/CommonUtils.js?v=patch26";
+import { normalizeCropBounds } from "./utils/DimensionUtils.js?v=patch1";
 import { createModuleLogger } from "./utils/LoggerUtils.js?v=patch26";
 import { showErrorNotification, showSuccessNotification, showInfoNotification, showWarningNotification } from "./utils/NotificationUtils.js?v=patch26";
 import { iconLoader, LAYERFORGE_TOOLS } from "./utils/IconLoader.js?v=patch26";
@@ -373,6 +374,11 @@ export async function createCanvasWidget(node, widget, app) {
                                     layer.cropMode = isCropMode;
                                     if (isCropMode && !layer.cropBounds) {
                                         layer.cropBounds = { x: 0, y: 0, width: layer.originalWidth, height: layer.originalHeight };
+                                    }
+                                    if (isCropMode && layer.cropBounds) {
+                                        layer.cropBounds = normalizeCropBounds(layer.cropBounds, layer.originalWidth,
+                                            layer.originalHeight, canvas.dimensionStep);
+                                        canvas.canvasLayers.handleCropBoundsTransformEnd(layer);
                                     }
                                 });
                                 canvas.saveState();

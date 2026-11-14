@@ -386,6 +386,11 @@ def _gguf_context_window(metadata, default=8192):
     return int(default)
 
 
+def gguf_context_window(path, default=8192):
+    """Read the model's capacity from cached header metadata, without loading it."""
+    return _gguf_context_window(_cached_gguf_metadata(path), default=default)
+
+
 def _stem_tokens(path):
     stem = os.path.basename(path)
     stem = re.sub(r"\.(?:gguf|safetensors|bin|pt|pth|ckpt)$", "", stem, flags=re.IGNORECASE).lower()
