@@ -23,6 +23,9 @@
         };
 
         function handleNodeAction(node, action, actionElement, evt) {
+            const menu = actionElement?.closest?.('.sai-node-more');
+            if (menu) menu.open = false;
+            if (call('handleNodePresentationAction', node, String(action || ''), actionElement, evt)) return;
             if (['xy_matrix', 'xyz_matrix'].includes(node?.type) && call('handleXyzMatrixAction', node, action, evt)) return;
             if (node?.type === 'result' && call('handleResultInspectorAction', node, action, actionElement, evt)) return;
             if (call('handleTimelineAction', action, node, actionElement)) return;
@@ -58,6 +61,8 @@
                 call('openLivePortraitVideoExpressionPresetEditor', node);
             } else if (action === 'edit-ltx23-guides' && node.type === 'preset') {
                 call('openLtx23GuidePresetEditor', node);
+            } else if (action === 'optimize-prompt' && ['preset', 'classic'].includes(node.type)) {
+                call('optimizeNodePrompt', node, actionElement);
             } else if (action === 'edit-visual-prompt' && node.type === 'preset') {
                 call('openVisualPromptEditor', node);
             } else if (action === 'edit-h3-storyboard' && node.type === 'preset') {

@@ -11,6 +11,7 @@
 
         function isInteractiveTarget(target) {
             if (isTextareaEditorTitleTarget(target)) return true;
+            if (target?.closest?.('summary')) return true;
             return !!(target && target.closest && target.closest(INTERACTIVE_TARGET_SELECTOR));
         }
 

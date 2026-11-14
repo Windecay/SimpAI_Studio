@@ -258,7 +258,7 @@
         video: { w: 340, h: 320 },
         audio: { w: 320, h: 220 },
         preset: { w: 360, h: 420 },
-        classic: { w: 380, h: 500 },
+        classic: { w: 360, h: 500 },
         config: { w: 320, h: 360 },
         result: { w: 340, h: 330 },
         compare: { w: 560, h: 520 },

@@ -21,6 +21,11 @@
 
         function onClick(evt) {
             if (!evt) return false;
+            const menu = closest(evt, '.sai-canvas-tool-menu, .sai-node-more');
+            const action = closest(evt, '[data-canvas-action], [data-node-action]');
+            evt.currentTarget?.querySelectorAll?.('.sai-canvas-tool-menu[open], .sai-node-more[open]').forEach(el => {
+                if (el !== menu || action) el.open = false;
+            });
             const suppressUntil = Number(call(agentSource, 'getCanvasAgentSuppressClickUntil') || 0);
             if (now() < suppressUntil && closest(evt, '[data-canvas-agent-panel]')) {
                 evt.preventDefault?.();

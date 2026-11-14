@@ -117,16 +117,21 @@
             return node;
         }
 
-        async function addImageNodeFromTransferItem(item, world) {
+        async function addImageNodeFromTransferItem(item, world, options) {
+            const owner = importOwner(options);
+            if (!isCurrentImport(owner)) return null;
             const dimensions = await call(fileSource, 'getImageDimensions', {}, item.dataUrl || item.previewUrl || '');
+            if (!isCurrentImport(owner)) return null;
             const thumb = item.dataUrl
                 ? await call(fileSource, 'createThumbnailDataUrl', '', item.dataUrl, 1024) : (item.previewUrl || '');
+            if (!isCurrentImport(owner)) return null;
             call(historySource, 'pushHistory', undefined, 'Add image node');
             const node = call(factorySource, 'buildImageNodeFromTransferItem', null, item, world, dimensions, thumb);
             if (!node) return null;
             call(layoutSource, 'fitImageNodeToAssetBounds', undefined, node, node.asset, { preserveCenter: false });
             call(layoutSource, 'placeNodeAvoidingOverlap', undefined, node, world);
-            const project = call(projectSource, 'getProject', {}) || {};
+            if (!isCurrentImport(owner)) return null;
+            const project = owner.project;
             Object.assign(project, call(projectSource, 'buildProjectNodeAppendPatch', {}, project, node));
             call(selectionSource, 'selectImportedNode', undefined, node.id);
             call(renderSource, 'mutate', undefined);
@@ -134,21 +139,36 @@
             return node;
         }
 
+        async function readTransferStation(owner, read) {
+            try { return await read(); }
+            catch (error) {
+                const messages = {
+                    transfer_station_unavailable: 'Open or refresh the Studio page, then retry importing transfer-station images.',
+                    transfer_station_identity_unavailable: 'Studio and Canvas identities differ. Reopen Canvas from Studio.',
+                    transfer_station_identity_changed: 'Studio and Canvas identities differ. Reopen Canvas from Studio.',
+                    transfer_station_read_failed: 'Could not read the transfer-station image. Please retry.'
+                };
+                if (!messages[error?.code]) throw error;
+                if (isCurrentImport(owner)) call(uiSource, 'showToast', undefined, t(messages[error.code]));
+                return null;
+            }
+        }
+
         async function importSelectedTransferAt(world) {
+            const owner = importOwner();
+            if (!isCurrentImport(owner)) return;
             const station = call(transferSource, 'getTransferStation', null);
             if (!station) {
                 call(uiSource, 'showToast', undefined, t('Transfer Station API is not ready.', '中转站 API 未就绪'));
                 return;
             }
-            let items = [];
-            if (typeof station.getItems === 'function') {
-                items = await station.getItems({ dataUrl: true, file: false });
-            } else if (typeof station.getAllItems === 'function') {
-                items = await station.getAllItems({ dataUrl: true, file: false });
-            } else if (typeof station.getSelectedItem === 'function') {
-                const item = await station.getSelectedItem({ dataUrl: true, file: false });
-                if (item) items = [item];
-            }
+            const items = await readTransferStation(owner, async () => {
+                if (typeof station.getItems === 'function') return station.getItems({ dataUrl: true, file: false });
+                if (typeof station.getAllItems === 'function') return station.getAllItems({ dataUrl: true, file: false });
+                const item = typeof station.getSelectedItem === 'function' ? await station.getSelectedItem({ dataUrl: true, file: false }) : null;
+                return item ? [item] : [];
+            });
+            if (!items || !isCurrentImport(owner)) return;
             if (!items.length) {
                 call(uiSource, 'showToast', undefined, t('Transfer Station has no importable images.', '中转站没有可导入图片'));
                 return;
@@ -156,24 +176,27 @@
             let offset = 0;
             let importedCount = 0;
             for (const item of items) {
-                const node = await addImageNodeFromTransferItem(item, { x: world.x + offset, y: world.y + offset });
+                if (!isCurrentImport(owner)) return;
+                const node = await addImageNodeFromTransferItem(item, { x: world.x + offset, y: world.y + offset }, owner);
                 if (node) importedCount += 1;
                 offset += 28;
             }
-            if (importedCount) {
+            if (importedCount && isCurrentImport(owner)) {
                 call(uiSource, 'showToast', undefined, t('Imported {count} transfer-station image(s).', '已导入 {count} 张中转站图片').replace('{count}', importedCount));
             }
         }
 
         async function importTransferItemAt(id, world) {
+            const owner = importOwner();
+            if (!isCurrentImport(owner)) return;
             const station = call(transferSource, 'getTransferStation', null);
             if (!station || typeof station.getItem !== 'function') {
                 call(uiSource, 'showToast', undefined, t('Transfer Station API is not ready.', '中转站 API 未就绪'));
                 return;
             }
-            const item = await station.getItem(id, { dataUrl: true, file: false });
-            if (!item) return;
-            return addImageNodeFromTransferItem(item, world);
+            const item = await readTransferStation(owner, () => station.getItem(id, { dataUrl: true, file: false }));
+            if (!item || !isCurrentImport(owner)) return;
+            return addImageNodeFromTransferItem(item, world, owner);
         }
 
         function openImageFilePicker(world) {

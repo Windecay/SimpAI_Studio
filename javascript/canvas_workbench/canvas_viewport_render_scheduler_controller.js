@@ -87,11 +87,17 @@
             const zoom = Math.max(0.05, Math.round(Number(viewportState.zoom || 1) * 1000) / 1000);
             const x = Math.round(Number(viewportState.x || 0));
             const y = Math.round(Number(viewportState.y || 0));
-            stageElement.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+            const transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+            if (stageElement.style.transform !== transform) stageElement.style.transform = transform;
             const gridSize = Math.max(4, configNumber('canvasGridSize', 24) * zoom);
-            viewportElement.style.setProperty('--sai-grid-size', `${gridSize}px`);
-            viewportElement.style.setProperty('--sai-grid-offset-x', `${((x % gridSize) + gridSize) % gridSize}px`);
-            viewportElement.style.setProperty('--sai-grid-offset-y', `${((y % gridSize) + gridSize) % gridSize}px`);
+            // Keep changing grid properties off the ancestor of every node.
+            const gridElement = viewportElement.querySelector?.(':scope > .sai-canvas-grid') || viewportElement;
+            const setGridProperty = (name, value) => {
+                if (gridElement.style.getPropertyValue?.(name) !== value) gridElement.style.setProperty(name, value);
+            };
+            setGridProperty('--sai-grid-size', `${gridSize}px`);
+            setGridProperty('--sai-grid-offset-x', `${((x % gridSize) + gridSize) % gridSize}px`);
+            setGridProperty('--sai-grid-offset-y', `${((y % gridSize) + gridSize) % gridSize}px`);
             uiCall('positionCanvasAgentPanel', undefined);
             uiCall('syncMinimapViewRect', undefined);
         }
@@ -111,7 +117,7 @@
                 sourceCall(stateSource, 'setEdgeRenderCacheKey', undefined, '');
             }
             const root = getRoot();
-            if (root) root.dataset.canvasRenderMode = canvasRenderMode;
+            if (root && root.dataset.canvasRenderMode !== canvasRenderMode) root.dataset.canvasRenderMode = canvasRenderMode;
             return canvasRenderMode;
         }
 

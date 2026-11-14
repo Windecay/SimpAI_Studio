@@ -54,6 +54,35 @@
             return sourceCall(languageSource, 't', state.__lang === 'cn' || state.__lang === 'zh' ? cn : en, en, cn, state);
         };
         let connectState = null;
+        const highlightedHandles = new Set();
+
+        function clearConnectionTargetHighlights() {
+            for (const handle of highlightedHandles) {
+                handle.classList?.remove('is-connection-compatible', 'is-connection-incompatible');
+            }
+            highlightedHandles.clear();
+            const layer = sourceCall(domSource, 'getNodesLayer', null);
+            if (layer?.classList?.contains?.('is-connecting')) layer.classList.remove('is-connecting');
+        }
+
+        function refreshConnectionTargetHighlights() {
+            clearConnectionTargetHighlights();
+            if (!connectState) return;
+            const nodesLayer = sourceCall(domSource, 'getNodesLayer', null);
+            if (!nodesLayer?.classList) return;
+            const reverse = connectState.mode === 'input';
+            const selector = reverse ? '.sai-node-handle-out' : sourceCall(domSource, 'getInputPortHandleSelector', '');
+            if (!selector) return;
+            nodesLayer.classList?.add('is-connecting');
+            nodesLayer.querySelectorAll(selector)?.forEach(handle => {
+                const target = reverse ? connectState.target : nodeCall('getConnectionTargetFromHandle', null, handle);
+                const fromId = reverse ? handle.closest?.('[data-node-id]')?.getAttribute?.('data-node-id') : connectState.from;
+                const compatible = !!(target && isConnectionTargetCompatible(fromId || '', target));
+                handle.classList?.toggle('is-connection-compatible', compatible);
+                handle.classList?.toggle('is-connection-incompatible', !compatible);
+                highlightedHandles.add(handle);
+            });
+        }
 
         function inputTargetAcceptsMultiple(target) {
             return ['batch_any', 'timeline', 'director_media_group'].includes(target?.kind);
@@ -320,6 +349,7 @@
             };
             updateTempEdge();
             bindConnectionListeners();
+            refreshConnectionTargetHighlights();
         }
 
         function startInputConnection(target, evt) {
@@ -340,6 +370,7 @@
                 moved: false
             };
             bindConnectionListeners();
+            refreshConnectionTargetHighlights();
         }
 
         function onConnectionMove(evt) {
@@ -366,6 +397,7 @@
                 const state = connectState;
                 const menuWorld = clientToWorld(evt.clientX, evt.clientY);
                 connectState = null;
+                clearConnectionTargetHighlights();
                 renderCall('renderTempEdge', undefined, null);
                 removeConnectionListeners();
                 if (state.moved) {
@@ -379,6 +411,7 @@
             const menuWorld = clientToWorld(evt.clientX, evt.clientY);
             const pendingFromId = connectState.from;
             connectState = null;
+            clearConnectionTargetHighlights();
             renderCall('renderTempEdge', undefined, null);
             removeConnectionListeners();
             if (connected) renderCall('renderAll', undefined);
@@ -392,6 +425,7 @@
         function cancelConnection() {
             if (!connectState) return;
             connectState = null;
+            clearConnectionTargetHighlights();
             renderCall('renderTempEdge', undefined, null);
             removeConnectionListeners();
             renderCall('renderAll', undefined);
@@ -411,6 +445,7 @@
             stopConnection,
             cancelConnection,
             updateTempEdge,
+            refreshConnectionTargetHighlights,
             isConnecting: () => !!connectState,
             getConnectingFromId: () => connectState?.from || ''
         };

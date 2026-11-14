@@ -2533,10 +2533,11 @@ def _apply_task_yields(record):
             record.pop("_output_asset_cache", None)
 
 
-def _public_run_record(record, after_preview_serial=None):
+def _public_run_record(record, after_preview_serial=None, include_preview=True):
     result = {
         "ok": True,
         "run_id": record.get("run_id"),
+        "project_id": record.get("project_id"),
         "task_id": record.get("task_id"),
         "placeholder_node_id": record.get("placeholder_node_id"),
         "preset_node_id": record.get("preset_node_id"),
@@ -2545,7 +2546,7 @@ def _public_run_record(record, after_preview_serial=None):
         "message": record.get("message") or "",
         "queue_size": record.get("queue_size"),
         "processing_id": record.get("processing_id"),
-        "preview": record.get("preview"),
+        "preview": record.get("preview") if include_preview else None,
         "asset": record.get("asset"),
         "assets": record.get("assets") or [],
         "task_preview": record.get("task_preview") or {},
@@ -2564,7 +2565,7 @@ def _public_run_record(record, after_preview_serial=None):
         result["error"] = copy.deepcopy(record["error"])
     if record.get("output_error"):
         result["output_error"] = copy.deepcopy(record["output_error"])
-    preview_stream = _public_preview_stream(record, after_preview_serial=after_preview_serial)
+    preview_stream = _public_preview_stream(record, after_preview_serial=after_preview_serial) if include_preview else None
     if preview_stream:
         result["preview_stream"] = preview_stream
     task = record.get("task")
@@ -2904,7 +2905,8 @@ def poll_run(payload, state_params):
                         record["state"] = "queued"
                         record["message"] = f"Queued in AsyncTask. Queue size: {queue_size}"
             record["updated_ts"] = time.time()
-            return _public_run_record(record, after_preview_serial=after_preview_serial)
+            return _public_run_record(record, after_preview_serial=after_preview_serial,
+                                      include_preview=payload.get("include_preview") is not False)
     except Exception as err:
         return {"ok": False, "error": f"{type(err).__name__}: {err}", "run_id": run_id}
 

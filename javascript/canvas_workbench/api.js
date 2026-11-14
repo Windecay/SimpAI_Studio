@@ -437,6 +437,7 @@
         if (options && options.after_preview_serial !== undefined) {
             payload.after_preview_serial = options.after_preview_serial;
         }
+        if (options?.include_preview === false) payload.include_preview = false;
         if (options?.user_context && typeof options.user_context === 'object') {
             payload.user_context = options.user_context;
         }
@@ -519,8 +520,9 @@
         });
     }
 
-    function qwenTtsPoll(jobId) {
+    function qwenTtsPoll(jobId, options) {
         return postJson('/canvas-workbench/qwen-tts-poll', { job_id: jobId }, {
+            signal: options?.signal,
             emptyError: 'empty Qwen TTS poll response',
             requestError: 'Qwen TTS poll failed'
         }).then((data) => {
@@ -787,6 +789,14 @@
         });
     }
 
+    function promptAction(payload, options) {
+        return postJson('/canvas-workbench/prompt-action', payload, {
+            emptyError: 'empty prompt action response',
+            requestError: 'Prompt optimization failed.',
+            signal: options?.signal
+        });
+    }
+
     function vlmRun(payload, options) {
         const opts = options || {};
         return postJson('/canvas-workbench/vlm-run', payload, {
@@ -1009,6 +1019,7 @@
         renderTimeline,
         renderTimelineFrame,
         wd14Tag,
+        promptAction,
         vlmRun,
         vlmCancel,
         vlmModelStatus,
@@ -1057,4 +1068,170 @@
     window.SimpAICanvasWorkbenchApi = Object.assign({}, window.SimpAICanvasWorkbenchApi || {}, defaultApi, {
         createCanvasApiController
     });
+})();
+
+(function () {
+    'use strict';
+
+    function createTransferStationBridge(options = {}) {
+        const win = options.window || window;
+        const getParams = options.getParams || (() => win.simpleaiTopbarSystemParams || {});
+        const getRoot = options.getRoot || (() => {
+            const url = win.SimpAICanvasWorkbenchUtils?.studioEndpointUrl?.('/') || `${win.gradio_config?.root || ''}/`;
+            return new URL(url, win.location.href).pathname.replace(/\/+$/, '');
+        });
+        const timeoutMs = options.timeoutMs || 5000;
+        const pending = new Map();
+        const tabId = win.crypto?.randomUUID?.() || `transfer-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+        let channel = null;
+        let sequence = 0;
+
+        function scopeFor(params, root) {
+            const local = String(params.access_mode || '').toLowerCase() === 'local' || params.user_role === 'local';
+            const owner = local ? 'local' : String(params.user_did || params.__user_did || '').trim();
+            return owner ? JSON.stringify([root, local ? 'local' : 'multi', owner]) : '';
+        }
+
+        const scope = () => scopeFor(getParams(), getRoot());
+        const failure = code => Object.assign(new Error(code), { code });
+        const isCurrent = expected => !!expected && scope() === expected;
+
+        async function readStation(station, method, id) {
+            if (method === 'item') return station.getItem?.(id, { dataUrl: false, file: false }) || null;
+            if (method === 'selected') return station.getSelectedItem?.({ dataUrl: false, file: false }) || null;
+            if (typeof station.getItems === 'function') return station.getItems({ dataUrl: false, file: false });
+            if (typeof station.getAllItems === 'function') return station.getAllItems({ dataUrl: false, file: false });
+            const selected = await station.getSelectedItem?.({ dataUrl: false, file: false });
+            return selected ? [selected] : [];
+        }
+
+        function transferable(item) {
+            if (!item?.blob) return null;
+            return { id: item.id, name: String(item.name || ''), type: item.type || item.blob.type, size: item.blob.size, selected: !!item.selected, blob: item.blob };
+        }
+
+        function openerStation(expected) {
+            try {
+                const opener = win.opener;
+                if (!opener || opener.closed || opener.location.origin !== win.location.origin) return null;
+                const root = new URL(opener.SimpAICanvasWorkbenchUtils?.studioEndpointUrl?.('/') || `${opener.gradio_config?.root || ''}/`, opener.location.href).pathname.replace(/\/+$/, '');
+                if (scopeFor(opener.simpleaiTopbarSystemParams || {}, root) !== expected) return null;
+                return opener.SimpAITransferStation || null;
+            } catch { return null; }
+        }
+
+        function finish(requestId, error, value) {
+            const entry = pending.get(requestId);
+            if (!entry) return;
+            pending.delete(requestId);
+            win.clearTimeout(entry.timer);
+            win.clearTimeout(entry.emptyTimer);
+            if (error) entry.reject(error);
+            else entry.resolve(value);
+        }
+
+        function connect() {
+            if (channel) return channel;
+            try { channel = new win.BroadcastChannel(`simpai-canvas-transfer-v1:${getRoot()}`); }
+            catch { return null; }
+            channel.addEventListener('message', async event => {
+                const data = event.data;
+                if (!data || data.version !== 1 || data.senderId === tabId || !isCurrent(data.scope)) return;
+                if (data.kind === 'request') {
+                    const station = win.SimpAITransferStation;
+                    if (!station || station === client || !['items', 'item', 'selected'].includes(data.method) || !data.requestId || !data.senderId) return;
+                    try {
+                        const result = await readStation(station, data.method, data.id);
+                        if (!isCurrent(data.scope)) return;
+                        const value = data.method === 'items' ? (Array.isArray(result) ? result : []).map(transferable).filter(Boolean) : transferable(result);
+                        channel?.postMessage({ version: 1, kind: 'response', senderId: tabId, targetId: data.senderId, requestId: data.requestId, scope: data.scope, value });
+                    } catch { /* The client reports a bounded availability failure. */ }
+                    return;
+                }
+                if (data.kind !== 'response' || data.targetId !== tabId) return;
+                const entry = pending.get(data.requestId);
+                if (!entry || entry.scope !== data.scope) return;
+                const nonempty = entry.method === 'items' ? Array.isArray(data.value) && data.value.length : !!data.value;
+                if (nonempty) finish(data.requestId, null, data.value);
+                else if (!entry.emptyTimer) {
+                    entry.emptyTimer = win.setTimeout(() => finish(data.requestId, null, entry.method === 'items' ? [] : null), Math.min(150, timeoutMs / 2));
+                }
+            });
+            return channel;
+        }
+
+        async function request(method, id) {
+            const expected = scope();
+            if (!expected) throw failure('transfer_station_identity_unavailable');
+            const opener = openerStation(expected);
+            if (opener && opener !== client) {
+                let timer;
+                try {
+                    const value = await Promise.race([
+                        readStation(opener, method, id),
+                        new Promise((resolve, reject) => { timer = win.setTimeout(() => reject(failure('transfer_station_unavailable')), timeoutMs); })
+                    ]);
+                    if (!isCurrent(expected) || openerStation(expected) !== opener) throw failure('transfer_station_identity_changed');
+                    return value;
+                } finally { win.clearTimeout(timer); }
+            }
+            if (!connect()) throw failure('transfer_station_unavailable');
+            const requestId = `${tabId}:${++sequence}`;
+            return new Promise((resolve, reject) => {
+                const timer = win.setTimeout(() => finish(requestId, failure(isCurrent(expected) ? 'transfer_station_unavailable' : 'transfer_station_identity_changed')), timeoutMs);
+                pending.set(requestId, { resolve, reject, timer, scope: expected, method });
+                try { channel.postMessage({ version: 1, kind: 'request', senderId: tabId, requestId, scope: expected, method, id }); }
+                catch { finish(requestId, failure('transfer_station_unavailable')); }
+            });
+        }
+
+        async function toItem(item, settings) {
+            if (!item?.blob) return null;
+            const result = { ...transferable(item), previewUrl: '' };
+            if (settings?.dataUrl) {
+                result.dataUrl = await new Promise((resolve, reject) => {
+                    const reader = new win.FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => reject(failure('transfer_station_read_failed'));
+                    reader.readAsDataURL(item.blob);
+                });
+                result.previewUrl = result.dataUrl;
+            }
+            if (settings?.file !== false) result.file = new win.File([item.blob], item.name || 'transfer-image.png', { type: item.type || item.blob.type });
+            return result;
+        }
+
+        async function read(method, id, settings) {
+            const expected = scope();
+            const result = await request(method, id);
+            const value = method === 'items'
+                ? await Promise.all((Array.isArray(result) ? result : []).map(item => toItem(item, settings)))
+                : await toItem(result, settings);
+            if (!isCurrent(expected)) throw failure('transfer_station_identity_changed');
+            return Array.isArray(value) ? value.filter(Boolean) : value;
+        }
+
+        const client = {
+            version: '1.0.0',
+            getItems: settings => read('items', null, settings),
+            getAllItems: settings => read('items', null, settings),
+            getItem: (id, settings) => read('item', id, settings),
+            getSelectedItem: settings => read('selected', null, settings)
+        };
+
+        function close() {
+            for (const id of pending.keys()) finish(id, failure('transfer_station_unavailable'));
+            channel?.close();
+            channel = null;
+        }
+
+        return { client, connect, close };
+    }
+
+    window.SimpAITransferStationBridge = { createTransferStationBridge };
+    const bridge = createTransferStationBridge();
+    bridge.connect();
+    if (window.SimpAIInfiniteCanvasStandalone && !window.SimpAITransferStation) window.SimpAITransferStation = bridge.client;
+    window.addEventListener?.('pagehide', () => bridge.close());
+    window.addEventListener?.('pageshow', () => bridge.connect());
 })();

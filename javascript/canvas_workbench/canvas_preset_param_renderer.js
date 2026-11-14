@@ -6,7 +6,7 @@
             t, clamp, escapeHtml, localizeCanvasLabel,
             getPromptTextSourceNode, presetParamValue, isPromptTextParam,
             shouldEnableDanbooruAutocomplete, danbooruAutocompleteAttrs,
-            getTranslationFieldState, getPresetThemeInfo
+            getTranslationFieldState, getPresetThemeInfo, isPromptOptimizationPending
         } = context;
 
         function localizedPresetParamLabel(param) {
@@ -107,24 +107,32 @@
             const value = presetParamValue(node, param);
             const attr = `${attrName}="${key}"`;
             const useDanbooruAutocomplete = shouldEnableDanbooruAutocomplete(param.key, 'node-param', { disabled: !!disabled });
-            const resetButton = disabled ? '' : `<button type="button" class="sai-param-reset" data-param-reset="${key}" title="Reset to default"><i class="fa-solid fa-rotate-left"></i></button>`;
+            const resetButton = disabled ? '' : `<button type="button" class="sai-param-reset" data-param-reset="${key}" title="${escapeHtml(t('Reset to default', '恢复默认值'))}" aria-label="${escapeHtml(t('Reset to default', '恢复默认值'))}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>`;
             const labelHtml = `<span>${label}${resetButton}</span>`;
             if (param.type === 'textarea') {
                 const textHandle = isPromptTextParam(param.key)
-                    ? `<button type="button" class="sai-node-handle sai-node-handle-in" data-text-in="${escapeHtml(param.key)}" title="${param.key === 'negative_prompt' ? 'Negative prompt input' : 'Prompt input'}"></button>`
+                    ? `<button type="button" class="sai-node-handle sai-node-handle-in" data-text-in="${escapeHtml(param.key)}" title="${escapeHtml(localizeCanvasLabel(param.key === 'negative_prompt' ? 'Negative prompt input' : 'Prompt input'))}"></button>`
                     : '';
-                const sourceLabel = textSource ? `<small>from ${escapeHtml(textSource.title || textSource.id)}</small>` : '';
+                const sourceLabel = textSource ? `<small>${escapeHtml(localizeCanvasLabel('From {source}').replace('{source}', textSource.title || textSource.id))}</small>` : '';
                 const textLabel = `<span>${label}${sourceLabel}${resetButton}</span>`;
                 const collapsedKeep = param.key === 'prompt' ? ' sai-collapsed-keep sai-collapsed-prompt' : '';
-                return `<label class="sai-node-field ${textHandle ? 'sai-prompt-input-field' : ''}${collapsedKeep}">${textHandle}${textLabel}${renderTranslatableTextarea(`${attr} rows="3" ${disabled}`, value || '', { target: 'node-param', key: param.key, disabled: !!disabled, tagCart: isPromptTextParam(param.key) && !disabled, wildcardInsert: isPromptTextParam(param.key) && !disabled, danbooruAutocomplete: useDanbooruAutocomplete, autocompleteRole: param.key, state: getTranslationFieldState(node, 'node-param', param.key, value || '') })}</label>`;
+                return `<label class="sai-node-field ${textHandle ? 'sai-prompt-input-field' : ''}${collapsedKeep}">${textHandle}${textLabel}${renderTranslatableTextarea(`${attr} rows="3" ${disabled}`, value || '', { target: 'node-param', key: param.key, disabled: !!disabled, optimizing: !!isPromptOptimizationPending?.(node), tagCart: isPromptTextParam(param.key) && !disabled, wildcardInsert: isPromptTextParam(param.key) && !disabled, danbooruAutocomplete: useDanbooruAutocomplete, autocompleteRole: param.key, state: getTranslationFieldState(node, 'node-param', param.key, value || '') })}</label>`;
             }
             if (param.type === 'checkbox') {
                 const checked = value === true || value === 'true' || value === 1 || value === '1' ? 'checked' : '';
                 return `<label class="sai-node-check"><input ${attr} type="checkbox" ${checked} ${disabled}><span>${label}</span>${resetButton}</label>`;
             }
-            if (param.type === 'choice') {
+            if (param.type === 'text' || param.type === 'string') {
+                return `<label class="sai-node-field">${labelHtml}<input ${attr} type="text" value="${escapeHtml(value ?? '')}" ${disabled}></label>`;
+            }
+            if (param.type === 'choice' || param.type === 'select') {
                 const choices = Array.isArray(param.choices) ? param.choices : [];
                 return `<label class="sai-node-field">${labelHtml}<select ${attr} ${disabled}>${choices.map(choice => `<option value="${escapeHtml(choice)}" ${String(choice) === String(value) ? 'selected' : ''}>${escapeHtml(choice)}</option>`).join('')}</select></label>`;
+            }
+            if (/(^|_)seed$/.test(param.key)) {
+                const min = param.min !== undefined && param.min !== null && param.min !== '' ? param.min : 0;
+                const max = param.max !== undefined && param.max !== null && param.max !== '' ? ` max="${escapeHtml(param.max)}"` : '';
+                return `<label class="sai-node-field">${labelHtml}<input ${attr} type="number" step="${escapeHtml(param.step || 1)}" min="${escapeHtml(min)}"${max} value="${escapeHtml(value ?? min)}" ${disabled}></label>`;
             }
             if (isCanvasRelightLightDirectionParam(node, param)) {
                 return renderCanvasRelightLightDirectionControl(node, param, attrName, {
@@ -162,10 +170,13 @@
             const autocompleteAttrs = shouldEnableDanbooruAutocomplete(rawKey, rawTarget, opts)
                 ? danbooruAutocompleteAttrs(opts.autocompleteRole || rawKey || rawTarget || 'prompt')
                 : '';
+            const optimizeButton = rawKey === 'prompt' && rawTarget === 'node-param' && !opts.disabled
+                ? `<button type="button" class="sai-prompt-tool-btn sai-prompt-optimize-btn" data-node-action="optimize-prompt" ${opts.optimizing ? 'disabled aria-busy="true"' : ''} title="${escapeHtml(localizeCanvasLabel('Optimize with this preset’s skill'))}" aria-label="${escapeHtml(localizeCanvasLabel('Smart optimize'))}"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>${escapeHtml(localizeCanvasLabel(opts.optimizing ? 'Optimizing...' : 'Smart optimize'))}</span></button>`
+                : '';
             const visualButton = rawKey === 'prompt' && rawTarget === 'node-param'
                 ? `<button type="button" class="sai-prompt-tool-btn" data-node-action="edit-visual-prompt" ${disabled} title="${escapeHtml(t('Visual prompt and characters', '可视化提示词与角色'))}" aria-label="${escapeHtml(t('Visual prompt and characters', '可视化提示词与角色'))}"><i class="fa-solid fa-address-card"></i></button>`
                 : '';
-            const tools = [visualButton, wildcardButton, tagButton, `<button type="button" class="sai-prompt-tool-btn sai-translate-btn is-${state}" data-translate-action="replace" data-translate-target="${target}" data-translate-key="${key}" data-translate-state="${state}" ${disabled} title="${escapeHtml(title)}"><i class="fa-solid fa-language"></i>${label ? `<span>${escapeHtml(label)}</span>` : ''}</button>`].filter(Boolean).join('');
+            const tools = [optimizeButton, visualButton, wildcardButton, tagButton, `<button type="button" class="sai-prompt-tool-btn sai-translate-btn is-${state}" data-translate-action="replace" data-translate-target="${target}" data-translate-key="${key}" data-translate-state="${state}" ${disabled} title="${escapeHtml(title)}"><i class="fa-solid fa-language"></i>${label ? `<span>${escapeHtml(label)}</span>` : ''}</button>`].filter(Boolean).join('');
             return `<div class="sai-translate-wrap"><textarea ${attrs}${autocompleteAttrs}>${escapeHtml(value || '')}</textarea>${tools ? `<div class="sai-prompt-textarea-tools">${tools}</div>` : ''}</div>`;
         }
 

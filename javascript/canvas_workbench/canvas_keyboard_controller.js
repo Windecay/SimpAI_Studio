@@ -69,6 +69,7 @@
         function onDocumentKeyDown(evt) {
             const root = getRoot();
             if (!evt || !root || root.hidden) return;
+            if (evt.isComposing || evt.keyCode === 229) return;
             if (forwardedModalEvents.has(evt)) return;
             const modal = getActiveModal(root);
             if (modal) {
@@ -92,6 +93,25 @@
                     }
                 }
                 return;
+            }
+            if (root.classList?.contains?.('sai-workbench-home')) {
+                if (isWorkbenchGenerateShortcut(evt)) shortcutCall('consumeWorkbenchShortcut', undefined, evt);
+                if (isWorkbenchGenerateShortcut(evt) || (evt.ctrlKey || evt.metaKey) && String(evt.key).toLowerCase() === 's') evt.preventDefault();
+                return;
+            }
+            if (evt.target?.closest?.('[data-project-navigation]')) {
+                if (isWorkbenchGenerateShortcut(evt)) { shortcutCall('consumeWorkbenchShortcut', undefined, evt); evt.preventDefault(); }
+                if ((evt.ctrlKey || evt.metaKey) && String(evt.key).toLowerCase() === 's') { evt.preventDefault(); saveFromShortcut(); }
+                return;
+            }
+            if (evt.key === 'Escape') {
+                const menu = root.querySelector?.('.sai-canvas-tool-menu[open], .sai-node-more[open]');
+                if (menu) {
+                    evt.preventDefault();
+                    menu.open = false;
+                    menu.querySelector('summary')?.focus();
+                    return;
+                }
             }
             if (paletteCall('isPresetPaletteOpen', false)) {
                 if (isWorkbenchGenerateShortcut(evt)) evt.preventDefault();

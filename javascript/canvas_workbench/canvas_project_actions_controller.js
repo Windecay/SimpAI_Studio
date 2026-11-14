@@ -154,6 +154,7 @@
         }
 
         function applyProjectIdentityPatch(project, id, title) {
+            if (project.id !== id) delete project.storage_revision;
             Object.assign(project, call('buildProjectIdentityPatch', { id, title }, project, { id, title }));
         }
 

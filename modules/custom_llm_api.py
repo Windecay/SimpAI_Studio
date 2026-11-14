@@ -1,4 +1,5 @@
 import hashlib
+import http.client
 import json
 import logging
 import math
@@ -21,6 +22,7 @@ _RETRY_BACKOFF_MAX_SECONDS = 8.0
 _NATIVE_SAMPLING_CACHE = {}
 _NATIVE_SAMPLING_LOCK = threading.Lock()
 _DEFAULT_REPEAT_WINDOW = 1024
+_MAX_INFORMATIONAL_RESPONSES = 64
 _EXTENDED_SAMPLING_KEYS = (
     "top_k", "repetition_penalty", "penalty_last_n", "presence_penalty", "frequency_penalty",
 )
@@ -55,6 +57,43 @@ class CustomLLMRequestError(RuntimeError):
 
 class CustomLLMRequestCancelled(RuntimeError):
     code = "cancelled"
+
+
+class _ApiHTTPResponse(http.client.HTTPResponse):
+    def _read_status(self):
+        # HTTPResponse.begin() only skips 100 Continue on supported Python builds.
+        # Consume other interim headers on this connection before its final status.
+        for _ in range(_MAX_INFORMATIONAL_RESPONSES + 1):
+            version, status, reason = super()._read_status()
+            if not 100 <= status < 200 or status == 101:
+                return version, status, reason
+            http.client.parse_headers(self.fp)
+            logging.getLogger(__name__).debug("Custom API interim response: HTTP %s; waiting for final response", status)
+        raise http.client.HTTPException("Too many informational API responses without a final response")
+
+
+class _ApiHTTPConnection(http.client.HTTPConnection):
+    response_class = _ApiHTTPResponse
+
+
+class _ApiHTTPSConnection(http.client.HTTPSConnection):
+    response_class = _ApiHTTPResponse
+
+
+class _ApiHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, request):
+        return self.do_open(_ApiHTTPConnection, request)
+
+
+class _ApiHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, request):
+        return self.do_open(_ApiHTTPSConnection, request, context=self._context)
+
+
+def _open_api_request(request, timeout):
+    """Use API-specific response handling without changing the global urllib opener."""
+    opener = urllib.request.build_opener(_ApiHTTPHandler(), _ApiHTTPSHandler())
+    return opener.open(request, timeout=timeout)
 
 
 def request_json_cancelable(url, payload=None, api_key="", method="POST", timeout=120, cancel_check=None):
@@ -354,7 +393,7 @@ def _request_json_once(url, payload=None, api_key="", method="POST", timeout=120
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
     response_started = False
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _open_api_request(request, timeout=timeout) as response:
             response_started = True
             body = response.read().decode("utf-8", errors="replace")
             if not body:
@@ -393,7 +432,7 @@ def _request_json_once(url, payload=None, api_key="", method="POST", timeout=120
             retryable=exc.code in RETRYABLE_HTTP_STATUS_CODES,
             retry_after=_retry_after_seconds(getattr(exc, "headers", None)),
         ) from exc
-    except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError) as exc:
+    except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError, http.client.HTTPException) as exc:
         reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
         raise CustomLLMRequestError(
             f"API request failed: {exc}",
@@ -548,7 +587,7 @@ def request_stream(url, payload=None, api_key="", timeout=180, cancel_check=None
         headers["Authorization"] = f"Bearer {api_key}"
     request = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _open_api_request(request, timeout=timeout) as response:
             yield from _iter_stream_events(response)
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
@@ -573,7 +612,7 @@ def request_stream(url, payload=None, api_key="", timeout=180, cancel_check=None
             retryable=exc.code in RETRYABLE_HTTP_STATUS_CODES,
             retry_after=_retry_after_seconds(getattr(exc, "headers", None)),
         ) from exc
-    except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError) as exc:
+    except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError, http.client.HTTPException) as exc:
         raise CustomLLMRequestError(
             f"API stream request failed: {exc}",
             retryable=True,

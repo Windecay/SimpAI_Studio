@@ -20348,15 +20348,26 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
 }
 
 #user_personal_wildcards_modal_content {
-  top: 220px !important;
-  left: max(10px, calc((100vw - 970px) / 2 - 260px)) !important;
+  top: max(12px, calc((100dvh - 760px) / 2)) !important;
+  left: 50% !important;
   right: auto !important;
   bottom: auto !important;
-  width: 970px !important;
-  min-width: min(640px, calc(100vw - 40px)) !important;
-  max-width: calc(100vw - 40px) !important;
-  max-height: calc(100vh - 160px) !important;
-  overflow: auto !important;
+  transform: translateX(-50%);
+  width: min(970px, calc(100vw - 32px)) !important;
+  min-width: 0 !important;
+  max-width: calc(100vw - 24px) !important;
+  height: min(760px, calc(100dvh - 32px)) !important;
+  min-height: min(440px, calc(100dvh - 32px)) !important;
+  max-height: calc(100dvh - 24px) !important;
+  overflow: hidden !important;
+  scrollbar-gutter: auto;
+  display: flex !important;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px !important;
+  border: 1px solid var(--border-color-primary);
+  border-radius: 16px;
+  color: var(--body-text-color) !important;
   z-index: 1001 !important;
 }
 
@@ -22604,30 +22615,225 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   opacity: 0.65;
 }
 
-.user-wildcards-modal.modal {
+#user_personal_wildcards_modal.user-wildcards-modal {
   background-color: transparent;
-  pointer-events: none;
+  pointer-events: none !important;
   justify-content: flex-start;
   align-items: flex-start;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
 }
 
-.user-wildcards-modal .modal-content {
-  position: fixed;
-  pointer-events: auto;
-  width: 970px;
-  max-width: calc(100vw - 40px);
-  max-height: calc(100vh - 160px);
-  overflow: auto;
-  border-radius: 16px;
+#user_personal_wildcards_header {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-height: 38px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  border-bottom: 1px solid var(--border-color-primary);
+  padding-bottom: 10px;
 }
 
 #user_personal_wildcards_modal_handle {
-  cursor: grab;
-  user-select: none;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 28px !important;
+  height: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
 }
 
-#user_personal_wildcards_modal_handle:active {
+#user_personal_wildcards_modal_handle h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 28px;
+}
+
+#user_personal_wildcards_modal_handle *,
+#user_personal_wildcards_status * {
+  color: var(--body-text-color) !important;
+}
+
+#user_personal_wildcards_header:active {
   cursor: grabbing;
+}
+
+#user_personal_wildcards_modal_content *,
+#user_personal_wildcards_modal_content *::before,
+#user_personal_wildcards_modal_content *::after {
+  box-sizing: border-box;
+}
+
+#user_personal_wildcards_header button,
+#user_personal_wildcards_files > button {
+  white-space: nowrap;
+  min-width: 84px !important;
+}
+
+#user_personal_wildcards_body {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  gap: 10px;
+  padding: 0 4px 4px 0;
+}
+
+#user_personal_wildcards_body > * {
+  flex: 0 0 auto;
+  min-width: 0 !important;
+}
+
+#user_personal_wildcards_status {
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+#user_personal_wildcards_status:has(.md:empty) {
+  display: none !important;
+}
+
+#user_personal_wildcards_body .form,
+#user_personal_wildcards_body textarea {
+  min-width: 0 !important;
+}
+
+#user_personal_wildcards_body .form {
+  overflow: visible !important;
+}
+
+#user_personal_wildcards_body > #user_personal_wildcards_editor {
+  flex: 1 0 180px;
+  min-height: 180px;
+  align-items: stretch;
+}
+
+#user_personal_wildcards_editor > .form {
+  align-self: stretch;
+}
+
+#user_personal_wildcards_editor > .form,
+#user_personal_wildcards_content,
+#user_personal_wildcards_content > label,
+#user_personal_wildcards_content .input-container,
+#user_personal_wildcards_content .line-overlay-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+#user_personal_wildcards_content textarea {
+  flex: 1 1 0;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  box-sizing: border-box !important;
+  overflow: auto !important;
+  resize: none !important;
+}
+
+#user_personal_wildcards_modal_content.is-resizing-large-file .line-overlay-wrapper {
+  overflow: hidden;
+}
+
+#user_personal_wildcards_upload {
+  height: auto !important;
+  min-height: 44px;
+  overflow: hidden !important;
+}
+
+#user_personal_wildcards_upload > .label-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 38px;
+  padding: 8px 36px 8px 12px;
+  color: var(--body-text-color);
+  background: var(--background-fill-secondary);
+  border: 1px solid var(--border-color-primary);
+  border-radius: 6px;
+}
+
+#user_personal_wildcards_upload > .label-wrap > .icon,
+#user_personal_wildcards_upload > .label-wrap > svg {
+  display: none !important;
+}
+
+#user_personal_wildcards_upload > .label-wrap::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 0.5em;
+  height: 0.5em;
+  border-right: 0.125em solid currentColor;
+  border-bottom: 0.125em solid currentColor;
+  color: var(--body-text-color-subdued);
+  transform: translateY(-50%) rotate(-45deg);
+  pointer-events: none;
+}
+
+#user_personal_wildcards_upload > .label-wrap.open::after,
+#user_personal_wildcards_upload > .label-wrap[aria-expanded="true"]::after {
+  transform: translateY(-50%) rotate(45deg);
+}
+
+#user_personal_wildcards_upload_file button[aria-dropeffect="copy"] {
+  width: 100%;
+  height: auto !important;
+  min-height: 128px;
+  padding: 16px 12px;
+  color: var(--body-text-color);
+  background: var(--background-fill-secondary);
+}
+
+#user_personal_wildcards_upload_file button[aria-dropeffect="copy"] > .wrap {
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+#user_personal_wildcards_upload_file button[aria-dropeffect="copy"] .icon-wrap {
+  margin-bottom: 8px;
+}
+
+#user_personal_wildcards_modal_content > .simpleai-popup-resize-handle {
+  --simpleai-resize-handle-offset-x: 4px;
+  --simpleai-resize-handle-offset-y: 4px;
+}
+
+/* Gradio scopes @media rules to its managed tree; this card is portaled out. */
+#user_personal_wildcards_modal_content.is-compact {
+  top: max(8px, env(safe-area-inset-top)) !important;
+  left: 8px !important;
+  width: calc(100vw - 16px) !important;
+  max-width: calc(100vw - 16px) !important;
+  height: calc(100dvh - max(16px, calc(env(safe-area-inset-top) + env(safe-area-inset-bottom)))) !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  transform: none !important;
+  padding: 10px !important;
+}
+
+#user_personal_wildcards_modal_content.is-compact #user_personal_wildcards_header {
+  cursor: default;
+  touch-action: auto;
+}
+
+#user_personal_wildcards_modal_content.is-compact > .simpleai-popup-resize-handle {
+  display: none !important;
 }
 
 .line-overlay-textbox .line-overlay-wrapper {
@@ -22637,7 +22843,7 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
 
 .line-overlay-textbox .line-overlay-viewport {
   position: absolute;
-  inset: 0;
+  inset: 1px;
   pointer-events: none;
   overflow: hidden;
   border-radius: inherit;
@@ -22647,25 +22853,52 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   position: absolute;
   top: 0;
   left: 0;
+  color: transparent;
+}
+
+.line-overlay-textbox .line-overlay-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  visibility: hidden;
+  contain: layout style paint;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
-  color: transparent;
+}
+
+.line-overlay-textbox .line-overlay-measure-block {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.line-overlay-textbox .line-overlay-measure-probe {
+  position: absolute;
+  width: 1px;
+  white-space: pre;
 }
 
 .line-overlay-textbox .line-overlay-line {
   display: block;
+  position: absolute;
 }
 
-:root[data-theme="light"] .line-overlay-textbox .line-overlay-line:nth-child(odd),
-html[data-theme="light"] .line-overlay-textbox .line-overlay-line:nth-child(odd),
-body[data-theme="light"] .line-overlay-textbox .line-overlay-line:nth-child(odd) {
+.line-overlay-textbox .line-overlay-viewport[hidden] {
+  display: none;
+}
+
+:root[data-theme="light"] .line-overlay-textbox .line-overlay-line.is-shaded,
+html[data-theme="light"] .line-overlay-textbox .line-overlay-line.is-shaded,
+body[data-theme="light"] .line-overlay-textbox .line-overlay-line.is-shaded {
   background-color: rgba(0, 0, 0, 0.135);
 }
 
-:root[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd),
-html[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd),
-body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) {
+:root[data-theme="dark"] .line-overlay-textbox .line-overlay-line.is-shaded,
+html[data-theme="dark"] .line-overlay-textbox .line-overlay-line.is-shaded,
+body[data-theme="dark"] .line-overlay-textbox .line-overlay-line.is-shaded {
   background-color: rgba(255, 255, 255, 0.145);
 }
 
@@ -23234,7 +23467,6 @@ html:not(.simpai-preset-nav-active) #scene_panel.simpai-source-videos-first:not(
 
   #missing_model_modal_content,
   #model_browser_modal_content,
-  #user_personal_wildcards_modal_content,
   #restore_defaults_panel_content {
     top: max(8px, env(safe-area-inset-top)) !important;
     bottom: max(8px, env(safe-area-inset-bottom)) !important;
@@ -23255,8 +23487,7 @@ html:not(.simpai-preset-nav-active) #scene_panel.simpai-source-videos-first:not(
   }
 
   #model_browser_modal_content,
-  #missing_model_modal_content,
-  #user_personal_wildcards_modal_content {
+  #missing_model_modal_content {
     padding: 10px !important;
   }
 }

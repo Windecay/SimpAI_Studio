@@ -177,7 +177,7 @@
             minimap: true,
             edgeLabels: true,
             reducedMotion: false,
-            inspectorCollapsed: false
+            inspectorCollapsed: true
         }, isPatchObject(configuredSettings) ? configuredSettings : {});
         const LEGACY_STORAGE_KEY = 'simpai.infiniteCanvasWorkbench.v1';
         const STORAGE_KEY_PREFIX = 'simpai.infiniteCanvasWorkbench.v1';
@@ -819,6 +819,10 @@
                 details: run?.details || ''
             };
             if (config.metadataSnapshot) compactRun.metadata_snapshot = cloneValue(config.metadataSnapshot, {});
+            if (run?.run_token) compactRun.run_token = run.run_token;
+            if (run?.request_identity) compactRun.request_identity = run.request_identity;
+            if (run?.connection_error) compactRun.connection_error = run.connection_error;
+            if (run?.background_response) compactRun.background_response = cloneValue(run.background_response, {});
             if (run?.asset) {
                 compactRun.asset = cloneValue(run.asset, {});
                 compactAsset(compactRun.asset);
@@ -888,7 +892,13 @@
             ? nodesPatch
             : { nodes: compactedNodes });
         const runLimit = Math.max(0, Number(opts.runHistoryLimit ?? 12));
-        const compactedRuns = (runLimit ? sourceRuns.slice(-runLimit) : []).map((run) => {
+        const recentIds = new Set((runLimit ? sourceRuns.slice(-runLimit) : []).map(run => run.id));
+        const activeResultRunIds = new Set((next.nodes || []).filter(node => node.type === 'result'
+            && node.producer?.run_id && (node.producer?.refreshing || node.source?.refreshing
+                || ['queued', 'running', 'waiting', 'preparing', 'cancelling', 'skipping'].includes(node.status?.state || node.status)))
+            .map(node => node.producer.run_id));
+        const compactedRuns = sourceRuns.filter(run => recentIds.has(run.id) || activeResultRunIds.has(run.id)
+            || run.background_response).map((run) => {
             const patch = buildRunStoragePatch(run, {
                 metadataSnapshot: buildMetadataSnapshot(run),
                 compactAsset,

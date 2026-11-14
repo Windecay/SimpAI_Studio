@@ -108,7 +108,7 @@
                 button.type = 'button';
                 button.setAttribute('data-node-action', 'toggle-collapse');
                 const deleteButton = head.querySelector('[data-node-action="delete"]');
-                if (deleteButton) head.insertBefore(button, deleteButton);
+                if (deleteButton && deleteButton.parentElement === head) head.insertBefore(button, deleteButton);
                 else head.appendChild(button);
             }
             const collapsed = isNodeCollapsed(node);

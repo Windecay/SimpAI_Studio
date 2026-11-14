@@ -32,7 +32,7 @@
         const { cssEscape } = utilitySource;
         const viewportSource = sourceObject('viewportSource');
         const {
-            updateCanvasRenderMode, getNodeRenderWorldRect, getVisibleNodeRecords,
+            updateCanvasRenderMode, getNodeRenderWorldRect, getVisibleWorldRect, getVisibleNodeRecords,
             rectContainsRect, isPanning, scheduleMinimapRender, renderMinimap, positionCanvasAgentPanel,
             renderEdges
         } = viewportSource;
@@ -67,6 +67,7 @@
             ensureWorkbenchFormFieldNames, ensureNodeCollapseButton, ensureNodeResizeHandle,
             bindNodeEvents, restoreInlineTagCartAfterRender, syncOutpaintOverlayPosition, pruneDetachedOverlays
         } = renderSource;
+        const { beginNodePresentationRender, syncNodePresentationDom, releaseNodePresentationDom, resetNodePresentation, refreshConnectionTargetHighlights } = renderSource;
         const presetSource = sourceObject('presetSource');
         const {
             getPresetSpecialControllerKind, bindPresetSpecialViewerEvents,
@@ -90,6 +91,7 @@
         }
 
         function renderNodes(options) {
+            beginNodePresentationRender?.();
             const startedAt = performanceNow();
             const nodesLayer = getNodesLayer();
             const document = getDocument();
@@ -114,7 +116,9 @@
                 if (!projectIds.has(id)) mediaBrowserScrollMemory.delete(id);
             });
             Array.from(renderedNodeElsById.entries()).forEach(([nodeId, nodeEl]) => {
-                const removeForViewport = !renderOptions.panPreview && !liveIds.has(nodeId);
+                const activeField = document.activeElement;
+                const isEditing = !!(activeField?.matches?.('input,textarea,select,[contenteditable="true"]') && nodeEl?.contains?.(activeField));
+                const removeForViewport = !renderOptions.panPreview && !liveIds.has(nodeId) && !isEditing;
                 const removeForProject = !projectIds.has(nodeId);
                 if (!nodeEl || !nodeEl.isConnected || nodeEl.parentElement !== nodesLayer || removeForViewport || removeForProject) {
                     const removedNode = getNode(nodeId);
@@ -126,6 +130,7 @@
                             nodeRect: getNodeLayoutSize(removedNode)
                         });
                     }
+                    releaseNodePresentationDom?.(nodeEl);
                     if (nodeEl?.parentElement) nodeEl.remove();
                     renderedNodeElsById.delete(nodeId);
                 }
@@ -157,14 +162,15 @@
                     nodesLayer.appendChild(nodeEl);
                     renderedNodeElsById.set(node.id, nodeEl);
                 }
-                const vlmChatScroll = node.type === 'vlm' && renderMode === 'full' ? captureVlmChatScroll(nodeEl) : null;
-                const mediaBrowserScroll = node.type === 'media_browser' && renderMode === 'full' && !mediaBrowserRuntimeFor(node.id).loading
+                const renderKey = nodeRenderKey(node, renderOptions);
+                const needsContentRefresh = nodeEl.__simpaiRenderKey !== renderKey;
+                const vlmChatScroll = needsContentRefresh && node.type === 'vlm' && renderMode === 'full' ? captureVlmChatScroll(nodeEl) : null;
+                const mediaBrowserScroll = needsContentRefresh && node.type === 'media_browser' && renderMode === 'full' && !mediaBrowserRuntimeFor(node.id).loading
                     ? captureMediaBrowserScroll(nodeEl, node.id)
                     : null;
                 const batchGrid = node.type === 'batch_any' && renderMode === 'full'
                     ? nodeEl.querySelector('[data-batch-any-grid]') : null;
                 const batchGridScroll = batchGrid ? { top: batchGrid.scrollTop, left: batchGrid.scrollLeft } : null;
-                const renderKey = nodeRenderKey(node, renderOptions);
                 const preservePresetSpecialIframe = shouldPreservePresetSpecialIframe(node, nodeEl, renderMode);
                 const hasOverviewBody = renderMode === 'full' && !!nodeEl.querySelector?.(':scope > .sai-node-overview-body');
                 if (renderMode === 'full' && hasOverviewBody) nodeEl.__simpaiRenderKey = undefined;
@@ -172,6 +178,7 @@
                     logVlmRenderKeyChange(node, nodeEl.__simpaiRenderKey, renderKey, 'replace');
                     const replacement = document.createElement('div');
                     replacement.dataset.nodeId = node.id;
+                    releaseNodePresentationDom?.(nodeEl);
                     nodeEl.replaceWith(replacement);
                     nodeEl = replacement;
                     renderedNodeElsById.set(node.id, nodeEl);
@@ -211,6 +218,7 @@
                 const didRenderHtml = nodeEl.__simpaiRenderKey !== renderKey;
                 if (didRenderHtml) {
                     logVlmRenderKeyChange(node, nodeEl.__simpaiRenderKey, renderKey, nodeEl.__simpaiRenderKey === undefined ? 'first-render' : 'innerHTML');
+                    releaseNodePresentationDom?.(nodeEl);
                     setNodeInnerHtml(nodeEl, node, renderNodeHtml(node, renderOptions), { preservePresetSpecialIframe });
                     nodeEl.__simpaiRenderKey = renderKey;
                     ensureWorkbenchFormFieldNames(nodeEl, node.id || node.type || 'node');
@@ -231,7 +239,7 @@
                 if (shouldMeasureLayout) {
                     pendingMeasurements.push({ node, nodeEl, layoutSignature });
                 }
-                if (node.type === 'vlm' && renderMode === 'full') {
+                if (didRenderHtml && node.type === 'vlm' && renderMode === 'full') {
                     restoreVlmChatScroll(nodeEl, vlmChatScroll, node);
                     refreshVlmChatReadabilityDom(nodeEl, node);
                 }
@@ -248,6 +256,7 @@
                 if (node.type === 'result' && renderMode === 'full') {
                     syncResultPreviewPlayerDom(node, nodeEl);
                 }
+                if (renderMode === 'full') syncNodePresentationDom?.(node, nodeEl);
             }
             // Read dimensions after the DOM updates, so multi-node renders share a layout pass.
             for (const { node, nodeEl, layoutSignature } of pendingMeasurements) {
@@ -255,6 +264,7 @@
                 nodeEl.__simpaiLayoutSignature = layoutSignature;
             }
             pruneDetachedOverlays?.();
+            refreshConnectionTargetHighlights?.();
             const root = getRoot();
             const project = getProject();
             const perfStats = getPerfStats();
@@ -338,6 +348,8 @@
         }
 
         function resetRenderedProjectDomCache() {
+            for (const el of renderedNodeElsById.values()) releaseNodePresentationDom?.(el);
+            resetNodePresentation?.();
             const nodesLayer = getNodesLayer();
             const groupsLayer = getGroupsLayer();
             const edgesLayer = getEdgesLayer();
@@ -396,7 +408,7 @@
         }
 
         function isVisibleWorldRectCoveredByRenderedNodes() {
-            return rectContainsRect(nodeRenderCoverageRect, getNodeRenderWorldRect(), 16);
+            return rectContainsRect(nodeRenderCoverageRect, getVisibleWorldRect?.() || getNodeRenderWorldRect(), 16);
         }
 
         function nodeRenderKey(node, options) {
@@ -459,7 +471,7 @@
             return true;
         }
 
-        function refreshNodeLayoutForAgent(nodeId, delayMs) {
+        function refreshNodeLayoutForAgent(nodeId, delayMs, options) {
             const nodesLayer = getNodesLayer();
             if (!nodeId || !nodesLayer) return;
             const project = getProject();
@@ -475,8 +487,8 @@
                 const changed = rememberRenderedNodeLayout(node, nodeEl);
                 if (changed) {
                     if (typeof renderMinimap === 'function') renderMinimap();
-                    if (typeof renderEdges === 'function') renderEdges();
                 }
+                if ((changed || options?.portsChanged) && typeof renderEdges === 'function') renderEdges();
                 if (typeof positionCanvasAgentPanel === 'function') positionCanvasAgentPanel();
             };
             if (delayMs && delayMs > 0) {

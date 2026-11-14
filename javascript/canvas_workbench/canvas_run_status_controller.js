@@ -180,7 +180,7 @@
             let detail = activeRuns.length
                 ? t('{count} active', '{count} 个活动').replace('{count}', String(activeRuns.length))
                 : t('Idle', '空闲');
-            const schedulerVisible = total && (['running', 'waiting', 'blocked', 'failed'].includes(schedulerState) || (!activeRuns.length && schedulerState === 'finished'));
+            const schedulerVisible = total && (['running', 'waiting', 'blocked', 'failed', 'paused'].includes(schedulerState) || (!activeRuns.length && schedulerState === 'finished'));
             if (schedulerVisible) {
                 if (schedulerState === 'finished') {
                     state = 'finished';
@@ -193,6 +193,11 @@
                     percent = clampValue(rawIndex / total, 0, 1);
                 }
                 detail = `${currentStep}/${total} ${schedulerState || t('planned', '已计划')}`;
+                if (schedulerState === 'paused') {
+                    state = activeRuns.length ? 'running' : 'paused';
+                    percent = clampValue(rawIndex / total, 0, 1);
+                    detail = `${currentStep}/${total} ${t('Paused', '已暂停')}`;
+                }
             } else if (!activeRuns.length && latestRun && isTerminalRunState(latestRun.state)) {
                 state = String(latestRun.state || 'finished').toLowerCase();
                 percent = state === 'finished' ? 1 : runQueueRunPercent(latestRun);
@@ -353,7 +358,7 @@
             const usageChip = (label, used, total) => {
                 const value = percentValue(used, total);
                 const display = value === null ? '--' : `${value}%`;
-                return `<span class="sai-system-usage-chip" style="--usage:${escapeHtml(String(value ?? 0))}%"><b>${escapeHtml(label)}</b>${escapeHtml(display)}</span>`;
+                return `<span class="sai-system-usage-chip" data-system-metric="${escapeHtml(label.toLowerCase())}" style="--usage:${escapeHtml(String(value ?? 0))}%"><b>${escapeHtml(label)}</b>${escapeHtml(display)}</span>`;
             };
             const state = String(data.statusType || '').toLowerCase();
             const stateLabel = state === 'connected'

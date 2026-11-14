@@ -214,7 +214,7 @@
             if (opts.openEditor !== false) {
                 schedule(() => {
                     const currentSam3 = getNode(sam3Node.id);
-                    if (currentSam3) openSam3PointEditor(currentSam3);
+                    if (currentSam3 === sam3Node) openSam3PointEditor(currentSam3);
                 }, 80);
             }
             setCanvasAgentMessage(t('{tool} workflow is grouped. Generate or upload the SAM3 mask to auto-run the reserved result.', '{tool} 工作流已分组。生成或上传 SAM3 蒙版后将自动运行预留结果。').replace('{tool}', spec?.label || t('Video quick tool', '视频快捷工具')));
@@ -223,10 +223,14 @@
 
         async function handleCanvasAgentSam3VideoMaskReady(sam3Node, response, details) {
             const currentSam3 = getNode(sam3Node?.id) || sam3Node;
+            if (!currentSam3 || getNode(currentSam3.id) !== sam3Node) return { ok: false, stale: true };
             const workflow = currentSam3?.source?.agent_video_mask_workflow;
             if (!workflow || workflow.auto_run === false) return null;
             const currentPreset = getNode(workflow.preset_node_id);
             const currentResult = getNode(workflow.result_node_id) || findCanvasAgentReservedResultNodeForPreset(currentPreset);
+            const projectId = getProject().id;
+            const isCurrent = () => getProject().id === projectId && getNode(currentSam3.id) === currentSam3
+                && getNode(currentPreset?.id) === currentPreset && getNode(currentResult?.id) === currentResult;
             if (!currentPreset || !currentResult) {
                 setCanvasAgentMessage(t('SAM3 mask is ready, but the reserved Agent workflow is incomplete.', 'SAM3 蒙版已完成，但预留的 Agent 工作流不完整。'));
                 return { ok: false, error: 'reserved Agent workflow is incomplete' };
@@ -314,6 +318,7 @@
                     resultNode: currentResult,
                     reuseExistingResult: true
                 });
+                if (!isCurrent()) return { ok: false, stale: true };
                 const ok = runResponse?.ok === true || (runResponse?.ok !== false && runResponse?.state !== 'failed' && runResponse?.state !== 'canceled' && runResponse?.state !== 'skipped');
                 const finalState = ok && runResponse?.state === 'finished' ? 'finished' : (ok ? 'submitted' : 'failed');
                 setCanvasAgentSam3WorkflowState(currentSam3, {
@@ -323,6 +328,7 @@
                 fitCanvasAgentWorkflowGroup(nextWorkflow?.group_id || workflow.group_id, canvasAgentSam3WorkflowNodes(workflow, currentSam3, currentPreset, getNode(currentResult.id) || currentResult), 48);
                 return runResponse;
             } catch (err) {
+                if (!isCurrent()) return { ok: false, stale: true };
                 console.warn('[SimpAI Canvas] Agent SAM3 video mask auto-run failed', err);
                 showToast(`Video mask quick tool run failed: ${err?.message || err || 'unknown error'}`);
                 setCanvasAgentSam3WorkflowState(currentSam3, {
@@ -332,7 +338,7 @@
                 setCanvasAgentMessage(t('SAM3 mask is connected, but the preset run failed. The reserved workflow is still available for manual retry.', 'SAM3 蒙版已连接，但 preset 运行失败。预留工作流仍可手动重试。'));
                 return { ok: false, error: err?.message || String(err || 'unknown error') };
             } finally {
-                clearCanvasAgentRunInfo(1800);
+                if (isCurrent()) clearCanvasAgentRunInfo(1800);
             }
         }
 

@@ -196,7 +196,9 @@
                 details: run?.details || ''
             };
             if (run?.connection_error) compactRun.connection_error = run.connection_error;
+            if (run?.run_token) compactRun.run_token = run.run_token;
             if (run?.request_identity) compactRun.request_identity = run.request_identity;
+            if (run?.background_response) compactRun.background_response = cloneRunValue(run.background_response, {});
             if (config.metadataSnapshot || run?.metadata_snapshot) {
                 compactRun.metadata_snapshot = cloneRunValue(config.metadataSnapshot || run.metadata_snapshot, {});
             }

@@ -126,10 +126,18 @@
             return call(geometrySource, 'cssEscape', fallback, value);
         }
 
-        function getHandleWorldPoint(selector) {
+        function getHandleWorldPoint(selector, nodeId) {
             const nodesLayer = call(domSource, 'getNodesLayer', null);
             if (!nodesLayer) return null;
-            const handle = nodesLayer.querySelector(selector);
+            let handle;
+            if (nodeId && typeof domSource.getRenderedNodeElement === 'function') {
+                const nodeElement = domSource.getRenderedNodeElement(nodeId);
+                if (!nodeElement?.isConnected || nodeElement.parentElement !== nodesLayer) return null;
+                const prefix = '[data-node-id="' + escapeSelectorValue(nodeId) + '"] ';
+                handle = nodeElement.querySelector(selector.slice(prefix.length));
+            } else {
+                handle = nodesLayer.querySelector(selector);
+            }
             if (!handle) return null;
             const rect = handle.getBoundingClientRect();
             if (!rect.width && !rect.height) return null;
@@ -146,12 +154,12 @@
             if (!trackId) return null;
             const selector = '[data-node-id="' + escapeSelectorValue(nodeId)
                 + '"] [data-timeline-track-in="' + escapeSelectorValue(trackId) + '"]';
-            return getHandleWorldPoint(selector);
+            return getHandleWorldPoint(selector, nodeId);
         }
 
         function getOutputPoint(node) {
             const selector = '[data-node-id="' + escapeSelectorValue(node.id) + '"] [data-handle-out]';
-            const measured = getHandleWorldPoint(selector);
+            const measured = getHandleWorldPoint(selector, node.id);
             if (measured) return measured;
             const size = call(nodeSource, 'defaultNodeSize', { w: 0 }, node.type) || { w: 0 };
             return {
@@ -210,7 +218,7 @@
                 selector = nodeSelector + '[data-batch-any-in]';
             }
             if (selector) {
-                const measured = getHandleWorldPoint(selector);
+                const measured = getHandleWorldPoint(selector, node.id);
                 if (measured) return measured;
             }
             if (node.type === 'preset' && edgeType === 'upload') {

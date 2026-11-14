@@ -413,8 +413,8 @@ ${status ? `<div class="sai-node-foot">${escape(status)}</div>` : ''}
 </div>`;
             return `
 <div class="sai-node-head">
-  <span class="sai-node-kind">Result</span>
-  <span class="sai-node-title">${escape(node.title || 'Result')}</span>
+  <span class="sai-node-kind">${escape(translate('Result', '结果'))}</span>
+  <span class="sai-node-title">${escape(node.title || translate('Result', '结果'))}</span>
   ${nodeBadges(node)}
   ${canLayerForge ? `<button type="button" class="${frameless ? 'is-active' : ''}" data-node-action="toggle-image-frameless" aria-pressed="${frameless}" title="${escape(frameless ? translate('Show image frame', '显示图像边框') : translate('Hide image frame', '隐藏图像边框'))}"><i class="fa-solid fa-border-all"></i></button>` : ''}
   <button type="button" data-node-action="delete" title="${escape(translate('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>

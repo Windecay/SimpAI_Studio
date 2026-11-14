@@ -140,9 +140,14 @@
         }
 
         async function runCanvasAgentManualMaskPreset(presetNode, resultNode, workflowGroup, spec, savedNode) {
+            const project = getProject();
             const currentPreset = getNode(presetNode?.id);
             const currentResult = getNode(resultNode?.id) || findCanvasAgentReservedResultNodeForPreset(currentPreset);
-            if (!currentPreset || !currentResult) return { ok: false, error: 'masked workflow is missing preset or result' };
+            const isCurrent = () => getProject() === project && getNode(currentPreset?.id) === currentPreset
+                && getNode(currentResult?.id) === currentResult;
+            if (!currentPreset || !currentResult || currentPreset !== presetNode || resultNode && currentResult !== resultNode) {
+                return { ok: false, stale: true, error: 'masked workflow is missing preset or result' };
+            }
             fitCanvasAgentWorkflowGroup(workflowGroup?.id || workflowGroup, canvasAgentManualMaskWorkflowNodes(currentPreset, currentResult, savedNode), 48);
             setCanvasAgentRunInfo({
                 token: uid('agent_run'),
@@ -156,22 +161,29 @@
                     resultNode: currentResult,
                     reuseExistingResult: true
                 });
+                if (!isCurrent()) return { ok: false, stale: true, error: 'masked workflow no longer current' };
                 fitCanvasAgentWorkflowGroup(workflowGroup?.id || workflowGroup, canvasAgentManualMaskWorkflowNodes(currentPreset, getNode(currentResult.id) || currentResult, savedNode), 48);
                 return response;
+            } catch (err) {
+                if (!isCurrent()) return { ok: false, stale: true, error: 'masked workflow no longer current' };
+                throw err;
             } finally {
-                clearCanvasAgentRunInfo(1800);
+                if (isCurrent()) clearCanvasAgentRunInfo(1800);
             }
         }
 
         async function openCanvasAgentMaskSketch(sourceNode, presetNode, resultNode, workflowGroup, spec) {
             if (!sourceNode || !presetNode) return;
+            const project = getProject();
+            const isCurrent = () => getProject() === project && getNode(sourceNode.id) === sourceNode && getNode(presetNode.id) === presetNode;
+            if (!isCurrent()) return;
             const ready = await ensureWorkbenchLazyRuntime(
                 'customSketch',
                 () => typeof getSketchAdapter()?.open === 'function',
                 t('Loading Sketch...', '正在加载 Sketch...'),
                 t('Sketch adapter is not ready.', 'Sketch 控件尚未就绪。')
             );
-            if (!ready) return;
+            if (!ready || !isCurrent()) return;
             const adapter = getSketchAdapter();
             if (!adapter || typeof adapter.open !== 'function') {
                 showToast(t('Sketch adapter is not ready.', 'Sketch 控件尚未就绪。'));
@@ -192,8 +204,9 @@
                 mask: sourceNode.type === 'image' ? (sourceNode.mask?.data_url || '') : '',
                 title: `${spec?.label || t('Mask', '蒙版')} · ${sourceNode.title || 'Image'}`,
                 onSave: async (payload) => {
+                    if (!isCurrent()) return;
                     const outputNode = await createImageNodeFromSketchOutput(sourceNode, payload);
-                    if (!outputNode) return;
+                    if (!outputNode || !isCurrent()) return;
                     const currentPreset = getNode(presetNode.id);
                     const currentSource = getNode(sourceNode.id);
                     const savedNode = getNode(outputNode?.id) || currentSource;

@@ -44,7 +44,6 @@
         "minimax_h3_storyboard_control",
         "scene_additional_prompt",
         "scene_additional_prompt_2",
-        "scene_var_number",
         "scene_var_number2",
         "scene_var_number3",
         "scene_var_number4",
@@ -73,6 +72,14 @@
         "default": {"en": ["h3_image_prompting_en.md"], "cn": ["h3_image_prompting_cn.md"]}
       },
       "overwrite_step": {"Basic": 6},
+      "var_number_title": {
+        "en": "Minimum Processing Size (px, squared area)",
+        "cn": "\u6700\u4f4e\u5904\u7406\u50cf\u7d20\uff08\u9762\u79ef\u57fa\u51c6\uff09"
+      },
+      "var_number_min": 2048,
+      "var_number_max": 8192,
+      "var_number_step": 1,
+      "var_number": {"Basic": 3072},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
         "Basic": "The canvas mask is optional and selects the route automatically without changing picture order or numbering. The canvas is always <Picture 1> when present, followed by additional images as <Picture 2>, <Picture 3>, and so on in upload order. With a non-empty painted mask, <Picture 1> is also the source image being edited. Treat the mask as execution data, never as a picture. Describe only the requested change inside the mask and explicitly preserve all content outside it. Use only runtime labels that exist. When no canvas or reference image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media."

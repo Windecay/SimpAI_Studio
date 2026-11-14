@@ -1000,7 +1000,9 @@
             const opts = options || {};
             const resumeResult = (opts.resultNode ? [opts.resultNode] : generatedResultNodesForPreset(node))
                 .find(result => getNode(result.id) === result && result.producer?.preset_node_id === node.id
-                    && (project.runs || []).some(run => run.id === result.producer?.run_id && run.connection_error));
+                    && (project.runs || []).some(run => run.id === result.producer?.run_id && (run.connection_error
+                        || typeof pollingSource.trackSubmittedRun === 'function' && !isTerminalRunState(run.state)
+                            && (isResultRefreshing(result) || isCanvasRunActiveState(nodeStatusState(result))))));
             if (resumeResult) {
                 return pollCanvasRun(resumeResult.producer.run_id, resumeResult.id, node.id, opts);
             }
@@ -1218,6 +1220,12 @@
                 } catch (err) {
                     runResult = { ok: false, state: 'failed', error: err?.message || String(err) };
                 }
+                if (typeof pollingSource.trackSubmittedRun === 'function') {
+                    if (isCurrentResultRun(project, runId, resultNode.id, runToken)) notifyRunCallback(opts.onSubmitted, runId, resultNode.id, runResult);
+                    const tracked = pollingSource.trackSubmittedRun({ project, runId, resultNodeId: resultNode.id,
+                        producerNodeId: node.id, response: runResult, options: opts });
+                    if (tracked) return tracked;
+                }
                 if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
                     return { ok: false, error: 'run no longer current', response: runResult };
                 }
@@ -1368,7 +1376,7 @@
                     syncCanvasProjectAssetRootFromAsset(resultNode.asset);
                     if (assetPatch.assets) syncCanvasProjectAssetRootFromAssets(resultNode.assets);
                     Object.assign(resultNode, buildResultOutputPatch(resultNode, {
-                        kind: 'generated_output',
+                        kind: resultNode.source?.director_node_id ? 'director_segment_result' : 'generated_output',
                         outputPath: response.asset.output_path || response.asset.path || '',
                         completedFingerprint
                     }));
@@ -1473,6 +1481,9 @@
         function pollCanvasRun(runId, resultNodeId, presetNodeId, options) {
             const opts = options || {};
             const project = getProject();
+            const tracked = pollingSource.trackSubmittedRun?.({ project, runId, resultNodeId,
+                producerNodeId: presetNodeId, options: opts });
+            if (tracked) return tracked;
             const runToken = getNode(resultNodeId)?.producer?.run_token || '';
             const run = (project.runs || []).find(item => item.id === runId);
             const identity = run?.request_identity || runIdentityKey(getWorkbenchUserContext());
@@ -1564,11 +1575,15 @@
             } catch (err) {
                 runResult = { ok: false, state: 'failed', error: err?.message || String(err) };
             }
-            if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
+            const tracked = pollingSource.trackSubmittedRun?.({ project, runId, resultNodeId: resultNode.id,
+                producerNodeId: presetNode.id, response: runResult, options });
+            if (!tracked && !isCurrentResultRun(project, runId, resultNode.id, runToken)) {
                 return { ok: false, error: 'run no longer current', response: runResult };
             }
-            notifyRunCallback(options?.onSubmitted, runId, resultNode.id, runResult, { director_segment_index: index });
-            const outcome = await applyRunNodeResult(runId, resultNode.id, presetNode.id, runResult, Object.assign({ initialDelayMs: 900 }, options || {}));
+            if (isCurrentResultRun(project, runId, resultNode.id, runToken)) {
+                notifyRunCallback(options?.onSubmitted, runId, resultNode.id, runResult, { director_segment_index: index });
+            }
+            const outcome = await (tracked || applyRunNodeResult(runId, resultNode.id, presetNode.id, runResult, Object.assign({ initialDelayMs: 900 }, options || {})));
             if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
                 return { ok: false, error: 'run no longer current', result: outcome };
             }
@@ -1587,6 +1602,8 @@
         }
 
         return {
+            getPendingPresetRunsForProject: () => new Set(Array.from(pendingPreparations.values())
+                .filter(item => item.project === getProject()).map(item => item.node.id)),
             runPresetNode,
             runDirectorSegmentedPresetNode: executeDirectorSegmentedRun,
             preflightDirectPresetRun,

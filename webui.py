@@ -1701,6 +1701,7 @@ def generate_clicked(task: worker.AsyncTask, state):
     progress_eta_image_key = None
     progress_eta_started_at = local_start_time
     progress_eta_last_step = None
+    last_history_prompts = ()
 
     if is_cloud_task:
         stop_update, skip_update = controls_interactive_updates(False)
@@ -1788,6 +1789,13 @@ def generate_clicked(task: worker.AsyncTask, state):
                     stop_update, \
                     skip_update
                 break
+
+            # Deliver resolved prompts even while the backend is loading or
+            # waiting for its first sampling preview.
+            history_prompts_snapshot = tuple(getattr(task, "final_prompts", []) or [])
+            if history_prompts_snapshot and history_prompts_snapshot != last_history_prompts:
+                last_history_prompts = history_prompts_snapshot
+                yield tuple(skip_component_update() for _ in range(10))
 
             if len(task.yields) == 0:
                 time.sleep(POLL_INTERVAL)
@@ -6678,27 +6686,29 @@ with shared.gradio_root:
 
                     wildcards_array_hold = [skip_component_update() for _ in range(5)]
 
-                    user_personal_wildcards_modal = floating_shell(visible=False, elem_id="user_personal_wildcards_modal", elem_classes=["user-wildcards-modal"])
+                    user_personal_wildcards_modal = gr.Column(visible=False, min_width=0, elem_id="user_personal_wildcards_modal", elem_classes=["sai-floating-shell", "modal", "user-wildcards-modal"])
                     with user_personal_wildcards_modal:
-                        user_personal_wildcards_modal_content = floating_card(elem_id="user_personal_wildcards_modal_content", scale=1, min_width=800)
+                        user_personal_wildcards_modal_content = floating_card(elem_id="user_personal_wildcards_modal_content", scale=1, min_width=0)
                         with user_personal_wildcards_modal_content:
-                            user_personal_wildcards_title = gr.Markdown("### Personal Wildcards", elem_id="user_personal_wildcards_modal_handle")
-                            user_personal_wildcards_status = gr.Markdown("")
-                            with gr.Row():
-                                user_personal_wildcards_select = gr.Dropdown(label="File", choices=[], value=None, scale=5)
-                                user_personal_wildcards_refresh_btn = gr.Button(value="🔄 Refresh", size="sm", min_width=60, scale=1)
-                                user_personal_wildcards_close_btn = gr.Button(value="❌ Close", size="sm", min_width=60, scale=1)
-                            with gr.Row():
-                                user_personal_wildcards_name = gr.Textbox(label="Name", placeholder="e.g. my_style (saved as .txt)", lines=1)
-                            with gr.Row():
-                                user_personal_wildcards_content = gr.Textbox(label="Content (one per line)", lines=12, elem_id="user_personal_wildcards_content", elem_classes=["line-overlay-textbox"])
-                            with gr.Row():
-                                user_personal_wildcards_save_btn = gr.Button(value="💾 Save", interactive=False)
-                                user_personal_wildcards_delete_btn = gr.Button(value="🗑️ Delete", variant="secondary", interactive=False)
-                            with gr.Accordion(label="📦 Upload .txt", open=False):
-                                user_personal_wildcards_upload_file = gr.File(label="Choose a .txt file", file_types=[".txt"], type="filepath")
-                                user_personal_wildcards_upload_name = gr.Textbox(label="Save as (optional)", placeholder="Leave blank to use original filename", lines=1)
-                                user_personal_wildcards_upload_btn = gr.Button(value="Upload/Overwrite")
+                            with gr.Row(elem_id="user_personal_wildcards_header"):
+                                user_personal_wildcards_title = gr.Markdown("### Personal Wildcards", elem_id="user_personal_wildcards_modal_handle")
+                                user_personal_wildcards_close_btn = gr.Button(value="❌ Close", size="sm", min_width=70, scale=0)
+                            with gr.Column(min_width=0, elem_id="user_personal_wildcards_body"):
+                                user_personal_wildcards_status = gr.Markdown("", elem_id="user_personal_wildcards_status")
+                                with gr.Row(elem_id="user_personal_wildcards_files"):
+                                    user_personal_wildcards_select = gr.Dropdown(label="File", choices=[], value=None, scale=5, min_width=0)
+                                    user_personal_wildcards_refresh_btn = gr.Button(value="🔄 Refresh", size="sm", min_width=70, scale=0)
+                                with gr.Row():
+                                    user_personal_wildcards_name = gr.Textbox(label="Name", placeholder="e.g. my_style (saved as .txt)", lines=1, elem_id="user_personal_wildcards_name")
+                                with gr.Row(elem_id="user_personal_wildcards_editor"):
+                                    user_personal_wildcards_content = gr.Textbox(label="Content (one per line)", lines=12, max_lines=12, autoscroll=False, elem_id="user_personal_wildcards_content", elem_classes=["line-overlay-textbox"])
+                                with gr.Row(elem_id="user_personal_wildcards_actions"):
+                                    user_personal_wildcards_save_btn = gr.Button(value="💾 Save", interactive=False)
+                                    user_personal_wildcards_delete_btn = gr.Button(value="🗑️ Delete", variant="secondary", interactive=False)
+                                with gr.Accordion(label="📦 Upload .txt", open=False, elem_id="user_personal_wildcards_upload"):
+                                    user_personal_wildcards_upload_file = gr.File(label="Choose a .txt file", file_types=[".txt"], type="filepath", height=96, elem_id="user_personal_wildcards_upload_file")
+                                    user_personal_wildcards_upload_name = gr.Textbox(label="Save as (optional)", placeholder="Leave blank to use original filename", lines=1)
+                                    user_personal_wildcards_upload_btn = gr.Button(value="Upload/Overwrite")
 
                     wc_manage_personal_btn_outputs = [user_personal_wildcards_modal, user_personal_wildcards_select, user_personal_wildcards_name, user_personal_wildcards_content, user_personal_wildcards_status, user_personal_wildcards_save_btn, user_personal_wildcards_delete_btn]
                     def _deny_personal_wildcards_open(msg=None):
@@ -12149,10 +12159,25 @@ with shared.gradio_root:
             )
             return media_updates + surface_updates
 
-        def generate_clicked_or_director(generation_task, state_params, director_enabled, director_runtime, h3_request, random_seed):
+        def _stream_generation_prompt_history(generation_task, existing_history, updates):
+            history = list(existing_history or [])
+            last_snapshot = None
+            for output in updates:
+                history_task = getattr(generation_task, "active_director_task", None) or generation_task
+                snapshot = (id(history_task), tuple(getattr(history_task, "final_prompts", []) or []))
+                history_updates = tuple(skip_component_update() for _ in range(3))
+                if snapshot[1] and snapshot != last_snapshot:
+                    last_snapshot = snapshot
+                    history_updates = update_prompt_history(
+                        history_task, history, None, source='generation_progress',
+                    )
+                    history = history_updates[0]
+                yield tuple(output) + tuple(history_updates)
+
+        def generate_clicked_or_director(generation_task, state_params, director_enabled, director_runtime, h3_request, random_seed, existing_history):
             request = scene_director_webui._h3_request(h3_request, state_params) if director_enabled and scene_director_webui.h3_director.is_family(state_params) else {}
             request["random_seed"] = bool(random_seed)
-            yield from scene_director_webui.generate_clicked_or_director(
+            updates = scene_director_webui.generate_clicked_or_director(
                 generation_task,
                 state_params,
                 director_enabled,
@@ -12161,6 +12186,7 @@ with shared.gradio_root:
                 compare_button_update_fn=compare_button_gr_update,
                 h3_request=request,
             )
+            yield from _stream_generation_prompt_history(generation_task, existing_history, updates)
 
         def finalize_generation_gallery_surface(generation_task):
             results = getattr(generation_task, "results", None)
@@ -12451,7 +12477,7 @@ with shared.gradio_root:
         ))
         generate_event = bind_generation_failure_cleanup(generate_event.success(sync_generation_inputs, inputs=generation_sync_inputs, outputs=generation_sync_outputs, show_progress=False, queue=False, js=generation_sync_submit_state_js))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False, queue=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state, scene_director_h3_request, seed_random], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
+        generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state, scene_director_h3_request, seed_random, state_prompt_history], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button, state_prompt_history, history_prompts, prompt_history_data], show_progress=False))
         generate_event.then(fn=None, queue=False, show_progress=False, js="()=>{window.SimpAIH3Director?.generationFinished();}")
         generate_event.failure(fn=None, queue=False, show_progress=False, js="()=>{window.SimpAIH3Director?.generationFinished();}")
         generate_event.success(fn=update_prompt_history, inputs=[currentTask, state_prompt_history, prompt], outputs=[state_prompt_history, history_prompts, prompt_history_data], show_progress=False)
@@ -14761,11 +14787,14 @@ def _canvas_workbench_model_meta_paths(catalog_name, fallback_paths=None):
 
 
 def _canvas_workbench_standalone_html(request: Request):
+    from modules.localization import _load_translation_catalog
+
     params = _canvas_workbench_standalone_system_params(request)
     theme = "dark" if str(params.get("__theme") or "").lower().find("dark") >= 0 else "light"
     lang = "en" if str(params.get("__lang") or "").lower().startswith("en") else "cn"
     # HTML parses script endings before JavaScript reads the JSON string.
     system_params_json = json.dumps(params, ensure_ascii=False).replace("<", "\\u003c")
+    canvas_localization_json = json.dumps(_load_translation_catalog("cn"), ensure_ascii=True).replace("<", "\\u003c")
     startup_messages_json = json.dumps({
         text: localized_text({"__lang": "cn"}, text)
         for text in ("Loading Infinite Canvas", "Unable to open Infinite Canvas.", "Reload page")
@@ -14817,6 +14846,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_status_controller.js"),
         webpath("javascript/canvas_workbench/canvas_render_controller.js"),
         webpath("javascript/canvas_workbench/canvas_preset_param_renderer.js"),
+        webpath("javascript/canvas_workbench/canvas_node_presentation_controller.js"),
         webpath("javascript/canvas_workbench/canvas_preset_node_renderer.js"),
         webpath("javascript/canvas_workbench/canvas_workbench_shell_renderer.js"),
         webpath("javascript/canvas_workbench/canvas_node_render_controller.js"),
@@ -15121,6 +15151,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_textarea_editor_controller.js"),
         webpath("javascript/canvas_workbench/canvas_interactive_target_controller.js"),
         webpath("javascript/canvas_workbench/canvas_translation_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_prompt_action_controller.js"),
         webpath("javascript/canvas_workbench/canvas_media_seek_controller.js"),
         webpath("javascript/canvas_workbench/canvas_media_edit_controller.js"),
         webpath("javascript/canvas_workbench/canvas_media_playback_controller.js"),
@@ -15162,6 +15193,7 @@ html, body {{ width: 100%; height: 100%; margin: 0; overflow: hidden; background
 </style>
 <script type="text/javascript">
 (function () {{
+    window.localization = {canvas_localization_json};
     window.SimpAIInfiniteCanvasStandalone = true;
     window.SimpAIInfiniteCanvasStandaloneCloseDisabled = true;
     document.body && document.body.classList.add('simpai-canvas-standalone-loading');
@@ -18190,6 +18222,21 @@ async def canvas_workbench_wd14_tag_endpoint(request: Request, payload: dict = B
             },
             status_code=500,
         )
+
+@app.post("/canvas-workbench/prompt-action")
+async def canvas_workbench_prompt_action_endpoint(request: Request, payload: dict = Body(...)):
+    payload = _canvas_workbench_payload_for_request(request, payload, require_identity=True)
+    from modules import canvas_prompt_actions
+
+    state = _canvas_workbench_state_params(payload)
+    state["__lang"] = "en" if str((payload.get("user_context") or {}).get("__lang") or args_manager.args.language).startswith("en") else "cn"
+    try:
+        result = await run_in_threadpool(lambda: canvas_prompt_actions.run_canvas_prompt_action(payload, state))
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception:
+        logger.exception("Canvas prompt optimization failed")
+        return JSONResponse({"ok": False, "error": "Prompt optimization failed.", "text": str(payload.get("text") or "")}, status_code=500)
+
 
 @app.post("/canvas-workbench/vlm-run")
 async def canvas_workbench_vlm_run_endpoint(request: Request, payload: dict = Body(...)):

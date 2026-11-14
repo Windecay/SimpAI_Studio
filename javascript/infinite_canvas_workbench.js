@@ -60,7 +60,6 @@
     const WORKBENCH_CANVAS_SCHEDULER_STATE = window.SimpAICanvasWorkbenchSchedulerState || {};
     const WORKBENCH_CANVAS_SCHEDULER_STEP = window.SimpAICanvasWorkbenchSchedulerStep || {};
     const WORKBENCH_CANVAS_SCHEDULER_RUN = window.SimpAICanvasWorkbenchSchedulerRun || {};
-    const WORKBENCH_CANVAS_RUN_STATUS = window.SimpAICanvasWorkbenchRunStatus || {};
     const WORKBENCH_CANVAS_RUN_POLLING = window.SimpAICanvasWorkbenchRunPolling || {};
     const WORKBENCH_CANVAS_GALLERY_REFRESH = window.SimpAICanvasWorkbenchGalleryRefresh || {};
     const WORKBENCH_CANVAS_GALLERY_FROST = window.SimpAICanvasWorkbenchGalleryFrost || {};
@@ -76,28 +75,13 @@
     const WORKBENCH_CANVAS_TOAST = window.SimpAICanvasWorkbenchToast || {};
     const WORKBENCH_CANVAS_WILDCARDS_V2 = window.SimpAICanvasWorkbenchWildcardsV2 || {};
     const WORKBENCH_CANVAS_WILDCARDS_RUNTIME = window.SimpAICanvasWorkbenchWildcardsRuntime || {};
-    const WORKBENCH_CANVAS_MINIMAP = window.SimpAICanvasWorkbenchMinimap || {};
-    const WORKBENCH_CANVAS_GROUP_INTERACTION = window.SimpAICanvasWorkbenchGroupInteraction || {};
     const WORKBENCH_CANVAS_GROUP_RENDERER = window.SimpAICanvasWorkbenchGroupRenderer || {};
     const WORKBENCH_CANVAS_SHELL_RENDERER = window.SimpAICanvasWorkbenchShellRenderer || {};
-    const WORKBENCH_CANVAS_RUN_PANELS = window.SimpAICanvasWorkbenchRunPanels || {};
-    const WORKBENCH_CANVAS_NODE_RESIZE = window.SimpAICanvasWorkbenchNodeResize || {};
-    const WORKBENCH_CANVAS_NODE_DRAG = window.SimpAICanvasWorkbenchNodeDrag || {};
     const WORKBENCH_CANVAS_NODE_POINTER = window.SimpAICanvasWorkbenchNodePointer || {};
     const WORKBENCH_CANVAS_NODE_EVENT = window.SimpAICanvasWorkbenchNodeEvent || {};
     const WORKBENCH_CANVAS_EVENT = window.SimpAICanvasWorkbenchEvent || {};
-    const WORKBENCH_CANVAS_PAN = window.SimpAICanvasWorkbenchPan || {};
-    const WORKBENCH_CANVAS_MARQUEE = window.SimpAICanvasWorkbenchMarquee || {};
-    const WORKBENCH_CANVAS_VIEWPORT_POINTER = window.SimpAICanvasWorkbenchViewportPointer || {};
-    const WORKBENCH_CANVAS_CONNECTION = window.SimpAICanvasWorkbenchConnection || {};
-    const WORKBENCH_CANVAS_VIEWPORT_RENDER = window.SimpAICanvasWorkbenchViewportRender || {};
     const WORKBENCH_CANVAS_VIEWPORT_RENDER_SCHEDULER = window.SimpAICanvasWorkbenchViewportRenderScheduler || {};
-    const WORKBENCH_CANVAS_NODE_SPATIAL_INDEX = window.SimpAICanvasWorkbenchNodeSpatialIndex || {};
-    const WORKBENCH_CANVAS_NODE_FACTORY = window.SimpAICanvasWorkbenchNodeFactory || {};
     const WORKBENCH_CANVAS_TIMELINE_CONTEXT = window.SimpAICanvasWorkbenchTimelineContext || {};
-    const WORKBENCH_CANVAS_TIMELINE_PARAM = window.SimpAICanvasWorkbenchTimelineParam || {};
-    const WORKBENCH_CANVAS_TIMELINE_COMMAND = window.SimpAICanvasWorkbenchTimelineCommand || {};
-    const WORKBENCH_CANVAS_RESOLUTION_DRAG = window.SimpAICanvasWorkbenchResolutionDrag || {};
     const WORKBENCH_CANVAS_MEDIA_NODE_CONTEXT = window.SimpAICanvasWorkbenchMediaNodeContext || {};
     const WORKBENCH_IMAGE_NODE = window.SimpAICanvasWorkbenchImageNode || {};
     const WORKBENCH_VIDEO_NODE = window.SimpAICanvasWorkbenchVideoNode || {};
@@ -175,38 +159,22 @@
     const WORKBENCH_VLM = window.SimpAICanvasWorkbenchVlm || {};
     const normalizeVlmAgentMode = (...args) => WORKBENCH_VLM.normalizeVlmAgentMode?.(...args) || 'persona';
     const WORKBENCH_CANVAS_AGENT = window.SimpAICanvasWorkbenchCanvasAgent || {};
-    const WORKBENCH_CANVAS_STATUS = window.SimpAICanvasWorkbenchStatus || {};
-    const WORKBENCH_CANVAS_RENDER = window.SimpAICanvasWorkbenchRender || {};
-    const WORKBENCH_CANVAS_NODE_RENDER = window.SimpAICanvasWorkbenchNodeRender || {};
     const WORKBENCH_CANVAS_VLM_MODEL_OPTIONS = window.SimpAICanvasWorkbenchVlmModelOptions || {};
     const WORKBENCH_CANVAS_NODE_RENDER_SIGNATURE = window.SimpAICanvasWorkbenchNodeRenderSignature || {};
     const WORKBENCH_CANVAS_EDGE_RUNTIME = window.SimpAICanvasWorkbenchEdgeRuntime || {};
     const WORKBENCH_CANVAS_VLM_CHAT_SCROLL = window.SimpAICanvasWorkbenchVlmChatScroll || {};
     const WORKBENCH_CANVAS_TRANSLATION = window.SimpAICanvasWorkbenchTranslation || {};
+    const WORKBENCH_CANVAS_PROMPT_ACTION = window.SimpAICanvasWorkbenchPromptAction || {};
     const WORKBENCH_CANVAS_RUN_REFRESH_WAIT = window.SimpAICanvasWorkbenchRunRefreshWait || {};
     const WORKBENCH_CANVAS_POSE_STUDIO_SMOKE = window.SimpAICanvasWorkbenchPoseStudioSmoke || {};
     const WORKBENCH_CANVAS_TIMING = window.SimpAICanvasWorkbenchTiming || {};
     const WORKBENCH_CANVAS_WORKSPACE_RECOVERY = window.SimpAICanvasWorkbenchWorkspaceRecovery || {};
     const WORKBENCH_CANVAS_PERFORMANCE_DIAGNOSTICS = window.SimpAICanvasWorkbenchPerformanceDiagnostics || {};
-    const WORKBENCH_CANVAS_NODE_RENDERER = window.SimpAICanvasWorkbenchNodeRenderer || {};
     const WORKBENCH_CANVAS_EDGE_RENDERER = window.SimpAICanvasWorkbenchEdgeRenderer || {};
     const WORKBENCH_CANVAS_CHAIN_RUN_OVERLAY = window.SimpAICanvasWorkbenchChainRunOverlay || {};
-    const WORKBENCH_CANVAS_ASSET_NODE_RENDERER = window.SimpAICanvasWorkbenchAssetNodeRenderer || {};
-    const WORKBENCH_CANVAS_RESULT_PREVIEW = window.SimpAICanvasWorkbenchResultPreview || {};
     const WORKBENCH_CANVAS_RESULT_STATUS_DOM = window.SimpAICanvasWorkbenchResultStatusDom || {};
-    const WORKBENCH_CANVAS_NODE_LAYOUT = window.SimpAICanvasWorkbenchNodeLayout || {};
-    const WORKBENCH_CANVAS_PRESET_PARAM_RENDERER = window.SimpAICanvasWorkbenchPresetParamRenderer || {};
-    const WORKBENCH_CANVAS_PRESET_NODE_RENDERER = window.SimpAICanvasWorkbenchPresetNodeRenderer || {};
-    const WORKBENCH_CANVAS_INSPECTOR = window.SimpAICanvasWorkbenchInspector || {};
-    const WORKBENCH_CANVAS_NODE_PARAM = window.SimpAICanvasWorkbenchNodeParam || {};
+    const WORKBENCH_CANVAS_NODE_PRESENTATION = window.SimpAICanvasWorkbenchNodePresentation || {};
     const WORKBENCH_CANVAS_AGENT_CONTEXT = window.SimpAICanvasWorkbenchAgentContext || {};
-    const WORKBENCH_CANVAS_AGENT_IMAGE_WORKFLOWS = window.SimpAICanvasWorkbenchImageWorkflows || {};
-    const WORKBENCH_CANVAS_AGENT_IMAGE_TOOLS = window.SimpAICanvasWorkbenchImageTools || {};
-    const WORKBENCH_CANVAS_AGENT_VIDEO_TOOLS = window.SimpAICanvasWorkbenchVideoTools || {};
-    const WORKBENCH_CANVAS_AGENT_VIDEO_WORKFLOWS = window.SimpAICanvasWorkbenchVideoWorkflows || {};
-    const WORKBENCH_CANVAS_AGENT_AUDIO_WORKFLOWS = window.SimpAICanvasWorkbenchAudioWorkflows || {};
-    const WORKBENCH_CANVAS_AGENT_AUDIO_TOOLS = window.SimpAICanvasWorkbenchAudioTools || {};
-    const WORKBENCH_CANVAS_AGENT_TOOL_DISPATCH = window.SimpAICanvasWorkbenchToolDispatch || {};
     const WORKBENCH_CANVAS_AGENT_WORKFLOW_LAYOUT = window.SimpAICanvasWorkbenchAgentWorkflowLayout || {};
     const WORKBENCH_CANVAS_AGENT_MASK_WORKFLOW = window.SimpAICanvasWorkbenchAgentMaskWorkflow || {};
     const WORKBENCH_CANVAS_AGENT_SAM3_WORKFLOW = window.SimpAICanvasWorkbenchAgentSam3Workflow || {};
@@ -214,32 +182,16 @@
     const WORKBENCH_CANVAS_AGENT_TARGET = window.SimpAICanvasWorkbenchCanvasAgentTarget || {};
     const WORKBENCH_CANVAS_AGENT_ACTION = window.SimpAICanvasWorkbenchCanvasAgentAction || {};
     const WORKBENCH_CANVAS_AGENT_ACTION_EXECUTION = window.SimpAICanvasWorkbenchCanvasAgentActionExecution || {};
-    const WORKBENCH_CANVAS_AGENT_PANEL_VIEWS = window.SimpAICanvasWorkbenchPanelViews || {};
     const WORKBENCH_CANVAS_AGENT_PANEL_CONTEXT = window.SimpAICanvasWorkbenchAgentPanelContext || {};
-    const WORKBENCH_CANVAS_HISTORY = window.SimpAICanvasWorkbenchHistory || {};
     const WORKBENCH_CANVAS_BACKEND_CONTEXT = window.SimpAICanvasWorkbenchBackendContext || {};
     const WORKBENCH_VLM_MODEL_DOWNLOAD = window.SimpAICanvasWorkbenchVlmModelDownload || {};
     const WORKBENCH_CANVAS_VLM_CUSTOM_API_PROFILES = window.SimpAICanvasWorkbenchVlmCustomApiProfiles || {};
-    const WORKBENCH_CANVAS_AGENT_PANEL_CONTROLLER = window.SimpAICanvasWorkbenchPanelController || {};
-    const WORKBENCH_CANVAS_SELECTION = window.SimpAICanvasWorkbenchSelection || {};
-    const WORKBENCH_CANVAS_GRAPH_DELETE = window.SimpAICanvasWorkbenchGraphDelete || {};
-    const WORKBENCH_CANVAS_CLIPBOARD = window.SimpAICanvasWorkbenchClipboard || {};
-    const WORKBENCH_CANVAS_AGENT_INSTRUCTION_PLANNER = window.SimpAICanvasWorkbenchInstructionPlanner || {};
-    const WORKBENCH_CANVAS_AGENT_PROMPT_CONTEXT = window.SimpAICanvasWorkbenchAgentPromptContext || {};
     const WORKBENCH_CANVAS_AGENT_PROMPT_BOOTSTRAP_CONTEXT = window.SimpAICanvasWorkbenchAgentPromptBootstrapContext || {};
-    const WORKBENCH_CANVAS_AGENT_VLM_INSTRUCTION = window.SimpAICanvasWorkbenchVlmInstruction || {};
     const WORKBENCH_CANVAS_AGENT_INSTRUCTION_CONTEXT = window.SimpAICanvasWorkbenchAgentInstructionContext || {};
     const WORKBENCH_CANVAS_AGENT_MEDIA_CONTEXT = window.SimpAICanvasWorkbenchAgentMediaContext || {};
-    const WORKBENCH_CANVAS_TEXT_NODE_RENDERER = window.SimpAICanvasWorkbenchTextNodeRenderer || {};
-    const WORKBENCH_CANVAS_NODE_VIEW_CONTEXT = window.SimpAICanvasWorkbenchNodeViewContext || {};
-    const WORKBENCH_CANVAS_NODE_INTERACTION_CONTEXT = window.SimpAICanvasWorkbenchNodeInteractionContext || {};
     const WORKBENCH_CANVAS_FACTORY_CONTEXT = window.SimpAICanvasWorkbenchFactoryContext || {};
     const WORKBENCH_CANVAS_RUNTIME_CONTEXT = window.SimpAICanvasWorkbenchRuntimeContext || {};
     const WORKBENCH_CANVAS_INPUT_CONTEXT = window.SimpAICanvasWorkbenchInputContext || {};
-    const WORKBENCH_CANVAS_VLM_NODE = window.SimpAICanvasWorkbenchVlmNode || {};
-    const WORKBENCH_CANVAS_VLM_NODE_VIEW = window.SimpAICanvasWorkbenchVlmNodeView || {};
-    const WORKBENCH_CANVAS_VLM_CHAT = window.SimpAICanvasWorkbenchVlmChat || {};
-    const WORKBENCH_CANVAS_VLM_CHAT_CONTEXT = window.SimpAICanvasWorkbenchVlmChatContext || {};
     const WORKBENCH_CANVAS_VLM_CONTEXT = window.SimpAICanvasWorkbenchVlmContext || {};
     const WORKBENCH_CANVAS_TEMPLATE_CONTEXT = window.SimpAICanvasWorkbenchTemplateContext || {};
     const WORKBENCH_CANVAS_UI_CONTEXT = window.SimpAICanvasWorkbenchUiContext || {};
@@ -248,13 +200,18 @@
     const WORKBENCH_CANVAS_PROJECT_CONTEXT = window.SimpAICanvasWorkbenchProjectContext || {};
     const WORKBENCH_TIMELINE = window.SimpAICanvasWorkbenchMediaTimeline || {};
     const WORKBENCH_CANVAS_CONTEXT_MENU_CONTEXT = window.SimpAICanvasWorkbenchContextMenuContext || {};
-    const WORKBENCH_NODE_MENUS = window.SimpAICanvasWorkbenchNodeMenus || {};
     const WORKBENCH_CANVAS_NODE_MENU_CONTEXT = window.SimpAICanvasWorkbenchNodeMenuContext || {};
-    const WORKBENCH_PRESET_CATALOG = window.SimpAICanvasWorkbenchPresetCatalog || {};
     const WORKBENCH_CANVAS_PRESET_CONTEXT = window.SimpAICanvasWorkbenchPresetContext || {};
     const WORKBENCH_CANVAS_PRESET_NODE_CLASSIFIER = window.SimpAICanvasWorkbenchPresetNodeClassifier || {};
     const WORKBENCH_CANVAS_PRESET_SPECIAL_PANEL_RENDERER = window.SimpAICanvasWorkbenchPresetSpecialPanelRenderer || {};
     let projectPersistenceRuntime = null;
+    let CANVAS_BACKGROUND_RUN_CONTROLLER = null;
+    function setWorkbenchProject(value) {
+        project = value;
+        Promise.resolve().then(() => {
+            if (project === value) CANVAS_BACKGROUND_RUN_CONTROLLER?.syncProject();
+        });
+    }
     const scheduleSave = (...args) => projectPersistenceRuntime?.scheduleSave?.(...args);
     const scheduleViewportSave = (...args) => projectPersistenceRuntime?.scheduleViewportSave?.(...args);
     const utilsTranslate = WORKBENCH_UTILS.t;
@@ -365,7 +322,6 @@
         },
         utilitySource: { escapeHtml: (...args) => escapeHtml(...args) }
     });
-    const vlmModelChoicesFor = (...args) => vlmModelOptionsService.modelChoicesFor(...args);
     const vlmModelDisplayLabel = (...args) => vlmModelOptionsService.modelDisplayLabel(...args);
     const vlmModelOptionsHtml = (...args) => vlmModelOptionsService.modelOptionsHtml(...args);
     const VLM_IMAGE_SLOTS = vlmImageSlots || registryVlmImageSlots || [
@@ -452,7 +408,6 @@
     let CANVAS_TIMELINE_PLAYBACK_CONTROLLER = null;
     let CANVAS_TIMELINE_RENDER_CONTROLLER = null;
     let CANVAS_TIMELINE_FRAME_CONTROLLER = null;
-    let CANVAS_TIMELINE_COMPARE_CONTROLLER = null;
     let CANVAS_PRESET_MODEL_STATUS_CONTROLLER = {};
     let CANVAS_MISSING_MODEL_DIALOG_CONTROLLER = {};
     let CANVAS_RUN_STATE_CONTROLLER = {};
@@ -527,7 +482,6 @@
     let CANVAS_BATCH_ANY_QUERIES_CONTROLLER = {};
     let CANVAS_BATCH_ANY_INSPECTOR_CONTROLLER = {};
     const scheduleAutoPresetModelChecks = (...args) => CANVAS_PRESET_MODEL_STATUS_CONTROLLER?.scheduleAutoPresetModelChecks?.(...args);
-    const schedulePresetModelListRefreshes = (...args) => CANVAS_PRESET_MODEL_STATUS_CONTROLLER?.schedulePresetModelListRefreshes?.(...args);
     const showToast = (...args) => CANVAS_TOAST_CONTROLLER?.showToast?.(...args);
     const CANVAS_LAZY_ASSET_RUNTIME_CONTROLLER = typeof WORKBENCH_CANVAS_LAZY_ASSET_RUNTIME.createCanvasLazyAssetRuntimeController === 'function'
         ? WORKBENCH_CANVAS_LAZY_ASSET_RUNTIME.createCanvasLazyAssetRuntimeController({
@@ -548,11 +502,8 @@
     const isTerminalRunState = (...args) => !!CANVAS_RUN_STATE_CONTROLLER?.isTerminalRunState?.(...args);
     const isNodeVisuallyRunning = (...args) => !!CANVAS_RUN_STATE_CONTROLLER?.isNodeVisuallyRunning?.(...args);
     const ensureVlmNodeModeSize = (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.ensureVlmNodeModeSize?.(...args) || false;
-    const getWildcardsV2State = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.getWildcardsV2State?.(...args) || null;
-    const closeWildcardsV2Panel = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.closeWildcardsV2Panel?.(...args);
     const openWildcardsV2Panel = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.openWildcardsV2Panel?.(...args);
     const openWildcardsInsertMenu = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.openWildcardsInsertMenu?.(...args);
-    const promptAndAppendWildcardTag = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.promptAndAppendWildcardTag?.(...args);
     const openWildcardsManager = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.openWildcardsManager?.(...args);
     const runPoseStudioCanvasSmoke = (...args) => CANVAS_POSE_STUDIO_SMOKE_CONTROLLER?.runPoseStudioCanvasSmoke?.(...args)
         || Promise.resolve({ ok: false, error: 'pose studio smoke controller is unavailable' });
@@ -591,22 +542,14 @@
     const buildVlmRunStatusPatch = (...args) => CANVAS_VLM_NODE_CONTROLLER?.buildVlmRunStatusPatch?.(...args) || {};
     const buildVlmModelStatusPatch = (...args) => CANVAS_VLM_NODE_CONTROLLER?.buildVlmModelStatusPatch?.(...args) || {};
     const applyVlmModelStatus = (...args) => CANVAS_VLM_NODE_CONTROLLER?.applyVlmModelStatus?.(...args);
-    const renderVlmModelStatusHtml = (...args) => CANVAS_VLM_NODE_VIEW_CONTROLLER?.renderVlmModelStatusHtml?.(...args) || '';
-    const renderVlmInputRows = (...args) => CANVAS_VLM_NODE_VIEW_CONTROLLER?.renderVlmInputRows?.(...args) || '';
-    const renderVlmPendingImages = (...args) => CANVAS_VLM_NODE_VIEW_CONTROLLER?.renderVlmPendingImages?.(...args) || '';
-    const renderVlmAgentModeSelect = (...args) => CANVAS_VLM_NODE_VIEW_CONTROLLER?.renderVlmAgentModeSelect?.(...args) || '';
     const renderVlmNodeHtml = (...args) => CANVAS_VLM_NODE_VIEW_CONTROLLER?.renderVlmNodeHtml?.(...args) || '';
     const renderVlmInspector = (...args) => CANVAS_VLM_NODE_VIEW_CONTROLLER?.renderVlmInspector?.(...args) || '';
-    const vlmModelStatusState = (...args) => CANVAS_VLM_NODE_CONTROLLER?.vlmModelStatusState?.(...args) || 'unknown';
     const renderVlmSystemPromptTemplatePicker = (...args) => CANVAS_VLM_NODE_CONTROLLER?.renderVlmSystemPromptTemplatePicker?.(...args) || '';
-    const syncVlmSystemPromptTemplateDom = (...args) => CANVAS_VLM_NODE_CONTROLLER?.syncVlmSystemPromptTemplateDom?.(...args);
     const applyVlmSystemPromptTemplate = (...args) => CANVAS_VLM_NODE_CONTROLLER?.applyVlmSystemPromptTemplate?.(...args);
-    const getVlmCustomKeyInput = (...args) => CANVAS_VLM_NODE_CONTROLLER?.getVlmCustomKeyInput?.(...args) || null;
     const refreshVlmChatReadabilityDom = (nodeEl, node) => CANVAS_VLM_NODE_CONTROLLER?.refreshVlmChatReadabilityDom?.(node, nodeEl);
     const updateVlmParam = (...args) => CANVAS_VLM_NODE_CONTROLLER?.updateVlmParam?.(...args);
     const handleVlmParamFieldChange = (...args) => CANVAS_VLM_NODE_CONTROLLER?.handleVlmParamFieldChange?.(...args);
     const handleCanvasRelightLightButtonEvent = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleCanvasRelightLightButtonEvent?.(...args) || false;
-    const setPresetTheme = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.setPresetTheme?.(...args);
     const bindInspectorThemeEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorThemeEvents?.(...args) || false;
     const bindInspectorVlmEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorVlmEvents?.(...args) || false;
     const bindInspectorParamButtonEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorParamButtonEvents?.(...args) || false;
@@ -619,33 +562,17 @@
     const handleVlmParamResetClick = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleVlmParamResetClick?.(...args) || false;
     const handlePresetParamResetClick = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handlePresetParamResetClick?.(...args) || false;
     const handleClassicNodeChangeEvent = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleClassicNodeChangeEvent?.(...args) || false;
-    const handleInspectorNodeFieldChange = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.handleInspectorNodeFieldChange?.(...args) || false;
     const bindInspectorNodeFieldEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorNodeFieldEvents?.(...args) || false;
     const bindInspectorParamEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindInspectorParamEvents?.(...args) || false;
     const bindClassicInspectorEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindClassicInspectorEvents?.(...args) || false;
     const bindTextInspectorEvents = (...args) => CANVAS_NODE_PARAM_CONTROLLER?.bindTextInspectorEvents?.(...args) || false;
-    const updateTimelineParam = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.updateTimelineParam?.(...args);
-    const updateTimelineClipParam = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.updateTimelineClipParam?.(...args);
     const handleTimelineNodeParamEvent = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.handleTimelineNodeParamEvent?.(...args) || false;
-    const resetTimelineParam = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.resetTimelineParam?.(...args);
-    const resetTimelineClipParam = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.resetTimelineClipParam?.(...args);
     const bindInspectorTimelineParamEvents = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.bindInspectorTimelineParamEvents?.(...args) || false;
     const bindInspectorTimelineResetEvents = (...args) => CANVAS_TIMELINE_PARAM_CONTROLLER?.bindInspectorTimelineResetEvents?.(...args) || false;
     const selectTimelineClip = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.selectTimelineClip?.(...args) || null;
-    const moveTimelineTrack = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.moveTimelineTrack?.(...args);
     const handleTimelineClick = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.handleTimelineClick?.(...args) || false;
-    const resetTimelineActiveTool = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.resetTimelineActiveTool?.(...args) || false;
-    const upsertTimelineClipKeyframe = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.upsertTimelineClipKeyframe?.(...args) || false;
-    const deleteTimelineClipKeyframeAtPlayhead = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.deleteTimelineClipKeyframeAtPlayhead?.(...args) || false;
-    const jumpTimelineToKeyframe = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.jumpTimelineToKeyframe?.(...args) || false;
-    const jumpTimelineKeyframeFromElement = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.jumpTimelineKeyframeFromElement?.(...args) || false;
-    const setTimelineKeyframeEasing = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.setTimelineKeyframeEasing?.(...args) || false;
-    const jumpTimelineClipKeyframe = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.jumpTimelineClipKeyframe?.(...args) || false;
     const openTimelineKeyframeContextMenu = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.openTimelineKeyframeContextMenu?.(...args) || false;
     const handleTimelineAction = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.handleTimelineAction?.(...args) || false;
-    const setTimelineDurationToPlayhead = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.setTimelineDurationToPlayhead?.(...args) || false;
-    const setTimelineDurationToContent = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.setTimelineDurationToContent?.(...args) || false;
-    const swapTimelineSize = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.swapTimelineSize?.(...args) || false;
     const openTimelineClipContextMenu = (...args) => CANVAS_TIMELINE_COMMAND_CONTROLLER?.openTimelineClipContextMenu?.(...args) || false;
     const toggleTimelinePreviewPlayback = (...args) => CANVAS_TIMELINE_PLAYBACK_CONTROLLER?.toggleTimelinePreviewPlayback?.(...args) || false;
     const playTimelineFromStart = (...args) => CANVAS_TIMELINE_PLAYBACK_CONTROLLER?.playTimelineFromStart?.(...args) || false;
@@ -658,8 +585,6 @@
         || Promise.resolve('');
     const compareTimelineFrameImages = (...args) => CANVAS_TIMELINE_FRAME_CONTROLLER?.compareTimelineFrameImages?.(...args)
         || Promise.reject(new Error('timeline frame controller is unavailable'));
-    const compareTimelineFrameWithBackend = (...args) => CANVAS_TIMELINE_COMPARE_CONTROLLER?.compareTimelineFrameWithBackend?.(...args)
-        || Promise.resolve(undefined);
     const MEDIA_HELPERS_CONTEXT_SOURCE = {
         documentSource: {
             getDocument: () => typeof document !== 'undefined' ? document : null
@@ -690,15 +615,9 @@
     const readFileAsDataUrl = MEDIA_HELPERS_CONTEXT.readFileAsDataUrl;
     const readFileAsText = MEDIA_HELPERS_CONTEXT.readFileAsText;
     const loadImageElementForCanvas = MEDIA_HELPERS_CONTEXT.loadImageElementForCanvas;
-    const normalizeLayerForgeDataUrl = MEDIA_HELPERS_CONTEXT.normalizeLayerForgeDataUrl;
-    const createAlphaMaskDataUrl = MEDIA_HELPERS_CONTEXT.createAlphaMaskDataUrl;
-    const mergeMaskDataUrls = MEDIA_HELPERS_CONTEXT.mergeMaskDataUrls;
     const getImageDimensions = MEDIA_HELPERS_CONTEXT.getImageDimensions;
-    const getMediaMetadata = MEDIA_HELPERS_CONTEXT.getMediaMetadata;
     const createThumbnailDataUrl = MEDIA_HELPERS_CONTEXT.createThumbnailDataUrl;
-    const createVideoStoryboardDataUrls = MEDIA_HELPERS_CONTEXT.createVideoStoryboardDataUrls;
     const extractVideoFirstFrameDataUrl = MEDIA_HELPERS_CONTEXT.extractVideoFirstFrameDataUrl;
-    const createAudioWaveformPeaks = MEDIA_HELPERS_CONTEXT.createAudioWaveformPeaks;
     const MEDIA_BROWSER_PAINT_CONTEXT_SOURCE = {
         timingSource: {
             performanceNow: () => canvasPerformanceNow(),
@@ -721,8 +640,6 @@
     const getMediaBrowserScrollMemory = () => MEDIA_BROWSER_PAINT_CONTROLLER.getMediaBrowserScrollMemory?.() || new Map();
     const captureMediaBrowserScroll = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.captureMediaBrowserScroll?.(...args) || null;
     const restoreMediaBrowserScroll = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.restoreMediaBrowserScroll?.(...args);
-    const primeMediaBrowserThumbImages = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.primeMediaBrowserThumbImages?.(...args);
-    const nudgeMediaBrowserPaint = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.nudgeMediaBrowserPaint?.(...args);
     const scheduleMediaBrowserPaintRefresh = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.scheduleMediaBrowserPaintRefresh?.(...args);
     const scheduleMediaBrowserNodePaintRefresh = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.scheduleMediaBrowserNodePaintRefresh?.(...args);
     const TEXTAREA_EDITOR_CONTEXT_SOURCE = {
@@ -1107,8 +1024,6 @@
     const utilsFormatBytes = WORKBENCH_UTILS.formatBytes;
     const timelineCreateNode = WORKBENCH_TIMELINE.createNode;
     const timelineDefaultParams = WORKBENCH_TIMELINE.DEFAULT_PARAMS;
-    const timelineDefaultTracks = WORKBENCH_TIMELINE.DEFAULT_TRACKS;
-    const timelineBuildNodeStatePatch = WORKBENCH_TIMELINE.buildTimelineNodeStatePatch;
     const timelineBuildClipMediaBoundsPatch = WORKBENCH_TIMELINE.buildTimelineClipMediaBoundsPatch;
     const timelineNormalizeNode = WORKBENCH_TIMELINE.normalizeNode;
     const timelineDuration = WORKBENCH_TIMELINE.timelineDuration;
@@ -1332,17 +1247,11 @@
     const styleSelectorRenderNodeHtml = WORKBENCH_STYLE_SELECTOR_NODE.renderNodeHtml;
     const styleSelectorSetSelectedStyle = WORKBENCH_STYLE_SELECTOR_NODE.setSelectedStyle;
     const styleSelectorRunPresetNodeFromUi = WORKBENCH_STYLE_SELECTOR_NODE.runPresetNodeFromUi;
-    const styleSelectorRunStyleTransferPresetNode = WORKBENCH_STYLE_SELECTOR_NODE.runStyleTransferPresetNode;
     const styleSelectorRunTargetPreset = WORKBENCH_STYLE_SELECTOR_NODE.runStyleSelectorTargetPreset;
-    const styleSelectorSelectStyle = WORKBENCH_STYLE_SELECTOR_NODE.selectStyle;
     const styleSelectorApplyToPreset = WORKBENCH_STYLE_SELECTOR_NODE.applyStyleSelectorToPreset;
     const styleSelectorFindForPreset = WORKBENCH_STYLE_SELECTOR_NODE.findStyleSelectorForPreset;
-    const styleSelectorLinkedPresetForNode = WORKBENCH_STYLE_SELECTOR_NODE.styleSelectorLinkedPreset;
     const styleSelectorLinkToPreset = WORKBENCH_STYLE_SELECTOR_NODE.linkStyleSelectorToPreset;
     const styleSelectorHandleCardClick = WORKBENCH_STYLE_SELECTOR_NODE.handleCardClick;
-    const styleSelectorStyleByName = WORKBENCH_STYLE_SELECTOR_NODE.styleByName;
-    const styleSelectorSelectedStyle = WORKBENCH_STYLE_SELECTOR_NODE.selectedStyle;
-    const styleSelectorFilterNodeDom = WORKBENCH_STYLE_SELECTOR_NODE.filterNodeDom;
     const styleSelectorHandleSearchInput = WORKBENCH_STYLE_SELECTOR_NODE.handleSearchInput;
     const setCanvasAgentRunInfo = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.setCanvasAgentRunInfo?.(...args);
     const clearCanvasAgentRunInfo = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.clearCanvasAgentRunInfo?.(...args);
@@ -1350,9 +1259,7 @@
     const renderCanvasAgentPanel = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.renderCanvasAgentPanel?.(...args);
     const positionCanvasAgentPanel = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.positionCanvasAgentPanel?.(...args);
     const setCanvasAgentMessage = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.setCanvasAgentMessage?.(...args);
-    const resolveCanvasAgentDecision = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.resolveCanvasAgentDecision?.(...args);
     const askCanvasAgentDecision = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.askCanvasAgentDecision?.(...args);
-    const syncCanvasAgentDecisionPromptFromPreset = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.syncCanvasAgentDecisionPromptFromPreset?.(...args);
     const handleCanvasAgentDecisionFieldInput = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.handleCanvasAgentDecisionFieldInput?.(...args);
     const handleCanvasAgentPanelAction = (...args) => CANVAS_AGENT_PANEL_CONTROLLER?.handleCanvasAgentPanelAction?.(...args);
     const runCanvasAgentTextRefine = async (...args) => CANVAS_AGENT_TEXT_WORKFLOW_CONTROLLER?.runCanvasAgentTextRefine?.(...args);
@@ -1366,19 +1273,14 @@
     const wildcardHelperBuildTag = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.wildcardHelperBuildTag?.(...args) || '';
     const textMergeInputSlots = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.textMergeInputSlots?.(...args) || [];
     const getTextMergeInputSource = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.getTextMergeInputSource?.(...args) || null;
-    const decodeTextMergeSeparator = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.decodeTextMergeSeparator?.(...args) || '';
     const getTextMergeOutput = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.getTextMergeOutput?.(...args) || '';
     const isTextOutputNode = (...args) => !!CANVAS_AGENT_TEXT_NODE_CONTROLLER?.isTextOutputNode?.(...args);
     const getNodeTextOutput = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.getNodeTextOutput?.(...args) || '';
     const wouldCreateTextCycle = (...args) => !!CANVAS_AGENT_TEXT_NODE_CONTROLLER?.wouldCreateTextCycle?.(...args);
-    const cancelOutpaintEdgeDrag = (...args) => CANVAS_OUTPAINT_CONTROLLER?.cancelOutpaintEdgeDrag?.(...args);
     const showOutpaintOverlay = (...args) => CANVAS_OUTPAINT_CONTROLLER?.showOutpaintOverlay?.(...args);
     const hideOutpaintOverlay = (...args) => CANVAS_OUTPAINT_CONTROLLER?.hideOutpaintOverlay?.(...args);
     const renderOutpaintControlPanel = (...args) => CANVAS_OUTPAINT_CONTROLLER?.renderOutpaintControlPanel?.(...args) || '';
     const ensureOutpaintOverlayMatchesAgentTarget = (...args) => CANVAS_OUTPAINT_CONTROLLER?.ensureOutpaintOverlayMatchesAgentTarget?.(...args);
-    const getOutpaintTargetNode = (...args) => CANVAS_OUTPAINT_CONTROLLER?.getOutpaintTargetNode?.(...args) || null;
-    const getOutpaintMediaGeometry = (...args) => CANVAS_OUTPAINT_CONTROLLER?.getOutpaintMediaGeometry?.(...args) || null;
-    const getOutpaintMediaSize = (...args) => CANVAS_OUTPAINT_CONTROLLER?.getOutpaintMediaSize?.(...args) || null;
     const syncOutpaintOverlayPosition = (...args) => CANVAS_OUTPAINT_CONTROLLER?.syncOutpaintOverlayPosition?.(...args);
     const requestCanvasAgentVlmInstructionPlan = (...args) => CANVAS_AGENT_VLM_INSTRUCTION_CONTROLLER?.requestCanvasAgentVlmInstructionPlan?.(...args)
         || Promise.resolve({ ok: false, error: t('VLM planner is unavailable.', 'VLM 计划模块不可用。') });
@@ -1596,7 +1498,6 @@
     const escapeHtml = WORKBENCH_UTILS.escapeHtml;
     const normalizePresetName = WORKBENCH_UTILS.normalizePresetName;
     const sanitizeStoragePart = WORKBENCH_UTILS.sanitizeStoragePart;
-    const shortIdentity = WORKBENCH_UTILS.shortIdentity;
     const CANVAS_TIMING_CONTEXT_SOURCE = {
         timingSource: {
             performanceNow: () => typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -1676,8 +1577,6 @@
             edgeRuntimeSource: EDGE_RUNTIME_CONTEXT_SOURCE
         })
         : {};
-    const buildEdgeIncidentIndex = (...args) => CANVAS_EDGE_RUNTIME_CONTROLLER?.buildEdgeIncidentIndex?.(...args) || null;
-    const getEdgeIncidentIndex = (...args) => CANVAS_EDGE_RUNTIME_CONTROLLER?.getEdgeIncidentIndex?.(...args) || null;
     const getIncidentEdgeRecordsForNodeIds = (...args) => CANVAS_EDGE_RUNTIME_CONTROLLER?.getIncidentEdgeRecordsForNodeIds?.(...args) || {
         indexed: false,
         records: []
@@ -1698,7 +1597,8 @@
             getDocument: () => document,
             getEdgesLayer: () => edgesLayer,
             getEdgesCanvas: () => edgesCanvas,
-            getNodesLayer: () => nodesLayer
+            getNodesLayer: () => nodesLayer,
+            getRenderedNodeElement: id => getRenderedNodeElement(id)
         },
         canvasSource: {
             getComputedStyle: target => typeof window.getComputedStyle === 'function' ? window.getComputedStyle(target) : null
@@ -1879,8 +1779,6 @@
     const updateCanvasRenderMode = (...args) => CANVAS_VIEWPORT_RENDER_SCHEDULER_CONTROLLER?.updateCanvasRenderMode?.(...args) || 'full';
     const resetCanvasRenderModeForProject = (...args) => CANVAS_VIEWPORT_RENDER_SCHEDULER_CONTROLLER?.resetCanvasRenderModeForProject?.(...args) || 'full';
     const getCanvasRenderMode = (...args) => CANVAS_VIEWPORT_RENDER_SCHEDULER_CONTROLLER?.getCanvasRenderMode?.(...args) || 'full';
-    const isWheelPreviewLodActive = (...args) => CANVAS_VIEWPORT_RENDER_SCHEDULER_CONTROLLER?.isWheelPreviewLodActive?.(...args) || false;
-    const flushWheelPreviewLodRender = (...args) => CANVAS_VIEWPORT_RENDER_SCHEDULER_CONTROLLER?.flushWheelPreviewLodRender?.(...args);
     const cancelWheelPreviewLod = (...args) => CANVAS_VIEWPORT_RENDER_SCHEDULER_CONTROLLER?.cancelWheelPreviewLod?.(...args);
     const beginWheelPreviewLod = (...args) => CANVAS_VIEWPORT_RENDER_SCHEDULER_CONTROLLER?.beginWheelPreviewLod?.(...args);
     const scheduleViewportNodeRender = (...args) => CANVAS_VIEWPORT_RENDER_SCHEDULER_CONTROLLER?.scheduleViewportNodeRender?.(...args);
@@ -1905,6 +1803,7 @@
     let MEDIA_VIEWER_CONTEXT = null;
     let NODE_BROWSER_CONTEXT = null;
     let PROJECT_MANAGER_CONTEXT = null;
+    let PROJECT_NAVIGATION_CONTROLLER = null;
     let ASSET_MANAGER_CONTEXT = null;
     let MASK_EDITOR_CONTEXT = null;
     let TIMELINE_NODE_CONTEXT = null;
@@ -1924,177 +1823,33 @@
     const canvasAgentPresetPromptDefaults = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPresetPromptDefaults?.(...args) || {};
     const canvasAgentPresetDefaultPrompt = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPresetDefaultPrompt?.(...args) || '';
     const canvasAgentPromptLooksDanbooru = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptLooksDanbooru?.(...args) || false;
-    const canvasAgentPromptLooksDanbooruTagListish = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptLooksDanbooruTagListish?.(...args) || false;
     const canvasAgentPromptNeedsTargetRewrite = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptNeedsTargetRewrite?.(...args) || false;
     const canvasAgentPromptMediaIntent = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptMediaIntent?.(...args) || {};
     const canvasAgentPromptDefaultsForPurpose = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptDefaultsForPurpose?.(...args) || {};
     const canvasAgentPresetPromptDefaultsFacts = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPresetPromptDefaultsFacts?.(...args) || [];
-    const canvasAgentPromptTargetLabel = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetLabel?.(...args) || '';
     const canvasAgentPromptTargetNeedsDanbooru = (...args) => !!CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetNeedsDanbooru?.(...args);
     const canvasAgentPromptTargetInstruction = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetInstruction?.(...args) || '';
     const canvasAgentPromptTargetContextLine = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetContextLine?.(...args) || '';
     const canvasAgentPromptTargetFact = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetFact?.(...args) || null;
     const canvasAgentPromptValidationFact = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptValidationFact?.(...args) || null;
     const canvasAgentPromptSourceLabel = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptSourceLabel?.(...args) || '';
-    const canvasAgentPromptTargetFromMeta = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetFromMeta?.(...args) || {};
     const canvasAgentPromptTargetFromEntry = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetFromEntry?.(...args) || {};
     const canvasAgentPromptTargetFromNode = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetFromNode?.(...args) || {};
     const canvasAgentPromptTargetFromPurpose = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetFromPurpose?.(...args) || {};
     const canvasAgentPromptTargetEntryForPurpose = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPromptTargetEntryForPurpose?.(...args) || null;
-    const canvasAgentPushDanbooruTag = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentPushDanbooruTag?.(...args);
-    const canvasAgentFormatDanbooruTag = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentFormatDanbooruTag?.(...args) || '';
-    const canvasAgentFormatDanbooruPrompt = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentFormatDanbooruPrompt?.(...args) || '';
-    const canvasAgentDanbooruTagIsLowSignal = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentDanbooruTagIsLowSignal?.(...args) || false;
-    const canvasAgentDanbooruTagLooksFabricated = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentDanbooruTagLooksFabricated?.(...args) || false;
-    const canvasAgentDanbooruTextHasHumanIntent = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentDanbooruTextHasHumanIntent?.(...args) || false;
-    const canvasAgentDanbooruTextHasSceneryIntent = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentDanbooruTextHasSceneryIntent?.(...args) || false;
     const vlmAgentUserPromptHasAssistantPersonaImageIntent = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.vlmAgentUserPromptHasAssistantPersonaImageIntent?.(...args) || false;
-    const canvasAgentFilterPersonaLeakTags = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentFilterPersonaLeakTags?.(...args) || [];
     const canvasAgentCanonicalDanbooruTagsFromPrompt = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentCanonicalDanbooruTagsFromPrompt?.(...args) || [];
-    const vlmAgentExplicitSubjectCountsFromText = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.vlmAgentExplicitSubjectCountsFromText?.(...args) || { girls: 0, boys: 0, total: 0 };
-    const canvasAgentSubjectCountsFromDanbooruTags = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentSubjectCountsFromDanbooruTags?.(...args) || { girls: 0, boys: 0, others: 0, total: 0 };
     const canvasAgentRepairMultiCharacterDanbooruTags = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentRepairMultiCharacterDanbooruTags?.(...args) || [];
     const canvasAgentCanonicalizeDanbooruPrompt = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentCanonicalizeDanbooruPrompt?.(...args) || String(args[0] || '');
     const canvasAgentDanbooruFallbackPrompt = (...args) => CANVAS_AGENT_PROMPT_CONTEXT?.canvasAgentDanbooruFallbackPrompt?.(...args) || '';
-    const vlmAgentActionExecutionState = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionExecutionState?.(...args) || '';
-    const vlmAgentActionNeedsVisibleControls = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionNeedsVisibleControls?.(...args);
-    const shouldCollapseVlmChatActionDetails = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.shouldCollapseVlmChatActionDetails?.(...args);
-    const vlmChatActionStateLabel = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatActionStateLabel?.(...args) || '';
-    const markVlmAgentActionCardBusy = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.markVlmAgentActionCardBusy?.(...args);
-    const vlmAgentActionPrompt = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionPrompt?.(...args) || '';
-    const normalizeVlmExecutableActionType = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.normalizeVlmExecutableActionType?.(...args) || '';
-    const vlmAgentActionPurpose = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionPurpose?.(...args) || '';
-    const isVlmImageToolActionType = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.isVlmImageToolActionType?.(...args);
-    const extractVlmAgentActionsFromText = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.extractVlmAgentActionsFromText?.(...args) || [];
-    const vlmAgentAutoConfirmEnabled = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentAutoConfirmEnabled?.(...args);
-    const vlmAgentActionRequiresManualConfirm = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionRequiresManualConfirm?.(...args);
-    const vlmAgentActionWasSynthesized = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionWasSynthesized?.(...args);
-    const isVlmAgentRunAlreadyPreparingResult = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.isVlmAgentRunAlreadyPreparingResult?.(...args);
-    const vlmAgentToolResultMessage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentToolResultMessage?.(...args) || null;
-    const isVlmAgentPromptReviewRejected = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.isVlmAgentPromptReviewRejected?.(...args);
-    const isVlmAgentPromptReviewBypassable = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.isVlmAgentPromptReviewBypassable?.(...args);
-    const vlmAgentPreviousUserPrompt = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentPreviousUserPrompt?.(...args) || '';
-    const vlmAgentUserExplicitlyRequestedGenerationControl = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentUserExplicitlyRequestedGenerationControl?.(...args);
-    const vlmAgentActionHasBackendResolution = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionHasBackendResolution?.(...args);
-    const vlmAgentActionExecutionPlan = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionExecutionPlan?.(...args) || null;
-    const vlmAgentActionTargetId = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionTargetId?.(...args) || '';
-    const vlmAgentActionNegativePrompt = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionNegativePrompt?.(...args) || '';
-    const stripVlmAgentUnrequestedNegativePrompt = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.stripVlmAgentUnrequestedNegativePrompt?.(...args) || args[0];
-    const detectVlmImageGenerationIntent = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.detectVlmImageGenerationIntent?.(...args);
-    const vlmAssistantPretendsGenerationComplete = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.vlmAssistantPretendsGenerationComplete?.(...args);
-    const vlmVisualScenePromptHint = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.vlmVisualScenePromptHint?.(...args);
-    const vlmAgentPositiveVisualContextText = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentPositiveVisualContextText?.(...args) || '';
-    const vlmAgentDanbooruContextTextForPrompt = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentDanbooruContextTextForPrompt?.(...args)
-        || String(args[0] || '').trim();
-    const vlmFallbackToolActionsForPrompt = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmFallbackToolActionsForPrompt?.(...args) || [];
-    const sanitizeVlmAgentGenerationControlFields = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.sanitizeVlmAgentGenerationControlFields?.(...args) || {};
-    const extractRequestedImageCount = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.extractRequestedImageCount?.(...args) ?? null;
-    const mergeVlmImageGenerationActions = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.mergeVlmImageGenerationActions?.(...args) || [];
-    const findVlmAutoConfirmActionIndex = (...args) => Number(CANVAS_VLM_CHAT_CONTROLLER?.findVlmAutoConfirmActionIndex?.(...args) ?? -1);
-    const prepareVlmAgentActionsForDisplay = async (...args) => CANVAS_VLM_CHAT_CONTROLLER?.prepareVlmAgentActionsForDisplay?.(...args) || [];
-    const cleanVlmAssistantDisplayText = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.cleanVlmAssistantDisplayText?.(...args) || '';
-    const renderVlmChatActionSummary = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.renderVlmChatActionSummary?.(...args) || '';
     const renderVlmChatLog = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.renderVlmChatLog?.(...args) || '';
-    const renderVlmAgentActions = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.renderVlmAgentActions?.(...args) || '';
-    const snapshotVlmChatImages = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.snapshotVlmChatImages?.(...args) || [];
-    const addVlmPendingImageFromFile = async (...args) => CANVAS_VLM_CHAT_CONTROLLER?.addVlmPendingImageFromFile?.(...args) || false;
-    const removeVlmPendingImage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.removeVlmPendingImage?.(...args);
-    const vlmChatMessageContextText = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatMessageContextText?.(...args) || '';
-    const vlmChatContextWindowForVersion = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatContextWindowForVersion?.(...args) || 8192;
-    const vlmChatContextBudgetMax = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatContextBudgetMax?.(...args) || VLM_CHAT_DEFAULT_CONTEXT_CHARS;
-    const clampVlmChatContextBudget = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.clampVlmChatContextBudget?.(...args) || VLM_CHAT_DEFAULT_CONTEXT_CHARS;
     const vlmDefaultParamValue = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmDefaultParamValue?.(...args);
-    const buildVlmRollingHistoryMessages = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.buildVlmRollingHistoryMessages?.(...args) || { messages: [], info: { omitted: 0, chars: 0, max_history: 0, budget: 0 } };
-    const getVlmChatImageLinkedAsset = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.getVlmChatImageLinkedAsset?.(...args) || null;
-    const vlmChatImageAsset = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatImageAsset?.(...args) || {};
-    const vlmChatImageDisplaySrc = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatImageDisplaySrc?.(...args) || '';
-    const getVlmChatMessage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.getVlmChatMessage?.(...args) || null;
-    const getVlmChatToolState = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.getVlmChatToolState?.(...args) || {};
-    const setVlmChatToolState = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.setVlmChatToolState?.(...args);
-    const rememberVlmChatToolResult = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.rememberVlmChatToolResult?.(...args);
-    const latestVlmChatResultNode = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.latestVlmChatResultNode?.(...args) || null;
-    const vlmChatImageFromResultNode = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatImageFromResultNode?.(...args) || null;
-    const vlmChatImagesFromResultNode = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatImagesFromResultNode?.(...args) || [];
-    const appendVlmChatToolMessage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.appendVlmChatToolMessage?.(...args);
-    const applyVlmChatState = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.applyVlmChatState?.(...args);
-    const vlmChatMessageText = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatMessageText?.(...args) || '';
-    const copyVlmChatMessage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.copyVlmChatMessage?.(...args);
-    const quoteVlmChatMessage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.quoteVlmChatMessage?.(...args);
-    const lastVlmAssistantText = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.lastVlmAssistantText?.(...args) || '';
-    const pendingVlmChatMessages = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.pendingVlmChatMessages?.(...args) || [];
-    const hasPendingVlmChatMessage = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.hasPendingVlmChatMessage?.(...args);
-    const applyVlmChatContextEdit = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.applyVlmChatContextEdit?.(...args);
-    const rollbackVlmChatToMessage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.rollbackVlmChatToMessage?.(...args);
-    const deleteVlmChatMessage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.deleteVlmChatMessage?.(...args);
-    const openVlmChatImage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.openVlmChatImage?.(...args);
-    const getVlmAgentAction = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.getVlmAgentAction?.(...args) || null;
-    const setVlmAgentActionExecution = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.setVlmAgentActionExecution?.(...args);
-    const patchVlmAgentAction = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.patchVlmAgentAction?.(...args);
-    const ignoreVlmAgentAction = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.ignoreVlmAgentAction?.(...args);
-    const retryVlmAgentAction = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.retryVlmAgentAction?.(...args);
-    const allowRejectedVlmAgentAction = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.allowRejectedVlmAgentAction?.(...args);
     const clearVlmChat = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.clearVlmChatNode?.(...args);
-    const serializeVlmPendingImageSource = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.serializeVlmPendingImageSource?.(...args) || null;
-    const startVlmChatRequest = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.startVlmChatRequest?.(...args) || null;
-    const getVlmChatRequest = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.getVlmChatRequest?.(...args) || null;
-    const canvasVlmChatRequestIsActive = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.isVlmChatRequestActive?.(...args);
-    const clearCanvasVlmChatRequest = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.clearVlmChatRequest?.(...args);
-    const replaceVlmChatPendingMessage = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.replaceVlmChatPendingMessage?.(...args);
-    const prepareVlmChatAssistantResponse = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.prepareVlmChatAssistantResponse?.(...args) || {
-        messages: Array.isArray(args[0]) ? args[0].slice(-40) : [],
-        assistant_index: -1,
-        auto_action_index: -1,
-        conversation_id: args[1]?.conversation_id || args[4]?.conversationId || ''
-    };
-    const prepareVlmChatFailureResponse = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.prepareVlmChatFailureResponse?.(...args) || {
-        messages: Array.isArray(args[0]) ? args[0].slice(-40) : [],
-        pending_images: Array.isArray(args[2]?.submittedPendingImages) ? args[2].submittedPendingImages : [],
-        restore_prompt: true,
-        prompt: String(args[2]?.userPrompt || '')
-    };
-    const prepareVlmAgentRetryContext = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.prepareVlmAgentRetryContext?.(...args) || {
-        ok: false,
-        reason: 'retry_context_unavailable'
-    };
-    const vlmAgentActionResultState = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionResultState?.(...args)
-        || (args[0]?.ok ? (args[0]?.runResponse?.state || 'done') : (args[1] ? 'running' : 'failed'));
-    const vlmAgentActionResultMessage = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionResultMessage?.(...args)
-        || args[0]?.message
-        || (args[0]?.ok ? t('Done.', '已完成') : t('Failed.', '执行失败'));
-    const vlmAgentPromptReviewGate = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentPromptReviewGate?.(...args) || {
-        allowed: true,
-        message: '',
-        prompt_review: args[0]?.prompt_review && typeof args[0].prompt_review === 'object' ? args[0].prompt_review : null
-    };
-    const prepareVlmAgentPromptReviewBypass = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.prepareVlmAgentPromptReviewBypass?.(...args) || {
-        ok: false,
-        message: t('VLM prompt review bypass is unavailable.', 'VLM prompt review 放行不可用。')
-    };
-    const executeVlmAgentAction = async (...args) => {
-        if (typeof CANVAS_VLM_CHAT_CONTROLLER?.executeVlmAgentAction !== 'function') {
-            return { ok: false, message: t('VLM action execution is unavailable.', 'VLM action 执行不可用。') };
-        }
-        return CANVAS_VLM_CHAT_CONTROLLER.executeVlmAgentAction(...args);
-    };
-    const prepareVlmNodeRunContext = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.prepareVlmNodeRunContext?.(...args) || {
-        params: getVlmCustomRuntimeParams(args[0]),
-        isChat: false,
-        connectedSources: [],
-        userPrompt: String(getVlmCustomRuntimeParams(args[0])?.prompt || '').trim()
-    };
-    const prepareVlmNodeRunState = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.prepareVlmNodeRunState?.(...args) || args[0];
-    const prepareVlmNodeRunInput = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.prepareVlmNodeRunInput?.(...args) || {};
-    const executeVlmNodeRun = async (...args) => CANVAS_VLM_CHAT_CONTROLLER?.executeVlmNodeRun?.(...args) || {
-        ok: false,
-        error: 'VLM node execution is unavailable'
-    };
     const runVlmNode = async (...args) => CANVAS_VLM_CHAT_CONTROLLER?.runVlmNode?.(...args) || {
         ok: false,
         error: 'VLM node execution is unavailable'
     };
     const isVlmNodeBusy = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.isVlmNodeBusy?.(...args);
-    const isVlmModelStatusFresh = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.isVlmModelStatusFresh?.(...args);
-    const cleanVlmToolPrompt = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.cleanVlmToolPrompt?.(...args) || '';
     const queueVlmModelDownloads = async (...args) => CANVAS_VLM_CHAT_CONTROLLER?.queueVlmModelDownloads?.(...args) || {
         ok: false,
         error: 'VLM model download coordination is unavailable'
@@ -2106,12 +1861,6 @@
     const unloadVlmModel = async (...args) => CANVAS_VLM_CHAT_CONTROLLER?.unloadVlmNodeModel?.(...args) || {
         ok: false,
         error: 'VLM unload is unavailable'
-    };
-    const cancelCanvasVlmChatRequest = async (...args) => {
-        if (typeof CANVAS_VLM_CHAT_CONTROLLER?.cancelVlmChatRequest !== 'function') {
-            return { ok: false, error: 'VLM cancel API is unavailable' };
-        }
-        return CANVAS_VLM_CHAT_CONTROLLER.cancelVlmChatRequest(...args);
     };
     const stopVlmChatNode = async (...args) => {
         if (typeof CANVAS_VLM_CHAT_CONTROLLER?.stopVlmChatNode !== 'function') {
@@ -2459,10 +2208,7 @@
     const captureVlmChatScroll = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.captureVlmChatScroll?.(...args) || null;
     const restoreVlmChatScroll = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.restoreVlmChatScroll?.(...args);
     const scrollVlmChatToBottom = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.scrollVlmChatToBottom?.(...args);
-    const scrollVlmChatLogToBottom = (...args) => !!CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.scrollVlmChatLogToBottom?.(...args);
     const handleVlmChatJumpClick = (...args) => !!CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.handleVlmChatJumpClick?.(...args);
-    const rememberVlmChatScrollFromLog = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.rememberVlmChatScrollFromLog?.(...args) || null;
-    const vlmChatScrollSnapshot = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.vlmChatScrollSnapshot?.(...args) || null;
     const updateVlmChatJumpButton = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.updateVlmChatJumpButton?.(...args);
     const bindVlmChatScrollControls = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.bindVlmChatScrollControls?.(...args);
     const markVlmChatStickToBottom = (...args) => CANVAS_VLM_CHAT_SCROLL_CONTROLLER?.markVlmChatStickToBottom?.(...args);
@@ -2535,6 +2281,7 @@
                 },
                 uiSource: {
                     getCanvasTitle: () => getCanvasTitle(),
+                    renderProjectNavigation: () => PROJECT_NAVIGATION_CONTROLLER?.sync(),
                     renderHistoryButtons: (...args) => CANVAS_HISTORY_CONTROLLER?.renderHistoryButtons?.(...args),
                     renderSystemInfo: (...args) => CANVAS_RUN_STATUS_CONTROLLER?.renderSystemInfo?.(...args),
                     renderRunQueueWidget: (...args) => CANVAS_RUN_STATUS_CONTROLLER?.renderRunQueueWidget?.(...args),
@@ -2617,6 +2364,9 @@
                     renderLivePortraitVideoExpressionPresetController,
                     renderLtx23GuidePresetController,
                     renderMiniMaxH3StoryboardPresetController,
+                },
+                presentationSource: {
+                    renderInlinePreviewHtml: node => CANVAS_NODE_PRESENTATION_CONTROLLER?.renderInlinePreviewHtml(node) || '',
                 },
             },
             runtimeServiceSource: {
@@ -2763,7 +2513,7 @@
                     },
                     projectSource: {
                         getProject: () => project,
-                        setProject: (value) => { project = value; },
+                        setProject: setWorkbenchProject,
                         compactProjectForStorage,
                         sanitizeProject,
                     },
@@ -3233,11 +2983,13 @@
                     updateCanvasRenderMode,
                     rectContainsRect: viewportRectContainsRect,
                     getNodeRenderWorldRect: (...args) => CANVAS_VIEWPORT_RENDER_CONTROLLER?.getNodeRenderWorldRect?.(...args),
+                    getVisibleWorldRect: (...args) => CANVAS_VIEWPORT_RENDER_CONTROLLER?.getVisibleWorldRect?.(...args),
                     getVisibleNodeRecords: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.getVisibleNodeRecords?.(...args) || { nodes: [], projectIds: new Set() },
                     isPanning: (...args) => CANVAS_PAN_CONTROLLER?.isPanning?.(...args) || false,
                     scheduleMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.scheduleMinimapRender?.(...args),
                     renderMinimap: (...args) => CANVAS_MINIMAP_CONTROLLER?.renderMinimap?.(...args),
                     positionCanvasAgentPanel,
+                    renderEdges: (...args) => renderEdges(...args),
                 },
                 renderModeSource: {
                     getCanvasRenderMode: () => getCanvasRenderMode(),
@@ -3285,6 +3037,11 @@
                     logVlmRenderKeyChange,
                     applyNodeCustomColorVars,
                     renderNodeHtml: (...args) => CANVAS_NODE_RENDERER?.renderNodeHtml?.(...args) || '',
+                    beginNodePresentationRender: () => CANVAS_NODE_PRESENTATION_CONTROLLER?.beginRender(),
+                    syncNodePresentationDom: (node, el) => CANVAS_NODE_PRESENTATION_CONTROLLER?.syncNodeDom(node, el),
+                    releaseNodePresentationDom: el => CANVAS_NODE_PRESENTATION_CONTROLLER?.releaseNodeDom(el),
+                    resetNodePresentation: () => CANVAS_NODE_PRESENTATION_CONTROLLER?.reset(),
+                    refreshConnectionTargetHighlights: () => CANVAS_CONNECTION_CONTROLLER?.refreshConnectionTargetHighlights?.(),
                     ensureWorkbenchFormFieldNames,
                     ensureNodeCollapseButton,
                     ensureNodeResizeHandle,
@@ -4507,7 +4264,7 @@
             clickGradioButton: typeof clickGradioButton === 'function' ? clickGradioButton : null,
             getHistoryLimit: () => 32,
             getHistoryMemoryBudgetBytes: () => 48 * 1024 * 1024,
-            setProject: (value) => { project = value; },
+            setProject: setWorkbenchProject,
             compactProjectForStorage,
             buildProjectStorageInfo: (...args) => buildProjectStorageInfo(...args),
             sanitizeProject,
@@ -6005,30 +5762,21 @@
         CANVAS_STATUS_CONTROLLER,
         renderStatus,
         CANVAS_PRESET_NODE_RENDERER,
-        renderClassicNodeHtml,
-        renderPresetNodeHtml,
-        getSlotOrderHint,
         getPresetSpecialControllerKind,
         normalizePresetSpecialState,
         presetSpecialControllerState,
         presetSpecialPromptFromState,
-        renderPresetSpecialController,
-        filterVisiblePresetParamsForSpecial,
         getVisiblePresetParams,
-        shouldShowPresetParam,
         isResolutionOwnedPresetParam,
         presetParamValue,
         isPromptTextParam,
         CANVAS_NODE_LAYOUT_CONTROLLER,
         defaultResultNodeSize,
-        boundedImageNodeSizeForAsset,
         fitImageNodeToAssetBounds,
         ensureResultNodeReadableSize,
-        ensureMediaBrowserNodeReadableSize,
         findOpenNodePosition,
         getNodeRect,
         getNodeLayoutSize,
-        minResizableNodeSize,
         placeNodeAvoidingOverlap,
         CANVAS_VIEWPORT_RENDER_CONTROLLER,
         CANVAS_VIEWPORT_FIT_CONTROLLER,
@@ -6038,28 +5786,17 @@
         getVisibleWorldRect,
         getNodeRenderWorldRect,
         getEdgeRenderWorldRect,
-        shouldRenderNodeInViewport,
         shouldRenderEdgeInViewport,
         getEdgeSvgBounds,
         CANVAS_NODE_SPATIAL_INDEX_CONTROLLER,
         invalidateNodeSpatialIndex,
-        refreshNodeSpatialIndexRecord,
-        queryNodeRecordsForRect,
-        querySpatialNodeRecords,
-        getMarqueeNodeRecords,
-        findCanvasNodeAtWorldPoint,
-        getVisibleNodeRecords,
-        countVisibleNodesForRenderWindow,
         shouldDeferPanNodeRender,
         CANVAS_NODE_FACTORY_CONTROLLER,
         buildNodeParamsPatch,
-        buildNodeStylePatch,
         applyNodeStylePatch,
         buildNodeLayoutPatch,
         applyNodeLayoutPatch,
-        buildNodeFlagPatch,
         buildNodeFieldPatch,
-        buildPresetUploadSlotPatch,
         buildClassicNodeStatePatch,
         buildPresetTextInputPatch,
         buildPresetStyleTransferPatch,
@@ -6067,72 +5804,40 @@
         buildPresetWildcardPreviewPatch,
         buildPresetConfigPatch,
         buildPresetDefinitionPatch,
-        applyPresetDefinitionPatch,
         buildPresetGenerationConfigPatch,
         buildPresetSnapshotPatch,
         buildGenerationMetadataPatch,
         buildClassicNode,
         buildPresetNode,
-        buildPresetModelCatalogStatus,
         buildPresetModelCheckingStatus,
         buildPresetModelStatusPatch,
         applyPresetModelStatus
     } = CANVAS_RUNTIME_CONTEXT;
     const {
         CANVAS_ASSET_NODE_RENDERER,
-        renderAssetAudioWaveformHtml,
-        renderAssetMediaHtml,
-        renderBatchAnyNodeHtml,
-        resultPreviewFrameSrc,
-        resultPreviewFrameAspect,
-        latestResultPreviewFrame,
-        resultPreviewAspectSource,
-        renderResultPreviewStripHtml,
-        renderResultMetadataPopover,
         renderResultMediaHtml,
-        renderResultNodeHtml,
         mediaBrowserItemMetadata,
         mediaBrowserItemPrompt,
         mediaBrowserItemNegativePrompt,
         renderMediaBrowserPanelHtml,
-        renderMediaBrowserNodeHtml,
         CANVAS_RESULT_PREVIEW_CONTROLLER,
-        resultPreviewHasRenderableSource,
-        shouldShowResultRunningPreview,
-        applyResultPreviewAspect,
-        bindResultPreviewAspectFromImage,
         bindResultNodePreviewAspect,
         resultPreviewLastSerial,
         stopResultPreviewPlayer,
-        ensureResultPreviewStreamDom,
-        updateResultPreviewPlayerDom,
-        startResultPreviewPlayback,
-        syncResultPreviewPlayerDom,
         resultPreviewFreshFrames,
         applyResultPreviewStream,
         appendResultNodePreviewFrames,
         refreshResultNodePreviewDom,
         CANVAS_NODE_RENDERER,
-        renderNodeHtml,
         overviewNodeKindLabel,
         overviewNodeAsset,
         overviewInputPorts,
         overviewOutputKind,
         notConnectedText,
         portHintText,
-        slotPortHintText,
-        slotPortTitle,
-        slotPortButtonTitle,
-        imagePortTitle,
-        imagePortButtonTitle,
-        configPortTitle,
-        configInputTitle,
         configTitleForKind,
-        configLabelForKind,
         configIconForKind,
-        renderPresetConfigPortRow,
-        renderNodeStateBadges,
-        renderRunnableNodeStatusFoot
+        renderNodeStateBadges
     } = CANVAS_RUNTIME_CONTEXT;
     const TIMELINE_NODE_CONTEXT_SOURCE = {
         languageSource: {
@@ -6403,32 +6108,17 @@
         renderNodes,
         resetRenderedProjectDomCache,
         nodeRenderKey,
-        getNodeEffectiveRenderMode,
         isVisibleWorldRectCoveredByRenderedNodes: isVisibleWorldRectCoveredByRenderedNodesFromController,
         invalidateRenderedNode,
         updateNodePositionDom: updateNodePositionDomFromController,
-        rememberRenderedNodeLayout,
         refreshNodeLayoutForAgent,
         getRenderedNodeElement,
-        getNodeRenderCoverageRect,
-        setNodeRenderCoverageRect,
-        getMeasuredNodeLayout,
         getNodeLayoutCacheSize
     } = CANVAS_RUNTIME_CONTEXT;
     const {
         CANVAS_RENDER_CONTROLLER,
         renderAll,
         CANVAS_RUN_STATUS_CONTROLLER,
-        isRunQueueActiveState,
-        runQueueRunResultNode,
-        runQueueRunPercent,
-        latestRunQueueSize,
-        runQueueWidgetSummary,
-        renderRunQueueWidget,
-        parseStandaloneStatusPayload,
-        fetchStandaloneStatusPayload,
-        publishStandaloneStatus,
-        refreshStandaloneStatus,
         startStandaloneStatusMonitor,
         stopStandaloneStatusMonitor,
         renderSystemInfo,
@@ -6438,13 +6128,9 @@
         buildCanvasNodeStatusPatch,
         CANVAS_MINIMAP_CONTROLLER,
         invalidateMinimapStaticCache,
-        syncMinimapViewRect,
         updateMinimapForViewportInteraction,
         renderMinimap,
         onMinimapPointerDown,
-        scheduleMinimapRender,
-        cancelMinimapRender,
-        flushMinimapRender,
         resetMinimapCache,
         isMinimapDragging,
         CANVAS_HISTORY_CONTROLLER,
@@ -6452,37 +6138,23 @@
         pushHistoryBatch,
         undoCanvasEdit,
         redoCanvasEdit,
-        renderHistoryButtons,
         resetHistory,
         CANVAS_SELECTION_CONTROLLER,
         updateSelectionDomClasses,
         refreshSelectionUi,
         selectNodeLight,
         toggleNodeSelectionLight,
-        selectGroupLight,
         selectNode,
-        toggleNodeSelection,
         getSelectedNodeIdList,
         toggleSelectedNodesFlag,
-        getEditableSelectedNodes,
         alignSelectedNodes,
         distributeSelectedNodes,
         selectEdge,
         reconcileSelection: reconcileSelectionFromController,
-        CANVAS_GRAPH_DELETE_CONTROLLER,
         deleteSelection,
         deleteEdge,
         deleteUploadSlot,
-        CANVAS_RESOLUTION_DRAG_CONTROLLER,
         startResolutionDrag,
-        updateResolutionFromDrag,
-        onResolutionDragMove,
-        stopResolutionDrag,
-        cancelResolutionDrag,
-        isResolutionDragging,
-        getResolutionDraggingNodeId,
-        CANVAS_CLIPBOARD_CONTROLLER,
-        buildSelectionClipboard,
         copyCanvasSelection,
         duplicateSelection,
         pasteCanvasClipboard,
@@ -6490,22 +6162,18 @@
         bindGroupLayerEvents,
         isGroupDragging,
         isGroupResizing,
-        CANVAS_RUN_PANELS_CONTROLLER,
         renderRunQueuePanelIfOpen,
         openRunQueuePanel,
         closeRunQueuePanel,
-        renderRunQueuePanel,
         handleRunQueueAction,
         openRunHistoryPanel,
         closeRunHistoryPanel,
         renderRunHistoryPanel,
         handleRunHistoryAction,
-        CANVAS_NODE_RESIZE_CONTROLLER,
         startNodeResize,
         isNodeResizing,
         getNodeResizeNodeId,
         CANVAS_NODE_DRAG_CONTROLLER,
-        startNodeDrag,
         isNodeDragging,
         getDraggingNodeIds,
         isDraggingNode,
@@ -6513,10 +6181,7 @@
         startPan,
         isPanning,
         CANVAS_MARQUEE_CONTROLLER,
-        startMarqueeSelection,
         isMarqueeSelecting,
-        CANVAS_VIEWPORT_POINTER_CONTROLLER,
-        handleViewportNodePointerDown,
         onViewportPointerDown,
         onViewportDoubleClick,
         CANVAS_CONNECTION_CONTROLLER,
@@ -7231,86 +6896,34 @@
         })
         : {};
     const {
-        CANVAS_VIEWPORT_WHEEL_CONTROLLER,
         onViewportWheel,
-        onWorkbenchWheelBoundary,
-        CANVAS_MEDIA_BROWSER_DRAG_CONTROLLER,
-        mediaBrowserNodeDragPayload,
-        mediaBrowserPayloadFromDataTransfer,
         bindMediaBrowserNodeDragEvents,
-        clearMediaBrowserDragPayload,
-        getMediaBrowserDragPayload,
-        CANVAS_VIEWPORT_DROP_CONTROLLER,
         onViewportDrop,
         onViewportDragOver,
         onViewportDragLeave,
-        handleDropData,
-        CANVAS_VIEWPORT_CONTEXT_CONTROLLER,
         onViewportContextMenu,
-        CANVAS_KEYBOARD_CONTROLLER,
-        onDocumentKeyDown,
-        CANVAS_DOCUMENT_PASTE_CONTROLLER,
-        onDocumentPaste,
         CANVAS_INPUT_HANDLE_CONTROLLER,
         getConnectionTargetFromHandle,
-        handleInputHandlePointerDown,
         handleInputHandlePointerDownFromEvent,
-        CANVAS_NOTE_TAIL_CONTROLLER,
-        startNoteTailDrag,
         isNoteTailDragging,
-        CANVAS_EDGE_INTERACTION_CONTROLLER,
         handleEdgeLayerClick,
         handleEdgeLayerContextMenu,
-        handleEdgeLayerPointerDown,
-        CANVAS_AGENT_INPUT_CONTROLLER,
-        onCanvasAgentInput,
-        onCanvasAgentChange,
-        onCanvasAgentKeyDown
+        handleEdgeLayerPointerDown
     } = CANVAS_INPUT_CONTEXT;
     const {
-        CANVAS_TEXT_CONTROL_CONTEXT_CONTROLLER,
-        editableTextControlFromTarget,
-        onTextControlContextMenu,
-        CANVAS_COMPARE_DRAG_CONTROLLER,
         startComparePositionDrag,
         isComparePositionDragging,
-        CANVAS_TEXT_CONTROL_POINTER_CONTROLLER,
-        onTextControlPointerDown,
         bindCanvasInputEvents,
         CANVAS_TOOLTIP_CONTROLLER,
         hideCanvasTooltip,
-        onTooltipPointerOver,
-        onTooltipPointerMove,
-        onTooltipPointerOut,
-        onTooltipFocusIn,
         CANVAS_HOVER_PREVIEW_CONTROLLER,
-        breakablePreviewText,
-        showHoverPreviewFor,
         hideHoverPreview,
-        onHoverPreviewPointerOver,
-        onHoverPreviewPointerMove,
-        onHoverPreviewPointerOut,
-        onHoverPreviewFocusIn,
-         CANVAS_PREVIEW_SELECT_CONTROLLER,
-         closePreviewSelectMenu,
-         isPreviewSelectMenuOpen,
-         previewSelectMenuContains,
-         onPreviewSelectPointerDown,
-         onPreviewSelectKeyDown,
-         CANVAS_DANBOORU_AUTOCOMPLETE_CONTROLLER,
+        closePreviewSelectMenu,
         shouldEnableDanbooruAutocomplete,
         danbooruAutocompleteAttrs,
-        hideDanbooruAutocomplete,
         positionDanbooruAutocompleteDropdown,
         warmDanbooruAutocompleteIndex,
-        handleDanbooruAutocompleteInput,
-        onDanbooruAutocompleteKeyDown,
-        onDanbooruAutocompletePointerDown,
-        onDanbooruAutocompleteFocusIn,
-        onDanbooruAutocompleteFocusOut,
-        hasDanbooruAutocompleteField,
-        CANVAS_SCROLL_CONTROLLER,
-        onCanvasWorkbenchScroll
+        hasDanbooruAutocompleteField
     } = CANVAS_INPUT_CONTEXT;
     const TIMELINE_CONTEXT_SOURCE = {
         domSource: {
@@ -7892,18 +7505,8 @@
         })
         : {};
     const {
-        CANVAS_TIMELINE_DOM_CONTROLLER,
-        timelineLaneInfoFromTarget,
-        refreshTimelineTrackRowsDom,
-        refreshTimelineClipDom,
-        refreshTimelineAllClipDom,
-        refreshTimelinePlayheadDom,
-        timelineNormalizedKeyframes,
-        refreshTimelineKeyframeMarkersDom,
-        CANVAS_TIMELINE_PLAYHEAD_CONTROLLER,
         startTimelinePlayheadDrag,
         isTimelinePlayheadDragging,
-        CANVAS_TIMELINE_PREVIEW_CONTROLLER,
         startTimelinePreviewDrag,
         isTimelinePreviewDragging,
         CANVAS_TIMELINE_PLAYBACK_CONTROLLER: timelinePlaybackController,
@@ -7911,7 +7514,6 @@
         isTimelineKeyframeDragging,
         startTimelineClipDrag,
         isTimelineClipDragging,
-        CANVAS_TIMELINE_MASK_CONTROLLER: timelineMaskController,
         startTimelineMaskAnchorDrag,
         applyTimelineMaskFeatherToSelectedClip: applyTimelineMaskFeatherController,
         remapTimelineClipMaskForGeometryChange: remapTimelineClipMaskForGeometryChangeController,
@@ -7922,7 +7524,6 @@
         isDirectorTimelineDragging,
         CANVAS_TIMELINE_FRAME_CONTROLLER: timelineFrameController,
         CANVAS_TIMELINE_RENDER_CONTROLLER: timelineRenderController,
-        CANVAS_TIMELINE_COMPARE_CONTROLLER: timelineCompareController,
         CANVAS_TIMELINE_PARAM_CONTROLLER: timelineParamController,
         CANVAS_TIMELINE_COMMAND_CONTROLLER: timelineCommandController
     } = CANVAS_TIMELINE_CONTEXT;
@@ -7931,7 +7532,6 @@
     CANVAS_TIMELINE_PLAYBACK_CONTROLLER = timelinePlaybackController || null;
     CANVAS_TIMELINE_FRAME_CONTROLLER = timelineFrameController || null;
     CANVAS_TIMELINE_RENDER_CONTROLLER = timelineRenderController || null;
-    CANVAS_TIMELINE_COMPARE_CONTROLLER = timelineCompareController || null;
     const BACKEND_CONTEXT_SOURCE = {
             backendRequestSource: {
                 apiSource: {
@@ -7984,15 +7584,12 @@
     const {
         CANVAS_BACKEND_REQUEST_CONTROLLER,
         getWorkbenchUserContext,
-        withWorkbenchUserContext,
-        sendCanvasDryRunRequest,
         sendCanvasRunNodeRequest,
         sendCanvasPollRunRequest,
         sendCanvasControlRunRequest,
         sendCanvasQwenTtsRunRequest,
         sendCanvasQwenTtsPollRequest,
         sendCanvasQwenTtsControlRequest,
-        sendCanvasQwenTtsPresetsRequest,
         sendCanvasModelCatalogRequest,
         sendCanvasPresetModelStatusRequest,
         sendCanvasPresetModelDownloadsRequest,
@@ -8016,10 +7613,7 @@
         sendCanvasProjectListRequest,
         sendCanvasProjectDeleteRequest,
         sendCanvasProjectClearRequest,
-        CANVAS_QWEN_TTS_PRESETS_CONTROLLER,
-        normalizeQwenTtsPresetEntries,
         getQwenTtsStylePresetEntries,
-        getQwenTtsStylePresetState,
         refreshQwenTtsStylePresets
     } = CANVAS_BACKEND_CONTEXT;
     const CANVAS_VLM_MODEL_DOWNLOAD_CONTROLLER = typeof WORKBENCH_VLM_MODEL_DOWNLOAD.createCanvasVlmModelDownloadController === 'function'
@@ -8104,10 +7698,45 @@
             translationSource: TRANSLATION_CONTEXT_SOURCE
         })
         : {};
-    const requestTranslation = (...args) => TRANSLATION_CONTROLLER?.requestTranslation?.(...args)
-        || { ok: false, error: 'translation unavailable' };
     const handleTranslateClick = (...args) => TRANSLATION_CONTROLLER?.handleTranslateClick?.(...args) || false;
     const bindInspectorTranslateEvents = (...args) => TRANSLATION_CONTROLLER?.bindInspectorTranslateEvents?.(...args) || false;
+    const CANVAS_PROMPT_ACTION_CONTROLLER = WORKBENCH_CANVAS_PROMPT_ACTION.createCanvasPromptActionController?.({
+        localize: localizeCanvasLabel,
+        getProject: () => project,
+        getNode,
+        getUserContext: () => getWorkbenchUserContext(),
+        isNodeLocked,
+        isPromptReadOnly: node => (getPresetThemeInfo(node).params || getPresetSchema(node).params || [])
+            .some(param => param.key === 'prompt' && param.interactive === false),
+        getPromptTextSourceNode,
+        pushHistory,
+        updateNodeParam: (nodeId, key, value, inputType) => {
+            if (!updateNodeParam(nodeId, key, value, inputType)) return false;
+            const node = getNode(nodeId);
+            Object.assign(node, buildNodeParamsPatch(node, { paramsPatch: { pe_applied_prompt: value } }));
+            return true;
+        },
+        showToast,
+        getFieldRoots: node => [
+            nodesLayer?.querySelector(`[data-node-id="${cssEscape(node.id)}"]`),
+            selectedNodeId === node.id ? inspector : null
+        ],
+        buildPayload: node => {
+            const serialization = CANVAS_PRESET_RUN_SERIALIZATION_CONTROLLER;
+            const assetSources = {};
+            serialization.getPresetUploadRunEdges(node).forEach(edge => {
+                const source = getNode(edge.from);
+                if (source) assetSources[edge.slot] = serializeAssetSourceForRun(source);
+            });
+            return {
+                project_id: project.id,
+                preset_node: node.type === 'classic' ? serialization.serializeClassicNodeForRun(node) : serialization.serializePresetForRun(node),
+                asset_sources: assetSources,
+                user_context: getWorkbenchUserContext()
+            };
+        },
+        request: (...args) => WORKBENCH_API.promptAction(...args)
+    }) || {};
     const RUN_REFRESH_WAIT_CONTEXT_SOURCE = {
         languageSource: {
             t
@@ -8147,7 +7776,7 @@
     const POSE_STUDIO_SMOKE_CONTEXT_SOURCE = {
         stateSource: {
             getProject: () => project,
-            setProject: (value) => { project = value; },
+            setProject: setWorkbenchProject,
             getSelectedNodeId: () => selectedNodeId,
             getSelectedNodeIds: () => selectedNodeIds,
             getSelectedEdgeId: () => selectedEdgeId,
@@ -8204,6 +7833,7 @@
         : {};
     const PRESET_CONTEXT_SOURCE = {
             paramRendererSource: {
+                isPromptOptimizationPending: node => !!CANVAS_PROMPT_ACTION_CONTROLLER.isPending?.(node),
                 t,
                 clamp,
                 escapeHtml,
@@ -8279,14 +7909,9 @@
         : {};
     const CANVAS_PRESET_PALETTE = CANVAS_PRESET_CONTEXT.CANVAS_PRESET_PALETTE || {};
     CANVAS_PRESET_PARAM_RENDERER = CANVAS_PRESET_CONTEXT.CANVAS_PRESET_PARAM_RENDERER || {};
-    const renderPresetParamControl = (...args) => CANVAS_PRESET_PARAM_RENDERER?.renderPresetParamControl?.(...args) || '';
     const renderTranslatableTextarea = (...args) => CANVAS_PRESET_PARAM_RENDERER?.renderTranslatableTextarea?.(...args) || '';
     const wildcardPreviewFacts = (...args) => CANVAS_PRESET_PARAM_RENDERER?.wildcardPreviewFacts?.(...args) || [];
     const canvasRelightLightValue = (...args) => CANVAS_PRESET_PARAM_RENDERER?.canvasRelightLightValue?.(...args) || '10';
-    const canvasRelightLightOption = (...args) => CANVAS_PRESET_PARAM_RENDERER?.canvasRelightLightOption?.(...args) || null;
-    const isCanvasRelightLightDirectionParam = (...args) => CANVAS_PRESET_PARAM_RENDERER?.isCanvasRelightLightDirectionParam?.(...args) || false;
-    const renderCanvasRelightLightDirectionControl = (...args) => CANVAS_PRESET_PARAM_RENDERER?.renderCanvasRelightLightDirectionControl?.(...args) || '';
-    const inferPresetNumberStep = (...args) => CANVAS_PRESET_PARAM_RENDERER?.inferPresetNumberStep?.(...args) || 1;
     const PRESET_CATALOG_SERVICE = CANVAS_PRESET_CONTEXT.PRESET_CATALOG_SERVICE || {};
     const getPresetCatalog = PRESET_CATALOG_SERVICE.getPresetCatalog;
     const refreshPresetCatalog = PRESET_CATALOG_SERVICE.refreshPresetCatalog;
@@ -8381,7 +8006,7 @@
                         getDefaultProjectId: () => PROJECT_ID,
                         sanitizeProject,
                         createDefaultProject,
-                        setProject: (value) => { project = value; }
+                        setProject: setWorkbenchProject
                     },
                     storageSource: {
                         getStorageScope: () => storageScope,
@@ -8430,54 +8055,10 @@
         })
         : {};
     const {
-        CANVAS_TEMPLATE_LIBRARY_DEFAULTS_CONTROLLER,
-        getDefaultWorkbenchTemplateLibraryItems,
-        CANVAS_TEMPLATE_LIBRARY_API_CONTROLLER,
-        sendCanvasTemplateSaveRequest,
-        sendCanvasTemplateListRequest,
-        sendCanvasTemplateLoadRequest,
-        sendCanvasTemplateDeleteRequest,
-        CANVAS_CONFIRM_DIALOG_CONTROLLER,
-        requestCanvasConfirmDialog,
-        CANVAS_TEMPLATE_LIBRARY_DATA_CONTROLLER,
-        TEMPLATE_MEDIA_CATEGORIES,
-        localizeTemplateText,
-        normalizeTemplateModelDependency,
-        normalizeTemplateMediaCategory,
-        normalizeTemplateLibraryItem,
-        inferProjectTemplateModelDependency,
-        getWorkbenchTemplateLibraryItems,
-        invalidateTemplateLibraryItems,
-        getUserWorkbenchTemplateLibraryItems,
-        loadWorkbenchTemplateData,
-        resolveTemplatePreviewPath,
-        CANVAS_TEMPLATE_LIBRARY_VIEWS_CONTROLLER,
-        normalizeTemplateLibraryCategory,
-        templateCategoryLabel,
-        templateLibraryFilterState,
-        renderTemplateCardHtml,
-        renderTemplateLibraryHtml,
-        renderSaveTemplateDialogHtml,
-        renderTemplateWorkbenchIdDialogHtml,
-        CANVAS_TEMPLATE_LIBRARY_CONTROLLER,
-        bindTemplateLibraryModal,
-        closeTemplateLibrary,
         openTemplateLibrary,
         saveCurrentCanvasAsTemplate,
         deleteUserWorkbenchTemplate,
-        createWorkbenchFromTemplate,
-        refreshTemplateLibraryModal,
-        refreshTemplateLibraryAfterMutation,
-        requestSaveTemplateDetails,
-        requestTemplateWorkbenchId,
-        applyTemplateWorkbenchProject,
-        beginTemplateWorkbenchCreation,
-        isLatestTemplateWorkbenchCreation,
-        cancelTemplateWorkbenchCreation,
-        beginTemplateLibraryRefresh,
-        isLatestTemplateLibraryRefresh,
-        cancelTemplateLibraryRefresh,
-        restoreTemplateWorkbenchCreation
+        createWorkbenchFromTemplate
     } = CANVAS_TEMPLATE_CONTEXT;
     const UI_CONTEXT_SOURCE = {
             settingsViewsSource: {
@@ -8649,40 +8230,35 @@
         })
         : {};
     const {
-        CANVAS_SETTINGS_VIEWS_CONTROLLER,
         renderCanvasSettingsPanelView,
-         getCanvasAgentSettings,
-         setCanvasAgentSettingsPatch,
-         setCanvasAgentLayoutPatch,
-         canvasAgentDefaultLocalRewriteModel,
-         canvasAgentLocalRewriteModels,
-         canvasAgentModelSummary,
-         getCanvasAgentResolutionState,
-         setCanvasAgentResolutionPatch,
-         setCanvasAgentResolutionOpen: setCanvasAgentResolutionOpenFromSettings,
-         canvasAgentResolutionLabel: canvasAgentResolutionLabelFromSettings,
-         canvasAgentResolutionCompactLabel: canvasAgentResolutionCompactLabelFromSettings,
-         revealCanvasAgentPanelForToolCard,
-         dockCanvasAgentPanelBottomLeft,
-          getCanvasAgentRewriteModel,
-          handleCanvasAgentSettingInput,
-          handleCanvasAgentModelModeInput,
-          getCanvasAgentCustomKeyValue,
-          getCanvasAgentCustomModelChoices,
-          saveCanvasAgentCustomSecret,
-          fetchCanvasAgentCustomModels,
-          testCanvasAgentCustomApi,
-          syncCanvasAgentCustomFromSelectedVlm,
-          syncSelectedVlmCustomFromCanvasAgent,
-          startOutpaintEdgeDrag,
-         updateOutpaintFromSlider,
-         onOutpaintOverlayPointerDown,
-         onOutpaintSliderInput,
-         onOutpaintPresetChange,
-         CANVAS_SETTINGS_CONTROLLER,
-         openCanvasSettingsPanel,
-         closeCanvasSettingsPanel,
-         handleCanvasSettingsAction
+        getCanvasAgentSettings,
+        setCanvasAgentSettingsPatch,
+        setCanvasAgentLayoutPatch,
+        canvasAgentDefaultLocalRewriteModel,
+        canvasAgentLocalRewriteModels,
+        canvasAgentModelSummary,
+        getCanvasAgentResolutionState,
+        setCanvasAgentResolutionPatch,
+        setCanvasAgentResolutionOpen: setCanvasAgentResolutionOpenFromSettings,
+        canvasAgentResolutionLabel: canvasAgentResolutionLabelFromSettings,
+        canvasAgentResolutionCompactLabel: canvasAgentResolutionCompactLabelFromSettings,
+        revealCanvasAgentPanelForToolCard,
+        dockCanvasAgentPanelBottomLeft,
+        getCanvasAgentRewriteModel,
+        handleCanvasAgentSettingInput,
+        getCanvasAgentCustomModelChoices,
+        saveCanvasAgentCustomSecret,
+        fetchCanvasAgentCustomModels,
+        testCanvasAgentCustomApi,
+        syncCanvasAgentCustomFromSelectedVlm,
+        syncSelectedVlmCustomFromCanvasAgent,
+        onOutpaintOverlayPointerDown,
+        onOutpaintSliderInput,
+        onOutpaintPresetChange,
+        CANVAS_SETTINGS_CONTROLLER,
+        openCanvasSettingsPanel,
+        closeCanvasSettingsPanel,
+        handleCanvasSettingsAction
     } = CANVAS_UI_CONTEXT;
     CANVAS_AGENT_SETTINGS_CONTROLLER = CANVAS_UI_CONTEXT.CANVAS_AGENT_SETTINGS_CONTROLLER || {};
     CANVAS_OUTPAINT_CONTROLLER = CANVAS_UI_CONTEXT.CANVAS_OUTPAINT_CONTROLLER || {};
@@ -8993,12 +8569,8 @@
         })
         : {};
     const {
-        CANVAS_MODE_CONTROLLER,
         setMode,
         renderMode,
-        CANVAS_ACTION_CONTROLLER,
-        handleCanvasAction,
-        CANVAS_CLICK_CONTROLLER,
         onCanvasWorkbenchClick
     } = CANVAS_CONTROL_CONTEXT;
     const PROJECT_CONTEXT_SOURCE = {
@@ -9063,7 +8635,8 @@
             },
             projectSource: {
                 getProject: () => project,
-                setProject: (value) => { project = value; },
+                setProject: setWorkbenchProject,
+                isProjectOpen: id => PROJECT_NAVIGATION_CONTROLLER?.isProjectOpen(id) ?? true,
                 getDefaultProjectId: () => PROJECT_ID,
                 getBackendLoadedStorageKey: () => backendLoadedStorageKey,
                 setBackendLoadedStorageKey: (value) => { backendLoadedStorageKey = value; },
@@ -9076,7 +8649,7 @@
                 getStorage: () => localStorage,
                 getStorageScope: () => getStorageScope(),
                 getCurrentStorageScope: () => storageScope,
-                getStorageKey: (scope) => getStorageKey(scope),
+                getStorageKey: (scope) => scope && !Array.isArray(scope) ? getStorageKey(scope) : storageKey,
                 getStorageBaseKey: () => storageBaseKey,
                 setStorageScope: (value) => { storageScope = value; },
                 setStorageBaseKey: (value) => { storageBaseKey = value; },
@@ -9130,6 +8703,7 @@
             },
             uiSource: {
                 renderStatus,
+                setProjectSaveState: (candidate, state) => PROJECT_NAVIGATION_CONTROLLER?.setSaveState(candidate, state),
                 showToast,
                 warn: (...args) => console.warn(...args)
             },
@@ -9151,7 +8725,7 @@
             projectSource: {
                 getProject: () => project,
                 getNode: (...args) => getNode(...args),
-                setProject: (value) => { project = value; },
+                setProject: setWorkbenchProject,
                 getProjectId: () => project?.id || PROJECT_ID
             },
             patchSource: {
@@ -9210,7 +8784,7 @@
             storageSource: {
                 getStorage: () => localStorage,
                 getStorageScope: () => getStorageScope(),
-                getStorageKey: (scope) => getStorageKey(scope),
+                getStorageKey: (scope) => scope && !Array.isArray(scope) ? getStorageKey(scope) : storageKey,
                 getStorageBaseKey: () => storageBaseKey,
                 getLegacyStorageKey: () => LEGACY_STORAGE_KEY,
                 browserCacheProjectIndex: (...args) => browserCacheProjectIndex(...args),
@@ -9229,7 +8803,7 @@
                 sanitizeStoragePart,
                 sanitizeProject,
                 createDefaultProject,
-                setProject: (value) => { project = value; },
+                setProject: setWorkbenchProject,
                 setBackendLoadedStorageKey: (value) => { backendLoadedStorageKey = value; },
                 getBackendLoadedStorageKey: () => backendLoadedStorageKey,
                 loadProject
@@ -9302,7 +8876,6 @@
         : {};
     projectPersistenceRuntime = CANVAS_PROJECT_CONTEXT;
     const {
-        syncProjectLanguage: syncProjectLanguageFromProjectContext,
         getStorageScope: getStorageScopeFromProjectContext,
         getStorageKey: getStorageKeyFromProjectContext,
         getCanvasTitle: getCanvasTitleFromProjectContext,
@@ -9320,7 +8893,6 @@
         applyProjectSchedulerPatch: applyProjectSchedulerPatchFromProjectContext,
         applyProjectViewportPatch: applyProjectViewportPatchFromProjectContext,
         CANVAS_PROJECT_PERSISTENCE_CONTROLLER,
-        browserBackendProjectDecision,
         browserCacheActiveProjectIdKey,
         browserCacheProjectIndexKey,
         browserCacheProjectScope,
@@ -9334,7 +8906,6 @@
         storageDisplayLocation: storageDisplayLocationFromPersistenceController,
         storageDisplayPath: storageDisplayPathFromPersistenceController,
         syncStorageScope,
-        loadProjectFromBackend,
         CANVAS_PROJECT_ASSETS_CONTROLLER,
         inferChatImageRelativePath,
         safeVlmChatAssetThumb,
@@ -9345,17 +8916,13 @@
         syncCanvasProjectAssetRoot,
         syncCanvasProjectAssetRootFromAsset,
         syncCanvasProjectAssetRootFromAssets,
-        normalizeProjectAssetReferences,
         refreshCanvasProjectAssetRoot,
         refreshCanvasProjectFromBackendOnOpen,
         materializeInlineProjectAssets,
-        CANVAS_PROJECT_ACTIONS_CONTROLLER,
         clearBrowserCache,
         clearProjectFileWithConfirm,
-        loadDemoWorkbenchWithConfirm,
         clearCanvasWithConfirm,
         openProjectJsonPicker,
-        switchProjectWithPrompt,
         switchProjectById,
         handleProjectDeleted,
         importWorkbenchProjectFromFile
@@ -9404,8 +8971,6 @@
         })
         : {};
     const bindPresetSpecialViewerEvents = (...args) => PRESET_SPECIAL_VIEWER_CONTROLLER.bindPresetSpecialViewerEvents?.(...args);
-    const findPresetSpecialIframeByWindow = (...args) => PRESET_SPECIAL_VIEWER_CONTROLLER.findPresetSpecialIframeByWindow?.(...args) || null;
-    const syncPresetSpecialViewerIframe = (...args) => PRESET_SPECIAL_VIEWER_CONTROLLER.syncPresetSpecialViewerIframe?.(...args);
     const handlePresetSpecialViewerMessage = (...args) => PRESET_SPECIAL_VIEWER_CONTROLLER.handlePresetSpecialViewerMessage?.(...args);
     const MEDIA_SEEK_CONTEXT_SOURCE = {
         domSource: {
@@ -9438,7 +9003,6 @@
     const showVideoScrubPreview = (...args) => MEDIA_SEEK_CONTROLLER.showVideoScrubPreview?.(...args);
     const hideVideoScrubPreview = (...args) => MEDIA_SEEK_CONTROLLER.hideVideoScrubPreview?.(...args);
     const seekNodeMediaPlayer = (...args) => MEDIA_SEEK_CONTROLLER.seekNodeMediaPlayer?.(...args);
-    const normalizeVideoSeekTarget = (...args) => MEDIA_SEEK_CONTROLLER.normalizeVideoSeekTarget?.(...args) ?? args[1];
     const MEDIA_EDIT_CONTEXT_SOURCE = {
         fileSource: MEDIA_HELPERS_CONTEXT,
         transferSource: {
@@ -9542,12 +9106,9 @@
             mediaEditSource: MEDIA_EDIT_CONTEXT_SOURCE
         })
         : {};
-    const updateMediaTrim = (...args) => MEDIA_EDIT_CONTROLLER.updateMediaTrim?.(...args);
     const handleNodeMediaEditEvent = (...args) => MEDIA_EDIT_CONTROLLER.handleNodeMediaEditEvent?.(...args) || false;
     const bindInspectorMediaEvents = (...args) => MEDIA_EDIT_CONTROLLER.bindInspectorMediaEvents?.(...args) || false;
     const resetMediaTrim = (...args) => MEDIA_EDIT_CONTROLLER.resetMediaTrim?.(...args);
-    const refreshMediaTrimUi = (...args) => MEDIA_EDIT_CONTROLLER.refreshMediaTrimUi?.(...args);
-    const mediaDerivedInfoHtml = (...args) => MEDIA_EDIT_CONTROLLER.mediaDerivedInfoHtml?.(...args) || '';
     const reloadMediaNode = (...args) => MEDIA_EDIT_CONTROLLER.reloadMediaNode?.(...args);
     const playMediaSelection = (...args) => MEDIA_EDIT_CONTROLLER.playMediaSelection?.(...args);
     const RESULT_ASSET_CONTEXT_SOURCE = {
@@ -9767,8 +9328,8 @@
             getClassicIpCount: (...args) => getClassicIpCount(...args),
             getClassicIpTypes: (...args) => getClassicIpTypes(...args),
             getClassicIpMaxImages: (...args) => getClassicIpMaxImages(...args),
-            getClassicIpControlTypes: (...args) => registryClassicIpControlTypes || ['ImagePrompt'],
-            getClassicOutpaintDirs: (...args) => registryClassicOutpaintDirs || [],
+            getClassicIpControlTypes: () => registryClassicIpControlTypes || ['ImagePrompt'],
+            getClassicOutpaintDirs: () => registryClassicOutpaintDirs || [],
             normalizeClassicInpaintMode: (...args) => normalizeClassicInpaintMode(...args),
             detectionSlotForRegion: (...args) => detectionSlotForRegion(...args),
             getClassicEnhanceRegionValues: (...args) => getClassicEnhanceRegionValues(...args),
@@ -9932,7 +9493,8 @@
             sendCanvasQwenTtsControlRequest: (...args) => sendCanvasQwenTtsControlRequest(...args)
         },
         pollingSource: {
-            pollRunWithController: (...args) => pollRunWithController(...args)
+            pollRunWithController: (...args) => pollRunWithController(...args),
+            trackSubmittedRun: config => CANVAS_BACKGROUND_RUN_CONTROLLER?.trackRun({ ...config, kind: 'qwen_tts' })
         },
         historySource: {
             pushHistory: (...args) => pushHistory(...args)
@@ -10102,7 +9664,6 @@
     const isCanvasAgentGeneratorTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentGeneratorTarget;
     const isCanvasAgentTextTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentTextTarget;
     const isCanvasAgentMediaReferenceTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentMediaReferenceTarget;
-    const isCanvasAgentSupportedTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentSupportedTarget;
     const getCanvasAgentReferenceAsset = CANVAS_AGENT_TARGET_CONTROLLER.getCanvasAgentReferenceAsset;
     const getCanvasAgentReferenceKind = CANVAS_AGENT_TARGET_CONTROLLER.getCanvasAgentReferenceKind;
     const AGENT_CONTEXT_SOURCE = {
@@ -10403,71 +9964,55 @@
         })
         : {};
     const {
-         CANVAS_AGENT_GENERATION_CONTROLLER,
          canvasAgentRunNodeSelection,
          canvasAgentUserExplicitNegativePrompt,
-         normalizeCanvasAgentAspect,
          extractCanvasAgentAspectFromText,
          stripCanvasAgentInlineGenerationParams,
          normalizeCanvasAgentGenerationOptions,
-        canvasAgentResolutionLabel,
-        canvasAgentResolutionCompactLabel,
-        canvasAgentModelStatusLabel,
-        applyCanvasAgentPromptToGenerator,
-        applyCanvasAgentPresetDefaultsToGenerator,
-        clonePresetWithPromptDefaults,
-        presetGenerationStepValue,
-        presetGenerationImageNumberValue,
-        applyCanvasAgentGenerationOptionsToGenerator,
-        prepareCanvasAgentGenerator,
-        applyCanvasAgentResolutionToGenerator,
-        previewCanvasAgentEditInputSlot,
-        CANVAS_AGENT_REFERENCES_CONTROLLER,
-        canvasAgentReferenceIcon,
-        canvasAgentReferenceKey,
-        getCanvasAgentVlmReferenceSources,
-        canvasAgentReferenceSummaryText,
-        canvasAgentReferenceFacts,
-        normalizeCanvasAgentReferences,
-        canvasAgentReferenceCounts,
-        createCanvasAgentReferenceFromNode,
-        addCanvasAgentReferenceFromNode,
-        addSelectedCanvasAgentReferences,
-        removeCanvasAgentReference,
-        promoteCanvasAgentReference,
-        canvasAgentReferenceNode,
-        getCanvasAgentPrimaryImageReference,
-        getCanvasAgentPrimaryReferenceByKind,
-        getCanvasAgentPrimaryMediaNode,
-        getCanvasAgentExtraImageReferences,
-        canvasAgentMediaReferenceLimit,
-        getCanvasAgentMediaReferenceNodes,
-        canvasAgentMediaNodeCounts,
-        canvasAgentVideoTaskForMedia,
-        canvasAgentVideoTaskLabel,
-        canvasAgentMediaNodeFacts,
-        CANVAS_AGENT_DECISION_CONTROLLER,
-        canvasAgentPresetDecisionOptions,
-        canvasAgentPresetImageCapacity,
-        canvasAgentPresetMediaCapacity,
-        canvasAgentPresetSupportsTask,
-        canvasAgentRequestedMediaCounts,
-        canvasAgentPresetSupportsMediaRequest,
-        canvasAgentPresetMediaCapacityMessage,
-        chooseCanvasAgentPresetEntry,
-        canvasAgentPromptPreflight,
-        canvasAgentPromptPreflightFacts,
-        ensureCanvasAgentPromptPreflightAllows,
-        canvasAgentPromptDecisionField,
-        canvasAgentPromptFromDecision,
-        CANVAS_AGENT_PROMPT_RESOLVER_CONTROLLER,
-        resolveCanvasAgentPrompt: resolveCanvasAgentPromptFromContext,
-        canvasAgentComparablePromptText,
-         canvasAgentPromptRewriteTooWeak,
-         canvasAgentLocalPromptRewriteFallback,
+         canvasAgentResolutionLabel,
+         canvasAgentModelStatusLabel,
+         applyCanvasAgentPromptToGenerator,
+         applyCanvasAgentPresetDefaultsToGenerator,
+         clonePresetWithPromptDefaults,
+         presetGenerationStepValue,
+         presetGenerationImageNumberValue,
+         applyCanvasAgentGenerationOptionsToGenerator,
+         prepareCanvasAgentGenerator,
+         applyCanvasAgentResolutionToGenerator,
+         previewCanvasAgentEditInputSlot,
+         canvasAgentReferenceIcon,
+         canvasAgentReferenceKey,
+         getCanvasAgentVlmReferenceSources,
+         canvasAgentReferenceSummaryText,
+         canvasAgentReferenceFacts,
+         normalizeCanvasAgentReferences,
+         canvasAgentReferenceCounts,
+         addCanvasAgentReferenceFromNode,
+         addSelectedCanvasAgentReferences,
+         removeCanvasAgentReference,
+         promoteCanvasAgentReference,
+         canvasAgentReferenceNode,
+         getCanvasAgentPrimaryImageReference,
+         getCanvasAgentPrimaryReferenceByKind,
+         getCanvasAgentPrimaryMediaNode,
+         getCanvasAgentExtraImageReferences,
+         getCanvasAgentMediaReferenceNodes,
+         canvasAgentMediaNodeCounts,
+         canvasAgentVideoTaskForMedia,
+         canvasAgentVideoTaskLabel,
+         canvasAgentMediaNodeFacts,
+         canvasAgentPresetDecisionOptions,
+         canvasAgentPresetSupportsTask,
+         canvasAgentPresetSupportsMediaRequest,
+         chooseCanvasAgentPresetEntry,
+         canvasAgentPromptPreflight,
+         canvasAgentPromptPreflightFacts,
+         ensureCanvasAgentPromptPreflightAllows,
+         canvasAgentPromptDecisionField,
+         canvasAgentPromptFromDecision,
+         resolveCanvasAgentPrompt: resolveCanvasAgentPromptFromContext,
          canvasAgentDanbooruFallbackRewrite,
          ensureCanvasAgentPromptMatchesTarget,
-         canvasAgentDanbooruLookupText,
          maybeShowCanvasDanbooruRuntimeNotice
      } = CANVAS_AGENT_CONTEXT;
     CANVAS_AGENT_ACTION_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_ACTION.createCanvasAgentActionController === 'function'
@@ -10704,7 +10249,6 @@
         : {};
     CANVAS_AGENT_PROMPT_CONTEXT = CANVAS_AGENT_PROMPT_BOOTSTRAP_CONTEXT.CANVAS_AGENT_PROMPT_CONTEXT || {};
     const canvasAgentPromptCompilerContext = (...args) => CANVAS_AGENT_PROMPT_CONTEXT.canvasAgentPromptCompilerContext(...args);
-    const canvasAgentAttachPromptCompilerContext = (...args) => CANVAS_AGENT_PROMPT_CONTEXT.canvasAgentAttachPromptCompilerContext(...args);
     const canvasAgentMergeDanbooruPromptWithContext = (...args) => CANVAS_AGENT_PROMPT_CONTEXT.canvasAgentMergeDanbooruPromptWithContext(...args);
     const VLM_AGENT_CONTEXT_SOURCE = {
         projectSource: {
@@ -11197,22 +10741,11 @@
     CANVAS_NODE_PARAM_CONTROLLER = CANVAS_VLM_CONTEXT.CANVAS_NODE_PARAM_CONTROLLER || CANVAS_NODE_INTERACTION_CONTEXT.CANVAS_NODE_PARAM_CONTROLLER || null;
     CANVAS_INSPECTOR_CONTROLLER = CANVAS_VLM_CONTEXT.CANVAS_INSPECTOR_CONTROLLER || CANVAS_NODE_INTERACTION_CONTEXT.CANVAS_INSPECTOR_CONTROLLER || null;
     const {
-        CANVAS_VLM_CHAT_IMAGE_PREVIEW_CONTROLLER,
-        vlmChatImagePreviewSizeFromDimensions,
-        ensureVlmChatImagePreview,
-        vlmChatImagePreviewSize,
-        breakableVlmChatPreviewName,
-        positionVlmChatImagePreview,
-        showVlmChatImagePreview,
         hideVlmChatImagePreview,
         onVlmChatImagePreviewPointerOver,
         onVlmChatImagePreviewPointerMove,
         onVlmChatImagePreviewPointerOut,
-        CANVAS_VLM_CHAT_INPUT_CONTROLLER,
         attachVlmImages,
-        insertVlmChatCommand,
-        runVlmRegenCommand,
-        handleVlmChatDrop,
         handleVlmChatInputClick,
         handleVlmAgentActionClick,
         handleVlmChatMessageActionClick,
@@ -11264,19 +10797,13 @@
         })
         : {};
     const canvasAgentWorkflowPresetPosition = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.canvasAgentWorkflowPresetPosition;
-    const canvasAgentWorkflowPairRect = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.canvasAgentWorkflowPairRect;
     const canvasAgentWorkflowOccupiedRects = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.canvasAgentWorkflowOccupiedRects;
-    const findOpenCanvasAgentWorkflowPresetPosition = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.findOpenCanvasAgentWorkflowPresetPosition;
-    const canvasAgentReferenceWorkflowRect = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.canvasAgentReferenceWorkflowRect;
-    const findOpenCanvasAgentReferencePresetPosition = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.findOpenCanvasAgentReferencePresetPosition;
-    const canvasAgentReferenceWorkflowPresetPosition = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.canvasAgentReferenceWorkflowPresetPosition;
     const positionCanvasAgentReferenceWorkflow = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.positionCanvasAgentReferenceWorkflow;
     const positionCanvasAgentVideoMaskWorkflow = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.positionCanvasAgentVideoMaskWorkflow;
     const markCanvasAgentCreatedNode = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.markCanvasAgentCreatedNode;
     const vlmCanvasAgentWorkflowKey = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.vlmCanvasAgentWorkflowKey;
     const findCanvasAgentWorkflowPresetByKey = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.findCanvasAgentWorkflowPresetByKey;
     const tagCanvasAgentWorkflowPreset = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.tagCanvasAgentWorkflowPreset;
-    const canvasAgentWorkflowBounds = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.canvasAgentWorkflowBounds;
     const fitCanvasAgentWorkflowGroup = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.fitCanvasAgentWorkflowGroup;
     const centerCanvasAgentWorkflow = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.centerCanvasAgentWorkflow;
     const createCanvasAgentWorkflowGroup = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.createCanvasAgentWorkflowGroup;
@@ -11355,7 +10882,6 @@
     const createCanvasAgentReservedResultNode = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.createCanvasAgentReservedResultNode;
     const canvasAgentManualMaskWorkflowNodes = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.canvasAgentManualMaskWorkflowNodes;
     const findCanvasAgentReservedResultNodeForPreset = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.findCanvasAgentReservedResultNodeForPreset;
-    const runCanvasAgentManualMaskPreset = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.runCanvasAgentManualMaskPreset;
     const prepareCanvasAgentManualMaskWorkflow = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.prepareCanvasAgentManualMaskWorkflow;
     const PRESET_RUN_LOCK_CONTEXT_SOURCE = {
         timeSource: {
@@ -11368,7 +10894,7 @@
             presetRunLockSource: PRESET_RUN_LOCK_CONTEXT_SOURCE
         })
         : {};
-    const getPendingPresetRunSet = () => PRESET_RUN_LOCK_CONTROLLER.getPendingPresetRuns?.() || new Set();
+    const getPendingPresetRunSet = () => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.getPendingPresetRunsForProject?.() || new Set();
     const isPendingPresetRun = runKey => !!PRESET_RUN_LOCK_CONTROLLER.isPending?.(runKey);
     const markPendingPresetRun = runKey => PRESET_RUN_LOCK_CONTROLLER.markPending?.(runKey);
     const clearPendingPresetRun = runKey => PRESET_RUN_LOCK_CONTROLLER.clearPending?.(runKey);
@@ -11389,6 +10915,39 @@
     const pollRunWithController = (runId, options) => typeof CANVAS_RUN_POLLING_CONTROLLER.pollRun === 'function'
         ? CANVAS_RUN_POLLING_CONTROLLER.pollRun(runId, options)
         : Promise.resolve({ ok: false, error: 'run polling controller unavailable' });
+    CANVAS_BACKGROUND_RUN_CONTROLLER = WORKBENCH_CANVAS_RUN_POLLING.createCanvasBackgroundRunController?.({
+        t: en => t(en, undefined, { __lang: runtimeUiLang() }),
+        getProject: () => project,
+        isProjectVisible: id => PROJECT_NAVIGATION_CONTROLLER?.isProjectOpen(id) ?? true,
+        getIdentityKey: () => {
+            const context = getWorkbenchUserContext();
+            return JSON.stringify([context?.user_did || '', context?.owner || '', context?.scope || '']);
+        },
+        getScopeKey: () => getStorageKey(getStorageScope()),
+        pollRun: pollRunWithController,
+        pollRequest: (job, options) => {
+            const controller = new AbortController();
+            const timeout = window.setTimeout(() => controller.abort(), 20000);
+            const request = job.kind === 'qwen_tts'
+                ? sendCanvasQwenTtsPollRequest(job.runId, { signal: controller.signal })
+                : sendCanvasPollRunRequest(job.runId, { after_preview_serial: options.after_preview_serial,
+                    include_preview: options.foreground, signal: controller.signal });
+            return request.finally(() => window.clearTimeout(timeout));
+        },
+        getPreviewSerial: id => resultPreviewLastSerial(id),
+        onProjectStateChanged: () => { if (root) renderAll({ inspector: false }); scheduleSave(); },
+        cacheResult: (job, response) => CANVAS_PROJECT_PERSISTENCE_CONTROLLER.cacheBackgroundRunResponse?.(job, response),
+        applyResult: (job, response) => {
+            if (job.kind === 'qwen_tts') QWEN_TTS_RUNTIME_CONTROLLER.applyQwenTtsRunStatus?.(
+                job.runId, job.resultNodeId, job.producerNodeId, response);
+            else CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.applyCanvasRunStatus?.(
+                job.runId, job.resultNodeId, job.producerNodeId, response);
+            const run = (project.runs || []).find(item => item.id === job.runId);
+            if (run) delete run.background_response;
+            if (response.state === 'finished') refreshMainGalleryAfterCanvasRun(response);
+        },
+        onChanged: () => PROJECT_NAVIGATION_CONTROLLER?.sync()
+    }) || null;
     const CANVAS_GALLERY_REFRESH_CONTEXT_SOURCE = {
         windowSource: {
             getWindow: () => window
@@ -11543,7 +11102,8 @@
             sendCanvasRunNodeRequest: (...args) => sendCanvasRunNodeRequest(...args)
         },
         pollingSource: {
-            pollRunWithController: (...args) => pollRunWithController(...args)
+            pollRunWithController: (...args) => pollRunWithController(...args),
+            trackSubmittedRun: config => CANVAS_BACKGROUND_RUN_CONTROLLER?.trackRun(config)
         },
         gallerySource: {
             refreshMainGalleryAfterCanvasRun: (...args) => refreshMainGalleryAfterCanvasRun(...args)
@@ -11629,7 +11189,6 @@
             resultStatusDomSource: RESULT_STATUS_DOM_CONTEXT_SOURCE
         })
         : {};
-    const refreshResultStatusDom = (...args) => !!CANVAS_RESULT_STATUS_DOM_CONTROLLER.refreshResultStatusDom?.(...args);
     const RESULT_RUN_ACTION_CONTEXT_SOURCE = {
         projectSource: {
             getProject: () => project
@@ -11648,13 +11207,17 @@
             sendCanvasQwenTtsControlRequest: (...args) => sendCanvasQwenTtsControlRequest(...args)
         },
         presetRuntimeSource: {
-            applyCanvasRunStatus: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.applyCanvasRunStatus?.(...args),
+            applyCanvasRunStatus: (runId, resultNodeId, producerNodeId, response) => CANVAS_BACKGROUND_RUN_CONTROLLER?.trackRun({
+                project, runId, resultNodeId, producerNodeId, response
+            }) || CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.applyCanvasRunStatus?.(runId, resultNodeId, producerNodeId, response),
             pollCanvasRun: (...args) => CANVAS_PRESET_RUN_RUNTIME_CONTROLLER.pollCanvasRun?.(...args)
                 || Promise.resolve({ ok: false, error: 'preset run runtime controller unavailable' }),
             runPresetNode: (...args) => runPresetNode(...args)
         },
         qwenRuntimeSource: {
-            applyQwenTtsRunStatus: (...args) => QWEN_TTS_RUNTIME_CONTROLLER.applyQwenTtsRunStatus?.(...args),
+            applyQwenTtsRunStatus: (runId, resultNodeId, producerNodeId, response) => CANVAS_BACKGROUND_RUN_CONTROLLER?.trackRun({
+                project, runId, resultNodeId, producerNodeId, response, kind: 'qwen_tts'
+            }) || QWEN_TTS_RUNTIME_CONTROLLER.applyQwenTtsRunStatus?.(runId, resultNodeId, producerNodeId, response),
             pollQwenTtsRun: (...args) => QWEN_TTS_RUNTIME_CONTROLLER.pollQwenTtsRun?.(...args)
                 || Promise.resolve({ ok: false, error: 'Qwen TTS runtime controller unavailable' }),
             runQwenTtsNode: (...args) => runQwenTtsNode(...args)
@@ -12073,18 +11636,11 @@
             sam3WorkflowSource: AGENT_SAM3_WORKFLOW_SOURCE
         })
         : {};
-    const canvasAgentSam3WorkflowNodes = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.canvasAgentSam3WorkflowNodes;
-    const canvasAgentSam3WorkflowTitle = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.canvasAgentSam3WorkflowTitle;
-    const setCanvasAgentSam3WorkflowState = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.setCanvasAgentSam3WorkflowState;
-    const canvasAgentSam3WorkflowMaskSignature = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.canvasAgentSam3WorkflowMaskSignature;
-    const findCanvasAgentSam3WorkflowForPreset = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.findCanvasAgentSam3WorkflowForPreset;
     const canvasAgentResultForPresetRun = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.canvasAgentResultForPresetRun;
     const handleCanvasAgentSam3VideoMaskEditorClosed = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentSam3VideoMaskEditorClosed;
     const handleCanvasAgentSam3VideoMaskState = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentSam3VideoMaskState;
     const prepareCanvasAgentVideoMaskWorkflow = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.prepareCanvasAgentVideoMaskWorkflow;
     const handleCanvasAgentSam3VideoMaskReady = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentSam3VideoMaskReady;
-    const handleCanvasAgentWorkflowNodeDeletion = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentWorkflowNodeDeletion;
-    const handleCanvasAgentWorkflowEdgeDeletion = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentWorkflowEdgeDeletion;
 
     const AGENT_MEDIA_CONTEXT_SOURCE = {
             mediaConnectionsSource: {
@@ -12601,15 +12157,7 @@
     CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER || {};
     const connectCanvasAgentImagesToGenerator = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.connectCanvasAgentImagesToGenerator?.(...args)
         || { ok: false, mainSlot: '', refCount: 0 };
-    const connectCanvasAgentMediaToGenerator = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.connectCanvasAgentMediaToGenerator?.(...args)
-        || { ok: false };
-    const canvasAgentMediaConnectionError = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentMediaConnectionError?.(...args) || '';
-    const canvasAgentReferenceUploadSlotForGenerator = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentReferenceUploadSlotForGenerator?.(...args) || '';
     const createCanvasAgentReferencePlaceholderForGenerator = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.createCanvasAgentReferencePlaceholderForGenerator?.(...args) || null;
-    const findCanvasAgentUploadSlotForTarget = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.findCanvasAgentUploadSlotForTarget?.(...args) || '';
-    const canvasAgentMaskUploadSlot = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentMaskUploadSlot?.(...args) || '';
-    const canvasAgentVideoMaskUploadSlot = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentVideoMaskUploadSlot?.(...args) || '';
-    const canvasAgentVideoSourceUploadSlot = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentVideoSourceUploadSlot?.(...args) || '';
     const CANVAS_AGENT_IMAGE_WORKFLOW_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_IMAGE_WORKFLOW_CONTROLLER || {};
     const runCanvasAgentTextToImage = CANVAS_AGENT_IMAGE_WORKFLOW_CONTROLLER.runCanvasAgentTextToImage;
     const runCanvasAgentImageEdit = CANVAS_AGENT_IMAGE_WORKFLOW_CONTROLLER.runCanvasAgentImageEdit;
@@ -12620,40 +12168,19 @@
     const runCanvasAgentVideoReferenceToVideo = CANVAS_AGENT_VIDEO_WORKFLOW_CONTROLLER.runCanvasAgentVideoReferenceToVideo;
     const runCanvasAgentVideoEdit = CANVAS_AGENT_VIDEO_WORKFLOW_CONTROLLER.runCanvasAgentVideoEdit;
     const CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER || {};
-    const encodeCanvasAgentVideoToolChoice = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.encodeCanvasAgentVideoToolChoice;
     const decodeCanvasAgentVideoToolChoice = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.decodeCanvasAgentVideoToolChoice;
-    const canvasAgentVideoQuickToolCandidateSpecs = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentVideoQuickToolCandidateSpecs;
     const canvasAgentVideoQuickToolSpec = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentVideoQuickToolSpec;
-    const canvasAgentVideoQuickToolPresetName = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentVideoQuickToolPresetName;
-    const isCanvasAgentAnimateVideoPreset = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.isCanvasAgentAnimateVideoPreset;
-    const canvasAgentVideoQuickToolRequiresSam3Mask = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentVideoQuickToolRequiresSam3Mask;
     const canvasAgentVideoQuickToolChoiceFromSettings = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentVideoQuickToolChoiceFromSettings;
-    const canvasAgentVideoQuickToolChoiceLabel = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentVideoQuickToolChoiceLabel;
-    const canvasAgentVideoQuickToolChoiceOptions = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentVideoQuickToolChoiceOptions;
     const canvasAgentVideoQuickToolChoiceOptionHtml = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentVideoQuickToolChoiceOptionHtml;
-    const resolveCanvasAgentVideoQuickToolChoice = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.resolveCanvasAgentVideoQuickToolChoice;
     const canvasAgentVideoQuickTools = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentVideoQuickTools;
-    const startCanvasAgentVideoReferencePickForTool = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.startCanvasAgentVideoReferencePickForTool;
-    const getCanvasAgentVideoQuickToolImageReferences = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.getCanvasAgentVideoQuickToolImageReferences;
-    const canvasAgentConnectVideoQuickToolImageReference = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.canvasAgentConnectVideoQuickToolImageReference;
     const runCanvasAgentLivePortraitExpressionQuickTool = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.runCanvasAgentLivePortraitExpressionQuickTool;
     const runCanvasAgentVideoQuickTool = CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER.runCanvasAgentVideoQuickTool;
     const CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER || {};
     const canvasAgentQuickTools = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.canvasAgentQuickTools;
-    const canvasAgentQuickToolSpec = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.canvasAgentQuickToolSpec;
-    const canvasAgentQuickToolPresetName = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.canvasAgentQuickToolPresetName;
-    const configureCanvasAgentQuickToolNode = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.configureCanvasAgentQuickToolNode;
-    const canvasAgentStyleTransferWorkflowRect = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.canvasAgentStyleTransferWorkflowRect;
-    const findOpenCanvasAgentStyleTransferPresetPosition = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.findOpenCanvasAgentStyleTransferPresetPosition;
-    const canvasAgentStyleTransferPresetPosition = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.canvasAgentStyleTransferPresetPosition;
-    const positionCanvasAgentStyleTransferWorkflow = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.positionCanvasAgentStyleTransferWorkflow;
     const runCanvasAgentQuickTool = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.runCanvasAgentQuickTool;
     const confirmOutpaintFromOverlay = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.confirmOutpaintFromOverlay;
-    const createCanvasAgentStyleTransferWorkflow = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.createCanvasAgentStyleTransferWorkflow;
     const CANVAS_AGENT_AUDIO_WORKFLOW_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_AUDIO_WORKFLOW_CONTROLLER || {};
     const runCanvasAgentTextToAudio = CANVAS_AGENT_AUDIO_WORKFLOW_CONTROLLER.runCanvasAgentTextToAudio;
-    const runCanvasAgentAudioPresetGenerate = CANVAS_AGENT_AUDIO_WORKFLOW_CONTROLLER.runCanvasAgentAudioPresetGenerate;
-    const runCanvasAgentQwenTtsVoiceDesign = CANVAS_AGENT_AUDIO_WORKFLOW_CONTROLLER.runCanvasAgentQwenTtsVoiceDesign;
     const runCanvasAgentAudioEdit = CANVAS_AGENT_AUDIO_WORKFLOW_CONTROLLER.runCanvasAgentAudioEdit;
     const CANVAS_AGENT_AUDIO_TOOLS_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_AUDIO_TOOLS_CONTROLLER || {};
     const canvasAgentAudioQuickToolSpec = CANVAS_AGENT_AUDIO_TOOLS_CONTROLLER.canvasAgentAudioQuickToolSpec;
@@ -12662,9 +12189,7 @@
     const setCanvasAgentAudioBridgeSource = CANVAS_AGENT_AUDIO_TOOLS_CONTROLLER.setCanvasAgentAudioBridgeSource;
     const runCanvasAgentAudioBridgeFromNode = CANVAS_AGENT_AUDIO_TOOLS_CONTROLLER.runCanvasAgentAudioBridgeFromNode;
     const CANVAS_AGENT_TOOL_DISPATCH_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_TOOL_DISPATCH_CONTROLLER || {};
-    const canvasAgentCurrentMediaKind = CANVAS_AGENT_TOOL_DISPATCH_CONTROLLER.canvasAgentCurrentMediaKind;
     const canvasAgentContextualQuickTools = CANVAS_AGENT_TOOL_DISPATCH_CONTROLLER.canvasAgentContextualQuickTools;
-    const canvasAgentToolFamily = CANVAS_AGENT_TOOL_DISPATCH_CONTROLLER.canvasAgentToolFamily;
     const runCanvasAgentTool = CANVAS_AGENT_TOOL_DISPATCH_CONTROLLER.runCanvasAgentTool;
 
     let cancelCanvasAgentVlmInstruction = async () => ({ ok: false, cancelled: false, error: 'VLM planner is unavailable' });
@@ -12835,18 +12360,6 @@
         })
         : {};
     const CANVAS_AGENT_PANEL_VIEWS_CONTROLLER = CANVAS_AGENT_PANEL_CONTEXT.CANVAS_AGENT_PANEL_VIEWS_CONTROLLER || {};
-    const renderCanvasAgentDecision = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentDecision;
-    const renderCanvasAgentRunInfo = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentRunInfo;
-    const renderCanvasAgentReferenceChip = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentReferenceChip;
-    const renderCanvasAgentInlineReferences = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentInlineReferences;
-    const renderCanvasAgentReferences = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentReferences;
-    const renderCanvasAgentToolShelf = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentToolShelf;
-    const renderCanvasAgentCompactToolbar = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentCompactToolbar;
-    const renderCanvasAgentResolutionControls = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentResolutionControls;
-    const renderCanvasAgentResolutionButton = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentResolutionButton;
-    const renderCanvasAgentModelChip = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentModelChip;
-    const renderCanvasAgentModelPicker = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentModelPicker;
-    const renderCanvasAgentCustomApiSettingsView = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentCustomApiSettings;
     const renderCanvasAgentSettingsTab = CANVAS_AGENT_PANEL_VIEWS_CONTROLLER.renderCanvasAgentSettingsTab;
     CANVAS_AGENT_PANEL_CONTROLLER = CANVAS_AGENT_PANEL_CONTEXT.CANVAS_AGENT_PANEL_CONTROLLER || {};
 
@@ -12936,15 +12449,8 @@
         })
         : {};
     const CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER = CANVAS_AGENT_INSTRUCTION_CONTEXT.CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER || {};
-    const canvasAgentEscapeRegExp = CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER.canvasAgentEscapeRegExp;
-    const extractCanvasAgentJsonObject = CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER.extractCanvasAgentJsonObject;
-    const JSONDecoderShim = CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER.JSONDecoderShim;
-    const normalizeCanvasAgentInstructionPlan = CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER.normalizeCanvasAgentInstructionPlan;
     const stripCanvasAgentPresetFromPrompt = CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER.stripCanvasAgentPresetFromPrompt;
     const buildCanvasAgentLocalInstructionPlan = CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER.buildCanvasAgentLocalInstructionPlan;
-    const canvasAgentInstructionPresetCandidates = CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER.canvasAgentInstructionPresetCandidates;
-    const canvasAgentPromptTargetRulesText = CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER.canvasAgentPromptTargetRulesText;
-    const canvasAgentInstructionPlanPrompt = CANVAS_AGENT_INSTRUCTION_PLANNER_CONTROLLER.canvasAgentInstructionPlanPrompt;
     CANVAS_AGENT_VLM_INSTRUCTION_CONTROLLER = CANVAS_AGENT_INSTRUCTION_CONTEXT.CANVAS_AGENT_VLM_INSTRUCTION_CONTROLLER || {};
     const cancelCanvasAgentVlmInstructionRequest = CANVAS_AGENT_VLM_INSTRUCTION_CONTROLLER.cancelCanvasAgentVlmInstruction;
     cancelCanvasAgentVlmInstruction = async (...args) => {
@@ -13085,7 +12591,6 @@
         })
         : {};
     const NODE_MENU_TOOLS = CANVAS_NODE_MENU_CONTEXT.NODE_MENU_TOOLS || {};
-    const buildAddNodeContextMenuItems = NODE_MENU_TOOLS.buildAddNodeContextMenuItems;
 
     function workbenchStaticFilePath(path) {
         return WORKBENCH_UTILS.workbenchStaticFilePath(path, document);
@@ -13274,9 +12779,6 @@
         return createDefaultProjectFromProjectContext();
     }
 
-    function syncProjectLanguage(candidate) {
-        return syncProjectLanguageFromProjectContext(candidate);
-    }
 
     function sanitizeProject(raw) {
         return sanitizeProjectFromProjectContext(raw);
@@ -13414,6 +12916,7 @@
 
         CANVAS_LIFECYCLE_CONTROLLER.bindMountedWorkbenchEvents(elements);
         renderAll();
+        CANVAS_BACKGROUND_RUN_CONTROLLER?.syncProject();
         warmDanbooruAutocompleteIndex();
         refreshQwenTtsStylePresets({ silent: true }).then(() => {
             renderNodes();
@@ -13456,17 +12959,8 @@
         return CANVAS_AGENT_ACTION_CONTROLLER?.canvasAgentPrimaryActionMeta?.(...args) || {};
     }
 
-    function canvasAgentPresetSearchText(...args) {
-        return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.canvasAgentPresetSearchText?.(...args) || '';
-    }
 
-    function isCanvasAgentUpscalePresetEntry(...args) {
-        return !!CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.isCanvasAgentUpscalePresetEntry?.(...args);
-    }
 
-    function isCanvasAgentNonUpscalePresetEntry(...args) {
-        return !!CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.isCanvasAgentNonUpscalePresetEntry?.(...args);
-    }
 
     function canvasAgentUpscalePresetEntries(...args) {
         return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.canvasAgentUpscalePresetEntries?.(...args) || [];
@@ -13524,9 +13018,6 @@
         return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.createCanvasAgentPresetProbeNode?.(...args) || null;
     }
 
-    function canvasAgentPresetStatusCacheKey(...args) {
-        return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.canvasAgentPresetStatusCacheKey?.(...args) || '';
-    }
 
     async function getCanvasAgentPresetStatus(...args) {
         return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.getCanvasAgentPresetStatus?.(...args) || null;
@@ -13536,9 +13027,6 @@
         return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.canvasAgentPresetAliasTokensForEntry?.(...args) || [];
     }
 
-    async function runCanvasAgentVlmInstruction(...args) {
-        return CANVAS_AGENT_ACTION_EXECUTION_CONTROLLER?.runCanvasAgentVlmInstruction?.(...args);
-    }
 
 
     function presetResultBasePosition(presetNode) {
@@ -13603,9 +13091,6 @@
         return CANVAS_NODE_APPEARANCE_CONTROLLER.nodeCustomColor?.(node) || '';
     }
 
-    function nodeAccentContrastColor(color) {
-        return CANVAS_NODE_APPEARANCE_CONTROLLER.nodeAccentContrastColor?.(color) || '#f8fafc';
-    }
 
     function applyNodeCustomColorVars(node, nodeEl) {
         return CANVAS_NODE_APPEARANCE_CONTROLLER.applyNodeCustomColorVars?.(node, nodeEl);
@@ -13623,9 +13108,6 @@
         return CANVAS_GROUP_RENDERER?.updateGroupPositionDom?.(groupId);
     }
 
-    function getNodeGroupMembershipRect(node) {
-        return CANVAS_GROUP_RENDERER?.getNodeGroupMembershipRect?.(node) || null;
-    }
 
     function getNodesInsideGroup(group) {
         return CANVAS_GROUP_RENDERER?.getNodesInsideGroup?.(group) || [];
@@ -13675,6 +13157,40 @@
         return nodeRenderSignatureService.nodeOverviewRenderSignature(node);
     }
 
+    const CANVAS_NODE_PRESENTATION_CONTROLLER = WORKBENCH_CANVAS_NODE_PRESENTATION.createCanvasNodePresentationController?.({
+        getProject: () => project,
+        getNode,
+        localize: localizeCanvasLabel,
+        escapeHtml,
+        getSelectedResultAsset,
+        isRunActive: state => isCanvasRunActiveState(state),
+        isRunDisabled: node => CANVAS_PRESET_NODE_RENDERER.isClassicRunDisabled(node),
+        renderAudioWaveformHtml: asset => CANVAS_ASSET_NODE_RENDERER.renderAssetAudioWaveformHtml(asset),
+        assetDisplaySrc: (asset, preferred) => preferred
+            ? safeAssetDisplaySrc({ mime: 'image/webp', thumb: preferred, data_url: preferred }, preferred)
+            : CANVAS_PROJECT_ASSETS_CONTROLLER.safeAssetFullDisplaySrc(asset, ''),
+        getVisiblePresetParams: node => CANVAS_PRESET_NODE_RENDERER.getPresentationParams(node),
+        presetParamValue: (node, param) => CANVAS_PRESET_NODE_RENDERER.presetParamValue(node, param),
+        renderParamGroup: (node, id) => CANVAS_PRESET_NODE_RENDERER.renderPresetParamGroup(node, id),
+        renderModelStatusHtml: node => CANVAS_PRESET_NODE_RENDERER.renderPresetModelStatusHtml(node),
+        commitUi: (node, patch) => {
+            if (getNode(node.id) !== node) return;
+            pushHistory(localizeCanvasLabel('Change node presentation'));
+            node.ui = Object.assign({}, node.ui || {}, patch);
+            scheduleSave();
+        },
+        afterDomChange: (node, el) => {
+            ensureWorkbenchFormFieldNames(el, node.id);
+            injectParamResetButtons(el);
+            CANVAS_MEDIA_PLAYBACK_CONTROLLER.bindNodeMediaControlEvents(el);
+        },
+        refreshLayout: (nodeId, options) => refreshNodeLayoutForAgent(nodeId, 0, options),
+        focusResult: node => focusNode(node),
+        resultAction: (node, action, button, evt) => CANVAS_NODE_ACTION_CONTROLLER.handleNodeAction(node, action, button, evt),
+        selectResultAsset: (node, index) => CANVAS_RESULT_ASSET_CONTROLLER.selectResultAsset(node, index),
+        onResultSelectionChange: () => { scheduleSave(); renderNodes(); },
+    });
+
     const nodeRenderSignatureService = WORKBENCH_CANVAS_NODE_RENDER_SIGNATURE.createCanvasNodeRenderSignature({
         assetSource: {
             getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
@@ -13685,7 +13201,12 @@
             nodeStatusState: (...args) => nodeStatusState(...args),
             compareSourceSignature: (...args) => compareSourceSignature(...args),
             getNodeTextOutput: (...args) => getNodeTextOutput(...args),
-            getTextNodeInputSource: (...args) => getTextNodeInputSource(...args)
+            getTextNodeInputSource: (...args) => getTextNodeInputSource(...args),
+            getPresetControlSignature: node => ({
+                params: (CANVAS_NODE_PRESENTATION_CONTROLLER?.visibleParams(node) || CANVAS_PRESET_NODE_RENDERER.getPresentationParams(node)).map(param => [param.key, param.interactive, getPromptTextSourceNode(node, param.key)?.id || '']),
+                classic: node.type === 'classic' ? ['seed_random', 'uov_method', 'inpaint_mode', 'inpaint_engine', 'enhance_uov_method', 'enhance_uov_processing_order'].map(key => node.params?.[key]) : null,
+                special: CANVAS_PRESET_NODE_RENDERER.presetSpecialControllerState(node),
+            }),
         },
         projectSource: { getNode: (...args) => getNode(...args) },
         timelineSource: { getTimelineSourceAsset: (...args) => getTimelineSourceAsset(...args) },
@@ -13703,13 +13224,7 @@
         }
     });
 
-    function mediaAssetRenderRootKey(asset) {
-        return nodeRenderSignatureService.mediaAssetRenderRootKey(asset);
-    }
 
-    function mediaAssetRenderKey(asset) {
-        return nodeRenderSignatureService.mediaAssetRenderKey(asset);
-    }
 
     function nodeRenderSignature(node) {
         return nodeRenderSignatureService.nodeRenderSignature(node);
@@ -13775,9 +13290,6 @@
         return CANVAS_CONFIG_VALUES_CONTROLLER.getClassicInpaintEngines(node);
     }
 
-    function resolveClassicInpaintTaskMethod(node) {
-        return CANVAS_CONFIG_VALUES_CONTROLLER.resolveClassicInpaintTaskMethod(node);
-    }
 
     function normalizeClassicInpaintMode(mode) {
         return CANVAS_CONFIG_VALUES_CONTROLLER.normalizeClassicInpaintMode(mode);
@@ -13846,9 +13358,6 @@
         return CANVAS_NODE_PARAM_CONTROLLER?.handleEnhanceUovParamChange?.(nodeId, key, value, inputType);
     }
 
-    function applyInpaintModeDefaults(node, newMode) {
-        return CANVAS_NODE_PARAM_CONTROLLER?.applyInpaintModeDefaults?.(node, newMode);
-    }
 
     function handleInpaintModeChange(nodeId, newMode) {
         return CANVAS_NODE_PARAM_CONTROLLER?.handleInpaintModeChange?.(nodeId, newMode);
@@ -13906,13 +13415,7 @@
         return !!CANVAS_CONNECTION_MEDIA_CONTROLLER.isImageProducingPresetNode?.(node);
     }
 
-    function resultExpectedMediaKind(node) {
-        return CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.resultExpectedMediaKind?.(node) || '';
-    }
 
-    function isResultImageReferenceSource(node) {
-        return !!CANVAS_SPECIAL_MEDIA_SOURCE_CONTROLLER.isResultImageReferenceSource?.(node);
-    }
 
     function isPresetConfigKind(kind) {
         return CANVAS_CONFIG_VALUES_CONTROLLER.isPresetConfigKind(kind);
@@ -13974,13 +13477,7 @@
         return CANVAS_WILDCARDS_RUNTIME_CONTROLLER.canvasRunPromptParamText(value);
     }
 
-    function getTranslationCacheBucket(node, target, key) {
-        return TRANSLATION_CONTROLLER?.getTranslationCacheBucket?.(node, target, key) || null;
-    }
 
-    function getTranslationCacheEntry(node, target, key, text) {
-        return TRANSLATION_CONTROLLER?.getTranslationCacheEntry?.(node, target, key, text) || null;
-    }
 
     function getTranslationFieldState(node, target, key, value) {
         return TRANSLATION_CONTROLLER?.getTranslationFieldState?.(node, target, key, value) || 'idle';
@@ -14099,9 +13596,6 @@
         return CANVAS_BATCH_ANY_EDIT_CONTROLLER.batchAnySelectedItemIds(node);
     }
 
-    function setBatchAnySelectedItemIds(node, ids) {
-        return CANVAS_BATCH_ANY_EDIT_CONTROLLER.setBatchAnySelectedItemIds(node, ids);
-    }
 
     function refreshBatchAnyActiveItem(node) {
         return CANVAS_BATCH_ANY_EDIT_CONTROLLER.refreshBatchAnyActiveItem(node);
@@ -14115,9 +13609,6 @@
         return CANVAS_BATCH_ANY_EDIT_CONTROLLER.selectBatchAnyItem(node, index, options);
     }
 
-    function batchAnyInputEdges(node) {
-        return CANVAS_BATCH_ANY_EDIT_CONTROLLER.batchAnyInputEdges(node);
-    }
 
     function batchAnyInputEdgeForDrag(node) {
         return CANVAS_BATCH_ANY_EDIT_CONTROLLER.batchAnyInputEdgeForDrag(node);
@@ -14530,9 +14021,6 @@
         return PRESET_SPECIAL_VIEWER_CONTROLLER.presetSpecialViewerUrl?.(kind) || '';
     }
 
-    function presetSpecialInputAssetUrl(node) {
-        return PRESET_SPECIAL_VIEWER_CONTROLLER.presetSpecialInputAssetUrl?.(node) || '';
-    }
 
     const CANVAS_PRESET_NODE_CLASSIFIER = typeof WORKBENCH_CANVAS_PRESET_NODE_CLASSIFIER.createCanvasPresetNodeClassifier === 'function'
         ? WORKBENCH_CANVAS_PRESET_NODE_CLASSIFIER.createCanvasPresetNodeClassifier({ getPresetSchema, getPresetTheme, getPresetThemeInfo })
@@ -14595,9 +14083,6 @@
         return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardModeForPreset(node);
     }
 
-    async function attachCharacterMediaToPreset(nodeId, card) {
-        return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_EDITOR_CONTROLLER.attachCharacterMediaToPreset(nodeId, card);
-    }
     function h3StoryboardOptionsForPreset(node) {
         return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardOptionsForPreset(node);
     }
@@ -14605,13 +14090,7 @@
     function h3StoryboardStateForPreset(node) {
         return CANVAS_MINIMAX_H3_STORYBOARD_PRESET_DATA_SERVICE.h3StoryboardStateForPreset(node);
     }
-    function ltx23GuideModeForPreset(node) {
-        return CANVAS_LTX23_GUIDE_EDITOR_CONTROLLER.ltx23GuideModeForPreset?.(node) || 'keyframes';
-    }
 
-    function presetUploadSourceForSlot(node, slot) {
-        return CANVAS_LIVEPORTRAIT_VIDEO_EXPRESSION_EDITOR_CONTROLLER.presetUploadSourceForSlot?.(node, slot) || null;
-    }
 
     function livePortraitVideoExpressionSourceInfo(node) {
         return CANVAS_LIVEPORTRAIT_VIDEO_EXPRESSION_EDITOR_CONTROLLER.livePortraitVideoExpressionSourceInfo?.(node)
@@ -14622,9 +14101,6 @@
         return styleSelectorFindForPreset?.(presetNode, STYLE_SELECTOR_NODE_CONTEXT) || null;
     }
 
-    function styleSelectorLinkedPreset(selectorNode) {
-        return styleSelectorLinkedPresetForNode?.(selectorNode, STYLE_SELECTOR_NODE_CONTEXT) || null;
-    }
 
     const CANVAS_PRESET_SPECIAL_PANEL_RENDERER = typeof WORKBENCH_CANVAS_PRESET_SPECIAL_PANEL_RENDERER.createCanvasPresetSpecialPanelRenderer === 'function'
         ? WORKBENCH_CANVAS_PRESET_SPECIAL_PANEL_RENDERER.createCanvasPresetSpecialPanelRenderer({
@@ -14711,9 +14187,6 @@
         return CANVAS_CONFIG_VALUES_CONTROLLER.normalizeStyleSelections(value);
     }
 
-    function firstStyleConfigValue(source) {
-        return CANVAS_CONFIG_VALUES_CONTROLLER.firstStyleConfigValue(source);
-    }
 
     function getConfigTargetPresetNode(configNode) {
         return CANVAS_CONFIG_CONNECTION_CONTROLLER.getConfigTargetPresetNode(configNode);
@@ -14744,17 +14217,8 @@
         return CANVAS_CONFIG_VALUES_CONTROLLER.styleConfigSelectionFromValues(values, fallback);
     }
 
-    function getStyleCatalogEntries() {
-        return CANVAS_STYLE_CATALOG_CONTROLLER.getStyleCatalogEntries();
-    }
 
-    function getStyleChoicesFromCatalog() {
-        return CANVAS_STYLE_CATALOG_CONTROLLER.getStyleChoicesFromCatalog();
-    }
 
-    function getStyleChoicesFromDom() {
-        return CANVAS_STYLE_CATALOG_CONTROLLER.getStyleChoicesFromDom();
-    }
 
     function getStylePreviewCatalogFromDom() {
         return CANVAS_STYLE_CATALOG_CONTROLLER.getStylePreviewCatalogFromDom();
@@ -14823,9 +14287,6 @@
         return CANVAS_CONFIG_VALUES_CONTROLLER.normalizeResolutionProfile(defaults);
     }
 
-    function getResolutionSourceSize(presetNode, profile) {
-        return CANVAS_CONFIG_VALUES_CONTROLLER.getResolutionSourceSize(presetNode, profile);
-    }
 
     function resolveResolutionBaseDims(values, ratios) {
         return CANVAS_CONFIG_VALUES_CONTROLLER.resolveResolutionBaseDims(values, ratios);
@@ -14844,17 +14305,8 @@
         return arguments.length >= 2 ? (selectedAsset || null) : getSelectedResultAsset(node);
     }
 
-    function resultRunRecord(node) {
-        return CANVAS_RESULT_METADATA_CONTROLLER.resultRunRecord?.(node) || null;
-    }
 
-    function resultMetadataSources(node) {
-        return CANVAS_RESULT_METADATA_CONTROLLER.resultMetadataSources?.(node) || {};
-    }
 
-    function stringifyMetadataValue(value) {
-        return CANVAS_RESULT_METADATA_CONTROLLER.stringifyMetadataValue?.(value) || '';
-    }
 
     function resultMetadataRows(node, asset) {
         return CANVAS_RESULT_METADATA_CONTROLLER.resultMetadataRows?.(node, asset) || [];
@@ -15004,21 +14456,12 @@
         return CANVAS_TIMELINE_CONTEXT.refreshTimelineFeatherControlDom?.(scopeEl, value);
     }
 
-    function setTimelineMaskImageStyle(el, maskSrc) {
-        return CANVAS_TIMELINE_CONTEXT.setTimelineMaskImageStyle?.(el, maskSrc);
-    }
 
-    function refreshTimelineMaskImageOnly(stageEl, clip) {
-        return CANVAS_TIMELINE_CONTEXT.refreshTimelineMaskImageOnly?.(stageEl, clip) || false;
-    }
 
     function refreshTimelineMaskFeatherDom(nodeEl, node) {
         return CANVAS_TIMELINE_CONTEXT.refreshTimelineMaskFeatherDom?.(nodeEl, node);
     }
 
-    function applyTimelinePreviewLayerStyle(layer, clip, node) {
-        return CANVAS_TIMELINE_CONTEXT.applyTimelinePreviewLayerStyle?.(layer, clip, node);
-    }
 
     function syncTimelinePreviewVideos(nodeEl, node) {
         return CANVAS_TIMELINE_CONTEXT.syncTimelinePreviewVideos?.(nodeEl, node);
@@ -15046,13 +14489,7 @@
         return remapTimelineClipMaskForGeometryChangeController?.(node, clip, oldGeometry) || false;
     }
 
-    function drawTimelineMaskStrokes(ctx, width, height, strokes, options) {
-        return timelineMaskController?.drawTimelineMaskStrokes(ctx, width, height, strokes, options);
-    }
 
-    function ensureTimelineMaskCanvas(stageEl, node, clip) {
-        return timelineMaskController?.ensureTimelineMaskCanvas(stageEl, node, clip) || null;
-    }
 
 
     function refreshTimelinePenOverlayDom(stageEl, clip, options) {
@@ -15108,9 +14545,6 @@
         return CANVAS_EDGE_RENDERER.getOutputPoint(node);
     }
 
-    function getInputPoint(node, slot, edgeType) {
-        return CANVAS_EDGE_RENDERER.getInputPoint(node, slot, edgeType);
-    }
 
     function cssEscape(value) {
         if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(String(value || ''));
@@ -15196,9 +14630,6 @@
         return CANVAS_RESULT_INSPECTOR_CONTROLLER.renderResultInspector?.(node) || '';
     }
 
-    function getNodeRunErrorText(node) {
-        return CANVAS_RESULT_INSPECTOR_CONTROLLER.getNodeRunErrorText?.(node) || '';
-    }
 
     function handleResultInspectorAction(node, action, actionElement, evt) {
         return !!CANVAS_RESULT_INSPECTOR_CONTROLLER.handleResultInspectorAction?.(node, action, actionElement, evt);
@@ -15237,9 +14668,6 @@
         return CANVAS_NODE_PARAM_CONTROLLER?.syncTwinParamInputs?.(...args);
     }
 
-    function bindImageNodeDropEvents(nodeEl, node) {
-        return CANVAS_NODE_EVENT_CONTROLLER?.bindImageNodeDropEvents?.(nodeEl, node);
-    }
 
 
     function inputTargetAcceptsMultiple(target) {
@@ -15254,13 +14682,7 @@
         return CANVAS_CONNECTION_CONTROLLER.connectSourceToTarget(fromId, target, options);
     }
 
-    function findNearestConnectionTarget(clientX, clientY) {
-        return CANVAS_CONNECTION_CONTROLLER.findNearestConnectionTarget(clientX, clientY);
-    }
 
-    function isConnectionTargetCompatible(fromId, target) {
-        return CANVAS_CONNECTION_CONTROLLER.isConnectionTargetCompatible(fromId, target);
-    }
 
     function getHandleCenterWorldPoint(handle) {
         return viewportGetHandleCenterWorldPoint(handle, viewport, project.viewport);
@@ -15305,9 +14727,6 @@
         return CANVAS_GROUP_INTERACTION_CONTROLLER.openGroupContextMenu(group, x, y);
     }
 
-    function appendAudioWorkflowBridgeMenuItems(items, node) {
-        return CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.appendAudioWorkflowBridgeMenuItems(items, node);
-    }
 
     function openImageMediaContextMenu(node, x, y) {
         return CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.openImageMediaContextMenu(node, x, y);
@@ -15321,40 +14740,19 @@
         return CANVAS_MEDIA_CONTEXT_MENU_CONTROLLER.openAudioMediaContextMenu(node, x, y);
     }
 
-    function openNodeContextMenu(node, x, y) {
-        return CANVAS_NODE_CONTEXT_MENU_CONTROLLER.openNodeContextMenu(node, x, y);
-    }
     function openResultAssetContextMenu(node, index, x, y) {
         return CANVAS_RESULT_CONTEXT_MENU_CONTROLLER.openResultAssetContextMenu?.(node, index, x, y);
     }
 
-    function inputTargetDisplayLabel(target) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.inputTargetDisplayLabel(target);
-    }
 
-    function mediaCreationOption(kind, imported) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.mediaCreationOption(kind, imported);
-    }
 
     function inputTargetCreationOptions(target) {
         return CANVAS_INPUT_CREATION_CONTROLLER.inputTargetCreationOptions(target);
     }
 
-    function inputUpstreamWorld(target, nodeType) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.inputUpstreamWorld(target, nodeType);
-    }
 
-    function finishCreatedInputSource(sourceNode, target) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.finishCreatedInputSource(sourceNode, target);
-    }
 
-    async function importMediaInputSource(target, mediaKind, world) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.importMediaInputSource(target, mediaKind, world);
-    }
 
-    function createInputSourceByOption(target, optionKey, world) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.createInputSourceByOption(target, optionKey, world);
-    }
 
     function openInputPortCreateMenu(target, x, y, world) {
         return CANVAS_INPUT_CREATION_CONTROLLER.openInputPortCreateMenu(target, x, y, world);
@@ -15436,9 +14834,6 @@
         return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.canvasAgentPresetOptionHtml?.(...args) || '';
     }
 
-    function renderCanvasAgentCustomApiSettings(settings) {
-        return renderCanvasAgentCustomApiSettingsView?.(settings) || '';
-    }
 
     function renderCanvasSettingsPanel() {
         return CANVAS_SETTINGS_CONTROLLER.renderCanvasSettingsPanel();
@@ -15449,9 +14844,6 @@
         return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER.refreshCanvasAgentAvailablePresets(options);
     }
 
-    function openSettingsMenu(anchor) {
-        return CANVAS_SETTINGS_CONTROLLER?.openSettingsMenu?.(anchor);
-    }
 
     function toggleSetting(key) {
         return CANVAS_SETTINGS_CONTROLLER?.toggleSetting?.(key);
@@ -15505,9 +14897,6 @@
         return CANVAS_VIEWPORT_FIT_CONTROLLER.centerCanvas?.();
     }
 
-    function getNodesBounds() {
-        return CANVAS_VIEWPORT_FIT_CONTROLLER.getNodesBounds?.() || { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-    }
 
     async function importSelectedTransferAt(world) {
         return CANVAS_MEDIA_IMPORT_CONTROLLER.importSelectedTransferAt(world);
@@ -15597,18 +14986,11 @@
     const fetchDanbooruGalleryPosts = (...args) => typeof DANBOORU_GALLERY_CONTROLLER.fetchDanbooruGalleryPosts === 'function'
         ? DANBOORU_GALLERY_CONTROLLER.fetchDanbooruGalleryPosts(...args)
         : Promise.reject(new Error('Danbooru gallery controller is unavailable'));
-    const danbooruGalleryImageProxyUrl = (...args) => DANBOORU_GALLERY_CONTROLLER.danbooruGalleryImageProxyUrl?.(...args) || '';
-    const normalizeDanbooruBrowserPost = (...args) => DANBOORU_GALLERY_CONTROLLER.normalizeDanbooruBrowserPost?.(...args) || null;
-    const danbooruPostExtension = (...args) => DANBOORU_GALLERY_CONTROLLER.danbooruPostExtension?.(...args) || 'jpg';
     const danbooruPostMediaType = (...args) => DANBOORU_GALLERY_CONTROLLER.danbooruPostMediaType?.(...args) || 'image';
-    const danbooruPostPrompt = (...args) => DANBOORU_GALLERY_CONTROLLER.danbooruPostPrompt?.(...args) || '';
     const importDanbooruGalleryPost = (...args) => typeof DANBOORU_GALLERY_CONTROLLER.importDanbooruGalleryPost === 'function'
         ? DANBOORU_GALLERY_CONTROLLER.importDanbooruGalleryPost(...args)
         : Promise.resolve(null);
 
-    async function applyTransferItemToImageNode(node, item, options) {
-        return MEDIA_EDIT_CONTROLLER.applyTransferItemToImageNode(node, item, options);
-    }
 
     async function applyImageFileToNode(node, file, options) {
         return MEDIA_EDIT_CONTROLLER.applyImageFileToNode(node, file, options);
@@ -15622,41 +15004,26 @@
         return CANVAS_MEDIA_IMPORT_CONTROLLER.addImageNodeFromFile(file, world, options);
     }
 
-    function getInputImageNodePosition(targetNode, handle, size) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.getInputImageNodePosition(targetNode, handle, size);
-    }
 
     function createEmptyImageNodeForInput(targetNode, slotLabel, handle) {
         return CANVAS_INPUT_CREATION_CONTROLLER.createEmptyImageNodeForInput(targetNode, slotLabel, handle);
     }
 
-    function createEmptyMediaNodeForInput(targetNode, mediaKind, slotLabel, handle) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.createEmptyMediaNodeForInput(targetNode, mediaKind, slotLabel, handle);
-    }
 
     function createNodeForUploadInput(targetNode, slot, handle) {
         return CANVAS_INPUT_CREATION_CONTROLLER.createNodeForUploadInput(targetNode, slot, handle);
     }
 
-    async function createVideoNodeForUploadInput(targetNode, slot, handle) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.createVideoNodeForUploadInput(targetNode, slot, handle);
-    }
 
     async function uploadSourceVideoForSam3Node(targetNode, handle) {
         return CANVAS_INPUT_CREATION_CONTROLLER.uploadSourceVideoForSam3Node(targetNode, handle);
     }
 
-    function createImageNodeForUploadInput(targetNode, slot, handle) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.createImageNodeForUploadInput(targetNode, slot, handle);
-    }
 
     function createAdvancedMaskNodeForClassicInput(targetNode, handle) {
         return CANVAS_INPUT_CREATION_CONTROLLER.createAdvancedMaskNodeForClassicInput(targetNode, handle);
     }
 
-    function createSam3VideoMaskNodeForPresetInput(targetNode, handle) {
-        return CANVAS_INPUT_CREATION_CONTROLLER.createSam3VideoMaskNodeForPresetInput(targetNode, handle);
-    }
 
     function createImageNodeForImageInput(targetNode, kind, slot, handle) {
         return CANVAS_INPUT_CREATION_CONTROLLER.createImageNodeForImageInput(targetNode, kind, slot, handle);
@@ -15670,9 +15037,6 @@
         return CANVAS_BATCH_ANY_CREATION_CONTROLLER.addBatchAnyNode(world, options);
     }
 
-    async function createBatchAnyItemFromFile(file, kind) {
-        return CANVAS_BATCH_ANY_CREATION_CONTROLLER.createBatchAnyItemFromFile(file, kind);
-    }
 
     async function materializeBatchAnyItemForStorage(nodeId, itemId) {
         return CANVAS_PROJECT_ASSETS_CONTROLLER.materializeBatchAnyItemForStorage(nodeId, itemId);
@@ -15682,17 +15046,11 @@
         return CANVAS_BATCH_ANY_CONNECTION_CONTROLLER.createBatchAnyInputEdge(fromId, toId, options);
     }
 
-    async function addBatchAnyFilesToNode(node, files) {
-        return CANVAS_BATCH_ANY_CREATION_CONTROLLER.addBatchAnyFilesToNode(node, files);
-    }
 
     function openBatchAnyFilePicker(node) {
         return CANVAS_BATCH_ANY_CREATION_CONTROLLER.openBatchAnyFilePicker(node);
     }
 
-    async function applyMediaFileToNode(node, file, options) {
-        return MEDIA_EDIT_CONTROLLER.applyMediaFileToNode(node, file, options);
-    }
 
     async function materializeNodeAssetForStorage(nodeId, options) {
         return CANVAS_PROJECT_ASSETS_CONTROLLER.materializeNodeAssetForStorage(nodeId, options);
@@ -15881,6 +15239,10 @@
             getProject: () => project,
             getProjectId: () => PROJECT_ID,
             getCurrentProjectId: () => project.id || PROJECT_ID,
+            getScopeKey: () => getStorageKey(getStorageScope()),
+            openProject: (id, options) => PROJECT_NAVIGATION_CONTROLLER?.select(id, options),
+            isProjectOpen: id => PROJECT_NAVIGATION_CONTROLLER?.isProjectOpen(id) ?? true,
+            requestDeleteDraft: (id, modal) => PROJECT_NAVIGATION_CONTROLLER?.requestDeleteDraft(id, modal),
             handleProjectDeleted,
             openProjectJsonPicker,
             saveCurrentProject: () => saveProject(false, { persist: true, backupExisting: true }),
@@ -15888,7 +15250,7 @@
         },
         requestSource: {
             deleteProject: sendCanvasProjectDeleteRequest,
-            listProjects: sendCanvasProjectListRequest
+            listProjects: () => PROJECT_NAVIGATION_CONTROLLER?.listProjects() || sendCanvasProjectListRequest()
         },
         viewSource: {
             closeContextMenu,
@@ -15909,6 +15271,44 @@
         })
         : {};
     PROJECT_MANAGER_CONTEXT = CANVAS_PROJECT_MANAGER_CONTEXT.PROJECT_MANAGER_CONTEXT || {};
+    PROJECT_NAVIGATION_CONTROLLER = WORKBENCH_PROJECT_MANAGER.createProjectNavigationController?.({
+        t: en => t(en, undefined, { __lang: runtimeUiLang() }),
+        escapeHtml,
+        getRoot: () => root,
+        getProject: () => project,
+        getScopeKey: () => getStorageKey(getStorageScope()),
+        getStorage: () => localStorage,
+        normalizeProjectId: id => String(sanitizeStoragePart(id) || '').replace(/[:]/g, '_') || PROJECT_ID,
+        getCachedProjects: () => CANVAS_PROJECT_PERSISTENCE_CONTROLLER.cachedProjectEntries?.() || [],
+        cacheCurrentProject: () => saveProject(true, { persist: false }),
+        removeBrowserDraft: id => CANVAS_PROJECT_PERSISTENCE_CONTROLLER.removeBrowserDraft?.(id),
+        onDraftDeleted: id => {
+            if (project.id !== id) return;
+            stopTimelinePlayback();
+            setWorkbenchProject({ ...createDefaultProject(), id: uid('closed') });
+            resetRenderedProjectDomCache();
+            CANVAS_SELECTION_CONTROLLER.resetSelectionState();
+            resetHistory();
+            renderAll();
+        },
+        onProjectActivated: () => { CANVAS_BACKGROUND_RUN_CONTROLLER?.syncProject(); renderAll(); },
+        getProjectRunStatus: id => CANVAS_BACKGROUND_RUN_CONTROLLER?.getProjectStatus(id),
+        exportDraft: () => {
+            const snapshot = compactProjectForStorage(project, { stripStorage: false });
+            const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${project.id || 'canvas'}.canvas.json`;
+            link.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        },
+        listProjects: sendCanvasProjectListRequest,
+        switchProjectById,
+        prompt: (...args) => window.prompt(...args),
+        nowIso,
+        showToast,
+        openManager: () => openProjectListPanel()
+    }) || null;
 
     async function openProjectListPanel() {
         return projectManagerOpenPanel(PROJECT_MANAGER_CONTEXT);
@@ -16295,21 +15695,9 @@
         return CANVAS_CONFIG_CONNECTION_CONTROLLER.getConfigTargetPreset(configNode);
     }
 
-    function setStylesConfigSelection(nodeId, styles, options) {
-        return CANVAS_CONFIG_EDIT_CONTROLLER.setStylesConfigSelection(nodeId, styles, options);
-    }
 
-    function updateStylesConfigSelection(nodeId, styleName, checked) {
-        return CANVAS_CONFIG_EDIT_CONTROLLER.updateStylesConfigSelection(nodeId, styleName, checked);
-    }
 
-    function resetStylesConfigSelection(nodeId) {
-        return CANVAS_CONFIG_EDIT_CONTROLLER.resetStylesConfigSelection(nodeId);
-    }
 
-    function handleStylesConfigAction(node, action) {
-        return CANVAS_CONFIG_EDIT_CONTROLLER.handleStylesConfigAction(node, action);
-    }
 
     function handleStylesConfigActionClick(node, evt) {
         return CANVAS_CONFIG_EDIT_CONTROLLER.handleStylesConfigActionClick(node, evt);
@@ -16323,9 +15711,6 @@
         return CANVAS_MODEL_CONFIG_CATALOG_CONTROLLER.setModelConfigFilter(nodeId, enabled);
     }
 
-    function updateConfigParam(nodeId, key, value, inputType, options) {
-        return CANVAS_CONFIG_EDIT_CONTROLLER.updateConfigParam(nodeId, key, value, inputType, options);
-    }
 
     function getPresetCatalogEntryForNode(presetNode) {
         return CANVAS_CONFIG_VALUES_CONTROLLER.getPresetCatalogEntryForNode(presetNode);
@@ -16335,9 +15720,6 @@
         return CANVAS_CONFIG_VALUES_CONTROLLER.getPresetConfigSource(presetNode, kind);
     }
 
-    function updateConfigLora(nodeId, index, key, value) {
-        return CANVAS_CONFIG_EDIT_CONTROLLER.updateConfigLora(nodeId, index, key, value);
-    }
 
     function handleNodeConfigFieldEvent(nodeEl, node, evt, eventType) {
         return CANVAS_CONFIG_EDIT_CONTROLLER.handleNodeConfigFieldEvent(nodeEl, node, evt, eventType);
@@ -16367,10 +15749,6 @@
         return styleSelectorApplyToPreset?.(selectorNode, style, options, STYLE_SELECTOR_NODE_CONTEXT) ?? false;
     }
 
-    async function runStyleTransferPresetNode(node, options) {
-        return styleSelectorRunStyleTransferPresetNode?.(node, options, STYLE_SELECTOR_NODE_CONTEXT)
-            ?? { ok: false, error: 'style selector runtime unavailable' };
-    }
 
     async function runStyleSelectorTargetPreset(selectorNode, options) {
         return styleSelectorRunTargetPreset?.(selectorNode, options, STYLE_SELECTOR_NODE_CONTEXT)
@@ -16446,9 +15824,6 @@
         return CANVAS_NOTE_EDIT_CONTROLLER.updateNoteStyle(nodeId, key, value, inputType);
     }
 
-    function updateNodeCustomColor(nodeId, value, options) {
-        return CANVAS_NODE_APPEARANCE_CONTROLLER.updateNodeCustomColor?.(nodeId, value, options);
-    }
 
     function bindInspectorNodeColorEvents(inspector) {
         return CANVAS_NODE_APPEARANCE_CONTROLLER.bindInspectorNodeColorEvents?.(inspector) || false;
@@ -16498,9 +15873,6 @@
         return CANVAS_AUX_NODE_CREATION_CONTROLLER.addVlmNode(world, options);
     }
 
-    function updateMaskParam(nodeId, key, value, inputType) {
-        return CANVAS_NODE_PARAM_CONTROLLER?.updateMaskParam?.(nodeId, key, value, inputType);
-    }
 
     function updateQwenTtsParam(nodeId, key, value, inputType) {
         return CANVAS_NODE_PARAM_CONTROLLER?.updateQwenTtsParam?.(nodeId, key, value, inputType);
@@ -16546,21 +15918,12 @@
         return CANVAS_TIMELINE_CREATION_CONTROLLER.addDirectorTimelineNode(world, options);
     }
 
-    function getTranslateCacheKey(target, key) {
-        return TRANSLATION_CONTROLLER?.getTranslateCacheKey?.(target, key) || `${target || 'text'}:${key || ''}`;
-    }
 
-    function rememberTranslation(node, target, key, entry) {
-        return TRANSLATION_CONTROLLER?.rememberTranslation?.(node, target, key, entry);
-    }
 
     function setTranslatedFieldValue(node, target, key, value, field) {
         return TRANSLATION_CONTROLLER?.setTranslatedFieldValue?.(node, target, key, value, field) || false;
     }
 
-    function readTagCartFieldValue(...args) {
-        return CANVAS_TAG_CART_CONTROLLER.readTagCartFieldValue(...args);
-    }
 
     async function openTagCartForField(...args) {
         return CANVAS_TAG_CART_CONTROLLER.openTagCartForField(...args);
@@ -16586,9 +15949,6 @@
         return TRANSLATION_CONTROLLER?.runTranslationNode?.(node) || { ok: false, error: 'translation unavailable' };
     }
 
-    async function handleTranslateButton(node, button) {
-        return TRANSLATION_CONTROLLER?.handleTranslateButton?.(node, button);
-    }
 
     function addCompareNode(world, options) {
         return CANVAS_COMPARE_CREATION_CONTROLLER.addCompareNode(world, options);
@@ -16602,9 +15962,6 @@
         return CANVAS_TIMELINE_CREATION_CONTROLLER.addTimelineNode(world, options);
     }
 
-    function timelineTrackForSource(node, source) {
-        return CANVAS_TIMELINE_CONNECTION_CONTROLLER.timelineTrackForSource(node, source);
-    }
 
     function addTimelineClipFromSource(timelineNode, source, options) {
         return CANVAS_TIMELINE_CONNECTION_CONTROLLER.addTimelineClipFromSource(timelineNode, source, options);
@@ -16686,9 +16043,6 @@
         return CANVAS_TIMELINE_CONNECTION_CONTROLLER.createTimelineClipEdge(fromId, toId, options);
     }
 
-    function refreshConfigNodeForPreset(configNode, presetNode, kind) {
-        return CANVAS_CONFIG_CONNECTION_CONTROLLER.refreshConfigNodeForPreset(configNode, presetNode, kind);
-    }
 
     function createGenerateEdge(fromId, toId, options) {
         return CANVAS_RESULT_CONNECTION_CONTROLLER.createGenerateEdge(fromId, toId, options);
@@ -16702,21 +16056,12 @@
         return CANVAS_MISSING_MODEL_DIALOG_CONTROLLER.openWorkbenchMissingModelModal(node);
     }
 
-    function renderWorkbenchMissingModelRow(item, index, canDownload) {
-        return CANVAS_MISSING_MODEL_DIALOG_CONTROLLER.renderWorkbenchMissingModelRow(item, index, canDownload);
-    }
 
-    function modelStatusRoleLabel(role) {
-        return CANVAS_MISSING_MODEL_DIALOG_CONTROLLER.modelStatusRoleLabel(role);
-    }
 
     async function checkPresetModelStatus(node) {
         return CANVAS_PRESET_MODEL_STATUS_CONTROLLER.checkPresetModelStatus(node);
     }
 
-    function shouldAutoCheckPresetModels(node) {
-        return CANVAS_PRESET_MODEL_STATUS_CONTROLLER.shouldAutoCheckPresetModels(node);
-    }
 
     async function queuePresetModelDownloads(node, options) {
         return CANVAS_PRESET_MODEL_STATUS_CONTROLLER.queuePresetModelDownloads(node, options);
@@ -16860,9 +16205,6 @@
         return MEDIA_EDIT_CONTROLLER.getNodeLayerForgeAsset?.(node) || null;
     }
 
-    async function createImageNodeFromLayerForgeOutput(sourceNode, imageDataUrl, maskDataUrl, metadata) {
-        return MEDIA_EDIT_CONTROLLER.createImageNodeFromLayerForgeOutput(sourceNode, imageDataUrl, maskDataUrl, metadata);
-    }
 
     async function createImageNodeFromSketchOutput(sourceNode, payload) {
         return MEDIA_EDIT_CONTROLLER.createImageNodeFromSketchOutput(sourceNode, payload);
@@ -16892,9 +16234,6 @@
         return CANVAS_RESULT_RUN_ACTION_CONTROLLER.controlResultRun?.(node, action);
     }
 
-    function interruptResultRunForDeletion(node) {
-        return !!CANVAS_RESULT_RUN_ACTION_CONTROLLER.interruptResultRunForDeletion?.(node);
-    }
 
     function interruptDeletedResultRuns(nodes) {
         return Number(CANVAS_RESULT_RUN_ACTION_CONTROLLER.interruptDeletedResultRuns?.(nodes) || 0);
@@ -16906,6 +16245,7 @@
 
     const NODE_ACTION_SOURCE = {
         actionSource: {
+            handleNodePresentationAction: (...args) => CANVAS_NODE_PRESENTATION_CONTROLLER?.handleAction(...args) || false,
             handleResultInspectorAction,
             handleTimelineAction,
             deleteEdge,
@@ -16937,6 +16277,13 @@
             ensureStyleSelectorForPreset,
             openLivePortraitVideoExpressionPresetEditor,
             openLtx23GuidePresetEditor,
+            optimizeNodePrompt: (...args) => {
+                if (typeof CANVAS_PROMPT_ACTION_CONTROLLER.optimizePrompt !== 'function') {
+                    showToast(localizeCanvasLabel('Reload the Studio service to enable Canvas prompt optimization.'));
+                    return;
+                }
+                return CANVAS_PROMPT_ACTION_CONTROLLER.optimizePrompt(...args);
+            },
             openVisualPromptEditor: (...args) => CANVAS_MINIMAX_H3_STORYBOARD_PRESET_EDITOR_CONTROLLER.openVisualPromptEditor(...args),
             openMiniMaxH3StoryboardPresetEditor,
             runStyleSelectorTargetPreset,
@@ -17040,9 +16387,6 @@
         ? WORKBENCH_CANVAS_NODE_ACTION.createCanvasNodeActionController(NODE_ACTION_SOURCE)
         : {};
 
-    function handleNodeAction(node, action, actionElement, evt) {
-        return CANVAS_NODE_ACTION_CONTROLLER.handleNodeAction?.(node, action, actionElement, evt);
-    }
 
     function handleNodeActionEvent(node, evt) {
         return CANVAS_NODE_ACTION_CONTROLLER.handleNodeActionEvent?.(node, evt);
@@ -17084,13 +16428,7 @@
         return CANVAS_COMPARE_STATE_CONTROLLER.swapCompareInputs(...args);
     }
 
-    function copyTimelineJson(node) {
-        return CANVAS_TIMELINE_CONTEXT.copyTimelineJson(node);
-    }
 
-    function copyTimelineRenderPayload(node) {
-        return CANVAS_TIMELINE_CONTEXT.copyTimelineRenderPayload(node);
-    }
 
     function applyTimelineMaskFeatherToSelectedClip(node) {
         return applyTimelineMaskFeatherController?.(node);
@@ -17118,7 +16456,7 @@
         },
         projectSource: {
             getProject: () => project,
-            setProject: (value) => { project = value; },
+            setProject: setWorkbenchProject,
             sanitizeProject: (...args) => sanitizeProject(...args)
         },
         domSource: {
@@ -17218,7 +16556,7 @@
         getProject: () => JSON.parse(JSON.stringify(project)),
         loadProject: (nextProject) => {
             stopTimelinePlayback();
-            project = sanitizeProject(nextProject);
+            setWorkbenchProject(sanitizeProject(nextProject));
             resetCanvasRenderModeForProject(project);
             resetRenderedProjectDomCache();
             CANVAS_SELECTION_CONTROLLER.focusNodePreservingSelection(null);

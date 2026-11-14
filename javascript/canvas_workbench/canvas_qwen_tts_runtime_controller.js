@@ -320,6 +320,17 @@
             const qwenNode = getNode(qwenNodeId);
             const project = getProject();
             const run = (project.runs || []).find(item => item.id === runId);
+            if (response?.transport_error) {
+                if (run) run.connection_error = String(response.error || 'connection interrupted');
+                const message = t('Task status is unconfirmed. Retry checks the existing task.', '暂时无法确认任务状态，点击重试将查询原任务。');
+                if (resultNode) Object.assign(resultNode, buildResultStatusPatch(resultNode, {
+                    status: mergeCanvasRunStatus(resultNode.status, nodeStatusState(resultNode) || 'queued', message)
+                }));
+                pollUpdate();
+                scheduleSave();
+                return;
+            }
+            if (run) delete run.connection_error;
             const ok = !!(response && response.ok);
             const state = response?.state || (ok && (response?.asset || (Array.isArray(response?.assets) && response.assets.length)) ? 'finished' : (ok ? 'queued' : 'failed'));
             if (run) Object.assign(run, buildQwenTtsRunResponsePatch(run, response));
@@ -424,6 +435,9 @@
         function pollQwenTtsRun(runId, resultNodeId, qwenNodeId, options) {
             const opts = options || {};
             const project = getProject();
+            const tracked = pollingSource.trackSubmittedRun?.({ project, runId, resultNodeId,
+                producerNodeId: qwenNodeId, options: opts });
+            if (tracked) return tracked;
             const runToken = getNode(resultNodeId)?.producer?.run_token || '';
             return pollRunWithController(runId, {
                 shouldContinue: () => isCurrentResultRun(project, runId, resultNodeId, runToken),
@@ -471,6 +485,11 @@
                 return { ok: false, error: 'Qwen TTS node is skipped' };
             }
             const opts = options || {};
+            if (typeof pollingSource.trackSubmittedRun === 'function') {
+                const result = generatedResultNodesForQwenTts(node).find(item => (project.runs || []).some(run =>
+                    run.id === item.producer?.run_id && (!isTerminalRunState(run.state) || run.connection_error)));
+                if (result) return pollQwenTtsRun(result.producer.run_id, result.id, node.id, opts);
+            }
             const runKey = node.id || '';
             const previousPreparation = pendingQwenTtsRuns.get(runKey);
             if (previousPreparation?.project === project && previousPreparation.node === node) {
@@ -611,12 +630,19 @@
                 mutate();
                 showToast('Result placeholder created; submitting to Qwen TTS.');
                 let runResult;
+                const payload = buildQwenTtsRunPayload(node, resultNode, runId);
+                const identity = payload.user_context || getWorkbenchUserContext();
+                const run = (project.runs || []).find(item => item.id === runId);
+                if (run) run.request_identity = JSON.stringify([identity?.user_did || '', identity?.owner || '', identity?.scope || '']);
                 try {
-                    const payload = buildQwenTtsRunPayload(node, resultNode, runId);
                     runResult = await sendCanvasQwenTtsRunRequest(payload);
                 } catch (err) {
-                    runResult = { ok: false, state: 'failed', error: err?.message || String(err) };
+                    runResult = { ok: false, error: err?.message || String(err),
+                        ...(typeof pollingSource.trackSubmittedRun === 'function' ? { transport_error: true } : { state: 'failed' }) };
                 }
+                const tracked = pollingSource.trackSubmittedRun?.({ project, runId, resultNodeId: resultNode.id,
+                    producerNodeId: node.id, response: runResult, options: opts });
+                if (tracked) return tracked;
                 if (!isCurrentResultRun(project, runId, resultNode.id, runToken)) {
                     return { ok: false, error: 'run no longer current', response: runResult };
                 }
@@ -651,7 +677,11 @@
                 || (result ? !isCurrentResultRun(project, runId, result.id, runToken) : node.qwen_tts_run?.run_id !== runId)) {
                 return { ok: false, error: 'run no longer current', response };
             }
-            if (result) applyQwenTtsRunStatus(runId, result.id, node.id, response);
+            if (result) {
+                const tracked = pollingSource.trackSubmittedRun?.({ project, runId, resultNodeId: result.id,
+                    producerNodeId: node.id, response });
+                if (!tracked) applyQwenTtsRunStatus(runId, result.id, node.id, response);
+            }
             else if (node) {
                 Object.assign(node, buildQwenTtsStatePatch(node, {
                     status: mergeCanvasRunStatus(

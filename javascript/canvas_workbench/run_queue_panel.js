@@ -109,7 +109,8 @@
     }
 
     function stateBadge(state, context) {
-        return `<b data-state="${context.escapeHtml(state || 'idle')}">${context.escapeHtml(state || 'idle')}</b>`;
+        const label = state === 'paused' ? context.t('Paused', '已暂停') : state || 'idle';
+        return `<b data-state="${context.escapeHtml(state || 'idle')}">${context.escapeHtml(label)}</b>`;
     }
 
     function renderSummary(context, runs) {
@@ -134,12 +135,12 @@
         if (!steps.length) {
             return `<section class="sai-run-queue-section"><h3>${context.escapeHtml(context.t('Selected Chain', '选中链路'))}</h3><p class="sai-run-queue-empty-inline">${context.escapeHtml(context.t('No chain plan is active. Run a selected chain to see planned steps here.', '当前没有活动链路计划。运行选中链路后会在这里看到步骤。'))}</p></section>`;
         }
-        const error = scheduler.error || '';
+        const error = scheduler.error || (state === 'paused' ? scheduler.message : '') || '';
         return `
 <section class="sai-run-queue-section">
   <div class="sai-run-queue-section-head">
     <h3>${context.escapeHtml(context.t('Selected Chain', '选中链路'))}</h3>
-    <span>${context.escapeHtml(state)}${currentTitle ? ` · ${context.escapeHtml(currentTitle)}` : ''}</span>
+    <span>${context.escapeHtml(state === 'paused' ? context.t('Paused', '已暂停') : state)}${currentTitle ? ` · ${context.escapeHtml(currentTitle)}` : ''}</span>
   </div>
   ${error ? `<div class="sai-run-queue-message" data-state="${context.escapeHtml(state)}">${context.escapeHtml(error)}</div>` : ''}
   <div class="sai-run-queue-steps">

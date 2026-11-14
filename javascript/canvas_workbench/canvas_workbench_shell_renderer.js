@@ -76,34 +76,39 @@
             ? source.renderIconHtml
             : (icon => renderWorkbenchIconHtml(icon, escapeHtml));
         const toolbarButton = (action, icon, title) => `<button type="button" data-canvas-action="${action}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${renderIconHtml(icon)}</button>`;
-        const sideButton = (action, icon, title) => `<button type="button" data-canvas-action="${action}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${renderIconHtml(icon)}</button>`;
+        const sideButton = (action, icon, title) => `<button type="button" data-canvas-action="${action}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${renderIconHtml(icon)}<span class="sai-tool-label">${escapeHtml(title)}</span></button>`;
+        const menuTitle = title => escapeHtml(title);
 
         function renderWorkbenchShellMarkup() {
             return `
 <div class="sai-canvas-topbar">
+  <nav class="sai-project-navigation" data-project-navigation aria-label="${escapeHtml(t('Workbenches'))}">
+    <button type="button" class="sai-project-toggle" data-project-toggle aria-expanded="false" aria-controls="sai-project-switcher"><i class="fa-solid fa-folder-open" aria-hidden="true"></i><span>${escapeHtml(t('Workbenches'))}</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
+    <div class="sai-project-tabs" data-project-tabs role="tablist" aria-label="${escapeHtml(t('Switch workbench'))}"></div>
+    <button type="button" class="sai-project-create" data-project-create title="${escapeHtml(t('New workbench'))}" aria-label="${escapeHtml(t('New workbench'))}"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+    <button type="button" class="sai-project-save-status" data-canvas-action="save" data-project-save-status title="${escapeHtml(t('Save', '保存'))}" aria-label="${escapeHtml(t('Save', '保存'))}">${renderIconHtml('fa-floppy-disk')}<span data-project-save-dot aria-hidden="true"></span><span data-project-save-label></span></button>
+    <section class="sai-project-switcher" id="sai-project-switcher" data-project-switcher role="dialog" aria-label="${escapeHtml(t('Switch workbench'))}" hidden>
+      <div class="sai-project-context">
+        <div class="sai-canvas-title">${escapeHtml(t('SimpAI Infinite Canvas', 'SimpAI 无限画布'))}</div>
+        <div class="sai-canvas-subtitle" data-canvas-status>${escapeHtml(t('0 nodes', '0 个节点'))}</div>
+      </div>
+      <label class="sai-project-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" data-project-search placeholder="${escapeHtml(t('Search workbenches'))}" aria-label="${escapeHtml(t('Search workbenches'))}" autocomplete="off" /></label>
+      <div class="sai-project-switcher-list" data-project-switcher-list></div>
+      <p class="sai-project-switcher-message" data-project-message role="status" hidden></p>
+      <div class="sai-project-switcher-footer"><button type="button" data-project-create><i class="fa-solid fa-plus" aria-hidden="true"></i>${escapeHtml(t('New workbench'))}</button><button type="button" data-project-export>${escapeHtml(t('Export draft'))}</button><button type="button" data-project-manage>${escapeHtml(t('Manage workbenches'))}<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button></div>
+    </section>
+  </nav>
   <div class="sai-canvas-topbar-main">
-    <div class="sai-canvas-brand">
-      <div class="sai-canvas-title">${escapeHtml(t('SimpAI Infinite Canvas', 'SimpAI 无限画布'))}</div>
-      <div class="sai-canvas-subtitle" data-canvas-status>${escapeHtml(t('0 nodes', '0 个节点'))}</div>
-    </div>
-    <button type="button" class="sai-canvas-demo-entry" data-canvas-action="load-demo-workbench" title="${escapeHtml(t('Template library', '模板库'))}" aria-label="${escapeHtml(t('Template library', '模板库'))}">
-      <i class="fa-solid fa-route" aria-hidden="true"></i>
-      <span>${escapeHtml(t('Template library', '模板库'))}</span>
-    </button>
     <div class="sai-canvas-system-info" data-canvas-system-info aria-label="${escapeHtml(t('System status', '系统状态'))}"></div>
     <button type="button" class="sai-run-queue-widget" data-canvas-action="run-queue" data-run-queue-widget title="${escapeHtml(t('Run queue', '运行队列'))}" aria-label="${escapeHtml(t('Run queue', '运行队列'))}"></button>
   </div>
   <div class="sai-canvas-toolbar" aria-label="${escapeHtml(t('Canvas tools', '画布工具'))}">
-    ${toolbarButton('save', 'fa-floppy-disk', t('Save', '保存'))}
-    ${toolbarButton('project-list', 'fa-folder-tree', t('Workbench list', '工作台列表'))}
-    ${toolbarButton('import-project-json', 'fa-file-import', t('Import workbench JSON', '导入工作台 JSON'))}
+    ${toolbarButton('node-search', 'fa-magnifying-glass-location', t('Search / jump to node', '搜索 / 跳转节点'))}
     <span class="sai-toolbar-separator" aria-hidden="true"></span>
     ${toolbarButton('undo', 'fa-rotate-left', t('Undo', '撤销'))}
     ${toolbarButton('redo', 'fa-rotate-right', t('Redo', '重做'))}
     <span class="sai-toolbar-separator" aria-hidden="true"></span>
     <button type="button" data-canvas-action="run-selected-chain" title="${escapeHtml(t('Run selected chain', '运行选中链路'))}" aria-label="${escapeHtml(t('Run selected chain', '运行选中链路'))}"><i class="fa-solid fa-forward"></i></button>
-    ${toolbarButton('delete', 'fa-trash', t('Delete selected items', '删除选中项'))}
-    ${toolbarButton('clear', 'fa-broom', t('Clear canvas', '清空画布'))}
     <span class="sai-toolbar-separator" aria-hidden="true"></span>
     ${toolbarButton('settings', 'fa-sliders', t('Settings', '设置'))}
     ${toolbarButton('close', 'fa-xmark', t('Close', '关闭'))}
@@ -112,8 +117,9 @@
 <div class="sai-canvas-backend-alert" data-canvas-backend-alert hidden></div>
 <div class="sai-canvas-body">
   <div class="sai-canvas-leftbar" aria-label="${escapeHtml(t('Canvas utilities', '画布工具栏'))}">
-    ${sideButton('node-search', 'fa-magnifying-glass-location', t('Search / jump to node', '搜索 / 跳转节点'))}
-    <span class="sai-leftbar-separator" aria-hidden="true"></span>
+    <button type="button" data-canvas-mode="select" title="${escapeHtml(t('Select', '选择'))}" aria-label="${escapeHtml(t('Select', '选择'))}"><i class="fa-solid fa-arrow-pointer" aria-hidden="true"></i></button>
+    <button type="button" data-canvas-mode="hand" title="${escapeHtml(t('Hand', '抓手'))}" aria-label="${escapeHtml(t('Hand', '抓手'))}"><i class="fa-solid fa-hand" aria-hidden="true"></i></button>
+    <details class="sai-canvas-tool-menu" name="sai-canvas-tools"><summary title="${menuTitle(t('Add node', '添加节点'))}" aria-label="${menuTitle(t('Add node', '添加节点'))}"><i class="fa-solid fa-plus" aria-hidden="true"></i></summary><div class="sai-canvas-tool-panel"><strong>${escapeHtml(t('Add node', '添加节点'))}</strong>
     ${sideButton('add-preset', 'fa-diagram-project', t('Add preset', '添加预设'))}
     ${sideButton('add-style-selector', 'fa-palette', t('Add Style Selector node', '添加风格选择器节点'))}
     ${sideButton('add-text', 'fa-font', t('Add text node', '添加文本节点'))}
@@ -132,21 +138,28 @@
     ${sideButton('add-compare', 'sai-compare-glyph', t('Add image compare node', '添加图像对比节点'))}
     ${sideButton('add-timeline', 'fa-clapperboard', t('Add media timeline', '添加媒体时间线'))}
     ${sideButton('add-output', 'fa-circle-dot', t('Add output node', '添加输出节点'))}
-    <span class="sai-leftbar-separator" aria-hidden="true"></span>
     ${sideButton('add-note', 'fa-note-sticky', t('Add tip note', '添加提示贴'))}
     ${sideButton('add-group', 'fa-object-group', t('Add area group', '添加区域分组'))}
+    </div></details>
+    ${sideButton('import-files', 'fa-folder-open', t('Import image / video / audio', '导入图像 / 视频 / 音频'))}
+    ${sideButton('media-browser', 'fa-photo-film', t('Media browser', '媒体浏览器'))}
+    <span class="sai-leftbar-separator" aria-hidden="true"></span>
+    <details class="sai-canvas-tool-menu" name="sai-canvas-tools"><summary title="${menuTitle(t('More tools', '更多工具'))}" aria-label="${menuTitle(t('More tools', '更多工具'))}"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></summary><div class="sai-canvas-tool-panel"><strong>${escapeHtml(t('Canvas utilities', '画布工具栏'))}</strong>
     ${sideButton('group-list', 'fa-list-ul', t('Jump to group', '跳转分组'))}
     ${sideButton('load-demo-workbench', 'fa-route', t('Template library', '模板库'))}
     <span class="sai-leftbar-separator" aria-hidden="true"></span>
     ${sideButton('import-selected', 'fa-images', t('Import transfer station images', '导入中转站图片'))}
-    ${sideButton('media-browser', 'fa-photo-film', t('Media browser', '媒体浏览器'))}
-    <button type="button" data-canvas-action="import-files" title="${escapeHtml(t('Import image / video / audio', '导入图像 / 视频 / 音频'))}" aria-label="${escapeHtml(t('Import image / video / audio', '导入图像 / 视频 / 音频'))}"><i class="fa-solid fa-folder-open"></i></button>
+    ${sideButton('import-project-json', 'fa-file-import', t('Import workbench JSON', '导入工作台 JSON'))}
     <span class="sai-leftbar-separator" data-leftbar-section="utility" aria-hidden="true"></span>
     ${sideButton('asset-manager', 'fa-box-archive', t('Asset manager', '资产管理'))}
     ${sideButton('run-history', 'fa-clock-rotate-left', t('Run history', '运行历史'))}
     ${sideButton('canvas-manual', 'fa-circle-question', t('Canvas manual', '画布说明书'))}
+    ${sideButton('delete', 'fa-trash', t('Delete selected items', '删除选中项'))}
+    ${sideButton('clear', 'fa-broom', t('Clear canvas', '清空画布'))}
+    </div></details>
   </div>
   <div class="sai-canvas-viewport" tabindex="0">
+    <div class="sai-canvas-grid" aria-hidden="true"></div>
     <div class="sai-canvas-stage">
       <div class="sai-canvas-groups"></div>
       <canvas class="sai-canvas-edges-canvas" aria-hidden="true"></canvas>
@@ -211,7 +224,7 @@
             if (document.getElementById('simpai-canvas-runtime-style')) return false;
             const style = document.createElement('style');
             style.id = 'simpai-canvas-runtime-style';
-            style.textContent = "\n.sai-canvas-viewport.is-panning .sai-canvas-stage,\n.sai-canvas-viewport.is-zooming .sai-canvas-stage { will-change: transform; }\n.sai-canvas-viewport.is-panning .sai-canvas-stage,\n.sai-canvas-viewport.is-panning .sai-canvas-node { text-rendering: optimizeSpeed; }\n.sai-canvas-viewport.is-panning .sai-canvas-node {\n  pointer-events: none;\n  transition: none !important;\n  filter: none !important;\n  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18) !important;\n}\n.sai-canvas-viewport.is-panning .sai-canvas-node::before,\n.sai-canvas-viewport.is-panning .sai-canvas-node::after { display: none !important; }\n";
+            style.textContent = "\n.sai-canvas-stage { cursor: default; }\n.sai-canvas-viewport.is-panning .sai-canvas-stage,\n.sai-canvas-viewport.is-zooming .sai-canvas-stage { will-change: transform; }\n";
             document.head.appendChild(style);
             return true;
         }

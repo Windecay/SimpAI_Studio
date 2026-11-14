@@ -16,6 +16,7 @@
         const portSource = sourceObject('portSource');
         const presetSource = sourceObject('presetSource');
         const renderSource = sourceObject('renderSource');
+        const presentationSource = sourceObject('presentationSource');
         const { t, tOption, localizeCanvasLabel } = languageSource;
         const { clamp, escapeHtml, normalizeCanvasColor } = utilitySource;
         const { getProject, getNode } = projectSource;
@@ -115,6 +116,70 @@
   </button>
   <small>${escapeHtml(message)}</small>
 </div>`;
+        }
+
+        const PARAM_GROUPS = [
+            { id: 'prompt', label: 'Prompts', expanded: true },
+            { id: 'output', label: 'Output settings', expanded: true },
+            { id: 'seed', label: 'Seed settings', expanded: true },
+            { id: 'sampling', label: 'Sampling settings', expanded: false },
+            { id: 'advanced', label: 'Advanced settings', expanded: false },
+            { id: 'other', label: 'Other parameters', expanded: true }
+        ];
+
+        function paramGroupId(param) {
+            const key = String(param.key || '').toLowerCase();
+            if (key === 'negative_prompt') return 'advanced';
+            if (isPromptTextParam(key) || /^(prompt|negative_prompt|positive_prompt)$/.test(key)) return 'prompt';
+            if (/(^|_)(seed|seed_random|random_seed|image_seed)$/.test(key)) return 'seed';
+            if (/(^|_)(width|height|resolution|aspect_ratio|image_number|batch_size|duration|length|fps|frame_rate|frames|num_frames|megapixels|mp)$/.test(key)) return 'output';
+            if (/(^|_)(steps|sampler|sampler_name|scheduler|cfg|cfg_scale|guidance|guidance_scale|denoise|denoising_strength)$/.test(key)) return 'sampling';
+            if (param.advanced === true || /^(advanced|expert)(_|$)/.test(key)) return 'advanced';
+            return 'other';
+        }
+
+        function getPresentationParams(node) {
+            if (node.type !== 'classic') return getVisiblePresetParams(node);
+            return [
+                { key: 'prompt', label: 'Prompt', type: 'textarea' },
+                { key: 'negative_prompt', label: 'Negative Prompt', type: 'textarea' },
+                { key: 'image_number', label: 'Images', type: 'number', min: 1, max: 16, step: 1 },
+                { key: 'seed_random', label: 'Random Seed', type: 'checkbox', default: true },
+                ...(node.params?.seed_random === false ? [{ key: 'image_seed', label: 'Seed', type: 'number', min: 0, step: 1, default: 0 }] : [])
+            ];
+        }
+
+        function renderPresetParamGroup(node, id, suppliedParams) {
+            const group = PARAM_GROUPS.find(item => item.id === id);
+            if (!group) return '';
+            const params = (suppliedParams || getPresentationParams(node)).filter(param => paramGroupId(param) === id);
+            if (!params.length) return '';
+            const saved = node.ui?.param_groups?.[id];
+            const expanded = typeof saved === 'boolean' ? saved : group.expanded;
+            const keep = id === 'prompt' ? ' sai-collapsed-keep sai-collapsed-prompt-group' : '';
+            const body = expanded
+                ? params.map(param => renderPresetParamControl(node, param, 'data-node-param')).join('')
+                : params.filter(param => isPromptTextParam(param.key)).map(param => `<div class="sai-folded-prompt-port"><button type="button" class="sai-node-handle sai-node-handle-in" data-text-in="${escapeHtml(param.key)}" title="${escapeHtml(localizeCanvasLabel(param.label || param.key))}"></button><span>${escapeHtml(localizeCanvasLabel(param.label || param.key))}</span></div>`).join('');
+            return `<section class="sai-node-param-group${keep}" data-param-group="${id}" data-expanded="${expanded}"><button type="button" class="sai-param-group-toggle" data-node-action="toggle-param-group:${id}" aria-expanded="${expanded}"><i class="fa-solid fa-chevron-${expanded ? 'down' : 'right'}" aria-hidden="true"></i><span>${escapeHtml(localizeCanvasLabel(group.label))}</span><small>${params.length}</small></button><div class="sai-param-group-body${id === 'seed' ? ' sai-seed-group-body' : ''}" data-param-group-body>${body}</div></section>`;
+        }
+
+        function renderPresetParamGroups(node, suppliedParams) {
+            const params = suppliedParams || getPresentationParams(node);
+            return PARAM_GROUPS.map(group => renderPresetParamGroup(node, group.id, params)).join('');
+        }
+
+        function renderPresetMoreMenu(node, actions) {
+            const more = escapeHtml(localizeCanvasLabel('More node actions'));
+            return `<details class="sai-node-more"><summary title="${more}" aria-label="${more}"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></summary><div class="sai-node-more-menu">${actions || ''}<button type="button" data-node-action="check-models"><i class="fa-solid fa-cubes" aria-hidden="true"></i><span>${escapeHtml(localizeCanvasLabel('Check models'))}</span></button><button type="button" data-node-action="delete"><i class="fa-solid fa-trash" aria-hidden="true"></i><span>${escapeHtml(localizeCanvasLabel('Delete'))}</span></button></div></details>`;
+        }
+
+        function renderPresetMenuAction(action, icon, text) {
+            return `<button type="button" data-node-action="${action}" title="${escapeHtml(text)}"><i class="fa-solid fa-${icon}" aria-hidden="true"></i><span>${escapeHtml(text)}</span></button>`;
+        }
+
+        function renderPresetRunButton(disabled) {
+            const run = escapeHtml(localizeCanvasLabel('Run'));
+            return `<button type="button" class="sai-node-primary sai-preset-primary-run" data-preset-primary-run data-node-action="run" title="${run}" aria-label="${run}" ${disabled || ''}><i class="fa-solid fa-play" aria-hidden="true"></i></button>`;
         }
 
         function getSlotOrderHint(slotKey, node) {
@@ -521,7 +586,6 @@
             const params = node.params || {};
             const ipMax = readNumberConfig(() => getClassicIpMaxImages(node), 4);
             const ipSlots = clamp(Number(node.classic_ip_count || 1), 1, ipMax);
-            const imageNumber = clamp(Number(params.image_number ?? 1), 1, 16);
             const uovMethod = params.uov_method || 'Upscale (1.5x)';
             const inpaintMethod = normalizeClassicInpaintMode(params.inpaint_mode || 'Inpaint or Outpaint (default)');
             const outpaintDirs = (() => {
@@ -641,30 +705,30 @@ ${enhanceOrder === 'After Last Enhancement' ? `<label class="sai-node-field"><sp
   <span class="sai-node-kind">${escapeHtml(modeInfo.icon)} Classic</span>
   <span class="sai-node-title">${escapeHtml(node.title || node.preset?.name || 'Classic')}</span>
   ${renderNodeStateBadges(node)}
-  <button type="button" data-node-action="run" title="${escapeHtml(t('Run', '运行'))}" ${runDisabled}><i class="fa-solid fa-play"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+  ${renderPresetRunButton(runDisabled)}
+  ${renderPresetMoreMenu(node)}
 </div>
-<div class="sai-preset-meta">
+<div class="sai-preset-meta" title="${escapeHtml([node.runtime?.backend_engine, node.runtime?.task_method].filter(Boolean).join(' · '))}">
   <span>${escapeHtml(node.runtime?.backend_engine || 'Backend')}</span>
   <span>${escapeHtml(node.runtime?.task_method || 'workflow')}</span>
 </div>
-${renderPresetModelStatusHtml(node)}
+<div data-preset-model-status>${renderPresetModelStatusHtml(node)}</div>
 <label class="sai-node-field sai-node-theme"><span>${escapeHtml(t('Mode', '模式'))}</span><select data-classic-mode>${modes.map(m => `<option value="${escapeHtml(m.key)}" ${m.key === mode ? 'selected' : ''}>${escapeHtml(m.icon)} ${escapeHtml(m.label)}</option>`).join('')}</select></label>
 <div class="sai-config-strip">
   ${getPresetConfigKinds().map(kind => renderPresetConfigPortRow(node, kind)).join('')}
 </div>
 <div class="sai-preset-slots">${inputSlotsHtml}${uovSlotHtml}${inpaintSlotHtml}${enhanceSlotHtml}</div>
 ${(mode === 'ip' && ipMax > 1) ? `<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('IP Images', 'IP 图像'))}</span><div class="sai-range-pair"><input data-classic-param="ip_count" type="range" min="1" max="${ipMax}" step="1" value="${escapeHtml(ipSlots)}"><input data-classic-param="ip_count" type="number" min="1" max="${ipMax}" step="1" value="${escapeHtml(ipSlots)}"></div></label>` : ''}
-${renderPresetParamControl(node, { key: 'prompt', label: 'Prompt', type: 'textarea' }, 'data-node-param')}
-${renderPresetParamControl(node, { key: 'negative_prompt', label: 'Negative Prompt', type: 'textarea' }, 'data-node-param')}
-<div class="sai-preset-param-list">
-  <label class="sai-node-check"><input data-node-param="seed_random" type="checkbox" ${params.seed_random !== false ? 'checked' : ''}><span>${escapeHtml(t('Random Seed', '随机种子'))}</span></label>
-  ${params.seed_random === false ? `<label class="sai-node-field"><span>${escapeHtml(t('Seed', '种子'))}</span><input data-node-param="image_seed" type="number" step="1" value="${escapeHtml(params.image_seed ?? 0)}"></label>` : ''}
-  <label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Images', '图片数'))}</span><div class="sai-range-pair"><input data-node-param="image_number" type="range" min="1" max="16" step="1" value="${escapeHtml(imageNumber)}"><input data-node-param="image_number" type="number" min="1" max="16" step="1" value="${escapeHtml(imageNumber)}"></div></label>
-</div>
-${renderRunnableNodeStatusFoot(node)}
-<button type="button" class="sai-node-primary" data-node-action="run" ${runDisabled}><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
+<div class="sai-preset-param-list">${renderPresetParamGroups(node)}</div>
+<div class="sai-node-foot" data-preset-live-status hidden></div>
+${presentationSource.renderInlinePreviewHtml?.(node) || ''}
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="preset" title="${escapeHtml(t('Generated output', '生成输出'))}"></button>`;
+        }
+
+        function isClassicRunDisabled(node) {
+            if (node?.type !== 'classic' || node.classic_mode !== 'ip') return false;
+            const source = getPromptTextSourceNode(node, 'prompt');
+            return !node.upload_slots?.ip_image_0 && !(source ? promptTextSourceValue(source) : node.params?.prompt);
         }
 
         function renderPresetNodeHtml(node) {
@@ -680,18 +744,20 @@ ${renderRunnableNodeStatusFoot(node)}
   <span class="sai-node-kind">${escapeHtml(t('Scene', '场景'))}</span>
   <span class="sai-node-title">${escapeHtml(node.title || node.preset?.name || t('Scene', '场景'))}</span>
   ${renderNodeStateBadges(node)}
-  ${isStyleTransferPresetNode(node) ? `<button type="button" data-node-action="add-style-selector" title="${escapeHtml(t('Add or focus Style Selector', '添加或定位 Style Selector'))}"><i class="fa-solid fa-palette"></i></button>` : ''}
-  ${isLivePortraitVideoExpressionPresetNode(node) ? `<button type="button" data-node-action="edit-liveportrait-video-expression" title="${escapeHtml(t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'))}"><i class="fa-solid fa-face-smile"></i></button>` : ''}
-  ${isLtx23MultiGuidePresetNode(node) ? `<button type="button" data-node-action="edit-ltx23-guides" title="${escapeHtml(t('Edit LTX keyframe guides', '编辑 LTX 关键帧引导'))}"><i class="fa-solid fa-sliders"></i></button>` : ''}
-  ${isMiniMaxH3PresetNode(node) ? `<button type="button" data-node-action="edit-h3-storyboard" title="${escapeHtml(t('Edit MiniMax H3 storyboard', '编辑 MiniMax H3 分镜表'))}"><i class="fa-solid fa-table-list"></i></button>` : ''}
-  <button type="button" data-node-action="run" title="${escapeHtml(t('Run', '运行'))}"><i class="fa-solid fa-play"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+  ${renderPresetRunButton()}
+  ${renderPresetMoreMenu(node, `
+  ${isStyleTransferPresetNode(node) ? renderPresetMenuAction('add-style-selector', 'palette', t('Add or focus Style Selector', '添加或定位 Style Selector')) : ''}
+  ${isLivePortraitVideoExpressionPresetNode(node) ? renderPresetMenuAction('edit-liveportrait-video-expression', 'face-smile', t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情')) : ''}
+  ${isLtx23MultiGuidePresetNode(node) ? renderPresetMenuAction('edit-ltx23-guides', 'sliders', t('Edit LTX keyframe guides', '编辑 LTX 关键帧引导')) : ''}
+  ${isMiniMaxH3PresetNode(node) ? renderPresetMenuAction('edit-h3-storyboard', 'table-list', t('Edit MiniMax H3 storyboard', '编辑 MiniMax H3 分镜表')) : ''}
+  `)}
 </div>
 <div class="sai-preset-meta">
   <span>${escapeHtml(node.runtime?.backend_engine || t('Backend', '后端'))}</span>
   <span>${escapeHtml(localizeCanvasLabel(taskMethod || 'workflow'))}</span>
 </div>
-${renderPresetModelStatusHtml(node)}
+${themes.length ? `<label class="sai-node-field sai-node-theme"><span>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}</span><select data-node-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(themeLabel(schema, item))}</option>`).join('')}</select></label>` : ''}
+<div data-preset-model-status>${renderPresetModelStatusHtml(node)}</div>
 <div class="sai-config-strip">
   ${getPresetConfigKinds().map(kind => renderPresetConfigPortRow(node, kind)).join('')}
 </div>
@@ -699,7 +765,6 @@ ${renderStyleTransferPresetController(node)}
 ${renderLivePortraitVideoExpressionPresetController(node)}
 ${renderLtx23GuidePresetController(node)}
 ${renderMiniMaxH3StoryboardPresetController(node)}
-${themes.length ? `<label class="sai-node-field sai-node-theme"><span>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}</span><select data-node-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(themeLabel(schema, item))}</option>`).join('')}</select></label>` : ''}
 <div class="sai-preset-slots">
 ${uploadSlots.map((slotInfo, index) => {
             const slot = slotInfo.key;
@@ -714,9 +779,9 @@ ${uploadSlots.map((slotInfo, index) => {
         }).join('')}
 </div>
 ${renderPresetSpecialController(node)}
-<div class="sai-preset-param-list">${params.map(param => renderPresetParamControl(node, param, 'data-node-param')).join('')}</div>
-${renderRunnableNodeStatusFoot(node)}
-<button type="button" class="sai-node-primary" data-node-action="run"><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Run', '运行'))}</span></button>
+<div class="sai-preset-param-list">${renderPresetParamGroups(node, params)}</div>
+<div class="sai-node-foot" data-preset-live-status hidden></div>
+${presentationSource.renderInlinePreviewHtml?.(node) || ''}
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="preset" title="${escapeHtml(t('Generated output', '生成输出'))}"></button>`;
         }
 
@@ -725,6 +790,11 @@ ${renderRunnableNodeStatusFoot(node)}
             renderPresetInspector,
             renderClassicNodeHtml,
             renderPresetNodeHtml,
+            renderPresetModelStatusHtml,
+            renderPresetParamGroup,
+            renderPresetParamGroups,
+            getPresentationParams,
+            isClassicRunDisabled,
             getSlotOrderHint,
             getPresetSpecialControllerKind,
             normalizePresetSpecialState,

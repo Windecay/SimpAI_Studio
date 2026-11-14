@@ -2108,7 +2108,14 @@ def worker():
         tasks = []
         task_rng = random.Random(async_task.seed % (constants.MAX_SEED + 1))
         allow_plain_bracket_arrays = not _is_minimax_h3_task(async_task)
-        allow_inline_groups = allow_plain_bracket_arrays and not moss_layout
+        # H3 and P-H3 image editing support random alternatives without treating
+        # ordinary bracket annotations as batch arrays.
+        h3_image_task = str(async_task.task_method or "").strip().lower().replace(
+            "-", "_"
+        ).removeprefix("scene_").startswith(
+            ("minimax_h3_r2i_image", "p_h3_image")
+        )
+        allow_inline_groups = (allow_plain_bracket_arrays or h3_image_task) and not moss_layout
         if not allow_plain_bracket_arrays:
             logger.info(
                 '[Wildcards] Preserving plain bracket groups for MiniMax H3 prompt: task_method=%s',

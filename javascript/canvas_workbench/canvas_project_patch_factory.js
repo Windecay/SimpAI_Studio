@@ -192,7 +192,7 @@
             settings: Object.assign({}, defaultSettings, {
                 minimap: true,
                 edgeLabels: true,
-                inspectorCollapsed: false,
+                inspectorCollapsed: true,
                 __demo_initialized: true
             }),
             groups: [],

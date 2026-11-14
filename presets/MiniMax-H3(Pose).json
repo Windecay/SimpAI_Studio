@@ -38,7 +38,7 @@
         "scene_input_image2", "scene_input_image3", "scene_input_image4",
         "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8",
         "scene_additional_prompt", "scene_additional_prompt_2", "scene_refiner_model",
-        "scene_var_number", "scene_var_number2", "scene_var_number3", "scene_var_number4",
+        "scene_var_number2", "scene_var_number3", "scene_var_number4",
         "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8",
         "scene_var_number9", "scene_var_number10",
         "scene_switch_option1", "scene_switch_option2", "scene_switch_option3",
@@ -58,6 +58,14 @@
         "H3 Pose": "Write one self-contained native MiniMax H3-Image still-image pose-editing instruction using exactly two ordered pictures and return only the final prompt. Treat <Picture 1> as the sole source for the output character and original scene. Treat <Picture 2> as a pose reference only; transfer only its visible pose, orientation, limb positions, and gestures. Preserve <Picture 1>'s identity, appearance, clothing, worn accessories, original background, surrounding people and objects, composition, camera view, perspective, lighting, and visual style. If the references conflict, follow <Picture 1> for the character and scene, and follow <Picture 2> only for pose. Do not copy the pose reference's character, appearance, clothing, background, or lighting. Do not invent absent details, extra subjects, objects, scene changes, or text. Do not request a mask, additional pose-specific LoRA, video, audio, or more reference pictures, and do not use a Ref2VA timeline."
       },
       "overwrite_step": {"H3 Pose": 6},
+      "var_number_title": {
+        "en": "Minimum Processing Size (px, squared area)",
+        "cn": "\u6700\u4f4e\u5904\u7406\u50cf\u7d20\uff08\u9762\u79ef\u57fa\u51c6\uff09"
+      },
+      "var_number_min": 2048,
+      "var_number_max": 8192,
+      "var_number_step": 1,
+      "var_number": {"H3 Pose": 3072},
       "aspect_ratio": ["2048|1:1", "1024|1:1", "1536|1:1", "3072|1:1", "4096|1:1", "origin|Original"],
       "resolution_control": {
         "mode": "image_keep_input_area",

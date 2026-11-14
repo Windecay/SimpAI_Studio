@@ -67,8 +67,8 @@
             return apiCall('qwenTtsRun', payload);
         }
 
-        async function sendCanvasQwenTtsPollRequest(jobId) {
-            return apiCall('qwenTtsPoll', jobId);
+        async function sendCanvasQwenTtsPollRequest(jobId, options) {
+            return apiCall('qwenTtsPoll', jobId, options);
         }
 
         async function sendCanvasQwenTtsControlRequest(jobId, action) {

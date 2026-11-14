@@ -21,6 +21,7 @@
         const runtimeSource = scope.runtimeSource || {};
         const callbackSources = {
             getProject: projectSource,
+            isProjectOpen: projectSource,
             setProject: projectSource,
             getDefaultProjectId: projectSource,
             getBackendLoadedStorageKey: projectSource,
@@ -60,6 +61,7 @@
             getRoot: domSource,
             scheduleAutoPresetModelChecks: modelSource,
             renderStatus: uiSource,
+            setProjectSaveState: uiSource,
             showToast: uiSource,
             warn: uiSource,
             nowIso: timeSource,
@@ -81,6 +83,10 @@
         let saveTimer = 0;
         let viewportSaveTimer = 0;
         let backendLoadSequence = 0;
+        const diskSaves = new WeakMap();
+        const diskSaveCounts = new Map();
+        const conflicts = new WeakSet();
+        let saveSequence = 0;
 
         function browserCacheBaseKey(scope) {
             const targetScope = scope || call('getCurrentStorageScope', null, []) || call('getStorageScope', {}, []);
@@ -128,6 +134,17 @@
             }
         }
 
+        function cachedProjectEntries() {
+            const scope = call('getStorageScope', {}, []);
+            const storage = call('getStorage', null, []);
+            return Object.entries(browserCacheProjectIndex(scope)).flatMap(([id, item]) => {
+                try {
+                    if (!storage?.getItem(browserCacheProjectKey(id, scope))) return [];
+                    return [{ project_id: id, updated_at: item?.updated_at || '', cached: true }];
+                } catch { return []; }
+            });
+        }
+
         function rememberBrowserCacheProject(projectIdValue, key, scope) {
             const id = browserCacheProjectId(projectIdValue);
             if (!id || !key) return;
@@ -169,6 +186,10 @@
         }
 
         function scheduleSave() {
+            const candidate = getProject();
+            const scopeKey = browserCacheBaseKey(call('getStorageScope', {}, []));
+            const sequence = ++saveSequence;
+            call('setProjectSaveState', null, getProject(), conflicts.has(getProject()) ? 'conflict' : 'pending');
             if (saveTimer && typeof runtimeSource.clearTimeout === 'function') {
                 runtimeSource.clearTimeout(saveTimer);
             }
@@ -177,6 +198,8 @@
                 return saveTimer;
             }
             saveTimer = runtimeSource.setTimeout(() => {
+                if (sequence !== saveSequence) return;
+                if (!isCurrentProjectRequest(candidate, scopeKey)) { saveTimer = 0; return; }
                 const activePointerInteraction = !!call('hasActivePointerInteraction', false, []);
                 const suppressUntil = Number(call('getSuppressWheelUntil', 0, [])) || 0;
                 const currentTime = Number(call('performanceNow', 0, [])) || 0;
@@ -193,6 +216,8 @@
         }
 
         function scheduleViewportSave() {
+            const candidate = getProject();
+            const scopeKey = browserCacheBaseKey(call('getStorageScope', {}, []));
             if (viewportSaveTimer && typeof runtimeSource.clearTimeout === 'function') {
                 runtimeSource.clearTimeout(viewportSaveTimer);
             }
@@ -202,6 +227,7 @@
             }
             viewportSaveTimer = runtimeSource.setTimeout(() => {
                 viewportSaveTimer = 0;
+                if (!isCurrentProjectRequest(candidate, scopeKey)) return;
                 scheduleSave();
             }, 1500);
             return viewportSaveTimer;
@@ -353,7 +379,7 @@
             const storage = getProject().storage || {};
             const storageScope = call('getStorageScope', {}, []);
             if (storage.kind === 'user_directory') return storage.location || storageScope.location;
-            return t('Browser localStorage cache (backend unavailable)', '浏览器 localStorage 缓存（后端不可用）');
+            return t('Browser localStorage cache', '浏览器 localStorage 缓存');
         }
 
         function storageDisplayPath() {
@@ -379,6 +405,7 @@
 
         function saveProjectToBrowserCache(context) {
             const currentProject = getProject();
+            if (!call('isProjectOpen', true, currentProject.id)) return true;
             const storageScope = call('getStorageScope', {}, []);
             const cacheKey = setActiveBrowserCacheProject(projectId(), storageScope);
             applyProjectStorage(currentProject, Object.assign(
@@ -399,6 +426,7 @@
                     try {
                         const compact = compactProjectForStorage(currentProject, Object.assign({}, options, { stripStorage: false }));
                         storage.setItem(cacheKey, JSON.stringify(compact));
+                        call('setProjectSaveState', null, currentProject, conflicts.has(currentProject) ? 'conflict' : 'cached');
                         return true;
                     } catch (err) {
                         lastError = err;
@@ -408,20 +436,72 @@
                 lastError = err;
             }
             warn('[SimpAI Canvas] browser cache save failed after compaction:', lastError);
+            call('setProjectSaveState', null, currentProject, 'error');
             return false;
         }
 
+        function cacheBackgroundRunResponse(job, response) {
+            const scope = call('getStorageScope', {}, []);
+            if (browserCacheBaseKey(scope) !== job.scope) return false;
+            const key = browserCacheProjectKey(job.projectId, scope);
+            const storage = call('getStorage', null, []);
+            const receipt = { ...response };
+            delete receipt.preview_stream;
+            delete receipt.preview_frames;
+            const attach = project => {
+                const run = (project?.runs || []).find(item => item.id === job.runId);
+                const result = (project?.nodes || []).find(item => item.id === job.resultNodeId);
+                if (!run || !result || result.producer?.run_id !== job.runId
+                    || (run.run_token || '') !== job.runToken || (result.producer?.run_token || '') !== job.runToken
+                    || run.request_identity && run.request_identity !== job.identity) return false;
+                run.background_response = receipt;
+                touchProject(project);
+                return true;
+            };
+            attach(job.project);
+            try {
+                const cached = JSON.parse(storage?.getItem(key) || 'null');
+                if (!attach(cached)) return false;
+                storage.setItem(key, JSON.stringify(cached));
+                return true;
+            } catch (err) {
+                warn('[SimpAI Canvas] background task receipt cache failed:', err);
+                return false;
+            }
+        }
+
         async function saveProject(silent, options) {
+            const settings = options || {};
+            const diskRequested = settings.persist === true || (!silent && settings.persist !== false);
+            if (!call('isProjectOpen', true, getProject().id)) return !diskRequested;
+            if (diskRequested && !settings.queuedSave) {
+                const candidate = getProject();
+                const diskKey = JSON.stringify([browserCacheBaseKey(call('getStorageScope', {}, [])), candidate.id]);
+                diskSaveCounts.set(diskKey, (diskSaveCounts.get(diskKey) || 0) + 1);
+                const previous = diskSaves.get(candidate);
+                const perform = () => getProject() === candidate ? saveProject(silent, { ...settings, queuedSave: true }) : false;
+                const operation = previous ? previous.catch(() => {}).then(perform) : perform();
+                diskSaves.set(candidate, operation);
+                try { return await operation; }
+                finally {
+                    if (diskSaves.get(candidate) === operation) diskSaves.delete(candidate);
+                    const remaining = (diskSaveCounts.get(diskKey) || 1) - 1;
+                    if (remaining) diskSaveCounts.set(diskKey, remaining); else diskSaveCounts.delete(diskKey);
+                }
+            }
+            let savingProject = null;
             try {
                 const opts = options || {};
                 const persistToDisk = opts.persist === true || (!silent && opts.persist !== false);
                 syncStorageScope({ silent: true });
                 const currentProject = getProject();
+                savingProject = currentProject;
                 touchProject(currentProject);
                 const storageScope = call('getStorageScope', {}, []);
                 const scopeKey = browserCacheBaseKey(storageScope);
                 const storageKey = call('getStorageKey', '', []);
                 applyProjectStorage(currentProject, buildProjectStorageInfo(storageKey, storageScope));
+                call('setProjectSaveState', null, currentProject, 'saving');
                 await call('materializeInlineProjectAssets', null, []);
                 if (!isCurrentProjectRequest(currentProject, scopeKey)) return false;
                 const cached = saveProjectToBrowserCache({ reason: 'save_project_start', persistToDisk });
@@ -442,28 +522,60 @@
                 const projectPayload = {
                     project_id: currentProject.id || projectId(),
                     project: compactProjectForStorage(currentProject, { stripAllMaterializedDataUrls: true }),
-                    backup_existing: !!opts.backupExisting
+                    backup_existing: !!opts.backupExisting,
+                    expected_revision: currentProject.storage_revision ?? ''
                 };
+                const submittedTimestamp = currentProject.updated_at;
+                call('setProjectSaveState', null, currentProject, 'saving');
                 let directResult = null;
                 try {
                     directResult = await call('sendCanvasProjectSaveRequest', null, projectPayload);
                 } catch (err) {
                     warn('[SimpAI Canvas] backend save failed; browser cache result retained:', err);
                 }
-                if (!isCurrentProjectRequest(currentProject, scopeKey)) return !!directResult?.ok || cached;
+                if (directResult?.ok && typeof directResult.project?.storage_revision === 'string'
+                    && browserCacheBaseKey(call('getStorageScope', {}, [])) === scopeKey) {
+                    const previousRevision = currentProject.storage_revision;
+                    currentProject.storage_revision = directResult.project.storage_revision;
+                    // Update only the receipt metadata if this project was left while saving.
+                    if (getProject() !== currentProject) {
+                        const storage = call('getStorage', null, []);
+                        const key = browserCacheProjectKey(currentProject.id, storageScope);
+                        try {
+                            const draft = JSON.parse(storage?.getItem(key) || 'null');
+                            if (draft?.id === currentProject.id && draft.storage_revision === previousRevision) {
+                                draft.storage_revision = currentProject.storage_revision;
+                                storage.setItem(key, JSON.stringify(draft));
+                            }
+                        } catch (err) { warn('[SimpAI Canvas] saved revision cache update failed:', err); }
+                    }
+                }
+                if (!isCurrentProjectRequest(currentProject, scopeKey)) return !!directResult?.ok;
                 if (directResult && directResult.ok) {
+                    if (typeof directResult.project?.storage_revision === 'string') currentProject.storage_revision = directResult.project.storage_revision;
+                    conflicts.delete(currentProject);
+                    const snapshotStillCurrent = submittedTimestamp === currentProject.updated_at;
                     // The response describes the submitted snapshot, not edits made while saving.
                     const savedStorage = directResult.storage || directResult.project?.storage;
                     if (savedStorage && typeof savedStorage === 'object') applyProjectStorage(currentProject, savedStorage);
                     call('syncCanvasProjectAssetRoot', null, currentProject);
                     touchProject(currentProject);
-                    saveProjectToBrowserCache({ reason: 'direct_backend_save_ok' });
+                    const latestCached = saveProjectToBrowserCache({ reason: 'direct_backend_save_ok' });
+                    call('setProjectSaveState', null, currentProject, snapshotStillCurrent ? 'saved' : (latestCached ? 'cached' : 'error'));
                     if (!silent) {
                         call('showToast', null, t('Canvas saved: {target}', '画布已保存：{target}')
                             .replace('{target}', currentProject.storage?.path || currentProject.storage?.location || storageScope.label));
                     }
                     call('renderStatus', null, []);
                     return true;
+                }
+                if (directResult?.error === 'project_conflict') {
+                    conflicts.add(currentProject);
+                    saveProjectToBrowserCache({ reason: 'project_conflict' });
+                    call('setProjectSaveState', null, currentProject, 'conflict');
+                    call('showToast', null, t('This project changed in another window. Your draft is kept here. Use Export draft in the workbench menu before reloading the project file.'));
+                    call('renderStatus', null, []);
+                    return false;
                 }
                 if (!silent) {
                     if (cached) {
@@ -474,12 +586,54 @@
                         call('showToast', null, t('Save failed: neither directory nor browser cache was confirmed.', '保存失败：目录和浏览器缓存都未确认成功'));
                     }
                 }
+                call('setProjectSaveState', null, currentProject, cached ? 'cached' : 'error');
                 call('renderStatus', null, []);
                 return cached;
             } catch (err) {
                 warn('[SimpAI Canvas] save failed:', err);
+                if (savingProject) call('setProjectSaveState', null, savingProject, 'error');
                 if (!silent) call('showToast', null, t('Save failed: neither directory nor browser cache was confirmed.', '保存失败：目录和浏览器缓存都未确认成功'));
                 return false;
+            }
+        }
+
+        function removeBrowserDraft(projectIdValue) {
+            const id = browserCacheProjectId(projectIdValue);
+            const storage = call('getStorage', null, []);
+            const scope = call('getStorageScope', {}, []);
+            if (!storage) return { ok: false, error: 'browser storage unavailable' };
+            if (browserCacheBaseKey(scope) !== browserCacheBaseKey(call('getCurrentStorageScope', scope, []))) return { ok: false, error: 'storage scope changed' };
+            if (diskSaveCounts.has(JSON.stringify([browserCacheBaseKey(scope), id]))) return { ok: false, error: 'draft save in progress' };
+            const key = browserCacheProjectKey(id, scope);
+            const indexKey = browserCacheProjectIndexKey(scope);
+            const activeKey = browserCacheActiveProjectIdKey(scope);
+            const baseKey = browserCacheBaseKey(scope);
+            const originals = new Map();
+            try {
+                for (const target of [key, indexKey, activeKey, baseKey]) originals.set(target, storage.getItem(target));
+                const index = browserCacheProjectIndex(scope);
+                delete index[id];
+                storage.setItem(indexKey, JSON.stringify(index));
+                storage.removeItem(key);
+                if (storage.getItem(activeKey) === id) storage.removeItem(activeKey);
+                try {
+                    const legacy = JSON.parse(storage.getItem(baseKey) || 'null');
+                    if (legacy?.id === id && Array.isArray(legacy.nodes)) storage.removeItem(baseKey);
+                } catch {}
+                if (getProject().id === id) {
+                    if (saveTimer) runtimeSource.clearTimeout?.(saveTimer);
+                    if (viewportSaveTimer) runtimeSource.clearTimeout?.(viewportSaveTimer);
+                    saveTimer = 0;
+                    viewportSaveTimer = 0;
+                    backendLoadSequence += 1;
+                }
+                return { ok: true, project_id: id };
+            } catch (err) {
+                for (const [target, value] of originals) {
+                    try { if (value === null) storage.removeItem(target); else storage.setItem(target, value); } catch {}
+                }
+                warn('[SimpAI Canvas] browser draft removal failed:', err);
+                return { ok: false, error: 'browser draft removal failed' };
             }
         }
 
@@ -527,6 +681,9 @@
             const storageScope = call('getStorageScope', {}, []);
             const storageKey = call('getStorageKey', '', []);
             if (decision.keepBrowser) {
+                if (getProject().storage_revision === undefined && incoming.storage_revision !== undefined) {
+                    getProject().storage_revision = incoming.storage_revision;
+                }
                 call('syncCanvasProjectAssetRoot', null, getProject());
                 call('resetRenderedProjectDomCache', null, []);
                 call('setBackendLoadedStorageKey', null, storageKey);
@@ -539,7 +696,8 @@
             setActiveBrowserCacheProject(incoming.id || projectId(), storageScope);
             call('syncCanvasProjectAssetRoot', null, incoming);
             call('resetRenderedProjectDomCache', null, []);
-            saveProjectToBrowserCache({ reason: 'backend_project_load_apply' });
+            const cached = saveProjectToBrowserCache({ reason: 'backend_project_load_apply' });
+            call('setProjectSaveState', null, incoming, backendFound && incoming.storage?.kind === 'user_directory' ? 'saved' : (cached ? 'cached' : 'error'));
             call('setBackendLoadedStorageKey', null, storageKey);
             call('resetSelectionState', null, []);
             call('resetHistory', null, []);
@@ -582,6 +740,7 @@
             browserCacheProjectIndexKey,
             browserCacheProjectScope,
             browserCacheProjectIndex,
+            cachedProjectEntries,
             setActiveBrowserCacheProject,
             initialBrowserStorageKey,
             scheduleSave,
@@ -589,6 +748,8 @@
             mutate,
             saveProject,
             saveProjectToBrowserCache,
+            cacheBackgroundRunResponse,
+            removeBrowserDraft,
             buildProjectStorageInfo,
             storageDisplayLocation,
             storageDisplayPath,

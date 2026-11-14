@@ -6,7 +6,7 @@
       "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
       "inpaint_image": "None", "inpaint_mask": "None",
       "width": 2048, "height": 2048, "cfg": 1, "steps": 8,
-      "var_number": 0, "var_number2": 0, "var_number3": 0, "var_number4": 0,
+      "var_number": 3072, "var_number2": 0, "var_number3": 0, "var_number4": 0,
       "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
       "var_number9": 0, "var_number10": 0,
       "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
@@ -54,7 +54,7 @@
     "class_type": "PH3ImageConditioning", "_meta": {"title": "P-H3 Image Conditioning"},
     "inputs": {
       "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "prompt": ["simpai_ph3_pe", 0],
-      "width": ["1", 6], "height": ["1", 7],
+      "width": ["70", 1], "height": ["71", 1],
       "images.image_1": ["22", 0], "images.image_2": ["25", 0],
       "images.image_3": ["28", 0], "images.image_4": ["31", 0],
       "images.image_5": ["34", 0], "images.image_6": ["37", 0],
@@ -84,7 +84,7 @@
     "inputs": {"noise": ["11", 0], "guider": ["8", 0], "sampler": ["10", 0], "sigmas": ["9", 0], "latent_image": ["7", 1]}
   },
   "13": {"class_type": "VAEDecode", "inputs": {"samples": ["12", 0], "vae": ["5", 0]}},
-  "14": {"class_type": "SaveImageWebsocket", "_meta": {"title": "SaveImageWebsocket"}, "inputs": {"images": ["13", 0]}},
+  "14": {"class_type": "SaveImageWebsocket", "_meta": {"title": "SaveImageWebsocket"}, "inputs": {"images": ["75", 0]}},
   "17": {"class_type": "noneNode", "inputs": {}},
   "18": {"class_type": "easy string", "inputs": {"value": "None"}},
   "20": {"class_type": "LoadInputImage", "inputs": {"image_name": ["1", 4], "image": "None"}},
@@ -121,6 +121,12 @@
   "63": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_8"}, "inputs": {"model": ["62", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
   "64": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_9"}, "inputs": {"model": ["63", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
   "65": {"class_type": "LoraLoaderBypassModelOnly", "_meta": {"title": "lora_10"}, "inputs": {"model": ["64", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "70": {"class_type": "ComfyMathExpression", "inputs": {"expression": "min(16384, ceil(a * b / 32) * 32)", "values.a": ["1", 6], "values.b": ["72", 0]}},
+  "71": {"class_type": "ComfyMathExpression", "inputs": {"expression": "min(16384, ceil(a * b / 32) * 32)", "values.a": ["1", 7], "values.b": ["72", 0]}},
+  "72": {"class_type": "ComfyMathExpression", "inputs": {"expression": "min(max(1, sqrt(max(2048, c) ** 2 / (a * b))), 16384 / max(a, b))", "values.a": ["1", 6], "values.b": ["1", 7], "values.c": ["1", 10]}},
+  "73": {"class_type": "ImageScale", "_meta": {"title": "P-H3 Restore Output Size"}, "inputs": {"image": ["13", 0], "upscale_method": "lanczos", "width": ["1", 6], "height": ["1", 7], "crop": "disabled"}},
+  "74": {"class_type": "ComfyMathExpression", "inputs": {"expression": "a != c or b != d", "values.a": ["1", 6], "values.b": ["1", 7], "values.c": ["70", 1], "values.d": ["71", 1]}},
+  "75": {"class_type": "easy ifElse", "inputs": {"boolean": ["74", 2], "on_true": ["73", 0], "on_false": ["13", 0]}},
   "simpai_lora_stack_main": {
     "class_type": "SimpAILoraStack", "_meta": {"title": "lora_stack_main"},
     "inputs": {"model": ["65", 0], "clip": ["4", 0], "stack_json": "{\"version\":1,\"items\":[]}", "branch": "main"}

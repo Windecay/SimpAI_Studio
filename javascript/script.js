@@ -9330,83 +9330,106 @@ window.simpleaiTraceIdentityFlow = () => traceIdentityFlowDom('manual');
 function initPersonalWildcardsPopup() {
     const content = document.getElementById('user_personal_wildcards_modal_content');
     const modal = document.getElementById('user_personal_wildcards_modal') || content;
-    const handle = document.getElementById('user_personal_wildcards_modal_handle');
+    const handle = document.getElementById('user_personal_wildcards_header');
+    const previous = initPersonalWildcardsPopup.state;
+    if (previous && previous.content !== content) {
+        previous.destroy();
+        delete initPersonalWildcardsPopup.state;
+    }
     if (!modal || !content || !handle) return;
+    const stage = window.simpleaiTopbarSystemParams || {};
+    const resizeLabel = window.SimpAII18n?.t('Resize window', undefined, stage) || 'Resize window';
+    const resizeHandle = content.querySelector('.simpleai-popup-resize-handle');
+    if (resizeHandle) {
+        resizeHandle.title = resizeLabel;
+        resizeHandle.setAttribute('aria-label', resizeLabel);
+    }
     if (content.dataset.pw_inited === '1') return;
     content.dataset.pw_inited = '1';
 
+    const compactQuery = window.matchMedia('(max-width: 760px)');
+    const isCompact = () => compactQuery.matches;
+    content.classList.toggle('is-compact', isCompact());
     const popupResize = installResizablePopup(content, {
         modal,
+        dragHandle: handle,
         minWidth: 640,
-        minHeight: 320,
+        minHeight: 440,
+        resizeLabel,
+        disabled: isCompact,
+        isHidden: () => isCompact() || !modal.getClientRects().length,
     });
 
-    const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-
-    const placeDefault = () => {
-        const w = content.getBoundingClientRect().width || 970;
-        const h = content.getBoundingClientRect().height || 520;
-        const margin = 10;
-        let top = 220;
-        let left = ((window.innerWidth - w) / 2) - 260;
-        top = clamp(top, margin, window.innerHeight - margin - h);
-        left = clamp(left, margin, window.innerWidth - margin - w);
-        setImportantStyle(content, 'top', `${top}px`);
-        setImportantStyle(content, 'left', `${left}px`);
-        setImportantStyle(content, 'right', 'auto');
-        setImportantStyle(content, 'bottom', 'auto');
+    const grip = content.querySelector('.simpleai-popup-resize-handle');
+    let frozenEditor = null;
+    const finishLargeFileResize = () => {
+        if (frozenEditor) {
+            for (const [name, value, priority] of frozenEditor.styles) {
+                if (value) frozenEditor.textarea.style.setProperty(name, value, priority);
+                else frozenEditor.textarea.style.removeProperty(name);
+            }
+            frozenEditor = null;
+        }
+        content.classList.remove('is-resizing-large-file');
+        window.removeEventListener('pointerup', finishLargeFileResize, true);
+        window.removeEventListener('pointercancel', finishLargeFileResize, true);
     };
+    const startLargeFileResize = () => {
+        if (frozenEditor || content.dataset.simpleaiResizeActive !== '1') return;
+        const textarea = content.querySelector('#user_personal_wildcards_content textarea');
+        if (!textarea || textarea.dataset.lineOverlayLarge !== '1') return;
+        // Keep the current wrapping while the frame moves, then reflow once on
+        // release. Native text layout also becomes costly for multi-MB files.
+        frozenEditor = {
+            textarea,
+            styles: ['width', 'max-width'].map(name => [
+                name, textarea.style.getPropertyValue(name), textarea.style.getPropertyPriority(name),
+            ]),
+        };
+        textarea.style.setProperty('width', `${textarea.getBoundingClientRect().width}px`, 'important');
+        textarea.style.setProperty('max-width', 'none', 'important');
+        content.classList.add('is-resizing-large-file');
+        window.addEventListener('pointerup', finishLargeFileResize, true);
+        window.addEventListener('pointercancel', finishLargeFileResize, true);
+    };
+    grip.addEventListener('pointerdown', startLargeFileResize);
 
     const onShow = () => {
-        if (modal.style.display === 'none') return;
-        if (!content.style.left && !content.style.top) {
-            placeDefault();
+        // Observe the shell, not the frame written by the resize controller.
+        if (!modal.getClientRects().length) {
+            popupResize.cancelInteraction();
+            finishLargeFileResize();
+            return;
         }
-        popupResize.ensureWithinViewport(false);
+        if (!isCompact()) popupResize.ensureWithinViewport(false);
     };
-
     const observer = new MutationObserver(onShow);
-    observer.observe(modal, { attributes: true, attributeFilter: ['style'] });
+    if (modal !== content) {
+        observer.observe(modal, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+    }
+    const onCompactChange = () => {
+        popupResize.cancelInteraction();
+        finishLargeFileResize();
+        content.classList.toggle('is-compact', isCompact());
+        for (const name of ['top', 'left', 'right', 'bottom', 'width', 'height', 'transform']) {
+            content.style.removeProperty(name);
+        }
+        delete content.dataset.simpleaiResizeManaged;
+    };
+    compactQuery.addEventListener('change', onCompactChange);
+    initPersonalWildcardsPopup.state = {
+        content,
+        destroy() {
+            observer.disconnect();
+            compactQuery.removeEventListener('change', onCompactChange);
+            popupResize.destroy();
+            grip.removeEventListener('pointerdown', startLargeFileResize);
+            finishLargeFileResize();
+            content.querySelector('textarea[data-line-overlay-init]')?.__lineOverlayDestroy?.();
+            delete content.dataset.pw_inited;
+        },
+    };
     onShow();
-
-    let dragging = false;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    const onMove = (e) => {
-        if (!dragging) return;
-        const x = e.clientX ?? 0;
-        const y = e.clientY ?? 0;
-        const rect = content.getBoundingClientRect();
-        const margin = 10;
-        const nextLeft = clamp(x - offsetX, margin, window.innerWidth - margin - rect.width);
-        const nextTop = clamp(y - offsetY, margin, window.innerHeight - margin - rect.height);
-        setImportantStyle(content, 'left', `${nextLeft}px`);
-        setImportantStyle(content, 'top', `${nextTop}px`);
-        setImportantStyle(content, 'right', 'auto');
-        setImportantStyle(content, 'bottom', 'auto');
-    };
-
-    const onUp = () => {
-        dragging = false;
-        window.removeEventListener('pointermove', onMove, true);
-        window.removeEventListener('pointerup', onUp, true);
-        popupResize.ensureWithinViewport(true);
-    };
-
-    const onDown = (e) => {
-        if (e.button !== 0) return;
-        if (modal.style.display === 'none') return;
-        const rect = content.getBoundingClientRect();
-        dragging = true;
-        offsetX = e.clientX - rect.left;
-        offsetY = e.clientY - rect.top;
-        window.addEventListener('pointermove', onMove, true);
-        window.addEventListener('pointerup', onUp, true);
-        e.preventDefault();
-    };
-
-    handle.addEventListener('pointerdown', onDown, { passive: false });
 }
 
 onUiLoaded(initPersonalWildcardsPopup);
@@ -10558,7 +10581,15 @@ function initPersonalWildcardsContentLineOverlay() {
 
     const content = document.createElement('div');
     content.className = 'line-overlay-content';
+    const measure = document.createElement('div');
+    measure.className = 'line-overlay-measure';
+    const probe = document.createElement('div');
+    probe.className = 'line-overlay-measure-probe';
+    probe.textContent = '\u200b';
+    measure.appendChild(probe);
+    viewport.setAttribute('aria-hidden', 'true');
 
+    viewport.appendChild(measure);
     viewport.appendChild(content);
 
     const parent = textarea.parentNode;
@@ -10567,66 +10598,190 @@ function initPersonalWildcardsContentLineOverlay() {
     wrapper.appendChild(viewport);
     wrapper.appendChild(textarea);
 
-    const syncScroll = () => {
-        const x = textarea.scrollLeft || 0;
-        const y = textarea.scrollTop || 0;
-        content.style.transform = `translate(${-x}px, ${-y}px)`;
+    // Text is measured in paragraph groups; only entries near the viewport get
+    // background rectangles. No file-size threshold removes the stripes.
+    const linesPerBlock = 256;
+    const blocks = [];
+    const lineTops = new Map();
+    const ranges = document.createRange();
+    const painted = new Map();
+    let starts = [0];
+    let lastValue = null;
+    let frame = 0;
+    let layoutKey = '';
+    let paintedKey = '';
+    let lineHeight = 20;
+    let paddingLeft = 0;
+    let paddingRight = 0;
+    let paddingBottom = 0;
+    let totalHeight = 0;
+    let mirrorTop = 0;
+
+    const invalidateLayout = () => {
+        lineTops.clear();
+        for (const block of blocks) delete block.firstGlyphOffset;
     };
 
     const applyTextareaStyles = () => {
         const cs = getComputedStyle(textarea);
+        const properties = [
+            'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontStretch',
+            'fontVariant', 'fontKerning', 'fontFeatureSettings', 'letterSpacing',
+            'wordSpacing', 'lineHeight', 'whiteSpace', 'overflowWrap', 'wordBreak',
+            'tabSize', 'textIndent', 'textAlign', 'direction', 'textTransform', 'padding',
+        ];
+        const nextKey = JSON.stringify([textarea.clientWidth, ...properties.map(name => cs[name])]);
+        if (layoutKey === nextKey) return;
+        layoutKey = nextKey;
         wrapper.style.borderRadius = cs.borderRadius;
         viewport.style.borderRadius = cs.borderRadius;
-        content.style.fontFamily = cs.fontFamily;
-        content.style.fontSize = cs.fontSize;
-        content.style.fontWeight = cs.fontWeight;
-        content.style.fontStyle = cs.fontStyle;
-        content.style.letterSpacing = cs.letterSpacing;
-        content.style.lineHeight = cs.lineHeight;
-        content.style.padding = cs.padding;
-        content.style.boxSizing = cs.boxSizing;
+        for (const name of properties) measure.style[name] = cs[name];
+        measure.style.width = `${textarea.clientWidth}px`;
         content.style.width = `${textarea.clientWidth}px`;
+        paddingLeft = parseFloat(cs.paddingLeft) || 0;
+        paddingRight = parseFloat(cs.paddingRight) || 0;
+        paddingBottom = parseFloat(cs.paddingBottom) || 0;
+        invalidateLayout();
     };
 
     const update = () => {
         const value = textarea.value ?? '';
-        textarea.dataset.lineOverlayLastValue = value;
-        const lines = value.split('\n');
-        const frag = document.createDocumentFragment();
-
-        for (let i = 0; i < lines.length; i++) {
-            const lineEl = document.createElement('div');
-            lineEl.className = 'line-overlay-line';
-            lineEl.textContent = lines[i].length ? lines[i] : '\u200b';
-            frag.appendChild(lineEl);
+        if (value === lastValue) return;
+        lastValue = value;
+        starts = [0];
+        for (let at = value.indexOf('\n'); at !== -1; at = value.indexOf('\n', at + 1)) {
+            starts.push(at + 1);
         }
+        textarea.dataset.lineOverlayLarge = value.length > 120000 || starts.length > 600 ? '1' : '0';
+        const count = Math.ceil(starts.length / linesPerBlock);
+        for (let index = 0; index < count; index++) {
+            const first = index * linesPerBlock;
+            const end = first + linesPerBlock < starts.length ? starts[first + linesPerBlock] - 1 : value.length;
+            const text = value.slice(starts[first], end) + '\u200b';
+            let block = blocks[index];
+            if (!block) {
+                const element = document.createElement('div');
+                element.className = 'line-overlay-measure-block';
+                element.appendChild(document.createTextNode(text));
+                measure.appendChild(element);
+                block = { element, text: element.firstChild };
+                blocks.push(block);
+            } else if (block.text.data !== text) {
+                block.text.data = text;
+            }
+        }
+        while (blocks.length > count) blocks.pop().element.remove();
+        invalidateLayout();
+    };
 
-        content.replaceChildren(frag);
-        syncScroll();
+    const glyphTop = (block, offset) => {
+        ranges.setStart(block.text, offset);
+        ranges.setEnd(block.text, offset + 1);
+        const rect = Array.from(ranges.getClientRects()).find(item => item.height > 0);
+        return rect?.top ?? block.element.getBoundingClientRect().top;
+    };
+
+    const lineTop = (index) => {
+        if (index >= starts.length) return totalHeight - paddingBottom;
+        if (lineTops.has(index)) return lineTops.get(index);
+        const first = Math.floor(index / linesPerBlock) * linesPerBlock;
+        const block = blocks[Math.floor(index / linesPerBlock)];
+        const blockTop = block.element.getBoundingClientRect().top;
+        if (block.firstGlyphOffset === undefined) block.firstGlyphOffset = glyphTop(block, 0) - blockTop;
+        // Quantize glyph positions to the browser's actual line box height so
+        // fallback fonts, tabs and blank entries retain the native row bounds.
+        const rows = Math.round((glyphTop(block, starts[index] - starts[first]) - blockTop - block.firstGlyphOffset) / lineHeight);
+        const top = blockTop - mirrorTop + rows * lineHeight;
+        lineTops.set(index, top);
+        return top;
+    };
+
+    const paintViewport = () => {
+        const rect = measure.getBoundingClientRect();
+        mirrorTop = rect.top;
+        totalHeight = rect.height;
+        lineHeight = probe.getBoundingClientRect().height || 20;
+        content.style.height = `${totalHeight}px`;
+        const scrollTop = textarea.scrollTop || 0;
+        let low = 0, high = starts.length - 1;
+        while (low < high) {
+            const mid = Math.ceil((low + high) / 2);
+            if (lineTop(mid) <= scrollTop) low = mid;
+            else high = mid - 1;
+        }
+        const first = Math.max(0, low - 1);
+        const bottom = scrollTop + textarea.clientHeight + lineHeight * 2;
+        let end = first;
+        while (end < starts.length && lineTop(end) < bottom) end++;
+        const nextKey = `${first}:${end}`;
+        const next = new Map();
+        for (let index = first; index < end; index++) {
+            let element = painted.get(index);
+            if (!element) {
+                element = document.createElement('div');
+                element.className = `line-overlay-line${index % 2 === 0 ? ' is-shaded' : ''}`;
+                element.dataset.lineIndex = String(index);
+            }
+            const top = lineTop(index);
+            element.style.top = `${top}px`;
+            element.style.height = `${Math.max(lineHeight, lineTop(index + 1) - top)}px`;
+            element.style.left = `${paddingLeft}px`;
+            element.style.right = `${paddingRight}px`;
+            next.set(index, element);
+        }
+        if (paintedKey !== nextKey) {
+            content.replaceChildren(...next.values());
+            paintedKey = nextKey;
+        }
+        painted.clear();
+        for (const [index, element] of next) painted.set(index, element);
+        content.style.transform = `translate(${-textarea.scrollLeft || 0}px, ${-scrollTop}px)`;
+    };
+
+    const scheduleSync = () => {
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+            frame = 0;
+            if (!textarea.isConnected) {
+                ro.disconnect();
+                return;
+            }
+            if (!textarea.clientWidth || !textarea.clientHeight) return;
+            update();
+            applyTextareaStyles();
+            paintViewport();
+        });
     };
 
     const maybeUpdate = () => {
-        const value = textarea.value ?? '';
-        if (value === (textarea.dataset.lineOverlayLastValue ?? '')) return;
-        update();
+        if ((textarea.value ?? '') !== lastValue) scheduleSync();
     };
 
-    const sync = () => {
-        applyTextareaStyles();
-        update();
-    };
-
-    textarea.addEventListener('input', update);
+    textarea.addEventListener('input', scheduleSync);
     textarea.addEventListener('change', maybeUpdate);
-    textarea.addEventListener('scroll', syncScroll);
+    textarea.addEventListener('scroll', scheduleSync, { passive: true });
 
-    const ro = new ResizeObserver(sync);
+    const ro = new ResizeObserver(scheduleSync);
     ro.observe(textarea);
 
-    textarea.__lineOverlaySync = sync;
+    textarea.__lineOverlaySync = scheduleSync;
     textarea.__lineOverlayMaybeUpdate = maybeUpdate;
+    textarea.__lineOverlayDestroy = () => {
+        ro.disconnect();
+        cancelAnimationFrame(frame);
+        frame = 0;
+        textarea.removeEventListener('input', scheduleSync);
+        textarea.removeEventListener('change', maybeUpdate);
+        textarea.removeEventListener('scroll', scheduleSync);
+        wrapper.replaceWith(textarea);
+        delete textarea.dataset.lineOverlayInit;
+        delete textarea.dataset.lineOverlayLarge;
+        delete textarea.__lineOverlaySync;
+        delete textarea.__lineOverlayMaybeUpdate;
+        delete textarea.__lineOverlayDestroy;
+    };
 
-    sync();
+    scheduleSync();
 }
 
 onUiLoaded(initPersonalWildcardsContentLineOverlay);

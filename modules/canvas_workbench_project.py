@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import os
 import re
@@ -242,6 +243,13 @@ def _sanitize_project(project, project_id, state_params, path=None, user_did=Non
     return project
 
 
+def _project_revision(path):
+    if not os.path.exists(path):
+        return ""
+    with open(path, "rb") as file:
+        return hashlib.sha256(file.read()).hexdigest()
+
+
 @asset_lifecycle.serialized
 def save_project(payload, state_params):
     project_id = _safe_id(payload.get("project_id") or "default") if isinstance(payload, dict) else "default"
@@ -249,7 +257,12 @@ def save_project(payload, state_params):
     backup_existing = bool(payload.get("backup_existing")) if isinstance(payload, dict) else False
     effective_state_params = _state_params_for_payload(payload, state_params)
     path, user_did = _project_path(project_id, effective_state_params)
+    expected = payload.get("expected_revision", project.get("storage_revision") if isinstance(project, dict) else None) if isinstance(payload, dict) else None
+    current_revision = _project_revision(path)
+    if expected is not None and expected != current_revision:
+        return {"ok": False, "error": "project_conflict", "current_revision": current_revision}
     project = _sanitize_project(project, project_id, effective_state_params, path=path, user_did=user_did)
+    project.pop("storage_revision", None)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     backup_path = None
     if backup_existing and os.path.exists(path):
@@ -268,6 +281,7 @@ def save_project(payload, state_params):
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(project, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(tmp_path, path)
+    project["storage_revision"] = _project_revision(path)
     result = {"ok": True, "project": project, "storage": project["storage"]}
     if backup_path:
         result["backup_path"] = backup_path
@@ -281,6 +295,7 @@ def load_project(payload, state_params):
     path, user_did = _project_path(project_id, effective_state_params)
     if not os.path.exists(path):
         project = _empty_project(project_id, effective_state_params)
+        project["storage_revision"] = ""
         project["storage"] = _storage_info(project_id, effective_state_params, path=path, user_did=user_did)
         return {"ok": True, "found": False, "project": project, "storage": project["storage"]}
     with open(path, "r", encoding="utf-8") as f:
@@ -297,6 +312,7 @@ def load_project(payload, state_params):
             os.replace(tmp_path, path)
     except Exception:
         pass
+    project["storage_revision"] = _project_revision(path)
     return {"ok": True, "found": True, "project": project, "storage": project["storage"]}
 
 
@@ -312,6 +328,7 @@ def clear_project(payload, state_params):
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(project, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(tmp_path, path)
+    project["storage_revision"] = _project_revision(path)
     return {"ok": True, "project": project, "storage": project["storage"]}
 
 

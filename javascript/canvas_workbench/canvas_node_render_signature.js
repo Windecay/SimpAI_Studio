@@ -69,6 +69,11 @@
             if (!node) return '';
             const mediaAsset = node.type === 'result' ? getSelectedResultAsset(node) : node.asset;
             const mediaKey = mediaAssetRenderKey(mediaAsset);
+            if (['preset', 'classic'].includes(node.type) && typeof nodeSource.getPresetControlSignature === 'function') {
+                // Editable values and live status are synchronized in place. Only structural changes rebuild the editor.
+                const { params, status, model_status, ui, ...structure } = node;
+                return JSON.stringify({ ...structure, controls: nodeSource.getPresetControlSignature(node) });
+            }
             if (['video', 'audio', 'image', 'mask'].includes(node.type)) {
                 return JSON.stringify({
                     type: node.type,
@@ -93,7 +98,7 @@
                     assetCount: Array.isArray(node.assets) ? node.assets.length : 0,
                     preview: mediaAssetRenderKey(node.preview),
                     previewFrames: Array.isArray(node.preview_frames) ? node.preview_frames.map(frame => mediaAssetRenderKey(frame)) : [],
-                    status: node.status || {},
+                    status: { state: nodeStatusState(node) },
                     sourceKind: node.source?.kind || '',
                     stale: !!(node.source?.stale || node.producer?.stale),
                     refreshing: !!(node.source?.refreshing || node.producer?.refreshing),

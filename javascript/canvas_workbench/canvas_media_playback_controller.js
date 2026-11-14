@@ -108,8 +108,9 @@
             if (!media || !media.hasAttribute('data-media-player')) return;
             const nodeEl = media.closest('[data-node-id]');
             const node = nodeEl ? call(nodeSource, 'getNode', null, nodeEl.getAttribute('data-node-id')) : null;
-            if (!node || !['video', 'audio'].includes(node.type)) return;
+            if (!node) return;
             updateAudioWaveformPlayhead(media);
+            if (!['video', 'audio'].includes(node.type)) return;
             const range = call(assetSource, 'getMediaEditRange', null, node.asset || {});
             if (!range?.duration || !range.clipped || media.paused) return;
             if ((media.currentTime || 0) >= range.end) {
@@ -126,7 +127,7 @@
 
         function bindNodeMediaControlEvents(scopeElement) {
             if (!scopeElement?.querySelectorAll) return;
-            scopeElement.querySelectorAll('.sai-node-media video, .sai-node-media audio').forEach((media) => {
+            scopeElement.querySelectorAll('.sai-node-media video, .sai-node-media audio, [data-inline-preview-body] video, [data-inline-preview-body] audio').forEach((media) => {
                 if (media.__simpaiCanvasMediaControlsBound) return;
                 media.__simpaiCanvasMediaControlsBound = true;
                 ['pointerdown', 'pointerup', 'click', 'dblclick'].forEach((eventName) => {

@@ -115,6 +115,12 @@
                 if (call('handleMediaBrowserNodeKeydown', false, node, evt, nodeEl)) return;
                 call('handleVlmChatInputKeyDown', undefined, node, evt);
             });
+            nodeEl.addEventListener('compositionstart', evt => {
+                if (evt.target?.dataset) evt.target.dataset.composing = 'true';
+            });
+            nodeEl.addEventListener('compositionend', evt => {
+                if (evt.target?.dataset) delete evt.target.dataset.composing;
+            });
 
             nodeEl.addEventListener('dblclick', (evt) => call('handleNodeDoubleClick', undefined, node, evt));
 

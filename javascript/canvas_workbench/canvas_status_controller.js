@@ -60,6 +60,7 @@
                 inspectorToggle.innerHTML = `<i class="fa-solid ${collapsed ? 'fa-chevron-left' : 'fa-chevron-right'}"></i>`;
             }
             call('renderHistoryButtons');
+            call('renderProjectNavigation');
             call('renderSystemInfo');
             call('renderRunQueueWidget');
         }
