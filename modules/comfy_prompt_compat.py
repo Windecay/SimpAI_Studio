@@ -2,6 +2,7 @@ import copy
 import inspect
 import logging
 import time
+from contextvars import ContextVar
 from functools import wraps
 
 import httpx
@@ -16,6 +17,96 @@ _OBJECT_INFO_CACHE = {
     "expires_at": 0.0,
     "data": None,
 }
+
+_BATCH_QUEUED_PROMPT = ContextVar("studio_batch_queued_prompt", default=None)
+
+
+def _queue_batch_prompt(pipeline, user_did, prompt, user_cert, extra_data, prompt_id, process_alive_callback):
+    payload = {"prompt": prompt, "client_id": user_did, "user_cert": user_cert, "prompt_id": prompt_id}
+    if extra_data:
+        payload["extra_data"] = extra_data
+    for attempt in range(1, pipeline.COMFYUI_PROMPT_SUBMIT_ATTEMPTS + 1):
+        try:
+            with httpx.Client(timeout=pipeline.COMFYUI_PROMPT_HTTP_TIMEOUT) as client:
+                response = client.post(f"http://{pipeline.server_address()}/prompt", json=payload)
+            if response.status_code != 200:
+                logger.error("Comfy batch prompt rejected: status=%s, detail=%s", response.status_code, response.text)
+                return None
+            result = response.json()
+            if not isinstance(result, dict) or result.get("prompt_id") != prompt_id:
+                logger.error("Comfy batch prompt returned an unexpected ID: %s", prompt_id)
+                return None
+            return result
+        except httpx.RequestError as error:
+            connection_failed = isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
+            if not connection_failed:
+                job = pipeline.wait_for_prompt_acceptance(prompt_id)
+                if job is not None:
+                    return {"prompt_id": prompt_id, "recovered": True, "job_status": job.get("status")}
+            if attempt < pipeline.COMFYUI_PROMPT_SUBMIT_ATTEMPTS:
+                if connection_failed:
+                    pipeline.wait_for_server_ready(process_alive_callback=process_alive_callback)
+                else:
+                    time.sleep(1.0)
+    return None
+
+
+def _batch_argument_signature(function, name):
+    signature = inspect.signature(function)
+    if name in signature.parameters:
+        return signature
+    parameters = list(signature.parameters.values())
+    position = next((i for i, value in enumerate(parameters) if value.kind == inspect.Parameter.VAR_KEYWORD), len(parameters))
+    parameters.insert(position, inspect.Parameter(name, inspect.Parameter.KEYWORD_ONLY, default=None))
+    return signature.replace(parameters=parameters)
+
+
+def install_batch_prompt_support(pipeline):
+    """Keep prequeue support in Studio without changing the installed dependency."""
+    queue_prompt = getattr(pipeline, "queue_prompt", None)
+    get_images = getattr(pipeline, "get_images", None)
+    if not callable(queue_prompt) or not callable(get_images):
+        return False
+    if getattr(queue_prompt, "_simpai_batch_prompt_support", False):
+        return False
+    queue_signature = inspect.signature(queue_prompt)
+    image_signature = inspect.signature(get_images)
+    native_prompt_id = "prompt_id" in queue_signature.parameters
+    if native_prompt_id and "queued_prompt" in image_signature.parameters:
+        return False
+
+    @wraps(queue_prompt)
+    def queue_prompt_with_batch_support(user_did, prompt, user_cert, extra_data=None, *args, prompt_id=None, **kwargs):
+        queued = _BATCH_QUEUED_PROMPT.get()
+        if queued is not None and queued[0] is pipeline and queued[1] == user_did:
+            return queued[2]
+        if prompt_id is None:
+            return queue_prompt(user_did, prompt, user_cert, extra_data, *args, **kwargs)
+        if native_prompt_id:
+            return queue_prompt(user_did, prompt, user_cert, extra_data, *args, prompt_id=prompt_id, **kwargs)
+        bound = queue_signature.bind(user_did, prompt, user_cert, extra_data, *args, **kwargs)
+        return _queue_batch_prompt(
+            pipeline, user_did, prompt, user_cert, extra_data, prompt_id,
+            bound.arguments.get("process_alive_callback"),
+        )
+
+    @wraps(get_images)
+    def get_images_with_batch_support(*args, queued_prompt=None, **kwargs):
+        if queued_prompt is None:
+            return get_images(*args, **kwargs)
+        client_id = args[0] if args else kwargs["user_did"]
+        token = _BATCH_QUEUED_PROMPT.set((pipeline, client_id, queued_prompt))
+        try:
+            return get_images(*args, **kwargs)
+        finally:
+            _BATCH_QUEUED_PROMPT.reset(token)
+
+    queue_prompt_with_batch_support.__signature__ = _batch_argument_signature(queue_prompt, "prompt_id")
+    get_images_with_batch_support.__signature__ = _batch_argument_signature(get_images, "queued_prompt")
+    queue_prompt_with_batch_support._simpai_batch_prompt_support = True
+    pipeline.queue_prompt = queue_prompt_with_batch_support
+    pipeline.get_images = get_images_with_batch_support
+    return True
 
 
 _STUDIO_MODEL_DOWNLOAD_INPUTS = {

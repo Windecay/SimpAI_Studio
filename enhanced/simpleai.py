@@ -524,6 +524,7 @@ def _get_comfyd_supervisor():
     with _comfyd_init_lock:
         if _comfyd_supervisor is None:
             # Shared config imports this module in Forge, which does not use Comfy.
+            comfy_prompt_compat.install_batch_prompt_support(comfyclient_pipeline)
             comfy_prompt_compat.install_queue_prompt_normalizer(comfyclient_pipeline)
             comfy_prompt_compat.install_prompt_cancel_support(comfyclient_pipeline)
             comfy_prompt_compat.install_execution_error_support(comfyclient_pipeline)
