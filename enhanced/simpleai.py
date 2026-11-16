@@ -263,6 +263,20 @@ class ComfyTaskParams(_NativeComfyTaskParams):
     def convert2comfy(self, flow_name):
         return apply_stack_inputs(self._convert2comfy(flow_name), self.get_params())
 
+    def convert2comfy_cached(self, flow_name, cache):
+        params = self.get_params()
+        cached = cache.get(flow_name)
+        if cached is not None:
+            template, mapping, previous = cached
+            changed = {key: value for key, value in params.items() if key not in previous or previous[key] != value}
+            if previous.keys() <= params.keys() and changed.keys() <= mapping.keys():
+                prompt, _info = _apply_workflow_mapping(template, changed, mapping)
+                return apply_stack_inputs(prompt, params)
+        template = self._convert2comfy(flow_name)
+        mapping = self.get_key_mapped(json.dumps(template, ensure_ascii=False))
+        cache[flow_name] = (template, mapping, params)
+        return apply_stack_inputs(copy.deepcopy(template), params)
+
     def _convert2comfy(self, flow_name):
         native_error = None
         try:

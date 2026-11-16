@@ -229,11 +229,72 @@ class StudioBackend:
         return result
 
     def run(self, run_id, context, cancel=False):
+        if run_id.startswith("agent-tts-"):
+            from modules import canvas_workbench_qwen_tts as tts
+            self._check_tts_owner(run_id, context)
+            payload = {"run_id": run_id, "action": "stop"}
+            result = tts.control_qwen_tts(payload, context.state) if cancel else tts.poll_qwen_tts(payload, context.state)
+            # A failed asynchronous task is still a successful status lookup.
+            return self._public_tts_record(result)
         from modules import canvas_workbench_runner
         payload = {"run_id": run_id, "user_context": context.user_context}
         if cancel:
             return canvas_workbench_runner.control_run({**payload, "action": "stop"}, context.state)
         return canvas_workbench_runner.poll_run(payload, context.state)
+
+    def tts_models(self, model_ids, context):
+        from modules.qwen_tts_policy import inspect_model
+        return [{key: value for key, value in inspect_model(model_id).items() if key != "path"} for model_id in model_ids]
+
+    def tts_voices(self, context):
+        from modules import canvas_workbench_qwen_tts as tts
+        rows = [{"voice_id": "speaker:" + key, "name": key, "kind": "speaker", "source": "builtin",
+                 "speaker": key, "mode": "custom_voice"} for key in tts.QWEN_SPEAKER_DISPLAY_TO_KEY.values()]
+        for row in tts.list_qwen_tts_presets({}, context.state)["presets"]:
+            rows.append({"voice_id": f"style:{row['source']}:{row['name']}", "name": row["name"],
+                         "instruct": row["instruction"], "kind": "description", "source": row["source"],
+                         "mode": "voice_design"})
+        return rows
+
+    def submit_tts(self, payload, context):
+        from modules.canvas_workbench_qwen_tts import run_qwen_tts
+        result = run_qwen_tts(payload, context.state)
+        if result.get("error") == "run_id_conflict":
+            # A concurrent retry can arrive while private grant metadata is
+            # being renewed. Compare the public request, not the grant copy.
+            replay = self.replay_tts(payload["run_id"], payload["agent_tts_submission"]["request_fingerprint"], context)
+            if replay:
+                return replay
+        return self._public_tts_record(result)
+
+    @staticmethod
+    def _public_tts_record(result):
+        result = copy.deepcopy(result)
+        if result.get("state") == "failed":
+            result.update(ok=True, error="tts_generation_failed",
+                          message="Speech generation failed. Check the Studio server log.")
+            result.pop("details", None)
+        return result
+
+    @staticmethod
+    def _check_tts_owner(run_id, context, fingerprint=""):
+        from modules import canvas_workbench_qwen_tts as tts
+        tts._cleanup_runs()
+        with tts.QWEN_TTS_RUNS_LOCK:
+            record = tts.QWEN_TTS_RUNS.get(run_id)
+            if not record:
+                return None
+            if record.get("user_did") != context.user_id or not record.get("agent_tts_submission"):
+                raise AgentAPIError("run_not_found", "Speech task is unavailable to this identity.", 404)
+            submission = record["agent_tts_submission"]
+            require_identity_binding(context, submission["identity_binding"])
+            if fingerprint and submission["request_fingerprint"] != fingerprint:
+                raise AgentAPIError("request_id_conflict", "This request ID identifies a different speech task.", 409)
+            return StudioBackend._public_tts_record(tts._public_record(record))
+
+    def replay_tts(self, run_id, fingerprint, context):
+        result = self._check_tts_owner(run_id, context, fingerprint)
+        return {**result, "idempotent_replay": True} if result else None
 
     def queue(self, context):
         from modules import agent_runtime
@@ -340,6 +401,11 @@ class AgentService:
         from modules.agent_vlm import LocalInference
         return LocalInference(self.backend)
 
+    @cached_property
+    def tts(self):
+        from modules.agent_tts import SpeechTools
+        return SpeechTools(self)
+
     def execute(self, name, arguments, context):
         _require_context(context)
         if (context.authorization or {}).get("kind") == "inference_key":
@@ -356,6 +422,7 @@ class AgentService:
             raise AgentAPIError("invalid_request", "The request does not match this operation's schema.", 422, details) from exc
         scope = {"submit": "runs.submit", "cancel": "runs.cancel", "upload": "assets.write", "download_models": "models.download",
                  "workflow_import": "assets.write", "workflow_update": "assets.write", "workflow_submit": "runs.submit",
+                 "tts_submit": "runs.submit",
                  "system_status": "node.read", "vlm_analyze": "vlm.infer", "vlm_chat": "vlm.infer"}.get(handler, "read")
         if handler == "queue" and request.scope == "node":
             scope = "node.read"
@@ -379,6 +446,11 @@ class AgentService:
                 "asset_management_url": f"{API_PREFIX}/assets/manage",
                 "parameter_profiles_url": f"{API_PREFIX}/parameter-profiles",
                 "workflows_url": f"{API_PREFIX}/workflows",
+                "tts_url": f"{API_PREFIX}/tts/capabilities",
+                "speech": {"engine": "qwen_tts", "preset_required": False, "output_type": "audio",
+                           "capabilities_url": f"{API_PREFIX}/tts/capabilities",
+                           "voices_url": f"{API_PREFIX}/tts/voices", "preview_url": f"{API_PREFIX}/tts/preview",
+                           "submit_url": f"{API_PREFIX}/tts/runs", "automatic_model_download": False},
                 "workflow_import": {"formats": ["comfy_api", "comfy_ui"], "output_types": ["image", "video"],
                                     "sources": ["json_text", "png_metadata"], "png_metadata_keys": ["prompt", "workflow"],
                                     "execution_policy": "reviewed_nodes_only", "json_bytes": 2 * 1024 * 1024,
@@ -434,6 +506,18 @@ class AgentService:
 
     def vlm_models(self, request, context):
         return self.vlm.models(request, context)
+
+    def tts_capabilities(self, request, context):
+        return self.tts.capabilities(request, context)
+
+    def tts_voices(self, request, context):
+        return self.tts.voices(request, context)
+
+    def tts_preview(self, request, context):
+        return self.tts.preview(request, context)
+
+    def tts_submit(self, request, context):
+        return self.tts.submit(request, context)
 
     def vlm_status(self, request, context):
         return self.vlm.status(request, context)

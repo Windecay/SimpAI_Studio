@@ -32,6 +32,12 @@ Studio 已提供统一 Agent API，支持查询预置、模型、参数、路由
 
 用户要求先选择时，展示列表并等待选择。对已经明确的创作任务，可以先预览 `parameter_profile_selection_required=true` 的请求；此时返回 `needs_parameter_profile`，不得提交生成。用户选择后，将选项返回的 `selection` 字段用于预览和提交，保留原提示词与素材。引用包含 `preset_id`、`parameter_profile` 和版本校验字段；版本变化时重新读取并请用户选择，不能悄悄更换组合。单纯查询列表不代表授权生成，也不改变会话自动生成设置。
 
+## Qwen 语音任务
+
+Qwen TTS 独立于 preset。用户要求朗读、音色设计、声音克隆或多角色对话时，从 capabilities 的 `tts_url` 或工具索引 `category=tts` 查询 `simpai.tts.capabilities`，再用 `simpai.tts.voices.list` 发现实际 speaker 和当前身份保存的音色描述。按 schema 调用 `simpai.tts.preview`，就绪并取得生成授权后调用 `simpai.tts.submit`；继续用 `simpai.runs.get`／`simpai.runs.cancel` 查询和取消。
+
+实际朗读内容保存在 `text`，对话使用 `script`；音色与语气要求放在 `instruct`。参考录音只能使用当前身份已上传的音频 asset ID，不能提供任意路径。缺模型时不隐式下载，下载另行获得用户授权。结果是音频素材，以 `content_url` 读取；MCP 使用返回的 `resource_uri` 和 `resources/read`，不能调用图片工具 `simpai.assets.read` 播放音频。内置创作模式通过 `generate_audio` 任务卡执行，保留会话的确认／自动生成偏好。详情见 [Qwen TTS Agent 接口](docs/agent-tts.md)。
+
 ## 模型提示词与文字编码
 
 选择预置后，读取 `simpai.prompts.guidance` 或预置详情中的 `prompt_guidance`，按其中的技能 ID 调用 `simpai.skills.read`。`simpai.skills.list` 同时提供内建规范、项目技能和当前身份自己的技能。不要只依据模型名称或文本编码器猜测提示词格式。Anima 使用英文标签与简短英文 nltags；需要标签或角色名时调用已有的 `simpai.prompts.tags`，再用 `simpai.prompts.validate` 检查。

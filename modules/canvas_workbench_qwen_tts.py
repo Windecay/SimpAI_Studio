@@ -608,6 +608,9 @@ def _run_worker_locked(run_id, expected_record=None):
             return
     cleanup_after_worker = False
     try:
+        if record.get("agent_tts_submission"):
+            from modules.agent_tts import check_execution
+            check_execution(record)
         from enhanced import webui_qwen_tts
 
         with QWEN_TTS_RUNS_LOCK:
@@ -639,7 +642,18 @@ def _run_worker_locked(run_id, expected_record=None):
         handler = record.get("handler")
         kwargs = dict(record.get("handler_kwargs") or {})
         kwargs["progress_callback"] = progress_callback
-        audio_path = webui_qwen_tts.enqueue_task(handler, **kwargs)
+        if record.get("agent_tts_submission"):
+            original_handler = handler
+            def handler(**handler_kwargs):
+                check_execution(record)
+                return original_handler(**handler_kwargs)
+        from contextlib import nullcontext
+        from modules.qwen_tts_policy import local_models_only
+        policy = local_models_only() if record.get("local_files_only") else nullcontext()
+        with policy:
+            audio_path = webui_qwen_tts.enqueue_task(handler, **kwargs)
+        if record.get("agent_tts_submission"):
+            check_execution(record)
 
         with QWEN_TTS_RUNS_LOCK:
             if QWEN_TTS_RUNS.get(run_id) is not record:
@@ -694,6 +708,9 @@ def _run_worker_locked(run_id, expected_record=None):
     except BaseException as err:
         if isinstance(err, (KeyboardInterrupt, SystemExit)) and not _is_interrupt_exception(err):
             raise
+        if record.get("agent_tts_submission") and not record.get("cancel_action") and not _is_interrupt_exception(err):
+            import logging
+            logging.getLogger(__name__).exception("Agent Qwen TTS task failed: %s", run_id)
         cleanup_after_worker = True
         with QWEN_TTS_RUNS_LOCK:
             if QWEN_TTS_RUNS.get(run_id) is not record:
@@ -748,6 +765,8 @@ def run_qwen_tts(payload, state_params):
         "percent": 0.01,
         "message": "Preparing Qwen TTS job.",
         "request_fingerprint": fingerprint,
+        "local_files_only": payload.get("local_files_only") is True,
+        "agent_tts_submission": copy.deepcopy(payload.get("agent_tts_submission") or {}),
         "user_did": identity.get("user_did") or "guest",
         "state_params": copy.deepcopy(state_params) if isinstance(state_params, dict) else {},
         "created_ts": now,

@@ -224,6 +224,7 @@ def install_queue_prompt_normalizer(comfyclient_pipeline):
     if not callable(queue_prompt) or getattr(queue_prompt, "_simpai_enum_path_normalizer", False):
         return False
 
+    @wraps(queue_prompt)
     def queue_prompt_with_enum_path_normalization(user_did, prompt, user_cert, extra_data=None, *args, **kwargs):
         normalized_prompt, changes = normalize_comfy_prompt_for_pipeline(prompt, comfyclient_pipeline)
         normalized_prompt = restrict_studio_model_downloads(normalized_prompt)

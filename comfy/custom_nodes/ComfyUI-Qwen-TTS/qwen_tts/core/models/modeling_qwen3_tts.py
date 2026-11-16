@@ -1855,7 +1855,7 @@ class Qwen3TTSForConditionalGeneration(Qwen3TTSPreTrainedModel, GenerationMixin)
             force_download=kwargs.pop("force_download", False),
             proxies=kwargs.pop("proxies", None),
             resume_download=kwargs.pop("resume_download", None),
-            local_files_only=kwargs.pop("local_files_only", False),
+            local_files_only=local_files_only,
             token=kwargs.pop("use_auth_token", None),
             revision=kwargs.pop("revision", None),
         )
@@ -1865,6 +1865,7 @@ class Qwen3TTSForConditionalGeneration(Qwen3TTSPreTrainedModel, GenerationMixin)
         speech_tokenizer = Qwen3TTSTokenizer.from_pretrained(
             speech_tokenizer_dir,
             *model_args,
+            local_files_only=local_files_only,
             **kwargs,
         )
         model.load_speech_tokenizer(speech_tokenizer)
@@ -1877,7 +1878,7 @@ class Qwen3TTSForConditionalGeneration(Qwen3TTSPreTrainedModel, GenerationMixin)
             force_download=kwargs.pop("force_download", False),
             proxies=kwargs.pop("proxies", None),
             resume_download=kwargs.pop("resume_download", None),
-            local_files_only=kwargs.pop("local_files_only", False),
+            local_files_only=local_files_only,
             token=kwargs.pop("use_auth_token", None),
             revision=kwargs.pop("revision", None),
         )

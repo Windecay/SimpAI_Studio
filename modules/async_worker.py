@@ -12,6 +12,7 @@ from modules.patch import PatchSettings, patch_settings, patch_all
 from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress, format_vosr2_progress, format_relayvsr_progress
 from modules.comfy_progress_filter import use_progress_profile
 from modules.comfy_prompt_compat import ComfyExecutionError
+from modules.comfy_batch import ComfyBatchPipeline
 from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task, exclusive_task_lock
 from modules.lora_stack import (
     REMOTE_LORA_WARNING_PROGRESS, build_fooocus_stack, prepare_stack_params,
@@ -314,6 +315,7 @@ class AsyncTask:
         self.simpleai_comfy_prompt_accepted = False
         self.simpleai_comfy_prompt_id = None
         self.simpleai_comfy_prompt_accepted_at = None
+        self.simpleai_comfy_batch = None
         self.final_prompts = []
         self.performance_loras = []
 
@@ -854,6 +856,11 @@ def worker():
             return
         if getattr(prompt_id, "simpleai_native_process", False):
             return
+        batch = getattr(prompt_id, "simpleai_comfy_batch", None)
+        if batch is not None:
+            batch.cancel(prompt_id.last_stop)
+            ldm_patched.modules.model_management.interrupt_current_processing()
+            return
         target_prompt_id = None
         if isinstance(prompt_id, str):
             target_prompt_id = str(prompt_id).strip() or None
@@ -868,6 +875,21 @@ def worker():
         else:
             comfyd.interrupt()
         ldm_patched.modules.model_management.interrupt_current_processing()
+
+    def mark_comfy_prompt_accepted(async_task, prompt_id, _result=None):
+        async_task.simpleai_comfy_prompt_id = prompt_id
+        async_task.simpleai_comfy_prompt_accepted = True
+        async_task.simpleai_comfy_prompt_accepted_at = time.time()
+        logger.info(
+            "[Generate] comfy_prompt_accepted: task_id=%s, prompt_id=%s",
+            async_task.task_id, prompt_id,
+        )
+        if async_task.last_stop in ['stop', 'skip']:
+            logger.info(
+                "[Generate] replay_cancel_after_prompt_accept: task_id=%s, prompt_id=%s, action=%s",
+                async_task.task_id, prompt_id, async_task.last_stop,
+            )
+            interrupt_processing(async_task)
 
     def run_native_seedvr2(async_task, processing_start_time):
         from enhanced import seedvr2
@@ -1292,31 +1314,11 @@ def worker():
         async_task.results = async_task.results + [wall]
         return
 
-    def process_task(all_steps, async_task, callback, controlnet_canny_path, controlnet_cpds_path, controlnet_pose_path, current_task_id,
-                     denoising_strength, final_scheduler_name, goals, initial_latent, steps, switch, positive_cond,
-                     negative_cond, task, loras, tiled, use_expansion, width, height, base_progress, preparation_steps,
-                     total_count, show_intermediate_results, persist_image=True):
-        generation_started = time.perf_counter()
-        output_offset = len(getattr(async_task, 'media_generation_outputs', []))
-        if async_task.last_stop is not False:
-            interrupt_processing()
-        
-        if async_task.task_class in flags.comfy_classes:
-            merged_positive_prompt = join_prompts(*task.get("positive", []))
-            merged_negative_prompt = join_prompts(*task.get("negative", []))
-            default_params = dict(
-                prompt=merged_positive_prompt,
-                negative_prompt=merged_negative_prompt,
-                width=width,
-                height=height,
-                base_model=async_task.base_model_name,
-                sampler=async_task.sampler_name,
-                scheduler=final_scheduler_name,
-                cfg_scale=async_task.cfg_scale,
-                steps=steps,
-                denoise=denoising_strength,
-                seed=task['task_seed'],
-                )
+    def prepare_comfy_task(async_task, task, denoising_strength, final_scheduler_name, steps, width, height, preparation=None):
+        if preparation:
+            params_backend = preparation['params_backend']
+            input_images = preparation['input_images']
+        else:
             params_backend = async_task.params_backend.copy()
             input_images = params_backend.pop('input_images', None)
             params_backend.pop('ui_options', None)
@@ -1364,12 +1366,44 @@ def worker():
                 )
             except Exception as err:
                 logger.warning("H3 reference frontend preprocess skipped: %s", err)
-            default_params.update(params_backend)
-            default_params["__lang"] = async_task.simpleai_lang
+            if preparation is not None:
+                preparation.update(params_backend=params_backend, input_images=input_images)
+        params = dict(
+            prompt=join_prompts(*task.get("positive", [])),
+            negative_prompt=join_prompts(*task.get("negative", [])),
+            width=width,
+            height=height,
+            base_model=async_task.base_model_name,
+            sampler=async_task.sampler_name,
+            scheduler=final_scheduler_name,
+            cfg_scale=async_task.cfg_scale,
+            steps=steps,
+            denoise=denoising_strength,
+            seed=task['task_seed'],
+        )
+        params.update(params_backend)
+        params["__lang"] = async_task.simpleai_lang
+        comfy_task = get_comfy_task(
+            async_task.user_did, async_task.task_class, async_task.task_name, async_task.task_method,
+            params, input_images,
+        )
+        return comfy_task, params_backend
+
+    def process_task(all_steps, async_task, callback, controlnet_canny_path, controlnet_cpds_path, controlnet_pose_path, current_task_id,
+                     denoising_strength, final_scheduler_name, goals, initial_latent, steps, switch, positive_cond,
+                     negative_cond, task, loras, tiled, use_expansion, width, height, base_progress, preparation_steps,
+                     total_count, show_intermediate_results, persist_image=True, comfy_prepared=None):
+        generation_started = time.perf_counter()
+        output_offset = len(getattr(async_task, 'media_generation_outputs', []))
+        if async_task.last_stop is not False:
+            interrupt_processing(async_task)
+
+        if async_task.task_class in flags.comfy_classes:
             try:
                 user_cert = shared.token.get_register_cert(async_task.user_did)
-                comfy_task = get_comfy_task(async_task.user_did, async_task.task_class, async_task.task_name, async_task.task_method, 
-                        default_params, input_images)
+                comfy_task, params_backend = comfy_prepared or prepare_comfy_task(
+                    async_task, task, denoising_strength, final_scheduler_name, steps, width, height,
+                )
                 if async_task.disable_preview:
                     callback = None
                 elif callback is not None and comfy_task.progress_profile is not None:
@@ -1384,27 +1418,14 @@ def worker():
                 if async_task.remote_task is not None:
                     client_id = async_task.remote_task
 
-                async_task.simpleai_comfy_prompt_accepted = False
-                async_task.simpleai_comfy_prompt_id = None
-                async_task.simpleai_comfy_prompt_accepted_at = None
+                if comfy_prepared is None:
+                    async_task.simpleai_comfy_prompt_accepted = False
+                    async_task.simpleai_comfy_prompt_id = None
+                    async_task.simpleai_comfy_prompt_accepted_at = None
 
-                def mark_comfy_prompt_accepted(prompt_id, _result=None):
-                    async_task.simpleai_comfy_prompt_id = prompt_id
-                    async_task.simpleai_comfy_prompt_accepted = True
-                    async_task.simpleai_comfy_prompt_accepted_at = time.time()
-                    logger.info(
-                        "[Generate] comfy_prompt_accepted: task_id=%s, prompt_id=%s",
-                        async_task.task_id,
-                        prompt_id,
-                    )
-                    if async_task.last_stop in ['stop', 'skip']:
-                        logger.info(
-                            "[Generate] replay_cancel_after_prompt_accept: task_id=%s, prompt_id=%s, action=%s",
-                            async_task.task_id,
-                            prompt_id,
-                            async_task.last_stop,
-                        )
-                        interrupt_processing(prompt_id)
+                def on_comfy_prompt_accepted(prompt_id, result=None):
+                    if async_task.simpleai_comfy_prompt_id != prompt_id:
+                        mark_comfy_prompt_accepted(async_task, prompt_id, result)
 
                 extra_data = {
                     "extra_pnginfo": {
@@ -1511,17 +1532,22 @@ def worker():
                         logger.info('[Generate][ComfyDebug] native sysinfo unavailable: %s', exc)
 
                 with use_progress_profile(comfy_task.progress_profile):
-                    imgs = comfypipeline.process_flow(
-                        client_id,
-                        comfy_task.name,
-                        comfy_task.params,
-                        comfy_task.images,
-                        callback=callback,
-                        total_steps=comfy_task.steps,
-                        extra_data=extra_data,
-                        prompt_accepted_callback=mark_comfy_prompt_accepted,
-                        process_alive_callback=comfyd.is_running,
-                    )
+                    if comfy_prepared is not None:
+                        imgs = async_task.simpleai_comfy_batch.receive(
+                            current_task_id, callback, on_comfy_prompt_accepted,
+                        )
+                    else:
+                        imgs = comfypipeline.process_flow(
+                            client_id,
+                            comfy_task.name,
+                            comfy_task.params,
+                            comfy_task.images,
+                            callback=callback,
+                            total_steps=comfy_task.steps,
+                            extra_data=extra_data,
+                            prompt_accepted_callback=on_comfy_prompt_accepted,
+                            process_alive_callback=comfyd.is_running,
+                        )
                 if imgs and pe_supported_task(async_task.task_method):
                     capture_pe_result(
                         comfypipeline, async_task.simpleai_comfy_prompt_id,
@@ -1531,6 +1557,8 @@ def worker():
                 if inpaint_worker.current_task is not None:
                     imgs = [inpaint_worker.current_task.post_process(x) for x in imgs]
             except (ValueError, comfypipeline.ComfyServerUnavailableError) as e:
+                if comfy_prepared is not None:
+                    raise
                 logger.info(f"comfy_task_error: {e}")
                 current_progress = int(base_progress + (100 - preparation_steps) / float(all_steps) * steps)
                 if async_task.simpleai_comfy_prompt_accepted:
@@ -3317,41 +3345,105 @@ def worker():
             persist_image,
         )
 
-        for current_task_id, task in enumerate(tasks):
-            progressbar(async_task, current_progress, f'进入 {async_task.task_class} 生图 {current_task_id + 1}/{async_task.image_number} ...')
-            execution_start_time = time.perf_counter()
+        comfy_batch = None
+        prepared_images = {}
+        preparation_errors = {}
+        common_preparation = {}
 
-            try:
-                imgs, img_paths, current_progress = process_task(all_steps, async_task, callback_function, controlnet_canny_path,
-                                                                 controlnet_cpds_path, controlnet_pose_path, current_task_id,
-                                                                 denoising_strength, final_scheduler_name, goals,
-                                                                 initial_latent, async_task.steps, switch, task['c'],
-                                                                 task['uc'], task, loras, tiled, use_expansion, width,
-                                                                 height, current_progress, preparation_steps,
-                                                                 async_task.image_number, show_intermediate_results,
-                                                                 persist_image)
+        def check_batch_cancelled():
+            if async_task.last_stop in ('stop', 'skip'):
+                raise ldm_patched.modules.model_management.InterruptProcessingException()
 
-                current_progress = int(preparation_steps + (100 - preparation_steps) / float(all_steps) * int(all_steps/async_task.image_number) * (current_task_id + 1))
-                images_to_enhance += imgs
+        def prepare_batch_image(index):
+            if index in preparation_errors:
+                raise preparation_errors.pop(index)
+            if index not in prepared_images:
+                prepared = prepare_comfy_task(
+                    async_task, tasks[index], denoising_strength, final_scheduler_name,
+                    async_task.steps, width, height, common_preparation,
+                )
+                prepared_images[index] = prepared
+                comfy_batch.submit(index, prepared[0], {
+                    "extra_pnginfo": {"workflow": {"extra": {
+                        "VHS_latentpreview": True, "VHS_latentpreviewrate": 8,
+                    }}},
+                })
 
-            except ldm_patched.modules.model_management.InterruptProcessingException:
-                if async_task.last_stop == 'skip':
-                    if async_task.task_class in ['Fooocus']:
-                        del task['c'], task['uc']  # Save memory
-                    logger.info(f'User skipped')
-                    async_task.user_cancel_action = 'skip'
-                    async_task.last_stop = False
-                    continue
-                else:
+        if (len(tasks) > 1 and async_task.content_type == 'image'
+                and async_task.task_class in flags.comfy_classes
+                and async_task.remote_task is None
+                and ComfyBatchPipeline.supported(comfypipeline)):
+            comfy_batch = ComfyBatchPipeline(comfypipeline, comfyd, check_batch_cancelled)
+            async_task.simpleai_comfy_batch = comfy_batch
+            logger.info("[Generate] batch prequeue enabled: images=%s, lookahead=1", len(tasks))
+
+        try:
+            for current_task_id, task in enumerate(tasks):
+                progressbar(async_task, current_progress, f'进入 {async_task.task_class} 生图 {current_task_id + 1}/{async_task.image_number} ...')
+                execution_start_time = time.perf_counter()
+
+                try:
+                    if comfy_batch is not None:
+                        with execution_control_lock:
+                            check_batch_cancelled()
+                            ldm_patched.modules.model_management.interrupt_current_processing(False)
+                        comfy_batch.activate(current_task_id)
+                        prepare_batch_image(current_task_id)
+                        mark_comfy_prompt_accepted(async_task, comfy_batch.current_prompt_id)
+                        if current_task_id + 1 < len(tasks):
+                            try:
+                                prepare_batch_image(current_task_id + 1)
+                            except ldm_patched.modules.model_management.InterruptProcessingException:
+                                raise
+                            except Exception as error:
+                                # Deliver the current image before reporting a following preparation failure.
+                                preparation_errors[current_task_id + 1] = error
+                    imgs, img_paths, current_progress = process_task(all_steps, async_task, callback_function, controlnet_canny_path,
+                                                                     controlnet_cpds_path, controlnet_pose_path, current_task_id,
+                                                                     denoising_strength, final_scheduler_name, goals,
+                                                                     initial_latent, async_task.steps, switch, task['c'],
+                                                                     task['uc'], task, loras, tiled, use_expansion, width,
+                                                                     height, current_progress, preparation_steps,
+                                                                     async_task.image_number, show_intermediate_results,
+                                                                     persist_image, comfy_prepared=prepared_images.get(current_task_id))
+
+                    current_progress = int(preparation_steps + (100 - preparation_steps) / float(all_steps) * int(all_steps/async_task.image_number) * (current_task_id + 1))
+                    images_to_enhance += imgs
+
+                except ldm_patched.modules.model_management.InterruptProcessingException:
+                    if comfy_batch is not None:
+                        comfy_batch.discard(current_task_id)
+                    with processing_lock:
+                        skip = async_task.last_stop == 'skip'
+                        if skip:
+                            async_task.user_cancel_action = 'skip'
+                            async_task.last_stop = False
+                    if skip:
+                        if async_task.task_class in ['Fooocus']:
+                            del task['c'], task['uc']  # Save memory
+                        logger.info(f'User skipped')
+                        continue
                     logger.info('User stopped')
                     async_task.user_cancel_action = 'stop'
                     break
+                finally:
+                    prepared_images.pop(current_task_id, None)
 
-            if async_task.task_class in ['Fooocus']:
-                del task['c'], task['uc']  # Save memory
-            execution_time = time.perf_counter() - execution_start_time
-            logger.info(f'Generating and saving time: {execution_time:.2f} seconds')
-            ldm_patched.modules.model_management.print_memory_info("process_task finished")
+                if comfy_batch is not None:
+                    with processing_lock:
+                        if async_task.last_stop == 'skip':
+                            async_task.last_stop = False
+                if async_task.task_class in ['Fooocus']:
+                    del task['c'], task['uc']  # Save memory
+                execution_time = time.perf_counter() - execution_start_time
+                logger.info(f'Generating and saving time: {execution_time:.2f} seconds')
+                ldm_patched.modules.model_management.print_memory_info("process_task finished")
+        finally:
+            if comfy_batch is not None:
+                try:
+                    comfy_batch.close()
+                finally:
+                    async_task.simpleai_comfy_batch = None
 
 
         if not async_task.should_enhance:

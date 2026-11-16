@@ -2,6 +2,8 @@
 
 本接口供 Studio 内部 VLM 工具、社区 MCP、脚本和其他 Agent 共用。调用者提供预置 ID、素材 ID 和参数；服务端从当前用户的预置目录生成执行配置，沿用预置中的模型、LoRA、风格和默认值。
 
+Qwen TTS 使用独立 `tts` 工具，不需要 preset。通过 capabilities 返回的 `tts_url` 发现语音模式与模型状态，查询音色后预览并提交；进度、取消和音频资产读取继续使用通用接口。字段、示例与内置聊天行为见 [Qwen TTS Agent 接口](agent-tts.md)。
+
 ## 提示词规范、技能与 UTF-8 请求
 
 选择预置后先读取 `GET /api/v1/prompts/guidance?preset_id=...&theme=...`，或预置详情中的 `prompt_guidance`。它返回最终提示词的语言、格式、图片编号规则、推荐技能、可用提示词工具和预置默认风格。不要将预置中的文本编码器名称直接当成提示词格式，也不要根据一次未复核的结果判定模型只适合人物或不适合风景。
@@ -128,6 +130,10 @@ SimpAI Studio 服务地址：<实际 Studio 服务地址，包含部署前缀>�
 | GET | `/api/v1/presets/{preset_id}/models/status` | 检查所需模型是否存在，返回缺少的模型名称；不下载、不加载模型 |
 | POST | `/api/v1/presets/{preset_id}/models/download` | 经单独下载授权后请求缺失模型下载，返回进度查询入口 |
 | GET | `/api/v1/models` | 模型目录；可传 `preset_id` 查询兼容目录，并按 `kind`、`query`、`offset`、`limit` 查询 |
+| GET | `/api/v1/tts/capabilities` | Qwen 语音模式、语言、参数范围及模型状态；独立于 preset |
+| GET | `/api/v1/tts/voices` | 内置音色、设计描述及当前身份保存的描述 |
+| POST | `/api/v1/tts/preview` | 检查语音文本、音色、参考音频和本地模型，不生成或下载 |
+| POST | `/api/v1/tts/runs` | 提交 Qwen 语音任务，使用已有生成权限和通用任务查询 |
 | POST | `/api/v1/routes/preview` | 任务路由、参数校验、图片绑定和缺失条件；不提交 GPU 任务 |
 | POST | `/api/v1/assets` | 上传媒体的 base64 data URL，返回可重复引用的 `asset_id` |
 | GET | `/api/v1/assets/{asset_id}/content` | 读取当前用户拥有的素材或生成结果 |

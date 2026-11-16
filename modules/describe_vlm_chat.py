@@ -226,6 +226,15 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "\"parameter_profile_hint\":\"exact private parameter profile name only when the user explicitly named it\","
     "\"aspect_ratio\":\"auto\",\"image_number\":1,\"outpaint\":{\"up\":0,\"down\":0,\"left\":15,\"right\":15}}]}. "
     "actions[0].prompt is the exact text shown in the generation card and sent to the selected workflow. It must not be a bare intent label, a short translation of the request, a completion notice, or a reference such as `same as the previous image`. "
+    "For text-to-speech, voice design, voice cloning or a spoken multi-role dialogue, use the independent Qwen TTS tools, not an image preset. "
+    "Read simpai.tts.capabilities and simpai.tts.voices.list for actual modes, speakers and saved descriptions. "
+    "Return a generate_audio action instead of generate_image, shaped as "
+    "{\"type\":\"generate_audio\",\"tts\":{\"mode\":\"custom_voice\",\"text\":\"exact words to speak\",\"speaker\":\"discovered speaker key\",\"parameters\":{\"language\":\"Auto\"}}}. "
+    "For voice_design, use instruct for the voice description or a discovered voice_id; text contains only the exact spoken words. "
+    "For voice_clone, use ref_audio_ref with the exact attached audio ref and ref_text with its transcript; do not invent either. "
+    "For dialogue, provide script with one 'role name: spoken text' per line and roles with name, audio_ref and ref_text, up to four roles. "
+    "Never place a file path, data URL or invented asset ID in a speech action. Missing references or model files must be resolved before generation. "
+    "The UI previews the speech request and uses the existing confirmation or automatic-generation preference, then displays audio progress and a player. "
     "A promise that a task card is ready does not create a card. Include the generate_image action in the same final response whenever you prepare an image or video task. If you only discuss an idea or cannot prepare a task, do not tell the user to confirm a nonexistent card. "
     "For text_to_image, expand the request into a self-contained visual prompt with concrete subject design, composition, action, setting, camera, lighting, atmosphere, and texture while preserving every user constraint. "
     "For image editing tasks, write a complete and precise editing instruction that preserves the requested unchanged content; do not add unrelated visual changes. "
@@ -473,7 +482,7 @@ SimpAI UI guide skill:
   - Wan-Animate and Wan-Swap are directed presets based on Animate-style multimodal reference ability; they cover object replacement, pose/motion transfer, character or face replacement, with SAM3-mask and no-SAM3-mask variants.
   - For conventional video upscaling / super-resolution without restoration or cleanup goals, recommend Nvidia-VSR.
 - Audio, speech, and talking video:
-  - For text-to-speech, voice design, voice clone, custom voice, or multi-role dialogue, recommend Qwen TTS canvas templates.
+  - For text-to-speech, voice design, voice clone, custom voice, or multi-role dialogue, discover simpai.tts.capabilities and simpai.tts.voices.list. Creative mode can return a generate_audio action; Qwen TTS canvas templates remain available for node-based work.
   - For turning a portrait/image plus audio into lip-sync/talking video, recommend InfiniteTalk image+audio-to-video.
   - For adding sound effects or Foley to a video, recommend Hunyuan-Foley.
   - For mixing generated speech with video/audio timelines, recommend TTS Timeline or Timeline Composite templates in the infinite canvas.
@@ -997,11 +1006,15 @@ def _clean_multiline_text(value, limit=4000):
 
 def _localized_default_reply(action_type, lang):
     if _normalize_lang(lang) == "en":
+        if action_type == "generate_audio":
+            return "I prepared a speech task. Review the text and voice, then confirm."
         if action_type == "generate_image":
             return "I prepared an image-generation proposal. Review the options and confirm when ready."
         if action_type == "append_prompt":
             return "I prepared prompt text to append."
         return "I prepared prompt text for the main prompt box."
+    if action_type == "generate_audio":
+        return "已准备语音任务，请检查文本和音色后确认。"
     if action_type == "generate_image":
         return "已准备生图方案，请检查选项后确认生成。"
     if action_type == "append_prompt":
@@ -1010,6 +1023,10 @@ def _localized_default_reply(action_type, lang):
 
 
 def _localized_creative_generation_reply(actions, lang, auto_generate=False):
+    if any(isinstance(action, dict) and action.get("type") == "generate_audio" for action in actions or []):
+        if _normalize_lang(lang) == "en":
+            return "I prepared the speech task and am checking it now." if auto_generate else _localized_default_reply("generate_audio", lang)
+        return "已准备语音任务，正在检查生成条件。" if auto_generate else _localized_default_reply("generate_audio", lang)
     generation = next(
         (
             action for action in (actions or [])
@@ -6457,6 +6474,13 @@ def normalize_limited_actions(
         if not isinstance(item, dict):
             continue
         action_type = str(item.get("type") or item.get("action") or "").strip().lower().replace("-", "_")
+        if action_type == "generate_audio":
+            if allow_generation:
+                from modules.agent_tts_actions import normalize_audio_action
+                audio_action = normalize_audio_action(item, available_media_refs)
+                if audio_action:
+                    normalized.append(audio_action)
+            continue
         if action_type == "set_creative_preference":
             if not allow_generation or str(item.get("scope") or "session").strip().lower() != "session":
                 continue
@@ -8891,7 +8915,7 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
             action.get("type") == "generate_image" for action in parsed_actions if isinstance(action, dict)
         )
         recovered_generation = False
-        if not any(action.get("type") == "generate_image" for action in parsed_actions if isinstance(action, dict)):
+        if not any(action.get("type") in {"generate_image", "generate_audio"} for action in parsed_actions if isinstance(action, dict)):
             recovered_action = recover_creative_generation_action(
                 payload.get("message"),
                 result.get("text") or result.get("raw_text") or "",
@@ -8961,7 +8985,7 @@ def _run_describe_vlm_chat_unserialized(payload, stream_callback=None):
         if creative_reply:
             parsed["reply"] = creative_reply
         generation_count = sum(
-            action.get("type") == "generate_image" for action in parsed.get("actions") or [] if isinstance(action, dict)
+            action.get("type") in {"generate_image", "generate_audio"} for action in parsed.get("actions") or [] if isinstance(action, dict)
         )
         logger.info(
             "Creative action resolution: conversation_id=%s request_id=%s structured_response=%s "

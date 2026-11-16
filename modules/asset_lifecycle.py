@@ -90,6 +90,13 @@ def track(project_id, state, path, original=""):
 
 def generation_busy():
     """Do not load the worker/model stack just to run maintenance."""
+    tts = sys.modules.get("modules.canvas_workbench_qwen_tts")
+    if tts is not None:
+        if not all(hasattr(tts, name) for name in ("QWEN_TTS_RUNS_LOCK", "QWEN_TTS_RUNS", "QWEN_TTS_TERMINAL_STATES")):
+            return True
+        with tts.QWEN_TTS_RUNS_LOCK:
+            if any(record.get("state") not in tts.QWEN_TTS_TERMINAL_STATES for record in tts.QWEN_TTS_RUNS.values()):
+                return True
     runner = sys.modules.get("modules.canvas_workbench_runner")
     if runner is not None:
         if not all(hasattr(runner, name) for name in ("CANVAS_RUNS_LOCK", "CANVAS_RUNS", "TERMINAL_RUN_STATES")):

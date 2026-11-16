@@ -439,8 +439,21 @@ def apply_qwen3_patches(model):
         print(f"⚠️ [Qwen3-TTS] Failed to apply audio normalization patch: {e}")
 
 
+def _local_agent_tts_policy():
+    # The standalone Comfy installation need not contain Studio's modules.
+    try:
+        from modules import qwen_tts_policy
+        return qwen_tts_policy if qwen_tts_policy.local_only() else None
+    except ImportError:
+        return None
+
+
 def download_model_if_needed(model_id: str, qwen_root: str, target_dir_override: Optional[str] = None) -> str:
     """Download a specific model if not found locally"""
+    policy = _local_agent_tts_policy()
+    if policy:
+        # This branch must precede remote size checks and directory creation.
+        return policy.require_model(model_id, [qwen_root])
     folder_name = model_id.split("/")[-1]
     target_dir = target_dir_override or os.path.join(qwen_root, folder_name)
     
@@ -615,6 +628,10 @@ def _find_existing_qwen_model_dir(model_id: str, qwen_roots: List[str]) -> Optio
 def check_and_download_tokenizer():
     """Check and download tokenizer (shared by all models)"""
     global _MODELS_CHECKED
+    policy = _local_agent_tts_policy()
+    if policy:
+        policy.require_model(policy.TOKENIZER)
+        return
     if _MODELS_CHECKED:
         return
     
@@ -644,6 +661,8 @@ def load_qwen_model(model_type: str, model_choice: str, device: str, precision: 
     
     # Check and download tokenizer (shared by all models)
     check_and_download_tokenizer()
+    policy = _local_agent_tts_policy()
+    local_source = policy.require_model(policy.MODEL_IDS[model_type, model_choice]) if policy else None
     
     # Determine device
     if device == "auto":
@@ -671,6 +690,8 @@ def load_qwen_model(model_type: str, model_choice: str, device: str, precision: 
         
     # Cache key includes attention implementation and custom model path
     cache_key = (model_type, model_choice, device, precision, attn_impl, custom_model_path)
+    if local_source:
+        cache_key += (local_source,)
     if cache_key in _MODEL_CACHE:
         model = _MODEL_CACHE[cache_key]
         if unload_after:
@@ -756,7 +777,11 @@ def load_qwen_model(model_type: str, model_choice: str, device: str, precision: 
             found_local = existing_qwen_model
     
     model_id = final_source
-    if found_local:
+    if local_source:
+        # Agent generation only uses the same complete local model discovered
+        # during preview, without the UI loader's remote freshness checks.
+        final_source = local_source
+    elif found_local:
         final_source = found_local
         print(f"✅ [Qwen3-TTS] Loading local model: {os.path.basename(final_source)}")
         if not (custom_model_path and isinstance(custom_model_path, str) and custom_model_path.strip()):
@@ -789,12 +814,13 @@ def load_qwen_model(model_type: str, model_choice: str, device: str, precision: 
         attn_param = "eager"
     
     # Handle sage_attn (sageattention package)
+    local_kwargs = {"local_files_only": True} if policy else {}
     if use_sage_attn:
         try:
             from sageattention import sageattn
             print(f"🔧 [Qwen3-TTS] Loading model with sage_attn (sageattention)")
             
-            model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype)
+            model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype, **local_kwargs)
             
             # Patch attention modules to use sageattention
             patched_count = 0
@@ -827,18 +853,18 @@ def load_qwen_model(model_type: str, model_choice: str, device: str, precision: 
             
         except (ImportError, Exception) as e:
             print(f"⚠️ [Qwen3-TTS] Failed with sage_attn, falling back to default attention: {e}")
-            model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype)
+            model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype, **local_kwargs)
     else:
         try:
             if attn_param:
                 print(f"🔧 [Qwen3-TTS] Loading model with attention: {attn_impl}")
-                model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype, attn_implementation=attn_param)
+                model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype, attn_implementation=attn_param, **local_kwargs)
             else:
                 print(f"🔧 [Qwen3-TTS] Loading model with attention: {attn_impl}")
-                model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype)
+                model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype, **local_kwargs)
         except (ImportError, ValueError, Exception) as e:
             print(f"⚠️ [Qwen3-TTS] Failed with {attn_impl}, falling back to default attention: {e}")
-            model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype)
+            model = Qwen3TTSModel.from_pretrained(final_source, device_map=device, dtype=dtype, **local_kwargs)
     
     # Apply patches
     apply_qwen3_patches(model)

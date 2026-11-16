@@ -21,6 +21,7 @@ from modules.agent_api_contract import (
     WorkflowImport, WorkflowLookup, WorkflowNodeTypes, WorkflowUpdate, WorkflowPreview, WorkflowRun,
     WD14Request,
 )
+from modules.agent_tts_contract import TTSVoiceQuery, TTSPreview, TTSSubmit
 from modules.agent_service import AgentAPIError, AgentContext, get_default_service
 from modules.agent_api_response import AgentJSONResponse as JSONResponse
 
@@ -66,6 +67,9 @@ class SkillQueryParameters(SkillQuery):
 
 
 class SkillReadParameters(SkillReadRequest):
+    model_config = {"strict": False, "extra": "forbid"}
+
+class TTSVoiceParameters(TTSVoiceQuery):
     model_config = {"strict": False, "extra": "forbid"}
 
 
@@ -200,6 +204,22 @@ def create_router(context_resolver, service=None, authorization=None):
     @router.get("/presets", operation_id="simpai_presets_list")
     async def presets(request: Request, filters: Annotated[PresetQueryParameters, Query()]):
         return await call("simpai.presets.list", filters.model_dump(), request)
+
+    @router.get("/tts/capabilities", operation_id="simpai_tts_capabilities")
+    async def tts_capabilities(request: Request):
+        return await call("simpai.tts.capabilities", {}, request)
+
+    @router.get("/tts/voices", operation_id="simpai_tts_voices_list")
+    async def tts_voices(request: Request, filters: Annotated[TTSVoiceParameters, Query()]):
+        return await call("simpai.tts.voices.list", filters.model_dump(), request)
+
+    @router.post("/tts/preview", operation_id="simpai_tts_preview")
+    async def tts_preview(request: Request, payload: TTSPreview):
+        return await call("simpai.tts.preview", payload.model_dump(), request)
+
+    @router.post("/tts/runs", operation_id="simpai_tts_submit", status_code=202)
+    async def tts_submit(request: Request, payload: TTSSubmit):
+        return await call("simpai.tts.submit", payload.model_dump(), request, status=202)
 
     @router.get("/presets/{preset_id}", operation_id="simpai_presets_get")
     async def preset(request: Request, preset_id: str, options: Annotated[PresetOptions, Query()]):

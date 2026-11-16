@@ -2040,6 +2040,12 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
         next_backend.update(h3_director.route_backend(
             segment, generation.get("width", runtime["width"]), generation.get("height", runtime["height"]),
         ))
+        step_index = api_params.all_args.index("overwrite_step")
+        user_steps = int(h3_director.number(
+            base_args[step_index] if len(base_args) > step_index else None, -1,
+        ))
+        if user_steps > 0:
+            next_backend["scene_steps"] = user_steps
         next_backend.pop("native_process", None)
         name, profile, _method, _compiler = h3_director.route(segment)
         next_backend["preset"] = f"MiniMax-H3({name})"

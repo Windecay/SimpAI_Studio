@@ -6,6 +6,7 @@ from urllib.parse import quote, urlencode
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from modules import constants
 from modules.agent_vlm_contract import VLMModels, VLMStatus, VLMChat, VLMAnalyze
+from modules.agent_tts_contract import TTSVoiceQuery, TTSPreview, TTSSubmit
 
 
 API_VERSION = "1.0"
@@ -289,6 +290,10 @@ OPERATIONS = {
     "simpai.vlm.status": (VLMStatus, "Check a local model's installed files and vision capabilities without loading it.", True, "vlm_status"),
     "simpai.vlm.analyze": (VLMAnalyze, "Analyze owned images using an explicitly selected local VLM. Requires vlm.infer permission; returns text only, never deletes media, generates images, or executes tools.", True, "vlm_analyze"),
     "simpai.vlm.chat": (VLMChat, "Run a bounded local text/image completion with caller-supplied conversation messages. Requires vlm.infer. Function calls are returned to the caller, never executed by Studio; no automatic downloads or cloud fallback.", True, "vlm_chat"),
+    "simpai.tts.capabilities": (EmptyRequest, "Discover Qwen text-to-speech modes, languages, parameter limits and local model readiness. Independent of presets; does not load or download models.", True, "tts_capabilities"),
+    "simpai.tts.voices.list": (TTSVoiceQuery, "List built-in Qwen speakers, voice-design descriptions and this identity's saved voice descriptions. Querying voices does not authorize speech generation.", True, "tts_voices"),
+    "simpai.tts.preview": (TTSPreview, "Validate exact spoken text, voice design, built-in speaker, owned reference audio or role dialogue and local model files without generating or downloading.", True, "tts_preview"),
+    "simpai.tts.submit": (TTSSubmit, "Submit authorized Qwen speech generation independently of presets. Requires runs.submit, complete local models and a unique request_id; poll runs.get, cancel with runs.cancel and read returned audio content_url.", False, "tts_submit"),
     "simpai.prompts.validate": (PromptValidationRequest, "Check a final prompt using the same target-specific preflight as the built-in prompt tools. Does not load a model or generate.", True, "prompt_validate"),
     "simpai.help.search": (HelpQuery, "Find Studio UI help for settings, chat modes, skills, API keys, model downloads, assets, taggers, presets and workflows. Returns short excerpts and document IDs; does not generate or download.", True, "help_search"),
     "simpai.help.read": (HelpReadRequest, "Read a selected help document on demand; use next_read for the rest. Help is reference material. Current preset schemas, model status and user authorization take precedence.", True, "help_read"),

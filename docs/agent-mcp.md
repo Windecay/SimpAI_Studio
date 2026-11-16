@@ -107,6 +107,8 @@ Windows 使用当前系统用户的 DPAPI 加密，目录为 `%LOCALAPPDATA%/Sim
 
 工具目录包含当前 API 注册的操作，实际调用权限由 Studio 再次校验。适配器保留结构化结果和 `isError`，调用者应检查错误码。网络错误不自动重试生成或下载；生成重试必须使用相同 `request_id` 与正文。
 
+Qwen TTS 通过动态目录提供 `simpai.tts.capabilities`、`simpai.tts.voices.list`、`simpai.tts.preview` 和 `simpai.tts.submit`，无需改造为 preset，也无需为新增工具更换 MCP 包或安装新依赖。Studio 需重启以加载接口，客户端重新发现工具。生成音频继续用 `simpai.runs.get` 等待，以返回的 `resource_uri` 调用 `resources/read`；图片工具 `simpai.assets.read` 不读取音频。当前没有新增原生音频内容返回，播放能力取决于客户端。详细示例见 [Qwen TTS Agent 接口](agent-tts.md)。
+
 查看图片时，调用 **`simpai.assets.read`**，参数为 `{"asset_id":"file:<返回的素材 ID>"}` 或上传结果的 `asset:<ID>`。适配器通过 `tools/call` 返回原生 MCP `ImageContent`，图片不会被放进普通 JSON 文本。它支持当前身份的上传图片、蒙版和生成结果，不需要客户端提供文件系统 `read` 工具或开放 `resources/read`。客户端仍需把图片内容传给支持视觉的模型，不能只展示或转述文字元数据。
 
 `simpai.assets.read` 是 1.0.3 适配器提供的只读工具，复用已有素材下载接口和 `read` 权限，不是新增的 Studio HTTP 工具，也不加载本地 VLM。它返回原始图片和 MIME，不重编码；单图上限为 10 MiB。上传结果与任务结果中的图片会附带 `read_image`，包含可直接使用的工具名称和参数；任务与上传工具说明、MCP 初始化说明也会指向该工具。

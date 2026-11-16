@@ -18929,11 +18929,11 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         if (!asset || typeof asset !== 'object') return null;
         const includeEmbedded = options?.includeEmbedded !== false;
         const clean = {};
-        ['kind', 'asset_id', 'mime', 'name', 'path', 'output_path', 'asset_relative_path', 'relative_path', 'preview_url'].forEach((key) => {
+        ['kind', 'asset_id', 'mime', 'name', 'path', 'output_path', 'asset_relative_path', 'relative_path', 'preview_url', 'content_url'].forEach((key) => {
             const value = String(asset?.[key] || '').trim();
             if (value) clean[key] = value.slice(0, MAX_PERSISTED_TEXT);
         });
-        ['size', 'width', 'height'].forEach((key) => {
+        ['size', 'width', 'height', 'duration'].forEach((key) => {
             const value = Number(asset?.[key]);
             if (Number.isFinite(value) && value >= 0) clean[key] = value;
         });
@@ -19039,6 +19039,18 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const type = String(action.type || '').slice(0, 80);
         const prompt = String(action.prompt || '').slice(0, MAX_PERSISTED_TEXT);
         if (!prompt) return null;
+        if (type === 'generate_audio') {
+            return {
+                type, target: 'qwen_tts', prompt,
+                tts_request: action.tts_request && typeof action.tts_request === 'object' ? action.tts_request : {},
+                audio_bindings: Array.isArray(action.audio_bindings) ? action.audio_bindings.slice(0, 4) : [],
+                media_inputs: (Array.isArray(action.media_inputs) ? action.media_inputs : [])
+                    .map((input, index) => normalizeCreativeMediaInput(input, index, { includeEmbedded: false })).filter(Boolean),
+                tool_call_id: String(action.tool_call_id || '').slice(0, 240),
+                speech_submission: action.speech_submission && typeof action.speech_submission === 'object' ? action.speech_submission : null,
+                generation: normalizeCreativeGeneration(action.generation)
+            };
+        }
         if (!['generate_image', 'offer_image'].includes(type)) return { type, prompt };
         const taskKey = String(action.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
         const task = CREATIVE_TASK_ALIASES[taskKey] || taskKey;
@@ -23195,9 +23207,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             preparedRuntime.persistenceRevision = snapshot.persistence_revision;
             preparedRuntime.persistenceSavedAt = snapshot.saved_at;
             preparedRuntime.archiveHydrated = true;
-            activeCreativeRunIds().forEach(runId => creativeCanvasApi()?.controlRun?.(runId, 'stop', {
-                user_context: creativeUserContext()
-            }).catch(() => {}));
+            activeCreativeRunIds().forEach(runId => cancelCreativeRun(runId).catch(() => {}));
             stopCreativePolls();
             state.requestToken += 1;
             abortActiveChatRequest();
@@ -23264,9 +23274,13 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         abortActiveChatRequest(runtime);
         abortCreativeDirectorRequest(true, runtime);
         stopCreativePolls(runtime);
-        creativeRunIds.forEach((runId) => creativeCanvasApi()?.controlRun?.(runId, 'stop', {
-            user_context: creativeUserContext()
-        }).catch(() => {}));
+        creativeRunIds.filter(runId => !String(runId).startsWith('agent-tts-'))
+            .forEach((runId) => cancelCreativeRun(runId).catch(() => {}));
+        runtime.messages.forEach((message, messageIndex) => (message.actions || []).forEach((action, actionIndex) => {
+            if (action.type === 'generate_audio' && CREATIVE_ACTIVE_STATES.has(action.generation?.state)) {
+                stopSpeechGeneration(`${messageIndex}:${actionIndex}`, runtime).catch(() => {});
+            }
+        }));
         runtime.describeMediaReferencePromise = null;
         runtime.lastAutoReferencedDescribeMediaKey = '';
         if (hadChatWork) replacePendingAssistant(t('Stopped.', '已停止。'), runtime.messages);
@@ -26910,6 +26924,11 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
 
     function creativeGenerationForAction(action) {
         if (!action || typeof action !== 'object') return { state: 'awaiting_confirmation', assets: [] };
+        if (action.type === 'generate_audio') {
+            action.tool_call_id = String(action.tool_call_id || uid('describe_vlm_chat_speech'));
+            action.generation = action.generation || { state: 'awaiting_confirmation', assets: [] };
+            return action.generation;
+        }
         action.type = action.type === 'offer_image' ? 'offer_image' : 'generate_image';
         action.target = 'canvas_run';
         action.media_inputs = limitReferenceMedia(
@@ -27005,6 +27024,13 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         (Array.isArray(actions) ? actions : []).forEach((raw) => {
             if (!raw || typeof raw !== 'object') return null;
             const action = Object.assign({}, raw);
+            if (action.type === 'generate_audio') {
+                if (normalizeChatMode(mode) !== 'creative') return;
+                action.media_inputs = (action.audio_bindings || []).map(binding => mediaByRef.get(binding.ref)).filter(Boolean);
+                creativeGenerationForAction(action);
+                prepared.push(action);
+                return;
+            }
             if (action.type === 'set_creative_preference') {
                 if (normalizeChatMode(mode) === 'creative' && String(action.scope || 'session') === 'session') {
                     setCreativePreference({
@@ -27869,7 +27895,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const source = Array.isArray(messages) ? messages : [];
         const message = source[messageIndex];
         const action = message?.actions?.[actionIndex];
-        return ['generate_image', 'offer_image'].includes(action?.type) ? { message, action, messageIndex, actionIndex } : null;
+        return ['generate_image', 'offer_image', 'generate_audio'].includes(action?.type) ? { message, action, messageIndex, actionIndex } : null;
     }
 
     function creativeActionFromRuntimeIdentity(runtime, messageId, toolCallId) {
@@ -27879,7 +27905,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const actions = Array.isArray(message.actions) ? message.actions : [];
         const actionIndex = actions.findIndex((item) => String(item?.tool_call_id || '') === String(toolCallId || ''));
         const action = actionIndex >= 0 ? actions[actionIndex] : null;
-        return ['generate_image', 'offer_image'].includes(action?.type)
+        return ['generate_image', 'offer_image', 'generate_audio'].includes(action?.type)
             ? { message, action, messageIndex: messages.indexOf(message), actionIndex }
             : null;
     }
@@ -28408,6 +28434,12 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
     function resumeCreativeGenerationPolls(runtime = currentConversationRuntime()) {
         runtime.messages.forEach((message, messageIndex) => {
             (Array.isArray(message?.actions) ? message.actions : []).forEach((action, actionIndex) => {
+                if (action?.type === 'generate_audio') {
+                    if (action.generation?.run_id && CREATIVE_ACTIVE_STATES.has(action.generation.state)) {
+                        scheduleSpeechPoll(`${messageIndex}:${actionIndex}`, runtime);
+                    }
+                    return;
+                }
                 if (!['generate_image', 'offer_image'].includes(action?.type)) return;
                 const generation = creativeGenerationForAction(action);
                 if (generation.run_id && CREATIVE_ACTIVE_STATES.has(String(generation.state || '').toLowerCase())) {
@@ -28424,6 +28456,12 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         if (messageIndex < 0) return;
         const actions = Array.isArray(runtime.messages[messageIndex]?.actions) ? runtime.messages[messageIndex].actions : [];
         actions.forEach((action, actionIndex) => {
+            if (action?.type === 'generate_audio') {
+                if (runtime.creativePreference.auto_generate && action.generation?.state === 'awaiting_confirmation') {
+                    startSpeechGeneration(`${messageIndex}:${actionIndex}`, runtime);
+                }
+                return;
+            }
             if (action?.type !== 'generate_image') return;
             if (action.parameter_profile_selection_required) return;
             if (action.model_download_declined) return;
@@ -28704,6 +28742,227 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             window.clearTimeout(timer);
             signal?.removeEventListener('abort', cancel);
         }
+    }
+
+    function speechStatusText(value) {
+        const labels = {
+            awaiting_confirmation: 'Review speech text and voice', checking_models: 'Checking speech inputs and models',
+            preparing: 'Preparing speech', queued: 'Speech queued', running: 'Generating speech',
+            cancelling: 'Stopping speech', canceled: 'Speech stopped', finished: 'Speech ready',
+            failed: 'Speech generation failed', models_missing: 'Speech models are missing',
+            needs_inputs: 'Speech inputs are incomplete', needs_media: 'Reference audio is missing',
+            generation_not_allowed: 'Speech generation is not permitted'
+        };
+        return roleplayDictionaryText(labels[value] || 'Speech request needs attention');
+    }
+
+    function renderSpeechGenerationAction(action, ref) {
+        const generation = creativeGenerationForAction(action);
+        const active = CREATIVE_ACTIVE_STATES.has(generation.state);
+        const request = action.tts_request || {};
+        const voice = request.speaker || request.voice_id || request.instruct || '';
+        const audio = (generation.assets || []).filter(asset => String(asset.mime || '').startsWith('audio/'));
+        const results = audio.map(asset => {
+            const url = speechContentUrl(asset.content_url);
+            return url ? `<audio controls preload="none" src="${escapeHtml(url)}"></audio>` : '';
+        }).join('');
+        return `<div class="describe-vlm-chat-action-card" data-describe-vlm-chat-speech-card="${escapeHtml(ref)}">
+  <b>${escapeHtml(roleplayDictionaryText('Qwen speech generation'))}</b>
+  <pre class="describe-vlm-chat-prompt-preview">${escapeHtml(action.prompt)}</pre>
+  ${voice ? `<p>${escapeHtml(roleplayDictionaryText('Voice'))}: ${escapeHtml(voice)}</p>` : ''}
+  <p role="status">${escapeHtml(speechStatusText(generation.state))}</p>
+  ${active ? `<progress max="1" value="${Math.max(0, Math.min(1, Number(generation.percent) || 0))}"></progress>` : ''}
+  ${generation.error ? `<p role="alert">${escapeHtml(generation.error)}</p>` : ''}
+  ${results}
+  <div class="describe-vlm-chat-action-buttons">
+    ${active ? `${generation.recovery_pending ? `<button type="button" data-describe-vlm-chat-speech-run="${escapeHtml(ref)}">${escapeHtml(roleplayDictionaryText('Check speech status'))}</button>` : ''}<button type="button" data-describe-vlm-chat-speech-stop="${escapeHtml(ref)}">${escapeHtml(roleplayDictionaryText('Stop'))}</button>`
+        : `<button type="button" data-describe-vlm-chat-speech-run="${escapeHtml(ref)}">${escapeHtml(roleplayDictionaryText(generation.run_id ? 'Check speech status' : 'Generate speech'))}</button>`}
+  </div>
+</div>`;
+    }
+
+    function speechContentUrl(value) {
+        if (!value) return '';
+        try {
+            const url = new URL(value, window.location.href);
+            return url.origin === window.location.origin && url.pathname.startsWith(new URL(creativeAgentApiBase()).pathname + 'assets/')
+                && url.pathname.endsWith('/content') ? url.href : '';
+        } catch (_) { return ''; }
+    }
+
+    async function cancelCreativeRun(runId) {
+        if (String(runId).startsWith('agent-tts-')) {
+            return creativeAgentModelRequest(new URL(`runs/${encodeURIComponent(runId)}/cancel`, creativeAgentApiBase()).href, {});
+        }
+        return creativeCanvasApi()?.controlRun?.(runId, 'stop', { user_context: creativeUserContext() });
+    }
+
+    function applySpeechResponse(action, response) {
+        const generation = action.generation;
+        Object.assign(generation, {
+            run_id: response.run_id || generation.run_id, state: response.state,
+            percent: response.percent || 0, assets: response.assets || [],
+            error: response.state === 'failed' ? speechStatusText('failed') : '',
+            recovery_pending: false, submission_uncertain: false
+        });
+        if (response.state === 'finished' && !generation.assets.some(asset => String(asset.mime || '').startsWith('audio/'))) {
+            generation.state = 'failed';
+            generation.error = roleplayDictionaryText('No playable speech result was returned.');
+        }
+    }
+
+    function scheduleSpeechPoll(ref, runtime = currentConversationRuntime(), delay = 1000) {
+        const found = creativeActionFromRef(ref, runtime.messages);
+        if (found?.action?.type !== 'generate_audio' || !found.action.generation?.run_id) return;
+        const action = found.action, generation = action.generation, runId = generation.run_id;
+        const owner = JSON.stringify(creativeUserContext());
+        window.clearTimeout(runtime.creativeGenerationPolls.get(runId));
+        const timer = window.setTimeout(async () => {
+            runtime.creativeGenerationPolls.delete(runId);
+            const current = () => creativeActionFromRef(ref, runtime.messages)?.action === action
+                && action.generation === generation && owner === JSON.stringify(creativeUserContext());
+            if (!current() || !CREATIVE_ACTIVE_STATES.has(generation.state) || generation._polling) return;
+            if (!generation._poll_deadline) generation._poll_deadline = Date.now() + 30 * 60 * 1000;
+            if (Date.now() > generation._poll_deadline) {
+                generation.recovery_pending = true;
+                generation.error = roleplayDictionaryText('Speech status waiting timed out. Check the existing task again.');
+                persistCreativeAction(true, {}, runtime);
+                return;
+            }
+            generation._polling = true;
+            try {
+                const response = await creativeAgentModelRequest(new URL(`runs/${encodeURIComponent(runId)}`, creativeAgentApiBase()).href);
+                if (!current()) return;
+                applySpeechResponse(action, response);
+                generation._poll_failures = 0;
+                if (!CREATIVE_TERMINAL_STATES.has(generation.state)) scheduleSpeechPoll(ref, runtime, 1500);
+            } catch (error) {
+                if (!current()) return;
+                generation._poll_failures = (generation._poll_failures || 0) + 1;
+                generation.recovery_pending = true;
+                generation.error = roleplayDictionaryText('Speech status is unavailable. Check the existing task again.');
+                if (generation._poll_failures < 12 && ![401, 403, 404, 410].includes(error.status)) {
+                    scheduleSpeechPoll(ref, runtime, Math.min(30000, generation._poll_failures * 2000));
+                }
+            } finally {
+                generation._polling = false;
+                if (current()) persistCreativeAction(true, {}, runtime);
+            }
+        }, delay);
+        runtime.creativeGenerationPolls.set(runId, timer);
+    }
+
+    async function startSpeechGeneration(ref, runtime = currentConversationRuntime()) {
+        const found = creativeActionFromRef(ref, runtime.messages);
+        if (found?.action?.type !== 'generate_audio') return;
+        const action = found.action, previous = creativeGenerationForAction(action);
+        if (previous.run_id) {
+            previous._poll_deadline = Date.now() + 30 * 60 * 1000;
+            previous._poll_failures = 0;
+            const owner = JSON.stringify(creativeUserContext());
+            const current = () => creativeActionFromRef(ref, runtime.messages)?.action === action
+                && action.generation === previous && owner === JSON.stringify(creativeUserContext());
+            // Refresh completed tasks too, without ever resubmitting them.
+            try {
+                const response = await creativeAgentModelRequest(new URL(`runs/${encodeURIComponent(previous.run_id)}`, creativeAgentApiBase()).href);
+                if (!current()) return;
+                applySpeechResponse(action, response);
+                persistCreativeAction(true, {}, runtime);
+                if (CREATIVE_ACTIVE_STATES.has(previous.state)) scheduleSpeechPoll(ref, runtime);
+            } catch (_) {
+                if (!current()) return;
+                previous.error = roleplayDictionaryText('Speech status is unavailable. Check the existing task again.');
+                persistCreativeAction(true, {}, runtime);
+            }
+            return;
+        }
+        if (CREATIVE_ACTIVE_STATES.has(previous.state)) return;
+        const generation = { state: 'checking_models', percent: 0, assets: [] };
+        action.generation = generation;
+        const owner = JSON.stringify(creativeUserContext());
+        const current = () => creativeActionFromRef(ref, runtime.messages)?.action === action
+            && action.generation === generation && owner === JSON.stringify(creativeUserContext());
+        persistCreativeAction(true, {}, runtime);
+        let submitting = false;
+        try {
+            let body = action.speech_submission;
+            if (!body) {
+                body = JSON.parse(JSON.stringify(action.tts_request));
+                const media = new Map((action.media_inputs || []).map(input => [input.ref, input.asset]));
+                for (const binding of action.audio_bindings || []) {
+                    const asset = media.get(binding.ref);
+                    if (!asset) throw new Error('Reference audio is missing');
+                    let id = asset.asset_id;
+                    if (!/^(asset|file):[0-9a-f]{24,64}$/.test(String(id || ''))) {
+                        if (!asset.data_url) throw new Error('Reference audio is missing');
+                        id = (await creativeAgentModelRequest(new URL('assets', creativeAgentApiBase()).href,
+                            { data_url: asset.data_url, name: asset.name || 'reference-audio' })).asset_id;
+                        if (!current()) return;
+                    }
+                    if (binding.field === 'ref_audio_asset_id') body.ref_audio_asset_id = id;
+                    else {
+                        const match = /^roles\.([0-3])\.audio_asset_id$/.exec(binding.field);
+                        if (!match || !body.roles[Number(match[1])]) throw new Error('Reference audio is missing');
+                        body.roles[Number(match[1])].audio_asset_id = id;
+                    }
+                }
+                const preview = await creativeAgentModelRequest(new URL('tts/preview', creativeAgentApiBase()).href, body);
+                if (!current()) return;
+                if (!preview.ready_to_submit) {
+                    generation.state = preview.status;
+                    generation.error = (preview.models || []).filter(model => !model.ready).map(model => model.model_id).join(', ');
+                    persistCreativeAction(true, {}, runtime);
+                    return;
+                }
+                if (generation.stop_requested) { generation.state = 'canceled'; persistCreativeAction(true, {}, runtime); return; }
+                body.request_id = uid('speech');
+                action.speech_submission = body;
+                // Save the exact body before sending: a lost response must be
+                // retried with this same ID, text, bindings and random seed.
+                persistCreativeAction(false, {}, runtime);
+            }
+            submitting = true;
+            generation.state = 'preparing';
+            const response = await creativeAgentModelRequest(new URL('tts/runs', creativeAgentApiBase()).href, body);
+            if (!current()) return;
+            const stop = generation.stop_requested;
+            applySpeechResponse(action, response);
+            if (stop && generation.run_id) await cancelCreativeRun(generation.run_id);
+            if (!current()) return;
+            if (stop) generation.state = 'cancelling';
+            persistCreativeAction(true, {}, runtime);
+            if (CREATIVE_ACTIVE_STATES.has(generation.state)) scheduleSpeechPoll(ref, runtime);
+        } catch (error) {
+            if (!current()) return;
+            generation.state = 'awaiting_confirmation';
+            generation.submission_uncertain = submitting && !error.status;
+            generation.error = roleplayDictionaryText(generation.submission_uncertain
+                ? 'Speech submission is unconfirmed. Retry to check the same task.'
+                : error.message === 'Reference audio is missing' ? 'Reference audio is missing' : 'Speech request needs attention');
+            persistCreativeAction(true, {}, runtime);
+        }
+    }
+
+    async function stopSpeechGeneration(ref, runtime = currentConversationRuntime()) {
+        const found = creativeActionFromRef(ref, runtime.messages);
+        if (found?.action?.type !== 'generate_audio') return;
+        const generation = found.action.generation;
+        const owner = JSON.stringify(creativeUserContext());
+        const current = () => creativeActionFromRef(ref, runtime.messages)?.action === found.action
+            && found.action.generation === generation && owner === JSON.stringify(creativeUserContext());
+        generation.stop_requested = true;
+        if (generation.run_id) {
+            try {
+                const response = await cancelCreativeRun(generation.run_id);
+                if (!current()) return;
+                applySpeechResponse(found.action, response);
+                if (CREATIVE_ACTIVE_STATES.has(generation.state)) scheduleSpeechPoll(ref, runtime);
+            } catch (_) {
+                if (!current()) return;
+                generation.error = roleplayDictionaryText('Speech status is unavailable. Check the existing task again.');
+            }
+        } else generation.state = 'cancelling';
+        if (current()) persistCreativeAction(true, {}, runtime);
     }
 
     function renderCreativeModelDownload(generation, ref) {
@@ -29343,7 +29602,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const ids = [];
         (Array.isArray(messages) ? messages : []).forEach((message) => {
             (Array.isArray(message?.actions) ? message.actions : []).forEach((action) => {
-                const generation = ['generate_image', 'offer_image'].includes(action?.type) ? action.generation : null;
+                const generation = ['generate_image', 'offer_image', 'generate_audio'].includes(action?.type) ? action.generation : null;
                 if (generation?.run_id && CREATIVE_ACTIVE_STATES.has(String(generation.state || '').toLowerCase())) ids.push(generation.run_id);
             });
         });
@@ -29484,6 +29743,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                 const promptText = String(action?.prompt || '').trim();
                 if (!promptText) return '';
                 const actionRef = `${messageIndex}:${actionIndex}`;
+                if (action?.type === 'generate_audio') return renderSpeechGenerationAction(action, actionRef);
                 if (['generate_image', 'offer_image'].includes(action?.type)) {
                     if (!state.creativePresetCatalogLoaded && !state.creativePresetCatalogLoading) {
                         ensureCreativePresetCatalog().catch(() => {});
@@ -33708,6 +33968,16 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                 found.action.generation._poll_failures = 0;
                 scheduleCreativeGenerationPoll(ref, found.action.generation.run_id, 0);
             }
+            return;
+        }
+        const speechRun = evt.target.closest('[data-describe-vlm-chat-speech-run]');
+        if (speechRun) {
+            startSpeechGeneration(speechRun.getAttribute('data-describe-vlm-chat-speech-run'));
+            return;
+        }
+        const speechStop = evt.target.closest('[data-describe-vlm-chat-speech-stop]');
+        if (speechStop) {
+            stopSpeechGeneration(speechStop.getAttribute('data-describe-vlm-chat-speech-stop'));
             return;
         }
         const generationRun = evt.target.closest('[data-describe-vlm-chat-generation-run]');
