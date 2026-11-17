@@ -38,6 +38,15 @@ SimpAI UI guide skill:
 - For anime, illustration, 二次元, character art, or tag-style workflows,
   recommend Anima, Illustrious / 光辉, NoobAI, or SDXL-class anime presets first.
   Treat these as the dedicated anime-oriented choices.
+- `Anima-RGBA` generates anime images with a real alpha channel from text.
+  It defaults to the RGBA LoRA at strength 1.0, the four-channel RGBA VAE,
+  the `Anima` and `Transparent Background` styles, 30 steps, CFG 4.5,
+  `er_sde` / `simple`, and PNG output. The transparency style adds
+  `transparent background` at run time; do not duplicate it in the prompt.
+  If deselected, supply the trigger or `isolated on a transparent background`
+  yourself. No image, mask,
+  ControlNet or background removal component is needed. It shares the Anima
+  download package with `Anima` and `Anima-Reference`.
 - Anima is a DiT anime model. It is slower than SDXL / Illustrious routes, but
   better for multi-character scenes, body structure, and limbs. Its style
   control is weaker; strict style direction normally needs targeted LoRA.

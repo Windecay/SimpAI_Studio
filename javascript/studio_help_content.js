@@ -3075,6 +3075,34 @@
     "cn": "SAM3 蒙版：上传源视频后，双击画面选择目标点选跟踪或固定多边形，也可在右侧上传 mask 视频（仅支持视频文件）。检查蒙版后再执行主生成。"
   },
   "presetGuides": {
+    "Anima-RGBA": {
+      "intro": {
+        "en": "Generate anime illustrations with a real alpha channel, suitable for transparent character art, stickers and standalone objects. This preset uses the Anima RGBA LoRA and four-channel VAE.",
+        "cn": "生成带真实透明通道的动漫插画，适合透明角色图、贴纸和独立物体。预置使用 Anima RGBA LoRA 与四通道 VAE。"
+      },
+      "inputs": {
+        "en": "Enter an English Anima prompt describing the subject. The selected Transparent Background style adds the trigger at run time. No input image, mask or extra component is required.",
+        "cn": "填写描述主体的 Anima 英文提示词。默认勾选的“透明背景”风格会在运行时自动加入触发词，无需手动填写。无需上传图片、绘制蒙版或安装额外组件。"
+      },
+      "steps": [
+        {
+          "en": "Choose Anima-RGBA. The preset selects Anima and Transparent Background styles, the RGBA LoRA at strength 1.0 and the RGBA VAE automatically. All three Anima presets share the same download package.",
+          "cn": "选择 Anima 透明生图。预置自动勾选 Anima 和“透明背景”风格，默认选择权重 1.0 的 RGBA LoRA 和 RGBA VAE；三个 Anima 预置共用同一个下载包。"
+        },
+        {
+          "en": "Describe the subject, pose and framing without duplicating the transparency trigger. Example: no humans, strawberry shortcake, fruit, still life.",
+          "cn": "描述主体、动作与构图，不必重复填写透明背景触发词。例如：no humans, strawberry shortcake, fruit, still life。"
+        },
+        {
+          "en": "Start with 30 steps, CFG 4.5 and er_sde / simple. Generate and save as PNG or WebP to retain transparency; PNG is the preset default.",
+          "cn": "建议从 30 步、CFG 4.5、er_sde / simple 开始。生成后使用 PNG 或 WebP 保存透明度，预置默认输出 PNG。"
+        }
+      ],
+      "keyPoint": {
+        "en": "If the background remains opaque, deselect Transparent Background and enter (transparent background:1.3) in the prompt, keeping LoRA strength at 1.0. Raising the LoRA strength can add unwanted semi-transparent debris. Fine hair, glass and smoke may need manual review.",
+        "cn": "背景仍不透明时，可取消“透明背景”风格，改在提示词中填写 (transparent background:1.3)，LoRA 权重保持 1.0；提高 LoRA 权重可能产生半透明杂点。细发丝、玻璃和烟雾等细节需要检查。"
+      }
+    },
     "Anima-Reference": {
       "intro": {
         "en": "Use a character image to generate a new anime picture with a different pose, expression or setting. Character & Style Reference follows appearance and visual style; Character Reference guides appearance while allowing the prompt to set the style.",

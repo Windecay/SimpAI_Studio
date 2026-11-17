@@ -1,7 +1,7 @@
 # Anima Prompting
 
-Use this skill when the selected preset or target is `Anima`, `anima_aio`, or
-`anima-base-v1.0`.
+Use this skill when the selected preset or target is `Anima`, `Anima-RGBA`,
+`anima_aio`, `anima_rgba`, or `anima-base-v1.0`.
 
 Anima is not a generic Qwen natural-language target, even though the local
 preset uses a Qwen text encoder. It is also not a pure SDXL tag target. Write a
@@ -70,6 +70,31 @@ Anima recognizes rating tokens `safe`, `sensitive`, `nsfw`, and `explicit`.
 Choose the least explicit token that matches the user intent and local policy
 signals. Do not escalate an ordinary SFW request to adult content just because
 an external workflow used `nsfw` as a quality/anatomy default.
+
+## Anima-RGBA
+
+`Anima-RGBA` is text-to-image with a real alpha channel. It uses
+`anima_rgba_lora.safetensors` at strength 1.0 and
+`anima_rgba_vae.safetensors`. The preset selects the `Transparent Background`
+style by default; it adds the fixed trigger `transparent background` at run
+time, without prefilling the prompt field. While this style is active, describe
+only the subject, pose and framing and do not duplicate the trigger. If the
+style is deselected, include `transparent background` or
+`isolated on a transparent background` yourself; these exact phrases do not
+need tag lookup. Do not substitute
+`transparent_background`, a white background, a checkerboard, or a background
+removal task. Describe the subject, pose and framing with the ordinary Anima
+rules. When the default Anima style is active, do not duplicate its quality
+tags in the prompt.
+
+The preset defaults to 30 steps, CFG 4.5, `er_sde` / `simple` and PNG output.
+PNG and WebP retain alpha. If the background remains opaque, deselect the
+`Transparent Background` style and try `(transparent background:1.3)` in the
+prompt while keeping LoRA strength at 1.0; increasing
+the LoRA strength can introduce semi-transparent debris. No reference image,
+mask, ControlNet, background remover or enhancement component is required.
+All three Anima presets share one download package. Do not claim a generated
+image has correct transparency until its result has been inspected.
 
 ## `nltags`
 

@@ -1,0 +1,93 @@
+{
+  "preset_category": "Anima",
+  "supported_tasks": [
+    "text_to_image"
+  ],
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "disvisible": [
+      "backend_selection",
+      "performance_selection",
+      "refiner_model",
+      "input_image_checkbox",
+      "enhance_checkbox",
+      "enhance_input_image"
+    ],
+    "disinteractive": [
+      "performance_selection",
+      "refiner_model",
+      "input_image_checkbox",
+      "enhance_checkbox",
+      "enhance_input_image",
+      "FaceSwap"
+    ],
+    "available_aspect_ratios_selection": "SDXL",
+    "backend_params": {
+      "task_method": "anima_rgba"
+    },
+    "resolution_control": {
+      "mode": "standard",
+      "source": "none",
+      "base_width": 1024,
+      "base_height": 1024,
+      "quantize": 16,
+      "interactive": true,
+      "frontend_preprocess": false,
+      "preprocess_target": "none",
+      "preprocess_fit": "scale"
+    }
+  },
+  "default_model": "anima-base-v1.0.safetensors",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "qwen_3_06b_base.safetensors",
+  "default_vae": "anima_rgba_vae.safetensors",
+  "default_loras": [
+    [
+      "anima_rgba_lora.safetensors",
+      1
+    ],
+    [
+      "None",
+      0.8
+    ],
+    [
+      "None",
+      0.8
+    ],
+    [
+      "None",
+      0.8
+    ],
+    [
+      "None",
+      0.8
+    ]
+  ],
+  "default_cfg_scale": 4.5,
+  "default_sample_sharpness": 0,
+  "default_sampler": "er_sde",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_prompt": "",
+  "default_prompt_negative": "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts",
+  "default_styles": [
+    "Anima",
+    "Transparent Background"
+  ],
+  "default_aspect_ratio": "1024*1024",
+  "default_image_number": 1,
+  "default_overwrite_step": 30,
+  "default_output_format": "png",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,anima-base-v1.0.safetensors,4182218328,0,https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/split_files/diffusion_models/anima-base-v1.0.safetensors,https://huggingface.co/circlestone-labs/Anima/resolve/main/split_files/diffusion_models/anima-base-v1.0.safetensors",
+    "text_encoders,qwen_3_06b_base.safetensors,1192135096,0,https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/split_files/text_encoders/qwen_3_06b_base.safetensors,https://huggingface.co/circlestone-labs/Anima/resolve/main/split_files/text_encoders/qwen_3_06b_base.safetensors",
+    "vae,anima_rgba_vae.safetensors,507612064,d113c0f48b8fe2b64c11fe7cbaa2f005e16db48d2b8e59f9171dd6da05650c4e,https://modelscope.cn/models/hf/localai0301-Anima-RGBA/resolve/master/anima_rgba_vae.safetensors,https://huggingface.co/localai0301/Anima-RGBA/resolve/main/anima_rgba_vae.safetensors",
+    "loras,anima_rgba_lora.safetensors,183604992,47dabf912dd0ea7913ee7b0cca3257469399c94ae1432f959ed3ab6047bdca0c,https://modelscope.cn/models/hf/localai0301-Anima-RGBA/resolve/master/anima_rgba_lora.safetensors,https://huggingface.co/localai0301/Anima-RGBA/resolve/main/anima_rgba_lora.safetensors"
+  ]
+}

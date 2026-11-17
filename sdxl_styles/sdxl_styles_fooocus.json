@@ -43,5 +43,9 @@
     {
         "name": "Anima",
         "prompt": "masterpiece,best quality,score_7, {prompt}, absurdres, newest,  very aesthetic, amazing quality,highres,sensitive,"
+    },
+    {
+        "name": "Transparent Background",
+        "prompt": "transparent background"
     }
 ]
