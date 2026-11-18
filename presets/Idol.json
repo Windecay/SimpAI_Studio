@@ -13,7 +13,6 @@
       "theme_title": "Idol Image to 3D",
       "task_method": {"Idol Image to 3D": "idol"},
       "mesh_output": true,
-      "image_slot_labels": {"scene_input_image1": "Source Image"},
       "director_capability": {
         "image_policy": "required", "min_images": 1, "max_images": 1,
         "image_modes": ["reference_set"],
@@ -22,8 +21,8 @@
       },
       "disable_canvas_mask": true,
       "disvisible": [
-        "scene_canvas_image", "scene_additional_prompt", "scene_additional_prompt_2",
-        "scene_input_image2", "scene_input_image3", "scene_input_image4",
+        "scene_additional_prompt", "scene_additional_prompt_2",
+        "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4",
         "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8",
         "scene_video", "scene_reference_video", "scene_reference_video2",
         "scene_audio", "scene_audio2", "scene_audio3", "scene_video_duration",

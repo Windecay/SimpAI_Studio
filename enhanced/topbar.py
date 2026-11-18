@@ -2839,7 +2839,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         scene_input_image7 = util.normalize_gradio_image_value(scene_input_image7, image_mode="RGBA")
         scene_input_image8 = util.normalize_gradio_image_value(scene_input_image8, image_mode="RGBA")
         scene_canvas_mask_disabled = _resolve_scene_canvas_mask_disabled(scene_frontend, scene_theme)
-        if meta_parser.get_scene_task_method(scene_frontend, scene_theme) == "idol" and scene_input_image1 is None:
+        if scene_canvas_image is None and meta_parser.get_scene_task_method(scene_frontend, scene_theme) == "idol":
             raise gr.Error(meta_parser.localized_ui_text(state_params, "Upload a source image to generate a 3D model."))
 
         scene_additional_prompt = f'{scene_additional_prompt}{scene_additional_prompt_2}'

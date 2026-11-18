@@ -3081,8 +3081,8 @@
         "cn": "将单张物件或角色图片转换成带顶点颜色的 GLB 网格，并生成 MP4 转台视频。"
       },
       "inputs": {
-        "en": "Upload one image under Source Image. Choose an unobstructed subject that fits within the frame. The preset removes the background automatically.",
-        "cn": "在“源图片”上传一张图。选择主体完整、遮挡较少的图片，预置会自动去除背景。"
+        "en": "Upload one image to \"Upload and canvas(1)\". Choose an unobstructed subject that fits within the frame. The preset removes the background automatically.",
+        "cn": "在「主体图片(1)」上传一张图。选择主体完整、遮挡较少的图片，预置会自动去除背景。"
       },
       "steps": [
         {

@@ -23,7 +23,7 @@
   "3": {
     "class_type": "LoadInputImage",
     "_meta": {"title": "Idol Source Image"},
-    "inputs": {"image_name": ["1", 2], "image": "None"}
+    "inputs": {"image_name": ["1", 4], "image": "None"}
   },
   "4": {
     "class_type": "LoadBackgroundRemovalModel",

@@ -396,7 +396,7 @@ SimpAI UI guide skill:
 - Add the built-in `Idol` preset from the Studio preset store's 3D category.
   The Launcher offers the `Idol` model package, and Studio can report which
   required files are missing.
-- Upload one image to Source Image (`源图片`), ideally with one complete object or
+- Upload one image to `Upload and canvas(1)` (`主体图片(1)`), ideally with one complete object or
   character and little occlusion. The preset removes the background automatically
   and uses the image as its only conditioning input.
 - Generate in the Studio main interface. Open the cube icon in the preview to
