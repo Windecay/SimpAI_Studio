@@ -19,6 +19,7 @@
     const MAX_AUTOPLAY_EDGE = 3840;
     const DETAIL_REQUEST_TIMEOUT_MS = 8000;
     const DETAIL_METADATA_TIMEOUT_MS = 15000;
+    const IMAGE_COPY_TIMEOUT_MS = 20000;
 
     const state = {
         __lang: config.lang,
@@ -94,6 +95,7 @@
     let dateSidebarHistoryClosing = false;
     let dateSidebarPendingOpen = false;
     let studioReturnHistoryAvailable = false;
+    let copyingOriginalImage = false;
     const t = (text) => {
         const lang = state.__lang || config.lang;
         if (window.SimpAII18n && typeof window.SimpAII18n.t === 'function') {
@@ -375,7 +377,7 @@
             button.setAttribute('aria-current', state.date === entry.date_key ? 'true' : 'false');
             button.innerHTML = `<span class="date-label">${escapeHtml(formatDate(entry.date_key))}</span>` +
                 `<span class="date-count">${Number(entry.total || 0)}</span>` +
-                `<span class="date-types">${Number(entry.images || 0)} ${escapeHtml(t('Images'))} · ${Number(entry.videos || 0)} ${escapeHtml(t('Videos'))} · ${Number(entry.audios || 0)} ${escapeHtml(t('Audio'))}</span>`;
+                `<span class="date-types">${Number(entry.images || 0)} ${escapeHtml(t('Images'))} · ${Number(entry.videos || 0)} ${escapeHtml(t('Videos'))} · ${Number(entry.audios || 0)} ${escapeHtml(t('Audio'))}${entry.meshes ? ` · ${Number(entry.meshes)} ${escapeHtml(t('3D Models'))}` : ''}</span>`;
             fragment.appendChild(button);
         });
         refs.dateList.replaceChildren(fragment);
@@ -470,7 +472,7 @@
     function applySavedFilters(filters) {
         const value = filters && typeof filters === 'object' ? filters : {};
         state.date = String(value.date || '');
-        state.mediaType = ['image', 'video', 'audio'].includes(value.type) ? value.type : 'all';
+        state.mediaType = ['image', 'video', 'audio', 'mesh'].includes(value.type) ? value.type : 'all';
         state.query = String(value.q || '');
         state.favorite = value.favorite === true ? true : null;
         state.sort = value.sort === 'oldest' ? 'oldest' : 'newest';
@@ -492,7 +494,8 @@
             Number(entry.total || 0),
             Number(entry.images || 0),
             Number(entry.videos || 0),
-            Number(entry.audios || 0)
+            Number(entry.audios || 0),
+            Number(entry.meshes || 0)
         ].join(':')).join('\u001f');
     }
 
@@ -624,12 +627,50 @@
         if (remaining <= threshold) loadPage(false);
     }
 
+    function mediaIcon(type) {
+        return ({ image: 'fa-image', video: 'fa-film', audio: 'fa-music', mesh: 'fa-cube' })[type] || 'fa-image';
+    }
+
+    function mediaKind(type) {
+        return t(({ image: 'Images', video: 'Videos', audio: 'Audio', mesh: '3D Models' })[type] || 'Images');
+    }
+
+    function meshPreview(item) {
+        return `<simpai-mesh-viewer data-src="${escapeHtml(item.media_url || '')}" data-format="${escapeHtml(item.model_format || '')}"></simpai-mesh-viewer>`;
+    }
+
     function cardPreview(item) {
         if ((item.media_type === 'image' || item.media_type === 'video') && item.thumbnail_url) {
-            return `<img src="${escapeHtml(item.thumbnail_url)}" alt="" loading="lazy" decoding="async">`;
+            return `<img src="${escapeHtml(item.thumbnail_url)}" alt="" loading="lazy" decoding="async" draggable="false">`;
         }
-        const icon = item.media_type === 'video' ? 'fa-film' : item.media_type === 'audio' ? 'fa-music' : 'fa-image';
+        const icon = mediaIcon(item.media_type);
         return `<span class="media-placeholder"><i class="fa ${icon}"></i></span>`;
+    }
+
+    function hasOriginalImage(item) {
+        return item?.media_type === 'image' && !!item.media_url;
+    }
+
+    function dragOriginalImage(event) {
+        const preview = event.target.closest('.media-card-preview');
+        if (!preview) return;
+        const card = preview.closest('.media-card');
+        const item = state.itemById.get(card?.dataset.id);
+        const transfer = event.dataTransfer;
+        if (event.target !== preview || !transfer || state.selectionMode || !hasOriginalImage(item)) {
+            event.preventDefault();
+            return;
+        }
+        const url = new URL(item.download_url || item.media_url, document.baseURI);
+        if (url.origin !== window.location.origin) {
+            event.preventDefault();
+            return;
+        }
+        const filename = (item.name || 'image').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_');
+        const mime = /^image\/[\w.+-]+$/i.test(item.mime) ? item.mime : 'application/octet-stream';
+        // The draggable element carries a file download. The thumbnail is only its visual preview.
+        transfer.effectAllowed = 'copy';
+        transfer.setData('DownloadURL', `${mime}:${filename}:${url.href}`);
     }
 
     function videoAutoplayEligible(item) {
@@ -763,15 +804,17 @@
         const favorite = !!item.favorite;
         const selected = state.selectedIds.has(item.media_id);
         const active = state.selectedId === item.media_id;
-        const kind = item.media_type === 'video' ? t('Videos') : item.media_type === 'audio' ? t('Audio') : t('Images');
+        const kind = mediaKind(item.media_type);
         const tags = Array.isArray(item.tags) ? item.tags.slice(0, 3).join(', ') : '';
         const facts = cardFacts(item);
+        const hasOriginal = hasOriginalImage(item);
+        const copyLabel = escapeHtml(t('Copy original image'));
         return `<article class="media-card${selected ? ' selected' : ''}${active ? ' active' : ''}" style="--media-ratio:${mediaRatio(item).toFixed(4)}" data-id="${escapeHtml(item.media_id)}" data-date="${escapeHtml(item.date_key || '')}">
-            <div class="media-card-preview">${cardPreview(item)}<span class="media-kind">${escapeHtml(kind)}</span>
-                <div class="media-card-overlay">
-                    <button type="button" class="card-select" title="Select" aria-label="Select" aria-pressed="${state.selectedIds.has(item.media_id) ? 'true' : 'false'}"><i class="fa fa-check"></i></button>
-                    <button type="button" class="card-favorite${favorite ? ' is-favorite' : ''}" title="${escapeHtml(t('Favorites'))}" aria-label="${escapeHtml(t('Favorites'))}" aria-pressed="${favorite ? 'true' : 'false'}"><i class="fa fa-star"></i></button>
-                </div>
+            <div class="media-card-preview" draggable="${hasOriginal}">${cardPreview(item)}<span class="media-kind">${escapeHtml(kind)}</span></div>
+            <div class="media-card-overlay">
+                <button type="button" class="card-select" title="Select" aria-label="Select" aria-pressed="${state.selectedIds.has(item.media_id) ? 'true' : 'false'}"><i class="fa fa-check"></i></button>
+                <button type="button" class="card-copy-original" title="${copyLabel}" aria-label="${copyLabel}"${hasOriginal ? '' : ' hidden'}><i class="fa fa-copy"></i></button>
+                <button type="button" class="card-favorite${favorite ? ' is-favorite' : ''}" title="${escapeHtml(t('Favorites'))}" aria-label="${escapeHtml(t('Favorites'))}" aria-pressed="${favorite ? 'true' : 'false'}"><i class="fa fa-star"></i></button>
             </div>
             <div class="card-body"><div class="card-meta"><span class="card-name" title="${escapeHtml(item.title || item.name)}">${escapeHtml(item.title || item.name || '')}</span><span class="card-date">${escapeHtml(formatDate(item.date_key))}</span></div>
                 <div class="card-facts${factsNeedWrap(item, state.layout.metrics.innerWidth) ? ' is-wrapped' : ''}"><span class="card-resolution" title="${escapeHtml(t('Output dimensions'))}">${escapeHtml(facts.dimensions)}</span><span class="card-generation-time" title="${escapeHtml(facts.title)}">${escapeHtml(facts.duration)}</span></div>
@@ -894,6 +937,7 @@
             item.date_key || '',
             item.media_type || '',
             item.thumbnail_url || '',
+            item.media_url || '',
             item.width || '', item.height || '', item.size || '',
             item.generation_duration_ms ?? '', item.generation_batch_duration_ms ?? '',
             item.generation_task_duration_ms ?? '', item.generation_batch_size ?? '',
@@ -916,7 +960,7 @@
     function syncCardContent(card, item) {
         const favorite = !!item.favorite;
         const selected = state.selectedIds.has(item.media_id);
-        const kind = item.media_type === 'video' ? t('Videos') : item.media_type === 'audio' ? t('Audio') : t('Images');
+        const kind = mediaKind(item.media_type);
         const tags = Array.isArray(item.tags) ? item.tags.slice(0, 3).join(', ') : '';
         const name = item.title || item.name || '';
         const preview = card.querySelector('.media-card-preview');
@@ -939,6 +983,8 @@
         card.querySelector('.card-generation-time').textContent = facts.duration;
         card.querySelector('.card-generation-time').title = facts.title;
         card.querySelector('.media-kind').textContent = kind;
+        preview.draggable = hasOriginalImage(item);
+        card.querySelector('.card-copy-original').hidden = !preview.draggable;
 
         const selectButton = card.querySelector('.card-select');
         selectButton.setAttribute('aria-pressed', state.selectedIds.has(item.media_id) ? 'true' : 'false');
@@ -958,13 +1004,14 @@
                 image.alt = '';
                 image.loading = 'lazy';
                 image.decoding = 'async';
+                image.draggable = false;
                 preview.insertBefore(image, preview.querySelector('.media-kind'));
             }
         } else {
             if (currentImage) currentImage.remove();
             if (!placeholder) {
                 const node = document.createElement('span');
-                const icon = item.media_type === 'video' ? 'fa-film' : item.media_type === 'audio' ? 'fa-music' : 'fa-image';
+                const icon = mediaIcon(item.media_type);
                 node.className = 'media-placeholder';
                 node.innerHTML = `<i class="fa ${icon}"></i>`;
                 preview.insertBefore(node, preview.querySelector('.media-kind'));
@@ -1139,14 +1186,16 @@
         if (!item || !refs.viewerMedia) return;
         const isImage = item.media_type === 'image';
         const zoom = isImage ? state.viewerZoom : 1;
-        const source = item.media_url || item.thumbnail_url || '';
+        const source = isImage ? item.media_url : (item.media_url || item.thumbnail_url || '');
         let mediaHtml = '';
-        if (item.media_type === 'image') {
+        if (isImage && source) {
             mediaHtml = `<img src="${escapeHtml(source)}" alt="${escapeHtml(item.title || item.name || '')}" style="transform:scale(${zoom.toFixed(2)})">`;
         } else if (item.media_type === 'video') {
             mediaHtml = `<video src="${escapeHtml(source)}" controls preload="metadata"></video>`;
         } else if (item.media_type === 'audio') {
             mediaHtml = `<audio src="${escapeHtml(source)}" controls preload="metadata"></audio>`;
+        } else if (item.media_type === 'mesh') {
+            mediaHtml = meshPreview(item);
         }
         refs.viewerMedia.innerHTML = mediaHtml || `<div class="empty-state"><p>${escapeHtml(t('Unable to load details'))}</p></div>`;
         refs.viewerTitle.textContent = item.title || item.name || '';
@@ -1328,6 +1377,61 @@
         return copied;
     }
 
+    async function originalImagePng(url, signal) {
+        const response = await fetch(url, { credentials: 'same-origin', mode: 'same-origin', signal });
+        if (!response.ok) throw new Error('Unable to fetch original image');
+        const blob = await response.blob();
+        if (blob.type === 'image/png') return blob;
+        const bitmap = await createImageBitmap(blob);
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            canvas.getContext('2d').drawImage(bitmap, 0, 0);
+            const png = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+            if (!png) throw new Error('Unable to encode original image');
+            signal.throwIfAborted();
+            return png;
+        } finally {
+            bitmap.close();
+        }
+    }
+
+    function openOriginalForCopy(item) {
+        openViewer(item);
+        showToast(t('Clipboard unavailable. Original image opened.'), true);
+    }
+
+    async function copyOriginalImage(item, button) {
+        if (!hasOriginalImage(item) || copyingOriginalImage) return;
+        if (!navigator.clipboard?.write || !window.ClipboardItem) {
+            openOriginalForCopy(item);
+            return;
+        }
+        copyingOriginalImage = true;
+        button.disabled = true;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), IMAGE_COPY_TIMEOUT_MS);
+        const png = originalImagePng(item.media_url, controller.signal);
+        // Some browsers require clipboard.write before the async image fetch loses user activation.
+        png.catch(() => {});
+        try {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+            showToast(t('Original image copied'));
+        } catch (error) {
+            if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
+                openOriginalForCopy(item);
+            } else {
+                showToast(t('Unable to copy original image'), true);
+            }
+        } finally {
+            window.clearTimeout(timeout);
+            controller.abort();
+            button.disabled = false;
+            copyingOriginalImage = false;
+        }
+    }
+
     async function copyPrompt(item) {
         const prompt = promptText(item);
         if (!prompt) {
@@ -1360,7 +1464,7 @@
             container.innerHTML = `<h3>${escapeHtml(t('Related results'))}</h3><div class="related-list">` +
                 items.map((related) =>
                     `<button type="button" data-related-id="${escapeHtml(related.media_id)}" title="${escapeHtml(related.title || related.name || '')}">` +
-                    (related.thumbnail_url ? `<img src="${escapeHtml(related.thumbnail_url)}" alt="" loading="lazy">` : `<i class="fa fa-film"></i>`) +
+                    (related.thumbnail_url ? `<img src="${escapeHtml(related.thumbnail_url)}" alt="" loading="lazy" draggable="false">` : `<i class="fa ${mediaIcon(related.media_type)}"></i>`) +
                     `<span>${escapeHtml(related.title || related.name || '')}</span></button>`
                 ).join('') + '</div>';
             container.querySelectorAll('[data-related-id]').forEach((button) => {
@@ -1373,6 +1477,7 @@
 
     function syncDetailLayout() {
         const open = !!refs.drawer && refs.drawer.getAttribute('aria-hidden') === 'false';
+        if (!open) refs.detail?.querySelector('simpai-mesh-viewer')?.remove();
         if (refs.layout) refs.layout.classList.remove('has-detail');
         if (refs.detailBackdrop) {
             refs.detailBackdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
@@ -1494,9 +1599,10 @@
     }
 
     function detailPreview(item) {
-        if (item.media_type === 'image') return `<img src="${escapeHtml(item.media_url || item.thumbnail_url || '')}" alt="">`;
+        if (hasOriginalImage(item)) return `<img src="${escapeHtml(item.media_url)}" alt="">`;
         if (item.media_type === 'video') return `<video src="${escapeHtml(item.media_url || '')}" controls preload="metadata"></video>`;
         if (item.media_type === 'audio') return `<audio src="${escapeHtml(item.media_url || '')}" controls preload="metadata"></audio>`;
+        if (item.media_type === 'mesh') return meshPreview(item);
         return '';
     }
 
@@ -1512,7 +1618,7 @@
         const canvasHref = `${config.assetBase || ''}/canvas-workbench/app?${canvasParams}`;
         const lifecycleActions = trashed
             ? `<button class="primary-button" type="button" id="detail-viewer"><i class="fa fa-expand"></i> ${escapeHtml(t('View full screen'))}</button><button class="primary-button" type="button" id="detail-restore"><i class="fa fa-rotate-left"></i> ${escapeHtml(t('Restore media'))}</button><button class="danger-button" type="button" id="detail-purge"><i class="fa fa-trash"></i> ${escapeHtml(t('Delete permanently'))}</button>`
-            : `<button class="primary-button" type="button" id="detail-viewer"><i class="fa fa-expand"></i> ${escapeHtml(t('View full screen'))}</button>${item.media_type !== 'audio' ? `<a class="secondary-button" id="detail-open-canvas" href="${escapeHtml(canvasHref)}" target="_blank" rel="noopener"><i class="fa fa-layer-group"></i> ${escapeHtml(t('Open in Canvas'))}</a>` : ''}<a class="secondary-button" href="${escapeHtml(item.download_url || item.media_url || '#')}" download><i class="fa fa-download"></i> ${escapeHtml(t('Download'))}</a><button class="danger-button" type="button" id="detail-trash"><i class="fa fa-trash"></i> ${escapeHtml(t('Delete'))}</button>`;
+            : `<button class="primary-button" type="button" id="detail-viewer"><i class="fa fa-expand"></i> ${escapeHtml(t('View full screen'))}</button>${['image', 'video'].includes(item.media_type) ? `<a class="secondary-button" id="detail-open-canvas" href="${escapeHtml(canvasHref)}" target="_blank" rel="noopener"><i class="fa fa-layer-group"></i> ${escapeHtml(t('Open in Canvas'))}</a>` : ''}<a class="secondary-button" href="${escapeHtml(item.download_url || item.media_url || '#')}" download><i class="fa fa-download"></i> ${escapeHtml(t('Download'))}</a><button class="danger-button" type="button" id="detail-trash"><i class="fa fa-trash"></i> ${escapeHtml(t('Delete'))}</button>`;
         const folderAction = `<button class="secondary-button" type="button" id="detail-open-folder" title="${escapeHtml(t('Open containing folder'))}"><i class="fa fa-folder-open"></i> ${escapeHtml(t('Open containing folder'))}</button>`;
         refs.detail.dataset.mediaId = item.media_id;
         refs.detail.innerHTML = `<div class="detail-preview">${detailPreview(item)}</div>
@@ -2221,6 +2327,7 @@
                 const source = escapeHtml(item.media_url || item.thumbnail_url || '');
                 const media = item.media_type === 'image' ? compareImage(item, index)
                     : item.media_type === 'video' ? `<video src="${source}" controls playsinline preload="metadata"></video>`
+                    : item.media_type === 'mesh' ? meshPreview(item)
                         : `<audio src="${source}" controls preload="metadata"></audio>`;
                 return `<div class="compare-item"><div class="compare-media">${media}</div><div class="compare-caption" title="${escapeHtml(item.title || item.name || '')}">${escapeHtml(item.title || item.name || '')}</div></div>`;
             }).join('');
@@ -2311,7 +2418,15 @@
     }
 
     function bindEvents() {
+        refs.feed.addEventListener('dragstart', dragOriginalImage);
         refs.feed.addEventListener('click', (event) => {
+            const copyButton = event.target.closest('.card-copy-original');
+            if (copyButton) {
+                clearCardClickTimer();
+                const card = copyButton.closest('.media-card');
+                copyOriginalImage(state.itemById.get(card?.dataset.id), copyButton);
+                return;
+            }
             const selectButton = event.target.closest('.card-select');
             if (selectButton) {
                 clearCardClickTimer();

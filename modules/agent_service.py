@@ -584,10 +584,13 @@ class AgentService:
     @staticmethod
     def _summary(entry):
         capability = entry.get("media_capability") or {}
+        output_type = capability.get("output_type") or entry.get("engine_type")
+        mesh = output_type == "mesh"
         return {"preset_id": entry["name"], "backend_engine": entry.get("backend_engine"),
-                "automatic_routing": entry["name"].casefold() != "onekeykontext",
-                "prompt_mode": "preset_fixed" if entry["name"].casefold() == "onekeykontext" else "instruction",
-                "category": entry.get("preset_category"), "output_type": capability.get("output_type") or entry.get("engine_type"),
+                "automatic_routing": not mesh and entry["name"].casefold() != "onekeykontext",
+                "prompt_mode": "none" if mesh else "preset_fixed" if entry["name"].casefold() == "onekeykontext" else "instruction",
+                **({"generation_surface": "studio"} if mesh else {}),
+                "category": entry.get("preset_category"), "output_type": output_type,
                 "tasks": capability.get("supported_tasks") or [], "themes": (entry.get("schema") or {}).get("themes") or [],
                 "model_status": "missing" if entry.get("missing") else "unchecked",
                 "details_url": f"{API_PREFIX}/presets/{quote(entry['name'], safe='')}"}
@@ -1225,6 +1228,17 @@ class AgentService:
                                                   for target in (plan or {}).get("enhance_targets") or ["face", "hand", "eye"]]}
         return node
 
+    @staticmethod
+    def _require_studio_mesh_generation(context):
+        chinese = context.state.get("__lang") == "cn"
+        raise AgentAPIError(
+            "studio_generation_required",
+            "请在 Studio 主界面选择 3D 预置生成并查看模型。"
+            if chinese else "Use a 3D preset in the Studio main interface to generate and view the model.",
+            409,
+            {"task": "image_to_3d", "generation_surface": "studio"},
+        )
+
     def _prepare(self, request, context):
         from modules import describe_vlm_chat as chat
         from modules.agent_prompting import check_encoding
@@ -1234,6 +1248,8 @@ class AgentService:
             raise AgentAPIError("task_required", "Supply an instruction, task or explicit preset.", 422)
         task_key = request.task.strip().lower().replace("-", "_").replace(" ", "_")
         task_key = chat.GENERATION_TASK_ALIASES.get(task_key, task_key)
+        if task_key == "image_to_3d":
+            self._require_studio_mesh_generation(context)
         if request.task and task_key not in chat.GENERATION_TASKS:
             raise AgentAPIError("invalid_task", "Use a task ID returned by capabilities or the preset catalog.", 422)
         if request.parameters and not request.preset_id:
@@ -1245,6 +1261,8 @@ class AgentService:
         catalog = self._catalog(context)
         if request.preset_id:
             selected = self._entry(request.preset_id, context, catalog)
+            if (selected.get("media_capability") or {}).get("output_type") == "mesh":
+                self._require_studio_mesh_generation(context)
             catalog = {selected["name"]: selected}
         profile = (self._profile_snapshot(selected["name"], request.parameter_profile, context,
                                           request.expected_parameter_profile_fingerprint)["profile"]

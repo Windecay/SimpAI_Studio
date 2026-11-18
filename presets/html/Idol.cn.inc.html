@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Idol 单图转 3D</title>
+  <style>body{margin:0;font:12px/1.6 sans-serif;color:#1f2937}p{margin:0}</style>
+</head>
+<body>
+  <p>上传一张物件或角色图片。Idol 会自动去除背景，生成带颜色的 GLB 网格和 MP4 转台视频。点击预览区的立方体图标查看或下载网格。</p>
+  <script>
+    const stage = Object.fromEntries(new URLSearchParams(location.search));
+    if (stage.__theme === 'dark') document.body.style.color = '#f9fafb';
+  </script>
+</body>
+</html>

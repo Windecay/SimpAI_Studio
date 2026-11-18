@@ -1335,6 +1335,7 @@ def bind_topbar_identity_events(
     qwen_custom_style_preset_choices,
     binding_id_button,
     identity_dialog,
+    guest_identity_open_button=None,
     identity_activation=None,
     admin_access_refresh_fn=None,
     admin_access_user_select=None,
@@ -1521,6 +1522,11 @@ def bind_topbar_identity_events(
         result = head + [stage, gr_update(visible=vcode_visible), gr_update(visible=phrase_visible)] + ctrls[:10] + identity_inputs + [""]
         return result + _activation_refresh_updates(state, new_flag, activation_confirmed) + [_identity_state_update(state)]
 
+    def _open_identity_dialog_reset(state, activation_confirmed=False):
+        if isinstance(state, dict):
+            state["identity_dialog"] = False
+        return _toggle_identity_dialog_reset(state, activation_confirmed)
+
     def _close_identity_dialog_reset(state, activation_confirmed=False):
         if isinstance(state, dict):
             state["identity_dialog"] = True
@@ -1626,6 +1632,15 @@ def bind_topbar_identity_events(
         show_progress=False,
         queue=False,
     )
+
+    if guest_identity_open_button is not None:
+        guest_identity_open_button.click(
+            _open_identity_dialog_reset,
+            inputs=identity_toggle_inputs,
+            outputs=identity_toggle_outputs,
+            show_progress=False,
+            queue=False,
+        )
 
     identity_close_button.click(
         _close_identity_dialog_reset,

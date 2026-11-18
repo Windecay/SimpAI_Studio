@@ -99,6 +99,9 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
     if progress_profile is not None:
         total_steps = progress_profile.total_steps
     task_method_l = (task_method or "").lower()
+    if task_method_l == "scene_idol" and default_params.get("var_number7") in (None, 0):
+        # Older inputs may carry the hidden control's zero. Use the workflow default.
+        default_params.pop("var_number7", None)
     if task_method_l in ("scene_vosr2", "scene_vosr2_video", "scene_relayvsr_x2", "scene_relayvsr_x4"):
         # The node reports actual decoded frames and stages, independent of steps.
         total_steps = None

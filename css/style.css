@@ -2233,6 +2233,22 @@ html.simpai-scene-parameter-normalized #general_setting_tabs button[data-tab-id=
   height: 100%;
 }
 
+.resolution-control-output-only label:has(> select:is([data-role="template-select"], [data-role="qstep"])),
+.resolution-control-output-only .resolution-control-modes,
+.resolution-control-output-only .resolution-control-options {
+  display: none !important;
+}
+
+.resolution-control-output-only label:has(> :is([data-role="ratio-select"], [data-role="multiplier"])) {
+  grid-column: 1 / -1;
+}
+
+.resolution-control-output-only .resolution-control-pad {
+  width: 100%;
+  height: 170px;
+  aspect-ratio: auto;
+}
+
 .resolution-control-rect {
   position: absolute;
   box-sizing: border-box;
@@ -2258,6 +2274,12 @@ html.simpai-scene-parameter-normalized #general_setting_tabs button[data-tab-id=
   color: #f8fafc;
   font-size: 11px;
   line-height: 1.2;
+}
+
+.resolution-control-output-only .resolution-control-rect [data-role="rect-label"] {
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: none;
 }
 
 .resolution-control-handle {

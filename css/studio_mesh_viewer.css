@@ -1,0 +1,204 @@
+simpai-mesh-viewer,
+.studio-mesh-stage {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--ml-surface-3, var(--background-fill-secondary, #e8ebef));
+}
+
+simpai-mesh-viewer canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    cursor: grab;
+}
+
+simpai-mesh-viewer canvas:active { cursor: grabbing; }
+
+[data-mesh-progress],
+.studio-mesh-stage > [data-mesh-status] {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: grid;
+    place-content: center;
+    margin: 0;
+    padding: 16px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.studio-mesh-dialog [hidden],
+simpai-mesh-viewer [hidden],
+#studio_mesh_browser [hidden] { display: none !important; }
+
+#main_preview_row {
+    position: relative;
+}
+
+#studio_mesh_browser {
+    position: absolute !important;
+    inset-block-start: 40px;
+    inset-inline-end: 10px;
+    z-index: 7;
+    width: 36px !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    overflow: visible !important;
+    pointer-events: none;
+}
+
+#studio_mesh_browser :is(.html-container, .prose) {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+}
+
+.studio-mesh-library-button,
+.studio-mesh-toolbar button,
+.studio-mesh-toolbar a,
+simpai-mesh-viewer .mesh-reset {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    box-sizing: border-box;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: inherit;
+    background: var(--ml-surface, var(--background-fill-primary, #fff));
+    font-size: 14px;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.studio-mesh-library-button {
+    width: 36px;
+    height: 36px;
+    border-color: var(--border-color-primary, #c1c7cf);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .18);
+    pointer-events: auto;
+}
+
+simpai-mesh-viewer .mesh-reset,
+.studio-mesh-toolbar a:not([hidden]) {
+    border-color: var(--ml-border, var(--border-color-primary, #c1c7cf));
+}
+
+.studio-mesh-library-button:hover,
+.studio-mesh-toolbar button:hover:not(:disabled),
+.studio-mesh-toolbar a:hover,
+simpai-mesh-viewer .mesh-reset:hover {
+    background: var(--ml-surface-3, var(--background-fill-secondary, #e8ebef));
+}
+
+.studio-mesh-library-button:focus-visible,
+.studio-mesh-toolbar :is(button, select, a):focus-visible,
+simpai-mesh-viewer .mesh-reset:focus-visible {
+    outline: 2px solid var(--color-accent, #3d79cf);
+    outline-offset: 1px;
+}
+
+.studio-mesh-toolbar button:disabled,
+.studio-mesh-toolbar select:disabled { opacity: .48; cursor: default; }
+
+simpai-mesh-viewer .mesh-reset {
+    position: absolute;
+    z-index: 2;
+    right: 12px;
+    top: 12px;
+}
+
+.studio-mesh-dialog {
+    position: fixed;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+    box-sizing: border-box;
+    width: min(860px, calc(100% - 32px));
+    height: min(620px, calc(100dvh - 48px));
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    grid-template-rows: 48px minmax(0, 1fr) 50px;
+    overflow: hidden;
+    scrollbar-gutter: auto;
+    border: 1px solid var(--border-color-primary, #c1c7cf);
+    border-radius: 8px;
+    color: var(--body-text-color, #222831);
+    background: var(--background-fill-primary, #fff);
+    box-shadow: 0 12px 44px rgba(0, 0, 0, .28);
+    pointer-events: auto;
+}
+
+.studio-mesh-dialog[open] { display: grid; }
+.studio-mesh-dialog::backdrop { background: rgba(12, 17, 23, .25); }
+
+.studio-mesh-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    min-width: 0;
+}
+
+.studio-mesh-header {
+    border-bottom: 1px solid var(--border-color-primary, #c1c7cf);
+}
+
+.studio-mesh-dialog.simpleai-resizable-popup .studio-mesh-header {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.studio-mesh-dialog[data-simpleai-drag-active="1"] .studio-mesh-header { cursor: grabbing; }
+
+#studio-mesh-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+#studio-mesh-title .fa { color: var(--body-text-color-subdued, #707882); }
+
+.studio-mesh-footer { border-top: 1px solid var(--border-color-primary, #c1c7cf); }
+.studio-mesh-dialog.simpleai-resizable-popup .studio-mesh-footer { padding-inline-end: 30px; }
+.studio-mesh-dialog > .simpleai-popup-resize-handle::before { filter: drop-shadow(0 0 1px #30343a); }
+
+.studio-mesh-toolbar select {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 34px;
+    padding: 0 8px;
+    border: 1px solid var(--border-color-primary, #c1c7cf);
+    border-radius: 6px;
+    color: inherit;
+    background: var(--background-fill-primary, #fff);
+    text-overflow: ellipsis;
+}
+
+.detail-preview simpai-mesh-viewer { height: 280px; }
+.compare-media simpai-mesh-viewer { min-height: 210px; }
+
+@media (max-width: 600px) {
+    .studio-mesh-dialog {
+        width: calc(100% - 28px);
+    }
+}

@@ -31,15 +31,16 @@ from urllib.parse import unquote, urlparse
 
 import shared
 from modules.media_generation import TIMING_FIELDS, generation_details
+from modules.mesh_media import MESH_EXTENSIONS, MESH_MIME_TYPES, is_mesh_file
 
 
 DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov", ".mkv"})
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac"})
-SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
+SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS | MESH_EXTENSIONS
 
 _CURSOR_VERSION = 1
 _SEARCH_MAX_CHARS = 4000
@@ -81,6 +82,10 @@ def _media_write_lock_for(db_path: str) -> threading.RLock:
 
 def _source_file_signature(size: Any, mtime_ns: Any) -> str:
     return f"{int(size or 0)}-{int(mtime_ns or 0)}"
+
+
+def _thumbnail_version(source_signature: str) -> str:
+    return f"webp1-{source_signature}"
 
 
 def _serialize_media_write(method):
@@ -261,6 +266,8 @@ def invalidate_legacy_gallery_cache(user_did: Any = None) -> None:
 
 def _media_type_for_path(path: str) -> str:
     extension = os.path.splitext(path)[1].lower()
+    if extension in MESH_EXTENSIONS:
+        return "mesh"
     if extension in VIDEO_EXTENSIONS:
         return "video"
     if extension in AUDIO_EXTENSIONS:
@@ -269,6 +276,8 @@ def _media_type_for_path(path: str) -> str:
 
 
 def _mime_for_path(path: str, media_type: str) -> str:
+    if media_type == "mesh":
+        return MESH_MIME_TYPES[os.path.splitext(path)[1].lower()]
     mime = mimetypes.guess_type(path)[0]
     if mime:
         return mime
@@ -660,6 +669,8 @@ class MediaLibrary:
                             "CREATE INDEX IF NOT EXISTS idx_media_preset "
                             "ON media(preset_id, trashed_at, missing_at, created_at DESC, media_id DESC)"
                         )
+                        # Previously scanned date folders may already contain mesh files.
+                        connection.execute("UPDATE library_meta SET value='0' WHERE key='last_scan_at'")
                         connection.execute(
                             "INSERT OR IGNORE INTO library_meta(key, value) VALUES('schema_version', ?)",
                             (str(SCHEMA_VERSION),),
@@ -697,6 +708,8 @@ class MediaLibrary:
 
     def _row_to_item(self, row: sqlite3.Row, *, include_generation_metadata: bool = True) -> dict[str, Any]:
         item = dict(row)
+        if item["media_type"] == "mesh":
+            item["model_format"] = os.path.splitext(item["name"])[1].lower().lstrip(".")
         generation_metadata_json = item.pop("generation_metadata_json", "{}")
         if include_generation_metadata:
             item["generation_metadata"] = _json_loads(generation_metadata_json, {})
@@ -781,6 +794,8 @@ class MediaLibrary:
 
         folder_name = relative_path.split("/", 1)[0]
         media_type = _media_type_for_path(absolute_path)
+        if media_type == "mesh" and not is_mesh_file(absolute_path):
+            return {"ok": False, "indexed": False, "reason": "not_a_mesh"}
         mime = _mime_for_path(absolute_path, media_type)
         media_id = _media_id(relative_path)
         row = connection.execute(
@@ -938,12 +953,19 @@ class MediaLibrary:
                         (details["preset_id"], details["preset_id"], details["generation_task_id"],
                          *(details[field] for field in TIMING_FIELDS), result["media_id"]),
                     )
+                    metadata = generation.get("metadata")
+                    if isinstance(metadata, dict) and metadata:
+                        connection.execute(
+                            "UPDATE media SET generation_metadata_json=?, generation_text=? WHERE media_id=?",
+                            (_json_dumps(metadata), _metadata_search_text(metadata), result["media_id"]),
+                        )
                     result["changed"] = result["summary_changed"] = True
                 if result.get("summary_changed"):
                     self._bump_revision(connection)
                 if result.get("indexed"):
                     connection.execute(
-                        "INSERT OR REPLACE INTO library_meta(key, value) VALUES('last_scan_at', ?)",
+                        "INSERT INTO library_meta(key, value) VALUES('last_scan_at', ?) "
+                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE library_meta.value <> '0'",
                         (str(time.time()),),
                     )
                 connection.commit()
@@ -1209,7 +1231,8 @@ class MediaLibrary:
                        COUNT(*) AS total,
                        SUM(CASE WHEN media_type='image' THEN 1 ELSE 0 END) AS images,
                        SUM(CASE WHEN media_type='video' THEN 1 ELSE 0 END) AS videos,
-                       SUM(CASE WHEN media_type='audio' THEN 1 ELSE 0 END) AS audios
+                       SUM(CASE WHEN media_type='audio' THEN 1 ELSE 0 END) AS audios,
+                       SUM(CASE WHEN media_type='mesh' THEN 1 ELSE 0 END) AS meshes
                 FROM media
                 WHERE trashed_at IS NOT NULL
                   AND missing_at IS NULL
@@ -1220,7 +1243,8 @@ class MediaLibrary:
                        COUNT(*) AS total,
                        SUM(CASE WHEN media_type='image' THEN 1 ELSE 0 END) AS images,
                        SUM(CASE WHEN media_type='video' THEN 1 ELSE 0 END) AS videos,
-                       SUM(CASE WHEN media_type='audio' THEN 1 ELSE 0 END) AS audios
+                       SUM(CASE WHEN media_type='audio' THEN 1 ELSE 0 END) AS audios,
+                       SUM(CASE WHEN media_type='mesh' THEN 1 ELSE 0 END) AS meshes
                 FROM media
                 WHERE trashed_at IS NULL AND missing_at IS NULL
                 GROUP BY date_key
@@ -1275,7 +1299,7 @@ class MediaLibrary:
             if date_key:
                 clauses.append("date_key = ?")
                 params.append(date_key)
-        if media_type in {"image", "video", "audio"}:
+        if media_type in {"image", "video", "audio", "mesh"}:
             clauses.append("media_type = ?")
             params.append(media_type)
         if favorite is not None:
@@ -1687,15 +1711,7 @@ class MediaLibrary:
                     connection.execute("DELETE FROM media WHERE media_id = ?", (media_id,))
                     removed_missing.append(media_id)
                     summary_changed = True
-                    try:
-                        for entry in os.scandir(os.path.join(self.gallery_root, "thumbnails")):
-                            if entry.is_file() and entry.name.startswith(f"{media_id}_") and entry.name.lower().endswith(".jpg"):
-                                try:
-                                    os.remove(entry.path)
-                                except OSError:
-                                    pass
-                    except OSError:
-                        pass
+                    self._remove_cached_thumbnails(media_id)
                     continue
                 except OSError as exc:
                     errors.append({"id": media_id, "error": str(exc)})
@@ -1782,22 +1798,13 @@ class MediaLibrary:
                 rows = connection.execute("SELECT * FROM media WHERE trashed_at IS NOT NULL").fetchall()
             purged: list[str] = []
             errors: list[dict[str, str]] = []
-            thumbnail_root = os.path.join(self.gallery_root, "thumbnails")
             for row in rows:
                 trash_path = _path_under(self.gallery_root, row["trash_path"] or "")
                 try:
                     if trash_path and os.path.exists(trash_path):
                         os.remove(trash_path)
                     media_id = str(row["media_id"])
-                    try:
-                        for entry in os.scandir(thumbnail_root):
-                            if entry.is_file() and entry.name.startswith(f"{media_id}_") and entry.name.lower().endswith(".jpg"):
-                                try:
-                                    os.remove(entry.path)
-                                except OSError:
-                                    pass
-                    except OSError:
-                        pass
+                    self._remove_cached_thumbnails(media_id)
                     connection.execute("DELETE FROM media WHERE media_id = ?", (row["media_id"],))
                     purged.append(str(row["media_id"]))
                 except OSError as exc:
@@ -1809,10 +1816,20 @@ class MediaLibrary:
             invalidate_legacy_gallery_cache(self.user_did)
         return {"ok": not errors, "purged": purged, "errors": errors}
 
-    @staticmethod
-    def _thumbnail_target(gallery_root: str, media_id: str, max_size: int, version: str = "") -> str:
-        suffix = f"_{version}" if version else ""
-        return os.path.join(gallery_root, "thumbnails", f"{media_id}_{int(max_size)}{suffix}.jpg")
+    def _remove_cached_thumbnails(self, media_id: str) -> None:
+        thumbnail_root = os.path.join(self.gallery_root, "thumbnails")
+        try:
+            with os.scandir(thumbnail_root) as entries:
+                for entry in entries:
+                    if not entry.name.startswith(f"{media_id}_") or not entry.name.lower().endswith((".jpg", ".webp")):
+                        continue
+                    if entry.is_file():
+                        try:
+                            os.remove(entry.path)
+                        except OSError:
+                            pass
+        except OSError:
+            pass
 
     def media_path(self, media_id: str, include_trashed: bool = False) -> str:
         item = self.get_item(media_id, include_trashed=include_trashed, include_generation_metadata=False)
@@ -1839,18 +1856,17 @@ class MediaLibrary:
         source = _path_under(source_root, source_relative or "")
         if not source or not os.path.isfile(source):
             return ""
-        if not source:
-            return ""
         try:
             source_stat = os.stat(source)
         except OSError:
             return ""
-        version = _source_file_signature(source_stat.st_size, source_stat.st_mtime_ns)
-        if source_version and source_version not in {version, str(source_stat.st_mtime_ns)}:
+        signature = _source_file_signature(source_stat.st_size, source_stat.st_mtime_ns)
+        version = _thumbnail_version(signature)
+        if source_version and source_version not in {version, signature, str(source_stat.st_mtime_ns)}:
             return ""
         thumbnail_root = os.path.join(self.gallery_root, "thumbnails")
         os.makedirs(thumbnail_root, exist_ok=True)
-        target = self._thumbnail_target(self.gallery_root, str(media_id), max_size, version)
+        target = os.path.join(thumbnail_root, f"{media_id}_{int(max_size)}_{version}.webp")
         try:
             if os.path.isfile(target):
                 return target
@@ -1861,11 +1877,12 @@ class MediaLibrary:
             from PIL import Image
 
             with Image.open(source) as image:
-                image = image.convert("RGB")
+                has_alpha = "A" in image.getbands() or "transparency" in image.info
+                image = image.convert("RGBA" if has_alpha else "RGB")
                 image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                image.save(temporary, format="JPEG", quality=84, optimize=True)
+                image.save(temporary, format="WEBP", quality=84, alpha_quality=100, method=3)
             current_stat = os.stat(source)
-            if version != _source_file_signature(current_stat.st_size, current_stat.st_mtime_ns):
+            if signature != _source_file_signature(current_stat.st_size, current_stat.st_mtime_ns):
                 os.remove(temporary)
                 return ""
             try:

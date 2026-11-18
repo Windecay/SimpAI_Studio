@@ -361,6 +361,8 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{viewer_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{image_viewer_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{topbar_js_path}"></script>\n'
+    head += f'<script defer src="{webpath("javascript/studio_mesh_viewer.js")}"></script>\n'
+    head += f'<script defer src="{webpath("javascript/studio_mesh_browser.js")}"></script>\n'
     head += f'<script type="text/javascript" src="{advanced_column_drawer_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{mobile_generation_bar_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{canvas_workbench_utils_path}"></script>\n'
@@ -401,6 +403,7 @@ def css_html():
     head += f'<link rel="stylesheet" property="stylesheet" href="{video_region_selector_css_path}">\n'
     head += f'<link rel="stylesheet" property="stylesheet" href="{font_awesome_path}">\n'
     head += f'<link rel="stylesheet" property="stylesheet" href="{font_awesome_fix_path}">\n'
+    head += f'<link rel="stylesheet" href="{webpath("css/studio_mesh_viewer.css")}">\n'
     return head
 
 

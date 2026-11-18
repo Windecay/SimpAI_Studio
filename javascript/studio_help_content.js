@@ -3075,6 +3075,40 @@
     "cn": "SAM3 蒙版：上传源视频后，双击画面选择目标点选跟踪或固定多边形，也可在右侧上传 mask 视频（仅支持视频文件）。检查蒙版后再执行主生成。"
   },
   "presetGuides": {
+    "Idol": {
+      "intro": {
+        "en": "Build a colored 3D mesh and an MP4 turntable from one image of an object or character.",
+        "cn": "将单张物件或角色图片转换成带顶点颜色的 GLB 网格，并生成 MP4 转台视频。"
+      },
+      "inputs": {
+        "en": "Upload one image under Source Image. Choose an unobstructed subject that fits within the frame. The preset removes the background automatically.",
+        "cn": "在“源图片”上传一张图。选择主体完整、遮挡较少的图片，预置会自动去除背景。"
+      },
+      "steps": [
+        {
+          "en": "In the preset store, add Idol under 3D. Install the Idol model package or use the missing-model download in Studio.",
+          "cn": "在预置商店的 3D 分类添加 Idol。可在启动器下载 Idol 模型包，也可在 Studio 按缺模型提示下载。"
+        },
+        {
+          "en": "Upload the image and generate. Use the cube in the preview to rotate, zoom, and download the GLB. Saved meshes are available under 3D Models in the media library.",
+          "cn": "上传图片并生成。在预览区点立方体图标，可以旋转、缩放并下载 GLB。生成的网格也可以在作品库的“3D 模型”筛选中找到。"
+        }
+      ],
+      "notes": [
+        {
+          "en": "Turntable Video Size, Frames, FPS, and compression affect the MP4. Start with 768×768, 75 frames and 25 FPS for a three-second preview.",
+          "cn": "转台视频尺寸、帧数、帧率和压缩质量用于 MP4。默认 768×768、75 帧、25 FPS，时长约 3 秒。CRF 越低，压缩损失越少，文件通常越大。"
+        },
+        {
+          "en": "Mesh Resolution in Advanced Parameters sets the density grid along the longest axis. The default is 256. Higher values can recover finer surface details and require more memory and time.",
+          "cn": "「高级参数」中的「网格精度」设置模型最长轴上的密度网格分辨率，默认 256。数值越高，可提取的表面细节越多，显存占用和耗时也会增加。"
+        },
+        {
+          "en": "The GLB contains vertex colors. Inspect the inferred back and occluded surfaces from several angles before editing or exporting the model.",
+          "cn": "GLB 的颜色保存在顶点上。背面和遮挡部分由模型推断，使用前可以换几个角度检查。"
+        }
+      ]
+    },
     "Anima-RGBA": {
       "intro": {
         "en": "Generate anime illustrations with a real alpha channel, suitable for transparent character art, stickers and standalone objects. This preset uses the Anima RGBA LoRA and four-channel VAE.",

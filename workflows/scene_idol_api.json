@@ -1,0 +1,128 @@
+{
+  "1": {
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "", "additional_prompt": "",
+      "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
+      "inpaint_image": "None", "inpaint_mask": "None",
+      "width": 768, "height": 768, "cfg": 3.0, "steps": 20,
+      "var_number": 75, "var_number2": 18, "var_number3": 25.0, "var_number4": 0,
+      "var_number5": 0, "var_number6": 0, "var_number7": 256, "var_number8": 0,
+      "var_number9": 0, "var_number10": 0,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "model_type": 1, "model_type2": 1, "clip_type": 1,
+      "negative_prompt": "", "sampler": "dpmpp_2m", "scheduler": "simple", "video_duration": 0
+    }
+  },
+  "2": {
+    "class_type": "SeedInput",
+    "_meta": {"title": "SeedInput"},
+    "inputs": {"seed": 42}
+  },
+  "3": {
+    "class_type": "LoadInputImage",
+    "_meta": {"title": "Idol Source Image"},
+    "inputs": {"image_name": ["1", 2], "image": "None"}
+  },
+  "4": {
+    "class_type": "LoadBackgroundRemovalModel",
+    "_meta": {"title": "Idol Background Removal"},
+    "inputs": {"bg_removal_name": "birefnet.safetensors"}
+  },
+  "5": {
+    "class_type": "RemoveBackground",
+    "_meta": {"title": "Idol Foreground Mask"},
+    "inputs": {"bg_removal_model": ["4", 0], "image": ["3", 0]}
+  },
+  "6": {
+    "class_type": "TripoSplatPreprocessImage",
+    "_meta": {"title": "Idol Preprocess"},
+    "inputs": {"image": ["3", 0], "mask": ["5", 0], "erode_radius": 1, "size": 1024}
+  },
+  "7": {
+    "class_type": "UNETLoader",
+    "_meta": {"title": "Idol Model"},
+    "inputs": {"unet_name": "idol_fp16.safetensors", "weight_dtype": "default"}
+  },
+  "8": {
+    "class_type": "CLIPVisionLoader",
+    "_meta": {"title": "Idol DINOv3 Encoder"},
+    "inputs": {"clip_name": "dino_v3_vit_h_bf16.safetensors"}
+  },
+  "9": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "Idol Image VAE"},
+    "inputs": {"vae_name": "flux2-vae.safetensors"}
+  },
+  "10": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "Idol Gaussian Decoder"},
+    "inputs": {"vae_name": "idol_decoder_fp16.safetensors"}
+  },
+  "11": {
+    "class_type": "TripoSplatConditioning",
+    "_meta": {"title": "Idol Conditioning"},
+    "inputs": {"clip_vision": ["8", 0], "vae": ["9", 0], "image": ["6", 0]}
+  },
+  "12": {
+    "class_type": "TripoSplatSamplingPreview",
+    "_meta": {"title": "Idol Sampling Preview"},
+    "inputs": {
+      "model": ["7", 0], "vae": ["10", 0],
+      "octree_level": 5, "num_gaussians": 16384, "yaw": 90.0, "pitch": 15.0, "point_size": 2
+    }
+  },
+  "13": {
+    "class_type": "KSampler",
+    "_meta": {"title": "KSampler"},
+    "inputs": {
+      "model": ["12", 0], "seed": ["2", 0], "steps": ["1", 9], "cfg": ["1", 8],
+      "sampler_name": ["1", 30], "scheduler": ["1", 31], "denoise": 1.0,
+      "positive": ["11", 0], "negative": ["11", 1], "latent_image": ["11", 2]
+    }
+  },
+  "14": {
+    "class_type": "VAEDecodeTripoSplat",
+    "_meta": {"title": "Idol Decode"},
+    "inputs": {"samples": ["13", 0], "vae": ["10", 0], "num_gaussians": 262144, "seed": ["2", 0]}
+  },
+  "15": {
+    "class_type": "SplatToFile3D",
+    "_meta": {"title": "Idol PLY"},
+    "inputs": {"splat": ["14", 0], "format": "ply"}
+  },
+  "16": {
+    "class_type": "SaveGLB",
+    "_meta": {"title": "Save Idol PLY"},
+    "inputs": {"mesh": ["15", 0], "filename_prefix": "3d/Idol"}
+  },
+  "17": {
+    "class_type": "RenderSplat",
+    "_meta": {"title": "Idol Turntable"},
+    "inputs": {
+      "splat": ["14", 0], "width": ["1", 6], "height": ["1", 7], "frames": ["1", 10],
+      "splat_scale": 1.0, "sharpen": 2.0, "headlight_shading": 0.0,
+      "opacity_threshold": 0.0, "render_style": "color", "background": "#848484"
+    }
+  },
+  "18": {
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {"title": "SaveVideoWebsocket"},
+    "inputs": {"images": ["17", 0], "format": "MP4", "codec": "h264", "fps": ["1", 12], "crf": ["1", 11]}
+  },
+  "19": {
+    "class_type": "SplatToMesh",
+    "_meta": {"title": "Extract Idol Mesh"},
+    "inputs": {
+      "splat": ["14", 0], "resolution": ["1", 16], "kernel": 5,
+      "smooth": 3, "level": 0.4, "min_component": 500,
+      "min_opacity": 0.02, "color_sharpen": 2.0, "solid": true, "fill": 20.0
+    }
+  },
+  "20": {
+    "class_type": "SaveGLB",
+    "_meta": {"title": "Save Idol Mesh"},
+    "inputs": {"mesh": ["19", 0], "filename_prefix": "3d/Idol_Mesh"}
+  }
+}

@@ -297,6 +297,7 @@ PRESET_STORE_ORDER = [
     "QwenPose",
     "QwenGaussian",
     "QwenMultiAngle",
+    "Idol",
     "QwenNSFW",
     "Illustrious",
     "Illustrious(OB)",
@@ -1626,8 +1627,12 @@ def _build_canvas_scene_schema(scene_frontend, _include_theme_params=True):
             return sam3_inputs_visible
         return True
 
+    slot_labels = {
+        **(scene_frontend.get("video_slot_labels") or {}),
+        **(scene_frontend.get("image_slot_labels") or {}),
+    }
     upload_slots = [
-        {"key": key, "label": (scene_frontend.get("video_slot_labels") or {}).get(key, label),
+        {"key": key, "label": slot_labels.get(key, label),
          "visible": _slot_visible(key), "interactive": key not in disinteractive}
         for key, label in slot_defs
     ]
@@ -1778,6 +1783,7 @@ def _build_canvas_scene_schema(scene_frontend, _include_theme_params=True):
         "divisible": divisible or [],
         "image_preprocessor_method": scene_frontend.get("image_preprocessor_method", []),
         "disable_canvas_mask": _resolve_scene_canvas_mask_disabled(scene_frontend, default_theme),
+        "mesh_output": scene_frontend.get("mesh_output") is True,
         "upload_slots": upload_slots,
         "video_source_slots": list(scene_frontend.get("video_source_slots") or []),
         "params": params,
@@ -1871,7 +1877,12 @@ def _build_canvas_media_capability(
         if valid_task and normalized_task not in supported_tasks:
             supported_tasks.append(normalized_task)
 
-    output_type = "video" if str(engine_type or "").strip().lower() == "video" else "image"
+    if schema.get("mesh_output") is True:
+        output_type = "mesh"
+        if not supported_tasks:
+            supported_tasks = ["image_to_3d"]
+    else:
+        output_type = "video" if str(engine_type or "").strip().lower() == "video" else "image"
     if not supported_tasks:
         descriptor = " ".join(
             str(value or "").strip().lower()
@@ -2828,6 +2839,8 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         scene_input_image7 = util.normalize_gradio_image_value(scene_input_image7, image_mode="RGBA")
         scene_input_image8 = util.normalize_gradio_image_value(scene_input_image8, image_mode="RGBA")
         scene_canvas_mask_disabled = _resolve_scene_canvas_mask_disabled(scene_frontend, scene_theme)
+        if meta_parser.get_scene_task_method(scene_frontend, scene_theme) == "idol" and scene_input_image1 is None:
+            raise gr.Error(meta_parser.localized_ui_text(state_params, "Upload a source image to generate a 3D model."))
 
         scene_additional_prompt = f'{scene_additional_prompt}{scene_additional_prompt_2}'
         if util.is_chinese(scene_additional_prompt) and not scene_frontend['task_method'][scene_theme].lower().endswith('_cn'):
@@ -4725,6 +4738,12 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
     scene_theme = _resolve_scene_theme(scene_frontend, preferred_scene_theme)
     scene_disvisible = _scene_disvisible_with_optional_inputs(scene_frontend, scene_theme)
     resolved_scene_theme_owner = current_preset if scene_theme else ""
+    preset_engine = preset_prepared.get("engine", {})
+    if not isinstance(preset_engine, dict):
+        preset_engine = {}
+    mesh_output = scene_frontend.get("mesh_output", preset_engine.get("mesh_output", False))
+    if isinstance(mesh_output, dict):
+        mesh_output = mesh_output.get(scene_theme, False)
     scene_task_method = ""
     if isinstance(scene_frontend, dict):
         raw_task_method = scene_frontend.get("task_method", "")
@@ -4852,6 +4871,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __preset_store_save_result=state.get("__preset_store_save_result"),
         __theme=state.get("__theme"),
         __is_scene_frontend=("scene_frontend" in state),
+        __mesh_output=mesh_output is True,
         __engine_disvisible=engine_disvisible,
         __scene_disvisible=scene_disvisible,
         __scene_theme=scene_theme,
@@ -4873,6 +4893,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __scene_video_source_slots=list(scene_frontend.get("video_source_slots") or []),
         __scene_temporal_region_control=dict(scene_frontend.get("temporal_region_control") or {}),
         __scene_video_slot_labels=dict(scene_frontend.get("video_slot_labels") or {}),
+        __scene_image_slot_labels=dict(scene_frontend.get("image_slot_labels") or {}),
         __scene_canvas_mask_disabled=_resolve_scene_canvas_mask_disabled(scene_frontend, scene_theme),
         __resolution_control_profile=_resolve_resolution_control_profile(scene_frontend, scene_theme),
         __nav_name_list=filtered_nav_name_list_str,  # 使用过滤后的预设列表

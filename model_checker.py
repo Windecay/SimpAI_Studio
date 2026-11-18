@@ -4366,6 +4366,20 @@ packages = {'base_package': {'id': 1,
      'info_links': ['https://modelscope.cn/models/Comfy-Org/MiniMax-H3-Image', 'https://huggingface.co/Comfy-Org/MiniMax-H3-Image'],
      'preset_sample': [],
  },
+ 'idol_package': {
+     'id': 55,
+     'name': '[55]Idol单图转3D预置包',
+     'note': '从单张图片生成带顶点颜色的 GLB 网格及转台预览视频',
+     'files': [
+         'diffusion_models,idol_fp16.safetensors,741106994,9abf6a99fc6bdad701901b12de8fe1b256f02cae4948f7489d25d86b11b52a93,https://modelscope.cn/models/Comfy-Org/Idol/resolve/master/diffusion_models/idol_fp16.safetensors,https://huggingface.co/Comfy-Org/Idol/resolve/main/diffusion_models/idol_fp16.safetensors',
+         'clip_vision,dino_v3_vit_h_bf16.safetensors,1681247696,a29ef35101a16966972a0d50732a6f3a608ff7cfffb2afa9bbe9007cb842cc53,https://modelscope.cn/models/Comfy-Org/Idol/resolve/master/clip_vision/dino_v3_vit_h_bf16.safetensors,https://huggingface.co/Comfy-Org/Idol/resolve/main/clip_vision/dino_v3_vit_h_bf16.safetensors',
+         'vae,idol_decoder_fp16.safetensors,576148442,6a146a1e6b2653f74422f7ea835eb8715c547c7de8fc4545051f15c247ae54a9,https://modelscope.cn/models/Comfy-Org/Idol/resolve/master/vae/idol_decoder_fp16.safetensors,https://huggingface.co/Comfy-Org/Idol/resolve/main/vae/idol_decoder_fp16.safetensors',
+         'vae,flux2-vae.safetensors,336211292,868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3,https://modelscope.cn/models/Comfy-Org/Idol/resolve/master/vae/flux2-vae.safetensors,https://huggingface.co/Comfy-Org/Idol/resolve/main/vae/flux2-vae.safetensors',
+         'background_removal,birefnet.safetensors,444473596,9ab37426bf4de0567af6b5d21b16151357149139362e6e8992021b8ce356a154,https://modelscope.cn/models/Comfy-Org/BiRefNet/resolve/master/background_removal/birefnet.safetensors,https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors',
+     ],
+     'info_links': ['https://modelscope.cn/models/Comfy-Org/Idol', 'https://huggingface.co/Comfy-Org/Idol'],
+     'preset_sample': [],
+ },
 }
 MANUAL_DOWNLOAD_MAP = {
 }

@@ -125,7 +125,7 @@ SimpAI Studio 服务地址：<实际 Studio 服务地址，包含部署前缀>�
 | GET | `/api/v1/session` | 当前身份、权限、存储范围及与浏览器界面的交互边界 |
 | GET | `/api/v1/queue` | 可见的手动、Canvas、Agent 排队与执行中任务 |
 | GET | `/api/v1/system/status` | 节点 worker、队列、GPU 和主机资源；需要 local/admin 权限 |
-| GET | `/api/v1/presets` | 按 `query`、`task`、`output_type` 搜索；支持 `offset`、`limit` |
+| GET | `/api/v1/presets` | 按 `query`、`task`、`output_type` 搜索，支持 `offset`、`limit`。用 `output_type=mesh` 查询 3D 预置 |
 | GET | `/api/v1/presets/{preset_id}` | 主题、输入要求、蒙版要求、提示词标签格式、参数 schema 和默认值 |
 | GET | `/api/v1/presets/{preset_id}/models/status` | 检查所需模型是否存在，返回缺少的模型名称；不下载、不加载模型 |
 | POST | `/api/v1/presets/{preset_id}/models/download` | 经单独下载授权后请求缺失模型下载，返回进度查询入口 |

@@ -148,7 +148,7 @@ def render_resolution_control_html(
       <select data-role="template-select"></select>
     </label>
     <label>
-      <span>Aspect Ratios</span>
+      <span data-role="size-label">Aspect Ratios</span>
       <select data-role="ratio-select"></select>
     </label>
   </div>

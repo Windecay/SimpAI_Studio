@@ -32,7 +32,7 @@ class ToolIndexQuery(RequestModel):
 class PresetQuery(RequestModel):
     query: str = Field(default="", max_length=200)
     task: str = Field(default="", max_length=80)
-    output_type: Literal["", "image", "video", "audio"] = ""
+    output_type: Literal["", "image", "video", "audio", "mesh"] = ""
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=30, ge=1, le=100)
 

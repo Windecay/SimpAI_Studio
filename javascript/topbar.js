@@ -673,6 +673,7 @@ function clearPostGenerationResultParamsForGenerationStart(params) {
         "__post_generation_has_output",
         "__post_generation_gallery_output",
         "__post_generation_video_output",
+        "__post_generation_mesh_ids",
     ].forEach((key) => {
         try { delete params[key]; } catch (e) {}
     });
@@ -1286,6 +1287,7 @@ function scheduleSimpleAIPresetGalleryClear(reason) {
 }
 
 function prepareSimpleAIGenerationStartSurface(reason, state) {
+    window.SimpAIStudioMeshBrowser?.close();
     const reasonText = String(reason || "generation_start");
     if (simpleaiGenerationResultObserver) simpleaiGenerationResultObserver.disconnect();
     if (simpleaiGenerationResultMediaCleanup) simpleaiGenerationResultMediaCleanup();
@@ -3247,15 +3249,7 @@ function localizePresetStoreUi() {
 
     presetStoreEl.querySelectorAll("[data-sai-scene-filter]").forEach((button) => {
         const sceneFilter = String(button.getAttribute("data-sai-scene-filter") || "all");
-        const englishText = sceneFilter === "scene"
-            ? "Scene"
-            : sceneFilter === "classic"
-                ? "Classic"
-                : sceneFilter === "image"
-                    ? "Image"
-                    : sceneFilter === "video"
-                        ? "Video"
-                        : "All";
+        const englishText = {scene: "Scene", classic: "Classic", image: "Image", video: "Video", mesh: "3D"}[sceneFilter] || "All";
         topbarApplyLocalizedText(button, englishText);
     });
 
@@ -6995,15 +6989,20 @@ function sceneSam3VisibilityDecision(sceneFrontend, theme, taskMethod) {
     return themeText.includes("sam3") || inputsExplicitlyEnabled;
 }
 
-function syncSceneVideoSlotLabels(state) {
-    const labels = state?.__scene_video_slot_labels ?? state?.scene_frontend?.video_slot_labels ?? {};
+function syncSceneMediaSlotLabels(state) {
+    const labels = {
+        ...(state?.__scene_video_slot_labels ?? state?.scene_frontend?.video_slot_labels),
+        ...(state?.__scene_image_slot_labels ?? state?.scene_frontend?.image_slot_labels),
+    };
     const defaults = {
         scene_video: "Video (Upload)",
         scene_reference_video: "Reference Video (Upload)",
-        scene_reference_video2: "Additional Reference Video (Upload)"
+        scene_reference_video2: "Additional Reference Video (Upload)",
+        scene_input_image1: "Upload prompt image(2)",
     };
     Object.entries(defaults).forEach(([id, fallback]) => {
         const root = document.getElementById(id);
+        if (id === "scene_input_image1" && !labels[id] && !root?.hasAttribute("data-sai-scene-slot-label")) return;
         const label = root?.querySelector('[data-testid="block-label"], .label-wrap, label');
         if (!label || !document.createTreeWalker) return;
         const walker = document.createTreeWalker(label, 4);
@@ -7014,6 +7013,7 @@ function syncSceneVideoSlotLabels(state) {
             const translated = String(state?.__lang || "en").toLowerCase() === "en" ? key : topbarTranslateText(key);
             if (text.textContent !== translated) text.textContent = translated;
             (text.parentElement || label).setAttribute("data-original-text", key);
+            if (id === "scene_input_image1") root.toggleAttribute("data-sai-scene-slot-label", !!labels[id]);
             break;
         }
     });
@@ -7033,7 +7033,7 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     const taskText = String(taskMethod || "").toLowerCase();
     const hidden = sceneDisvisibleSetFromValue(disvisible);
     const sceneFrontend = langSource && typeof langSource === "object" ? langSource.scene_frontend : null;
-    syncSceneVideoSlotLabels(langSource);
+    syncSceneMediaSlotLabels(langSource);
     syncSceneSourceVideoLayout(isScene, langSource);
     const sam3Decision = sceneSam3VisibilityDecision(sceneFrontend, theme, taskMethod);
     const showCamera = !!(isScene && themeText.includes("multiangle") && !hidden.has("camera_control_accordion"));
@@ -9205,6 +9205,7 @@ function applySimpleAIPostGenerationResultPayload(payload) {
     const state = Object.assign({}, current, payload);
     topbarLastSystemParams = state;
     window.simpleaiTopbarSystemParams = state;
+    window.SimpAIStudioMeshBrowser?.showResults(payload.__post_generation_mesh_ids);
     return state;
 }
 window.applySimpleAIPostGenerationResultPayload = applySimpleAIPostGenerationResultPayload;
@@ -11741,7 +11742,7 @@ function getPresetStoreCandidateEntries() {
                 scene: !!item.scene,
                 engineType: String(item.engine_type || ""),
                 taskMethod: String(item.task_method || ""),
-                mediaType: inferPresetStoreMediaType(item.engine_type, item.task_method),
+                mediaType: item.media_capability?.output_type === "mesh" ? "mesh" : inferPresetStoreMediaType(item.engine_type, item.task_method),
                 missing: !!item.missing,
                 order: Number.isFinite(orderValue) ? orderValue : index,
                 source,
@@ -12346,7 +12347,7 @@ function applyPresetStoreFilters() {
         const matchesQuery = !query || text.includes(query);
         const matchesEngine = engineFilter === "all" || engine === engineFilter;
         const matchesScene = sceneFilter === "all"
-            || (sceneFilter === "image" || sceneFilter === "video"
+            || (["image", "video", "mesh"].includes(sceneFilter)
                 ? mediaType === sceneFilter
                 : sceneType === sceneFilter);
         const visible = matchesQuery && matchesEngine && matchesScene;

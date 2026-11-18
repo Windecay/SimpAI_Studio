@@ -3017,7 +3017,10 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function interactionKindFromTarget(target) {
         if (!target?.closest) return '';
-        if (target.closest('#bar_store')) return STORE_KIND;
+        const storeEntry = target.closest('#bar_store');
+        if (storeEntry) {
+            return storeEntry.classList.contains('simpleai-guest-identity') ? '' : STORE_KIND;
+        }
         if (target.closest('.sai-gradio-hidden-bridge')) return '';
         const tabs = queryInteractionNode('#advanced_tabs');
         const button = target.closest('[role="tab"]');
@@ -7081,6 +7084,7 @@ function initResolutionControlWidget(widget, options = {}) {
 
     const templateSelect = widget.querySelector('[data-role="template-select"]');
     const ratioSelect = widget.querySelector('[data-role="ratio-select"]');
+    const sizeLabel = widget.querySelector('[data-role="size-label"]');
     const randomToggle = widget.querySelector('[data-role="random-toggle"]');
     const overrideToggle = widget.querySelector('[data-role="override-toggle"]');
     const originalInputToggle = widget.querySelector('[data-role="original-input-toggle"]');
@@ -7114,6 +7118,7 @@ function initResolutionControlWidget(widget, options = {}) {
     };
     const useSceneSelection = () => isSceneActive() && !!_rc_getRoot(sceneSelectionId);
     const getActiveProfile = () => useSceneSelection() ? _rc_getResolutionProfile() : {};
+    const isOutputOnly = () => getActiveProfile().output_only === true;
     const getProfileSourceIds = (profile) => {
         if (Array.isArray(profile.source_ids)) return profile.source_ids;
         const source = String(profile.source || '').trim();
@@ -7183,6 +7188,7 @@ function initResolutionControlWidget(widget, options = {}) {
         return ['proportional', 'crop', 'scale', 'pad'].includes(fallback) ? fallback : 'scale';
     };
     const resolutionControlLangSource = () => window.simpleaiTopbarSystemParams || (typeof topbarLastSystemParams !== 'undefined' ? topbarLastSystemParams : null) || {};
+    const localizeResolutionLabel = (text) => window.SimpAII18n?.t(text, undefined, resolutionControlLangSource()) || text;
     const resolutionControlPrefersEnglish = (source = resolutionControlLangSource()) => {
         const lang = String(source.__lang || source.state?.__lang || window.locale_lang || '').toLowerCase();
         return lang.startsWith('en');
@@ -7268,24 +7274,28 @@ function initResolutionControlWidget(widget, options = {}) {
             ? ratioSelect.selectedOptions[0].textContent || ""
             : "";
         const bracket = (selectedText.match(/\[[^\]]+\]/) || [""])[0];
+        const defaultTitle = localizeResolutionLabel('Resolution');
+        const outputTitle = isOutputOnly() ? localizeResolutionLabel(getActiveProfile().label || 'Output Size') : '';
+        const prefixes = ['Resolution', '\u5206\u8fa8\u7387', accordion.dataset.rcTitlePrefix, outputTitle].filter(Boolean);
         const walker = document.createTreeWalker(header, NodeFilter.SHOW_TEXT, {
             acceptNode(node) {
                 const text = node.nodeValue && node.nodeValue.trim();
-                return text && (text.startsWith('Resolution') || text.startsWith('\u5206\u8fa8\u7387'))
+                return text && prefixes.some((prefix) => text.startsWith(prefix))
                     ? NodeFilter.FILTER_ACCEPT
                     : NodeFilter.FILTER_REJECT;
             },
         });
         const textNode = walker.nextNode();
         const currentTitleText = textNode && textNode.nodeValue ? textNode.nodeValue.trim() : "";
-        const titlePrefix = currentTitleText.startsWith('\u5206\u8fa8\u7387') ? '\u5206\u8fa8\u7387' : 'Resolution';
+        const titlePrefix = outputTitle || (currentTitleText.startsWith('\u5206\u8fa8\u7387') ? '\u5206\u8fa8\u7387' : defaultTitle);
         const ratioMatch = selectedText.match(/(?:\||\s)(\d+\s*:\s*\d+)(?:\s|$|\])/);
-        const ratio = ratioMatch ? ratioMatch[1].replace(/\s+/g, "") : _rc_simplifiedRatioLabel(width, height);
+        const ratio = ratioMatch && !outputTitle ? ratioMatch[1].replace(/\s+/g, "") : _rc_simplifiedRatioLabel(width, height);
         const title = options && options.waitingOriginal
             ? `${titlePrefix} - ${titlePrefix === '\u5206\u8fa8\u7387' ? '\u539f\u59cb\u5c3a\u5bf8' : 'Original'}${ratio ? ` | ${ratio}` : ""}${bracket ? ` ${bracket}` : ""}`
             : `${titlePrefix} - ${width}\u00d7${height}${ratio ? ` | ${ratio}` : ""}${bracket ? ` ${bracket}` : ""}`;
+        if (accordion.dataset.rcTitlePrefix !== titlePrefix) accordion.dataset.rcTitlePrefix = titlePrefix;
         if (textNode) {
-            const nextValue = textNode.nodeValue.replace(/(?:Resolution|\u5206\u8fa8\u7387)(?:\s*[-–].*)?/, title);
+            const nextValue = textNode.nodeValue.replace(currentTitleText, title);
             if (textNode.nodeValue !== nextValue) textNode.nodeValue = nextValue;
             return;
         }
@@ -7586,7 +7596,7 @@ function initResolutionControlWidget(widget, options = {}) {
             return { width: ow, height: oh, manual: true };
         }
         const parsed = _rc_parseDims(readSelection());
-        if (parsed) return { ...parsed, manual: false };
+        if (parsed) return { ...parsed, manual: false, profileMode: profile.output_only === true ? mode : '' };
         return { width: 1024, height: 1024, manual: false };
     };
 
@@ -7673,6 +7683,7 @@ function initResolutionControlWidget(widget, options = {}) {
     const populateRatios = () => {
         const ratios = getRatios();
         const choices = ratios[templateSelect.value] || [];
+        const outputOnly = isOutputOnly();
         const current = useSceneSelection() ? _rc_normalizeSceneRatio(readSelection()) : readSelection().split(",", 1)[0].trim();
         const currentWidth = _ro_getSliderValue(targetWidthId);
         const currentHeight = _ro_getSliderValue(targetHeightId);
@@ -7681,15 +7692,20 @@ function initResolutionControlWidget(widget, options = {}) {
         let customValue = null;
         for (const choice of choices) {
             const choiceValue = choice && typeof choice === 'object' ? choice.value : choice;
+            const dims = outputOnly ? _rc_parseDims(choiceValue) : null;
             optionEntries.push({
                 value: choiceValue,
-                label: choice && typeof choice === 'object' ? choice.label : _rc_displayRatioChoice(choice),
+                label: dims ? `${dims.width}\u00d7${dims.height}` : (choice?.label || _rc_displayRatioChoice(choice)),
             });
         }
         const matched = choices.find((choice) => {
             const choiceValue = choice && typeof choice === 'object' ? choice.value : choice;
             if (choice && typeof choice === 'object' && currentWidth > 0 && currentHeight > 0) {
                 return choice.width === currentWidth && choice.height === currentHeight;
+            }
+            if (outputOnly && currentWidth > 0 && currentHeight > 0) {
+                const dims = _rc_parseDims(choiceValue);
+                return dims?.width === currentWidth && dims.height === currentHeight;
             }
             if (useSceneSelection()) return _rc_normalizeSceneRatio(choiceValue) === current;
             return choiceValue === current || choiceValue === readSelection();
@@ -7700,7 +7716,7 @@ function initResolutionControlWidget(widget, options = {}) {
             : _rc_parseDims(matchedValue);
         const customResolutionActive = currentWidth > 0 && currentHeight > 0 && (
             widget.__rc_user_custom_resolution
-            || (overrideEnabled && (
+            || ((outputOnly || overrideEnabled) && (
                 !matchedDims
                 || matchedDims.width !== currentWidth
                 || matchedDims.height !== currentHeight
@@ -7711,7 +7727,7 @@ function initResolutionControlWidget(widget, options = {}) {
             customValue = `${currentWidth}\u00d7${currentHeight}|custom`;
             optionEntries.push({
                 value: customValue,
-                label: `Custom ${_rc_addRatio(currentWidth, currentHeight)}`,
+                label: `${localizeResolutionLabel('Custom')} ${_rc_addRatio(currentWidth, currentHeight)}`,
             });
             nextValue = customValue;
         } else if (matched) {
@@ -7918,6 +7934,9 @@ function initResolutionControlWidget(widget, options = {}) {
         const activeMode = profileMode(profile);
         const preprocessFitMode = profilePreprocessFitMode(profile);
         const interactive = activeMode ? profileInteractive(profile) : true;
+        const outputOnly = profile.output_only === true;
+        toggleResolutionClass(widget, 'resolution-control-output-only', outputOnly);
+        setResolutionText(sizeLabel, localizeResolutionLabel(outputOnly ? 'Size Preset' : 'Aspect Ratios'));
         syncModeButtonLabels();
         const profileKey = JSON.stringify({
             mode: activeMode,
@@ -8002,8 +8021,19 @@ function initResolutionControlWidget(widget, options = {}) {
         setResolutionAttribute(multiplierInput, 'aria-valuetext', `${multiplier.toFixed(1)}\u00d7`);
         const step = readStep();
         syncDimensionInputStep();
-        const effectiveW = waitingOriginal ? 0 : _rc_quantize(dims.width * multiplier, step);
-        const effectiveH = waitingOriginal ? 0 : _rc_quantize(dims.height * multiplier, step);
+        const outputOnly = isOutputOnly();
+        const effectiveDimension = (value) => {
+            if (waitingOriginal) return 0;
+            if (!outputOnly) return _rc_quantize(value * multiplier, step);
+            if (multiplier === 1) return value;
+            // Match the backend's round-to-even for scaled output dimensions.
+            const scaled = value * multiplier / step;
+            const lower = Math.floor(scaled);
+            if (scaled - lower === 0.5 && lower % 2 === 0) return Math.max(step, lower * step);
+            return _rc_quantize(value * multiplier, step);
+        };
+        const effectiveW = effectiveDimension(dims.width);
+        const effectiveH = effectiveDimension(dims.height);
         const widthValue = preserveManualInputs
             ? wInput.value
             : (waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.width) : "-1"));
@@ -8890,7 +8920,6 @@ onAfterUiUpdate(initParameterProfilePlaceholder);
 function initIdentityPopup() {
     const content = document.getElementById('identity_dialog_content');
     if (!content) return;
-    initIdentityGuestEntryBridge();
     const alreadyInited = content.dataset.identityPopupInited === '1';
 
     content.classList.add('simpleai-identity-card');
@@ -9101,21 +9130,16 @@ function dispatchIdentityGuestEntry(button) {
     try { button.dispatchEvent(new MouseEvent('click', eventInit)); } catch (e) {}
 }
 
-function initIdentityGuestEntryBridge() {
-    const button = document.getElementById('bar_store');
-    if (!button || button.dataset.identityEntryBridge === '1') return;
-    button.dataset.identityEntryBridge = '1';
-    button.addEventListener('click', () => {
-        if (!button.classList.contains('simpleai-guest-identity')) return;
-        if (window.__simpleaiIdentityReopenInFlight) return;
+document.addEventListener('click', (event) => {
+    if (!event.target?.closest?.('#bar_store.simpleai-guest-identity')) return;
+    if (!window.__simpleaiIdentityReopenInFlight) {
         window.__simpleaiIdentityKeepOpenUntil = Date.now() + 6500;
         window.__simpleaiIdentityReopenSent = false;
-    }, true);
-}
-
-onUiLoaded(initIdentityGuestEntryBridge);
-onAfterUiUpdate(initIdentityGuestEntryBridge);
-setInterval(initIdentityGuestEntryBridge, 1000);
+    }
+    if (clickGradioButton('identity_guest_open_button')) {
+        event.stopImmediatePropagation();
+    }
+}, true);
 
 onUiLoaded(initIdentityPopup);
 onAfterUiUpdate(initIdentityPopup);

@@ -13,6 +13,7 @@ from modules.comfy_progress_profile import format_profile_progress, format_sampl
 from modules.comfy_progress_filter import use_progress_profile
 from modules.comfy_prompt_compat import ComfyExecutionError
 from modules.comfy_batch import ComfyBatchPipeline
+from modules.comfy_mesh_outputs import save_comfy_mesh_outputs
 from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task, exclusive_task_lock
 from modules.lora_stack import (
     REMOTE_LORA_WARNING_PROGRESS, build_fooocus_stack, prepare_stack_params,
@@ -311,6 +312,7 @@ class AsyncTask:
         self.task_id = str(uuid.uuid4()) if task_id is None else task_id
         self.remote_task = None
         self.img_paths = []
+        self.mesh_media_ids = []
         self.lasttime = time.time()
         self.simpleai_comfy_prompt_accepted = False
         self.simpleai_comfy_prompt_id = None
@@ -1548,6 +1550,30 @@ def worker():
                             prompt_accepted_callback=on_comfy_prompt_accepted,
                             process_alive_callback=comfyd.is_running,
                         )
+                if async_task.remote_task is None and async_task.simpleai_comfy_prompt_id:
+                    try:
+                        for media_id, path in save_comfy_mesh_outputs(
+                            comfypipeline, async_task.simpleai_comfy_prompt_id, async_task.user_did,
+                            {
+                                "preset_id": async_task.task_name,
+                                "generation_task_id": async_task.task_id,
+                                "metadata": {
+                                    "source": "studio",
+                                    "prompt": task.get("task_prompt", ""),
+                                    "negative_prompt": task.get("task_negative_prompt", ""),
+                                    "parameters": {
+                                        "Seed": task.get("task_seed"),
+                                        "Model": async_task.base_model_name,
+                                        "Steps": steps,
+                                    },
+                                },
+                            },
+                            cancelled=lambda: async_task.last_stop in ("stop", "skip"),
+                        ):
+                            async_task.mesh_media_ids.append(media_id)
+                            track_generation_output(async_task, path)
+                    except Exception:
+                        logger.exception("Unable to collect Comfy 3D outputs: %s", async_task.simpleai_comfy_prompt_id)
                 if imgs and pe_supported_task(async_task.task_method):
                     capture_pe_result(
                         comfypipeline, async_task.simpleai_comfy_prompt_id,

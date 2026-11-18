@@ -391,6 +391,25 @@ SimpAI UI guide skill:
   SDPose-OOD and DWPose are OneKeyPose skeleton extraction presets.
 - Flux2-KleinPose is unavailable; use the active pose workflows above.
 
+## Idol Image to 3D
+
+- Add the built-in `Idol` preset from the Studio preset store's 3D category.
+  The Launcher offers the `Idol` model package, and Studio can report which
+  required files are missing.
+- Upload one image to Source Image (`源图片`), ideally with one complete object or
+  character and little occlusion. The preset removes the background automatically
+  and uses the image as its only conditioning input.
+- Generate in the Studio main interface. Open the cube icon in the preview to
+  inspect and download the colored GLB, or find it under 3D Models in the media
+  library. The MP4 shows a full turn at the default 75 frames and 25 FPS.
+- Turntable video size, frame count, frame rate, and compression control the
+  MP4. The GLB stores vertex colors, with unseen surfaces inferred from the
+  single source view.
+- Mesh Resolution in Advanced Parameters (`网格精度`) is the density grid
+  resolution along the longest axis. It defaults to 256 and supports 64–768
+  in steps of 16. Higher values can recover finer surface details and require
+  more memory and time during GLB extraction.
+
 ## MiniMax H3 Preset Family
 
 - MiniMax H3 native-audio video generation, reference-image editing,

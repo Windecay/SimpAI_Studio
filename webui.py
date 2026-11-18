@@ -83,6 +83,7 @@ from modules.sdxl_styles import legal_style_names, fooocus_expansion
 from modules.auth import auth_enabled, check_auth
 from modules.access_mode import is_local_mode, user_can_download_models, user_can_generate, user_has_full_local_access
 from modules.identity_session import resolve_session
+from modules.media_library_page import STUDIO_MESH_BROWSER_HTML
 from modules.agent_auth import AgentAuthorization, private_store_directory
 import modules.identity_access as identity_access
 import modules.util as util
@@ -1976,7 +1977,7 @@ def generate_clicked(task: worker.AsyncTask, state):
                         ).format(error=backend_error_text)
                     elif getattr(task, "task_class", None) == "Cloud" and (cloud_error_text or cloud_warning_text):
                         ui_error_text = "\n".join(text for text in (cloud_error_text, cloud_warning_text) if text)
-                    elif not product:
+                    elif not product and not getattr(task, "mesh_media_ids", ()):
                         ui_error_text = _studio_text(
                             state,
                             "Generation failed: backend returned no results. Check the console log for details.",
@@ -1993,7 +1994,7 @@ def generate_clicked(task: worker.AsyncTask, state):
                         except Exception as e:
                             logger.info(f"[Generate] gr.Info/Warning failed: {e}")
 
-                    if not product:
+                    if not product and not getattr(task, "mesh_media_ids", ()):
                         had_prior_output = bool(getattr(task, "simpleai_generation_had_output", False))
                         if user_cancel_action in ['stop', 'skip']:
                             logger.info(f"[Generate] finish_empty_results_user_cancel: action={user_cancel_action}, {task_meta}")
@@ -4894,7 +4895,7 @@ with shared.gradio_root:
                         )
 
 
-                        with gr.Row():
+                        with gr.Row(elem_id="main_preview_row"):
                             progress_window = gr.Image(label='Preview', show_label=False, visible=True, height=768, elem_id='preview_generating',
                                                 elem_classes=['main_view'], value=_initial_preview_welcome_image, interactive=False, buttons=["fullscreen"])
                             progress_gallery = gr.Gallery(label='Finished Images', show_label=True, object_fit='contain', elem_id='finished_gallery',
@@ -4912,6 +4913,7 @@ with shared.gradio_root:
                                 '<div class="simpleai-gallery-browser-empty-message" data-gallery-browser-empty-label role="status"></div>',
                                 elem_id='gallery_browser_empty_state',
                             )
+                            gr.HTML(STUDIO_MESH_BROWSER_HTML, elem_id="studio_mesh_browser", apply_default_css=False)
                         welcome_media_target = gr.Textbox(
                             value=welcome_media.TITLE_KIND,
                             visible="hidden",
@@ -12015,6 +12017,8 @@ with shared.gradio_root:
             else:
                 task_result_values = []
             task_has_output = bool(task_result_values)
+            model_ids = list(getattr(generation_task, "mesh_media_ids", ()))
+            state_topbar["__post_generation_mesh_ids"] = model_ids
             task_media_paths = image_output_paths(task_results)
             output_list = state_topbar.get("__output_list") or []
             task_content_type = getattr(generation_task, 'content_type', None)
@@ -12026,7 +12030,7 @@ with shared.gradio_root:
                 )
             )
             gallery_has_output = bool(task_has_output and not video_has_output)
-            has_output = task_has_output
+            has_output = bool(task_has_output or model_ids)
             is_video_context = bool(engine_type == 'video' or video_has_output)
             input_for_compare = resolve_comparison_input(input_img, state_topbar, scene1, scene_canvas)
             compare_input_ok = input_for_compare is not None
@@ -12067,7 +12071,7 @@ with shared.gradio_root:
             if latest_choice is not None:
                 state_topbar["prompt_info"] = [latest_choice, 0]
 
-            toolbox_visible = bool(gallery_util._should_show_image_toolbox(image_tools_enabled, state_topbar))
+            toolbox_visible = bool(task_has_output and gallery_util._should_show_image_toolbox(image_tools_enabled, state_topbar))
             comparable_output_visible = bool((not is_video_context) and task_has_output)
             compare_button_visible = bool(toolbox_visible)
             compare_ready = bool(toolbox_visible and comparable_output_visible and compare_input_ok)
@@ -13649,6 +13653,12 @@ with shared.gradio_root:
             ]
 
     
+    guest_identity_open_button = gr.Button(
+        value="Guest identity",
+        elem_id="identity_guest_open_button",
+        visible="hidden",
+        elem_classes=["sai-gradio-hidden-bridge"],
+    )
     after_identity = [gallery_index, index_radio, gallery_index_stat, preset_store, preset_store_list, history_link, identity_introduce, configure_panel, local_system_tab, user_access_tab, admin_panel, admin_link, system_params] + ip_types
     bind_topbar_identity_events(
         topbar_module=topbar,
@@ -13680,6 +13690,7 @@ with shared.gradio_root:
         qwen_custom_style_preset_choices=qwen_custom_style_preset_choices,
         binding_id_button=binding_id_button,
         identity_dialog=identity_dialog,
+        guest_identity_open_button=guest_identity_open_button,
         identity_activation={
             "guard": identity_activation_guard,
             "note": identity_activation_note,

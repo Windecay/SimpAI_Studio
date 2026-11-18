@@ -10,6 +10,13 @@
   "default_routes": ["overview"],
   "routes": [
     {
+      "key": "idol",
+      "title": {"en": "Idol Image to 3D", "cn": "Idol 单图转 3D"},
+      "priority": 970,
+      "keywords": ["idol", "image to 3d", "image-to-3d", "图转3d", "图转 3d", "单图建模", "生成3d模型", "生成 3d 模型"],
+      "sections": ["Idol Image to 3D"]
+    },
+    {
       "key": "vosr2_video",
       "title": {"en": "VOSR2 Video Upscale", "cn": "VOSR2 视频放大"},
       "priority": 960,

@@ -25990,6 +25990,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
     }
 
     function creativePresetSupportedTasks(entry) {
+        if (entry?.media_capability?.output_type === 'mesh') return [];
         const outputType = String(entry?.media_capability?.output_type || entry?.engine_type || 'image').toLowerCase() === 'video' ? 'video' : 'image';
         const declared = Array.isArray(entry?.media_capability?.supported_tasks)
             ? entry.media_capability.supported_tasks.map((task) => {
@@ -26461,7 +26462,9 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
     }
 
     function creativePresetCapabilitiesPayload() {
-        return state.creativePresetCatalog.filter(entry => !isRetiredCreativePreset(entry.name || entry.display_name)).slice(0, 100).map((entry) => {
+        return state.creativePresetCatalog.filter(entry =>
+            entry.media_capability?.output_type !== 'mesh' && !isRetiredCreativePreset(entry.name || entry.display_name)
+        ).slice(0, 100).map((entry) => {
             const themes = Array.isArray(entry?.schema?.themes) ? entry.schema.themes.slice(0, 40).map((theme) => String(theme || '')).filter(Boolean) : [];
             const perTheme = entry?.schema?.per_theme && typeof entry.schema.per_theme === 'object' ? entry.schema.per_theme : {};
             const durationParam = (Array.isArray(entry?.schema?.params) ? entry.schema.params : [])

@@ -8,6 +8,43 @@ from html import escape
 from pathlib import Path
 
 
+STUDIO_MESH_BROWSER_HTML = """\
+<button type="button" class="studio-mesh-library-button" data-studio-mesh-open hidden
+        aria-haspopup="dialog" aria-controls="studio-mesh-dialog" aria-expanded="false"
+        data-mesh-label="3D Models" aria-label="3D Models" title="3D Models">
+  <i class="fa fa-cube" aria-hidden="true"></i>
+</button>
+<dialog id="studio-mesh-dialog" class="studio-mesh-dialog" aria-labelledby="studio-mesh-title">
+  <header class="studio-mesh-toolbar studio-mesh-header" data-mesh-handle>
+    <h2 id="studio-mesh-title">
+      <i class="fa fa-cube" aria-hidden="true"></i><span data-mesh-label="3D Models">3D Models</span>
+    </h2>
+    <button type="button" data-mesh-refresh data-mesh-label="Refresh" aria-label="Refresh" title="Refresh">
+      <i class="fa fa-rotate" aria-hidden="true"></i>
+    </button>
+    <button type="button" data-mesh-close data-mesh-label="Close" aria-label="Close" title="Close" autofocus>
+      <i class="fa fa-xmark" aria-hidden="true"></i>
+    </button>
+  </header>
+  <div class="studio-mesh-stage" data-mesh-stage>
+    <p data-mesh-status role="status"></p>
+  </div>
+  <footer class="studio-mesh-toolbar studio-mesh-footer">
+    <button type="button" data-mesh-prev data-mesh-label="Previous" aria-label="Previous" title="Previous" disabled>
+      <i class="fa fa-chevron-left" aria-hidden="true"></i>
+    </button>
+    <select data-mesh-select data-mesh-label="3D Models" aria-label="3D Models" disabled></select>
+    <button type="button" data-mesh-next data-mesh-label="Next" aria-label="Next" title="Next" disabled>
+      <i class="fa fa-chevron-right" aria-hidden="true"></i>
+    </button>
+    <a data-mesh-download data-mesh-label="Download" aria-label="Download" title="Download" hidden download>
+      <i class="fa fa-download" aria-hidden="true"></i>
+    </a>
+  </footer>
+</dialog>
+"""
+
+
 def _join_url(root_path: str, path: str) -> str:
     root = str(root_path or "").rstrip("/")
     return f"{root}/{str(path).lstrip('/')}"
@@ -52,6 +89,7 @@ def _icon_font_css(font_url: str) -> str:
         "film": "\\f008",
         "music": "\\f001",
         "image": "\\f03e",
+        "cube": "\\f1b2",
         "filter": "\\f0b0",
         "folder": "\\f07b",
         "folder-open": "\\f07c",
@@ -96,6 +134,8 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
     normalized_lang = "cn" if str(lang or "").lower().startswith(("cn", "zh")) else "en"
     api_base = _join_url(root_path, "simpleai/gallery")
     css_url = _gradio_asset_url(root_path, "css/media_library.css")
+    mesh_css_url = _gradio_asset_url(root_path, "css/studio_mesh_viewer.css")
+    mesh_script_url = _gradio_asset_url(root_path, "javascript/studio_mesh_viewer.js")
     i18n_url = _gradio_asset_url(root_path, "javascript/simpleai_i18n.js")
     script_url = _gradio_asset_url(root_path, "javascript/media_library.js")
     icon_font_url = _gradio_asset_url(root_path, "webfonts/fa-solid-900.woff2")
@@ -118,8 +158,10 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
   <title data-i18n="Media Library">Media Library</title>
   {_icon_font_css(icon_font_url)}
   <link rel="stylesheet" href="{css_url}">
+  <link rel="stylesheet" href="{mesh_css_url}">
   <script>window.simpleaiGalleryConfig = {config_json};</script>
   <script src="{i18n_url}"></script>
+  <script src="{mesh_script_url}" defer></script>
   <script src="{script_url}" defer></script>
 </head>
 <body data-theme="{normalized_theme}">
@@ -148,6 +190,7 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
           <option value="image" data-i18n="Images">Images</option>
           <option value="video" data-i18n="Videos">Videos</option>
           <option value="audio" data-i18n="Audio">Audio</option>
+          <option value="mesh" data-i18n="3D Models">3D Models</option>
         </select>
         <select id="media-sort" class="compact-select" aria-label="Sort">
           <option value="newest" data-i18n="Newest">Newest</option>

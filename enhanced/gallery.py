@@ -556,6 +556,7 @@ def post_generation_result_payload(state_params):
         "__post_generation_has_output",
         "__post_generation_gallery_output",
         "__post_generation_video_output",
+        "__post_generation_mesh_ids",
         "__post_generation_image_url",
         "__post_generation_image_paths",
         "__post_generation_image_dimensions",
@@ -794,6 +795,7 @@ def clear_post_generation_output_state(state_params):
         "__post_generation_has_output",
         "__post_generation_gallery_output",
         "__post_generation_video_output",
+        "__post_generation_mesh_ids",
         "__post_generation_image_paths",
         "__post_generation_image_dimensions",
     ):

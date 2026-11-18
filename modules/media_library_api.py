@@ -149,23 +149,17 @@ def _item_urls(
     trash_query = "?trash=1" if item.get("is_trashed") else ""
     item["media_url"] = f"{base}/media/{media_id}{trash_query}"
     item["download_url"] = f"{base}/download/{media_id}{trash_query}"
-    if item.get("media_type") in {"image", "video"}:
-        version = media_library._source_file_signature(item.get("size"), item.get("mtime_ns"))
+    if item.get("media_type") == "image":
+        signature = media_library._source_file_signature(item.get("size"), item.get("mtime_ns"))
+        version = media_library._thumbnail_version(signature)
         version_param = f"v={quote(version, safe='')}"
         if item.get("is_trashed"):
             version_param = f"trash=1&{version_param}"
         item["thumbnail_url"] = f"{base}/thumbnail/{media_id}?{version_param}"
-        if item.get("media_type") == "video":
-            legacy_url = _legacy_gallery_preview_url(request, item, library) if library is not None else ""
-            if legacy_url:
-                item["thumbnail_url"] = legacy_url
-                item["poster_ready"] = True
-            else:
-                # The standalone page does not create a second video poster cache.
-                # The frontend renders its normal video placeholder when Gradio
-                # has no usable preview route (for example, for trashed media).
-                item["thumbnail_url"] = ""
-                item["poster_ready"] = False
+    elif item.get("media_type") == "video":
+        legacy_url = _legacy_gallery_preview_url(request, item, library) if library is not None else ""
+        item["thumbnail_url"] = legacy_url
+        item["poster_ready"] = bool(legacy_url)
     return item
 
 
@@ -563,10 +557,11 @@ async def media_library_media(request: Request, media_id: str):
     path = await run_in_threadpool(lambda: library.media_path(media_id, include_trashed=include_trashed)) if item else ""
     if not item or not path:
         return JSONResponse({"ok": False, "error": "Media file not found."}, status_code=404)
+    cache_control = "private, no-store" if item.get("media_type") == "mesh" else "private, max-age=3600"
     return FileResponse(
         path,
         media_type=item.get("mime") or None,
-        headers={"Cache-Control": "private, max-age=3600", "Accept-Ranges": "bytes", "X-Content-Type-Options": "nosniff"},
+        headers={"Cache-Control": cache_control, "Accept-Ranges": "bytes", "X-Content-Type-Options": "nosniff"},
         content_disposition_type="inline",
     )
 
@@ -600,11 +595,11 @@ async def media_library_thumbnail(request: Request, media_id: str):
         return JSONResponse({"ok": False, "error": "Thumbnail not found."}, status_code=404)
     cache_control = (
         "private, max-age=31536000, immutable"
-        if version and os.path.basename(path).endswith(f"_{version}.jpg")
+        if version and os.path.basename(path).endswith(f"_{version}.webp")
         else "private, no-store"
     )
     return FileResponse(
         path,
-        media_type="image/jpeg",
+        media_type="image/webp",
         headers={"Cache-Control": cache_control, "X-Content-Type-Options": "nosniff"},
     )

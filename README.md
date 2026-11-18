@@ -307,7 +307,8 @@ python -s entry_without_update.py --models-root ..\..\SimpleModels --userhome-pa
 - 图片生成：`FooocusSDXL`、`Illustrious`、`Anima`、`Flux1-dev`、`Flux2-Klein`、`Z-imageT`。
 - 图片编辑：`QwenEdit+`、`Imagerepair+`、`StyleTransfer+`、`Swap+`、`OneKeyKontext`、`OneKey-Outpaint`。
 - 视角与姿态：`QwenMultiAngle`、`QwenGaussian`、`QwenPose`、`Flux2-KleinPose`。
-- 视频：`Wan(T2V)`、`Wan(I2V)`、`Wan-Extent`、`Wan-Animate`、`Wan-Remover`、`Wan-Outpaint`、`Wan-SCAIL`、`Wan-TTP`、`LTX2.3`。
+- 3D：`Idol` 从单张图片生成带顶点颜色的 GLB 网格和 MP4 转台视频。可在主界面预览和下载网格，作品库支持按「3D 模型」筛选。
+- 视频：`Wan(T2V)`、`Wan(I2V)`、`Wan-Extent`、`Wan-Animate`、`Wan-Remover`、`Wan-Outpaint`、`Wan-SCAIL`、`Wan-TTP`、`LTX2.5`、`Minimax-H3`。
 - 音频：`Qwen TTS` 画布节点、`Hunyuan-Foley`、`InfiniteTalk`、Timeline 配音混剪模板。
 - 增强：`Nvidia-VSR`、`Removebg`、`Relight`、`Tile`、`Eraser`。
 

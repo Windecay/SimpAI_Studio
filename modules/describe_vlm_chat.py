@@ -1302,6 +1302,8 @@ def _normalize_preset_capabilities(value, limit=100):
     for item in value if isinstance(value, list) else []:
         if not isinstance(item, dict):
             continue
+        if str(item.get("output_type") or "").strip().lower() == "mesh":
+            continue
         name = re.sub(r"[\x00-\x1f\x7f]+", "", str(item.get("name") or "")).strip()[:120]
         key = name.lower()
         if not name or key in seen:
