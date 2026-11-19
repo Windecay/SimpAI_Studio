@@ -1079,6 +1079,9 @@ def get_task_with_resolution_multiplier(*args):
                     try:
                         params_backend_index = api_params.all_args.index('params_backend')
                         params_backend = args[params_backend_index]
+                        # UI normalization serializes backend parameters before task construction.
+                        if isinstance(params_backend, (list, tuple)):
+                            params_backend = api_params.convert_dict(params_backend)
                         if isinstance(params_backend, dict) and params_backend.get('scene_frontend'):
                             resolution_selection = params_backend.get('scene_aspect_ratio') or resolution_selection
                     except (ValueError, IndexError, TypeError):

@@ -1,6 +1,7 @@
 import copy
 import inspect
 import logging
+import os
 import time
 from contextvars import ContextVar
 from functools import wraps
@@ -19,6 +20,89 @@ _OBJECT_INFO_CACHE = {
 }
 
 _BATCH_QUEUED_PROMPT = ContextVar("studio_batch_queued_prompt", default=None)
+
+
+class ComfyMediaUploadError(RuntimeError):
+    def __init__(self, filename, size=None, status=None, limit=None):
+        self.filename = filename
+        self.size = size
+        self.status = status
+        self.limit = limit
+        super().__init__(self.user_message())
+
+    def user_message(self, language=None):
+        cn = language in ("cn", "zh", "zh-CN")
+        if self.status == 413:
+            size = f"{self.size / 1024**2:.1f} MiB"
+            limit = f"{self.limit / 1024**2:g} MiB" if self.limit else None
+            if cn:
+                reported = f"，Comfyd 配置上限 {limit}" if limit else ""
+                return (f"素材「{self.filename}」超过上传大小限制（HTTP 413，文件 {size}{reported}）。"
+                        "请减小文件体积，或联系管理员提高上传上限后重试。")
+            reported = f", Comfyd configured limit {limit}" if limit else ""
+            return (f'Media "{self.filename}" exceeds the upload size limit (HTTP 413, file {size}{reported}). '
+                    "Use a smaller file or ask an administrator to raise the upload limit, then retry.")
+        detail = f"HTTP {self.status}" if self.status is not None else (
+            "无法读取本地文件或未收到有效的上传响应" if cn else "file unreadable or no valid upload response"
+        )
+        if cn:
+            return f"素材「{self.filename}」上传到 Comfyd 失败（{detail}）。任务未提交。"
+        return f'Media "{self.filename}" could not be uploaded to Comfyd ({detail}). Task not submitted.'
+
+
+def install_media_upload_error_support(pipeline):
+    upload_file = getattr(pipeline, "upload_file", None)
+    if not callable(upload_file) or getattr(upload_file, "_simpai_media_upload_error_support", False):
+        return False
+
+    @wraps(upload_file)
+    def upload_file_checked(path):
+        filename = os.path.basename(path)
+        try:
+            # Keep the current client's content-based names and cached-input reuse.
+            if not all(callable(getattr(pipeline, name, None)) for name in (
+                "_hash_file", "_input_file_is_available", "server_address",
+            )):
+                result = upload_file(path)
+                if not result:
+                    raise ComfyMediaUploadError(filename)
+                return result
+            size = os.path.getsize(path)
+            file_hash = pipeline._hash_file(path)
+            target = f"upload_file_{file_hash[:32]}{os.path.splitext(path)[1]}"
+            if pipeline._input_file_is_available(target, size):
+                return target
+            endpoint = f"http://{pipeline.server_address()}"
+            with open(path, "rb") as handle:
+                response = httpx.post(
+                    f"{endpoint}/upload/image",
+                    files={"image": (target, handle)},
+                    data={"overwrite": "true", "type": "input"},
+                    timeout=30.0,
+                )
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, dict) and isinstance(data.get("name"), str) and data["name"]:
+                    return data["name"]
+                raise ComfyMediaUploadError(filename)
+            limit = None
+            if response.status_code == 413:
+                try:
+                    features = httpx.get(f"{endpoint}/features", timeout=2.0)
+                    features.raise_for_status()
+                    data = features.json()
+                    value = data.get("max_upload_size") if isinstance(data, dict) else None
+                    if type(value) in (int, float) and 0 < value < float("inf"):
+                        limit = value
+                except (httpx.HTTPError, ValueError):
+                    pass
+            raise ComfyMediaUploadError(filename, size, response.status_code, limit)
+        except (OSError, ValueError, httpx.RequestError) as exc:
+            raise ComfyMediaUploadError(filename) from exc
+
+    upload_file_checked._simpai_media_upload_error_support = True
+    pipeline.upload_file = upload_file_checked
+    return True
 
 
 def _queue_batch_prompt(pipeline, user_did, prompt, user_cert, extra_data, prompt_id, process_alive_callback):

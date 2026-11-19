@@ -1,5 +1,6 @@
 import contextlib
 from fractions import Fraction
+import logging
 import math
 import os
 import shutil
@@ -17,6 +18,9 @@ import nodes
 from comfy.ldm.wan.model_vsr import RELAY_KEYFRAME_INTERVAL, relay_latent_size
 from comfy import model_management, utils
 from comfy_api.latest import Input, InputImpl, Types, io, ui
+
+
+logger = logging.getLogger(__name__)
 
 
 def _frames(path, start, duration, fps):
@@ -104,6 +108,41 @@ def _mux_audio(silent_path, source_path, output_path, start, duration):
                 process.wait(timeout=5)
 
 
+@contextlib.contextmanager
+def _open_video_encoder(path, fps, crf, first_frame):
+    # NVENC CQ=0 means automatic quality, not the existing lossless CRF=0.
+    encoders = ("h264_nvenc", "libx264") if crf else ("libx264",)
+    width, height = first_frame.width, first_frame.height
+    for encoder in encoders:
+        with av.open(path, "w", format="mp4") as container:
+            try:
+                stream = container.add_stream(encoder, rate=fps)
+                stream.width, stream.height = width, height
+                stream.pix_fmt = "yuv420p"
+                if encoder == "h264_nvenc":
+                    stream.bit_rate = 0
+                    stream.options = {"preset": "p4", "rc": "vbr", "cq": str(crf)}
+                else:
+                    stream.options = {"crf": str(crf), "preset": "fast"}
+                first_frame.pts, first_frame.time_base = 0, 1 / fps
+                packets = stream.encode(first_frame)
+            except (av.error.FFmpegError, av.codec.codec.UnknownCodecError) as error:
+                if encoder != "h264_nvenc":
+                    raise
+                logger.warning("RelayVSR: %s failed at %sx%s; using libx264: %s", encoder, width, height, error)
+                continue
+            logger.info("RelayVSR: encoding %sx%s with %s", width, height, encoder)
+            yield container, stream, packets, encoder
+            return
+
+
+def _encode_video_packets(stream, encoder, frame=None):
+    try:
+        return stream.encode(frame)
+    except av.error.FFmpegError as error:
+        raise RuntimeError(f"RelayVSR: {encoder} failed after encoding started: {error}") from error
+
+
 class SimpAIRelayVSRVideo(io.ComfyNode):
     @classmethod
     def define_schema(cls):
@@ -159,8 +198,7 @@ class SimpAIRelayVSRVideo(io.ComfyNode):
             silent_path = os.path.join(work, "silent.mp4")
             completed = 0
             last_preview = 0
-            with av.open(silent_path, "w", format="mp4") as container:
-                stream = None
+            with contextlib.ExitStack() as resources:
                 for index, window in enumerate(_windows(source, start, duration, fps)):
                     skip = int(index > 0)
                     count = len(window) - skip
@@ -170,17 +208,18 @@ class SimpAIRelayVSRVideo(io.ComfyNode):
                             vae_options={"lq_images": window, "detail": detail},
                         )
                     decoded = decoded.reshape(-1, *decoded.shape[-3:])
-                    if stream is None:
-                        stream = container.add_stream("libx264", rate=fps)
-                        stream.width, stream.height = decoded.shape[2], decoded.shape[1]
-                        stream.pix_fmt = "yuv420p"
-                        stream.options = {"crf": str(crf), "preset": "fast"}
                     for output in decoded[skip:]:
                         model_management.throw_exception_if_processing_interrupted()
                         pixels = output.mul(255).round().clamp_(0, 255).to(device="cpu", dtype=torch.uint8).numpy()
                         frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
-                        frame.pts, frame.time_base = completed, 1 / fps
-                        for packet in stream.encode(frame):
+                        if completed == 0:
+                            container, stream, packets, encoder = resources.enter_context(
+                                _open_video_encoder(silent_path, fps, crf, frame),
+                            )
+                        else:
+                            frame.pts, frame.time_base = completed, 1 / fps
+                            packets = _encode_video_packets(stream, encoder, frame)
+                        for packet in packets:
                             container.mux(packet)
                         completed += 1
                         preview = None
@@ -189,11 +228,11 @@ class SimpAIRelayVSRVideo(io.ComfyNode):
                             last_preview = time.monotonic()
                         progress.update_absolute(max(progress.current, frames * 40 + completed * 59), preview=preview)
                     del decoded, window
-                for packet in stream.encode():
+                if completed != frames:
+                    raise RuntimeError(f"RelayVSR decoded {completed} frames; the source contains {frames}.")
+                for packet in _encode_video_packets(stream, encoder):
                     container.mux(packet)
                 output_width, output_height = stream.width, stream.height
-            if completed != frames:
-                raise RuntimeError(f"RelayVSR decoded {completed} frames; the source contains {frames}.")
             final_temp = os.path.join(work, "result.mp4")
             _mux_audio(silent_path, source, final_temp, start, float(frames / fps))
             output_dir, filename, counter, subfolder, _ = folder_paths.get_save_image_path(

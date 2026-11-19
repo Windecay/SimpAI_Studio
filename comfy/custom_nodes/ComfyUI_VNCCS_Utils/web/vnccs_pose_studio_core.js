@@ -501,12 +501,12 @@ class AnalyticIKSolver {
 
         // Calculate rotation
         const dot = currentDir.dot(targetDir);
-        if (dot > 0.9999) return; // Already aligned
+        if (dot > 1 - 1e-12) return;
 
         const axis = new THREE.Vector3().crossVectors(currentDir, targetDir);
         let angle = Math.acos(Math.max(-1, Math.min(1, dot)));
 
-        if (axis.lengthSq() < 0.0001) {
+        if (axis.lengthSq() < 1e-12) {
             // Singularity: 180 degree rotation. Pick any perpendicular axis.
             if (dot < 0) {
                 const perp = new THREE.Vector3(1, 0, 0);
@@ -1880,7 +1880,7 @@ export class PoseViewerCore {
         }
 
         this.selectedPoleTarget = poleMesh;
-        poleMesh.material.color.setHex(0xffff00); // Yellow when selected
+        poleMesh.material?.color.setHex(0xffff00); // Yellow when selected
 
         // Attach transform to the pole mesh (translate mode)
         this.transform.setMode("translate");
@@ -1914,7 +1914,7 @@ export class PoseViewerCore {
 
     deselectPoleTarget() {
         if (this.selectedPoleTarget) {
-            this.selectedPoleTarget.material.color.setHex(0xff8800);
+            this.selectedPoleTarget.material?.color.setHex(0xff8800);
             this.selectedPoleTarget = null;
         }
         this.transform.detach();
@@ -2601,11 +2601,19 @@ export class PoseViewerCore {
             skinTex = this.cachedSkinTexture;
         } else {
             const texLoader = new THREE.TextureLoader();
-            skinTex = texLoader.load(`${EXTENSION_URL}textures/${skinFile}?v=${Date.now()}`,
-                (tex) => this.requestRender(),
-                undefined,
-                (err) => console.error("Texture failed to load", err)
-            );
+            this.cachedSkinTextureReady = new Promise((resolve) => {
+                skinTex = texLoader.load(`${EXTENSION_URL}textures/${skinFile}?v=${Date.now()}`,
+                    () => {
+                        resolve(true);
+                        this.requestRender();
+                    },
+                    undefined,
+                    (err) => {
+                        resolve(false);
+                        console.error("Texture failed to load", err);
+                    }
+                );
+            });
             this.cachedSkinTexture = skinTex;
             this.cachedSkinType = skinType;
         }
@@ -2861,6 +2869,16 @@ export class PoseViewerCore {
         this.updateBoneLengthScale('spine', this.boneLengthParams.spine ?? 0.5);
     }
 
+    async prepareSkinForCapture() {
+        const material = this.skinnedMesh?.material;
+        // A TextureLoader placeholder has no image until the load completes.
+        if (!material?.map || material.map.image) return;
+        if (await this.cachedSkinTextureReady || this.skinnedMesh?.material !== material) return;
+        material.map = null;
+        material.color.setHex(0xaaaaaa);
+        material.needsUpdate = true;
+    }
+
     setRenderStyle(style) {
         const styles = { original: 0, clay: 1, lineart: 2 };
         this.renderStyle = Object.hasOwn(styles, style) ? style : 'original';
@@ -2970,6 +2988,7 @@ export class PoseViewerCore {
             // These local offsets are pose data and must survive editor commit.
             bonePositions,
             boneLengthParams: { ...this.boneLengthParams },
+            proportions: { head: this.headScale, arm: this.armScale, hand: this.handScale },
             modelRotation: [this.modelRotation.x, this.modelRotation.y, this.modelRotation.z],
             camera: {
                 posX: this.camera.position.x,
@@ -3031,6 +3050,12 @@ export class PoseViewerCore {
 
         const bones = pose.bones || {};
         const bonePositions = pose.bonePositions || {};
+        if (pose.proportions) {
+            for (const [key, method] of [['head', 'updateHeadScale'], ['arm', 'updateArmScale'], ['hand', 'updateHandScale']]) {
+                const scale = pose.proportions[key];
+                if (Number.isFinite(scale) && scale > 0) this[method](scale);
+            }
+        }
         if (pose.boneLengthParams) {
             for (const [group, value] of Object.entries(pose.boneLengthParams)) {
                 if (Number.isFinite(value)) this.updateBoneLengthScale(group, value);

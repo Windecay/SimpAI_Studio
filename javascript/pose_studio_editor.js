@@ -16,7 +16,7 @@
     const poseViewerModules = new Map();
     let handPresetsPromise = null;
     let sceneBridgeAttached = false;
-    const POSE_VIEWER_CORE_VERSION = 'simpai-pose-library-20261029-3';
+    const POSE_VIEWER_CORE_VERSION = 'simpai-pose-library-20261119-1';
     const RENDER_STYLES = { original: 'Original material', clay: 'Gray clay', lineart: 'Line art' };
     const LIBRARY_VIEWS = {
         current: { label: 'Default view' }, front: { label: 'Front view', yaw: 0, pitch: 0 },
@@ -2804,11 +2804,13 @@
                         v.loadData(thumbnailData, true);
                         v.setPose(response.pose_data, true);
                         v.setRenderStyle(renderStyle);
+                        if (renderStyle === 'original') await v.prepareSkinForCapture();
+                        if (!active()) return;
                         const view = LIBRARY_VIEWS[libraryView.value] || LIBRARY_VIEWS.current;
                         const camera = libraryCameraParams(v, response.pose_data, 192, 256, { ...view, key: libraryView.value });
                         image = v.capture(192, 256, camera.zoom, [255, 255, 255], camera.offset_x, camera.offset_y,
                             camera.yaw_deg, camera.pitch_deg, camera.distance_scale);
-                        if (!active()) return;
+                        if (!image) continue;
                         if (libraryThumbnails.size >= 144) libraryThumbnails.delete(libraryThumbnails.keys().next().value);
                         libraryThumbnails.set(key, image);
                     }

@@ -11,7 +11,7 @@ from extras.inpaint_mask import generate_mask_from_image, SAMOptions
 from modules.patch import PatchSettings, patch_settings, patch_all
 from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress, format_vosr2_progress, format_relayvsr_progress
 from modules.comfy_progress_filter import use_progress_profile
-from modules.comfy_prompt_compat import ComfyExecutionError
+from modules.comfy_prompt_compat import ComfyExecutionError, ComfyMediaUploadError
 from modules.comfy_batch import ComfyBatchPipeline
 from modules.comfy_mesh_outputs import save_comfy_mesh_outputs
 from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task, exclusive_task_lock
@@ -3729,7 +3729,10 @@ def worker():
                             task.yields.append(['finish', task.results])
                     except Exception as error:
                         _restore_standard_streams_if_closed()
-                        task.backend_error = str(error) or type(error).__name__
+                        if isinstance(error, ComfyMediaUploadError):
+                            task.backend_error = error.user_message(getattr(task, "simpleai_lang", None))
+                        else:
+                            task.backend_error = str(error) or type(error).__name__
                         logger.exception("Generation failed: task_id=%s", task.task_id)
                         if task.task_class != 'Cloud':
                             try:

@@ -528,6 +528,7 @@ def _get_comfyd_supervisor():
             comfy_prompt_compat.install_queue_prompt_normalizer(comfyclient_pipeline)
             comfy_prompt_compat.install_prompt_cancel_support(comfyclient_pipeline)
             comfy_prompt_compat.install_execution_error_support(comfyclient_pipeline)
+            comfy_prompt_compat.install_media_upload_error_support(comfyclient_pipeline)
             _comfyd_supervisor = install_comfyd_recovery(
                 comfyd, comfyclient_pipeline,
                 _select_comfyd_recovery_port, _publish_comfyd_recovery_port,
