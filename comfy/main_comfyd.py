@@ -22,14 +22,18 @@ def _load_llama_cpp_runtime_helpers():
     spec.loader.exec_module(module)
     return (
         module.LLAMA_CPP_RUNTIME_VERSION,
+        module.llama_cpp_runtime_verification_error,
         module.llama_cpp_version_matches,
         module.select_llama_cpp_wheel,
     )
 
 
-LLAMA_CPP_RUNTIME_VERSION, llama_cpp_version_matches, select_llama_cpp_wheel = (
-    _load_llama_cpp_runtime_helpers()
-)
+(
+    LLAMA_CPP_RUNTIME_VERSION,
+    llama_cpp_runtime_verification_error,
+    llama_cpp_version_matches,
+    select_llama_cpp_wheel,
+) = _load_llama_cpp_runtime_helpers()
 
 ORT_CUDA13_INDEX_URL = os.environ.get(
     "ORT_CUDA13_INDEX_URL",
@@ -270,6 +274,7 @@ try:
     import llama_cpp
     import llama_cpp.llama_cpp as llama_cpp_lib
     import llama_cpp.llama_chat_format as chat_format
+    from llama_cpp import _ggml
 
     result["version"] = getattr(llama_cpp, "__version__", "")
     result["handlers"] = [name for name in required_handlers if hasattr(chat_format, name)]
@@ -289,13 +294,15 @@ try:
     registry_count = getattr(llama_cpp, "ggml_backend_reg_count", None)
     if callable(registry_count):
         result["backend_registry_count"] = int(registry_count())
+    cuda_backend = _ggml.ggml_backend_reg_by_name(b"CUDA")
+    result["cuda_device_count"] = int(_ggml.ggml_backend_reg_dev_count(cuda_backend)) if cuda_backend else 0
     gpu_probe = getattr(llama_cpp, "llama_supports_gpu_offload", None)
-    result["gpu_offload"] = bool(gpu_probe()) if callable(gpu_probe) else False
+    result["gpu_offload"] = bool(result["cuda_device_count"] and callable(gpu_probe) and gpu_probe())
     result["ok"] = not result["missing_handlers"] and result["gpu_offload"]
     if result["missing_handlers"]:
         result["error"] = "missing handlers: " + ", ".join(result["missing_handlers"])
     elif not result["gpu_offload"]:
-        result["error"] = "llama.cpp library was built without GPU offload"
+        result["error"] = "local CUDA offload is unavailable"
 except Exception as exc:
     result["error"] = f"{type(exc).__name__}: {exc}"
 print("SIMPAI_LLAMA_CPP_PROBE=" + json.dumps(result, ensure_ascii=False))
@@ -374,22 +381,27 @@ def install_llama_cpp_runtime_for_comfyd():
     installed_version = _installed_package_version("llama-cpp-python")
     if llama_cpp_version_matches(installed_version, artifact):
         probe = _llama_cpp_runtime_probe_for_comfyd()
-        if probe.get("ok"):
+        verification_error = llama_cpp_runtime_verification_error(installed_version, artifact, probe)
+        if not verification_error:
             print(
                 "[Comfyd] llama.cpp VLM runtime is ready / llama.cpp VLM 运行环境已就绪: "
                 f"{installed_version} ({artifact['cuda_tag']})"
             )
             return True
-        if probe.get("cuda_backend_present") and not probe.get("missing_handlers"):
+        if (
+            llama_cpp_version_matches(probe.get("version"), artifact)
+            and probe.get("cuda_backend_present")
+            and not probe.get("missing_handlers")
+        ):
             print(
                 "[Comfyd] llama.cpp CUDA backend failed to initialize; identical reinstall skipped / "
                 "llama.cpp CUDA backend 初始化失败，已跳过相同 wheel 的重复安装: "
-                f"{probe.get('error') or 'runtime probe failed'}"
+                f"{verification_error}"
             )
             return False
         print(
             "[Comfyd] llama.cpp runtime verification failed; reinstalling / "
-            f"llama.cpp 运行环境检查失败，正在重新安装: {probe.get('error') or 'runtime probe failed'}"
+            f"llama.cpp 运行环境检查失败，正在重新安装: {verification_error}"
         )
     else:
         print(
@@ -421,14 +433,11 @@ def install_llama_cpp_runtime_for_comfyd():
 
     installed_version = _installed_package_version("llama-cpp-python")
     probe = _llama_cpp_runtime_probe_for_comfyd()
-    ready = llama_cpp_version_matches(installed_version, artifact) and bool(probe.get("ok"))
-    if not ready:
-        verification_error = probe.get("error")
-        if not llama_cpp_version_matches(installed_version, artifact):
-            verification_error = f"package version mismatch ({installed_version or 'missing'})"
+    verification_error = llama_cpp_runtime_verification_error(installed_version, artifact, probe)
+    if verification_error:
         print(
             "[Comfyd] llama.cpp VLM runtime verification failed / llama.cpp VLM 运行环境安装后检查失败: "
-            f"version={installed_version}, expected={artifact['version']}, error={verification_error or 'runtime probe failed'}"
+            f"version={installed_version}, expected={artifact['version']}, error={verification_error}"
         )
         return False
 

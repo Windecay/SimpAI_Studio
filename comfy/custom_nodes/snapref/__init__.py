@@ -30,11 +30,14 @@ Weight files keep the internal tensor format anima_ref_kv/1 (key prefix anima_re
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import math
+import os
 import uuid
 import weakref
+from contextlib import contextmanager
 
 import torch
 import torch.nn.functional as F
@@ -93,6 +96,33 @@ def _adapter_block_map(indices, model) -> tuple[int, ...]:
         return tuple(i for i in range(40) if i not in _INSERTED_29B)
     raise ValueError(f"Adapter covers {max(indices) + 1} blocks but the model has {model_blocks}. "
                      "Only native layouts and the 28-to-40-block Anima-2.9B expansion are supported.")
+
+
+def _accepts(fn, positional: int = 0, keyword: str | None = None) -> bool:
+    try:
+        params = list(inspect.signature(fn).parameters.values())
+    except (TypeError, ValueError):
+        return True
+    if keyword is not None and not any(p.name == keyword or p.kind is p.VAR_KEYWORD for p in params):
+        return False
+    return any(p.kind is p.VAR_POSITIONAL for p in params) or \
+        sum(p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD) for p in params) >= positional
+
+
+def _require_comfyui(dm) -> None:
+    missing = []
+    fn = getattr(dm, "preprocess_text_embeds", None)
+    if callable(fn) and not _accepts(fn, positional=3):
+        missing.append("Anima.preprocess_text_embeds(..., t5xxl_weights)")
+    try:
+        fn = dm.blocks[0].self_attn.compute_qkv
+    except (AttributeError, IndexError, TypeError):
+        fn = None
+    if callable(fn) and not _accepts(fn, keyword="transformer_options"):
+        missing.append("Attention.compute_qkv(..., transformer_options)")
+    if missing:
+        raise RuntimeError("SnapRef needs ComfyUI 0.29.0 or newer; missing "
+                           f"{' and '.join(missing)}. Update ComfyUI and restart it.")
 
 
 class _Adapter:
@@ -169,9 +199,6 @@ class _Adapter:
                 elif state.get("rows") is not None:   # mixed batch: reference only for the rows in state["rows"]
                     out = _rows_attention(q, k, v, state["cache"][_i], state["sizes"], state["biases"], state["rows"],
                                           state.get("row_biases"))
-                    if out is not None:
-                        return _attn.output_dropout(_attn.output_proj(out))
-                    out = _weighted_attention(q, k, v, state["cache"][_i], state["sizes"], state["biases"])   # no fused kernel
                     return _attn.output_dropout(_attn.output_proj(out))
                 elif any(b != 0.0 for b in state.get("biases", ())):
                     out = _weighted_attention(q, k, v, state["cache"][_i], state["sizes"], state["biases"])
@@ -239,8 +266,8 @@ def _rows_attention(q, k_t, v_t, kv_ref, sizes, biases, rows, row_biases=None):
     qh, kt, vt = q.transpose(1, 2), k_t.transpose(1, 2), v_t.transpose(1, 2)
     try:
         out_t, lse_t = _lse_attention(qh, kt, vt)
-    except RuntimeError:   # no fused kernel: fall back to the split path (two calls)
-        return None
+    except RuntimeError:
+        return _masked_attention(q, k_t, v_t, kv_ref, sizes, biases, rows, row_biases)
     sel = torch.as_tensor(rows, device=q.device)
     k_r, v_r = kv_ref
     starts = [sum(sizes[:i]) for i in range(len(sizes))]
@@ -263,21 +290,40 @@ def _rows_attention(q, k_t, v_t, kv_ref, sizes, biases, rows, row_biases=None):
     return out.to(q.dtype).transpose(1, 2).reshape(B, S, H * D)
 
 
-def _masked_attention(q, k_t, v_t, kv_ref, sizes, biases):
-    """Reference implementation (and fallback) of _weighted_attention: SDPA with an additive key mask."""
-    k_r, v_r = kv_ref
+def _masked_attention(q, k_t, v_t, kv_ref, sizes, biases, rows=None, row_biases=None):
+    """Masked SDPA; keep non-CUDA masks finite to avoid MPS NaNs."""
     B, S, H, D = q.shape
+    if rows is not None and not q.is_cuda:
+        rows = list(rows)
+        others = [r for r in range(B) if r not in rows]
+        if others:
+            out = q.new_empty(B, S, H * D)
+            if rows:
+                sel = torch.as_tensor(rows, device=q.device)
+                out[sel] = _masked_attention(q[sel], k_t[sel], v_t[sel], kv_ref, sizes, biases,
+                                             list(range(len(rows))), row_biases)
+            o = torch.as_tensor(others, device=q.device)
+            plain = F.scaled_dot_product_attention(q[o].transpose(1, 2), k_t[o].transpose(1, 2), v_t[o].transpose(1, 2))
+            out[o] = plain.transpose(1, 2).reshape(len(others), S, H * D)
+            return out
+    k_r, v_r = kv_ref
     k = torch.cat([k_r.expand(B, *k_r.shape[1:]).to(q.dtype), k_t], dim=1).transpose(1, 2)
     v = torch.cat([v_r.expand(B, *v_r.shape[1:]).to(q.dtype), v_t], dim=1).transpose(1, 2)
     n = k.shape[2]
-    pad = (-n) % 16
+    pad = (-n) % 16 if q.is_cuda else 0
     if pad:
         k, v = F.pad(k, (0, 0, 0, pad)), F.pad(v, (0, 0, 0, pad))
-    mask = torch.zeros(1, 1, 1, n + pad, device=q.device, dtype=q.dtype)
+    mask = torch.zeros(B if rows is not None else 1, 1, 1, n + pad, device=q.device, dtype=q.dtype)
     start = 0
     for size, bias in zip(sizes, biases):
         mask[..., start:start + size] = bias
         start += size
+    if rows is not None:
+        selected = torch.zeros(B, device=q.device, dtype=torch.bool)
+        selected[rows] = True
+        mask[~selected, ..., :start] = float("-inf")
+        if row_biases is not None:
+            mask[rows, ..., :start] += torch.as_tensor(row_biases, device=q.device, dtype=q.dtype).view(-1, 1, 1, 1)
     if pad:
         mask[..., n:] = float("-inf")
     out = F.scaled_dot_product_attention(q.transpose(1, 2), k, v, attn_mask=mask.expand(B, H, S, n + pad))
@@ -351,10 +397,24 @@ def _ref_digest(ref_latents: list, ref_cond, mode: str) -> str:
     return h.hexdigest()
 
 
+@contextmanager
+def _reference_context(dm):
+    # Target modulation must not alter the clean reference stream.
+    attrs = ((getattr(dm, "t_embedding_norm", None), "_anima_mod_delta"), (dm, "_anima_mod_block_state"))
+    saved = [(obj, name, getattr(obj, name)) for obj, name in attrs if hasattr(obj, name)]
+    try:
+        for obj, name, _ in saved:
+            setattr(obj, name, None)
+        yield
+    finally:
+        for obj, name, value in saved:
+            setattr(obj, name, value)
+
+
 def _make_wrapper(adapter: _Adapter, ref_latents: list, ref_cond, mode: str, in_uncond: bool, bias: float = 0.0,
                   weights: list | None = None, uncond_bias: float | None = None):
     """uncond_bias (Fidelity < 1): the negative branch also reads the reference with this extra log
-    bias. Needs the one-call mixed path (CUDA, fp16/bf16); elsewhere the negative branch reads it fully."""
+    bias; fused attention on CUDA fp16/bf16, masked SDPA elsewhere."""
     weights = list(weights or [1.0] * len(ref_latents))
     digest = _ref_digest(ref_latents, ref_cond, mode)
     biases = [bias + math.log(w) for w in weights]   # weight-0 references were dropped before encoding
@@ -370,8 +430,9 @@ def _make_wrapper(adapter: _Adapter, ref_latents: list, ref_cond, mode: str, in_
             ctx = dm.preprocess_text_embeds(cross.to(x.device, x.dtype),
                                             None if ids is None else ids.unsqueeze(0).to(x.device),
                                             None if weights is None else weights.unsqueeze(0).unsqueeze(-1).to(x.device, x.dtype))
-            records = [_encode_reference(adapter, dm, lat.to(x.device, x.dtype), ctx, tuple(x.shape[-2:]), mode)
-                       for lat in ref_latents]
+            with _reference_context(dm):
+                records = [_encode_reference(adapter, dm, lat.to(x.device, x.dtype), ctx, tuple(x.shape[-2:]), mode)
+                           for lat in ref_latents]
             adapter.cache[key] = (_concat_kv(records), [r[0][0].shape[1] for r in records])
         cache, sizes = adapter.cache[key]
         flags = options.get("cond_or_uncond") or [0]
@@ -380,18 +441,17 @@ def _make_wrapper(adapter: _Adapter, ref_latents: list, ref_cond, mode: str, in_
         else:
             use = [f == 0 or in_uncond for f in flags]   # 0 = positive, 1 = negative
 
-        def run(xs, ts, cs, with_ref, kw):
+        def run(xs, ts, cs, with_ref, kw, pm=padding_mask):
             # the "tgt" LoRA is on in every target forward, with or without the reference (as in training)
             _set_attn_state(dm, {"cache": cache, "sizes": sizes, "biases": biases} if with_ref else None)
             _STATE.update(adapter=adapter, stream="tgt")
             try:
-                return executor(xs, ts, cs, fps, padding_mask, **kw)
+                return executor(xs, ts, cs, fps, pm, **kw)
             finally:
                 _set_attn_state(dm, None)
                 _STATE.update(adapter=None, stream=None)
         n = x.shape[0] // len(flags)
-        if uncond_bias is not None and not options.get(NO_REF_KEY) and any(f == 1 for f in flags) \
-                and x.is_cuda and x.dtype in (torch.float16, torch.bfloat16):
+        if uncond_bias is not None and not options.get(NO_REF_KEY) and any(f == 1 for f in flags):
             # Fidelity: every row reads the reference, the uncond rows weaker (one call)
             rows = list(range(x.shape[0]))
             row_biases = [uncond_bias if flags[r // n] == 1 else 0.0 for r in rows]
@@ -402,19 +462,50 @@ def _make_wrapper(adapter: _Adapter, ref_latents: list, ref_cond, mode: str, in_
             finally:
                 _set_attn_state(dm, None)
                 _STATE.update(adapter=None, stream=None)
-        if uncond_bias is not None:
-            use = [True] * len(flags)   # no fused kernel: the negative branch reads the reference fully
         if all(use) or not any(use):
             return run(x, timesteps, context, use[0], kwargs)
-        # mixed cond/uncond batch (rare for Anima: ComfyUI batches cond and uncond only when their text lengths match):
-        # run the two parts separately
-        # shortcut: only x / timesteps / context are split; per-batch extras in kwargs (e.g. ControlNet) are not
+        if getattr(getattr(dm, "t_embedding_norm", None), "_anima_mod_delta", None) is not None \
+                or getattr(dm, "_anima_mod_block_state", None) is not None:
+            # Mod Guidance owns the full CFG batch; restrict reference reads by row.
+            rows = [r for r in range(x.shape[0]) if use[r // n]]
+            _set_attn_state(dm, {"cache": cache, "sizes": sizes, "biases": biases, "rows": rows})
+            _STATE.update(adapter=adapter, stream="tgt")
+            try:
+                return executor(x, timesteps, context, fps, padding_mask, **kwargs)
+            finally:
+                _set_attn_state(dm, None)
+                _STATE.update(adapter=None, stream=None)
+        # Anima pads text to 512 tokens, so mixed CFG batches also need matching extra conditions.
         outs = []
         for i, u in enumerate(use):
             sl = slice(i * n, (i + 1) * n)
-            outs.append(run(x[sl], timesteps[sl], context[sl], u, kwargs))
+            outs.append(run(x[sl], timesteps[sl], context[sl], u, _chunk_kwargs(kwargs, sl, x.shape[0], i, len(flags)),
+                            _chunk_tensor(padding_mask, sl, x.shape[0])))
         return torch.cat(outs, dim=0)
     return wrapper
+
+
+def _chunk_tensor(value, sl, batch):
+    return value[sl] if torch.is_tensor(value) and value.ndim and value.shape[0] == batch else value
+
+
+def _chunk_kwargs(kwargs: dict, sl: slice, batch: int, chunk: int, chunks: int) -> dict:
+    out = {}
+    for key, value in kwargs.items():
+        if key == "transformer_options" and isinstance(value, dict):
+            value = dict(value)
+            for name in ("cond_or_uncond", "uuids"):
+                seq = value.get(name)
+                if isinstance(seq, (list, tuple)) and len(seq) == chunks:
+                    value[name] = [seq[chunk]]
+            if "sigmas" in value:
+                value["sigmas"] = _chunk_tensor(value["sigmas"], sl, batch)
+        elif isinstance(value, (list, tuple)) and value and all(torch.is_tensor(v) for v in value):
+            value = type(value)(_chunk_tensor(v, sl, batch) for v in value)
+        else:
+            value = _chunk_tensor(value, sl, batch)
+        out[key] = value
+    return out
 
 
 def _make_outer(adapter: _Adapter):
@@ -425,13 +516,48 @@ def _make_outer(adapter: _Adapter):
     return wrapper
 
 
+_FP64_ARITH: dict[str, bool] = {}
+
+
+def _fp64_env_override():
+    raw = os.environ.get("SNAPREF_FP64", "").strip().lower()
+    if raw in ("0", "false", "off", "no"):
+        return False
+    if raw in ("1", "true", "on", "yes"):
+        return True
+    return None
+
+
+def _fp64_arith_ok(device) -> bool:
+    override = _fp64_env_override()
+    if override is not None:
+        return override
+    key = getattr(device, "type", None) or str(device)
+    hit = _FP64_ARITH.get(key)
+    if hit is not None:
+        return hit
+    try:
+        probe = torch.ones(8, device=device, dtype=torch.float64)
+        float((probe * 2.0 + 1.0).sum().item())
+        ok = True
+    except (RuntimeError, NotImplementedError, TypeError):
+        ok = False
+    _FP64_ARITH[key] = ok
+    return ok
+
+
+def _correction_dtype(t):
+    return torch.float64 if _fp64_arith_ok(t.device) else torch.float32
+
+
 def _correct(guided, pos, correction, rescale_phi=0.5):
     """APG (drop the update's component parallel to the cond prediction) or CFG rescale, in x0 space
     (as ElectronGirl/ComfyUI-Anima-Ref-Adapter, Apache-2.0)."""
     dims = tuple(range(1, pos.ndim))
     if correction == "apg":
-        update = (guided - pos).double()
-        unit = F.normalize(pos.double().flatten(1), dim=1).view_as(pos)
+        cdt = _correction_dtype(pos)
+        update = (guided - pos).to(cdt)
+        unit = F.normalize(pos.to(cdt).flatten(1), dim=1).view_as(pos)
         return pos + (update - (update * unit).sum(dim=dims, keepdim=True) * unit).to(pos.dtype)
     if correction == "rescale":
         ratio = pos.std(dim=dims, keepdim=True) / guided.std(dim=dims, keepdim=True)
@@ -571,7 +697,9 @@ class SnapRef:
         if path not in _adapters:
             _adapters[path] = _Adapter(path)
         ad = _adapters[path]
-        _adapter_block_map(ad.block_indices, model.get_model_object("diffusion_model"))
+        dm = model.get_model_object("diffusion_model")
+        _adapter_block_map(ad.block_indices, dm)
+        _require_comfyui(dm)
         refs, weights = _reference_images([image, image_2, image_3], use_batch, [weight_1, weight_2, weight_3])
         if len(refs) > 1 and multi_layout == "stitch":
             refs, weights = [_stitch(refs)], [1.0]
@@ -612,7 +740,7 @@ import types as _types   # noqa: E402
 # the simple node reaches the core through a namespace (works both as a package module and as a loose file)
 SnapRefSimple = _simple.make_simple_node(_types.SimpleNamespace(
     _adapters=_adapters, _Adapter=_Adapter, _encode_image=_encode_image, _make_wrapper=_make_wrapper,
-    _adapter_block_map=_adapter_block_map, WRAPPER_KEY=WRAPPER_KEY))
+    _adapter_block_map=_adapter_block_map, _require_comfyui=_require_comfyui, WRAPPER_KEY=WRAPPER_KEY))
 WEB_DIRECTORY = "./web"
 # "SnapRef" keeps its class name so saved workflows still load; it is shown as SnapRef (Advanced)
 NODE_CLASS_MAPPINGS = {"SnapRefSimple": SnapRefSimple, "SnapRef": SnapRef}

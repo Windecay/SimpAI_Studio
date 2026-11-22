@@ -3035,10 +3035,14 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
                     if isinstance(scene_canvas_image, dict)
                     else scene_canvas_image
                 )
-                if replacement_image is None:
+                if not any(image is not None for image in (
+                    replacement_image,
+                    scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4,
+                    scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8,
+                )):
                     if lang == "cn":
-                        raise gr.Error("SAM3 手动换脸需要一张人脸参考图，请上传后再生成。")
-                    raise gr.Error("SAM3 face swap requires one face reference image. Please upload it before generating.")
+                        raise gr.Error("SAM3 手动换脸至少需要一张人脸参考图，请上传后再生成。")
+                    raise gr.Error("SAM3 face swap requires at least one face reference image. Upload one before generating.")
             logger.info(
                 "[Generate][H3MaskEdit] source_ready=%s source_size=%s mask_ready=%s mask_size=%s",
                 source_path,

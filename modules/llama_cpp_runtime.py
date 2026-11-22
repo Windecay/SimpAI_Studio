@@ -2,7 +2,7 @@ import platform
 import sys
 
 
-LLAMA_CPP_RUNTIME_VERSION = "0.4.3"
+LLAMA_CPP_RUNTIME_VERSION = "0.4.7"
 # Keep a small Windows/allocator margin while allowing 24 GB cards to reach
 # roughly 22 GB of llama.cpp allocations when the rest of the GPU is free.
 LLAMA_CPP_GPU_USAGE_CAP = 0.99
@@ -124,14 +124,14 @@ LLAMA_CPP_MODELSCOPE_BASE = (
 
 
 _WHEEL_HASHES = {
-    ("Linux", 11): "d9a9b9d8e152e68ac02a7c1aeb73efe42478476e26cf5a42e6fa915692a50867",
-    ("Linux", 12): "13ebf28859932d2b6588a91284d6e00739674fa5c839cc334e2d02c9ed0ab28a",
-    ("Linux", 13): "c2612f363f9dd0566575766664ab63fbc5dcecd741f282ddb8b54700d8104f82",
-    ("Linux", 14): "fbb5be7b2e39b174eb1064446ffce08685062f31c0a40a1d2fea1e12bc112635",
-    ("Windows", 11): "068f972d7aa4f37948eefb1d1e32d2ba354b1e2d1e6afd61dfb251a857e60c2a",
-    ("Windows", 12): "2eed2345281a771d40c208298b245eaa7d2f618cebc7bb64966589deb00db56f",
-    ("Windows", 13): "3b856321178bdc31479f1cebd114cbb4ac5215a2caef5a7634bff43ac493c888",
-    ("Windows", 14): "32fc86c255a13de399ee5b501c773357796ba87e348bb07afa90bc648f9c1ef3",
+    ("Linux", 11): "4aa6dfde056a9dbfc5aa2c483f4cd9047ba6ecef8271cde33b3f2e72c6e76750",
+    ("Linux", 12): "2bced920f8790b3914d6940afbba2f7685b32958d6eb97ac8a4d4f4b5defcfe5",
+    ("Linux", 13): "1223eeb2d99cdf800ec6f98a3c73cef3606e6602d5b4359917b21b8d20b43178",
+    ("Linux", 14): "eb5548d29559985a0869645dcf37f4ccd13f7a569b2b1dbf3879d98297b84b07",
+    ("Windows", 11): "d84e92ed6483c701613efd21528dd8d83e31b9dbcff47de6302c03032d9ee105",
+    ("Windows", 12): "879b28371c84cbdbc7db13cd9345966c8d8ebee2cdf03eebc5aa3543394181e5",
+    ("Windows", 13): "203e83d87a5a62e84d5ecf1bfaea35be8a7cc634f0b40a1c01b3f2f171c19b45",
+    ("Windows", 14): "a67fda70e65585d742c010e87a3a2a70663be5169ff17065173cfae006672ec7",
 }
 
 
@@ -423,6 +423,17 @@ def llama_cpp_version_matches(installed_version, artifact):
     }
     accepted.discard("")
     return installed in accepted
+
+
+def llama_cpp_runtime_verification_error(installed_version, artifact, probe):
+    if not llama_cpp_version_matches(installed_version, artifact):
+        return f"package version mismatch ({installed_version or 'missing'})"
+    imported_version = probe.get("version")
+    if (imported_version or probe.get("ok")) and not llama_cpp_version_matches(imported_version, artifact):
+        return f"imported package version mismatch ({imported_version or 'missing'})"
+    if not probe.get("ok"):
+        return probe.get("error") or "runtime probe failed"
+    return None
 
 
 def supported_llama_cpp_wheels():

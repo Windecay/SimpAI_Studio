@@ -3213,22 +3213,22 @@
     },
     "MiniMax-H3(Edit)": {
       "intro": {
-        "en": "Edit or replace the area selected by a SAM3 temporal mask in an existing video. Define the change in text and optionally provide a replacement reference image.",
+        "en": "Edit or replace the area selected by a SAM3 temporal mask in an existing video. Define the change in text and optionally provide replacement reference images.",
         "cn": "通过 SAM3 时序蒙版指定已有视频中的区域，进行局部修改或替换。用文字说明改动，也可提供替换参考图。"
       },
       "inputs": {
-        "en": "Required: a source video in the SAM3 panel and its mask. Optional: one replacement reference image in the reference-image input.",
-        "cn": "必需：SAM3 面板中的源视频及对应蒙版。可选：在参考图输入区放置一张替换参考图。"
+        "en": "Required: a source video in the SAM3 panel and its mask. Optionally add up to 9 replacement reference images. In the prompt, refer to the filled image slots in order and describe what each picture contributes to the selected target.",
+        "cn": "必需：SAM3 面板中的源视频及对应蒙版。可选添加最多 9 张替换参考图。按图位顺序给参考图编号，空位不计；提示词可分别说明每张图提供哪些外观特征。"
       }
     },
     "MiniMax-H3(Swap-SAM3)": {
       "intro": {
-        "en": "Replace the face selected by a SAM3 temporal mask using a facial reference. Select only the intended face, keeping unrelated people and areas outside the mask.",
+        "en": "Replace the face selected by a SAM3 temporal mask using facial references. Select only the intended face, keeping unrelated people and areas outside the mask.",
         "cn": "用人脸参考图替换 SAM3 时序蒙版选中的脸部。蒙版应仅选择目标脸部，将无关人物和区域留在选区之外。"
       },
       "inputs": {
-        "en": "Required: the source video, a mask video selecting its target face, and one face reference image. Upload the reference separately from the mask video.",
-        "cn": "必需：源视频、选中目标脸部的蒙版视频，以及一张人脸参考图。参考图与 mask 视频分别上传。"
+        "en": "Required: the source video, a mask selecting its target face, and 1 to 9 reference images of the same replacement person. Different views can show complementary facial details. Upload the references separately from the mask. Reference numbering skips empty image slots.",
+        "cn": "必需：源视频、选中目标脸部的蒙版，以及同一个替换人物的 1 至 9 张人脸参考图。可以用不同角度提供互补的脸部细节。参考图与蒙版分开上传，参考图编号跳过空位。"
       }
     },
     "Wan-Animate": {

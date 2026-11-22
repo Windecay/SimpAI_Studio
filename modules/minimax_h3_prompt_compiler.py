@@ -667,12 +667,17 @@ def _ref2va_masked_edit_rules(context=None):
             "scale naturally to the replacement subject. Never force incompatible source anatomy or absolute scale onto "
             "the replacement, and do not use the source target to define replacement identity or appearance. "
         )
-    picture_rule = (
-        "Use the supplied <Picture N> only to define the requested replacement subject or visible attribute. "
-        "In retention_analysis, mark the applied replacement subject as attribute_transfer into the masked source target. "
-        if media["image_count"]
-        else "No numbered picture reference is available; do not invent one. "
-    )
+    picture_rule = "No numbered picture reference is available; do not invent one. "
+    if media["image_count"]:
+        picture_rule = "Use the supplied <Picture N> only to define the requested replacement subject or visible attribute. "
+        if media["image_count"] > 1:
+            picture_rule += (
+                "When multiple pictures describe the same target, cite their actual labels together under a single "
+                "<Subject N> and identify the requested traits from each picture. Do not create a new target for each picture. "
+            )
+        picture_rule += (
+            "In retention_analysis, mark the applied replacement subject as attribute_transfer into the masked source target. "
+        )
     return (
         "This is temporal-mask video editing. The source video is encoded directly into the initial AV latent and must "
         "never be named as <Video N>. "

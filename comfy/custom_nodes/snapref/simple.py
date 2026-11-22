@@ -113,7 +113,9 @@ def make_simple_node(core):
                     weights.append(float(w))
             if not refs:
                 return (model,)
-            core._adapter_block_map(ad.block_indices, model.get_model_object("diffusion_model"))
+            dm = model.get_model_object("diffusion_model")
+            core._adapter_block_map(ad.block_indices, dm)
+            core._require_comfyui(dm)
             latents = [core._encode_image(model, vae, px, 1.0)[0] for px in refs]
             cond = clip.encode_from_tokens_scheduled(clip.tokenize(""))[0]
             # Fidelity f: the negative branch also reads the picture, weighted (1 - f); f = 1 is the trained default
