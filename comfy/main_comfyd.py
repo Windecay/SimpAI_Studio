@@ -564,7 +564,7 @@ def _comfyd_compiler_args(argv):
     compiler.add_argument("--enable-comfy-compiler", action="store_true")
     compiler.add_argument("--disable-comfy-compiler", action="store_true")
     options, remaining = parser.parse_known_args(argv)
-    if not options.enable_comfy_compiler:
+    if options.disable_comfy_compiler:
         remaining.append("--disable-comfy-compiler")
     return remaining
 

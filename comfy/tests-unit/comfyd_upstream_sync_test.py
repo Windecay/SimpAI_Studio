@@ -32,8 +32,8 @@ def entrypoint():
 
 
 @pytest.mark.parametrize("options,expected", [
-    ([], ["--disable-comfy-compiler"]),
-    (["--cpu"], ["--cpu", "--disable-comfy-compiler"]),
+    ([], []),
+    (["--cpu"], ["--cpu"]),
     (["--enable-comfy-compiler", "--cpu"], ["--cpu"]),
     (["--disable-comfy-compiler", "--cpu"], ["--cpu", "--disable-comfy-compiler"]),
 ])

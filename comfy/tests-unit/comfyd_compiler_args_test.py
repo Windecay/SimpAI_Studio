@@ -22,11 +22,13 @@ def normalize():
 
 
 @pytest.mark.parametrize("argv,expected", [
-    ([], ["--disable-comfy-compiler"]),
+    ([], []),
     (["--disable-comfy-compiler"], ["--disable-comfy-compiler"]),
     (["--enable-comfy-compiler"], []),
     (["--port", "8187", "--reserve-vram", "1", "--use-sage-attention"],
-     ["--port", "8187", "--reserve-vram", "1", "--use-sage-attention", "--disable-comfy-compiler"]),
+     ["--port", "8187", "--reserve-vram", "1", "--use-sage-attention"]),
+    (["--port", "8187", "--disable-comfy-compiler"],
+     ["--port", "8187", "--disable-comfy-compiler"]),
     (["--enable-comfy-compiler", "--disable-cuda-graphs"], ["--disable-cuda-graphs"]),
 ])
 def test_compiler_args_preserve_explicit_policy(normalize, argv, expected):
@@ -45,7 +47,7 @@ def test_compiler_args_are_normalized_before_comfy_parses():
     assert source.index("sys.argv[1:] = _comfyd_compiler_args(sys.argv[1:])") < source.index("import comfy.options")
 
 
-@pytest.mark.parametrize("argv,disabled", [([], True), (["--enable-comfy-compiler"], False)])
+@pytest.mark.parametrize("argv,disabled", [([], False), (["--enable-comfy-compiler"], False), (["--disable-comfy-compiler"], True)])
 def test_core_parser_preserves_dynamic_vram(normalize, argv, disabled):
     code = """
 import sys

@@ -704,11 +704,10 @@ def _default_non_nvidia_comfyd_guards(argv=None):
 
 def _build_comfyd_launch_args(argv=None):
     mapped = []
-    # Temporarily avoid compiler-related sparse attention OOMs.
-    if _launch_arg_was_set("--enable-comfy-compiler", argv):
-        _append_comfyd_arg(mapped, "--enable-comfy-compiler")
-    else:
+    if _launch_arg_was_set("--disable-comfy-compiler", argv):
         _append_comfyd_arg(mapped, "--disable-comfy-compiler")
+    elif _launch_arg_was_set("--enable-comfy-compiler", argv):
+        _append_comfyd_arg(mapped, "--enable-comfy-compiler")
 
     value_mappings = (
         ("--instance-id", "instance_id", "--instance-id"),
@@ -845,11 +844,6 @@ def reset_simpleai_args():
         if not _launch_arg_was_set("--reserve-vram") and reserved_vram and reserved_vram > 0
         else []
     )
-    vram_headroom = (
-        [['--vram-headroom', f'{reserved_vram}']]
-        if not _launch_arg_was_set("--vram-headroom") and reserved_vram and reserved_vram > 0
-        else []
-    )
     cache_ram_enable = ads.get_admin_default('cache_ram_enable')
     cache_ram_value = ads.get_admin_default('cache_ram')
     cache_ram = _build_comfyd_cache_args(cache_ram_enable, cache_ram_value)
@@ -873,7 +867,7 @@ def reset_simpleai_args():
     )
     windows_standalone = [["--windows-standalone-build"]] if is_win32_standalone_build else []
     fast_mode = [['--fast', 'fp16_accumulation']] if ads.get_admin_default('fast_comfyd_checkbox') else []
-    args_comfyd = dynamic_vram + _build_comfyd_launch_args() + [["--listen"], ["--port", f'{shared.sysinfo["loopback_port"]}']] + smart_memory + windows_standalone + reserve_vram + vram_headroom + fast_mode + cache_ram + cache_clear_on_finish
+    args_comfyd = dynamic_vram + _build_comfyd_launch_args() + [["--listen"], ["--port", f'{shared.sysinfo["loopback_port"]}']] + smart_memory + windows_standalone + reserve_vram + fast_mode + cache_ram + cache_clear_on_finish
     default_cuda_malloc_arg = _default_comfyd_cuda_malloc_arg()
     args_comfyd += [[default_cuda_malloc_arg]] if default_cuda_malloc_arg else []
     _, comfyd_intput, comfyd_output = update_comfyd_io_paths(update_runtime=False, update_startup=False)
