@@ -84,7 +84,7 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
         }
         exec(compile(tree, "<comfyd-launch-args>", "exec"), namespace)
         build = namespace["_build_comfyd_launch_args"]
-        for argv in ([], ["--disable-comfy-compiler"]):
+        for argv in ([], ["--disable-comfy-compiler"], ["--directml"], ["--directml", "0"]):
             self.assertEqual(build(argv), [["--disable-comfy-compiler"]])
         self.assertEqual(build(["--enable-comfy-compiler"]), [["--enable-comfy-compiler"]])
         self.assertEqual(build(["--use-sage-attention"]), [
@@ -159,10 +159,10 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
         }
 
         for requirement in [
-            "comfyui-frontend-package==1.58.5",
-            "comfyui-workflow-templates==0.11.103",
-            "comfyui-embedded-docs==0.5.16",
-            "comfy-kitchen==0.2.41",
+            "comfyui-frontend-package==1.59.11",
+            "comfyui-workflow-templates==0.11.114",
+            "comfyui-embedded-docs==0.5.17",
+            "comfy-kitchen==0.2.42",
             "comfy-aimdo==0.6.0",
             "Pillow>=10.1.0",
             "av>=17.0.0",
@@ -223,10 +223,10 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             self.assertNotIn(stale_requirement, active_comfy_requirements)
 
         for launcher_requirement in [
-            "('comfyui-frontend-package', '1.58.5', None)",
-            "('comfyui-workflow-templates', '0.11.103', None)",
-            "('comfyui-embedded-docs', '0.5.16', None)",
-            "('comfy-kitchen', '0.2.41', None)",
+            "('comfyui-frontend-package', '1.59.11', None)",
+            "('comfyui-workflow-templates', '0.11.114', None)",
+            "('comfyui-embedded-docs', '0.5.17', None)",
+            "('comfy-kitchen', '0.2.42', None)",
             "('comfy-aimdo', '0.6.0', None)",
             "('Pillow', None, '>=10.1.0')",
             "('av', '17.0.0', None)",
@@ -236,10 +236,10 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             self.assertIn(launcher_requirement, self.launch_content)
 
         for updater_requirement in [
-            '("comfyui-frontend-package", "1.58.5", None)',
-            '("comfyui-workflow-templates", "0.11.103", None)',
-            '("comfyui-embedded-docs", "0.5.16", None)',
-            '("comfy-kitchen", "0.2.41", None)',
+            '("comfyui-frontend-package", "1.59.11", None)',
+            '("comfyui-workflow-templates", "0.11.114", None)',
+            '("comfyui-embedded-docs", "0.5.17", None)',
+            '("comfy-kitchen", "0.2.42", None)',
             '("comfy-aimdo", "0.6.0", None)',
             '("Pillow", None, ">=10.1.0")',
             '("av", "17.0.0", None)',
@@ -249,8 +249,8 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
             self.assertIn(updater_requirement, self.simpleai_update_content)
 
         for relative_path, declaration in [
-            ("forge_neo/webui/modules/launch_utils.py", '("comfy-kitchen", "0.2.41", None)'),
-            ("forge_neo/runtime_backend/source_runtime.py", '("comfy-kitchen", "0.2.41"),'),
+            ("forge_neo/webui/modules/launch_utils.py", '("comfy-kitchen", "0.2.42", None)'),
+            ("forge_neo/runtime_backend/source_runtime.py", '("comfy-kitchen", "0.2.42"),'),
         ]:
             with self.subTest(path=relative_path):
                 path = os.path.join(os.path.dirname(__file__), "..", relative_path)
@@ -440,14 +440,14 @@ class TestComfydLaunchArgsContract(unittest.TestCase):
         for mapping in expected_mappings:
             self.assertIn(mapping, self.content)
 
-        self.assertIn('_append_comfyd_arg(mapped, "--directml"', self.content)
+        self.assertNotIn('"--directml"', self.content)
         self.assertIn('_append_comfyd_arg(mapped, "--highvram")', self.content)
         self.assertIn('_append_comfyd_arg(mapped, "--disable-smart-memory")', self.content)
         self.assertIn('_append_comfyd_arg(mapped, "--disable-xformers")', self.content)
         self.assertIn("_GPU_VENDOR_NVIDIA", self.content)
         self.assertIn("_GPU_VENDOR_AMD", self.content)
         self.assertIn('if backend_kind == "cuda":', self.content)
-        self.assertIn('if backend_kind in {"hip", "directml", "cpu"}:', self.content)
+        self.assertIn('if backend_kind in {"hip", "cpu"}:', self.content)
         self.assertIn('vendor_ids = _windows_display_vendor_ids()', self.content)
         self.assertIn('Detected torch backend: cuda; leaving cuda-malloc to Comfy defaults.', self.content)
         self.assertIn('defaulting to --disable-cuda-malloc.', self.content)

@@ -37,10 +37,10 @@ EXTRA_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
 
 # Keep this list aligned with launch.py's startup package checks.
 RUNTIME_UPDATE_PACKAGES = (
-    ("comfyui-frontend-package", "1.58.5", None),
-    ("comfyui-workflow-templates", "0.11.105", None),
-    ("comfyui-embedded-docs", "0.5.16", None),
-    ("comfy-kitchen", "0.2.41", None),
+    ("comfyui-frontend-package", "1.59.11", None),
+    ("comfyui-workflow-templates", "0.11.114", None),
+    ("comfyui-embedded-docs", "0.5.17", None),
+    ("comfy-kitchen", "0.2.42", None),
     ("comfy-aimdo", "0.6.0", None),
     ("Pillow", None, ">=10.1.0"),
     ("av", "17.0.0", None),

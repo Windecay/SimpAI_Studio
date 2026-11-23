@@ -604,10 +604,6 @@ def _load_torch_version_probe():
 
 
 def _torch_runtime_backend_kind():
-    directml_device = _launch_arg_value("directml")
-    if directml_device not in (None, -1):
-        return "directml"
-
     module = _load_torch_version_probe()
     if module is None:
         return None
@@ -672,7 +668,7 @@ def _default_comfyd_cuda_malloc_arg(argv=None):
             "Detected torch backend: cuda; leaving cuda-malloc to Comfy defaults."
         )
         return None
-    if backend_kind in {"hip", "directml", "cpu"}:
+    if backend_kind in {"hip", "cpu"}:
         _log_default_comfyd_cuda_malloc_decision(
             f"Detected torch backend: {backend_kind}; defaulting to --disable-cuda-malloc."
         )
@@ -697,7 +693,7 @@ def _default_comfyd_cuda_malloc_arg(argv=None):
 
 def _default_non_nvidia_comfyd_guards(argv=None):
     backend_kind = _torch_runtime_backend_kind()
-    if backend_kind in {"hip", "directml", "cpu"}:
+    if backend_kind in {"hip", "cpu"}:
         return ["--disable-xformers"]
 
     vendor_ids = _windows_display_vendor_ids()
@@ -726,10 +722,6 @@ def _build_comfyd_launch_args(argv=None):
             value = _enum_value(_launch_arg_value(attr_name))
             if value is not None:
                 _append_comfyd_arg(mapped, comfy_flag, value)
-
-    if _launch_arg_was_set("--directml", argv):
-        directml_device = _launch_arg_value("directml")
-        _append_comfyd_arg(mapped, "--directml", None if directml_device in (None, -1) else directml_device)
 
     flag_mappings = (
         ("--async-cuda-allocation", "--cuda-malloc"),

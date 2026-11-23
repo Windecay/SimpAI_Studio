@@ -909,9 +909,15 @@ components:
                     description: Index of the path where this model is located
                     example: 0
                     type: integer
+                size:
+                    description: File size in bytes
+                    example: 1048576
+                    minimum: 0
+                    type: integer
             required:
                 - name
                 - pathIndex
+                - size
             type: object
         ModelFolder:
             description: Represents a folder containing models
@@ -2771,6 +2777,23 @@ paths:
                             schema:
                                 additionalProperties: true
                                 properties:
+                                    agent:
+                                        description: 'Local ComfyUI only: lifecycle of the optional local agent host. Present only when the agent is enabled.'
+                                        properties:
+                                            reason:
+                                                description: Why the host failed or crashed. Present whenever set, in any state (including starting after a crash).
+                                                type: string
+                                            state:
+                                                enum:
+                                                    - starting
+                                                    - ready
+                                                    - failed
+                                                type: string
+                                        required:
+                                            - state
+                                        type: object
+                                        x-runtime:
+                                            - local
                                     free_tier_balance:
                                         description: Free-tier job allowance for an authenticated non-paid (FREE-tier) user in the rollout. Absent for paid users and unauthenticated requests. Synthesized from config before a grant row exists so a brand-new user still sees their full allowance.
                                         properties:
@@ -2791,6 +2814,11 @@ paths:
                                     max_upload_size:
                                         description: Maximum upload size in bytes
                                         type: integer
+                                    server_boot_id:
+                                        description: 'Local ComfyUI only: a random id that is new on every server start. A client that reconnects and gets a different value knows the server restarted, so node definitions it loaded earlier may be stale. Not settable with --feature-flag.'
+                                        type: string
+                                        x-runtime:
+                                            - local
                                     supports_preview_metadata:
                                         description: Whether the server supports preview metadata
                                         type: boolean

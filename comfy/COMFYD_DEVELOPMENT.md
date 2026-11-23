@@ -391,3 +391,10 @@
 
 - 合并上游至 `989d93d0d`（ComfyUI `0.45.0`），增加 MiniMax H3 Image 模型和图像 VAE 支持，保留 P-H3 批量参考图、设备侧编码噪声及视频控制功能。
 - 上游未修改启动入口；Comfyd 的 compiler 和显存卸载策略不变。workflow templates 声明更新至 `0.11.105`。
+
+## 2026-11-23 上游更新
+
+- 合并官方 `master` 至 `4c2b826d7`，包含 ComfyUI `0.46.0` 及其后的改动。新增 PAN2、Video Deflicker 和 RAFT 光流，改善视频拼接、Flux 显存占用和 DynamicVRAM 缓冲区恢复。
+- 沿用上游移除 DirectML 的改动，只保留自定义节点使用的状态查询。Studio 不再向 Comfyd 传递 `--directml`，Forge 的选项不变。
+- 保留从 Studio 同步的 llama.cpp CUDA 启动校验，两个启动入口采用上游 CUDA 版本提示。Memory compiler 和 CUDA graphs 仍默认关闭，显存卸载策略不变。
+- 两仓库的后端依赖声明对齐 frontend `1.59.11`、workflow templates `0.11.114`、embedded docs `0.5.17` 和 Kitchen `0.2.42`；aimdo 保持 `0.6.0`。

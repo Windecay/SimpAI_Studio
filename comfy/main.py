@@ -712,6 +712,7 @@ if __name__ == "__main__":
     event_loop, prompt_server, start_all_func = start_comfyui()
     try:
         x = start_all_func()
+        comfy.model_management.cuda_version_warning()
         app.logger.print_startup_warnings()
         event_loop.run_until_complete(x)
     except KeyboardInterrupt:
