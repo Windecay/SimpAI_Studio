@@ -34,6 +34,7 @@ def _patched_load_text_encoder_state_dicts(
     clip_type=comfy.sd.CLIPType.STABLE_DIFFUSION,
     model_options=None,
     disable_dynamic=False,
+    **kwargs,
 ):
     if state_dicts is None:
         state_dicts = []
@@ -59,6 +60,7 @@ def _patched_load_text_encoder_state_dicts(
         clip_type=clip_type,
         model_options=model_options,
         disable_dynamic=disable_dynamic,
+        **kwargs,
     )
 
 
