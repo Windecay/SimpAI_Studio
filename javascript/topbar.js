@@ -14591,10 +14591,18 @@ function syncSceneAndAdvancedColumns(traceLabel, isSceneFrontend) {
     const disableQuickEnhanceForScene = () => {
         if (!isSceneSettingModeActive()) return;
         const root = getSimpleAIElementById("quick_enhance");
-        if (!root || !root.querySelectorAll) return;
-        for (const input of Array.from(root.querySelectorAll('input[type="checkbox"]'))) {
-            if (input.checked) {
-                setNativeInputValue(input, false, "checkbox");
+        const roots = [
+            root,
+            getSimpleAIElementById("quick_enhance_face"),
+            getSimpleAIElementById("quick_enhance_eye"),
+            getSimpleAIElementById("quick_enhance_hand"),
+        ];
+        for (const target of roots) {
+            if (!target || !target.querySelectorAll) continue;
+            for (const input of Array.from(target.querySelectorAll('input[type="checkbox"]'))) {
+                if (input.checked) {
+                    setNativeInputValue(input, false, "checkbox");
+                }
             }
         }
     };

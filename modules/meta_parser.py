@@ -1184,6 +1184,32 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     results.append(gr_update(
         value=quick_strength_value,
     ))
+    quick_face_value = _value_with_default_alias(
+        presetdata_dict, 'quick_enhance_face',
+        _value_with_default_alias(presetdata_dict, 'enhance_enabled_1', False),
+    )
+    quick_eye_value = _value_with_default_alias(
+        presetdata_dict, 'quick_enhance_eye',
+        _value_with_default_alias(presetdata_dict, 'enhance_enabled_3', False),
+    )
+    quick_hand_value = _value_with_default_alias(
+        presetdata_dict, 'quick_enhance_hand',
+        _value_with_default_alias(presetdata_dict, 'enhance_enabled_2', False),
+    )
+    for quick_region_value in (quick_face_value, quick_eye_value, quick_hand_value):
+        if engine_type == 'video':
+            results.append(gr_update(value=False, visible=False))
+        else:
+            results.append(gr_update(value=bool(quick_region_value), visible=True))
+    quick_region_strength_value = _value_with_default_alias(
+        presetdata_dict, 'quick_enhance_region_strength',
+        _value_with_default_alias(presetdata_dict, 'enhance_inpaint_strength', 0.5),
+    )
+    if quick_region_strength_value is None:
+        quick_region_strength_value = 0.5
+    results.append(gr_update(
+        value=quick_region_strength_value,
+    ))
 
     def _finish_results():
         state_params.pop("switch_scene_theme", None)

@@ -7981,9 +7981,9 @@ with shared.gradio_root:
                                     describe_enhance_button = gr.Button(value='Describe Image', variant='secondary', size='sm', visible=False)
                                 with gr.Group():
                                     with gr.Row():
-                                        enhance_enabled_1 = gr.Checkbox(label='Enable Region#1', value=False, elem_classes='min_check')
-                                        enhance_enabled_2 = gr.Checkbox(label='Enable Region#2', value=False, elem_classes='min_check')
-                                        enhance_enabled_3 = gr.Checkbox(label='Enable Region#3', value=False, elem_classes='min_check')
+                                        enhance_enabled_1 = gr.Checkbox(label='Enable Region#1', value=False, elem_id='enhance_enabled_1', elem_classes='min_check')
+                                        enhance_enabled_2 = gr.Checkbox(label='Enable Region#2', value=False, elem_id='enhance_enabled_2', elem_classes='min_check')
+                                        enhance_enabled_3 = gr.Checkbox(label='Enable Region#3', value=False, elem_id='enhance_enabled_3', elem_classes='min_check')
                             with gr.Column():
                                 with gr.Row(visible=True) as enhance_input_panel:
                                     with gr.Tabs():
@@ -8022,6 +8022,7 @@ with shared.gradio_root:
                                         enhance_ctrls = []
                                         enhance_inpaint_mode_ctrls = []
                                         enhance_inpaint_engine_ctrls = []
+                                        enhance_inpaint_strength_ctrls = []
                                         enhance_inpaint_update_ctrls = []
                                         default_enhance_mask_model = modules.config.default_enhance_inpaint_mask_model
                                         def mounted_hidden_unless(condition, *classes):
@@ -8148,6 +8149,7 @@ with shared.gradio_root:
 
                                             enhance_inpaint_mode_ctrls += [enhance_inpaint_mode]
                                             enhance_inpaint_engine_ctrls += [enhance_inpaint_engine]
+                                            enhance_inpaint_strength_ctrls += [enhance_inpaint_strength]
 
                                             enhance_inpaint_update_ctrls += [[
                                                 enhance_inpaint_mode, enhance_inpaint_disable_initial_latent, enhance_inpaint_engine,
@@ -8311,12 +8313,19 @@ with shared.gradio_root:
                                             pass
 
                                     return [skip_component_update(), skip_component_update(), skip_component_update(), None]
-                                with gr.Row():
+                                with gr.Row(elem_id="quick_enhance_grid", elem_classes=["quick-enhance-grid"]):
                                     quick_enhance = gr.Checkbox(label='Quick Enhance', value=False, elem_id="quick_enhance")
+                                    quick_enhance_face = gr.Checkbox(label='Quick Face Fix', value=False, elem_id="quick_enhance_face")
+                                    quick_enhance_eye = gr.Checkbox(label='Quick Eye Fix', value=False, elem_id="quick_enhance_eye")
+                                    quick_enhance_hand = gr.Checkbox(label='Quick Hand Fix', value=False, elem_id="quick_enhance_hand")
                                 # Keep the slider mounted and registered for workspace recovery; toggle its row in JS.
                                 with gr.Row(visible="hidden", elem_id="quick_enhance_strength_row"):
                                     quick_enhance_uov_strength = gr.Slider(label='Denoising Strength of enhance',
                                                      visible=True, minimum=0, maximum=1.0, step=0.01, value=0.2)
+                                with gr.Row(visible="hidden", elem_id="quick_enhance_region_strength_row"):
+                                    quick_enhance_region_strength = gr.Slider(label='Denoising Strength of Region Enhance',
+                                                     visible=True, minimum=0, maximum=1.0, step=0.01, value=0.5,
+                                                     elem_id="quick_enhance_region_strength")
                                 output_format = gr.Radio(label='Output Format',
                                                  choices=flags.OutputFormat.list(),
                                                  value=modules.config.default_output_format)
@@ -8330,33 +8339,134 @@ with shared.gradio_root:
                                 return gr_update(visible=not r)
 
                             seed_random.change(reversed_checked, inputs=[seed_random], outputs=[image_seed], queue=False, show_progress=False)
-                            def sync_quick_enhance_for_generation(quick_enabled, quick_strength, enhance_checked, enhance_method, enhance_strength):
+                            def sync_quick_enhance_for_generation(
+                                quick_enabled,
+                                quick_strength,
+                                enhance_checked,
+                                enhance_method,
+                                enhance_strength,
+                                quick_face=False,
+                                quick_eye=False,
+                                quick_hand=False,
+                                quick_region_strength=0.5,
+                                enhance_1=False,
+                                enhance_2=False,
+                                enhance_3=False,
+                                *region_strengths,
+                            ):
+                                next_checked = bool(enhance_checked)
+                                next_method = enhance_method
+                                next_strength = enhance_strength
                                 if quick_enabled:
                                     try:
-                                        strength = float(quick_strength)
+                                        next_strength = float(quick_strength)
                                     except Exception:
-                                        strength = 0.2
-                                    return True, flags.upscale_15, strength
-                                return enhance_checked, enhance_method, enhance_strength
+                                        next_strength = 0.2
+                                    next_checked = True
+                                    next_method = flags.upscale_15
 
-                            sync_enhance_submit_state_js = """(quickEnabled, quickStrength, enhanceChecked, enhanceMethod, enhanceStrength) => {
+                                quick_regions = (bool(quick_face), bool(quick_hand), bool(quick_eye))
+                                if any(quick_regions):
+                                    next_checked = True
+                                try:
+                                    region_strength = float(quick_region_strength)
+                                except Exception:
+                                    region_strength = 0.5
+
+                                next_e1 = True if quick_face else bool(enhance_1)
+                                next_e2 = True if quick_hand else bool(enhance_2)
+                                next_e3 = True if quick_eye else bool(enhance_3)
+                                next_region_strengths = [
+                                    region_strength if (index < len(quick_regions) and quick_regions[index]) else current_strength
+                                    for index, current_strength in enumerate(region_strengths)
+                                ]
+                                return (
+                                    next_checked,
+                                    next_method,
+                                    next_strength,
+                                    next_e1,
+                                    next_e2,
+                                    next_e3,
+                                    *next_region_strengths,
+                                )
+
+                            sync_enhance_submit_state_js = """(...args) => {
                                 try {
                                     const readCheckbox = (id, fallback) => {
                                         const root = document.getElementById(id);
                                         const input = root && root.querySelector ? root.querySelector('input[type="checkbox"]') : null;
                                         return input ? !!input.checked : !!fallback;
                                     };
-                                    quickEnabled = readCheckbox("quick_enhance", quickEnabled);
-                                    enhanceChecked = readCheckbox("enhance_checkbox", enhanceChecked);
+                                    args[0] = readCheckbox("quick_enhance", args[0]);
+                                    args[2] = readCheckbox("enhance_checkbox", args[2]);
+                                    args[5] = readCheckbox("quick_enhance_face", args[5]);
+                                    args[6] = readCheckbox("quick_enhance_eye", args[6]);
+                                    args[7] = readCheckbox("quick_enhance_hand", args[7]);
+                                    args[9] = readCheckbox("enhance_enabled_1", args[9]);
+                                    args[10] = readCheckbox("enhance_enabled_2", args[10]);
+                                    args[11] = readCheckbox("enhance_enabled_3", args[11]);
                                 } catch (e) {
                                     console.warn("[UI-TRACE] enhance_submit_state_sync_failed", e);
                                 }
-                                return [quickEnabled, quickStrength, enhanceChecked, enhanceMethod, enhanceStrength];
+                                return args;
                             }"""
 
-                            quick_enhance.input(fn=lambda x: [x, flags.upscale_15 if x else flags.disabled, gr_update(value=0.2), 0.2 if x else 0],
-                                                inputs=quick_enhance,outputs=[enhance_checkbox, enhance_uov_method, quick_enhance_uov_strength, enhance_uov_strength], queue=False, show_progress=False)
-                            quick_enhance_uov_strength.input(fn=lambda x: x,inputs=quick_enhance_uov_strength,outputs=enhance_uov_strength, queue=False, show_progress=False)
+                            def sync_quick_regions_input(quick_enabled, face_enabled, eye_enabled, hand_enabled, region_strength, current_uov_method):
+                                try:
+                                    strength = float(region_strength)
+                                except Exception:
+                                    strength = 0.5
+                                uov_active = bool(quick_enabled) or (str(current_uov_method or "").strip().lower() not in ("", "disabled"))
+                                any_region = bool(face_enabled or eye_enabled or hand_enabled)
+                                region_flags = (bool(face_enabled), bool(hand_enabled), bool(eye_enabled))
+                                strength_updates = [
+                                    strength if (index < len(region_flags) and region_flags[index]) else skip_component_update()
+                                    for index in range(len(enhance_inpaint_strength_ctrls))
+                                ]
+                                return [
+                                    bool(uov_active or any_region),
+                                    bool(face_enabled),
+                                    bool(hand_enabled),
+                                    bool(eye_enabled),
+                                    *strength_updates,
+                                ]
+
+                            quick_enhance.input(
+                                fn=lambda x, f=False, e=False, h=False, e1=False, e2=False, e3=False: [
+                                    bool(x or f or e or h or e1 or e2 or e3),
+                                    flags.upscale_15 if x else flags.disabled,
+                                    gr_update(value=0.2),
+                                    0.2 if x else 0,
+                                ],
+                                inputs=[quick_enhance, quick_enhance_face, quick_enhance_eye, quick_enhance_hand, enhance_enabled_1, enhance_enabled_2, enhance_enabled_3],
+                                outputs=[enhance_checkbox, enhance_uov_method, quick_enhance_uov_strength, enhance_uov_strength],
+                                queue=False, show_progress=False,
+                            )
+                            quick_enhance_uov_strength.input(fn=lambda x: x, inputs=quick_enhance_uov_strength, outputs=enhance_uov_strength, queue=False, show_progress=False)
+                            for _quick_region_checkbox in (quick_enhance_face, quick_enhance_eye, quick_enhance_hand):
+                                _quick_region_checkbox.input(
+                                    fn=sync_quick_regions_input,
+                                    inputs=[quick_enhance, quick_enhance_face, quick_enhance_eye, quick_enhance_hand, quick_enhance_region_strength, enhance_uov_method],
+                                    outputs=[enhance_checkbox, enhance_enabled_1, enhance_enabled_2, enhance_enabled_3, *enhance_inpaint_strength_ctrls],
+                                    queue=False, show_progress=False,
+                                )
+                            quick_enhance_region_strength.input(
+                                fn=lambda x: [x] * len(enhance_inpaint_strength_ctrls),
+                                inputs=quick_enhance_region_strength,
+                                outputs=enhance_inpaint_strength_ctrls,
+                                queue=False, show_progress=False,
+                            )
+                            enhance_enabled_1.input(fn=lambda x: bool(x), inputs=enhance_enabled_1, outputs=quick_enhance_face, queue=False, show_progress=False)
+                            enhance_enabled_2.input(fn=lambda x: bool(x), inputs=enhance_enabled_2, outputs=quick_enhance_hand, queue=False, show_progress=False)
+                            enhance_enabled_3.input(fn=lambda x: bool(x), inputs=enhance_enabled_3, outputs=quick_enhance_eye, queue=False, show_progress=False)
+                            enhance_checkbox.input(
+                                fn=lambda x: [False, False, False, False] if not x else [skip_component_update()] * 4,
+                                inputs=enhance_checkbox,
+                                outputs=[quick_enhance, quick_enhance_face, quick_enhance_eye, quick_enhance_hand],
+                                queue=False, show_progress=False,
+                            )
+                            for _region_strength_ctrl in enhance_inpaint_strength_ctrls:
+                                _region_strength_ctrl.input(fn=lambda x: x, inputs=_region_strength_ctrl, outputs=quick_enhance_region_strength, queue=False, show_progress=False)
 
                         with gr.Tab(label="Advanced", id="advanced", render_children=True) as setting_advanced_tab:
                             with gr.Group():
@@ -11501,8 +11611,18 @@ with shared.gradio_root:
 
         image_input_panel_ctrls = [engine_class_display, uov_method, enhance_checkbox, enhance_input_image]
         reset_preset_layout = [params_backend, advanced_checkbox, performance_selection, scheduler_name, sampler_name, input_image_checkbox, prompt_panel_checkbox, enhance_checkbox, base_model, refiner_model, overwrite_step, guidance_scale, negative_prompt, preset_instruction, identity_dialog] + image_input_panel_ctrls + lora_ctrls
-        reset_preset_func_names = ["output_format", "inpaint_advanced_masking_checkbox", "mixing_image_prompt_and_vary_upscale", "mixing_image_prompt_and_inpaint", "backfill_prompt", "translation_methods", "input_image_checkbox", "quick_enhance", "quick_enhance_uov_strength"]
-        reset_preset_func = [output_format, inpaint_advanced_masking_checkbox, mixing_image_prompt_and_vary_upscale, mixing_image_prompt_and_inpaint, backfill_prompt, translation_methods, input_image_checkbox, quick_enhance, quick_enhance_uov_strength]
+        reset_preset_func_names = [
+            "output_format", "inpaint_advanced_masking_checkbox", "mixing_image_prompt_and_vary_upscale",
+            "mixing_image_prompt_and_inpaint", "backfill_prompt", "translation_methods",
+            "input_image_checkbox", "quick_enhance", "quick_enhance_uov_strength",
+            "quick_enhance_face", "quick_enhance_eye", "quick_enhance_hand", "quick_enhance_region_strength",
+        ]
+        reset_preset_func = [
+            output_format, inpaint_advanced_masking_checkbox, mixing_image_prompt_and_vary_upscale,
+            mixing_image_prompt_and_inpaint, backfill_prompt, translation_methods,
+            input_image_checkbox, quick_enhance, quick_enhance_uov_strength,
+            quick_enhance_face, quick_enhance_eye, quick_enhance_hand, quick_enhance_region_strength,
+        ]
         scene_frontend_ctrls = [prompt_internal_panel, random_button, super_prompter, disable_intermediate_results, image_tools_checkbox, scene_panel, scene_theme, camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:] + [sam3_input_video, sam3_original_video_path, sam3_mask_video, sam3_trim_payload] + [generate_button, load_parameter_button]
         if util.simpai_ui_trace_enabled():
             try:
@@ -12300,7 +12420,12 @@ with shared.gradio_root:
             "backend": [params_backend],
             "director": [scene_director_enabled, scene_director_state],
             "random": [random_aspect_ratio_checkbox, random_aspect_ratio_state, aspect_ratios_selection],
-            "quick_enhance": [quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength],
+            "quick_enhance": [
+                quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength,
+                quick_enhance_face, quick_enhance_eye, quick_enhance_hand, quick_enhance_region_strength,
+                enhance_enabled_1, enhance_enabled_2, enhance_enabled_3,
+                *enhance_inpaint_strength_ctrls,
+            ],
             "inpaint": [inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls],
             "cloud": [scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_cloud_transparent_background],
         }
@@ -12316,6 +12441,10 @@ with shared.gradio_root:
             enhance_checkbox,
             enhance_uov_method,
             enhance_uov_strength,
+            enhance_enabled_1,
+            enhance_enabled_2,
+            enhance_enabled_3,
+            *enhance_inpaint_strength_ctrls,
             inpaint_engine,
             *enhance_inpaint_engine_ctrls,
         ]
@@ -12371,6 +12500,12 @@ with shared.gradio_root:
             for name in ("model", "prompt", "backend", "director", "random")
         )
         enhance_checkbox_input_index = quick_enhance_input_index + 2
+        quick_enhance_face_input_index = quick_enhance_input_index + 5
+        quick_enhance_eye_input_index = quick_enhance_input_index + 6
+        quick_enhance_hand_input_index = quick_enhance_input_index + 7
+        enhance_enabled_1_input_index = quick_enhance_input_index + 9
+        enhance_enabled_2_input_index = quick_enhance_input_index + 10
+        enhance_enabled_3_input_index = quick_enhance_input_index + 11
         cloud_transparent_input_index = next(
             index for index, component in enumerate(generation_sync_inputs)
             if component is scene_cloud_transparent_background
@@ -12385,6 +12520,12 @@ with shared.gradio_root:
                 };
                 args[%d] = readCheckbox("quick_enhance", args[%d]);
                 args[%d] = readCheckbox("enhance_checkbox", args[%d]);
+                args[%d] = readCheckbox("quick_enhance_face", args[%d]);
+                args[%d] = readCheckbox("quick_enhance_eye", args[%d]);
+                args[%d] = readCheckbox("quick_enhance_hand", args[%d]);
+                args[%d] = readCheckbox("enhance_enabled_1", args[%d]);
+                args[%d] = readCheckbox("enhance_enabled_2", args[%d]);
+                args[%d] = readCheckbox("enhance_enabled_3", args[%d]);
                 args[%d] = readCheckbox("scene_cloud_transparent_background", args[%d]);
             } catch (e) {
                 console.warn("[UI-TRACE] generation_sync_submit_state_failed", e);
@@ -12396,6 +12537,18 @@ with shared.gradio_root:
             quick_enhance_input_index,
             enhance_checkbox_input_index,
             enhance_checkbox_input_index,
+            quick_enhance_face_input_index,
+            quick_enhance_face_input_index,
+            quick_enhance_eye_input_index,
+            quick_enhance_eye_input_index,
+            quick_enhance_hand_input_index,
+            quick_enhance_hand_input_index,
+            enhance_enabled_1_input_index,
+            enhance_enabled_1_input_index,
+            enhance_enabled_2_input_index,
+            enhance_enabled_2_input_index,
+            enhance_enabled_3_input_index,
+            enhance_enabled_3_input_index,
             cloud_transparent_input_index,
             cloud_transparent_input_index,
         )
@@ -12514,7 +12667,7 @@ with shared.gradio_root:
         ))
         preview_event = bind_generation_failure_cleanup(preview_event.success(_sync_model_params_state_from_ui, inputs=generation_model_state_inputs, outputs=model_params_state, show_progress=False, js=preview_model_submit_state_js))
         preview_event = bind_generation_failure_cleanup(preview_event.success(apply_scene_director_prompt_for_generation, inputs=[prompt, params_backend, scene_director_enabled, scene_director_state, state_topbar, scene_theme], outputs=[prompt, params_backend], show_progress=False, queue=False))
-        preview_event = bind_generation_failure_cleanup(preview_event.success(sync_quick_enhance_for_generation, inputs=[quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength], outputs=[enhance_checkbox, enhance_uov_method, enhance_uov_strength], show_progress=False, queue=False, js=sync_enhance_submit_state_js))
+        preview_event = bind_generation_failure_cleanup(preview_event.success(sync_quick_enhance_for_generation, inputs=generation_sync_groups["quick_enhance"], outputs=[enhance_checkbox, enhance_uov_method, enhance_uov_strength, enhance_enabled_1, enhance_enabled_2, enhance_enabled_3, *enhance_inpaint_strength_ctrls], show_progress=False, queue=False, js=sync_enhance_submit_state_js))
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_inpaint_engine_dropdowns_before_generation, inputs=[state_topbar, inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls], outputs=[inpaint_engine, *enhance_inpaint_engine_ctrls], show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_cloud_image_params, inputs=[params_backend, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_cloud_transparent_background, scene_theme], outputs=params_backend, show_progress=False, queue=False, js='(...args)=>{const input=document.querySelector("#scene_cloud_transparent_background input[type=checkbox]");if(input)args[6]=!!input.checked;return args;}'))
         preview_event = bind_generation_failure_cleanup(preview_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls_preview + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False))

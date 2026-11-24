@@ -302,6 +302,31 @@ ${topic.actions?.includes('settings') ? `<footer><button type="button" data-help
                 mountInlineHelp(accordion, topic);
             }
         }
+        const quickGrid = document.getElementById('quick_enhance_grid');
+        if (quickGrid) {
+            let header = quickGrid.querySelector(':scope > .sai-help-quick-enhance-header');
+            if (!header) {
+                header = document.createElement('div');
+                header.className = 'sai-help-quick-enhance-header';
+                const title = document.createElement('span');
+                title.className = 'sai-help-quick-enhance-title';
+                header.appendChild(title);
+                if (typeof quickGrid.insertBefore === 'function') {
+                    quickGrid.insertBefore(header, quickGrid.firstChild || null);
+                } else if (typeof quickGrid.appendChild === 'function') {
+                    quickGrid.appendChild(header);
+                }
+            }
+            const title = header.querySelector('.sai-help-quick-enhance-title');
+            const titleText = t('Quick Enhance', '快捷增强');
+            if (title && title.textContent !== titleText) title.textContent = titleText;
+            mountInlineHelp(header, 'quick_enhance');
+            const quickControls = ['quick_enhance', 'quick_enhance_face', 'quick_enhance_eye', 'quick_enhance_hand']
+                .map(id => document.getElementById(id))
+                .filter(Boolean);
+            const anyVisible = quickControls.length === 0 || quickControls.some(el => !el.classList?.contains('hidden') && el.style?.display !== 'none');
+            if (header.hidden !== !anyVisible) header.hidden = !anyVisible;
+        }
     }
 
     function syncGenerationHelp() {

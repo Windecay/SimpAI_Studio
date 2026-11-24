@@ -572,6 +572,10 @@ def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
         "input_image_checkbox": values.get("input_image_checkbox"),
         "quick_enhance": _as_bool(values.get("quick_enhance", False)),
         "quick_enhance_uov_strength": values.get("quick_enhance_uov_strength", values.get("enhance_uov_strength", 0.2)),
+        "quick_enhance_face": _as_bool(values.get("quick_enhance_face", values.get("enhance_enabled_1", False))),
+        "quick_enhance_eye": _as_bool(values.get("quick_enhance_eye", values.get("enhance_enabled_3", False))),
+        "quick_enhance_hand": _as_bool(values.get("quick_enhance_hand", values.get("enhance_enabled_2", False))),
+        "quick_enhance_region_strength": values.get("quick_enhance_region_strength", values.get("enhance_inpaint_strength", 0.5)),
         "enhance_checkbox": values.get("enhance_checkbox", False),
         "enhance_enabled_1": values.get("enhance_enabled_1", False),
         "enhance_enabled_2": values.get("enhance_enabled_2", False),
@@ -602,6 +606,10 @@ def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
         "task_method": task_method,
         "quick_enhance": metadata["quick_enhance"],
         "quick_enhance_uov_strength": metadata["quick_enhance_uov_strength"],
+        "quick_enhance_face": metadata["quick_enhance_face"],
+        "quick_enhance_eye": metadata["quick_enhance_eye"],
+        "quick_enhance_hand": metadata["quick_enhance_hand"],
+        "quick_enhance_region_strength": metadata["quick_enhance_region_strength"],
         **scene_values,
     }
     skipped_backend_keys = {"image", "mask", "samples", "pixels", "latent", regen_manifest.KEY}

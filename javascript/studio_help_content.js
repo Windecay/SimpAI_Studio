@@ -108,6 +108,10 @@
       "en": "Enhance guide",
       "cn": "增强修图指引"
     },
+    "quick_enhance": {
+      "en": "Quick Enhance",
+      "cn": "快捷增强"
+    },
     "mask": {
       "en": "Masks and controls",
       "cn": "蒙版与条件控制"
@@ -262,8 +266,8 @@
               "cn": "性能模式可能同时调整采样步数和加速配置。首次使用保留预置模式；速度模式不保证与其他模式得到完全相同的结果。"
             },
             {
-              "en": "Image Number sets how many results to request, not the video duration. More results require more work. Quick Enhance enables the supported 1.5x enhancement path; its denoising strength can also change details.",
-              "cn": "生成数量决定请求多少个结果，不是视频时长。增加数量会增加任务量。“快捷放大增强”启用受支持的 1.5 倍增强流程，降噪强度还可能改变细节。"
+              "en": "Image Number sets how many results to request, not the video duration. More results require more work. Quick Enhance provides shortcuts for 1.5x upscaling plus face, eye and hand region repairs, with on-demand denoising sliders.",
+              "cn": "生成数量决定请求多少个结果，不是视频时长。增加数量会增加任务量。“快捷增强”四宫格提供 1.5 倍整图放大以及修脸、修眼、修手快捷开关，并按需展开对应重绘幅度滑块。"
             }
           ]
         ],
@@ -289,11 +293,58 @@
         ]
       ],
       "links": [
+        "quick_enhance",
         "profiles",
         "resolution",
         "sampling",
         "styles",
         "application"
+      ]
+    },
+    "quick_enhance": {
+      "intro": {
+        "en": "Quick Enhance is a 4-option shortcut grid in General settings synced with the Enhance+ panel. It lets you toggle 1.5x whole-image upscaling and the three default region repairs (face, eye, hand) without switching tabs.",
+        "cn": "快捷增强是“常规”页中与“增强修图（Enhance+）”联动的四宫格快捷开关，无需切换标签即可快速启用 1.5 倍整图放大以及默认三项区域重绘（修脸、修眼、修手）。"
+      },
+      "sections": [
+        [
+          {
+            "en": "Four quick options and strength sliders",
+            "cn": "四宫格选项与重绘幅度"
+          },
+          [
+            {
+              "en": "Quick Enhance enables 1.5x whole-image upscaling and reveals Denoising Strength of enhance (default 0.2). Higher strength adds more detail but can also alter the image.",
+              "cn": "“快捷放大”会启用 1.5 倍整图放大，并展开“整图增强重绘幅度”（默认 0.2）。数值越高细节变化越明显，也更容易改变原图构图或纹理。"
+            },
+            {
+              "en": "Quick Face Fix, Quick Eye Fix and Quick Hand Fix map to Enhance+ Region#1 (face), Region#3 (eye) and Region#2 (hand). Checking any of them reveals the shared Denoising Strength of Region Enhance slider (default 0.5).",
+              "cn": "“快捷修脸”“快捷修眼”“快捷修手”分别对应“增强修图”中的区域#1（face）、区域#3（eye）和区域#2（hand）。勾选任意一项时会展开共用的“区域增强重绘幅度”滑块（默认 0.5）。"
+            }
+          ]
+        ],
+        [
+          {
+            "en": "Sync with Enhance+ and presets",
+            "cn": "与“增强修图”和预置的联动"
+          },
+          [
+            {
+              "en": "Checking any of the four options automatically enables Enhance+. Unchecking Quick Enhance keeps enabled region repairs active; all four options can be saved with parameter profiles and presets.",
+              "cn": "勾选四宫格任意一项都会自动开启“增强修图”总开关；取消“快捷放大”时不会误关已勾选的区域修复。四项开关与两个幅度滑块均支持随参数预设和预置包保存与恢复。"
+            },
+            {
+              "en": "Advanced detection prompts, region prompts, mask models and processing order configured under Input Image > Enhance+ are reused automatically. Opening help does not enable enhancement or submit generation.",
+              "cn": "在“图片输入 → 增强修图”中自定义的检测提示词、区域提示词、蒙版模型与处理顺序会自动沿用。打开帮助不会启用增强或提交生成。"
+            }
+          ]
+        ]
+      ],
+      "links": [
+        "image_enhance",
+        "general",
+        "profiles",
+        "preset"
       ]
     },
     "sampling": {
@@ -2294,6 +2345,7 @@
         ]
       ],
       "links": [
+        "quick_enhance",
         "image_uov",
         "image_inpaint",
         "inpaint",

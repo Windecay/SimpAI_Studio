@@ -87,6 +87,32 @@
     inset-inline-end: 30px;
     top: 6px;
 }
+.sai-help-quick-enhance-header {
+    grid-column: 1 / -1 !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 8px 4px 12px;
+    border-bottom: 1px solid var(--border-color-primary, rgba(255, 255, 255, 0.12));
+    background: transparent;
+    background: var(--block-background-fill) !important;
+}
+.sai-help-quick-enhance-header[hidden] {
+    display: none !important;
+}
+.sai-help-quick-enhance-title {
+    font-size: var(--block-title-text-size, 14px);
+    font-weight: var(--block-title-text-weight, 400);
+    line-height: 1.4;
+    color: var(--block-title-text-color, var(--body-text-color));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .sai-help-model-field,
 [data-simpai-models-js-root] .simpai-models-js-subhead,
 #guidance_scale .head > label {

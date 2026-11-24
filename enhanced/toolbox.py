@@ -1290,6 +1290,10 @@ def save_preset(*args):
     input_image_checkbox = args.pop()
     quick_enhance = args.pop()
     quick_enhance_uov_strength = args.pop()
+    quick_enhance_face = args.pop()
+    quick_enhance_eye = args.pop()
+    quick_enhance_hand = args.pop()
+    quick_enhance_region_strength = args.pop()
 
     progress_video = args.pop()
     progress_gallery = args.pop()
@@ -1651,6 +1655,10 @@ def save_preset(*args):
         preset["default_input_image_checkbox"] = input_image_checkbox
         preset["default_quick_enhance"] = quick_enhance
         preset["default_quick_enhance_uov_strength"] = quick_enhance_uov_strength
+        preset["default_quick_enhance_face"] = bool(quick_enhance_face)
+        preset["default_quick_enhance_eye"] = bool(quick_enhance_eye)
+        preset["default_quick_enhance_hand"] = bool(quick_enhance_hand)
+        preset["default_quick_enhance_region_strength"] = 0.5 if quick_enhance_region_strength is None else quick_enhance_region_strength
 
         # preset["default_progress_video"] = progress_video
         # preset["default_progress_gallery"] = progress_gallery
