@@ -185,6 +185,18 @@ class ForgeNeoRequest:
     regional_prompter_args: object = field(default_factory=dict)
     forge_couple_enabled: bool = False
     forge_couple_args: object = field(default_factory=dict)
+    snapref_enabled: bool = False
+    snapref_args: object = field(default_factory=dict)
+    detail_daemon_enabled: bool = False
+    detail_daemon_args: object = field(default_factory=dict)
+    negpip_enabled: bool = False
+    negpip_args: object = field(default_factory=dict)
+    vectorscope_cc_enabled: bool = False
+    vectorscope_cc_args: object = field(default_factory=dict)
+    visage_enabled: bool = False
+    visage_args: object = field(default_factory=dict)
+    lora_block_weight_enabled: bool = False
+    lora_block_weight_args: object = field(default_factory=dict)
     dynamic_prompts_enabled: bool = False
     dynamic_prompts_args: object = field(default_factory=dict)
     tipo_enabled: bool = False
@@ -589,6 +601,17 @@ def _script_args_summary(script: str, args: dict[str, object]) -> str:
             f"Tile Overlap: {args.get('overlap', 0)}, "
             f"Save to Extras: {bool(args.get('save_to_extras'))}"
         )
+    if name == "Ultimate SD upscale":
+        from forge_neo.ultimate_sd_upscale_compat import ultimate_sd_upscale_arg_dict
+
+        usdu = ultimate_sd_upscale_arg_dict(args)
+        return (
+            f", Ultimate SD upscale upscaler: {usdu['upscaler_index']}, "
+            f"Tile: {usdu['tile_width']}x{usdu['tile_height']}, "
+            f"Redraw: {usdu['redraw_mode']}, "
+            f"Seams fix: {usdu['seams_fix_type']}, "
+            f"Target size: {usdu['target_size_type']}"
+        )
     return f", Script parameters: {json.dumps(args, ensure_ascii=False, sort_keys=True)}"
 
 
@@ -714,6 +737,48 @@ def build_infotext(request: ForgeNeoRequest, seed: int) -> str:
                 f", Forge Couple Tile: {couple_args.get('tile_columns', -1)}x{couple_args.get('tile_rows', -1)}, "
                 f"threshold={couple_args.get('tile_threshold', 0.1)}"
             )
+    if request.snapref_enabled:
+        from forge_neo.snapref_compat import snapref_arg_dict, snapref_reference_count
+
+        snapref_data = snapref_arg_dict(request.snapref_args, enabled=True)
+        ref_count = snapref_reference_count(snapref_data)
+        integrated_params += (
+            f", SnapRef Adapter: {snapref_data['adapter']}, SnapRef Mode: {snapref_data['mode']}, "
+            f"SnapRef Layout: {snapref_data['layout']}, SnapRef Fidelity: {snapref_data['fidelity']}, "
+            f"SnapRef References: {ref_count}"
+        )
+    if request.detail_daemon_enabled:
+        from forge_neo.detail_daemon_compat import detail_daemon_arg_dict
+
+        dd_data = detail_daemon_arg_dict(request.detail_daemon_args)
+        active_slots = [slot for slot in dd_data["daemons"] if slot.get("active")]
+        integrated_params += f", Detail Daemon: True, active_slots={len(active_slots)}"
+    if request.negpip_enabled:
+        from forge_neo.negpip_compat import negpip_arg_dict
+
+        np_data = negpip_arg_dict(request.negpip_args)
+        integrated_params += f", NegPiP: True, v_scaling={np_data['v_scaling']}, v_strength={np_data['v_strength']}"
+    if request.vectorscope_cc_enabled:
+        from forge_neo.vectorscope_cc_compat import vectorscope_cc_arg_dict
+
+        vcc = vectorscope_cc_arg_dict(request.vectorscope_cc_args)
+        integrated_params += (
+            f", Vectorscope CC: True, bri={vcc['bri']}, con={vcc['con']}, sat={vcc['sat']}, "
+            f"rgb=({vcc['r']},{vcc['g']},{vcc['b']}), method={vcc['method']}, scaling={vcc['scaling']}"
+        )
+    if request.visage_enabled:
+        from forge_neo.visage_compat import visage_arg_dict
+
+        vis = visage_arg_dict(request.visage_args)
+        integrated_params += (
+            f", Visage: True, swapper={vis['swapper']}, strength={vis['strength']}, "
+            f"restorer={vis['restorer']}"
+        )
+    if request.lora_block_weight_enabled:
+        from forge_neo.lora_block_weight_compat import lora_block_weight_arg_dict
+
+        lbw = lora_block_weight_arg_dict(request.lora_block_weight_args)
+        integrated_params += f", LoRA Block Weight: True, mode={lbw['xyzsetting']}"
     if request.seed_variance_enabled:
         integrated_params += (
             f", SeedVarianceEnhancer: delta={request.seed_variance_delta}, strength={request.seed_variance_strength}"

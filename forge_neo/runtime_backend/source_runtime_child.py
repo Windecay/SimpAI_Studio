@@ -1710,6 +1710,104 @@ def _source_forge_couple_extension_roots() -> list[Path]:
     return roots
 
 
+def _source_snapref_extension_roots() -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def add(value: str | os.PathLike[str] | None) -> None:
+        if value is None:
+            return
+        text = str(value or "").strip()
+        if not text:
+            return
+        path = Path(text).expanduser()
+        key = _source_path_key(path)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(path)
+
+    add(os.environ.get("FORGE_NEO_SOURCE_BACKEND_SNAPREF_ROOT"))
+    backend_root = _SOURCE_BACKEND_ROOT or _LOCAL_SOURCE_WEBUI_ROOT
+    for dirname in ("SnapRef-Forge-Neo", "snapref"):
+        add(backend_root / "extensions" / dirname)
+        if _SOURCE_DATA_ROOT is not None:
+            add(_SOURCE_DATA_ROOT / "extensions" / dirname)
+        if _SOURCE_ROOT is not None:
+            add(_SOURCE_ROOT / "extensions" / dirname)
+    return roots
+
+
+def _source_named_extension_roots(env_var: str, dirnames: tuple[str, ...]) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def add(value: str | os.PathLike[str] | None) -> None:
+        if value is None:
+            return
+        text = str(value or "").strip()
+        if not text:
+            return
+        path = Path(text).expanduser()
+        key = _source_path_key(path)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(path)
+
+    add(os.environ.get(env_var))
+    backend_root = _SOURCE_BACKEND_ROOT or _LOCAL_SOURCE_WEBUI_ROOT
+    for dirname in dirnames:
+        add(backend_root / "extensions" / dirname)
+        if _SOURCE_DATA_ROOT is not None:
+            add(_SOURCE_DATA_ROOT / "extensions" / dirname)
+        if _SOURCE_ROOT is not None:
+            add(_SOURCE_ROOT / "extensions" / dirname)
+    return roots
+
+
+def _source_ultimate_sd_upscale_extension_roots() -> list[Path]:
+    return _source_named_extension_roots(
+        "FORGE_NEO_SOURCE_BACKEND_ULTIMATE_SD_UPSCALE_ROOT",
+        ("ultimate-upscale-for-automatic1111", "ultimate-sd-upscale"),
+    )
+
+
+def _source_detail_daemon_extension_roots() -> list[Path]:
+    return _source_named_extension_roots(
+        "FORGE_NEO_SOURCE_BACKEND_DETAIL_DAEMON_ROOT",
+        ("sd-webui-detail-daemon", "detail-daemon"),
+    )
+
+
+def _source_negpip_extension_roots() -> list[Path]:
+    return _source_named_extension_roots(
+        "FORGE_NEO_SOURCE_BACKEND_NEGPIP_ROOT",
+        ("sd-forge-negpip", "sd-webui-negpip"),
+    )
+
+
+def _source_vectorscope_cc_extension_roots() -> list[Path]:
+    return _source_named_extension_roots(
+        "FORGE_NEO_SOURCE_BACKEND_VECTORSCOPE_CC_ROOT",
+        ("sd-webui-vectorscope-cc", "vectorscope-cc"),
+    )
+
+
+def _source_visage_extension_roots() -> list[Path]:
+    return _source_named_extension_roots(
+        "FORGE_NEO_SOURCE_BACKEND_VISAGE_ROOT",
+        ("visage-forge-neo", "visage"),
+    )
+
+
+def _source_lora_block_weight_extension_roots() -> list[Path]:
+    return _source_named_extension_roots(
+        "FORGE_NEO_SOURCE_BACKEND_LORA_BLOCK_WEIGHT_ROOT",
+        ("sd-webui-lora-block-weight-forgeneo-anima", "sd-webui-lora-block-weight"),
+    )
+
+
 def _source_style_grid_extension_roots() -> list[Path]:
     roots: list[Path] = []
     seen: set[str] = set()
@@ -2552,6 +2650,242 @@ def _ensure_source_forge_couple_script() -> dict[str, Any]:
     }
 
 
+def _ensure_source_snapref_script() -> dict[str, Any]:
+    from modules import scripts
+
+    searched: list[str] = []
+    errors: list[str] = []
+    for extension_root in _source_snapref_extension_roots():
+        script_path = extension_root / "scripts" / "snapref.py"
+        searched.append(str(script_path))
+        if not script_path.is_file():
+            continue
+        if _source_script_data_has_path(scripts, script_path):
+            return {
+                "loaded": False,
+                "already_loaded": True,
+                "path": str(script_path),
+            }
+
+        module_name = "_forge_neo_source_adapter_snapref"
+        try:
+            module = _import_source_file(module_name, script_path)
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+            sys.modules.pop(module_name, None)
+            continue
+        registered = _register_source_script_classes(module, script_path, extension_root)
+        if registered:
+            _SOURCE_ADAPTER_SCRIPT_IMPORTS.add(_source_path_key(script_path))
+            return {
+                "loaded": True,
+                "registered": registered,
+                "path": str(script_path),
+                "extension_root": str(extension_root),
+                "errors": errors,
+            }
+
+    return {
+        "loaded": False,
+        "missing": True,
+        "searched": searched,
+        "errors": errors,
+    }
+
+
+def _resolve_source_upscaler_index(value: Any) -> int:
+    try:
+        from modules import modelloader, shared
+
+        upscalers = list(getattr(shared, "sd_upscalers", None) or [])
+        if not upscalers and hasattr(modelloader, "load_upscalers"):
+            modelloader.load_upscalers()
+            upscalers = list(getattr(shared, "sd_upscalers", None) or [])
+    except Exception:
+        upscalers = []
+
+    if isinstance(value, int) and not isinstance(value, bool):
+        if upscalers:
+            return max(0, min(value, len(upscalers) - 1))
+        return max(0, value)
+    text = str(value or "").strip()
+    if not text:
+        return 0
+    try:
+        idx = int(text)
+        if upscalers:
+            return max(0, min(idx, len(upscalers) - 1))
+        return max(0, idx)
+    except Exception:
+        pass
+    lowered = text.casefold()
+    for idx, item in enumerate(upscalers):
+        name = str(getattr(item, "name", "") or "").strip()
+        if name.casefold() == lowered:
+            return idx
+    return 0
+
+
+def _patch_source_ultimate_sd_upscale_class(module: types.ModuleType) -> bool:
+    script_cls = getattr(module, "Script", None)
+    if script_cls is None or getattr(script_cls, "_forge_neo_usdu_patched", False):
+        return False
+    original_run = getattr(script_cls, "run", None)
+    if not callable(original_run):
+        return False
+
+    def _patched_run(self, p, *args, **kwargs):
+        args_list = list(args)
+        # Signature: run(self, p, _, tile_width, tile_height, mask_blur, padding,
+        #                seams_fix_width, seams_fix_denoise, seams_fix_padding,
+        #                upscaler_index, ...)
+        if len(args_list) > 8:
+            args_list[8] = _resolve_source_upscaler_index(args_list[8])
+        elif "upscaler_index" in kwargs:
+            kwargs["upscaler_index"] = _resolve_source_upscaler_index(kwargs["upscaler_index"])
+        return original_run(self, p, *args_list, **kwargs)
+
+    script_cls.run = _patched_run
+    script_cls._forge_neo_usdu_patched = True
+    return True
+
+
+def _patch_source_detail_daemon_class(module: types.ModuleType) -> bool:
+    script_cls = getattr(module, "Script", None)
+    if script_cls is None or getattr(script_cls, "_forge_neo_detail_daemon_patched", False):
+        return False
+    original_init = getattr(script_cls, "__init__", None)
+
+    def _patched_init(self, *args, **kwargs):
+        if callable(original_init):
+            original_init(self, *args, **kwargs)
+        if not int(getattr(self, "tab_param_count", 0) or 0):
+            self.tab_param_count = 12
+
+    script_cls.__init__ = _patched_init
+    script_cls._forge_neo_detail_daemon_patched = True
+    return True
+
+
+def _patch_source_lora_block_weight_module(module: types.ModuleType) -> bool:
+    changed = False
+    if not bool(getattr(module, "forge", False)):
+        setattr(module, "forge", True)
+        changed = True
+    hook_fn = getattr(module, "install_lbw_forge_patch_source_hook", None)
+    if callable(hook_fn):
+        try:
+            hook_fn()
+            changed = True
+        except Exception:
+            pass
+    return changed
+
+
+def _ensure_source_generic_extension_script(
+    *,
+    roots: list[Path],
+    script_relpath: str,
+    module_name: str,
+    patch_fn: Any = None,
+) -> dict[str, Any]:
+    from modules import scripts
+
+    searched: list[str] = []
+    errors: list[str] = []
+    for extension_root in roots:
+        script_path = extension_root / script_relpath
+        searched.append(str(script_path))
+        if not script_path.is_file():
+            continue
+        if _source_script_data_has_path(scripts, script_path):
+            existing = sys.modules.get(module_name)
+            patched = bool(patch_fn(existing)) if (callable(patch_fn) and existing is not None) else False
+            return {
+                "loaded": False,
+                "already_loaded": True,
+                "patched": patched,
+                "path": str(script_path),
+            }
+
+        try:
+            module = _import_source_file(module_name, script_path)
+            patched = bool(patch_fn(module)) if callable(patch_fn) else False
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+            sys.modules.pop(module_name, None)
+            continue
+        registered = _register_source_script_classes(module, script_path, extension_root)
+        if registered:
+            _SOURCE_ADAPTER_SCRIPT_IMPORTS.add(_source_path_key(script_path))
+            return {
+                "loaded": True,
+                "patched": patched,
+                "registered": registered,
+                "path": str(script_path),
+                "extension_root": str(extension_root),
+                "errors": errors,
+            }
+
+    return {
+        "loaded": False,
+        "missing": True,
+        "searched": searched,
+        "errors": errors,
+    }
+
+
+def _ensure_source_ultimate_sd_upscale_script() -> dict[str, Any]:
+    return _ensure_source_generic_extension_script(
+        roots=_source_ultimate_sd_upscale_extension_roots(),
+        script_relpath="scripts/ultimate-upscale.py",
+        module_name="_forge_neo_source_adapter_ultimate_sd_upscale",
+        patch_fn=_patch_source_ultimate_sd_upscale_class,
+    )
+
+
+def _ensure_source_detail_daemon_script() -> dict[str, Any]:
+    return _ensure_source_generic_extension_script(
+        roots=_source_detail_daemon_extension_roots(),
+        script_relpath="scripts/detail_daemon.py",
+        module_name="_forge_neo_source_adapter_detail_daemon",
+        patch_fn=_patch_source_detail_daemon_class,
+    )
+
+
+def _ensure_source_negpip_script() -> dict[str, Any]:
+    return _ensure_source_generic_extension_script(
+        roots=_source_negpip_extension_roots(),
+        script_relpath="scripts/negpip.py",
+        module_name="_forge_neo_source_adapter_negpip",
+    )
+
+
+def _ensure_source_vectorscope_cc_script() -> dict[str, Any]:
+    return _ensure_source_generic_extension_script(
+        roots=_source_vectorscope_cc_extension_roots(),
+        script_relpath="scripts/cc.py",
+        module_name="_forge_neo_source_adapter_vectorscope_cc",
+    )
+
+
+def _ensure_source_visage_script() -> dict[str, Any]:
+    return _ensure_source_generic_extension_script(
+        roots=_source_visage_extension_roots(),
+        script_relpath="scripts/visage.py",
+        module_name="_forge_neo_source_adapter_visage",
+    )
+
+
+def _ensure_source_lora_block_weight_script() -> dict[str, Any]:
+    return _ensure_source_generic_extension_script(
+        roots=_source_lora_block_weight_extension_roots(),
+        script_relpath="scripts/lora_block_weight.py",
+        module_name="_forge_neo_source_adapter_lora_block_weight",
+        patch_fn=_patch_source_lora_block_weight_module,
+    )
+
+
 def _ensure_controlnet_preprocessors(source_root: Path) -> tuple[int, list[str]]:
     global _CONTROLNET_PREPROCESSORS_IMPORTED, _CONTROLNET_PREPROCESSOR_IMPORT_ERRORS
     if _CONTROLNET_PREPROCESSORS_IMPORTED:
@@ -3094,6 +3428,20 @@ def _ensure_source_adapter_scripts(requested_names: set[str], runner: object) ->
         adapter_scripts["regional_prompter"] = _ensure_source_regional_prompter_scripts()
     if "forge couple" in requested_names and not _source_runner_has_requested_scripts(runner, {"forge couple"}):
         adapter_scripts["forge_couple"] = _ensure_source_forge_couple_script()
+    if "snapref" in requested_names and not _source_runner_has_requested_scripts(runner, {"snapref"}):
+        adapter_scripts["snapref"] = _ensure_source_snapref_script()
+    if "ultimate sd upscale" in requested_names and not _source_runner_has_requested_scripts(runner, {"ultimate sd upscale"}):
+        adapter_scripts["ultimate_sd_upscale"] = _ensure_source_ultimate_sd_upscale_script()
+    if "detail daemon" in requested_names and not _source_runner_has_requested_scripts(runner, {"detail daemon"}):
+        adapter_scripts["detail_daemon"] = _ensure_source_detail_daemon_script()
+    if "negpip" in requested_names and not _source_runner_has_requested_scripts(runner, {"negpip"}):
+        adapter_scripts["negpip"] = _ensure_source_negpip_script()
+    if "vectorscope cc" in requested_names and not _source_runner_has_requested_scripts(runner, {"vectorscope cc"}):
+        adapter_scripts["vectorscope_cc"] = _ensure_source_vectorscope_cc_script()
+    if "visage" in requested_names and not _source_runner_has_requested_scripts(runner, {"visage"}):
+        adapter_scripts["visage"] = _ensure_source_visage_script()
+    if "lora block weight" in requested_names and not _source_runner_has_requested_scripts(runner, {"lora block weight"}):
+        adapter_scripts["lora_block_weight"] = _ensure_source_lora_block_weight_script()
     if "style grid" in requested_names and not _source_runner_has_requested_scripts(runner, {"style grid"}):
         adapter_scripts["style_grid"] = _ensure_source_style_grid_script()
     if "imagestitch integrated" in requested_names and not _source_runner_has_requested_scripts(runner, {"imagestitch integrated"}):
@@ -3302,6 +3650,67 @@ def _source_script_api_defaults(script: object) -> list[Any]:
             return forge_couple_default_args(is_img2img=bool(getattr(script, "is_img2img", False)))
         except Exception:
             return [False, True, "Basic", "", "Horizontal", "None", 0.5, [[0.0, 0.5, 0.0, 1.0, 1.0], [0.5, 1.0, 0.0, 1.0, 1.0]], "{ }", False, True, False, -1, -1, 0.1, "", False]
+    if title == "snapref":
+        try:
+            from forge_neo.snapref_compat import snapref_default_args
+
+            return snapref_default_args()
+        except Exception:
+            return [
+                False,
+                "snapref_v2a_fp8.safetensors",
+                "Character & Style",
+                "Separate references",
+                1.0,
+                1.0,
+                None,
+                1.0,
+                None,
+                1.0,
+                None,
+                1.0,
+                None,
+                1.0,
+                "",
+                False,
+                False,
+                4.5,
+                1.0,
+                "apg",
+                0.5,
+                None,
+                1.0,
+                None,
+                1.0,
+                None,
+                1.0,
+                None,
+                1.0,
+            ]
+    if title == "ultimate sd upscale":
+        from forge_neo.ultimate_sd_upscale_compat import ultimate_sd_upscale_default_args
+
+        return ultimate_sd_upscale_default_args()
+    if title == "detail daemon":
+        from forge_neo.detail_daemon_compat import detail_daemon_default_args
+
+        return detail_daemon_default_args()
+    if title == "negpip":
+        from forge_neo.negpip_compat import negpip_default_args
+
+        return negpip_default_args()
+    if title == "vectorscope cc":
+        from forge_neo.vectorscope_cc_compat import vectorscope_cc_default_args
+
+        return vectorscope_cc_default_args()
+    if title == "visage":
+        from forge_neo.visage_compat import visage_default_args
+
+        return visage_default_args()
+    if title == "lora block weight":
+        from forge_neo.lora_block_weight_compat import lora_block_weight_default_args
+
+        return lora_block_weight_default_args()
     if title == "differential regional prompter":
         return [[], 30, "", 4, [], 1, "", "", "", "", ""]
     if title == "style grid":

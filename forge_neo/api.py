@@ -34,6 +34,40 @@ from forge_neo.regional_prompter_compat import (
     regional_prompter_args_active,
     regional_prompter_script_arg_specs,
 )
+from forge_neo.snapref_compat import (
+    SNAPREF_EXTENSION,
+    snapref_args_active,
+    snapref_script_arg_specs,
+)
+from forge_neo.ultimate_sd_upscale_compat import (
+    ULTIMATE_SD_UPSCALE_EXTENSION,
+    ultimate_sd_upscale_script_arg_specs,
+)
+from forge_neo.detail_daemon_compat import (
+    DETAIL_DAEMON_EXTENSION,
+    detail_daemon_args_active,
+    detail_daemon_script_arg_specs,
+)
+from forge_neo.negpip_compat import (
+    NEGPIP_EXTENSION,
+    negpip_args_active,
+    negpip_script_arg_specs,
+)
+from forge_neo.vectorscope_cc_compat import (
+    VECTORSCOPE_CC_EXTENSION,
+    vectorscope_cc_args_active,
+    vectorscope_cc_script_arg_specs,
+)
+from forge_neo.visage_compat import (
+    VISAGE_EXTENSION,
+    visage_args_active,
+    visage_script_arg_specs,
+)
+from forge_neo.lora_block_weight_compat import (
+    LORA_BLOCK_WEIGHT_EXTENSION,
+    lora_block_weight_args_active,
+    lora_block_weight_script_arg_specs,
+)
 from forge_neo.runtime_backend import (
     backend_capabilities,
     build_simpai_async_preview,
@@ -1615,6 +1649,12 @@ _TXT2IMG_SCRIPT_FALLBACKS = [
     "adetailer",
     "regional prompter",
     "forge couple",
+    "snapref",
+    "detail daemon",
+    "negpip",
+    "vectorscope cc",
+    "visage",
+    "lora block weight",
     "differential regional prompter",
     "多图拼接参考",
     "调制引导控制",
@@ -1630,6 +1670,7 @@ _IMG2IMG_SCRIPT_FALLBACKS = [
     "prompt matrix",
     "prompts from file or textbox",
     "sd upscale",
+    "ultimate sd upscale",
     "x/y/z plot",
     "extra options",
     "torch compile integrated",
@@ -1637,6 +1678,12 @@ _IMG2IMG_SCRIPT_FALLBACKS = [
     "adetailer",
     "regional prompter",
     "forge couple",
+    "snapref",
+    "detail daemon",
+    "negpip",
+    "vectorscope cc",
+    "visage",
+    "lora block weight",
     "differential regional prompter",
     "多图拼接参考",
     "调制引导控制",
@@ -1656,6 +1703,12 @@ _ALWAYSON_SCRIPT_NAMES = {
     "adetailer",
     "regional prompter",
     "forge couple",
+    "snapref",
+    "detail daemon",
+    "negpip",
+    "vectorscope cc",
+    "visage",
+    "lora block weight",
     "多图拼接参考",
     "调制引导控制",
     "multidiffusion integrated",
@@ -2001,6 +2054,90 @@ def _known_script_args(name: str, *, is_img2img: bool = False) -> list[dict[str,
                 choices=spec.get("choices"),
             )
             for spec in forge_couple_script_arg_specs(is_img2img=is_img2img)
+        ]
+    if name == "snapref":
+        return [
+            _script_arg(
+                spec["label"],
+                spec["value"],
+                minimum=spec.get("minimum"),
+                maximum=spec.get("maximum"),
+                step=spec.get("step"),
+                choices=spec.get("choices"),
+            )
+            for spec in snapref_script_arg_specs()
+        ]
+    if name == "ultimate sd upscale":
+        return [
+            _script_arg(
+                spec["label"],
+                spec["value"],
+                minimum=spec.get("minimum"),
+                maximum=spec.get("maximum"),
+                step=spec.get("step"),
+                choices=spec.get("choices"),
+            )
+            for spec in ultimate_sd_upscale_script_arg_specs()
+        ]
+    if name == "detail daemon":
+        return [
+            _script_arg(
+                spec["label"],
+                spec["value"],
+                minimum=spec.get("minimum"),
+                maximum=spec.get("maximum"),
+                step=spec.get("step"),
+                choices=spec.get("choices"),
+            )
+            for spec in detail_daemon_script_arg_specs()
+        ]
+    if name == "negpip":
+        return [
+            _script_arg(
+                spec["label"],
+                spec["value"],
+                minimum=spec.get("minimum"),
+                maximum=spec.get("maximum"),
+                step=spec.get("step"),
+                choices=spec.get("choices"),
+            )
+            for spec in negpip_script_arg_specs()
+        ]
+    if name == "vectorscope cc":
+        return [
+            _script_arg(
+                spec["label"],
+                spec["value"],
+                minimum=spec.get("minimum"),
+                maximum=spec.get("maximum"),
+                step=spec.get("step"),
+                choices=spec.get("choices"),
+            )
+            for spec in vectorscope_cc_script_arg_specs()
+        ]
+    if name == "visage":
+        return [
+            _script_arg(
+                spec["label"],
+                spec["value"],
+                minimum=spec.get("minimum"),
+                maximum=spec.get("maximum"),
+                step=spec.get("step"),
+                choices=spec.get("choices"),
+            )
+            for spec in visage_script_arg_specs()
+        ]
+    if name == "lora block weight":
+        return [
+            _script_arg(
+                spec["label"],
+                spec["value"],
+                minimum=spec.get("minimum"),
+                maximum=spec.get("maximum"),
+                step=spec.get("step"),
+                choices=spec.get("choices"),
+            )
+            for spec in lora_block_weight_script_arg_specs()
         ]
     if name == "differential regional prompter":
         return [
@@ -2749,6 +2886,13 @@ _SDAPI_PROFILE_EXTENSION_NAMES = (
     "Auto-Photoshop-StableDiffusion-Plugin",
     "adetailer",
     "sd-forge-couple",
+    SNAPREF_EXTENSION,
+    ULTIMATE_SD_UPSCALE_EXTENSION,
+    DETAIL_DAEMON_EXTENSION,
+    NEGPIP_EXTENSION,
+    VECTORSCOPE_CC_EXTENSION,
+    VISAGE_EXTENSION,
+    LORA_BLOCK_WEIGHT_EXTENSION,
     "sd-webui-prompt-all-in-one-forgeneo",
     "stable-diffusion-webui-wd14-tagger",
 )
@@ -3171,6 +3315,47 @@ def _request_from_generation_payload(values: dict[str, Any], *, mode: str, sourc
         payload.get("forge_couple_enabled"),
         forge_couple_args_active(forge_couple_args),
     )
+    snapref_payload = payload.get("snapref_args")
+    if isinstance(snapref_payload, dict):
+        snapref_args: object = dict(snapref_payload)
+    elif isinstance(snapref_payload, list):
+        snapref_args = list(snapref_payload)
+    else:
+        snapref_args = {}
+    snapref_enabled = _to_bool(
+        payload.get("snapref_enabled"),
+        snapref_args_active(snapref_args),
+    )
+    detail_daemon_payload = payload.get("detail_daemon_args")
+    detail_daemon_args: object = dict(detail_daemon_payload) if isinstance(detail_daemon_payload, dict) else (list(detail_daemon_payload) if isinstance(detail_daemon_payload, list) else {})
+    detail_daemon_enabled = _to_bool(
+        payload.get("detail_daemon_enabled"),
+        detail_daemon_args_active(detail_daemon_args),
+    )
+    negpip_payload = payload.get("negpip_args")
+    negpip_args: object = dict(negpip_payload) if isinstance(negpip_payload, dict) else (list(negpip_payload) if isinstance(negpip_payload, list) else {})
+    negpip_enabled = _to_bool(
+        payload.get("negpip_enabled"),
+        negpip_args_active(negpip_args),
+    )
+    vectorscope_cc_payload = payload.get("vectorscope_cc_args")
+    vectorscope_cc_args: object = dict(vectorscope_cc_payload) if isinstance(vectorscope_cc_payload, dict) else (list(vectorscope_cc_payload) if isinstance(vectorscope_cc_payload, list) else {})
+    vectorscope_cc_enabled = _to_bool(
+        payload.get("vectorscope_cc_enabled"),
+        vectorscope_cc_args_active(vectorscope_cc_args),
+    )
+    visage_payload = payload.get("visage_args")
+    visage_args: object = dict(visage_payload) if isinstance(visage_payload, dict) else (list(visage_payload) if isinstance(visage_payload, list) else {})
+    visage_enabled = _to_bool(
+        payload.get("visage_enabled"),
+        visage_args_active(visage_args),
+    )
+    lora_block_weight_payload = payload.get("lora_block_weight_args")
+    lora_block_weight_args: object = dict(lora_block_weight_payload) if isinstance(lora_block_weight_payload, dict) else (list(lora_block_weight_payload) if isinstance(lora_block_weight_payload, list) else {})
+    lora_block_weight_enabled = _to_bool(
+        payload.get("lora_block_weight_enabled"),
+        lora_block_weight_args_active(lora_block_weight_args),
+    )
     dynamic_prompts_payload = payload.get("dynamic_prompts_args")
     if isinstance(dynamic_prompts_payload, dict):
         dynamic_prompts_args: object = dict(dynamic_prompts_payload)
@@ -3297,6 +3482,18 @@ def _request_from_generation_payload(values: dict[str, Any], *, mode: str, sourc
         regional_prompter_args=regional_prompter_args,
         forge_couple_enabled=forge_couple_enabled,
         forge_couple_args=forge_couple_args,
+        snapref_enabled=snapref_enabled,
+        snapref_args=snapref_args,
+        detail_daemon_enabled=detail_daemon_enabled,
+        detail_daemon_args=detail_daemon_args,
+        negpip_enabled=negpip_enabled,
+        negpip_args=negpip_args,
+        vectorscope_cc_enabled=vectorscope_cc_enabled,
+        vectorscope_cc_args=vectorscope_cc_args,
+        visage_enabled=visage_enabled,
+        visage_args=visage_args,
+        lora_block_weight_enabled=lora_block_weight_enabled,
+        lora_block_weight_args=lora_block_weight_args,
         dynamic_prompts_enabled=dynamic_prompts_enabled,
         dynamic_prompts_args=dynamic_prompts_args,
         script=str(payload.get("script_name") or payload.get("script") or "None"),

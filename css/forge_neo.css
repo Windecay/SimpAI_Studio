@@ -6009,3 +6009,78 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
         width: 100% !important;
     }
 }
+
+#forge_neo_root .forge-neo-snapref .forge-neo-snapref-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px !important;
+    background: var(--forge-neo-surface, var(--background-fill-secondary)) !important;
+    border: 1px solid var(--forge-neo-border, var(--border-color-primary)) !important;
+    border-radius: 10px !important;
+}
+
+#forge_neo_root .forge-neo-snapref .forge-neo-snapref-toolbar {
+    align-items: flex-end !important;
+    gap: 8px !important;
+}
+
+#forge_neo_root .forge-neo-snapref .forge-neo-snapref-toolbar button {
+    min-height: 38px !important;
+    flex-grow: 0 !important;
+}
+
+#forge_neo_root .forge-neo-snapref .forge-neo-snapref-status {
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+#forge_neo_root .forge-neo-snapref .forge-neo-snapref-options {
+    align-items: stretch !important;
+    gap: 10px !important;
+}
+
+#forge_neo_root .forge-neo-snapref .forge-neo-snapref-references {
+    gap: 10px !important;
+    flex-wrap: wrap !important;
+}
+
+#forge_neo_root .forge-neo-snapref .forge-neo-snapref-reference {
+    padding: 10px !important;
+    gap: 8px !important;
+    border: 1px solid var(--forge-neo-border, var(--border-color-primary)) !important;
+    border-radius: 8px !important;
+    background: var(--forge-neo-card, var(--background-fill-primary)) !important;
+}
+
+#forge_neo_root .forge-neo-snapref .forge-neo-snapref-ref-title p {
+    margin: 0 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+#forge_neo_root .forge-neo-snapref .forge-neo-snapref-subaccordion {
+    border: 1px solid var(--forge-neo-border, var(--border-color-primary)) !important;
+    border-radius: 8px !important;
+}
+
+#forge_neo_root .forge-neo-tier1-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px !important;
+    background: var(--forge-neo-surface, var(--background-fill-secondary)) !important;
+    border: 1px solid var(--forge-neo-border, var(--border-color-primary)) !important;
+    border-radius: 10px !important;
+}
+
+#forge_neo_root .forge-neo-tier1-subaccordion {
+    border: 1px solid var(--forge-neo-border, var(--border-color-primary)) !important;
+    border-radius: 8px !important;
+}
+
+#forge_neo_root .forge-neo-usdu-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}

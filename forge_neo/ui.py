@@ -45,6 +45,13 @@ from forge_neo.extension_adapter import (
     regional_prompter_available,
     sam_matting_available,
     see_through_available,
+    snapref_available,
+    ultimate_sd_upscale_available,
+    detail_daemon_available,
+    negpip_available,
+    vectorscope_cc_available,
+    visage_available,
+    lora_block_weight_available,
     storyboard_assistant_available,
     TAGCOMPLETE_EXTENSION,
     tipo_available,
@@ -103,6 +110,71 @@ from forge_neo.forge_couple_compat import (
     forge_couple_arg_dict,
     normalize_advanced_mapping,
     normalize_mask_mapping,
+)
+from forge_neo.snapref_compat import (
+    SNAPREF_ARG_DEFAULTS,
+    SNAPREF_ARG_KEYS,
+    SNAPREF_MAX_REFERENCES,
+    SNAPREF_RELEASES,
+    snapref_adapter_choices,
+    snapref_arg_dict,
+    snapref_download_adapter,
+    snapref_model_files,
+)
+from forge_neo.ultimate_sd_upscale_compat import (
+    ULTIMATE_SD_UPSCALE_ARG_DEFAULTS,
+    ULTIMATE_SD_UPSCALE_ARG_KEYS,
+    ULTIMATE_SD_UPSCALE_REDRAW_MODES,
+    ULTIMATE_SD_UPSCALE_SCRIPT_NAME,
+    ULTIMATE_SD_UPSCALE_SEAMS_FIX_TYPES,
+    ULTIMATE_SD_UPSCALE_TARGET_SIZE_TYPES,
+    ultimate_sd_upscale_arg_dict,
+)
+from forge_neo.detail_daemon_compat import (
+    DETAIL_DAEMON_MODES,
+    DETAIL_DAEMON_SLOT_DEFAULTS,
+    DETAIL_DAEMON_SLOT_KEYS,
+    DETAIL_DAEMON_TAB_PARAM_COUNT,
+    DETAIL_DAEMON_UI_SLOTS,
+    detail_daemon_arg_dict,
+)
+from forge_neo.negpip_compat import (
+    NEGPIP_ARG_DEFAULTS,
+    NEGPIP_ARG_KEYS,
+    negpip_arg_dict,
+)
+from forge_neo.vectorscope_cc_compat import (
+    VECTORSCOPE_CC_ARG_DEFAULTS,
+    VECTORSCOPE_CC_ARG_KEYS,
+    VECTORSCOPE_CC_METHODS,
+    VECTORSCOPE_CC_SCALINGS,
+    vectorscope_cc_arg_dict,
+)
+from forge_neo.visage_compat import (
+    VISAGE_ARG_DEFAULTS,
+    VISAGE_ARG_KEYS,
+    VISAGE_COLOR_MATCHES,
+    VISAGE_DEFAULT_REGIONS,
+    VISAGE_DETECTORS,
+    VISAGE_DET_SIZES,
+    VISAGE_GENDERS,
+    VISAGE_OCCLUDERS,
+    VISAGE_PIXEL_BOOSTS,
+    VISAGE_REGIONS,
+    VISAGE_RESTORERS,
+    VISAGE_SORT_ORDERS,
+    VISAGE_SOURCE_TYPES,
+    VISAGE_SWAPPERS,
+    visage_arg_dict,
+    visage_face_model_choices,
+)
+from forge_neo.lora_block_weight_compat import (
+    LORA_BLOCK_WEIGHT_ARG_DEFAULTS,
+    LORA_BLOCK_WEIGHT_ARG_KEYS,
+    LORA_BLOCK_WEIGHT_ATYPES,
+    LORA_BLOCK_WEIGHT_DIFFCOLS,
+    LORA_BLOCK_WEIGHT_XYZ_MODES,
+    lora_block_weight_arg_dict,
 )
 from forge_neo.forge_canvas import ForgeCanvas
 from forge_neo.i18n import t
@@ -511,6 +583,13 @@ TIPO_FIELD_COUNT = len(TIPO_ARG_KEYS)
 IMG2IMG_EXTRA_FIELD_COUNT = 33
 REGIONAL_PROMPTER_FIELD_COUNT = len(REGIONAL_PROMPTER_ARG_KEYS)
 FORGE_COUPLE_FIELD_COUNT = len(FORGE_COUPLE_ARG_KEYS)
+SNAPREF_FIELD_COUNT = len(SNAPREF_ARG_KEYS)
+ULTIMATE_SD_UPSCALE_FIELD_COUNT = len(ULTIMATE_SD_UPSCALE_ARG_KEYS)
+DETAIL_DAEMON_FIELD_COUNT = 1 + DETAIL_DAEMON_UI_SLOTS * DETAIL_DAEMON_TAB_PARAM_COUNT
+NEGPIP_FIELD_COUNT = len(NEGPIP_ARG_KEYS)
+VECTORSCOPE_CC_FIELD_COUNT = len(VECTORSCOPE_CC_ARG_KEYS)
+VISAGE_FIELD_COUNT = len(VISAGE_ARG_KEYS)
+LORA_BLOCK_WEIGHT_FIELD_COUNT = len(LORA_BLOCK_WEIGHT_ARG_KEYS)
 SCRIPT_PANEL_FIELD_COUNT = 5
 SCRIPT_FILL_BUTTON_FIELD_COUNT = 3
 SCRIPT_SEND_FIELD_COUNT = 1 + SCRIPT_PANEL_FIELD_COUNT + SCRIPT_PARAM_FIELD_COUNT + SCRIPT_FILL_BUTTON_FIELD_COUNT
@@ -521,6 +600,13 @@ INTEGRATED_COMMON_FIELD_COUNT = (
     + DYNAMIC_PROMPTS_FIELD_COUNT
     + REGIONAL_PROMPTER_FIELD_COUNT
     + FORGE_COUPLE_FIELD_COUNT
+    + SNAPREF_FIELD_COUNT
+    + ULTIMATE_SD_UPSCALE_FIELD_COUNT
+    + DETAIL_DAEMON_FIELD_COUNT
+    + NEGPIP_FIELD_COUNT
+    + VECTORSCOPE_CC_FIELD_COUNT
+    + VISAGE_FIELD_COUNT
+    + LORA_BLOCK_WEIGHT_FIELD_COUNT
 )
 INTEGRATED_FIELD_COUNT = CONTROLNET_UNIT_COUNT * CONTROLNET_UNIT_FIELD_COUNT + INTEGRATED_COMMON_FIELD_COUNT
 XYZ_IMG2IMG_AXIS_CHOICES = [
@@ -4131,7 +4217,10 @@ def _modulated_guidance_clip_choices(choices) -> list[object]:
 
 
 def _script_dropdown_choices(*, is_img2img: bool = False) -> list[object]:
-    return _localized_value_choices([("None", "无")]) + script_dropdown_choices(is_img2img=is_img2img)
+    choices = _localized_value_choices([("None", "无")]) + script_dropdown_choices(is_img2img=is_img2img)
+    if is_img2img and ultimate_sd_upscale_available():
+        choices.append(ULTIMATE_SD_UPSCALE_SCRIPT_NAME)
+    return choices
 
 
 def _default_modulated_guidance_clip(choices) -> str:
@@ -5121,6 +5210,70 @@ def _forge_couple_from_integrated(integrated, offset: int, *, is_img2img: bool) 
     )
 
 
+def _snapref_from_integrated(integrated, offset: int) -> dict[str, object]:
+    raw = {
+        key: integrated(offset + index, SNAPREF_ARG_DEFAULTS.get(key))
+        for index, key in enumerate(SNAPREF_ARG_KEYS)
+    }
+    return snapref_arg_dict(
+        raw,
+        enabled=_as_bool_param(raw.get("enabled"), False),
+    )
+
+
+def _ultimate_sd_upscale_from_integrated(integrated, offset: int) -> dict[str, object]:
+    raw = {
+        key: integrated(offset + index, ULTIMATE_SD_UPSCALE_ARG_DEFAULTS.get(key))
+        for index, key in enumerate(ULTIMATE_SD_UPSCALE_ARG_KEYS)
+    }
+    return ultimate_sd_upscale_arg_dict(raw)
+
+
+def _detail_daemon_from_integrated(integrated, offset: int) -> dict[str, object]:
+    enabled = _as_bool_param(integrated(offset, False), False)
+    daemons: list[dict[str, object]] = []
+    for slot_index in range(DETAIL_DAEMON_UI_SLOTS):
+        base = offset + 1 + slot_index * DETAIL_DAEMON_TAB_PARAM_COUNT
+        slot_raw = {
+            key: integrated(base + key_index, DETAIL_DAEMON_SLOT_DEFAULTS.get(key))
+            for key_index, key in enumerate(DETAIL_DAEMON_SLOT_KEYS)
+        }
+        daemons.append(slot_raw)
+    return detail_daemon_arg_dict({"enabled": enabled, "daemons": daemons}, slot_count=DETAIL_DAEMON_UI_SLOTS)
+
+
+def _negpip_from_integrated(integrated, offset: int) -> dict[str, object]:
+    raw = {
+        key: integrated(offset + index, NEGPIP_ARG_DEFAULTS.get(key))
+        for index, key in enumerate(NEGPIP_ARG_KEYS)
+    }
+    return negpip_arg_dict(raw)
+
+
+def _vectorscope_cc_from_integrated(integrated, offset: int) -> dict[str, object]:
+    raw = {
+        key: integrated(offset + index, VECTORSCOPE_CC_ARG_DEFAULTS.get(key))
+        for index, key in enumerate(VECTORSCOPE_CC_ARG_KEYS)
+    }
+    return vectorscope_cc_arg_dict(raw)
+
+
+def _visage_from_integrated(integrated, offset: int) -> dict[str, object]:
+    raw = {
+        key: integrated(offset + index, VISAGE_ARG_DEFAULTS.get(key))
+        for index, key in enumerate(VISAGE_ARG_KEYS)
+    }
+    return visage_arg_dict(raw)
+
+
+def _lora_block_weight_from_integrated(integrated, offset: int) -> dict[str, object]:
+    raw = {
+        key: integrated(offset + index, LORA_BLOCK_WEIGHT_ARG_DEFAULTS.get(key))
+        for index, key in enumerate(LORA_BLOCK_WEIGHT_ARG_KEYS)
+    }
+    return lora_block_weight_arg_dict(raw)
+
+
 def _build_request(
     mode: str,
     preset: str,
@@ -5358,6 +5511,45 @@ def _build_request(
             forge_couple_offset,
             is_img2img=mode != "txt2img",
         )
+    snapref_offset = forge_couple_offset + FORGE_COUPLE_FIELD_COUNT
+    snapref_enabled = bool(integrated(snapref_offset + 0, False))
+    snapref_args = {}
+    if snapref_enabled:
+        snapref_args = _snapref_from_integrated(integrated, snapref_offset)
+    usdu_offset = snapref_offset + SNAPREF_FIELD_COUNT
+    if str(script or "").strip() == ULTIMATE_SD_UPSCALE_SCRIPT_NAME:
+        usdu_args = _ultimate_sd_upscale_from_integrated(integrated, usdu_offset)
+        existing_alwayson = script_args.get("alwayson_scripts") if isinstance(script_args, dict) else None
+        script_args = dict(usdu_args)
+        if isinstance(existing_alwayson, dict):
+            script_args["alwayson_scripts"] = existing_alwayson
+    detail_daemon_offset = usdu_offset + ULTIMATE_SD_UPSCALE_FIELD_COUNT
+    detail_daemon_enabled = bool(integrated(detail_daemon_offset + 0, False))
+    detail_daemon_args = {}
+    if detail_daemon_enabled:
+        detail_daemon_args = _detail_daemon_from_integrated(integrated, detail_daemon_offset)
+    negpip_offset = detail_daemon_offset + DETAIL_DAEMON_FIELD_COUNT
+    negpip_enabled = bool(integrated(negpip_offset + 0, False))
+    negpip_args = {}
+    if negpip_enabled:
+        negpip_args = _negpip_from_integrated(integrated, negpip_offset)
+    vectorscope_cc_offset = negpip_offset + NEGPIP_FIELD_COUNT
+    vectorscope_cc_enabled = bool(integrated(vectorscope_cc_offset + 0, False))
+    vectorscope_cc_args = {}
+    if vectorscope_cc_enabled:
+        vectorscope_cc_args = _vectorscope_cc_from_integrated(integrated, vectorscope_cc_offset)
+    visage_offset = vectorscope_cc_offset + VECTORSCOPE_CC_FIELD_COUNT
+    visage_enabled = bool(integrated(visage_offset + 0, False))
+    visage_args = {}
+    if visage_enabled:
+        visage_args = _visage_from_integrated(integrated, visage_offset)
+    lora_block_weight_offset = visage_offset + VISAGE_FIELD_COUNT
+    lora_block_weight_enabled = bool(
+        integrated(lora_block_weight_offset + LORA_BLOCK_WEIGHT_ARG_KEYS.index("useblocks"), False)
+    )
+    lora_block_weight_args = {}
+    if lora_block_weight_enabled:
+        lora_block_weight_args = _lora_block_weight_from_integrated(integrated, lora_block_weight_offset)
 
     def gallery_count(value) -> int:
         if not value:
@@ -5487,6 +5679,18 @@ def _build_request(
         regional_prompter_args=regional_prompter_args,
         forge_couple_enabled=bool(forge_couple_enabled),
         forge_couple_args=forge_couple_args,
+        snapref_enabled=bool(snapref_enabled),
+        snapref_args=snapref_args,
+        detail_daemon_enabled=bool(detail_daemon_enabled),
+        detail_daemon_args=detail_daemon_args,
+        negpip_enabled=bool(negpip_enabled),
+        negpip_args=negpip_args,
+        vectorscope_cc_enabled=bool(vectorscope_cc_enabled),
+        vectorscope_cc_args=vectorscope_cc_args,
+        visage_enabled=bool(visage_enabled),
+        visage_args=visage_args,
+        lora_block_weight_enabled=bool(lora_block_weight_enabled),
+        lora_block_weight_args=lora_block_weight_args,
         seed_variance_enabled=bool(seed_variance_enabled),
         seed_variance_delta=int(seed_variance_delta or 0),
         seed_variance_strength=float(seed_variance_strength or 0.0),
@@ -8383,6 +8587,13 @@ def _integrated_inputs(controls: dict[str, object]) -> list[gr.components.Compon
             *_dynamic_prompts_controls(controls),
             *_regional_prompter_controls(controls),
             *_forge_couple_controls(controls),
+            *_snapref_controls(controls),
+            *_ultimate_sd_upscale_controls(controls),
+            *_detail_daemon_controls(controls),
+            *_negpip_controls(controls),
+            *_vectorscope_cc_controls(controls),
+            *_visage_controls(controls),
+            *_lora_block_weight_controls(controls),
         ]
     )
     return inputs
@@ -8891,11 +9102,153 @@ def _create_script_controls(prefix: str, *, is_img2img: bool = False) -> dict[st
                 elem_id=_forge_elem(prefix, "script_sd_upscale_override"),
             )
 
+    with gr.Group(
+        visible=False,
+        elem_id=_forge_elem(prefix, "script_usdu_panel"),
+        elem_classes=["forge-neo-script-panel", "forge-neo-usdu-panel"],
+    ) as usdu_panel:
+        usdu_upscaler_choices = list(dict.fromkeys(["None", "Lanczos", "Nearest", "ESRGAN", *upscale_model_names()]))
+        controls["script_usdu_target_size_type"] = gr.Dropdown(
+            choices=list(ULTIMATE_SD_UPSCALE_TARGET_SIZE_TYPES),
+            value=str(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["target_size_type"]),
+            label=_label("Target size type", "目标尺寸模式"),
+            elem_id=_forge_elem(prefix, "script_usdu_target_size_type"),
+        )
+        with gr.Row(elem_classes=["forge-neo-script-row"]):
+            controls["script_usdu_custom_width"] = gr.Slider(
+                64,
+                8192,
+                value=int(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["custom_width"]),
+                step=64,
+                label=_label("Custom width", "自定义宽度"),
+                visible=False,
+                elem_id=_forge_elem(prefix, "script_usdu_custom_width"),
+            )
+            controls["script_usdu_custom_height"] = gr.Slider(
+                64,
+                8192,
+                value=int(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["custom_height"]),
+                step=64,
+                label=_label("Custom height", "自定义高度"),
+                visible=False,
+                elem_id=_forge_elem(prefix, "script_usdu_custom_height"),
+            )
+        controls["script_usdu_custom_scale"] = gr.Slider(
+            1.0,
+            16.0,
+            value=float(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["custom_scale"]),
+            step=0.01,
+            label=_label("Scale", "放大倍率"),
+            visible=False,
+            elem_id=_forge_elem(prefix, "script_usdu_custom_scale"),
+        )
+        controls["script_usdu_upscaler_index"] = gr.Dropdown(
+            choices=usdu_upscaler_choices,
+            value=str(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["upscaler_index"]),
+            label=_label("Upscaler", "放大算法"),
+            elem_id=_forge_elem(prefix, "script_usdu_upscaler_index"),
+        )
+        with gr.Row(elem_classes=["forge-neo-script-row"]):
+            controls["script_usdu_redraw_mode"] = gr.Dropdown(
+                choices=list(ULTIMATE_SD_UPSCALE_REDRAW_MODES),
+                value=str(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["redraw_mode"]),
+                label=_label("Redraw type", "重绘模式"),
+                elem_id=_forge_elem(prefix, "script_usdu_redraw_mode"),
+            )
+            controls["script_usdu_tile_width"] = gr.Slider(
+                0,
+                2048,
+                value=int(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["tile_width"]),
+                step=64,
+                label=_label("Tile width", "分块宽度"),
+                elem_id=_forge_elem(prefix, "script_usdu_tile_width"),
+            )
+            controls["script_usdu_tile_height"] = gr.Slider(
+                0,
+                2048,
+                value=int(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["tile_height"]),
+                step=64,
+                label=_label("Tile height", "分块高度"),
+                elem_id=_forge_elem(prefix, "script_usdu_tile_height"),
+            )
+        with gr.Row(elem_classes=["forge-neo-script-row"]):
+            controls["script_usdu_mask_blur"] = gr.Slider(
+                0,
+                64,
+                value=int(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["mask_blur"]),
+                step=1,
+                label=_label("Mask blur", "蒙版模糊"),
+                elem_id=_forge_elem(prefix, "script_usdu_mask_blur"),
+            )
+            controls["script_usdu_padding"] = gr.Slider(
+                0,
+                128,
+                value=int(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["padding"]),
+                step=8,
+                label=_label("Padding", "边缘留白"),
+                elem_id=_forge_elem(prefix, "script_usdu_padding"),
+            )
+        controls["script_usdu_seams_fix_type"] = gr.Dropdown(
+            choices=list(ULTIMATE_SD_UPSCALE_SEAMS_FIX_TYPES),
+            value=str(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["seams_fix_type"]),
+            label=_label("Seams fix type", "接缝修复模式"),
+            elem_id=_forge_elem(prefix, "script_usdu_seams_fix_type"),
+        )
+        with gr.Row(elem_classes=["forge-neo-script-row"]):
+            controls["script_usdu_seams_fix_denoise"] = gr.Slider(
+                0.0,
+                1.0,
+                value=float(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["seams_fix_denoise"]),
+                step=0.01,
+                label=_label("Seams fix denoise", "接缝修复重绘幅度"),
+                visible=False,
+                elem_id=_forge_elem(prefix, "script_usdu_seams_fix_denoise"),
+            )
+            controls["script_usdu_seams_fix_width"] = gr.Slider(
+                0,
+                128,
+                value=int(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["seams_fix_width"]),
+                step=8,
+                label=_label("Seams fix width", "接缝修复宽度"),
+                visible=False,
+                elem_id=_forge_elem(prefix, "script_usdu_seams_fix_width"),
+            )
+            controls["script_usdu_seams_fix_mask_blur"] = gr.Slider(
+                0,
+                64,
+                value=int(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["seams_fix_mask_blur"]),
+                step=1,
+                label=_label("Seams fix mask blur", "接缝蒙版模糊"),
+                visible=False,
+                elem_id=_forge_elem(prefix, "script_usdu_seams_fix_mask_blur"),
+            )
+            controls["script_usdu_seams_fix_padding"] = gr.Slider(
+                0,
+                128,
+                value=int(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["seams_fix_padding"]),
+                step=8,
+                label=_label("Seams fix padding", "接缝留白"),
+                visible=False,
+                elem_id=_forge_elem(prefix, "script_usdu_seams_fix_padding"),
+            )
+        with gr.Row(elem_classes=["forge-neo-script-row"]):
+            controls["script_usdu_save_upscaled_image"] = gr.Checkbox(
+                bool(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["save_upscaled_image"]),
+                label=_label("Save upscaled image", "保存放大图像"),
+                elem_id=_forge_elem(prefix, "script_usdu_save_upscaled_image"),
+            )
+            controls["script_usdu_save_seams_fix_image"] = gr.Checkbox(
+                bool(ULTIMATE_SD_UPSCALE_ARG_DEFAULTS["save_seams_fix_image"]),
+                label=_label("Save seams fix image", "保存接缝修复图像"),
+                elem_id=_forge_elem(prefix, "script_usdu_save_seams_fix_image"),
+            )
+
     controls["script_prompt_matrix_panel"] = prompt_matrix_panel
     controls["script_prompts_panel"] = prompts_panel
     controls["script_xyz_panel"] = xyz_panel
     controls["script_loopback_panel"] = loopback_panel
     controls["script_sd_upscale_panel"] = sd_upscale_panel
+    controls["script_usdu_panel"] = usdu_panel
     return controls
 
 
@@ -8913,6 +9266,51 @@ def _wire_script_controls(script: gr.Dropdown, controls: dict[str, gr.components
         show_progress=False,
         queue=False,
     )
+    if "script_usdu_panel" in controls:
+        script.change(
+            lambda value: gr.update(
+                visible=(
+                    str(value or "").strip() == ULTIMATE_SD_UPSCALE_SCRIPT_NAME
+                    and ultimate_sd_upscale_available()
+                )
+            ),
+            inputs=[script],
+            outputs=[controls["script_usdu_panel"]],
+            show_progress=False,
+            queue=False,
+        )
+        controls["script_usdu_target_size_type"].change(
+            lambda mode: (
+                gr.update(visible=str(mode or "") == "Custom size"),
+                gr.update(visible=str(mode or "") == "Custom size"),
+                gr.update(visible=str(mode or "") == "Scale from image size"),
+            ),
+            inputs=[controls["script_usdu_target_size_type"]],
+            outputs=[
+                controls["script_usdu_custom_width"],
+                controls["script_usdu_custom_height"],
+                controls["script_usdu_custom_scale"],
+            ],
+            show_progress=False,
+            queue=False,
+        )
+        controls["script_usdu_seams_fix_type"].change(
+            lambda mode: (
+                gr.update(visible=str(mode or "None") != "None"),
+                gr.update(visible=str(mode or "None") == "Band pass"),
+                gr.update(visible=str(mode or "None") != "None"),
+                gr.update(visible=str(mode or "None") != "None"),
+            ),
+            inputs=[controls["script_usdu_seams_fix_type"]],
+            outputs=[
+                controls["script_usdu_seams_fix_denoise"],
+                controls["script_usdu_seams_fix_width"],
+                controls["script_usdu_seams_fix_mask_blur"],
+                controls["script_usdu_seams_fix_padding"],
+            ],
+            show_progress=False,
+            queue=False,
+        )
     controls["script_xyz_swap_xy"].click(
         _swap_axis_values,
         inputs=[
@@ -9692,6 +10090,1140 @@ def _forge_couple_default(field_name: str, fallback: object = None) -> object:
 
 def _forge_couple_controls(controls: dict[str, gr.components.Component]) -> list[gr.components.Component]:
     return [controls[_forge_couple_control_key(field_name)] for field_name in FORGE_COUPLE_ARG_KEYS]
+
+
+def _snapref_control_key(field_name: str) -> str:
+    return f"snapref_{field_name}"
+
+
+def _snapref_default(field_name: str, fallback: object = None) -> object:
+    return SNAPREF_ARG_DEFAULTS.get(field_name, fallback)
+
+
+def _snapref_controls(controls: dict[str, gr.components.Component]) -> list[gr.components.Component]:
+    return [controls[_snapref_control_key(field_name)] for field_name in SNAPREF_ARG_KEYS]
+
+
+def _snapref_status_text(selected: object, *, lang: object = "cn", action_note: str = "") -> str:
+    name = str(selected or "").strip()
+    local_files = snapref_model_files()
+    if name and name in local_files:
+        ready = _label_for_lang(
+            lang,
+            f"Adapter ready: `{name}`. Use with an Anima checkpoint; do not add SnapRef as a `<lora:...>` tag.",
+            f"适配器已就绪：`{name}`。请搭配 Anima 模型使用，不要以 `<lora:...>` 标签加载 SnapRef。",
+        )
+    elif name in SNAPREF_RELEASES:
+        ready = _label_for_lang(
+            lang,
+            f"Adapter `{name}` is not downloaded yet. Click Download or place `snapref*.safetensors` in the extension `models/` or LoRA folder and click Refresh.",
+            f"适配器 `{name}` 尚未下载。点击“下载”，或将 `snapref*.safetensors` 放入扩展 `models/` 或 LoRA 目录后点击“刷新”。",
+        )
+    else:
+        ready = _label_for_lang(
+            lang,
+            "Select a released SnapRef adapter to download, or place `snapref*.safetensors` in the extension `models/` or LoRA folder and click Refresh.",
+            "请选择官方 SnapRef 适配器进行下载，或将 `snapref*.safetensors` 放入扩展 `models/` 或 LoRA 目录后点击“刷新”。",
+        )
+    return f"{action_note} {ready}".strip() if action_note else ready
+
+
+def _snapref_refresh_adapters(selected: object, *, lang: object = "cn") -> tuple[object, str]:
+    choices = snapref_adapter_choices()
+    current = str(selected or "").strip()
+    value = current if current in choices else (choices[0] if choices else str(_snapref_default("adapter", "")))
+    return gr.update(choices=choices, value=value), _snapref_status_text(value, lang=lang)
+
+
+def _snapref_download_adapter_action(selected: object, *, lang: object = "cn") -> tuple[object, str]:
+    name = str(selected or "").strip()
+    if name not in SNAPREF_RELEASES:
+        raise gr.Error(
+            _label_for_lang(
+                lang,
+                "Choose a released SnapRef filename to download.",
+                "请选择一个官方发布的 SnapRef 文件名进行下载。",
+            )
+        )
+    try:
+        _path, choices = snapref_download_adapter(name)
+    except Exception as exc:
+        raise gr.Error(
+            _label_for_lang(
+                lang,
+                f"SnapRef download failed: {exc}",
+                f"SnapRef 下载失败：{exc}",
+            )
+        ) from exc
+    note = _label_for_lang(lang, f"Downloaded `{name}`.", f"已下载 `{name}`。")
+    return gr.update(choices=choices, value=name), _snapref_status_text(name, lang=lang, action_note=note)
+
+
+def _create_snapref_controls(
+    controls: dict[str, gr.components.Component],
+    prefix: str,
+    *,
+    state_value: Mapping[str, object],
+) -> None:
+    lang = state_value.get("__lang", getattr(args_manager.args, "language", "cn"))
+    label = partial(_label_for_lang, lang)
+    adapter_choices = snapref_adapter_choices()
+    default_adapter = str(_snapref_default("adapter", "snapref_v2a_fp8.safetensors"))
+    if default_adapter not in adapter_choices and adapter_choices:
+        default_adapter = adapter_choices[0]
+
+    def store(field_name: str, component: gr.components.Component) -> gr.components.Component:
+        controls[_snapref_control_key(field_name)] = component
+        return component
+
+    with InputAccordion(
+        bool(_snapref_default("enabled", False)),
+        label="SnapRef",
+        visible=snapref_available(),
+        elem_id=_forge_elem(prefix, "snapref"),
+        elem_classes=["forge-neo-integrated-accordion", "forge-neo-snapref"],
+    ) as enabled:
+        store("enabled", enabled)
+        with gr.Group(elem_classes=["forge-neo-snapref-content"]):
+            with gr.Row(equal_height=False, elem_classes=["forge-neo-integrated-row", "forge-neo-snapref-toolbar"]):
+                adapter = store(
+                    "adapter",
+                    gr.Dropdown(
+                        choices=adapter_choices,
+                        value=default_adapter,
+                        allow_custom_value=True,
+                        label=label("SnapRef adapter", "SnapRef 适配器"),
+                        elem_id=_forge_elem(prefix, "snapref_adapter"),
+                    ),
+                )
+                refresh = gr.Button(
+                    label("Refresh", "刷新"),
+                    scale=0,
+                    min_width=84,
+                    size="sm",
+                    elem_id=_forge_elem(prefix, "snapref_refresh"),
+                )
+                fetch = gr.Button(
+                    label("Download", "下载"),
+                    scale=0,
+                    min_width=96,
+                    size="sm",
+                    elem_id=_forge_elem(prefix, "snapref_download"),
+                )
+            status = gr.Markdown(
+                _snapref_status_text(default_adapter, lang=lang),
+                elem_id=_forge_elem(prefix, "snapref_status"),
+                elem_classes=["forge-neo-muted-note", "forge-neo-snapref-status"],
+            )
+            with gr.Row(equal_height=False, elem_classes=["forge-neo-integrated-row", "forge-neo-snapref-options"]):
+                store(
+                    "mode",
+                    gr.Radio(
+                        [
+                            (label("Character & Style", "角色与风格"), "Character & Style"),
+                            (label("Character", "仅角色"), "Character"),
+                        ],
+                        value=str(_snapref_default("mode", "Character & Style")),
+                        label=label("Mode", "模式"),
+                        elem_id=_forge_elem(prefix, "snapref_mode"),
+                    ),
+                )
+                store(
+                    "layout",
+                    gr.Radio(
+                        [
+                            (label("Separate references", "独立参考图"), "Separate references"),
+                            (label("Side by side", "并排拼接"), "Side by side"),
+                        ],
+                        value=str(_snapref_default("layout", "Separate references")),
+                        label=label("Combine references", "参考图组合方式"),
+                        elem_id=_forge_elem(prefix, "snapref_layout"),
+                    ),
+                )
+                store(
+                    "fidelity",
+                    gr.Slider(
+                        0.0,
+                        1.0,
+                        value=float(_snapref_default("fidelity", 1.0)),
+                        step=0.05,
+                        label=label("Fidelity", "保真度"),
+                        elem_id=_forge_elem(prefix, "snapref_fidelity"),
+                    ),
+                )
+
+            def build_reference_slots(first: int, last: int) -> None:
+                with gr.Row(elem_classes=["forge-neo-snapref-references"]):
+                    for slot_index in range(first, last):
+                        number = slot_index + 1
+                        with gr.Column(min_width=170, elem_classes=["forge-neo-snapref-reference"]):
+                            gr.Markdown(
+                                label(f"Reference {number}", f"参考图 {number}"),
+                                elem_classes=["forge-neo-snapref-ref-title"],
+                            )
+                            store(
+                                f"ref{number}",
+                                gr.Image(
+                                    type="pil",
+                                    label=label(f"Reference {number}", f"参考图 {number}"),
+                                    sources=["upload", "clipboard"],
+                                    height=200,
+                                    show_label=False,
+                                    elem_id=_forge_elem(prefix, f"snapref_ref{number}"),
+                                    elem_classes=["forge-neo-snapref-image"],
+                                ),
+                            )
+                            store(
+                                f"w{number}",
+                                gr.Slider(
+                                    0.0,
+                                    2.0,
+                                    value=float(_snapref_default(f"w{number}", 1.0)),
+                                    step=0.05,
+                                    label=label(f"Strength {number}", f"强度 {number}"),
+                                    elem_id=_forge_elem(prefix, f"snapref_w{number}"),
+                                ),
+                            )
+
+            build_reference_slots(0, 4)
+            with gr.Accordion(
+                label("More references (5-8)", "更多参考图 (5-8)"),
+                open=False,
+                elem_id=_forge_elem(prefix, "snapref_more_references"),
+                elem_classes=["forge-neo-snapref-subaccordion"],
+            ):
+                build_reference_slots(4, SNAPREF_MAX_REFERENCES)
+
+            with gr.Accordion(
+                label("Advanced", "高级选项"),
+                open=False,
+                elem_id=_forge_elem(prefix, "snapref_advanced"),
+                elem_classes=["forge-neo-snapref-subaccordion"],
+            ):
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    store(
+                        "mp",
+                        gr.Slider(
+                            0.1,
+                            2.0,
+                            value=float(_snapref_default("mp", 1.0)),
+                            step=0.1,
+                            label=label("Reference size (MP)", "参考图尺寸 (MP)"),
+                            elem_id=_forge_elem(prefix, "snapref_mp"),
+                        ),
+                    )
+                    store(
+                        "caption",
+                        gr.Textbox(
+                            value=str(_snapref_default("caption", "")),
+                            label=label("Reference caption", "参考图描述"),
+                            lines=1,
+                            elem_id=_forge_elem(prefix, "snapref_caption"),
+                        ),
+                    )
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    store(
+                        "in_uncond",
+                        gr.Checkbox(
+                            bool(_snapref_default("in_uncond", False)),
+                            label=label("Reference in negative branch", "反向分支加入参考"),
+                            elem_id=_forge_elem(prefix, "snapref_in_uncond"),
+                        ),
+                    )
+                    store(
+                        "rg_on",
+                        gr.Checkbox(
+                            bool(_snapref_default("rg_on", False)),
+                            label=label("Extra reference guidance", "额外参考引导"),
+                            elem_id=_forge_elem(prefix, "snapref_rg_on"),
+                        ),
+                    )
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    store(
+                        "rg",
+                        gr.Slider(
+                            1.0,
+                            10.0,
+                            value=float(_snapref_default("rg", 4.5)),
+                            step=0.1,
+                            label=label("Reference guidance", "参考引导强度"),
+                            elem_id=_forge_elem(prefix, "snapref_rg"),
+                        ),
+                    )
+                    store(
+                        "end",
+                        gr.Slider(
+                            0.0,
+                            1.0,
+                            value=float(_snapref_default("end", 1.0)),
+                            step=0.05,
+                            label=label("Guidance end", "引导结束时机"),
+                            elem_id=_forge_elem(prefix, "snapref_end"),
+                        ),
+                    )
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    store(
+                        "correction",
+                        gr.Radio(
+                            [("apg", "apg"), ("rescale", "rescale"), ("none", "none")],
+                            value=str(_snapref_default("correction", "apg")),
+                            label=label("Guidance correction", "引导校正"),
+                            elem_id=_forge_elem(prefix, "snapref_correction"),
+                        ),
+                    )
+                    store(
+                        "phi",
+                        gr.Slider(
+                            0.0,
+                            1.0,
+                            value=float(_snapref_default("phi", 0.5)),
+                            step=0.05,
+                            label=label("Rescale phi", "重缩放系数 phi"),
+                            elem_id=_forge_elem(prefix, "snapref_phi"),
+                        ),
+                    )
+
+            adapter.change(
+                lambda selected: _snapref_status_text(selected, lang=lang),
+                inputs=[adapter],
+                outputs=[status],
+                show_progress=False,
+                queue=False,
+            )
+            refresh.click(
+                lambda selected: _snapref_refresh_adapters(selected, lang=lang),
+                inputs=[adapter],
+                outputs=[adapter, status],
+                show_progress=False,
+                queue=False,
+            )
+            fetch.click(
+                lambda selected: _snapref_download_adapter_action(selected, lang=lang),
+                inputs=[adapter],
+                outputs=[adapter, status],
+                show_progress=True,
+            )
+
+
+def _lang_from_state(state_value: object) -> str:
+    if isinstance(state_value, Mapping):
+        return str(state_value.get("__lang") or getattr(args_manager.args, "language", "cn") or "cn")
+    return str(getattr(args_manager.args, "language", "cn") or "cn")
+
+
+def _ultimate_sd_upscale_controls(controls: dict[str, gr.components.Component]) -> list[gr.components.Component]:
+    return [controls[f"script_usdu_{key}"] for key in ULTIMATE_SD_UPSCALE_ARG_KEYS]
+
+
+def _detail_daemon_controls(controls: dict[str, gr.components.Component]) -> list[gr.components.Component]:
+    out: list[gr.components.Component] = [controls["detail_daemon_enabled"]]
+    for slot_index in range(DETAIL_DAEMON_UI_SLOTS):
+        for key in DETAIL_DAEMON_SLOT_KEYS:
+            out.append(controls[f"detail_daemon_{slot_index}_{key}"])
+    return out
+
+
+def _negpip_controls(controls: dict[str, gr.components.Component]) -> list[gr.components.Component]:
+    return [controls[f"negpip_{key}"] for key in NEGPIP_ARG_KEYS]
+
+
+def _vectorscope_cc_controls(controls: dict[str, gr.components.Component]) -> list[gr.components.Component]:
+    return [controls[f"vectorscope_cc_{key}"] for key in VECTORSCOPE_CC_ARG_KEYS]
+
+
+def _visage_controls(controls: dict[str, gr.components.Component]) -> list[gr.components.Component]:
+    return [controls[f"visage_{key}"] for key in VISAGE_ARG_KEYS]
+
+
+def _lora_block_weight_controls(controls: dict[str, gr.components.Component]) -> list[gr.components.Component]:
+    return [controls[f"lbw_{key}"] for key in LORA_BLOCK_WEIGHT_ARG_KEYS]
+
+
+def _create_detail_daemon_controls(
+    controls: dict[str, gr.components.Component],
+    prefix: str,
+    *,
+    state_value: object = None,
+) -> None:
+    lang = _lang_from_state(state_value)
+    label = partial(_label_for_lang, lang)
+    numerals = ("I", "II", "III", "IV", "V", "VI")
+    with InputAccordion(
+        False,
+        label="Detail Daemon",
+        visible=detail_daemon_available(),
+        elem_id=_forge_elem(prefix, "detail_daemon"),
+        elem_classes=["forge-neo-integrated-accordion", "forge-neo-detail-daemon"],
+    ) as enabled:
+        controls["detail_daemon_enabled"] = enabled
+        with gr.Group(elem_classes=["forge-neo-tier1-content"]):
+            with gr.Tabs(elem_id=_forge_elem(prefix, "detail_daemon_tabs")):
+                for slot_index in range(DETAIL_DAEMON_UI_SLOTS):
+                    tab_title = f"Detail Daemon {numerals[slot_index]}"
+                    with gr.Tab(tab_title, elem_id=_forge_elem(prefix, f"detail_daemon_tab_{slot_index}")):
+                        with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                            controls[f"detail_daemon_{slot_index}_active"] = gr.Checkbox(
+                                slot_index == 0,
+                                label=label("Active", "启用此通道"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_active"),
+                            )
+                            controls[f"detail_daemon_{slot_index}_hires"] = gr.Checkbox(
+                                False,
+                                label=label("Hires Pass", "高清修复阶段"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_hires"),
+                            )
+                            controls[f"detail_daemon_{slot_index}_smooth"] = gr.Checkbox(
+                                True,
+                                label=label("Smooth", "平滑过渡"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_smooth"),
+                            )
+                            controls[f"detail_daemon_{slot_index}_mode"] = gr.Dropdown(
+                                choices=list(DETAIL_DAEMON_MODES),
+                                value="both",
+                                label=label("Mode", "作用范围"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_mode"),
+                            )
+                        controls[f"detail_daemon_{slot_index}_amount"] = gr.Slider(
+                            -1.0,
+                            1.0,
+                            value=float(DETAIL_DAEMON_SLOT_DEFAULTS["amount"]),
+                            step=0.01,
+                            label=label("Detail Amount", "细节强度"),
+                            elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_amount"),
+                        )
+                        with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                            controls[f"detail_daemon_{slot_index}_start"] = gr.Slider(
+                                0.0,
+                                1.0,
+                                value=float(DETAIL_DAEMON_SLOT_DEFAULTS["start"]),
+                                step=0.01,
+                                label=label("Start", "起始步比例"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_start"),
+                            )
+                            controls[f"detail_daemon_{slot_index}_end"] = gr.Slider(
+                                0.0,
+                                1.0,
+                                value=float(DETAIL_DAEMON_SLOT_DEFAULTS["end"]),
+                                step=0.01,
+                                label=label("End", "结束步比例"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_end"),
+                            )
+                        with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                            controls[f"detail_daemon_{slot_index}_start_offset"] = gr.Slider(
+                                -1.0,
+                                1.0,
+                                value=float(DETAIL_DAEMON_SLOT_DEFAULTS["start_offset"]),
+                                step=0.01,
+                                label=label("Start Offset", "起始偏移"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_start_offset"),
+                            )
+                            controls[f"detail_daemon_{slot_index}_end_offset"] = gr.Slider(
+                                -1.0,
+                                1.0,
+                                value=float(DETAIL_DAEMON_SLOT_DEFAULTS["end_offset"]),
+                                step=0.01,
+                                label=label("End Offset", "结束偏移"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_end_offset"),
+                            )
+                        with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                            controls[f"detail_daemon_{slot_index}_bias"] = gr.Slider(
+                                0.0,
+                                1.0,
+                                value=float(DETAIL_DAEMON_SLOT_DEFAULTS["bias"]),
+                                step=0.01,
+                                label=label("Bias", "曲线偏置"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_bias"),
+                            )
+                            controls[f"detail_daemon_{slot_index}_exponent"] = gr.Slider(
+                                0.0,
+                                10.0,
+                                value=float(DETAIL_DAEMON_SLOT_DEFAULTS["exponent"]),
+                                step=0.05,
+                                label=label("Exponent", "曲线指数"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_exponent"),
+                            )
+                            controls[f"detail_daemon_{slot_index}_fade"] = gr.Slider(
+                                0.0,
+                                1.0,
+                                value=float(DETAIL_DAEMON_SLOT_DEFAULTS["fade"]),
+                                step=0.05,
+                                label=label("Fade", "衰减"),
+                                elem_id=_forge_elem(prefix, f"detail_daemon_{slot_index}_fade"),
+                            )
+
+
+def _create_negpip_controls(
+    controls: dict[str, gr.components.Component],
+    prefix: str,
+    *,
+    state_value: object = None,
+) -> None:
+    lang = _lang_from_state(state_value)
+    label = partial(_label_for_lang, lang)
+    with InputAccordion(
+        False,
+        label="NegPiP",
+        visible=negpip_available(),
+        elem_id=_forge_elem(prefix, "negpip"),
+        elem_classes=["forge-neo-integrated-accordion", "forge-neo-negpip"],
+    ) as enabled:
+        controls["negpip_enabled"] = enabled
+        with gr.Group(elem_classes=["forge-neo-tier1-content"]):
+            gr.Markdown(
+                label(
+                    "Enable negative prompt weights such as `(red:-1.2)` in your prompt (supports SD/SDXL, Anima, Krea 2, MOSS-Image).",
+                    "启用提示词负权重语法（如 `(red:-1.2)`），支持 SD/SDXL、Anima、Krea 2 与 MOSS-Image。",
+                ),
+                elem_classes=["forge-neo-muted-note"],
+            )
+            with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                controls["negpip_v_scaling"] = gr.Checkbox(
+                    bool(NEGPIP_ARG_DEFAULTS["v_scaling"]),
+                    label=label("NegPiP V-Scaling (Krea 2 / MOSS-Image only)", "NegPiP V-Scaling（仅 Krea 2 / MOSS-Image）"),
+                    elem_id=_forge_elem(prefix, "negpip_v_scaling"),
+                )
+                controls["negpip_v_strength"] = gr.Slider(
+                    0.0,
+                    2.0,
+                    value=float(NEGPIP_ARG_DEFAULTS["v_strength"]),
+                    step=0.05,
+                    label=label("V-Scaling Strength", "V-Scaling 强度"),
+                    elem_id=_forge_elem(prefix, "negpip_v_strength"),
+                )
+
+
+def _create_vectorscope_cc_controls(
+    controls: dict[str, gr.components.Component],
+    prefix: str,
+    *,
+    is_img2img: bool = False,
+    state_value: object = None,
+) -> None:
+    lang = _lang_from_state(state_value)
+    label = partial(_label_for_lang, lang)
+    with InputAccordion(
+        False,
+        label="Vectorscope CC",
+        visible=vectorscope_cc_available(),
+        elem_id=_forge_elem(prefix, "vectorscope_cc"),
+        elem_classes=["forge-neo-integrated-accordion", "forge-neo-vectorscope-cc"],
+    ) as enable:
+        controls["vectorscope_cc_enable"] = enable
+        with gr.Group(elem_classes=["forge-neo-tier1-content"]):
+            with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                controls["vectorscope_cc_latent"] = gr.Checkbox(
+                    bool(VECTORSCOPE_CC_ARG_DEFAULTS["latent"]),
+                    label=label("Alt (Latent Mode)", "Alt（潜空间模式）"),
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_latent"),
+                )
+                reset_btn = gr.Button(
+                    label("Reset", "重置色彩参数"),
+                    size="sm",
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_reset"),
+                )
+            with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                controls["vectorscope_cc_bri"] = gr.Slider(
+                    -5.0,
+                    5.0,
+                    value=float(VECTORSCOPE_CC_ARG_DEFAULTS["bri"]),
+                    step=0.05,
+                    label=label("Brightness", "亮度"),
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_bri"),
+                )
+                controls["vectorscope_cc_con"] = gr.Slider(
+                    -5.0,
+                    5.0,
+                    value=float(VECTORSCOPE_CC_ARG_DEFAULTS["con"]),
+                    step=0.05,
+                    label=label("Contrast", "对比度"),
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_con"),
+                )
+                controls["vectorscope_cc_sat"] = gr.Slider(
+                    0.25,
+                    1.75,
+                    value=float(VECTORSCOPE_CC_ARG_DEFAULTS["sat"]),
+                    step=0.05,
+                    label=label("Saturation", "饱和度"),
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_sat"),
+                )
+            with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                controls["vectorscope_cc_r"] = gr.Slider(
+                    -4.0,
+                    4.0,
+                    value=float(VECTORSCOPE_CC_ARG_DEFAULTS["r"]),
+                    step=0.05,
+                    label="R",
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_r"),
+                )
+                controls["vectorscope_cc_g"] = gr.Slider(
+                    -4.0,
+                    4.0,
+                    value=float(VECTORSCOPE_CC_ARG_DEFAULTS["g"]),
+                    step=0.05,
+                    label="G",
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_g"),
+                )
+                controls["vectorscope_cc_b"] = gr.Slider(
+                    -4.0,
+                    4.0,
+                    value=float(VECTORSCOPE_CC_ARG_DEFAULTS["b"]),
+                    step=0.05,
+                    label="B",
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_b"),
+                )
+            with gr.Accordion(
+                label("Advanced Settings", "高级设置"),
+                open=False,
+                elem_id=_forge_elem(prefix, "vectorscope_cc_advanced"),
+                elem_classes=["forge-neo-tier1-subaccordion"],
+            ):
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    controls["vectorscope_cc_doHR"] = gr.Checkbox(
+                        bool(VECTORSCOPE_CC_ARG_DEFAULTS["doHR"]),
+                        label=label("Process Hires. fix", "作用于高清修复"),
+                        visible=not is_img2img,
+                        elem_id=_forge_elem(prefix, "vectorscope_cc_doHR"),
+                    )
+                    controls["vectorscope_cc_doAD"] = gr.Checkbox(
+                        bool(VECTORSCOPE_CC_ARG_DEFAULTS["doAD"]),
+                        label=label("Process ADetailer", "作用于 ADetailer"),
+                        elem_id=_forge_elem(prefix, "vectorscope_cc_doAD"),
+                    )
+                    controls["vectorscope_cc_doRN"] = gr.Checkbox(
+                        bool(VECTORSCOPE_CC_ARG_DEFAULTS["doRN"]),
+                        label=label("Randomize using Seed", "按种子随机化"),
+                        elem_id=_forge_elem(prefix, "vectorscope_cc_doRN"),
+                    )
+                controls["vectorscope_cc_method"] = gr.Radio(
+                    choices=list(VECTORSCOPE_CC_METHODS),
+                    value=str(VECTORSCOPE_CC_ARG_DEFAULTS["method"]),
+                    label=label("Noise Settings", "噪声模式"),
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_method"),
+                )
+                controls["vectorscope_cc_scaling"] = gr.Radio(
+                    choices=list(VECTORSCOPE_CC_SCALINGS),
+                    value=str(VECTORSCOPE_CC_ARG_DEFAULTS["scaling"]),
+                    label=label("Scaling Settings", "步数缩放曲线"),
+                    elem_id=_forge_elem(prefix, "vectorscope_cc_scaling"),
+                )
+
+            reset_btn.click(
+                lambda: (0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+                outputs=[
+                    controls["vectorscope_cc_bri"],
+                    controls["vectorscope_cc_con"],
+                    controls["vectorscope_cc_sat"],
+                    controls["vectorscope_cc_r"],
+                    controls["vectorscope_cc_g"],
+                    controls["vectorscope_cc_b"],
+                ],
+                show_progress=False,
+                queue=False,
+            )
+
+
+def _create_visage_controls(
+    controls: dict[str, gr.components.Component],
+    prefix: str,
+    *,
+    is_img2img: bool = False,
+    state_value: object = None,
+) -> None:
+    lang = _lang_from_state(state_value)
+    label = partial(_label_for_lang, lang)
+    with InputAccordion(
+        False,
+        label="Visage",
+        visible=visage_available(),
+        elem_id=_forge_elem(prefix, "visage"),
+        elem_classes=["forge-neo-integrated-accordion", "forge-neo-visage"],
+    ) as enabled:
+        controls["visage_enabled"] = enabled
+        with gr.Group(elem_classes=["forge-neo-tier1-content"]):
+            with gr.Tabs(elem_id=_forge_elem(prefix, "visage_tabs")):
+                with gr.Tab(label("Source", "源人脸")):
+                    controls["visage_source_type"] = gr.Radio(
+                        choices=list(VISAGE_SOURCE_TYPES),
+                        value=str(VISAGE_ARG_DEFAULTS["source_type"]),
+                        label=label("Source", "源类型"),
+                        elem_id=_forge_elem(prefix, "visage_source_type"),
+                    )
+                    controls["visage_source_image"] = gr.Image(
+                        label=label("Source face", "源人脸图像"),
+                        type="pil",
+                        height=220,
+                        visible=True,
+                        elem_id=_forge_elem(prefix, "visage_source_image"),
+                    )
+                    controls["visage_source_files"] = gr.File(
+                        label=label("Source face photos", "多张源人脸照片"),
+                        file_count="multiple",
+                        file_types=["image"],
+                        visible=False,
+                        elem_id=_forge_elem(prefix, "visage_source_files"),
+                    )
+                    with gr.Row(visible=False, elem_classes=["forge-neo-integrated-row"]) as face_model_row:
+                        controls["visage_face_model"] = gr.Dropdown(
+                            choices=visage_face_model_choices(),
+                            value="",
+                            label=label("Face model", "人脸模型"),
+                            scale=4,
+                            elem_id=_forge_elem(prefix, "visage_face_model"),
+                        )
+                        face_model_refresh = gr.Button(
+                            label("Refresh", "刷新"),
+                            scale=1,
+                            size="sm",
+                            elem_id=_forge_elem(prefix, "visage_face_model_refresh"),
+                        )
+                    controls["visage_source_indexes"] = gr.Textbox(
+                        value=str(VISAGE_ARG_DEFAULTS["source_indexes"]),
+                        label=label("Source faces", "源人脸编号"),
+                        placeholder="0",
+                        elem_id=_forge_elem(prefix, "visage_source_indexes"),
+                    )
+
+                with gr.Tab(label("Target", "目标")):
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_target_indexes"] = gr.Textbox(
+                            value=str(VISAGE_ARG_DEFAULTS["target_indexes"]),
+                            label=label("Target faces", "目标人脸编号"),
+                            placeholder="0",
+                            elem_id=_forge_elem(prefix, "visage_target_indexes"),
+                        )
+                        controls["visage_sort_order"] = gr.Dropdown(
+                            choices=list(VISAGE_SORT_ORDERS),
+                            value=str(VISAGE_ARG_DEFAULTS["sort_order"]),
+                            label=label("Face order", "排序方式"),
+                            elem_id=_forge_elem(prefix, "visage_sort_order"),
+                        )
+                        controls["visage_gender"] = gr.Dropdown(
+                            choices=list(VISAGE_GENDERS),
+                            value=str(VISAGE_ARG_DEFAULTS["gender"]),
+                            label=label("Gender filter", "性别筛选"),
+                            elem_id=_forge_elem(prefix, "visage_gender"),
+                        )
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_swap_generated"] = gr.Checkbox(
+                            bool(VISAGE_ARG_DEFAULTS["swap_generated"]),
+                            label=label("Swap generated image", "替换生成结果"),
+                            elem_id=_forge_elem(prefix, "visage_swap_generated"),
+                        )
+                        controls["visage_swap_init"] = gr.Checkbox(
+                            bool(VISAGE_ARG_DEFAULTS["swap_init"]),
+                            label=label("Also swap input image (before img2img)", "图生图前先替换输入图"),
+                            visible=is_img2img,
+                            elem_id=_forge_elem(prefix, "visage_swap_init"),
+                        )
+                    with gr.Accordion(label("Detection", "人脸检测"), open=False, elem_classes=["forge-neo-tier1-subaccordion"]):
+                        with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                            controls["visage_detector"] = gr.Dropdown(
+                                choices=list(VISAGE_DETECTORS),
+                                value=str(VISAGE_ARG_DEFAULTS["detector"]),
+                                label=label("Detector", "检测模型"),
+                                elem_id=_forge_elem(prefix, "visage_detector"),
+                            )
+                            controls["visage_det_size"] = gr.Dropdown(
+                                choices=list(VISAGE_DET_SIZES),
+                                value=int(VISAGE_ARG_DEFAULTS["det_size"]),
+                                label=label("Detection size", "检测分辨率"),
+                                elem_id=_forge_elem(prefix, "visage_det_size"),
+                            )
+                        with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                            controls["visage_det_threshold"] = gr.Slider(
+                                0.1,
+                                0.95,
+                                value=float(VISAGE_ARG_DEFAULTS["det_threshold"]),
+                                step=0.05,
+                                label=label("Score threshold", "置信度阈值"),
+                                elem_id=_forge_elem(prefix, "visage_det_threshold"),
+                            )
+                            controls["visage_min_face_size"] = gr.Slider(
+                                0,
+                                512,
+                                value=int(VISAGE_ARG_DEFAULTS["min_face_size"]),
+                                step=8,
+                                label=label("Min face size (px)", "最小人脸像素"),
+                                elem_id=_forge_elem(prefix, "visage_min_face_size"),
+                            )
+                        controls["visage_try_rotations"] = gr.Checkbox(
+                            bool(VISAGE_ARG_DEFAULTS["try_rotations"]),
+                            label=label("Detect rotated faces", "检测旋转人脸"),
+                            elem_id=_forge_elem(prefix, "visage_try_rotations"),
+                        )
+
+                with gr.Tab(label("Swap", "换脸模型")):
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_swapper"] = gr.Dropdown(
+                            choices=list(VISAGE_SWAPPERS),
+                            value=str(VISAGE_ARG_DEFAULTS["swapper"]),
+                            label=label("Swapper", "换脸模型"),
+                            elem_id=_forge_elem(prefix, "visage_swapper"),
+                        )
+                        controls["visage_pixel_boost"] = gr.Dropdown(
+                            choices=list(VISAGE_PIXEL_BOOSTS),
+                            value=str(VISAGE_ARG_DEFAULTS["pixel_boost"]),
+                            label=label("Pixel boost", "像素增强"),
+                            elem_id=_forge_elem(prefix, "visage_pixel_boost"),
+                        )
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_strength"] = gr.Slider(
+                            0.0,
+                            1.0,
+                            value=float(VISAGE_ARG_DEFAULTS["strength"]),
+                            step=0.05,
+                            label=label("Strength", "融合强度"),
+                            elem_id=_forge_elem(prefix, "visage_strength"),
+                        )
+                        controls["visage_color_match"] = gr.Dropdown(
+                            choices=list(VISAGE_COLOR_MATCHES),
+                            value=str(VISAGE_ARG_DEFAULTS["color_match"]),
+                            label=label("Color match", "色彩匹配"),
+                            elem_id=_forge_elem(prefix, "visage_color_match"),
+                        )
+
+                with gr.Tab(label("Mask", "蒙版")):
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_mask_box"] = gr.Checkbox(
+                            bool(VISAGE_ARG_DEFAULTS["mask_box"]),
+                            label=label("Box mask", "矩形蒙版"),
+                            elem_id=_forge_elem(prefix, "visage_mask_box"),
+                        )
+                        controls["visage_mask_model"] = gr.Checkbox(
+                            bool(VISAGE_ARG_DEFAULTS["mask_model"]),
+                            label=label("Swapper mask", "模型蒙版"),
+                            elem_id=_forge_elem(prefix, "visage_mask_model"),
+                        )
+                        controls["visage_mask_occlusion"] = gr.Checkbox(
+                            bool(VISAGE_ARG_DEFAULTS["mask_occlusion"]),
+                            label=label("Occlusion mask", "遮挡蒙版"),
+                            elem_id=_forge_elem(prefix, "visage_mask_occlusion"),
+                        )
+                        controls["visage_mask_region"] = gr.Checkbox(
+                            bool(VISAGE_ARG_DEFAULTS["mask_region"]),
+                            label=label("Region mask", "区域蒙版"),
+                            elem_id=_forge_elem(prefix, "visage_mask_region"),
+                        )
+                        controls["visage_keep_mouth"] = gr.Checkbox(
+                            bool(VISAGE_ARG_DEFAULTS["keep_mouth"]),
+                            label=label("Keep target mouth", "保留目标嘴部"),
+                            elem_id=_forge_elem(prefix, "visage_keep_mouth"),
+                        )
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_mask_blur"] = gr.Slider(
+                            0.0,
+                            1.0,
+                            value=float(VISAGE_ARG_DEFAULTS["mask_blur"]),
+                            step=0.05,
+                            label=label("Blur", "羽化模糊"),
+                            elem_id=_forge_elem(prefix, "visage_mask_blur"),
+                        )
+                        controls["visage_occluder"] = gr.Dropdown(
+                            choices=list(VISAGE_OCCLUDERS),
+                            value=str(VISAGE_ARG_DEFAULTS["occluder"]),
+                            label=label("Occluder", "遮挡检测模型"),
+                            visible=True,
+                            elem_id=_forge_elem(prefix, "visage_occluder"),
+                        )
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_pad_top"] = gr.Slider(0, 100, value=0, step=1, label=label("Pad top %", "上边距 %"), elem_id=_forge_elem(prefix, "visage_pad_top"))
+                        controls["visage_pad_right"] = gr.Slider(0, 100, value=0, step=1, label=label("Pad right %", "右边距 %"), elem_id=_forge_elem(prefix, "visage_pad_right"))
+                        controls["visage_pad_bottom"] = gr.Slider(0, 100, value=0, step=1, label=label("Pad bottom %", "下边距 %"), elem_id=_forge_elem(prefix, "visage_pad_bottom"))
+                        controls["visage_pad_left"] = gr.Slider(0, 100, value=0, step=1, label=label("Pad left %", "左边距 %"), elem_id=_forge_elem(prefix, "visage_pad_left"))
+                    controls["visage_regions"] = gr.CheckboxGroup(
+                        choices=list(VISAGE_REGIONS),
+                        value=list(VISAGE_DEFAULT_REGIONS),
+                        label=label("Regions to swap", "替换区域"),
+                        visible=False,
+                        elem_id=_forge_elem(prefix, "visage_regions"),
+                    )
+                    controls["visage_region_dilate"] = gr.Slider(
+                        -30,
+                        40,
+                        value=0,
+                        step=1,
+                        label=label("Region margin (px)", "区域扩展 (px)"),
+                        visible=False,
+                        elem_id=_forge_elem(prefix, "visage_region_dilate"),
+                    )
+
+                with gr.Tab(label("Restore", "面部修复")):
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_restorer"] = gr.Dropdown(
+                            choices=list(VISAGE_RESTORERS),
+                            value=str(VISAGE_ARG_DEFAULTS["restorer"]),
+                            label=label("Face restorer", "面部修复模型"),
+                            elem_id=_forge_elem(prefix, "visage_restorer"),
+                        )
+                        controls["visage_restorer_visibility"] = gr.Slider(
+                            0.0,
+                            1.0,
+                            value=float(VISAGE_ARG_DEFAULTS["restorer_visibility"]),
+                            step=0.05,
+                            label=label("Visibility", "修复可见度"),
+                            elem_id=_forge_elem(prefix, "visage_restorer_visibility"),
+                        )
+                    controls["visage_codeformer_weight"] = gr.Slider(
+                        0.0,
+                        1.0,
+                        value=float(VISAGE_ARG_DEFAULTS["codeformer_weight"]),
+                        step=0.05,
+                        label=label("CodeFormer fidelity", "CodeFormer 保真度"),
+                        visible=False,
+                        elem_id=_forge_elem(prefix, "visage_codeformer_weight"),
+                    )
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_face_boost"] = gr.Checkbox(
+                            bool(VISAGE_ARG_DEFAULTS["face_boost"]),
+                            label=label("Face boost", "面部超分增强"),
+                            elem_id=_forge_elem(prefix, "visage_face_boost"),
+                        )
+                        controls["visage_restore_guard"] = gr.Slider(
+                            0.0,
+                            1.0,
+                            value=float(VISAGE_ARG_DEFAULTS["restore_guard"]),
+                            step=0.05,
+                            label=label("Likeness guard", "相似度保护"),
+                            elem_id=_forge_elem(prefix, "visage_restore_guard"),
+                        )
+
+                with gr.Tab(label("Refine", "扩散精修")):
+                    controls["visage_refine"] = gr.Checkbox(
+                        bool(VISAGE_ARG_DEFAULTS["refine"]),
+                        label=label("Refine swapped face with diffusion", "使用扩散模型精修换脸区域"),
+                        elem_id=_forge_elem(prefix, "visage_refine"),
+                    )
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_refine_denoise"] = gr.Slider(
+                            0.05,
+                            0.7,
+                            value=float(VISAGE_ARG_DEFAULTS["refine_denoise"]),
+                            step=0.01,
+                            label=label("Denoising", "重绘幅度"),
+                            elem_id=_forge_elem(prefix, "visage_refine_denoise"),
+                        )
+                        controls["visage_refine_steps"] = gr.Slider(
+                            0,
+                            60,
+                            value=int(VISAGE_ARG_DEFAULTS["refine_steps"]),
+                            step=1,
+                            label=label("Steps", "步数"),
+                            elem_id=_forge_elem(prefix, "visage_refine_steps"),
+                        )
+                        controls["visage_refine_padding"] = gr.Slider(
+                            0.1,
+                            1.5,
+                            value=float(VISAGE_ARG_DEFAULTS["refine_padding"]),
+                            step=0.05,
+                            label=label("Crop padding", "裁剪留白"),
+                            elem_id=_forge_elem(prefix, "visage_refine_padding"),
+                        )
+                    controls["visage_refine_prompt"] = gr.Textbox(
+                        value="",
+                        label=label("Prompt", "精修正向提示词"),
+                        placeholder=label("Empty = use main prompt", "留空 = 沿用主提示词"),
+                        elem_id=_forge_elem(prefix, "visage_refine_prompt"),
+                    )
+                    controls["visage_refine_negative"] = gr.Textbox(
+                        value="",
+                        label=label("Negative prompt", "精修负向提示词"),
+                        placeholder=label("Empty = use main negative prompt", "留空 = 沿用主负向提示词"),
+                        elem_id=_forge_elem(prefix, "visage_refine_negative"),
+                    )
+                    with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                        controls["visage_refine_reswap"] = gr.Slider(
+                            0.0,
+                            1.0,
+                            value=float(VISAGE_ARG_DEFAULTS["refine_reswap"]),
+                            step=0.05,
+                            label=label("Identity re-swap", "二次身份回贴"),
+                            elem_id=_forge_elem(prefix, "visage_refine_reswap"),
+                        )
+                        controls["visage_refine_texture"] = gr.Slider(
+                            0.0,
+                            1.0,
+                            value=float(VISAGE_ARG_DEFAULTS["refine_texture"]),
+                            step=0.05,
+                            label=label("Texture pass", "皮肤纹理保留"),
+                            elem_id=_forge_elem(prefix, "visage_refine_texture"),
+                        )
+                        controls["visage_refine_extend_down"] = gr.Slider(
+                            0.0,
+                            1.0,
+                            value=float(VISAGE_ARG_DEFAULTS["refine_extend_down"]),
+                            step=0.05,
+                            label=label("Extend mask down", "蒙版向下延伸"),
+                            elem_id=_forge_elem(prefix, "visage_refine_extend_down"),
+                        )
+
+            controls["visage_source_type"].change(
+                lambda mode: (
+                    gr.update(visible=str(mode or "") == "Image"),
+                    gr.update(visible=str(mode or "") == "Multiple images"),
+                    gr.update(visible=str(mode or "") == "Face model"),
+                ),
+                inputs=[controls["visage_source_type"]],
+                outputs=[
+                    controls["visage_source_image"],
+                    controls["visage_source_files"],
+                    face_model_row,
+                ],
+                show_progress=False,
+                queue=False,
+            )
+            face_model_refresh.click(
+                lambda current: gr.update(choices=visage_face_model_choices(), value=current or ""),
+                inputs=[controls["visage_face_model"]],
+                outputs=[controls["visage_face_model"]],
+                show_progress=False,
+                queue=False,
+            )
+            controls["visage_mask_occlusion"].change(
+                lambda on: gr.update(visible=bool(on)),
+                inputs=[controls["visage_mask_occlusion"]],
+                outputs=[controls["visage_occluder"]],
+                show_progress=False,
+                queue=False,
+            )
+            controls["visage_mask_region"].change(
+                lambda on: (gr.update(visible=bool(on)), gr.update(visible=bool(on))),
+                inputs=[controls["visage_mask_region"]],
+                outputs=[controls["visage_regions"], controls["visage_region_dilate"]],
+                show_progress=False,
+                queue=False,
+            )
+            controls["visage_restorer"].change(
+                lambda name: gr.update(visible=str(name or "") == "codeformer"),
+                inputs=[controls["visage_restorer"]],
+                outputs=[controls["visage_codeformer_weight"]],
+                show_progress=False,
+                queue=False,
+            )
+
+
+def _create_lora_block_weight_controls(
+    controls: dict[str, gr.components.Component],
+    prefix: str,
+    *,
+    state_value: object = None,
+) -> None:
+    lang = _lang_from_state(state_value)
+    label = partial(_label_for_lang, lang)
+    with InputAccordion(
+        False,
+        label="LoRA Block Weight",
+        visible=lora_block_weight_available(),
+        elem_id=_forge_elem(prefix, "lora_block_weight"),
+        elem_classes=["forge-neo-integrated-accordion", "forge-neo-lora-block-weight"],
+    ) as useblocks:
+        controls["lbw_useblocks"] = useblocks
+        with gr.Group(elem_classes=["forge-neo-tier1-content"]):
+            with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                controls["lbw_debug"] = gr.Checkbox(
+                    bool(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["debug"]),
+                    label=label("Debug", "调试日志"),
+                    elem_id=_forge_elem(prefix, "lbw_debug"),
+                )
+                controls["lbw_elemsets"] = gr.Checkbox(
+                    bool(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["elemsets"]),
+                    label=label("Print change", "打印权重变化"),
+                    elem_id=_forge_elem(prefix, "lbw_elemsets"),
+                )
+            controls["lbw_loraratios"] = gr.Textbox(
+                value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["loraratios"]),
+                lines=6,
+                label=label("Weight Presets (supports SD / SDXL / Flux / Anima 29-block)", "分层权重预设（支持 SD / SDXL / Flux / Anima 29 块）"),
+                elem_id=_forge_elem(prefix, "lbw_loraratios"),
+            )
+            controls["lbw_elemental"] = gr.Textbox(
+                value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["elemental"]),
+                lines=2,
+                label=label("Elemental Weights", "子模块权重覆盖"),
+                placeholder="attn2:0.5, ff:0.8",
+                elem_id=_forge_elem(prefix, "lbw_elemental"),
+            )
+            with gr.Accordion(
+                label("XYZ Plot / Effective Block Analyzer", "XYZ 网格 / 有效块分析"),
+                open=False,
+                elem_id=_forge_elem(prefix, "lbw_xyz_accordion"),
+                elem_classes=["forge-neo-tier1-subaccordion"],
+            ):
+                controls["lbw_xyzsetting"] = gr.Radio(
+                    choices=list(LORA_BLOCK_WEIGHT_XYZ_MODES),
+                    value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["xyzsetting"]),
+                    label=label("Mode", "分析模式"),
+                    elem_id=_forge_elem(prefix, "lbw_xyzsetting"),
+                )
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    controls["lbw_xtype"] = gr.Dropdown(
+                        choices=list(LORA_BLOCK_WEIGHT_ATYPES),
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["xtype"]),
+                        label="X Types",
+                        elem_id=_forge_elem(prefix, "lbw_xtype"),
+                    )
+                    controls["lbw_xmen"] = gr.Textbox(
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["xmen"]),
+                        label="X Values",
+                        elem_id=_forge_elem(prefix, "lbw_xmen"),
+                    )
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    controls["lbw_ytype"] = gr.Dropdown(
+                        choices=list(LORA_BLOCK_WEIGHT_ATYPES),
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["ytype"]),
+                        label="Y Types",
+                        elem_id=_forge_elem(prefix, "lbw_ytype"),
+                    )
+                    controls["lbw_ymen"] = gr.Textbox(
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["ymen"]),
+                        label="Y Values",
+                        elem_id=_forge_elem(prefix, "lbw_ymen"),
+                    )
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    controls["lbw_ztype"] = gr.Dropdown(
+                        choices=list(LORA_BLOCK_WEIGHT_ATYPES),
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["ztype"]),
+                        label="Z Types",
+                        elem_id=_forge_elem(prefix, "lbw_ztype"),
+                    )
+                    controls["lbw_zmen"] = gr.Textbox(
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["zmen"]),
+                        label="Z Values",
+                        elem_id=_forge_elem(prefix, "lbw_zmen"),
+                    )
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    controls["lbw_exmen"] = gr.Textbox(
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["exmen"]),
+                        label=label("Range", "分析范围"),
+                        elem_id=_forge_elem(prefix, "lbw_exmen"),
+                    )
+                    controls["lbw_eymen"] = gr.Textbox(
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["eymen"]),
+                        label=label("Blocks", "分析块列表"),
+                        elem_id=_forge_elem(prefix, "lbw_eymen"),
+                    )
+                with gr.Row(elem_classes=["forge-neo-integrated-row"]):
+                    controls["lbw_ecount"] = gr.Number(
+                        value=int(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["ecount"]),
+                        precision=0,
+                        label=label("Number of seed", "种子数"),
+                        elem_id=_forge_elem(prefix, "lbw_ecount"),
+                    )
+                    controls["lbw_diffcol"] = gr.Radio(
+                        choices=list(LORA_BLOCK_WEIGHT_DIFFCOLS),
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["diffcol"]),
+                        label=label("Diff image color", "差异图底色"),
+                        elem_id=_forge_elem(prefix, "lbw_diffcol"),
+                    )
+                    controls["lbw_thresh"] = gr.Textbox(
+                        value=str(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["thresh"]),
+                        label=label("Difference threshold", "差异阈值"),
+                        elem_id=_forge_elem(prefix, "lbw_thresh"),
+                    )
+                    controls["lbw_revxy"] = gr.Checkbox(
+                        bool(LORA_BLOCK_WEIGHT_ARG_DEFAULTS["revxy"]),
+                        label=label("Change X-Y", "交换 X-Y"),
+                        elem_id=_forge_elem(prefix, "lbw_revxy"),
+                    )
 
 
 def _forge_couple_image(value: object) -> Image.Image | None:
@@ -11863,6 +13395,38 @@ def _create_integrated_controls(
         settings_value=settings_value,
         source_image=forge_couple_source_image,
         bridge=forge_couple_bridge,
+    )
+    _create_snapref_controls(
+        controls,
+        prefix,
+        state_value=state_value,
+    )
+    _create_detail_daemon_controls(
+        controls,
+        prefix,
+        state_value=state_value,
+    )
+    _create_negpip_controls(
+        controls,
+        prefix,
+        state_value=state_value,
+    )
+    _create_vectorscope_cc_controls(
+        controls,
+        prefix,
+        is_img2img=is_img2img,
+        state_value=state_value,
+    )
+    _create_visage_controls(
+        controls,
+        prefix,
+        is_img2img=is_img2img,
+        state_value=state_value,
+    )
+    _create_lora_block_weight_controls(
+        controls,
+        prefix,
+        state_value=state_value,
     )
     with gr.Accordion(_label("ControlNet Integrated", "ControlNet 集成"), open=False, visible=controlnet_visible, elem_id=_forge_elem(prefix, "controlnet"), elem_classes=["forge-neo-integrated-accordion"]):
         with gr.Tabs(elem_id=_forge_elem(prefix, "controlnet_tabs"), elem_classes=["forge-neo-mode-tabs", "forge-neo-controlnet-tabs"]):

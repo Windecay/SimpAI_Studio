@@ -34,6 +34,52 @@ from forge_neo.regional_prompter_compat import (
     regional_prompter_default_args,
     regional_prompter_schema_payload,
 )
+from forge_neo.snapref_compat import (
+    SNAPREF_EXTENSION,
+    SNAPREF_EXTENSION_ALIASES,
+    SNAPREF_RELEASES,
+    SNAPREF_SCRIPT_NAME,
+    snapref_adapter_choices,
+    snapref_default_args,
+    snapref_model_files,
+    snapref_schema_payload,
+)
+from forge_neo.ultimate_sd_upscale_compat import (
+    ULTIMATE_SD_UPSCALE_EXTENSION,
+    ULTIMATE_SD_UPSCALE_SCRIPT_NAME,
+    ultimate_sd_upscale_default_args,
+    ultimate_sd_upscale_schema_payload,
+)
+from forge_neo.detail_daemon_compat import (
+    DETAIL_DAEMON_EXTENSION,
+    DETAIL_DAEMON_SCRIPT_NAME,
+    detail_daemon_default_args,
+    detail_daemon_schema_payload,
+)
+from forge_neo.negpip_compat import (
+    NEGPIP_EXTENSION,
+    NEGPIP_SCRIPT_NAME,
+    negpip_default_args,
+    negpip_schema_payload,
+)
+from forge_neo.vectorscope_cc_compat import (
+    VECTORSCOPE_CC_EXTENSION,
+    VECTORSCOPE_CC_SCRIPT_NAME,
+    vectorscope_cc_default_args,
+    vectorscope_cc_schema_payload,
+)
+from forge_neo.visage_compat import (
+    VISAGE_EXTENSION,
+    VISAGE_SCRIPT_NAME,
+    visage_default_args,
+    visage_schema_payload,
+)
+from forge_neo.lora_block_weight_compat import (
+    LORA_BLOCK_WEIGHT_EXTENSION,
+    LORA_BLOCK_WEIGHT_SCRIPT_NAME,
+    lora_block_weight_default_args,
+    lora_block_weight_schema_payload,
+)
 from forge_neo.layout_plugin_compat import (
     MOSS_IMAGE_EXTENSION,
     NATIVE_LAYOUT_EXTENSION_PROFILES,
@@ -77,6 +123,13 @@ PRIORITY_EXTENSION_PROFILES = (
     ADETAILER_EXTENSION,
     REGIONAL_PROMPTER_EXTENSION,
     FORGE_COUPLE_EXTENSION,
+    SNAPREF_EXTENSION,
+    ULTIMATE_SD_UPSCALE_EXTENSION,
+    DETAIL_DAEMON_EXTENSION,
+    NEGPIP_EXTENSION,
+    VECTORSCOPE_CC_EXTENSION,
+    VISAGE_EXTENSION,
+    LORA_BLOCK_WEIGHT_EXTENSION,
     INFINITE_BROWSING_EXTENSION,
 )
 API_ROUTE_EXTENSION_PROFILES = (AUTO_PHOTOSHOP_EXTENSION,)
@@ -510,6 +563,249 @@ FORGE_COUPLE_PROFILE = ForgeNeoExtensionProfile(
         "Forge Neo mirrors the source extension's four options in a native Forge Couple Settings page.",
         "The source backend imports forge_couple.py only when the request asks for Forge Couple.",
         "The source extension JavaScript and CSS are catalogued but not loaded into the native Forge Neo UI.",
+    ),
+)
+
+SNAPREF_PROFILE = ForgeNeoExtensionProfile(
+    name=SNAPREF_EXTENSION,
+    display_name="SnapRef",
+    family="generation-hook",
+    support_level="priority-profile",
+    extension_dirname=SNAPREF_EXTENSION,
+    adapter_scope="alwayson-args",
+    remote_url="https://github.com/ArcAnima/SnapRef-Forge-Neo",
+    repository_layout="standalone",
+    source_branch="main",
+    source_commit="b1b6db8f",
+    source_commit_date="2026-11-20 13:48:48 +0000",
+    required_files=(
+        "scripts/snapref.py",
+        "snapref_forge/__init__.py",
+        "snapref_forge/core.py",
+        "snapref_forge/integration.py",
+        "style.css",
+    ),
+    css_files=("style.css",),
+    runtime_files=("forge_neo/snapref_compat.py",),
+    routes=(
+        "/snapref/v1/schema",
+        "/snapref/v1/defaults",
+        "/snapref/v1/models",
+    ),
+    source_callbacks=(
+        "scripts.AlwaysVisible",
+        "process_before_every_sampling",
+        "post_sample",
+        "postprocess",
+    ),
+    notes=(
+        "SnapRef is an always-visible Anima reference adapter script supporting up to 8 reference images.",
+        "Forge Neo provides a native Gradio 6 UI panel for adapter selection/download, 8 reference slots, mode/layout, fidelity, and advanced guidance controls.",
+        "The source backend imports scripts/snapref.py only when the request asks for SnapRef.",
+        "The source extension CSS is catalogued and replaced by native Forge Neo Gradio 6 styles.",
+    ),
+)
+
+ULTIMATE_SD_UPSCALE_PROFILE = ForgeNeoExtensionProfile(
+    name=ULTIMATE_SD_UPSCALE_EXTENSION,
+    display_name="Ultimate SD Upscale",
+    family="generation-hook",
+    support_level="priority-profile",
+    extension_dirname=ULTIMATE_SD_UPSCALE_EXTENSION,
+    adapter_scope="alwayson-args",
+    remote_url="https://github.com/Coyote-A/ultimate-upscale-for-automatic1111",
+    repository_layout="standalone",
+    source_branch="master",
+    source_commit="2322caa4",
+    source_commit_date="2024-03-08 19:55:37 +0300",
+    required_files=(
+        "scripts/ultimate-upscale.py",
+    ),
+    runtime_files=("forge_neo/ultimate_sd_upscale_compat.py",),
+    routes=(
+        "/ultimate-sd-upscale/v1/schema",
+        "/ultimate-sd-upscale/v1/defaults",
+    ),
+    source_callbacks=(
+        "scripts.Script",
+        "run",
+    ),
+    notes=(
+        "Ultimate SD Upscale is an img2img tiled upscaling script with seams fix and custom target sizing.",
+        "Forge Neo shows the script in the img2img Script selector only when installed and enabled.",
+        "The source backend imports scripts/ultimate-upscale.py on demand and resolves upscaler names to indices.",
+    ),
+)
+
+DETAIL_DAEMON_PROFILE = ForgeNeoExtensionProfile(
+    name=DETAIL_DAEMON_EXTENSION,
+    display_name="Detail Daemon",
+    family="generation-hook",
+    support_level="priority-profile",
+    extension_dirname=DETAIL_DAEMON_EXTENSION,
+    adapter_scope="alwayson-args",
+    remote_url="https://github.com/muerrilla/sd-webui-detail-daemon",
+    repository_layout="standalone",
+    source_branch="main",
+    source_commit="19479998",
+    source_commit_date="2025-11-05 22:21:55 +0330",
+    required_files=(
+        "scripts/detail_daemon.py",
+    ),
+    runtime_files=("forge_neo/detail_daemon_compat.py",),
+    routes=(
+        "/detail-daemon/v1/schema",
+        "/detail-daemon/v1/defaults",
+    ),
+    source_callbacks=(
+        "scripts.AlwaysVisible",
+        "process",
+        "process_before_every_sampling",
+        "postprocess",
+    ),
+    notes=(
+        "Detail Daemon adjusts per-step sigma schedules to enhance or soften micro-detail across base and hires passes.",
+        "Forge Neo exposes a native Gradio 6 Detail Daemon panel only when installed and enabled.",
+        "The source backend imports scripts/detail_daemon.py on demand and initializes tab_param_count for headless execution.",
+    ),
+)
+
+NEGPIP_PROFILE = ForgeNeoExtensionProfile(
+    name=NEGPIP_EXTENSION,
+    display_name="NegPiP",
+    family="generation-hook",
+    support_level="priority-profile",
+    extension_dirname=NEGPIP_EXTENSION,
+    adapter_scope="alwayson-args",
+    remote_url="https://github.com/flyfront/sd-forge-negpip",
+    repository_layout="standalone",
+    source_branch="neo",
+    source_commit="0854968c",
+    source_commit_date="2026-10-25 19:58:55 +0900",
+    required_files=(
+        "scripts/negpip.py",
+        "lib_negpip/__init__.py",
+        "lib_negpip/anima.py",
+        "lib_negpip/sd.py",
+    ),
+    runtime_files=("forge_neo/negpip_compat.py",),
+    routes=(
+        "/negpip/v1/schema",
+        "/negpip/v1/defaults",
+    ),
+    source_callbacks=(
+        "scripts.AlwaysVisible",
+        "process",
+    ),
+    notes=(
+        "NegPiP enables negative prompt weights like (red:-1.2) across SD/SDXL, Anima, Krea 2, and MOSS-Image.",
+        "Forge Neo exposes a native Gradio 6 NegPiP opt-in panel only when installed and enabled.",
+        "The source backend imports scripts/negpip.py only when the request enables NegPiP.",
+    ),
+)
+
+VECTORSCOPE_CC_PROFILE = ForgeNeoExtensionProfile(
+    name=VECTORSCOPE_CC_EXTENSION,
+    display_name="Vectorscope CC",
+    family="generation-hook",
+    support_level="priority-profile",
+    extension_dirname=VECTORSCOPE_CC_EXTENSION,
+    adapter_scope="alwayson-args",
+    remote_url="https://github.com/Haoming02/sd-webui-vectorscope-cc",
+    repository_layout="standalone",
+    source_branch="main",
+    source_commit="ff384b6f",
+    source_commit_date="2025-12-30 15:28:05 +0800",
+    required_files=(
+        "scripts/cc.py",
+        "lib_cc/__init__.py",
+        "lib_cc/callback.py",
+        "lib_cc/const.py",
+    ),
+    runtime_files=("forge_neo/vectorscope_cc_compat.py",),
+    routes=(
+        "/vectorscope-cc/v1/schema",
+        "/vectorscope-cc/v1/defaults",
+    ),
+    source_callbacks=(
+        "scripts.AlwaysVisible",
+        "process",
+        "before_hr",
+        "postprocess",
+    ),
+    notes=(
+        "Vectorscope CC adjusts brightness, contrast, saturation, and RGB color balance during sampling.",
+        "Forge Neo exposes a native Gradio 6 Vectorscope CC panel only when installed and enabled.",
+        "The source backend imports scripts/cc.py only when the request enables Vectorscope CC.",
+    ),
+)
+
+VISAGE_PROFILE = ForgeNeoExtensionProfile(
+    name=VISAGE_EXTENSION,
+    display_name="Visage",
+    family="generation-hook",
+    support_level="priority-profile",
+    extension_dirname=VISAGE_EXTENSION,
+    adapter_scope="alwayson-args",
+    remote_url="https://github.com/eduardoabreu81/visage-forge-neo",
+    repository_layout="standalone",
+    source_branch="main",
+    source_commit="a75985ac",
+    source_commit_date="2026-11-19 17:24:16 -0300",
+    required_files=(
+        "scripts/visage.py",
+        "lib_visage/__init__.py",
+        "lib_visage/panel.py",
+        "lib_visage/pipeline.py",
+        "lib_visage/models.py",
+    ),
+    runtime_files=("forge_neo/visage_compat.py",),
+    routes=(
+        "/visage/v1/schema",
+        "/visage/v1/defaults",
+    ),
+    source_callbacks=(
+        "scripts.AlwaysVisible",
+        "before_process",
+        "postprocess_image",
+    ),
+    notes=(
+        "Visage provides native ONNX face swapping, occlusion masking, face restoration, and diffusion refinement.",
+        "Forge Neo exposes a native Gradio 6 Visage panel only when installed and enabled.",
+        "The source backend imports scripts/visage.py only when the request enables Visage.",
+    ),
+)
+
+LORA_BLOCK_WEIGHT_PROFILE = ForgeNeoExtensionProfile(
+    name=LORA_BLOCK_WEIGHT_EXTENSION,
+    display_name="LoRA Block Weight",
+    family="generation-hook",
+    support_level="priority-profile",
+    extension_dirname=LORA_BLOCK_WEIGHT_EXTENSION,
+    adapter_scope="alwayson-args",
+    remote_url="https://github.com/kiygskr/sd-webui-lora-block-weight-forgeneo-anima",
+    repository_layout="standalone",
+    source_branch="main",
+    source_commit="5067c53d",
+    source_commit_date="2026-05-11 02:55:29 +0900",
+    required_files=(
+        "scripts/lora_block_weight.py",
+    ),
+    runtime_files=("forge_neo/lora_block_weight_compat.py",),
+    routes=(
+        "/lora-block-weight/v1/schema",
+        "/lora-block-weight/v1/defaults",
+    ),
+    source_callbacks=(
+        "scripts.AlwaysVisible",
+        "process",
+        "before_process_batch",
+        "postprocess",
+    ),
+    notes=(
+        "LoRA Block Weight controls per-block LoRA strengths for SD, SDXL, Flux, and Anima (29 blocks).",
+        "Forge Neo exposes a native Gradio 6 LoRA Block Weight panel only when installed and enabled.",
+        "The source backend imports scripts/lora_block_weight.py on demand and enables the Forge Neo patch hook.",
     ),
 )
 
@@ -1102,6 +1398,13 @@ EXTENSION_PROFILES = (
     ADETAILER_PROFILE,
     REGIONAL_PROMPTER_PROFILE,
     FORGE_COUPLE_PROFILE,
+    SNAPREF_PROFILE,
+    ULTIMATE_SD_UPSCALE_PROFILE,
+    DETAIL_DAEMON_PROFILE,
+    NEGPIP_PROFILE,
+    VECTORSCOPE_CC_PROFILE,
+    VISAGE_PROFILE,
+    LORA_BLOCK_WEIGHT_PROFILE,
     INFINITE_BROWSING_PROFILE,
     *API_ROUTE_EXTENSION_PROFILE_OBJECTS,
     *UI_HELPER_EXTENSION_PROFILE_OBJECTS,
@@ -1186,7 +1489,15 @@ def _reference_sample_dir(name: str) -> Path | None:
 def _extension_dir(name: str) -> Path:
     profile = EXTENSION_PROFILE_BY_NAME.get(name)
     dirname = profile.extension_dirname if profile is not None and profile.extension_dirname else name
-    return USER_EXTENSIONS_DIR / dirname
+    primary = USER_EXTENSIONS_DIR / dirname
+    if primary.is_dir():
+        return primary
+    if name == SNAPREF_EXTENSION:
+        for alias in SNAPREF_EXTENSION_ALIASES:
+            candidate = USER_EXTENSIONS_DIR / alias
+            if candidate.is_dir():
+                return candidate
+    return primary
 
 
 def _extension_exists(name: str) -> bool:
@@ -1229,7 +1540,8 @@ def builtin_extension_available(name: str, required_files: tuple[str, ...] = ())
 
 
 def _extension_enabled(name: str) -> bool:
-    if not _extension_exists(name):
+    ext_dir = _extension_dir(name)
+    if not ext_dir.is_dir():
         return False
     try:
         from forge_neo.extensions import _extension_runtime_options
@@ -1240,7 +1552,7 @@ def _extension_enabled(name: str) -> bool:
     lower_disabled = {str(item).lower() for item in disabled}
     if str(disable_all).lower() in {"all", "extra"}:
         return False
-    return name.lower() not in lower_disabled
+    return name.lower() not in lower_disabled and ext_dir.name.lower() not in lower_disabled
 
 
 def active_prompt_extension_names() -> list[str]:
@@ -1671,6 +1983,34 @@ def regional_prompter_available() -> bool:
 
 def forge_couple_available() -> bool:
     return extension_profile_available(FORGE_COUPLE_EXTENSION)
+
+
+def snapref_available() -> bool:
+    return extension_profile_available(SNAPREF_EXTENSION)
+
+
+def ultimate_sd_upscale_available() -> bool:
+    return extension_profile_available(ULTIMATE_SD_UPSCALE_EXTENSION)
+
+
+def detail_daemon_available() -> bool:
+    return extension_profile_available(DETAIL_DAEMON_EXTENSION)
+
+
+def negpip_available() -> bool:
+    return extension_profile_available(NEGPIP_EXTENSION)
+
+
+def vectorscope_cc_available() -> bool:
+    return extension_profile_available(VECTORSCOPE_CC_EXTENSION)
+
+
+def visage_available() -> bool:
+    return extension_profile_available(VISAGE_EXTENSION)
+
+
+def lora_block_weight_available() -> bool:
+    return extension_profile_available(LORA_BLOCK_WEIGHT_EXTENSION)
 
 
 def infinite_browsing_available() -> bool:
@@ -2948,6 +3288,73 @@ def install_extension_adapter_routes(app: Any) -> None:
     @app.get("/forge-couple/v1/defaults")
     async def _forge_couple_defaults():
         return {"script": FORGE_COUPLE_SCRIPT_NAME, "args": forge_couple_default_args()}
+
+    @app.get("/snapref/v1/schema")
+    async def _snapref_schema():
+        return snapref_schema_payload()
+
+    @app.get("/snapref/v1/defaults")
+    async def _snapref_defaults():
+        return {"script": SNAPREF_SCRIPT_NAME, "args": snapref_default_args()}
+
+    @app.get("/snapref/v1/models")
+    async def _snapref_models():
+        ext_root = _extension_dir(SNAPREF_EXTENSION)
+        installed = sorted(snapref_model_files(extension_root=ext_root))
+        choices = snapref_adapter_choices(extension_root=ext_root)
+        return {
+            "models": choices,
+            "installed": installed,
+            "releases": list(SNAPREF_RELEASES),
+        }
+
+    @app.get("/ultimate-sd-upscale/v1/schema")
+    async def _ultimate_sd_upscale_schema():
+        return ultimate_sd_upscale_schema_payload()
+
+    @app.get("/ultimate-sd-upscale/v1/defaults")
+    async def _ultimate_sd_upscale_defaults():
+        return {"script": ULTIMATE_SD_UPSCALE_SCRIPT_NAME, "args": ultimate_sd_upscale_default_args()}
+
+    @app.get("/detail-daemon/v1/schema")
+    async def _detail_daemon_schema():
+        return detail_daemon_schema_payload()
+
+    @app.get("/detail-daemon/v1/defaults")
+    async def _detail_daemon_defaults():
+        return {"script": DETAIL_DAEMON_SCRIPT_NAME, "args": detail_daemon_default_args()}
+
+    @app.get("/negpip/v1/schema")
+    async def _negpip_schema():
+        return negpip_schema_payload()
+
+    @app.get("/negpip/v1/defaults")
+    async def _negpip_defaults():
+        return {"script": NEGPIP_SCRIPT_NAME, "args": negpip_default_args()}
+
+    @app.get("/vectorscope-cc/v1/schema")
+    async def _vectorscope_cc_schema():
+        return vectorscope_cc_schema_payload()
+
+    @app.get("/vectorscope-cc/v1/defaults")
+    async def _vectorscope_cc_defaults():
+        return {"script": VECTORSCOPE_CC_SCRIPT_NAME, "args": vectorscope_cc_default_args()}
+
+    @app.get("/visage/v1/schema")
+    async def _visage_schema():
+        return visage_schema_payload()
+
+    @app.get("/visage/v1/defaults")
+    async def _visage_defaults():
+        return {"script": VISAGE_SCRIPT_NAME, "args": visage_default_args()}
+
+    @app.get("/lora-block-weight/v1/schema")
+    async def _lora_block_weight_schema():
+        return lora_block_weight_schema_payload()
+
+    @app.get("/lora-block-weight/v1/defaults")
+    async def _lora_block_weight_defaults():
+        return {"script": LORA_BLOCK_WEIGHT_SCRIPT_NAME, "args": lora_block_weight_default_args()}
 
     @app.post("/tacapi/v1/refresh-temp-files")
     async def _tac_refresh_temp_files():

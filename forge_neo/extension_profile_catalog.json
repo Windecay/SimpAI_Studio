@@ -11,6 +11,13 @@
     "adetailer",
     "sd-neo-regional-prompter",
     "sd-forge-couple",
+    "SnapRef-Forge-Neo",
+    "ultimate-upscale-for-automatic1111",
+    "sd-webui-detail-daemon",
+    "sd-forge-negpip",
+    "sd-webui-vectorscope-cc",
+    "visage-forge-neo",
+    "sd-webui-lora-block-weight-forgeneo-anima",
     "infinite-browsing",
     "Auto-Photoshop-StableDiffusion-Plugin",
     "sd-webui-aspect-ratio-helper",
@@ -42,6 +49,13 @@
     "adetailer",
     "sd-neo-regional-prompter",
     "sd-forge-couple",
+    "SnapRef-Forge-Neo",
+    "ultimate-upscale-for-automatic1111",
+    "sd-webui-detail-daemon",
+    "sd-forge-negpip",
+    "sd-webui-vectorscope-cc",
+    "visage-forge-neo",
+    "sd-webui-lora-block-weight-forgeneo-anima",
     "infinite-browsing"
   ],
   "api_route_profiles": [
@@ -190,6 +204,111 @@
       "source_branch": "main",
       "source_commit": "",
       "source_commit_date": ""
+    },
+    {
+      "id": "SnapRef-Forge-Neo",
+      "display_name": "SnapRef",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "SnapRef-Forge-Neo",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/ArcAnima/SnapRef-Forge-Neo",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/SnapRef-Forge-Neo",
+      "source_branch": "main",
+      "source_commit": "b1b6db8f",
+      "source_commit_date": "2026-11-20 13:48:48 +0000"
+    },
+    {
+      "id": "ultimate-upscale-for-automatic1111",
+      "display_name": "Ultimate SD Upscale",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "ultimate-upscale-for-automatic1111",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/Coyote-A/ultimate-upscale-for-automatic1111",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/ultimate-upscale-for-automatic1111",
+      "source_branch": "master",
+      "source_commit": "2322caa4",
+      "source_commit_date": "2024-03-08 19:55:37 +0300"
+    },
+    {
+      "id": "sd-webui-detail-daemon",
+      "display_name": "Detail Daemon",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "sd-webui-detail-daemon",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/muerrilla/sd-webui-detail-daemon",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-webui-detail-daemon",
+      "source_branch": "main",
+      "source_commit": "19479998",
+      "source_commit_date": "2025-11-05 22:21:55 +0330"
+    },
+    {
+      "id": "sd-forge-negpip",
+      "display_name": "NegPiP",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "sd-forge-negpip",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/flyfront/sd-forge-negpip",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-forge-negpip",
+      "source_branch": "neo",
+      "source_commit": "0854968c",
+      "source_commit_date": "2026-10-25 19:58:55 +0900"
+    },
+    {
+      "id": "sd-webui-vectorscope-cc",
+      "display_name": "Vectorscope CC",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "sd-webui-vectorscope-cc",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/Haoming02/sd-webui-vectorscope-cc",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-webui-vectorscope-cc",
+      "source_branch": "main",
+      "source_commit": "ff384b6f",
+      "source_commit_date": "2025-12-30 15:28:05 +0800"
+    },
+    {
+      "id": "visage-forge-neo",
+      "display_name": "Visage",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "visage-forge-neo",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/eduardoabreu81/visage-forge-neo",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/visage-forge-neo",
+      "source_branch": "main",
+      "source_commit": "a75985ac",
+      "source_commit_date": "2026-11-19 17:24:16 -0300"
+    },
+    {
+      "id": "sd-webui-lora-block-weight-forgeneo-anima",
+      "display_name": "LoRA Block Weight",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "sd-webui-lora-block-weight-forgeneo-anima",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/kiygskr/sd-webui-lora-block-weight-forgeneo-anima",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-webui-lora-block-weight-forgeneo-anima",
+      "source_branch": "main",
+      "source_commit": "5067c53d",
+      "source_commit_date": "2026-05-11 02:55:29 +0900"
     },
     {
       "id": "infinite-browsing",
@@ -839,6 +958,292 @@
         "Forge Neo mirrors the source extension's four options in a native Forge Couple Settings page.",
         "The source backend imports forge_couple.py only when the request asks for Forge Couple.",
         "The source extension JavaScript and CSS are catalogued but not loaded into the native Forge Neo UI."
+      ]
+    },
+    {
+      "name": "SnapRef-Forge-Neo",
+      "display_name": "SnapRef",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "SnapRef-Forge-Neo",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/ArcAnima/SnapRef-Forge-Neo",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/SnapRef-Forge-Neo",
+      "source_branch": "main",
+      "source_commit": "b1b6db8f",
+      "source_commit_date": "2026-11-20 13:48:48 +0000",
+      "required_files": [
+        "scripts/snapref.py",
+        "snapref_forge/__init__.py",
+        "snapref_forge/core.py",
+        "snapref_forge/integration.py",
+        "style.css"
+      ],
+      "javascript_files": [],
+      "css_files": [
+        "style.css"
+      ],
+      "runtime_files": [
+        "forge_neo/snapref_compat.py"
+      ],
+      "routes": [
+        "/snapref/v1/schema",
+        "/snapref/v1/defaults",
+        "/snapref/v1/models"
+      ],
+      "source_routes": [],
+      "source_callbacks": [
+        "scripts.AlwaysVisible",
+        "process_before_every_sampling",
+        "post_sample",
+        "postprocess"
+      ],
+      "notes": [
+        "SnapRef is an always-visible Anima reference adapter script supporting up to 8 reference images.",
+        "Forge Neo provides a native Gradio 6 UI panel for adapter selection/download, 8 reference slots, mode/layout, fidelity, and advanced guidance controls.",
+        "The source backend imports scripts/snapref.py only when the request asks for SnapRef.",
+        "The source extension CSS is catalogued and replaced by native Forge Neo Gradio 6 styles."
+      ]
+    },
+    {
+      "name": "ultimate-upscale-for-automatic1111",
+      "display_name": "Ultimate SD Upscale",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "ultimate-upscale-for-automatic1111",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/Coyote-A/ultimate-upscale-for-automatic1111",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/ultimate-upscale-for-automatic1111",
+      "source_branch": "master",
+      "source_commit": "2322caa4",
+      "source_commit_date": "2024-03-08 19:55:37 +0300",
+      "required_files": [
+        "scripts/ultimate-upscale.py"
+      ],
+      "javascript_files": [],
+      "css_files": [],
+      "runtime_files": [
+        "forge_neo/ultimate_sd_upscale_compat.py"
+      ],
+      "routes": [
+        "/ultimate-sd-upscale/v1/schema",
+        "/ultimate-sd-upscale/v1/defaults"
+      ],
+      "source_routes": [],
+      "source_callbacks": [
+        "scripts.Script",
+        "run"
+      ],
+      "notes": [
+        "Ultimate SD Upscale is an img2img tiled upscaling script with seams fix and custom target sizing.",
+        "Forge Neo shows the script in the img2img Script selector only when installed and enabled.",
+        "The source backend imports scripts/ultimate-upscale.py on demand and resolves upscaler names to indices."
+      ]
+    },
+    {
+      "name": "sd-webui-detail-daemon",
+      "display_name": "Detail Daemon",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "sd-webui-detail-daemon",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/muerrilla/sd-webui-detail-daemon",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-webui-detail-daemon",
+      "source_branch": "main",
+      "source_commit": "19479998",
+      "source_commit_date": "2025-11-05 22:21:55 +0330",
+      "required_files": [
+        "scripts/detail_daemon.py"
+      ],
+      "javascript_files": [],
+      "css_files": [],
+      "runtime_files": [
+        "forge_neo/detail_daemon_compat.py"
+      ],
+      "routes": [
+        "/detail-daemon/v1/schema",
+        "/detail-daemon/v1/defaults"
+      ],
+      "source_routes": [],
+      "source_callbacks": [
+        "scripts.AlwaysVisible",
+        "process",
+        "process_before_every_sampling",
+        "postprocess"
+      ],
+      "notes": [
+        "Detail Daemon adjusts per-step sigma schedules to enhance or soften micro-detail across base and hires passes.",
+        "Forge Neo exposes a native Gradio 6 Detail Daemon panel only when installed and enabled.",
+        "The source backend imports scripts/detail_daemon.py on demand and initializes tab_param_count for headless execution."
+      ]
+    },
+    {
+      "name": "sd-forge-negpip",
+      "display_name": "NegPiP",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "sd-forge-negpip",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/flyfront/sd-forge-negpip",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-forge-negpip",
+      "source_branch": "neo",
+      "source_commit": "0854968c",
+      "source_commit_date": "2026-10-25 19:58:55 +0900",
+      "required_files": [
+        "scripts/negpip.py",
+        "lib_negpip/__init__.py",
+        "lib_negpip/anima.py",
+        "lib_negpip/sd.py"
+      ],
+      "javascript_files": [],
+      "css_files": [],
+      "runtime_files": [
+        "forge_neo/negpip_compat.py"
+      ],
+      "routes": [
+        "/negpip/v1/schema",
+        "/negpip/v1/defaults"
+      ],
+      "source_routes": [],
+      "source_callbacks": [
+        "scripts.AlwaysVisible",
+        "process"
+      ],
+      "notes": [
+        "NegPiP enables negative prompt weights like (red:-1.2) across SD/SDXL, Anima, Krea 2, and MOSS-Image.",
+        "Forge Neo exposes a native Gradio 6 NegPiP opt-in panel only when installed and enabled.",
+        "The source backend imports scripts/negpip.py only when the request enables NegPiP."
+      ]
+    },
+    {
+      "name": "sd-webui-vectorscope-cc",
+      "display_name": "Vectorscope CC",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "sd-webui-vectorscope-cc",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/Haoming02/sd-webui-vectorscope-cc",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-webui-vectorscope-cc",
+      "source_branch": "main",
+      "source_commit": "ff384b6f",
+      "source_commit_date": "2025-12-30 15:28:05 +0800",
+      "required_files": [
+        "scripts/cc.py",
+        "lib_cc/__init__.py",
+        "lib_cc/callback.py",
+        "lib_cc/const.py"
+      ],
+      "javascript_files": [],
+      "css_files": [],
+      "runtime_files": [
+        "forge_neo/vectorscope_cc_compat.py"
+      ],
+      "routes": [
+        "/vectorscope-cc/v1/schema",
+        "/vectorscope-cc/v1/defaults"
+      ],
+      "source_routes": [],
+      "source_callbacks": [
+        "scripts.AlwaysVisible",
+        "process",
+        "before_hr",
+        "postprocess"
+      ],
+      "notes": [
+        "Vectorscope CC adjusts brightness, contrast, saturation, and RGB color balance during sampling.",
+        "Forge Neo exposes a native Gradio 6 Vectorscope CC panel only when installed and enabled.",
+        "The source backend imports scripts/cc.py only when the request enables Vectorscope CC."
+      ]
+    },
+    {
+      "name": "visage-forge-neo",
+      "display_name": "Visage",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "visage-forge-neo",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/eduardoabreu81/visage-forge-neo",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/visage-forge-neo",
+      "source_branch": "main",
+      "source_commit": "a75985ac",
+      "source_commit_date": "2026-11-19 17:24:16 -0300",
+      "required_files": [
+        "scripts/visage.py",
+        "lib_visage/__init__.py",
+        "lib_visage/panel.py",
+        "lib_visage/pipeline.py",
+        "lib_visage/models.py"
+      ],
+      "javascript_files": [],
+      "css_files": [],
+      "runtime_files": [
+        "forge_neo/visage_compat.py"
+      ],
+      "routes": [
+        "/visage/v1/schema",
+        "/visage/v1/defaults"
+      ],
+      "source_routes": [],
+      "source_callbacks": [
+        "scripts.AlwaysVisible",
+        "before_process",
+        "postprocess_image"
+      ],
+      "notes": [
+        "Visage provides native ONNX face swapping, occlusion masking, face restoration, and diffusion refinement.",
+        "Forge Neo exposes a native Gradio 6 Visage panel only when installed and enabled.",
+        "The source backend imports scripts/visage.py only when the request enables Visage."
+      ]
+    },
+    {
+      "name": "sd-webui-lora-block-weight-forgeneo-anima",
+      "display_name": "LoRA Block Weight",
+      "family": "generation-hook",
+      "support_level": "priority-profile",
+      "extension_dirname": "sd-webui-lora-block-weight-forgeneo-anima",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/kiygskr/sd-webui-lora-block-weight-forgeneo-anima",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/sd-webui-lora-block-weight-forgeneo-anima",
+      "source_branch": "main",
+      "source_commit": "5067c53d",
+      "source_commit_date": "2026-05-11 02:55:29 +0900",
+      "required_files": [
+        "scripts/lora_block_weight.py"
+      ],
+      "javascript_files": [],
+      "css_files": [],
+      "runtime_files": [
+        "forge_neo/lora_block_weight_compat.py"
+      ],
+      "routes": [
+        "/lora-block-weight/v1/schema",
+        "/lora-block-weight/v1/defaults"
+      ],
+      "source_routes": [],
+      "source_callbacks": [
+        "scripts.AlwaysVisible",
+        "process",
+        "before_process_batch",
+        "postprocess"
+      ],
+      "notes": [
+        "LoRA Block Weight controls per-block LoRA strengths for SD, SDXL, Flux, and Anima (29 blocks).",
+        "Forge Neo exposes a native Gradio 6 LoRA Block Weight panel only when installed and enabled.",
+        "The source backend imports scripts/lora_block_weight.py on demand and enables the Forge Neo patch hook."
       ]
     },
     {

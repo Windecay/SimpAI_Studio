@@ -20,6 +20,13 @@ from forge_neo.bootstrap import ensure_shared_token
 from forge_neo.dynamic_prompts_compat import DYNAMIC_PROMPTS_SCRIPT_BASE_NAME, dynamic_prompts_arg_dict, dynamic_prompts_arg_list
 from forge_neo.forge_couple_compat import FORGE_COUPLE_SETTING_KEYS, forge_couple_arg_dict, forge_couple_arg_list
 from forge_neo.regional_prompter_compat import regional_prompter_arg_dict, regional_prompter_arg_list
+from forge_neo.snapref_compat import SNAPREF_IMAGE_KEYS, snapref_arg_dict, snapref_arg_list
+from forge_neo.ultimate_sd_upscale_compat import ultimate_sd_upscale_arg_list
+from forge_neo.detail_daemon_compat import detail_daemon_arg_dict, detail_daemon_arg_list
+from forge_neo.negpip_compat import negpip_arg_dict, negpip_source_args
+from forge_neo.vectorscope_cc_compat import vectorscope_cc_arg_dict, vectorscope_cc_arg_list
+from forge_neo.visage_compat import visage_arg_dict, visage_arg_list
+from forge_neo.lora_block_weight_compat import lora_block_weight_arg_dict, lora_block_weight_arg_list
 from forge_neo.settings import MOSS_SLG_SETTING_KEYS
 from forge_neo.tipo_compat import tipo_arg_list
 
@@ -1158,6 +1165,10 @@ def _source_image_stitch_references(request: object) -> list[str]:
 
 def _source_anima_reference_setting(request: object) -> bool | None:
     preset = str(getattr(request, "preset", "") or "").strip().casefold()
+    if bool(getattr(request, "snapref_enabled", False)) and not bool(getattr(request, "image_stitch_enabled", False)):
+        raw_overrides = getattr(request, "override_settings", None)
+        if not (isinstance(raw_overrides, dict) and "anima_do_reference" in raw_overrides):
+            return False
     if preset != "anima" and not preset.endswith("-anima"):
         return None
     if not bool(getattr(request, "image_stitch_enabled", False)):
@@ -1276,6 +1287,8 @@ def _source_named_script_args_tuple(value: dict[str, object], *, script: object,
             _clamped_float(value.get("scale_factor"), 2.0, minimum=1.0, maximum=8.0),
             _script_arg_bool(value, "save_to_extras", False, "override"),
         )
+    if name == "ultimate sd upscale":
+        return tuple(ultimate_sd_upscale_arg_list(value))
     return None
 
 
@@ -1385,6 +1398,109 @@ def _source_forge_couple_args(request: object) -> list[object]:
     return forge_couple_arg_list(normalized_args, enabled=True, is_img2img=is_img2img)
 
 
+def _encode_snapref_image(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        encoded = text.split(",", 1)[1] if text.startswith("data:") and "," in text else text
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+            with Image.open(io.BytesIO(raw)) as decoded:
+                decoded.verify()
+            return encoded
+        except Exception:
+            pass
+    image = _image_from_any_value(value)
+    if image is None:
+        return None
+    encoded = _encode_api_image(image)
+    return encoded or None
+
+
+def _source_snapref_args(request: object) -> list[object]:
+    if not bool(getattr(request, "snapref_enabled", False)):
+        return []
+    raw_args = getattr(request, "snapref_args", None)
+    normalized_args = snapref_arg_dict(raw_args, enabled=True)
+    for ref_key in SNAPREF_IMAGE_KEYS:
+        normalized_args[ref_key] = _encode_snapref_image(normalized_args.get(ref_key))
+    return snapref_arg_list(normalized_args, enabled=True)
+
+
+def _source_detail_daemon_args(request: object) -> list[object]:
+    if not bool(getattr(request, "detail_daemon_enabled", False)):
+        return []
+    raw_args = getattr(request, "detail_daemon_args", None)
+    normalized = detail_daemon_arg_dict(raw_args)
+    normalized["enabled"] = True
+    return detail_daemon_arg_list(normalized, slot_count=len(normalized["daemons"]))
+
+
+def _source_negpip_args(request: object) -> list[object]:
+    if not bool(getattr(request, "negpip_enabled", False)):
+        return []
+    raw_args = getattr(request, "negpip_args", None)
+    normalized = negpip_arg_dict(raw_args)
+    return negpip_source_args(normalized)
+
+
+def _source_vectorscope_cc_args(request: object) -> list[object]:
+    if not bool(getattr(request, "vectorscope_cc_enabled", False)):
+        return []
+    raw_args = getattr(request, "vectorscope_cc_args", None)
+    normalized = vectorscope_cc_arg_dict(raw_args)
+    normalized["enable"] = True
+    return vectorscope_cc_arg_list(normalized)
+
+
+def _encode_visage_file_item(item: object) -> str | None:
+    if item is None:
+        return None
+    if isinstance(item, dict):
+        candidate = item.get("path") or item.get("name") or item.get("image")
+        if candidate is not None:
+            return _encode_visage_file_item(candidate)
+        return None
+    if hasattr(item, "name") and isinstance(getattr(item, "name"), str):
+        item = getattr(item, "name")
+    if isinstance(item, (str, os.PathLike)):
+        text = str(item).strip()
+        if not text:
+            return None
+        if Path(text).is_file():
+            return text
+        return _encode_snapref_image(text)
+    return _encode_snapref_image(item)
+
+
+def _source_visage_args(request: object) -> list[object]:
+    if not bool(getattr(request, "visage_enabled", False)):
+        return []
+    raw_args = getattr(request, "visage_args", None)
+    normalized = visage_arg_dict(raw_args)
+    normalized["enabled"] = True
+    normalized["source_image"] = _encode_snapref_image(normalized.get("source_image"))
+    raw_files = normalized.get("source_files")
+    if isinstance(raw_files, (list, tuple)):
+        encoded_files = [item for item in (_encode_visage_file_item(entry) for entry in raw_files) if item]
+        normalized["source_files"] = encoded_files or None
+    else:
+        normalized["source_files"] = None
+    return visage_arg_list(normalized)
+
+
+def _source_lora_block_weight_args(request: object) -> list[object]:
+    if not bool(getattr(request, "lora_block_weight_enabled", False)):
+        return []
+    raw_args = getattr(request, "lora_block_weight_args", None)
+    normalized = lora_block_weight_arg_dict(raw_args)
+    normalized["useblocks"] = True
+    return lora_block_weight_arg_list(normalized)
+
+
 def _source_dynamic_prompts_args(request: object) -> list[object]:
     if not bool(getattr(request, "dynamic_prompts_enabled", False)):
         return []
@@ -1481,6 +1597,24 @@ def _source_integrated_alwayson_scripts(request: object) -> dict[str, Any]:
     forge_couple_args = _source_forge_couple_args(request)
     if forge_couple_args:
         scripts["Forge Couple"] = {"args": forge_couple_args}
+    snapref_args = _source_snapref_args(request)
+    if snapref_args:
+        scripts["SnapRef"] = {"args": snapref_args}
+    detail_daemon_args = _source_detail_daemon_args(request)
+    if detail_daemon_args:
+        scripts["Detail Daemon"] = {"args": detail_daemon_args}
+    negpip_args = _source_negpip_args(request)
+    if negpip_args:
+        scripts["NegPiP"] = {"args": negpip_args}
+    vectorscope_cc_args = _source_vectorscope_cc_args(request)
+    if vectorscope_cc_args:
+        scripts["Vectorscope CC"] = {"args": vectorscope_cc_args}
+    visage_args = _source_visage_args(request)
+    if visage_args:
+        scripts["Visage"] = {"args": visage_args}
+    lora_block_weight_args = _source_lora_block_weight_args(request)
+    if lora_block_weight_args:
+        scripts["LoRA Block Weight"] = {"args": lora_block_weight_args}
     dynamic_prompts_args = _source_dynamic_prompts_args(request)
     if dynamic_prompts_args:
         scripts[DYNAMIC_PROMPTS_SCRIPT_BASE_NAME] = {"args": dynamic_prompts_args}
