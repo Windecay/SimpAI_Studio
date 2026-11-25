@@ -2191,7 +2191,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         if not preset_category and str(task_method).lower().startswith("moss_image"):
             preset_category = "MOSS"
         if not preset_category and str(task_method).lower().removeprefix("scene_") in {
-            "anima_aio", "anima_rgba", "anima_reference", "anima_character_reference",
+            "anima_aio", "anima_rgba", "anima_reference", "anima_character_reference", "anima_style_reference",
         }:
             preset_category = "Anima"
 

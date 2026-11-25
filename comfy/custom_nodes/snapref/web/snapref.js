@@ -2,6 +2,8 @@
 // - Up to eight picture slots in two columns, each with upload, removal and its own Strength.
 // - The raw filename combos and the strength number widgets are hidden (they still hold and save the values).
 // - Mode and Fidelity are drawn as a segmented switch and a slider in the same panel; adapter stays a normal widget.
+// - Each mode has its own accent colour, card labels, Fidelity hint and prompt line. The Style button is dimmed for
+//   an adapter that GET /snapref/adapters reports without a style branch (a saved Style value is kept, with a warning).
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
@@ -19,6 +21,92 @@ async function uploadFile(file) {
   if (resp.status !== 200) throw new Error(`SnapRef: upload failed (${resp.status})`);
   const data = await resp.json();
   return data.subfolder ? `${data.subfolder}/${data.name}` : data.name;
+}
+
+// What a drop carries: a local image file, or an image dragged from ComfyUI itself (queue, assets panel,
+// another node's preview), which arrives as a same-origin URL rather than a file. Synchronous: the DataTransfer
+// is emptied once the event has been handled.
+function transferSource(dt) {
+  const file = Array.from(dt?.files || []).find((f) => f?.type?.startsWith("image/"));
+  if (file) return { file };
+  const uri = (dt?.getData?.("text/uri-list") || "").split(/\r?\n/).find((l) => l && !l.startsWith("#"));
+  if (!uri) return null;
+  let url;
+  try { url = new URL(uri, location.href); } catch { return null; }
+  return url.origin === location.origin ? { url } : null;
+}
+
+async function resolveImage(source) {
+  if (!source) return null;
+  if (source.file) return source.file;
+  try {
+    const resp = await fetch(source.url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    if (!blob.type.startsWith("image/")) return null;
+    const name = source.url.searchParams.get("filename") || source.url.pathname.split("/").pop() || "image.png";
+    return new File([blob], name, { type: blob.type });
+  } catch { return null; }
+}
+
+// Slot (0-based) for a picture pasted or dropped on the node outside the cards: the first empty shown slot,
+// else one more slot while there is room, else the first slot (the node's single upload target before).
+function pickSlot(filled, shown, max) {
+  const empty = filled.slice(0, shown).findIndex((f) => !f);
+  if (empty >= 0) return { slot: empty, shown };
+  if (shown < max) return { slot: shown, shown: shown + 1 };
+  return { slot: 0, shown };
+}
+
+// What the panel says in each mode (accent colour, card labels, empty cards, prompt line, Fidelity hint).
+// Takes the mode name or its key; anything else gets the Character & Style copy.
+function modeCopy(mode) {
+  const keep = "1 keeps every detail of the picture · lower follows your prompt more freely";
+  const all = [
+    { name: "Character & Style", key: "cs", accent: "#ff6b35", tag: "REFERENCE", empty1: "Character picture",
+      emptyN: "optional · same character", prompt: "Write only the scene", fidelity: keep },
+    { name: "Character", key: "char", accent: "#5b9cf5", tag: "REFERENCE", empty1: "Character picture",
+      emptyN: "optional · same character", prompt: "Write the scene · add artist tags for the style", fidelity: keep },
+    { name: "Style", key: "style", accent: "#a98bf5", tag: "STYLE", empty1: "Artwork in the style you want",
+      emptyN: "optional · same artist", prompt: "Write the character and the scene",
+      fidelity: "1 follows the picture's look closely · lower follows your prompt more freely" },
+  ];
+  const { name, ...copy } = all.find((c) => c.name === mode || c.key === mode) || all[0];
+  return copy;
+}
+
+// Can this adapter run Style? true / false from GET /snapref/adapters ({adapters: {file: {modes, style}}});
+// null when unknown (no answer, the file is not listed, or it could not be read): the button then stays usable
+// and the node itself reports a problem when it runs.
+function styleSupport(info, adapter) {
+  if (!info || typeof info !== "object") return null;
+  const table = info.adapters && typeof info.adapters === "object" ? info.adapters : info;
+  const entry = Object.prototype.hasOwnProperty.call(table, adapter) ? table[adapter] : null;
+  if (!entry || typeof entry !== "object" || entry.error || typeof entry.style !== "boolean") return null;
+  return entry.style;
+}
+
+// The warning under the prompt line: only for Style on an adapter known to have no Style mode.
+function modeNotice(mode, support) {
+  return (mode === "Style" || mode === "style") && support === false
+    ? "This adapter has no Style mode. Choose snapref_v2s_pre or another style adapter." : "";
+}
+
+// A click on a mode button: the dim Style button does nothing (a saved Style value is never changed here).
+function pickMode(current, clicked, support) {
+  return clicked === "Style" && support === false ? current : clicked;
+}
+
+function modeButton(mode, current, support) {
+  const dis = mode === "Style" && support === false;
+  return { on: mode === current, dis, title: dis ? "Style needs an adapter with a style branch (e.g. snapref_v2s_pre)" : "" };
+}
+
+async function fetchAdapterInfo() {
+  try {
+    const resp = await api.fetchApi("/snapref/adapters");
+    return resp.ok ? await resp.json() : null;
+  } catch { return null; }
 }
 
 function viewUrl(name) {
@@ -52,12 +140,16 @@ function css() {
     background: var(--sr-card); color: var(--sr-text); font: 24px/1 system-ui; cursor: pointer; }
   .sr-add[hidden], .sr-card[hidden] { display: none; }
   .sr-add:disabled { opacity: .35; cursor: default; }
-  .sr-seg { display: grid; flex: 1; min-width: 0; grid-template-columns: 1fr 1fr; background: var(--sr-card); border: 1px solid var(--sr-line);
-    border-radius: 9px; padding: 3px; gap: 3px; }
+  .sr-seg { display: grid; flex: 1; min-width: 0; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); background: var(--sr-card);
+    border: 1px solid var(--sr-line); border-radius: 9px; padding: 3px; gap: 3px; }
   .sr-seg button { border: 0; border-radius: 7px; padding: 7px 6px; background: transparent; color: var(--sr-dim);
-    font: inherit; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
+    font: inherit; font-weight: 600; cursor: pointer; transition: background .15s, color .15s;
+    min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sr-seg button:hover { color: var(--sr-text); }
-  .sr-seg button.on { background: #2a2d35; color: var(--sr-text); box-shadow: inset 0 0 0 1px #3a3e48; }
+  .sr-seg button.on { background: #2a2d35; color: var(--sr-text); box-shadow: inset 0 0 0 1px #3a3e48, inset 0 -2px 0 var(--sr-accent); }
+  .sr-seg button.dis { opacity: .4; cursor: not-allowed; }
+  .sr-seg button.dis:hover { color: var(--sr-dim); }
+  .sr-seg button.on.dis { opacity: .6; }
   .sr-cards { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(180px, 1fr); gap: 10px; flex: 1 1 auto; min-height: 0; }
   .sr-card { min-height: 0; }
   .sr-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
@@ -74,6 +166,8 @@ function css() {
   .sr-empty b { display: block; color: #c9ccd3; font-weight: 600; margin-bottom: 2px; }
   .sr-label { position: absolute; left: 7px; bottom: 7px; padding: 3px 8px; border-radius: 6px; font-size: 10px;
     font-weight: 700; letter-spacing: .06em; background: rgba(12,13,16,.68); backdrop-filter: blur(6px); color: #fff; }
+  .sr-label::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%;
+    background: var(--sr-accent); vertical-align: 1px; }
   .sr-x { position: absolute; right: 7px; top: 7px; width: 24px; height: 24px; border-radius: 7px; border: 0;
     background: rgba(12,13,16,.68); backdrop-filter: blur(6px); color: #e9eaee; font-size: 14px; line-height: 24px;
     cursor: pointer; opacity: 1; transition: background .15s; }
@@ -90,6 +184,10 @@ function css() {
   .sr-card.off .sr-slider { opacity: .35; pointer-events: none; }
   .sr-foot { border-top: 1px solid var(--sr-line); padding-top: 10px; margin-top: auto; }
   .sr-hint { color: var(--sr-dim); font-size: 11px; font-weight: 500; margin-top: 4px; }
+  .sr-prompt { color: #c9ccd3; font-size: 11px; font-weight: 500; margin-top: 8px; }
+  .sr-prompt b { color: var(--sr-accent); font-weight: 700; margin-right: 6px; }
+  .sr-warn { color: #ffb454; font-size: 11px; font-weight: 600; margin-top: 4px; }
+  .sr-warn[hidden] { display: none; }
   `;
   document.head.appendChild(s);
 }
@@ -109,7 +207,7 @@ function slider(label, min, max, step, get, set) {
   return { el, sync: () => { r.value = get(); paint(); } };
 }
 
-function picture(node, slot, w, remove) {
+function picture(node, slot, w, remove, copy) {
   let uploadVersion = 0;
   const card = document.createElement("div");
   card.className = "sr-card";
@@ -117,7 +215,6 @@ function picture(node, slot, w, remove) {
   pic.className = "sr-pic";
   const label = document.createElement("div");
   label.className = "sr-label";
-  label.textContent = slot === 1 ? "REFERENCE" : `REFERENCE ${slot}`;
   const x = document.createElement("button");
   x.className = "sr-x";
   x.title = slot === 1 ? "replace" : "remove";
@@ -131,9 +228,12 @@ function picture(node, slot, w, remove) {
   file.accept = "image/png,image/jpeg,image/webp";
   file.style.display = "none";
   const strength = slider("Strength", 0, 2, 0.05, () => w.strength?.value ?? 1, (v) => { w.strength.value = v; node.setDirtyCanvas(true, true); });
+  strength.el.title = "Linear: 1 = as trained, 0 = off, 2 = twice. (SnapRef (Advanced) strength is log scale: 0 = as trained.)";
 
   const render = () => {
     const url = viewUrl(w.name?.value);
+    const c = copy();
+    label.textContent = slot === 1 ? c.tag : `${c.tag} ${slot}`;
     pic.querySelectorAll("img,.sr-empty").forEach((e) => e.remove());
     if (url) {
       const img = document.createElement("img");
@@ -143,9 +243,12 @@ function picture(node, slot, w, remove) {
     } else {
       const e = document.createElement("div");
       e.className = "sr-empty";
-      e.innerHTML = slot === 1
-        ? `<span class="sr-plus">+</span><b>Character picture</b>click or drop`
-        : `<span class="sr-plus">+</span><b>Reference ${slot}</b>optional · same character`;
+      const plus = document.createElement("span");
+      plus.className = "sr-plus";
+      plus.textContent = "+";
+      const head = document.createElement("b");
+      head.textContent = slot === 1 ? c.empty1 : `${c.tag === "STYLE" ? "Artwork" : "Reference"} ${slot}`;
+      e.append(plus, head, slot === 1 ? "click or drop" : c.emptyN);
       pic.prepend(e);
     }
     pic.classList.toggle("has", !!url);
@@ -172,7 +275,10 @@ function picture(node, slot, w, remove) {
   file.addEventListener("change", () => { setFile(file.files?.[0]); file.value = ""; });
   pic.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); pic.classList.add("drag"); });
   pic.addEventListener("dragleave", () => pic.classList.remove("drag"));
-  pic.addEventListener("drop", (e) => { e.preventDefault(); e.stopPropagation(); pic.classList.remove("drag"); setFile(e.dataTransfer?.files?.[0]); });
+  pic.addEventListener("drop", async (e) => {
+    e.preventDefault(); e.stopPropagation(); pic.classList.remove("drag");
+    setFile(await resolveImage(transferSource(e.dataTransfer)));
+  });
   x.addEventListener("click", (e) => {
     e.stopPropagation();
     if (slot === 1) { file.click(); return; }
@@ -180,7 +286,7 @@ function picture(node, slot, w, remove) {
   });
   pic.append(label, x, file);
   card.append(pic, strength.el);
-  return { el: card, render, invalidateUpload: () => { uploadVersion++; } };
+  return { el: card, render, setFile, invalidateUpload: () => { uploadVersion++; } };
 }
 
 app.registerExtension({
@@ -202,11 +308,20 @@ app.registerExtension({
       const seg = document.createElement("div");
       seg.className = "sr-seg";
       const modeW = W("mode");
+      const adapterW = W("adapter");
+      let adapterInfo = null;   // GET /snapref/adapters; null = unknown
+      const support = () => styleSupport(adapterInfo, adapterW?.value);
       const modes = modeW?.options?.values || ["Character & Style", "Character"];
       const segButtons = modes.map((m) => {
         const b = document.createElement("button");
         b.textContent = m;
-        b.addEventListener("click", (e) => { e.stopPropagation(); modeW.value = m; modeW.callback?.(m); syncAll(); node.setDirtyCanvas(true, true); });
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const next = pickMode(modeW.value, m, support());
+          if (next !== modeW.value) { modeW.value = next; modeW.callback?.(next); }
+          syncPanel();
+          node.setDirtyCanvas(true, true);
+        });
         b.addEventListener("pointerdown", (e) => e.stopPropagation());
         seg.appendChild(b);
         return b;
@@ -233,7 +348,7 @@ app.registerExtension({
         syncAll();
         node.setDirtyCanvas(true, true);
       };
-      const pictures = refWidgets.map((w, i) => picture(node, i + 1, w, remove));
+      const pictures = refWidgets.map((w, i) => picture(node, i + 1, w, remove, () => modeCopy(modeW?.value)));
       node.snaprefCancelUploads = () => pictures.forEach(p => p.invalidateUpload());
       cards.append(...pictures.map(p => p.el));
       const add = document.createElement("button");
@@ -258,8 +373,17 @@ app.registerExtension({
       const fid = slider("Fidelity", 0, 1, 0.05, () => fidW?.value ?? 1, (v) => { fidW.value = v; node.setDirtyCanvas(true, true); });
       const hint = document.createElement("div");
       hint.className = "sr-hint";
-      hint.textContent = "1 keeps every detail of the picture · lower follows your prompt more freely";
-      foot.append(fid.el, hint);
+      const promptLine = document.createElement("div");
+      promptLine.className = "sr-prompt";
+      const promptTag = document.createElement("b");
+      promptTag.textContent = "Prompt";
+      const promptText = document.createElement("span");
+      promptLine.append(promptTag, promptText);
+      const warn = document.createElement("div");
+      warn.className = "sr-warn";
+      warn.setAttribute("role", "status");
+      warn.hidden = true;
+      foot.append(fid.el, hint, promptLine, warn);
 
       panel.append(modebar, cards, foot);
       let rows = 1;
@@ -288,14 +412,70 @@ app.registerExtension({
         }
         fid.sync();
       };
-      node.snaprefSync = syncAll;
+      // mode colour and copy, the Style button and the warning (the cards read the copy when they render)
+      const syncMode = () => {
+        const mode = modeW?.value;
+        const copy = modeCopy(mode);
+        const s = support();
+        panel.style.setProperty("--sr-accent", copy.accent);
+        panel.dataset.mode = copy.key;
+        segButtons.forEach((b) => {
+          const state = modeButton(b.textContent, mode, s);
+          b.classList.toggle("dis", state.dis);
+          b.setAttribute("aria-disabled", String(state.dis));
+          b.setAttribute("aria-pressed", String(state.on));
+          b.title = state.title;
+        });
+        hint.textContent = copy.fidelity;
+        promptText.textContent = copy.prompt;
+        warn.textContent = modeNotice(mode, s);
+        warn.hidden = !warn.textContent;
+      };
+      const syncPanel = (resize = true) => { syncAll(resize); syncMode(); };
+      node.snaprefSync = syncPanel;
+      let infoVersion = 0;
+      const refreshAdapterInfo = async () => {
+        const version = ++infoVersion;
+        const info = await fetchAdapterInfo();
+        if (version !== infoVersion) return;   // a newer request answers for the current adapter
+        adapterInfo = info;
+        syncMode();
+      };
+      if (adapterW) {
+        const cb = adapterW.callback;
+        adapterW.callback = function () { const v = cb?.apply(this, arguments); syncMode(); refreshAdapterInfo(); return v; };
+      }
+      // The frontend sends pasted pictures and pictures dropped on the node (outside the cards) to the upload
+      // widget of `reference`, so they always replaced the first picture. Send them to a free slot instead.
+      const toFreeSlot = async (file) => {
+        if (!file) return false;
+        const shown = Number(node.properties.snapref_slots) || 2;
+        const pick = pickSlot(refWidgets.map((w) => !!viewUrl(w.name?.value)), shown, MAX_REFERENCES);
+        if (pick.shown !== shown) { node.properties.snapref_slots = pick.shown; syncAll(); }
+        await pictures[pick.slot].setFile(file);
+        return true;
+      };
+      const pasteFiles = node.pasteFiles;
+      node.pasteFiles = function (files) {
+        const file = Array.from(files || []).find((f) => f?.type?.startsWith("image/"));
+        if (!file) return pasteFiles?.apply(this, arguments) ?? false;
+        toFreeSlot(file);
+        return true;
+      };
+      const onDragDrop = node.onDragDrop;
+      node.onDragDrop = function (e) {
+        const source = transferSource(e?.dataTransfer);
+        if (!source) return onDragDrop?.apply(this, arguments) ?? false;
+        return resolveImage(source).then(toFreeSlot);
+      };
       for (const name of HIDDEN) {
         const w = W(name);
         if (!w) continue;
         const cb = w.callback;
-        w.callback = function () { const v = cb?.apply(this, arguments); setTimeout(syncAll, 0); return v; };
+        w.callback = function () { const v = cb?.apply(this, arguments); setTimeout(syncPanel, 0); return v; };
       }
-      setTimeout(syncAll, 0);
+      setTimeout(syncPanel, 0);
+      refreshAdapterInfo();
       const want = node.computeSize();
       node.setSize([Math.max(want[0], 440), Math.max(want[1], 560)]);
       return r;

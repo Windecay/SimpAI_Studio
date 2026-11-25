@@ -26,6 +26,17 @@ side in one ~ref_megapixels reference instead (what Image Stitch does).
 
 Node: SnapRef (MODEL, CLIP, VAE, reference IMAGE, adapter) -> MODEL for KSampler.
 Weight files keep the internal tensor format anima_ref_kv/1 (key prefix anima_ref_kv.*).
+
+Mode-gated branches (SnapRef v2s and later, train/style_branch.py): an adapter may carry extra LoRAs,
+anima_ref_kv.branch.<branch>.<module>.down / up / alpha, described in the metadata as branches.<branch> =
+{stream, modes, rank, alpha, targets, combine: "add"}. A branch runs only in the modes it lists, added right after
+its stream's LoRA on the same module (or on its own where that stream has no LoRA). A reference-stream branch runs
+while the reference is encoded; a target-stream branch only in target calls (or batch rows) that read that
+reference. With no branch active every hook computes exactly what it did before, so cs / char are unchanged.
+
+Mode style (an adapter with a style branch, e.g. snapref_v2s_pre): the reference is a picture in the wanted art
+style and only that style is taken; write the character and the scene in the prompt. One mode per node: a
+character reference and a style reference together were never trained.
 """
 from __future__ import annotations
 
@@ -35,6 +46,7 @@ import json
 import logging
 import math
 import os
+import sys
 import uuid
 import weakref
 from contextlib import contextmanager
@@ -53,8 +65,27 @@ import folder_paths
 WRAPPER_KEY = "snapref"
 
 NO_REF_KEY = "snapref_off"   # transformer_options flag: run this call without the reference
-_STATE = {"adapter": None, "stream": None}   # LoRA hooks apply only while an adapter is active
+# LoRA hooks apply only while an adapter is active. branches: the branch LoRAs of the current mode; reads_ref: this
+# target call reads the reference; ref_rows: only these batch rows read it (target branches are masked to them)
+_IDLE = {"adapter": None, "stream": None, "branches": (), "reads_ref": False, "ref_rows": None}
+_STATE = dict(_IDLE)
+BRANCH_PREFIX = "anima_ref_kv.branch."
+BRANCH_MODES = ("style",)   # modes that exist only through a branch; cs / char work with every adapter
 _adapters: dict[str, "_Adapter"] = {}
+
+
+@contextmanager
+def _reference_context(dm):
+    # Spectrum Mod Guidance steers the target batch, never the clean reference.
+    attrs = ((getattr(dm, "t_embedding_norm", None), "_anima_mod_delta"), (dm, "_anima_mod_block_state"))
+    saved = [(obj, name, getattr(obj, name)) for obj, name in attrs if hasattr(obj, name)]
+    try:
+        for obj, name, _ in saved:
+            setattr(obj, name, None)
+        yield
+    finally:
+        for obj, name, value in saved:
+            setattr(obj, name, value)
 
 
 def _drop_reference_caches() -> None:
@@ -98,11 +129,16 @@ def _adapter_block_map(indices, model) -> tuple[int, ...]:
                      "Only native layouts and the 28-to-40-block Anima-2.9B expansion are supported.")
 
 
+# Anima.preprocess_text_embeds(text_embeds, text_ids, t5xxl_weights): ComfyUI 0.14.0 (76a7fa9);
+# Attention.compute_qkv(x, context, rope_emb, transformer_options): ComfyUI 0.29.0 (0f42ba5)
+MIN_COMFYUI = "0.29.0"
+
+
 def _accepts(fn, positional: int = 0, keyword: str | None = None) -> bool:
     try:
         params = list(inspect.signature(fn).parameters.values())
     except (TypeError, ValueError):
-        return True
+        return True   # cannot tell: let it run
     if keyword is not None and not any(p.name == keyword or p.kind is p.VAR_KEYWORD for p in params):
         return False
     return any(p.kind is p.VAR_POSITIONAL for p in params) or \
@@ -110,6 +146,9 @@ def _accepts(fn, positional: int = 0, keyword: str | None = None) -> bool:
 
 
 def _require_comfyui(dm) -> None:
+    """Fail at the node, with a clear message, on a ComfyUI older than MIN_COMFYUI. Before 0.14.0 KSampler fails
+    with "preprocess_text_embeds() takes 3 positional arguments but 4 were given", before 0.29.0 with
+    "compute_qkv() got an unexpected keyword argument 'transformer_options'"."""
     missing = []
     fn = getattr(dm, "preprocess_text_embeds", None)
     if callable(fn) and not _accepts(fn, positional=3):
@@ -120,9 +159,14 @@ def _require_comfyui(dm) -> None:
         fn = None
     if callable(fn) and not _accepts(fn, keyword="transformer_options"):
         missing.append("Attention.compute_qkv(..., transformer_options)")
-    if missing:
-        raise RuntimeError("SnapRef needs ComfyUI 0.29.0 or newer; missing "
-                           f"{' and '.join(missing)}. Update ComfyUI and restart it.")
+    if not missing:
+        return
+    try:
+        from comfyui_version import __version__ as found
+    except ImportError:
+        found = "unknown"
+    raise RuntimeError(f"SnapRef needs ComfyUI {MIN_COMFYUI} or newer (this ComfyUI: {found}; missing "
+                       f"{' and '.join(missing)}). Update ComfyUI and restart it.")
 
 
 class _Adapter:
@@ -145,9 +189,70 @@ class _Adapter:
             down, up = (self._dequant(tensors, root + n) for n in ("lora_down", "lora_up"))
             alpha = float(tensors[root + "alpha"])
             self.lora.setdefault(name, {})[stream] = [down, up, alpha / down.shape[0]]
-        self.block_indices = {int(n.split(".")[1]) for n in self.lora if n.startswith("blocks.")}
+        self.branches = self._read_branches(path, tensors)
+        modules = set(self.lora).union(*(b["modules"] for b in self.branches.values()))
+        self.block_indices = {int(n.split(".")[1]) for n in modules if n.startswith("blocks.")}
         self.hooked = weakref.WeakSet()   # diffusion models carrying our hooks (id() is reused after unload)
-        self.cache: dict = {}
+        self.cache: dict = {}   # reference K/V, most recently used last, at most two (a SPEED run uses two target sizes)
+        self._cast: dict = {}   # (hooked module, stream or branch, device, dtype) -> (down, up), current sampling run only
+
+    def cast(self, key, w, x):
+        """down / up of one LoRA in x's device and dtype. The stored bf16 CPU matrices stay untouched, so a later
+        run in another dtype does not start from an fp16-rounded copy."""
+        key = (*key, x.device, x.dtype)
+        hit = self._cast.get(key)
+        if hit is None:
+            hit = self._cast[key] = (w[0].to(x.device, x.dtype), w[1].to(x.device, x.dtype))
+        return hit
+
+    def release(self) -> None:
+        """End of a sampling run: drop the device copies of the LoRA weights and park the reference K/V on the CPU,
+        so no VRAM outside ComfyUI's model management stays held during VAE decode or in workflows without SnapRef."""
+        self._cast.clear()
+        for key in self.cache:
+            self.cache[key] = _move_kv(self.cache[key], torch.device("cpu"))
+
+    def _read_branches(self, path, tensors) -> dict:
+        """anima_ref_kv.branch.<branch>.<module>.down / up / alpha -> {branch: {"stream", "modes", "modules":
+        {module: [down, up, alpha / rank]}}}, in metadata order (train/style_branch.branch_tensors / load_adapter)."""
+        specs = self.meta.get("branches") or {}
+        found: dict[str, dict[str, list]] = {}
+        for key in tensors:
+            if not (key.startswith(BRANCH_PREFIX) and key.endswith(".down")):
+                continue
+            root = key[: -len("down")]
+            branch, name = root[len(BRANCH_PREFIX):-1].split(".", 1)
+            if branch not in specs:
+                raise ValueError(f"{path}: branch {branch} has weights but no metadata (branches.{branch})")
+            down, up = (self._dequant(tensors, root + n) for n in ("down", "up"))
+            alpha = float(tensors[root + "alpha"])
+            found.setdefault(branch, {})[name] = [down, up, alpha / down.shape[0]]
+        out: dict[str, dict] = {}
+        for branch, spec in specs.items():
+            stream, combine = spec.get("stream"), spec.get("combine", "add")
+            if stream not in ("ref", "tgt") or combine != "add":
+                raise ValueError(f"{path}: branch {branch} (stream {stream}, combine {combine}) is not supported "
+                                 "by this node (stream ref or tgt, combine add)")
+            if branch in found:
+                out[branch] = {"stream": stream, "modes": list(spec.get("modes") or []), "modules": found[branch]}
+        return out
+
+    def branches_for(self, mode: str) -> tuple[str, ...]:
+        """The branches that run in this mode, in metadata order (style_branch.branches_for); () for cs / char."""
+        return tuple(name for name, b in self.branches.items() if mode in b["modes"])
+
+    def check_mode(self, mode: str, label: str) -> None:
+        """cs / char: never an error (as before). style: the adapter must list the mode, carry its mode_embed row
+        and a branch for it; otherwise a clear error at the node instead of a silent cs-like render."""
+        if mode not in BRANCH_MODES:
+            return
+        if mode not in self.modes:
+            raise ValueError(f"SnapRef: {label} has no '{mode}' mode (its modes: {', '.join(self.modes)}). "
+                             "Style mode needs an adapter with a style branch, e.g. snapref_v2s_pre; "
+                             "use mode cs or char with this adapter.")
+        if self.mode_embed is None or self.mode_embed.shape[0] <= self.modes.index(mode) or not self.branches_for(mode):
+            raise ValueError(f"SnapRef: {label} lists the '{mode}' mode but has no mode_embed row or branch weights "
+                             "for it (anima_ref_kv.branch.*). Style mode needs an adapter such as snapref_v2s_pre.")
 
     @staticmethod
     def _dequant(tensors, key):
@@ -165,22 +270,44 @@ class _Adapter:
             return
         # Resolve everything first; a failed install must not be remembered as successful.
         targets = []
-        for name, streams in self.lora.items():
+        names = list(self.lora) + sorted({n for b in self.branches.values() for n in b["modules"]} - set(self.lora))
+        for name in names:
+            streams = self.lora.get(name, {})
+            # branch LoRAs on this module, metadata order: {branch: [down, up, scale, stream]}
+            branches = {b: e["modules"][name] + [e["stream"]] for b, e in self.branches.items() if name in e["modules"]}
             if name.startswith("blocks."):
                 _, index, suffix = name.split(".", 2)
                 name = f"blocks.{block_map[int(index)]}.{suffix}"
             module = dm.get_submodule(name)
-            targets.append((module, streams))
-        for module, streams in targets:
+            targets.append((module, streams, branches))
+        for index, (module, streams, branches) in enumerate(targets):
 
-            def hook(mod, args, out, _streams=streams, _me=self):
-                if _STATE["adapter"] is not _me or _STATE["stream"] not in _streams:
+            def hook(mod, args, out, _streams=streams, _branches=branches, _me=self, _index=index):
+                if _STATE["adapter"] is not _me:
                     return out
-                w = _streams[_STATE["stream"]]
+                stream = _STATE["stream"]
                 x = args[0]
-                if w[0].device != x.device or w[0].dtype != x.dtype:
-                    w[0], w[1] = w[0].to(x.device, x.dtype), w[1].to(x.device, x.dtype)
-                return out + F.linear(F.linear(x, w[0]), w[1]) * w[2]
+                w = _streams.get(stream)
+                if w is not None:
+                    down, up = _me.cast((_index, stream), w, x)
+                    out = out + F.linear(F.linear(x, down), up) * w[2]
+                if not _branches or not _STATE["branches"]:
+                    return out
+                # style_branch._forward: each active branch of this stream right after the stream LoRA; a target
+                # branch only in calls that read the reference (and only in the rows that read it)
+                for name in _STATE["branches"]:
+                    b = _branches.get(name)
+                    if b is None or b[3] != stream or (stream != "ref" and not _STATE["reads_ref"]):
+                        continue
+                    down, up = _me.cast((_index, "branch", name), b, x)   # a branch may share a stream's name
+                    delta = F.linear(F.linear(x, down), up) * b[2]
+                    rows = _STATE["ref_rows"]
+                    if rows is not None and stream != "ref":
+                        mask = torch.zeros(delta.shape[0], device=delta.device, dtype=delta.dtype)
+                        mask[list(rows)] = 1
+                        delta = delta * mask.view(-1, *([1] * (delta.ndim - 1)))
+                    out = out + delta
+                return out
             module.register_forward_hook(hook)
         for index, block in enumerate(dm.blocks):
             attn = block.self_attn
@@ -199,6 +326,9 @@ class _Adapter:
                 elif state.get("rows") is not None:   # mixed batch: reference only for the rows in state["rows"]
                     out = _rows_attention(q, k, v, state["cache"][_i], state["sizes"], state["biases"], state["rows"],
                                           state.get("row_biases"))
+                    if out is not None:
+                        return _attn.output_dropout(_attn.output_proj(out))
+                    out = _weighted_attention(q, k, v, state["cache"][_i], state["sizes"], state["biases"])   # no fused kernel
                     return _attn.output_dropout(_attn.output_proj(out))
                 elif any(b != 0.0 for b in state.get("biases", ())):
                     out = _weighted_attention(q, k, v, state["cache"][_i], state["sizes"], state["biases"])
@@ -291,7 +421,13 @@ def _rows_attention(q, k_t, v_t, kv_ref, sizes, biases, rows, row_biases=None):
 
 
 def _masked_attention(q, k_t, v_t, kv_ref, sizes, biases, rows=None, row_biases=None):
-    """Masked SDPA; keep non-CUDA masks finite to avoid MPS NaNs."""
+    """Reference implementation (and fallback) of _weighted_attention: SDPA with an additive key mask.
+
+    rows: only these batch rows read the reference; row_biases: extra log bias per row in rows.
+    Off CUDA the mask holds no -inf: MPS returns NaN (a black image) for -inf in an additive mask, although no
+    query row is ever fully masked here. So off CUDA the keys are not padded, and rows that do not read the
+    reference run as a separate plain call over the target keys. On CUDA nothing changes: keys are padded to a
+    multiple of 16 (aligned mask rows for the memory-efficient kernel) and masked with -inf."""
     B, S, H, D = q.shape
     if rows is not None and not q.is_cuda:
         rows = list(rows)
@@ -357,7 +493,7 @@ def _encode_reference(adapter: _Adapter, dm, ref, context, target_hw, mode: str)
         t_emb = t_emb + adapter.mode_embed[adapter.modes.index(mode)].to(t_emb)[None, None, :]
     record = [None] * len(dm.blocks)
     _set_attn_state(dm, {"record": record})
-    _STATE.update(adapter=adapter, stream="ref")
+    _STATE.update(_IDLE, adapter=adapter, stream="ref", branches=adapter.branches_for(mode))   # () for cs / char
     try:
         # as MiniTrainDIT.forward: fp32 residual stream under fp16 compute (fp16 overflows -> NaN K/V -> black image)
         x = x_emb.float() if x_emb.dtype == torch.float16 else x_emb
@@ -366,15 +502,26 @@ def _encode_reference(adapter: _Adapter, dm, ref, context, target_hw, mode: str)
                       extra_per_block_pos_emb=None, transformer_options={})
     finally:
         _set_attn_state(dm, None)
-        _STATE.update(adapter=None, stream=None)
+        _STATE.update(_IDLE)
     return record
 
 
 def _concat_kv(records: list[list]) -> list:
     if len(records) == 1:
         return records[0]
-    return [(torch.cat([r[i][0] for r in records], dim=1), torch.cat([r[i][1] for r in records], dim=1))
-            for i in range(len(records[0]))]
+    out = []
+    for i in range(len(records[0])):
+        out.append((torch.cat([r[i][0] for r in records], dim=1), torch.cat([r[i][1] for r in records], dim=1)))
+        for r in records:   # free each block's parts once joined: peak is one block over the K/V, not twice the K/V
+            r[i] = None
+    return out
+
+
+def _move_kv(entry, device):
+    kv, sizes = entry
+    if kv[0][0].device == device:
+        return entry
+    return [(k.to(device), v.to(device)) for k, v in kv], sizes
 
 
 def _model_token(dm) -> str:
@@ -397,34 +544,28 @@ def _ref_digest(ref_latents: list, ref_cond, mode: str) -> str:
     return h.hexdigest()
 
 
-@contextmanager
-def _reference_context(dm):
-    # Target modulation must not alter the clean reference stream.
-    attrs = ((getattr(dm, "t_embedding_norm", None), "_anima_mod_delta"), (dm, "_anima_mod_block_state"))
-    saved = [(obj, name, getattr(obj, name)) for obj, name in attrs if hasattr(obj, name)]
-    try:
-        for obj, name, _ in saved:
-            setattr(obj, name, None)
-        yield
-    finally:
-        for obj, name, value in saved:
-            setattr(obj, name, value)
-
-
 def _make_wrapper(adapter: _Adapter, ref_latents: list, ref_cond, mode: str, in_uncond: bool, bias: float = 0.0,
                   weights: list | None = None, uncond_bias: float | None = None):
     """uncond_bias (Fidelity < 1): the negative branch also reads the reference with this extra log
-    bias; fused attention on CUDA fp16/bf16, masked SDPA elsewhere."""
+    bias, in one call for the whole batch (fused kernels on CUDA fp16/bf16, the masked SDPA elsewhere)."""
     weights = list(weights or [1.0] * len(ref_latents))
     digest = _ref_digest(ref_latents, ref_cond, mode)
+    branches = adapter.branches_for(mode)   # () for cs / char: no branch ever runs
     biases = [bias + math.log(w) for w in weights]   # weight-0 references were dropped before encoding
     def wrapper(executor, x, timesteps, context, fps=None, padding_mask=None, **kwargs):
         dm = executor.class_obj
         adapter.install(dm)
         options = kwargs.get("transformer_options", {})
         key = (digest, _model_token(dm), tuple(x.shape[-2:]), x.dtype, x.device)
-        if key not in adapter.cache:
-            adapter.cache.clear()   # ~0.9 GB of K/V per 1 MP reference (bf16); keep one set
+        store = adapter.cache   # ~0.9 GB of K/V per 1 MP reference (bf16); only the set in use stays on the GPU
+        for other in [k for k in store if k != key]:
+            if other[1] != key[1]:   # a replaced model: its K/V are never read again
+                del store[other]
+            else:
+                store[other] = _move_kv(store[other], torch.device("cpu"))
+        if key in store:
+            store[key] = _move_kv(store.pop(key), x.device)
+        else:
             cross, meta = ref_cond
             ids, weights = meta.get("t5xxl_ids"), meta.get("t5xxl_weights")
             ctx = dm.preprocess_text_embeds(cross.to(x.device, x.dtype),
@@ -433,8 +574,11 @@ def _make_wrapper(adapter: _Adapter, ref_latents: list, ref_cond, mode: str, in_
             with _reference_context(dm):
                 records = [_encode_reference(adapter, dm, lat.to(x.device, x.dtype), ctx, tuple(x.shape[-2:]), mode)
                            for lat in ref_latents]
-            adapter.cache[key] = (_concat_kv(records), [r[0][0].shape[1] for r in records])
-        cache, sizes = adapter.cache[key]
+            sizes = [r[0][0].shape[1] for r in records]
+            store[key] = (_concat_kv(records), sizes)
+            while len(store) > 2:
+                del store[next(iter(store))]
+        cache, sizes = store[key]
         flags = options.get("cond_or_uncond") or [0]
         if options.get(NO_REF_KEY):   # the extra reference-free call of ref_guidance
             use = [False] * len(flags)
@@ -442,40 +586,44 @@ def _make_wrapper(adapter: _Adapter, ref_latents: list, ref_cond, mode: str, in_
             use = [f == 0 or in_uncond for f in flags]   # 0 = positive, 1 = negative
 
         def run(xs, ts, cs, with_ref, kw, pm=padding_mask):
-            # the "tgt" LoRA is on in every target forward, with or without the reference (as in training)
+            # the "tgt" LoRA is on in every target forward, with or without the reference (as in training); the
+            # mode's target branches only in a call that reads the reference
             _set_attn_state(dm, {"cache": cache, "sizes": sizes, "biases": biases} if with_ref else None)
-            _STATE.update(adapter=adapter, stream="tgt")
+            _STATE.update(_IDLE, adapter=adapter, stream="tgt", branches=branches if with_ref else (), reads_ref=with_ref)
             try:
                 return executor(xs, ts, cs, fps, pm, **kw)
             finally:
                 _set_attn_state(dm, None)
-                _STATE.update(adapter=None, stream=None)
+                _STATE.update(_IDLE)
         n = x.shape[0] // len(flags)
         if uncond_bias is not None and not options.get(NO_REF_KEY) and any(f == 1 for f in flags):
-            # Fidelity: every row reads the reference, the uncond rows weaker (one call)
+            # Fidelity: every row reads the reference, the uncond rows weaker (one call). On every device: without
+            # the fused kernels (MPS, CPU, fp32) _rows_attention falls back to the masked SDPA with the row biases.
             rows = list(range(x.shape[0]))
             row_biases = [uncond_bias if flags[r // n] == 1 else 0.0 for r in rows]
             _set_attn_state(dm, {"cache": cache, "sizes": sizes, "biases": biases, "rows": rows, "row_biases": row_biases})
-            _STATE.update(adapter=adapter, stream="tgt")
+            _STATE.update(_IDLE, adapter=adapter, stream="tgt", branches=branches, reads_ref=True)   # every row reads it
             try:
                 return executor(x, timesteps, context, fps, padding_mask, **kwargs)
             finally:
                 _set_attn_state(dm, None)
-                _STATE.update(adapter=None, stream=None)
+                _STATE.update(_IDLE)
         if all(use) or not any(use):
             return run(x, timesteps, context, use[0], kwargs)
         if getattr(getattr(dm, "t_embedding_norm", None), "_anima_mod_delta", None) is not None \
                 or getattr(dm, "_anima_mod_block_state", None) is not None:
-            # Mod Guidance owns the full CFG batch; restrict reference reads by row.
+            # Mod Guidance's ambient hooks own this full CFG batch; mask reference rows instead of splitting it.
             rows = [r for r in range(x.shape[0]) if use[r // n]]
             _set_attn_state(dm, {"cache": cache, "sizes": sizes, "biases": biases, "rows": rows})
-            _STATE.update(adapter=adapter, stream="tgt")
+            _STATE.update(_IDLE, adapter=adapter, stream="tgt", branches=branches, reads_ref=True, ref_rows=rows)
             try:
                 return executor(x, timesteps, context, fps, padding_mask, **kwargs)
             finally:
                 _set_attn_state(dm, None)
-                _STATE.update(adapter=None, stream=None)
-        # Anima pads text to 512 tokens, so mixed CFG batches also need matching extra conditions.
+                _STATE.update(_IDLE)
+        # mixed cond/uncond batch (ComfyUI batches cond and uncond when their text lengths match, and Anima pads
+        # every prompt to 512 tokens): run the two parts separately, each with its own share of the per-batch
+        # extras (extra conds such as ppm NegPip's mask, cond_or_uncond / uuids / sigmas)
         outs = []
         for i, u in enumerate(use):
             sl = slice(i * n, (i + 1) * n)
@@ -490,6 +638,9 @@ def _chunk_tensor(value, sl, batch):
 
 
 def _chunk_kwargs(kwargs: dict, sl: slice, batch: int, chunk: int, chunks: int) -> dict:
+    """The diffusion-model kwargs of one cond/uncond chunk of a split call. Extra conds arrive with the full
+    batch (e.g. ppm NegPip's c_ppm_negpip_mask, [B, 512, 1]); passing them unsliced makes the inner wrappers
+    see two rows for a one-row call (KSampler error with older ppm, NegPip silently skipped with newer)."""
     out = {}
     for key, value in kwargs.items():
         if key == "transformer_options" and isinstance(value, dict):
@@ -509,17 +660,21 @@ def _chunk_kwargs(kwargs: dict, sl: slice, batch: int, chunk: int, chunks: int) 
 
 
 def _make_outer(adapter: _Adapter):
-    """Kept for workflows that carry it; the reference cache now lives across runs (content-keyed, one entry),
-    so a second image with the same reference skips the reference encoding."""
+    """The reference cache lives across runs (content-keyed), so a second image with the same reference skips the
+    reference encoding; between runs it waits on the CPU (_Adapter.release)."""
     def wrapper(executor, *args, **kwargs):
-        return executor(*args, **kwargs)
+        try:
+            return executor(*args, **kwargs)
+        finally:
+            adapter.release()
     return wrapper
 
 
-_FP64_ARITH: dict[str, bool] = {}
+_FP64_ARITH: dict[str, bool] = {}   # device.type -> can this backend compute in float64
 
 
 def _fp64_env_override():
+    """SNAPREF_FP64=0 forces the float32 correction, =1 forces float64, unset probes the backend."""
     raw = os.environ.get("SNAPREF_FP64", "").strip().lower()
     if raw in ("0", "false", "off", "no"):
         return False
@@ -529,6 +684,15 @@ def _fp64_env_override():
 
 
 def _fp64_arith_ok(device) -> bool:
+    """True only if the backend can actually compute in float64, not merely hold a float64 dtype.
+
+    Intel XPU's PyTorch build accepts the cast and shape ops but has no float64 arithmetic:
+    `f64 * 2.0 + 1.0` raises "Required aspect fp64 is not supported on the device" and
+    `f64.sum()` raises "Kernel is incompatible with all devices in devs". A dtype cast alone
+    is therefore not evidence of support, and the probe has to run both an elementwise op and
+    a reduction. Backends are probed once each, on an 8-element tensor, and the answer is cached
+    by device type; a backend that does support float64 keeps it.
+    """
     override = _fp64_env_override()
     if override is not None:
         return override
@@ -547,6 +711,13 @@ def _fp64_arith_ok(device) -> bool:
 
 
 def _correction_dtype(t):
+    """float64 where the backend can run it, float32 everywhere else.
+
+    Downstream of _fp64_arith_ok: the correction only leaves float64 when a real arithmetic
+    probe on that device has failed, so a backend we have never seen keeps float64 unless it
+    cannot run it. float32 is safe here because APG only projects the update onto the
+    per-sample direction of the conditional x0 prediction, with no cross-sample accumulation.
+    """
     return torch.float64 if _fp64_arith_ok(t.device) else torch.float32
 
 
@@ -643,16 +814,21 @@ class SnapRef:
             "vae": ("VAE",),
             "image": ("IMAGE", {"tooltip": "the reference (first image of the batch)"}),
             "adapter": (_adapter_files(),),
-            "mode": (["cs", "char"], {"tooltip": "cs = character and style from the reference; "
-                                                 "char = character only (put artist tags in the prompt)"}),
+            "mode": (["cs", "char", "style"], {"tooltip": "cs = character and style from the reference; "
+                                                          "char = character only (put artist tags in the prompt); "
+                                                          "style = only the art style of the picture (write the "
+                                                          "character and the scene in the prompt; needs an adapter "
+                                                          "with a style branch, e.g. snapref_v2s_pre)"}),
             "ref_in_uncond": ("BOOLEAN", {"default": False, "tooltip": "off (trained default): only the positive "
                                           "branch reads the reference, so CFG pushes toward it. on: weaker, closer to the prompt"}),
             "ref_megapixels": ("FLOAT", {"default": 1.0, "min": 0.25, "max": 2.0, "step": 0.05,
                                          "tooltip": "the reference is shrunk (never enlarged) to this area, aspect kept; trained at <= 1.0"}),
         }, "optional": {
-            "strength": ("FLOAT", {"default": 0.0, "min": -3.0, "max": 3.0, "step": 0.1,
-                                   "tooltip": "attention to the reference, log scale. 0 = as trained; +1 = about 2.7x more, "
-                                              "-1 = about 2.7x less. Non-zero values make sampling about 1.3x slower"}),
+            "strength": ("FLOAT", {"default": 0.0, "min": -3.0, "max": 3.0, "step": 0.1, "display_name": "strength (log)",
+                                   "tooltip": "attention to every reference, LOG scale: 0 = as trained; +0.7 = about 2x, "
+                                              "+1 = about 2.7x, -0.7 = about 0.5x. Not the scale of Strength on the simple "
+                                              "SnapRef node, which is linear (1 = as trained): simple 2 = +0.7 here, "
+                                              "simple 0.5 = -0.7"}),
             "ref_caption": ("STRING", {"multiline": True, "default": "",
                                        "tooltip": "optional appearance tags of the reference (gender, solo, hair, eyes, outfit); "
                                                   "no name or artist. Empty works."}),
@@ -675,8 +851,9 @@ class SnapRef:
                              "encoded on its own (sharper, slower with more references); stitch = side by side in one "
                              "ref_megapixels image (as Image Stitch, same speed as one reference)"}),
             "weight_1": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
-                                   "tooltip": "how much image (the first reference) counts; 1 = as trained. Only with "
-                                              "several references in multi_layout separate. No speed cost"}),
+                                   "tooltip": "how much image (the first reference) counts, LINEAR: 1 = as trained, "
+                                              "2 = twice, 0 = ignored (the scale of Strength on the simple SnapRef node). "
+                                              "Multiplies with strength (log). Ignored with multi_layout stitch"}),
             "weight_2": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
                                    "tooltip": "how much image_2 counts (e.g. 0.4: mostly the first image, a little of this "
                                               "one); 0 = ignored"}),
@@ -697,6 +874,7 @@ class SnapRef:
         if path not in _adapters:
             _adapters[path] = _Adapter(path)
         ad = _adapters[path]
+        ad.check_mode(mode, adapter)   # style needs a style branch: say so before any encoding
         dm = model.get_model_object("diffusion_model")
         _adapter_block_map(ad.block_indices, dm)
         _require_comfyui(dm)
@@ -721,27 +899,81 @@ class SnapRef:
         if ref_guidance_on:
             m.set_model_sampler_post_cfg_function(_make_ref_guidance(ref_guidance, correction, ref_end))
         logging.info(f"[SnapRef] {adapter} step {ad.meta.get('step')}, "
-                     f"reference {', '.join(f'{a}x{b} w{w:g}' for (a, b), w in zip(sizes, weights))}, mode {mode}, "
+                     f"reference {', '.join(f'{a}x{b} w{w:g}' for (a, b), w in zip(sizes, weights))}, mode {mode}"
+                     f"{' (branches ' + ', '.join(ad.branches_for(mode)) + ')' if ad.branches_for(mode) else ''}, "
                      f"strength {strength}, fidelity {fidelity}, ref_guidance {ref_guidance if ref_guidance_on else 'off'}")
         return (m,)
 
 
 try:   # package import inside ComfyUI; plain file import in tests
     from . import simple as _simple   # noqa: E402
+    from . import adapter_info as _adapter_info   # noqa: E402
 except ImportError:
     import importlib.util as _ilu
     import os as _os
-    _spec = _ilu.spec_from_file_location("snapref_simple", _os.path.join(_os.path.dirname(__file__), "simple.py"))
-    _simple = _ilu.module_from_spec(_spec)
-    _spec.loader.exec_module(_simple)
+
+    def _load_sibling(name):
+        spec = _ilu.spec_from_file_location(f"snapref_{name}", _os.path.join(_os.path.dirname(__file__), f"{name}.py"))
+        module = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    _simple, _adapter_info = _load_sibling("simple"), _load_sibling("adapter_info")
 
 import types as _types   # noqa: E402
 
 # the simple node reaches the core through a namespace (works both as a package module and as a loose file)
 SnapRefSimple = _simple.make_simple_node(_types.SimpleNamespace(
-    _adapters=_adapters, _Adapter=_Adapter, _encode_image=_encode_image, _make_wrapper=_make_wrapper,
+    _adapters=_adapters, _Adapter=_Adapter, _encode_image=_encode_image, _make_wrapper=_make_wrapper, _make_outer=_make_outer,
     _adapter_block_map=_adapter_block_map, _require_comfyui=_require_comfyui, WRAPPER_KEY=WRAPPER_KEY))
-WEB_DIRECTORY = "./web"
-# "SnapRef" keeps its class name so saved workflows still load; it is shown as SnapRef (Advanced)
-NODE_CLASS_MAPPINGS = {"SnapRefSimple": SnapRefSimple, "SnapRef": SnapRef}
-NODE_DISPLAY_NAME_MAPPINGS = {"SnapRefSimple": "SnapRef", "SnapRef": "SnapRef (Advanced)"}
+
+
+def _register_routes() -> None:
+    """GET /snapref/adapters: {"adapters": {file: {"modes", "style"} or {"error"}}} for the simple node's Style
+    button. Read-only (safetensors header metadata of the SnapRef files in models/loras); skipped outside ComfyUI."""
+    try:
+        from server import PromptServer
+        from aiohttp import web
+    except ImportError:
+        return
+    instance = getattr(PromptServer, "instance", None)
+    if instance is None:
+        return
+
+    @instance.routes.get("/snapref/adapters")
+    async def snapref_adapters(request):
+        return web.json_response({"adapters": _adapter_info.describe(
+            _simple.snapref_files(), lambda name: folder_paths.get_full_path("loras", name))})
+
+
+def _loaded_elsewhere() -> str | None:
+    """Folder of another SnapRef node package already loaded in this process (e.g. custom_nodes/snapref copied
+    from comfyui_nodes/ next to a clone of the whole repository), or None."""
+    here = os.path.dirname(os.path.realpath(__file__))
+    for mod in list(sys.modules.values()):
+        try:   # plain __dict__ read: never triggers a lazily loaded module
+            attrs = object.__getattribute__(mod, "__dict__")
+        except (AttributeError, TypeError):
+            continue
+        mapping = attrs.get("NODE_CLASS_MAPPINGS")
+        if attrs.get("WRAPPER_KEY") != WRAPPER_KEY or not isinstance(mapping, dict) \
+                or not ("SnapRef" in mapping or "SnapRefSimple" in mapping) or not attrs.get("__file__"):
+            continue
+        there = os.path.dirname(os.path.realpath(attrs["__file__"]))
+        if there != here:
+            return there
+    return None
+
+
+_ELSEWHERE = _loaded_elsewhere()
+if _ELSEWHERE is not None:
+    # register nothing (no second set of node classes, no second copy of the web extension)
+    logging.warning(f"[SnapRef] already loaded from {_ELSEWHERE}; skipping the copy in "
+                    f"{os.path.dirname(os.path.realpath(__file__))}. Keep only one SnapRef in custom_nodes.")
+    WEB_DIRECTORY = None
+    NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS = {}, {}
+else:
+    WEB_DIRECTORY = "./web"
+    _register_routes()   # once per process: a second copy registering the same route would stop the server
+    # "SnapRef" keeps its class name so saved workflows still load; it is shown as SnapRef (Advanced)
+    NODE_CLASS_MAPPINGS = {"SnapRefSimple": SnapRefSimple, "SnapRef": SnapRef}
+    NODE_DISPLAY_NAME_MAPPINGS = {"SnapRefSimple": "SnapRef", "SnapRef": "SnapRef (Advanced)"}

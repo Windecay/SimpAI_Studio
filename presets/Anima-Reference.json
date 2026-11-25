@@ -9,15 +9,17 @@
     "available_aspect_ratios_selection": "SDXL",
     "scene_frontend": {
       "version": "m1.1",
-      "theme": ["Anima Reference", "Anima Character Reference"],
+      "theme": ["Anima Reference", "Anima Character Reference", "Anima Style Reference"],
       "theme_labels": {
         "Anima Reference": {"en": "Character & Style Reference", "zh": "角色与画风参考"},
-        "Anima Character Reference": {"en": "Character Reference", "zh": "角色参考"}
+        "Anima Character Reference": {"en": "Character Reference", "zh": "角色参考"},
+        "Anima Style Reference": {"en": "Style Reference", "zh": "画风参考"}
       },
       "theme_title": "Anima Reference Modes",
       "task_method": {
         "Anima Reference": "anima_reference",
-        "Anima Character Reference": "anima_character_reference"
+        "Anima Character Reference": "anima_character_reference",
+        "Anima Style Reference": "anima_style_reference"
       },
       "prompt_skill_docs": {
         "default": {
@@ -28,7 +30,7 @@
       "director_capability": {
         "image_policy": "required",
         "min_images": 1,
-        "max_images": 2,
+        "max_images": 3,
         "image_modes": ["reference_set"],
         "video_policy": "forbidden",
         "audio_policy": "forbidden",
@@ -39,7 +41,6 @@
       "disvisible": [
         "scene_additional_prompt",
         "scene_additional_prompt_2",
-        "scene_input_image2",
         "scene_input_image3",
         "scene_input_image4",
         "scene_input_image5",
@@ -56,7 +57,6 @@
         "scene_refiner_model",
         "scene_var_number",
         "scene_var_number2",
-        "scene_var_number7",
         "scene_var_number8",
         "scene_var_number9",
         "scene_var_number10",
@@ -75,19 +75,23 @@
       ],
       "prompt": {
         "Anima Reference": "",
-        "Anima Character Reference": ""
+        "Anima Character Reference": "",
+        "Anima Style Reference": ""
       },
       "agent_prompt": {
-        "Anima Reference": "Follow the Anima Reference prompt contract. Reuse Anima text-to-image's shared local Rust tag lookup: select relevant returned prompt_tag values from injected candidates, or call simpai.prompts.tags when using Agent tools. Except for fixed Anima quality/score/rating controls, never invent tags from memory, translate prose into pseudo-tags, or use unrelated artist/series matches. When using the default Anima style, do not repeat its quality, score or rating tags in the prompt. Express unmatched concepts as short English nltags and validate with the existing Anima checks. Describe only the desired scene, count, action, pose, expression, framing and light. The references provide appearance and style; do not recaption hair, eyes, clothes or artist unless explicitly changing them. Both slots show the same character; two distinct people need one joint reference. Preserve explicit requirements such as sleeping and closed eyes without adding conflicting expressions. Do not preserve an unwanted reference pose, add image-number tags or a SnapRef LoRA tag. Return only the final English prompt; settings remain in parameter fields.",
-        "Anima Character Reference": "Follow the Anima Reference prompt contract. Reuse Anima text-to-image's shared local Rust tag lookup: select relevant returned prompt_tag values from injected candidates, or call simpai.prompts.tags when using Agent tools. Except for fixed Anima quality/score/rating controls, never invent tags from memory, translate prose into pseudo-tags, or use unrelated artist/series matches. When using the default Anima style, do not repeat its quality, score or rating tags in the prompt. Express unmatched concepts as short English nltags and validate with the existing Anima checks. Describe the desired scene, count, action, pose, expression, framing, light and requested style. The references provide appearance; do not recaption hair, eyes or clothes unless explicitly changing them. Both slots show the same character; two distinct people need one joint reference. Preserve explicit requirements such as sleeping and closed eyes without adding conflicting expressions. Do not preserve an unwanted reference pose, add image-number tags or a SnapRef LoRA tag. Return only the final English prompt; settings remain in parameter fields."
+        "Anima Reference": "Follow the Anima Reference prompt contract. Reuse Anima text-to-image's shared local Rust tag lookup: select relevant returned prompt_tag values from injected candidates, or call simpai.prompts.tags when using Agent tools. Except for fixed Anima quality/score/rating controls, never invent tags from memory, translate prose into pseudo-tags, or use unrelated artist/series matches. When using the default Anima style, do not repeat its quality, score or rating tags in the prompt. Express unmatched concepts as short English nltags and validate with the existing Anima checks. Describe only the desired scene, count, action, pose, expression, framing and light. The references provide appearance and style; do not recaption hair, eyes, clothes or artist unless explicitly changing them. Up to three slots show the same character; two distinct people need one joint reference. Preserve explicit requirements such as sleeping and closed eyes without adding conflicting expressions. Do not preserve an unwanted reference pose, add image-number tags or a SnapRef LoRA tag. Return only the final English prompt; settings remain in parameter fields.",
+        "Anima Character Reference": "Follow the Anima Reference prompt contract. Reuse Anima text-to-image's shared local Rust tag lookup: select relevant returned prompt_tag values from injected candidates, or call simpai.prompts.tags when using Agent tools. Except for fixed Anima quality/score/rating controls, never invent tags from memory, translate prose into pseudo-tags, or use unrelated artist/series matches. When using the default Anima style, do not repeat its quality, score or rating tags in the prompt. Express unmatched concepts as short English nltags and validate with the existing Anima checks. Describe the desired scene, count, action, pose, expression, framing, light and requested style. The references provide appearance; do not recaption hair, eyes or clothes unless explicitly changing them. Up to three slots show the same character; two distinct people need one joint reference. Preserve explicit requirements such as sleeping and closed eyes without adding conflicting expressions. Do not preserve an unwanted reference pose, add image-number tags or a SnapRef LoRA tag. Return only the final English prompt; settings remain in parameter fields.",
+        "Anima Style Reference": "Follow the Anima Reference prompt contract for Style Reference mode. Reuse Anima text-to-image's shared local Rust tag lookup: select relevant returned prompt_tag values from injected candidates, or call simpai.prompts.tags when using Agent tools. Except for fixed Anima quality/score/rating controls, never invent tags from memory, translate prose into pseudo-tags, or use unrelated artist/series matches. When using the default Anima style, do not repeat its quality, score or rating tags in the prompt. Express unmatched concepts as short English nltags and validate with the existing Anima checks. The references provide only the art style (up to three artworks in the same style); their character stays out. Describe BOTH the desired character (count, gender, hair, eyes, clothes, colors) AND the scene, action, pose, expression, framing and light. Do not recaption the reference's own character or add unrelated artist tags. Preserve explicit requirements such as sleeping and closed eyes without adding conflicting expressions. Do not add image-number tags or a SnapRef LoRA tag. Return only the final English prompt; settings remain in parameter fields."
       },
       "image_preprocessor_method": {
-        "Anima Reference": [["-normalization"], ["-normalization"]],
-        "Anima Character Reference": [["-normalization"], ["-normalization"]]
+        "Anima Reference": [["-normalization"], ["-normalization"], ["-normalization"]],
+        "Anima Character Reference": [["-normalization"], ["-normalization"], ["-normalization"]],
+        "Anima Style Reference": [["-normalization"], ["-normalization"], ["-normalization"]]
       },
       "steps": {
         "Anima Reference": 28,
-        "Anima Character Reference": 28
+        "Anima Character Reference": 28,
+        "Anima Style Reference": 28
       },
       "steps_min": 1,
       "steps_max": 60,
@@ -97,7 +101,8 @@
       "var_number3_step": 0.05,
       "var_number3": {
         "Anima Reference": 1.0,
-        "Anima Character Reference": 1.0
+        "Anima Character Reference": 1.0,
+        "Anima Style Reference": 1.0
       },
       "var_number4_title": "Reference Image 2 Weight",
       "var_number4_min": 0.0,
@@ -105,23 +110,35 @@
       "var_number4_step": 0.05,
       "var_number4": {
         "Anima Reference": 1.0,
-        "Anima Character Reference": 1.0
+        "Anima Character Reference": 1.0,
+        "Anima Style Reference": 1.0
       },
-      "var_number5_title": "Fidelity",
+      "var_number5_title": "Reference Image 3 Weight",
       "var_number5_min": 0.0,
-      "var_number5_max": 1.0,
+      "var_number5_max": 2.0,
       "var_number5_step": 0.05,
       "var_number5": {
         "Anima Reference": 1.0,
-        "Anima Character Reference": 1.0
+        "Anima Character Reference": 1.0,
+        "Anima Style Reference": 1.0
       },
-      "var_number6_title": "Reference Megapixels",
-      "var_number6_min": 0.25,
+      "var_number6_title": "Fidelity",
+      "var_number6_min": 0.0,
       "var_number6_max": 1.0,
       "var_number6_step": 0.05,
       "var_number6": {
         "Anima Reference": 1.0,
-        "Anima Character Reference": 1.0
+        "Anima Character Reference": 1.0,
+        "Anima Style Reference": 1.0
+      },
+      "var_number7_title": "Reference Resolution",
+      "var_number7_min": 512,
+      "var_number7_max": 1024,
+      "var_number7_step": 64,
+      "var_number7": {
+        "Anima Reference": 1024,
+        "Anima Character Reference": 1024,
+        "Anima Style Reference": 1024
       },
       "aspect_ratio": ["832*1216", "1024*1024", "1216*832"],
       "resolution_control": {
@@ -169,6 +186,6 @@
     "diffusion_models,anima-base-v1.0.safetensors,4182218328,0,https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/split_files/diffusion_models/anima-base-v1.0.safetensors,https://huggingface.co/circlestone-labs/Anima/resolve/main/split_files/diffusion_models/anima-base-v1.0.safetensors",
     "text_encoders,qwen_3_06b_base.safetensors,1192135096,0,https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/split_files/text_encoders/qwen_3_06b_base.safetensors,https://huggingface.co/circlestone-labs/Anima/resolve/main/split_files/text_encoders/qwen_3_06b_base.safetensors",
     "vae,qwen_image_vae.safetensors,253806246,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/vae/qwen_image_vae.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors",
-    "loras,snapref_v2a.safetensors,381821960,8a22fc28d060447544eda283b36efe2dcdbad7422cbc0b8d42828d55a8a61ab4,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/snapref_v2a.safetensors,https://huggingface.co/0ppxnhximxr/snapref-v2a/resolve/main/snapref_v2a.safetensors"
+    "loras,snapref_v2s_pre1.safetensors,543395968,95f91797827cbf5efd86e29fac5b2646df1505d46acb20f913877b3c9a429609,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/snapref_v2s_pre1.safetensors,https://huggingface.co/0ppxnhximxr/snapref-v2s/resolve/main/snapref_v2s_pre1.safetensors"
   ]
 }

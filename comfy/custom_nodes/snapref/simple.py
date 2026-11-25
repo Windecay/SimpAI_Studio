@@ -1,4 +1,4 @@
-"""SnapRef (simple node): up to eight pictures of a character, Mode, Strength, Fidelity.
+"""SnapRef (simple node): up to eight pictures of a character (Style mode: of an art style), Mode, Strength, Fidelity.
 Everything else at the trained defaults; the full set of inputs is on SnapRef (Advanced) in __init__.py."""
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import comfy.patcher_extension
 import folder_paths
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".avif")
-MODES = {"Character & Style": "cs", "Character": "char"}
+MODES = {"Character & Style": "cs", "Character": "char", "Style": "style"}   # Style needs an adapter with a style branch
 MAX_REFERENCES = 8
 
 
@@ -58,17 +58,24 @@ def make_simple_node(core):
                 "clip": ("CLIP",),
                 "vae": ("VAE",),
                 "adapter": (snapref_files(), {"tooltip": "SnapRef weights (models/loras)"}),
-                "reference": (images, {"image_upload": True, "tooltip": "a picture of the character"}),
+                "reference": (images, {"image_upload": True, "tooltip": "a picture of the character "
+                                                                         "(Style: a picture in the art style you want)"}),
                 "mode": (list(MODES), {"default": "Character & Style",
                                        "tooltip": "Character & Style: character and art style from the picture. Character: "
-                                                  "only the character; the style comes from the model and your prompt"}),
+                                                  "only the character; the style comes from the model and your prompt. "
+                                                  "Style: only the art style of the picture; write the character and "
+                                                  "the scene in the prompt; needs an adapter with a style branch, e.g. "
+                                                  "snapref_v2s_pre"}),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
-                                       "tooltip": "how much the picture counts: 1 = as trained, 0 = off, 2 = twice"}),
+                                       "tooltip": "how much the picture counts, LINEAR: 1 = as trained, 0 = off, 2 = twice. "
+                                                  "SnapRef (Advanced) has a log-scale strength instead (0 = as trained; "
+                                                  "2 here = +0.7 there); this one matches its weight_1..3"}),
                 "fidelity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05,
                                        "tooltip": "1 = keep every detail of the picture; lower = follow the prompt more freely"}),
             }, "optional": {
                 "reference_2": (["none"] + images, {"default": "none",
-                                                   "tooltip": "a second picture of the same character (e.g. full body)"}),
+                                                   "tooltip": "a second picture of the same character (e.g. full "
+                                                              "body); Style: another picture by the same artist"}),
                 "strength_2": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
                                          "tooltip": "how much the second picture counts"}),
             }}
@@ -80,7 +87,8 @@ def make_simple_node(core):
         RETURN_TYPES = ("MODEL",)
         FUNCTION = "apply"
         CATEGORY = "SnapRef"
-        DESCRIPTION = "Reference a character with up to eight pictures. Write only the scene in the prompt."
+        DESCRIPTION = ("Reference a character with up to eight pictures (write only the scene in the prompt), or in "
+                       "Style mode an art style (write the character and the scene).")
 
         @classmethod
         def IS_CHANGED(cls, reference=None, reference_2="none", **kw):
@@ -103,6 +111,7 @@ def make_simple_node(core):
             if path not in core._adapters:
                 core._adapters[path] = core._Adapter(path)
             ad = core._adapters[path]
+            ad.check_mode(MODES[mode], adapter)   # style needs a style branch: say so before loading any picture
             refs, weights = [], []
             pairs = [(reference, strength), (reference_2, strength_2)]
             pairs.extend((kw.get(f"reference_{i}", "none"), kw.get(f"strength_{i}", 1.0))
@@ -115,7 +124,7 @@ def make_simple_node(core):
                 return (model,)
             dm = model.get_model_object("diffusion_model")
             core._adapter_block_map(ad.block_indices, dm)
-            core._require_comfyui(dm)
+            getattr(core, "_require_comfyui", lambda _dm: None)(dm)
             latents = [core._encode_image(model, vae, px, 1.0)[0] for px in refs]
             cond = clip.encode_from_tokens_scheduled(clip.tokenize(""))[0]
             # Fidelity f: the negative branch also reads the picture, weighted (1 - f); f = 1 is the trained default
@@ -125,6 +134,8 @@ def make_simple_node(core):
                                    core._make_wrapper(ad, latents, cond, MODES[mode], False, 0.0, weights, uncond_bias))
             wr = m.wrappers[comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL]
             m.wrappers[comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL] = {core.WRAPPER_KEY: wr.pop(core.WRAPPER_KEY), **wr}
+            if hasattr(core, "_make_outer"):   # parks the reference K/V on the CPU after each sampling run
+                m.add_wrapper_with_key(comfy.patcher_extension.WrappersMP.OUTER_SAMPLE, core.WRAPPER_KEY, core._make_outer(ad))
             logging.info(f"[SnapRef] {adapter}: {len(refs)} picture(s), {mode}, strength {weights}, fidelity {fidelity}")
             return (m,)
 

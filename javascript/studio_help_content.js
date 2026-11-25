@@ -3191,35 +3191,35 @@
     },
     "Anima-Reference": {
       "intro": {
-        "en": "Use a character image to generate a new anime picture with a different pose, expression or setting. Character & Style Reference follows appearance and visual style; Character Reference guides appearance while allowing the prompt to set the style.",
-        "cn": "让参考图中的角色做出新的动作、表情，或出现在新的场景中。“角色与画风参考”同时参考人物外观和画风；“角色参考”参考人物外观，画风可通过提示词描述。"
+        "en": "Generate a new anime picture guided by 1 to 3 reference images. Character & Style Reference follows appearance and visual style; Character Reference guides appearance while the prompt sets the style; Style Reference takes only the art style so you describe both the new character and the scene in the prompt.",
+        "cn": "使用 1 至 3 张参考图生成新的二次元画面。“角色与画风参考”同时参考人物外观和画风；“角色参考”参考人物外观，画风由提示词控制；“画风参考”只提取参考图画风，目标角色与场景均由提示词描述。"
       },
       "inputs": {
-        "en": "Upload a character reference to \"Upload and canvas(1)\". One image is enough; \"Upload prompt image(2)\" is optional and supplies another view or detail of the same character. For two different characters, put one joint image or side-by-side collage in \"Upload and canvas(1)\". No mask is needed.",
-        "cn": "在“主体图片(1)”上传角色参考图，一张就能使用。“参考图片(2)”可留空；需要同一角色的其他视角或细节时再上传。两个不同角色请将合照或左右拼图放在“主体图片(1)”。无需绘制蒙版。"
+        "en": "Upload the main reference to \"Upload and canvas(1)\". One image is enough; \"Upload prompt image(2)\" and \"Upload prompt image(3)\" are optional. In character modes they supply more views or details of the same character (for two different characters, put one joint image or side-by-side collage in \"Upload and canvas(1)\"). In Style Reference mode, upload up to 3 artworks in the same style. No mask is needed.",
+        "cn": "在“主体图片(1)”上传主参考图，一张就能使用；“参考图片(2)”和“参考图片(3)”可留空。角色模式下用于同一角色的其他视角或细节（两个不同角色请将合照或左右拼图放在“主体图片(1)”）；画风模式下可上传最多 3 张同一画风／同画师的参考图。无需绘制蒙版。"
       },
       "steps": [
         {
-          "en": "Choose Character & Style Reference or Character Reference, then upload the reference to \"Upload and canvas(1)\".",
-          "cn": "选择“角色与画风参考”或“角色参考”，在“主体图片(1)”上传参考图。"
+          "en": "Choose Character & Style Reference, Character Reference, or Style Reference, then upload 1 to 3 references starting from \"Upload and canvas(1)\".",
+          "cn": "选择“角色与画风参考”、“角色参考”或“画风参考”，从“主体图片(1)”起上传 1 至 3 张参考图。"
         },
         {
-          "en": "Describe the picture you want, for example: this character taking an afternoon nap on a bed, lying on their side with closed eyes and soft window light. Use Prompt Tools to prepare English tags and short English sentences. For two characters, specify their count and left/right positions.",
-          "cn": "在提示词框描述目标画面，例如“让这个角色闭着眼侧躺在床上午睡，柔和的午后光从窗边照入”。建议使用“提示工具”整理为英文标签和简短英文句子。双人时写明人数和左右位置。"
+          "en": "Describe the target picture. In character modes, describe the scene, pose, expression and lighting; in Style Reference mode, describe BOTH the desired character appearance and the scene. Use Prompt Tools to prepare English tags and short English sentences.",
+          "cn": "在提示词框描述目标画面：角色模式写场景、动作、表情与光线；“画风参考”模式需同时写目标角色外貌和场景。建议使用“提示工具”整理为英文标签和简短英文句子。"
         },
         {
-          "en": "Set the output size, keep the other defaults and click Generate. Check the result's appearance, subject count, pose and expression.",
-          "cn": "设置成图尺寸，其他参数保持默认，点击“生成”。查看人物外观、人数、动作与表情是否符合要求。"
+          "en": "Set the output size, keep the other defaults and click Generate. Check the result's appearance, art style, subject count, pose and expression.",
+          "cn": "设置成图尺寸，其他参数保持默认，点击“生成”。检查人物外观、画风、人数、动作与表情是否符合要求。"
         }
       ],
       "keyPoint": {
-        "en": "Pose, framing and background are generated again. Reference Fidelity defaults to 1; lower it if the reference constrains the new pose too much. Reference Megapixels affects input detail only; set the output size separately.",
-        "cn": "动作、构图和背景会重新生成。“参考保真度”默认 1，参考图过度限制新动作时可适当降低。“参考图像素量（MP）”只影响输入细节，成图尺寸需单独设置。"
+        "en": "Pose, framing and background are generated again. Reference Fidelity defaults to 1; lower it if the reference constrains the prompt too much. Reference Resolution (512–1024) controls input detail only (1024 ≈ 1 MP); set the output size separately.",
+        "cn": "动作、构图和背景会重新生成。“参考保真度”默认 1，参考图过度限制提示词时可适当降低。“参考图分辨率”（512–1024）只影响输入细节（1024 约等于 100 万像素），成图尺寸需单独设置。"
       },
       "notes": [
         {
-          "en": "Reference Image 1 Weight controls the influence of \"Upload and canvas(1)\"; Reference Image 2 Weight controls \"Upload prompt image(2)\". Leave the second weight alone when no second image is uploaded.",
-          "cn": "“参考图 1 权重”控制“主体图片(1)”的影响，“参考图 2 权重”控制“参考图片(2)”的影响；第二张图留空时无需调整其权重。"
+          "en": "Reference Image 1 Weight, Reference Image 2 Weight and Reference Image 3 Weight control the influence of slots (1)–(3); empty slots are automatically ignored. In Style Reference mode, weights above 1.0 can start pulling in the reference's own character—lower a slot's weight (e.g. 0.35–0.8) if it carries over too much.",
+          "cn": "“参考图 1 权重”、“参考图 2 权重”与“参考图 3 权重”分别控制图位 (1)–(3) 的影响，空图位会自动忽略。在“画风参考”模式下，权重高于 1.0 容易带入参考图原本的角色，过强时可适当调低权重（如 0.35–0.8）。"
         },
         {
           "en": "One-character nap example: 1girl, solo, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. She is taking an afternoon nap on her side, with her eyes closed and her head resting on a pillow. Soft window light fills the bedroom.",
@@ -3230,8 +3230,12 @@
           "cn": "双人示例：2girls, sleeping, closed eyes, lying, on bed, pillow, blanket, bedroom. Both characters are taking an afternoon nap side by side, with their eyes closed and their heads resting on separate pillows. Soft window light fills the bedroom. 按实际角色修改人数与性别标签，双人时删除 solo。"
         },
         {
-          "en": "Prompt Tools uses the same local tag lookup as Anima text-to-image. Select relevant results; put unmatched concepts such as time or lighting in short English sentences. The reference provides appearance, so describe hair, eyes or clothes only when requesting a change.",
-          "cn": "提示工具沿用 Anima 文生图的本地标签检索。标签从符合需求的结果中选择；时间和光线等查不到的内容写成简短英文句子。参考图提供角色外观，只有需要改变时才描述发色、眼色或服装。"
+          "en": "Style Reference example: 1girl, solo, short silver hair, blue eyes, maid, apron, holding tray, smile, cowboy shot, cafe interior. A cheerful silver-haired maid stands inside a cozy cafe holding a serving tray. Warm afternoon light falls across the counter.",
+          "cn": "画风参考示例：1girl, solo, short silver hair, blue eyes, maid, apron, holding tray, smile, cowboy shot, cafe interior. A cheerful silver-haired maid stands inside a cozy cafe holding a serving tray. Warm afternoon light falls across the counter."
+        },
+        {
+          "en": "Prompt Tools uses the same local tag lookup as Anima text-to-image. Select relevant results; put unmatched concepts such as time or lighting in short English sentences. In character modes describe hair, eyes or clothes only when requesting a change; in Style Reference mode always describe the character you want.",
+          "cn": "提示工具沿用 Anima 文生图的本地标签检索。标签从符合需求的结果中选择；时间和光线等查不到的内容写成简短英文句子。角色模式下只有需要改动时才描述发色、眼色或服装；画风参考模式下请完整描述目标角色。"
         }
       ]
     },
