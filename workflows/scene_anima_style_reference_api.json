@@ -1,0 +1,260 @@
+{
+  "1": {
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "",
+      "additional_prompt": "",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 832,
+      "height": 1216,
+      "cfg": 4.5,
+      "steps": 28,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 1.0,
+      "var_number4": 1.0,
+      "var_number5": 1.0,
+      "var_number6": 1.0,
+      "var_number7": 1024,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "euler",
+      "scheduler": "simple",
+      "video_duration": 0
+    }
+  },
+  "2": {
+    "class_type": "SeedInput",
+    "_meta": {"title": "SeedInput"},
+    "inputs": {"seed": 0}
+  },
+  "3": {
+    "class_type": "UNETLoader",
+    "_meta": {"title": "base_model"},
+    "inputs": {
+      "unet_name": "anima-base-v1.0.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "4": {
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "clip_model"},
+    "inputs": {
+      "clip_name": "qwen_3_06b_base.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    }
+  },
+  "5": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "vae_model"},
+    "inputs": {"vae_name": "qwen_image_vae.safetensors"}
+  },
+  "6": {
+    "class_type": "LoadImage",
+    "_meta": {"title": "i2i_inpaint_image"},
+    "inputs": {"image": "None"}
+  },
+  "7": {
+    "class_type": "LoadInputImage",
+    "_meta": {"title": "Anima Optional Reference"},
+    "inputs": {
+      "image_name": ["1", 2],
+      "image": "None"
+    }
+  },
+  "9": {
+    "class_type": "easy compare",
+    "_meta": {"title": "Anima Second Reference Present"},
+    "inputs": {
+      "a": ["1", 2],
+      "b": "None",
+      "comparison": "a != b"
+    }
+  },
+  "10": {
+    "class_type": "easy ifElse",
+    "_meta": {"title": "Anima Second Reference Weight"},
+    "inputs": {
+      "boolean": ["9", 0],
+      "on_true": ["1", 13],
+      "on_false": 0.0
+    }
+  },
+  "11": {
+    "class_type": "SnapRef",
+    "_meta": {"title": "Anima SnapRef"},
+    "inputs": {
+      "model": ["28", 0],
+      "clip": ["simpai_lora_stack_main", 1],
+      "vae": ["5", 0],
+      "image": ["6", 0],
+      "image_2": ["7", 0],
+      "image_3": ["29", 0],
+      "adapter": "snapref_v2s_pre1.safetensors",
+      "mode": "style",
+      "ref_in_uncond": false,
+      "ref_megapixels": ["34", 0],
+      "strength": 0.0,
+      "ref_caption": "",
+      "ref_guidance_on": false,
+      "ref_guidance": 4.5,
+      "correction": "apg",
+      "ref_end": 1.0,
+      "use_batch": false,
+      "multi_layout": "separate",
+      "weight_1": ["1", 12],
+      "weight_2": ["10", 0],
+      "weight_3": ["31", 0],
+      "fidelity": ["1", 15]
+    }
+  },
+  "12": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "Anima Scene Prompt"},
+    "inputs": {
+      "clip": ["simpai_lora_stack_main", 1],
+      "text": ["1", 0]
+    }
+  },
+  "13": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "Anima Negative Prompt"},
+    "inputs": {
+      "clip": ["simpai_lora_stack_main", 1],
+      "text": ["1", 29]
+    }
+  },
+  "14": {
+    "class_type": "EmptyLatentImage",
+    "_meta": {"title": "Anima Output Size"},
+    "inputs": {
+      "width": ["1", 6],
+      "height": ["1", 7],
+      "batch_size": 1
+    }
+  },
+  "15": {
+    "class_type": "KSampler",
+    "_meta": {"title": "KSampler"},
+    "inputs": {
+      "model": ["11", 0],
+      "seed": ["2", 0],
+      "steps": ["1", 9],
+      "cfg": ["1", 8],
+      "sampler_name": ["1", 30],
+      "scheduler": ["1", 31],
+      "positive": ["12", 0],
+      "negative": ["13", 0],
+      "latent_image": ["14", 0],
+      "denoise": 1.0
+    }
+  },
+  "16": {
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAE Decode"},
+    "inputs": {
+      "samples": ["15", 0],
+      "vae": ["5", 0]
+    }
+  },
+  "17": {
+    "class_type": "SaveImageWebsocket",
+    "_meta": {"title": "result_image1"},
+    "inputs": {"images": ["16", 0]}
+  },
+  "18": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}, "inputs": {"model": ["3", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "19": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_2"}, "inputs": {"model": ["18", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "20": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_3"}, "inputs": {"model": ["19", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "21": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_4"}, "inputs": {"model": ["20", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "22": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_5"}, "inputs": {"model": ["21", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "23": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_6"}, "inputs": {"model": ["22", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "24": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_7"}, "inputs": {"model": ["23", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "25": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_8"}, "inputs": {"model": ["24", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "26": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_9"}, "inputs": {"model": ["25", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "27": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_10"}, "inputs": {"model": ["26", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "28": {
+    "class_type": "ModelAttentionBackend",
+    "_meta": {"title": "Anima Attention Backend"},
+    "inputs": {
+      "model": ["simpai_lora_stack_main", 0],
+      "attention": "comfy kitchen attention"
+    }
+  },
+  "29": {
+    "class_type": "LoadInputImage",
+    "_meta": {"title": "Anima Third Optional Reference"},
+    "inputs": {
+      "image_name": ["1", 3],
+      "image": "None"
+    }
+  },
+  "30": {
+    "class_type": "easy compare",
+    "_meta": {"title": "Anima Third Reference Present"},
+    "inputs": {
+      "a": ["1", 3],
+      "b": "None",
+      "comparison": "a != b"
+    }
+  },
+  "31": {
+    "class_type": "easy ifElse",
+    "_meta": {"title": "Anima Third Reference Weight"},
+    "inputs": {
+      "boolean": ["30", 0],
+      "on_true": ["1", 14],
+      "on_false": 0.0
+    }
+  },
+  "32": {
+    "class_type": "ComfyNumberConvert",
+    "_meta": {"title": "Anima Reference Resolution Float"},
+    "inputs": {
+      "value": ["1", 16]
+    }
+  },
+  "33": {
+    "class_type": "easy mathFloat",
+    "_meta": {"title": "Anima Reference Scale Ratio"},
+    "inputs": {
+      "a": ["32", 0],
+      "b": 1024.0,
+      "operation": "divide"
+    }
+  },
+  "34": {
+    "class_type": "easy mathFloat",
+    "_meta": {"title": "Anima Reference Megapixels"},
+    "inputs": {
+      "a": ["33", 0],
+      "b": 2.0,
+      "operation": "power"
+    }
+  },
+  "simpai_lora_stack_main": {
+    "class_type": "SimpAILoraStack",
+    "_meta": {"title": "SimpAI LoRA Stack Main"},
+    "inputs": {
+      "model": ["27", 0],
+      "clip": ["4", 0],
+      "stack_json": "{\"version\":1,\"items\":[]}",
+      "branch": "main"
+    }
+  }
+}

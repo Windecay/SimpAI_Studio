@@ -21,7 +21,7 @@
       "var_number4": 1.0,
       "var_number5": 1.0,
       "var_number6": 1.0,
-      "var_number7": 0,
+      "var_number7": 1024,
       "var_number8": 0,
       "var_number9": 0,
       "var_number10": 0,
@@ -105,10 +105,11 @@
       "vae": ["5", 0],
       "image": ["6", 0],
       "image_2": ["7", 0],
-      "adapter": "snapref_v2a.safetensors",
+      "image_3": ["29", 0],
+      "adapter": "snapref_v2s_pre1.safetensors",
       "mode": "char",
       "ref_in_uncond": false,
-      "ref_megapixels": ["1", 15],
+      "ref_megapixels": ["34", 0],
       "strength": 0.0,
       "ref_caption": "",
       "ref_guidance_on": false,
@@ -119,8 +120,8 @@
       "multi_layout": "separate",
       "weight_1": ["1", 12],
       "weight_2": ["10", 0],
-      "weight_3": 0.0,
-      "fidelity": ["1", 14]
+      "weight_3": ["31", 0],
+      "fidelity": ["1", 15]
     }
   },
   "12": {
@@ -193,6 +194,57 @@
     "inputs": {
       "model": ["simpai_lora_stack_main", 0],
       "attention": "comfy kitchen attention"
+    }
+  },
+  "29": {
+    "class_type": "LoadInputImage",
+    "_meta": {"title": "Anima Third Optional Reference"},
+    "inputs": {
+      "image_name": ["1", 3],
+      "image": "None"
+    }
+  },
+  "30": {
+    "class_type": "easy compare",
+    "_meta": {"title": "Anima Third Reference Present"},
+    "inputs": {
+      "a": ["1", 3],
+      "b": "None",
+      "comparison": "a != b"
+    }
+  },
+  "31": {
+    "class_type": "easy ifElse",
+    "_meta": {"title": "Anima Third Reference Weight"},
+    "inputs": {
+      "boolean": ["30", 0],
+      "on_true": ["1", 14],
+      "on_false": 0.0
+    }
+  },
+  "32": {
+    "class_type": "ComfyNumberConvert",
+    "_meta": {"title": "Anima Reference Resolution Float"},
+    "inputs": {
+      "value": ["1", 16]
+    }
+  },
+  "33": {
+    "class_type": "easy mathFloat",
+    "_meta": {"title": "Anima Reference Scale Ratio"},
+    "inputs": {
+      "a": ["32", 0],
+      "b": 1024.0,
+      "operation": "divide"
+    }
+  },
+  "34": {
+    "class_type": "easy mathFloat",
+    "_meta": {"title": "Anima Reference Megapixels"},
+    "inputs": {
+      "a": ["33", 0],
+      "b": 2.0,
+      "operation": "power"
     }
   },
   "simpai_lora_stack_main": {
