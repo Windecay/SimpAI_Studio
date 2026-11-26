@@ -1585,6 +1585,7 @@ function simpleaiSyncGalleryStateSoon() {
 
 const simpleaiComparisonSliderStates = new WeakMap();
 let simpleaiActiveComparisonPan = null;
+let simpleaiActiveComparisonHandleDrag = null;
 
 function simpleaiComparisonSliderScope() {
     try {
@@ -1711,8 +1712,23 @@ function simpleaiComparisonImageBase(els, state) {
     };
 }
 
-function simpleaiComparisonReadHandlePosition(els, base) {
-    if (!els.handle || !base || base.width <= 0) return null;
+function simpleaiComparisonSliderBounds(base, state) {
+    if (!base) return null;
+    const scale = simpleaiClampNumber(state && state.scale, 1, 15) || 1;
+    const offsetX = state && Number.isFinite(state.x) ? state.x : 0;
+    const rawLeft = base.left + offsetX;
+    const rawRight = rawLeft + base.width * scale;
+    const left = simpleaiClampNumber(rawLeft, 0, base.viewportWidth);
+    const right = simpleaiClampNumber(rawRight, left, base.viewportWidth);
+    return {
+        left,
+        right,
+        width: Math.max(0, right - left)
+    };
+}
+
+function simpleaiComparisonReadHandlePosition(els, bounds) {
+    if (!els.handle || !bounds || bounds.width <= 0) return null;
     const transformText = els.handle.style.transform || window.getComputedStyle(els.handle).transform;
     let px = null;
     const matrix = transformText && transformText.match(/^matrix\(([^)]+)\)$/);
@@ -1732,7 +1748,7 @@ function simpleaiComparisonReadHandlePosition(els, base) {
         }
     }
     if (px === null || !Number.isFinite(px)) return null;
-    return simpleaiClampNumber((px - base.left) / base.width, 0, 1);
+    return simpleaiClampNumber((px - bounds.left) / bounds.width, 0, 1);
 }
 
 function simpleaiComparisonConstrain(state, base) {
@@ -1787,21 +1803,47 @@ function simpleaiApplyComparisonImageGeometry(els, base) {
     });
 }
 
+function simpleaiBindComparisonElementListeners(root, els, state) {
+    if (!root || !els) return;
+    const wheelSurface = els.wrap || els.content;
+    if (wheelSurface && wheelSurface.dataset.simpleaiComparisonSliderWheelPatched !== "1") {
+        wheelSurface.dataset.simpleaiComparisonSliderWheelPatched = "1";
+        wheelSurface.addEventListener("wheel", (event) => simpleaiComparisonWheel(event, root), { capture: true, passive: false });
+    }
+    if (els.content.dataset.simpleaiComparisonSliderContentPatched !== "1") {
+        els.content.dataset.simpleaiComparisonSliderContentPatched = "1";
+        els.content.addEventListener("mousedown", (event) => simpleaiComparisonMouseDown(event, root), { capture: true });
+    }
+    if (els.handle && els.handle.dataset.simpleaiComparisonSliderHandlePatched !== "1") {
+        els.handle.dataset.simpleaiComparisonSliderHandlePatched = "1";
+        els.handle.addEventListener("mousedown", (event) => simpleaiComparisonHandleMouseDown(event, root), { capture: true });
+        els.handle.addEventListener("touchstart", (event) => simpleaiComparisonHandleTouchStart(event, root), { capture: true, passive: false });
+    }
+    if (state && state.resizeObserver) {
+        state.resizeObserver.observe(els.content);
+        els.images.forEach((img) => {
+            if (img.dataset.simpleaiComparisonResizeObserved !== "1") {
+                img.dataset.simpleaiComparisonResizeObserved = "1";
+                state.resizeObserver.observe(img);
+                img.addEventListener("load", () => simpleaiScheduleComparisonSliderSync(root, "image_load"));
+            }
+        });
+    }
+}
+
 function simpleaiApplyComparisonSliderState(root, reason) {
     if (!simpleaiComparisonVisible(root)) return;
     const els = simpleaiComparisonElements(root);
     if (!els) return;
     const state = simpleaiComparisonGetState(root, els);
+    simpleaiBindComparisonElementListeners(root, els, state);
     const base = simpleaiComparisonImageBase(els, state);
     if (!base || base.width <= 0 || base.height <= 0) return;
 
     simpleaiApplyComparisonImageGeometry(els, base);
-    const handlePosition = simpleaiComparisonReadHandlePosition(els, base);
-    if (handlePosition !== null && reason !== "wheel" && reason !== "pan") {
-        state.position = handlePosition;
-    }
-    state.position = simpleaiClampNumber(state.position, 0, 1);
     simpleaiComparisonConstrain(state, base);
+    const sliderBounds = simpleaiComparisonSliderBounds(base, state) || base;
+    state.position = simpleaiClampNumber(state.position, 0, 1);
 
     const transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
     els.images.forEach((img) => {
@@ -1812,8 +1854,16 @@ function simpleaiApplyComparisonSliderState(root, reason) {
         simpleaiSetStyleProperty(img, "cursor", state.scale > 1 ? "grab" : "zoom-in");
     });
 
-    const handlePx = simpleaiClampNumber(base.left + base.width * state.position, 0, base.viewportWidth);
-    const splitPx = base.left + base.width * state.position;
+    const desiredHandlePx = base.viewportWidth * state.position;
+    const handlePx = simpleaiClampNumber(
+        desiredHandlePx,
+        sliderBounds.left,
+        sliderBounds.right
+    );
+    if (base.viewportWidth > 0) {
+        state.position = simpleaiClampNumber(handlePx / base.viewportWidth, 0, 1);
+    }
+    const splitPx = handlePx;
     const clipLocalPx = base.clipOriginX + ((splitPx - base.clipBoxLeft - base.clipOriginX - state.x) / state.scale);
     const clipPosition = simpleaiClampNumber(clipLocalPx / (base.clipBoxWidth || base.width), 0, 1);
     const clipPath = `inset(0 0 0 ${clipPosition * 100}%)`;
@@ -1868,6 +1918,85 @@ function simpleaiComparisonWheel(event, root) {
     simpleaiApplyComparisonSliderState(root, "wheel");
 }
 
+function simpleaiComparisonHandleStart(clientX, root) {
+    const els = simpleaiComparisonElements(root);
+    if (!els || !els.handle || els.handle.classList.contains("disabled")) return false;
+    const state = simpleaiComparisonGetState(root, els);
+    const base = simpleaiComparisonImageBase(els, state);
+    if (!base || base.width <= 0 || base.height <= 0) return false;
+
+    simpleaiComparisonConstrain(state, base);
+    const sliderBounds = simpleaiComparisonSliderBounds(base, state);
+    if (!sliderBounds || sliderBounds.width <= 0) return false;
+
+    const currentHandlePx = simpleaiClampNumber(
+        base.viewportWidth * simpleaiClampNumber(state.position, 0, 1),
+        sliderBounds.left,
+        sliderBounds.right
+    );
+    const pointerX = clientX - base.contentRect.left;
+    const rawOffset = pointerX - currentHandlePx;
+    const grabOffsetX = Math.abs(rawOffset) <= 24 ? rawOffset : 0;
+
+    simpleaiActiveComparisonPan = null;
+    simpleaiActiveComparisonHandleDrag = { root, grabOffsetX };
+    els.handle.classList.add("grab");
+    const iconWrap = els.handle.querySelector(".icon-wrap");
+    if (iconWrap) iconWrap.classList.add("active");
+
+    const targetPx = simpleaiClampNumber(pointerX - grabOffsetX, sliderBounds.left, sliderBounds.right);
+    state.position = simpleaiClampNumber(targetPx / base.viewportWidth, 0, 1);
+    simpleaiApplyComparisonSliderState(root, "slider_drag");
+    return true;
+}
+
+function simpleaiComparisonHandleMove(clientX) {
+    if (!simpleaiActiveComparisonHandleDrag) return false;
+    const { root, grabOffsetX } = simpleaiActiveComparisonHandleDrag;
+    const els = simpleaiComparisonElements(root);
+    if (!els) return false;
+    const state = simpleaiComparisonGetState(root, els);
+    const base = simpleaiComparisonImageBase(els, state);
+    if (!base || base.width <= 0 || base.height <= 0) return false;
+
+    simpleaiComparisonConstrain(state, base);
+    const sliderBounds = simpleaiComparisonSliderBounds(base, state);
+    if (!sliderBounds || sliderBounds.width <= 0) return false;
+
+    const pointerX = clientX - base.contentRect.left;
+    const targetPx = simpleaiClampNumber(pointerX - grabOffsetX, sliderBounds.left, sliderBounds.right);
+    state.position = simpleaiClampNumber(targetPx / base.viewportWidth, 0, 1);
+    simpleaiApplyComparisonSliderState(root, "slider_drag");
+    return true;
+}
+
+function simpleaiComparisonEndHandleDrag() {
+    if (!simpleaiActiveComparisonHandleDrag) return;
+    const root = simpleaiActiveComparisonHandleDrag.root;
+    simpleaiActiveComparisonHandleDrag = null;
+    const els = simpleaiComparisonElements(root);
+    if (els && els.handle) {
+        els.handle.classList.remove("grab");
+        const iconWrap = els.handle.querySelector(".icon-wrap");
+        if (iconWrap) iconWrap.classList.remove("active");
+    }
+    simpleaiScheduleComparisonSliderSync(root, "slider_drag_end");
+}
+
+function simpleaiComparisonHandleMouseDown(event, root) {
+    if (event.button !== 0) return;
+    if (!simpleaiComparisonHandleStart(event.clientX, root)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+}
+
+function simpleaiComparisonHandleTouchStart(event, root) {
+    if (!event.touches || event.touches.length !== 1) return;
+    if (!simpleaiComparisonHandleStart(event.touches[0].clientX, root)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+}
+
 function simpleaiComparisonMouseDown(event, root) {
     if (event.button !== 0 || event.target.closest?.(".outer, .icon-wrap, button, a")) return;
     const els = simpleaiComparisonElements(root);
@@ -1883,6 +2012,11 @@ function simpleaiComparisonMouseDown(event, root) {
 }
 
 function simpleaiComparisonDocumentMouseMove(event) {
+    if (simpleaiActiveComparisonHandleDrag) {
+        event.preventDefault();
+        simpleaiComparisonHandleMove(event.clientX);
+        return;
+    }
     if (!simpleaiActiveComparisonPan) return;
     const root = simpleaiActiveComparisonPan.root;
     const els = simpleaiComparisonElements(root);
@@ -1899,7 +2033,18 @@ function simpleaiComparisonDocumentMouseMove(event) {
     simpleaiApplyComparisonSliderState(root, "pan");
 }
 
+function simpleaiComparisonDocumentTouchMove(event) {
+    if (!simpleaiActiveComparisonHandleDrag) return;
+    const touch = event.touches && event.touches[0];
+    if (!touch) return;
+    event.preventDefault();
+    simpleaiComparisonHandleMove(touch.clientX);
+}
+
 function simpleaiComparisonDocumentMouseUp() {
+    if (simpleaiActiveComparisonHandleDrag) {
+        simpleaiComparisonEndHandleDrag();
+    }
     if (!simpleaiActiveComparisonPan) return;
     const root = simpleaiActiveComparisonPan.root;
     simpleaiActiveComparisonPan = null;
@@ -1908,18 +2053,7 @@ function simpleaiComparisonDocumentMouseUp() {
 
 function simpleaiInstallComparisonSliderPatch(root) {
     if (!root) return;
-    const els = simpleaiComparisonElements(root);
-    if (!els) return;
-
-    const state = simpleaiComparisonGetState(root, els);
-
-    if (els.content.dataset.simpleaiComparisonSliderContentPatched !== "1") {
-        els.content.dataset.simpleaiComparisonSliderContentPatched = "1";
-        const wheelHandler = (event) => simpleaiComparisonWheel(event, root);
-        const mouseDownHandler = (event) => simpleaiComparisonMouseDown(event, root);
-        els.content.addEventListener("wheel", wheelHandler, { capture: true, passive: false });
-        els.content.addEventListener("mousedown", mouseDownHandler, { capture: true });
-    }
+    let state = simpleaiComparisonSliderStates.get(root) || {};
 
     if (root.dataset.simpleaiComparisonSliderPatched !== "1") {
         root.dataset.simpleaiComparisonSliderPatched = "1";
@@ -1930,19 +2064,14 @@ function simpleaiInstallComparisonSliderPatch(root) {
         const resizeObserver = new ResizeObserver(() => simpleaiScheduleComparisonSliderSync(root, "resize"));
         resizeObserver.observe(root);
         state.resizeObserver = resizeObserver;
+        simpleaiComparisonSliderStates.set(root, state);
     }
 
-    if (state.resizeObserver) {
-        state.resizeObserver.observe(els.content);
-        els.images.forEach((img) => {
-            if (img.dataset.simpleaiComparisonResizeObserved !== "1") {
-                img.dataset.simpleaiComparisonResizeObserved = "1";
-                state.resizeObserver.observe(img);
-                img.addEventListener("load", () => simpleaiScheduleComparisonSliderSync(root, "image_load"));
-            }
-        });
-    }
+    const els = simpleaiComparisonElements(root);
+    if (!els) return;
 
+    state = simpleaiComparisonGetState(root, els);
+    simpleaiBindComparisonElementListeners(root, els, state);
     simpleaiScheduleComparisonSliderSync(root, "install");
 }
 
@@ -1953,6 +2082,10 @@ function simpleaiSyncComparisonSliders() {
 
 document.addEventListener("mousemove", simpleaiComparisonDocumentMouseMove, true);
 document.addEventListener("mouseup", simpleaiComparisonDocumentMouseUp, true);
+document.addEventListener("touchmove", simpleaiComparisonDocumentTouchMove, { capture: true, passive: false });
+document.addEventListener("touchend", simpleaiComparisonEndHandleDrag, true);
+document.addEventListener("touchcancel", simpleaiComparisonEndHandleDrag, true);
+window.addEventListener("blur", simpleaiComparisonEndHandleDrag);
 document.addEventListener('contextmenu', simpleaiPrepareGalleryOriginalContextMenu, true);
 document.addEventListener('pointerdown', simpleaiHandleGalleryOriginalContextPointerDown, true);
 document.addEventListener('pointerdown', simpleaiPrepareGalleryOriginalContextPointerDown, true);
