@@ -177,7 +177,8 @@
             minimap: true,
             edgeLabels: true,
             reducedMotion: false,
-            inspectorCollapsed: true
+            inspectorCollapsed: true,
+            colorPreset: 'jade'
         }, isPatchObject(configuredSettings) ? configuredSettings : {});
         const LEGACY_STORAGE_KEY = 'simpai.infiniteCanvasWorkbench.v1';
         const STORAGE_KEY_PREFIX = 'simpai.infiniteCanvasWorkbench.v1';

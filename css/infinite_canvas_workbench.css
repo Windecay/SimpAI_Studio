@@ -1,19 +1,63 @@
 #simpai-infinite-canvas-workbench {
-    --sai-canvas-bg: #f3f5f8;
-    --sai-canvas-panel: #ffffff;
-    --sai-canvas-surface: #edf1f5;
-    --sai-canvas-viewport: #eef1f5;
-    --sai-canvas-nav-bg: rgba(255, 255, 255, 0.94);
-    --sai-canvas-border: #cfd6e1;
-    --sai-canvas-text: #202939;
-    --sai-canvas-muted: #626f82;
-    --sai-canvas-accent: #087f67;
-    --sai-canvas-accent-soft: #e7f6f2;
-    --sai-node-head-bg: #fcfcfd;
-    --sai-node-head-border: #e0e0e4;
-    --sai-node-title-color: #18181b;
-    --sai-canvas-grid: rgba(113, 113, 122, 0.18);
-    --sai-canvas-warn: #f97316;
+    --sai-canvas-bg: #ebeef4;
+    --sai-canvas-panel: #f8fafc;
+    --sai-canvas-surface: #eff2f7;
+    --sai-canvas-viewport: #e7ebf2;
+    --sai-canvas-nav-bg: rgba(248, 250, 252, 0.88);
+    --sai-canvas-border: #d5dce6;
+    --sai-canvas-text: #1e293b;
+    --sai-canvas-muted: #64748b;
+    --sai-canvas-accent: #0f766e;
+    --sai-canvas-accent-soft: rgba(15, 118, 110, 0.10);
+    --sai-canvas-on-accent: #f8fafc;
+    --sai-node-head-bg: #f3f6fa;
+    --sai-node-head-border: #dde3ec;
+    --sai-node-title-color: #1e293b;
+    --sai-canvas-grid: rgba(100, 116, 139, 0.14);
+    --sai-canvas-warn: #c25e14;
+    --sai-edge-generate: #64748b;
+    --sai-edge-text: #158060;
+    --sai-edge-image: #1d6fa5;
+    --sai-edge-compare: #345ec9;
+    --sai-edge-timeline: #b46914;
+    --sai-edge-batch: #0f766e;
+    --sai-palette-aura-1: rgba(15, 118, 110, 0.052);
+    --sai-palette-aura-2: rgba(29, 111, 165, 0.036);
+    --sai-sheen-top: rgba(255, 255, 255, 0.62);
+    --sai-sheen-bottom: rgba(15, 23, 42, 0.024);
+    --sai-head-sheen-top: rgba(255, 255, 255, 0.68);
+    --sai-head-sheen-bottom: rgba(15, 23, 42, 0.026);
+    --sai-control-sheen-top: rgba(255, 255, 255, 0.74);
+    --sai-control-sheen-bottom: rgba(15, 23, 42, 0.028);
+    --sai-specular-line: rgba(255, 255, 255, 0.72);
+    --sai-node-gradient:
+        radial-gradient(125% 95% at 0% 0%, var(--sai-palette-aura-1), transparent 54%),
+        radial-gradient(110% 85% at 100% 100%, var(--sai-palette-aura-2), transparent 58%),
+        linear-gradient(180deg, var(--sai-sheen-top) 0%, transparent 46%, var(--sai-sheen-bottom) 100%);
+    --sai-node-head-gradient:
+        linear-gradient(90deg, var(--sai-palette-aura-1) 0%, var(--sai-palette-aura-2) 44%, transparent 86%),
+        linear-gradient(180deg, var(--sai-head-sheen-top) 0%, var(--sai-head-sheen-bottom) 100%);
+    --sai-drawer-gradient:
+        radial-gradient(95% 55% at 12% 0%, var(--sai-palette-aura-1), transparent 58%),
+        radial-gradient(85% 50% at 92% 14%, var(--sai-palette-aura-2), transparent 54%),
+        linear-gradient(180deg, var(--sai-sheen-top) 0%, transparent 38%, var(--sai-sheen-bottom) 100%);
+    --sai-popover-gradient:
+        radial-gradient(115% 85% at 0% 0%, var(--sai-palette-aura-1), transparent 56%),
+        linear-gradient(180deg, var(--sai-sheen-top) 0%, var(--sai-sheen-bottom) 100%);
+    --sai-topbar-gradient:
+        radial-gradient(42% 140% at 8% 0%, var(--sai-palette-aura-1), transparent 70%),
+        linear-gradient(180deg, var(--sai-sheen-top) 0%, var(--sai-sheen-bottom) 100%);
+    --sai-leftbar-gradient:
+        linear-gradient(180deg, var(--sai-palette-aura-1) 0%, transparent 26%),
+        linear-gradient(90deg, var(--sai-sheen-top) 0%, var(--sai-sheen-bottom) 100%);
+    --sai-control-gradient:
+        linear-gradient(180deg, var(--sai-control-sheen-top) 0%, var(--sai-control-sheen-bottom) 100%);
+    --sai-accent-btn-gradient:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--sai-canvas-accent) 88%, #ffffff 12%) 0%,
+            color-mix(in srgb, var(--sai-canvas-accent) 84%, #06090f 16%) 100%
+        );
     position: fixed;
     inset: 0;
     z-index: 2147483647;
@@ -28,21 +72,146 @@
 }
 
 #simpai-infinite-canvas-workbench.theme-dark {
-    --sai-canvas-bg: #101217;
-    --sai-canvas-panel: #191d26;
-    --sai-canvas-surface: #11141c;
-    --sai-canvas-viewport: #101217;
-    --sai-canvas-nav-bg: rgba(25, 29, 38, 0.96);
-    --sai-canvas-border: #343b49;
-    --sai-canvas-text: #edf1f6;
-    --sai-canvas-muted: #a8b0bf;
-    --sai-canvas-accent: #24c495;
-    --sai-canvas-accent-soft: #183b35;
+    --sai-canvas-bg: #0e1116;
+    --sai-canvas-panel: #161a22;
+    --sai-canvas-surface: #12151c;
+    --sai-canvas-viewport: #0f1217;
+    --sai-canvas-nav-bg: rgba(22, 26, 34, 0.88);
+    --sai-canvas-border: #232a36;
+    --sai-canvas-text: #d4dbe5;
+    --sai-canvas-muted: #8590a2;
+    --sai-canvas-accent: #1c9b8e;
+    --sai-canvas-accent-soft: rgba(28, 155, 142, 0.12);
+    --sai-canvas-on-accent: #edf7f6;
     --sai-node-head-bg: #1c222c;
-    --sai-node-head-border: #343b49;
+    --sai-node-head-border: #242b37;
     --sai-node-title-color: #edf1f6;
-    --sai-canvas-grid: rgba(161, 161, 161, 0.14);
-    --sai-canvas-warn: #d97706;
+    --sai-canvas-grid: rgba(148, 163, 184, 0.08);
+    --sai-canvas-warn: #c9822b;
+    --sai-edge-generate: #6b7688;
+    --sai-edge-text: #2d9472;
+    --sai-edge-image: #3a89b8;
+    --sai-edge-compare: #4d78c7;
+    --sai-edge-timeline: #b88235;
+    --sai-edge-batch: #269185;
+    --sai-palette-aura-1: rgba(28, 155, 142, 0.064);
+    --sai-palette-aura-2: rgba(58, 137, 184, 0.044);
+    --sai-sheen-top: rgba(255, 255, 255, 0.032);
+    --sai-sheen-bottom: rgba(2, 6, 16, 0.16);
+    --sai-head-sheen-top: rgba(255, 255, 255, 0.038);
+    --sai-head-sheen-bottom: rgba(2, 6, 16, 0.12);
+    --sai-control-sheen-top: rgba(255, 255, 255, 0.034);
+    --sai-control-sheen-bottom: rgba(2, 6, 16, 0.12);
+    --sai-specular-line: rgba(255, 255, 255, 0.065);
+}
+
+#simpai-infinite-canvas-workbench[data-canvas-palette="indigo"] {
+    --sai-canvas-bg: #eceef6;
+    --sai-canvas-panel: #f8f9fc;
+    --sai-canvas-surface: #f0f1f8;
+    --sai-canvas-viewport: #e8eaf3;
+    --sai-canvas-border: #d6dae8;
+    --sai-canvas-accent: #4650c7;
+    --sai-canvas-accent-soft: rgba(70, 80, 199, 0.10);
+    --sai-canvas-on-accent: #f8fafc;
+    --sai-node-head-bg: #f3f4fa;
+    --sai-node-head-border: #dfe2ee;
+    --sai-palette-aura-1: rgba(70, 80, 199, 0.054);
+    --sai-palette-aura-2: rgba(52, 94, 201, 0.038);
+}
+
+#simpai-infinite-canvas-workbench.theme-dark[data-canvas-palette="indigo"] {
+    --sai-canvas-bg: #0d0f15;
+    --sai-canvas-panel: #161822;
+    --sai-canvas-surface: #11131c;
+    --sai-canvas-viewport: #0e1017;
+    --sai-canvas-nav-bg: rgba(22, 24, 34, 0.88);
+    --sai-canvas-border: #242838;
+    --sai-canvas-text: #d5d8e4;
+    --sai-canvas-muted: #868ca1;
+    --sai-canvas-accent: #5662c9;
+    --sai-canvas-accent-soft: rgba(86, 98, 201, 0.13);
+    --sai-canvas-on-accent: #eef0fb;
+    --sai-node-head-bg: #1a1e2b;
+    --sai-node-head-border: #242838;
+    --sai-node-title-color: #dde0eb;
+    --sai-canvas-grid: rgba(148, 155, 180, 0.08);
+    --sai-palette-aura-1: rgba(86, 98, 201, 0.068);
+    --sai-palette-aura-2: rgba(68, 122, 196, 0.045);
+}
+
+#simpai-infinite-canvas-workbench[data-canvas-palette="obsidian"] {
+    --sai-canvas-bg: #ececef;
+    --sai-canvas-panel: #f8f8fa;
+    --sai-canvas-surface: #f0f0f3;
+    --sai-canvas-viewport: #e8e8ec;
+    --sai-canvas-border: #dadade;
+    --sai-canvas-text: #27272a;
+    --sai-canvas-muted: #686872;
+    --sai-canvas-accent: #356fa1;
+    --sai-canvas-accent-soft: rgba(53, 111, 161, 0.10);
+    --sai-canvas-on-accent: #f8fafc;
+    --sai-node-head-bg: #f3f3f6;
+    --sai-node-head-border: #e1e1e6;
+    --sai-palette-aura-1: rgba(53, 111, 161, 0.048);
+    --sai-palette-aura-2: rgba(113, 113, 122, 0.036);
+}
+
+#simpai-infinite-canvas-workbench.theme-dark[data-canvas-palette="obsidian"] {
+    --sai-canvas-bg: #0d0d0f;
+    --sai-canvas-panel: #161619;
+    --sai-canvas-surface: #121215;
+    --sai-canvas-viewport: #0e0e11;
+    --sai-canvas-nav-bg: rgba(22, 22, 25, 0.88);
+    --sai-canvas-border: #25252a;
+    --sai-canvas-text: #d4d4d8;
+    --sai-canvas-muted: #8a8a93;
+    --sai-canvas-accent: #4882ad;
+    --sai-canvas-accent-soft: rgba(72, 130, 173, 0.13);
+    --sai-canvas-on-accent: #eef5fa;
+    --sai-node-head-bg: #1b1b1f;
+    --sai-node-head-border: #25252a;
+    --sai-node-title-color: #dddddf;
+    --sai-canvas-grid: rgba(161, 161, 170, 0.075);
+    --sai-palette-aura-1: rgba(72, 130, 173, 0.058);
+    --sai-palette-aura-2: rgba(161, 161, 170, 0.038);
+}
+
+#simpai-infinite-canvas-workbench[data-canvas-palette="amber"] {
+    --sai-canvas-bg: #efece7;
+    --sai-canvas-panel: #faf8f5;
+    --sai-canvas-surface: #f3f0eb;
+    --sai-canvas-viewport: #ebe7e1;
+    --sai-canvas-border: #ded8cf;
+    --sai-canvas-text: #292524;
+    --sai-canvas-muted: #6e665e;
+    --sai-canvas-accent: #a86418;
+    --sai-canvas-accent-soft: rgba(168, 100, 24, 0.10);
+    --sai-canvas-on-accent: #faf8f5;
+    --sai-node-head-bg: #f5f2ed;
+    --sai-node-head-border: #e4dfd7;
+    --sai-palette-aura-1: rgba(168, 100, 24, 0.054);
+    --sai-palette-aura-2: rgba(154, 52, 18, 0.036);
+}
+
+#simpai-infinite-canvas-workbench.theme-dark[data-canvas-palette="amber"] {
+    --sai-canvas-bg: #100f0e;
+    --sai-canvas-panel: #191715;
+    --sai-canvas-surface: #141311;
+    --sai-canvas-viewport: #11100e;
+    --sai-canvas-nav-bg: rgba(25, 23, 21, 0.88);
+    --sai-canvas-border: #2a2622;
+    --sai-canvas-text: #d8d2ca;
+    --sai-canvas-muted: #90887e;
+    --sai-canvas-accent: #b87b2a;
+    --sai-canvas-accent-soft: rgba(184, 123, 42, 0.13);
+    --sai-canvas-on-accent: #fcf6ee;
+    --sai-node-head-bg: #201d1a;
+    --sai-node-head-border: #2a2622;
+    --sai-node-title-color: #e0dbd3;
+    --sai-canvas-grid: rgba(168, 162, 158, 0.075);
+    --sai-palette-aura-1: rgba(184, 123, 42, 0.068);
+    --sai-palette-aura-2: rgba(154, 78, 38, 0.044);
 }
 
 #simpai-infinite-canvas-workbench[hidden] {
@@ -63,13 +232,13 @@
 
 #simpai-infinite-canvas-workbench.theme-dark select,
 #simpai-infinite-canvas-workbench.theme-dark select option {
-    color: #f8fafc !important;
-    background-color: #242424 !important;
+    color: var(--sai-canvas-text) !important;
+    background-color: var(--sai-canvas-panel) !important;
 }
 
 #simpai-infinite-canvas-workbench.theme-dark select option:checked {
-    color: #ffffff !important;
-    background-color: #1f8f7a !important;
+    color: var(--sai-canvas-on-accent, #ffffff) !important;
+    background-color: var(--sai-canvas-accent) !important;
 }
 
 .sai-canvas-topbar {
@@ -82,7 +251,9 @@
     min-height: 56px;
     padding: 8px 16px;
     border-bottom: 1px solid var(--sai-canvas-border);
-    background: var(--sai-canvas-panel);
+    background-color: var(--sai-canvas-panel);
+    background-image: var(--sai-topbar-gradient);
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .sai-canvas-topbar-main {
@@ -220,7 +391,9 @@
     border: 1px solid var(--sai-canvas-border);
     border-radius: 7px;
     color: var(--sai-canvas-text);
-    background: var(--sai-canvas-surface);
+    background-color: var(--sai-canvas-surface);
+    background-image: var(--sai-control-gradient);
+    box-shadow: inset 0 1px 0 var(--sai-specular-line);
     font: inherit;
     cursor: pointer;
     overflow: hidden;
@@ -471,13 +644,13 @@
 
 .sai-canvas-toolbar button[data-canvas-action="close"],
 .sai-canvas-modal-head [data-modal-close] {
-    border-color: #ef4444;
-    color: #ffffff;
-    background: #b91c1c;
+    border-color: transparent;
+    color: var(--sai-canvas-muted);
+    background: transparent;
 }
 
 .sai-canvas-toolbar button[data-canvas-action="close"][data-standalone-close="true"] {
-    opacity: 1;
+    opacity: 0.52;
     cursor: pointer;
 }
 
@@ -485,9 +658,9 @@
 .sai-canvas-toolbar button[data-canvas-action="close"]:focus-visible,
 .sai-canvas-modal-head [data-modal-close]:hover,
 .sai-canvas-modal-head [data-modal-close]:focus-visible {
-    border-color: #fca5a5;
-    color: #ffffff;
-    background: #dc2626;
+    border-color: rgba(239, 68, 68, 0.34);
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
 }
 
 .sai-canvas-body {
@@ -507,7 +680,8 @@
     align-items: stretch;
     padding: 10px 6px;
     border-right: 1px solid var(--sai-canvas-border);
-    background: var(--sai-canvas-panel);
+    background-color: var(--sai-canvas-panel);
+    background-image: var(--sai-leftbar-gradient);
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -520,29 +694,39 @@
     height: 0;
 }
 
-#simpai-infinite-canvas-workbench * {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--sai-canvas-accent) 58%, var(--sai-canvas-muted)) color-mix(in srgb, var(--sai-canvas-panel) 82%, transparent);
+@supports not selector(::-webkit-scrollbar) {
+    #simpai-infinite-canvas-workbench * {
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in srgb, var(--sai-canvas-muted) 42%, transparent) transparent;
+    }
 }
 
 #simpai-infinite-canvas-workbench *::-webkit-scrollbar {
-    width: 9px;
-    height: 9px;
+    width: 7px;
+    height: 7px;
+}
+
+#simpai-infinite-canvas-workbench *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
 }
 
 #simpai-infinite-canvas-workbench *::-webkit-scrollbar-track {
     border-radius: 999px;
-    background: color-mix(in srgb, var(--sai-canvas-panel) 82%, transparent);
+    background: transparent;
 }
 
 #simpai-infinite-canvas-workbench *::-webkit-scrollbar-thumb {
-    border: 2px solid color-mix(in srgb, var(--sai-canvas-panel) 88%, transparent);
+    border: 1.5px solid transparent;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--sai-canvas-accent) 64%, var(--sai-canvas-muted));
+    background: color-mix(in srgb, var(--sai-canvas-muted) 36%, transparent);
+    background-clip: content-box;
 }
 
 #simpai-infinite-canvas-workbench *::-webkit-scrollbar-thumb:hover {
-    background: var(--sai-canvas-accent);
+    background: color-mix(in srgb, var(--sai-canvas-muted) 58%, transparent);
+    background-clip: content-box;
 }
 
 #simpai-infinite-canvas-workbench .sai-canvas-leftbar {
@@ -554,10 +738,20 @@
     height: 0;
 }
 
+.sai-canvas-nav button,
+.sai-canvas-leftbar > button:not(.is-active),
+.sai-inspector-actions button:not(.danger),
+.sai-node-head > button:not(.sai-preset-primary-run):not([data-canvas-action="close"]) {
+    background-image: var(--sai-control-gradient);
+    box-shadow: inset 0 1px 0 var(--sai-specular-line);
+}
+
 .sai-canvas-leftbar button.is-active {
-    border-color: var(--sai-canvas-accent);
-    color: #ffffff;
-    background: var(--sai-canvas-accent);
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 78%, #ffffff 22%);
+    color: var(--sai-canvas-on-accent, #ffffff);
+    background-color: var(--sai-canvas-accent);
+    background-image: var(--sai-accent-btn-gradient);
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--sai-canvas-accent) 28%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .sai-canvas-leftbar [data-canvas-action="canvas-manual"] {
@@ -648,11 +842,12 @@
     min-width: 0;
     overflow: hidden;
     padding: 10px;
-    border: 1px solid color-mix(in srgb, var(--sai-canvas-accent) 30%, var(--sai-canvas-border));
-    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--sai-canvas-accent) 24%, var(--sai-canvas-border));
+    border-radius: 12px;
     color: var(--sai-canvas-text);
-    background: color-mix(in srgb, var(--sai-canvas-panel) 94%, #000000);
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
+    background-color: color-mix(in srgb, var(--sai-canvas-panel) 96%, #000000);
+    background-image: var(--sai-popover-gradient);
+    box-shadow: 0 20px 48px rgba(2, 6, 23, 0.28), inset 0 1px 0 var(--sai-specular-line);
     cursor: default;
     pointer-events: auto;
 }
@@ -668,19 +863,19 @@
 }
 
 .sai-canvas-agent-panel.is-busy {
-    border-color: color-mix(in srgb, var(--sai-canvas-accent) 86%, #ffffff);
-    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18), 0 0 18px rgba(20, 184, 166, 0.28);
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 74%, var(--sai-canvas-border));
+    box-shadow: 0 14px 36px rgba(2, 6, 23, 0.24), 0 0 14px color-mix(in srgb, var(--sai-canvas-accent) 18%, transparent);
 }
 
 .sai-canvas-agent-panel.is-busy::before {
     content: "";
     position: absolute;
-    inset: -5px;
+    inset: -4px;
     z-index: -1;
-    padding: 3px;
-    border-radius: 13px;
-    background: conic-gradient(from var(--sai-run-angle, 0deg), #14b8a6, #22c55e, #f59e0b, #8b5cf6, #06b6d4, #14b8a6);
-    opacity: 0.9;
+    padding: 2px;
+    border-radius: 15px;
+    background: conic-gradient(from var(--sai-run-angle, 0deg), var(--sai-canvas-accent), color-mix(in srgb, var(--sai-canvas-accent) 56%, #3a89b8), color-mix(in srgb, var(--sai-canvas-accent) 72%, var(--sai-canvas-text)), color-mix(in srgb, var(--sai-canvas-accent) 32%, transparent), var(--sai-canvas-accent));
+    opacity: 0.72;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -692,13 +887,13 @@
 .sai-canvas-agent-panel.is-busy::after {
     content: "";
     position: absolute;
-    inset: -7px;
+    inset: -6px;
     z-index: -2;
-    padding: 6px;
-    border-radius: 16px;
-    background: conic-gradient(from var(--sai-run-angle, 0deg), rgba(20, 184, 166, 0.48), rgba(34, 197, 94, 0.34), rgba(245, 158, 11, 0.32), rgba(139, 92, 246, 0.34), rgba(6, 182, 212, 0.44), rgba(20, 184, 166, 0.48));
+    padding: 5px;
+    border-radius: 17px;
+    background: conic-gradient(from var(--sai-run-angle, 0deg), color-mix(in srgb, var(--sai-canvas-accent) 32%, transparent), rgba(58, 137, 184, 0.16), color-mix(in srgb, var(--sai-canvas-accent) 22%, transparent), transparent, color-mix(in srgb, var(--sai-canvas-accent) 32%, transparent));
     filter: blur(5px);
-    opacity: 0.58;
+    opacity: 0.38;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -748,16 +943,17 @@
     height: 50px;
     margin: -1px;
     padding: 0;
-    border: none;
+    border: 1px solid color-mix(in srgb, #ffffff 22%, transparent);
     border-radius: 999px;
-    color: #ffffff;
-    background: linear-gradient(135deg, var(--sai-canvas-accent) 0%, #127f83 100%);
+    color: var(--sai-canvas-on-accent, #ffffff);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--sai-canvas-accent) 92%, #ffffff 8%) 0%, color-mix(in srgb, var(--sai-canvas-accent) 78%, #0284c7 22%) 100%);
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--sai-canvas-accent) 34%, rgba(2, 6, 23, 0.36)), inset 0 1px 0 rgba(255, 255, 255, 0.28);
     cursor: grab;
+    transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms ease;
 }
 .sai-canvas-agent-bubble:hover {
-    box-shadow: 0px -3px 100px rgba(191, 248, 241, 0.767);
-    transform: scale(1.1);
-    transition: transform 80ms ease;
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--sai-canvas-accent) 46%, rgba(2, 6, 23, 0.4)), inset 0 1px 0 rgba(255, 255, 255, 0.36);
+    transform: translateY(-1px) scale(1.06);
 }
 .sai-canvas-agent-bubble:active {
     cursor: grabbing;
@@ -1436,9 +1632,11 @@
 .sai-canvas-agent-actions button.is-primary {
     flex: 0 1 auto;
     min-width: 72px;
-    color: #ffffff;
-    border-color: var(--sai-canvas-accent);
-    background: var(--sai-canvas-accent);
+    color: var(--sai-canvas-on-accent, #ffffff);
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 78%, #ffffff 22%);
+    background-color: var(--sai-canvas-accent);
+    background-image: var(--sai-accent-btn-gradient);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--sai-canvas-accent) 24%, rgba(2, 6, 23, 0.18)), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .sai-canvas-agent-actions button.is-primary span {
@@ -1835,9 +2033,11 @@
 .sai-canvas-edge {
     fill: none;
     stroke: var(--sai-canvas-accent);
-    stroke-width: 3;
+    stroke-width: 2.5;
+    stroke-opacity: 0.8;
     stroke-linecap: round;
     pointer-events: stroke;
+    transition: stroke 120ms ease, stroke-width 120ms ease, stroke-opacity 120ms ease;
 }
 
 .sai-canvas-edge-hit {
@@ -1849,36 +2049,37 @@
 }
 
 .sai-canvas-edge-generate {
-    stroke: #737373;
+    stroke: var(--sai-edge-generate, #8b98ad);
     stroke-dasharray: none;
 }
 
 .sai-canvas-edge-text {
-    stroke: #16a34a;
+    stroke: var(--sai-edge-text, #34d399);
 }
 
 .sai-canvas-edge-image {
-    stroke: #14b8a6;
+    stroke: var(--sai-edge-image, #38bdf8);
 }
 
 .sai-canvas-edge-compare {
-    stroke: #0ea5e9;
+    stroke: var(--sai-edge-compare, #60a5fa);
 }
 
 .sai-canvas-edge-timeline {
-    stroke: #f59e0b;
-    stroke-width: 2.4;
-    stroke-opacity: 0.78;
+    stroke: var(--sai-edge-timeline, #fbbf24);
+    stroke-width: 2.3;
+    stroke-opacity: 0.82;
 }
 
 .sai-canvas-edge-batch_input {
-    stroke: #22c55e;
+    stroke: var(--sai-edge-batch, #2dd4bf);
     stroke-dasharray: 5 5;
 }
 
 .sai-canvas-edge.is-selected {
     stroke: var(--sai-canvas-warn);
-    stroke-width: 4;
+    stroke-width: 3.6;
+    stroke-opacity: 1;
 }
 
 .sai-canvas-temp-edge {
@@ -1963,7 +2164,8 @@
     border: 1px solid var(--sai-canvas-border);
     border-radius: 14px;
     background: var(--sai-canvas-panel);
-    box-shadow: 0 4px 16px rgba(10, 18, 30, 0.12);
+    background-image: var(--sai-node-gradient);
+    box-shadow: 0 6px 22px rgba(2, 6, 23, 0.14), inset 0 1px 0 var(--sai-specular-line);
     user-select: none;
     touch-action: none;
     isolation: isolate;
@@ -1973,9 +2175,9 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: geometricPrecision;
     transition:
-        border-color 120ms ease,
-        box-shadow 120ms ease,
-        filter 120ms ease;
+        border-color 140ms ease,
+        box-shadow 150ms ease,
+        filter 140ms ease;
 }
 
 .sai-canvas-node input,
@@ -2094,12 +2296,13 @@
 }
 
 .sai-canvas-node:not(.is-focused):hover {
-    border-color: color-mix(in srgb, var(--sai-canvas-accent) 48%, var(--sai-canvas-border));
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sai-canvas-accent) 40%, transparent), 0 4px 16px rgba(15, 23, 42, 0.15);
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 38%, var(--sai-canvas-border));
+    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .sai-canvas-node.is-focused {
-    box-shadow: 0 0 0 1px var(--sai-canvas-accent), 0 4px 16px rgba(15, 23, 42, 0.15);
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 78%, var(--sai-canvas-border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sai-canvas-accent) 52%, transparent), 0 10px 26px rgba(2, 6, 23, 0.2);
 }
 
 .sai-canvas-node.is-collapsed {
@@ -2360,19 +2563,19 @@
 }
 
 .sai-canvas-node.is-running {
-    border-color: rgba(45, 212, 191, 0.92);
-    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18), 0 0 18px rgba(20, 184, 166, 0.28);
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 76%, var(--sai-canvas-border));
+    box-shadow: 0 12px 30px rgba(2, 6, 23, 0.22), 0 0 14px color-mix(in srgb, var(--sai-canvas-accent) 18%, transparent);
 }
 
 .sai-canvas-node.is-running::before {
     content: "";
     position: absolute;
-    inset: -5px;
+    inset: -4px;
     z-index: -1;
-    padding: 3px;
-    border-radius: 13px;
-    background: conic-gradient(from var(--sai-run-angle, 0deg), #14b8a6, #22c55e, #f59e0b, #8b5cf6, #06b6d4, #14b8a6);
-    opacity: 0.9;
+    padding: 2px;
+    border-radius: 17px;
+    background: conic-gradient(from var(--sai-run-angle, 0deg), var(--sai-canvas-accent), color-mix(in srgb, var(--sai-canvas-accent) 56%, #3a89b8), color-mix(in srgb, var(--sai-canvas-accent) 72%, var(--sai-canvas-text)), color-mix(in srgb, var(--sai-canvas-accent) 32%, transparent), var(--sai-canvas-accent));
+    opacity: 0.72;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -2384,13 +2587,13 @@
 .sai-canvas-node.is-running::after {
     content: "";
     position: absolute;
-    inset: -7px;
+    inset: -6px;
     z-index: -2;
-    padding: 6px;
-    border-radius: 16px;
-    background: conic-gradient(from var(--sai-run-angle, 0deg), rgba(20, 184, 166, 0.48), rgba(34, 197, 94, 0.34), rgba(245, 158, 11, 0.32), rgba(139, 92, 246, 0.34), rgba(6, 182, 212, 0.44), rgba(20, 184, 166, 0.48));
+    padding: 5px;
+    border-radius: 19px;
+    background: conic-gradient(from var(--sai-run-angle, 0deg), color-mix(in srgb, var(--sai-canvas-accent) 32%, transparent), rgba(58, 137, 184, 0.16), color-mix(in srgb, var(--sai-canvas-accent) 22%, transparent), transparent, color-mix(in srgb, var(--sai-canvas-accent) 32%, transparent));
     filter: blur(5px);
-    opacity: 0.58;
+    opacity: 0.38;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -2399,8 +2602,8 @@
 }
 
 .sai-canvas-node.is-selected {
-    border-color: var(--sai-canvas-accent);
-    box-shadow: 0 0 0 1px var(--sai-canvas-accent), 0 4px 16px rgba(15, 23, 42, 0.15);
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 82%, var(--sai-canvas-border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sai-canvas-accent) 56%, transparent), 0 10px 26px rgba(2, 6, 23, 0.2);
 }
 
 .sai-canvas-node.is-scheduler-blocked {
@@ -2486,6 +2689,7 @@
 
 .sai-canvas-node-note .sai-node-head {
     background: rgba(0, 0, 0, 0.08);
+    box-shadow: none;
 }
 
 .sai-canvas-node-note .sai-node-head button.is-active {
@@ -3019,6 +3223,14 @@
     border-bottom: 1px solid var(--sai-node-head-border);
     border-radius: 13px 13px 0 0;
     background: var(--sai-node-head-bg);
+    background-image: var(--sai-node-head-gradient);
+    box-shadow: inset 0 1px 0 var(--sai-specular-line);
+}
+
+.sai-canvas-node:is(.is-selected, .is-focused):not(.has-custom-color):not(.is-image-frameless):not(.sai-canvas-node-note) > .sai-node-head {
+    background-image:
+        linear-gradient(90deg, color-mix(in srgb, var(--sai-canvas-accent) 10%, transparent) 0%, var(--sai-palette-aura-2) 48%, transparent 90%),
+        linear-gradient(180deg, var(--sai-head-sheen-top) 0%, var(--sai-head-sheen-bottom) 100%);
 }
 
 .sai-canvas-node-image .sai-node-head,
@@ -3039,43 +3251,74 @@
 
 .sai-node-kind {
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: 5px;
     color: var(--sai-canvas-accent);
     background: var(--sai-canvas-accent-soft);
-    font-size: 11px;
-    line-height: 1.2;
+    font-size: 10px;
+    line-height: 1.25;
     font-weight: 700;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
 }
 
 .sai-canvas-node-image .sai-node-kind {
-    color: #9a3412;
-    background: #fff2e4;
+    color: #c2410c;
+    background: rgba(249, 115, 22, 0.12);
 }
 
 .sai-canvas-node-video .sai-node-kind {
-    color: #0369a1;
-    background: rgba(14, 165, 233, 0.16);
+    color: #0284c7;
+    background: rgba(14, 165, 233, 0.12);
 }
 
 .sai-canvas-node-audio .sai-node-kind {
-    color: #be123c;
-    background: rgba(244, 63, 94, 0.16);
+    color: #e11d48;
+    background: rgba(244, 63, 94, 0.12);
 }
 
 .sai-canvas-node-text .sai-node-kind {
-    color: #15803d;
-    background: rgba(22, 163, 74, 0.14);
+    color: #059669;
+    background: rgba(16, 185, 129, 0.12);
 }
 
 .sai-canvas-node-style_selector .sai-node-kind {
-    color: #be185d;
-    background: rgba(236, 72, 153, 0.16);
+    color: #db2777;
+    background: rgba(236, 72, 153, 0.12);
 }
 
 .sai-canvas-node-tag_cart .sai-node-kind {
-    color: #b45309;
-    background: rgba(245, 158, 11, 0.18);
+    color: #d97706;
+    background: rgba(245, 158, 11, 0.13);
+}
+
+.theme-dark .sai-canvas-node-image .sai-node-kind {
+    color: #d69a66;
+    background: rgba(214, 154, 102, 0.11);
+}
+
+.theme-dark .sai-canvas-node-video .sai-node-kind {
+    color: #6eaac9;
+    background: rgba(110, 170, 201, 0.11);
+}
+
+.theme-dark .sai-canvas-node-audio .sai-node-kind {
+    color: #cf8290;
+    background: rgba(207, 130, 144, 0.11);
+}
+
+.theme-dark .sai-canvas-node-text .sai-node-kind {
+    color: #5eb08f;
+    background: rgba(94, 176, 143, 0.11);
+}
+
+.theme-dark .sai-canvas-node-style_selector .sai-node-kind {
+    color: #c784ab;
+    background: rgba(199, 132, 171, 0.11);
+}
+
+.theme-dark .sai-canvas-node-tag_cart .sai-node-kind {
+    color: #cca358;
+    background: rgba(204, 163, 88, 0.11);
 }
 
 .sai-canvas-node-tag_cart {
@@ -3151,12 +3394,17 @@
 
 .sai-canvas-node-wd14 .sai-node-kind {
     color: #7c3aed;
-    background: rgba(124, 58, 237, 0.16);
+    background: rgba(139, 92, 246, 0.13);
 }
 
 .sai-canvas-node-vlm .sai-node-kind {
-    color: #0f766e;
-    background: rgba(20, 184, 166, 0.16);
+    color: var(--sai-canvas-accent);
+    background: var(--sai-canvas-accent-soft);
+}
+
+.theme-dark .sai-canvas-node-wd14 .sai-node-kind {
+    color: #c4b5fd;
+    background: rgba(167, 139, 250, 0.15);
 }
 
 .sai-canvas-node.has-custom-color:not(.is-selected):not(.is-focused):not(.is-scheduler-blocked):not(.is-scheduler-waiting):not(.is-result-stale) {
@@ -3363,6 +3611,7 @@
     border: 0;
     border-radius: 8px;
     background: transparent;
+    box-shadow: none;
     opacity: 0;
     transform: translateY(-3px);
     transition: opacity 160ms ease, transform 160ms ease;
@@ -3375,7 +3624,8 @@
 .sai-canvas-node-image.is-image-frameless:not(.is-collapsed):has(.sai-image-node-media.is-empty-upload) {
     border-color: var(--sai-canvas-border);
     background: var(--sai-canvas-panel);
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
+    background-image: var(--sai-node-gradient);
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14), inset 0 1px 0 var(--sai-specular-line);
 }
 
 .sai-canvas-node-image.is-image-frameless:not(.is-collapsed):has(.sai-image-node-media.is-empty-upload) .sai-node-head {
@@ -3388,6 +3638,7 @@
     border: 0;
     border-radius: 0;
     background: transparent;
+    box-shadow: none;
     opacity: 1;
     transform: none;
     transition: none;
@@ -8989,22 +9240,38 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     justify-content: center;
     gap: 6px;
     margin: 0 8px 10px;
-    color: #ffffff;
-    border-color: var(--sai-canvas-accent);
-    background: var(--sai-canvas-accent);
+    color: var(--sai-canvas-on-accent, #ffffff);
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 78%, #ffffff 22%);
+    background-color: var(--sai-canvas-accent);
+    background-image: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--sai-canvas-accent) 88%, #ffffff 12%) 0%,
+        color-mix(in srgb, var(--sai-canvas-accent) 84%, #06090f 16%) 100%
+    );
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--sai-canvas-accent) 22%, rgba(2, 6, 23, 0.16)), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    font-weight: 600;
 }
 
 .sai-node-primary:hover {
-    background: #0b5f58;
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 72%, #ffffff 28%);
+    background-color: color-mix(in srgb, var(--sai-canvas-accent) 88%, #ffffff 12%);
+    background-image: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--sai-canvas-accent) 82%, #ffffff 18%) 0%,
+        color-mix(in srgb, var(--sai-canvas-accent) 88%, #06090f 12%) 100%
+    );
 }
 
 .sai-node-primary.is-danger {
-    border-color: rgba(239, 68, 68, 0.7);
-    background: #b91c1c;
+    border-color: rgba(248, 113, 113, 0.62);
+    background-color: #b91c1c;
+    background-image: linear-gradient(180deg, #c83737 0%, #9f1d1d 100%);
+    box-shadow: 0 3px 10px rgba(185, 28, 28, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .sai-node-primary.is-danger:hover {
-    background: #991b1b;
+    background-color: #991b1b;
+    background-image: linear-gradient(180deg, #dc4242 0%, #ad2121 100%);
 }
 
 .sai-node-secondary {
@@ -9014,7 +9281,13 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     height: 30px;
     color: var(--sai-canvas-text);
     border-color: color-mix(in srgb, var(--sai-canvas-accent) 38%, var(--sai-canvas-border));
-    background: color-mix(in srgb, var(--sai-canvas-accent) 10%, var(--sai-canvas-panel));
+    background-color: color-mix(in srgb, var(--sai-canvas-accent) 10%, var(--sai-canvas-panel));
+    background-image: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--sai-canvas-accent) 13%, var(--sai-canvas-panel)) 0%,
+        color-mix(in srgb, var(--sai-canvas-accent) 7%, var(--sai-canvas-surface)) 100%
+    );
+    box-shadow: inset 0 1px 0 var(--sai-specular-line);
     font-size: 12px;
     font-weight: 700;
 }
@@ -9027,7 +9300,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 
 .sai-node-handle {
     --sai-port-color: var(--sai-canvas-accent);
-    --sai-port-ring: rgba(15, 118, 110, 0.5);
+    --sai-port-ring: color-mix(in srgb, var(--sai-canvas-accent) 44%, transparent);
     position: absolute;
     width: 28px;
     height: 28px;
@@ -9047,11 +9320,16 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     top: 7px;
     width: 14px;
     height: 14px;
-    border: 2px solid #ffffff;
+    border: 2px solid var(--sai-canvas-panel);
     border-radius: 50%;
     background: var(--sai-port-color);
-    box-shadow: 0 0 0 1px var(--sai-port-ring);
+    box-shadow: 0 0 0 1.5px var(--sai-port-ring), 0 2px 5px rgba(2, 6, 23, 0.22);
     box-sizing: border-box;
+    transition:
+        transform 150ms cubic-bezier(0.22, 1, 0.36, 1),
+        background-color 120ms ease,
+        box-shadow 140ms ease,
+        border-color 120ms ease;
 }
 
 .sai-node-handle[data-handle-in],
@@ -9068,14 +9346,14 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 .sai-node-handle[data-handle-out="image"],
 .sai-node-handle[data-handle-out="video"],
 .sai-node-handle[data-handle-out="result"] {
-    --sai-port-color: #0ea5e9;
-    --sai-port-ring: rgba(14, 165, 233, 0.48);
+    --sai-port-color: var(--sai-edge-image, #38bdf8);
+    --sai-port-ring: color-mix(in srgb, var(--sai-edge-image, #38bdf8) 46%, transparent);
 }
 
 .sai-node-handle[data-batch-any-in="any"],
 .sai-node-handle[data-handle-out="any"] {
     --sai-port-color: transparent;
-    --sai-port-ring: rgba(148, 163, 184, 0.38);
+    --sai-port-ring: rgba(148, 163, 184, 0.42);
 }
 
 .sai-node-handle[data-text-in],
@@ -9084,20 +9362,20 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 .sai-node-handle[data-tagcart-text-in],
 .sai-node-handle[data-batch-any-in="text"],
 .sai-node-handle[data-handle-out="text"] {
-    --sai-port-color: #22c55e;
-    --sai-port-ring: rgba(34, 197, 94, 0.48);
+    --sai-port-color: var(--sai-edge-text, #34d399);
+    --sai-port-ring: color-mix(in srgb, var(--sai-edge-text, #34d399) 46%, transparent);
 }
 
 .sai-node-handle[data-config-in],
 .sai-node-handle[data-handle-out="config"] {
-    --sai-port-color: #8b5cf6;
-    --sai-port-ring: rgba(139, 92, 246, 0.48);
+    --sai-port-color: #7c6bb8;
+    --sai-port-ring: rgba(124, 107, 184, 0.42);
 }
 
 .sai-node-handle[data-handle-in-result],
 .sai-node-handle[data-handle-out="preset"] {
-    --sai-port-color: #f97316;
-    --sai-port-ring: rgba(249, 115, 22, 0.5);
+    --sai-port-color: #bf713d;
+    --sai-port-ring: rgba(191, 113, 61, 0.44);
 }
 
 .sai-node-handle[data-timeline-track-in],
@@ -9105,8 +9383,8 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 .sai-node-handle[data-director-media-in^="audio_"],
 .sai-node-handle[data-batch-any-in="audio"],
 .sai-node-handle[data-handle-out="audio"] {
-    --sai-port-color: #f59e0b;
-    --sai-port-ring: rgba(245, 158, 11, 0.48);
+    --sai-port-color: var(--sai-edge-timeline, #b88235);
+    --sai-port-ring: color-mix(in srgb, var(--sai-edge-timeline, #b88235) 42%, transparent);
 }
 
 .sai-node-handle-in {
@@ -9145,8 +9423,10 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-node-handle:hover::after {
-    background: var(--sai-canvas-warn);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--sai-port-color) 34%, transparent);
+    transform: scale(1.26);
+    border-color: var(--sai-canvas-text);
+    background: var(--sai-port-color);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--sai-port-color) 28%, transparent), 0 2px 8px rgba(2, 6, 23, 0.28);
 }
 
 .sai-sam3-editor {
@@ -9536,7 +9816,8 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     min-width: 0;
     overflow: auto;
     border-left: 1px solid var(--sai-canvas-border);
-    background: var(--sai-canvas-panel);
+    background-color: var(--sai-canvas-panel);
+    background-image: var(--sai-drawer-gradient);
 }
 
 .sai-canvas-workbench.inspector-collapsed .sai-canvas-inspector {
@@ -9785,9 +10066,12 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     z-index: 2;
     padding: 6px;
     border: 1px solid var(--sai-canvas-border);
-    border-radius: 8px;
-    background: var(--sai-canvas-nav-bg);
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+    border-radius: 10px;
+    background-color: var(--sai-canvas-nav-bg);
+    background-image: linear-gradient(180deg, var(--sai-sheen-top) 0%, var(--sai-sheen-bottom) 100%);
+    -webkit-backdrop-filter: blur(14px) saturate(1.18);
+    backdrop-filter: blur(14px) saturate(1.18);
+    box-shadow: 0 10px 28px rgba(2, 6, 23, 0.2), inset 0 1px 0 var(--sai-specular-line);
 }
 
 .sai-canvas-workbench.inspector-collapsed .sai-canvas-nav {
@@ -9815,11 +10099,14 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     width: 196px;
     overflow: hidden;
     border: 1px solid var(--sai-canvas-border);
-    border-radius: 8px;
-    background: var(--sai-canvas-nav-bg);
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
-    opacity: 0.58;
-    transition: opacity 120ms ease;
+    border-radius: 10px;
+    background-color: var(--sai-canvas-nav-bg);
+    background-image: linear-gradient(180deg, var(--sai-sheen-top) 0%, var(--sai-sheen-bottom) 100%);
+    -webkit-backdrop-filter: blur(14px) saturate(1.18);
+    backdrop-filter: blur(14px) saturate(1.18);
+    box-shadow: 0 10px 28px rgba(2, 6, 23, 0.2), inset 0 1px 0 var(--sai-specular-line);
+    opacity: 0.72;
+    transition: opacity 150ms ease, transform 150ms cubic-bezier(0.22, 1, 0.36, 1), border-color 150ms ease;
 }
 
 .sai-canvas-workbench.inspector-collapsed .sai-canvas-minimap {
@@ -9898,8 +10185,8 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-minimap-node {
-    fill: #a3a3a3;
-    opacity: 0.78;
+    fill: color-mix(in srgb, var(--sai-canvas-muted) 68%, transparent);
+    opacity: 0.82;
 }
 
 .sai-minimap-node[data-type="preset"] {
@@ -9911,13 +10198,13 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-minimap-node.is-selected {
-    fill: #ef4444;
+    fill: var(--sai-canvas-accent);
     opacity: 1;
 }
 
 .sai-minimap-view {
-    fill: rgba(255, 255, 255, 0.08);
-    stroke: #ef4444;
+    fill: color-mix(in srgb, var(--sai-canvas-accent) 12%, transparent);
+    stroke: var(--sai-canvas-accent);
     stroke-width: 1.5;
 }
 
@@ -10036,14 +10323,14 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     min-width: 210px;
     max-width: min(360px, calc(100vw - 24px));
     max-height: calc(100vh - 24px);
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 6px;
     border: 1px solid var(--sai-canvas-border);
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--sai-canvas-panel);
-    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
-    scrollbar-width: thin;
+    box-shadow: 0 18px 46px rgba(2, 6, 23, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .sai-canvas-context-menu.has-submenus {
@@ -10128,15 +10415,15 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 .sai-canvas-context-menu-item.has-children::after {
     content: "";
     position: absolute;
-    top: -4px;
-    right: -10px;
-    width: 12px;
-    height: calc(100% + 8px);
+    top: 0;
+    right: -6px;
+    width: 8px;
+    height: 100%;
 }
 
 .sai-canvas-context-menu-item.is-submenu-flipped::after {
     right: auto;
-    left: -10px;
+    left: -6px;
 }
 
 .sai-canvas-context-menu button {
@@ -10231,14 +10518,14 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     min-width: 300px;
     max-width: min(380px, calc(100vw - 24px));
     max-height: calc(100vh - 24px);
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 6px;
     border: 1px solid var(--sai-canvas-border);
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--sai-canvas-panel);
-    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
-    scrollbar-width: thin;
+    box-shadow: 0 18px 46px rgba(2, 6, 23, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .sai-canvas-context-menu-item.has-children:hover > .sai-canvas-context-submenu,
@@ -10298,9 +10585,10 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     border: 1px solid var(--sai-canvas-border);
     border-right: 0;
     border-bottom: 0;
-    border-radius: 8px 0 0 0;
-    background: var(--sai-canvas-panel);
-    box-shadow: -10px 0 32px rgba(15, 23, 42, 0.22);
+    border-radius: 10px 0 0 0;
+    background-color: var(--sai-canvas-panel);
+    background-image: var(--sai-drawer-gradient);
+    box-shadow: -12px 0 36px rgba(2, 6, 23, 0.24), inset 1px 1px 0 var(--sai-specular-line);
 }
 
 .sai-run-history-panel[hidden],
@@ -10326,10 +10614,11 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     border: 1px solid var(--sai-canvas-border);
     border-right: 0;
     border-bottom: 0;
-    border-radius: 8px 0 0 0;
+    border-radius: 10px 0 0 0;
     color: var(--sai-canvas-text);
-    background: var(--sai-canvas-panel);
-    box-shadow: -10px 0 32px rgba(15, 23, 42, 0.22);
+    background-color: var(--sai-canvas-panel);
+    background-image: var(--sai-drawer-gradient);
+    box-shadow: -12px 0 36px rgba(2, 6, 23, 0.24), inset 1px 1px 0 var(--sai-specular-line);
 }
 
 .sai-canvas-settings-panel[hidden] {
@@ -10344,6 +10633,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     min-height: 38px;
     padding: 5px 8px 5px 12px;
     border-bottom: 1px solid var(--sai-canvas-border);
+    background-image: var(--sai-node-head-gradient);
 }
 
 .sai-canvas-settings-head button,
@@ -10386,7 +10676,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     gap: 6px;
     padding: 8px;
     border-right: 1px solid var(--sai-canvas-border);
-    background: var(--sai-canvas-surface);
+    background: color-mix(in srgb, var(--sai-canvas-surface) 76%, transparent);
 }
 
 .sai-canvas-settings-tabs button {
@@ -10399,7 +10689,9 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     border: 1px solid var(--sai-canvas-border);
     border-radius: 6px;
     color: var(--sai-canvas-text);
-    background: var(--sai-canvas-panel);
+    background-color: var(--sai-canvas-panel);
+    background-image: var(--sai-control-gradient);
+    box-shadow: inset 0 1px 0 var(--sai-specular-line);
     font-size: 12px;
     font-weight: 800;
     text-align: left;
@@ -10407,9 +10699,11 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-canvas-settings-tabs button.is-active {
-    color: #ffffff;
-    border-color: var(--sai-canvas-accent);
-    background: var(--sai-canvas-accent);
+    color: var(--sai-canvas-on-accent, #ffffff);
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 78%, #ffffff 22%);
+    background-color: var(--sai-canvas-accent);
+    background-image: var(--sai-accent-btn-gradient);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--sai-canvas-accent) 24%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .sai-canvas-settings-content {
@@ -10426,8 +10720,10 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     gap: 8px;
     padding: 10px;
     border: 1px solid var(--sai-canvas-border);
-    border-radius: 8px;
-    background: var(--sai-canvas-surface);
+    border-radius: 9px;
+    background-color: color-mix(in srgb, var(--sai-canvas-surface) 80%, transparent);
+    background-image: linear-gradient(180deg, var(--sai-sheen-top) 0%, transparent 64%);
+    box-shadow: inset 0 1px 0 var(--sai-specular-line);
 }
 
 .sai-settings-section h3 {
@@ -10516,6 +10812,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     min-height: 38px;
     padding: 5px 8px 5px 12px;
     border-bottom: 1px solid var(--sai-canvas-border);
+    background-image: var(--sai-node-head-gradient);
 }
 
 .sai-run-queue-head div {
@@ -11003,18 +11300,35 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-canvas-modal {
-    --sai-canvas-panel: #ffffff;
-    --sai-canvas-surface: #f4f4f5;
-    --sai-canvas-border: #d4d4d8;
-    --sai-canvas-text: #27272a;
-    --sai-canvas-muted: #71717a;
+    --sai-canvas-panel: #f8fafc;
+    --sai-canvas-surface: #eff2f7;
+    --sai-canvas-border: #d5dce6;
+    --sai-canvas-text: #1e293b;
+    --sai-canvas-muted: #64748b;
+    --sai-canvas-accent: #0f766e;
+    --sai-canvas-accent-soft: rgba(15, 118, 110, 0.10);
+    --sai-canvas-on-accent: #f8fafc;
+    --sai-palette-aura-1: rgba(15, 118, 110, 0.052);
+    --sai-palette-aura-2: rgba(29, 111, 165, 0.036);
+    --sai-sheen-top: rgba(255, 255, 255, 0.62);
+    --sai-sheen-bottom: rgba(15, 23, 42, 0.024);
+    --sai-head-sheen-top: rgba(255, 255, 255, 0.68);
+    --sai-head-sheen-bottom: rgba(15, 23, 42, 0.026);
+    --sai-specular-line: rgba(255, 255, 255, 0.72);
+    --sai-drawer-gradient:
+        radial-gradient(95% 55% at 12% 0%, var(--sai-palette-aura-1), transparent 58%),
+        radial-gradient(85% 50% at 92% 14%, var(--sai-palette-aura-2), transparent 54%),
+        linear-gradient(180deg, var(--sai-sheen-top) 0%, transparent 38%, var(--sai-sheen-bottom) 100%);
+    --sai-node-head-gradient:
+        linear-gradient(90deg, var(--sai-palette-aura-1) 0%, var(--sai-palette-aura-2) 44%, transparent 86%),
+        linear-gradient(180deg, var(--sai-head-sheen-top) 0%, var(--sai-head-sheen-bottom) 100%);
     position: fixed;
     inset: 0;
     z-index: 2147483647;
     display: grid;
     place-items: center;
     padding: 24px;
-    background: rgba(24, 24, 24, 0.58);
+    background: rgba(8, 12, 20, 0.66);
 }
 
 .sai-canvas-modal *,
@@ -11024,13 +11338,94 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
 }
 
 .sai-canvas-modal.theme-dark {
-    --sai-canvas-panel: #242424;
-    --sai-canvas-surface: #2b2b2b;
-    --sai-canvas-border: #3a3a3a;
-    --sai-canvas-text: #e7e7e7;
-    --sai-canvas-muted: #a1a1a1;
-    --sai-canvas-accent: #1f8f7a;
-    --sai-canvas-accent-soft: #1f3f39;
+    --sai-canvas-panel: #161a22;
+    --sai-canvas-surface: #12151c;
+    --sai-canvas-border: #232a36;
+    --sai-canvas-text: #d4dbe5;
+    --sai-canvas-muted: #8590a2;
+    --sai-canvas-accent: #1c9b8e;
+    --sai-canvas-accent-soft: rgba(28, 155, 142, 0.12);
+    --sai-canvas-on-accent: #edf7f6;
+    --sai-palette-aura-1: rgba(28, 155, 142, 0.064);
+    --sai-palette-aura-2: rgba(58, 137, 184, 0.044);
+    --sai-sheen-top: rgba(255, 255, 255, 0.032);
+    --sai-sheen-bottom: rgba(2, 6, 16, 0.16);
+    --sai-head-sheen-top: rgba(255, 255, 255, 0.038);
+    --sai-head-sheen-bottom: rgba(2, 6, 16, 0.12);
+    --sai-specular-line: rgba(255, 255, 255, 0.065);
+}
+
+:root[data-sai-canvas-palette="indigo"] .sai-canvas-modal:not(.theme-dark) {
+    --sai-canvas-panel: #f8f9fc;
+    --sai-canvas-surface: #f0f1f8;
+    --sai-canvas-border: #d6dae8;
+    --sai-canvas-accent: #4650c7;
+    --sai-canvas-accent-soft: rgba(70, 80, 199, 0.10);
+    --sai-palette-aura-1: rgba(70, 80, 199, 0.054);
+    --sai-palette-aura-2: rgba(52, 94, 201, 0.038);
+}
+
+:root[data-sai-canvas-palette="indigo"] .sai-canvas-modal.theme-dark {
+    --sai-canvas-panel: #161822;
+    --sai-canvas-surface: #11131c;
+    --sai-canvas-border: #242838;
+    --sai-canvas-text: #d5d8e4;
+    --sai-canvas-muted: #868ca1;
+    --sai-canvas-accent: #5662c9;
+    --sai-canvas-accent-soft: rgba(86, 98, 201, 0.13);
+    --sai-canvas-on-accent: #eef0fb;
+    --sai-palette-aura-1: rgba(86, 98, 201, 0.068);
+    --sai-palette-aura-2: rgba(68, 122, 196, 0.045);
+}
+
+:root[data-sai-canvas-palette="obsidian"] .sai-canvas-modal:not(.theme-dark) {
+    --sai-canvas-panel: #f8f8fa;
+    --sai-canvas-surface: #f0f0f3;
+    --sai-canvas-border: #dadade;
+    --sai-canvas-text: #27272a;
+    --sai-canvas-muted: #686872;
+    --sai-canvas-accent: #356fa1;
+    --sai-canvas-accent-soft: rgba(53, 111, 161, 0.10);
+    --sai-palette-aura-1: rgba(53, 111, 161, 0.048);
+    --sai-palette-aura-2: rgba(113, 113, 122, 0.036);
+}
+
+:root[data-sai-canvas-palette="obsidian"] .sai-canvas-modal.theme-dark {
+    --sai-canvas-panel: #161619;
+    --sai-canvas-surface: #121215;
+    --sai-canvas-border: #25252a;
+    --sai-canvas-text: #d4d4d8;
+    --sai-canvas-muted: #8a8a93;
+    --sai-canvas-accent: #4882ad;
+    --sai-canvas-accent-soft: rgba(72, 130, 173, 0.13);
+    --sai-canvas-on-accent: #eef5fa;
+    --sai-palette-aura-1: rgba(72, 130, 173, 0.058);
+    --sai-palette-aura-2: rgba(161, 161, 170, 0.038);
+}
+
+:root[data-sai-canvas-palette="amber"] .sai-canvas-modal:not(.theme-dark) {
+    --sai-canvas-panel: #faf8f5;
+    --sai-canvas-surface: #f3f0eb;
+    --sai-canvas-border: #ded8cf;
+    --sai-canvas-text: #292524;
+    --sai-canvas-muted: #6e665e;
+    --sai-canvas-accent: #a86418;
+    --sai-canvas-accent-soft: rgba(168, 100, 24, 0.10);
+    --sai-palette-aura-1: rgba(168, 100, 24, 0.054);
+    --sai-palette-aura-2: rgba(154, 52, 18, 0.036);
+}
+
+:root[data-sai-canvas-palette="amber"] .sai-canvas-modal.theme-dark {
+    --sai-canvas-panel: #191715;
+    --sai-canvas-surface: #141311;
+    --sai-canvas-border: #2a2622;
+    --sai-canvas-text: #d8d2ca;
+    --sai-canvas-muted: #90887e;
+    --sai-canvas-accent: #b87b2a;
+    --sai-canvas-accent-soft: rgba(184, 123, 42, 0.13);
+    --sai-canvas-on-accent: #fcf6ee;
+    --sai-palette-aura-1: rgba(184, 123, 42, 0.068);
+    --sai-palette-aura-2: rgba(154, 78, 38, 0.044);
 }
 
 .sai-canvas-modal-panel {
@@ -11040,10 +11435,15 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     max-height: calc(100vh - 48px);
     overflow: hidden;
     border: 1px solid var(--sai-canvas-border);
-    border-radius: 8px;
+    border-radius: 12px;
     color: var(--sai-canvas-text);
-    background: var(--sai-canvas-panel);
-    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.32);
+    background-color: var(--sai-canvas-panel);
+    background-image: var(--sai-drawer-gradient);
+    box-shadow: 0 28px 72px rgba(2, 6, 23, 0.38), inset 0 1px 0 var(--sai-specular-line);
+}
+
+.sai-canvas-modal-panel.sai-media-fullscreen-panel {
+    background-image: none;
 }
 
 .sai-node-search-panel,
@@ -12206,6 +12606,7 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     gap: 12px;
     padding: 10px 12px;
     border-bottom: 1px solid var(--sai-canvas-border);
+    background-image: var(--sai-node-head-gradient);
     font-weight: 700;
 }
 
@@ -14902,11 +15303,24 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     margin: 0;
     border: 0;
     border-radius: 8px;
-    background: var(--sai-canvas-accent);
-    color: #fff;
+    background-color: var(--sai-canvas-accent);
+    background-image: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--sai-canvas-accent) 88%, #ffffff 12%) 0%,
+        color-mix(in srgb, var(--sai-canvas-accent) 82%, #06090f 18%) 100%
+    );
+    color: var(--sai-canvas-on-accent, #f8fafc);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--sai-canvas-accent) 26%, rgba(2, 6, 23, 0.22)), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1), filter 120ms ease, box-shadow 120ms ease;
 }
-.theme-dark .sai-node-head > .sai-preset-primary-run { color: #09251c; }
-.sai-node-head > .sai-preset-primary-run.is-stop { background: #c74747; color: #fff; }
+.sai-node-head > .sai-preset-primary-run:hover:not(:disabled) { filter: brightness(1.06); }
+.theme-dark .sai-node-head > .sai-preset-primary-run { color: var(--sai-canvas-on-accent, #edf7f6); }
+.sai-node-head > .sai-preset-primary-run.is-stop {
+    background-color: #b93838;
+    background-image: linear-gradient(180deg, #c94343 0%, #9c2727 100%);
+    color: #f8fafc;
+    box-shadow: 0 2px 8px rgba(185, 56, 56, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
 .sai-node-head > .sai-preset-primary-run:disabled { opacity: .45; cursor: default; }
 .sai-node-more { position: relative; flex: 0 0 auto; }
 .sai-node-more > summary,
@@ -15279,4 +15693,354 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     .sai-project-manager .sai-project-row { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: start; }
     .sai-project-manager .sai-project-actions { grid-column: 1 / -1; justify-content: flex-end; }
     .sai-canvas-tool-panel { top: 82px; max-height: calc(100dvh - 106px); }
+}
+
+.sai-canvas-node .sai-node-title {
+    color: var(--sai-canvas-text);
+}
+.theme-dark .sai-canvas-system-info .sai-system-state[data-state="disconnected"],
+.theme-dark .sai-canvas-system-info .sai-system-state[data-state="exception"],
+.theme-dark .sai-result-status[data-state="failed"],
+.theme-dark .sai-run-queue-message[data-state="blocked"],
+.theme-dark .sai-run-queue-message[data-state="failed"],
+.theme-dark .sai-run-queue-summary b[data-state="failed"],
+.theme-dark .sai-run-queue-card-head b[data-state="failed"],
+.theme-dark .sai-run-queue-steps b[data-state="failed"],
+.theme-dark .sai-run-queue-steps b[data-state="blocked"],
+.theme-dark .sai-run-history-list b[data-state="failed"],
+.theme-dark .sai-run-history-title span[data-state="failed"],
+.theme-dark .sai-inspector-actions button.danger,
+.theme-dark .sai-canvas-context-menu button.danger {
+    color: #fca5a5;
+    border-color: rgba(248, 113, 113, 0.28);
+    background: rgba(239, 68, 68, 0.14);
+}
+
+.theme-dark .sai-run-queue-card-head b[data-state="finished"],
+.theme-dark .sai-run-queue-steps b[data-state="finished"] {
+    color: #6ee7b7;
+    background: rgba(16, 185, 129, 0.15);
+}
+
+.theme-dark .sai-result-stale-note,
+.theme-dark .sai-node-state-badge.is-stale {
+    color: #fcd34d;
+    border-color: rgba(251, 191, 36, 0.28);
+    background: rgba(245, 158, 11, 0.14);
+}
+
+.theme-dark .sai-run-history-error {
+    border-color: rgba(248, 113, 113, 0.28);
+    background: rgba(127, 29, 29, 0.24);
+}
+
+.theme-dark .sai-run-history-error div,
+.theme-dark .sai-run-history-error pre {
+    color: #fecaca;
+}
+
+.sai-canvas-context-menu,
+.sai-canvas-context-submenu,
+.sai-canvas-tool-panel,
+.sai-project-switcher,
+.sai-node-more-menu,
+.sai-canvas-palette-box {
+    border-color: color-mix(in srgb, var(--sai-canvas-border) 88%, rgba(255, 255, 255, 0.08));
+    border-radius: 12px;
+    background-color: var(--sai-canvas-panel);
+    background-image: var(--sai-popover-gradient);
+    box-shadow: 0 18px 46px rgba(2, 6, 23, 0.3), inset 0 1px 0 var(--sai-specular-line);
+}
+
+.sai-canvas-toast {
+    border: 1px solid color-mix(in srgb, var(--sai-canvas-accent) 34%, var(--sai-canvas-border));
+    border-radius: 10px;
+    color: var(--sai-canvas-text);
+    background-color: color-mix(in srgb, var(--sai-canvas-panel) 92%, transparent);
+    background-image: var(--sai-popover-gradient);
+    -webkit-backdrop-filter: blur(14px) saturate(1.18);
+    backdrop-filter: blur(14px) saturate(1.18);
+    box-shadow: 0 14px 36px rgba(2, 6, 23, 0.28), inset 0 1px 0 var(--sai-specular-line);
+    font-weight: 600;
+}
+
+.sai-settings-palette-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.sai-settings-palette-card {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    min-height: 48px;
+    padding: 7px 9px;
+    border: 1px solid var(--sai-canvas-border);
+    border-radius: 9px;
+    color: var(--sai-canvas-text);
+    background-color: var(--sai-canvas-panel);
+    background-image: linear-gradient(180deg, var(--sai-sheen-top) 0%, var(--sai-sheen-bottom) 100%);
+    box-shadow: inset 0 1px 0 var(--sai-specular-line);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease, transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sai-settings-palette-card:hover {
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 56%, var(--sai-canvas-border));
+    background-color: color-mix(in srgb, var(--sai-canvas-accent) 6%, var(--sai-canvas-panel));
+    background-image:
+        radial-gradient(110% 95% at 0% 0%, var(--sai-palette-aura-1), transparent 64%),
+        linear-gradient(180deg, var(--sai-sheen-top) 0%, var(--sai-sheen-bottom) 100%);
+}
+
+.sai-settings-palette-card.is-active {
+    border-color: var(--sai-canvas-accent);
+    background-color: var(--sai-canvas-accent-soft);
+    background-image:
+        radial-gradient(120% 100% at 0% 0%, var(--sai-palette-aura-1), transparent 68%),
+        linear-gradient(180deg, var(--sai-sheen-top) 0%, var(--sai-sheen-bottom) 100%);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sai-canvas-accent) 38%, transparent), inset 0 1px 0 var(--sai-specular-line);
+}
+
+.sai-settings-palette-swatch {
+    position: relative;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background-color: var(--swatch-surface, #161b24);
+    background-image:
+        radial-gradient(circle at 18% 16%, var(--swatch-glow, rgba(28, 155, 142, 0.24)), transparent 66%),
+        linear-gradient(145deg, var(--swatch-surface-top, #1f2632) 0%, var(--swatch-surface, #161b24) 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 6px rgba(2, 6, 23, 0.18);
+    overflow: hidden;
+}
+
+.sai-settings-palette-swatch::after {
+    content: "";
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 13px;
+    height: 13px;
+    border-radius: 999px;
+    background-color: var(--swatch-accent, #2dd4bf);
+    background-image: linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--swatch-accent, #2dd4bf) 82%, #ffffff 18%) 0%,
+        color-mix(in srgb, var(--swatch-accent, #2dd4bf) 82%, #06090f 18%) 100%
+    );
+    box-shadow: 0 0 0 2px var(--swatch-surface, #161b24), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.sai-settings-palette-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.sai-settings-palette-copy strong,
+.sai-settings-palette-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sai-settings-palette-copy strong {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.sai-settings-palette-copy small {
+    color: var(--sai-canvas-muted);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+@keyframes sai-float-pop-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes sai-tool-panel-in {
+    from {
+        opacity: 0;
+        transform: translateX(-6px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes sai-modal-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes sai-modal-panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes sai-drawer-slide-in {
+    from {
+        opacity: 0;
+        transform: translateX(14px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes sai-toast-rise-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 8px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+    }
+}
+
+@keyframes sai-node-spawn {
+    from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.955);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Never apply transform or backdrop-filter to .sai-canvas-context-menu / .sai-canvas-context-submenu,
+   because nested .sai-canvas-context-submenu uses viewport-relative position: fixed coordinates. */
+.sai-canvas-context-menu:not([hidden]),
+.sai-canvas-context-menu-item.has-children:hover > .sai-canvas-context-submenu,
+.sai-canvas-context-menu-item.has-children:focus-within > .sai-canvas-context-submenu {
+    animation: sai-modal-fade-in 115ms ease-out;
+}
+
+.sai-project-switcher:not([hidden]),
+.sai-node-more[open] > .sai-node-more-menu {
+    transform-origin: top right;
+    animation: sai-float-pop-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sai-project-switcher:not([hidden]) {
+    transform-origin: top left;
+}
+
+.sai-canvas-tool-menu[open] > .sai-canvas-tool-panel {
+    transform-origin: top left;
+    animation: sai-tool-panel-in 155ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sai-canvas-modal:not([hidden]),
+.sai-canvas-palette:not([hidden]) {
+    animation: sai-modal-fade-in 145ms ease;
+}
+
+.sai-canvas-modal:not([hidden]):not(.sai-media-fullscreen-modal) .sai-canvas-modal-panel:not(.sai-media-fullscreen-panel),
+.sai-canvas-palette:not([hidden]) .sai-canvas-palette-box {
+    animation: sai-modal-panel-in 175ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sai-canvas-settings-panel:not([hidden]),
+.sai-run-queue-panel:not([hidden]),
+.sai-run-history-panel:not([hidden]) {
+    animation: sai-drawer-slide-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sai-canvas-toast:not([hidden]) {
+    animation: sai-toast-rise-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sai-canvas-node.is-node-entering {
+    transform-origin: center center;
+    animation: sai-node-spawn 185ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sai-canvas-nodes.is-connecting .sai-node-handle.is-connection-compatible::after {
+    transform: scale(1.22);
+    border-color: #ffffff;
+}
+
+.sai-canvas-toolbar button,
+.sai-canvas-nav button,
+.sai-canvas-leftbar > button,
+.sai-canvas-tool-menu > summary,
+.sai-node-head > button,
+.sai-node-more > summary,
+.sai-node-primary,
+.sai-node-secondary,
+.sai-inspector-actions button,
+.sai-project-navigation button {
+    transition:
+        background-color 130ms ease,
+        border-color 130ms ease,
+        color 130ms ease,
+        box-shadow 130ms ease,
+        transform 110ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sai-canvas-toolbar button:active:not(:disabled),
+.sai-canvas-nav button:active:not(:disabled),
+.sai-canvas-leftbar > button:active:not(:disabled),
+.sai-canvas-tool-menu > summary:active,
+.sai-node-head > button:active:not(:disabled),
+.sai-node-more > summary:active,
+.sai-node-primary:active:not(:disabled),
+.sai-node-secondary:active:not(:disabled),
+.sai-inspector-actions button:active:not(:disabled),
+.sai-settings-palette-card:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.sai-canvas-viewport.is-panning .sai-canvas-node,
+.sai-canvas-viewport.is-zooming .sai-canvas-node {
+    transition: none;
+}
+
+#simpai-infinite-canvas-workbench.reduced-motion *,
+#simpai-infinite-canvas-workbench.reduced-motion *::before,
+#simpai-infinite-canvas-workbench.reduced-motion *::after,
+:root[data-sai-canvas-reduced-motion="1"] .sai-canvas-modal,
+:root[data-sai-canvas-reduced-motion="1"] .sai-canvas-modal * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #simpai-infinite-canvas-workbench *,
+    #simpai-infinite-canvas-workbench *::before,
+    #simpai-infinite-canvas-workbench *::after,
+    .sai-canvas-modal,
+    .sai-canvas-modal * {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
 }

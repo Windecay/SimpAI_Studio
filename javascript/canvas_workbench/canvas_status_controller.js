@@ -52,6 +52,18 @@
             root.classList?.toggle('show-grid', !!project.settings?.grid);
             root.classList?.toggle('reduced-motion', !!project.settings?.reducedMotion);
             root.classList?.toggle('inspector-collapsed', !!project.settings?.inspectorCollapsed);
+            const validPalettes = ['jade', 'indigo', 'obsidian', 'amber'];
+            const rawPalette = String(project.settings?.colorPreset || 'jade').trim().toLowerCase();
+            const palette = validPalettes.includes(rawPalette) ? rawPalette : 'jade';
+            if (root.dataset && root.dataset.canvasPalette !== palette) {
+                root.dataset.canvasPalette = palette;
+            }
+            const docEl = root.ownerDocument?.documentElement;
+            if (docEl?.dataset) {
+                if (docEl.dataset.saiCanvasPalette !== palette) docEl.dataset.saiCanvasPalette = palette;
+                const reducedFlag = project.settings?.reducedMotion ? '1' : '0';
+                if (docEl.dataset.saiCanvasReducedMotion !== reducedFlag) docEl.dataset.saiCanvasReducedMotion = reducedFlag;
+            }
             const inspectorToggle = root.querySelector?.('[data-canvas-action="toggle-inspector"]');
             if (inspectorToggle) {
                 const collapsed = !!project.settings?.inspectorCollapsed;

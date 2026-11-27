@@ -1441,7 +1441,8 @@
         minimap: true,
         edgeLabels: true,
         reducedMotion: false,
-        inspectorCollapsed: false
+        inspectorCollapsed: false,
+        colorPreset: 'jade'
     });
     const MEDIA_BROWSER_PAGE_SIZE = 96;
     const VLM_CHAT_IMAGE_PREVIEW_TARGET_PIXELS = 40000;

@@ -8,8 +8,61 @@
         const t = languageSource.t || ((en, cn) => cn || en);
         const escapeHtml = utilitySource.escapeHtml || (value => String(value ?? ''));
 
+        const COLOR_PRESETS = [
+            {
+                id: 'jade',
+                surface: '#161a22',
+                surfaceTop: '#1e2530',
+                glow: 'rgba(28, 155, 142, 0.24)',
+                accent: '#1c9b8e',
+                titleEn: 'Ice Jade',
+                titleCn: '通透青翠',
+                descEn: 'Muted sea-jade & slate',
+                descCn: '沉静雾青 · 板岩灰'
+            },
+            {
+                id: 'indigo',
+                surface: '#161822',
+                surfaceTop: '#1e2131',
+                glow: 'rgba(86, 98, 201, 0.25)',
+                accent: '#5662c9',
+                titleEn: 'Graphite Indigo',
+                titleCn: '石墨靛蓝',
+                descEn: 'Deep graphite & slate indigo',
+                descCn: '深邃冷灰 · 低饱和靛蓝'
+            },
+            {
+                id: 'obsidian',
+                surface: '#161619',
+                surfaceTop: '#202126',
+                glow: 'rgba(72, 130, 173, 0.22)',
+                accent: '#4882ad',
+                titleEn: 'Obsidian Neutral',
+                titleCn: '极简黑曜石',
+                descEn: 'Pure zinc & steel blue',
+                descCn: '暗曜锌灰 · 柔和钢蓝'
+            },
+            {
+                id: 'amber',
+                surface: '#191715',
+                surfaceTop: '#24201c',
+                glow: 'rgba(184, 123, 42, 0.25)',
+                accent: '#b87b2a',
+                titleEn: 'Titanium Amber',
+                titleCn: '暖调琥珀',
+                descEn: 'Warm charcoal & bronze',
+                descCn: '深暖炭灰 · 暗金古铜'
+            }
+        ];
+
+        function normalizeColorPreset(value) {
+            const normalized = String(value || '').trim().toLowerCase();
+            return COLOR_PRESETS.some(item => item.id === normalized) ? normalized : 'jade';
+        }
+
         function renderCanvasSettingsGeneralTab(projectSettings) {
             const settings = projectSettings || {};
+            const activePreset = normalizeColorPreset(settings.colorPreset);
             const labels = {
                 grid: t('Show grid', '显示网格'),
                 snap: t('Enable snapping', '开启吸附'),
@@ -17,7 +70,17 @@
                 edgeLabels: t('Show edge labels', '显示连线标签'),
                 reducedMotion: t('Reduce motion', '减少动画')
             };
+            const paletteCards = COLOR_PRESETS.map((item) => {
+                const isActive = item.id === activePreset;
+                return `<button type="button" class="sai-settings-palette-card ${isActive ? 'is-active' : ''}" data-canvas-settings-action="palette:${escapeHtml(item.id)}" aria-pressed="${isActive ? 'true' : 'false'}"><span class="sai-settings-palette-swatch" style="--swatch-surface:${escapeHtml(item.surface)};--swatch-surface-top:${escapeHtml(item.surfaceTop)};--swatch-glow:${escapeHtml(item.glow)};--swatch-accent:${escapeHtml(item.accent)};" aria-hidden="true"></span><span class="sai-settings-palette-copy"><strong>${escapeHtml(t(item.titleEn, item.titleCn))}</strong><small>${escapeHtml(t(item.descEn, item.descCn))}</small></span></button>`;
+            }).join('');
             return `
+    <section class="sai-settings-section">
+      <h3>${escapeHtml(t('Color Theme', '配色方案'))}</h3>
+      <div class="sai-settings-palette-grid" role="group" aria-label="${escapeHtml(t('Color Theme', '配色方案'))}">
+        ${paletteCards}
+      </div>
+    </section>
     <section class="sai-settings-section">
       <h3>${escapeHtml(t('Canvas View', '画布视图'))}</h3>
       ${['grid', 'snap', 'minimap', 'edgeLabels', 'reducedMotion'].map(key => `<label class="sai-settings-check"><input type="checkbox" data-canvas-settings-action="toggle:${escapeHtml(key)}" ${settings[key] ? 'checked' : ''}><span>${escapeHtml(labels[key])}</span></label>`).join('')}

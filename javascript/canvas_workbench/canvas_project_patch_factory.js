@@ -296,6 +296,11 @@
             settings.minimap = true;
             settings.__minimap_initialized = true;
         }
+        if (Object.prototype.hasOwnProperty.call(settings, 'colorPreset')) {
+            const validPresets = ['jade', 'indigo', 'obsidian', 'amber'];
+            const preset = String(settings.colorPreset || '').trim().toLowerCase();
+            settings.colorPreset = validPresets.includes(preset) ? preset : 'jade';
+        }
         return { settings };
     }
 

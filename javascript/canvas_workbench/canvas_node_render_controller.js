@@ -77,6 +77,9 @@
         const { refreshNodeSpatialIndexRecord, invalidateNodeSpatialIndex } = spatialSource;
         const renderedNodeElsById = new Map();
         const nodeLayoutRects = new Map();
+        const seenProjectNodeIds = new Set();
+        const enteringNodeIds = new Set();
+        let trackedSpawnProject = null;
         let nodeRenderCoverageRect = null;
 
         function setNodeStyle(nodeEl, name, value) {
@@ -106,6 +109,32 @@
             const visibleNodes = visibleQuery.nodes;
             const liveIds = new Set(visibleNodes.map(node => node.id));
             const projectIds = visibleQuery.projectIds;
+            const currentProjectRef = getProject();
+            const rootElement = getRoot();
+            const motionReduced = !!rootElement?.classList?.contains?.('reduced-motion');
+            if (trackedSpawnProject !== currentProjectRef) {
+                trackedSpawnProject = currentProjectRef;
+                seenProjectNodeIds.clear();
+                enteringNodeIds.clear();
+                projectIds.forEach(id => seenProjectNodeIds.add(id));
+            } else {
+                const newlyCreatedIds = [];
+                projectIds.forEach((id) => {
+                    if (!seenProjectNodeIds.has(id)) {
+                        seenProjectNodeIds.add(id);
+                        newlyCreatedIds.push(id);
+                    }
+                });
+                Array.from(seenProjectNodeIds).forEach((id) => {
+                    if (!projectIds.has(id)) {
+                        seenProjectNodeIds.delete(id);
+                        enteringNodeIds.delete(id);
+                    }
+                });
+                if (!renderOptions.panPreview && !motionReduced && !isPanning() && newlyCreatedIds.length > 0 && newlyCreatedIds.length <= 8) {
+                    newlyCreatedIds.forEach(id => enteringNodeIds.add(id));
+                }
+            }
             Array.from(nodeLayoutRects.keys()).forEach((id) => {
                 if (!projectIds.has(id)) nodeLayoutRects.delete(id);
             });
@@ -200,6 +229,18 @@
                 nodeEl.classList.toggle('is-scheduler-blocked', isNodeSchedulerBlocked(node));
                 nodeEl.classList.toggle('is-scheduler-waiting', isNodeSchedulerWaiting(node));
                 nodeEl.classList.toggle('is-result-stale', isResultStale(node));
+                const isEntering = enteringNodeIds.has(node.id);
+                if (isEntering || nodeEl.classList.contains?.('is-node-entering')) {
+                    nodeEl.classList.toggle('is-node-entering', isEntering);
+                    if (isEntering && !nodeEl.__simpaiEnterBound && typeof nodeEl.addEventListener === 'function') {
+                        nodeEl.__simpaiEnterBound = true;
+                        const finishEnter = () => {
+                            enteringNodeIds.delete(node.id);
+                            nodeEl.classList.toggle('is-node-entering', false);
+                        };
+                        nodeEl.addEventListener('animationend', finishEnter, { once: true });
+                    }
+                }
                 applyNodeCustomColorVars(node, nodeEl);
                 setNodeStyle(nodeEl, 'left', `${node.x || 0}px`);
                 setNodeStyle(nodeEl, 'top', `${node.y || 0}px`);
@@ -372,6 +413,9 @@
             if (chainRunOverlay) chainRunOverlay.hidden = true;
             renderedNodeElsById.clear();
             nodeLayoutRects.clear();
+            seenProjectNodeIds.clear();
+            enteringNodeIds.clear();
+            trackedSpawnProject = null;
             nodeRenderCoverageRect = null;
             getMediaBrowserNodeRuntime().clear();
             getMediaBrowserScrollMemory().clear();

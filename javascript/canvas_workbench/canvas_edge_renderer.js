@@ -276,14 +276,14 @@
 
         function createEdgeCanvasStrokeGroup(key, vars) {
             const style = (() => {
-                if (key === 'selected') return { color: vars.warn, width: 4, alpha: 1 };
-                if (key === 'batch_input') return { color: '#22c55e', width: 3, alpha: 1 };
-                if (key === 'generate') return { color: '#737373', width: 3, alpha: 1 };
-                if (key === 'text') return { color: '#16a34a', width: 3, alpha: 1 };
-                if (key === 'image') return { color: '#14b8a6', width: 3, alpha: 1 };
-                if (key === 'compare') return { color: '#0ea5e9', width: 3, alpha: 1 };
-                if (key === 'timeline') return { color: '#f59e0b', width: 2.4, alpha: 0.78 };
-                return { color: vars.accent, width: 3, alpha: 1 };
+                if (key === 'selected') return { color: vars.warn, width: 3.6, alpha: 0.95 };
+                if (key === 'batch_input') return { color: vars.batch || '#269185', width: 2.6, alpha: 0.85 };
+                if (key === 'generate') return { color: vars.generate || '#6b7688', width: 2.4, alpha: 0.82 };
+                if (key === 'text') return { color: vars.text || '#2d9472', width: 2.6, alpha: 0.85 };
+                if (key === 'image') return { color: vars.image || '#3a89b8', width: 2.6, alpha: 0.85 };
+                if (key === 'compare') return { color: vars.compare || '#4d78c7', width: 2.6, alpha: 0.85 };
+                if (key === 'timeline') return { color: vars.timeline || '#b88235', width: 2.2, alpha: 0.78 };
+                return { color: vars.accent, width: 2.6, alpha: 0.85 };
             })();
             return { key, style, records: [] };
         }
@@ -358,8 +358,14 @@
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
             const vars = {
-                accent: edgeCanvasCssVar('--sai-canvas-accent', '#1f8f7a'),
-                warn: edgeCanvasCssVar('--sai-canvas-warn', '#f97316')
+                accent: edgeCanvasCssVar('--sai-canvas-accent', '#1c9b8e'),
+                warn: edgeCanvasCssVar('--sai-canvas-warn', '#c9822b'),
+                generate: edgeCanvasCssVar('--sai-edge-generate', '#6b7688'),
+                text: edgeCanvasCssVar('--sai-edge-text', '#2d9472'),
+                image: edgeCanvasCssVar('--sai-edge-image', '#3a89b8'),
+                compare: edgeCanvasCssVar('--sai-edge-compare', '#4d78c7'),
+                timeline: edgeCanvasCssVar('--sai-edge-timeline', '#b88235'),
+                batch: edgeCanvasCssVar('--sai-edge-batch', '#269185')
             };
             const groups = getEdgeCanvasStrokeGroups(edgeCanvasHitRecords, vars);
             call(perfSource, 'getPerfStats', {}).edgeCanvasBatches = groups.length;

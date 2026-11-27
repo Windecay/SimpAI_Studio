@@ -26,6 +26,26 @@
             return call(languageSource, 't', state.__lang === 'cn' || state.__lang === 'zh' ? cn : en, en, cn, state);
         };
 
+        const COLOR_PRESET_IDS = ['jade', 'indigo', 'obsidian', 'amber'];
+
+        function setColorPreset(preset) {
+            const normalized = String(preset || '').trim().toLowerCase();
+            const nextPreset = COLOR_PRESET_IDS.includes(normalized) ? normalized : 'jade';
+            const project = call(projectSource, 'getProject', {}) || {};
+            if ((project.settings?.colorPreset || 'jade') === nextPreset) return nextPreset;
+            call(historySource, 'pushHistory', undefined, 'Change canvas setting');
+            const patch = call(projectSource, 'buildProjectSettingsMergePatch', null, project, { colorPreset: nextPreset });
+            if (patch && patch.settings && typeof patch.settings === 'object' && !Array.isArray(patch.settings)) {
+                Object.assign(project, patch);
+            } else {
+                Object.assign(project, {
+                    settings: Object.assign({}, project.settings || {}, { colorPreset: nextPreset })
+                });
+            }
+            renderCall('mutate', undefined);
+            return nextPreset;
+        }
+
         function toggleSetting(key) {
             const project = call(projectSource, 'getProject', {}) || {};
             call(historySource, 'pushHistory', undefined, 'Change canvas setting');
@@ -123,6 +143,9 @@
                 agentSettingsCall('syncCanvasAgentCustomFromSelectedVlm', null);
             } else if (action === 'sync-agent-custom-to-vlm') {
                 agentSettingsCall('syncSelectedVlmCustomFromCanvasAgent', null);
+            } else if (action.startsWith('palette:')) {
+                setColorPreset(action.slice('palette:'.length));
+                renderCanvasSettingsPanel();
             } else if (action.startsWith('toggle:')) {
                 toggleSetting(action.slice('toggle:'.length));
                 renderCanvasSettingsPanel();
@@ -141,7 +164,7 @@
         }
 
         return { openCanvasSettingsPanel, closeCanvasSettingsPanel, renderCanvasSettingsPanel,
-            handleCanvasSettingsAction, openSettingsMenu, toggleSetting };
+            handleCanvasSettingsAction, openSettingsMenu, toggleSetting, setColorPreset };
     }
 
     window.SimpAICanvasWorkbenchSettingsController = Object.assign({}, window.SimpAICanvasWorkbenchSettingsController || {}, {
