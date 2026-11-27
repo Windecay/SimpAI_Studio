@@ -6,6 +6,8 @@ def prompt_target_key(backend_engine, task_method, target_text):
     haystack = f"{backend_engine} {task_method} {target_text}".lower()
     if re.search(r"p[ ._-]?h3[ ._-]?image", haystack):
         return "ph3_image"
+    if re.search(r"minimax[ ._-]*music|music3_song", haystack):
+        return "minimax_music3"
     if "minimax" in haystack and "h3" in haystack:
         return "minimax_h3"
     if re.search(r"moss[ ._-]?(?:image[ ._-]?)?edit", haystack):
@@ -38,4 +40,6 @@ def prompt_skill_docs_for_target(key):
         return {"default": {"en": ["moss_edit_prompting_en.md"], "cn": ["moss_edit_prompting_cn.md"]}}
     if key == "moss_image":
         return {"default": {"en": ["moss_image_prompting_en.md"], "cn": ["moss_image_prompting_cn.md"]}}
+    if key == "minimax_music3":
+        return {"default": ["minimax-music3-caption-skill"]}
     return {}

@@ -20,8 +20,13 @@ import simpleai_base.p2p_task as p2p_task
 from build_launcher import is_win32_standalone_build
 from simpleai_base import simpleai_base, utils, comfyd, torch_version, xformers_version, comfyclient_pipeline
 from simpleai_base.params_mapper import ComfyTaskParams
-from simpleai_base.comfyclient_pipeline import get_media_info
 from simpleai_base.models_info import ModelsInfo, sync_model_info
+
+comfy_prompt_compat.install_audio_output_support(comfyclient_pipeline)
+
+
+def get_media_info(out):
+    return comfyclient_pipeline.get_media_info(out)
 from simpleai_base.simpleai_base import export_identity_qrcode_svg, import_identity_qrcode
 import socket
 import logging
@@ -524,6 +529,7 @@ def _get_comfyd_supervisor():
     with _comfyd_init_lock:
         if _comfyd_supervisor is None:
             # Shared config imports this module in Forge, which does not use Comfy.
+            comfy_prompt_compat.install_audio_output_support(comfyclient_pipeline)
             comfy_prompt_compat.install_batch_prompt_support(comfyclient_pipeline)
             comfy_prompt_compat.install_queue_prompt_normalizer(comfyclient_pipeline)
             comfy_prompt_compat.install_prompt_cancel_support(comfyclient_pipeline)

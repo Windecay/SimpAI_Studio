@@ -1,8 +1,13 @@
+import array
 import datetime
+import math
 import mimetypes
 import os
 import re
+import subprocess
+import sys
 import time
+import wave
 from urllib.parse import quote
 
 import shared
@@ -16,6 +21,7 @@ except Exception:
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 VIDEO_EXTS = {".webm", ".mp4", ".mov", ".mkv"}
+AUDIO_EXTS = {".flac", ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac"}
 DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RECENT_IMAGE_STABILITY_WINDOW_SECONDS = 2.0
 RECENT_IMAGE_STABILITY_SLEEP_SECONDS = 0.03
@@ -56,7 +62,9 @@ def _outputs_root(state_params=None):
 
 def _safe_media_type(value):
     text = str(value or "image").strip().lower()
-    return "video" if text == "video" else "image"
+    if text in ("video", "audio"):
+        return text
+    return "image"
 
 
 def _clamped_int(value, default, min_value, max_value):
@@ -76,7 +84,11 @@ def _clamped_float(value, default, min_value, max_value):
 
 
 def _media_exts(media_type):
-    return VIDEO_EXTS if media_type == "video" else IMAGE_EXTS
+    if media_type == "video":
+        return VIDEO_EXTS
+    if media_type == "audio":
+        return AUDIO_EXTS
+    return IMAGE_EXTS
 
 
 def _dated_folders(root):
@@ -186,6 +198,82 @@ def _is_recent_image_ready(path, now=None):
     return stat_after.st_size == stat_mid.st_size and stat_after.st_mtime_ns == stat_mid.st_mtime_ns
 
 
+def _read_audio_profile(path, mime=None, bucket_count=120):
+    buckets = max(24, min(int(bucket_count or 120), 160))
+    try:
+        stat = os.stat(path)
+        cache_key = ("audio", os.path.abspath(path), buckets)
+        cached = _MEDIA_DIMENSION_CACHE.get(cache_key)
+        if cached and cached[:2] == (stat.st_mtime_ns, stat.st_size):
+            return cached[2], list(cached[3])
+
+        duration = 0.0
+        peaks = []
+        ext = os.path.splitext(str(path))[1].lower()
+        if ext == ".wav":
+            try:
+                with wave.open(path, "rb") as wf:
+                    frames = int(wf.getnframes() or 0)
+                    rate = int(wf.getframerate() or 0)
+                    if frames > 0 and rate > 0:
+                        duration = round(float(frames) / float(rate), 2)
+                from modules import canvas_workbench_assets
+                peaks = canvas_workbench_assets._extract_wav_waveform(path, buckets) or []
+            except Exception:
+                pass
+
+        if not peaks or duration <= 0:
+            from modules import canvas_workbench_assets
+            ffmpeg = canvas_workbench_assets._get_ffmpeg_exe()
+            if ffmpeg:
+                run_kwargs = {}
+                if os.name == "nt":
+                    run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                completed = subprocess.run(
+                    [
+                        ffmpeg,
+                        "-nostdin",
+                        "-v", "error",
+                        "-i", path,
+                        "-ac", "1",
+                        "-ar", "4000",
+                        "-f", "s16le",
+                        "-",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=20,
+                    check=False,
+                    **run_kwargs,
+                )
+                if completed.returncode == 0 and completed.stdout:
+                    usable = len(completed.stdout) - (len(completed.stdout) % 2)
+                    samples = array.array("h")
+                    samples.frombytes(completed.stdout[:usable])
+                    if sys.byteorder != "little":
+                        samples.byteswap()
+                    total = len(samples)
+                    if total > 0:
+                        if duration <= 0:
+                            duration = round(float(total) / 4000.0, 2)
+                        samples_per_bucket = max(1, int(math.ceil(float(total) / float(buckets))))
+                        raw_peaks = []
+                        for start in range(0, total, samples_per_bucket):
+                            stop = min(total, start + samples_per_bucket)
+                            peak = max((abs(int(v)) for v in samples[start:stop]), default=0)
+                            raw_peaks.append(min(1.0, float(peak) / 32768.0))
+                            if len(raw_peaks) >= buckets:
+                                break
+                        peaks = canvas_workbench_assets._normalize_waveform_values(raw_peaks, buckets)
+
+        if len(_MEDIA_DIMENSION_CACHE) >= MEDIA_DIMENSION_CACHE_MAX:
+            _MEDIA_DIMENSION_CACHE.clear()
+        _MEDIA_DIMENSION_CACHE[cache_key] = (stat.st_mtime_ns, stat.st_size, duration, tuple(peaks))
+        return duration, peaks
+    except Exception:
+        return 0.0, []
+
+
 def _media_item(path, root, media_type, include_dimensions=False, include_metadata=False):
     try:
         stat = os.stat(path)
@@ -193,15 +281,20 @@ def _media_item(path, root, media_type, include_dimensions=False, include_metada
         return None
     width = None
     height = None
+    duration = None
+    waveform = None
     rel = os.path.relpath(path, root).replace(os.sep, "/")
     name = os.path.basename(path)
     folder = rel.split("/", 1)[0] if "/" in rel else ""
-    mime = mimetypes.guess_type(path)[0] or ("video/mp4" if media_type == "video" else "image/png")
+    default_mime = "video/mp4" if media_type == "video" else ("audio/flac" if media_type == "audio" else "image/png")
+    mime = mimetypes.guess_type(path)[0] or default_mime
     if include_dimensions:
         if media_type == "image":
             width, height = _read_image_size(path)
         elif media_type == "video":
             width, height = _read_video_size(path, mime)
+        elif media_type == "audio":
+            duration, waveform = _read_audio_profile(path, mime)
     item = {
         "id": rel,
         "name": name,
@@ -217,6 +310,12 @@ def _media_item(path, root, media_type, include_dimensions=False, include_metada
         "width": width,
         "height": height,
     }
+    if media_type == "audio":
+        item["audio_format"] = os.path.splitext(name)[1].lower().lstrip(".")
+        if duration is not None:
+            item["duration"] = duration
+        if waveform is not None:
+            item["waveform"] = waveform
     if include_metadata:
         metadata = extract_media_metadata(path, mime=mime)
         if metadata:
@@ -279,7 +378,7 @@ def list_output_media(payload=None, state_params=None):
                     path,
                     root,
                     media_type,
-                    include_dimensions=include_dimensions and (media_type == "image" or include_video_dimensions),
+                    include_dimensions=include_dimensions and (media_type in ("image", "audio") or include_video_dimensions),
                     include_metadata=include_metadata,
                 )
                 if item:

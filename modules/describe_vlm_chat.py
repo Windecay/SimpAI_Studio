@@ -118,8 +118,12 @@ VIDEO_GENERATION_TASKS = {
     "image_audio_to_video",
     "video_audio_to_video",
 }
-GENERATION_TASKS = IMAGE_GENERATION_TASKS | VIDEO_GENERATION_TASKS
-TEXT_GENERATION_TASKS = {"text_to_image", "text_to_video"}
+AUDIO_GENERATION_TASKS = {
+    "text_to_music",
+    "text_to_audio",
+}
+GENERATION_TASKS = IMAGE_GENERATION_TASKS | VIDEO_GENERATION_TASKS | AUDIO_GENERATION_TASKS
+TEXT_GENERATION_TASKS = {"text_to_image", "text_to_video", "text_to_music", "text_to_audio"}
 IMAGE_INPUT_GENERATION_TASKS = (IMAGE_GENERATION_TASKS - {"text_to_image"}) | {
     "image_to_video",
     "multi_image_to_video",
@@ -183,6 +187,13 @@ GENERATION_TASK_ALIASES = {
     "ia2v": "image_audio_to_video",
     "video_audio2video": "video_audio_to_video",
     "va2v": "video_audio_to_video",
+    "t2m": "text_to_music",
+    "music": "text_to_music",
+    "text2music": "text_to_music",
+    "generate_music": "text_to_music",
+    "music_generation": "text_to_music",
+    "t2a": "text_to_audio",
+    "text2audio": "text_to_audio",
 }
 PRESET_FAMILY_ALIASES = {
     "krea": ("Krea2-Turbo", "Krea2-ImageEdit", "Krea2-A2R"),
@@ -5193,6 +5204,26 @@ def _infer_video_generation_task(text, media_refs=None, available_media_refs=Non
     return "text_to_video"
 
 
+def _infer_music_generation_task(text, media_refs=None, available_media_refs=None):
+    source = str(text or "").strip()
+    if not source:
+        return ""
+    counts = _generation_media_counts(media_refs if isinstance(media_refs, list) else [], available_media_refs)
+    if any(counts.values()):
+        return ""
+    if re.search(r"视频|短片|动画|画面|插画|海报|照片|朗读|配音|播报|\b(?:video|mv|image|photo|picture|illustration|tts|speech|voiceover)\b", source, re.I):
+        return ""
+    if re.search(
+        r"(?:写|作|编|谱|生成|创作|制作|来)(?:一首|一段|条|曲)?.{0,10}(?:歌|歌曲|音乐|纯音乐|配乐|旋律|曲子)|"
+        r"\b(?:compose|generate|create|make|write)\s+(?:a\s+|an\s+)?(?:song|music|soundtrack|instrumental\s+track|melody)\b|"
+        r"\btext[-_ ]?to[-_ ]?music\b|\bminimax[-_ ]?music",
+        source,
+        re.I,
+    ):
+        return "text_to_music"
+    return ""
+
+
 def _normalize_generation_task(value, media_refs, intent_text="", available_media_refs=None, *, infer_task=True):
     task_key = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     task = GENERATION_TASK_ALIASES.get(task_key, task_key)
@@ -5218,11 +5249,14 @@ def _normalize_generation_task(value, media_refs, intent_text="", available_medi
         if not donor_reference:
             inferred_task = "image_edit"
     inferred_video_task = _infer_video_generation_task(intent_text, media_refs, available_media_refs)
+    inferred_music_task = _infer_music_generation_task(intent_text, media_refs, available_media_refs)
     if task not in GENERATION_TASKS:
         image_count = counts["image"]
-        task = inferred_video_task or inferred_task or ("multi_image_edit" if image_count > 1 else "image_edit" if image_count else "text_to_image")
+        task = inferred_video_task or inferred_music_task or inferred_task or ("multi_image_edit" if image_count > 1 else "image_edit" if image_count else "text_to_image")
     elif inferred_video_task and task in {"text_to_image", "image_edit", "multi_image_edit"}:
         task = inferred_video_task
+    elif inferred_music_task and task == "text_to_image":
+        task = inferred_music_task
     elif inferred_task and task in {"text_to_image", "image_edit", "multi_image_edit"}:
         task = inferred_task
     if not media_refs:
@@ -5247,7 +5281,12 @@ def _normalize_generation_task(value, media_refs, intent_text="", available_medi
 
 
 def _generation_task_output_type(task):
-    return "video" if str(task or "").strip().lower() in VIDEO_GENERATION_TASKS else "image"
+    normalized = str(task or "").strip().lower()
+    if normalized in VIDEO_GENERATION_TASKS:
+        return "video"
+    if normalized in AUDIO_GENERATION_TASKS:
+        return "audio"
+    return "image"
 
 
 def _generation_media_limits(preset, preset_capabilities, default=None):
@@ -5335,6 +5374,7 @@ GENERATION_PRESET_PRIORITIES = {
     "image_view_synthesis": ("QwenMultiAngle", "Qwen2.1-Edit", "OneKeyKontext"),
     "image_depth_estimation": ("Depthstatue", "OneKeyKontext"),
     "image_expression_transfer": ("LivePortrait Exp", "Qwen2.1-Edit"),
+    "text_to_music": ("MiniMax-Music3",),
 }
 
 

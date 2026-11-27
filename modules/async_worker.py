@@ -80,6 +80,22 @@ def _is_minimax_h3_task(async_task):
     )
 
 
+def _is_minimax_music_task(async_task):
+    if str(getattr(async_task, "content_type", "") or "").strip().lower() == "audio":
+        return True
+    manifest = getattr(async_task, "simpleai_regen_manifest", None)
+    manifest_preset = manifest.get("preset_name") if isinstance(manifest, dict) else None
+    identifiers = (
+        getattr(async_task, "task_method", None),
+        getattr(async_task, "task_name", None),
+        manifest_preset,
+    )
+    return any(
+        "music3" in str(identifier or "").strip().lower().replace("-", "_")
+        for identifier in identifiers
+    )
+
+
 def _prepare_h3_pose_inputs(task):
     if str(getattr(task, "task_name", "")).strip().casefold() != "minimax-h3(pose)":
         return
@@ -212,9 +228,9 @@ def _initial_resolution_from_task(async_task):
 
 
 def _should_persist_output(async_task):
-    """Video outputs are final media and must not use the image-only save policy."""
+    """Video and audio outputs are final media and must not use the image-only save policy."""
     content_type = str(getattr(async_task, "content_type", "") or "").strip().lower()
-    if content_type == "video":
+    if content_type in ("video", "audio"):
         return True
     return not bool(getattr(async_task, "should_enhance", False)) or not bool(
         getattr(async_task, "save_final_enhanced_image_only", False)
@@ -576,9 +592,13 @@ class AsyncTask:
             self.scene_frontend = self.params_backend.pop('scene_frontend')
             if self.scene_frontend.startswith('v'):
                 self.content_type = 'video'
+            elif self.scene_frontend.startswith('a'):
+                self.content_type = 'audio'
         self.engine_type = self.params_backend.pop('engine_type', None)
         if self.engine_type == 'video':
             self.content_type = 'video'
+        elif self.engine_type == 'audio':
+            self.content_type = 'audio'
         _prepare_h3_pose_inputs(self)
 
 class EarlyReturnException(BaseException):
@@ -1636,10 +1656,11 @@ def worker():
             logger.info(f'pipeline.process_diffusion finished.')
 
         current_progress = int(base_progress + (100 - preparation_steps) / float(all_steps) * int(all_steps/async_task.image_number))
-        if modules.config.default_black_out_nsfw or async_task.black_out_nsfw:
+        if (modules.config.default_black_out_nsfw or async_task.black_out_nsfw) and async_task.content_type == 'image':
             progressbar(async_task, current_progress, '检测NSFW ...')
             imgs = default_censor(imgs)
-        progressbar(async_task, current_progress, f'保存已生成图片 {current_task_id + 1}/{total_count} ...')
+        media_save_label = '保存已生成音频' if async_task.content_type == 'audio' else ('保存已生成视频' if async_task.content_type == 'video' else '保存已生成图片')
+        progressbar(async_task, current_progress, f'{media_save_label} {current_task_id + 1}/{total_count} ...')
         save_and_log(async_task, height, imgs, task, use_expansion, width, loras, goals, persist_image)
         record_generation_batch(
             async_task, getattr(async_task, 'media_generation_outputs', [])[output_offset:],
@@ -1702,6 +1723,8 @@ def worker():
                 d.append(('Image2Image', 'image2image', ",".join(goals)))
             if scene_task:
                 d.append(('Scene Task', 'scene_task', scene_task))
+            if getattr(async_task, 'scene_additional_prompt', None):
+                d.append(('Additional Prompt', 'additional_prompt', str(async_task.scene_additional_prompt)))
 
             if refiner_model_name != 'None':
                 if async_task.overwrite_switch > 0:
@@ -2161,7 +2184,7 @@ def worker():
         progressbar(async_task, current_progress, '准备提示词 ...')
         tasks = []
         task_rng = random.Random(async_task.seed % (constants.MAX_SEED + 1))
-        allow_plain_bracket_arrays = not _is_minimax_h3_task(async_task)
+        allow_plain_bracket_arrays = not (_is_minimax_h3_task(async_task) or _is_minimax_music_task(async_task))
         # H3 and P-H3 image editing support random alternatives without treating
         # ordinary bracket annotations as batch arrays.
         h3_image_task = str(async_task.task_method or "").strip().lower().replace(
@@ -2172,7 +2195,7 @@ def worker():
         allow_inline_groups = (allow_plain_bracket_arrays or h3_image_task) and not moss_layout
         if not allow_plain_bracket_arrays:
             logger.info(
-                '[Wildcards] Preserving plain bracket groups for MiniMax H3 prompt: task_method=%s',
+                '[Wildcards] Preserving plain bracket groups for structured prompt: task_method=%s',
                 async_task.task_method,
             )
         if moss_layout:
@@ -3358,7 +3381,7 @@ def worker():
         show_intermediate_results = (
             len(tasks) > 1
             or async_task.should_enhance
-            or async_task.content_type == 'video'
+            or async_task.content_type in ('video', 'audio')
         )
         persist_image = _should_persist_output(async_task)
         logger.info(

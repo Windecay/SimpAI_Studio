@@ -197,6 +197,70 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .media-card-preview > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; pointer-events: none; }
 .media-card-preview.is-playing > video { opacity: 1; }
 .media-card-preview .media-placeholder { color: var(--ml-muted); font-size: 32px; }
+.media-card-audio-wave {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px 14px 28px;
+  background: radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--ml-accent) 16%, transparent), transparent 68%),
+    linear-gradient(155deg, color-mix(in srgb, var(--ml-surface-2) 88%, #10141d 12%), color-mix(in srgb, var(--ml-surface-3) 80%, #1d2433 20%));
+}
+.media-card-audio-icon {
+  align-self: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ml-accent);
+  background: color-mix(in srgb, var(--ml-accent) 16%, rgba(16, 18, 22, 0.45));
+  border: 1px solid color-mix(in srgb, var(--ml-accent) 38%, transparent);
+  font-size: 14px;
+}
+.media-card-audio-bars {
+  width: 100%;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.94;
+}
+.media-card-audio-bars > i,
+.media-card-audio-bars .sai-audio-wave-bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ml-accent) 74%, var(--ml-muted));
+  transition: background-color 0.15s ease;
+}
+.media-card:hover .media-card-audio-bars > i,
+.media-card:hover .media-card-audio-bars .sai-audio-wave-bar {
+  background: var(--ml-accent);
+}
+.media-card-audio-meta {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.media-card-audio-fmt,
+.media-card-audio-dur {
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(16, 18, 22, .68);
+}
 .media-card-preview .media-kind { position: absolute; left: 8px; top: 8px; padding: 4px 6px; border-radius: 5px; color: #fff; background: rgba(16, 18, 22, .68); font-size: 11px; }
 .media-card-overlay { position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: flex-end; padding: 7px; pointer-events: none; }
 .card-favorite, .card-select, .card-copy-original {
@@ -244,6 +308,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .detail-header h2 { margin: 0; font-size: 14px; }
 .detail-content { min-height: 0; overflow-y: auto; padding: 14px; scrollbar-width: thin; }
 .detail-preview { display: grid; place-items: center; min-height: 180px; max-height: 340px; overflow: hidden; border: 1px solid var(--ml-border); border-radius: 7px; background: var(--ml-surface-3); }
+.detail-preview:has(.sai-audio-wave-player) { display: block; min-height: 0; max-height: none; padding: 8px; background: transparent; border: 0; }
+.detail-preview .sai-audio-wave-player { width: 100%; }
 .detail-preview img, .detail-preview video { display: block; max-width: 100%; max-height: 340px; object-fit: contain; }
 .detail-preview audio { width: calc(100% - 20px); }
 .detail-section { margin-top: 18px; }
@@ -306,6 +372,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .viewer-media { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: auto; }
 .viewer-media img, .viewer-media video { display: block; max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; }
 .viewer-media audio { width: min(620px, 90%); }
+.viewer-media .media-viewer-audio-wrap { width: min(760px, 94%); }
 .viewer-nav { position: absolute; top: 50%; z-index: 2; width: 42px; height: 42px; transform: translateY(-50%); border: 1px solid var(--ml-border); border-radius: 50%; color: var(--ml-text); background: color-mix(in srgb, var(--ml-surface) 82%, transparent); cursor: pointer; }
 .viewer-nav:hover:not(:disabled) { color: var(--ml-accent); background: var(--ml-surface-2); }
 .viewer-nav:disabled { opacity: .3; cursor: default; }

@@ -1,5 +1,6 @@
 from PIL import Image
 import logging
+import struct
 import numpy as np
 import comfy.utils
 import folder_paths
@@ -8,6 +9,17 @@ import time
 
 
 _RECOVERY_SUBFOLDER = simpai_ws_recovery.RECOVERY_SUBFOLDER
+PREVIEW_AUDIO_EVENT = 6
+_AUDIO_FORMAT_CODES = {
+    "flac": 20,
+    "mp3": 21,
+    "wav": 22,
+    "opus": 23,
+    "ogg": 24,
+    "m4a": 25,
+    "aac": 26,
+}
+_OPUS_SAMPLE_RATES = (8000, 12000, 16000, 24000, 48000)
 
 
 def _save_recovery_image(image):
@@ -25,6 +37,14 @@ def _save_recovery_video(data, extension):
     )
 
 
+def _save_recovery_audio(data, extension):
+    return simpai_ws_recovery.save_bytes(
+        folder_paths.get_temp_directory(),
+        data,
+        extension,
+    )
+
+
 def _notify_websocket_result(pbar, value, total, preview):
     try:
         pbar.update_absolute(value, total, preview)
@@ -32,9 +52,30 @@ def _notify_websocket_result(pbar, value, total, preview):
         logging.warning("WebSocket result notification failed; history output remains available: %s", exc)
 
 
+def _notify_websocket_audio(data, extension):
+    fmt = str(extension or "").strip().lower().lstrip(".")
+    fmt_code = _AUDIO_FORMAT_CODES.get(fmt)
+    if fmt_code is None:
+        return
+    try:
+        from server import PromptServer
+        instance = getattr(PromptServer, "instance", None)
+        if instance is not None and callable(getattr(instance, "send_sync", None)):
+            payload = struct.pack(">I", fmt_code) + bytes(data)
+            instance.send_sync(PREVIEW_AUDIO_EVENT, payload, getattr(instance, "client_id", None))
+    except Exception as exc:
+        logging.warning("WebSocket audio notification failed; history output remains available: %s", exc)
+
+
 def _finalize_recovery_video(pbar, data, extension):
     result = _save_recovery_video(data, extension)
     _notify_websocket_result(pbar, 0, 1, (extension, data, None))
+    return result
+
+
+def _finalize_recovery_audio(data, extension):
+    result = _save_recovery_audio(data, extension)
+    _notify_websocket_audio(data, extension)
     return result
 
 #You can use this node to save full size images through the websocket, the
@@ -232,8 +273,141 @@ class SaveVideoWebsocket:
         return time.time()
 
 
+def _encode_audio_waveform_bytes(waveform, sample_rate, fmt, quality="320k"):
+    import av
+    import io
+    import torch
+
+    fmt = str(fmt or "flac").strip().lower().lstrip(".")
+    if fmt not in ("flac", "mp3", "opus", "wav"):
+        raise ValueError(f"Unsupported SaveAudioWebsocket format: {fmt!r}")
+
+    if isinstance(waveform, torch.Tensor):
+        wf = waveform.detach().cpu().float()
+    else:
+        wf = torch.as_tensor(waveform, dtype=torch.float32)
+
+    if wf.ndim == 1:
+        wf = wf.unsqueeze(0)
+    elif wf.ndim > 2:
+        wf = wf.reshape(wf.shape[-2], wf.shape[-1])
+    if wf.shape[0] > 2:
+        wf = wf[:2]
+
+    target_rate = int(sample_rate or 44100)
+    if fmt == "opus":
+        if target_rate > 48000:
+            target_rate = 48000
+        elif target_rate not in _OPUS_SAMPLE_RATES:
+            for candidate in _OPUS_SAMPLE_RATES:
+                if candidate > target_rate:
+                    target_rate = candidate
+                    break
+            if target_rate not in _OPUS_SAMPLE_RATES:
+                target_rate = 48000
+        if target_rate != int(sample_rate or 44100):
+            import comfy.audio
+            wf = comfy.audio.resample(wf, int(sample_rate or 44100), target_rate)
+
+    layout = "mono" if wf.shape[0] == 1 else "stereo"
+    interleaved = np.ascontiguousarray(wf.movedim(0, 1).reshape(1, -1).numpy())
+
+    buffer = io.BytesIO()
+    container = av.open(buffer, mode="w", format=fmt)
+    try:
+        if fmt == "wav":
+            out_stream = container.add_stream("pcm_s16le", rate=target_rate, layout=layout)
+            pcm_s16 = np.round(np.clip(interleaved, -1.0, 1.0) * 32767.0).astype(np.int16)
+            frame = av.AudioFrame.from_ndarray(pcm_s16, format="s16", layout=layout)
+        elif fmt == "opus":
+            out_stream = container.add_stream("libopus", rate=target_rate, layout=layout)
+            bitrate_map = {"64k": 64000, "96k": 96000, "128k": 128000, "192k": 192000, "320k": 320000, "V0": 192000}
+            if quality in bitrate_map:
+                out_stream.bit_rate = bitrate_map[quality]
+            frame = av.AudioFrame.from_ndarray(interleaved, format="flt", layout=layout)
+        elif fmt == "mp3":
+            out_stream = container.add_stream("libmp3lame", rate=target_rate, layout=layout)
+            if quality == "V0":
+                out_stream.codec_context.qscale = 1
+            elif quality == "128k":
+                out_stream.bit_rate = 128000
+            elif quality == "192k":
+                out_stream.bit_rate = 192000
+            else:
+                out_stream.bit_rate = 320000
+            frame = av.AudioFrame.from_ndarray(interleaved, format="flt", layout=layout)
+        else:
+            out_stream = container.add_stream("flac", rate=target_rate, layout=layout)
+            frame = av.AudioFrame.from_ndarray(interleaved, format="flt", layout=layout)
+
+        frame.sample_rate = target_rate
+        frame.pts = 0
+        for packet in out_stream.encode(frame):
+            container.mux(packet)
+        for packet in out_stream.encode(None):
+            container.mux(packet)
+    finally:
+        container.close()
+
+    return buffer.getvalue()
+
+
+class SaveAudioWebsocket:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+                "format": (["FLAC", "MP3", "OPUS", "WAV"], {"default": "FLAC"}),
+            },
+            "optional": {
+                "quality": (["V0", "128k", "192k", "320k"], {"default": "320k"}),
+                "use_mp3": ("BOOLEAN", {"default": False}),
+            },
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("audio",)
+    FUNCTION = "save_audio"
+    OUTPUT_NODE = True
+    CATEGORY = "api/audio"
+
+    def save_audio(self, audio, format="FLAC", quality="320k", use_mp3=False):
+        if audio is None or "waveform" not in audio:
+            raise ValueError("SaveAudioWebsocket: input audio is empty or missing waveform.")
+
+        effective_format = "mp3" if bool(use_mp3) else str(format or "FLAC").strip().lower()
+        sample_rate = int(audio.get("sample_rate") or 44100)
+        waveforms = audio["waveform"]
+        if getattr(waveforms, "ndim", 0) == 2:
+            batch_items = [waveforms]
+        else:
+            batch_items = [waveforms[idx] for idx in range(waveforms.shape[0])]
+
+        pbar = comfy.utils.ProgressBar(max(1, len(batch_items)))
+        results = []
+        for waveform in batch_items:
+            audio_bytes = _encode_audio_waveform_bytes(
+                waveform,
+                sample_rate=sample_rate,
+                fmt=effective_format,
+                quality=str(quality or "320k"),
+            )
+            result = _finalize_recovery_audio(audio_bytes, effective_format)
+            if result is not None:
+                results.append(result)
+            pbar.update(1)
+
+        return {"ui": {"audio": results}, "result": (audio,)}
+
+    @classmethod
+    def IS_CHANGED(s, audio, format="FLAC", quality="320k", use_mp3=False):
+        return time.time()
+
+
 NODE_CLASS_MAPPINGS = {
     "SaveImageWebsocket": SaveImageWebsocket,
     "SaveImageWebsocketLazy": SaveImageWebsocketLazy,
     "SaveVideoWebsocket": SaveVideoWebsocket,
+    "SaveAudioWebsocket": SaveAudioWebsocket,
 }

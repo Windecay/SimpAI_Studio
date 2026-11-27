@@ -1533,6 +1533,13 @@ def generate_clicked(task: worker.AsyncTask, state):
             isinstance(path, str) and path.lower().endswith(('.mp4', '.webm'))
             for path in results
         )
+        audio_exts = tuple(getattr(gallery_util, "audio_types", (".flac", ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac")))
+        has_audio_result = getattr(task, "content_type", None) == "audio" or any(
+            isinstance(path, str) and path.lower().endswith(audio_exts)
+            for path in results
+        )
+        if has_audio_result:
+            return progress_gallery_clear_update(preserve_layout=False)
         result_key = tuple(str(path) for path in results)
         result_count = len(results)
         try:
@@ -2049,15 +2056,17 @@ def generate_clicked(task: worker.AsyncTask, state):
                         skip_update
                     finished = True
 
-                    # Remove temporary image outputs, but keep generated videos as user media.
+                    # Remove temporary image outputs, but keep generated videos and audios as user media.
                     if args_manager.args.disable_image_log:
-                        video_extensions = tuple(getattr(gallery_util, 'video_types', ('.mp4', '.webm')))
+                        av_extensions = tuple(getattr(gallery_util, 'video_types', ('.mp4', '.webm'))) + tuple(
+                            getattr(gallery_util, 'audio_types', ('.flac', '.mp3', '.wav', '.ogg', '.opus', '.m4a', '.aac'))
+                        )
                         for filepath in product:
-                            is_video = (
+                            is_av_media = (
                                 isinstance(filepath, str)
-                                and os.path.splitext(filepath)[1].lower() in video_extensions
+                                and os.path.splitext(filepath)[1].lower() in av_extensions
                             )
-                            if isinstance(filepath, str) and not is_video and os.path.exists(filepath):
+                            if isinstance(filepath, str) and not is_av_media and os.path.exists(filepath):
                                 os.remove(filepath)
 
             elif task.content_type == 'video' and len(preview_cache) > 1 and current_time >= next_preview_ui_time:
@@ -4916,6 +4925,7 @@ with shared.gradio_root:
                                 '<div class="simpleai-gallery-browser-empty-message" data-gallery-browser-empty-label role="status"></div>',
                                 elem_id='gallery_browser_empty_state',
                             )
+                            gr.HTML('<div class="sai-studio-audio-stage" hidden></div>', elem_id="studio_audio_browser", apply_default_css=False)
                             gr.HTML(STUDIO_MESH_BROWSER_HTML, elem_id="studio_mesh_browser", apply_default_css=False)
                         welcome_media_target = gr.Textbox(
                             value=welcome_media.TITLE_KIND,
@@ -5040,7 +5050,7 @@ with shared.gradio_root:
                                 with gr.Row(elem_id="gallery_browser_left", elem_classes=["simpleai-main-gallery-browser-left"]):
                                     with gr.Row(elem_id="gallery_browser_folder_group", elem_classes=["gallery-browser-folder-group"]):
                                         gallery_browser_prev_folder_btn = gr.Button("▲", size="sm", elem_id="gallery_browser_prev_folder_btn", elem_classes=["gallery-browser-folder-step"], min_width=28, scale=0)
-                                        gallery_browser_folder = gr.Dropdown(choices=[], value=None, show_label=False, elem_id="gallery_browser_folder", elem_classes=["gallery-browser-folder-control"], min_width=156, scale=0)
+                                        gallery_browser_folder = gr.Dropdown(choices=[], value=None, show_label=False, elem_id="gallery_browser_folder", elem_classes=["gallery-browser-folder-control"], min_width=176, scale=0)
                                         gallery_browser_next_folder_btn = gr.Button("▼", size="sm", elem_id="gallery_browser_next_folder_btn", elem_classes=["gallery-browser-folder-step"], min_width=28, scale=0)
                                     gallery_browser_status = gr.Markdown("", elem_id="gallery_browser_status", elem_classes=["gallery-browser-status"])
                                     gallery_browser_refresh_btn = gr.Button("Refresh", size="sm", elem_id="gallery_browser_refresh_btn")
@@ -5048,6 +5058,7 @@ with shared.gradio_root:
                                     with gr.Row(elem_id="gallery_media_switch_row", elem_classes=["gallery_media_switch"]):
                                         gallery_images_btn = gr.Button("Images", size="sm", elem_id="gallery_images_btn")
                                         gallery_videos_btn = gr.Button("Videos", size="sm", elem_id="gallery_videos_btn")
+                                        gallery_audios_btn = gr.Button("Audio", size="sm", elem_id="gallery_audios_btn")
                                         canvas_gallery_refresh_btn = gr.Button("Canvas gallery refresh", size="sm", visible="hidden", elem_id="canvas_gallery_refresh_btn", elem_classes=["sai-gradio-hidden-bridge"])
                                 with gr.Row(elem_id="gallery_browser_right", elem_classes=["simpleai-main-gallery-browser-right"]):
                                     gallery_browser_more_btn = gr.Button("Load more", size="sm", elem_id="gallery_browser_more_btn")
@@ -10892,6 +10903,8 @@ with shared.gradio_root:
                 .then(lambda x, state: None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{const mode=(state && (state.__gallery_engine_type || state.engine_type)) || (typeof getFinishedGalleryBrowserMode==="function"?getFinishedGalleryBrowserMode():null) || "image"; syncGalleryMediaSwitch(mode, 1200); refresh_finished_images_catalog_label(x, mode, {refresh:true}); try{traceResultPanelStateSoon("canvas_gallery_refresh.after");}catch(e){console.warn("[UI-TRACE] canvas_gallery_refresh.dom_trace_failed", e);}}')
             gallery_videos_btn.click(lambda request, tools, state: gallery_util.switch_gallery_engine_type("video", request, tools, state), inputs=[gallery_media_switch_request, image_tools_checkbox, state_topbar], outputs=[gallery_index, index_radio, progress_gallery, progress_window, gallery, progress_video, image_toolbox, prompt_info_box, prompt_info_close_btn, prompt_info_container, gallery_browser_state, state_topbar, gallery_index_stat], queue=False, show_progress=False, js='(request,tools,state)=>{let marker=request||""; try{clearSimpleAICompareReadyState("gallery_media_switch.video"); marker=(typeof beginGalleryMediaSwitchRequest==="function")?beginGalleryMediaSwitchRequest("video",1500):`${Date.now()}:0:video`; if(typeof beginGalleryMediaSwitchRequest!=="function") syncGalleryMediaSwitch("video",1500);}catch(e){} return [marker,tools,state];}') \
                 .then(lambda browser_state, x, state: None, inputs=[gallery_browser_state, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(browserState,x,state)=>{if(typeof isGalleryMediaSwitchModeCurrent==="function"&&!isGalleryMediaSwitchModeCurrent("video")) return; syncGalleryMediaSwitch("video", 1200); try{if(state&&typeof state==="object"){state=(typeof mergeSimpleAITopbarSystemParamsForGallery==="function")?mergeSimpleAITopbarSystemParamsForGallery(state,"gallery_media_switch.video"):state; if(typeof mergeSimpleAITopbarSystemParamsForGallery!=="function"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;}} if(typeof syncPostGenerationResultControls==="function"){syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80); setTimeout(()=>syncPostGenerationResultControls(state),220);}}catch(e){} refresh_finished_images_catalog_label(x, "video", {refresh:false}); try{const nums=String((state&&state.__finished_nums_pages)||x||""); if(typeof syncFinishedGalleryBrowserAfterMediaSwitch==="function") syncFinishedGalleryBrowserAfterMediaSwitch(browserState,x,"video",state,"gallery_media_switch.video"); else if(/^0(?:,|$)/.test(nums)&&typeof restoreWelcomePreviewForEmptyGalleryBrowser==="function") restoreWelcomePreviewForEmptyGalleryBrowser("gallery_media_switch.video.empty"); if(typeof scheduleFinishedGalleryBrowserStatusSyncFromRenderedGallery==="function") scheduleFinishedGalleryBrowserStatusSyncFromRenderedGallery("video", "gallery_media_switch.video");}catch(e){}}')
+            gallery_audios_btn.click(lambda request, tools, state: gallery_util.switch_gallery_engine_type("audio", request, tools, state), inputs=[gallery_media_switch_request, image_tools_checkbox, state_topbar], outputs=[gallery_index, index_radio, progress_gallery, progress_window, gallery, progress_video, image_toolbox, prompt_info_box, prompt_info_close_btn, prompt_info_container, gallery_browser_state, state_topbar, gallery_index_stat], queue=False, show_progress=False, js='(request,tools,state)=>{let marker=request||""; try{clearSimpleAICompareReadyState("gallery_media_switch.audio"); marker=(typeof beginGalleryMediaSwitchRequest==="function")?beginGalleryMediaSwitchRequest("audio",1500):`${Date.now()}:0:audio`; if(typeof beginGalleryMediaSwitchRequest!=="function") syncGalleryMediaSwitch("audio",1500);}catch(e){} return [marker,tools,state];}') \
+                .then(lambda browser_state, x, state: None, inputs=[gallery_browser_state, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(browserState,x,state)=>{if(typeof isGalleryMediaSwitchModeCurrent==="function"&&!isGalleryMediaSwitchModeCurrent("audio")) return; syncGalleryMediaSwitch("audio", 1200); try{if(state&&typeof state==="object"){state=(typeof mergeSimpleAITopbarSystemParamsForGallery==="function")?mergeSimpleAITopbarSystemParamsForGallery(state,"gallery_media_switch.audio"):state; if(typeof mergeSimpleAITopbarSystemParamsForGallery!=="function"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;}} if(typeof syncPostGenerationResultControls==="function"){syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80); setTimeout(()=>syncPostGenerationResultControls(state),220);}}catch(e){} refresh_finished_images_catalog_label(x, "audio", {refresh:false}); try{const nums=String((state&&state.__finished_nums_pages)||x||""); if(typeof syncFinishedGalleryBrowserAfterMediaSwitch==="function") syncFinishedGalleryBrowserAfterMediaSwitch(browserState,x,"audio",state,"gallery_media_switch.audio"); else if(/^0(?:,|$)/.test(nums)&&typeof restoreWelcomePreviewForEmptyGalleryBrowser==="function") restoreWelcomePreviewForEmptyGalleryBrowser("gallery_media_switch.audio.empty"); if(typeof scheduleFinishedGalleryBrowserStatusSyncFromRenderedGallery==="function") scheduleFinishedGalleryBrowserStatusSyncFromRenderedGallery("audio", "gallery_media_switch.audio");}catch(e){}}')
             gallery_browser_load_evt = gallery_browser_load_btn.click(gallery_util.load_main_gallery_browser_page, inputs=[gallery_browser_payload, image_tools_checkbox, state_topbar], outputs=[gallery_browser_state, progress_gallery, progress_window, gallery, progress_video, image_toolbox, prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar, gallery_index_stat, gallery_browser_folder], queue=False, show_progress=False, js='(payload,tools,state)=>{try{const pending=(typeof getFinishedGalleryBrowserPendingPayloadText==="function")?getFinishedGalleryBrowserPendingPayloadText():payload; if(pending) payload=pending; let shouldClearCompare=true; try{const parsed=JSON.parse(payload||"{}"); shouldClearCompare=!(parsed&&parsed.clear_compare===false);}catch(_e){} if(shouldClearCompare&&typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("gallery_browser.load"); if(state&&typeof state==="object") state.__main_gallery_browser_bridge_payload=payload; markFinishedGalleryBrowserLoading();}catch(e){} return [payload,tools,state];}')
             gallery_browser_load_evt.then(lambda x, stat, state: None, inputs=[gallery_browser_state, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,stat,state)=>{try{const applied=(typeof syncFinishedGalleryBrowserAfterLoad==="function")?syncFinishedGalleryBrowserAfterLoad(x):true; if(applied===false) return; if(state&&typeof state==="object"){state=(typeof mergeSimpleAITopbarSystemParamsForGallery==="function")?mergeSimpleAITopbarSystemParamsForGallery(state,"gallery_browser.load"):state; if(typeof mergeSimpleAITopbarSystemParamsForGallery!=="function"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;}} const mode=(state && (state.__gallery_engine_type || state.engine_type)) || (typeof getFinishedGalleryBrowserMode==="function"?getFinishedGalleryBrowserMode():null); refresh_finished_images_catalog_label(stat, mode, {refresh:false}); traceResultPanelStateSoon("gallery_browser.load.after");}catch(e){console.warn("[UI-TRACE] gallery_browser_load.dom_trace_failed", e);}}')
             index_radio.expand(fn=None, queue=False, show_progress=False, js='()=>{if(typeof onFinishedGalleryCatalogExpand==="function") onFinishedGalleryCatalogExpand();}')
@@ -12112,7 +12125,8 @@ with shared.gradio_root:
                     return None
                 if isinstance(value, str):
                     text = value.strip()
-                    if not text or text.lower().endswith(('.mp4', '.webm')):
+                    audio_exts = tuple(getattr(gallery_util, "audio_types", (".flac", ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac")))
+                    if not text or text.lower().endswith(('.mp4', '.webm') + audio_exts):
                         return None
                     return text
                 return None
@@ -12145,6 +12159,7 @@ with shared.gradio_root:
             task_media_paths = image_output_paths(task_results)
             output_list = state_topbar.get("__output_list") or []
             task_content_type = getattr(generation_task, 'content_type', None)
+            audio_exts = tuple(getattr(gallery_util, "audio_types", (".flac", ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac")))
             video_has_output = bool(
                 task_has_output
                 and (
@@ -12152,18 +12167,42 @@ with shared.gradio_root:
                     or any(str(path).lower().endswith(('.mp4', '.webm')) for path in task_result_values)
                 )
             )
-            gallery_has_output = bool(task_has_output and not video_has_output)
+            audio_has_output = bool(
+                task_has_output
+                and not video_has_output
+                and (
+                    task_content_type == 'audio'
+                    or any(str(path).lower().endswith(audio_exts) for path in task_result_values)
+                )
+            )
+            gallery_has_output = bool(task_has_output and not video_has_output and not audio_has_output)
             has_output = bool(task_has_output or model_ids)
             is_video_context = bool(engine_type == 'video' or video_has_output)
+            is_audio_context = bool(engine_type == 'audio' or audio_has_output)
             input_for_compare = resolve_comparison_input(input_img, state_topbar, scene1, scene_canvas)
             compare_input_ok = input_for_compare is not None
             state_topbar["__post_generation_has_output"] = bool(has_output)
             state_topbar["__post_generation_gallery_output"] = bool(gallery_has_output)
             state_topbar["__post_generation_video_output"] = bool(video_has_output)
+            state_topbar["__post_generation_audio_output"] = bool(audio_has_output)
+            if audio_has_output:
+                user_did_for_audio = gallery_util._user_did_from_state(state_topbar)
+                audio_paths = [str(p) for p in task_result_values if isinstance(p, (str, os.PathLike))]
+                state_topbar["__post_generation_audio_items"] = gallery_util.build_audio_surface_items(
+                    audio_paths,
+                    user_did=user_did_for_audio,
+                    state_params=state_topbar,
+                )
+                gallery_util.set_selected_gallery_media_path(
+                    state_topbar,
+                    audio_paths[0] if audio_paths else None,
+                )
+            else:
+                state_topbar.pop("__post_generation_audio_items", None)
             state_topbar["__post_generation_compare_input_ok"] = bool(compare_input_ok)
             preview_url = _file_url_for_output(task_results)
             post_generation_image_paths = task_media_paths
-            if preview_url and not video_has_output:
+            if preview_url and not video_has_output and not audio_has_output:
                 state_topbar["__post_generation_image_url"] = preview_url
                 state_topbar["__post_generation_image_paths"] = post_generation_image_paths
                 state_topbar["__post_generation_image_dimensions"] = gallery_util.post_generation_image_dimensions(post_generation_image_paths)
@@ -12195,8 +12234,8 @@ with shared.gradio_root:
                 state_topbar["prompt_info"] = [latest_choice, 0]
 
             toolbox_visible = bool(task_has_output and gallery_util._should_show_image_toolbox(image_tools_enabled, state_topbar))
-            comparable_output_visible = bool((not is_video_context) and task_has_output)
-            compare_button_visible = bool(toolbox_visible)
+            comparable_output_visible = bool((not is_video_context) and (not is_audio_context) and task_has_output)
+            compare_button_visible = bool(toolbox_visible and not is_audio_context)
             compare_ready = bool(toolbox_visible and comparable_output_visible and compare_input_ok)
             state_topbar["__post_generation_compare_visible"] = bool(compare_button_visible)
             state_topbar["__post_generation_compare_ready"] = bool(compare_ready)
@@ -12224,7 +12263,7 @@ with shared.gradio_root:
                 compare_button_visible,
                 compare_ready,
             )
-            compare_update = compare_button_gr_update(visible=toolbox_visible, ready=compare_ready)
+            compare_update = compare_button_gr_update(visible=compare_button_visible, ready=compare_ready)
             return (
                 compare_update,
                 gr_update(visible=toolbox_visible),
@@ -12333,6 +12372,18 @@ with shared.gradio_root:
                 isinstance(path, str) and path.lower().endswith(('.mp4', '.webm'))
                 for path in media_paths
             )
+            audio_exts = tuple(getattr(gallery_util, "audio_types", (".flac", ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac")))
+            has_audio_result = getattr(generation_task, "content_type", None) == "audio" or any(
+                isinstance(path, str) and path.lower().endswith(audio_exts)
+                for path in media_paths
+            )
+            if has_audio_result:
+                return (
+                    gr_update(visible=False),
+                    gr_update(value=None, visible=False),
+                    gr_update(value=None, visible=False),
+                    gr_update(visible=False),
+                )
             try:
                 expected_result_count = int(getattr(generation_task, "image_number", 1) or 1)
             except Exception:

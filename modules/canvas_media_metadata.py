@@ -15,6 +15,8 @@ except Exception:
 
 IMAGE_MIME_PREFIX = "image/"
 VIDEO_MIME_PREFIX = "video/"
+AUDIO_MIME_PREFIX = "audio/"
+AUDIO_EXTS = {".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac", ".opus"}
 A1111_PARAM_RE = re.compile(r'\s*([\w \-/]+):\s*("(?:\\.|[^\\"])+"|[^,]*)(?:,|$)')
 PROMPT_KEYS = (
     "prompt",
@@ -44,6 +46,8 @@ PARAM_KEYS = (
     "width",
     "height",
     "resolution",
+    "additional_prompt",
+    "lyrics",
 )
 
 
@@ -129,11 +133,13 @@ def _extract_params(data):
     if not isinstance(data, dict):
         return {}
     lower_map = {str(key).lower(): key for key in data.keys()}
+    normalized_map = {re.sub(r"[\s\-]+", "_", str(key).strip().lower()): key for key in data.keys()}
     params = {}
     for key in PARAM_KEYS:
-        real_key = key if key in data else lower_map.get(key.lower())
+        real_key = key if key in data else (lower_map.get(key.lower()) or normalized_map.get(key.lower()))
         if real_key is not None and data.get(real_key) not in (None, ""):
-            params[key] = _compact_value(data.get(real_key), limit=500)
+            max_len = 4000 if key in {"additional_prompt", "lyrics"} else 500
+            params[key] = _compact_value(data.get(real_key), limit=max_len)
     for key, value in data.items():
         key_text = str(key)
         if key_text.lower().startswith("lora") and value not in (None, ""):
@@ -451,13 +457,55 @@ def extract_video_metadata(path, max_raw_chars=4000):
         return {}
 
 
+def extract_audio_metadata(path, max_raw_chars=4000):
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        tags = read_video_metadata_tags(path)
+        if not isinstance(tags, dict):
+            return {}
+        lower_tags = {str(key).lower(): value for key, value in tags.items()}
+        scheme = _decode_text(lower_tags.get("fooocus_scheme")).strip()
+        simpleai = lower_tags.get("simpleai_metadata")
+        comment = lower_tags.get("comment")
+        workflow = lower_tags.get("workflow")
+        result = {}
+        if simpleai:
+            result = _merge_metadata(result, _extract_from_parameters(simpleai, scheme=scheme))
+        if comment and not result.get("prompt"):
+            structured = _json_loads(comment)
+            if isinstance(structured, dict):
+                prompt_data = structured.get("prompt")
+                if isinstance(prompt_data, dict):
+                    result = _merge_metadata(result, _metadata_from_structured(prompt_data, source="simpleai_audio", scheme=scheme))
+                result = _merge_metadata(result, _metadata_from_structured(structured, source="audio_comment", scheme=scheme))
+            else:
+                result = _merge_metadata(result, _extract_from_parameters(comment, scheme=scheme))
+        if workflow:
+            result = _merge_metadata(result, {
+                "source": result.get("source") or "simpleai_audio",
+                "has_workflow": True,
+                "workflow": _workflow_summary(workflow),
+            })
+        if tags:
+            result["raw_keys"] = sorted(str(key) for key in tags.keys())[:40]
+            if not result.get("raw_text"):
+                result["raw_text"] = _clip_text(simpleai or comment or "", max_raw_chars)
+        return result
+    except Exception:
+        return {}
+
+
 def extract_media_metadata(path, mime=None, max_raw_chars=4000):
     path = os.path.abspath(str(path or ""))
     if not path or not os.path.exists(path):
         return {}
     media_mime = str(mime or mimetypes.guess_type(path)[0] or "").lower()
+    ext = os.path.splitext(path)[1].lower()
     if media_mime.startswith(IMAGE_MIME_PREFIX):
         return extract_image_metadata(path, max_raw_chars=max_raw_chars)
     if media_mime.startswith(VIDEO_MIME_PREFIX):
         return extract_video_metadata(path, max_raw_chars=max_raw_chars)
+    if media_mime.startswith(AUDIO_MIME_PREFIX) or ext in AUDIO_EXTS:
+        return extract_audio_metadata(path, max_raw_chars=max_raw_chars)
     return {}

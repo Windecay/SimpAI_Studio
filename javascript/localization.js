@@ -1149,7 +1149,7 @@ function refresh_finished_images_catalog_label(value, type, options) {
     if (!label || typeof value === "undefined" || value === null) {
         return;
     }
-    var requestedType = type == "video" ? "video" : (type == "image" ? "image" : "");
+    var requestedType = (type == "video" || type == "audio" || type == "image") ? type : "";
     var activeGalleryType = "";
     var galleryBrowserBusy = false;
     try {
@@ -1157,14 +1157,14 @@ function refresh_finished_images_catalog_label(value, type, options) {
             galleryBrowserBusy = !!(finishedGalleryBrowserState.loading || finishedGalleryBrowserState.pendingPayload);
             var pendingPayload = finishedGalleryBrowserState.pendingPayload || null;
             if (pendingPayload && pendingPayload.media_type) {
-                activeGalleryType = pendingPayload.media_type == "video" ? "video" : "image";
+                activeGalleryType = (pendingPayload.media_type == "video" || pendingPayload.media_type == "audio") ? pendingPayload.media_type : "image";
             } else if (finishedGalleryBrowserState.mediaType) {
-                activeGalleryType = finishedGalleryBrowserState.mediaType == "video" ? "video" : "image";
+                activeGalleryType = (finishedGalleryBrowserState.mediaType == "video" || finishedGalleryBrowserState.mediaType == "audio") ? finishedGalleryBrowserState.mediaType : "image";
             }
         }
         if (typeof getActiveGalleryMediaSwitchLock === "function") {
             var mediaLock = getActiveGalleryMediaSwitchLock();
-            if (mediaLock && mediaLock.mode) activeGalleryType = mediaLock.mode == "video" ? "video" : "image";
+            if (mediaLock && mediaLock.mode) activeGalleryType = (mediaLock.mode == "video" || mediaLock.mode == "audio") ? mediaLock.mode : "image";
         }
         if (!activeGalleryType && typeof getFinishedGalleryBrowserMode === "function") {
             activeGalleryType = getFinishedGalleryBrowserMode(requestedType || undefined);
@@ -1184,8 +1184,8 @@ function refresh_finished_images_catalog_label(value, type, options) {
             }
         }
     } catch (e) {}
-    if (activeGalleryType == "video" && (galleryBrowserBusy || is_finished_images_catalog_open())) {
-        requestedType = "video";
+    if ((activeGalleryType == "video" || activeGalleryType == "audio") && (galleryBrowserBusy || is_finished_images_catalog_open())) {
+        requestedType = activeGalleryType;
     } else if (!requestedType && activeGalleryType) {
         requestedType = activeGalleryType;
     }
@@ -1198,7 +1198,7 @@ function refresh_finished_images_catalog_label(value, type, options) {
     if (typeof translation_stat == "undefined") {
         translation_stat = "total: xxx images and yyy pages";
     }
-    if (type != "video" && document.getElementById("gallery_browser_load_btn")) {
+    if (type != "video" && type != "audio" && document.getElementById("gallery_browser_load_btn")) {
         translation_stat = getTranslation("total: xxx images");
         if (typeof translation_stat == "undefined") {
             translation_stat = "total: xxx images";
@@ -1219,6 +1219,9 @@ function refresh_finished_images_catalog_label(value, type, options) {
 	if (typeof translation_stat == "undefined") {
 	    translation_stat = "total: xxx videoes";
 	}
+    } else if (type == "audio") {
+        translation = getTranslation("Finished Audio Catalog") || getTranslation("Finished Audio") || "Finished Audio Catalog";
+        translation_stat = getTranslation("total: xxx audios") || "total: xxx audios";
     }
     value = String(value);
     var xxx = value.split(",")[0];
@@ -1238,7 +1241,7 @@ function refresh_finished_images_catalog_label(value, type, options) {
             if (window.simpleaiTopbarSystemParams) window.simpleaiTopbarSystemParams.__skip_gallery_browser_refresh_once = false;
             if (typeof topbarLastSystemParams !== "undefined" && topbarLastSystemParams) topbarLastSystemParams.__skip_gallery_browser_refresh_once = false;
         }
-        var targetType = type == "video" ? "video" : "image";
+        var targetType = (type == "video" || type == "audio") ? type : "image";
         var suppressSwitchRefresh = false;
         var resultSurfaceActive = false;
         try {

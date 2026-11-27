@@ -143,7 +143,7 @@ def make_infobox_markdown(info, theme, state_params=None):
 
 
 def toggle_toolbox(state, state_params):
-    visible = bool(state or gallery.get_gallery_engine_type(state_params) == "video" or "scene_frontend" in state_params)
+    visible = bool(state or gallery.get_gallery_engine_type(state_params) in ("video", "audio") or "scene_frontend" in state_params)
     if state_params.get("gallery_preview_open") and visible:
         return [gr_update(visible=visible)]
     else:
@@ -421,6 +421,8 @@ def _folder_has_remaining_output_media(dir_path):
 def _get_media_paths_from_gallery_index(choice, max_per_page, user_did, engine_type):
     if engine_type == "video":
         return gallery.get_videos_from_gallery_index(choice, max_per_page, user_did)
+    if engine_type == "audio":
+        return gallery.get_audios_from_gallery_index(choice, max_per_page, user_did)
     return gallery.get_images_from_gallery_index(choice, max_per_page, user_did)
 
 
@@ -573,6 +575,8 @@ def delete_image(state_params, delete_target=None):
         extension = os.path.splitext(selected_path)[1].lower()
         if extension in set(getattr(gallery, "video_types", []) or []):
             engine_type = "video"
+        elif extension in set(getattr(gallery, "audio_types", []) or []):
+            engine_type = "audio"
         elif extension in set(getattr(gallery, "image_types", []) or []):
             engine_type = "image"
     else:
@@ -588,7 +592,7 @@ def delete_image(state_params, delete_target=None):
                 gallery.get_media_path_from_gallery_index(choice, selected, max_per_page, user_did, engine_type),
                 user_path_outputs,
             )
-    media_label = "video" if engine_type == "video" else "image"
+    media_label = engine_type if engine_type in ("video", "audio") else "image"
     info = gallery.read_embedded_metadata_from_file(selected_path, engine_type) if selected_path else None
     if info is None:
         info = gallery.get_images_prompt(choice, selected, max_per_page, user_did=user_did, media_type=engine_type)
@@ -626,6 +630,9 @@ def delete_image(state_params, delete_target=None):
     elif engine_type == "video":
         video_rel_path = gallery.get_video_rel_path_from_gallery_index(choice, selected, max_per_page, user_did)
         file_path = os.path.join(user_path_outputs, video_rel_path) if video_rel_path else os.path.join(dir_path, file_name)
+    elif engine_type == "audio":
+        audio_rel_path = gallery.get_audio_rel_path_from_gallery_index(choice, selected, max_per_page, user_did)
+        file_path = os.path.join(user_path_outputs, audio_rel_path) if audio_rel_path else os.path.join(dir_path, file_name)
     else:
         file_path = os.path.join(dir_path, file_name)
     if os.path.exists(file_path):
@@ -642,6 +649,8 @@ def delete_image(state_params, delete_target=None):
     gallery.invalidate_output_list_cache(user_did, engine_type)
     if engine_type == "video":
         gallery.refresh_videos_catalog(output_choice, True, user_did)
+    elif engine_type == "audio":
+        gallery.refresh_audios_catalog(output_choice, True, user_did)
     else:
         gallery.refresh_images_catalog(output_choice, True, user_did)
 
@@ -690,14 +699,21 @@ def delete_image(state_params, delete_target=None):
     state_params["gallery_preview_open"] = has_media
     label = gallery._gallery_media_label(engine_type, state_params)
     selected_index_update = selected if has_media else None
-    display_gallery = gallery.gallery_display_paths_for_progress(media_gallery, engine_type, user_did, state_params)
-    gallery_update = gr_update(value=None, visible=False) if engine_type == "video" else gr_update(
+    display_gallery = [] if engine_type == "audio" else gallery.gallery_display_paths_for_progress(media_gallery, engine_type, user_did, state_params)
+    gallery_update = gr_update(value=None, visible=False) if engine_type in ("video", "audio") else gr_update(
         value=display_gallery,
         allow_preview=True,
         preview=has_media,
         selected_index=selected_index_update,
         fit_columns=False,
     )
+    if engine_type == "audio":
+        audio_items = gallery.build_audio_surface_items(media_gallery, user_did=user_did, state_params=state_params)
+        state_params["__main_gallery_browser_dimensions"] = {item["path"]: dict(item, media_type="audio") for item in audio_items}
+        if state_params.get("__post_generation_audio_output"):
+            state_params["__post_generation_audio_items"] = audio_items
+            state_params["__post_generation_audio_output"] = bool(audio_items)
+            state_params["__post_generation_has_output"] = bool(audio_items)
     output_choices = state_params.get("__output_list", []) or []
     if state_params.get("gallery_state") == "main_browser":
         gallery_index_value = choice if choice in output_choices else None
@@ -714,15 +730,16 @@ def delete_image(state_params, delete_target=None):
         len(media_gallery or []),
         len(state_params.get("__output_list", []) or []),
     )
+    progress_gallery_visible = has_media and engine_type != "audio"
     return (
         gallery_update,
         gr_update(
-            value=media_gallery,
-            visible=has_media,
+            value=media_gallery if progress_gallery_visible else None,
+            visible=progress_gallery_visible,
             label=label,
             allow_preview=True,
-            preview=has_media,
-            selected_index=selected_index_update,
+            preview=progress_gallery_visible,
+            selected_index=selected_index_update if progress_gallery_visible else None,
             fit_columns=False,
         ),
         progress_window_update,

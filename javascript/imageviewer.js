@@ -151,6 +151,11 @@ function simpleaiSyncGallerySelectionIntoState(state) {
     const targetState = liveState && liveState !== incomingState
         ? Object.assign({}, liveState, incomingState)
         : incomingState;
+    if (window.SimpAIStudioAudioSurface?.syncSelectionIntoState?.(targetState)) {
+        window.simpleaiTopbarSystemParams = targetState;
+        if (typeof topbarLastSystemParams !== 'undefined') topbarLastSystemParams = targetState;
+        return targetState;
+    }
     const app = typeof gradioApp === 'function' ? gradioApp() : document;
     const roots = ['#finished_gallery', '#final_gallery']
         .map((selector) => app.querySelector(selector))
@@ -205,6 +210,8 @@ function simpleaiGalleryFilePathFromSrc(src) {
 }
 
 function simpleaiGalleryDeleteTargetSnapshot() {
+    const audioSnapshot = window.SimpAIStudioAudioSurface?.getDeleteTargetSnapshot?.();
+    if (audioSnapshot) return audioSnapshot;
     const button = selected_gallery_button();
     const selectedIndex = selected_gallery_index();
     const media = simpleaiGalleryButtonMedia(button);

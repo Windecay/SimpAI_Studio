@@ -35,9 +35,11 @@ images_prompt_keys = {} #[]
 images_ads = {}
 
 videos_list = {}
+audios_list = {}
 
 image_types = ['.png', '.jpg', '.jpeg', '.webp'] 
-video_types = ['.webm', '.mp4']
+video_types = ['.webm', '.mp4', '.mov', '.mkv']
+audio_types = ['.flac', '.mp3', '.wav', '.ogg', '.opus', '.m4a', '.aac']
 output_images_regex = re.compile(r'\d{4}-\d{2}-\d{2}')
 OUTPUT_CATALOG_SNAPSHOT_TTL_SECONDS = 30.0
 _output_catalog_snapshots = {}
@@ -221,7 +223,7 @@ def get_gallery_original_download_path(download_name):
         return ""
     if not os.path.isfile(media_path):
         return ""
-    if os.path.splitext(media_path)[1].lower() not in image_types + video_types:
+    if os.path.splitext(media_path)[1].lower() not in image_types + video_types + audio_types:
         return ""
     return media_path
 
@@ -544,11 +546,53 @@ def post_generation_image_dimensions(media_paths):
     return dimensions
 
 
+def build_audio_surface_item(media_path, user_did=None, state_params=None):
+    if not media_path:
+        return None
+    abs_path = os.path.abspath(str(media_path))
+    if not os.path.isfile(abs_path):
+        return None
+    try:
+        stat = os.stat(abs_path)
+        size = int(stat.st_size)
+    except OSError:
+        size = 0
+    duration, waveform = canvas_workbench_media_gallery._read_audio_profile(abs_path)
+    preview_url = canvas_workbench_media_gallery._file_preview_url(abs_path)
+    download_token = _gallery_output_download_name(abs_path)
+    download_url = (
+        f"{_gallery_display_preview_webroot()}{GALLERY_ORIGINAL_DOWNLOAD_ROUTE}/{download_token}"
+        if download_token
+        else preview_url
+    )
+    name = os.path.basename(abs_path)
+    return {
+        "path": abs_path,
+        "name": name,
+        "audio_format": os.path.splitext(name)[1].lower().lstrip("."),
+        "preview_url": preview_url,
+        "download_url": download_url,
+        "size": size,
+        "duration": duration,
+        "waveform": waveform,
+    }
+
+
+def build_audio_surface_items(media_paths, user_did=None, state_params=None):
+    items = []
+    for path in media_paths or []:
+        item = build_audio_surface_item(path, user_did=user_did, state_params=state_params)
+        if item is not None:
+            items.append(item)
+    return items
+
+
 def post_generation_result_payload(state_params):
     state_params = state_params or {}
     keys = (
         "gallery_state",
         "gallery_preview_open",
+        "prompt_info",
         "engine_type",
         "__gallery_engine_type",
         "__image_tools_enabled",
@@ -556,6 +600,8 @@ def post_generation_result_payload(state_params):
         "__post_generation_has_output",
         "__post_generation_gallery_output",
         "__post_generation_video_output",
+        "__post_generation_audio_output",
+        "__post_generation_audio_items",
         "__post_generation_mesh_ids",
         "__post_generation_image_url",
         "__post_generation_image_paths",
@@ -585,8 +631,8 @@ def _parse_gallery_media_switch_marker(marker, fallback_mode=None):
         seq = int(parts[1])
     except Exception:
         return None
-    mode = "video" if parts[2] == "video" else "image"
-    if fallback_mode in ("image", "video") and mode != fallback_mode:
+    mode = parts[2] if parts[2] in ("image", "video", "audio") else "image"
+    if fallback_mode in ("image", "video", "audio") and mode != fallback_mode:
         mode = fallback_mode
     return (started_at, seq, mode, text)
 
@@ -746,10 +792,12 @@ def get_gallery_engine_type(state_params):
     if not isinstance(state_params, dict):
         return "image"
     gallery_engine_type = state_params.get("__gallery_engine_type")
-    if gallery_engine_type in ("image", "video"):
+    if gallery_engine_type in ("image", "video", "audio"):
         return gallery_engine_type
     engine_type = state_params.get("engine_type") or state_params.get("default_engine", {}).get("engine_type")
-    return "video" if engine_type == "video" else "image"
+    if engine_type in ("video", "audio"):
+        return engine_type
+    return "image"
 
 
 def _gallery_lang(state_params):
@@ -762,8 +810,16 @@ def _gallery_lang(state_params):
 
 def _gallery_media_label(media_type, state_params):
     if _gallery_lang(state_params) == "en":
-        return "Finished Videos" if media_type == "video" else "Finished Images"
-    return "已完成视频" if media_type == "video" else "已完成图片"
+        if media_type == "video":
+            return "Finished Videos"
+        if media_type == "audio":
+            return "Finished Audio"
+        return "Finished Images"
+    if media_type == "video":
+        return "已完成视频"
+    if media_type == "audio":
+        return "已完成音频"
+    return "已完成图片"
 
 
 def _gallery_browser_count_status(count, media_type, state_params):
@@ -772,8 +828,10 @@ def _gallery_browser_count_status(count, media_type, state_params):
     except Exception:
         count = 0
     if _gallery_lang(state_params) == "en":
-        return "{} {}".format(count, "videos" if media_type == "video" else "items")
-    return "{} {}".format(count, "个视频" if media_type == "video" else "张图片")
+        unit = "videos" if media_type == "video" else ("audios" if media_type == "audio" else "items")
+        return "{} {}".format(count, unit)
+    unit = "个视频" if media_type == "video" else ("条音频" if media_type == "audio" else "张图片")
+    return "{} {}".format(count, unit)
 
 
 def clear_post_generation_compare_state(state_params):
@@ -795,6 +853,8 @@ def clear_post_generation_output_state(state_params):
         "__post_generation_has_output",
         "__post_generation_gallery_output",
         "__post_generation_video_output",
+        "__post_generation_audio_output",
+        "__post_generation_audio_items",
         "__post_generation_mesh_ids",
         "__post_generation_image_paths",
         "__post_generation_image_dimensions",
@@ -817,6 +877,7 @@ def clear_main_gallery_browser_state(state_params):
         "__main_gallery_browser_dimensions",
         "__main_gallery_browser_folder",
         "__main_gallery_browser_folders",
+        "__main_gallery_browser_folder_counts",
         "__main_gallery_browser_next_offset",
         "__main_gallery_browser_has_more",
         "__main_gallery_browser_request_folder",
@@ -1124,7 +1185,7 @@ def _output_catalog_snapshot_key(user_did=None):
 
 
 def _output_catalog_snapshot_result(snapshot, engine_type, max_per_page, max_catalog):
-    engine_type = "video" if engine_type == "video" else "image"
+    engine_type = engine_type if engine_type in ("video", "audio") else "image"
     max_per_page = max(1, int(max_per_page))
     max_catalog = max(0, int(max_catalog))
 
@@ -1132,6 +1193,12 @@ def _output_catalog_snapshot_result(snapshot, engine_type, max_per_page, max_cat
         video_catalogs = snapshot.get("video_catalogs") or {}
         output_list = _paginate_catalog_choices(video_catalogs, max_per_page, max_catalog)
         total_nums = sum(len(items or []) for items in video_catalogs.values())
+        return output_list, total_nums, len(output_list)
+
+    if engine_type == "audio":
+        audio_catalogs = snapshot.get("audio_catalogs") or {}
+        output_list = _paginate_catalog_choices(audio_catalogs, max_per_page, max_catalog)
+        total_nums = sum(len(items or []) for items in audio_catalogs.values())
         return output_list, total_nums, len(output_list)
 
     image_catalogs = snapshot.get("image_catalogs") or {}
@@ -1242,6 +1309,77 @@ def _get_video_rel_path_from_gallery_index(choice, selected, max_per_page, user_
     selected = max(0, min(selected, len(rel_paths) - 1))
     return rel_paths[selected]
 
+
+def _get_audio_catalog(choice, user_did=None):
+    global audios_list
+
+    if not user_did:
+        user_did = shared.token.get_guest_did()
+    if user_did not in audios_list:
+        audios_list[user_did] = {}
+
+    base_choice = str(choice or "").split("/")[0]
+    if not base_choice:
+        return []
+
+    cached = audios_list[user_did].get(base_choice)
+    if isinstance(cached, list):
+        return cached
+    if isinstance(cached, str):
+        return [cached]
+
+    user_path_outputs = config.get_user_path_outputs(user_did)
+    folder_name = _folder_from_catalog_choice(base_choice)
+    folder_path = os.path.join(user_path_outputs, folder_name)
+    if not os.path.isdir(folder_path):
+        return []
+
+    audio_files = sorted(
+        util.get_files_from_folder(folder_path, audio_types, None),
+        reverse=True,
+    )
+    rel_paths = [os.path.join(folder_name, audio_file) for audio_file in audio_files]
+    audios_list[user_did][base_choice] = rel_paths
+    return rel_paths
+
+
+def get_audios_from_gallery_index(choice, max_per_page, user_did=None):
+    if choice is None:
+        return []
+    rel_paths = _get_audio_catalog(choice, user_did)
+    rel_paths = _slice_catalog_page(rel_paths, choice, max_per_page)
+    if not user_did:
+        user_did = shared.token.get_guest_did()
+    user_path_outputs = config.get_user_path_outputs(user_did)
+    return [os.path.join(user_path_outputs, rel_path) for rel_path in rel_paths]
+
+
+def get_audio_rel_path_from_gallery_index(choice, selected, max_per_page, user_did=None):
+    rel_paths = _get_audio_catalog(choice, user_did)
+    rel_paths = _slice_catalog_page(rel_paths, choice, max_per_page)
+    if not rel_paths:
+        return None
+    try:
+        selected = int(selected)
+    except Exception:
+        selected = 0
+    selected = max(0, min(selected, len(rel_paths) - 1))
+    return rel_paths[selected]
+
+
+def refresh_audios_catalog(choice, passthrough=False, user_did=None):
+    if not user_did:
+        user_did = shared.token.get_guest_did()
+    if user_did not in audios_list:
+        audios_list[user_did] = {}
+
+    base_choice = str(choice or "").split("/")[0]
+    if not base_choice:
+        return []
+    if passthrough:
+        audios_list[user_did].pop(base_choice, None)
+    return _get_audio_catalog(base_choice, user_did)
+
 def _build_output_catalog_snapshot(user_did=None):
     start_perf = time.perf_counter()
     deadline = time.monotonic() + 2.5
@@ -1333,6 +1471,7 @@ def _build_output_catalog_snapshot(user_did=None):
 
     image_catalogs = {}
     video_catalogs = {}
+    audio_catalogs = {}
     snapshot_folders = []
     scanned_dirs = 0
     reused_dirs = 0
@@ -1348,25 +1487,33 @@ def _build_output_catalog_snapshot(user_did=None):
         dir_cache_key = (str(user_did), os.path.abspath(path_gallery))
         with _output_catalog_dir_cache_lock:
             cached_dir = _output_catalog_dir_cache.get(dir_cache_key)
-            if cached_dir and cached_dir.get("signature") == dir_signature:
+            if cached_dir and cached_dir.get("signature") == dir_signature and "audios" in cached_dir:
                 cached_dir["last_seen"] = time.monotonic()
+            else:
+                cached_dir = None
         if cached_dir and cached_dir.get("signature") == dir_signature:
             reused_dirs += 1
             image_count = cached_dir.get("image_count", 0)
             cached_videos = cached_dir.get("videos", [])
             if isinstance(cached_videos, dict):
                 cached_videos = list(cached_videos.values())
+            cached_audios = cached_dir.get("audios", [])
+            if isinstance(cached_audios, dict):
+                cached_audios = list(cached_audios.values())
         else:
             scanned_dirs += 1
             image_files = _list_files_quick(path_gallery, image_types)
             video_names = _list_files_quick(path_gallery, video_types)
+            audio_names = _list_files_quick(path_gallery, audio_types)
             image_count = len(image_files)
             cached_videos = [os.path.join(index, name) for name in sorted(video_names, reverse=True)]
+            cached_audios = [os.path.join(index, name) for name in sorted(audio_names, reverse=True)]
             with _output_catalog_dir_cache_lock:
                 _output_catalog_dir_cache[dir_cache_key] = {
                     "signature": dir_signature,
                     "image_count": image_count,
                     "videos": cached_videos,
+                    "audios": cached_audios,
                     "last_seen": time.monotonic(),
                 }
 
@@ -1375,7 +1522,9 @@ def _build_output_catalog_snapshot(user_did=None):
             image_catalogs[choice] = image_count
         if cached_videos:
             video_catalogs[choice] = cached_videos
-        if image_count > 0 or cached_videos:
+        if cached_audios:
+            audio_catalogs[choice] = cached_audios
+        if image_count > 0 or cached_videos or cached_audios:
             snapshot_folders.append(index)
 
     stale_cutoff = time.monotonic() - 600
@@ -1392,6 +1541,7 @@ def _build_output_catalog_snapshot(user_did=None):
         "folders": sorted(snapshot_folders, reverse=True),
         "image_catalogs": image_catalogs,
         "video_catalogs": video_catalogs,
+        "audio_catalogs": audio_catalogs,
         "scanned_dirs": scanned_dirs,
         "reused_dirs": reused_dirs,
     }
@@ -1405,6 +1555,7 @@ def _complete_output_catalog_snapshot_build(snapshot_key, build_event, generatio
             _output_catalog_snapshots[snapshot_key] = snapshot
             user_did = snapshot.get("user_did")
             videos_list[user_did] = snapshot.get("video_catalogs") or {}
+            audios_list[user_did] = snapshot.get("audio_catalogs") or {}
             images_list.setdefault(user_did, {})
             images_list_keys.setdefault(user_did, [])
             images_prompt.setdefault(user_did, {})
@@ -1420,12 +1571,14 @@ def _complete_output_catalog_snapshot_build(snapshot_key, build_event, generatio
 def _log_output_catalog_snapshot(snapshot, background=False):
     image_total = sum(int(count or 0) for count in (snapshot.get("image_catalogs") or {}).values())
     video_total = sum(len(items or []) for items in (snapshot.get("video_catalogs") or {}).values())
+    audio_total = sum(len(items or []) for items in (snapshot.get("audio_catalogs") or {}).values())
     logger.info(
-        "[Gallery] output catalog snapshot rebuilt: elapsed_s=%.2f, user_did=%s, images=%s, videos=%s, folders=%s, scanned_dirs=%s, reused_dirs=%s, background=%s",
+        "[Gallery] output catalog snapshot rebuilt: elapsed_s=%.2f, user_did=%s, images=%s, videos=%s, audios=%s, folders=%s, scanned_dirs=%s, reused_dirs=%s, background=%s",
         float(snapshot.get("build_elapsed_s") or 0),
         snapshot.get("user_did"),
         image_total,
         video_total,
+        audio_total,
         len(snapshot.get("folders") or []),
         snapshot.get("scanned_dirs", 0),
         snapshot.get("reused_dirs", 0),
@@ -1449,7 +1602,7 @@ def _refresh_output_catalog_snapshot_in_background(snapshot_key, build_event, ge
 
 
 def refresh_output_list(max_per_page, max_catalog, user_did=None, engine_type='image'):
-    engine_type = "video" if engine_type == "video" else "image"
+    engine_type = engine_type if engine_type in ("video", "audio") else "image"
     snapshot_key = _output_catalog_snapshot_key(user_did)
     build_event = None
     build_generation = None
@@ -1529,7 +1682,7 @@ def refresh_output_list(max_per_page, max_catalog, user_did=None, engine_type='i
 def refresh_finished_nums_pages_for_browser(state_params, media_type):
     if not isinstance(state_params, dict):
         return "0,0"
-    media_type = "video" if media_type == "video" else "image"
+    media_type = media_type if media_type in ("video", "audio") else "image"
     state_params.setdefault("__max_per_page", 18)
     state_params.setdefault("__max_catalog", config.default_image_catalog_max_number)
     try:
@@ -1744,13 +1897,12 @@ def switch_gallery_engine_type(target_engine_type, *args):
         image_tools_checkbox, state_params = args
     else:
         raise TypeError("switch_gallery_engine_type expects image_tools_checkbox and state_params")
-    target_engine_type = "video" if target_engine_type == "video" else "image"
+    target_engine_type = target_engine_type if target_engine_type in ("video", "audio") else "image"
     if not _register_gallery_media_switch_request(request_marker, target_engine_type, state_params):
         return _gallery_media_switch_noop_response()
 
     state_params = dict(state_params or {})
     state_params["__gallery_media_switch_request"] = request_marker
-    target_engine_type = "video" if target_engine_type == "video" else "image"
     if "__max_per_page" not in state_params:
         state_params["__max_per_page"] = 18
     if "__max_catalog" not in state_params:
@@ -1827,6 +1979,15 @@ def switch_gallery_engine_type(target_engine_type, *args):
         state_params["__main_gallery_browser_next_offset"] = result.get("next_offset") if result.get("ok") else len(media_paths)
         state_params["__main_gallery_browser_has_more"] = bool(result.get("has_more")) if result.get("ok") else False
         state_params["__finished_nums_pages"] = refresh_finished_nums_pages_for_browser(state_params, target_engine_type)
+        folder_counts = _main_gallery_browser_folder_counts(
+            folders,
+            target_engine_type,
+            state_params,
+            current_folder=folder,
+            current_loaded=len(media_paths) if result.get("ok") else None,
+            current_has_more=state_params["__main_gallery_browser_has_more"],
+        )
+        state_params["__main_gallery_browser_folder_counts"] = folder_counts
 
         choice = _catalog_choice_from_folder(folder) if folder else None
         selected_index, selected_path = restore_selected_gallery_media_path(state_params, media_paths)
@@ -1837,8 +1998,15 @@ def switch_gallery_engine_type(target_engine_type, *args):
         prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"), state_params)
         label = _gallery_media_label(target_engine_type, state_params)
         progress_window_update = gr_update(visible=False, value=None)
-        display_paths = gallery_display_paths_for_progress(media_paths, target_engine_type, user_did, state_params)
-        toolbox_update = _hide_image_toolbox_for_gallery_grid(state_params, "media_switch.main_browser")
+        display_paths = [] if target_engine_type == "audio" else gallery_display_paths_for_progress(media_paths, target_engine_type, user_did, state_params)
+        gallery_visible = bool(media_paths) and target_engine_type != "audio"
+        toolbox_update = (
+            gr_update(visible=bool(media_paths and image_tools_checkbox))
+            if target_engine_type == "audio"
+            else _hide_image_toolbox_for_gallery_grid(state_params, "media_switch.main_browser")
+        )
+        if target_engine_type == "audio" and media_paths:
+            state_params["gallery_preview_open"] = True
 
         state_json = _main_gallery_browser_state_json(
             media_type=target_engine_type,
@@ -1847,6 +2015,7 @@ def switch_gallery_engine_type(target_engine_type, *args):
             paths=media_paths,
             dimensions=dimensions,
             folders=folders,
+            folder_counts=folder_counts,
             next_offset=state_params["__main_gallery_browser_next_offset"],
             has_more=state_params["__main_gallery_browser_has_more"],
             finished_nums_pages=state_params["__finished_nums_pages"],
@@ -1855,7 +2024,7 @@ def switch_gallery_engine_type(target_engine_type, *args):
         return [
             skip_update(),
             gr_update(visible=True, open=True),
-            gr_update(value=display_paths, visible=bool(media_paths), label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
+            gr_update(value=display_paths if gallery_visible else None, visible=gallery_visible, label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
             progress_window_update,
             gr_update(value=None, visible=False),
             gr_update(visible=False),
@@ -1888,11 +2057,12 @@ def switch_gallery_engine_type(target_engine_type, *args):
     media_paths = []
     if choice:
         try:
-            media_paths = (
-                get_videos_from_gallery_index(choice, max_per_page, user_did)
-                if target_engine_type == "video"
-                else get_images_from_gallery_index(choice, max_per_page, user_did)
-            )
+            if target_engine_type == "video":
+                media_paths = get_videos_from_gallery_index(choice, max_per_page, user_did)
+            elif target_engine_type == "audio":
+                media_paths = get_audios_from_gallery_index(choice, max_per_page, user_did)
+            else:
+                media_paths = get_images_from_gallery_index(choice, max_per_page, user_did)
         except Exception as e:
             logger.exception(
                 "Switch gallery failed to load media: choice=%r, engine_type=%r, error=%s",
@@ -1905,10 +2075,14 @@ def switch_gallery_engine_type(target_engine_type, *args):
     has_media = bool(media_paths)
     state_params["prompt_info"] = [choice, 0]
     set_selected_gallery_media_path(state_params, media_paths[0] if media_paths else None)
-    state_params["gallery_preview_open"] = False
+    state_params["gallery_preview_open"] = bool(has_media and target_engine_type == "audio")
     label = _gallery_media_label(target_engine_type, state_params)
     gallery_update = gr_update(value=None, visible=False)
-    toolbox_update = _hide_image_toolbox_for_gallery_grid(state_params, "media_switch.grid")
+    toolbox_update = (
+        gr_update(visible=bool(has_media and image_tools_checkbox))
+        if target_engine_type == "audio"
+        else _hide_image_toolbox_for_gallery_grid(state_params, "media_switch.grid")
+    )
 
     prompt_info_value = toolbox.make_infobox_markdown(None, state_params.get("__theme", "dark"), state_params)
     if has_media:
@@ -1928,11 +2102,31 @@ def switch_gallery_engine_type(target_engine_type, *args):
     progress_window_update = gr_update(visible=False) if has_media else _empty_gallery_welcome_update(state_params)
     if not _is_gallery_media_switch_request_current(request_marker, target_engine_type, state_params):
         return _gallery_media_switch_noop_response()
-    display_paths = gallery_display_paths_for_progress(media_paths, target_engine_type, user_did, state_params)
+    display_paths = [] if target_engine_type == "audio" else gallery_display_paths_for_progress(media_paths, target_engine_type, user_did, state_params)
+    gallery_visible = has_media and target_engine_type != "audio"
+    index_state_json = ""
+    if target_engine_type == "audio":
+        audio_items = build_audio_surface_items(media_paths, user_did=user_did, state_params=state_params)
+        audio_dims = {item["path"]: dict(item, media_type="audio") for item in audio_items}
+        folder_name = _folder_from_catalog_choice(str(choice).split("/")[0]) if choice else ""
+        state_params["__main_gallery_browser_paths"] = media_paths
+        state_params["__main_gallery_browser_dimensions"] = audio_dims
+        state_params["__main_gallery_browser_folder"] = folder_name
+        index_state_json = _main_gallery_browser_state_json(
+            media_type="audio",
+            folder=folder_name,
+            loaded=len(media_paths),
+            paths=media_paths,
+            dimensions=audio_dims,
+            folders=[_folder_from_catalog_choice(str(c).split("/")[0]) for c in output_list],
+            next_offset=len(media_paths),
+            has_more=False,
+            finished_nums_pages=state_params["__finished_nums_pages"],
+        )
     return [
         dropdown_update(choices=output_list, value=choice, visible=bool(output_list)),
         gr_update(visible=True, open=True),
-        gr_update(value=display_paths, visible=has_media, label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
+        gr_update(value=display_paths if gallery_visible else None, visible=gallery_visible, label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
         progress_window_update,
         gallery_update,
         gr_update(visible=False),
@@ -1940,7 +2134,7 @@ def switch_gallery_engine_type(target_engine_type, *args):
         gr_update(value=prompt_info_value, visible=infobox_state),
         gr_update(visible=infobox_state),
         gr_update(visible=infobox_state),
-        "",
+        index_state_json,
         state_params,
         state_params["__finished_nums_pages"],
     ]
@@ -1980,6 +2174,8 @@ def canvas_refresh_after_run(image_tools_checkbox, state_params):
         try:
             if target_engine_type == "video":
                 media_paths = get_videos_from_gallery_index(choice, max_per_page, user_did)
+            elif target_engine_type == "audio":
+                media_paths = get_audios_from_gallery_index(choice, max_per_page, user_did)
             else:
                 output_index = str(choice).split("/")[0]
                 refresh_images_catalog(output_index, True, user_did)
@@ -2025,11 +2221,12 @@ def canvas_refresh_after_run(image_tools_checkbox, state_params):
     infobox_state = state_params.get("infobox_state", False)
     label = _gallery_media_label(target_engine_type, state_params)
     progress_window_update = gr_update(visible=False) if has_media else _empty_gallery_welcome_update(state_params)
-    display_paths = gallery_display_paths_for_progress(media_paths, target_engine_type, user_did, state_params)
+    display_paths = [] if target_engine_type == "audio" else gallery_display_paths_for_progress(media_paths, target_engine_type, user_did, state_params)
+    gallery_visible = has_media and target_engine_type != "audio"
     return [
         dropdown_update(choices=output_list, value=choice, visible=bool(output_list)),
         gr_update(visible=True, open=True),
-        gr_update(value=display_paths, visible=has_media, label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
+        gr_update(value=display_paths if gallery_visible else None, visible=gallery_visible, label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
         progress_window_update,
         gr_update(value=None, visible=False),
         gr_update(visible=False),
@@ -2052,7 +2249,8 @@ def _parse_main_gallery_browser_payload(payload_json):
             payload = {}
     if not isinstance(payload, dict):
         payload = {}
-    media_type = "video" if str(payload.get("media_type") or "").lower() == "video" else "image"
+    raw_media_type = str(payload.get("media_type") or "").lower()
+    media_type = raw_media_type if raw_media_type in ("video", "audio") else "image"
     try:
         limit = int(payload.get("limit") or 36)
     except Exception:
@@ -2063,7 +2261,7 @@ def _parse_main_gallery_browser_payload(payload_json):
         offset = 0
     limit = max(12, min(limit, 120))
     offset = max(0, offset)
-    folder = str(payload.get("folder") or "").strip().replace("\\", "/").strip("/")
+    folder = _clean_gallery_browser_folder_value(payload.get("folder"))
     if folder and not folder.startswith("20"):
         folder = _folder_from_catalog_choice(folder)
     query = str(payload.get("query") or "").strip()
@@ -2084,6 +2282,74 @@ def _parse_main_gallery_browser_payload(payload_json):
     }
 
 
+def _clean_gallery_browser_folder_value(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = text.replace("\\", "/").strip("/")
+    return re.sub(r"\s*\(\d+\)\s*$", "", text).strip()
+
+
+def _main_gallery_browser_folder_counts(
+    folders,
+    media_type,
+    state_params=None,
+    *,
+    current_folder="",
+    current_loaded=None,
+    current_has_more=False,
+    query="",
+):
+    folder_list = [_clean_gallery_browser_folder_value(item) for item in (folders or [])]
+    folder_list = [item for item in folder_list if item]
+    if not folder_list:
+        return {}
+    mode = media_type if media_type in ("video", "audio") else "image"
+    user_did = _user_did_from_state(state_params)
+    snapshot_key = _output_catalog_snapshot_key(user_did)
+    with _output_catalog_snapshot_lock:
+        snapshot = _output_catalog_snapshots.get(snapshot_key)
+    if snapshot is None and isinstance(state_params, dict):
+        refresh_finished_nums_pages_for_browser(state_params, mode)
+        with _output_catalog_snapshot_lock:
+            snapshot = _output_catalog_snapshots.get(snapshot_key)
+    snapshot = snapshot if isinstance(snapshot, dict) else {}
+    image_catalogs = snapshot.get("image_catalogs") or {}
+    video_catalogs = snapshot.get("video_catalogs") or {}
+    audio_catalogs = snapshot.get("audio_catalogs") or {}
+
+    clean_current = _clean_gallery_browser_folder_value(current_folder)
+    counts = {}
+    for folder_name in folder_list:
+        choice = _catalog_choice_from_folder(folder_name)
+        if mode == "video":
+            count = len(video_catalogs.get(choice) or [])
+        elif mode == "audio":
+            count = len(audio_catalogs.get(choice) or [])
+        else:
+            count = int(image_catalogs.get(choice, 0) or 0)
+        if not query and clean_current and folder_name == clean_current and current_loaded is not None:
+            if not current_has_more:
+                count = int(current_loaded)
+            else:
+                count = max(count, int(current_loaded))
+        counts[folder_name] = max(0, int(count))
+    return counts
+
+
+def _main_gallery_browser_folder_choices(folders, folder_counts=None):
+    folder_list = [_clean_gallery_browser_folder_value(item) for item in (folders or [])]
+    folder_list = [item for item in folder_list if item]
+    counts = folder_counts if isinstance(folder_counts, dict) else {}
+    choices = []
+    for folder_name in folder_list:
+        if folder_name in counts:
+            choices.append((f"{folder_name} ({int(counts[folder_name])})", folder_name))
+        else:
+            choices.append((folder_name, folder_name))
+    return choices
+
+
 def _main_gallery_browser_state_json(**kwargs):
     payload = {"ok": True}
     payload.update(kwargs)
@@ -2096,6 +2362,26 @@ def _main_gallery_browser_dimensions_from_items(items):
         if not isinstance(item, dict):
             continue
         path = item.get("path")
+        media_kind = str(item.get("media_type") or "").lower()
+        if path and media_kind == "audio":
+            download_token = _gallery_output_download_name(path)
+            preview_url = item.get("preview_url") or canvas_workbench_media_gallery._file_preview_url(path)
+            download_url = (
+                f"{_gallery_display_preview_webroot()}{GALLERY_ORIGINAL_DOWNLOAD_ROUTE}/{download_token}"
+                if download_token
+                else preview_url
+            )
+            dimensions[path] = {
+                "media_type": "audio",
+                "name": item.get("name") or os.path.basename(path),
+                "preview_url": preview_url,
+                "download_url": download_url,
+                "audio_format": item.get("audio_format") or os.path.splitext(path)[1].lower().lstrip("."),
+                "size": int(item.get("size") or 0),
+                "duration": float(item.get("duration") or 0.0),
+                "waveform": item.get("waveform") or [],
+            }
+            continue
         try:
             width = int(item.get("width") or 0)
             height = int(item.get("height") or 0)
@@ -2285,9 +2571,19 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
     state_params["__main_gallery_browser_folders"] = folders
     state_params["__main_gallery_browser_next_offset"] = result.get("next_offset")
     state_params["__main_gallery_browser_has_more"] = bool(result.get("has_more"))
+    folder_counts = _main_gallery_browser_folder_counts(
+        folders,
+        media_type,
+        state_params,
+        current_folder=folder,
+        current_loaded=len(media_paths),
+        current_has_more=state_params["__main_gallery_browser_has_more"],
+        query=payload["query"],
+    )
+    state_params["__main_gallery_browser_folder_counts"] = folder_counts
     state_params["__main_gallery_browser_request_folder"] = folder
     state_params["gallery_state"] = "main_browser"
-    state_params["gallery_preview_open"] = False
+    state_params["gallery_preview_open"] = bool(media_type == "audio" and media_paths)
     state_params["identity_dialog"] = False
     state_params.update({"note_box_state": ["", 0, 0]})
 
@@ -2302,6 +2598,7 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
         media_type=media_type,
         folder=folder,
         folders=folders,
+        folder_counts=folder_counts,
         paths=media_paths,
         dimensions=dimensions,
         request_id=payload.get("request_id"),
@@ -2315,10 +2612,11 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
         query=payload["query"],
     )
     progress_window_update = gr_update(visible=False, value=None)
-    display_paths = gallery_display_paths_for_progress(media_paths, media_type, _user_did_from_state(state_params), state_params)
+    display_paths = [] if media_type == "audio" else gallery_display_paths_for_progress(media_paths, media_type, _user_did_from_state(state_params), state_params)
+    gallery_visible = bool(media_paths) and media_type != "audio"
     return [
         state_json,
-        gr_update(value=display_paths, visible=bool(media_paths), label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
+        gr_update(value=display_paths if gallery_visible else None, visible=gallery_visible, label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
         progress_window_update,
         gr_update(value=None, visible=False),
         gr_update(visible=False),
@@ -2328,7 +2626,7 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
         gr_update(visible=infobox_state),
         state_params,
         state_params.get("__finished_nums_pages", finished_nums_pages),
-        dropdown_update(choices=folders, value=folder or None),
+        dropdown_update(choices=_main_gallery_browser_folder_choices(folders, folder_counts), value=folder or None),
     ]
 
 
@@ -2337,7 +2635,7 @@ def _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params
     request_context = _main_gallery_browser_request_context(state_params)
     media_type = get_gallery_engine_type(state_params)
     limit = 36
-    folder = str(folder or state_params.get("__main_gallery_browser_folder") or "").strip().replace("\\", "/").strip("/")
+    folder = _clean_gallery_browser_folder_value(folder or state_params.get("__main_gallery_browser_folder") or "")
     if folder and not folder.startswith("20"):
         folder = _folder_from_catalog_choice(folder)
     try:
@@ -2374,8 +2672,9 @@ def _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params
         state_params["__main_gallery_browser_request_folder"] = folder
         status = "Load failed" if _gallery_lang(state_params) == "en" else "加载失败"
         prev_update, next_update = _main_gallery_browser_nav_updates(folders, folder)
+        fail_counts = _main_gallery_browser_folder_counts(folders, media_type, state_params)
         return [
-            dropdown_update(choices=folders, value=folder or None),
+            dropdown_update(choices=_main_gallery_browser_folder_choices(folders, fail_counts), value=folder or None),
             prev_update,
             next_update,
             gr_update(value=status),
@@ -2446,9 +2745,18 @@ def _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params
     state_params["__main_gallery_browser_folders"] = folders
     state_params["__main_gallery_browser_next_offset"] = result.get("next_offset")
     state_params["__main_gallery_browser_has_more"] = bool(result.get("has_more"))
+    folder_counts = _main_gallery_browser_folder_counts(
+        folders,
+        media_type,
+        state_params,
+        current_folder=folder,
+        current_loaded=len(media_paths),
+        current_has_more=state_params["__main_gallery_browser_has_more"],
+    )
+    state_params["__main_gallery_browser_folder_counts"] = folder_counts
     state_params["__main_gallery_browser_request_folder"] = folder
     state_params["gallery_state"] = "main_browser"
-    state_params["gallery_preview_open"] = False
+    state_params["gallery_preview_open"] = bool(media_type == "audio" and media_paths)
     state_params["identity_dialog"] = False
     state_params.update({"note_box_state": ["", 0, 0]})
 
@@ -2461,15 +2769,16 @@ def _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params
     label = _gallery_media_label(media_type, state_params)
     status = _gallery_browser_count_status(len(media_paths), media_type, state_params)
     progress_window_update = gr_update(visible=False, value=None)
-    display_paths = gallery_display_paths_for_progress(media_paths, media_type, _user_did_from_state(state_params), state_params)
+    display_paths = [] if media_type == "audio" else gallery_display_paths_for_progress(media_paths, media_type, _user_did_from_state(state_params), state_params)
+    gallery_visible = bool(media_paths) and media_type != "audio"
 
     return [
-        dropdown_update(choices=folders, value=folder or None),
+        dropdown_update(choices=_main_gallery_browser_folder_choices(folders, folder_counts), value=folder or None),
         prev_update,
         next_update,
         gr_update(value=status),
         gr_update(interactive=bool(result.get("has_more"))),
-        gr_update(value=display_paths, visible=bool(media_paths), label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
+        gr_update(value=display_paths if gallery_visible else None, visible=gallery_visible, label=label, allow_preview=True, preview=False, selected_index=None, fit_columns=False),
         progress_window_update,
         gr_update(value=None, visible=False),
         gr_update(visible=False),
@@ -2495,14 +2804,14 @@ def _main_gallery_browser_nav_updates(folders, folder):
 
 
 def _main_gallery_browser_request_folder(folder, state_params):
-    input_folder = str(folder or "").strip().replace("\\", "/").strip("/")
+    input_folder = _clean_gallery_browser_folder_value(folder)
     if input_folder:
         return input_folder
     if isinstance(state_params, dict):
-        request_folder = str(state_params.get("__main_gallery_browser_request_folder") or "").strip().replace("\\", "/").strip("/")
+        request_folder = _clean_gallery_browser_folder_value(state_params.get("__main_gallery_browser_request_folder"))
         if request_folder:
             return request_folder
-    return folder
+    return _clean_gallery_browser_folder_value(folder)
 
 
 def _main_gallery_browser_request_ignored(state_params):
@@ -2755,6 +3064,12 @@ def get_media_path_from_gallery_index(choice, selected, max_per_page, user_did=N
             return None
         return os.path.join(config.get_user_path_outputs(user_did), video_rel_path)
 
+    if media_type == "audio":
+        audio_rel_path = get_audio_rel_path_from_gallery_index(choice, selected, max_per_page, user_did)
+        if not audio_rel_path:
+            return None
+        return os.path.join(config.get_user_path_outputs(user_did), audio_rel_path)
+
     image_paths = get_images_from_gallery_index(choice, max_per_page, user_did)
     if not image_paths:
         return None
@@ -2870,7 +3185,7 @@ def read_embedded_metadata_from_file(file_path, media_type=None):
     if not file_path or not os.path.isfile(file_path):
         return None
     ext = os.path.splitext(file_path)[1].lower()
-    if media_type == "video" or ext in video_types:
+    if media_type in ("video", "audio") or ext in video_types or ext in audio_types:
         metadata = _read_video_embedded_metadata(file_path)
     else:
         metadata = _read_image_embedded_metadata(file_path)

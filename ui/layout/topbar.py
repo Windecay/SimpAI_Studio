@@ -86,6 +86,7 @@ def create_topbar_layout(
       <button type="button" class="preset-store-filter" data-sai-scene-filter="classic">Classic</button>
       <button type="button" class="preset-store-filter" data-sai-scene-filter="image">Image</button>
       <button type="button" class="preset-store-filter" data-sai-scene-filter="video">Video</button>
+      <button type="button" class="preset-store-filter" data-sai-scene-filter="audio">Audio</button>
       <button type="button" class="preset-store-filter" data-sai-scene-filter="mesh">3D</button>
     </div>
   </div>

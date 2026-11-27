@@ -1,0 +1,261 @@
+{
+  "1": {
+    "inputs": {
+      "prompt": "Global Metadata: Chinese-style Mandopop ballad (guofeng), 70 BPM, minor pentatonic melody, slow 4/4, solitary autumn dusk mood.\nVocal Details: single male tenor, breathy low register, half-voiced verse delivery, clear Mandarin diction forward, gentle falling portamento and light vibrato at phrase ends, wordless backing pad only in the second chorus.\nArrangement: solo guzheng arpeggio and erhu motif in the intro; verse voice over sparse guzheng and pipa ornaments; chorus opens with warm strings and erhu counter-melody; second chorus adds deep frame drum and harmonized backing; outro strips back to erhu and a single guzheng harmonic.",
+      "additional_prompt": "[Intro]\n[Verse]\n秋丛绕舍似陶家\n遍绕篱边日渐斜\n[Chorus]\n不是花中偏爱菊\n此花开尽更无花\n[Verse]\n秋丛绕舍似陶家\n遍绕篱边日渐斜\n[Chorus]\n不是花中偏爱菊\n此花开尽更无花\n[Outro]",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 1280,
+      "height": 720,
+      "cfg": 1.7,
+      "steps": 30,
+      "var_number": 50,
+      "var_number2": 0,
+      "var_number3": 1.6,
+      "var_number4": 0,
+      "var_number5": 0,
+      "var_number6": 0,
+      "var_number7": 0,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "euler",
+      "scheduler": "simple",
+      "video_duration": 90
+    },
+    "class_type": "SceneInput",
+    "_meta": {
+      "title": "SceneInput"
+    }
+  },
+  "2": {
+    "inputs": {
+      "seed": 7
+    },
+    "class_type": "SeedInput",
+    "_meta": {
+      "title": "SeedInput"
+    }
+  },
+  "3": {
+    "inputs": {
+      "unet_name": "minimax_music3_dit_fp16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "base_model"
+    }
+  },
+  "4": {
+    "inputs": {
+      "clip_name": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "5": {
+    "inputs": {
+      "vae_name": "minimax_music3_dav.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "vae_model"
+    }
+  },
+  "6": {
+    "inputs": {
+      "clip": [
+        "4",
+        0
+      ],
+      "caption": [
+        "1",
+        0
+      ],
+      "lyrics": [
+        "1",
+        1
+      ],
+      "seed": [
+        "2",
+        0
+      ],
+      "max_duration": [
+        "1",
+        32
+      ],
+      "cfg_scale": [
+        "1",
+        12
+      ],
+      "top_k": [
+        "1",
+        10
+      ]
+    },
+    "class_type": "MiniMaxMusic3TextEncode",
+    "_meta": {
+      "title": "Music3 Caption+Lyrics"
+    }
+  },
+  "7": {
+    "inputs": {
+      "seconds": [
+        "6",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyMiniMaxMusic3LatentAudio",
+    "_meta": {
+      "title": "Music3 Latent"
+    }
+  },
+  "8": {
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "seed": [
+        "2",
+        0
+      ],
+      "steps": [
+        "1",
+        9
+      ],
+      "cfg": [
+        "1",
+        8
+      ],
+      "sampler_name": [
+        "1",
+        30
+      ],
+      "scheduler": [
+        "1",
+        31
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "9",
+        0
+      ],
+      "latent_image": [
+        "7",
+        0
+      ],
+      "denoise": 1
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Music3 Sampler"
+    }
+  },
+  "9": {
+    "inputs": {
+      "conditioning": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "Zero Negative"
+    }
+  },
+  "10": {
+    "inputs": {
+      "samples": [
+        "8",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "Decode Audio"
+    }
+  },
+  "11": {
+    "inputs": {
+      "samples": [
+        "8",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "tile_size": 1536,
+      "overlap": 64
+    },
+    "class_type": "VAEDecodeAudioTiled",
+    "_meta": {
+      "title": "Decode Audio Tiled"
+    }
+  },
+  "12": {
+    "inputs": {
+      "switch": [
+        "1",
+        20
+      ],
+      "on_false": [
+        "10",
+        0
+      ],
+      "on_true": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "Tiled Switch"
+    }
+  },
+  "13": {
+    "inputs": {
+      "audio": [
+        "12",
+        0
+      ],
+      "format": "FLAC",
+      "quality": "320k",
+      "use_mp3": [
+        "1",
+        21
+      ]
+    },
+    "class_type": "SaveAudioWebsocket",
+    "_meta": {
+      "title": "Save Song Audio"
+    }
+  }
+}
+

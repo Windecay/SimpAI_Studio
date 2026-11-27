@@ -51,8 +51,11 @@ def resolve_engine_class_display(template_engine, task_method):
     if template_engine in ['Flux', 'Wan', 'Qwen', 'Z-image', 'Cloud']:
         return template_engine
     if template_engine == 'Comfy':
-        if str(task_method or '').strip().lower().startswith(('minimax_h3', 'p_h3_image')):
+        normalized_method = str(task_method or '').strip().lower()
+        if normalized_method.startswith(('minimax_h3', 'p_h3_image')):
             return 'H3'
+        if normalized_method.removeprefix('scene_').startswith('music3'):
+            return 'Music3'
         return {
             'sd15_aio': 'SD15',
             'il_v_pre_aio': 'Illustrious',
@@ -75,6 +78,42 @@ get_layout_empty_visible_inter_text = lambda x,y,z: gr_update(visible=x not in y
 get_layout_empty_visible_inter_image = lambda x,y,z: gr_update(visible=x not in y, interactive=x not in z) if x not in z else gr_update(value=None, visible=x not in y, interactive=x not in z)
 get_layout_update_label_visible_inter = lambda t,v,x,y,z:gr_update(label=t, value='' if v is None else v, visible=x not in y, interactive=x not in z) if t else gr_update(value='' if v is None else v, visible=x not in y, interactive=x not in z)
 get_layout_update_label_inter = lambda t,v,x,z:gr_update(label=t, value='' if v is None else v, interactive=x not in z) if t else gr_update(value='' if v is None else v, interactive=x not in z)
+
+
+def _scene_additional_prompt_update(state, scenes, theme, title, value, control_name, inter):
+    scenes = scenes if isinstance(scenes, dict) else {}
+    scene_state = {"scene_frontend": scenes}
+    lines_raw = modules.flags.get_value_by_scene_theme(
+        scene_state,
+        theme,
+        "additional_prompt_lines",
+        scenes.get("additional_prompt_lines", 1),
+    )
+    max_lines_raw = modules.flags.get_value_by_scene_theme(
+        scene_state,
+        theme,
+        "additional_prompt_max_lines",
+        scenes.get("additional_prompt_max_lines", lines_raw),
+    )
+    try:
+        lines = max(1, int(lines_raw))
+    except Exception:
+        lines = 1
+    try:
+        max_lines = max(lines, int(max_lines_raw))
+    except Exception:
+        max_lines = lines
+    placeholder = scene_localized_text(state, scenes, "additional_prompt_placeholder", "", theme=theme)
+    kwargs = {
+        "value": "" if value is None else value,
+        "interactive": control_name not in inter,
+        "lines": lines,
+        "max_lines": max_lines,
+        "placeholder": placeholder,
+    }
+    if title:
+        kwargs["label"] = title
+    return gr_update(**kwargs)
 get_layout_update_label_and_choice_visible_inter = lambda t,l,v,x,y,z:dropdown_update(label=t, choices=l, value=v, visible=x not in y, interactive=x not in z) if t else dropdown_update(choices=l, value=v, visible=x not in y, interactive=x not in z)
 get_layout_update_and_visible_inter = lambda v,x,y,z:gr_update(value=v, visible=x not in y, interactive=x not in z)
 
@@ -715,7 +754,15 @@ def switch_scene_theme(state, image_number, canvas_image, input_image1, addition
     index = themes.index(theme) if theme and themes and theme in themes else 0
     title = scene_localized_text(state, scenes, 'additional_prompt_title', '')
     additional_prompt_default = modules.flags.get_value_by_scene_theme(state, theme, 'additional_prompt', '')
-    results.append(get_layout_update_label_inter(title, additional_prompt if ready_to_gen and switch_flag else additional_prompt_default, 'scene_additional_prompt', inter))
+    results.append(_scene_additional_prompt_update(
+        state,
+        scenes,
+        theme,
+        title,
+        additional_prompt if ready_to_gen and switch_flag else additional_prompt_default,
+        'scene_additional_prompt',
+        inter,
+    ))
     title_2 = scene_localized_text(state, scenes, 'additional_prompt_title_2', '')
     additional_prompt_2_default = modules.flags.get_value_by_scene_theme(state, theme, 'additional_prompt_2', '')
     results.append(get_layout_update_label_inter(title_2, additional_prompt_2 if ready_to_gen and switch_flag else additional_prompt_2_default, 'scene_additional_prompt_2', inter))
@@ -1162,7 +1209,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     # if default_X in config_prese then update the value to gr.X else update with default value in ads.default[X]
     update_value_if_existed = lambda x: gr_update() if x not in presetdata_dict else presetdata_dict[x]
     engine_type = enginedata_dict.get('engine_type', '')
-    if engine_type == 'video':
+    if engine_type in ('video', 'audio'):
         results.append(gr_update(visible=False))
     else:
         results.append(gr_update(visible=True))
@@ -1173,7 +1220,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     results.append(update_value_if_existed("translation_methods"))
     results.append(False if template_engine not in ['Fooocus', 'Comfy'] and task_method and '_aio' not in task_method else update_value_if_existed("input_image_checkbox"))
     quick_enhance_value = _value_with_default_alias(presetdata_dict, 'quick_enhance', False)
-    if engine_type == 'video':
+    if engine_type in ('video', 'audio'):
         results.append(gr_update(value=False, visible=False))
     else:
         results.append(gr_update(value=bool(quick_enhance_value), visible=True))
@@ -1197,7 +1244,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         _value_with_default_alias(presetdata_dict, 'enhance_enabled_2', False),
     )
     for quick_region_value in (quick_face_value, quick_eye_value, quick_hand_value):
-        if engine_type == 'video':
+        if engine_type in ('video', 'audio'):
             results.append(gr_update(value=False, visible=False))
         else:
             results.append(gr_update(value=bool(quick_region_value), visible=True))
@@ -1276,7 +1323,15 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         results.append(gr_update())
 
         title = scene_localized_text(state_params, scenes, 'additional_prompt_title', '')
-        results.append(get_layout_update_label_inter(title, modules.flags.get_value_by_scene_theme(state_params, theme_default, 'additional_prompt', ''), 'scene_additional_prompt', inter))
+        results.append(_scene_additional_prompt_update(
+            state_params,
+            scenes,
+            theme_default,
+            title,
+            modules.flags.get_value_by_scene_theme(state_params, theme_default, 'additional_prompt', ''),
+            'scene_additional_prompt',
+            inter,
+        ))
 
         title_2 = scene_localized_text(state_params, scenes, 'additional_prompt_title_2', '')
         results.append(get_layout_update_label_inter(title_2, modules.flags.get_value_by_scene_theme(state_params, theme_default, 'additional_prompt_2', ''), 'scene_additional_prompt_2', inter))

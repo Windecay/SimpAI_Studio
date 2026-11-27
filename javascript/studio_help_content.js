@@ -2660,6 +2660,10 @@
     "video_watermark_removal": {
       "en": "Remove video watermarks",
       "cn": "视频水印移除"
+    },
+    "text_to_music": {
+      "en": "Text to music",
+      "cn": "文生音乐与歌曲"
     }
   },
   "taskGuides": {
@@ -3072,6 +3076,16 @@
         "en": "A source video; identify the watermark region if the current mode requires it.",
         "cn": "源视频；当前模式要求时，指定水印所在区域。"
       }
+    },
+    "text_to_music": {
+      "intro": {
+        "en": "Generate vocal songs or instrumental tracks from a music arrangement description and structured section lyrics.",
+        "cn": "根据曲风编曲描述和带段落标签的歌词生成人声歌曲或纯音乐音轨，直接输出无损 FLAC 或 320kbps MP3 单音频。"
+      },
+      "inputs": {
+        "en": "Main prompt for style, vocals and arrangement, plus structured section lyrics in the Lyrics field. No media upload is required.",
+        "cn": "主提示词填写曲风、人声与配器编排，歌词框填写带段落标签的歌词；无需上传图片、视频或音频素材。"
+      }
     }
   },
   "h3DurationNote": {
@@ -3127,6 +3141,44 @@
     "cn": "SAM3 蒙版：上传源视频后，双击画面选择目标点选跟踪或固定多边形，也可在右侧上传 mask 视频（仅支持视频文件）。检查蒙版后再执行主生成。"
   },
   "presetGuides": {
+    "MiniMax-Music3": {
+      "intro": {
+        "en": "Generate full vocal songs or instrumental tracks from an English arrangement caption and structured section lyrics, outputting lossless FLAC or 320kbps MP3 audio.",
+        "cn": "通过曲风编曲描述与结构化段落歌词生成完整人声歌曲或纯音乐配乐，直接输出无损 FLAC 或 320kbps MP3 单音频。"
+      },
+      "inputs": {
+        "en": "Main prompt: structured English caption (Global Metadata / Vocal Details / Arrangement). Additional prompt: lyrics with section tags ([Intro], [Verse], [Chorus], [Bridge], [Outro]). No media upload is needed.",
+        "cn": "主提示词填写三段式英文编曲描述（Global Metadata / Vocal Details / Arrangement），附加提示词框填写带 [Intro]、[Verse]、[Chorus]、[Outro] 等段落标签的歌词；无需上传素材。"
+      },
+      "keyPoint": {
+        "en": "Max Music Duration (15–360s) is an upper limit—the track ends naturally with your lyrics. Keep cfg_scale around 1.3–1.8, enable Tiled VAE Decode for long tracks or low VRAM, and toggle Output MP3 (320kbps) when smaller files are preferred over lossless FLAC.",
+        "cn": "“音乐时长上限”（15–360 秒）是上限而非强制拉长，模型会按歌词自然收尾；词曲贴合强度 cfg_scale 建议保持在 1.3–1.8，长曲或显存紧张时开启 Tiled VAE 分块解码，按需切换无损 FLAC 或 MP3 (320kbps)。"
+      },
+      "steps": [
+        {
+          "en": "Add MiniMax-Music3 under Audio in the Preset Store, and install model package [56] in the launcher or via Studio's missing-model check.",
+          "cn": "在预置商店的「音频」分类添加 MiniMax-Music3，并在启动器下载 [56] 号模型包或按 Studio 缺模型提示下载。"
+        },
+        {
+          "en": "Pick a built-in style mode (Guofeng, Mandopop/Rock, Instrumental, or Full-Length Tiled), customize the English arrangement caption or refine it with Prompt Tools, and enter section-tagged lyrics.",
+          "cn": "选择内置曲风模式（国风古诗词、华语流行摇滚、纯音乐配乐或长曲省显存分块），修改英文编曲描述（可用智能优化辅助生成），并在歌词框填写带段落标签的歌词。"
+        },
+        {
+          "en": "Generate and audition the track in the Audio waveform view or standalone Media Library, where full lyrics and seed metadata are preserved.",
+          "cn": "点击生成后，在主界面「音频」波形面板或独立媒体库中试听、拖拽定位，并随时查看内嵌的完整词曲参数与种子。"
+        }
+      ],
+      "notes": [
+        {
+          "en": "For purely instrumental tracks, state \"purely instrumental, no vocals\" in Vocal Details and enter section tags only (such as [Intro] [Instrumental] [Bridge] [Outro]) in the lyrics box.",
+          "cn": "生成纯音乐时，在 Vocal Details 写明 purely instrumental, no vocals，歌词框仅保留 [Intro]、[Instrumental]、[Bridge]、[Outro] 等结构标签即可。"
+        },
+        {
+          "en": "Melody Variation top_k controls motivic freedom: 30 is more structured, 50 is balanced, and 80+ is more exploratory.",
+          "cn": "旋律自由度 top_k 控制旋律变化幅度：30 更规整稳健，50 为默认均衡，80 以上动机更自由多变。"
+        }
+      ]
+    },
     "Idol": {
       "intro": {
         "en": "Build a colored 3D mesh and an MP4 turntable from one image of an object or character.",

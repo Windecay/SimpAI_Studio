@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MiniMax Music 3</title>
+  <style>body{margin:0;font:12px/1.6 sans-serif;color:#1f2937}p{margin:0}</style>
+</head>
+<body>
+  <p id="desc">主提示词按 Global Metadata / Vocal Details / Arrangement 三段英文描述曲风、唱法与配器，歌词框使用 [Intro] [Verse] [Chorus] [Outro] 分段填写歌词（纯音乐只写结构标签）。默认输出无损 FLAC，可开启开关输出 MP3 320kbps，并在「音频」波形面板试听与回看词曲元数据。</p>
+  <script>
+    const stage = Object.fromEntries(new URLSearchParams(location.search));
+    if (stage.__theme === 'dark') document.body.style.color = '#f9fafb';
+    if (stage.__lang === 'en') {
+      document.documentElement.lang = 'en';
+      document.getElementById('desc').textContent = 'Write a three-part English caption (Global Metadata / Vocal Details / Arrangement) in the main prompt and section-tagged lyrics ([Intro] [Verse] [Chorus] [Outro]) in the lyrics box. Outputs lossless FLAC by default or 320kbps MP3 when toggled, with waveform playback under Audio.';
+    }
+  </script>
+</body>
+</html>

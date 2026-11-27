@@ -708,7 +708,7 @@ class AgentService:
             spec["prompt_policy"] = {"mode": "preset_fixed", "editable": False,
                                      "requires_explicit_theme": True, "value": str(defaults.get("prompt") or "")}
         from modules.agent_prompting import guidance
-        spec["prompt_guidance"] = guidance(entry, spec, lang or context.state.get("__lang") or "en")
+        spec["prompt_guidance"] = guidance(entry, spec, lang or context.state.get("__lang") or "en", context)
         return spec
 
     def prompt_guidance(self, request, context):

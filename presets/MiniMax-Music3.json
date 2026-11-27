@@ -1,0 +1,235 @@
+{
+  "preset_category": "Music",
+  "supported_tasks": [
+    "text_to_music"
+  ],
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "audio",
+    "backend_params": {
+      "task_method": "music3_song_cn"
+    },
+    "disvisible": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection"
+    ],
+    "disinteractive": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection"
+    ],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "v1.1",
+      "theme": [
+        "Guofeng / Classical Poetry",
+        "Mandopop / Indie Rock Vocal",
+        "Instrumental / Soundtrack",
+        "Full-Length Song (Tiled Low-VRAM)"
+      ],
+      "theme_labels": {
+        "Guofeng / Classical Poetry": {
+          "en": "Guofeng / Classical Poetry",
+          "zh": "国风/古诗词歌曲"
+        },
+        "Mandopop / Indie Rock Vocal": {
+          "en": "Mandopop / Indie Rock Vocal",
+          "zh": "华语流行/摇滚人声"
+        },
+        "Instrumental / Soundtrack": {
+          "en": "Instrumental / Soundtrack",
+          "zh": "纯音乐/影视氛围配乐"
+        },
+        "Full-Length Song (Tiled Low-VRAM)": {
+          "en": "Full-Length Song (Tiled Low-VRAM)",
+          "zh": "长曲完整编曲（省显存分块）"
+        }
+      },
+      "theme_title": "MiniMax Music 3 Song & Music Generation [Main prompt: music style & arrangement; Additional prompt: structured lyrics]",
+      "director_capability": {
+        "image_policy": "forbidden",
+        "audio_policy": "forbidden",
+        "video_policy": "forbidden",
+        "max_images": 0,
+        "min_images": 0,
+        "image_modes": [
+          "none"
+        ],
+        "audio_output": "generated"
+      },
+      "prompt_skill_docs": {
+        "default": [
+          "minimax-music3-caption-skill"
+        ]
+      },
+      "task_method": {
+        "Guofeng / Classical Poetry": "music3_song_cn",
+        "Mandopop / Indie Rock Vocal": "music3_song_cn",
+        "Instrumental / Soundtrack": "music3_song_cn",
+        "Full-Length Song (Tiled Low-VRAM)": "music3_song_cn"
+      },
+      "prompt": {
+        "Guofeng / Classical Poetry": "Global Metadata: Chinese-style Mandopop ballad (guofeng), 70 BPM, minor pentatonic melody, slow 4/4, solitary autumn dusk mood.\nVocal Details: single male tenor, breathy low register, half-voiced verse delivery, clear Mandarin diction forward, gentle falling portamento and light vibrato at phrase ends, wordless backing pad only in the second chorus.\nArrangement: solo guzheng arpeggio and erhu motif in the intro; verse voice over sparse guzheng and pipa ornaments; chorus opens with warm strings and erhu counter-melody; second chorus adds deep frame drum and harmonized backing; outro strips back to erhu and a single guzheng harmonic.",
+        "Mandopop / Indie Rock Vocal": "Global Metadata: Modern Mandopop indie pop-rock anthem, 118 BPM, F major, driving 4/4 groove, nostalgic neon night highway atmosphere building from intimate confession to soaring catharsis.\nVocal Details: expressive female mezzo-soprano lead vocal, warm chest-voice intimacy in verses, bright open mixed-belt chorus with subtle double-tracked harmonies and airy ad-libs in the bridge.\nArrangement: clean chorus-drenched electric guitar arpeggio and muted bass pulse in intro; tight live snare and warm synth pad enter in pre-chorus; full overdriven guitar chords, punchy acoustic drums, and shimmering octave lead in chorus; quiet piano breakdown in bridge before final full-band lift and ringing guitar fade.",
+        "Instrumental / Soundtrack": "Global Metadata: Cinematic neo-classical and ambient orchestral soundtrack, 84 BPM, D minor, 3/4 waltz pulse, misty dawn over mountain sea of clouds, contemplative and luminous.\nVocal Details: purely instrumental, no vocals, no spoken words.\nArrangement: delicate felt piano solo ostinato in the intro; solo cello enters with a warm lyrical theme; swelling chamber strings, French horn pad, and subtle harp arpeggios lift the main theme to a panoramic climax; gentle celesta harmonics and solo piano resolve into quiet stillness.",
+        "Full-Length Song (Tiled Low-VRAM)": "Global Metadata: Epic cinematic Mandopop ballad with orchestral-band fusion, 76 BPM, E minor modulating to G major in the final chorus, 4/4, sweeping emotional journey from quiet memory to triumphant dawn.\nVocal Details: warm baritone male vocal with intimate close-mic breath in verses, soaring resonant tenor lift in choruses, layered choir-like vocal pads in the bridge and final chorus.\nArrangement: solo grand piano and distant ambient pad in intro; acoustic guitar fingerpicking and cello counter-line in first verse; brushed drums, fretless bass, and string quartet in first chorus; full orchestral strings, timpani swell, and melodic electric guitar solo in bridge; key-change final chorus with full band and strings, resolving to solo piano outro."
+      },
+      "additional_prompt_title": "Lyrics / Section Tags ([Intro] [Verse] [Chorus] [Bridge] [Instrumental] [Outro])",
+      "additional_prompt_lines": 6,
+      "additional_prompt_max_lines": 12,
+      "additional_prompt_placeholder": "Enter structured lyrics with section tags, e.g.:\n[Intro]\n[Verse]\nFirst verse lyrics...\n[Chorus]\nChorus lyrics...\n[Outro]\n(For instrumental tracks, enter section tags only such as [Intro] [Instrumental] [Bridge] [Outro])",
+      "additional_prompt": {
+        "Guofeng / Classical Poetry": "[Intro]\n[Verse]\n秋丛绕舍似陶家\n遍绕篱边日渐斜\n[Chorus]\n不是花中偏爱菊\n此花开尽更无花\n[Verse]\n秋丛绕舍似陶家\n遍绕篱边日渐斜\n[Chorus]\n不是花中偏爱菊\n此花开尽更无花\n[Outro]",
+        "Mandopop / Indie Rock Vocal": "[Intro]\n[Verse]\n街角路灯把影子拉得很长\n晚风吹散旧磁带里的回响\n我们曾在末班车窗写下远方\n任霓虹在眼底一寸寸发烫\n[Pre-Chorus]\n如果时间只是一场不回头的浪\n至少此刻心跳还在胸口滚烫\n[Chorus]\n向着夜色尽头用力奔跑吧\n哪怕逆着风把孤单都唱哑\n等第一束晨光穿过云层落下\n你会看见繁花开满天涯\n[Bridge]\n不必害怕黑夜漫长\n每颗星都在替你照亮\n[Chorus]\n向着夜色尽头用力奔跑吧\n哪怕逆着风把孤单都唱哑\n等第一束晨光穿过云层落下\n你会看见繁花开满天涯\n[Outro]",
+        "Instrumental / Soundtrack": "[Intro]\n[Instrumental]\n[Bridge]\n[Instrumental]\n[Outro]",
+        "Full-Length Song (Tiled Low-VRAM)": "[Intro]\n[Verse]\n旧书页里夹着那年夏天的风\n站台钟声惊醒半睡半醒的梦\n走过多少灯火阑珊的街口\n才懂沉默背后藏着多少温柔\n[Pre-Chorus]\n岁月像一条静静流淌的河\n带走尘埃却留下最亮的星火\n[Chorus]\n当长风吹开万重山外的云霞\n所有遗憾都会在歌声里融化\n走过荒原才遇见盛放的春华\n原来心之所向就是我的家\n[Instrumental]\n[Verse]\n雨落屋檐敲打着旧日琴弦\n炉火微光映红久违的笑颜\n纵使前路仍有风雪与寒夜\n掌心温度足够温暖这人间\n[Bridge]\n听黎明在远方轻轻召唤\n每一步脚印都算数不算晚\n[Chorus]\n当长风吹开万重山外的云霞\n所有遗憾都会在歌声里融化\n走过荒原才遇见盛放的春华\n原来心之所向就是我的家\n[Outro]"
+      },
+      "agent_prompt": {
+        "Guofeng / Classical Poetry": "Write a structured English music caption for MiniMax Music 3 using exactly three sections: Global Metadata, Vocal Details, and Arrangement. Global Metadata specifies genre, BPM, key/scale, time signature, and overall mood. Vocal Details specifies vocal range, delivery nuances, phrasing, and diction (or explicitly 'purely instrumental, no vocals' for instrumentals). Arrangement describes instrumentation and dynamic progression chronologically across intro, verse, chorus, bridge, and outro. Lyrics are provided separately in the additional prompt field; do not repeat lyric lines in the caption. Return only the final English caption without commentary.",
+        "Mandopop / Indie Rock Vocal": "Write a structured English music caption for MiniMax Music 3 using exactly three sections: Global Metadata, Vocal Details, and Arrangement. Global Metadata specifies genre, BPM, key, time signature, and emotional arc. Vocal Details specifies lead vocal timbre, register transitions, and backing harmonies. Arrangement describes band/synth instrumentation and dynamic build chronologically across intro, verse, pre-chorus, chorus, bridge, and outro. Return only the final English caption without repeating lyrics or adding commentary.",
+        "Instrumental / Soundtrack": "Write a structured English instrumental soundtrack caption for MiniMax Music 3 using exactly three sections: Global Metadata, Vocal Details, and Arrangement. Global Metadata specifies soundtrack style, BPM, key, time signature, and cinematic atmosphere. Vocal Details must explicitly state 'purely instrumental, no vocals, no spoken words'. Arrangement describes specific instruments, counterpoint, dynamic swells, and resolution chronologically across intro, theme, development, climax, and outro. Return only the final English caption.",
+        "Full-Length Song (Tiled Low-VRAM)": "Write a structured English full-length song caption for MiniMax Music 3 using exactly three sections: Global Metadata, Vocal Details, and Arrangement. Emphasize multi-section dynamic evolution (intro, dual verses, choruses, instrumental interlude, bridge, modulated final chorus, and outro) so instrumentation develops naturally without sounding repetitive. Return only the final English caption without repeating lyrics or adding commentary."
+      },
+      "video_duration_title": "Max Music Duration (s) [15-360]",
+      "video_duration_min": 15,
+      "video_duration_max": 360,
+      "video_duration": {
+        "Guofeng / Classical Poetry": 90,
+        "Mandopop / Indie Rock Vocal": 120,
+        "Instrumental / Soundtrack": 90,
+        "Full-Length Song (Tiled Low-VRAM)": 210
+      },
+      "var_number_title": "Melody Variation top_k [30 structured / 50 balanced / 80 expressive]",
+      "var_number_min": 1,
+      "var_number_max": 16384,
+      "var_number": {
+        "Guofeng / Classical Poetry": 50,
+        "Mandopop / Indie Rock Vocal": 50,
+        "Instrumental / Soundtrack": 45,
+        "Full-Length Song (Tiled Low-VRAM)": 50
+      },
+      "var_number3_title": "Prompt & Lyric Adherence cfg_scale [1.3-1.8 recommended]",
+      "var_number3_min": 0,
+      "var_number3_max": 3,
+      "var_number3_step": 0.01,
+      "var_number3": {
+        "Guofeng / Classical Poetry": 1.6,
+        "Mandopop / Indie Rock Vocal": 1.6,
+        "Instrumental / Soundtrack": 1.5,
+        "Full-Length Song (Tiled Low-VRAM)": 1.6
+      },
+      "switch_option1_title": "Use Tiled VAE Decode [Low VRAM / Long Song]",
+      "switch_option1": {
+        "Guofeng / Classical Poetry": false,
+        "Mandopop / Indie Rock Vocal": false,
+        "Instrumental / Soundtrack": false,
+        "Full-Length Song (Tiled Low-VRAM)": true
+      },
+      "switch_option2_title": "Output MP3 (320kbps) [Off = Lossless FLAC]",
+      "switch_option2": {
+        "Guofeng / Classical Poetry": false,
+        "Mandopop / Indie Rock Vocal": false,
+        "Instrumental / Soundtrack": false,
+        "Full-Length Song (Tiled Low-VRAM)": false
+      },
+      "overwrite_step": {
+        "Guofeng / Classical Poetry": 30,
+        "Mandopop / Indie Rock Vocal": 30,
+        "Instrumental / Soundtrack": 30,
+        "Full-Length Song (Tiled Low-VRAM)": 32
+      },
+      "overwrite_step_min": 20,
+      "overwrite_step_max": 60,
+      "aspect_ratio": [
+        "1280*720"
+      ],
+      "resolution_control": {
+        "mode": "standard",
+        "source": "none",
+        "base_width": 1280,
+        "base_height": 720,
+        "quantize": 16,
+        "interactive": false,
+        "frontend_preprocess": false,
+        "preprocess_target": "none",
+        "preprocess_fit": "scale"
+      },
+      "disvisible": [
+        "scene_canvas_image",
+        "scene_input_image1",
+        "scene_input_image2",
+        "scene_input_image3",
+        "scene_input_image4",
+        "scene_additional_prompt_2",
+        "scene_video",
+        "scene_reference_video",
+        "scene_audio",
+        "scene_aspect_ratio",
+        "scene_use_lora",
+        "scene_refiner_model",
+        "scene_var_number2",
+        "scene_var_number4",
+        "scene_var_number5",
+        "scene_var_number6",
+        "scene_var_number7",
+        "scene_var_number8",
+        "scene_var_number9",
+        "scene_var_number10",
+        "scene_switch_option3",
+        "scene_switch_option4",
+        "sam3_input_video",
+        "sam3_mask_video",
+        "scene_batch"
+      ]
+    }
+  },
+  "default_model": "minimax_music3_dit_fp16.safetensors",
+  "default_clip_model": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+  "default_vae": "minimax_music3_dav.safetensors",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_loras": [
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ],
+    [
+      "None",
+      1
+    ]
+  ],
+  "default_cfg_scale": 1.7,
+  "default_sample_sharpness": 2,
+  "default_sampler": "euler",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "1280*720",
+  "default_image_number": 1,
+  "default_overwrite_step": 30,
+  "default_prompt": "Global Metadata: Chinese-style Mandopop ballad (guofeng), 70 BPM, minor pentatonic melody, slow 4/4, solitary autumn dusk mood.\nVocal Details: single male tenor, breathy low register, half-voiced verse delivery, clear Mandarin diction forward, gentle falling portamento and light vibrato at phrase ends, wordless backing pad only in the second chorus.\nArrangement: solo guzheng arpeggio and erhu motif in the intro; verse voice over sparse guzheng and pipa ornaments; chorus opens with warm strings and erhu counter-melody; second chorus adds deep frame drum and harmonized backing; outro strips back to erhu and a single guzheng harmonic.",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,minimax_music3_dit_fp16.safetensors,4914197682,45494a2b6b69af115902ff28eaf54118d19067aa54da01000f3e3efce7ba0e34,https://modelscope.cn/models/Comfy-Org/MiniMax-Music-3/resolve/master/diffusion_models/minimax_music3_dit_fp16.safetensors,https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/diffusion_models/minimax_music3_dit_fp16.safetensors",
+    "text_encoders,minimax_music3_text_encoder_pruned_int8_convrot.safetensors,9196611886,010b7416d2336a08c711bc22ee65849c9623069ddb7d89bec011a75699e52014,https://modelscope.cn/models/Comfy-Org/MiniMax-Music-3/resolve/master/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+    "vae,minimax_music3_dav.safetensors,216696128,2a32155b769be01445fcc2a8663b910fc9e1751e18dc1c3ec528064512d9ef0c,https://modelscope.cn/models/Comfy-Org/MiniMax-Music-3/resolve/master/vae/minimax_music3_dav.safetensors,https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/vae/minimax_music3_dav.safetensors"
+  ]
+}

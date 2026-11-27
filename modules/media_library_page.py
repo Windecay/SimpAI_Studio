@@ -100,6 +100,7 @@ def _icon_font_css(font_url: str) -> str:
         "clone": "\\f24d",
         "play": "\\f04b",
         "pause": "\\f04c",
+        "repeat": "\\f363",
         "volume-high": "\\f028",
         "volume-xmark": "\\f6a9",
         "sliders": "\\f1de",
@@ -134,7 +135,9 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
     normalized_lang = "cn" if str(lang or "").lower().startswith(("cn", "zh")) else "en"
     api_base = _join_url(root_path, "simpleai/gallery")
     css_url = _gradio_asset_url(root_path, "css/media_library.css")
+    audio_css_url = _gradio_asset_url(root_path, "css/studio_audio_waveform.css")
     mesh_css_url = _gradio_asset_url(root_path, "css/studio_mesh_viewer.css")
+    audio_script_url = _gradio_asset_url(root_path, "javascript/studio_audio_waveform.js")
     mesh_script_url = _gradio_asset_url(root_path, "javascript/studio_mesh_viewer.js")
     i18n_url = _gradio_asset_url(root_path, "javascript/simpleai_i18n.js")
     script_url = _gradio_asset_url(root_path, "javascript/media_library.js")
@@ -158,9 +161,11 @@ def render_media_library_html(*, root_path: str = "", theme: str = "light", lang
   <title data-i18n="Media Library">Media Library</title>
   {_icon_font_css(icon_font_url)}
   <link rel="stylesheet" href="{css_url}">
+  <link rel="stylesheet" href="{audio_css_url}">
   <link rel="stylesheet" href="{mesh_css_url}">
   <script>window.simpleaiGalleryConfig = {config_json};</script>
   <script src="{i18n_url}"></script>
+  <script src="{audio_script_url}" defer></script>
   <script src="{mesh_script_url}" defer></script>
   <script src="{script_url}" defer></script>
 </head>

@@ -1,0 +1,476 @@
+/* Shared Studio Audio Waveform Player & Gallery Audio Surface */
+
+#studio_audio_browser {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+#studio_audio_browser:has(.sai-studio-audio-stage[hidden]) {
+    display: none !important;
+}
+
+#studio_audio_browser :is(.html-container, .prose) {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+html.simpai-audio-surface-active #simpleai_result_surface_guard,
+html.simpai-audio-surface-active #simpleai_gallery_welcome_guard_row,
+html.simpai-audio-surface-active #simpleai_gallery_welcome_guard_placeholder,
+html.simpai-audio-surface-active #simpleai_post_generation_missing_gallery_placeholder,
+html.simpai-audio-surface-active #main_preview_row > :is(.form, .block):has(#preview_generating),
+html.simpai-audio-surface-active #main_preview_row > #preview_generating,
+html.simpai-audio-surface-active #main_preview_row > :is(.form, .block):has(#finished_gallery),
+html.simpai-audio-surface-active #main_preview_row > #finished_gallery,
+html.simpai-audio-surface-active #main_preview_row > :is(.form, .block):has(#comparison_box),
+html.simpai-audio-surface-active #main_preview_row > #comparison_box,
+html.simpai-audio-surface-active #main_preview_row > :is(.form, .block):has(#video_player),
+html.simpai-audio-surface-active #main_preview_row > #video_player,
+html.simpai-audio-surface-active #main_preview_row > :is(.form, .block):has(#final_gallery),
+html.simpai-audio-surface-active #main_preview_row > #final_gallery,
+html.simpai-audio-surface-active #main_preview_row > :is(.form, .block):has(#gallery_browser_empty_state),
+html.simpai-audio-surface-active #main_preview_row > #gallery_browser_empty_state {
+    display: none !important;
+    visibility: hidden !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+}
+
+html.simpai-audio-surface-active #main_preview_row {
+    display: flex !important;
+    width: 100% !important;
+    min-height: var(--simpai-preview-fit-height, clamp(340px, calc(100dvh - 260px), 768px)) !important;
+    height: var(--simpai-preview-fit-height, clamp(340px, calc(100dvh - 260px), 768px)) !important;
+    max-height: var(--simpai-preview-fit-height, clamp(340px, calc(100dvh - 260px), 768px)) !important;
+    overflow: hidden !important;
+}
+
+html.simpai-audio-surface-active #studio_audio_browser,
+html.simpai-audio-surface-active #main_preview_row > :is(.form, .block):has(#studio_audio_browser) {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.sai-studio-audio-stage {
+    box-sizing: border-box;
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    min-height: 340px;
+    max-height: var(--simpai-preview-fit-height, clamp(340px, calc(100dvh - 260px), 768px));
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px 20px;
+    border: 1px solid var(--border-color-primary, rgba(128, 128, 128, 0.25));
+    border-radius: 12px;
+    background: var(--background-fill-primary, #16181d);
+    color: var(--body-text-color, #e5e7eb);
+    overflow: hidden;
+}
+
+.sai-studio-audio-stage[hidden] {
+    display: none !important;
+}
+
+.sai-studio-audio-stage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color-primary, rgba(128, 128, 128, 0.2));
+}
+
+.sai-studio-audio-stage-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.sai-studio-audio-stage-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--button-primary-background-fill, #3b82f6) 16%, transparent);
+    color: var(--button-primary-background-fill, #3b82f6);
+    flex-shrink: 0;
+}
+
+.sai-studio-audio-stage-titles {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sai-studio-audio-stage-titles strong {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sai-studio-audio-stage-titles span {
+    font-size: 12px;
+    color: var(--body-text-color-subdued, #9ca3af);
+}
+
+.sai-studio-audio-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.sai-audio-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 1px solid var(--border-color-primary, rgba(128, 128, 128, 0.25));
+    background: var(--background-fill-secondary, rgba(128, 128, 128, 0.12));
+    color: var(--body-text-color, inherit);
+    font-variant-numeric: tabular-nums;
+}
+
+.sai-audio-pill.is-accent {
+    border-color: color-mix(in srgb, var(--button-primary-background-fill, #3b82f6) 45%, transparent);
+    background: color-mix(in srgb, var(--button-primary-background-fill, #3b82f6) 15%, transparent);
+    color: var(--button-primary-background-fill, #3b82f6);
+}
+
+/* Hero deck */
+.sai-studio-audio-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color-primary, rgba(128, 128, 128, 0.22));
+    background: var(--background-fill-secondary, rgba(128, 128, 128, 0.08));
+}
+
+.sai-studio-audio-stage.is-single-track {
+    justify-content: center;
+}
+
+.sai-studio-audio-stage.is-single-track .sai-studio-audio-hero {
+    padding: 24px 24px 20px;
+    gap: 16px;
+}
+
+.sai-studio-audio-hero-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.sai-studio-audio-hero-name {
+    font-size: 14px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+.sai-studio-audio-hero-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sai-audio-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color-primary, rgba(128, 128, 128, 0.28));
+    background: var(--button-secondary-background-fill, rgba(128, 128, 128, 0.14));
+    color: var(--body-text-color, inherit);
+    font-size: 12px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.sai-audio-action-btn:hover {
+    border-color: var(--button-primary-background-fill, #3b82f6);
+}
+
+.sai-audio-action-btn.is-active {
+    border-color: var(--button-primary-background-fill, #3b82f6);
+    background: color-mix(in srgb, var(--button-primary-background-fill, #3b82f6) 18%, transparent);
+    color: var(--button-primary-background-fill, #3b82f6);
+}
+
+/* Character-Card-inspired dual-layer waveform player */
+.sai-audio-player {
+    --sai-playhead: 0%;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    align-items: center;
+    gap: 6px 12px;
+    width: 100%;
+    min-width: 0;
+}
+
+.sai-audio-player.is-hero {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 8px 14px;
+}
+
+.sai-audio-player.is-compact {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 4px 8px;
+}
+
+.sai-audio-toggle-btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    grid-row: 1 / 3;
+    border-radius: 50%;
+    border: 1px solid var(--button-primary-background-fill, #3b82f6);
+    background: var(--button-primary-background-fill, #3b82f6);
+    color: var(--button-primary-text-color, #ffffff);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform 0.12s ease, opacity 0.15s ease;
+}
+
+.sai-audio-player.is-hero .sai-audio-toggle-btn {
+    width: 48px;
+    height: 48px;
+    font-size: 16px;
+}
+
+.sai-audio-player.is-compact .sai-audio-toggle-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+}
+
+.sai-audio-toggle-btn:hover {
+    transform: scale(1.04);
+}
+
+.sai-audio-wave-track {
+    position: relative;
+    height: 52px;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--input-background-fill, rgba(0, 0, 0, 0.2));
+    border: 1px solid var(--border-color-primary, rgba(128, 128, 128, 0.26));
+    border-radius: 6px;
+}
+
+.sai-audio-player.is-hero .sai-audio-wave-track {
+    height: 92px;
+    border-radius: 8px;
+}
+
+.sai-audio-player.is-compact .sai-audio-wave-track {
+    height: 38px;
+    border-radius: 5px;
+}
+
+.sai-audio-wave-bars {
+    position: absolute;
+    inset: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--body-text-color-subdued, #8b93a1);
+    opacity: 0.72;
+}
+
+.sai-audio-player.is-compact .sai-audio-wave-bars {
+    inset: 4px 5px;
+    gap: 1px;
+}
+
+.sai-audio-wave-bars:empty {
+    top: 50%;
+    bottom: auto;
+    border-top: 1px dashed var(--border-color-primary, rgba(128, 128, 128, 0.35));
+}
+
+.sai-audio-wave-bars > i {
+    flex: 1 1 0;
+    min-width: 1px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+.sai-audio-wave-bars.is-played {
+    color: var(--button-primary-background-fill, #3b82f6);
+    opacity: 1;
+    clip-path: inset(0 calc(100% - var(--sai-playhead)) 0 0);
+    pointer-events: none;
+}
+
+.sai-audio-wave-bars.is-played:empty {
+    border: 0;
+}
+
+.sai-audio-wave-cursor {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: clamp(0px, var(--sai-playhead), calc(100% - 2px));
+    width: 2px;
+    background: var(--button-primary-background-fill, #3b82f6);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--button-primary-background-fill, #3b82f6) 60%, transparent);
+    pointer-events: none;
+}
+
+.sai-audio-wave-track input[data-sai-audio-seek] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    cursor: ew-resize;
+}
+
+.sai-audio-wave-track:focus-within {
+    outline: 2px solid var(--button-primary-background-fill, #3b82f6);
+    outline-offset: -2px;
+}
+
+.sai-audio-footer {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.sai-audio-time {
+    font-size: 12px;
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+    color: var(--body-text-color-subdued, #9ca3af);
+}
+
+.sai-audio-error {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    color: #ef4444;
+    overflow-wrap: anywhere;
+}
+
+/* Scrollable track list in Gallery Audio Browser / Batch Results */
+.sai-studio-audio-list {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    align-content: start;
+    gap: 10px;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 2px;
+}
+
+.sai-studio-audio-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color-primary, rgba(128, 128, 128, 0.22));
+    background: var(--background-fill-secondary, rgba(128, 128, 128, 0.06));
+    cursor: pointer;
+    transition: border-color 0.14s ease, background-color 0.14s ease;
+    min-width: 0;
+}
+
+.sai-studio-audio-card:hover {
+    border-color: color-mix(in srgb, var(--button-primary-background-fill, #3b82f6) 55%, transparent);
+}
+
+.sai-studio-audio-card.is-selected {
+    border-color: var(--button-primary-background-fill, #3b82f6);
+    background: color-mix(in srgb, var(--button-primary-background-fill, #3b82f6) 10%, var(--background-fill-secondary, transparent));
+}
+
+.sai-studio-audio-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.sai-studio-audio-card-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* Standalone Media Library viewer & detail waveform wrappers */
+.media-viewer-audio-wrap,
+.media-detail-audio-wrap {
+    width: min(680px, 92vw);
+    padding: 18px 20px;
+    box-sizing: border-box;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(15, 23, 42, 0.72);
+    color: #f8fafc;
+}
+
+.media-detail-audio-wrap {
+    width: 100%;
+    padding: 12px;
+    background: rgba(128, 128, 128, 0.08);
+    color: inherit;
+}

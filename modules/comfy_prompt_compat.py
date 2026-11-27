@@ -2,6 +2,7 @@ import copy
 import inspect
 import logging
 import os
+import struct
 import time
 from contextvars import ContextVar
 from functools import wraps
@@ -12,6 +13,25 @@ from enhanced.logger import format_name
 
 
 logger = logging.getLogger(format_name(__name__))
+
+PREVIEW_AUDIO_EVENT = 6
+AUDIO_FORMAT_CODES = {
+    "flac": 20,
+    "mp3": 21,
+    "wav": 22,
+    "opus": 23,
+    "ogg": 24,
+    "m4a": 25,
+    "aac": 26,
+}
+AUDIO_CODE_FORMATS = {code: name for name, code in AUDIO_FORMAT_CODES.items()}
+AUDIO_SAVE_NODE_CLASS_TYPES = (
+    "SaveAudioWebsocket",
+    "SaveAudio",
+    "SaveAudioMP3",
+    "SaveAudioOpus",
+    "SaveAudioAdvanced",
+)
 
 _OBJECT_INFO_CACHE = {
     "endpoint": "",
@@ -562,4 +582,166 @@ def install_execution_error_support(comfyclient_pipeline):
 
     get_images_with_execution_errors._simpai_execution_error_support = True
     comfyclient_pipeline.get_images = get_images_with_execution_errors
+    return True
+
+
+def encode_audio_output_payload(raw, media_format):
+    fmt = str(media_format or "").strip().lower().lstrip(".")
+    code = AUDIO_FORMAT_CODES.get(fmt)
+    if code is None:
+        return None
+    return struct.pack(">II", PREVIEW_AUDIO_EVENT, code) + bytes(raw)
+
+
+def parse_audio_output_header(payload):
+    if not isinstance(payload, (bytes, bytearray)) or len(payload) < 8:
+        return None
+    event_type, format_code = struct.unpack(">II", payload[:8])
+    if event_type != PREVIEW_AUDIO_EVENT:
+        return None
+    fmt = AUDIO_CODE_FORMATS.get(format_code)
+    if fmt is None:
+        return None
+    return ("audio", fmt)
+
+
+def install_audio_output_support(comfyclient_pipeline):
+    """Backfill single-audio output framing when simpleai_base < 0.3.58 is installed."""
+    if comfyclient_pipeline is None:
+        return False
+    save_nodes = getattr(comfyclient_pipeline, "SAVE_NODE_CLASS_TYPES", None)
+    if isinstance(save_nodes, set):
+        save_nodes.update(AUDIO_SAVE_NODE_CLASS_TYPES)
+    elif isinstance(save_nodes, (tuple, list, frozenset)):
+        merged = list(dict.fromkeys([*save_nodes, *AUDIO_SAVE_NODE_CLASS_TYPES]))
+        comfyclient_pipeline.SAVE_NODE_CLASS_TYPES = type(save_nodes)(merged)
+
+    if getattr(comfyclient_pipeline, "_NATIVE_AUDIO_OUTPUT_SUPPORT", False):
+        return False
+
+    is_image_key = getattr(comfyclient_pipeline, "_is_image_output_key", None)
+    if callable(is_image_key) and not getattr(is_image_key, "_simpai_audio_output_support", False):
+        if is_image_key("probe_audio_flac") is True:
+            @wraps(is_image_key)
+            def is_image_output_key_with_audio(name):
+                parts = str(name or "").rsplit("_", 2)
+                if len(parts) >= 3 and parts[-2] == "audio":
+                    return False
+                return is_image_key(name)
+
+            is_image_output_key_with_audio._simpai_audio_output_support = True
+            comfyclient_pipeline._is_image_output_key = is_image_output_key_with_audio
+
+    get_media_info = getattr(comfyclient_pipeline, "get_media_info", None)
+    if callable(get_media_info) and not getattr(get_media_info, "_simpai_audio_output_support", False):
+        probe = encode_audio_output_payload(b"probe", "flac")
+        if get_media_info(probe[:8]) != ("audio", "flac"):
+            @wraps(get_media_info)
+            def get_media_info_with_audio(out):
+                parsed = parse_audio_output_header(out)
+                if parsed is not None:
+                    return parsed
+                return get_media_info(out)
+
+            get_media_info_with_audio._simpai_audio_output_support = True
+            comfyclient_pipeline.get_media_info = get_media_info_with_audio
+
+    recover_data = getattr(comfyclient_pipeline, "_recover_history_output_data", None)
+    get_image = getattr(comfyclient_pipeline, "get_image", None)
+    resolve_node = getattr(comfyclient_pipeline, "_resolve_prompt_node_id", None)
+    if (
+        callable(recover_data)
+        and callable(get_image)
+        and not getattr(recover_data, "_simpai_audio_output_support", False)
+    ):
+        @wraps(recover_data)
+        def recover_history_output_data_with_audio(prompt_id, prompt, history_item, node_ids=None):
+            recovered = dict(recover_data(prompt_id, prompt, history_item, node_ids) or {})
+            history_outputs = history_item.get("outputs") if isinstance(history_item, dict) else None
+            if not isinstance(history_outputs, dict):
+                return recovered
+            requested_nodes = set(node_ids) if node_ids is not None else None
+            for history_node_id, node_outputs in history_outputs.items():
+                node_id = (
+                    resolve_node(str(history_node_id), prompt)
+                    if callable(resolve_node)
+                    else str(history_node_id)
+                )
+                if requested_nodes is not None and node_id not in requested_nodes:
+                    continue
+                if not isinstance(node_outputs, dict):
+                    continue
+                prompt_node = prompt.get(node_id, {}) if isinstance(prompt, dict) else {}
+                title = str((prompt_node.get("_meta") or {}).get("title") or node_id)
+                for output_name, items in node_outputs.items():
+                    if not isinstance(items, list):
+                        continue
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        filename = item.get("filename")
+                        if not isinstance(filename, str) or not filename:
+                            continue
+                        ext = os.path.splitext(filename)[1].lower().lstrip(".")
+                        if output_name not in ("audio", "audios") and ext not in AUDIO_FORMAT_CODES:
+                            continue
+                        media_format = ext or "flac"
+                        media_name = f"{title}_audio_{media_format}"
+                        if media_name in recovered:
+                            continue
+                        try:
+                            raw = get_image(filename, item.get("subfolder", ""), item.get("type", "output"))
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to recover Comfy audio output prompt_id=%s filename=%s: %s",
+                                prompt_id,
+                                filename,
+                                exc,
+                            )
+                            continue
+                        wrapped = encode_audio_output_payload(raw, media_format)
+                        if wrapped is None:
+                            continue
+                        recovered.setdefault(media_name, []).append(wrapped)
+            return recovered
+
+        recover_history_output_data_with_audio._simpai_audio_output_support = True
+        comfyclient_pipeline._recover_history_output_data = recover_history_output_data_with_audio
+
+    get_images = getattr(comfyclient_pipeline, "get_images", None)
+    if callable(get_images) and not getattr(get_images, "_simpai_audio_output_support", False):
+        @wraps(get_images)
+        def get_images_with_audio(*args, **kwargs):
+            outputs = get_images(*args, **kwargs)
+            if not isinstance(outputs, dict) or not outputs:
+                return outputs
+            normalized = None
+            for key, value in outputs.items():
+                parts = str(key or "").rsplit("_", 2)
+                if len(parts) < 3 or parts[-2] != "audio":
+                    continue
+                fmt = parts[-1]
+                if isinstance(value, (bytes, bytearray)):
+                    if parse_audio_output_header(value) == ("audio", fmt):
+                        continue
+                    wrapped = encode_audio_output_payload(value, fmt)
+                    if wrapped is None:
+                        continue
+                    if normalized is None:
+                        normalized = dict(outputs)
+                    normalized[key] = wrapped
+                elif isinstance(value, list) and value and all(isinstance(v, (bytes, bytearray)) for v in value):
+                    updated_list = [
+                        v if parse_audio_output_header(v) == ("audio", fmt) else (encode_audio_output_payload(v, fmt) or v)
+                        for v in value
+                    ]
+                    if updated_list != value:
+                        if normalized is None:
+                            normalized = dict(outputs)
+                        normalized[key] = updated_list
+            return normalized if normalized is not None else outputs
+
+        get_images_with_audio._simpai_audio_output_support = True
+        comfyclient_pipeline.get_images = get_images_with_audio
+
     return True

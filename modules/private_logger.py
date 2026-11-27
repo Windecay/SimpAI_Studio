@@ -57,18 +57,19 @@ def _escape_ffmetadata(key, value):
     return f"{key}={value}"
 
 
-def _embed_video_metadata(file_path, parsed_parameters, metadata_scheme):
+def _embed_av_metadata(file_path, parsed_parameters, metadata_scheme):
     if not parsed_parameters or not os.path.exists(file_path):
         return False
 
     ffmpeg_exe = _get_ffmpeg_exe()
     if not ffmpeg_exe:
-        logger.warning("FFmpeg not found. Skipping video metadata embedding.")
+        logger.warning("FFmpeg not found. Skipping media metadata embedding.")
         return False
 
     root, ext = os.path.splitext(file_path)
     if not ext:
         return False
+    ext_lower = ext.lower()
     metadata_path = f"{root}.metadata.txt"
     output_path = f"{root}.metadata.tmp{ext}"
 
@@ -116,8 +117,10 @@ def _embed_video_metadata(file_path, parsed_parameters, metadata_scheme):
             "-metadata",
             "creation_time=now",
         ]
-        if ext.lower() in (".mp4", ".mov", ".m4v"):
+        if ext_lower in (".mp4", ".mov", ".m4v", ".m4a"):
             args += ["-movflags", "use_metadata_tags"]
+        elif ext_lower == ".mp3":
+            args += ["-id3v2_version", "3"]
         args.append(output_path)
 
         subprocess.run(args, capture_output=True, check=True)
@@ -125,7 +128,7 @@ def _embed_video_metadata(file_path, parsed_parameters, metadata_scheme):
             os.replace(output_path, file_path)
             return True
     except Exception as e:
-        logger.warning(f"Failed to embed video metadata into {file_path}: {e}")
+        logger.warning(f"Failed to embed media metadata into {file_path}: {e}")
     finally:
         for path in (metadata_path, output_path):
             try:
@@ -134,6 +137,9 @@ def _embed_video_metadata(file_path, parsed_parameters, metadata_scheme):
             except Exception:
                 pass
     return False
+
+
+_embed_video_metadata = _embed_av_metadata
 
 
 def _is_exif_too_long_error(exc):
@@ -362,8 +368,8 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
     if not is_image:
         media_type, format_name = get_media_info(img[:8])
     disable_image_log = bool(getattr(args_manager.args, 'disable_image_log', False))
-    is_video_result = media_type == 'video'
-    path_outputs = user_path_outputs if is_video_result or (not disable_image_log and persist_image) else modules.config.temp_path
+    is_av_result = media_type in ('video', 'audio')
+    path_outputs = user_path_outputs if is_av_result or (not disable_image_log and persist_image) else modules.config.temp_path
     logger.info(
         '[Output] private_log_path: media_type=%s, persist_image=%s, disable_image_log=%s, '
         'user_path_outputs=%s, temp_path=%s, selected_root=%s',
@@ -432,8 +438,8 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
         if remote_task is None:
             with open(local_temp_filename, "wb") as f:
                 f.write(img[8:])
-            if media_type == 'video' and metadata_parser is not None:
-                _embed_video_metadata(local_temp_filename, parsed_parameters, metadata_scheme)
+            if media_type in ('video', 'audio') and metadata_parser is not None:
+                _embed_av_metadata(local_temp_filename, parsed_parameters, metadata_scheme)
         img_result = img
 
     only_name = os.path.basename(local_temp_filename)
@@ -476,8 +482,8 @@ def p2p_log(result_img, result_log, output_format, persist_image=True, user_did=
 
     media_type, format_name = get_media_info(result_img[:8])
     disable_image_log = bool(getattr(args_manager.args, 'disable_image_log', False))
-    is_video_result = media_type == 'video'
-    path_outputs = user_path_outputs if is_video_result or (not disable_image_log and persist_image) else modules.config.temp_path
+    is_av_result = media_type in ('video', 'audio')
+    path_outputs = user_path_outputs if is_av_result or (not disable_image_log and persist_image) else modules.config.temp_path
     logger.info(
         '[Output] p2p_log_path: media_type=%s, persist_image=%s, disable_image_log=%s, '
         'user_path_outputs=%s, temp_path=%s, selected_root=%s',
@@ -492,7 +498,7 @@ def p2p_log(result_img, result_log, output_format, persist_image=True, user_did=
     date_string, local_temp_filename, only_name = generate_temp_filename(folder=path_outputs, extension=output_format)
     os.makedirs(os.path.dirname(local_temp_filename), exist_ok=True)
 
-    if media_type=='video':
+    if media_type in ('video', 'audio'):
         local_temp_filename_root, _ = os.path.splitext(local_temp_filename)
         local_temp_filename = f'{local_temp_filename_root}.{format_name}'
         only_name_root, _ = os.path.splitext(only_name)

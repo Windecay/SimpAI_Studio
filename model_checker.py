@@ -4380,6 +4380,18 @@ packages = {'base_package': {'id': 1,
      'info_links': ['https://modelscope.cn/models/Comfy-Org/Idol', 'https://huggingface.co/Comfy-Org/Idol'],
      'preset_sample': [],
  },
+ 'minimax_music3_package': {
+     'id': 56,
+     'name': '[56]MiniMax Music 3音乐生成预置包',
+     'note': 'MiniMax Music 3文生音乐与人声歌曲-默认模型[FP16主模型+INT8剪枝文本编码器]|显存需求：★★ 速度：★★★',
+     'files': [
+         'diffusion_models,minimax_music3_dit_fp16.safetensors,4914197682,45494a2b6b69af115902ff28eaf54118d19067aa54da01000f3e3efce7ba0e34,https://modelscope.cn/models/Comfy-Org/MiniMax-Music-3/resolve/master/diffusion_models/minimax_music3_dit_fp16.safetensors,https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/diffusion_models/minimax_music3_dit_fp16.safetensors',
+         'text_encoders,minimax_music3_text_encoder_pruned_int8_convrot.safetensors,9196611886,010b7416d2336a08c711bc22ee65849c9623069ddb7d89bec011a75699e52014,https://modelscope.cn/models/Comfy-Org/MiniMax-Music-3/resolve/master/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors',
+         'vae,minimax_music3_dav.safetensors,216696128,2a32155b769be01445fcc2a8663b910fc9e1751e18dc1c3ec528064512d9ef0c,https://modelscope.cn/models/Comfy-Org/MiniMax-Music-3/resolve/master/vae/minimax_music3_dav.safetensors,https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/vae/minimax_music3_dav.safetensors',
+     ],
+     'info_links': ['https://modelscope.cn/models/Comfy-Org/MiniMax-Music-3', 'https://huggingface.co/Comfy-Org/MiniMax-Music-3'],
+     'preset_sample': [],
+ },
 }
 MANUAL_DOWNLOAD_MAP = {
 }

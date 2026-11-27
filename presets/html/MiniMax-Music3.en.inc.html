@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MiniMax Music 3 Song &amp; Music Generation</title>
+  <style>body{margin:0;font:12px/1.6 sans-serif;color:#1f2937}p{margin:0}</style>
+</head>
+<body>
+  <p>Write a three-part English caption (Global Metadata / Vocal Details / Arrangement) in the main prompt and section-tagged lyrics ([Intro] [Verse] [Chorus] [Outro]) in the lyrics box. Outputs lossless FLAC by default or 320kbps MP3 when toggled, with waveform playback under Audio.</p>
+  <script>
+    const stage = Object.fromEntries(new URLSearchParams(location.search));
+    if (stage.__theme === 'dark') document.body.style.color = '#f9fafb';
+  </script>
+</body>
+</html>

@@ -97,6 +97,7 @@ const finishedGalleryBrowserState = {
     folder: "",
     userFolder: "",
     folders: [],
+    folderCounts: {},
     paths: [],
     dimensions: {},
     totalByMode: {},
@@ -646,6 +647,7 @@ const SIMPLEAI_GALLERY_BROWSER_PARAM_KEYS = [
     "__main_gallery_browser_dimensions",
     "__main_gallery_browser_folder",
     "__main_gallery_browser_folders",
+    "__main_gallery_browser_folder_counts",
     "__main_gallery_browser_next_offset",
     "__main_gallery_browser_has_more",
     "__main_gallery_browser_request_folder",
@@ -658,6 +660,14 @@ const SIMPLEAI_GALLERY_BROWSER_PARAM_KEYS = [
     "__main_gallery_browser_noop_response",
     "__main_gallery_browser_request_ignored",
 ];
+
+function isStudioAudioSurfaceVisible() {
+    try {
+        return !!(window.SimpAIStudioAudioSurface && typeof window.SimpAIStudioAudioSurface.isVisible === "function" && window.SimpAIStudioAudioSurface.isVisible());
+    } catch (e) {
+        return false;
+    }
+}
 
 function clearPostGenerationResultParamsForGenerationStart(params) {
     if (!params || typeof params !== "object") return params;
@@ -673,6 +683,8 @@ function clearPostGenerationResultParamsForGenerationStart(params) {
         "__post_generation_has_output",
         "__post_generation_gallery_output",
         "__post_generation_video_output",
+        "__post_generation_audio_output",
+        "__post_generation_audio_items",
         "__post_generation_mesh_ids",
     ].forEach((key) => {
         try { delete params[key]; } catch (e) {}
@@ -687,6 +699,7 @@ function clearFinishedGalleryBrowserParamsForResultState(params, reason) {
         params.__post_generation_has_output
         || params.__post_generation_gallery_output
         || params.__post_generation_video_output
+        || params.__post_generation_audio_output
         || params.__post_generation_compare_ready
         || params.__post_generation_compare_visible
         || params.__post_generation_image_url
@@ -751,6 +764,7 @@ function resetFinishedGalleryBrowserRuntimeForResultState(reason) {
         finishedGalleryBrowserState.restoreScrollTop = null;
         finishedGalleryBrowserState.folder = "";
         finishedGalleryBrowserState.userFolder = "";
+        finishedGalleryBrowserState.folderCounts = {};
         finishedGalleryBrowserState.paths = [];
         finishedGalleryBrowserState.dimensions = {};
         finishedGalleryBrowserState.totalByMode = {};
@@ -945,6 +959,7 @@ function closeSimpleAICatalogLinkedGallery(reason, options) {
     if (!markWrappers) {
         clearSimpleAICatalogLinkedGalleryWrappers(reasonText || "catalog_close_no_wrapper");
     }
+    try { window.SimpAIStudioAudioSurface?.hide?.(reason || "catalog_close"); } catch (e) {}
     try { restoreWelcomePreviewAfterCatalogClose(reason || "catalog_close"); } catch (e) {}
     simpaiUiTrace("log", "[UI-TRACE] catalog_gallery.close", { reason: reason || "catalog_close", markWrappers, resetBrowserState, collapseCatalog, catalogCollapsed });
 }
@@ -1177,6 +1192,7 @@ function closeSimpleAIOpenGalleriesForPresetSwitch(reason, options) {
         document.body.classList.remove("simpleai-gallery-fullscreen-open");
     } catch (e) {}
     closeSimpleAIManagedGalleryPreviews();
+    try { window.SimpAIStudioAudioSurface?.hide?.(reason || "preset_switch"); } catch (e) {}
     try { releaseFinishedGalleryWelcomeGuard(false, reason || "preset_switch"); } catch (e) {}
     try { resetPostGenerationResultSurfaceState(reason || "preset_switch"); } catch (e) {}
     resetSimpleAIGalleryBrowserStateForPresetSwitch();
@@ -1221,7 +1237,9 @@ function clearSimpleAIPresetSwitchGalleryHidden(reason) {
     }
     if (/generation_done/i.test(reasonText)) {
         try { releaseFinishedGalleryWelcomeGuard(true, reasonText || "generation_done"); } catch (e) {}
-        try { restoreFinishedGalleryWelcomePreviewImage(getWelcomePreviewElement(), reasonText || "generation_done"); } catch (e) {}
+        if (!isStudioAudioSurfaceVisible()) {
+            try { restoreFinishedGalleryWelcomePreviewImage(getWelcomePreviewElement(), reasonText || "generation_done"); } catch (e) {}
+        }
         try { removeFinishedGalleryWelcomePlaceholder(); } catch (e) {}
     }
     if (/generate_start|preview_start/i.test(reasonText)) {
@@ -1288,6 +1306,7 @@ function scheduleSimpleAIPresetGalleryClear(reason) {
 
 function prepareSimpleAIGenerationStartSurface(reason, state) {
     window.SimpAIStudioMeshBrowser?.close();
+    try { window.SimpAIStudioAudioSurface?.hide?.(reason || "generation_start"); } catch (e) {}
     const reasonText = String(reason || "generation_start");
     if (simpleaiGenerationResultObserver) simpleaiGenerationResultObserver.disconnect();
     if (simpleaiGenerationResultMediaCleanup) simpleaiGenerationResultMediaCleanup();
@@ -1503,6 +1522,7 @@ function bindSimpleAIPresetSwitchGalleryClearControls() {
         "[data-simpleai-catalog-linked-gallery-wrapper-hidden='1']",
         "#gallery_images_btn",
         "#gallery_videos_btn",
+        "#gallery_audios_btn",
         "#gallery_browser_refresh_btn",
         "#gallery_browser_more_btn",
         "#gallery_browser_prev_folder_btn",
@@ -1560,6 +1580,7 @@ function bindSimpleAIPresetSwitchGalleryClearControls() {
         const galleryBrowserControlInteraction = target.closest([
             "#gallery_images_btn",
             "#gallery_videos_btn",
+            "#gallery_audios_btn",
             "#gallery_browser_refresh_btn",
             "#gallery_browser_more_btn",
             "#gallery_browser_prev_folder_btn",
@@ -2014,19 +2035,20 @@ function simpleAIGalleryBrowserCountStatus(count, mediaType) {
     let n = Number(count || 0);
     if (!Number.isFinite(n)) n = 0;
     n = Math.max(0, Math.floor(n));
-    const mode = mediaType === "video" ? "video" : "image";
+    const mode = mediaType === "video" ? "video" : (mediaType === "audio" ? "audio" : "image");
     if (simpleAIGalleryBrowserIsEnglish()) {
-        return `${n} ${mode === "video" ? "videos" : "items"}`;
+        return `${n} ${mode === "video" ? "videos" : (mode === "audio" ? "audios" : "items")}`;
     }
-    return `${n} ${mode === "video" ? "个视频" : "张图片"}`;
+    return `${n} ${mode === "video" ? "个视频" : (mode === "audio" ? "条音频" : "张图片")}`;
 }
 
 function simpleAIGalleryBrowserStatusText(text, mediaType) {
     const raw = String(text || "");
     if (!raw) return "";
-    const countMatch = raw.match(/^\s*(\d+)\s+(items|images|videos)\s*$/i);
+    const countMatch = raw.match(/^\s*(\d+)\s+(items|images|videos|audios)\s*$/i);
     if (countMatch) {
-        const mode = countMatch[2].toLowerCase() === "videos" ? "video" : (mediaType || "image");
+        const unit = countMatch[2].toLowerCase();
+        const mode = unit === "videos" ? "video" : (unit === "audios" ? "audio" : (mediaType || "image"));
         return simpleAIGalleryBrowserCountStatus(countMatch[1], mode);
     }
     const staticMap = {
@@ -2080,6 +2102,7 @@ function syncFinishedGalleryBrowserLocalizedControls() {
         );
         simpleAIGalleryBrowserSetButtonText(getFinishedGalleryBrowserElement("gallery_images_btn"), "Images", "图片");
         simpleAIGalleryBrowserSetButtonText(getFinishedGalleryBrowserElement("gallery_videos_btn"), "Videos", "视频");
+        simpleAIGalleryBrowserSetButtonText(getFinishedGalleryBrowserElement("gallery_audios_btn"), "Audio", "音频");
         simpleAIGalleryBrowserSetButtonText(
             getFinishedGalleryBrowserElement("gallery_browser_more_btn"),
             "Load more",
@@ -3249,7 +3272,7 @@ function localizePresetStoreUi() {
 
     presetStoreEl.querySelectorAll("[data-sai-scene-filter]").forEach((button) => {
         const sceneFilter = String(button.getAttribute("data-sai-scene-filter") || "all");
-        const englishText = {scene: "Scene", classic: "Classic", image: "Image", video: "Video", mesh: "3D"}[sceneFilter] || "All";
+        const englishText = {scene: "Scene", classic: "Classic", image: "Image", video: "Video", audio: "Audio", mesh: "3D"}[sceneFilter] || "All";
         topbarApplyLocalizedText(button, englishText);
     });
 
@@ -7239,7 +7262,7 @@ function getActiveGalleryMediaSwitchLock() {
 }
 
 function shouldSkipGalleryMediaSwitchCallback(mode, guard) {
-    const normalizedMode = mode === "video" ? "video" : "image";
+    const normalizedMode = (mode === "video" || mode === "audio") ? mode : "image";
     const current = window.__simpleaiGalleryMediaSwitchRequest || null;
     const activeLock = getActiveGalleryMediaSwitchLock();
     const checkedGuard = guard || {};
@@ -7283,9 +7306,14 @@ function syncGalleryMediaSwitch(engineType, lockMs, source) {
     if (!root) return;
     root.dataset.mode = mode;
     root.querySelectorAll("button").forEach((button) => {
-        const isVideo = button.id === "gallery_videos_btn";
-        const active = mode === (isVideo ? "video" : "image");
-        simpleAIGalleryBrowserSetButtonText(button, isVideo ? "Videos" : "Images", isVideo ? "视频" : "图片");
+        if (button.id === "canvas_gallery_refresh_btn") return;
+        const buttonMode = button.id === "gallery_videos_btn"
+            ? "video"
+            : (button.id === "gallery_audios_btn" ? "audio" : "image");
+        const active = mode === buttonMode;
+        const labelEn = buttonMode === "video" ? "Videos" : (buttonMode === "audio" ? "Audio" : "Images");
+        const labelCn = buttonMode === "video" ? "视频" : (buttonMode === "audio" ? "音频" : "图片");
+        simpleAIGalleryBrowserSetButtonText(button, labelEn, labelCn);
         button.classList.toggle("active", active);
         button.setAttribute("aria-pressed", active ? "true" : "false");
     });
@@ -7293,7 +7321,7 @@ function syncGalleryMediaSwitch(engineType, lockMs, source) {
 window.syncGalleryMediaSwitch = syncGalleryMediaSwitch;
 
 function beginGalleryMediaSwitchRequest(mode, lockMs) {
-    const normalizedMode = mode === "video" ? "video" : "image";
+    const normalizedMode = (mode === "video" || mode === "audio") ? mode : "image";
     const seq = (Number(window.__simpleaiGalleryMediaSwitchSeq || 0) || 0) + 1;
     window.__simpleaiGalleryMediaSwitchSeq = seq;
     const marker = `${Date.now()}:${seq}:${normalizedMode}`;
@@ -7313,7 +7341,7 @@ function beginGalleryMediaSwitchRequest(mode, lockMs) {
 window.beginGalleryMediaSwitchRequest = beginGalleryMediaSwitchRequest;
 
 function isGalleryMediaSwitchModeCurrent(mode) {
-    const normalizedMode = mode === "video" ? "video" : "image";
+    const normalizedMode = (mode === "video" || mode === "audio") ? mode : "image";
     const request = window.__simpleaiGalleryMediaSwitchRequest;
     return !request || !request.mode || request.mode === normalizedMode;
 }
@@ -7341,18 +7369,21 @@ function isFinishedGalleryNativeToolbarExpected() {
 }
 
 function getFinishedGalleryBrowserMode(preferred) {
-    if (preferred === "video" || preferred === "image") return preferred;
+    if (preferred === "video" || preferred === "audio" || preferred === "image") return preferred;
     const activeLock = getActiveGalleryMediaSwitchLock();
-    if (activeLock && (activeLock.mode === "video" || activeLock.mode === "image")) return activeLock.mode;
+    if (activeLock && (activeLock.mode === "video" || activeLock.mode === "audio" || activeLock.mode === "image")) return activeLock.mode;
     const switchRoot = getFinishedGalleryBrowserElement("gallery_media_switch_row");
     if (switchRoot) {
-        const activeButton = switchRoot.querySelector("#gallery_videos_btn.active, #gallery_videos_btn[aria-pressed='true'], #gallery_images_btn.active, #gallery_images_btn[aria-pressed='true']");
+        const activeButton = switchRoot.querySelector("#gallery_audios_btn.active, #gallery_audios_btn[aria-pressed='true'], #gallery_videos_btn.active, #gallery_videos_btn[aria-pressed='true'], #gallery_images_btn.active, #gallery_images_btn[aria-pressed='true']");
+        if (activeButton && activeButton.id === "gallery_audios_btn") return "audio";
         if (activeButton && activeButton.id === "gallery_videos_btn") return "video";
         if (activeButton && activeButton.id === "gallery_images_btn") return "image";
+        if (switchRoot.dataset && switchRoot.dataset.mode === "audio") return "audio";
         if (switchRoot.dataset && switchRoot.dataset.mode === "video") return "video";
         if (switchRoot.dataset && switchRoot.dataset.mode === "image") return "image";
     }
     const params = topbarLastSystemParams || window.simpleaiTopbarSystemParams || {};
+    if (params && (params.__gallery_engine_type === "audio" || params.engine_type === "audio")) return "audio";
     if (params && (params.__gallery_engine_type === "video" || params.engine_type === "video")) return "video";
     if (params && (params.__gallery_engine_type === "image" || params.engine_type === "image")) return "image";
     return "image";
@@ -7361,15 +7392,15 @@ function getFinishedGalleryBrowserMode(preferred) {
 function readGalleryBrowserFolderValue(root) {
     if (!root) return "";
     const datasetValue = root.dataset && (root.dataset.simpleaiGalleryBrowserFolder || root.dataset.saiFolderLabel);
-    if (datasetValue) return String(datasetValue || "").trim();
+    if (datasetValue) return normalizeFinishedGalleryBrowserFolderValue(datasetValue);
     const attrValue = root.getAttribute("data-value") || root.getAttribute("data-sai-folder-label");
-    if (attrValue) return String(attrValue || "").trim();
+    if (attrValue) return normalizeFinishedGalleryBrowserFolderValue(attrValue);
     const input = root.querySelector('input[role="listbox"], input');
     const raw = input ? (input.value || input.getAttribute("value") || "") : "";
-    const value = String(raw || "").trim();
+    const value = normalizeFinishedGalleryBrowserFolderValue(raw);
     if (value) return value;
     const params = topbarLastSystemParams || window.simpleaiTopbarSystemParams || {};
-    const stateValue = String(params && params.__main_gallery_browser_folder || "").trim();
+    const stateValue = normalizeFinishedGalleryBrowserFolderValue(params && params.__main_gallery_browser_folder || "");
     if (stateValue) return stateValue;
     return "";
 }
@@ -7379,11 +7410,12 @@ function syncGalleryBrowserFolderDisplay() {
     if (!root) return false;
     const value = readGalleryBrowserFolderValue(root);
     if (value) {
+        const displayLabel = formatFinishedGalleryBrowserFolderLabel(value);
         persistFinishedGalleryBrowserFolder(value);
         root.dataset.simpleaiGalleryBrowserFolder = value;
-        root.setAttribute("data-sai-folder-label", value);
+        root.setAttribute("data-sai-folder-label", displayLabel);
         root.setAttribute("data-value", value);
-        root.setAttribute("title", value);
+        root.setAttribute("title", displayLabel);
     } else {
         delete root.dataset.simpleaiGalleryBrowserFolder;
         root.removeAttribute("data-sai-folder-label");
@@ -7443,7 +7475,37 @@ function parseFinishedGalleryBrowserState(value) {
 }
 
 function normalizeFinishedGalleryBrowserFolderValue(value) {
-    return String(value || "").trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    return String(value || "")
+        .trim()
+        .replace(/\\/g, "/")
+        .replace(/^\/+|\/+$/g, "")
+        .replace(/\s*\(\d+\)\s*$/, "")
+        .trim();
+}
+
+function normalizeFinishedGalleryBrowserFolderCounts(rawCounts) {
+    const result = {};
+    if (!rawCounts || typeof rawCounts !== "object") return result;
+    Object.entries(rawCounts).forEach(([key, count]) => {
+        const folder = normalizeFinishedGalleryBrowserFolderValue(key);
+        const numeric = Number(count);
+        if (folder && Number.isFinite(numeric) && numeric >= 0) {
+            result[folder] = Math.floor(numeric);
+        }
+    });
+    return result;
+}
+
+function formatFinishedGalleryBrowserFolderLabel(folder, countsOverride) {
+    const cleanFolder = normalizeFinishedGalleryBrowserFolderValue(folder);
+    if (!cleanFolder) return "";
+    const counts = countsOverride && typeof countsOverride === "object"
+        ? countsOverride
+        : (finishedGalleryBrowserState && finishedGalleryBrowserState.folderCounts) || {};
+    if (Object.prototype.hasOwnProperty.call(counts, cleanFolder)) {
+        return `${cleanFolder} (${counts[cleanFolder]})`;
+    }
+    return cleanFolder;
 }
 
 function getFinishedGalleryBrowserControlElements(root) {
@@ -7582,6 +7644,9 @@ function handleFinishedGalleryBrowserIntent(event) {
             action = "media";
         } else if (target.closest("#gallery_videos_btn")) {
             mediaType = "video";
+            action = "media";
+        } else if (target.closest("#gallery_audios_btn")) {
+            mediaType = "audio";
             action = "media";
         } else if (target.closest("#gallery_browser_prev_folder_btn")) {
             folder = computeFinishedGalleryBrowserStepTargetFolder(folder, finishedGalleryBrowserState.folders, "gallery_browser.folder.prev");
@@ -7862,6 +7927,11 @@ function scheduleFinishedGalleryBrowserCatalogLabelSync(value, mediaType, reason
 }
 
 function countExistingFinishedGalleryMedia() {
+    try {
+        if (window.SimpAIStudioAudioSurface?.isVisible?.()) {
+            return window.SimpAIStudioAudioSurface.getCount() || 1;
+        }
+    } catch (e) {}
     const gallery = getFinishedGalleryBrowserElement("finished_gallery");
     if (!gallery) return 0;
     try {
@@ -7994,6 +8064,7 @@ function isPostGenerationSupportSurfaceFresh(key) {
 }
 
 function hasMountedPostGenerationResultMedia() {
+    if (isStudioAudioSurfaceVisible()) return true;
     const selector = "img, video, .gallery-item, .gallery-container > .preview";
     const finishedGallery = getFinishedGalleryBrowserElement("finished_gallery") || document.getElementById("finished_gallery");
     const finalGallery = getFinishedGalleryBrowserElement("final_gallery") || document.getElementById("final_gallery");
@@ -8313,7 +8384,9 @@ function getFinishedGalleryBrowserExpectedMediaCount(mediaType) {
     const statCount = parseFinishedCatalogCount(params.__finished_nums_pages || "");
     const label = getFinishedGalleryBrowserElement("finished_images_catalog")?.querySelector?.("button.label-wrap > span:not(.icon)");
     const labelText = String(label ? label.textContent : "");
-    const labelMatchesMode = mode === "video" ? /视频|video/i.test(labelText) : /图片|image|出图/i.test(labelText);
+    const labelMatchesMode = mode === "video"
+        ? /视频|video/i.test(labelText)
+        : (mode === "audio" ? /音频|audio/i.test(labelText) : /图片|image|出图/i.test(labelText));
     const labelCount = labelMatchesMode ? parseFinishedCatalogCount(labelText) : null;
     return Math.max(0, statCount || 0, labelCount || 0);
 }
@@ -8477,6 +8550,7 @@ function setFinishedGalleryOverlayActive(active) {
 function shouldReleaseFinishedGalleryWelcomeGuard() {
     if (Date.now() < finishedGalleryWelcomeGuardHoldStaleUntil) return false;
     if (!hasFinishedGalleryBrowserLoadedMediaState()) return false;
+    if (isStudioAudioSurfaceVisible()) return true;
     return (countRenderedFinishedGalleryItems() || 0) > 0;
 }
 
@@ -8568,10 +8642,12 @@ function setFinishedGalleryBrowserEmptyVisible(visible, mediaType, kind) {
     }
     if (!empty) return false;
     const stage = window.simpleaiTopbarSystemParams || topbarLastSystemParams || {};
-    const mode = mediaType === "video" ? "video" : "image";
+    const mode = mediaType === "video" ? "video" : (mediaType === "audio" ? "audio" : "image");
     const key = kind === "loading"
         ? "Loading history"
-        : (kind === "error" ? "Could not load this date" : (mode === "video" ? "No videos on this date" : "No images on this date"));
+        : (kind === "error"
+            ? "Could not load this date"
+            : (mode === "video" ? "No videos on this date" : (mode === "audio" ? "No audio on this date" : "No images on this date")));
     const label = empty.querySelector("[data-gallery-browser-empty-label]");
     if (label) {
         const lang = String(stage.__lang || "").toLowerCase();
@@ -8591,6 +8667,7 @@ function restoreWelcomePreviewForEmptyGalleryBrowser(reason) {
     setFinishedGalleryBrowserHasMediaState(false, reason || "gallery_browser_empty");
     markFinishedGalleryBrowserRenderedMediaEmpty(reason || "gallery_browser_empty");
     try { releaseFinishedGalleryWelcomeGuard(false, reason || "gallery_browser_empty_done"); } catch (e) {}
+    try { window.SimpAIStudioAudioSurface?.hide?.(reason || "gallery_browser_empty"); } catch (e) {}
     ["finished_gallery", "final_gallery", "progress_video", "video_player", "comparison_box"].forEach((id) => {
         try { markSimpleAICatalogLinkedGalleryHidden(getFinishedGalleryBrowserElement(id) || document.getElementById(id)); } catch (e) {}
     });
@@ -8723,8 +8800,9 @@ function releaseFinishedGalleryWelcomeGuard(hidePreview, reason) {
         try { node.style.removeProperty("display"); } catch (e) {}
         try { node.style.removeProperty("visibility"); } catch (e) {}
     });
-    if (hidePreview && ((countRenderedFinishedGalleryItems() || 0) > 0 || countExistingFinishedGalleryMedia() > 0)) {
-        if (!closedForSurfaceRefresh) {
+    const audioVisible = isStudioAudioSurfaceVisible();
+    if ((hidePreview || audioVisible) && (audioVisible || (countRenderedFinishedGalleryItems() || 0) > 0 || countExistingFinishedGalleryMedia() > 0)) {
+        if (!closedForSurfaceRefresh || audioVisible) {
             setFinishedGalleryBrowserHasMediaState(true, reason || "gallery_done");
             hideWelcomePreviewForFinishedGallery(reason || "gallery_done", { sameRow });
         }
@@ -8879,18 +8957,19 @@ function getFinishedGalleryBrowserContentParent(root) {
 }
 
 function setFinishedGalleryBrowserNativeFolderDisplay(folder) {
-    const value = String(folder || "").trim();
+    const value = normalizeFinishedGalleryBrowserFolderValue(folder || "");
     const root = getFinishedGalleryBrowserElement("gallery_browser_folder") || document.getElementById("gallery_browser_folder");
     if (!root || !value) return false;
+    const displayLabel = formatFinishedGalleryBrowserFolderLabel(value);
     persistFinishedGalleryBrowserFolder(value);
     try { root.dataset.simpleaiGalleryBrowserFolder = value; } catch (e) {}
-    try { root.setAttribute("data-sai-folder-label", value); } catch (e) {}
+    try { root.setAttribute("data-sai-folder-label", displayLabel); } catch (e) {}
     try { root.setAttribute("data-value", value); } catch (e) {}
-    try { root.setAttribute("title", value); } catch (e) {}
+    try { root.setAttribute("title", displayLabel); } catch (e) {}
     const input = root.querySelector('input[role="listbox"], input');
     if (input) {
-        try { input.value = value; } catch (e) {}
-        try { input.setAttribute("value", value); } catch (e) {}
+        try { input.value = displayLabel; } catch (e) {}
+        try { input.setAttribute("value", displayLabel); } catch (e) {}
     }
     const select = root.querySelector("select");
     if (select && Array.from(select.options || []).some((option) => option.value === value)) {
@@ -8902,14 +8981,20 @@ function setFinishedGalleryBrowserNativeFolderDisplay(folder) {
 
 function updateFinishedGalleryBrowserFolders(data) {
     const select = document.querySelector("#finished_gallery_browser_panel [data-gallery-browser-folder]");
-    const folders = Array.isArray(data?.folders) ? data.folders : finishedGalleryBrowserState.folders;
-    finishedGalleryBrowserState.folders = folders || [];
-    const selected = data?.folder || finishedGalleryBrowserState.userFolder || finishedGalleryBrowserState.folder || "";
+    const rawFolders = Array.isArray(data?.folders) ? data.folders : finishedGalleryBrowserState.folders;
+    const folders = Array.isArray(rawFolders)
+        ? rawFolders.map((item) => normalizeFinishedGalleryBrowserFolderValue(Array.isArray(item) ? item[1] : item)).filter(Boolean)
+        : [];
+    finishedGalleryBrowserState.folders = folders;
+    if (data && data.folder_counts && typeof data.folder_counts === "object") {
+        finishedGalleryBrowserState.folderCounts = normalizeFinishedGalleryBrowserFolderCounts(data.folder_counts);
+    }
+    const selected = normalizeFinishedGalleryBrowserFolderValue(data?.folder || finishedGalleryBrowserState.userFolder || finishedGalleryBrowserState.folder || "");
     setFinishedGalleryBrowserNativeFolderDisplay(selected);
     if (!select) return;
-    const previous = select.value;
+    const previous = normalizeFinishedGalleryBrowserFolderValue(select.value);
     select.innerHTML = "";
-    if (!folders || !folders.length) {
+    if (!folders.length) {
         const option = document.createElement("option");
         option.value = "";
         option.textContent = simpleAIGalleryBrowserText("Recent folders", "最近文件夹");
@@ -8918,7 +9003,7 @@ function updateFinishedGalleryBrowserFolders(data) {
         folders.forEach((folder) => {
             const option = document.createElement("option");
             option.value = folder;
-            option.textContent = folder;
+            option.textContent = formatFinishedGalleryBrowserFolderLabel(folder);
             select.appendChild(option);
         });
     }
@@ -9033,6 +9118,7 @@ function syncFinishedGalleryBrowserMoreButton() {
         ["gallery_browser_more_btn", !finishedGalleryBrowserState.hasMore],
         ["gallery_images_btn", false],
         ["gallery_videos_btn", false],
+        ["gallery_audios_btn", false],
     ].forEach(([id, disabled]) => {
         setFinishedGalleryBrowserControlDisabled(getFinishedGalleryBrowserElement(id) || document.getElementById(id), disabled);
     });
@@ -9065,6 +9151,20 @@ function normalizeFinishedGalleryBrowserDimensions(value) {
     if (!value || typeof value !== "object") return result;
     Object.entries(value).forEach(([path, dimensions]) => {
         const source = dimensions && typeof dimensions === "object" ? dimensions : {};
+        const mediaKind = String(source.media_type || source.mediaType || "").toLowerCase();
+        if (path && mediaKind === "audio") {
+            result[String(path)] = {
+                media_type: "audio",
+                name: source.name || "",
+                preview_url: source.preview_url || "",
+                download_url: source.download_url || "",
+                audio_format: source.audio_format || "",
+                size: Number(source.size || 0),
+                duration: Number(source.duration || 0),
+                waveform: Array.isArray(source.waveform) ? source.waveform : [],
+            };
+            return;
+        }
         const width = Math.round(Number(source.width || source[0] || 0));
         const height = Math.round(Number(source.height || source[1] || 0));
         if (!path || !(width > 0 && height > 0)) return;
@@ -9206,6 +9306,7 @@ function applySimpleAIPostGenerationResultPayload(payload) {
     topbarLastSystemParams = state;
     window.simpleaiTopbarSystemParams = state;
     window.SimpAIStudioMeshBrowser?.showResults(payload.__post_generation_mesh_ids);
+    window.SimpAIStudioAudioSurface?.showPostGenerationResults?.(payload);
     return state;
 }
 window.applySimpleAIPostGenerationResultPayload = applySimpleAIPostGenerationResultPayload;
@@ -9487,6 +9588,11 @@ function syncFinishedGalleryBrowserTopbarState(data, reason) {
         next.__main_gallery_browser_folders = data.folders;
     } else if (Array.isArray(finishedGalleryBrowserState.folders)) {
         next.__main_gallery_browser_folders = finishedGalleryBrowserState.folders;
+    }
+    if (data && data.folder_counts && typeof data.folder_counts === "object") {
+        next.__main_gallery_browser_folder_counts = data.folder_counts;
+    } else if (finishedGalleryBrowserState.folderCounts && typeof finishedGalleryBrowserState.folderCounts === "object") {
+        next.__main_gallery_browser_folder_counts = finishedGalleryBrowserState.folderCounts;
     }
     window.simpleaiTopbarSystemParams = next;
     topbarLastSystemParams = next;
@@ -9917,6 +10023,13 @@ function syncFinishedGalleryBrowserAfterLoad(stateJson) {
     finishedGalleryBrowserState.hasMore = !!data.has_more;
     finishedGalleryBrowserState.nextOffset = Number(data.next_offset || finishedGalleryBrowserState.loaded || 0);
     if (Array.isArray(data.folders)) finishedGalleryBrowserState.folders = data.folders;
+    if (data.folder_counts && typeof data.folder_counts === "object") {
+        finishedGalleryBrowserState.folderCounts = normalizeFinishedGalleryBrowserFolderCounts(data.folder_counts);
+    } else if (!String(data.query || "").trim() && resolvedFolder && !finishedGalleryBrowserState.hasMore) {
+        finishedGalleryBrowserState.folderCounts = Object.assign({}, finishedGalleryBrowserState.folderCounts || {}, {
+            [resolvedFolder]: finishedGalleryBrowserState.loaded,
+        });
+    }
     if (Array.isArray(data.paths)) finishedGalleryBrowserState.paths = data.paths;
     if (data.dimensions && typeof data.dimensions === "object") {
         mergeFinishedGalleryBrowserDimensions(data.dimensions, true);
@@ -9938,6 +10051,22 @@ function syncFinishedGalleryBrowserAfterLoad(stateJson) {
         try { collapseFinishedImagesCatalogClosedHitbox("gallery_browser_after_load_catalog_closed"); } catch (e) {}
         syncFinishedGalleryBrowserMoreButton();
         return true;
+    }
+    if (finishedGalleryBrowserState.mediaType === "audio") {
+        if (finishedGalleryBrowserState.loaded > 0) {
+            try {
+                window.SimpAIStudioAudioSurface?.showBrowserItems?.({
+                    media_type: "audio",
+                    folder: resolvedFolder,
+                    paths: finishedGalleryBrowserState.paths,
+                    dimensions: finishedGalleryBrowserState.dimensions,
+                });
+            } catch (e) {}
+        } else {
+            try { window.SimpAIStudioAudioSurface?.hide?.("gallery_browser_after_load_empty"); } catch (e) {}
+        }
+    } else if (window.SimpAIStudioAudioSurface?.getMode?.() === "browser") {
+        try { window.SimpAIStudioAudioSurface?.hide?.("gallery_browser_switched_media"); } catch (e) {}
     }
     if (finishedGalleryBrowserState.loaded > 0) {
         setFinishedGalleryBrowserEmptyVisible(false);
@@ -10023,6 +10152,7 @@ function syncFinishedGalleryBrowserAfterMediaSwitch(browserStateJson, stat, mode
         finishedGalleryBrowserState.mediaType = mediaType;
         finishedGalleryBrowserState.folder = "";
         finishedGalleryBrowserState.userFolder = "";
+        finishedGalleryBrowserState.folderCounts = {};
         finishedGalleryBrowserState.paths = [];
         finishedGalleryBrowserState.dimensions = {};
         finishedGalleryBrowserState.loaded = statTotal !== null ? statTotal : 0;
@@ -10055,7 +10185,20 @@ function syncFinishedGalleryBrowserAfterMediaSwitch(browserStateJson, stat, mode
         finishedGalleryBrowserState.mediaType = mediaType;
         finishedGalleryBrowserState.folder = folder;
         finishedGalleryBrowserState.userFolder = folder;
+        const stateFolderCounts = params && params.__main_gallery_browser_folder_counts && typeof params.__main_gallery_browser_folder_counts === "object"
+            ? params.__main_gallery_browser_folder_counts
+            : null;
         if (stateFolders) finishedGalleryBrowserState.folders = stateFolders;
+        if (stateFolderCounts) {
+            finishedGalleryBrowserState.folderCounts = normalizeFinishedGalleryBrowserFolderCounts(stateFolderCounts);
+        } else if (mediaType !== previousMediaType) {
+            finishedGalleryBrowserState.folderCounts = {};
+        }
+        updateFinishedGalleryBrowserFolders({
+            folder,
+            folders: stateFolders || finishedGalleryBrowserState.folders,
+            folder_counts: stateFolderCounts || finishedGalleryBrowserState.folderCounts,
+        });
         if (usableStatePaths) {
             finishedGalleryBrowserState.paths = usableStatePaths;
             finishedGalleryBrowserState.loaded = usableStatePaths.length;
@@ -10095,6 +10238,22 @@ function syncFinishedGalleryBrowserAfterMediaSwitch(browserStateJson, stat, mode
     setFinishedGalleryBrowserStatus(simpleAIGalleryBrowserCountStatus(finishedGalleryBrowserState.loaded, mediaType));
     scheduleFinishedGalleryBrowserCatalogLabelSync(stat || (params && params.__finished_nums_pages) || "", mediaType, reason || "gallery_media_switch", params && params.__main_gallery_browser_request_id);
     restoreFinishedGalleryBrowserCatalogOpenAfterLoad(params && params.__main_gallery_browser_request_id, reason || "gallery_media_switch");
+    if (finishedGalleryBrowserState.mediaType === "audio") {
+        if (finishedGalleryBrowserState.loaded > 0) {
+            try {
+                window.SimpAIStudioAudioSurface?.showBrowserItems?.({
+                    media_type: "audio",
+                    folder: folder,
+                    paths: finishedGalleryBrowserState.paths,
+                    dimensions: finishedGalleryBrowserState.dimensions,
+                });
+            } catch (e) {}
+        } else {
+            try { window.SimpAIStudioAudioSurface?.hide?.("gallery_browser_after_load_empty"); } catch (e) {}
+        }
+    } else if (window.SimpAIStudioAudioSurface?.getMode?.() === "browser") {
+        try { window.SimpAIStudioAudioSurface?.hide?.("gallery_browser_switched_media"); } catch (e) {}
+    }
     if (finishedGalleryBrowserState.loaded > 0) {
         setFinishedGalleryBrowserEmptyVisible(false);
         releaseFinishedGalleryBrowserRenderedMediaEmpty(reason || "gallery_media_switch");
@@ -10955,13 +11114,23 @@ function inferPresetStoreEngine(name) {
     if (text.includes("qwen") || text.includes("nunqwen")) return "Qwen";
     if (text.includes("z-image") || text.includes("zimage")) return "Z-image";
     if (text.includes("ltx")) return "LTX";
+    if (text.includes("music") || text.includes("minimax")) return "Music";
     if (text.includes("sdxl") || text.includes("illustrious") || text.includes("noob")) return "SDXL";
     return "Other";
 }
 
-function inferPresetStoreMediaType(engineType, taskMethod) {
-    const engine = String(engineType || "").trim().toLowerCase();
+function inferPresetStoreMediaType(engineTypeOrItem, taskMethod) {
+    if (engineTypeOrItem && typeof engineTypeOrItem === "object") {
+        const item = engineTypeOrItem;
+        if (item.media_capability?.output_type === "mesh" || item.schema?.mesh_output) return "mesh";
+        if (item.media_capability?.output_type === "audio") return "audio";
+        if (item.media_capability?.output_type === "video") return "video";
+        return inferPresetStoreMediaType(item.engine_type, item.task_method);
+    }
+    const engine = String(engineTypeOrItem || "").trim().toLowerCase();
     const task = String(taskMethod || "").trim().toLowerCase();
+    if (engine.includes("audio") || engine.includes("music")) return "audio";
+    if (/(?:^|[_-])(t2m|t2a|music\d*|audio)(?:$|[_-])/.test(task)) return "audio";
     if (engine.includes("video")) return "video";
     if (/(?:^|[_-])(t2v|i2v|v2v|ta2v|ia2v|av2v)(?:$|[_-])/.test(task)) return "video";
     return "image";
@@ -11742,7 +11911,7 @@ function getPresetStoreCandidateEntries() {
                 scene: !!item.scene,
                 engineType: String(item.engine_type || ""),
                 taskMethod: String(item.task_method || ""),
-                mediaType: item.media_capability?.output_type === "mesh" ? "mesh" : inferPresetStoreMediaType(item.engine_type, item.task_method),
+                mediaType: inferPresetStoreMediaType(item),
                 missing: !!item.missing,
                 order: Number.isFinite(orderValue) ? orderValue : index,
                 source,
@@ -12347,7 +12516,7 @@ function applyPresetStoreFilters() {
         const matchesQuery = !query || text.includes(query);
         const matchesEngine = engineFilter === "all" || engine === engineFilter;
         const matchesScene = sceneFilter === "all"
-            || (["image", "video", "mesh"].includes(sceneFilter)
+            || (["image", "video", "audio", "mesh"].includes(sceneFilter)
                 ? mediaType === sceneFilter
                 : sceneType === sceneFilter);
         const visible = matchesQuery && matchesEngine && matchesScene;
@@ -13218,6 +13387,7 @@ function isGenerationProgressActiveForWelcomeRestore() {
 function restoreWelcomePreviewIfResultSurfaceIdle(reason) {
     if (isWelcomePreviewSuppressedByUserSetting()) return false;
     if (isGenerationProgressActiveForWelcomeRestore()) return false;
+    if (isStudioAudioSurfaceVisible()) return false;
     if (isPostGenerationSupportSurfaceFresh(postGenerationSupportSurfaceKey)) return false;
     if (hasMountedPostGenerationResultMedia()) return false;
     const video = getSimpleAIAppElement("video_player") || document.getElementById("video_player");
@@ -13815,6 +13985,8 @@ function syncPostGenerationResultControls(stateOverride) {
     params = normalizePostGenerationStateFromRenderedOutput(params, "post_generation_result_controls");
     const engineType = params?.__gallery_engine_type || params?.engine_type || params?.default_engine?.engine_type || "";
     const isVideoContext = engineType === "video";
+    const stateHasAudioOutput = !!(params && params.__post_generation_audio_output);
+    const isAudioContext = engineType === "audio" || stateHasAudioOutput || isStudioAudioSurfaceVisible();
     const domImageToolsEnabled = readSimpleAIImageToolsEnabledFromDom();
     const stateImageToolsEnabled = domImageToolsEnabled === null ? !(params && params.__image_tools_enabled === false) : domImageToolsEnabled;
     syncSimpleAIImageToolsEnabledClass(stateImageToolsEnabled);
@@ -13828,7 +14000,7 @@ function syncPostGenerationResultControls(stateOverride) {
         && !stateCompareCleared
     );
     const isMainGalleryBrowser = params?.gallery_state === "main_browser" && !postGenerationCompareAvailable;
-    const compareActionBlocked = isMainGalleryBrowser || stateCompareCleared || !stateImageToolsEnabled || isVideoContext;
+    const compareActionBlocked = isMainGalleryBrowser || stateCompareCleared || !stateImageToolsEnabled || isVideoContext || isAudioContext;
     const elementState = (el) => {
         if (!el) return null;
         let rect = null;
@@ -13911,7 +14083,7 @@ function syncPostGenerationResultControls(stateOverride) {
     const stateHasOutput = !!(params && params.__post_generation_has_output);
     const stateHasGalleryOutput = !!(params && params.__post_generation_gallery_output);
     const stateHasVideoOutput = !!(params && params.__post_generation_video_output);
-    const stateHasImageOutput = stateHasOutput && !isVideoContext && !stateHasVideoOutput;
+    const stateHasImageOutput = stateHasOutput && !isVideoContext && !stateHasVideoOutput && !isAudioContext && !stateHasAudioOutput;
     const stateGalleryPreviewOpen = !!(params && params.gallery_preview_open);
     const singlePreviewOpen = ((stateGalleryPreviewOpen || hasGallerySinglePreview()) && galleryPreviewRevealAllowed()) || (comparisonVisible && !compareActionBlocked);
     const activeGenerationControls = typeof hasSimpleAIActiveGenerationControls === "function" && hasSimpleAIActiveGenerationControls();
@@ -13921,6 +14093,36 @@ function syncPostGenerationResultControls(stateOverride) {
     const stateCompareVisible = !!(params && params.__post_generation_compare_visible);
     const stateCompareReady = !!(params && params.__post_generation_compare_ready);
     const galleryBrowserOpenOrLoading = isFinishedGalleryBrowserOpenOrLoading();
+    if (stateHasAudioOutput && !isStudioAudioSurfaceVisible() && Array.isArray(params?.__post_generation_audio_items) && params.__post_generation_audio_items.length > 0) {
+        try { window.SimpAIStudioAudioSurface?.showPostGenerationResults?.(params); } catch (e) {}
+    }
+    if (isStudioAudioSurfaceVisible()) {
+        try { clearPostGenerationSupportSurface(); } catch (e) {}
+        try { removePostGenerationMissingGalleryPlaceholder(); } catch (e) {}
+        try { removeFinishedGalleryWelcomePlaceholder(); } catch (e) {}
+        try { clearFinishedImagesCatalogClosedHitbox("post_generation_audio_surface"); } catch (e) {}
+        try { setFinishedGalleryOverlayActive(false); } catch (e) {}
+        try {
+            document.documentElement.classList.remove("simpai-video-result-preview");
+            document.documentElement.classList.remove("simpai-comparison-preview");
+            document.documentElement.classList.remove("simpai-gallery-browser-welcome-pending");
+            document.documentElement.classList.remove("simpai-gallery-browser-loading-silent");
+            document.documentElement.classList.toggle("simpai-post-generation-result-surface", !!stateHasAudioOutput);
+        } catch (e) {}
+        const preview = find("preview_generating");
+        if (!activeGenerationControls && preview) {
+            try { collapseWelcomePreviewForPostGenerationSurface(document.getElementById("studio_audio_browser") || preview); } catch (e) {}
+        }
+        hideElement(finishedGallery);
+        hideElement(finalGallery);
+        showElement(find("finished_images_catalog"));
+        const compareBtn = find("compare_btn");
+        setCompareButtonReadyState(compareBtn, false);
+        hideElement(compareBtn);
+        if (stateImageToolsEnabled) showElement(find("image_toolbox"));
+        else hideElement(find("image_toolbox"));
+        return;
+    }
     const revealPostGenerationCompareControls = () => {
         const compareBtn = find("compare_btn");
         const toolboxVisible = stateImageToolsEnabled && singlePreviewOpen;

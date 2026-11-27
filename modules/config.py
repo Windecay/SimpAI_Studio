@@ -264,6 +264,11 @@ def normalize_preset_supported_tasks(value):
         "v2v": "video_edit",
         "a2v": "audio_to_video",
         "v2a": "video_to_audio",
+        "t2m": "text_to_music",
+        "music": "text_to_music",
+        "text2music": "text_to_music",
+        "t2a": "text_to_audio",
+        "text2audio": "text_to_audio",
         "upscale": "image_upscale",
         "super_resolution": "image_upscale",
         "restore": "image_restore",
@@ -393,6 +398,9 @@ def resolve_preset_supported_tasks(preset_content, preset_name=""):
         for slot in standard_image_slots + optional_image_slots
         if scene and slot not in hidden and (slot in standard_image_slots or slot in enabled)
     ]
+
+    if engine_type == "audio":
+        return ["text_to_music"]
 
     if engine_type == "video":
         if any(marker in descriptor for marker in ("lip sync", "lip_sync", "infinitetalk")):

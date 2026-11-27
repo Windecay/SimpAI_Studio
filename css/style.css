@@ -18370,13 +18370,14 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
 #gallery_media_switch_row {
   position: relative;
   display: inline-grid !important;
-  grid-template-columns: 1fr 1fr;
-  width: 190px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 222px;
   padding: 3px;
   gap: 0;
   margin: 4px auto 10px;
   justify-self: center;
   align-self: center;
+  box-sizing: border-box;
   border: 1px solid var(--border-color-primary);
   border-radius: 999px;
   background: color-mix(in srgb, var(--background-fill-secondary) 82%, #000 18%);
@@ -18390,7 +18391,7 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
   top: 3px;
   bottom: 3px;
   left: 3px;
-  width: calc(50% - 3px);
+  width: calc((100% - 6px) / 3);
   border-radius: 999px;
   background: var(--button-primary-background-fill);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
@@ -18402,12 +18403,19 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
   transform: translateX(100%);
 }
 
+#gallery_media_switch_row[data-mode="audio"]::before {
+  transform: translateX(200%);
+}
+
 #gallery_media_switch_row button {
   position: relative;
   z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
   height: 28px;
-  padding: 0 12px;
+  padding: 0 8px;
   border: 0 !important;
   border-radius: 999px !important;
   background: transparent !important;
@@ -18415,6 +18423,8 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
   color: var(--body-text-color-subdued);
   font-size: 12px;
   font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 #gallery_media_switch_row button.active,
@@ -18437,7 +18447,7 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
 #gallery_browser_toolbar,
 .simpleai-main-gallery-browser {
   display: grid !important;
-  grid-template-columns: minmax(max-content, 1fr) 150px minmax(max-content, 1fr);
+  grid-template-columns: minmax(max-content, 1fr) 222px minmax(max-content, 1fr);
   grid-template-areas: "left switch right";
   align-items: center !important;
   justify-items: start !important;
@@ -18503,12 +18513,12 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
 
 #gallery_browser_folder_group > .form,
 .gallery-browser-folder-group > .form {
-  flex: 0 0 156px !important;
+  flex: 0 0 176px !important;
   flex-grow: 0 !important;
   flex-shrink: 0 !important;
-  width: 156px !important;
-  min-width: 156px !important;
-  max-width: 156px !important;
+  width: 176px !important;
+  min-width: 176px !important;
+  max-width: 176px !important;
   margin: 0 !important;
   overflow: visible !important;
 }
@@ -18540,10 +18550,10 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  flex: 0 0 150px !important;
-  min-width: 150px !important;
-  width: 150px !important;
-  max-width: 150px !important;
+  flex: 0 0 222px !important;
+  min-width: 222px !important;
+  width: 222px !important;
+  max-width: 222px !important;
   overflow: visible !important;
 }
 
@@ -18567,10 +18577,10 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
 
 #gallery_browser_toolbar #gallery_media_switch_row,
 .simpleai-main-gallery-browser #gallery_media_switch_row {
-  flex: 0 0 150px !important;
-  width: 150px !important;
-  min-width: 150px !important;
-  max-width: 150px !important;
+  flex: 0 0 222px !important;
+  width: 222px !important;
+  min-width: 222px !important;
+  max-width: 222px !important;
   margin: 0 !important;
 }
 
@@ -18599,9 +18609,9 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
 
 .simpleai-main-gallery-browser #gallery_browser_folder,
 .simpleai-main-gallery-browser select[data-gallery-browser-folder] {
-  width: 156px;
-  min-width: 156px;
-  max-width: 156px;
+  width: 176px;
+  min-width: 176px;
+  max-width: 176px;
   height: 30px;
   padding: 0 34px 0 12px;
   border: 1px solid var(--border-color-primary);
@@ -18612,9 +18622,9 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
 }
 
 #gallery_browser_folder {
-  width: 156px !important;
-  min-width: 156px !important;
-  max-width: 156px !important;
+  width: 176px !important;
+  min-width: 176px !important;
+  max-width: 176px !important;
   height: 30px !important;
   min-height: 30px !important;
   margin: 0 !important;
@@ -18628,11 +18638,11 @@ html.simpai-main-gallery-browser-closed #gallery_browser_toolbar {
 #gallery_browser_toolbar .form:has(#gallery_browser_folder),
 #gallery_browser_folder_group .form:has(#gallery_browser_folder),
 #gallery_browser_folder_group .block:has(#gallery_browser_folder) {
-  flex: 0 0 156px !important;
+  flex: 0 0 176px !important;
   flex-grow: 0 !important;
-  width: 156px !important;
-  min-width: 156px !important;
-  max-width: 156px !important;
+  width: 176px !important;
+  min-width: 176px !important;
+  max-width: 176px !important;
   overflow: visible !important;
 }
 

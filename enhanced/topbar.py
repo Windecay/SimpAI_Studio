@@ -323,6 +323,7 @@ PRESET_STORE_ORDER = [
     "MiniMax-H3(R2I)",
     "P-H3-Image",
     "MiniMax-H3(Pose)",
+    "MiniMax-Music3",
     "Bernini-ImageEdit",
     "Bernini-MultiI2V",
     "Bernini-VideoEdit",
@@ -1865,6 +1866,13 @@ def _build_canvas_media_capability(
         "v2v": "video_edit",
         "a2v": "audio_to_video",
         "v2a": "video_to_audio",
+        "t2m": "text_to_music",
+        "music": "text_to_music",
+        "text2music": "text_to_music",
+        "text_to_music": "text_to_music",
+        "t2a": "text_to_audio",
+        "text2audio": "text_to_audio",
+        "text_to_audio": "text_to_audio",
     }
     raw_supported_tasks = explicit_supported_tasks
     if not isinstance(raw_supported_tasks, (list, tuple)):
@@ -1882,7 +1890,8 @@ def _build_canvas_media_capability(
         if not supported_tasks:
             supported_tasks = ["image_to_3d"]
     else:
-        output_type = "video" if str(engine_type or "").strip().lower() == "video" else "image"
+        normalized_engine_type = str(engine_type or "").strip().lower()
+        output_type = "video" if normalized_engine_type == "video" else "audio" if normalized_engine_type == "audio" else "image"
     if not supported_tasks:
         descriptor = " ".join(
             str(value or "").strip().lower()
@@ -1915,6 +1924,8 @@ def _build_canvas_media_capability(
         )
         if output_type == "video":
             supported_tasks = ["video_edit"]
+        elif output_type == "audio":
+            supported_tasks = ["text_to_music"]
         elif max_images > 0 and any(marker in descriptor for marker in edit_markers):
             supported_tasks = ["image_edit"]
             if max_images > 1:
@@ -2022,7 +2033,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         samples = []
 
     sample_signature = (
-        "canvas_preset_meta_media_capability_v12",
+        "canvas_preset_meta_media_capability_v13",
         *(
             item[0] if isinstance(item, (list, tuple)) and item else item
             for item in samples
@@ -3405,7 +3416,7 @@ def _has_generation_output(generation_task=None, gallery_output=None, video_outp
 
 
 def should_show_finished_catalog(engine_type, output_list):
-    return bool(output_list) or engine_type == "video"
+    return bool(output_list) or engine_type in ("video", "audio")
 
 
 def process_after_generation(state_params, generation_task=None, gallery_output=None, video_output=None):
@@ -3487,7 +3498,7 @@ def refresh_finished_catalog_stat_after_generation(state_params):
         user = state_params.get("user")
         user_did = user.get_did() if user is not None and hasattr(user, "get_did") else None
         engine_type = state_params.get("__gallery_engine_type") or state_params.get("engine_type") or "image"
-        engine_type = "video" if engine_type == "video" else "image"
+        engine_type = engine_type if engine_type in ("video", "audio") else "image"
         output_list, finished_nums, finished_pages = gallery_util.refresh_output_list(
             state_params["__max_per_page"],
             state_params["__max_catalog"],

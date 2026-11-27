@@ -160,6 +160,25 @@ def _item_urls(
         legacy_url = _legacy_gallery_preview_url(request, item, library) if library is not None else ""
         item["thumbnail_url"] = legacy_url
         item["poster_ready"] = bool(legacy_url)
+    elif item.get("media_type") == "audio":
+        ext = os.path.splitext(str(item.get("name") or item.get("relative_path") or ""))[1].lstrip(".").upper()
+        if ext:
+            item.setdefault("audio_format", ext)
+        if library is not None:
+            root = library.gallery_root if item.get("is_trashed") else library.outputs_root
+            rel = item.get("trash_path") if item.get("is_trashed") else item.get("relative_path")
+            source = media_library._path_under(root, rel or "")
+            if source and os.path.isfile(source):
+                try:
+                    from modules import canvas_workbench_media_gallery as gallery_media
+
+                    duration, waveform = gallery_media._read_audio_profile(source)
+                    if duration > 0:
+                        item["duration"] = duration
+                    if waveform:
+                        item["waveform"] = waveform
+                except Exception:
+                    pass
     return item
 
 
